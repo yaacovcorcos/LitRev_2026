@@ -574,8 +574,6 @@ h1 {
     height: 220px;
     /* Reduced to 220px */
     /* Fixed height for uniformity */
-    cursor: pointer;
-    /* Added pointer cursor as requested */
 }
 
 .card:hover {
