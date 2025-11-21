@@ -766,8 +766,8 @@ h1 {
 }
 
 .btn-primary {
-    background: #e07a5f;
-    /* Vibrant Terra Cotta - Clear & Solid (No opacity/muted feel) */
+    background: var(--accent-primary);
+    /* Match sidebar accent exactly (#c27865) */
     color: white;
 }
 
