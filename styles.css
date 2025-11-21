@@ -635,7 +635,19 @@ h1 {
     /* This creates the "top padding" below the badge */
 }
 
-/* ... status colors ... */
+.card-status .material-icons-round {
+    font-size: 14px;
+}
+
+.status-harvesting {
+    background: var(--status-harvesting-bg);
+    color: var(--status-harvesting-text);
+}
+
+.status-ready {
+    background: var(--status-ready-bg);
+    color: var(--status-ready-text);
+}
 
 /* Stats Row (Redesigned) */
 .stats-row {
