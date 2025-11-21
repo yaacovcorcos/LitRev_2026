@@ -30,7 +30,8 @@
     --status-harvesting-text: #9c724f;
 
     /* Spacing & Radius */
-    --radius-lg: 24px;
+    --radius-lg: 22px;
+    /* Reduced to 22px as requested */
     --radius-md: 16px;
     --radius-sm: 8px;
     --gap-md: 24px;
@@ -560,7 +561,8 @@ h1 {
     background: var(--glass-bg);
     border: 1px solid var(--glass-border);
     border-radius: var(--radius-lg);
-    padding: 24px;
+    padding: 22px;
+    /* Reduced to 22px */
     display: flex;
     flex-direction: column;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
