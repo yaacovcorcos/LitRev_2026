@@ -638,6 +638,7 @@ h1 {
     margin-top: -20px;
     margin-right: -20px;
     margin-bottom: 20px;
+    margin-bottom: 20px;
     /* This creates the "top padding" below the badge */
 }
 
@@ -655,18 +656,24 @@ h1 {
     color: var(--status-ready-text);
 }
 
-/* Stats Row (Redesigned) */
-.stats-row {
-    display: flex;
-    justify-content: space-between;
-    gap: 12px;
-    margin: 0 0 12px 0;
-    /* Reverted margins */
-    padding: 0;
-    border-top: none;
+/* Paper Count Badge */
+.paper-badge {
+    position: absolute;
+    top: 0;
+    left: 0;
+    background: #818CF8;
+    /* Purple from sidebar active state */
+    color: white;
+    padding: 8px 16px;
+    border-radius: 22px 0 16px 0;
+    /* Symmetrical to status badge */
+    font-size: 11px;
+    font-weight: 600;
+    z-index: 2;
+    box-shadow: 2px 2px 4px rgba(0, 0, 0, 0.1);
 }
 
-/* ... stat styles ... */
+/* Stats Row Removed */
 
 /* Progress Section (Redesigned) */
 .progress-section {
