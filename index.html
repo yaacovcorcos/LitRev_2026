@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LitRev Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+    <!-- Icons -->
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="logo-area">
+                <div class="logo-wrapper">
+                    <span class="material-icons-round logo-icon">manage_search</span>
+                    <span class="logo-text">LitRev</span>
+                </div>
+                <button class="sidebar-toggle" aria-label="Toggle Sidebar">
+                    <span class="material-icons-round">menu_open</span>
+                </button>
+            </div>
+
+            <nav class="main-nav">
+                <a href="#" class="nav-item active">
+                    <span class="material-icons-round">grid_view</span>
+                    Projects
+                </a>
+                <a href="#" class="nav-item">
+                    <span class="material-icons-round">smart_toy</span>
+                    AI Assistant
+                </a>
+                <a href="#" class="nav-item">
+                    <span class="material-icons-round">bookmarks</span>
+                    Library
+                </a>
+            </nav>
+
+            <div class="bottom-nav">
+                <a href="#" class="nav-item">
+                    <span class="material-icons-round">notifications</span>
+                    Notifications
+                </a>
+                <a href="#" class="nav-item">
+                    <span class="material-icons-round">person</span>
+                    Profile
+                </a>
+                <a href="#" class="nav-item">
+                    <span class="material-icons-round">help_outline</span>
+                    Help
+                </a>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <header class="top-bar">
+                <div class="welcome-section">
+                    <h1>Welcome back, Dr. Albright</h1>
+                    <p class="subtitle">You have 3 active automated reviews running</p>
+                </div>
+            </header>
+
+            <div class="controls-bar">
+                <div class="search-wrapper">
+                    <span class="material-icons-round search-icon">search</span>
+                    <input type="text" placeholder="Search projects, papers, or authors..." class="search-input">
+                </div>
+
+                <div class="view-controls">
+                    <span class="sort-label">Sort by:</span>
+                    <select class="sort-select">
+                        <option>Recently Modified</option>
+                        <option>Name</option>
+                        <option>Date Created</option>
+                    </select>
+                    <div class="view-toggles">
+                        <button class="icon-btn active"><span class="material-icons-round">grid_view</span></button>
+                        <button class="icon-btn"><span class="material-icons-round">list</span></button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Project Grid (2x3) -->
+            <div class="project-grid">
+                <!-- Card 1: New Project -->
+                <div class="card new-project-card">
+                    <div class="new-project-content">
+                        <div class="icon-circle">
+                            <span class="material-icons-round">add</span>
+                        </div>
+                        <h3>Create New Project</h3>
+                        <p>Start a new Literature Review</p>
+                    </div>
+                </div>
+
+                <!-- Card 2: Active Review -->
+                <div class="card project-card active-review">
+                    <div class="card-status status-harvesting">
+                        <span class="material-icons-round">graphic_eq</span>
+                        Status: Harvesting papers...
+                    </div>
+                    <h3>Machine Learning in Radiopathology 2020-2025</h3>
+                    <div class="progress-section">
+                        <div class="progress-text">
+                            <span>Phase 2 of 4: Deduplicating</span>
+                            <span class="percentage">45%</span>
+                        </div>
+                        <div class="progress-bar">
+                            <div class="progress-fill" style="width: 45%"></div>
+                        </div>
+                        <p class="meta-info">2,450 papers found so far.<br>Last modified 2 hours ago.</p>
+                    </div>
+                    <button class="btn btn-primary">View Project</button>
+                </div>
+
+                <!-- Card 3: Ready -->
+                <div class="card project-card">
+                    <div class="card-status status-ready">
+                        Status: Review Ready
+                    </div>
+                    <h3>Climate Change Adaptation Strategies in Urban Planning</h3>
+                    <div class="stats-row">
+                        <div class="stat">
+                            <span class="stat-val">154</span>
+                            <span class="stat-label">Papers</span>
+                        </div>
+                        <div class="stat">
+                            <span class="stat-val">12</span>
+                            <span class="stat-label">Themes</span>
+                        </div>
+                        <div class="stat">
+                            <span class="stat-val">95%</span>
+                            <span class="stat-label">Relevance</span>
+                        </div>
+                    </div>
+                    <button class="btn btn-primary">View Project</button>
+                </div>
+
+                <!-- Card 4: Ready -->
+                <div class="card project-card">
+                    <div class="card-status status-ready">
+                        Status: Review Ready
+                    </div>
+                    <h3>CRISPR Applications in Neurodegenerative Diseases</h3>
+                    <div class="stats-row">
+                        <div class="stat">
+                            <span class="stat-val">89</span>
+                            <span class="stat-label">Papers</span>
+                        </div>
+                        <div class="stat">
+                            <span class="stat-val">8</span>
+                            <span class="stat-label">Themes</span>
+                        </div>
+                        <div class="stat">
+                            <span class="stat-val">92%</span>
+                            <span class="stat-label">Relevance</span>
+                        </div>
+                    </div>
+                    <button class="btn btn-primary">View Project</button>
+                </div>
+
+                <!-- Card 5: Ready -->
+                <div class="card project-card">
+                    <div class="card-status status-ready">
+                        Status: Review Ready
+                    </div>
+                    <h3>Sustainable Supply Chain Management in Fashion</h3>
+                    <div class="stats-row">
+                        <div class="stat">
+                            <span class="stat-val">210</span>
+                            <span class="stat-label">Papers</span>
+                        </div>
+                        <div class="stat">
+                            <span class="stat-val">15</span>
+                            <span class="stat-label">Themes</span>
+                        </div>
+                        <div class="stat">
+                            <span class="stat-val">98%</span>
+                            <span class="stat-label">Relevance</span>
+                        </div>
+                    </div>
+                    <button class="btn btn-primary">View Project</button>
+                </div>
+
+                <!-- Card 6: Ready -->
+                <div class="card project-card">
+                    <div class="card-status status-ready">
+                        Status: Review Ready
+                    </div>
+                    <h3>Impact of Remote Work on Employee Productivity</h3>
+                    <div class="stats-row">
+                        <div class="stat">
+                            <span class="stat-val">132</span>
+                            <span class="stat-label">Papers</span>
+                        </div>
+                        <div class="stat">
+                            <span class="stat-val">10</span>
+                            <span class="stat-label">Themes</span>
+                        </div>
+                        <div class="stat">
+                            <span class="stat-val">94%</span>
+                            <span class="stat-label">Relevance</span>
+                        </div>
+                    </div>
+                    <button class="btn btn-primary">View Project</button>
+                </div>
+            </div>
+        </main>
+    </div>
+    <script src="script.js"></script>
+</body>
+
+</html>
