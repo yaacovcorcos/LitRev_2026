@@ -563,17 +563,16 @@ h1 {
 .card {
     background: var(--glass-bg);
     border: 1px solid var(--glass-border);
-    border-radius: var(--radius-lg);
-    padding: 22px;
-    /* Reduced to 22px */
+    border-radius: 22px;
+    /* Explicitly set to match badge */
+    padding: 20px;
+    /* Reduced padding */
     display: flex;
     flex-direction: column;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     position: relative;
     overflow: hidden;
     height: 220px;
-    /* Reduced to 220px */
-    /* Fixed height for uniformity */
 }
 
 .card:hover {
@@ -633,9 +632,10 @@ h1 {
 .project-card h3 {
     font-size: 18px;
     line-height: 1.3;
-    margin-bottom: 12px;
-    padding-right: 60px;
-    /* Reduced padding to reclaim space */
+    margin-bottom: 8px;
+    /* Reduced margin */
+    padding-right: 90px;
+    /* Minimized padding for badge */
     display: -webkit-box;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
@@ -647,18 +647,19 @@ h1 {
 
 .card-status {
     position: absolute;
-    top: -1px;
-    /* Overlap border to prevent white line */
-    right: -1px;
-    /* Overlap border to prevent white line */
+    top: 0;
+    right: 0;
     display: inline-flex;
     align-items: center;
     gap: 6px;
     padding: 8px 16px;
     border-radius: 0 22px 0 16px;
+    /* Matches card TR exactly */
     font-size: 11px;
     font-weight: 600;
     z-index: 1;
+    /* Ensure background is opaque to prevent bleed */
+    box-shadow: -2px 2px 4px rgba(0, 0, 0, 0.02);
 }
 
 .card-status .material-icons-round {
@@ -675,29 +676,34 @@ h1 {
     color: var(--status-ready-text);
 }
 
-/* Stats Row */
+/* Stats Row (Redesigned) */
 .stats-row {
     display: flex;
-    gap: 24px;
-    margin: 20px 0;
-    padding-top: 20px;
-    border-top: 1px solid var(--glass-border);
+    justify-content: space-between;
+    gap: 12px;
+    margin: 0 0 12px 0;
+    /* Compact margin */
+    padding: 0;
+    border-top: none;
+    /* Removed border */
 }
 
 .stat {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 2px;
+    /* Tighter gap */
 }
 
 .stat-val {
-    font-size: 16px;
+    font-size: 15px;
+    /* Slightly smaller */
     font-weight: 600;
     color: var(--text-primary);
 }
 
 .stat-label {
-    font-size: 12px;
+    font-size: 11px;
     color: var(--text-muted);
 }
 
