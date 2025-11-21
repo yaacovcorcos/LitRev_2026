@@ -632,35 +632,44 @@ h1 {
 /* Project Card Content */
 .project-card h3 {
     font-size: 18px;
-    line-height: 1.4;
-    margin-bottom: auto;
-    /* Pushes content below down */
+    line-height: 1.3;
+    margin-bottom: 12px;
+    padding-right: 120px;
+    /* Space for absolute status badge */
     display: -webkit-box;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
+    color: var(--text-primary);
+    font-weight: 600;
 }
 
 .card-status {
+    position: absolute;
+    /* Floating badge */
+    top: 22px;
+    right: 22px;
     display: inline-flex;
     align-items: center;
-    gap: 8px;
-    padding: 6px 12px;
+    gap: 6px;
+    padding: 4px 10px;
     border-radius: 20px;
-    font-size: 12px;
-    font-weight: 600;
-    margin-bottom: 16px;
-    width: fit-content;
+    font-size: 11px;
+    font-weight: 500;
 }
 
-.status-ready {
-    background: var(--status-ready-bg);
-    color: var(--status-ready-text);
+.card-status .material-icons-round {
+    font-size: 14px;
 }
 
 .status-harvesting {
     background: var(--status-harvesting-bg);
     color: var(--status-harvesting-text);
+}
+
+.status-ready {
+    background: var(--status-ready-bg);
+    color: var(--status-ready-text);
 }
 
 /* Stats Row */
