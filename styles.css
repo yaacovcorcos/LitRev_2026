@@ -574,7 +574,11 @@ h1 {
     height: 220px;
 }
 
-/* ... hover ... */
+.card:hover {
+    transform: translateY(-4px);
+    border-color: var(--glass-highlight);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2);
+}
 
 /* New Project Card - Needs specific padding since it has no badge */
 .new-project-card {
