@@ -582,20 +582,22 @@ h1 {
 
 /* New Project Card - Redesigned for Premium Look */
 .new-project-card {
-    /* Inherits base .card styles (glass bg, radius, etc.) */
-    background: var(--glass-bg);
-    border: 1px solid var(--glass-border);
+    /* Ultra Glass Style */
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.45), rgba(255, 255, 255, 0.15));
+    border: 1px solid rgba(255, 255, 255, 0.7);
+    box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.05);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
     justify-content: center;
     align-items: center;
     text-align: center;
     transition: all 0.3s ease;
-    /* Removed dashed border and light gradient */
 }
 
 .new-project-card:hover {
     border-color: rgba(217, 116, 89, 0.4);
     transform: translateY(-4px);
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.1);
 }
 
 .new-project-content {
@@ -609,8 +611,10 @@ h1 {
     width: 64px;
     height: 64px;
     border-radius: 50%;
-    background: rgba(217, 116, 89, 0.08);
-    /* Subtle accent bg */
+    /* Milky Glass Style */
+    background: rgba(255, 255, 255, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.8);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -625,9 +629,11 @@ h1 {
 
 .icon-circle:hover {
     transform: scale(1.1) rotate(90deg);
-    background: var(--accent-primary);
+    /* Modern Gradient Fill */
+    background: linear-gradient(135deg, var(--accent-primary), #e68a73);
     color: white;
-    box-shadow: 0 8px 20px rgba(217, 116, 89, 0.3);
+    border-color: transparent;
+    box-shadow: 0 10px 25px rgba(217, 116, 89, 0.4);
 }
 
 .new-project-card h3 {
