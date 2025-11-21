@@ -731,16 +731,17 @@ h1 {
     color: var(--accent-primary);
 }
 
-/* Button Hover Update - High Contrast / Inverted */
+/* Button Hover Update - Tempting Beige */
 .btn-primary:hover {
-    background: #ffffff;
-    /* Pure white background */
-    color: var(--accent-primary);
-    /* Accent text */
-    border-color: var(--accent-primary);
-    /* Accent border */
-    transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(194, 120, 101, 0.2);
+    background: linear-gradient(135deg, #d4a373 0%, #e6b8a2 100%);
+    /* Warm Gold to Peach gradient */
+    color: #2d2a26;
+    /* Dark text for contrast */
+    border-color: transparent;
+    transform: translateY(-2px) scale(1.02);
+    /* Slight scale for "tempting" feel */
+    box-shadow: 0 8px 24px rgba(212, 163, 115, 0.4);
+    /* Warm glow */
 }
 
 .btn-outline {
