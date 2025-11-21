@@ -731,17 +731,18 @@ h1 {
     color: var(--accent-primary);
 }
 
-/* Button Hover Update - Tempting Beige */
+/* Button Hover Update - Bright & Clear (Tempting) */
 .btn-primary:hover {
-    background: linear-gradient(135deg, #d4a373 0%, #e6b8a2 100%);
-    /* Warm Gold to Peach gradient */
+    background: linear-gradient(135deg, #ffb347 0%, #ffcc33 100%);
+    /* Bright Sunset Orange/Yellow */
     color: #2d2a26;
     /* Dark text for contrast */
     border-color: transparent;
     transform: translateY(-2px) scale(1.02);
-    /* Slight scale for "tempting" feel */
-    box-shadow: 0 8px 24px rgba(212, 163, 115, 0.4);
-    /* Warm glow */
+    box-shadow: 0 8px 24px rgba(255, 179, 71, 0.4);
+    /* Matching bright glow */
+    font-weight: 600;
+    /* Make text bolder on hover for clarity */
 }
 
 .btn-outline {
@@ -845,9 +846,41 @@ h1 {
         justify-content: center;
     }
 
-    /* Adjust Card Height for Mobile if needed */
+    /* Fix Mobile Sort Menu Position */
+    .custom-options {
+        right: auto;
+        left: 0;
+        /* Align to left so it doesn't go off-screen */
+        width: 200px;
+        /* Slightly wider for touch targets */
+    }
+
+    /* Fix Mobile Card Text & Layout */
     .card {
         height: auto;
-        min-height: 260px;
+        /* Allow card to grow with content */
+        min-height: auto;
+        padding: 20px;
+        /* Slightly less padding */
+    }
+
+    .project-card h3 {
+        font-size: 18px;
+        /* Ensure readable size */
+        -webkit-line-clamp: 3;
+        /* Allow more lines for titles on mobile */
+        margin-bottom: 12px;
+    }
+
+    .stats-row {
+        gap: 16px;
+        /* Reduce gap for small screens */
+        flex-wrap: wrap;
+        /* Allow wrapping if needed */
+    }
+
+    .stat {
+        align-items: center;
+        /* Center stats */
     }
 }
