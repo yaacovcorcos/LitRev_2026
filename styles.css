@@ -15,13 +15,13 @@
     --text-muted: #948f85;
 
     /* Accents (Earthy/Modern) */
-    --accent-primary: #c27865;
+    --accent-primary: #D97459;
     /* Terracotta */
     --accent-secondary: #768c7b;
     /* Sage Green */
     --accent-tertiary: #d4a373;
     /* Warm Sand/Gold */
-    --accent-new-project: linear-gradient(135deg, #c27865 0%, #e6b8a2 100%);
+    --accent-new-project: linear-gradient(135deg, #D97459 0%, #e6b8a2 100%);
 
     /* Status Colors */
     --status-ready-bg: rgba(118, 140, 123, 0.15);
@@ -767,7 +767,7 @@ h1 {
 
 .btn-primary {
     background: var(--accent-primary);
-    /* Match sidebar accent exactly (#c27865) */
+    /* Match sidebar accent exactly (#D97459) */
     color: white;
 }
 
