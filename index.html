@@ -74,15 +74,26 @@
                 </div>
 
                 <div class="view-controls">
-                    <span class="sort-label">Sort by:</span>
-                    <select class="sort-select">
-                        <option>Recently Modified</option>
-                        <option>Name</option>
-                        <option>Date Created</option>
-                    </select>
+                    <!-- Custom Sort Dropdown -->
+                    <div class="custom-select-wrapper">
+                        <button class="sort-btn" id="sortBtn">
+                            <span class="material-icons-round">sort</span>
+                            Sort by
+                        </button>
+                        <div class="custom-options" id="sortOptions">
+                            <div class="option selected" data-value="modified">Recently Modified</div>
+                            <div class="option" data-value="name">Name</div>
+                            <div class="option" data-value="created">Date Created</div>
+                        </div>
+                    </div>
+
                     <div class="view-toggles">
-                        <button class="icon-btn active"><span class="material-icons-round">grid_view</span></button>
-                        <button class="icon-btn"><span class="material-icons-round">list</span></button>
+                        <button class="icon-btn active" id="gridViewBtn" aria-label="Grid View">
+                            <span class="material-icons-round">grid_view</span>
+                        </button>
+                        <button class="icon-btn" id="listViewBtn" aria-label="List View">
+                            <span class="material-icons-round">view_list</span>
+                        </button>
                     </div>
                 </div>
             </div>

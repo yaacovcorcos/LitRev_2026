@@ -295,20 +295,78 @@ h1 {
     gap: 16px;
 }
 
-.sort-label {
-    color: var(--text-secondary);
-    font-size: 14px;
+/* Custom Sort Dropdown */
+.custom-select-wrapper {
+    position: relative;
 }
 
-.sort-select {
-    background: transparent;
-    border: none;
+.sort-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: 12px;
+    /* Match view toggles radius if possible, or slightly larger */
     color: var(--text-primary);
     font-family: inherit;
     font-size: 14px;
     font-weight: 500;
     cursor: pointer;
-    padding-right: 8px;
+    transition: all 0.2s ease;
+    height: 40px;
+    /* Fixed height for alignment */
+}
+
+.sort-btn:hover {
+    background: rgba(255, 255, 255, 0.8);
+    border-color: var(--glass-highlight);
+}
+
+.custom-options {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    margin-top: 8px;
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-md);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+    width: 180px;
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(-10px);
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    z-index: 100;
+    backdrop-filter: blur(10px);
+    padding: 8px;
+}
+
+.custom-options.show {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+}
+
+.option {
+    padding: 10px 12px;
+    cursor: pointer;
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    font-size: 14px;
+    transition: all 0.2s;
+}
+
+.option:hover {
+    background: var(--status-ready-bg);
+    color: var(--text-primary);
+}
+
+.option.selected {
+    color: var(--accent-primary);
+    font-weight: 600;
+    background: rgba(194, 120, 101, 0.1);
 }
 
 .view-toggles {
@@ -317,6 +375,9 @@ h1 {
     padding: 4px;
     border-radius: 12px;
     border: 1px solid var(--glass-border);
+    height: 40px;
+    /* Match sort button height */
+    align-items: center;
 }
 
 .icon-btn {
@@ -327,12 +388,17 @@ h1 {
     border-radius: 8px;
     cursor: pointer;
     display: flex;
+    align-items: center;
+    justify-content: center;
     transition: all 0.2s ease;
+    height: 30px;
+    width: 30px;
 }
 
 .icon-btn.active {
     background: rgba(0, 0, 0, 0.05);
     color: var(--text-primary);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
 }
 
 /* Grid */
@@ -340,7 +406,107 @@ h1 {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
     gap: 24px;
-    /* Ensure exactly 2 rows fit nicely if possible, but allow scroll */
+    transition: all 0.3s ease;
+}
+
+/* List View Styles */
+.project-grid.list-view {
+    grid-template-columns: 1fr;
+    gap: 16px;
+}
+
+.project-grid.list-view .card {
+    flex-direction: row;
+    align-items: center;
+    height: auto;
+    /* Auto height for list items */
+    padding: 20px 32px;
+    gap: 32px;
+}
+
+.project-grid.list-view .new-project-card {
+    display: none;
+    /* Hide 'New Project' in list view for cleaner look, or adapt it */
+}
+
+/* Alternatively, adapt new project card for list view */
+.project-grid.list-view .new-project-card {
+    display: flex;
+    flex-direction: row;
+    height: 80px;
+    padding: 0 32px;
+    justify-content: flex-start;
+    gap: 24px;
+    border-style: dashed;
+}
+
+.project-grid.list-view .new-project-card .icon-circle {
+    width: 40px;
+    height: 40px;
+}
+
+.project-grid.list-view .new-project-card .new-project-content {
+    flex-direction: row;
+    gap: 16px;
+}
+
+.project-grid.list-view .new-project-card h3 {
+    font-size: 16px;
+    margin: 0;
+}
+
+.project-grid.list-view .new-project-card p {
+    margin: 0;
+}
+
+
+.project-grid.list-view .project-card h3 {
+    width: 30%;
+    font-size: 16px;
+    margin: 0;
+    -webkit-line-clamp: 1;
+}
+
+.project-grid.list-view .card-status {
+    margin: 0;
+    width: 140px;
+}
+
+.project-grid.list-view .stats-row {
+    margin: 0;
+    padding: 0;
+    border: none;
+    flex: 1;
+    justify-content: center;
+    gap: 48px;
+}
+
+.project-grid.list-view .stat {
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+}
+
+.project-grid.list-view .stat-label {
+    font-size: 13px;
+}
+
+.project-grid.list-view .btn {
+    width: auto;
+    padding: 8px 24px;
+}
+
+.project-grid.list-view .progress-section {
+    display: none;
+    /* Hide progress details in list view to save space, or adapt */
+}
+
+/* Let's adapt progress for list view if possible, or just hide for simplicity as requested "nicely designed" */
+.project-grid.list-view .active-review .progress-section {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    margin: 0 24px;
 }
 
 /* Cards */

@@ -28,11 +28,53 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Add hover effects for cards (JS fallback or enhancement)
-    const cards = document.querySelectorAll('.card');
-    cards.forEach(card => {
-        card.addEventListener('mouseenter', () => {
-            // Optional: Add more complex JS animations here if CSS isn't enough
+    // Sort Dropdown Logic
+    const sortBtn = document.getElementById('sortBtn');
+    const sortOptions = document.getElementById('sortOptions');
+    const options = document.querySelectorAll('.option');
+
+    if (sortBtn && sortOptions) {
+        sortBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            sortOptions.classList.toggle('show');
         });
-    });
+
+        document.addEventListener('click', (e) => {
+            if (!sortBtn.contains(e.target) && !sortOptions.contains(e.target)) {
+                sortOptions.classList.remove('show');
+            }
+        });
+
+        options.forEach(option => {
+            option.addEventListener('click', () => {
+                // Remove selected class from all
+                options.forEach(opt => opt.classList.remove('selected'));
+                // Add to clicked
+                option.classList.add('selected');
+                // Close dropdown
+                sortOptions.classList.remove('show');
+                // Optional: Update button text or trigger sort
+                console.log('Sorting by:', option.dataset.value);
+            });
+        });
+    }
+
+    // View Toggle Logic
+    const gridViewBtn = document.getElementById('gridViewBtn');
+    const listViewBtn = document.getElementById('listViewBtn');
+    const projectGrid = document.querySelector('.project-grid');
+
+    if (gridViewBtn && listViewBtn && projectGrid) {
+        gridViewBtn.addEventListener('click', () => {
+            projectGrid.classList.remove('list-view');
+            gridViewBtn.classList.add('active');
+            listViewBtn.classList.remove('active');
+        });
+
+        listViewBtn.addEventListener('click', () => {
+            projectGrid.classList.add('list-view');
+            listViewBtn.classList.add('active');
+            gridViewBtn.classList.remove('active');
+        });
+    }
 });
