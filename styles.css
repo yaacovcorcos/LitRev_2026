@@ -580,19 +580,60 @@ h1 {
     box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2);
 }
 
-/* New Project Card - Needs specific padding since it has no badge */
+/* New Project Card - Redesigned for Premium Look */
 .new-project-card {
-    /* Padding inherited from .card */
-    background: linear-gradient(145deg, rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0.3));
+    /* Inherits base .card styles (glass bg, radius, etc.) */
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
     justify-content: center;
     align-items: center;
     text-align: center;
     cursor: pointer;
-    border-style: dashed;
-    border-color: var(--glass-border);
+    /* Removed dashed border and light gradient */
 }
 
-/* ... new project content ... */
+.new-project-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+}
+
+.icon-circle {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    background: rgba(217, 116, 89, 0.08);
+    /* Subtle accent bg */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--accent-primary);
+    margin-bottom: 4px;
+    transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.icon-circle .material-icons-round {
+    font-size: 32px;
+}
+
+.new-project-card:hover .icon-circle {
+    transform: scale(1.1);
+    background: rgba(217, 116, 89, 0.15);
+}
+
+.new-project-card h3 {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--accent-primary);
+    margin: 0;
+}
+
+.new-project-card p {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin: 0;
+}
 
 /* Project Card Content */
 .project-card h3 {
