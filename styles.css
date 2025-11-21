@@ -731,15 +731,16 @@ h1 {
     color: var(--accent-primary);
 }
 
-/* Button Hover Update - Lighter & Distinct */
+/* Button Hover Update - High Contrast / Inverted */
 .btn-primary:hover {
-    background: #e6b8a2;
-    /* Much lighter, warm sand/peach color */
-    color: var(--text-primary);
-    /* Switch text to dark for contrast if needed, or keep white if readable. Let's try dark text for "visual" change */
-    color: #2d2a26;
+    background: #ffffff;
+    /* Pure white background */
+    color: var(--accent-primary);
+    /* Accent text */
+    border-color: var(--accent-primary);
+    /* Accent border */
     transform: translateY(-2px);
-    box-shadow: 0 6px 16px rgba(194, 120, 101, 0.25);
+    box-shadow: 0 6px 20px rgba(194, 120, 101, 0.2);
 }
 
 .btn-outline {
