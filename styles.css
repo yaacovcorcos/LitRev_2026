@@ -623,7 +623,7 @@ h1 {
     font-size: 32px;
 }
 
-.new-project-card:hover .icon-circle {
+.icon-circle:hover {
     transform: scale(1.1) rotate(90deg);
     background: var(--accent-primary);
     color: white;
