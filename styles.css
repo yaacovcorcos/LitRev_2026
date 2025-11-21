@@ -788,9 +788,28 @@ h1 {
     border-color: var(--text-primary);
 }
 
+border-color: var(--text-primary);
+}
+
+/* Paper Count Bottom (For Ready & Harvesting Cards) */
+.paper-count-bottom {
+    margin-top: auto;
+    /* Pushes itself (and button below) to bottom */
+    margin-left: 20px;
+    /* Align with button/content */
+    margin-bottom: 8px;
+    color: #818CF8;
+    font-weight: 600;
+    font-size: 13px;
+}
+
 /* Progress Section (Active Card) */
 .progress-section {
-    margin: 16px 0;
+    margin: 16px 20px;
+    /* Side margins to match padding */
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
 }
 
 .progress-text {
