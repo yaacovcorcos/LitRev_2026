@@ -170,6 +170,8 @@ body {
 .sidebar.collapsed .nav-item {
     justify-content: center;
     padding: 14px 0;
+    gap: 0;
+    /* Fix alignment: remove gap so icon is perfectly centered */
 }
 
 /* Hide text in nav items when collapsed */
