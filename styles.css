@@ -865,11 +865,28 @@ border-color: var(--text-primary);
     color: var(--accent-primary);
 }
 
+.progress-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 4px;
+    /* Reduced spacing */
+}
+
 .progress-bar {
     height: 4px;
     background: rgba(0, 0, 0, 0.05);
     border-radius: 2px;
     overflow: hidden;
+    flex: 1;
+    /* Takes available space */
+}
+
+.paper-count-inline {
+    font-size: 12px;
+    font-weight: 600;
+    color: #818CF8;
+    white-space: nowrap;
 }
 
 .progress-fill {
