@@ -34,7 +34,8 @@
     /* Reduced to 22px as requested */
     --radius-md: 16px;
     --radius-sm: 8px;
-    --gap-md: 24px;
+    --gap-md: 26px;
+    /* Updated to 26px */
 }
 
 * {
@@ -252,7 +253,8 @@ body {
 /* Main Content */
 .main-content {
     flex: 1;
-    padding: 40px 48px;
+    padding: 40px 50px;
+    /* Increased side padding to 50px */
     overflow-y: auto;
     background: radial-gradient(circle at top right, rgba(194, 120, 101, 0.08), transparent 40%),
         radial-gradient(circle at bottom left, rgba(118, 140, 123, 0.08), transparent 40%);
@@ -446,7 +448,8 @@ h1 {
 .project-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 24px;
+    gap: 26px;
+    /* Increased gap to 26px */
     transition: all 0.3s ease;
 }
 
