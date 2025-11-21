@@ -846,11 +846,12 @@ border-color: var(--text-primary);
 
 /* Progress Section (Active Card) */
 .progress-section {
-    margin: 12px 20px;
-    /* Reduced from 16px to save space */
+    margin: 4px 20px 12px 20px;
+    /* Significantly reduced top margin */
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 2px;
+    /* Reduced gap */
 }
 
 .progress-text {
@@ -869,8 +870,8 @@ border-color: var(--text-primary);
     display: flex;
     align-items: center;
     gap: 12px;
-    margin-top: 4px;
-    /* Reduced spacing */
+    margin-top: 0;
+    /* Removed extra spacing */
 }
 
 .progress-bar {
