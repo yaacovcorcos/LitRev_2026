@@ -696,10 +696,7 @@ h1 {
     font-size: 14px;
 }
 
-.btn-primary {
-    background: var(--accent-primary);
-    color: white;
-}
+/* Old btn-primary removed, defined below with hover for clarity */
 
 /* Mobile Navigation */
 .mobile-nav {
@@ -763,9 +760,15 @@ h1 {
     /* White text for high contrast */
     border-color: transparent;
     transform: translateY(-2px);
-    box-shadow: 0 6px 16px rgba(194, 94, 69, 0.3);
+    box-shadow: 0 6px 16px rgba(194, 94, 69, 0.4);
     font-weight: 500;
     /* Normal weight is fine with high contrast */
+}
+
+.btn-primary {
+    background: #e07a5f;
+    /* Vibrant Terra Cotta - Clear & Solid (No opacity/muted feel) */
+    color: white;
 }
 
 .btn-outline {
