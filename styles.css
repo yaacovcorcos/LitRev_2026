@@ -525,8 +525,14 @@ h1 {
 }
 
 .project-grid.list-view .btn {
-    width: auto;
-    padding: 8px 24px;
+    width: 140px;
+    /* Fixed width for consistency */
+    padding: 10px 0;
+    /* Adjust padding */
+    flex-shrink: 0;
+    /* Prevent shrinking */
+    margin-left: auto;
+    /* Push to the right if needed, or just ensure it doesn't stretch */
 }
 
 .project-grid.list-view .progress-section {
@@ -689,8 +695,10 @@ h1 {
 }
 
 .btn-primary:hover {
-    background: #6366f1;
-    /* Slightly darker indigo */
+    background: #a35d4d;
+    /* Darker Terracotta/Rust to match theme */
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(194, 120, 101, 0.3);
 }
 
 .btn-outline {
