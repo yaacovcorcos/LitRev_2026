@@ -295,7 +295,12 @@ h1 {
 
 .search-input {
     width: 100%;
-    padding: 14px 16px 14px 48px;
+    height: 44px;
+    /* Enforce equal height */
+    padding: 0 16px 0 48px;
+    /* Adjust padding for height */
+    display: flex;
+    align-items: center;
     background: var(--glass-bg);
     border: 1px solid var(--glass-border);
     border-radius: var(--radius-md);
@@ -348,7 +353,8 @@ h1 {
     font-weight: 500;
     cursor: pointer;
     transition: all 0.2s ease;
-    height: 40px;
+    height: 44px;
+    /* Increased to 44px for better alignment */
     /* Fixed height for alignment */
 }
 
@@ -408,7 +414,8 @@ h1 {
     padding: 4px;
     border-radius: 12px;
     border: 1px solid var(--glass-border);
-    height: 40px;
+    height: 44px;
+    /* Increased to 44px */
     /* Match sort button height */
     align-items: center;
 }
@@ -731,18 +738,34 @@ h1 {
     color: var(--accent-primary);
 }
 
-/* Button Hover Update - Bright & Clear (Tempting) */
+/* Controls Bar Alignment */
+.search-input {
+    height: 44px;
+    /* Enforce equal height */
+    /* ... other styles ... */
+}
+
+.sort-btn {
+    height: 44px;
+    /* Match search input */
+}
+
+.view-toggles {
+    height: 44px;
+    /* Match search input */
+}
+
+/* Button Hover Update - Solid & Distinct (No "White Blanket") */
 .btn-primary:hover {
-    background: linear-gradient(135deg, #ffb347 0%, #ffcc33 100%);
-    /* Bright Sunset Orange/Yellow */
-    color: #2d2a26;
-    /* Dark text for contrast */
+    background: #c25e45;
+    /* Solid Deep Terracotta/Rust - Clear and distinct */
+    color: white;
+    /* White text for high contrast */
     border-color: transparent;
-    transform: translateY(-2px) scale(1.02);
-    box-shadow: 0 8px 24px rgba(255, 179, 71, 0.4);
-    /* Matching bright glow */
-    font-weight: 600;
-    /* Make text bolder on hover for clarity */
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(194, 94, 69, 0.3);
+    font-weight: 500;
+    /* Normal weight is fine with high contrast */
 }
 
 .btn-outline {
