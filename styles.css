@@ -574,6 +574,8 @@ h1 {
     height: 220px;
     /* Reduced to 220px */
     /* Fixed height for uniformity */
+    cursor: pointer;
+    /* Added pointer cursor as requested */
 }
 
 .card:hover {
@@ -634,8 +636,8 @@ h1 {
     font-size: 18px;
     line-height: 1.3;
     margin-bottom: 12px;
-    padding-right: 100px;
-    /* Adjusted for corner badge */
+    padding-right: 60px;
+    /* Reduced padding to reclaim space */
     display: -webkit-box;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
@@ -643,20 +645,19 @@ h1 {
     color: var(--text-primary);
     font-weight: 600;
     margin-top: 4px;
-    /* Slight top margin to align with badge visual weight */
 }
 
 .card-status {
     position: absolute;
-    top: 0;
-    right: 0;
+    top: -1px;
+    /* Overlap border to prevent white line */
+    right: -1px;
+    /* Overlap border to prevent white line */
     display: inline-flex;
     align-items: center;
     gap: 6px;
     padding: 8px 16px;
-    /* Larger touch target/visual area */
     border-radius: 0 22px 0 16px;
-    /* Matches card TR, curves BL */
     font-size: 11px;
     font-weight: 600;
     z-index: 1;
@@ -669,7 +670,6 @@ h1 {
 .status-harvesting {
     background: var(--status-harvesting-bg);
     color: var(--status-harvesting-text);
-    /* Optional: Add a subtle border or backdrop if needed for contrast, but solid bg is fine */
 }
 
 .status-ready {
