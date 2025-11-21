@@ -619,8 +619,14 @@ h1 {
     /* Aligns to right */
     top: auto;
     right: auto;
+    top: auto;
+    right: auto;
     display: inline-flex;
     align-items: center;
+    justify-content: center;
+    /* Center text */
+    width: 200px;
+    /* Fixed width for consistency */
     gap: 6px;
     padding: 8px 16px;
     border-radius: 0 22px 0 16px;
