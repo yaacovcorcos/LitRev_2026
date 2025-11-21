@@ -759,11 +759,40 @@ h1 {
     color: var(--accent-primary);
 }
 
-/* Controls Bar Alignment */
-.search-input {
-    height: 44px;
-    /* Enforce equal height */
-    /* ... other styles ... */
+/* Option B Styles */
+.card-option-b {
+    /* Inherits .card styles but overrides specific layout */
+    justify-content: flex-start;
+    /* Start from top */
+}
+
+.card-option-b .btn {
+    margin-top: auto;
+    /* Forces button to the very bottom */
+    width: 100%;
+    /* Full width for a grounded feel */
+    border-radius: 12px;
+    /* Slightly less rounded for full width feel */
+    justify-content: center;
+}
+
+.card-option-b h3 {
+    margin-bottom: 16px;
+    /* More breathing room below title */
+}
+
+.card-option-b .stats-row,
+.card-option-b .progress-section {
+    margin-bottom: 20px;
+    /* Push content up from button */
+    padding-bottom: 0;
+}
+
+/* Ensure Option B stats row is clean */
+.card-option-b .stats-row {
+    border: none;
+    padding-top: 0;
+    margin-top: 0;
 }
 
 .sort-btn {
