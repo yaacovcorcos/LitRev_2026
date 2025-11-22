@@ -623,8 +623,13 @@ h1 {
     transition: all 0.3s ease;
 }
 
-.icon-circle .material-icons-round {
-    font-size: 28px;
+.plus-icon {
+    font-family: 'Outfit', sans-serif;
+    font-weight: 300;
+    font-size: 36px;
+    line-height: 1;
+    margin-top: -2px;
+    /* Optical alignment */
 }
 
 .icon-circle:hover {
@@ -633,8 +638,12 @@ h1 {
     color: white;
     border-color: transparent;
     box-shadow: 0 8px 24px rgba(217, 116, 89, 0.3);
-    transform: none;
-    /* Ensure no movement */
+    transform: scale(1.1);
+    /* Gentle scale up */
+}
+
+.icon-circle .material-icons-round {
+    font-size: 28px;
 }
 
 .new-project-card h3 {
