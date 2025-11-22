@@ -576,7 +576,8 @@ h1 {
 
 .card:hover {
     transform: translateY(-4px);
-    border-color: var(--glass-highlight);
+    border-color: rgba(129, 140, 248, 0.5);
+    /* Soft Blue Highlight */
     box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2);
 }
 
