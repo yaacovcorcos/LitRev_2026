@@ -608,32 +608,33 @@ h1 {
 }
 
 .icon-circle {
-    width: 64px;
-    height: 64px;
+    width: 60px;
+    height: 60px;
     border-radius: 50%;
-    /* Milky Glass Style */
-    background: rgba(255, 255, 255, 0.6);
+    /* Cleaner White Glass */
+    background: rgba(255, 255, 255, 0.9);
     border: 1px solid rgba(255, 255, 255, 0.8);
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
     display: flex;
     align-items: center;
     justify-content: center;
     color: var(--accent-primary);
     margin-bottom: 4px;
-    transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+    transition: all 0.3s ease;
 }
 
 .icon-circle .material-icons-round {
-    font-size: 32px;
+    font-size: 28px;
 }
 
 .icon-circle:hover {
-    transform: scale(1.1) rotate(90deg);
-    /* Modern Gradient Fill */
-    background: linear-gradient(135deg, var(--accent-primary), #e68a73);
+    /* Simple Elegant Hover */
+    background: var(--accent-primary);
     color: white;
     border-color: transparent;
-    box-shadow: 0 10px 25px rgba(217, 116, 89, 0.4);
+    box-shadow: 0 8px 24px rgba(217, 116, 89, 0.3);
+    transform: none;
+    /* Ensure no movement */
 }
 
 .new-project-card h3 {
