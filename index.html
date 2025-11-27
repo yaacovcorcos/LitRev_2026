@@ -28,32 +28,32 @@
             </div>
 
             <nav class="main-nav">
-                <a href="#" class="nav-item active">
+                <a href="#projects" class="nav-item active" data-nav="projects">
                     <span class="material-icons-round">grid_view</span>
-                    Projects
+                    <span class="nav-label">Projects</span>
                 </a>
-                <a href="#" class="nav-item">
+                <a href="#ai-assistant" class="nav-item" data-nav="ai">
                     <span class="material-icons-round">smart_toy</span>
-                    AI Assistant
+                    <span class="nav-label">AI Assistant</span>
                 </a>
-                <a href="#" class="nav-item">
+                <a href="#library" class="nav-item" data-nav="library">
                     <span class="material-icons-round">bookmarks</span>
-                    Library
+                    <span class="nav-label">Library</span>
                 </a>
             </nav>
 
             <div class="bottom-nav">
-                <a href="#" class="nav-item">
+                <a href="#notifications" class="nav-item">
                     <span class="material-icons-round">notifications</span>
-                    Notifications
+                    <span class="nav-label">Notifications</span>
                 </a>
-                <a href="#" class="nav-item">
+                <a href="#profile" class="nav-item">
                     <span class="material-icons-round">person</span>
-                    Profile
+                    <span class="nav-label">Profile</span>
                 </a>
-                <a href="#" class="nav-item">
+                <a href="#help" class="nav-item">
                     <span class="material-icons-round">help_outline</span>
-                    Help
+                    <span class="nav-label">Help</span>
                 </a>
             </div>
         </aside>
@@ -80,9 +80,9 @@
                             Sort by
                         </button>
                         <div class="custom-options" id="sortOptions">
-                            <div class="option selected" data-value="modified">Recently Modified</div>
-                            <div class="option" data-value="name">Name</div>
-                            <div class="option" data-value="created">Date Created</div>
+                            <button type="button" class="option selected" data-value="modified">Recently Modified</button>
+                            <button type="button" class="option" data-value="name">Name</button>
+                            <button type="button" class="option" data-value="created">Date Created</button>
                         </div>
                     </div>
 
@@ -97,106 +97,242 @@
                 </div>
             </div>
 
-            <!-- Project Grid (2x3) -->
-            <div class="project-grid">
-                <!-- Card 1: New Project -->
-                <div class="card new-project-card">
-                    <div class="new-project-content">
-                        <div class="icon-circle">
-                            <span class="plus-icon">+</span>
-                        </div>
-                        <h3>Create New Project</h3>
-                        <p>Start a new Literature Review</p>
-                    </div>
-                </div>
+            <!-- Project Grid (rendered by JS) -->
+            <div class="project-grid"></div>
+        </main>
 
-                <!-- Card 2: Active Review -->
-                <div class="card project-card active-review">
-                    <div class="card-status status-harvesting">
-                        Status: Harvesting papers...
-                    </div>
-                    <h3>Machine Learning in Radiopathology 2020-2025</h3>
-                    <div class="progress-section">
-                        <div class="progress-text">
-                            <span>Phase 2 of 4: Deduplicating</span>
-                            <span class="percentage">45%</span>
-                        </div>
-                        <div class="progress-row">
-                            <div class="progress-bar">
-                                <div class="progress-fill" style="width: 45%"></div>
-                            </div>
-                            <div class="paper-count-inline">27 Papers</div>
-                        </div>
-                        <p class="meta-info">Last modified 2 hours ago.</p>
-                    </div>
-                    <!-- Bottom paper count removed -->
-                    <button class="btn btn-primary">View Project</button>
-                </div>
+        <!-- Mobile Navigation Bar -->
+        <nav class="mobile-nav">
+            <a href="#" class="mobile-nav-item active" data-nav="projects">
+                <span class="material-icons-round">grid_view</span>
+                <span>Projects</span>
+            </a>
+            <a href="#ai-assistant" class="mobile-nav-item" data-nav="ai">
+                <span class="material-icons-round">smart_toy</span>
+                <span>AI</span>
+            </a>
+            <a href="#" class="mobile-nav-item" data-nav="new">
+                <span class="material-icons-round">add_circle</span>
+                <span>New</span>
+            </a>
+            <a href="#library" class="mobile-nav-item" data-nav="library">
+                <span class="material-icons-round">settings</span>
+                <span>Settings</span>
+            </a>
+        </nav>
+    </div>
 
-                <!-- Card 3: Ready -->
-                <div class="card project-card">
-                    <div class="card-status status-ready">
-                        Status: Review Ready
-                    </div>
-                    <h3>Climate Change Adaptation Strategies in Urban Planning</h3>
-                    <div class="paper-count-bottom">154 Papers</div>
-                    <button class="btn btn-primary">View Project</button>
-                </div>
-
-                <!-- Card 4: Ready -->
-                <div class="card project-card">
-                    <div class="card-status status-ready">
-                        Status: Review Ready
-                    </div>
-                    <h3>CRISPR Applications in Neurodegenerative Diseases</h3>
-                    <div class="paper-count-bottom">89 Papers</div>
-                    <button class="btn btn-primary">View Project</button>
-                </div>
-
-                <!-- Card 5: Ready -->
-                <div class="card project-card">
-                    <div class="card-status status-ready">
-                        Status: Review Ready
-                    </div>
-                    <h3>Sustainable Supply Chain Management in Fashion</h3>
-                    <div class="paper-count-bottom">210 Papers</div>
-                    <button class="btn btn-primary">View Project</button>
-                </div>
-
-                <!-- Card 6: Ready -->
-                <div class="card project-card">
-                    <div class="card-status status-ready">
-                        Status: Review Ready
-                    </div>
-                    <h3>Impact of Remote Work on Employee Productivity</h3>
-                    <div class="paper-count-bottom">132 Papers</div>
-                    <button class="btn btn-primary">View Project</button>
-                </div>
+    <!-- Create Project Modal -->
+    <div class="modal-overlay" id="createProjectModal">
+        <div class="modal-glass">
+            <div class="modal-header">
+                <h2>Create New Project</h2>
+                <button class="close-modal-btn" aria-label="Close Modal">
+                    <span class="material-icons-round">close</span>
+                </button>
             </div>
+            <form id="createProjectForm">
+                <div class="form-group">
+                    <label for="projectName">Project Name</label>
+                    <input type="text" id="projectName" placeholder="e.g., AI in Healthcare Review" required>
+                </div>
+                <div class="form-group">
+                    <label for="projectDesc">Description (Optional)</label>
+                    <textarea id="projectDesc" placeholder="Brief description of the research goal..."
+                        rows="3"></textarea>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-outline cancel-btn">Cancel</button>
+                    <button type="submit" class="btn btn-primary create-btn">Create Project</button>
+                </div>
+            </form>
+        </div>
     </div>
-    </div>
-    </main>
 
-    <!-- Mobile Navigation Bar -->
-    <nav class="mobile-nav">
-        <a href="#" class="mobile-nav-item active">
-            <span class="material-icons-round">grid_view</span>
-            <span>Projects</span>
-        </a>
-        <a href="#" class="mobile-nav-item">
-            <span class="material-icons-round">search</span>
-            <span>Search</span>
-        </a>
-        <a href="#" class="mobile-nav-item">
-            <span class="material-icons-round">add_circle</span>
-            <span>New</span>
-        </a>
-        <a href="#" class="mobile-nav-item">
-            <span class="material-icons-round">settings</span>
-            <span>Settings</span>
-        </a>
-    </nav>
-    </div>
+    <!-- Project Details View -->
+    <section id="project-view" class="project-view hidden">
+        <div class="project-layout">
+            <aside class="project-sidebar">
+                <div class="project-sidebar-header">
+                    <button class="sidebar-toggle project-sidebar-toggle" aria-label="Toggle Project Sidebar">
+                        <span class="material-icons-round">menu_open</span>
+                    </button>
+                </div>
+
+                <div class="project-sidebar-summary">
+                    <div class="project-avatar">
+                        <span class="material-icons-round">folder_open</span>
+                    </div>
+                    <div class="project-sidebar-text">
+                        <p class="eyebrow">Project</p>
+                        <h3 id="projectSidebarTitle">Project Title</h3>
+                        <p class="project-sidebar-desc" id="projectSidebarDesc">Project description goes here.</p>
+                    </div>
+                </div>
+
+                <div class="project-nav">
+                    <div class="project-nav-group">
+                        <h4>Workspace</h4>
+                        <button class="project-nav-item active">
+                            <span class="material-icons-round">dashboard</span>
+                            Overview
+                        </button>
+                        <button class="project-nav-item">
+                            <span class="material-icons-round">article</span>
+                            Evidence Library
+                        </button>
+                        <button class="project-nav-item">
+                            <span class="material-icons-round">fact_check</span>
+                            Screening
+                        </button>
+                        <button class="project-nav-item">
+                            <span class="material-icons-round">insights</span>
+                            Synthesis
+                        </button>
+                    </div>
+
+                    <div class="project-nav-group">
+                        <h4>Admin</h4>
+                        <button class="project-nav-item">
+                            <span class="material-icons-round">group</span>
+                            Collaborators
+                        </button>
+                        <button class="project-nav-item">
+                            <span class="material-icons-round">file_upload</span>
+                            Exports
+                        </button>
+                    </div>
+                </div>
+
+                <div class="project-sidebar-footer">
+                    <button class="project-nav-item ghost" id="backToDashboardBtn">
+                        <span class="material-icons-round">arrow_back</span>
+                        Back to Dashboard
+                    </button>
+                </div>
+            </aside>
+
+            <main class="main-content project-main">
+                <header class="top-bar">
+                    <div class="welcome-section">
+                        <h1 id="projectTitleDisplay">Project Title</h1>
+                        <p class="subtitle" id="projectDescDisplay">Project description goes here.</p>
+                    </div>
+                    <div class="project-view-actions">
+                        <button class="btn btn-outline" id="deleteProjectBtn">
+                            <span class="material-icons-round">delete</span>
+                            Delete Project
+                        </button>
+                    </div>
+                </header>
+
+                <div class="empty-state-large">
+                    <div class="icon-circle-large">
+                        <span class="material-icons-round">construction</span>
+                    </div>
+                    <h2>Project Workspace</h2>
+                    <p>This page is under construction. Future features will appear here.</p>
+                    <button class="btn btn-primary" id="backToDashAction">Return to Dashboard</button>
+                </div>
+            </main>
+        </div>
+    </section>
+
+    <!-- AI Assistant View -->
+    <section id="ai-view" class="ai-view hidden">
+        <div class="ai-layout">
+            <!-- Chat History Sidebar -->
+            <aside class="chat-history-sidebar">
+                <div class="chat-sidebar-header">
+                    <button class="sidebar-toggle chat-sidebar-toggle" aria-label="Toggle Sidebar">
+                        <span class="material-icons-round">menu_open</span>
+                    </button>
+                </div>
+                <div class="new-chat-wrapper">
+                    <button class="btn btn-primary new-chat-btn">
+                        <span class="material-icons-round">add</span>
+                        New Chat
+                    </button>
+                </div>
+                <div class="history-list">
+                    <div class="history-group">
+                        <h4>Today</h4>
+                        <button class="history-item active">
+                            <span class="material-icons-round">chat_bubble_outline</span>
+                            <span class="text-truncate">Radiopathology Trends</span>
+                        </button>
+                        <button class="history-item">
+                            <span class="material-icons-round">chat_bubble_outline</span>
+                            <span class="text-truncate">Summarize PDF</span>
+                        </button>
+                    </div>
+                    <div class="history-group">
+                        <h4>Yesterday</h4>
+                        <button class="history-item">
+                            <span class="material-icons-round">chat_bubble_outline</span>
+                            <span class="text-truncate">Methodology Review</span>
+                        </button>
+                    </div>
+                </div>
+                <div class="customize-wrapper">
+                    <button class="btn btn-glass customize-btn">
+                        <span class="material-icons-round">tune</span>
+                        <span>Customize</span>
+                    </button>
+                </div>
+            </aside>
+
+            <!-- Main Chat Interface -->
+            <main class="chat-interface">
+                <div class="chat-header">
+                    <div class="model-selector">
+                        <span class="model-name">LitRev AI 4.0</span>
+                        <span class="model-status"></span>
+                    </div>
+
+                    <!-- Tone Toggle -->
+                    <div class="tone-toggle-wrapper">
+                        <button class="tone-option active" data-tone="standard">Standard</button>
+                        <button class="tone-option" data-tone="deep">Deep Dive</button>
+                        <div class="tone-slider"></div>
+                    </div>
+
+                    <div class="chat-actions">
+                        <button class="icon-btn" aria-label="Chat Settings">
+                            <span class="material-icons-round">tune</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="chat-messages" id="chatMessages" role="log" aria-live="polite">
+                    <!-- Welcome Message -->
+                    <div class="message-bubble ai-msg">
+                        <div class="ai-avatar">
+                            <span class="material-icons-round">smart_toy</span>
+                        </div>
+                        <div class="message-content">
+                            <p>Hello! I'm your Literature Review Assistant. I can help you find papers, summarize
+                                findings, or draft sections of your review. How can I help you today?</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="chat-input-container">
+                    <form id="chatForm" class="chat-input-wrapper">
+                        <button type="button" class="icon-btn attach-btn" aria-label="Attach File">
+                            <span class="material-icons-round">attach_file</span>
+                        </button>
+                        <input type="text" id="chatInput" placeholder="Ask anything about your research..."
+                            autocomplete="off">
+                        <button type="submit" class="icon-btn send-btn" aria-label="Send Message">
+                            <span class="material-icons-round">send</span>
+                        </button>
+                    </form>
+                    <p class="disclaimer">AI can make mistakes. Please verify important information.</p>
+                </div>
+            </main>
+        </div>
+    </section>
     <script src="script.js"></script>
 </body>
 

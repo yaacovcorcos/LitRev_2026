@@ -48,14 +48,21 @@ body {
     font-family: 'Outfit', sans-serif;
     background-color: var(--bg-body);
     color: var(--text-primary);
-    height: 100vh;
-    overflow: hidden;
+    min-height: 100vh;
+    overflow: auto;
+    /* Main content handles scroll */
     -webkit-font-smoothing: antialiased;
+}
+
+/* Ensure modal overlay handles scrolling if content is tall */
+.modal-overlay {
+    overflow-y: auto;
 }
 
 .app-container {
     display: flex;
-    height: 100%;
+    height: 100vh;
+    min-height: 100vh;
 }
 
 /* Sidebar */
@@ -70,6 +77,12 @@ body {
     transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     overflow: hidden;
     white-space: nowrap;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+    z-index: 910;
+    /* Ensure it stays above AI view */
 }
 
 .sidebar.collapsed {
@@ -169,44 +182,18 @@ body {
     /* Ensure icons don't shrink */
 }
 
+.nav-label {
+    display: inline-block;
+}
+
+.sidebar.collapsed .nav-label {
+    display: none;
+}
+
 .sidebar.collapsed .nav-item {
     justify-content: center;
     padding: 14px 0;
     gap: 0;
-    /* Fix alignment: remove gap so icon is perfectly centered */
-}
-
-/* Hide text in nav items when collapsed */
-.sidebar.collapsed .nav-item {
-    font-size: 0;
-    /* Hide text hack or use span hiding */
-}
-
-.sidebar.collapsed .nav-item span:not(.material-icons-round) {
-    display: none;
-    /* Assuming text is just text node, might need wrapping. Let's wrap text in HTML or use font-size 0 */
-}
-
-/* Actually, let's check HTML. Text is inside nav-item directly. 
-   <a href="#" class="nav-item">
-       <span class="material-icons-round">grid_view</span>
-       Projects
-   </a>
-   So we can hide the text node? No, CSS can't target text nodes easily.
-   Better to rely on overflow hidden and width, or wrap text.
-   Let's wrap text in JS or just assume the text is the rest.
-   Wait, I can't wrap text easily without changing HTML for all items.
-   Let's use the font-size: 0 trick for the container, and reset font-size for the icon.
-*/
-
-.sidebar.collapsed .nav-item {
-    font-size: 0;
-}
-
-.sidebar.collapsed .nav-item .material-icons-round {
-    font-size: 24px;
-    /* Restore icon size */
-    margin: 0;
 }
 
 .nav-item:hover {
@@ -255,7 +242,9 @@ body {
     flex: 1;
     padding: 40px 50px;
     /* Increased side padding to 50px */
+    /* Increased side padding to 50px */
     overflow-y: auto;
+    /* Ensure scrolling is enabled here */
     background: radial-gradient(circle at top right, rgba(194, 120, 101, 0.08), transparent 40%),
         radial-gradient(circle at bottom left, rgba(118, 140, 123, 0.08), transparent 40%);
 }
@@ -398,6 +387,10 @@ h1 {
     color: var(--text-secondary);
     font-size: 14px;
     transition: all 0.2s;
+    border: none;
+    background: transparent;
+    width: 100%;
+    text-align: left;
 }
 
 .option:hover {
@@ -469,19 +462,12 @@ h1 {
 }
 
 .project-grid.list-view .new-project-card {
-    display: none;
-    /* Hide 'New Project' in list view for cleaner look, or adapt it */
-}
-
-/* Alternatively, adapt new project card for list view */
-.project-grid.list-view .new-project-card {
     display: flex;
     flex-direction: row;
-    height: 80px;
-    padding: 0 32px;
-    justify-content: flex-start;
-    gap: 24px;
-    border-style: dashed;
+    align-items: center;
+    height: auto;
+    padding: 16px 24px;
+    gap: 16px;
 }
 
 .project-grid.list-view .new-project-card .icon-circle {
@@ -509,11 +495,13 @@ h1 {
     font-size: 16px;
     margin: 0;
     -webkit-line-clamp: 1;
+    line-clamp: 1;
 }
 
 .project-grid.list-view .card-status {
-    margin: 0;
-    width: 140px;
+    margin: 0 16px 0 0;
+    align-self: center;
+    width: auto;
 }
 
 .project-grid.list-view .stats-row {
@@ -548,10 +536,8 @@ h1 {
 
 .project-grid.list-view .progress-section {
     display: none;
-    /* Hide progress details in list view to save space, or adapt */
 }
 
-/* Let's adapt progress for list view if possible, or just hide for simplicity as requested "nicely designed" */
 .project-grid.list-view .active-review .progress-section {
     display: flex;
     flex: 1;
@@ -622,6 +608,7 @@ h1 {
     color: var(--accent-primary);
     margin-bottom: 4px;
     transition: all 0.3s ease;
+    cursor: pointer;
 }
 
 .plus-icon {
@@ -670,6 +657,7 @@ h1 {
     /* Removed padding as badge is above */
     display: -webkit-box;
     -webkit-line-clamp: 2;
+    line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
     color: var(--text-primary);
@@ -685,14 +673,11 @@ h1 {
     /* Aligns to right */
     top: auto;
     right: auto;
-    top: auto;
-    right: auto;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     /* Center text */
-    width: 200px;
-    /* Fixed width for consistency */
+    width: auto;
     gap: 6px;
     padding: 8px 16px;
     border-radius: 0 22px 0 16px;
@@ -703,7 +688,6 @@ h1 {
     /* Pull badge to corner while keeping it in flow */
     margin-top: -20px;
     margin-right: -20px;
-    margin-bottom: 20px;
     margin-bottom: 20px;
     /* This creates the "top padding" below the badge */
 }
@@ -739,21 +723,13 @@ h1 {
     box-shadow: 2px 2px 4px rgba(0, 0, 0, 0.1);
 }
 
-/* Stats Row Removed */
-
-/* Progress Section (Redesigned) */
-.progress-section {
-    margin-bottom: auto;
-    /* Reverted margins */
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-}
-
-/* ... progress styles ... */
-
-/* Buttons */
+/* Paper Count Badge */
 .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    text-decoration: none;
+    text-align: center;
     width: 100%;
     /* Account for 20px margins */
     margin-top: auto;
@@ -854,8 +830,7 @@ h1 {
     border-color: var(--text-primary);
 }
 
-border-color: var(--text-primary);
-}
+
 
 /* Paper Count Bottom (For Ready & Harvesting Cards) */
 .paper-count-bottom {
@@ -1009,6 +984,7 @@ border-color: var(--text-primary);
         font-size: 18px;
         /* Ensure readable size */
         -webkit-line-clamp: 3;
+        line-clamp: 3;
         /* Allow more lines for titles on mobile */
         margin-bottom: 12px;
     }
@@ -1023,5 +999,831 @@ border-color: var(--text-primary);
     .stat {
         align-items: center;
         /* Center stats */
+    }
+}
+
+/* --- Modal Styles --- */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.2);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2000;
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.3s ease;
+}
+
+.modal-overlay.active {
+    opacity: 1;
+    visibility: visible;
+}
+
+.modal-glass {
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.9);
+    padding: 32px;
+    border-radius: 24px;
+    width: 100%;
+    max-width: 500px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+    transform: translateY(20px);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.modal-overlay.active .modal-glass {
+    transform: translateY(0);
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 24px;
+}
+
+.modal-header h2 {
+    font-size: 24px;
+    font-weight: 600;
+    margin: 0;
+}
+
+.close-modal-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+}
+
+.close-modal-btn:hover {
+    background: rgba(0, 0, 0, 0.05);
+    color: var(--text-primary);
+}
+
+.form-group {
+    margin-bottom: 20px;
+}
+
+.form-group label {
+    display: block;
+    font-size: 14px;
+    font-weight: 500;
+    margin-bottom: 8px;
+    color: var(--text-secondary);
+}
+
+.form-group input,
+.form-group textarea {
+    width: 100%;
+    padding: 12px 16px;
+    background: rgba(255, 255, 255, 0.6);
+    border: 1px solid var(--glass-border);
+    border-radius: 12px;
+    font-family: inherit;
+    font-size: 15px;
+    color: var(--text-primary);
+    transition: all 0.2s;
+}
+
+.form-group input:focus,
+.form-group textarea:focus {
+    outline: none;
+    background: white;
+    border-color: var(--accent-primary);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+.modal-actions {
+    display: flex;
+    gap: 12px;
+    margin-top: 32px;
+}
+
+/* --- Project View Styles --- */
+.project-view {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: var(--bg-body);
+    z-index: 900;
+    display: flex;
+    overflow: hidden;
+}
+
+.project-view.hidden {
+    display: none;
+}
+
+.project-layout {
+    display: flex;
+    width: 100%;
+    height: 100%;
+    padding-left: 88px;
+    transition: padding-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.project-sidebar {
+    width: 260px;
+    background: rgba(255, 255, 255, 0.4);
+    backdrop-filter: blur(20px);
+    border-right: 1px solid var(--glass-border);
+    display: flex;
+    flex-direction: column;
+    padding: 32px 16px 24px 16px;
+    transition: width 0.3s ease, padding 0.3s ease;
+    overflow: hidden;
+    position: relative;
+}
+
+.project-sidebar.collapsed {
+    width: 60px;
+    padding: 32px 10px 24px 10px;
+}
+
+.project-sidebar-header {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    height: 40px;
+    margin-bottom: 48px;
+    flex-shrink: 0;
+}
+
+.project-sidebar.collapsed .project-sidebar-header {
+    justify-content: center;
+}
+
+.project-sidebar.collapsed .project-sidebar-toggle {
+    transform: rotate(180deg);
+}
+
+.project-sidebar-summary {
+    display: flex;
+    gap: 12px;
+    padding: 12px;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.65);
+    border: 1px solid var(--glass-border);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.04);
+    margin-bottom: 20px;
+}
+
+.project-avatar {
+    width: 42px;
+    height: 42px;
+    border-radius: 12px;
+    background: rgba(217, 116, 89, 0.12);
+    color: var(--accent-primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.project-avatar .material-icons-round {
+    font-size: 22px;
+}
+
+.project-sidebar-text h3 {
+    font-size: 16px;
+    margin-bottom: 4px;
+}
+
+.project-sidebar-desc {
+    color: var(--text-secondary);
+    font-size: 13px;
+    line-height: 1.4;
+}
+
+.eyebrow {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+}
+
+.project-nav {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    overflow-y: auto;
+}
+
+.project-nav-group h4 {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-muted);
+    margin-bottom: 12px;
+    padding-left: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.project-nav-item {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    background: transparent;
+    border: none;
+    border-radius: 10px;
+    color: var(--text-secondary);
+    font-family: inherit;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-align: left;
+}
+
+.project-nav-item:hover {
+    background: rgba(0, 0, 0, 0.03);
+    color: var(--text-primary);
+}
+
+.project-nav-item.active {
+    background: rgba(255, 255, 255, 0.6);
+    color: var(--text-primary);
+    font-weight: 600;
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.05);
+}
+
+.project-nav-item .material-icons-round {
+    font-size: 18px;
+    opacity: 0.75;
+}
+
+.project-nav-item.ghost {
+    background: rgba(255, 255, 255, 0.6);
+    border: 1px solid var(--glass-border);
+}
+
+.project-nav-item.ghost:hover {
+    background: rgba(255, 255, 255, 0.8);
+}
+
+.project-sidebar-footer {
+    margin-top: auto;
+    padding-top: 16px;
+    border-top: 1px solid var(--glass-border);
+}
+
+.project-sidebar.collapsed .project-sidebar-summary,
+.project-sidebar.collapsed .project-nav,
+.project-sidebar.collapsed .project-sidebar-footer {
+    display: none;
+}
+
+.project-view .top-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+}
+
+.project-view-actions {
+    display: flex;
+    gap: 12px;
+}
+
+#deleteProjectBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 14px;
+}
+
+.empty-state-large {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 60vh;
+    text-align: center;
+    color: var(--text-secondary);
+}
+
+.icon-circle-large {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 24px;
+    color: var(--text-muted);
+}
+
+.icon-circle-large .material-icons-round {
+    font-size: 40px;
+}
+
+.empty-state-large h2 {
+    font-size: 24px;
+    color: var(--text-primary);
+    margin-bottom: 8px;
+}
+
+.empty-state-large p {
+    max-width: 400px;
+    margin-bottom: 32px;
+}
+
+.empty-state-large .btn {
+    width: auto;
+    padding: 12px 32px;
+}
+
+/* --- AI Assistant View --- */
+.ai-view {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: var(--bg-body);
+    z-index: 900;
+    /* Below modal, above normal content */
+    display: flex;
+}
+
+.ai-view.hidden {
+    display: none;
+}
+
+.ai-layout {
+    display: flex;
+    width: 100%;
+    height: 100%;
+    padding-left: 88px;
+    /* Account for collapsed sidebar width */
+    transition: padding-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Chat History Sidebar */
+.chat-history-sidebar {
+    width: 260px;
+    background: rgba(255, 255, 255, 0.4);
+    backdrop-filter: blur(20px);
+    border-right: 1px solid var(--glass-border);
+    display: flex;
+    flex-direction: column;
+    padding: 32px 16px 24px 16px;
+    transition: width 0.3s ease, padding 0.3s ease;
+    overflow: hidden;
+    position: relative;
+}
+
+.chat-history-sidebar.collapsed {
+    width: 60px;
+    padding: 32px 10px 24px 10px;
+}
+
+.chat-sidebar-header {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    /* Align to right like main sidebar toggle */
+    height: 40px;
+    margin-bottom: 48px;
+    /* Match logo-area margin */
+    flex-shrink: 0;
+}
+
+.chat-sidebar-toggle {
+    /* Inherits .sidebar-toggle styles via class in HTML, 
+       but we need to ensure it behaves correctly in this context */
+    color: var(--text-secondary);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+}
+
+.chat-sidebar-toggle:hover {
+    background: var(--glass-bg);
+    color: var(--text-primary);
+}
+
+.chat-history-sidebar.collapsed .new-chat-wrapper,
+.chat-history-sidebar.collapsed .history-list,
+.chat-history-sidebar.collapsed .user-mini-profile {
+    display: none;
+}
+
+.chat-history-sidebar.collapsed .chat-sidebar-header {
+    justify-content: center;
+}
+
+.chat-history-sidebar.collapsed .chat-sidebar-toggle {
+    transform: rotate(180deg);
+}
+
+.new-chat-wrapper {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 16px;
+}
+
+.new-chat-btn {
+    justify-content: center;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    min-width: auto;
+    width: auto;
+    background: transparent;
+    border: 1px solid var(--accent-primary);
+    color: var(--accent-primary);
+    box-shadow: none;
+    font-weight: 600;
+    font-size: 12px;
+    border-radius: 999px;
+}
+
+.new-chat-btn:hover {
+    background: rgba(217, 116, 89, 0.08);
+    border-color: var(--accent-primary);
+    color: var(--accent-primary);
+}
+
+.new-chat-btn .material-icons-round {
+    font-size: 18px;
+}
+
+.history-list {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+.history-group h4 {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-muted);
+    margin-bottom: 12px;
+    padding-left: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.history-item {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    background: transparent;
+    border: none;
+    border-radius: 8px;
+    color: var(--text-secondary);
+    font-family: inherit;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-align: left;
+}
+
+.history-item:hover {
+    background: rgba(0, 0, 0, 0.03);
+    color: var(--text-primary);
+}
+
+.history-item.active {
+    background: rgba(255, 255, 255, 0.6);
+    color: var(--text-primary);
+    font-weight: 500;
+}
+
+.history-item .material-icons-round {
+    font-size: 18px;
+    opacity: 0.7;
+}
+
+.text-truncate {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.customize-wrapper {
+    margin-top: auto;
+    padding-top: 20px;
+    border-top: 1px solid var(--glass-border);
+}
+
+.customize-btn {
+    width: 100%;
+    justify-content: center;
+    gap: 10px;
+    padding: 12px;
+    background: rgba(255, 255, 255, 0.5);
+    border: 1px solid var(--glass-border);
+    color: var(--text-primary);
+    font-weight: 500;
+    transition: all 0.3s ease;
+}
+
+.customize-btn:hover {
+    background: rgba(255, 255, 255, 0.8);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+.customize-btn .material-icons-round {
+    font-size: 20px;
+    color: var(--accent-primary);
+}
+
+.chat-history-sidebar.collapsed .customize-btn span:not(.material-icons-round) {
+    display: none;
+}
+
+.chat-history-sidebar.collapsed .customize-btn {
+    padding: 12px;
+    justify-content: center;
+}
+
+/* Main Chat Interface */
+.chat-interface {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.chat-header {
+    height: 60px;
+    padding: 0 32px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    /* border-bottom: 1px solid var(--glass-border); */
+}
+
+.model-selector {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 500;
+    color: var(--text-primary);
+    padding: 6px 12px;
+    background: rgba(255, 255, 255, 0.5);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.model-selector:hover {
+    background: rgba(255, 255, 255, 0.8);
+}
+
+.model-status {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #10b981;
+    /* Green for active */
+}
+
+.chat-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 32px;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    scroll-behavior: smooth;
+    max-width: 900px;
+    margin: 0 auto;
+    width: 100%;
+}
+
+.message-bubble {
+    display: flex;
+    gap: 16px;
+    max-width: 85%;
+    animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.message-bubble.ai-msg {
+    align-self: flex-start;
+}
+
+.message-bubble.user-msg {
+    align-self: flex-end;
+    flex-direction: row-reverse;
+}
+
+.ai-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    background: white;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--accent-primary);
+    flex-shrink: 0;
+}
+
+.message-content {
+    padding: 16px 20px;
+    border-radius: 16px;
+    font-size: 15px;
+    line-height: 1.6;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
+}
+
+.ai-msg .message-content {
+    background: rgba(255, 255, 255, 0.8);
+    border: 1px solid white;
+    border-top-left-radius: 4px;
+    color: var(--text-primary);
+}
+
+.user-msg .message-content {
+    background: var(--accent-primary);
+    color: white;
+    border-top-right-radius: 4px;
+}
+
+/* Chat Input Area - Floating Style */
+.chat-input-container {
+    padding: 0 32px 24px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    background: transparent;
+    /* Remove gradient for floating look */
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    pointer-events: none;
+    /* Let clicks pass through wrapper */
+}
+
+.chat-input-wrapper {
+    width: 100%;
+    max-width: 800px;
+    background: rgba(255, 255, 255, 0.65);
+    /* Slightly more transparent */
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.8);
+    border-radius: 24px;
+    /* More rounded */
+    padding: 8px 8px 8px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    box-shadow:
+        0 4px 24px -1px rgba(0, 0, 0, 0.1),
+        0 0 0 1px rgba(255, 255, 255, 0.4) inset;
+    transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+    pointer-events: auto;
+    /* Re-enable clicks */
+    margin-bottom: 24px;
+    /* Float above bottom */
+}
+
+.chat-input-wrapper:focus-within {
+    transform: translateY(-2px);
+    background: rgba(255, 255, 255, 0.85);
+    box-shadow:
+        0 8px 32px -4px rgba(0, 0, 0, 0.12),
+        0 0 0 1px var(--accent-primary) inset;
+    border-color: transparent;
+}
+
+.chat-input-wrapper input {
+    flex: 1;
+    border: none;
+    background: transparent;
+    padding: 12px;
+    font-size: 16px;
+    font-family: inherit;
+    color: var(--text-primary);
+    width: 100%;
+}
+
+.chat-input-wrapper input:focus {
+    outline: none;
+}
+
+/* Tone Toggle */
+.tone-toggle-wrapper {
+    position: relative;
+    display: flex;
+    background: rgba(0, 0, 0, 0.05);
+    padding: 4px;
+    border-radius: 20px;
+    gap: 4px;
+}
+
+.tone-option {
+    position: relative;
+    z-index: 2;
+    background: transparent;
+    border: none;
+    padding: 6px 16px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: color 0.3s;
+    border-radius: 16px;
+}
+
+.tone-option.active {
+    color: var(--text-primary);
+}
+
+.tone-slider {
+    position: absolute;
+    top: 4px;
+    left: 4px;
+    bottom: 4px;
+    width: calc(50% - 4px);
+    /* Approx width */
+    background: white;
+    border-radius: 16px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    z-index: 1;
+}
+
+/* Adjust slider position based on active state handled by JS or simple CSS classes */
+.tone-toggle-wrapper.deep-active .tone-slider {
+    transform: translateX(100%);
+    /* Move to right */
+}
+
+/* Mobile Responsive for AI View */
+@media (max-width: 900px) {
+    .ai-layout {
+        padding-left: 0;
+    }
+
+    .chat-history-sidebar {
+        position: fixed;
+        left: -260px;
+        height: 100%;
+        z-index: 1000;
+        background: rgba(255, 255, 255, 0.95);
+    }
+
+    .chat-history-sidebar.active {
+        transform: translateX(260px);
+    }
+
+    .chat-input-container {
+        padding: 0 16px 16px;
+    }
+
+    .chat-input-wrapper {
+        margin-bottom: 16px;
     }
 }
