@@ -1,0 +1,454 @@
+.layout {
+    position: relative;
+    display: flex;
+    width: 100%;
+    min-height: calc(100vh - var(--header-height, 44px));
+    gap: 24px;
+    padding-left: 280px;
+}
+
+.fullHeight {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.historySidebar {
+    flex: 0 0 260px;
+    width: 260px;
+    background: rgba(255, 255, 255, 0.4);
+    backdrop-filter: blur(20px);
+    border-right: 1px solid var(--glass-border);
+    display: flex;
+    flex-direction: column;
+    padding: 32px 16px 24px 16px;
+    transition: width 0.3s ease, padding 0.3s ease;
+    overflow: hidden;
+    position: fixed;
+    top: var(--header-height, 44px);
+    left: var(--shell-sidebar-width, 260px);
+    height: calc(100vh - var(--header-height, 44px));
+    z-index: 905;
+}
+
+.collapsed {
+    width: 60px;
+    flex: 0 0 60px;
+    padding: 32px 10px 24px 10px;
+}
+
+.sidebarHeader {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    height: 40px;
+    margin-bottom: 48px;
+    flex-shrink: 0;
+}
+
+.collapsed .sidebarHeader {
+    justify-content: center;
+}
+
+.sidebarToggle {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+}
+
+.sidebarToggle:hover {
+    background: var(--glass-bg);
+    color: var(--text-primary);
+}
+
+.collapsed .sidebarToggle {
+    transform: rotate(180deg);
+}
+
+.newChatWrapper {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 16px;
+}
+
+.newChatButton {
+    display: inline-flex;
+    justify-content: center;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background: transparent;
+    border: 1px solid var(--accent-primary);
+    color: var(--accent-primary);
+    box-shadow: none;
+    font-weight: 600;
+    font-size: 12px;
+    border-radius: 999px;
+}
+
+.newChatButton:hover {
+    background: rgba(217, 116, 89, 0.08);
+}
+
+.historyList {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+.historyGroup {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.historyHeading {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+    padding-left: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.historyItem {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    background: transparent;
+    border: none;
+    border-radius: 8px;
+    color: var(--text-secondary);
+    font-family: inherit;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-align: left;
+}
+
+.historyItem:hover {
+    background: rgba(0, 0, 0, 0.03);
+    color: var(--text-primary);
+}
+
+.historyTitle {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.activeHistory {
+    background: rgba(255, 255, 255, 0.6);
+    color: var(--text-primary);
+    font-weight: 500;
+}
+
+.customizeWrapper {
+    margin-top: auto;
+    padding-top: 20px;
+    border-top: 1px solid var(--glass-border);
+}
+
+.customizeButton {
+    width: 100%;
+    justify-content: center;
+    gap: 10px;
+    padding: 12px;
+    background: rgba(255, 255, 255, 0.5);
+    border: 1px solid var(--glass-border);
+    color: var(--text-primary);
+    font-weight: 500;
+    transition: all 0.3s ease;
+}
+
+.customizeButton:hover {
+    background: rgba(255, 255, 255, 0.8);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+.collapsed .newChatWrapper,
+.collapsed .historyList,
+.collapsed .customizeWrapper {
+    display: none;
+}
+
+.chatInterface {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    background: rgba(255, 255, 255, 0.2);
+    min-height: calc(100vh - var(--header-height, 44px));
+    margin-left: 280px;
+}
+
+.chatHeader {
+    height: 60px;
+    padding: var(--content-top-offset, 12px) 32px 0 32px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.chatActions {
+    display: flex;
+    align-items: center;
+}
+
+.modelSelector {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 500;
+    color: var(--text-primary);
+    padding: 6px 12px;
+    background: rgba(255, 255, 255, 0.5);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.modelSelector:hover {
+    background: rgba(255, 255, 255, 0.8);
+}
+
+.modelName {
+    font-weight: 600;
+}
+
+.modelStatus {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #10b981;
+}
+
+.toneToggle {
+    position: relative;
+    display: flex;
+    background: rgba(0, 0, 0, 0.05);
+    padding: 4px;
+    border-radius: 20px;
+    gap: 4px;
+}
+
+.toneOption {
+    position: relative;
+    z-index: 2;
+    background: transparent;
+    border: none;
+    padding: 6px 16px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: color 0.3s;
+    border-radius: 16px;
+}
+
+.toneActive {
+    color: var(--text-primary);
+}
+
+.toneSlider {
+    position: absolute;
+    top: 4px;
+    left: 4px;
+    bottom: 4px;
+    width: calc(50% - 4px);
+    background: white;
+    border-radius: 16px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    z-index: 1;
+}
+
+.toneDeep {
+    transform: translateX(100%);
+}
+
+.chatMessages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 32px;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    scroll-behavior: smooth;
+    max-width: 900px;
+    margin: 0 auto;
+    width: 100%;
+}
+
+.messageBubble {
+    display: flex;
+    gap: 16px;
+    max-width: 85%;
+    animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.aiMessage {
+    align-self: flex-start;
+}
+
+.userMessage {
+    align-self: flex-end;
+    flex-direction: row-reverse;
+}
+
+.aiAvatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    background: white;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--accent-primary);
+    flex-shrink: 0;
+}
+
+.messageContent {
+    padding: 16px 20px;
+    border-radius: 16px;
+    font-size: 15px;
+    line-height: 1.6;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
+}
+
+.aiBubble {
+    background: rgba(255, 255, 255, 0.8);
+    border: 1px solid white;
+    border-top-left-radius: 4px;
+    color: var(--text-primary);
+}
+
+.userBubble {
+    background: var(--accent-primary);
+    color: white;
+    border-top-right-radius: 4px;
+}
+
+.chatInputContainer {
+    padding: 0 32px 24px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    background: transparent;
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    pointer-events: none;
+}
+
+.chatInputWrapper {
+    width: 100%;
+    max-width: 800px;
+    background: rgba(255, 255, 255, 0.65);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.8);
+    border-radius: 24px;
+    padding: 8px 8px 8px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    box-shadow: 0 4px 24px -1px rgba(0, 0, 0, 0.1), 0 0 0 1px rgba(255, 255, 255, 0.4) inset;
+    transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+    pointer-events: auto;
+    margin-bottom: 24px;
+}
+
+.chatInputWrapper:focus-within {
+    transform: translateY(-2px);
+    background: rgba(255, 255, 255, 0.85);
+    box-shadow: 0 8px 32px -4px rgba(0, 0, 0, 0.12), 0 0 0 1px var(--accent-primary) inset;
+    border-color: transparent;
+}
+
+.chatInputWrapper input {
+    flex: 1;
+    border: none;
+    background: transparent;
+    padding: 12px;
+    font-size: 16px;
+    font-family: inherit;
+    color: var(--text-primary);
+}
+
+.chatInputWrapper input:focus {
+    outline: none;
+}
+
+.iconButton {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    padding: 6px;
+    border-radius: 8px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    height: 30px;
+    width: 30px;
+}
+
+.disclaimer {
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.iconButton:hover {
+    color: var(--text-primary);
+}
+
+@media (max-width: 900px) {
+    .layout {
+        padding-left: 0;
+        flex-direction: column;
+    }
+
+    .historySidebar {
+        width: 100%;
+        position: static;
+        border-right: none;
+    }
+
+    .chatInputContainer {
+        padding: 0 16px 16px;
+    }
+
+    .chatInputWrapper {
+        margin-bottom: 16px;
+    }
+}

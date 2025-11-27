@@ -1,0 +1,42 @@
+:root {
+    /* Warm Beige / Middle Mode Palette */
+    --bg-body: #f2f0e9;
+    /* Soft Warm Beige */
+    --bg-sidebar: rgba(235, 232, 225, 0.8);
+    /* Slightly darker beige */
+    --glass-bg: rgba(255, 255, 255, 0.5);
+    --glass-border: rgba(0, 0, 0, 0.06);
+    --glass-highlight: rgba(255, 255, 255, 0.8);
+
+    /* Text Colors (Dark for Light Theme) */
+    --text-primary: #2d2a26;
+    /* Warm Charcoal */
+    --text-secondary: #635f59;
+    --text-muted: #948f85;
+
+    /* Accents (Earthy/Modern) */
+    --accent-primary: #D97459;
+    /* Terracotta */
+    --accent-secondary: #768c7b;
+    /* Sage Green */
+    --accent-tertiary: #d4a373;
+    /* Warm Sand/Gold */
+    --accent-new-project: linear-gradient(135deg, #D97459 0%, #e6b8a2 100%);
+
+    /* Status Colors */
+    --status-ready-bg: rgba(118, 140, 123, 0.15);
+    --status-ready-text: #556b5a;
+    --status-harvesting-bg: rgba(212, 163, 115, 0.15);
+    --status-harvesting-text: #9c724f;
+
+    /* Spacing & Radius */
+    --radius-lg: 22px;
+    /* Reduced to 22px as requested */
+    --radius-md: 16px;
+    --radius-sm: 8px;
+    --gap-md: 26px;
+    /* Updated to 26px */
+    --control-height: 44px;
+    --header-height: 44px;
+    --content-top-offset: 12px;
+}

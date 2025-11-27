@@ -1,0 +1,41 @@
+.appContainer {
+    display: flex;
+    min-height: 100vh;
+    background: var(--bg-body);
+    color: var(--text-primary);
+    padding-left: var(--shell-sidebar-width, 260px);
+}
+
+.mainContent {
+    flex: 1;
+    padding: 56px var(--shell-gutter, 40px) 0;
+    min-height: calc(100vh - var(--header-height, 44px));
+    height: auto;
+    overflow: hidden;
+    background: radial-gradient(circle at top right, rgba(194, 120, 101, 0.08), transparent 40%),
+        radial-gradient(circle at bottom left, rgba(118, 140, 123, 0.08), transparent 40%);
+}
+
+.mainContentNoPad {
+    padding: 56px var(--shell-gutter, 40px) 0;
+    min-height: calc(100vh - var(--header-height, 44px));
+    height: auto;
+}
+
+@media (max-width: 900px) {
+    .appContainer {
+        padding-left: 0;
+    }
+
+    .mainContent {
+        padding: 56px 20px 0 20px;
+        min-height: calc(100vh - var(--header-height, 44px));
+        height: auto;
+    }
+
+    .mainContentNoPad {
+        padding: 56px 20px 0 20px;
+        min-height: calc(100vh - var(--header-height, 44px));
+        height: auto;
+    }
+}

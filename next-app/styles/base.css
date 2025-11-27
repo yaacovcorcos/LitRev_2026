@@ -1,0 +1,19 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Outfit', sans-serif;
+    background-color: var(--bg-body);
+    color: var(--text-primary);
+    min-height: 100vh;
+    overflow: auto;
+    -webkit-font-smoothing: antialiased;
+}
+
+/* Ensure modal overlay handles scrolling if content is tall */
+.modal-overlay {
+    overflow-y: auto;
+}

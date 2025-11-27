@@ -1,0 +1,20 @@
+import { NavLink } from "@/types/nav";
+
+export const mainNavLinks: NavLink[] = [
+  { label: "Projects", icon: "grid_view", href: "/", navKey: "projects" },
+  { label: "AI Assistant", icon: "smart_toy", href: "/ai", navKey: "ai" },
+  { label: "Library", icon: "bookmarks", href: "/library", navKey: "library" },
+];
+
+export const bottomNavLinks: NavLink[] = [
+  { label: "Notifications", icon: "notifications", href: "#notifications", navKey: "notifications" },
+  { label: "Profile", icon: "person", href: "#profile", navKey: "profile" },
+  { label: "Help", icon: "help_outline", href: "#help", navKey: "help" },
+];
+
+export const mobileNavLinks: NavLink[] = [
+  { label: "Projects", icon: "grid_view", href: "/", navKey: "projects" },
+  { label: "AI", icon: "smart_toy", href: "/ai", navKey: "ai" },
+  { label: "New", icon: "add_circle", href: "#", navKey: "new" },
+  { label: "Settings", icon: "settings", href: "/library", navKey: "library" },
+];

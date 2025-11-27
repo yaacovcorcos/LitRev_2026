@@ -1,0 +1,47 @@
+.header {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: var(--header-height, 44px);
+    z-index: 1200;
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    align-items: center;
+    gap: 8px;
+    padding: 0 14px;
+    background: var(--bg-body);
+    border-bottom: 1px solid var(--glass-border);
+}
+
+.slotLeft,
+.slotCenter,
+.slotRight {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+}
+
+.slotCenter {
+    justify-content: center;
+}
+
+.slotRight {
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+@media (max-width: 900px) {
+    .header {
+        grid-template-columns: 1fr;
+        row-gap: 4px;
+        padding: 0 12px;
+    }
+
+    .slotCenter,
+    .slotRight {
+        justify-content: flex-start;
+    }
+}
