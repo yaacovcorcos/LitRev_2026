@@ -1,10 +1,16 @@
 .layout {
+    --history-width: 260px;
     position: relative;
     display: flex;
     width: 100%;
     min-height: calc(100vh - var(--header-height, 44px));
     gap: 24px;
-    padding-left: 280px;
+    padding-left: var(--history-width);
+    transition: padding-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.layout[data-history-collapsed="true"] {
+    --history-width: 60px;
 }
 
 .fullHeight {
@@ -14,8 +20,8 @@
 }
 
 .historySidebar {
-    flex: 0 0 260px;
-    width: 260px;
+    flex: 0 0 var(--history-width);
+    width: var(--history-width);
     background: rgba(255, 255, 255, 0.4);
     backdrop-filter: blur(20px);
     border-right: 1px solid var(--glass-border);
@@ -32,8 +38,6 @@
 }
 
 .collapsed {
-    width: 60px;
-    flex: 0 0 60px;
     padding: 32px 10px 24px 10px;
 }
 
@@ -95,6 +99,17 @@
 
 .newChatButton:hover {
     background: rgba(217, 116, 89, 0.08);
+}
+
+.newChatButton:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+    background: transparent;
+    box-shadow: none;
+}
+
+.newChatButton:disabled:hover {
+    background: transparent;
 }
 
 .historyList {
@@ -179,6 +194,17 @@
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
 }
 
+.customizeButton:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+.customizeButton:disabled:hover {
+    background: rgba(255, 255, 255, 0.5);
+}
+
 .collapsed .newChatWrapper,
 .collapsed .historyList,
 .collapsed .customizeWrapper {
@@ -192,7 +218,7 @@
     position: relative;
     background: rgba(255, 255, 255, 0.2);
     min-height: calc(100vh - var(--header-height, 44px));
-    margin-left: 280px;
+    margin-left: 0;
 }
 
 .chatHeader {
@@ -218,12 +244,19 @@
     padding: 6px 12px;
     background: rgba(255, 255, 255, 0.5);
     border-radius: 8px;
-    cursor: pointer;
     transition: background 0.2s;
 }
 
 .modelSelector:hover {
     background: rgba(255, 255, 255, 0.8);
+}
+
+.modelSelectorDisabled {
+    cursor: default;
+}
+
+.modelSelectorDisabled:hover {
+    background: rgba(255, 255, 255, 0.5);
 }
 
 .modelName {
@@ -284,7 +317,7 @@
 .chatMessages {
     flex: 1;
     overflow-y: auto;
-    padding: 32px;
+    padding: 32px 32px calc(160px + var(--mobile-nav-offset));
     display: flex;
     flex-direction: column;
     gap: 24px;
@@ -364,7 +397,7 @@
     gap: 12px;
     background: transparent;
     position: absolute;
-    bottom: 0;
+    bottom: var(--mobile-nav-offset);
     left: 0;
     width: 100%;
     pointer-events: none;
@@ -442,6 +475,12 @@
         width: 100%;
         position: static;
         border-right: none;
+        height: auto;
+        overflow: visible;
+    }
+
+    .chatInterface {
+        margin-left: 0;
     }
 
     .chatInputContainer {

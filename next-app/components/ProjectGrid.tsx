@@ -1,5 +1,6 @@
 import { Project } from "@/types/project";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import styles from "@/components/ProjectGrid.module.css";
 
 type ProjectGridProps = {
@@ -9,6 +10,7 @@ type ProjectGridProps = {
 };
 
 export function ProjectGrid({ projects, viewMode, onNewProject }: ProjectGridProps) {
+  const router = useRouter();
   const gridClass = viewMode === "list" ? `${styles.projectGrid} ${styles.listView}` : styles.projectGrid;
 
   return (
@@ -57,6 +59,11 @@ export function ProjectGrid({ projects, viewMode, onNewProject }: ProjectGridPro
             data-modified={p.modified}
             data-created={p.created}
             data-id={p.id}
+            onClick={(event) => {
+              const target = event.target as HTMLElement;
+              if (target.closest("a")) return;
+              router.push(`/project/${p.id}`);
+            }}
           >
             <div className={statusClass}>
               {p.statusText}

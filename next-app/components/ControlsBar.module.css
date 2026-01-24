@@ -12,6 +12,12 @@
     width: 320px;
     flex: 0 1 360px;
     min-width: 220px;
+    transform: scale(1);
+    transition: transform 0.3s ease;
+}
+
+.searchWrapper:focus-within {
+    transform: scale(1.02);
 }
 
 .searchIcon {
@@ -40,7 +46,7 @@
 .searchInput:hover {
     background: rgba(255, 255, 255, 0.8);
     border-color: rgba(129, 140, 248, 0.5);
-    cursor: pointer;
+    cursor: text;
     box-shadow: 0 2px 12px rgba(0, 0, 0, 0.05), 0 0 0 2px rgba(129, 140, 248, 0.15);
 }
 

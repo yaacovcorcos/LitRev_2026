@@ -9,6 +9,10 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@tiptap/extension-placeholder": "^3.17.1",
+    "@tiptap/extension-underline": "^3.17.1",
+    "@tiptap/react": "^3.17.1",
+    "@tiptap/starter-kit": "^3.17.1",
     "next": "16.0.5",
     "react": "19.2.0",
     "react-dom": "19.2.0"

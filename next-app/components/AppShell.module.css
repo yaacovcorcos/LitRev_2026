@@ -4,6 +4,7 @@
     background: var(--bg-body);
     color: var(--text-primary);
     padding-left: var(--shell-sidebar-width, 260px);
+    --mobile-nav-offset: 0px;
 }
 
 .mainContent {
@@ -17,7 +18,7 @@
 }
 
 .mainContentNoPad {
-    padding: 56px var(--shell-gutter, 40px) 0;
+    padding: 56px 0 0;
     min-height: calc(100vh - var(--header-height, 44px));
     height: auto;
 }
@@ -25,16 +26,17 @@
 @media (max-width: 900px) {
     .appContainer {
         padding-left: 0;
+        --mobile-nav-offset: calc(80px + env(safe-area-inset-bottom));
     }
 
     .mainContent {
-        padding: 56px 20px 0 20px;
+        padding: 56px 20px var(--mobile-nav-offset) 20px;
         min-height: calc(100vh - var(--header-height, 44px));
         height: auto;
     }
 
     .mainContentNoPad {
-        padding: 56px 20px 0 20px;
+        padding: 56px 0 var(--mobile-nav-offset);
         min-height: calc(100vh - var(--header-height, 44px));
         height: auto;
     }

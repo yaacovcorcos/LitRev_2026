@@ -1,7 +1,7 @@
 "use client";
 
 import { AppShell } from "@/components/AppShell";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import styles from "./ai-view.module.css";
 
 type Tone = "standard" | "deep";
@@ -47,6 +47,8 @@ export default function AIView() {
   const [input, setInput] = useState("");
   const [activeChat, setActiveChat] = useState("h1");
   const historyContentId = "chat-history-panel";
+  const messagesRef = useRef<HTMLDivElement | null>(null);
+  const shouldAutoScrollRef = useRef(true);
 
   const historyClass = useMemo(
     () => `${styles.historySidebar} ${isHistoryCollapsed ? styles.collapsed : ""}`,
@@ -59,20 +61,38 @@ export default function AIView() {
     }
   }, [tone]);
 
-  const handleSend = () => {
+  const buildResponse = (text: string, snapshotTone: Tone) => {
+    const lower = text.toLowerCase();
+    if (lower.includes("hello") || lower.includes("hi")) {
+      return "Hello! I'm ready to help with your literature review. What are you working on?";
+    }
+    if (lower.includes("summarize")) {
+      return "I can certainly help summarize that. Please upload the PDF or paste the text you'd like me to analyze.";
+    }
+    if (lower.includes("find papers")) {
+      return "I can search for papers. What specific keywords or topics should I focus on?";
+    }
+    return snapshotTone === "deep"
+      ? "Taking a deeper dive. Let me expand on that and surface detailed evidence."
+      : "Got it! I'll summarize and keep it concise.";
+  };
+
+  const handleSend = async () => {
     const text = input.trim();
     if (!text) return;
+    const toneSnapshot = tone;
     const userMsg: ChatItem = { id: "u-" + Date.now(), sender: "user", text };
+    setMessages((prev) => [...prev, userMsg]);
+    setInput("");
+    shouldAutoScrollRef.current = true;
+    const delay = 1000 + Math.random() * 1000;
+    await new Promise((resolve) => setTimeout(resolve, delay));
     const aiMsg: ChatItem = {
       id: "a-" + Date.now(),
       sender: "ai",
-      text:
-        tone === "deep"
-          ? "Taking a deeper dive. Let me expand on that and surface detailed evidence."
-          : "Got it! I'll summarize and keep it concise.",
+      text: buildResponse(text, toneSnapshot),
     };
-    setMessages((prev) => [...prev, userMsg, aiMsg]);
-    setInput("");
+    setMessages((prev) => [...prev, aiMsg]);
   };
 
   const handleHistorySelect = (id: string) => {
@@ -80,18 +100,26 @@ export default function AIView() {
     // Future: load chat history for selected id
   };
 
+  useEffect(() => {
+    if (!messagesRef.current) return;
+    if (!shouldAutoScrollRef.current) return;
+    messagesRef.current.scrollTop = messagesRef.current.scrollHeight;
+  }, [messages]);
+
+  const handleMessagesScroll = () => {
+    if (!messagesRef.current) return;
+    const { scrollTop, clientHeight, scrollHeight } = messagesRef.current;
+    shouldAutoScrollRef.current = scrollTop + clientHeight >= scrollHeight - 80;
+  };
+
   return (
-    <AppShell activeNav="ai" noMainPadding>
-      <div className={styles.layout}>
-        <aside
-          className={historyClass}
-          aria-label="Chat history"
-          aria-hidden={isHistoryCollapsed}
-        >
+    <AppShell activeNav="ai" noMainPadding initiallyCollapsed>
+      <div className={styles.layout} data-history-collapsed={isHistoryCollapsed}>
+        <aside className={historyClass} aria-label="Chat history">
           <div className={styles.sidebarHeader}>
             <button
               className={styles.sidebarToggle}
-              aria-label="Toggle Sidebar"
+              aria-label={isHistoryCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
               aria-expanded={!isHistoryCollapsed}
               aria-controls={historyContentId}
               onClick={() => setHistoryCollapsed((prev) => !prev)}
@@ -100,7 +128,13 @@ export default function AIView() {
             </button>
           </div>
           <div className={styles.newChatWrapper}>
-            <button className={`btn btn-primary ${styles.newChatButton}`} type="button">
+            <button
+              className={`btn btn-primary ${styles.newChatButton}`}
+              type="button"
+              disabled
+              aria-disabled="true"
+              title="Coming soon"
+            >
               <span className="material-icons-round">add</span>
               New Chat
             </button>
@@ -115,6 +149,7 @@ export default function AIView() {
                       key={item.id}
                       className={`${styles.historyItem} ${activeChat === item.id ? styles.activeHistory : ""}`}
                       onClick={() => handleHistorySelect(item.id)}
+                      aria-pressed={activeChat === item.id}
                     >
                       <span className="material-icons-round">chat_bubble_outline</span>
                       <span className={styles.historyTitle}>{item.title}</span>
@@ -124,7 +159,7 @@ export default function AIView() {
               ))}
             </div>
             <div className={styles.customizeWrapper}>
-              <button className={styles.customizeButton} type="button">
+              <button className={styles.customizeButton} type="button" disabled aria-disabled="true" title="Coming soon">
                 <span className="material-icons-round">tune</span>
                 <span>Customize</span>
               </button>
@@ -134,7 +169,7 @@ export default function AIView() {
 
         <section className={styles.chatInterface} role="region" aria-label="Chat interface">
           <div className={styles.chatHeader}>
-            <div className={styles.modelSelector}>
+            <div className={`${styles.modelSelector} ${styles.modelSelectorDisabled}`} aria-disabled="true">
               <span className={styles.modelName}>LitRev AI 4.0</span>
               <span className={styles.modelStatus}></span>
             </div>
@@ -164,7 +199,13 @@ export default function AIView() {
             </div>
           </div>
 
-          <div className={styles.chatMessages} role="log" aria-live="polite">
+          <div
+            className={styles.chatMessages}
+            role="log"
+            aria-live="polite"
+            ref={messagesRef}
+            onScroll={handleMessagesScroll}
+          >
             {messages.map((msg) => (
               <div
                 key={msg.id}

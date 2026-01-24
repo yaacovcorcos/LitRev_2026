@@ -3,7 +3,7 @@
 import { defaultProjects } from "@/data/projects";
 import { loadProjects, saveProjects } from "@/lib/storage";
 import { Project } from "@/types/project";
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 
 type ProjectsContextValue = {
   projects: Project[];
@@ -24,37 +24,44 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
     setProjects(seeded.length ? seeded : defaultProjects);
   }, []);
 
-  const addProject = (project: Project) => {
+  const addProject = useCallback((project: Project) => {
     setProjects((prev) => {
       const next = [project, ...prev];
       saveProjects(next);
       return next;
     });
-  };
+  }, []);
 
-  const deleteProject = (id: string) => {
+  const deleteProject = useCallback((id: string) => {
     setProjects((prev) => {
       const next = prev.filter((project) => project.id !== id);
       saveProjects(next);
       return next.length ? next : defaultProjects;
     });
-  };
+  }, []);
 
-  const refresh = () => {
+  const refresh = useCallback(() => {
     const loaded = loadProjects(defaultProjects);
     setProjects(loaded.length ? loaded : defaultProjects);
-  };
+  }, []);
 
   const getProjectById = useMemo(
     () => (id: string) => projects.find((p) => p.id === id),
     [projects]
   );
 
-  return (
-    <ProjectsContext.Provider value={{ projects, addProject, deleteProject, getProjectById, refresh }}>
-      {children}
-    </ProjectsContext.Provider>
+  const value = useMemo(
+    () => ({
+      projects,
+      addProject,
+      deleteProject,
+      getProjectById,
+      refresh,
+    }),
+    [projects, addProject, deleteProject, getProjectById, refresh]
   );
+
+  return <ProjectsContext.Provider value={value}>{children}</ProjectsContext.Provider>;
 }
 
 export function useProjects() {

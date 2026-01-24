@@ -11,6 +11,7 @@ import { Project } from "@/types/project";
 
 const workspaceNav = [
   { key: "overview", label: "Overview", icon: "dashboard" },
+  { key: "draft", label: "Draft", icon: "edit_note" },
   { key: "library", label: "Evidence Library", icon: "article" },
   { key: "screening", label: "Screening", icon: "fact_check" },
   { key: "synthesis", label: "Synthesis", icon: "insights" },
@@ -320,13 +321,13 @@ export default function ProjectDetail() {
   };
 
   return (
-    <AppShell activeNav="projects" noMainPadding>
-      <div className={styles.layout}>
+    <AppShell activeNav="projects" noMainPadding initiallyCollapsed>
+      <div className={styles.layout} data-project-collapsed={sidebarCollapsed}>
         <aside className={`${styles.sidebar} ${sidebarCollapsed ? styles.collapsed : ""}`} aria-label="Project sidebar">
           <div className={styles.sidebarHeader}>
             <button
               className={styles.sidebarToggle}
-              aria-label="Toggle Project Sidebar"
+              aria-label={sidebarCollapsed ? "Expand Project Sidebar" : "Collapse Project Sidebar"}
               aria-expanded={!sidebarCollapsed}
               aria-controls={sidebarContentId}
               onClick={() => setSidebarCollapsed((prev) => !prev)}
@@ -355,8 +356,14 @@ export default function ProjectDetail() {
                     key={item.key}
                     className={`${styles.navItem} ${activeItem === item.key ? styles.activeNav : ""}`}
                     type="button"
-                    onClick={() => setActiveItem(item.key)}
-                    aria-pressed={activeItem === item.key}
+                    onClick={() => {
+                      if (item.key === "draft") {
+                        router.push(`/project/${project.id}/draft`);
+                        return;
+                      }
+                      setActiveItem(item.key);
+                    }}
+                    aria-pressed={item.key === "draft" ? false : activeItem === item.key}
                     aria-label={item.label}
                   >
                     <span className={`material-icons-round ${styles.navIcon}`}>{item.icon}</span>
@@ -397,19 +404,29 @@ export default function ProjectDetail() {
             title={project.name}
             subtitle={project.description || "No description provided."}
             actions={
-              <button
-                className="header-btn header-btn-danger"
-                type="button"
-                onClick={() => {
-                  if (confirm("Delete this project?")) {
-                    deleteProject(project.id);
-                    router.push("/");
-                  }
-                }}
-              >
-                <span className="material-icons-round">delete</span>
-                Delete Project
-              </button>
+              <>
+                <button
+                  className="header-btn header-btn-primary"
+                  type="button"
+                  onClick={() => router.push(`/project/${project.id}/draft`)}
+                >
+                  <span className="material-icons-round">edit_note</span>
+                  Draft
+                </button>
+                <button
+                  className="header-btn header-btn-danger"
+                  type="button"
+                  onClick={() => {
+                    if (confirm("Delete this project?")) {
+                      deleteProject(project.id);
+                      router.push("/");
+                    }
+                  }}
+                >
+                  <span className="material-icons-round">delete</span>
+                  Delete Project
+                </button>
+              </>
             }
           />
           <div className={styles.mainBody}>{renderActiveSection()}</div>

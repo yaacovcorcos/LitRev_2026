@@ -22,6 +22,7 @@ function HomeContent() {
   const shouldOpenFromQuery = searchParams.get("create") === "new";
   const [isModalOpen, setModalOpen] = useState(() => shouldOpenFromQuery);
   const modalRef = useRef<HTMLDivElement | null>(null);
+  const formRef = useRef<HTMLFormElement | null>(null);
   const lastFocusRef = useRef<HTMLElement | null>(null);
 
   const sortedProjects = useMemo(() => {
@@ -58,6 +59,9 @@ function HomeContent() {
 
   const closeModal = () => {
     setModalOpen(false);
+    if (formRef.current) {
+      formRef.current.reset();
+    }
   };
 
   const handleCreateProject = (name: string, description: string) => {
@@ -110,7 +114,7 @@ function HomeContent() {
 
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        setModalOpen(false);
+        closeModal();
       } else if (e.key === "Tab") {
         if (e.shiftKey) {
           if (document.activeElement === first) {
@@ -137,6 +141,15 @@ function HomeContent() {
       lastFocusRef.current.focus();
       lastFocusRef.current = null;
     }
+  }, [isModalOpen]);
+
+  useEffect(() => {
+    if (!isModalOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
   }, [isModalOpen]);
 
   return (
@@ -167,6 +180,11 @@ function HomeContent() {
         className={`modal-overlay ${isModalOpen ? "active" : ""}`}
         aria-hidden={!isModalOpen}
         ref={modalRef}
+        onClick={(event) => {
+          if (event.target === event.currentTarget) {
+            closeModal();
+          }
+        }}
       >
         <div className="modal-glass" role="dialog" aria-modal="true" aria-labelledby="createProjectTitle">
           <div className="modal-header">
@@ -176,6 +194,7 @@ function HomeContent() {
             </button>
           </div>
           <form
+            ref={formRef}
             onSubmit={(e) => {
               e.preventDefault();
               const formData = new FormData(e.currentTarget);
