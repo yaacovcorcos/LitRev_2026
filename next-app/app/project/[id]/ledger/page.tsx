@@ -27,7 +27,7 @@ export default function LedgerPage() {
             <AppShell activeNav="projects">
                 <div className={styles.notFound}>
                     <h1>Project not found</h1>
-                    <Link href="/" className="btn btn-primary" style={{ width: "auto", padding: "12px 24px" }}>
+                    <Link href="/" className="btn-minimal" style={{ width: "auto", padding: "12px 24px" }}>
                         Back to Dashboard
                     </Link>
                 </div>

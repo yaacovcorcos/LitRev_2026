@@ -124,10 +124,11 @@
 }
 
 .project-nav-item.active {
-    background: rgba(255, 255, 255, 0.6);
-    color: var(--text-primary);
+    background: rgba(255, 255, 255, 0.8);
+    color: var(--accent-primary);
+    border: 1px solid var(--accent-primary);
     font-weight: 600;
-    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.05);
+    box-shadow: 0 4px 12px rgba(217, 116, 89, 0.1);
 }
 
 .project-nav-item .material-icons-round {

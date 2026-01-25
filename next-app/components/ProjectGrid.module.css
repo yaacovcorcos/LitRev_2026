@@ -10,12 +10,10 @@
     gap: 16px;
 }
 
-
-
 .card {
     background: var(--glass-bg);
     border: 1px solid var(--glass-border);
-    border-radius: 22px;
+    border-radius: var(--radius-lg);
     padding: 20px;
     display: flex;
     flex-direction: column;
@@ -107,7 +105,7 @@
     width: auto;
     gap: 6px;
     padding: 8px 16px;
-    border-radius: 0 22px 0 16px;
+    border-radius: 0 var(--radius-lg) 0 var(--radius-md);
     font-size: 11px;
     font-weight: 600;
     z-index: 1;
@@ -214,6 +212,37 @@
     white-space: nowrap;
 }
 
+.viewProjectBtn {
+    background: rgba(255, 255, 255, 0.5);
+    border: 1px solid var(--glass-border);
+    color: var(--accent-primary);
+    padding: 8px 18px;
+    font-size: 13px;
+    font-weight: 600;
+    border-radius: var(--radius-lg);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    text-decoration: none;
+    text-align: center;
+    width: fit-content;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: auto;
+    align-self: flex-start;
+}
+
+.viewProjectBtn:hover {
+    background: rgba(255, 255, 255, 0.9);
+    color: var(--accent-primary);
+    border-color: var(--accent-primary);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(217, 116, 89, 0.15);
+}
+
+.viewProjectBtn:active {
+    transform: translateY(0);
+}
+
 .listViewCard {
     flex-direction: row;
     align-items: center;
@@ -240,10 +269,12 @@
 }
 
 .listViewButton {
-    width: 140px;
-    padding: 10px 0;
+    width: auto;
+    min-width: 120px;
+    padding: 8px 20px;
     flex-shrink: 0;
     margin-left: auto;
+    margin-top: 0;
 }
 
 .listViewNewCard {

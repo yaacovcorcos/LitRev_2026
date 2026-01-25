@@ -44,10 +44,9 @@ export function ProjectGrid({ projects, viewMode, onNewProject }: ProjectGridPro
         const isList = viewMode === "list";
         const cardClass = `${styles.card} ${viewMode === "list" ? styles.listViewCard : ""}`;
         const titleClass = `${styles.projectTitle} ${viewMode === "list" ? styles.listViewCardTitle : ""}`;
-        const statusClass = `${styles.cardStatus} ${isHarvesting ? styles.statusHarvesting : styles.statusReady} ${
-          viewMode === "list" ? styles.listViewStatus : ""
-        }`;
-        const buttonClass = `btn btn-primary ${viewMode === "list" ? styles.listViewButton : ""}`;
+        const statusClass = `${styles.cardStatus} ${isHarvesting ? styles.statusHarvesting : styles.statusReady} ${viewMode === "list" ? styles.listViewStatus : ""
+          }`;
+        const buttonClass = `${styles.viewProjectBtn} ${viewMode === "list" ? styles.listViewButton : ""}`;
         const paperCount = isHarvesting ? p.progress?.papers ?? 0 : p.papers ?? 0;
         const paperCountInline = !isList && isHarvesting;
 

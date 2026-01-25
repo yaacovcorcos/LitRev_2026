@@ -30,10 +30,10 @@
     --status-harvesting-text: #9c724f;
 
     /* Spacing & Radius */
-    --radius-lg: 22px;
-    /* Reduced to 22px as requested */
-    --radius-md: 16px;
-    --radius-sm: 8px;
+    --radius-lg: 10px;
+    /* Reduced even further as requested */
+    --radius-md: 8px;
+    --radius-sm: 4px;
     --gap-md: 26px;
     /* Updated to 26px */
     --control-height: 44px;

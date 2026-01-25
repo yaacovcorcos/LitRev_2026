@@ -160,8 +160,9 @@
 }
 
 .actionBtn:hover {
-    background: var(--glass-bg);
+    background: rgba(255, 255, 255, 0.8);
     color: var(--accent-primary);
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.04);
 }
 
 .actionBtn .material-icons-round {

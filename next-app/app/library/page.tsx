@@ -167,7 +167,7 @@ export default function LibraryView() {
                     <h3 className={cardStyles.projectTitle}>{item.title}</h3>
                     <p className={cardStyles.cardSubtitle}>Updated {updatedLabel}</p>
                     <p className={cardStyles.cardDescription}>{item.summary}</p>
-                    <button className="btn btn-primary" type="button">
+                    <button className="btn-minimal" type="button">
                       Open
                     </button>
                   </div>

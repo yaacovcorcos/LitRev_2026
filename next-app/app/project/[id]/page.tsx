@@ -52,9 +52,26 @@ type WorkstationCardProps = {
   preview?: React.ReactNode;
 };
 
-function WorkstationCard({ title, subtitle, description, icon, href, preview }: WorkstationCardProps) {
+function WorkstationCard({ title, subtitle, description, icon, href }: WorkstationCardProps) {
+  const router = useRouter();
+
   return (
-    <Link href={href} className={styles.workstationCard}>
+    <div
+      className={styles.workstationCard}
+      onClick={(e) => {
+        const target = e.target as HTMLElement;
+        if (target.closest("a")) return;
+        router.push(href);
+      }}
+      role="link"
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          router.push(href);
+        }
+      }}
+    >
       <div className={styles.workstationIconCircle}>
         <span className="material-icons-round">{icon}</span>
       </div>
@@ -63,12 +80,10 @@ function WorkstationCard({ title, subtitle, description, icon, href, preview }: 
         <h3 className={styles.workstationTitle}>{title}</h3>
         <p className={styles.workstationDesc}>{description}</p>
       </div>
-      {preview && <div className={styles.workstationPreview}>{preview}</div>}
-      <div className={styles.workstationAction}>
-        <span>Enter</span>
-        <span className="material-icons-round">arrow_forward</span>
-      </div>
-    </Link>
+      <Link href={href} className={styles.workstationAction}>
+        Enter
+      </Link>
+    </div>
   );
 }
 
