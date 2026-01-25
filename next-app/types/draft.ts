@@ -35,11 +35,6 @@ export const DRAFT_SECTIONS = [
     placeholder: "Add your references for this manuscript.",
   },
   {
-    key: "acknowledgments",
-    label: "Acknowledgments",
-    placeholder: "Recognize contributors and support.",
-  },
-  {
     key: "funding",
     label: "Funding",
     placeholder: "List funding sources and grant information.",
@@ -58,6 +53,7 @@ export const DRAFT_SECTIONS = [
 
 export type DraftSectionKey = (typeof DRAFT_SECTIONS)[number]["key"];
 export type DraftSection = (typeof DRAFT_SECTIONS)[number];
+export type DraftSectionId = string;
 
 export type DraftMode = "section" | "full";
 
@@ -69,7 +65,6 @@ export const DEFAULT_SECTION_ORDER: DraftSectionKey[] = [
   "discussion",
   "conclusion",
   "references",
-  "acknowledgments",
 ];
 
 export const OPTIONAL_SECTION_KEYS: DraftSectionKey[] = [

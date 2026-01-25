@@ -10,12 +10,11 @@ import { ControlsBar } from "@/components/ControlsBar";
 import { SortMode, ViewMode } from "@/types/view";
 import { AppShell } from "@/components/AppShell";
 import { useProjects } from "@/contexts/ProjectsContext";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import layoutStyles from "./home.module.css";
 
 function HomeContent() {
   const { projects, addProject, refresh } = useProjects();
-  const router = useRouter();
   const searchParams = useSearchParams();
   const [sortMode, setSortMode] = useState<SortMode>("modified");
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
@@ -96,10 +95,9 @@ function HomeContent() {
   }, []);
 
   useEffect(() => {
-    if (shouldOpenFromQuery) {
-      router.replace("/");
-    }
-  }, [router, shouldOpenFromQuery]);
+    if (!shouldOpenFromQuery || typeof window === "undefined") return;
+    window.history.replaceState(null, "", "/");
+  }, [shouldOpenFromQuery]);
 
   useEffect(() => {
     if (!isModalOpen || !modalRef.current) return;
