@@ -13,6 +13,7 @@ import {
 } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
+import { BaseBackButton } from "@/components/BaseBackButton";
 import { AppShell } from "@/components/AppShell";
 import { useProjects } from "@/contexts/ProjectsContext";
 import { DRAFT_SECTIONS, OPTIONAL_SECTION_KEYS, DraftMode, DraftSectionId, DraftSectionKey } from "@/types/draft";
@@ -1491,6 +1492,7 @@ function DraftContent() {
           <section className={styles.center} aria-label="Draft editor">
             <div className={styles.centerHeader}>
               <div className={styles.centerTitle}>
+                <BaseBackButton href={`/project/${id}`} className={styles.draftBackBtn} />
                 <span className="material-icons-round">edit</span>
                 {activeSectionLabel}
               </div>

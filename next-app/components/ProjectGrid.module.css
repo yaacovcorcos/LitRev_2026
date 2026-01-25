@@ -10,24 +10,7 @@
     gap: 16px;
 }
 
-.listViewNewCard {
-    flex-direction: row;
-    align-items: center;
-    height: auto;
-    padding: 16px 24px;
-    gap: 16px;
-}
 
-.listViewNewCard .iconCircle {
-    width: 40px;
-    height: 40px;
-}
-
-.listViewNewCard .newProjectContent {
-    flex-direction: row;
-    gap: 16px;
-    text-align: left;
-}
 
 .card {
     background: var(--glass-bg);
@@ -261,6 +244,41 @@
     padding: 10px 0;
     flex-shrink: 0;
     margin-left: auto;
+}
+
+.listViewNewCard {
+    flex-direction: row;
+    align-items: center;
+    height: auto !important;
+    min-height: 80px;
+    padding: 16px 24px;
+    gap: 16px;
+}
+
+.listViewNewCard .iconCircle {
+    width: 36px;
+    height: 36px;
+    min-width: 36px;
+}
+
+.listViewNewCard .plusIcon {
+    font-size: 24px;
+    margin-top: -2px;
+}
+
+.listViewNewCard .newProjectContent {
+    flex-direction: row;
+    gap: 16px;
+    text-align: left;
+    align-items: center;
+}
+
+.listViewNewCard .newProjectTitle {
+    font-size: 16px;
+}
+
+.listViewNewCard .newProjectCopy {
+    display: none;
 }
 
 .metaInfo {

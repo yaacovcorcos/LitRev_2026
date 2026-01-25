@@ -4,6 +4,7 @@ import { useParams, useRouter } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
 import { useProjects } from "@/contexts/ProjectsContext";
 import Link from "next/link";
+import { BaseBackButton } from "@/components/BaseBackButton";
 import styles from "./ledger.module.css";
 
 const mockStudies = [
@@ -40,12 +41,11 @@ export default function LedgerPage() {
         <AppShell activeNav="projects">
             <div className={styles.layout}>
                 <header className={styles.header}>
-                    <button className={styles.backBtn} onClick={() => router.push(`/project/${id}`)}>
-                        <span className="material-icons-round">arrow_back</span>
-                        Back to Overview
-                    </button>
                     <div className={styles.headerText}>
-                        <span className={styles.eyebrow}>Evidence Ledger</span>
+                        <div style={{ display: "flex", alignItems: "center" }}>
+                            <BaseBackButton href={`/project/${project.id}`} />
+                            <span className={styles.eyebrow}>Evidence Ledger</span>
+                        </div>
                         <h1>{project.name}</h1>
                     </div>
                     <div className={styles.headerActions}>

@@ -1,0 +1,29 @@
+.backButton {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    color: var(--text-secondary);
+    transition: all 0.2s ease;
+    text-decoration: none;
+    flex-shrink: 0;
+    margin-right: 12px;
+    /* Ensure it doesn't shift layout abruptly */
+    transform-origin: center;
+}
+
+.backButton:hover {
+    background: rgba(0, 0, 0, 0.05);
+    color: var(--text-primary);
+    transform: translateX(-2px);
+}
+
+.backButton:active {
+    transform: translateX(-4px) scale(0.95);
+}
+
+.backButton span {
+    font-size: 20px;
+}

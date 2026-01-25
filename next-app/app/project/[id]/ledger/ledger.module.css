@@ -21,26 +21,6 @@
     gap: 24px;
 }
 
-.backBtn {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 10px 16px;
-    background: var(--glass-bg);
-    border: 1px solid var(--glass-border);
-    border-radius: var(--radius-md);
-    color: var(--text-secondary);
-    font-size: 14px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.2s ease;
-}
-
-.backBtn:hover {
-    background: rgba(255, 255, 255, 0.8);
-    color: var(--text-primary);
-}
-
 .headerText {
     display: flex;
     flex-direction: column;

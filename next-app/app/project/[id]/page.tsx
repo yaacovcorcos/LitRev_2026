@@ -140,6 +140,20 @@ export default function ProjectDetail() {
         {/* Workstations Grid */}
         <section className={styles.workstationsGrid}>
           <WorkstationCard
+            title="Draft Workspace"
+            subtitle="The Manuscript"
+            description="Write your article with AI and linked evidence."
+            icon="edit_note"
+            href={`/project/${project.id}/draft`}
+            preview={
+              <div className={styles.previewStepper}>
+                <span className={styles.stepDone}>Abstract ✓</span>
+                <span className={styles.stepActive}>Intro ◐</span>
+                <span className={styles.stepPending}>Methods ○</span>
+              </div>
+            }
+          />
+          <WorkstationCard
             title="Study Protocol"
             subtitle="The Blueprint"
             description="Define PICO, eligibility criteria, and search strategy."
@@ -164,20 +178,6 @@ export default function ProjectDetail() {
                   <div className={styles.previewProgressFill} style={{ width: "32%" }} />
                 </div>
                 <span>45 / 142 extracted</span>
-              </div>
-            }
-          />
-          <WorkstationCard
-            title="Draft Workspace"
-            subtitle="The Manuscript"
-            description="Write your article with AI and linked evidence."
-            icon="edit_note"
-            href={`/project/${project.id}/draft`}
-            preview={
-              <div className={styles.previewStepper}>
-                <span className={styles.stepDone}>Abstract ✓</span>
-                <span className={styles.stepActive}>Intro ◐</span>
-                <span className={styles.stepPending}>Methods ○</span>
               </div>
             }
           />
