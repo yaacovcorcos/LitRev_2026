@@ -1,26 +1,25 @@
 "use client";
 
-import { useParams, useRouter } from "next/navigation";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useParams } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
 import { useProjects } from "@/contexts/ProjectsContext";
 import Link from "next/link";
 import { BaseBackButton } from "@/components/BaseBackButton";
 import styles from "./ledger.module.css";
-
-const mockStudies = [
-    { id: "s1", title: "Deep Learning in Medical Imaging", authors: "Litjens et al.", year: 2017, status: "extracted", quality: "High" },
-    { id: "s2", title: "Radiologist-level Pneumonia Detection", authors: "Rajpurkar et al.", year: 2018, status: "extracted", quality: "High" },
-    { id: "s3", title: "AI for Chest X-ray Screening", authors: "Wang et al.", year: 2020, status: "pending", quality: "-" },
-    { id: "s4", title: "Transfer Learning in Radiology", authors: "Shin et al.", year: 2016, status: "extracted", quality: "Medium" },
-    { id: "s5", title: "Attention Mechanisms for CT Scans", authors: "Chen et al.", year: 2021, status: "pending", quality: "-" },
-    { id: "s6", title: "Multi-modal Imaging Analysis", authors: "Kim et al.", year: 2022, status: "pending", quality: "-" },
-];
+import { useLedger } from "@/contexts/LedgerContext";
 
 export default function LedgerPage() {
     const { id } = useParams<{ id: string }>();
-    const router = useRouter();
     const { getProjectById } = useProjects();
+    const { getStudiesByProject, updateStudies } = useLedger();
     const project = id ? getProjectById(id) : undefined;
+    const studies = id ? getStudiesByProject(id) : [];
+    const [selectedIds, setSelectedIds] = useState<string[]>([]);
+    const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
+    const allSelected = studies.length > 0 && selectedIds.length === studies.length;
+    const hasSelection = selectedIds.length > 0;
+    const selectAllRef = useRef<HTMLInputElement | null>(null);
 
     if (!project) {
         return (
@@ -35,7 +34,48 @@ export default function LedgerPage() {
         );
     }
 
-    const extractedCount = mockStudies.filter((s) => s.status === "extracted").length;
+    const extractedCount = studies.filter((s) => s.status === "extracted").length;
+
+    useEffect(() => {
+        if (!selectAllRef.current) return;
+        selectAllRef.current.indeterminate = hasSelection && !allSelected;
+    }, [hasSelection, allSelected]);
+
+    useEffect(() => {
+        setSelectedIds((prev) => {
+            const next = prev.filter((studyId) => studies.some((study) => study.id === studyId));
+            return next.length === prev.length ? prev : next;
+        });
+    }, [studies]);
+
+    const toggleStudySelection = (studyId: string) => {
+        setSelectedIds((prev) => (
+            prev.includes(studyId) ? prev.filter((id) => id !== studyId) : [...prev, studyId]
+        ));
+    };
+
+    const toggleSelectAll = () => {
+        if (allSelected) {
+            setSelectedIds([]);
+            return;
+        }
+        setSelectedIds(studies.map((study) => study.id));
+    };
+
+    const handleDeleteStudy = (studyId: string) => {
+        if (!id) return;
+        const confirmed = window.confirm("Delete this study from the evidence ledger?");
+        if (!confirmed) return;
+        updateStudies(id, studies.filter((study) => study.id !== studyId));
+    };
+
+    const handleBulkDelete = () => {
+        if (!id || !hasSelection) return;
+        const confirmed = window.confirm(`Delete ${selectedIds.length} selected studies?`);
+        if (!confirmed) return;
+        updateStudies(id, studies.filter((study) => !selectedSet.has(study.id)));
+        setSelectedIds([]);
+    };
 
     return (
         <AppShell activeNav="projects">
@@ -49,6 +89,12 @@ export default function LedgerPage() {
                         <h1>{project.name}</h1>
                     </div>
                     <div className={styles.headerActions}>
+                        {hasSelection ? (
+                            <button className="header-btn header-btn-danger" onClick={handleBulkDelete}>
+                                <span className="material-icons-round">delete</span>
+                                Delete {selectedIds.length} Selected
+                            </button>
+                        ) : null}
                         <button className="header-btn">
                             <span className="material-icons-round">upload_file</span>
                             Import Studies
@@ -59,7 +105,7 @@ export default function LedgerPage() {
                 <div className={styles.statsRow}>
                     <div className={styles.statChip}>
                         <span className="material-icons-round">description</span>
-                        <span>{mockStudies.length} total studies</span>
+                        <span>{studies.length} total studies</span>
                     </div>
                     <div className={styles.statChip}>
                         <span className="material-icons-round">check_circle</span>
@@ -67,14 +113,30 @@ export default function LedgerPage() {
                     </div>
                     <div className={styles.statChip}>
                         <span className="material-icons-round">pending</span>
-                        <span>{mockStudies.length - extractedCount} pending</span>
+                        <span>{studies.length - extractedCount} pending</span>
                     </div>
+                    {hasSelection ? (
+                        <div className={styles.statChip}>
+                            <span className="material-icons-round">checklist</span>
+                            <span>{selectedIds.length} selected</span>
+                        </div>
+                    ) : null}
                 </div>
 
                 <div className={styles.tableWrapper}>
                     <table className={styles.ledgerTable}>
                         <thead>
                             <tr>
+                                <th className={styles.selectCell}>
+                                    <input
+                                        ref={selectAllRef}
+                                        className={styles.selectCheckbox}
+                                        type="checkbox"
+                                        checked={allSelected}
+                                        onChange={toggleSelectAll}
+                                        aria-label={allSelected ? "Deselect all studies" : "Select all studies"}
+                                    />
+                                </th>
                                 <th>Study</th>
                                 <th>Authors</th>
                                 <th>Year</th>
@@ -84,8 +146,17 @@ export default function LedgerPage() {
                             </tr>
                         </thead>
                         <tbody>
-                            {mockStudies.map((study) => (
-                                <tr key={study.id}>
+                            {studies.map((study) => (
+                                <tr key={study.id} className={selectedSet.has(study.id) ? styles.rowSelected : undefined}>
+                                    <td className={styles.selectCell}>
+                                        <input
+                                            className={styles.selectCheckbox}
+                                            type="checkbox"
+                                            checked={selectedSet.has(study.id)}
+                                            onChange={() => toggleStudySelection(study.id)}
+                                            aria-label={`Select ${study.title}`}
+                                        />
+                                    </td>
                                     <td className={styles.titleCell}>{study.title}</td>
                                     <td>{study.authors}</td>
                                     <td>{study.year}</td>
@@ -105,6 +176,14 @@ export default function LedgerPage() {
                                         </button>
                                         <button className={styles.actionBtn} title="Extract Data">
                                             <span className="material-icons-round">edit_note</span>
+                                        </button>
+                                        <button
+                                            className={styles.actionBtn}
+                                            title="Delete Study"
+                                            aria-label={`Delete ${study.title}`}
+                                            onClick={() => handleDeleteStudy(study.id)}
+                                        >
+                                            <span className="material-icons-round">delete</span>
                                         </button>
                                     </td>
                                 </tr>
