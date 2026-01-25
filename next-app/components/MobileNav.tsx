@@ -19,6 +19,7 @@ export function MobileNav({ links, activeNav = "projects", onNewProject }: Mobil
             className={`${styles.item} ${activeNav === link.navKey ? styles.active : ""}`}
             data-nav={link.navKey}
             onClick={onNewProject}
+            aria-current={activeNav === link.navKey ? "page" : undefined}
           >
             <span className={`material-icons-round ${styles.itemIcon}`}>{link.icon}</span>
             <span>{link.label}</span>
@@ -29,6 +30,7 @@ export function MobileNav({ links, activeNav = "projects", onNewProject }: Mobil
             href={link.href}
             className={`${styles.item} ${activeNav === link.navKey ? styles.active : ""}`}
             data-nav={link.navKey}
+            aria-current={activeNav === link.navKey ? "page" : undefined}
           >
             <span className={`material-icons-round ${styles.itemIcon}`}>{link.icon}</span>
             <span>{link.label}</span>

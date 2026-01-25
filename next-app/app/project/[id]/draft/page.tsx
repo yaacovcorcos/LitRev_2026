@@ -1,11 +1,21 @@
 "use client";
 
-import { CSSProperties, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  CSSProperties,
+  Suspense,
+  type DragEvent as ReactDragEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { AppShell } from "@/components/AppShell";
 import { useProjects } from "@/contexts/ProjectsContext";
-import { DRAFT_SECTIONS, DraftMode, DraftSectionKey } from "@/types/draft";
+import { DRAFT_SECTIONS, OPTIONAL_SECTION_KEYS, DraftMode, DraftSectionKey } from "@/types/draft";
 import {
   CopilotMessage,
   DraftState,
@@ -213,6 +223,7 @@ function FullSectionEditor({
 }: FullSectionEditorProps) {
   const editor = useEditor(
     {
+      immediatelyRender: false,
       extensions: [
         StarterKit,
         Underline,
@@ -258,11 +269,18 @@ function DraftContent() {
   const [draft, setDraft] = useState<DraftState>(() => {
     const loaded = loadDraftState(id);
     const mode = isDraftMode(queryMode) ? queryMode : loaded.mode;
-    const section = isDraftSectionKey(querySection) ? querySection : loaded.activeSection;
+    const order = [...loaded.sectionOrder];
+    const sectionFromQuery = isDraftSectionKey(querySection) ? querySection : null;
+    if (sectionFromQuery && !order.includes(sectionFromQuery)) {
+      order.push(sectionFromQuery);
+    }
+    const candidate = sectionFromQuery ?? loaded.activeSection;
+    const activeSection = order.includes(candidate) ? candidate : order[0] ?? loaded.activeSection;
     return {
       ...loaded,
       mode,
-      activeSection: section,
+      sectionOrder: order,
+      activeSection,
     };
   });
   const [saveStatus, setSaveStatus] = useState<"saved" | "saving">("saved");
@@ -274,6 +292,10 @@ function DraftContent() {
   const sectionElRef = useRef<Record<DraftSectionKey, HTMLDivElement | null>>({} as Record<
     DraftSectionKey,
     HTMLDivElement | null
+  >);
+  const sectionTabRefs = useRef<Record<DraftSectionKey, HTMLButtonElement | null>>({} as Record<
+    DraftSectionKey,
+    HTMLButtonElement | null
   >);
 
   const activeSectionRef = useRef<DraftSectionKey>(draft.activeSection);
@@ -287,12 +309,48 @@ function DraftContent() {
 
   const [isAddEvidenceOpen, setAddEvidenceOpen] = useState(false);
   const [evidenceQuery, setEvidenceQuery] = useState("");
+  const addEvidenceRef = useRef<HTMLDivElement | null>(null);
+  const addEvidenceLastFocusRef = useRef<HTMLElement | null>(null);
+
+  const [isAddSectionOpen, setAddSectionOpen] = useState(false);
+  const addSectionRef = useRef<HTMLDivElement | null>(null);
+  const dragKeyRef = useRef<DraftSectionKey | null>(null);
+  const [dragOverKey, setDragOverKey] = useState<DraftSectionKey | null>(null);
+  const [dragOverPosition, setDragOverPosition] = useState<"before" | "after" | null>(null);
+  const [draggingKey, setDraggingKey] = useState<DraftSectionKey | null>(null);
 
   const [copilotInput, setCopilotInput] = useState("");
   const copilotListRef = useRef<HTMLDivElement | null>(null);
+  const copilotAutoScrollRef = useRef(true);
+
+  const orderedSections = useMemo(
+    () =>
+      draft.sectionOrder
+        .map((key) => DRAFT_SECTIONS.find((section) => section.key === key))
+        .filter((section): section is (typeof DRAFT_SECTIONS)[number] => Boolean(section)),
+    [draft.sectionOrder]
+  );
+
+  const sectionKeys = useMemo(() => orderedSections.map((section) => section.key), [orderedSections]);
+
+  const availableSectionKeys = useMemo(
+    () => OPTIONAL_SECTION_KEYS.filter((key) => !draft.sectionOrder.includes(key)),
+    [draft.sectionOrder]
+  );
+
+  const availableSections = useMemo(
+    () =>
+      availableSectionKeys
+        .map((key) => DRAFT_SECTIONS.find((section) => section.key === key))
+        .filter((section): section is (typeof DRAFT_SECTIONS)[number] => Boolean(section)),
+    [availableSectionKeys]
+  );
+  const hasAvailableSections = availableSections.length > 0;
 
   const activeSectionMeta = useMemo(() => DRAFT_SECTIONS.find((s) => s.key === draft.activeSection), [draft.activeSection]);
   const activeSectionLabel = activeSectionMeta?.label ?? "Draft";
+  const ledgerPanelId = "draft-ledger-panel";
+  const copilotPanelId = "draft-copilot-panel";
 
   const scheduleSave = useCallback(
     (next: DraftState) => {
@@ -428,6 +486,74 @@ function DraftContent() {
     }
   };
 
+  const handleAddSection = (key: DraftSectionKey) => {
+    updateDraft((prev) => {
+      if (prev.sectionOrder.includes(key)) return prev;
+      const next = [...prev.sectionOrder];
+      const activeIndex = next.indexOf(prev.activeSection);
+      const insertIndex = activeIndex >= 0 ? activeIndex + 1 : next.length;
+      next.splice(insertIndex, 0, key);
+      return {
+        ...prev,
+        sectionOrder: next,
+        activeSection: key,
+      };
+    });
+    setAddSectionOpen(false);
+    setTimeout(() => {
+      sectionTabRefs.current[key]?.focus();
+    }, 0);
+  };
+
+  const handleDragStart = (event: ReactDragEvent<HTMLButtonElement>, key: DraftSectionKey) => {
+    dragKeyRef.current = key;
+    setDraggingKey(key);
+    setDragOverKey(null);
+    setDragOverPosition(null);
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", key);
+  };
+
+  const handleDragOver = (event: ReactDragEvent<HTMLButtonElement>, key: DraftSectionKey) => {
+    const dragging = dragKeyRef.current;
+    if (!dragging || dragging === key) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    const rect = event.currentTarget.getBoundingClientRect();
+    const offset = event.clientX - rect.left;
+    const position = offset > rect.width / 2 ? "after" : "before";
+    setDragOverKey(key);
+    setDragOverPosition(position);
+  };
+
+  const handleDrop = (event: ReactDragEvent<HTMLButtonElement>, targetKey: DraftSectionKey) => {
+    event.preventDefault();
+    const dragging = dragKeyRef.current;
+    if (!dragging || dragging === targetKey) return;
+    const position = dragOverPosition ?? "before";
+    updateDraft((prev) => {
+      if (!prev.sectionOrder.includes(dragging)) return prev;
+      const next = prev.sectionOrder.filter((key) => key !== dragging);
+      const targetIndex = next.indexOf(targetKey);
+      if (targetIndex === -1) return prev;
+      const insertIndex = position === "after" ? targetIndex + 1 : targetIndex;
+      next.splice(insertIndex, 0, dragging);
+      return {
+        ...prev,
+        sectionOrder: next,
+      };
+    });
+    setDragOverKey(null);
+    setDragOverPosition(null);
+  };
+
+  const handleDragEnd = () => {
+    dragKeyRef.current = null;
+    setDraggingKey(null);
+    setDragOverKey(null);
+    setDragOverPosition(null);
+  };
+
   const usedEvidenceIds = draft.ledgerBySection[draft.activeSection] ?? EMPTY_IDS;
   const usedEvidence = useMemo(
     () => MOCK_REFERENCES.filter((r) => usedEvidenceIds.includes(r.id)),
@@ -501,6 +627,7 @@ function DraftContent() {
   const handleCopilotSend = async () => {
     const text = copilotInput.trim();
     if (!text) return;
+    copilotAutoScrollRef.current = true;
     const now = new Date().toISOString();
     const userMsg: CopilotMessage = { id: `u-${Date.now()}`, sender: "user", text, createdAt: now };
 
@@ -532,9 +659,20 @@ function DraftContent() {
   };
 
   useEffect(() => {
+    copilotAutoScrollRef.current = true;
+  }, [draft.activeSection]);
+
+  useEffect(() => {
     if (!copilotListRef.current) return;
+    if (!copilotAutoScrollRef.current) return;
     copilotListRef.current.scrollTop = copilotListRef.current.scrollHeight;
   }, [draft.activeSection, draft.copilotBySection]);
+
+  const handleCopilotScroll = () => {
+    if (!copilotListRef.current) return;
+    const { scrollTop, clientHeight, scrollHeight } = copilotListRef.current;
+    copilotAutoScrollRef.current = scrollTop + clientHeight >= scrollHeight - 80;
+  };
 
   const insertCopilotText = (text: string) => {
     const editor = activeEditorRef.current;
@@ -560,8 +698,92 @@ function DraftContent() {
     [queueContentUpdate]
   );
 
+  const handleSectionKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>, index: number) => {
+    const lastIndex = sectionKeys.length - 1;
+    let nextIndex = index;
+
+    if (event.key === "ArrowRight") {
+      nextIndex = index === lastIndex ? 0 : index + 1;
+    } else if (event.key === "ArrowLeft") {
+      nextIndex = index === 0 ? lastIndex : index - 1;
+    } else if (event.key === "Home") {
+      nextIndex = 0;
+    } else if (event.key === "End") {
+      nextIndex = lastIndex;
+    } else {
+      return;
+    }
+
+    event.preventDefault();
+    const nextKey = sectionKeys[nextIndex];
+    handleSelectSection(nextKey);
+    requestAnimationFrame(() => {
+      sectionTabRefs.current[nextKey]?.focus();
+    });
+  };
+
+  useEffect(() => {
+    if (!isAddSectionOpen) return;
+    const onClick = (event: MouseEvent) => {
+      if (!addSectionRef.current) return;
+      if (event.target instanceof Node && !addSectionRef.current.contains(event.target)) {
+        setAddSectionOpen(false);
+      }
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setAddSectionOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onClick);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onClick);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [isAddSectionOpen]);
+
+  useEffect(() => {
+    if (!isAddEvidenceOpen || !addEvidenceRef.current) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    addEvidenceLastFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+
+    const focusable = addEvidenceRef.current.querySelectorAll<HTMLElement>(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    );
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    first?.focus();
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setAddEvidenceOpen(false);
+        return;
+      }
+      if (event.key !== "Tab") return;
+      if (event.shiftKey) {
+        if (document.activeElement === first) {
+          event.preventDefault();
+          last?.focus();
+        }
+      } else if (document.activeElement === last) {
+        event.preventDefault();
+        first?.focus();
+      }
+    };
+
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", onKeyDown);
+      addEvidenceLastFocusRef.current?.focus();
+    };
+  }, [isAddEvidenceOpen]);
+
   const sectionEditor = useEditor(
     {
+      immediatelyRender: false,
       extensions: [
         StarterKit,
         Underline,
@@ -677,7 +899,7 @@ function DraftContent() {
   const copilotMessages = draft.copilotBySection[draft.activeSection] ?? [];
 
   return (
-    <AppShell activeNav="projects" noMainPadding>
+    <AppShell activeNav="projects" noMainPadding initiallyCollapsed>
       <div className={styles.page}>
         <div className={styles.top}>
           <div className={styles.topLeft}>
@@ -691,28 +913,89 @@ function DraftContent() {
           </div>
 
           <div className={styles.topCenter}>
-            <div className={styles.sectionTabs} role="tablist" aria-label="Draft sections">
-              {DRAFT_SECTIONS.map((section) => (
+            <div className={styles.sectionTabsWrap}>
+              <div className={styles.sectionTabs} role="tablist" aria-label="Draft sections" aria-orientation="horizontal">
+                {orderedSections.map((section, index) => {
+                  const isDragging = draggingKey === section.key;
+                  const isDragOver = dragOverKey === section.key && draggingKey && draggingKey !== section.key;
+                  const dropClass =
+                    isDragOver && dragOverPosition === "after"
+                      ? styles.sectionTabDropAfter
+                      : isDragOver && dragOverPosition === "before"
+                        ? styles.sectionTabDropBefore
+                        : "";
+                  return (
+                    <button
+                      key={section.key}
+                      type="button"
+                      role="tab"
+                      draggable
+                      aria-grabbed={isDragging}
+                      aria-selected={draft.activeSection === section.key}
+                      aria-controls={draft.mode === "section" ? "draft-section-panel" : undefined}
+                      id={`draft-tab-${section.key}`}
+                      className={`${styles.sectionTab} ${draft.activeSection === section.key ? styles.sectionTabActive : ""} ${
+                        isDragging ? styles.sectionTabDragging : ""
+                      } ${dropClass}`}
+                      onClick={() => handleSelectSection(section.key)}
+                      onKeyDown={(event) => handleSectionKeyDown(event, index)}
+                      onDragStart={(event) => handleDragStart(event, section.key)}
+                      onDragOver={(event) => handleDragOver(event, section.key)}
+                      onDrop={(event) => handleDrop(event, section.key)}
+                      onDragEnd={handleDragEnd}
+                      tabIndex={draft.activeSection === section.key ? 0 : -1}
+                      ref={(el) => {
+                        sectionTabRefs.current[section.key] = el;
+                      }}
+                    >
+                      {section.label}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className={styles.addSection} ref={addSectionRef}>
                 <button
-                  key={section.key}
                   type="button"
-                  role="tab"
-                  aria-selected={draft.activeSection === section.key}
-                  className={`${styles.sectionTab} ${draft.activeSection === section.key ? styles.sectionTabActive : ""}`}
-                  onClick={() => handleSelectSection(section.key)}
+                  className={`${styles.addSectionButton} ${!hasAvailableSections ? styles.addSectionButtonDisabled : ""}`}
+                  onClick={() => {
+                    if (!hasAvailableSections) return;
+                    setAddSectionOpen((prev) => !prev);
+                  }}
+                  aria-haspopup="menu"
+                  aria-expanded={isAddSectionOpen}
+                  aria-label="Add section"
+                  disabled={!hasAvailableSections}
                 >
-                  {section.label}
+                  <span className="material-icons-round">add</span>
+                  Add section
                 </button>
-              ))}
+                {isAddSectionOpen ? (
+                  <div className={styles.sectionMenu} role="menu" aria-label="Add section">
+                    {availableSections.map((section) => (
+                      <button
+                        key={section.key}
+                        type="button"
+                        role="menuitem"
+                        className={styles.sectionMenuItem}
+                        onClick={() => handleAddSection(section.key)}
+                      >
+                        <span>{section.label}</span>
+                        <span className="material-icons-round">add</span>
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
             </div>
           </div>
 
           <div className={styles.topRight}>
-            <div className={styles.modeToggle} aria-label="Draft mode">
+            <div className={styles.modeToggle} role="group" aria-label="Draft mode">
               <button
                 type="button"
                 className={`${styles.modeOption} ${draft.mode === "section" ? styles.modeActive : ""}`}
                 onClick={() => handleToggleMode("section")}
+                aria-pressed={draft.mode === "section"}
               >
                 Section
               </button>
@@ -720,13 +1003,17 @@ function DraftContent() {
                 type="button"
                 className={`${styles.modeOption} ${draft.mode === "full" ? styles.modeActive : ""}`}
                 onClick={() => handleToggleMode("full")}
+                aria-pressed={draft.mode === "full"}
               >
                 Full Draft
               </button>
-              <div className={`${styles.modeSlider} ${draft.mode === "full" ? styles.modeSliderRight : ""}`} />
+              <div
+                className={`${styles.modeSlider} ${draft.mode === "full" ? styles.modeSliderRight : ""}`}
+                aria-hidden="true"
+              />
             </div>
 
-            <div className={styles.saveBadge} aria-label={saveStatus === "saving" ? "Saving" : "Saved"}>
+            <div className={styles.saveBadge} role="status" aria-live="polite" aria-atomic="true">
               <span className="material-icons-round">{saveStatus === "saving" ? "sync" : "check_circle"}</span>
               {saveStatus === "saving" ? "Saving" : "Saved"}
             </div>
@@ -735,7 +1022,7 @@ function DraftContent() {
 
         <div className={styles.body} style={layoutVars}>
           {!draft.panels.ledgerCollapsed ? (
-            <aside className={styles.ledger} aria-label="Evidence ledger">
+            <aside className={styles.ledger} aria-label="Evidence ledger" id={ledgerPanelId}>
               <div className={styles.panelHeader}>
                 <div className={styles.panelTitle}>
                   <span className="material-icons-round">article</span>
@@ -754,6 +1041,8 @@ function DraftContent() {
                     type="button"
                     className={styles.iconBtn}
                     aria-label="Collapse evidence ledger"
+                    aria-controls={ledgerPanelId}
+                    aria-expanded={!draft.panels.ledgerCollapsed}
                     onClick={() =>
                       updateDraft((prev) => ({
                         ...prev,
@@ -810,6 +1099,8 @@ function DraftContent() {
               type="button"
               className={styles.expandRailLeft}
               aria-label="Expand evidence ledger"
+              aria-controls={ledgerPanelId}
+              aria-expanded={!draft.panels.ledgerCollapsed}
               onClick={() => updateDraft((prev) => ({ ...prev, panels: { ...prev.panels, ledgerCollapsed: false } }))}
             >
               <span className="material-icons-round">chevron_right</span>
@@ -817,22 +1108,22 @@ function DraftContent() {
             </button>
           )}
 
-          {!draft.panels.ledgerCollapsed ? (
-            <div
-              className={styles.resizeHandle}
-              role="separator"
-              aria-label="Resize evidence ledger"
-              onPointerDown={(e) => {
-                dragStateRef.current = {
-                  side: "ledger",
-                  startX: e.clientX,
-                  startWidth: clamp(draft.panels.ledgerWidth, 260, 520),
-                };
-                document.body.style.userSelect = "none";
-                document.body.style.cursor = "col-resize";
-              }}
-            />
-          ) : null}
+          <div
+            className={`${styles.resizeHandle} ${draft.panels.ledgerCollapsed ? styles.resizeHandleHidden : ""}`}
+            role="separator"
+            aria-label="Resize evidence ledger"
+            aria-hidden={draft.panels.ledgerCollapsed}
+            onPointerDown={(e) => {
+              if (draft.panels.ledgerCollapsed) return;
+              dragStateRef.current = {
+                side: "ledger",
+                startX: e.clientX,
+                startWidth: clamp(draft.panels.ledgerWidth, 260, 520),
+              };
+              document.body.style.userSelect = "none";
+              document.body.style.cursor = "col-resize";
+            }}
+          />
 
           <section className={styles.center} aria-label="Draft editor">
             <div className={styles.centerHeader}>
@@ -845,15 +1136,20 @@ function DraftContent() {
             <EditorToolbar editor={draft.mode === "section" ? sectionEditor : activeEditor} />
 
             {draft.mode === "section" ? (
-              <div className={styles.sectionEditorWrapper}>
+              <div
+                className={styles.sectionEditorWrapper}
+                role="tabpanel"
+                id="draft-section-panel"
+                aria-labelledby={`draft-tab-${draft.activeSection}`}
+              >
                 <div className={styles.editorSurface}>
                   <EditorContent editor={sectionEditor} />
                 </div>
                 <div className={styles.helperText}>{activeSectionMeta?.placeholder}</div>
               </div>
             ) : (
-              <div className={styles.fullDraftScroll}>
-                {DRAFT_SECTIONS.map((section) => (
+              <div className={styles.fullDraftScroll} role="region" aria-label="Full draft">
+                {orderedSections.map((section) => (
                   <div
                     key={section.key}
                     className={styles.fullSection}
@@ -878,25 +1174,25 @@ function DraftContent() {
             )}
           </section>
 
-          {!draft.panels.copilotCollapsed ? (
-            <div
-              className={styles.resizeHandle}
-              role="separator"
-              aria-label="Resize copilot panel"
-              onPointerDown={(e) => {
-                dragStateRef.current = {
-                  side: "copilot",
-                  startX: e.clientX,
-                  startWidth: clamp(draft.panels.copilotWidth, 300, 560),
-                };
-                document.body.style.userSelect = "none";
-                document.body.style.cursor = "col-resize";
-              }}
-            />
-          ) : null}
+          <div
+            className={`${styles.resizeHandle} ${draft.panels.copilotCollapsed ? styles.resizeHandleHidden : ""}`}
+            role="separator"
+            aria-label="Resize copilot panel"
+            aria-hidden={draft.panels.copilotCollapsed}
+            onPointerDown={(e) => {
+              if (draft.panels.copilotCollapsed) return;
+              dragStateRef.current = {
+                side: "copilot",
+                startX: e.clientX,
+                startWidth: clamp(draft.panels.copilotWidth, 300, 560),
+              };
+              document.body.style.userSelect = "none";
+              document.body.style.cursor = "col-resize";
+            }}
+          />
 
           {!draft.panels.copilotCollapsed ? (
-            <aside className={styles.copilot} aria-label="AI copilot">
+            <aside className={styles.copilot} aria-label="AI copilot" id={copilotPanelId}>
               <div className={styles.panelHeader}>
                 <div className={styles.panelTitle}>
                   <span className="material-icons-round">smart_toy</span>
@@ -907,6 +1203,8 @@ function DraftContent() {
                     type="button"
                     className={styles.iconBtn}
                     aria-label="Collapse copilot"
+                    aria-controls={copilotPanelId}
+                    aria-expanded={!draft.panels.copilotCollapsed}
                     onClick={() =>
                       updateDraft((prev) => ({
                         ...prev,
@@ -926,7 +1224,7 @@ function DraftContent() {
                 </span>
               </div>
 
-              <div className={styles.copilotBody} ref={copilotListRef}>
+              <div className={styles.copilotBody} ref={copilotListRef} onScroll={handleCopilotScroll}>
                 {copilotMessages.length === 0 ? (
                   <div className={styles.emptyPanel}>
                     <div className={styles.emptyIcon}>
@@ -1000,6 +1298,8 @@ function DraftContent() {
               type="button"
               className={styles.expandRailRight}
               aria-label="Expand copilot"
+              aria-controls={copilotPanelId}
+              aria-expanded={!draft.panels.copilotCollapsed}
               onClick={() => updateDraft((prev) => ({ ...prev, panels: { ...prev.panels, copilotCollapsed: false } }))}
             >
               <span className={styles.expandRailText}>Copilot</span>
@@ -1012,6 +1312,7 @@ function DraftContent() {
       <div
         className={`modal-overlay ${isAddEvidenceOpen ? "active" : ""}`}
         aria-hidden={!isAddEvidenceOpen}
+        ref={addEvidenceRef}
         onClick={(event) => {
           if (event.target === event.currentTarget) {
             setAddEvidenceOpen(false);

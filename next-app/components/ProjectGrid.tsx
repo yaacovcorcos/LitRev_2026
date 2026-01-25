@@ -59,10 +59,19 @@ export function ProjectGrid({ projects, viewMode, onNewProject }: ProjectGridPro
             data-modified={p.modified}
             data-created={p.created}
             data-id={p.id}
+            role="link"
+            tabIndex={0}
+            aria-label={`Open project ${p.name}`}
             onClick={(event) => {
               const target = event.target as HTMLElement;
               if (target.closest("a")) return;
               router.push(`/project/${p.id}`);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                router.push(`/project/${p.id}`);
+              }
             }}
           >
             <div className={statusClass}>

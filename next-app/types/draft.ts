@@ -60,3 +60,20 @@ export type DraftSectionKey = (typeof DRAFT_SECTIONS)[number]["key"];
 export type DraftSection = (typeof DRAFT_SECTIONS)[number];
 
 export type DraftMode = "section" | "full";
+
+export const DEFAULT_SECTION_ORDER: DraftSectionKey[] = [
+  "abstract",
+  "introduction",
+  "methods",
+  "results",
+  "discussion",
+  "conclusion",
+  "references",
+  "acknowledgments",
+];
+
+export const OPTIONAL_SECTION_KEYS: DraftSectionKey[] = [
+  "funding",
+  "conflicts",
+  "supplement",
+];

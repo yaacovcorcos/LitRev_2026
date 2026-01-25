@@ -64,6 +64,7 @@ export function ControlsBar({ sortMode, viewMode, onSortChange, onViewChange }: 
             id="sortBtn"
             aria-haspopup="listbox"
             aria-expanded={isSortOpen}
+            aria-controls="sortOptions"
             onClick={() => setSortOpen((prev) => !prev)}
           >
             <span className="material-icons-round">sort</span>
@@ -80,6 +81,8 @@ export function ControlsBar({ sortMode, viewMode, onSortChange, onViewChange }: 
               id="sort-modified"
               className={`${styles.option} ${sortMode === "modified" ? styles.selected : ""}`}
               data-value="modified"
+              role="option"
+              aria-selected={sortMode === "modified"}
               onClick={() => selectSort("modified")}
             >
               Recently Modified
@@ -89,6 +92,8 @@ export function ControlsBar({ sortMode, viewMode, onSortChange, onViewChange }: 
               id="sort-name"
               className={`${styles.option} ${sortMode === "name" ? styles.selected : ""}`}
               data-value="name"
+              role="option"
+              aria-selected={sortMode === "name"}
               onClick={() => selectSort("name")}
             >
               Name
@@ -98,6 +103,8 @@ export function ControlsBar({ sortMode, viewMode, onSortChange, onViewChange }: 
               id="sort-created"
               className={`${styles.option} ${sortMode === "created" ? styles.selected : ""}`}
               data-value="created"
+              role="option"
+              aria-selected={sortMode === "created"}
               onClick={() => selectSort("created")}
             >
               Date Created

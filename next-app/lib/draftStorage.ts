@@ -1,4 +1,4 @@
-import { DRAFT_SECTIONS, DraftMode, DraftSectionKey } from "@/types/draft";
+import { DEFAULT_SECTION_ORDER, DRAFT_SECTIONS, DraftMode, DraftSectionKey } from "@/types/draft";
 import type { JSONContent } from "@tiptap/core";
 
 const DRAFT_KEY_PREFIX = "litrev_draft_v1";
@@ -23,6 +23,7 @@ export type DraftState = {
   version: 1;
   mode: DraftMode;
   activeSection: DraftSectionKey;
+  sectionOrder: DraftSectionKey[];
   panels: DraftPanelsState;
   contentBySection: Record<DraftSectionKey, JSONContent>;
   ledgerBySection: Record<DraftSectionKey, string[]>;
@@ -53,10 +54,13 @@ function buildSectionRecord<T>(factory: (key: DraftSectionKey) => T): Record<Dra
 }
 
 export function createDefaultDraftState(): DraftState {
+  const defaultOrder = [...DEFAULT_SECTION_ORDER];
+  const activeSection = defaultOrder[0] ?? "abstract";
   return {
     version: 1,
     mode: "section",
-    activeSection: "abstract",
+    activeSection,
+    sectionOrder: defaultOrder,
     panels: {
       ledgerWidth: 320,
       copilotWidth: 360,
@@ -78,6 +82,19 @@ function coerceSectionKey(value: unknown): DraftSectionKey | null {
   return DRAFT_SECTIONS.some((s) => s.key === value) ? (value as DraftSectionKey) : null;
 }
 
+function coerceSectionOrder(value: unknown): DraftSectionKey[] | null {
+  if (!Array.isArray(value)) return null;
+  const seen = new Set<DraftSectionKey>();
+  const ordered: DraftSectionKey[] = [];
+  for (const entry of value) {
+    const key = coerceSectionKey(entry);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    ordered.push(key);
+  }
+  return ordered.length ? ordered : null;
+}
+
 export function loadDraftState(projectId: string): DraftState {
   const fallback = createDefaultDraftState();
   if (!isBrowser()) return fallback;
@@ -91,7 +108,11 @@ export function loadDraftState(projectId: string): DraftState {
     if (!parsed || typeof parsed !== "object") return fallback;
 
     const mode = coerceDraftMode(parsed.mode) ?? fallback.mode;
-    const activeSection = coerceSectionKey(parsed.activeSection) ?? fallback.activeSection;
+    const storedOrder = coerceSectionOrder(parsed.sectionOrder) ?? fallback.sectionOrder;
+    const activeSection =
+      coerceSectionKey(parsed.activeSection) && storedOrder.includes(parsed.activeSection as DraftSectionKey)
+        ? (parsed.activeSection as DraftSectionKey)
+        : storedOrder[0] ?? fallback.activeSection;
 
     const panels: DraftPanelsState = {
       ledgerWidth: typeof parsed.panels?.ledgerWidth === "number" ? parsed.panels.ledgerWidth : fallback.panels.ledgerWidth,
@@ -139,6 +160,7 @@ export function loadDraftState(projectId: string): DraftState {
       version: 1,
       mode,
       activeSection,
+      sectionOrder: storedOrder,
       panels,
       contentBySection,
       ledgerBySection,

@@ -105,15 +105,22 @@ export default function LibraryView() {
                   type="button"
                   aria-haspopup="listbox"
                   aria-expanded={isSortOpen}
+                  aria-controls="librarySortOptions"
                   onClick={() => setSortOpen((prev) => !prev)}
                 >
                   <span className="material-icons-round">sort</span>
                   Sort
                 </button>
-                <div className={`${controlsStyles.options} ${isSortOpen ? controlsStyles.optionsOpen : ""}`} role="listbox">
+                <div
+                  id="librarySortOptions"
+                  className={`${controlsStyles.options} ${isSortOpen ? controlsStyles.optionsOpen : ""}`}
+                  role="listbox"
+                >
                   <button
                     type="button"
                     className={`${controlsStyles.option} ${sortMode === "recent" ? controlsStyles.selected : ""}`}
+                    role="option"
+                    aria-selected={sortMode === "recent"}
                     onClick={() => {
                       setSortMode("recent");
                       setSortOpen(false);
@@ -124,6 +131,8 @@ export default function LibraryView() {
                   <button
                     type="button"
                     className={`${controlsStyles.option} ${sortMode === "name" ? controlsStyles.selected : ""}`}
+                    role="option"
+                    aria-selected={sortMode === "name"}
                     onClick={() => {
                       setSortMode("name");
                       setSortOpen(false);

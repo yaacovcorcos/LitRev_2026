@@ -13,6 +13,20 @@ body {
     -webkit-font-smoothing: antialiased;
 }
 
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+[role="button"]:focus-visible {
+    outline: 2px solid var(--accent-primary);
+    outline-offset: 2px;
+}
+
+button:disabled {
+    cursor: not-allowed;
+}
+
 /* Ensure modal overlay handles scrolling if content is tall */
 .modal-overlay {
     overflow-y: auto;

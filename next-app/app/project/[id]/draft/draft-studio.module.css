@@ -1,8 +1,11 @@
 .page {
-    height: 100%;
+    height: calc(
+        100vh - var(--header-height, 44px) - var(--content-top-offset, 12px) - var(--mobile-nav-offset, 0px)
+    );
     min-height: 0;
     display: flex;
     flex-direction: column;
+    overflow: hidden;
 }
 
 .top {
@@ -68,6 +71,13 @@
     justify-content: center;
 }
 
+.sectionTabsWrap {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    max-width: 100%;
+}
+
 .sectionTabs {
     display: flex;
     align-items: center;
@@ -79,6 +89,8 @@
     max-width: 100%;
     overflow-x: auto;
     scrollbar-width: none;
+    flex: 1;
+    min-width: 0;
 }
 
 .sectionTabs::-webkit-scrollbar {
@@ -86,6 +98,7 @@
 }
 
 .sectionTab {
+    position: relative;
     border: none;
     background: transparent;
     color: var(--text-secondary);
@@ -107,6 +120,103 @@
     background: rgba(255, 255, 255, 0.9);
     color: var(--text-primary);
     box-shadow: 0 8px 20px rgba(0, 0, 0, 0.06);
+}
+
+.sectionTabDragging {
+    opacity: 0.45;
+}
+
+.sectionTabDropBefore::before,
+.sectionTabDropAfter::after {
+    content: "";
+    position: absolute;
+    top: 6px;
+    bottom: 6px;
+    width: 2px;
+    border-radius: 2px;
+    background: rgba(217, 116, 89, 0.8);
+}
+
+.sectionTabDropBefore::before {
+    left: -2px;
+}
+
+.sectionTabDropAfter::after {
+    right: -2px;
+}
+
+.addSection {
+    position: relative;
+    flex-shrink: 0;
+}
+
+.addSectionButton {
+    border: 1px dashed rgba(0, 0, 0, 0.18);
+    background: rgba(255, 255, 255, 0.6);
+    color: var(--text-secondary);
+    font-weight: 700;
+    font-size: 12px;
+    padding: 8px 12px;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    transition: background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+    white-space: nowrap;
+}
+
+.addSectionButton:hover {
+    background: rgba(255, 255, 255, 0.85);
+    color: var(--text-primary);
+    box-shadow: 0 10px 18px rgba(0, 0, 0, 0.06);
+}
+
+.addSectionButton:disabled,
+.addSectionButtonDisabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    box-shadow: none;
+}
+
+.addSectionButton .material-icons-round {
+    font-size: 16px;
+}
+
+.sectionMenu {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    min-width: 200px;
+    padding: 6px;
+    border-radius: 14px;
+    border: 1px solid var(--glass-border);
+    background: rgba(255, 255, 255, 0.92);
+    box-shadow: 0 16px 30px rgba(0, 0, 0, 0.12);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    z-index: 30;
+}
+
+.sectionMenuItem {
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    font-weight: 600;
+    font-size: 13px;
+    padding: 8px 10px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+    transition: background 0.2s ease, color 0.2s ease;
+}
+
+.sectionMenuItem:hover {
+    background: rgba(0, 0, 0, 0.06);
+    color: var(--text-primary);
 }
 
 .topRight {
@@ -185,11 +295,17 @@
     min-height: 0;
     display: grid;
     grid-template-columns: var(--ledger-width) 10px 1fr 10px var(--copilot-width);
+    overflow: hidden;
 }
 
 .resizeHandle {
     cursor: col-resize;
     position: relative;
+}
+
+.resizeHandleHidden {
+    pointer-events: none;
+    opacity: 0;
 }
 
 .resizeHandle::before {
@@ -214,10 +330,12 @@
 .copilot {
     min-width: 0;
     height: 100%;
+    min-height: 0;
     display: flex;
     flex-direction: column;
     background: rgba(255, 255, 255, 0.35);
     backdrop-filter: blur(16px);
+    overflow: hidden;
 }
 
 .ledger {
@@ -314,6 +432,7 @@
     padding: 14px;
     display: flex;
     flex-direction: column;
+    overscroll-behavior: contain;
 }
 
 .emptyPanel {
@@ -530,6 +649,11 @@
     padding: 18px 18px;
 }
 
+.editorSurface:focus-within {
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 2px rgba(217, 116, 89, 0.2), 0 14px 40px rgba(0, 0, 0, 0.06);
+}
+
 .proseMirror {
     outline: none;
     min-height: 260px;
@@ -670,6 +794,8 @@
 .copilotInputArea {
     border-top: 1px solid rgba(0, 0, 0, 0.04);
     padding: 12px 14px 14px;
+    background: rgba(255, 255, 255, 0.35);
+    backdrop-filter: blur(16px);
 }
 
 .copilotInputRow {
@@ -830,6 +956,16 @@
         order: 3;
     }
 
+    .sectionTabsWrap {
+        width: 100%;
+        justify-content: space-between;
+    }
+
+    .addSectionButton {
+        padding: 6px 10px;
+        font-size: 11px;
+    }
+
     .body {
         display: flex;
         flex-direction: column;
@@ -873,4 +1009,17 @@
     .expandRailText {
         writing-mode: horizontal-tb;
         transform: none;
+    }
+
+    .body {
+        padding-bottom: var(--mobile-nav-offset);
+    }
+
+    .copilotBody {
+        padding-bottom: calc(14px + var(--mobile-nav-offset));
+    }
+
+    .copilotInputArea {
+        padding-bottom: calc(14px + var(--mobile-nav-offset));
+    }
 }

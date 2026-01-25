@@ -174,11 +174,12 @@ export default function AIView() {
               <span className={styles.modelStatus}></span>
             </div>
 
-            <div className={styles.toneToggle}>
+            <div className={styles.toneToggle} role="group" aria-label="Tone">
               <button
                 className={`${styles.toneOption} ${tone === "standard" ? styles.toneActive : ""}`}
                 data-tone="standard"
                 onClick={() => setTone("standard")}
+                aria-pressed={tone === "standard"}
               >
                 Standard
               </button>
@@ -186,10 +187,11 @@ export default function AIView() {
                 className={`${styles.toneOption} ${tone === "deep" ? styles.toneActive : ""}`}
                 data-tone="deep"
                 onClick={() => setTone("deep")}
+                aria-pressed={tone === "deep"}
               >
                 Deep Dive
               </button>
-              <div className={`${styles.toneSlider} ${tone === "deep" ? styles.toneDeep : ""}`} />
+              <div className={`${styles.toneSlider} ${tone === "deep" ? styles.toneDeep : ""}`} aria-hidden="true" />
             </div>
 
             <div className={styles.chatActions}>
