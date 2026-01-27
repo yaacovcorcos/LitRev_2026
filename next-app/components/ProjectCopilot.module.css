@@ -1,0 +1,341 @@
+/* ========================================
+   PROJECT COPILOT PANEL STYLES
+   Shared across Draft, Protocol, and Ledger pages
+   ======================================== */
+
+.copilot {
+    min-width: 0;
+    height: 100%;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    background: rgba(255, 255, 255, 0.55);
+    backdrop-filter: blur(20px);
+    overflow: hidden;
+    border-left: 1px solid var(--glass-border);
+}
+
+.panelHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 18px 16px 12px;
+}
+
+.panelTitle {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: 700;
+    font-size: 14px;
+    color: var(--text-primary);
+}
+
+.panelTitle .material-icons-round {
+    font-size: 20px;
+    color: var(--accent-primary);
+}
+
+.panelHeaderActions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.iconBtn {
+    background: rgba(255, 255, 255, 0.6);
+    border: 1px solid var(--glass-border);
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 6px;
+    border-radius: 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.iconBtn:hover {
+    background: rgba(255, 255, 255, 0.85);
+    transform: translateY(-1px);
+    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.06);
+    color: var(--text-primary);
+}
+
+.iconBtn .material-icons-round {
+    font-size: 18px;
+}
+
+.panelSubhead {
+    padding: 0 16px 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.subLabel {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+}
+
+.subValue {
+    font-size: 13px;
+    color: var(--text-primary);
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+    background: rgba(0, 0, 0, 0.04);
+    padding: 4px 10px;
+    border-radius: 6px;
+}
+
+.copilotBody {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    overscroll-behavior: contain;
+}
+
+.emptyPanel {
+    margin: auto 0;
+    padding: 24px 20px;
+    border-radius: 16px;
+    border: 1px dashed rgba(0, 0, 0, 0.1);
+    background: rgba(255, 255, 255, 0.7);
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    align-items: center;
+}
+
+.emptyPanel h3 {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0;
+}
+
+.emptyPanel p {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin: 0;
+    line-height: 1.5;
+}
+
+.emptyIcon {
+    width: 48px;
+    height: 48px;
+    border-radius: 14px;
+    background: linear-gradient(135deg, rgba(217, 116, 89, 0.15), rgba(217, 116, 89, 0.05));
+    color: var(--accent-primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.emptyIcon .material-icons-round {
+    font-size: 24px;
+}
+
+.chatList {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.chatMsg {
+    display: flex;
+}
+
+.chatMsgAi {
+    justify-content: flex-start;
+}
+
+.chatMsgUser {
+    justify-content: flex-end;
+}
+
+.chatBubble {
+    max-width: 92%;
+    padding: 12px;
+    border-radius: 16px;
+    border: 1px solid var(--glass-border);
+    background: rgba(255, 255, 255, 0.75);
+}
+
+.chatMsgUser .chatBubble {
+    background: rgba(217, 116, 89, 0.12);
+    border-color: rgba(217, 116, 89, 0.25);
+}
+
+.chatText {
+    margin: 0;
+    white-space: pre-wrap;
+    font-family: inherit;
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--text-primary);
+}
+
+.chatActions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 10px;
+    gap: 8px;
+}
+
+.copilotInputArea {
+    border-top: 1px solid rgba(0, 0, 0, 0.04);
+    padding: 12px 14px 14px;
+    background: rgba(255, 255, 255, 0.35);
+    backdrop-filter: blur(16px);
+}
+
+.copilotInputRow {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.copilotInputRow input {
+    flex: 1;
+    height: var(--control-height);
+    border-radius: 14px;
+    border: 1px solid var(--glass-border);
+    background: rgba(255, 255, 255, 0.65);
+    padding: 0 14px;
+    font-size: 14px;
+    font-family: inherit;
+    color: var(--text-primary);
+}
+
+.copilotInputRow input:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 2px rgba(217, 116, 89, 0.18);
+}
+
+.suggestRow {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+.suggestChip {
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    background: rgba(255, 255, 255, 0.8);
+    color: var(--text-secondary);
+    border-radius: 999px;
+    padding: 8px 12px;
+    font-weight: 700;
+    font-size: 12px;
+    cursor: pointer;
+    transition: border-color 0.2s ease, color 0.2s ease;
+}
+
+.suggestChip:hover {
+    border-color: rgba(217, 116, 89, 0.35);
+    color: var(--accent-primary);
+}
+
+/* Expand rail (collapsed state) */
+.expandRailRight {
+    width: 100%;
+    height: 100%;
+    min-width: 44px;
+    border: none;
+    background: rgba(255, 255, 255, 0.35);
+    backdrop-filter: blur(16px);
+    color: var(--text-secondary);
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 10px 0;
+    border-left: 1px solid var(--glass-border);
+    transition: background 0.2s ease, color 0.2s ease;
+}
+
+.expandRailRight:hover {
+    background: rgba(255, 255, 255, 0.55);
+    color: var(--text-primary);
+}
+
+.expandRailText {
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    font-weight: 800;
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+/* Small action buttons */
+.smallBtn {
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-weight: 600;
+    font-size: 12px;
+    border: none;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: var(--accent-primary);
+    color: white;
+}
+
+.smallBtn:hover {
+    background: #c4634a;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(217, 116, 89, 0.3);
+}
+
+.smallBtnGhost {
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-weight: 600;
+    font-size: 12px;
+    border: none;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: rgba(0, 0, 0, 0.05);
+    color: var(--text-secondary);
+}
+
+.smallBtnGhost:hover {
+    background: rgba(0, 0, 0, 0.08);
+    color: var(--text-primary);
+}
+
+/* Responsive */
+@media (max-width: 900px) {
+
+    .copilot,
+    .expandRailRight {
+        display: none;
+    }
+}
