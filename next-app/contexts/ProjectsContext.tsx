@@ -36,7 +36,10 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
     let isMounted = true;
     const run = async () => {
       try {
-        await migrateLocalStorageToBackend();
+        const result = await migrateLocalStorageToBackend();
+        if (result.error) {
+          console.error("Migration completed with errors:", result.error);
+        }
       } catch (err) {
         console.error("Local storage migration failed", err);
       } finally {

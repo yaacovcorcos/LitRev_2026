@@ -6,8 +6,13 @@ import { SINGLE_USER_SCOPE } from "@/lib/server/scope";
 import type { Project } from "@/types/project";
 
 export async function listProjectsAction(): Promise<Project[]> {
-  await ensureSingleUserSeed(SINGLE_USER_SCOPE);
-  return listProjects(SINGLE_USER_SCOPE);
+  try {
+    await ensureSingleUserSeed(SINGLE_USER_SCOPE);
+    return await listProjects(SINGLE_USER_SCOPE);
+  } catch (error) {
+    console.error("listProjectsAction failed:", error);
+    throw error;
+  }
 }
 
 export async function getProjectAction(projectId: string): Promise<Project | null> {

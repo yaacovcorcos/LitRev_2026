@@ -25,6 +25,7 @@ type MigrationResult = {
   studies: number;
   drafts: number;
   projectCopilots: number;
+  error?: string;
 };
 
 export async function migrateLocalStorageToBackend(): Promise<MigrationResult> {
@@ -50,7 +51,7 @@ export async function migrateLocalStorageToBackend(): Promise<MigrationResult> {
     console.warn("Failed to read local projects for migration", err);
   }
 
-  if (!projects.length) {
+  if (projects.length === 0) {
     window.localStorage.setItem(MIGRATION_KEY, "done");
     return { migrated: false, projects: 0, protocols: 0, studies: 0, drafts: 0, projectCopilots: 0 };
   }
@@ -61,6 +62,7 @@ export async function migrateLocalStorageToBackend(): Promise<MigrationResult> {
   let migratedDrafts = 0;
   let migratedProjectCopilots = 0;
   let hadError = false;
+  let lastError: string | undefined;
 
   for (const project of projects) {
     try {
@@ -72,6 +74,7 @@ export async function migrateLocalStorageToBackend(): Promise<MigrationResult> {
     } catch (err) {
       console.error("Failed to migrate project", project.id, err);
       hadError = true;
+      lastError = err instanceof Error ? err.message : String(err);
       continue;
     }
 
@@ -148,5 +151,6 @@ export async function migrateLocalStorageToBackend(): Promise<MigrationResult> {
     studies: migratedStudies,
     drafts: migratedDrafts,
     projectCopilots: migratedProjectCopilots,
+    error: lastError,
   };
 }
