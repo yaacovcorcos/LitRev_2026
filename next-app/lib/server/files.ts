@@ -4,6 +4,7 @@ import { prisma } from "@/lib/server/prisma";
 import { assertProjectAccess } from "@/lib/server/access";
 import type { ServiceScope } from "@/lib/server/scope";
 import type { FileAsset } from "@/types/files";
+import { Prisma } from "@prisma/client";
 import { randomUUID } from "crypto";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -90,7 +91,7 @@ export async function createFileAsset(
       storagePath: input.storagePath,
       publicUrl: input.publicUrl ?? undefined,
       version: input.version ?? undefined,
-      metadata: input.metadata ?? undefined,
+      metadata: input.metadata as Prisma.JsonObject,
     },
   });
   return toFileAsset(created);

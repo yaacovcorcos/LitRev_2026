@@ -4,6 +4,7 @@ import { prisma } from "@/lib/server/prisma";
 import { assertProjectAccess } from "@/lib/server/access";
 import type { ServiceScope } from "@/lib/server/scope";
 import type { Study } from "@/types/ledger";
+import { Prisma } from "@prisma/client";
 
 export type StudyInput = Omit<Study, "id"> & { id?: string };
 
@@ -87,7 +88,7 @@ export async function upsertStudy(
           year: normalized.year,
           status: normalized.status,
           quality: normalized.quality,
-          details: normalized.details ?? undefined,
+          details: normalized.details as Prisma.JsonObject,
         },
       });
       return toStudy(updated);
@@ -102,7 +103,7 @@ export async function upsertStudy(
       year: normalized.year,
       status: normalized.status,
       quality: normalized.quality,
-      details: normalized.details ?? undefined,
+      details: normalized.details as Prisma.JsonObject,
     },
   });
   return toStudy(created);
@@ -126,7 +127,7 @@ export async function replaceStudies(
         year: study.year,
         status: study.status,
         quality: study.quality,
-        details: study.details ?? undefined,
+        details: study.details ? (study.details as Prisma.JsonObject) : undefined,
       })),
     });
     const saved = await tx.study.findMany({

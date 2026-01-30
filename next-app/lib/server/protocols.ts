@@ -4,6 +4,7 @@ import { prisma } from "@/lib/server/prisma";
 import { assertProjectAccess } from "@/lib/server/access";
 import type { ProtocolData } from "@/types/protocol";
 import type { ServiceScope } from "@/lib/server/scope";
+import { Prisma } from "@prisma/client";
 
 export async function getProtocol(
   scopeInput: Partial<ServiceScope> | null | undefined,
@@ -11,7 +12,7 @@ export async function getProtocol(
 ): Promise<ProtocolData | null> {
   await assertProjectAccess(scopeInput, projectId);
   const protocol = await prisma.protocol.findUnique({ where: { projectId } });
-  return (protocol?.data as ProtocolData) ?? null;
+  return protocol?.data as unknown as ProtocolData ?? null;
 }
 
 export async function saveProtocol(
@@ -22,8 +23,8 @@ export async function saveProtocol(
   await assertProjectAccess(scopeInput, projectId);
   const saved = await prisma.protocol.upsert({
     where: { projectId },
-    create: { projectId, data },
-    update: { data },
+    create: { projectId, data: data as unknown as Prisma.JsonObject },
+    update: { data: data as unknown as Prisma.JsonObject },
   });
-  return saved.data as ProtocolData;
+  return saved.data as unknown as ProtocolData;
 }
