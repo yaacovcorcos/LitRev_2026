@@ -57,7 +57,7 @@
 }
 
 .resizeHandle:hover::before {
-    background: rgba(217, 116, 89, 0.35);
+    background: rgba(0, 0, 0, 0.15);
 }
 
 /* Main content area */
@@ -67,13 +67,13 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    padding: 20px 24px 40px;
+    padding: 16px 20px 24px;
 }
 
 .layout {
     display: flex;
     flex-direction: column;
-    gap: 32px;
+    gap: 20px;
     overflow-y: auto;
     flex: 1;
 }
@@ -91,7 +91,8 @@
 .header {
     display: flex;
     align-items: center;
-    gap: 24px;
+    justify-content: space-between;
+    gap: 16px;
 }
 
 .headerText {
@@ -109,37 +110,175 @@
 }
 
 .headerText h1 {
-    font-size: 24px;
+    font-size: 22px;
     font-weight: 600;
     margin: 0;
+}
+
+.headerActions {
+    display: flex;
+    gap: 12px;
+    flex-shrink: 0;
+}
+
+.exportBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.exportBtn:hover {
+    border-color: var(--text-muted);
+    background: rgba(0, 0, 0, 0.03);
+}
+
+.exportBtn .material-icons-round {
+    font-size: 16px;
+}
+
+/* Status Bar */
+.statusBar {
+    padding: 12px 16px;
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-md);
+}
+
+.completenessSection {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.completenessHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.completenessLabel {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.completenessValue {
+    font-size: 13px;
+    color: var(--text-muted);
+}
+
+.progressBar {
+    height: 6px;
+    background: rgba(0, 0, 0, 0.08);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.progressFill {
+    height: 100%;
+    background: var(--accent-primary);
+    border-radius: 3px;
+    transition: width 0.3s ease;
+}
+
+.progressComplete {
+    background: var(--status-ready-text);
+}
+
+.incompleteTags {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.incompleteLabel {
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.incompleteTag {
+    padding: 4px 10px;
+    background: rgba(0, 0, 0, 0.06);
+    color: var(--text-secondary);
+    border-radius: 99px;
+    font-size: 11px;
+    font-weight: 500;
+}
+
+.incompleteMore {
+    font-size: 11px;
+    color: var(--text-muted);
 }
 
 .content {
     display: flex;
     flex-direction: column;
-    gap: 32px;
+    gap: 20px;
 }
 
 .section {
-    padding: 28px;
+    padding: 20px;
     background: var(--glass-bg);
     border: 1px solid var(--glass-border);
-    border-radius: var(--radius-lg);
+    border-radius: var(--radius-md);
+}
+
+.sectionHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
 }
 
 .sectionTitle {
     display: flex;
     align-items: center;
-    gap: 12px;
-    font-size: 18px;
+    gap: 10px;
+    font-size: 16px;
     font-weight: 600;
-    margin: 0 0 24px 0;
+    margin: 0;
     color: var(--text-primary);
 }
 
 .sectionTitle .material-icons-round {
-    font-size: 22px;
-    color: var(--accent-primary);
+    font-size: 20px;
+    color: var(--text-muted);
+}
+
+/* Quick Action Button */
+.askCopilotBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background: transparent;
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-md);
+    color: var(--text-muted);
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.askCopilotBtn:hover {
+    border-color: var(--text-muted);
+    color: var(--text-primary);
+    background: rgba(0, 0, 0, 0.03);
+}
+
+.askCopilotBtn .material-icons-round {
+    font-size: 16px;
 }
 
 /* PICO Grid */
@@ -150,55 +289,81 @@
 }
 
 .picoCard {
-    padding: 20px;
-    background: rgba(255, 255, 255, 0.6);
+    padding: 12px 16px;
+    background: rgba(255, 255, 255, 0.4);
     border: 1px solid var(--glass-border);
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-sm);
 }
 
 .picoLabel {
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.5px;
-    color: var(--accent-primary);
-    margin-bottom: 8px;
+    color: var(--text-muted);
+    margin-bottom: 4px;
     display: block;
 }
 
 .picoValue {
-    font-size: 15px;
+    font-size: 14px;
     color: var(--text-primary);
     margin: 0;
     line-height: 1.5;
+}
+
+/* Active section highlighting - subtle left border only */
+.sectionActive {
+    border-left: 2px solid var(--text-muted);
+}
+
+.section {
+    position: relative;
+    transition: border-color 0.2s ease;
+    border-left: 2px solid transparent;
+}
+
+/* Database section styling */
+.databaseSection {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.databaseLabel {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
 }
 
 /* Criteria */
 .criteriaLists {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 24px;
+    gap: 16px;
 }
 
 .criteriaGroup {
-    padding: 20px;
-    background: rgba(255, 255, 255, 0.5);
+    padding: 12px 16px;
+    background: rgba(255, 255, 255, 0.3);
     border: 1px solid var(--glass-border);
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-sm);
 }
 
 .criteriaHeading {
-    font-size: 14px;
+    font-size: 12px;
     font-weight: 600;
-    margin: 0 0 16px 0;
-    color: var(--text-primary);
+    margin: 0 0 8px 0;
+    color: var(--text-secondary);
 }
 
 .criteriaList {
     list-style: none;
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 8px;
     font-size: 14px;
     color: var(--text-secondary);
     padding: 0;
@@ -207,16 +372,16 @@
 
 .criteriaList li::before {
     content: "•";
-    color: var(--accent-secondary);
-    margin-right: 10px;
+    color: var(--text-muted);
+    margin-right: 8px;
 }
 
 /* Search Strategy */
 .searchBox {
-    padding: 20px;
-    background: rgba(0, 0, 0, 0.03);
-    border-radius: var(--radius-md);
-    margin-bottom: 16px;
+    padding: 12px 0;
+    background: transparent;
+    border-radius: 0;
+    margin-bottom: 20px;
 }
 
 .searchQuery {
@@ -243,6 +408,70 @@
     font-weight: 600;
 }
 
+/* Methodology Section */
+.methodologyGrid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+}
+
+.methodologyCard {
+    padding: 12px 16px;
+    background: rgba(255, 255, 255, 0.3);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-sm);
+}
+
+.methodologyCardFull {
+    grid-column: 1 / -1;
+}
+
+.methodologyLabel {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+    display: block;
+}
+
+.timeFrameRow {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.timeFrameField {
+    flex: 1;
+}
+
+.timeFrameLabel {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+    display: block;
+}
+
+.timeFrameSeparator {
+    color: var(--text-muted);
+    font-size: 16px;
+    margin-top: 16px;
+}
+
+.qualityNotes {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--glass-border);
+}
+
+.qualityNotesLabel {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+    display: block;
+}
+
 /* Responsive */
 @media (max-width: 900px) {
     .body {
@@ -258,7 +487,8 @@
     }
 
     .picoGrid,
-    .criteriaLists {
+    .criteriaLists,
+    .methodologyGrid {
         grid-template-columns: 1fr;
     }
 

@@ -1,106 +1,53 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { loadLedger, saveLedger } from "@/lib/ledgerStorage";
 import { Study } from "@/types/ledger";
 import { useProjects } from "@/contexts/ProjectsContext";
-import { Project } from "@/types/project";
+import { listStudiesAction, replaceStudiesAction } from "@/app/actions/ledger";
 
 type LedgerContextValue = {
   getStudiesByProject: (projectId: string) => Study[];
-  updateStudies: (projectId: string, studies: Study[]) => void;
+  updateStudies: (projectId: string, studies: Study[]) => Promise<Study[]>;
   getPaperCount: (projectId: string) => number;
 };
 
 const LedgerContext = createContext<LedgerContextValue | undefined>(undefined);
-
-const SEED_STUDIES: Omit<Study, "id">[] = [
-  {
-    title: "Deep Learning in Medical Imaging",
-    authors: "Litjens et al.",
-    year: 2017,
-    status: "extracted",
-    quality: "High",
-  },
-  {
-    title: "Radiologist-level Pneumonia Detection",
-    authors: "Rajpurkar et al.",
-    year: 2018,
-    status: "extracted",
-    quality: "High",
-  },
-  {
-    title: "AI for Chest X-ray Screening",
-    authors: "Wang et al.",
-    year: 2020,
-    status: "pending",
-    quality: "-",
-  },
-  {
-    title: "Transfer Learning in Radiology",
-    authors: "Shin et al.",
-    year: 2016,
-    status: "extracted",
-    quality: "Medium",
-  },
-  {
-    title: "Attention Mechanisms for CT Scans",
-    authors: "Chen et al.",
-    year: 2021,
-    status: "pending",
-    quality: "-",
-  },
-  {
-    title: "Multi-modal Imaging Analysis",
-    authors: "Kim et al.",
-    year: 2022,
-    status: "pending",
-    quality: "-",
-  },
-];
-
-const buildSeedStudies = (project: Project): Study[] => {
-  const targetCount =
-    project.status === "harvesting" ? project.progress?.papers ?? project.papers ?? 0 : project.papers ?? 0;
-  if (!targetCount || targetCount <= 0) return [];
-
-  const seeded = SEED_STUDIES.map((study, index) => ({
-    ...study,
-    id: `${project.id}-s${index + 1}`,
-  }));
-
-  if (targetCount <= seeded.length) {
-    return seeded.slice(0, targetCount);
-  }
-
-  const remaining = targetCount - seeded.length;
-  const generated = Array.from({ length: remaining }, (_, index) => {
-    const number = seeded.length + index + 1;
-    return {
-      id: `${project.id}-s${number}`,
-      title: `${project.name} Study ${number}`,
-      authors: "Various Authors",
-      year: 2020 + (number % 5),
-      status: number % 3 === 0 ? "pending" : "extracted",
-      quality: number % 5 === 0 ? "Medium" : "High",
-    } satisfies Study;
-  });
-
-  return [...seeded, ...generated];
-};
 
 export function LedgerProvider({ children }: { children: React.ReactNode }) {
   const { projects } = useProjects();
   const [ledgerMap, setLedgerMap] = useState<Record<string, Study[]>>({});
 
   useEffect(() => {
-    const nextMap: Record<string, Study[]> = {};
-    for (const project of projects) {
-      const fallback = buildSeedStudies(project);
-      nextMap[project.id] = loadLedger(project.id, fallback);
-    }
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setLedgerMap(nextMap);
+    let isActive = true;
+    const load = async () => {
+      if (!projects.length) {
+        if (isActive) setLedgerMap({});
+        return;
+      }
+      const entries = await Promise.all(
+        projects.map(async (project) => {
+          try {
+            const studies = await listStudiesAction(project.id);
+            return [project.id, studies] as const;
+          } catch (err) {
+            console.error("Failed to load studies for project", project.id, err);
+            return [project.id, []] as const;
+          }
+        })
+      );
+
+      if (!isActive) return;
+      const nextMap: Record<string, Study[]> = {};
+      for (const [projectId, studies] of entries) {
+        nextMap[projectId] = [...studies];
+      }
+      setLedgerMap(nextMap);
+    };
+
+    load();
+    return () => {
+      isActive = false;
+    };
   }, [projects]);
 
   const getStudiesByProject = useCallback(
@@ -110,9 +57,15 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
     [ledgerMap]
   );
 
-  const updateStudies = useCallback((projectId: string, studies: Study[]) => {
-    setLedgerMap((prev) => ({ ...prev, [projectId]: studies }));
-    saveLedger(projectId, studies);
+  const updateStudies = useCallback(async (projectId: string, studies: Study[]) => {
+    try {
+      const saved = await replaceStudiesAction(projectId, studies);
+      setLedgerMap((prev) => ({ ...prev, [projectId]: saved }));
+      return saved;
+    } catch (err) {
+      console.error("Failed to save studies", err);
+      throw err;
+    }
   }, []);
 
   const getPaperCount = useCallback(

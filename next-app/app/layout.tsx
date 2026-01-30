@@ -15,6 +15,8 @@ export const metadata: Metadata = {
   description: "LitRev prototype UI",
 };
 
+export const runtime = "nodejs";
+
 export default function RootLayout({
   children,
 }: Readonly<{

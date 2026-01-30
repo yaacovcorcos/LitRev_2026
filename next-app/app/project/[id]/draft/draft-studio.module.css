@@ -332,6 +332,36 @@
     transform: translateX(100%);
 }
 
+.exportBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 7px 10px;
+    border-radius: 8px;
+    border: 1px solid var(--glass-border);
+    background: rgba(255, 255, 255, 0.6);
+    color: var(--text-secondary);
+    font-weight: 600;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+}
+
+.exportBtn:hover {
+    background: rgba(255, 255, 255, 0.9);
+    color: var(--text-primary);
+}
+
+.exportBtn .material-icons-round {
+    font-size: 14px;
+}
+
+.exportBtn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
 .saveBadge {
     display: inline-flex;
     align-items: center;

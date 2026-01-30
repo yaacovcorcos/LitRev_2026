@@ -1,0 +1,316 @@
+/* Editable Components Styles - Minimalist Design */
+
+/* Remove default focus outlines - we handle focus states with subtle borders */
+.editableText *:focus,
+.editableTextArea *:focus,
+.editableList *:focus,
+.editableChips *:focus {
+    outline: none;
+}
+
+/* ================ EditableText ================ */
+.editableText {
+    position: relative;
+    display: block;
+}
+
+.editableTextDisplay {
+    cursor: text;
+    padding: 4px 0;
+    border-radius: 2px;
+    border: none;
+    border-bottom: 1px solid transparent;
+    transition: border-color 0.2s ease;
+    min-height: 1.4em;
+    line-height: 1.4;
+}
+
+.editableTextDisplay:hover {
+    border-bottom-color: rgba(0, 0, 0, 0.15);
+}
+
+.editableTextDisplay.active {
+    border-bottom-color: rgba(0, 0, 0, 0.25);
+}
+
+.editableTextPlaceholder {
+    color: var(--text-muted);
+    font-style: italic;
+    opacity: 0.7;
+}
+
+.editableTextInput {
+    font: inherit;
+    color: inherit;
+    width: 100%;
+    padding: 4px 0;
+    border: none;
+    border-bottom: 1px solid var(--text-muted);
+    background: transparent;
+    outline: none;
+    line-height: 1.4;
+    transition: border-color 0.2s ease;
+}
+
+.editableTextInput:focus {
+    border-bottom-color: var(--text-primary);
+}
+
+/* ================ EditableTextArea ================ */
+.editableTextArea {
+    position: relative;
+    display: block;
+}
+
+.editableTextAreaDisplay {
+    cursor: text;
+    padding: 8px 0;
+    border: none;
+    border-bottom: 1px solid transparent;
+    transition: border-color 0.2s ease;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.editableTextAreaDisplay:hover {
+    border-bottom-color: rgba(0, 0, 0, 0.15);
+}
+
+.editableTextAreaDisplay.active {
+    border-bottom-color: rgba(0, 0, 0, 0.25);
+}
+
+.editableTextAreaInput {
+    font: inherit;
+    color: inherit;
+    width: 100%;
+    padding: 8px 0;
+    border: none;
+    border-bottom: 1px solid var(--text-muted);
+    background: transparent;
+    outline: none;
+    line-height: 1.5;
+    resize: none;
+    overflow: hidden;
+    transition: border-color 0.2s ease;
+}
+
+.editableTextAreaInput:focus {
+    border-bottom-color: var(--text-primary);
+}
+
+/* Monospace variant */
+.editableTextAreaInput.monospace,
+.editableTextAreaDisplay.monospace {
+    font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
+    font-size: 13px;
+}
+
+/* ================ EditableList ================ */
+.editableList {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.editableListItem {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 4px 0;
+    border-radius: 0;
+    border: none;
+    transition: background 0.15s ease;
+    position: relative;
+}
+
+.editableListItem:hover {
+    background: transparent;
+}
+
+.editableListItem:hover .editableListRemove {
+    opacity: 0.5;
+}
+
+.editableListBullet {
+    flex-shrink: 0;
+    color: var(--text-muted);
+    font-weight: 400;
+    line-height: 1.5;
+    user-select: none;
+    opacity: 0.6;
+}
+
+.editableListContent {
+    flex: 1;
+    min-width: 0;
+}
+
+.editableListText {
+    cursor: text;
+    line-height: 1.5;
+    min-height: 1.5em;
+    padding: 0;
+    border-bottom: 1px solid transparent;
+    transition: border-color 0.2s ease;
+}
+
+.editableListText:hover {
+    border-bottom-color: rgba(0, 0, 0, 0.1);
+}
+
+.editableListText:empty::before {
+    content: attr(data-placeholder);
+    color: var(--text-muted);
+    font-style: italic;
+    opacity: 0.6;
+}
+
+.editableListInput {
+    font: inherit;
+    color: inherit;
+    width: 100%;
+    padding: 0;
+    border: none;
+    border-bottom: 1px solid var(--text-muted);
+    background: transparent;
+    outline: none;
+    line-height: 1.5;
+    transition: border-color 0.2s ease;
+}
+
+.editableListInput:focus {
+    border-bottom-color: var(--text-primary);
+}
+
+.editableListRemove {
+    flex-shrink: 0;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+    background: none;
+    border: none;
+    padding: 2px;
+    cursor: pointer;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.editableListRemove:hover {
+    opacity: 1 !important;
+    color: var(--text-primary);
+}
+
+.editableListRemove .material-icons-round {
+    font-size: 16px;
+}
+
+.editableListAdd {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 0;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: color 0.15s ease;
+    font-size: 13px;
+}
+
+.editableListAdd:hover {
+    color: var(--text-primary);
+}
+
+.editableListAdd .material-icons-round {
+    font-size: 16px;
+}
+
+/* ================ EditableChips ================ */
+.editableChips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+}
+
+.editableChip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px;
+    background: rgba(0, 0, 0, 0.05);
+    color: var(--text-primary);
+    border-radius: 99px;
+    font-size: 13px;
+    font-weight: 500;
+    transition: background 0.15s ease;
+}
+
+.editableChip:hover {
+    background: rgba(0, 0, 0, 0.08);
+}
+
+.editableChipRemove {
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    color: inherit;
+    opacity: 0.4;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: opacity 0.15s ease;
+}
+
+.editableChipRemove:hover {
+    opacity: 1;
+}
+
+.editableChipRemove .material-icons-round {
+    font-size: 14px;
+}
+
+.editableChipsAdd {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 5px 12px;
+    border: 1px dashed rgba(0, 0, 0, 0.2);
+    border-radius: 99px;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.editableChipsAdd:hover {
+    border-color: var(--text-muted);
+    color: var(--text-primary);
+}
+
+.editableChipsAdd .material-icons-round {
+    font-size: 14px;
+}
+
+.editableChipsInput {
+    font: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    padding: 5px 12px;
+    border: 1px solid var(--text-muted);
+    border-radius: 99px;
+    background: transparent;
+    outline: none;
+    min-width: 100px;
+    transition: border-color 0.2s ease;
+}
+
+.editableChipsInput:focus {
+    border-color: var(--text-primary);
+}

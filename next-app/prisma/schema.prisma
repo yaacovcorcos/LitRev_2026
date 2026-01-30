@@ -1,0 +1,131 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id         String             @id @default(cuid())
+  email      String?            @unique
+  name       String?
+  createdAt  DateTime           @default(now())
+  updatedAt  DateTime           @updatedAt
+  memberships WorkspaceMember[]
+  projects   Project[]          @relation("ProjectOwner")
+}
+
+model Workspace {
+  id        String             @id @default(cuid())
+  name      String
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+  members   WorkspaceMember[]
+  projects  Project[]
+}
+
+model WorkspaceMember {
+  id          String    @id @default(cuid())
+  workspaceId String
+  userId      String
+  role        String    @default("owner")
+  createdAt   DateTime  @default(now())
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+  @@index([userId])
+}
+
+model Project {
+  id          String    @id @default(cuid())
+  workspaceId String
+  ownerId     String
+  name        String
+  description String?
+  status      String
+  statusText  String
+  papers      Int?
+  progress    Json?
+  projectCopilot Json?
+  created     DateTime  @default(now())
+  modified    DateTime  @updatedAt
+
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  owner       User      @relation("ProjectOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+  protocol    Protocol?
+  draft       Draft?
+  studies     Study[]
+  files       FileAsset[]
+
+  @@index([workspaceId])
+  @@index([ownerId])
+}
+
+model Protocol {
+  id        String   @id @default(cuid())
+  projectId String   @unique
+  data      Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model Draft {
+  id        String   @id @default(cuid())
+  projectId String   @unique
+  state     Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model Study {
+  id        String   @id @default(cuid())
+  projectId String
+  title     String
+  authors   String
+  year      Int
+  status    String
+  quality   String
+  details   Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  files     FileAsset[]
+
+  @@index([projectId])
+}
+
+model FileAsset {
+  id          String   @id @default(cuid())
+  projectId   String
+  studyId     String?
+  kind        String
+  format      String?
+  filename    String
+  mimeType    String
+  size        Int
+  storagePath String
+  publicUrl   String?
+  version     Int      @default(1)
+  metadata    Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  study   Study?  @relation(fields: [studyId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([studyId])
+}

@@ -1,0 +1,89 @@
+Backend Implementation Plan (Phased)
+
+Note: Supabase is the chosen DB host for this plan.
+Maintenance: Update this planB file as tasks are completed or changed so all agents stay in sync.
+
+Transport decision: Start with Server Actions, but keep all business logic in a server-only service layer (no DB logic inside actions). This makes it easy to add Route Handlers + fetch later without refactors. Server Actions are just the first transport, not the permanent API.
+
+Status (keep updated):
+- Phase 0 decisions confirmed (Supabase, single-user placeholder, Server Actions + service layer).
+- Phase 1 done: Prisma installed, prisma init done, env files created, .gitignore updated.
+- Phase 2 done: Prisma schema drafted (User/Workspace/Project/Protocol/Draft/Study) + FileAsset + Project.projectCopilot.
+- Phase 3 done: Service layer modules created under lib/server.
+- Phase 1 follow-up: DATABASE_URL now set to pooled connection string (with SSL + pgbouncer).
+- Phase 4 done (code): Server Actions + contexts wired for Projects/Protocol; single-user seed helper added.
+- Phase 4 ops done: Prisma migrations applied (direct DB connection working).
+- Phase 4 runtime fix: force Node.js runtime in app layout to avoid Prisma edge client errors.
+- Phase 5 done (code): LocalStorage migration added for Projects + Protocol; later expanded to include studies, drafts, and project copilot.
+- Phase 6 done (code): Ledger wired to backend actions (list/replace); no local fallback.
+- Phase 7 done (code): Draft page loads from backend with localStorage fallback and saves to backend + local.
+- Phase 8 done (code): Project-level copilot loads from backend with local fallback; saves to both.
+- Phase 9 done (code): FileAsset model + server actions + study file upload + export metadata wiring; actual export file generation still mocked.
+
+Phase 0 — Decisions (1–2 hours)
+- Confirm Supabase project + connection details.
+- Decide: single-user placeholder vs real auth now.
+- Confirm transport: Server Actions first, with service layer to enable future Route Handlers.
+- Outcome: agreed stack + ownership strategy.
+
+Phase 1 — Infrastructure (half day)
+- Add Prisma + DATABASE_URL.
+- Init Prisma schema + migrations.
+- Create base users/workspaces tables (even if single-user).
+- Outcome: DB connected, migrations working.
+
+Phase 2 — Core Schema (half day)
+- Align schema with existing types:
+  - projects with name, status, statusText, papers, progress, created, modified.
+  - protocols JSONB (full protocol object).
+  - drafts JSONB (full draft state).
+  - studies (ledger) relational.
+- Add ownerId/workspaceId to all rows.
+- Outcome: schema matches UI and is multi-user ready.
+
+Phase 3 — Service Layer (1 day)
+- Create server-only modules: lib/server/projects.ts, protocols.ts, ledger.ts, drafts.ts.
+- Add validation + ownership checks.
+- Outcome: reusable logic for Server Actions or APIs.
+
+Phase 4 — Projects + Protocol (1–2 days)
+- Implement save/load for projects & protocol via Server Actions (or Route Handlers).
+- Update contexts to call backend instead of localStorage.
+- Outcome: core persistence works end-to-end.
+
+Phase 5 — LocalStorage Migration (half day)
+- On first load, detect localStorage data and upload to DB.
+- Clear/mark migrated state.
+- Outcome: no data loss for current users.
+
+Phase 6 — Ledger (1–2 days)
+- Implement study CRUD + syncing.
+- Connect ledger UI to DB.
+- Outcome: relational queries working; filters and counts stable.
+
+Phase 7 — Draft (1–2 days)
+- Store full DraftState JSONB (not just content).
+- Hook draft UI to DB with debounced saves.
+- Outcome: full draft persistence.
+
+Phase 8 — Copilot State (optional)
+- Decide canonical copilot source (project vs per-section).
+- Store messages with context fields.
+- Outcome: copilot state persists across sessions.
+
+Phase 9 — Files + Exports (optional)
+- Add blob storage for PDFs/exports.
+- Store file metadata in DB.
+- Outcome: ready for reference detail pages + exports.
+- Import Study decisions:
+  - Storage: Supabase Storage bucket for PDFs.
+  - Flow: attach PDF to an existing Study (no create-on-import).
+  - Access: public for now.
+  - Duplicates: allow (no warning yet).
+  - Metadata: manual only for now (no auto-extract).
+
+Phase 10 — Multi-user enablement (when ready)
+- Add auth provider.
+- Replace placeholder ID with real userId/workspaceId.
+- Enforce ownership in all queries.
+- Outcome: multi-user without schema rewrite.

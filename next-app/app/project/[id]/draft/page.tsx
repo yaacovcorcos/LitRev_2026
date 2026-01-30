@@ -27,6 +27,10 @@ import {
   saveDraftState,
   createDefaultDraftState,
 } from "@/lib/draftStorage";
+import { getDraftAction, saveDraftAction } from "@/app/actions/drafts";
+import { listProjectFilesAction, createFileAssetAction, deleteFileAssetAction } from "@/app/actions/files";
+import { ExportModal } from "@/components/ExportModal";
+import type { FileAsset } from "@/types/files";
 import styles from "./draft-studio.module.css";
 
 import { Editor, EditorContent, useEditor } from "@tiptap/react";
@@ -398,25 +402,50 @@ function DraftContent() {
 
   const [draft, setDraft] = useState<DraftState>(createDefaultDraftState);
 
+  const applyDraftFromQuery = useCallback(
+    (loaded: DraftState) => {
+      const mode = isDraftMode(queryMode) ? queryMode : loaded.mode;
+      const order = [...loaded.sectionOrder];
+      const rawQuery = querySection?.trim();
+      const sectionFromQuery =
+        rawQuery && (isBaseSectionKey(rawQuery) || loaded.customSections?.[rawQuery]) ? rawQuery : null;
+      if (sectionFromQuery && !order.includes(sectionFromQuery)) {
+        order.push(sectionFromQuery);
+      }
+      const candidate = sectionFromQuery ?? loaded.activeSection;
+      const activeSection = order.includes(candidate) ? candidate : order[0] ?? loaded.activeSection;
+      return {
+        ...loaded,
+        mode,
+        activeSection,
+        sectionOrder: order,
+      };
+    },
+    [queryMode, querySection]
+  );
+
   useEffect(() => {
-    const loaded = loadDraftState(id);
-    const mode = isDraftMode(queryMode) ? queryMode : loaded.mode;
-    const order = [...loaded.sectionOrder];
-    const rawQuery = querySection?.trim();
-    const sectionFromQuery =
-      rawQuery && (isBaseSectionKey(rawQuery) || loaded.customSections?.[rawQuery]) ? rawQuery : null;
-    if (sectionFromQuery && !order.includes(sectionFromQuery)) {
-      order.push(sectionFromQuery);
-    }
-    const candidate = sectionFromQuery ?? loaded.activeSection;
-    const activeSection = order.includes(candidate) ? candidate : order[0] ?? loaded.activeSection;
-    setDraft({
-      ...loaded,
-      mode,
-      activeSection,
-      sectionOrder: order,
-    });
-  }, [id, queryMode, querySection]);
+    let isActive = true;
+    const local = loadDraftState(id);
+    setDraft(applyDraftFromQuery(local));
+
+    const loadRemote = async () => {
+      if (!id) return;
+      try {
+        const remote = await getDraftAction(id);
+        if (remote && isActive) {
+          setDraft(applyDraftFromQuery(remote));
+        }
+      } catch (err) {
+        console.error("Failed to load draft from backend", err);
+      }
+    };
+
+    loadRemote();
+    return () => {
+      isActive = false;
+    };
+  }, [id, applyDraftFromQuery]);
   const [saveStatus, setSaveStatus] = useState<"saved" | "saving">("saved");
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -459,6 +488,11 @@ function DraftContent() {
   const [copilotInput, setCopilotInput] = useState("");
   const copilotListRef = useRef<HTMLDivElement | null>(null);
   const copilotAutoScrollRef = useRef(true);
+
+  // Export modal state
+  const [isExportModalOpen, setExportModalOpen] = useState(false);
+  const [exportHistory, setExportHistory] = useState<FileAsset[]>([]);
+  const [latestExport, setLatestExport] = useState<FileAsset | null>(null);
 
   const sectionMetaById = useMemo(() => {
     const map = new Map<DraftSectionId, SectionMeta>(BASE_SECTION_MAP);
@@ -529,7 +563,12 @@ function DraftContent() {
       }
       setSaveStatus("saving");
       saveTimerRef.current = setTimeout(() => {
-        saveDraftState(id, next);
+        if (id) {
+          saveDraftState(id, next);
+          saveDraftAction(id, next).catch((err) => {
+            console.error("Failed to save draft to backend", err);
+          });
+        }
         setSaveStatus("saved");
       }, 400);
     },
@@ -972,6 +1011,182 @@ function DraftContent() {
     editor.chain().focus().insertContent(text).run();
   };
 
+  // Helper to convert TipTap JSON to plain text/markdown
+  const jsonToText = useCallback((doc: JSONContent | null | undefined): string => {
+    if (!doc) return "";
+
+    const extractText = (node: JSONContent): string => {
+      if (node.type === "text") {
+        let text = node.text || "";
+        // Apply marks for markdown
+        if (node.marks) {
+          for (const mark of node.marks) {
+            if (mark.type === "bold") text = `**${text}**`;
+            if (mark.type === "italic") text = `*${text}*`;
+          }
+        }
+        return text;
+      }
+      if (node.type === "citation") {
+        return node.attrs?.label ? `(${node.attrs.label})` : "(Citation)";
+      }
+      if (node.type === "hardBreak") {
+        return "\n";
+      }
+      if (!node.content) return "";
+
+      const children = node.content.map(extractText).join("");
+
+      // Add formatting based on node type
+      switch (node.type) {
+        case "paragraph":
+          return children + "\n\n";
+        case "heading":
+          const level = node.attrs?.level || 1;
+          return "#".repeat(level) + " " + children + "\n\n";
+        case "bulletList":
+          return children;
+        case "orderedList":
+          return children;
+        case "listItem":
+          return "- " + children.trim() + "\n";
+        case "blockquote":
+          return "> " + children.split("\n").filter(Boolean).join("\n> ") + "\n\n";
+        default:
+          return children;
+      }
+    };
+
+    return extractText(doc).trim();
+  }, []);
+
+  // Check if draft has content to export
+  const hasDraftContent = useMemo(() => {
+    return orderedSections.some((section) => docHasContent(draft.contentBySection[section.id]));
+  }, [draft.contentBySection, orderedSections]);
+
+  // Load export history on mount
+  useEffect(() => {
+    if (!id) return;
+    const loadExports = async () => {
+      try {
+        const files = await listProjectFilesAction(id);
+        const exports = files
+          .filter((f) => f.kind === "export" && f.format === "docx")
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        setExportHistory(exports);
+        setLatestExport(exports[0] || null);
+      } catch (err) {
+        console.error("Failed to load exports", err);
+      }
+    };
+    loadExports();
+  }, [id]);
+
+  // Export draft as DOCX (creates file asset)
+  const handleExportDocx = useCallback(async (): Promise<FileAsset> => {
+    if (!project || !id) throw new Error("Project not found");
+
+    // Flush any pending content
+    flushContentCommit();
+
+    // Build markdown content for export
+    const lines: string[] = [];
+    lines.push(`# ${project.name}`);
+    lines.push("");
+    lines.push(`*Draft exported on ${new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}*`);
+    lines.push("");
+
+    for (const section of orderedSections) {
+      const content = draft.contentBySection[section.id];
+      if (!docHasContent(content)) continue;
+      lines.push(`## ${section.label}`);
+      lines.push("");
+      lines.push(jsonToText(content));
+      lines.push("");
+    }
+
+    const markdownContent = lines.join("\n");
+    
+    // Calculate version number
+    const nextVersion = (latestExport?.version ?? 0) + 1;
+    const filename = `${project.name.replace(/[^a-zA-Z0-9]/g, "-")}-v${nextVersion}.docx`;
+    
+    // In real implementation: send to server-side export endpoint
+    // For now, create a mock DOCX file asset
+    const storagePath = `/exports/${id}/${filename}`;
+    
+    // Simulate export delay
+    await new Promise((r) => setTimeout(r, 1500));
+    
+    const newExport = await createFileAssetAction(id, {
+      kind: "export",
+      format: "docx",
+      filename,
+      mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      size: markdownContent.length * 2, // Rough estimate
+      storagePath,
+      publicUrl: storagePath,
+      version: nextVersion,
+      metadata: { sections: orderedSections.length },
+    });
+
+    // Update local state
+    setExportHistory((prev) => [newExport, ...prev]);
+    setLatestExport(newExport);
+    
+    return newExport;
+  }, [project, id, flushContentCommit, orderedSections, draft.contentBySection, jsonToText, latestExport]);
+
+  // Delete export
+  const handleDeleteExport = useCallback(async (fileId: string) => {
+    if (!id) return;
+    await deleteFileAssetAction(id, fileId);
+    setExportHistory((prev) => prev.filter((f) => f.id !== fileId));
+    if (latestExport?.id === fileId) {
+      const remaining = exportHistory.filter((f) => f.id !== fileId);
+      setLatestExport(remaining[0] || null);
+    }
+  }, [id, latestExport, exportHistory]);
+
+  // Export full draft as markdown (quick export)
+  const handleExportDraft = useCallback(() => {
+    if (!project) return;
+
+    // Flush any pending content
+    flushContentCommit();
+
+    const lines: string[] = [];
+    lines.push(`# ${project.name}`);
+    lines.push("");
+    lines.push(`*Draft exported on ${new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}*`);
+    lines.push("");
+    lines.push("---");
+    lines.push("");
+
+    // Export each section in order
+    for (const section of orderedSections) {
+      const content = draft.contentBySection[section.id];
+      if (!docHasContent(content)) continue;
+
+      lines.push(`## ${section.label}`);
+      lines.push("");
+      lines.push(jsonToText(content));
+      lines.push("");
+    }
+
+    const content = lines.join("\n");
+    const blob = new Blob([content], { type: "text/markdown" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `draft-${project.id}-${new Date().toISOString().split("T")[0]}.md`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, [project, draft.contentBySection, orderedSections, jsonToText, flushContentCommit]);
+
   const handleFocusSection = useCallback(
     (key: DraftSectionId, editor: Editor) => {
       activeEditorRef.current = editor;
@@ -1378,6 +1593,17 @@ function DraftContent() {
                 aria-hidden="true"
               />
             </div>
+
+            <button
+              type="button"
+              className={styles.exportBtn}
+              onClick={() => setExportModalOpen(true)}
+              disabled={!hasDraftContent}
+              title={hasDraftContent ? "Export draft" : "Add content to enable export"}
+            >
+              <span className="material-icons-round">download</span>
+              Export
+            </button>
 
             <div className={styles.saveBadge} role="status" aria-live="polite" aria-atomic="true">
               <span className="material-icons-round">{saveStatus === "saving" ? "sync" : "check_circle"}</span>
@@ -1848,6 +2074,16 @@ function DraftContent() {
           </div>
         </div>
       </div>
+
+      {/* Export Modal */}
+      <ExportModal
+        isOpen={isExportModalOpen}
+        onClose={() => setExportModalOpen(false)}
+        onExport={handleExportDocx}
+        latestExport={latestExport}
+        exportHistory={exportHistory}
+        onDeleteExport={handleDeleteExport}
+      />
     </AppShell>
   );
 }

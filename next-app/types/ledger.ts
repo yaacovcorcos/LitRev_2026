@@ -7,4 +7,5 @@ export type Study = {
   year: number;
   status: StudyStatus;
   quality: "High" | "Medium" | "Low" | "-";
+  details?: Record<string, unknown>;
 };

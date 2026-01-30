@@ -1,6 +1,8 @@
 "use client";
 
-import { defaultProjects } from "@/data/projects";
+import { createProjectAction, deleteProjectAction, listProjectsAction } from "@/app/actions/projects";
+import { migrateLocalStorageToBackend } from "@/lib/migrateLocalStorage";
+import { seedLocalStorageIfEmpty } from "@/lib/seedLocalStorage";
 import { loadProjects, saveProjects } from "@/lib/storage";
 import { Project } from "@/types/project";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
@@ -16,33 +18,65 @@ type ProjectsContextValue = {
 const ProjectsContext = createContext<ProjectsContextValue | undefined>(undefined);
 
 export function ProjectsProvider({ children }: { children: React.ReactNode }) {
-  const [projects, setProjects] = useState<Project[]>(defaultProjects);
+  const [projects, setProjects] = useState<Project[]>([]);
 
-  useEffect(() => {
-    const seeded = loadProjects(defaultProjects);
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setProjects(seeded.length ? seeded : defaultProjects);
+  const refresh = useCallback(() => {
+    listProjectsAction()
+      .then((loaded) => {
+        setProjects(loaded);
+      })
+      .catch((err) => {
+        console.error("Failed to load projects from backend", err);
+        seedLocalStorageIfEmpty();
+        setProjects(loadProjects([]));
+      });
   }, []);
 
+  useEffect(() => {
+    let isMounted = true;
+    const run = async () => {
+      try {
+        await migrateLocalStorageToBackend();
+      } catch (err) {
+        console.error("Local storage migration failed", err);
+      } finally {
+        if (isMounted) {
+          refresh();
+        }
+      }
+    };
+    run();
+    return () => {
+      isMounted = false;
+    };
+  }, [refresh]);
+
   const addProject = useCallback((project: Project) => {
-    setProjects((prev) => {
-      const next = [project, ...prev];
-      saveProjects(next);
-      return next;
-    });
+    createProjectAction(project)
+      .then((created) => {
+        setProjects((prev) => [created, ...prev.filter((p) => p.id !== created.id)]);
+      })
+      .catch((err) => {
+        console.error("Failed to create project", err);
+        const existing = loadProjects([]);
+        const next = [project, ...existing.filter((p) => p.id !== project.id)];
+        saveProjects(next);
+        setProjects(next);
+      });
   }, []);
 
   const deleteProject = useCallback((id: string) => {
-    setProjects((prev) => {
-      const next = prev.filter((project) => project.id !== id);
-      saveProjects(next);
-      return next.length ? next : defaultProjects;
-    });
-  }, []);
-
-  const refresh = useCallback(() => {
-    const loaded = loadProjects(defaultProjects);
-    setProjects(loaded.length ? loaded : defaultProjects);
+    deleteProjectAction(id)
+      .then(() => {
+        setProjects((prev) => prev.filter((project) => project.id !== id));
+      })
+      .catch((err) => {
+        console.error("Failed to delete project", err);
+        const existing = loadProjects([]);
+        const next = existing.filter((project) => project.id !== id);
+        saveProjects(next);
+        setProjects(next);
+      });
   }, []);
 
   const getProjectById = useMemo(
