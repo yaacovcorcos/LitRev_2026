@@ -5,10 +5,12 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "postinstall": "prisma generate",
     "start": "next start",
     "lint": "eslint"
   },
   "dependencies": {
+    "@prisma/adapter-pg": "^7.3.0",
     "@prisma/client": "^7.3.0",
     "@tiptap/extension-placeholder": "^3.17.1",
     "@tiptap/extension-underline": "^3.17.1",
@@ -16,6 +18,8 @@
     "@tiptap/starter-kit": "^3.17.1",
     "dotenv": "^17.2.3",
     "next": "16.1.4",
+    "openai": "^6.17.0",
+    "pdf-parse": "^2.4.5",
     "pg": "^8.17.2",
     "prisma": "^7.3.0",
     "react": "19.2.0",
@@ -23,6 +27,7 @@
   },
   "devDependencies": {
     "@types/node": "^20",
+    "@types/pdf-parse": "^1.1.5",
     "@types/pg": "^8.16.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",

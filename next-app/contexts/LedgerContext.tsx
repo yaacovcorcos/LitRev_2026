@@ -3,12 +3,20 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { Study } from "@/types/ledger";
 import { useProjects } from "@/contexts/ProjectsContext";
-import { listStudiesAction, replaceStudiesAction } from "@/app/actions/ledger";
+import {
+  listStudiesAction,
+  replaceStudiesAction,
+  getStudyAction,
+  updateStudyAction,
+} from "@/app/actions/ledger";
+import type { StudyInput } from "@/lib/server/ledger";
 
 type LedgerContextValue = {
   getStudiesByProject: (projectId: string) => Study[];
   updateStudies: (projectId: string, studies: Study[]) => Promise<Study[]>;
   getPaperCount: (projectId: string) => number;
+  getStudyById: (projectId: string, studyId: string) => Promise<Study | null>;
+  updateSingleStudy: (projectId: string, studyId: string, updates: Partial<StudyInput>) => Promise<Study>;
 };
 
 const LedgerContext = createContext<LedgerContextValue | undefined>(undefined);
@@ -75,13 +83,43 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
     [ledgerMap]
   );
 
+  const getStudyById = useCallback(
+    async (projectId: string, studyId: string): Promise<Study | null> => {
+      // First check local cache
+      const cached = ledgerMap[projectId]?.find((s) => s.id === studyId);
+      if (cached) return cached;
+      // Fallback to server
+      return getStudyAction(projectId, studyId);
+    },
+    [ledgerMap]
+  );
+
+  const updateSingleStudy = useCallback(
+    async (projectId: string, studyId: string, updates: Partial<StudyInput>): Promise<Study> => {
+      const updated = await updateStudyAction(projectId, studyId, updates);
+      // Update local cache
+      setLedgerMap((prev) => {
+        const existing = prev[projectId] ?? [];
+        const idx = existing.findIndex((s) => s.id === studyId);
+        if (idx === -1) return prev;
+        const next = [...existing];
+        next[idx] = updated;
+        return { ...prev, [projectId]: next };
+      });
+      return updated;
+    },
+    []
+  );
+
   const value = useMemo(
     () => ({
       getStudiesByProject,
       updateStudies,
       getPaperCount,
+      getStudyById,
+      updateSingleStudy,
     }),
-    [getStudiesByProject, updateStudies, getPaperCount]
+    [getStudiesByProject, updateStudies, getPaperCount, getStudyById, updateSingleStudy]
   );
 
   return <LedgerContext.Provider value={value}>{children}</LedgerContext.Provider>;

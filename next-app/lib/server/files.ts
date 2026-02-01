@@ -4,10 +4,10 @@ import { prisma } from "@/lib/server/prisma";
 import { assertProjectAccess } from "@/lib/server/access";
 import type { ServiceScope } from "@/lib/server/scope";
 import type { FileAsset } from "@/types/files";
-import { Prisma } from "@prisma/client";
 import { randomUUID } from "crypto";
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const SUPABASE_URL = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const STORAGE_BUCKET = process.env.SUPABASE_STORAGE_BUCKET ?? "study-assets";
 
@@ -91,7 +91,7 @@ export async function createFileAsset(
       storagePath: input.storagePath,
       publicUrl: input.publicUrl ?? undefined,
       version: input.version ?? undefined,
-      metadata: input.metadata as Prisma.JsonObject,
+      metadata: input.metadata as any,
     },
   });
   return toFileAsset(created);
@@ -111,8 +111,9 @@ function encodeStoragePath(path: string): string {
 }
 
 async function uploadToSupabaseStorage(path: string, file: File): Promise<{ storagePath: string; publicUrl: string }> {
-  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-    throw new Error("Supabase URL or anon key is missing.");
+  const apiKey = SUPABASE_SERVICE_ROLE_KEY ?? SUPABASE_ANON_KEY;
+  if (!SUPABASE_URL || !apiKey) {
+    throw new Error("Supabase URL or API key is missing.");
   }
 
   const encodedPath = encodeStoragePath(path);
@@ -122,8 +123,8 @@ async function uploadToSupabaseStorage(path: string, file: File): Promise<{ stor
   const response = await fetch(uploadUrl, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-      apikey: SUPABASE_ANON_KEY,
+      Authorization: `Bearer ${apiKey}`,
+      apikey: apiKey,
       "Content-Type": file.type || "application/octet-stream",
       "x-upsert": "false",
     },

@@ -3,3 +3,4 @@
 .env
 .env.*
 secrets.local.md
+.vercel

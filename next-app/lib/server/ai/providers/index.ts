@@ -1,0 +1,7 @@
+/**
+ * AI Providers Index
+ * Export all available providers
+ */
+
+export { BaseAIProvider } from "./base";
+export { OpenAIProvider, getOpenAIProvider } from "./openai";

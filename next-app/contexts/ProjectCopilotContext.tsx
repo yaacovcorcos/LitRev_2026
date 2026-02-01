@@ -17,9 +17,27 @@ import {
     saveProjectCopilotState,
     createDefaultProjectCopilotState,
 } from "@/lib/projectCopilotStorage";
-import { getProjectCopilotAction, saveProjectCopilotAction } from "@/app/actions/projectCopilot";
+// Note: We no longer use projectCopilot actions for message storage - conversations are stored in DB
+import { buildSystemPrompt, type CopilotContext as CopilotContextType } from "@/lib/ai/prompts/copilot-prompts";
+import {
+    listConversations,
+    getConversation,
+    createConversation,
+    addMessage,
+    archiveConversation,
+    updateConversationTitle,
+    type ConversationSummary,
+    type ConversationWithMessages,
+} from "@/app/actions/conversations";
 
-export type CopilotPage = "draft" | "protocol" | "ledger";
+export type CopilotPage = "draft" | "protocol" | "ledger" | "study";
+
+type ConversationListItem = {
+    id: string;
+    title: string | null;
+    messageCount: number;
+    updatedAt: string;
+};
 
 type ProjectCopilotContextValue = {
     /** Current copilot state */
@@ -30,6 +48,8 @@ type ProjectCopilotContextValue = {
     isCollapsed: boolean;
     /** Current panel width */
     panelWidth: number;
+    /** Whether AI is loading */
+    isLoading: boolean;
     /** Toggle the panel collapsed state */
     toggleCollapsed: () => void;
     /** Set the panel collapsed state */
@@ -37,10 +57,33 @@ type ProjectCopilotContextValue = {
     /** Update the panel width */
     setPanelWidth: (width: number) => void;
     /** Send a message to the copilot */
-    sendMessage: (text: string, page: CopilotPage, section?: string) => void;
+    sendMessage: (text: string, page: CopilotPage, section?: string, model?: string) => void;
     /** Clear all messages */
     clearMessages: () => void;
+
+    // Conversation management
+    /** List of available conversations */
+    conversations: ConversationListItem[];
+    /** Current active conversation ID */
+    currentConversationId: string | null;
+    /** Whether conversations are loading */
+    isLoadingConversations: boolean;
+    /** Whether conversation sidebar is shown */
+    showConversationList: boolean;
+    /** Toggle conversation sidebar */
+    toggleConversationList: () => void;
+    /** Select a conversation */
+    selectConversation: (conversationId: string) => Promise<void>;
+    /** Create a new conversation */
+    newConversation: (page: CopilotPage) => Promise<void>;
+    /** Rename a conversation */
+    renameConversation: (conversationId: string, title: string) => Promise<void>;
+    /** Delete a conversation */
+    deleteConversation: (conversationId: string) => Promise<void>;
+    /** Refresh conversation list */
+    refreshConversations: () => Promise<void>;
 };
+
 
 const ProjectCopilotContext = createContext<ProjectCopilotContextValue | undefined>(undefined);
 
@@ -52,26 +95,28 @@ type ProjectCopilotProviderProps = {
 export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotProviderProps) {
     const [state, setState] = useState<ProjectCopilotState>(createDefaultProjectCopilotState());
     const [isMounted, setIsMounted] = useState(false);
+    const [isLoading, setIsLoading] = useState(false);
     const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    // Load state on mount
+    // Conversation management state
+    const [conversations, setConversations] = useState<ConversationListItem[]>([]);
+    const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
+    const [isLoadingConversations, setIsLoadingConversations] = useState(false);
+    const [showConversationList, setShowConversationList] = useState(false);
+
+    // Load panel state from localStorage on mount (not messages - those come from conversations)
     useEffect(() => {
         let isActive = true;
         if (projectId) {
+            // Only load panel state (width, collapsed), not messages
             const local = loadProjectCopilotState(projectId);
-            setState(local);
-            getProjectCopilotAction(projectId)
-                .then((remote) => {
-                    if (remote && isActive) {
-                        setState(remote);
-                    }
-                })
-                .catch((err) => {
-                    console.error("Failed to load project copilot from backend", err);
-                })
-                .finally(() => {
-                    if (isActive) setIsMounted(true);
-                });
+            setState(prev => ({
+                ...prev,
+                panel: local.panel,
+                // Messages will be loaded from the conversation system
+                messages: [],
+            }));
+            if (isActive) setIsMounted(true);
         } else {
             setIsMounted(true);
         }
@@ -80,7 +125,86 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
         };
     }, [projectId]);
 
-    // Save state with debounce
+    // Load conversations list
+    const loadConversations = useCallback(async (): Promise<void> => {
+        if (!projectId) return;
+        setIsLoadingConversations(true);
+        try {
+            const convos = await listConversations({ projectId });
+            const mapped = convos.map((c) => ({
+                id: c.id,
+                title: c.title,
+                messageCount: c.messageCount,
+                updatedAt: c.updatedAt,
+            }));
+            setConversations(mapped);
+        } catch (err) {
+            console.error("Failed to load conversations:", err);
+        } finally {
+            setIsLoadingConversations(false);
+        }
+    }, [projectId]);
+
+    // Initial load: get conversations and auto-select the most recent one
+    useEffect(() => {
+        let isActive = true;
+        let hasAutoSelected = false;
+
+        const initializeConversations = async () => {
+            if (!projectId || hasAutoSelected) return;
+
+            setIsLoadingConversations(true);
+            try {
+                const convos = await listConversations({ projectId });
+                const mapped = convos.map((c) => ({
+                    id: c.id,
+                    title: c.title,
+                    messageCount: c.messageCount,
+                    updatedAt: c.updatedAt,
+                }));
+
+                if (!isActive) return;
+                setConversations(mapped);
+
+                // Auto-select the most recent conversation if one exists
+                if (mapped.length > 0) {
+                    hasAutoSelected = true;
+                    const mostRecent = mapped[0]; // Already sorted by updatedAt desc
+                    const convo = await getConversation(mostRecent.id);
+                    if (convo && isActive) {
+                        setCurrentConversationId(convo.id);
+                        // Load messages from the conversation
+                        const copilotMessages: CopilotMessage[] = convo.messages
+                            .filter((m) => m.role !== "system")
+                            .map((m) => ({
+                                id: m.id,
+                                sender: m.role === "user" ? "user" : "ai",
+                                text: m.content,
+                                createdAt: m.createdAt,
+                            }));
+                        setState(prev => ({
+                            ...prev,
+                            messages: copilotMessages,
+                        }));
+                    }
+                }
+            } catch (err) {
+                console.error("Failed to load conversations:", err);
+            } finally {
+                if (isActive) setIsLoadingConversations(false);
+            }
+        };
+
+        initializeConversations();
+
+        return () => {
+            isActive = false;
+        };
+    // Only run once on mount, not when currentConversationId changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [projectId]);
+
+    // Save panel state with debounce (messages are saved via conversation system)
     const scheduleSave = useCallback(
         (next: ProjectCopilotState) => {
             if (!projectId) return;
@@ -88,10 +212,12 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
                 clearTimeout(saveTimerRef.current);
             }
             saveTimerRef.current = setTimeout(() => {
-                saveProjectCopilotState(projectId, next);
-                saveProjectCopilotAction(projectId, next).catch((err) => {
-                    console.error("Failed to save project copilot to backend", err);
-                });
+                // Only save panel state to localStorage, not messages
+                const panelOnlyState: ProjectCopilotState = {
+                    ...next,
+                    messages: [], // Don't persist messages to localStorage
+                };
+                saveProjectCopilotState(projectId, panelOnlyState);
             }, 400);
         },
         [projectId]
@@ -144,10 +270,108 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
         [updateState]
     );
 
+    const toggleConversationList = useCallback(() => {
+        setShowConversationList((prev) => !prev);
+    }, []);
+
+    const selectConversation = useCallback(async (conversationId: string) => {
+        try {
+            const convo = await getConversation(conversationId);
+            if (convo) {
+                setCurrentConversationId(convo.id);
+                // Convert conversation messages to CopilotMessages
+                const copilotMessages: CopilotMessage[] = convo.messages
+                    .filter((m) => m.role !== "system")
+                    .map((m) => ({
+                        id: m.id,
+                        sender: m.role === "user" ? "user" : "ai",
+                        text: m.content,
+                        createdAt: m.createdAt,
+                        context: { page: convo.page as CopilotPage },
+                    }));
+                updateState((prev) => ({
+                    ...prev,
+                    messages: copilotMessages,
+                }));
+            }
+        } catch (err) {
+            console.error("Failed to select conversation:", err);
+        }
+    }, [updateState]);
+
+    const newConversation = useCallback(async (page: CopilotPage) => {
+        if (!projectId) {
+            console.error("Cannot create conversation: no projectId");
+            return;
+        }
+        try {
+            const { id } = await createConversation({
+                projectId,
+                page,
+                context: "project",
+            });
+            // Set the new conversation and clear messages
+            setCurrentConversationId(id);
+            setState((prev) => ({
+                ...prev,
+                messages: [],
+            }));
+            // Refresh conversation list
+            await loadConversations();
+        } catch (err) {
+            console.error("Failed to create conversation:", err);
+        }
+    }, [projectId, loadConversations]);
+
+    const renameConversation = useCallback(async (conversationId: string, title: string) => {
+        try {
+            await updateConversationTitle(conversationId, title);
+            setConversations((prev) =>
+                prev.map((c) =>
+                    c.id === conversationId ? { ...c, title } : c
+                )
+            );
+        } catch (err) {
+            console.error("Failed to rename conversation:", err);
+        }
+    }, []);
+
+    const deleteConversationHandler = useCallback(async (conversationId: string) => {
+        try {
+            await archiveConversation(conversationId);
+            setConversations((prev) => prev.filter((c) => c.id !== conversationId));
+            if (currentConversationId === conversationId) {
+                setCurrentConversationId(null);
+                updateState((prev) => ({
+                    ...prev,
+                    messages: [],
+                }));
+            }
+        } catch (err) {
+            console.error("Failed to delete conversation:", err);
+        }
+    }, [currentConversationId, updateState]);
+
     const sendMessage = useCallback(
-        (text: string, page: CopilotPage, section?: string) => {
+        async (text: string, page: CopilotPage, section?: string, model?: string) => {
             const trimmed = text.trim();
-            if (!trimmed) return;
+            if (!trimmed || isLoading) return;
+
+            // Create conversation if needed
+            let convId = currentConversationId;
+            if (!convId) {
+                try {
+                    const { id } = await createConversation({
+                        projectId,
+                        page,
+                        context: "project",
+                    });
+                    convId = id;
+                    setCurrentConversationId(id);
+                } catch (err) {
+                    console.error("Failed to create conversation:", err);
+                }
+            }
 
             // Add user message
             const userMessage: CopilotMessage = {
@@ -163,23 +387,145 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
                 messages: [...prev.messages, userMessage],
             }));
 
-            // Mock AI response (will be replaced with real API call later)
-            setTimeout(() => {
-                const aiMessage: CopilotMessage = {
-                    id: `m-${Date.now() + 1}`,
-                    sender: "ai",
-                    text: generateMockResponse(trimmed, page, section),
-                    createdAt: new Date().toISOString(),
-                    context: { page, section },
-                };
+            // Save user message to DB
+            if (convId) {
+                addMessage({
+                    conversationId: convId,
+                    role: "user",
+                    content: trimmed,
+                }).catch(console.error);
+            }
 
-                updateState((prev) => ({
-                    ...prev,
-                    messages: [...prev.messages, aiMessage],
-                }));
-            }, 800);
+            // Set loading state
+            setIsLoading(true);
+
+            // AI message ID - message will be created when first content arrives
+            const aiMessageId = `m-${Date.now() + 1}`;
+            let aiMessageCreated = false;
+
+            let fullContent = "";
+
+            try {
+                // Build system prompt based on context
+                const systemPrompt = buildSystemPrompt(page as CopilotContextType, section);
+
+                // Call the streaming API
+                const response = await fetch("/api/ai/stream", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        userMessage: trimmed,
+                        context: "project",
+                        options: {
+                            projectId,
+                            systemPrompt,
+                            model,
+                        },
+                    }),
+                });
+
+                if (!response.ok) {
+                    throw new Error(`AI request failed: ${response.statusText}`);
+                }
+
+                const reader = response.body?.getReader();
+                if (!reader) {
+                    throw new Error("No response body");
+                }
+
+                const decoder = new TextDecoder();
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    const chunk = decoder.decode(value, { stream: true });
+                    const lines = chunk.split("\n").filter(Boolean);
+
+                    for (const line of lines) {
+                        try {
+                            const data = JSON.parse(line);
+                            if (data.type === "content" && data.content) {
+                                fullContent += data.content;
+
+                                // Create AI message on first content arrival
+                                if (!aiMessageCreated) {
+                                    aiMessageCreated = true;
+                                    const aiMessage: CopilotMessage = {
+                                        id: aiMessageId,
+                                        sender: "ai",
+                                        text: fullContent,
+                                        createdAt: new Date().toISOString(),
+                                        context: { page, section },
+                                    };
+                                    updateState((prev) => ({
+                                        ...prev,
+                                        messages: [...prev.messages, aiMessage],
+                                    }));
+                                } else {
+                                    // Update existing AI message with streaming content
+                                    updateState((prev) => ({
+                                        ...prev,
+                                        messages: prev.messages.map((msg) =>
+                                            msg.id === aiMessageId
+                                                ? { ...msg, text: fullContent }
+                                                : msg
+                                        ),
+                                    }));
+                                }
+                            } else if (data.type === "error") {
+                                throw new Error(data.error);
+                            }
+                        } catch {
+                            // Skip parsing errors for incomplete chunks
+                        }
+                    }
+                }
+
+                // Save AI response to DB
+                if (convId && fullContent) {
+                    addMessage({
+                        conversationId: convId,
+                        role: "assistant",
+                        content: fullContent,
+                    }).catch(console.error);
+                }
+
+                // Refresh conversation list to update titles/counts
+                loadConversations();
+            } catch (error) {
+                console.error("AI chat error:", error);
+                const errorText = `Sorry, I encountered an error: ${error instanceof Error ? error.message : "Unknown error"}. Please try again.`;
+
+                // Create error message if no AI message was created yet
+                if (!aiMessageCreated) {
+                    const aiMessage: CopilotMessage = {
+                        id: aiMessageId,
+                        sender: "ai",
+                        text: errorText,
+                        createdAt: new Date().toISOString(),
+                        context: { page, section },
+                    };
+                    updateState((prev) => ({
+                        ...prev,
+                        messages: [...prev.messages, aiMessage],
+                    }));
+                } else {
+                    // Update existing message with error
+                    updateState((prev) => ({
+                        ...prev,
+                        messages: prev.messages.map((msg) =>
+                            msg.id === aiMessageId
+                                ? { ...msg, text: fullContent + "\n\n" + errorText }
+                                : msg
+                        ),
+                    }));
+                }
+            } finally {
+                setIsLoading(false);
+            }
         },
-        [updateState]
+        [updateState, projectId, isLoading, currentConversationId, loadConversations]
     );
 
     const clearMessages = useCallback(() => {
@@ -187,6 +533,7 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             ...prev,
             messages: [],
         }));
+        setCurrentConversationId(null);
     }, [updateState]);
 
     const value = useMemo(
@@ -195,14 +542,45 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             messages: state.messages,
             isCollapsed: state.panel.collapsed,
             panelWidth: state.panel.width,
+            isLoading,
             toggleCollapsed,
             setCollapsed,
             setPanelWidth,
             sendMessage,
             clearMessages,
+            // Conversation management
+            conversations,
+            currentConversationId,
+            isLoadingConversations,
+            showConversationList,
+            toggleConversationList,
+            selectConversation,
+            newConversation,
+            renameConversation,
+            deleteConversation: deleteConversationHandler,
+            refreshConversations: loadConversations,
         }),
-        [state, toggleCollapsed, setCollapsed, setPanelWidth, sendMessage, clearMessages]
+        [
+            state,
+            isLoading,
+            toggleCollapsed,
+            setCollapsed,
+            setPanelWidth,
+            sendMessage,
+            clearMessages,
+            conversations,
+            currentConversationId,
+            isLoadingConversations,
+            showConversationList,
+            toggleConversationList,
+            selectConversation,
+            newConversation,
+            renameConversation,
+            deleteConversationHandler,
+            loadConversations,
+        ]
     );
+
 
     if (!isMounted) {
         // Return a consistent skeleton or null to avoid hydration mismatch
@@ -222,106 +600,4 @@ export function useProjectCopilot() {
         throw new Error("useProjectCopilot must be used within ProjectCopilotProvider");
     }
     return ctx;
-}
-
-/** Generate a mock AI response based on context */
-function generateMockResponse(userText: string, page: CopilotPage, section?: string): string {
-    const lowerText = userText.toLowerCase();
-
-    if (page === "draft") {
-        if (lowerText.includes("outline")) {
-            return `Here's a suggested outline for ${section || "this section"}:\n\n1. **Introduction** - Set the context and objectives\n2. **Key Findings** - Present the main results\n3. **Analysis** - Interpret the findings\n4. **Implications** - Discuss practical applications\n5. **Conclusion** - Summarize key takeaways\n\nWould you like me to expand on any of these points?`;
-        }
-        if (lowerText.includes("rewrite")) {
-            return `I'd be happy to help rewrite that. Please paste the paragraph you'd like me to improve, and I'll provide a clearer, more academic version.`;
-        }
-        return `I can help you with the ${section || "draft"} section. Here are some suggestions:\n\n• Consider adding more evidence to support your claims\n• The flow could be improved by adding transition sentences\n• Would you like me to suggest specific improvements?`;
-    }
-
-    if (page === "ledger") {
-        if (lowerText.includes("summarize")) {
-            return `Based on your evidence ledger, here's a summary:\n\n**Key Themes:**\n• Most studies focus on diagnostic accuracy\n• Sample sizes range from 50 to 5,000 participants\n• Predominantly retrospective study designs\n\n**Quality Assessment:**\n• 60% rated as high quality\n• 30% rated as medium quality\n• 10% pending review\n\nWould you like me to elaborate on any specific aspect?`;
-        }
-        if (lowerText.includes("theme") || lowerText.includes("pattern")) {
-            return `I've identified several themes across your studies:\n\n1. **Methodology** - Most use retrospective designs\n2. **Population** - Adult patients in clinical settings\n3. **Outcomes** - Focus on diagnostic accuracy metrics\n4. **Limitations** - Common issues with selection bias\n\nWould you like detailed analysis of any theme?`;
-        }
-        if (lowerText.includes("conflict")) {
-            return `I found some potentially conflicting findings:\n\n• Smith et al. (2022) reports 95% accuracy while Jones et al. (2021) reports 78%\n• Differences may be due to population characteristics or methodology\n\nWould you like me to help analyze these discrepancies?`;
-        }
-        return `I can help you analyze your evidence ledger. Try asking me to:\n\n• Summarize key findings\n• Find common themes\n• Identify conflicting results\n• Compare study methodologies`;
-    }
-
-    if (page === "protocol") {
-        // Section-specific responses for Protocol page
-        if (section === "pico-population") {
-            if (lowerText.includes("refine") || lowerText.includes("help")) {
-                return `Here are suggestions to refine your population definition:\n\n**Consider specifying:**\n• Age range (e.g., "adults aged 18-65")\n• Clinical setting (e.g., "hospitalized patients")\n• Disease stage (e.g., "newly diagnosed")\n• Geographic scope if relevant\n\n**Example refinement:**\n"Adults aged 18 years or older with histologically confirmed early-stage (I-II) solid tumors, diagnosed within the past 12 months"\n\nWould you like me to suggest a specific refinement based on your topic?`;
-            }
-            if (lowerText.includes("broaden")) {
-                return `To broaden your population criteria, consider:\n\n• Expanding age range to include adolescents (≥12 years)\n• Including all tumor stages, not just early-stage\n• Adding "suspected" cases alongside confirmed diagnoses\n• Removing geographic restrictions\n\n**Suggested broader definition:**\n"Patients of any age with suspected or confirmed tumors undergoing diagnostic imaging"`;
-            }
-            if (lowerText.includes("narrow") || lowerText.includes("specific")) {
-                return `To narrow your population criteria for higher precision:\n\n• Specify exact tumor types (e.g., "non-small cell lung cancer")\n• Add comorbidity exclusions\n• Limit to specific clinical settings\n• Define staging criteria precisely\n\n**Suggested narrower definition:**\n"Treatment-naïve adults (18-70 years) with histologically confirmed stage I-IIA non-small cell lung cancer, ECOG performance status 0-1"`;
-            }
-        }
-
-        if (section === "pico-intervention") {
-            if (lowerText.includes("suggest") || lowerText.includes("help")) {
-                return `For your intervention definition, consider:\n\n**Key elements to specify:**\n• Technology/method name and version\n• Implementation setting\n• Operator requirements\n• Timing relative to standard care\n\n**Example:**\n"AI-assisted imaging analysis using FDA-cleared deep learning algorithms, performed as an adjunct to radiologist interpretation within 24 hours of image acquisition"`;
-            }
-        }
-
-        if (section === "pico-comparison") {
-            if (lowerText.includes("suggest") || lowerText.includes("help")) {
-                return `For your comparison group, consider these options:\n\n**Common comparators:**\n• Standard of care / usual practice\n• No intervention (observation only)\n• Alternative technology\n• Historical controls\n\n**Example:**\n"Standard radiologist interpretation without AI assistance, using the same imaging protocols and reporting standards"`;
-            }
-        }
-
-        if (section === "pico-outcome") {
-            if (lowerText.includes("suggest") || lowerText.includes("help")) {
-                return `Consider these outcome categories:\n\n**Primary outcomes:**\n• Diagnostic accuracy (sensitivity, specificity, AUC)\n• Time to diagnosis\n• Detection rate\n\n**Secondary outcomes:**\n• False positive/negative rates\n• Reader confidence scores\n• Workflow efficiency metrics\n• Cost-effectiveness\n\n**Example:**\n"Primary: Sensitivity and specificity for tumor detection. Secondary: Time from imaging to diagnosis, radiologist reading time, false positive rate"`;
-            }
-        }
-
-        if (section === "eligibility-inclusion") {
-            if (lowerText.includes("suggest") || lowerText.includes("add") || lowerText.includes("criteria")) {
-                return `Consider adding these inclusion criteria:\n\n**Study design:**\n• Randomized controlled trials\n• Prospective cohort studies\n• Diagnostic accuracy studies\n\n**Reporting:**\n• Studies reporting sensitivity/specificity\n• Full-text available\n• Sufficient methodological detail\n\n**Suggested additions:**\n• "Studies with ≥50 participants"\n• "Studies using validated reference standards"\n• "Studies with independent outcome assessment"`;
-            }
-            if (lowerText.includes("prisma") || lowerText.includes("guideline")) {
-                return `According to PRISMA-DTA guidelines for diagnostic accuracy reviews:\n\n**Required criteria:**\n✓ Clear definition of index test and reference standard\n✓ Consecutive or random patient sampling\n✓ Blinded interpretation of results\n✓ Reporting of 2x2 diagnostic accuracy data\n\nYour current criteria look good. Consider adding:\n• "Studies using STARD-compliant reporting"`;
-            }
-        }
-
-        if (section === "eligibility-exclusion") {
-            if (lowerText.includes("suggest") || lowerText.includes("add")) {
-                return `Consider these exclusion criteria:\n\n**Study quality:**\n• Case reports or case series <10 patients\n• Studies with >20% missing outcome data\n• Studies without clearly defined reference standard\n\n**Design limitations:**\n• Retrospective chart reviews without validation\n• Studies with obvious selection bias\n• Duplicate publications\n\n**Suggested additions:**\n• "Studies with partial verification bias"\n• "Studies without adequate follow-up"`;
-            }
-        }
-
-        if (section === "search-query") {
-            if (lowerText.includes("optimize") || lowerText.includes("improve")) {
-                return `Here are optimizations for your search query:\n\n**Add MeSH terms:**\n• "Artificial Intelligence"[MeSH]\n• "Deep Learning"[MeSH]\n• "Diagnostic Imaging"[MeSH]\n\n**Expand synonyms:**\n• Add: "neural network*" OR "CNN" OR "convolutional"\n• Add: "radiograph*" OR "X-ray" OR "computed tomograph*"\n\n**Suggested optimized query:**\n\`\`\`\n("artificial intelligence"[MeSH] OR "deep learning"[MeSH] OR "machine learning" OR "neural network*") \nAND \n("diagnostic imaging"[MeSH] OR "radiology" OR "CT" OR "MRI" OR "radiograph*")\nAND \n("neoplasms"[MeSH] OR "tumor*" OR "cancer" OR "malignancy")\n\`\`\``;
-            }
-            if (lowerText.includes("mesh") || lowerText.includes("term")) {
-                return `Relevant MeSH terms for your topic:\n\n**AI/Technology:**\n• Artificial Intelligence [MeSH]\n• Machine Learning [MeSH]\n• Deep Learning [MeSH]\n• Neural Networks, Computer [MeSH]\n\n**Imaging:**\n• Diagnostic Imaging [MeSH]\n• Tomography, X-Ray Computed [MeSH]\n• Magnetic Resonance Imaging [MeSH]\n\n**Oncology:**\n• Neoplasms [MeSH]\n• Early Detection of Cancer [MeSH]\n\nWould you like me to construct a complete PubMed-ready query with these terms?`;
-            }
-            if (lowerText.includes("boolean") || lowerText.includes("operator")) {
-                return `Boolean operator review for your query:\n\n**Current structure looks good!** Tips:\n\n✓ Use AND between concept groups\n✓ Use OR within concept groups for synonyms\n✓ Use quotation marks for exact phrases\n✓ Use asterisk (*) for truncation\n\n**Suggestions:**\n• Add proximity operators if database supports (e.g., NEAR/3)\n• Consider field tags (e.g., [tiab] for title/abstract)\n• Test sensitivity vs. specificity tradeoff`;
-            }
-        }
-
-        if (section === "search-databases") {
-            if (lowerText.includes("suggest") || lowerText.includes("database") || lowerText.includes("source")) {
-                return `Recommended databases for your systematic review:\n\n**Essential:**\n• PubMed/MEDLINE\n• Embase\n• Cochrane CENTRAL\n\n**For comprehensive coverage:**\n• Web of Science\n• Scopus\n• IEEE Xplore (for AI/technical studies)\n\n**Grey literature:**\n• ClinicalTrials.gov\n• WHO ICTRP\n• Conference proceedings (RSNA, MICCAI)\n• Preprint servers (medRxiv, arXiv)\n\nPRISMA recommends searching at least 2-3 databases.`;
-            }
-            if (lowerText.includes("grey") || lowerText.includes("gray")) {
-                return `Grey literature sources to consider:\n\n**Trial registries:**\n• ClinicalTrials.gov\n• WHO ICTRP\n• EU Clinical Trials Register\n\n**Preprints:**\n• medRxiv\n• arXiv (cs.CV, eess.IV)\n\n**Regulatory:**\n• FDA 510(k) database\n• CE marking databases\n\n**Conference proceedings:**\n• RSNA\n• MICCAI\n• SPIE Medical Imaging`;
-            }
-        }
-
-        // Default protocol response
-        return `I can help you refine your study protocol. Based on your current section (${section || "Protocol"}), I can:\n\n• Suggest refinements or additions\n• Check alignment with PRISMA guidelines\n• Provide examples from similar reviews\n• Help optimize your search strategy\n\nWhat would you like help with?`;
-    }
-
-    return `I'm here to help with your systematic review. What would you like to know?`;
 }

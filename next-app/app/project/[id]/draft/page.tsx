@@ -16,6 +16,8 @@ import Link from "next/link";
 import { BaseBackButton } from "@/components/BaseBackButton";
 import { AppShell } from "@/components/AppShell";
 import { useProjects } from "@/contexts/ProjectsContext";
+import { ProjectCopilot } from "@/components/ProjectCopilot";
+import { useProjectCopilot } from "@/contexts/ProjectCopilotContext";
 import { DRAFT_SECTIONS, OPTIONAL_SECTION_KEYS, DraftMode, DraftSectionId, DraftSectionKey } from "@/types/draft";
 import {
   CopilotMessage,
@@ -396,6 +398,7 @@ function DraftContent() {
   const searchParams = useSearchParams();
   const { getProjectById } = useProjects();
   const project = getProjectById(id);
+  const { isCollapsed: copilotCollapsed, panelWidth: copilotPanelWidth, setPanelWidth: setCopilotPanelWidth, setCollapsed: setCopilotCollapsed } = useProjectCopilot();
 
   const queryMode = searchParams.get("mode");
   const querySection = searchParams.get("section");
@@ -1380,12 +1383,12 @@ function DraftContent() {
   const layoutVars = useMemo(() => {
     const rail = 48;
     const ledger = draft.panels.ledgerCollapsed ? rail : clamp(draft.panels.ledgerWidth, 260, 520);
-    const copilot = draft.panels.copilotCollapsed ? rail : clamp(draft.panels.copilotWidth, 300, 560);
+    const copilot = copilotCollapsed ? rail : clamp(copilotPanelWidth, 300, 560);
     return {
       "--ledger-width": `${ledger}px`,
       "--copilot-width": `${copilot}px`,
     } as CSSProperties;
-  }, [draft.panels]);
+  }, [draft.panels, copilotCollapsed, copilotPanelWidth]);
 
   const dragStateRef = useRef<
     | { side: "ledger"; startX: number; startWidth: number }
@@ -1409,14 +1412,7 @@ function DraftContent() {
         }));
       } else {
         const next = clamp(dragStateRef.current.startWidth - dx, 300, 560);
-        updateDraft((prev) => ({
-          ...prev,
-          panels: {
-            ...prev.panels,
-            copilotWidth: next,
-            copilotCollapsed: false,
-          },
-        }));
+        setCopilotPanelWidth(next);
       }
     };
 
@@ -1886,137 +1882,39 @@ function DraftContent() {
           </section>
 
           <div
-            className={`${styles.resizeHandle} ${draft.panels.copilotCollapsed ? styles.resizeHandleHidden : ""}`}
+            className={`${styles.resizeHandle} ${copilotCollapsed ? styles.resizeHandleHidden : ""}`}
             role="separator"
             aria-label="Resize copilot panel"
-            aria-hidden={draft.panels.copilotCollapsed}
+            aria-hidden={copilotCollapsed}
             onPointerDown={(e) => {
-              if (draft.panels.copilotCollapsed) return;
+              if (copilotCollapsed) return;
               dragStateRef.current = {
                 side: "copilot",
                 startX: e.clientX,
-                startWidth: clamp(draft.panels.copilotWidth, 300, 560),
+                startWidth: clamp(copilotPanelWidth, 300, 560),
               };
               document.body.style.userSelect = "none";
               document.body.style.cursor = "col-resize";
             }}
           />
 
-          {!draft.panels.copilotCollapsed ? (
-            <aside className={styles.copilot} aria-label="AI copilot" id={copilotPanelId}>
-              <div className={styles.panelHeader}>
-                <div className={styles.panelTitle}>
-                  <span className="material-icons-round">smart_toy</span>
-                  Copilot
-                </div>
-                <div className={styles.panelHeaderActions}>
-                  <button
-                    type="button"
-                    className={styles.iconBtn}
-                    aria-label="Collapse copilot"
-                    aria-controls={copilotPanelId}
-                    aria-expanded={!draft.panels.copilotCollapsed}
-                    onClick={() =>
-                      updateDraft((prev) => ({
-                        ...prev,
-                        panels: { ...prev.panels, copilotCollapsed: true },
-                      }))
-                    }
-                  >
-                    <span className="material-icons-round">chevron_right</span>
-                  </button>
-                </div>
-              </div>
-
-              <div className={styles.panelSubhead}>
-                <span className={styles.subLabel}>Context</span>
-                <span className={styles.subValue}>
-                  {activeSectionLabel} · {usedEvidence.length} evidence
-                </span>
-              </div>
-
-              <div className={styles.copilotBody} ref={copilotListRef} onScroll={handleCopilotScroll}>
-                {copilotMessages.length === 0 ? (
-                  <div className={styles.emptyPanel}>
-                    <div className={styles.emptyIcon}>
-                      <span className="material-icons-round">tips_and_updates</span>
-                    </div>
-                    <h3>Draft faster</h3>
-                    <p>Ask for an outline, rewrite, or evidence-backed phrasing.</p>
-                    <div className={styles.suggestRow}>
-                      <button
-                        type="button"
-                        className={styles.suggestChip}
-                        onClick={() => setCopilotInput(`Outline the ${activeSectionLabel} section`)}
-                      >
-                        Outline
-                      </button>
-                      <button
-                        type="button"
-                        className={styles.suggestChip}
-                        onClick={() => setCopilotInput(`Rewrite this paragraph for the ${activeSectionLabel} section:`)}
-                      >
-                        Rewrite
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className={styles.chatList}>
-                    {copilotMessages.map((msg) => (
-                      <div
-                        key={msg.id}
-                        className={`${styles.chatMsg} ${msg.sender === "ai" ? styles.chatMsgAi : styles.chatMsgUser}`}
-                      >
-                        <div className={styles.chatBubble}>
-                          <pre className={styles.chatText}>{msg.text}</pre>
-                          {msg.sender === "ai" ? (
-                            <div className={styles.chatActions}>
-                              <button type="button" className={styles.smallBtn} onClick={() => insertCopilotText(msg.text)}>
-                                Insert
-                              </button>
-                            </div>
-                          ) : null}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div className={styles.copilotInputArea}>
-                <form
-                  className={styles.copilotInputRow}
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    handleCopilotSend();
-                  }}
-                >
-                  <input
-                    type="text"
-                    value={copilotInput}
-                    onChange={(e) => setCopilotInput(e.target.value)}
-                    placeholder={`Ask about ${activeSectionLabel}…`}
-                    aria-label="Copilot prompt"
-                  />
-                  <button type="submit" className={styles.iconBtn} aria-label="Send">
-                    <span className="material-icons-round">send</span>
-                  </button>
-                </form>
-              </div>
-            </aside>
-          ) : (
-            <button
-              type="button"
-              className={styles.expandRailRight}
-              aria-label="Expand copilot"
-              aria-controls={copilotPanelId}
-              aria-expanded={!draft.panels.copilotCollapsed}
-              onClick={() => updateDraft((prev) => ({ ...prev, panels: { ...prev.panels, copilotCollapsed: false } }))}
-            >
-              <span className={styles.expandRailText}>Copilot</span>
-              <span className="material-icons-round">chevron_left</span>
-            </button>
-          )}
+          <ProjectCopilot
+            page="draft"
+            section={draft.activeSection}
+            contextDisplay={`${activeSectionLabel} · ${usedEvidence.length} evidence`}
+            emptyState={{
+              icon: "tips_and_updates",
+              title: "Draft faster",
+              description: "Ask for an outline, rewrite, or evidence-backed phrasing.",
+              suggestions: [
+                { label: "Outline", prompt: `Outline the ${activeSectionLabel} section` },
+                { label: "Rewrite", prompt: `Rewrite this paragraph for the ${activeSectionLabel} section:` },
+              ],
+            }}
+            inputPlaceholder={`Ask about ${activeSectionLabel}…`}
+            onInsert={insertCopilotText}
+            panelId={copilotPanelId}
+          />
         </div>
       </div>
 

@@ -2,7 +2,12 @@ import { loadProjects, saveProjects } from "@/lib/storage";
 import { saveLedger } from "@/lib/ledgerStorage";
 import { createDefaultDraftState, emptyDoc, saveDraftState, type DraftState } from "@/lib/draftStorage";
 import { hasProtocolData, saveProtocolData } from "@/lib/protocolStorage";
-import { createDefaultProjectCopilotState, saveProjectCopilotState } from "@/lib/projectCopilotStorage";
+import {
+  createDefaultProjectCopilotState,
+  saveProjectCopilotState,
+  type CopilotMessage,
+  type ProjectCopilotState,
+} from "@/lib/projectCopilotStorage";
 import type { Project } from "@/types/project";
 import type { ProtocolData } from "@/types/protocol";
 import type { Study } from "@/types/ledger";
@@ -158,19 +163,18 @@ const buildDraftState = (projectId: string): DraftState => {
   };
 };
 
-const buildProjectCopilot = () => {
+const buildProjectCopilot = (): ProjectCopilotState => {
   const state = createDefaultProjectCopilotState();
+  const message: CopilotMessage = {
+    id: `m-${Date.now()}`,
+    sender: "ai",
+    text: "I can help summarize your evidence or draft section-specific text.",
+    createdAt: new Date().toISOString(),
+    context: { page: "draft" },
+  };
   return {
     ...state,
-    messages: [
-      {
-        id: `m-${Date.now()}`,
-        sender: "ai",
-        text: "I can help summarize your evidence or draft section-specific text.",
-        createdAt: new Date().toISOString(),
-        context: { page: "draft" },
-      },
-    ],
+    messages: [message],
   };
 };
 

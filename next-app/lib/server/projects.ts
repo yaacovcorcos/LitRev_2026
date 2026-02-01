@@ -3,7 +3,6 @@ import "server-only";
 import { prisma } from "@/lib/server/prisma";
 import { requireScope, type ServiceScope } from "@/lib/server/scope";
 import type { Project, ProjectProgress, ProjectStatus } from "@/types/project";
-import { Prisma } from "@prisma/client";
 
 const PROJECT_STATUS_VALUES = new Set<ProjectStatus>(["harvesting", "ready"]);
 
@@ -21,6 +20,11 @@ function toDate(value?: string | Date): Date | undefined {
   if (value instanceof Date) return value;
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? undefined : parsed;
+}
+
+function toJsonObject(value?: ProjectProgress): any | undefined {
+  if (!value) return undefined;
+  return JSON.parse(JSON.stringify(value)) as any;
 }
 
 function normalizeProjectInput(input: ProjectInput): ProjectInput {
@@ -131,7 +135,7 @@ export async function createProject(
       status: normalized.status,
       statusText: normalized.statusText,
       papers: normalized.papers ?? undefined,
-      progress: normalized.progress ? (normalized.progress as Prisma.JsonObject) : undefined,
+      progress: toJsonObject(normalized.progress),
       created,
       modified,
     },
@@ -162,7 +166,7 @@ export async function updateProject(
       status: normalized.status ?? undefined,
       statusText: normalized.statusText ?? undefined,
       papers: normalized.papers ?? undefined,
-      progress: normalized.progress ? (normalized.progress as Prisma.JsonObject) : undefined,
+      progress: toJsonObject(normalized.progress),
       modified: toDate(normalized.modified) ?? new Date(),
     },
   });

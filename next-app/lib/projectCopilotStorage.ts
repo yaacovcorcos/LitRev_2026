@@ -15,7 +15,7 @@ export type CopilotMessage = {
   createdAt: string;
   /** Optional context about where this message was sent from */
   context?: {
-    page: "draft" | "protocol" | "ledger";
+    page: "draft" | "protocol" | "ledger" | "study";
     section?: string;
   };
 };

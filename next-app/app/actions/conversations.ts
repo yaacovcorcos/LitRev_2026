@@ -1,0 +1,328 @@
+"use server";
+
+import { prisma } from "@/lib/server/prisma";
+import type { CopilotPage } from "@/contexts/ProjectCopilotContext";
+
+// =============================================================================
+// MULTI-USER READINESS
+// =============================================================================
+// When auth is added, replace these with actual user/workspace from session.
+// For now, all conversations are scoped by projectId (which has workspaceId).
+// The placeholder IDs ensure consistent scoping patterns for smooth migration.
+// =============================================================================
+const PLACEHOLDER_USER_ID = "single-user";
+const PLACEHOLDER_WORKSPACE_ID = "single-workspace";
+
+/**
+ * Get the current user context (placeholder until auth is implemented)
+ * When auth is added, this will get userId/workspaceId from the session
+ */
+function getCurrentUserContext() {
+    // TODO: Replace with actual auth session lookup
+    return {
+        userId: PLACEHOLDER_USER_ID,
+        workspaceId: PLACEHOLDER_WORKSPACE_ID,
+    };
+}
+
+export type ConversationMessage = {
+    id: string;
+    role: "user" | "assistant" | "system";
+    content: string;
+    createdAt: string;
+};
+
+export type ConversationSummary = {
+    id: string;
+    title: string | null;
+    context: string;
+    page: string | null;
+    projectId: string | null;
+    studyId: string | null;
+    messageCount: number;
+    createdAt: string;
+    updatedAt: string;
+};
+
+export type ConversationWithMessages = ConversationSummary & {
+    messages: ConversationMessage[];
+};
+
+/**
+ * List all conversations for a given context
+ * Multi-user ready: filters by workspaceId when provided
+ */
+export async function listConversations(params: {
+    userId?: string;
+    workspaceId?: string;
+    projectId?: string;
+    page?: CopilotPage;
+    limit?: number;
+}): Promise<ConversationSummary[]> {
+    const { userId, workspaceId, projectId, page, limit = 50 } = params;
+
+    const conversations = await prisma.aIConversation.findMany({
+        where: {
+            userId: userId || undefined,
+            workspaceId: workspaceId || undefined,
+            projectId: projectId || undefined,
+            page: page || undefined,
+            archived: false,
+        },
+        include: {
+            _count: {
+                select: { messages: true },
+            },
+        },
+        orderBy: { updatedAt: "desc" },
+        take: limit,
+    });
+
+    return conversations.map((conv) => ({
+        id: conv.id,
+        title: conv.title,
+        context: conv.context,
+        page: conv.page,
+        projectId: conv.projectId,
+        studyId: conv.studyId,
+        messageCount: conv._count.messages,
+        createdAt: conv.createdAt.toISOString(),
+        updatedAt: conv.updatedAt.toISOString(),
+    }));
+}
+
+/**
+ * Get a single conversation with all messages
+ */
+export async function getConversation(
+    conversationId: string
+): Promise<ConversationWithMessages | null> {
+    const conversation = await prisma.aIConversation.findUnique({
+        where: { id: conversationId },
+        include: {
+            messages: {
+                orderBy: { createdAt: "asc" },
+            },
+            _count: {
+                select: { messages: true },
+            },
+        },
+    });
+
+    if (!conversation) return null;
+
+    return {
+        id: conversation.id,
+        title: conversation.title,
+        context: conversation.context,
+        page: conversation.page,
+        projectId: conversation.projectId,
+        studyId: conversation.studyId,
+        messageCount: conversation._count.messages,
+        createdAt: conversation.createdAt.toISOString(),
+        updatedAt: conversation.updatedAt.toISOString(),
+        messages: conversation.messages.map((msg) => ({
+            id: msg.id,
+            role: msg.role as "user" | "assistant" | "system",
+            content: msg.content,
+            createdAt: msg.createdAt.toISOString(),
+        })),
+    };
+}
+
+/**
+ * Create a new conversation
+ * Multi-user ready: stores userId and workspaceId for ownership scoping
+ */
+export async function createConversation(params: {
+    userId?: string;
+    workspaceId?: string;
+    projectId?: string;
+    studyId?: string;
+    page?: CopilotPage;
+    context?: string;
+    title?: string;
+}): Promise<{ id: string }> {
+    const { context = "project", title } = params;
+
+    // Use provided IDs or fall back to placeholder for single-user mode
+    const userContext = getCurrentUserContext();
+    const userId = params.userId || userContext.userId;
+    const workspaceId = params.workspaceId || userContext.workspaceId;
+    const { projectId, studyId } = params;
+
+    const conversation = await prisma.aIConversation.create({
+        data: {
+            userId,
+            workspaceId,
+            projectId,
+            studyId,
+            context,
+            title: title || null,
+        },
+    });
+    return { id: conversation.id };
+}
+
+/**
+ * Add a message to a conversation
+ */
+export async function addMessage(params: {
+    conversationId: string;
+    role: "user" | "assistant" | "system";
+    content: string;
+}): Promise<{ id: string }> {
+    const { conversationId, role, content } = params;
+
+    // Add the message
+    const message = await prisma.aIMessage.create({
+        data: {
+            conversationId,
+            role,
+            content,
+        },
+    });
+
+    // Auto-generate title from first user message if no title exists
+    if (role === "user") {
+        const conversation = await prisma.aIConversation.findUnique({
+            where: { id: conversationId },
+            select: { title: true },
+        });
+
+        if (!conversation?.title) {
+            // Use first ~50 chars of user message as title
+            const autoTitle = content.length > 50 ? content.slice(0, 47) + "..." : content;
+            await prisma.aIConversation.update({
+                where: { id: conversationId },
+                data: { title: autoTitle },
+            });
+        }
+    }
+
+    // Update conversation's updatedAt
+    await prisma.aIConversation.update({
+        where: { id: conversationId },
+        data: { updatedAt: new Date() },
+    });
+
+    return { id: message.id };
+}
+
+/**
+ * Update conversation title
+ */
+export async function updateConversationTitle(
+    conversationId: string,
+    title: string
+): Promise<void> {
+    await prisma.aIConversation.update({
+        where: { id: conversationId },
+        data: { title },
+    });
+}
+
+/**
+ * Archive a conversation (soft delete)
+ */
+export async function archiveConversation(conversationId: string): Promise<void> {
+    await prisma.aIConversation.update({
+        where: { id: conversationId },
+        data: { archived: true },
+    });
+}
+
+/**
+ * Delete a conversation permanently
+ */
+export async function deleteConversation(conversationId: string): Promise<void> {
+    await prisma.aIConversation.delete({
+        where: { id: conversationId },
+    });
+}
+
+/**
+ * Get or create a conversation for the current context
+ * If no active conversation exists, creates a new one
+ * Multi-user ready: scopes by userId/workspaceId
+ */
+export async function getOrCreateConversation(params: {
+    userId?: string;
+    workspaceId?: string;
+    projectId?: string;
+    studyId?: string;
+    page?: CopilotPage;
+}): Promise<ConversationWithMessages> {
+    const { projectId, studyId, page } = params;
+
+    // Use provided IDs or fall back to placeholder for single-user mode
+    const userContext = getCurrentUserContext();
+    const userId = params.userId || userContext.userId;
+    const workspaceId = params.workspaceId || userContext.workspaceId;
+
+    // Try to find an existing recent conversation
+    const existing = await prisma.aIConversation.findFirst({
+        where: {
+            userId: userId || undefined,
+            workspaceId: workspaceId || undefined,
+            projectId: projectId || undefined,
+            studyId: studyId || undefined,
+            page: page || undefined,
+            archived: false,
+        },
+        include: {
+            messages: {
+                orderBy: { createdAt: "asc" },
+            },
+            _count: {
+                select: { messages: true },
+            },
+        },
+        orderBy: { updatedAt: "desc" },
+    });
+
+    if (existing) {
+        return {
+            id: existing.id,
+            title: existing.title,
+            context: existing.context,
+            page: existing.page,
+            projectId: existing.projectId,
+            studyId: existing.studyId,
+            messageCount: existing._count.messages,
+            createdAt: existing.createdAt.toISOString(),
+            updatedAt: existing.updatedAt.toISOString(),
+            messages: existing.messages.map((msg) => ({
+                id: msg.id,
+                role: msg.role as "user" | "assistant" | "system",
+                content: msg.content,
+                createdAt: msg.createdAt.toISOString(),
+            })),
+        };
+    }
+
+    // Create new conversation with ownership scoping
+    const newConv = await prisma.aIConversation.create({
+        data: {
+            userId,
+            workspaceId,
+            projectId,
+            studyId,
+            page,
+            context: studyId ? "study" : projectId ? "project" : "global",
+        },
+    });
+
+    return {
+        id: newConv.id,
+        title: null,
+        context: newConv.context,
+        page: newConv.page,
+        projectId: newConv.projectId,
+        studyId: newConv.studyId,
+        messageCount: 0,
+        createdAt: newConv.createdAt.toISOString(),
+        updatedAt: newConv.updatedAt.toISOString(),
+        messages: [],
+    };
+}

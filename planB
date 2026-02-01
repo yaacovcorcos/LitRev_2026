@@ -19,6 +19,10 @@ Status (keep updated):
 - Phase 7 done (code): Draft page loads from backend with localStorage fallback and saves to backend + local.
 - Phase 8 done (code): Project-level copilot loads from backend with local fallback; saves to both.
 - Phase 9 done (code): FileAsset model + server actions + study file upload + export metadata wiring; actual export file generation still mocked.
+- Phase 9 runtime fix: Supabase storage uploads now support service-role key; require server env vars in production.
+- Phase 9 ops: Supabase storage bucket `study-assets` exists and is public.
+- Phase 9 runtime fix: Server Actions body size limit raised for study imports; shared client-side file validation added.
+- Phase 9 ops: Vercel Production + Preview envs updated for DATABASE_URL, DIRECT_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY.
 
 Phase 0 — Decisions (1–2 hours)
 - Confirm Supabase project + connection details.

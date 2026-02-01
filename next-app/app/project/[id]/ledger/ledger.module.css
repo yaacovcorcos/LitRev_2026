@@ -294,10 +294,16 @@
     font-size: 18px;
 }
 
+.expandCell {
+    width: 36px;
+    padding: 16px 0 16px 16px;
+    vertical-align: middle;
+}
+
 .selectCell {
-    width: 44px;
-    padding-right: 8px;
-    padding-left: 16px;
+    width: 36px;
+    padding: 16px 8px 16px 0;
+    vertical-align: middle;
 }
 
 .selectCheckbox {
@@ -305,6 +311,15 @@
     height: 16px;
     accent-color: var(--accent-primary);
     cursor: pointer;
+}
+
+/* Clickable Row */
+.clickableRow {
+    cursor: pointer;
+}
+
+.clickableRow:hover {
+    background: rgba(255, 255, 255, 0.5);
 }
 
 /* Files Panel Overlay */
@@ -324,9 +339,158 @@
     from {
         transform: translateX(100%);
     }
+
     to {
         transform: translateX(0);
     }
+}
+
+/* Expandable Row Styles */
+.expandBtn {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 6px;
+    border-radius: 6px;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+}
+
+.expandBtn:hover {
+    background: rgba(0, 0, 0, 0.05);
+    color: var(--text-primary);
+}
+
+.expandBtn .material-icons-round {
+    font-size: 20px;
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.expandBtn.expanded .material-icons-round {
+    transform: rotate(180deg);
+}
+
+/* Expanded State for Main Row */
+.rowExpanded {
+    background: rgba(255, 255, 255, 0.5) !important;
+}
+
+.rowExpanded td {
+    border-bottom: none !important;
+}
+
+.expandedRow {
+    background: rgba(255, 255, 255, 0.5);
+}
+
+.expandedRow td {
+    padding: 0 !important;
+    border-bottom: 1px solid var(--glass-border);
+}
+
+.expandedContent {
+    padding: 0 24px 24px 88px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    animation: expandIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    position: relative;
+}
+
+.expandedContent::before {
+    content: "";
+    position: absolute;
+    left: 34px;
+    top: -12px;
+    bottom: 24px;
+    width: 2px;
+    background: var(--glass-border);
+    border-radius: 99px;
+    opacity: 0.5;
+}
+
+@keyframes expandIn {
+    from {
+        opacity: 0;
+        transform: translateY(-4px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.expandedSection {
+    margin-bottom: 4px;
+}
+
+.abstractText {
+    margin: 0;
+    font-size: 14px;
+    line-height: 1.5;
+    color: var(--text-secondary);
+    font-weight: 400;
+}
+
+.expandedMeta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+}
+
+.metaChip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 10px;
+    background: transparent;
+    border: 1px solid var(--glass-border);
+    border-radius: 6px;
+    font-size: 11px;
+    color: var(--text-muted);
+    text-decoration: none;
+    transition: all 0.2s ease;
+}
+
+.metaChip .material-icons-round {
+    font-size: 14px;
+    color: var(--text-muted);
+}
+
+.metaChip:hover {
+    background: rgba(255, 255, 255, 0.5);
+    border-color: var(--accent-primary);
+    color: var(--text-primary);
+}
+
+.metaChip:hover .material-icons-round {
+    color: var(--accent-primary);
+}
+
+a.metaChip {
+    cursor: pointer;
+}
+
+.viewDetailsLink {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--accent-primary);
+    text-decoration: none;
+    margin-left: 4px;
+}
+
+.viewDetailsLink:hover {
+    text-decoration: underline;
 }
 
 /* Responsive */
@@ -362,5 +526,9 @@
 
     .ledgerTable {
         min-width: 700px;
+    }
+
+    .expandedContent {
+        padding-left: 24px;
     }
 }

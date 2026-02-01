@@ -220,28 +220,38 @@
 }
 
 .chatHeader {
-    height: 60px;
-    padding: var(--content-top-offset, 12px) 32px 0 32px;
+    padding: 16px 32px;
     display: flex;
     align-items: center;
     gap: 16px;
-    flex-wrap: wrap;
 }
 
 .modelSelector {
+    position: relative;
+}
+
+.modelButton {
     display: flex;
     align-items: center;
     gap: 8px;
-    font-weight: 500;
-    color: var(--text-primary);
-    padding: 8px 14px;
+    padding: 8px 12px;
     background: rgba(255, 255, 255, 0.6);
+    border: 1px solid var(--glass-border);
     border-radius: 10px;
+    color: var(--text-primary);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
 }
 
-.modelName {
-    font-weight: 600;
-    font-size: 14px;
+.modelButton:hover {
+    background: rgba(255, 255, 255, 0.85);
+}
+
+.modelButton .material-icons-round {
+    font-size: 18px;
+    color: var(--accent-primary);
 }
 
 .modelStatus {
@@ -249,6 +259,80 @@
     height: 8px;
     border-radius: 50%;
     background: #10b981;
+    margin-left: 4px;
+}
+
+.modelDropdown {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    min-width: 240px;
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(20px);
+    border: 1px solid var(--glass-border);
+    border-radius: 12px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.12);
+    padding: 6px;
+    z-index: 100;
+}
+
+.modelOption {
+    width: 100%;
+    text-align: left;
+    padding: 12px 14px;
+    background: transparent;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.15s;
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+}
+
+.modelOption:hover {
+    background: rgba(0, 0, 0, 0.04);
+}
+
+.modelOptionActive {
+    background: rgba(217, 116, 89, 0.1);
+}
+
+.modelOptionIcon {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    background: linear-gradient(135deg, rgba(217, 116, 89, 0.15), rgba(217, 116, 89, 0.05));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.modelOptionIcon .material-icons-round {
+    font-size: 18px;
+    color: var(--accent-primary);
+}
+
+.modelOptionInfo {
+    flex: 1;
+    min-width: 0;
+}
+
+.modelOptionName {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 2px;
+}
+
+.modelOptionDesc {
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.modelOptionActive .modelOptionName {
+    color: var(--accent-primary);
 }
 
 .projectSelector {
@@ -366,6 +450,7 @@
     flex: 1;
     min-height: 0;
     overflow-y: auto;
+    overflow-x: hidden;
     padding: 32px;
     display: flex;
     flex-direction: column;
@@ -455,6 +540,7 @@
     display: flex;
     gap: 14px;
     max-width: 85%;
+    min-width: 0;
     animation: fadeIn 0.3s ease;
 }
 
@@ -498,6 +584,9 @@
     font-size: 14px;
     line-height: 1.6;
     position: relative;
+    min-width: 0;
+    overflow-wrap: break-word;
+    word-break: break-word;
 }
 
 .aiBubble {
@@ -505,6 +594,13 @@
     border: 1px solid rgba(255, 255, 255, 0.9);
     border-top-left-radius: 4px;
     color: var(--text-primary);
+}
+
+.messageContent p {
+    margin: 0;
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+    word-break: break-word;
 }
 
 .userBubble {
@@ -599,68 +695,293 @@
     flex-shrink: 0;
 }
 
-.chatInputWrapper {
+/* ========================================
+   TWO-FLOOR INPUT BOX
+   ======================================== */
+
+.inputBox {
     width: 100%;
     max-width: 800px;
-    background: rgba(255, 255, 255, 0.7);
-    backdrop-filter: blur(20px);
+    background: white;
     border: 1px solid var(--glass-border);
-    border-radius: 16px;
-    padding: 6px 6px 6px 20px;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
-    transition: all 0.3s ease;
+    border-radius: 20px;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    position: relative;
 }
 
-.chatInputWrapper:focus-within {
-    background: rgba(255, 255, 255, 0.9);
-    border-color: var(--accent-primary);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
+.inputBox:focus-within {
+    border-color: rgba(0, 0, 0, 0.2);
+    box-shadow: 0 6px 32px rgba(0, 0, 0, 0.1);
 }
 
-.chatInputWrapper input {
-    flex: 1;
+/* Upper floor - textarea */
+.inputTextarea {
+    display: block;
+    width: 100%;
+    min-height: 28px;
+    max-height: 200px;
+    padding: 16px 20px 8px;
     border: none;
     background: transparent;
-    padding: 12px 0;
     font-size: 15px;
     font-family: inherit;
     color: var(--text-primary);
+    resize: none;
+    outline: none;
+    line-height: 1.5;
+    overflow-y: auto;
 }
 
-.chatInputWrapper input:focus {
+.inputTextarea::placeholder {
+    color: var(--text-muted);
+}
+
+.inputTextarea:disabled {
+    opacity: 0.7;
+}
+
+/* Override global focus-visible outline for elements inside input box */
+.inputTextarea:focus-visible,
+.inputBox button:focus-visible {
     outline: none;
 }
 
-.sendButton {
-    width: 40px;
-    height: 40px;
-    border-radius: 12px;
-    background: var(--accent-primary);
+/* Lower floor - action bar */
+.inputBar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px 12px;
+    border-top: 1px solid rgba(0, 0, 0, 0.04);
+}
+
+.inputBarLeft {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+/* Model Selector in input */
+.inputModelSelector {
+    position: relative;
+}
+
+.inputModelBtn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    background: transparent;
     border: none;
-    color: white;
+    border-radius: 8px;
     cursor: pointer;
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-weight: 500;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.inputModelBtn:hover {
+    background: rgba(0, 0, 0, 0.04);
+    color: var(--text-primary);
+}
+
+.inputModelBtn .material-icons-round {
+    font-size: 16px;
+}
+
+.inputModelBtn .material-icons-round:first-child {
+    color: var(--accent-primary);
+}
+
+.inputModelDropdown {
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 0;
+    min-width: 180px;
+    background: white;
+    border: 1px solid var(--glass-border);
+    border-radius: 12px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+    padding: 6px;
+    z-index: 100;
+}
+
+.inputModelItem {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    background: transparent;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    text-align: left;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    transition: background 0.1s ease;
+}
+
+.inputModelItem:hover {
+    background: rgba(0, 0, 0, 0.04);
+}
+
+.inputModelItem .material-icons-round {
+    font-size: 18px;
+    color: var(--accent-primary);
+}
+
+.inputModelItemActive {
+    background: rgba(217, 116, 89, 0.1);
+    color: var(--accent-primary);
+}
+
+/* Project Selector in input */
+.inputProjectSelector {
+    position: relative;
+}
+
+.inputProjectBtn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    background: transparent;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    color: var(--text-muted);
+    font-size: 13px;
+    font-weight: 500;
+    transition: background 0.15s ease, color 0.15s ease;
+    max-width: 160px;
+}
+
+.inputProjectBtn:hover {
+    background: rgba(0, 0, 0, 0.04);
+    color: var(--text-secondary);
+}
+
+.inputProjectBtn .material-icons-round {
+    font-size: 16px;
+    flex-shrink: 0;
+}
+
+.inputProjectBtn span:nth-child(2) {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.inputProjectDropdown {
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 0;
+    min-width: 180px;
+    max-width: 240px;
+    max-height: 240px;
+    overflow-y: auto;
+    background: white;
+    border: 1px solid var(--glass-border);
+    border-radius: 12px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+    padding: 6px;
+    z-index: 100;
+}
+
+.inputProjectItem {
+    width: 100%;
+    padding: 10px 12px;
+    background: transparent;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    text-align: left;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    transition: background 0.1s ease;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.inputProjectItem:hover {
+    background: rgba(0, 0, 0, 0.04);
+}
+
+.inputProjectItemActive {
+    background: rgba(217, 116, 89, 0.1);
+    color: var(--accent-primary);
+}
+
+/* Tone Toggle in input */
+.inputToneToggle {
+    display: flex;
+    background: rgba(0, 0, 0, 0.04);
+    padding: 3px;
+    border-radius: 8px;
+    gap: 2px;
+}
+
+.inputToneOption {
+    background: transparent;
+    border: none;
+    padding: 5px 10px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    border-radius: 6px;
+}
+
+.inputToneOption:hover {
+    color: var(--text-secondary);
+}
+
+.inputToneActive {
+    background: white;
+    color: var(--text-primary);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+
+/* Send Button */
+.inputSendBtn {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    background: rgba(0, 0, 0, 0.05);
+    border: none;
+    color: var(--text-muted);
+    cursor: not-allowed;
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: all 0.2s;
+    transition: all 0.15s ease;
+    flex-shrink: 0;
 }
 
-.sendButton:hover:not(:disabled) {
-    transform: scale(1.05);
-    box-shadow: 0 4px 12px rgba(217, 116, 89, 0.35);
+.inputSendBtn .material-icons-round {
+    font-size: 18px;
 }
 
-.sendButton:disabled {
-    background: var(--text-muted);
+.inputSendBtnActive {
+    background: var(--text-primary);
+    color: white;
+    cursor: pointer;
+}
+
+.inputSendBtnActive:hover {
+    background: #1a1a1a;
+}
+
+.inputSendBtn:disabled {
     cursor: not-allowed;
-    opacity: 0.5;
-}
-
-.sendButton .material-icons-round {
-    font-size: 20px;
 }
 
 .disclaimer {
@@ -700,7 +1021,16 @@
         flex-wrap: wrap;
     }
 
-    .toneToggle {
-        margin-left: 0;
+    .inputBarLeft {
+        gap: 4px;
+    }
+
+    .inputModelBtn span:nth-child(2),
+    .inputToneToggle {
+        display: none;
+    }
+
+    .inputBox {
+        border-radius: 16px;
     }
 }

@@ -4,7 +4,6 @@ import { prisma } from "@/lib/server/prisma";
 import { assertProjectAccess } from "@/lib/server/access";
 import type { ServiceScope } from "@/lib/server/scope";
 import type { Study } from "@/types/ledger";
-import { Prisma } from "@prisma/client";
 
 export type StudyInput = Omit<Study, "id"> & { id?: string };
 
@@ -88,7 +87,7 @@ export async function upsertStudy(
           year: normalized.year,
           status: normalized.status,
           quality: normalized.quality,
-          details: normalized.details as Prisma.JsonObject,
+          details: normalized.details as any,
         },
       });
       return toStudy(updated);
@@ -103,7 +102,7 @@ export async function upsertStudy(
       year: normalized.year,
       status: normalized.status,
       quality: normalized.quality,
-      details: normalized.details as Prisma.JsonObject,
+      details: normalized.details as any,
     },
   });
   return toStudy(created);
@@ -116,7 +115,7 @@ export async function replaceStudies(
 ): Promise<Study[]> {
   await assertProjectAccess(scopeInput, projectId);
   const normalized = studies.map(normalizeStudy);
-  return prisma.$transaction(async (tx) => {
+  return prisma.$transaction(async (tx: any) => {
     await tx.study.deleteMany({ where: { projectId } });
     await tx.study.createMany({
       data: normalized.map((study) => ({
@@ -127,7 +126,7 @@ export async function replaceStudies(
         year: study.year,
         status: study.status,
         quality: study.quality,
-        details: study.details ? (study.details as Prisma.JsonObject) : undefined,
+        details: study.details as any,
       })),
     });
     const saved = await tx.study.findMany({
@@ -145,4 +144,58 @@ export async function deleteStudy(
 ): Promise<void> {
   await assertProjectAccess(scopeInput, projectId);
   await prisma.study.deleteMany({ where: { id: studyId, projectId } });
+}
+
+/**
+ * Get a single study by ID.
+ */
+export async function getStudy(
+  scopeInput: Partial<ServiceScope> | null | undefined,
+  projectId: string,
+  studyId: string
+): Promise<Study | null> {
+  await assertProjectAccess(scopeInput, projectId);
+  const study = await prisma.study.findFirst({
+    where: { id: studyId, projectId },
+  });
+  return study ? toStudy(study) : null;
+}
+
+/**
+ * Partial update for a study. Preserves existing details by merging.
+ */
+export async function updateStudy(
+  scopeInput: Partial<ServiceScope> | null | undefined,
+  projectId: string,
+  studyId: string,
+  updates: Partial<StudyInput>
+): Promise<Study> {
+  await assertProjectAccess(scopeInput, projectId);
+
+  const existing = await prisma.study.findFirst({
+    where: { id: studyId, projectId },
+  });
+  if (!existing) {
+    throw new Error("Study not found or access denied.");
+  }
+
+  // Merge details to preserve existing fields
+  const existingDetails = (existing.details as Record<string, unknown>) ?? {};
+  const incomingDetails = updates.details ?? {};
+  const mergedDetails = { ...existingDetails, ...incomingDetails };
+
+  const data: Record<string, unknown> = {};
+  if (typeof updates.title !== "undefined") data.title = updates.title.trim() || existing.title;
+  if (typeof updates.authors !== "undefined") data.authors = updates.authors.trim() || existing.authors;
+  if (typeof updates.year !== "undefined") data.year = updates.year;
+  if (typeof updates.status !== "undefined") data.status = updates.status;
+  if (typeof updates.quality !== "undefined") data.quality = updates.quality;
+  if (typeof updates.details !== "undefined") data.details = mergedDetails;
+
+  const updated = await prisma.study.update({
+    where: { id: studyId },
+    data: data as any,
+  });
+
+  return toStudy(updated);
 }

@@ -2,9 +2,9 @@
 
 import { CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
+import Link from "next/link";
 import { AppShell } from "@/components/AppShell";
 import { useProjects } from "@/contexts/ProjectsContext";
-import Link from "next/link";
 import { BaseBackButton } from "@/components/BaseBackButton";
 import { StudyFilesPanel } from "@/components/StudyFilesPanel";
 import styles from "./ledger.module.css";
@@ -13,7 +13,8 @@ import { ProjectCopilot } from "@/components/ProjectCopilot";
 import { useProjectCopilot } from "@/contexts/ProjectCopilotContext";
 import { listProjectFilesAction, deleteFileAssetAction, uploadStudyFileAction } from "@/app/actions/files";
 import type { FileAsset } from "@/types/files";
-import type { Study } from "@/types/ledger";
+import type { Study, StudyDetails } from "@/types/ledger";
+import { validateStudyFile } from "@/lib/fileValidation";
 
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 
@@ -30,6 +31,7 @@ export default function LedgerPage() {
     const studyIds = useMemo(() => new Set(studies.map((s) => s.id)), [studies]);
 
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
+    const [isSelectMode, setIsSelectMode] = useState(false);
     const [isAdding, setIsAdding] = useState(false);
     const [newStudy, setNewStudy] = useState({
         title: "",
@@ -56,6 +58,15 @@ export default function LedgerPage() {
     const [, setIsLoadingFiles] = useState(false);
     const [isImporting, setIsImporting] = useState(false);
     const importInputRef = useRef<HTMLInputElement | null>(null);
+    const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+
+    // Toggle select mode
+    const toggleSelectMode = () => {
+        if (isSelectMode) {
+            setSelectedIds([]);
+        }
+        setIsSelectMode(!isSelectMode);
+    };
 
     const createStudyId = () => {
         if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -112,10 +123,6 @@ export default function LedgerPage() {
     }, [id, selectedStudy, loadStudyFiles]);
 
     const handleImportClick = () => {
-        if (validSelectedIds.length > 1) {
-            window.alert("Select one study or none to import a PDF.");
-            return;
-        }
         importInputRef.current?.click();
     };
 
@@ -123,34 +130,31 @@ export default function LedgerPage() {
         if (!id) return;
         const file = e.target.files?.[0];
         if (!file) return;
+        const validationError = validateStudyFile(file);
+        if (validationError) {
+            window.alert(validationError);
+            if (importInputRef.current) importInputRef.current.value = "";
+            return;
+        }
         setIsImporting(true);
         try {
             const formData = new FormData();
             formData.append("file", file);
-            let studyId = validSelectedIds[0];
-            if (!studyId) {
-                const baseTitle = file.name.replace(/\.[^/.]+$/, "");
-                const newEntry: Study = {
-                    id: createStudyId(),
-                    title: baseTitle || "Untitled Study",
-                    authors: "Unknown",
-                    year: new Date().getFullYear(),
-                    status: "pending",
-                    quality: "-",
-                };
-                const saved = await updateStudies(id, [...studies, newEntry]);
-                studyId = newEntry.id;
-                const savedStudy = saved.find((entry) => entry.id === studyId) ?? newEntry;
-                await uploadStudyFileAction(id, studyId, formData);
-                handleOpenStudyFiles(savedStudy);
-                return;
-            }
-            await uploadStudyFileAction(id, studyId, formData);
-            const study = studies.find((entry) => entry.id === studyId);
-            if (study) handleOpenStudyFiles(study);
+            const baseTitle = file.name.replace(/\.[^/.]+$/, "");
+            const newEntry: Study = {
+                id: createStudyId(),
+                title: baseTitle || "Untitled Study",
+                authors: "Unknown",
+                year: new Date().getFullYear(),
+                status: "pending",
+                quality: "-",
+            };
+            await updateStudies(id, [...studies, newEntry]);
+            await uploadStudyFileAction(id, newEntry.id, formData);
+            // Navigate to the new study's detail page
+            window.location.href = `/project/${id}/ledger/${newEntry.id}`;
         } catch (err) {
             window.alert(err instanceof Error ? err.message : "Import failed");
-        } finally {
             setIsImporting(false);
             if (importInputRef.current) importInputRef.current.value = "";
         }
@@ -297,19 +301,38 @@ export default function LedgerPage() {
                                     <h1>{project.name}</h1>
                                 </div>
                                 <div className={styles.headerActions}>
-                                    {hasSelection ? (
+                                    <button
+                                        className={`header-btn ${isSelectMode ? "header-btn-active" : ""}`}
+                                        onClick={toggleSelectMode}
+                                    >
+                                        <span className="material-icons-round">{isSelectMode ? "close" : "checklist"}</span>
+                                        {isSelectMode ? "Cancel" : "Select"}
+                                    </button>
+                                    {hasSelection && isSelectMode ? (
                                         <button className="header-btn header-btn-danger" onClick={handleBulkDelete}>
                                             <span className="material-icons-round">delete</span>
-                                            Delete {validSelectedIds.length} Selected
+                                            Delete {validSelectedIds.length}
                                         </button>
                                     ) : null}
-                                    <button className="header-btn" onClick={() => setIsAdding(true)}>
+                                    <button className="header-btn" onClick={async () => {
+                                        if (!id) return;
+                                        const newEntry: Study = {
+                                            id: createStudyId(),
+                                            title: "New Study",
+                                            authors: "",
+                                            year: new Date().getFullYear(),
+                                            status: "pending",
+                                            quality: "-",
+                                        };
+                                        await updateStudies(id, [...studies, newEntry]);
+                                        window.location.href = `/project/${id}/ledger/${newEntry.id}`;
+                                    }}>
                                         <span className="material-icons-round">add</span>
                                         Add Study
                                     </button>
                                     <button className="header-btn" onClick={handleImportClick} disabled={isImporting}>
                                         <span className="material-icons-round">upload_file</span>
-                                        {isImporting ? "Importing..." : "Import Studies"}
+                                        {isImporting ? "Importing..." : "Import PDF"}
                                     </button>
                                 </div>
                             </header>
@@ -346,16 +369,19 @@ export default function LedgerPage() {
                                 <table className={styles.ledgerTable}>
                                     <thead>
                                         <tr>
-                                            <th className={styles.selectCell}>
-                                                <input
-                                                    ref={selectAllRef}
-                                                    className={styles.selectCheckbox}
-                                                    type="checkbox"
-                                                    checked={allSelected}
-                                                    onChange={toggleSelectAll}
-                                                    aria-label={allSelected ? "Deselect all studies" : "Select all studies"}
-                                                />
-                                            </th>
+                                            <th className={styles.expandCell}></th>
+                                            {isSelectMode && (
+                                                <th className={styles.selectCell}>
+                                                    <input
+                                                        ref={selectAllRef}
+                                                        className={styles.selectCheckbox}
+                                                        type="checkbox"
+                                                        checked={allSelected}
+                                                        onChange={toggleSelectAll}
+                                                        aria-label={allSelected ? "Deselect all studies" : "Select all studies"}
+                                                    />
+                                                </th>
+                                            )}
                                             <th>Study</th>
                                             <th>Authors</th>
                                             <th>Year</th>
@@ -367,7 +393,8 @@ export default function LedgerPage() {
                                     <tbody>
                                         {isAdding ? (
                                             <tr className={styles.addRow}>
-                                                <td className={styles.selectCell}></td>
+                                                <td className={styles.expandCell}></td>
+                                                {isSelectMode && <td className={styles.selectCell}></td>}
                                                 <td>
                                                     <input
                                                         className={styles.inputField}
@@ -443,55 +470,135 @@ export default function LedgerPage() {
                                                 </td>
                                             </tr>
                                         ) : null}
-                                        {studies.map((study) => (
-                                            <tr key={study.id} className={selectedSet.has(study.id) ? styles.rowSelected : undefined}>
-                                                <td className={styles.selectCell}>
-                                                    <input
-                                                        className={styles.selectCheckbox}
-                                                        type="checkbox"
-                                                        checked={selectedSet.has(study.id)}
-                                                        onChange={() => toggleStudySelection(study.id)}
-                                                        aria-label={`Select ${study.title}`}
-                                                    />
-                                                </td>
-                                                <td className={styles.titleCell}>{study.title}</td>
-                                                <td>{study.authors}</td>
-                                                <td>{study.year}</td>
-                                                <td>
-                                                    <span className={`${styles.statusPill} ${study.status === "extracted" ? styles.statusExtracted : styles.statusPending}`}>
-                                                        {study.status === "extracted" ? "Extracted" : "Pending"}
-                                                    </span>
-                                                </td>
-                                                <td>
-                                                    <span className={`${styles.qualityBadge} ${study.quality === "High" ? styles.qualityHigh : study.quality === "Medium" ? styles.qualityMedium : ""}`}>
-                                                        {study.quality}
-                                                    </span>
-                                                </td>
-                                                <td>
-                                                    <button className={styles.actionBtn} title="Open Study">
-                                                        <span className="material-icons-round">open_in_new</span>
-                                                    </button>
-                                                    <button 
-                                                        className={styles.actionBtn} 
-                                                        title="Manage Files"
-                                                        onClick={() => handleOpenStudyFiles(study)}
-                                                    >
-                                                        <span className="material-icons-round">attach_file</span>
-                                                    </button>
-                                                    <button className={styles.actionBtn} title="Extract Data">
-                                                        <span className="material-icons-round">edit_note</span>
-                                                    </button>
-                                                    <button
-                                                        className={styles.actionBtn}
-                                                        title="Delete Study"
-                                                        aria-label={`Delete ${study.title}`}
-                                                        onClick={() => handleDeleteStudy(study.id)}
-                                                    >
-                                                        <span className="material-icons-round">delete</span>
-                                                    </button>
-                                                </td>
-                                            </tr>
-                                        ))}
+                                        {studies.map((study) => {
+                                            const d: StudyDetails = study.details ?? {};
+                                            const isExpanded = expandedIds.has(study.id);
+                                            const toggleExpand = () => {
+                                                setExpandedIds((prev) => {
+                                                    const next = new Set(prev);
+                                                    if (next.has(study.id)) next.delete(study.id);
+                                                    else next.add(study.id);
+                                                    return next;
+                                                });
+                                            };
+
+                                            // Get one-sentence summary from abstract or AI summary
+                                            const summaryText = d.aiSummary || d.abstract || "No summary available.";
+                                            const oneSentence = summaryText.split(/[.!?](?:\s|$)/)[0] + ".";
+                                            const displaySummary = oneSentence.length > 200 ? oneSentence.slice(0, 200) + "..." : oneSentence;
+
+                                            const rowClass = `${selectedSet.has(study.id) ? styles.rowSelected : ""} ${isExpanded ? styles.rowExpanded : ""} ${styles.clickableRow}`.trim();
+
+                                            const handleRowClick = (e: React.MouseEvent) => {
+                                                // Don't navigate if clicking on interactive elements
+                                                const target = e.target as HTMLElement;
+                                                if (target.closest('button, input, a, [role="button"]')) return;
+                                                window.location.href = `/project/${id}/ledger/${study.id}`;
+                                            };
+
+                                            return (
+                                                <>
+                                                    <tr key={study.id} className={rowClass} onClick={handleRowClick}>
+                                                        <td className={styles.expandCell}>
+                                                            <button
+                                                                className={`${styles.expandBtn} ${isExpanded ? styles.expanded : ""}`}
+                                                                onClick={(e) => { e.stopPropagation(); toggleExpand(); }}
+                                                                aria-label={isExpanded ? "Collapse" : "Expand"}
+                                                                aria-expanded={isExpanded}
+                                                            >
+                                                                <span className="material-icons-round">expand_more</span>
+                                                            </button>
+                                                        </td>
+                                                        {isSelectMode && (
+                                                            <td className={styles.selectCell}>
+                                                                <input
+                                                                    className={styles.selectCheckbox}
+                                                                    type="checkbox"
+                                                                    checked={selectedSet.has(study.id)}
+                                                                    onChange={() => toggleStudySelection(study.id)}
+                                                                    aria-label={`Select ${study.title}`}
+                                                                />
+                                                            </td>
+                                                        )}
+                                                        <td className={styles.titleCell}>{study.title}</td>
+                                                        <td>{study.authors}</td>
+                                                        <td>{study.year}</td>
+                                                        <td>
+                                                            <span className={`${styles.statusPill} ${study.status === "extracted" ? styles.statusExtracted : styles.statusPending}`}>
+                                                                {study.status === "extracted" ? "Extracted" : "Pending"}
+                                                            </span>
+                                                        </td>
+                                                        <td>
+                                                            <span className={`${styles.qualityBadge} ${study.quality === "High" ? styles.qualityHigh : study.quality === "Medium" ? styles.qualityMedium : ""}`}>
+                                                                {study.quality}
+                                                            </span>
+                                                        </td>
+                                                        <td>
+                                                            <button
+                                                                className={styles.actionBtn}
+                                                                title="Manage Files"
+                                                                onClick={() => handleOpenStudyFiles(study)}
+                                                            >
+                                                                <span className="material-icons-round">attach_file</span>
+                                                            </button>
+                                                            <button className={styles.actionBtn} title="Extract Data">
+                                                                <span className="material-icons-round">edit_note</span>
+                                                            </button>
+                                                            <button
+                                                                className={styles.actionBtn}
+                                                                title="Delete Study"
+                                                                aria-label={`Delete ${study.title}`}
+                                                                onClick={() => handleDeleteStudy(study.id)}
+                                                            >
+                                                                <span className="material-icons-round">delete</span>
+                                                            </button>
+                                                        </td>
+                                                    </tr>
+                                                    {isExpanded && (
+                                                        <tr key={`${study.id}-details`} className={styles.expandedRow}>
+                                                            <td colSpan={isSelectMode ? 8 : 7}>
+                                                                <div className={styles.expandedContent}>
+                                                                    <div className={styles.expandedSection}>
+                                                                        <p className={styles.abstractText}>
+                                                                            {displaySummary}
+                                                                        </p>
+                                                                    </div>
+
+                                                                    <div className={styles.expandedMeta}>
+                                                                        {d.journal && (
+                                                                            <span className={styles.metaChip}>
+                                                                                <span className="material-icons-round">menu_book</span>
+                                                                                {d.journal}
+                                                                            </span>
+                                                                        )}
+                                                                        {d.studyType && (
+                                                                            <span className={styles.metaChip}>
+                                                                                <span className="material-icons-round">category</span>
+                                                                                {d.studyType}
+                                                                            </span>
+                                                                        )}
+                                                                        {d.doi && (
+                                                                            <a
+                                                                                href={`https://doi.org/${d.doi}`}
+                                                                                target="_blank"
+                                                                                rel="noopener noreferrer"
+                                                                                className={styles.metaChip}
+                                                                            >
+                                                                                <span className="material-icons-round">link</span>
+                                                                                DOI
+                                                                            </a>
+                                                                        )}
+                                                                        <Link href={`/project/${id}/ledger/${study.id}`} className={styles.viewDetailsLink}>
+                                                                            View Full Details →
+                                                                        </Link>
+                                                                    </div>
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                    )}
+                                                </>
+                                            );
+                                        })}
                                     </tbody>
                                 </table>
                             </div>

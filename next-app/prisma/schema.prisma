@@ -13,13 +13,14 @@ datasource db {
 }
 
 model User {
-  id         String             @id @default(cuid())
-  email      String?            @unique
-  name       String?
-  createdAt  DateTime           @default(now())
-  updatedAt  DateTime           @updatedAt
+  id          String             @id @default(cuid())
+  email       String?            @unique
+  name        String?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
   memberships WorkspaceMember[]
-  projects   Project[]          @relation("ProjectOwner")
+  projects    Project[]          @relation("ProjectOwner")
+  memories    UserMemory[]
 }
 
 model Workspace {
@@ -58,12 +59,14 @@ model Project {
   created     DateTime  @default(now())
   modified    DateTime  @updatedAt
 
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  owner       User      @relation("ProjectOwner", fields: [ownerId], references: [id], onDelete: Restrict)
-  protocol    Protocol?
-  draft       Draft?
-  studies     Study[]
-  files       FileAsset[]
+  workspace      Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  owner          User            @relation("ProjectOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+  protocol       Protocol?
+  draft          Draft?
+  studies        Study[]
+  files          FileAsset[]
+  projectMemories ProjectMemory[]
+  studyMemories  StudyMemory[]
 
   @@index([workspaceId])
   @@index([ownerId])
@@ -89,27 +92,33 @@ model Draft {
   project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
 }
 
+// Multi-user ready: workspaceId for explicit scoping (also derived via project)
 model Study {
-  id        String   @id @default(cuid())
-  projectId String
-  title     String
-  authors   String
-  year      Int
-  status    String
-  quality   String
-  details   Json?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          String   @id @default(cuid())
+  projectId   String
+  workspaceId String?  // Explicit workspace scope (denormalized for query efficiency)
+  title       String
+  authors     String
+  year        Int
+  status      String
+  quality     String
+  details     Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project   Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
   files     FileAsset[]
+  memories  StudyMemory[]
 
   @@index([projectId])
+  @@index([workspaceId])
 }
 
+// Multi-user ready: workspaceId for explicit scoping (also derived via project)
 model FileAsset {
   id          String   @id @default(cuid())
   projectId   String
+  workspaceId String?  // Explicit workspace scope (denormalized for query efficiency)
   studyId     String?
   kind        String
   format      String?
@@ -127,5 +136,203 @@ model FileAsset {
   study   Study?  @relation(fields: [studyId], references: [id], onDelete: Cascade)
 
   @@index([projectId])
+  @@index([workspaceId])
   @@index([studyId])
+}
+
+// AI Conversation - stores chat history for copilot and AI assistant
+// Multi-user ready: userId + workspaceId for ownership scoping
+model AIConversation {
+  id          String               @id @default(cuid())
+  userId      String?              // Owner of the conversation (required for multi-user)
+  workspaceId String?              // Workspace scope (required for multi-user)
+  title       String?              // Auto-generated or user-edited title
+  context     String               // "global" | "project" | "study"
+  page        String?              // "ledger" | "protocol" | "draft" | "study" | "ai"
+  projectId   String?
+  studyId     String?
+  archived    Boolean              @default(false)
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+  messages    AIMessage[]
+  summary     ConversationSummary?
+
+  @@index([userId, context])
+  @@index([userId, projectId])
+  @@index([workspaceId])
+  @@index([workspaceId, context])
+  @@index([projectId])
+  @@index([studyId])
+  @@index([context])
+}
+
+// AI Message - individual messages in a conversation
+model AIMessage {
+  id             String   @id @default(cuid())
+  conversationId String
+  role           String   // "system" | "user" | "assistant" | "tool"
+  content        String
+  toolCalls      Json?
+  createdAt      DateTime @default(now())
+
+  conversation AIConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
+}
+
+// AI Usage - tracks token usage for rate limiting and cost control
+// Multi-user ready: userId + workspaceId for per-user/workspace tracking
+model AIUsage {
+  id           String   @id @default(cuid())
+  userId       String?  // User who made the request (required for multi-user)
+  workspaceId  String?  // Workspace for billing/limits (required for multi-user)
+  projectId    String?  // Optional: specific project context
+  model        String
+  inputTokens  Int
+  outputTokens Int
+  createdAt    DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([workspaceId, createdAt])
+  @@index([projectId, createdAt])
+}
+
+// ============================================================================
+// AI MEMORY SYSTEM
+// Structured knowledge storage (distinct from conversation transcripts)
+// Based on MEMORY_LESSONS.md principles
+// ============================================================================
+
+// User Memory - user-level preferences and styles
+model UserMemory {
+  id         String    @id @default(cuid())
+  userId     String
+
+  // Memory content
+  type       String    // "preference" | "style" | "workflow"
+  key        String    // e.g., "citation_style", "writing_tone"
+  value      String    // e.g., "APA 7th", "concise_technical"
+  rationale  String?   // Why this preference was set
+
+  // Lifecycle
+  status     String    @default("active") // "active" | "archived"
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  archivedAt DateTime?
+
+  // For retrieval
+  tags       String[]  @default([])
+
+  // Relations
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, key])
+  @@index([userId, status])
+  @@index([userId, type])
+}
+
+// Project Memory - project-level goals, criteria, and decisions
+model ProjectMemory {
+  id           String    @id @default(cuid())
+  projectId    String
+
+  // Memory content
+  type         String    // "decision" | "definition" | "criterion" | "goal"
+  category     String?   // "inclusion" | "exclusion" | "outcome" | "population"
+  statement    String    // The actual memory content
+  rationale    String?   // Why this decision was made
+  context      String?   // Additional context or notes
+
+  // Lifecycle
+  status       String    @default("active") // "active" | "revised" | "archived"
+  version      Int       @default(1)
+  supersededBy String?   // ID of newer version
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  archivedAt   DateTime?
+
+  // For retrieval
+  tags         String[]  @default([])
+  importance   String    @default("normal") // "critical" | "important" | "normal"
+
+  // Relations
+  project      Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, status])
+  @@index([projectId, type])
+  @@index([projectId, importance])
+}
+
+// Study Memory - study-level facts and summaries
+model StudyMemory {
+  id         String   @id @default(cuid())
+  studyId    String
+  projectId  String
+
+  // Memory content
+  type       String   // "summary" | "finding" | "limitation" | "quality"
+  category   String?  // "methods" | "results" | "bias" | "population"
+  content    String   // The extracted/generated content
+  source     String?  // "ai_generated" | "user_input" | "extracted"
+  confidence Float?   // AI confidence score (0-1)
+
+  // Lifecycle
+  status     String   @default("active")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // For retrieval
+  tags       String[] @default([])
+
+  // Relations
+  study      Study    @relation(fields: [studyId], references: [id], onDelete: Cascade)
+  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([studyId, type])
+  @@index([projectId, type])
+  @@index([studyId, status])
+}
+
+// Conversation Summary - compressed context for long conversations
+model ConversationSummary {
+  id               String   @id @default(cuid())
+  conversationId   String   @unique
+
+  // Summary content
+  summary          String   // Compressed summary of conversation
+  keyPoints        String[] @default([])
+  decisions        String[] @default([])
+  followUpNeeded   String[] @default([])
+
+  // Metadata
+  messageCount     Int      // Number of messages summarized
+  lastSummarizedAt DateTime // When this was last updated
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  // Relations
+  conversation     AIConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
+}
+
+// Memory Retrieval Log - audit trail for memory access
+model MemoryRetrieval {
+  id             String    @id @default(cuid())
+  conversationId String?
+
+  // What was retrieved
+  query          String    // What the AI was trying to remember
+  memoryType     String    // "user" | "project" | "study"
+  memoryIds      String[]  @default([])
+  resultCount    Int
+
+  // Context
+  userId         String?
+  projectId      String?
+  createdAt      DateTime  @default(now())
+
+  @@index([conversationId])
+  @@index([projectId])
+  @@index([createdAt])
 }

@@ -3,13 +3,7 @@
 import { useCallback, useRef, useState } from "react";
 import styles from "./StudyFilesPanel.module.css";
 import type { FileAsset } from "@/types/files";
-
-const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB
-const ALLOWED_TYPES = [
-  "application/pdf",
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-];
-const ALLOWED_EXTENSIONS = [".pdf", ".docx"];
+import { validateStudyFile } from "@/lib/fileValidation";
 
 type StudyFilesPanelProps = {
   projectId: string;
@@ -53,20 +47,9 @@ export function StudyFilesPanel({
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   );
 
-  const validateFile = (file: File): string | null => {
-    if (file.size > MAX_FILE_SIZE) {
-      return `File too large. Maximum size is ${formatFileSize(MAX_FILE_SIZE)}.`;
-    }
-    const ext = file.name.toLowerCase().slice(file.name.lastIndexOf("."));
-    if (!ALLOWED_EXTENSIONS.includes(ext) && !ALLOWED_TYPES.includes(file.type)) {
-      return "Only PDF and DOCX files are allowed.";
-    }
-    return null;
-  };
-
   const handleUpload = useCallback(
     async (file: File) => {
-      const error = validateFile(file);
+      const error = validateStudyFile(file);
       if (error) {
         setUploadError(error);
         return;

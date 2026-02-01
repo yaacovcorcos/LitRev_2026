@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useProjectCopilot, CopilotPage } from "@/contexts/ProjectCopilotContext";
 import styles from "./ProjectCopilot.module.css";
+import { USER_SELECTABLE_MODELS, type SelectableModelId } from "@/lib/ai/config";
 
 export type SuggestionConfig = {
     label: string;
@@ -43,13 +44,54 @@ export function ProjectCopilot({
     const {
         messages,
         isCollapsed,
+        isLoading,
         setCollapsed,
         sendMessage,
+        // Conversation management
+        conversations,
+        currentConversationId,
+        selectConversation,
+        newConversation,
+        deleteConversation,
     } = useProjectCopilot();
 
     const [input, setInput] = useState("");
+    const [selectedModel, setSelectedModel] = useState<SelectableModelId>(() => {
+        if (typeof window === "undefined") return "gpt-5.2";
+        const stored = window.localStorage.getItem("litrev_copilot_model");
+        return (stored as SelectableModelId) || "gpt-5.2";
+    });
+    const [showModelMenu, setShowModelMenu] = useState(false);
+    const [showConversationDropdown, setShowConversationDropdown] = useState(false);
+    const [conversationSearch, setConversationSearch] = useState("");
     const listRef = useRef<HTMLDivElement | null>(null);
     const autoScrollRef = useRef(true);
+    const modelMenuRef = useRef<HTMLDivElement | null>(null);
+    const conversationDropdownRef = useRef<HTMLDivElement | null>(null);
+
+    // Persist model preference
+    useEffect(() => {
+        if (typeof window !== "undefined") {
+            window.localStorage.setItem("litrev_copilot_model", selectedModel);
+        }
+    }, [selectedModel]);
+
+    // Close dropdowns on click outside
+    useEffect(() => {
+        const handleClickOutside = (e: MouseEvent) => {
+            if (modelMenuRef.current && !modelMenuRef.current.contains(e.target as Node)) {
+                setShowModelMenu(false);
+            }
+            if (conversationDropdownRef.current && !conversationDropdownRef.current.contains(e.target as Node)) {
+                setShowConversationDropdown(false);
+                setConversationSearch("");
+            }
+        };
+        if (showModelMenu || showConversationDropdown) {
+            document.addEventListener("mousedown", handleClickOutside);
+        }
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, [showModelMenu, showConversationDropdown]);
 
     // Auto-scroll to bottom when new messages arrive
     useEffect(() => {
@@ -68,9 +110,9 @@ export function ProjectCopilot({
         const text = input.trim();
         if (!text) return;
         autoScrollRef.current = true;
-        sendMessage(text, page, section);
+        sendMessage(text, page, section, selectedModel);
         setInput("");
-    }, [input, page, section, sendMessage]);
+    }, [input, page, section, sendMessage, selectedModel]);
 
     const handleCopy = useCallback((text: string) => {
         navigator.clipboard.writeText(text).catch(console.error);
@@ -79,6 +121,14 @@ export function ProjectCopilot({
     const handleSuggestionClick = useCallback((prompt: string) => {
         setInput(prompt);
     }, []);
+
+    const handleFileAttach = useCallback(() => {
+        // TODO: Implement file attachment backend
+        // For now, just show a placeholder interaction
+        console.log("File attachment clicked - backend not implemented yet");
+    }, []);
+
+    const selectedModelInfo = USER_SELECTABLE_MODELS.find(m => m.id === selectedModel);
 
     if (isCollapsed) {
         return (
@@ -96,33 +146,230 @@ export function ProjectCopilot({
         );
     }
 
+    // Format relative time (e.g., "7m", "1h", "2d")
+    const formatRelativeTime = (dateStr: string) => {
+        const date = new Date(dateStr);
+        const now = new Date();
+        const diff = now.getTime() - date.getTime();
+        const minutes = Math.floor(diff / (1000 * 60));
+        const hours = Math.floor(diff / (1000 * 60 * 60));
+        const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+
+        if (minutes < 60) return `${minutes}m`;
+        if (hours < 24) return `${hours}h`;
+        return `${days}d`;
+    };
+
+    // Get current conversation title
+    const currentConversation = conversations.find(c => c.id === currentConversationId);
+    const currentTitle = currentConversation?.title || "New conversation";
+
+    // Filter conversations by search
+    const filteredConversations = conversationSearch
+        ? conversations.filter(c =>
+            (c.title || "New conversation").toLowerCase().includes(conversationSearch.toLowerCase())
+          )
+        : conversations;
+
+    // Group conversations by date
+    const groupConversations = () => {
+        const today: typeof conversations = [];
+        const yesterday: typeof conversations = [];
+        const older: typeof conversations = [];
+        const now = new Date();
+
+        filteredConversations.forEach(conv => {
+            const date = new Date(conv.updatedAt);
+            const diff = now.getTime() - date.getTime();
+            const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+
+            if (days === 0) today.push(conv);
+            else if (days === 1) yesterday.push(conv);
+            else older.push(conv);
+        });
+
+        return { today, yesterday, older };
+    };
+
+    const groupedConversations = groupConversations();
+
     return (
         <aside className={styles.copilot} aria-label="AI copilot" id={panelId}>
-            {/* Header */}
-            <div className={styles.panelHeader}>
-                <div className={styles.panelTitle}>
-                    <span className="material-icons-round">smart_toy</span>
-                    Copilot
-                </div>
-                <div className={styles.panelHeaderActions}>
-                    <button
-                        type="button"
-                        className={styles.iconBtn}
-                        aria-label="Collapse copilot"
-                        aria-controls={panelId}
-                        aria-expanded={true}
-                        onClick={() => setCollapsed(true)}
-                    >
-                        <span className="material-icons-round">chevron_right</span>
-                    </button>
-                </div>
-            </div>
+            {/* Main Chat Area */}
+            <div className={styles.chatArea}>
+                {/* Header - Clean design with dropdown and icons */}
+                <div className={styles.panelHeader}>
+                    {/* Conversation Dropdown Selector */}
+                    <div className={styles.conversationSelector} ref={conversationDropdownRef}>
+                        <button
+                            type="button"
+                            className={styles.conversationSelectorBtn}
+                            onClick={() => setShowConversationDropdown(!showConversationDropdown)}
+                            aria-haspopup="listbox"
+                            aria-expanded={showConversationDropdown}
+                        >
+                            <span className={styles.conversationSelectorTitle}>{currentTitle}</span>
+                            <svg className={styles.chevronIcon} width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                <polyline points="6 9 12 15 18 9"/>
+                            </svg>
+                        </button>
 
-            {/* Context Subhead */}
-            <div className={styles.panelSubhead}>
-                <span className={styles.subLabel}>Context</span>
-                <span className={styles.subValue}>{contextDisplay}</span>
-            </div>
+                        {/* Dropdown */}
+                        {showConversationDropdown && (
+                            <div className={styles.conversationDropdown}>
+                                {/* Search */}
+                                <div className={styles.conversationSearchWrapper}>
+                                    <input
+                                        type="text"
+                                        placeholder="Search sessions..."
+                                        value={conversationSearch}
+                                        onChange={(e) => setConversationSearch(e.target.value)}
+                                        className={styles.conversationSearchInput}
+                                        autoFocus
+                                    />
+                                </div>
+
+                                {/* Conversation List */}
+                                <div className={styles.conversationDropdownList}>
+                                    {filteredConversations.length === 0 ? (
+                                        <div className={styles.noConversationsDropdown}>
+                                            No conversations found
+                                        </div>
+                                    ) : (
+                                        <>
+                                            {groupedConversations.today.length > 0 && (
+                                                <>
+                                                    <div className={styles.conversationGroupLabel}>Today</div>
+                                                    {groupedConversations.today.map((conv) => (
+                                                        <div
+                                                            key={conv.id}
+                                                            className={`${styles.conversationDropdownItem} ${currentConversationId === conv.id ? styles.conversationDropdownItemActive : ""}`}
+                                                            onClick={() => {
+                                                                selectConversation(conv.id);
+                                                                setShowConversationDropdown(false);
+                                                                setConversationSearch("");
+                                                            }}
+                                                            role="option"
+                                                            aria-selected={currentConversationId === conv.id}
+                                                        >
+                                                            <span className={styles.conversationDropdownTitle}>
+                                                                {conv.title || "New conversation"}
+                                                            </span>
+                                                            <span className={styles.conversationDropdownTime}>
+                                                                {formatRelativeTime(conv.updatedAt)}
+                                                            </span>
+                                                        </div>
+                                                    ))}
+                                                </>
+                                            )}
+                                            {groupedConversations.yesterday.length > 0 && (
+                                                <>
+                                                    <div className={styles.conversationGroupLabel}>Yesterday</div>
+                                                    {groupedConversations.yesterday.map((conv) => (
+                                                        <div
+                                                            key={conv.id}
+                                                            className={`${styles.conversationDropdownItem} ${currentConversationId === conv.id ? styles.conversationDropdownItemActive : ""}`}
+                                                            onClick={() => {
+                                                                selectConversation(conv.id);
+                                                                setShowConversationDropdown(false);
+                                                                setConversationSearch("");
+                                                            }}
+                                                            role="option"
+                                                            aria-selected={currentConversationId === conv.id}
+                                                        >
+                                                            <span className={styles.conversationDropdownTitle}>
+                                                                {conv.title || "New conversation"}
+                                                            </span>
+                                                            <span className={styles.conversationDropdownTime}>
+                                                                {formatRelativeTime(conv.updatedAt)}
+                                                            </span>
+                                                        </div>
+                                                    ))}
+                                                </>
+                                            )}
+                                            {groupedConversations.older.length > 0 && (
+                                                <>
+                                                    <div className={styles.conversationGroupLabel}>Older</div>
+                                                    {groupedConversations.older.map((conv) => (
+                                                        <div
+                                                            key={conv.id}
+                                                            className={`${styles.conversationDropdownItem} ${currentConversationId === conv.id ? styles.conversationDropdownItemActive : ""}`}
+                                                            onClick={() => {
+                                                                selectConversation(conv.id);
+                                                                setShowConversationDropdown(false);
+                                                                setConversationSearch("");
+                                                            }}
+                                                            role="option"
+                                                            aria-selected={currentConversationId === conv.id}
+                                                        >
+                                                            <span className={styles.conversationDropdownTitle}>
+                                                                {conv.title || "New conversation"}
+                                                            </span>
+                                                            <span className={styles.conversationDropdownTime}>
+                                                                {formatRelativeTime(conv.updatedAt)}
+                                                            </span>
+                                                        </div>
+                                                    ))}
+                                                </>
+                                            )}
+                                        </>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Right side icons - minimalist */}
+                    <div className={styles.headerIcons}>
+                        <button
+                            type="button"
+                            className={styles.headerIconBtn}
+                            onClick={async () => {
+                                // Close dropdown if open
+                                setShowConversationDropdown(false);
+                                setConversationSearch("");
+                                // Create new conversation
+                                await newConversation(page);
+                            }}
+                            aria-label="New conversation"
+                            title="New conversation"
+                        >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M12 20h9"/>
+                                <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+                            </svg>
+                        </button>
+                        <button
+                            type="button"
+                            className={styles.headerIconBtn}
+                            aria-label="Settings"
+                            title="Settings"
+                        >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <circle cx="12" cy="12" r="3"/>
+                                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                            </svg>
+                        </button>
+                        <button
+                            type="button"
+                            className={styles.headerIconBtn}
+                            aria-label="Collapse copilot"
+                            aria-controls={panelId}
+                            aria-expanded={true}
+                            onClick={() => setCollapsed(true)}
+                            title="Collapse"
+                        >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <polyline points="9 18 15 12 9 6"/>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+
+                {/* Context Subhead - more subtle */}
+                <div className={styles.panelSubhead}>
+                    <span className={styles.subValue}>{contextDisplay}</span>
+                </div>
 
             {/* Message List */}
             <div className={styles.copilotBody} ref={listRef} onScroll={handleScroll}>
@@ -178,30 +425,110 @@ export function ProjectCopilot({
                                 </div>
                             </div>
                         ))}
+                        {isLoading && messages.length > 0 && messages[messages.length - 1].sender === "user" && (
+                            <div className={styles.loadingIndicator}>
+                                <div className={styles.loadingDots}>
+                                    <span className={styles.loadingDot} />
+                                    <span className={styles.loadingDot} />
+                                    <span className={styles.loadingDot} />
+                                </div>
+                            </div>
+                        )}
                     </div>
                 )}
             </div>
 
-            {/* Input Area */}
-            <div className={styles.copilotInputArea}>
-                <form
-                    className={styles.copilotInputRow}
-                    onSubmit={(e) => {
-                        e.preventDefault();
-                        handleSend();
+            {/* Input Area - Two-floor design */}
+            <form
+                className={styles.inputBox}
+                onSubmit={(e) => {
+                    e.preventDefault();
+                    handleSend();
+                }}
+            >
+                {/* Upper floor: text input */}
+                <textarea
+                    value={input}
+                    onChange={(e) => {
+                        setInput(e.target.value);
+                        // Auto-resize
+                        e.target.style.height = "auto";
+                        e.target.style.height = Math.min(e.target.scrollHeight, 200) + "px";
                     }}
-                >
-                    <input
-                        type="text"
-                        value={input}
-                        onChange={(e) => setInput(e.target.value)}
-                        placeholder={inputPlaceholder}
-                        aria-label="Copilot prompt"
-                    />
-                    <button type="submit" className={styles.iconBtn} aria-label="Send">
-                        <span className="material-icons-round">send</span>
+                    onKeyDown={(e) => {
+                        if (e.key === "Enter" && !e.shiftKey) {
+                            e.preventDefault();
+                            handleSend();
+                        }
+                    }}
+                    placeholder={isLoading ? "Thinking..." : inputPlaceholder}
+                    aria-label="Copilot prompt"
+                    disabled={isLoading}
+                    className={styles.inputTextarea}
+                    rows={1}
+                />
+
+                {/* Lower floor: actions */}
+                <div className={styles.inputBar}>
+                    <div className={styles.inputBarLeft}>
+                        {/* Model selector */}
+                        <div className={styles.modelSelector} ref={modelMenuRef}>
+                            <button
+                                type="button"
+                                className={styles.modelBtn}
+                                onClick={() => setShowModelMenu(!showModelMenu)}
+                                aria-haspopup="listbox"
+                                aria-expanded={showModelMenu}
+                            >
+                                {selectedModelInfo?.name || "GPT-5.2"}
+                                <span className="material-icons-round">expand_more</span>
+                            </button>
+                            {showModelMenu && (
+                                <div className={styles.modelDropdown} role="listbox">
+                                    {USER_SELECTABLE_MODELS.map((model) => (
+                                        <button
+                                            key={model.id}
+                                            type="button"
+                                            className={`${styles.modelItem} ${selectedModel === model.id ? styles.modelItemActive : ""}`}
+                                            onClick={() => {
+                                                setSelectedModel(model.id);
+                                                setShowModelMenu(false);
+                                            }}
+                                            role="option"
+                                            aria-selected={selectedModel === model.id}
+                                        >
+                                            {model.name}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* File attachment */}
+                        <button
+                            type="button"
+                            className={styles.actionBtn}
+                            onClick={handleFileAttach}
+                            aria-label="Attach file"
+                            title="Attach file"
+                        >
+                            <span className="material-icons-round">add</span>
+                        </button>
+                    </div>
+
+                    {/* Send button */}
+                    <button
+                        type="submit"
+                        className={`${styles.sendBtn} ${input.trim() ? styles.sendBtnActive : ""}`}
+                        aria-label="Send"
+                        disabled={isLoading || !input.trim()}
+                    >
+                        <span className="material-icons-round">
+                            {isLoading ? "more_horiz" : "arrow_upward"}
+                        </span>
                     </button>
-                </form>
+                </div>
+            </form>
             </div>
         </aside>
     );
