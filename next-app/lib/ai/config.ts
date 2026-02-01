@@ -7,16 +7,16 @@
  */
 
 export const AI_CONFIG = {
-    // Provider settings
-    defaultProvider: process.env.AI_DEFAULT_PROVIDER || "openai",
+    // Provider settings (trim to handle any whitespace/newlines in env vars)
+    defaultProvider: (process.env.AI_DEFAULT_PROVIDER || "openai").trim(),
 
     // Model settings
-    defaultModel: process.env.AI_DEFAULT_MODEL || "gpt-5.2",
-    reasoningModel: process.env.AI_REASONING_MODEL || "gpt-5.2",
+    defaultModel: (process.env.AI_DEFAULT_MODEL || "gpt-5.2").trim(),
+    reasoningModel: (process.env.AI_REASONING_MODEL || "gpt-5.2").trim(),
 
     // Rate limiting
-    maxRequestsPerMinute: parseInt(process.env.AI_RATE_LIMIT || "20", 10),
-    maxTokensPerDay: parseInt(process.env.AI_DAILY_TOKEN_LIMIT || "100000", 10),
+    maxRequestsPerMinute: parseInt((process.env.AI_RATE_LIMIT || "20").trim(), 10),
+    maxTokensPerDay: parseInt((process.env.AI_DAILY_TOKEN_LIMIT || "100000").trim(), 10),
 
     // Default chat parameters
     defaultTemperature: 0.7,

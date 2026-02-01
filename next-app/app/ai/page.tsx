@@ -3,7 +3,10 @@
 import { AppShell } from "@/components/AppShell";
 import { useProjects } from "@/contexts/ProjectsContext";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import styles from "./ai-view.module.css";
+import markdownStyles from "@/styles/markdown.module.css";
 import {
   createConversationAction,
   deleteConversationAction,
@@ -746,7 +749,13 @@ export default function AIView() {
                         </div>
                       )}
                       <div className={`${styles.messageContent} ${msg.sender === "ai" ? styles.aiBubble : styles.userBubble}`}>
-                        <p>{msg.text}</p>
+                        {msg.sender === "ai" ? (
+                          <div className={markdownStyles.markdownContent}>
+                            <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.text}</ReactMarkdown>
+                          </div>
+                        ) : (
+                          <p>{msg.text}</p>
+                        )}
                         {msg.sender === "ai" && msg.text && (
                           <div className={styles.messageActions}>
                             {isLastAiMessage && (

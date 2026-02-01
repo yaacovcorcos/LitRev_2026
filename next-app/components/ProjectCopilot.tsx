@@ -1,8 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { useProjectCopilot, CopilotPage } from "@/contexts/ProjectCopilotContext";
 import styles from "./ProjectCopilot.module.css";
+import markdownStyles from "@/styles/markdown.module.css";
 import { USER_SELECTABLE_MODELS, type SelectableModelId } from "@/lib/ai/config";
 
 export type SuggestionConfig = {
@@ -401,7 +404,15 @@ export function ProjectCopilot({
                                 className={`${styles.chatMsg} ${msg.sender === "ai" ? styles.chatMsgAi : styles.chatMsgUser}`}
                             >
                                 <div className={styles.chatBubble}>
-                                    <pre className={styles.chatText}>{msg.text}</pre>
+                                    {msg.sender === "ai" ? (
+                                        <div className={markdownStyles.markdownContent}>
+                                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                                {msg.text}
+                                            </ReactMarkdown>
+                                        </div>
+                                    ) : (
+                                        <p className={styles.chatText}>{msg.text}</p>
+                                    )}
                                     {msg.sender === "ai" ? (
                                         <div className={styles.chatActions}>
                                             {onInsert ? (

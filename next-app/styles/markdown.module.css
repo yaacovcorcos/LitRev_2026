@@ -1,0 +1,151 @@
+/* ========================================
+   SHARED MARKDOWN CONTENT STYLES
+   Used by ProjectCopilot and AI View
+   ======================================== */
+
+.markdownContent {
+    font-size: 14px;
+    line-height: 1.65;
+    color: var(--text-primary);
+    overflow-wrap: break-word;
+    word-break: break-word;
+}
+
+.markdownContent > *:first-child {
+    margin-top: 0;
+}
+
+.markdownContent > *:last-child {
+    margin-bottom: 0;
+}
+
+/* Headings */
+.markdownContent h1,
+.markdownContent h2,
+.markdownContent h3,
+.markdownContent h4,
+.markdownContent h5,
+.markdownContent h6 {
+    margin: 0 0 0.6em;
+    font-weight: 600;
+    line-height: 1.35;
+    color: var(--text-primary);
+}
+
+.markdownContent h1 { font-size: 1.4em; }
+.markdownContent h2 { font-size: 1.25em; }
+.markdownContent h3 { font-size: 1.1em; }
+.markdownContent h4 { font-size: 1em; }
+
+/* Paragraphs */
+.markdownContent p {
+    margin: 0 0 0.75em;
+}
+
+/* Bold and Italic */
+.markdownContent strong {
+    font-weight: 600;
+}
+
+.markdownContent em {
+    font-style: italic;
+}
+
+/* Lists */
+.markdownContent ul,
+.markdownContent ol {
+    margin: 0 0 0.75em 1.2em;
+    padding: 0;
+}
+
+.markdownContent li {
+    margin: 0.25em 0;
+}
+
+.markdownContent li > ul,
+.markdownContent li > ol {
+    margin-top: 0.35em;
+}
+
+/* Code */
+.markdownContent code {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, monospace;
+    font-size: 0.9em;
+    background: rgba(0, 0, 0, 0.06);
+    padding: 0.1em 0.35em;
+    border-radius: 4px;
+}
+
+.markdownContent pre {
+    margin: 0 0 0.75em;
+    padding: 12px 14px;
+    background: rgba(0, 0, 0, 0.04);
+    border-radius: 10px;
+    overflow-x: auto;
+}
+
+.markdownContent pre code {
+    background: transparent;
+    padding: 0;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+/* Blockquotes */
+.markdownContent blockquote {
+    margin: 0 0 0.75em;
+    padding: 10px 14px;
+    border-left: 3px solid rgba(217, 116, 89, 0.5);
+    background: rgba(217, 116, 89, 0.04);
+    border-radius: 0 8px 8px 0;
+}
+
+.markdownContent blockquote p {
+    margin: 0;
+}
+
+/* Tables */
+.markdownContent table {
+    width: 100%;
+    margin: 0 0 0.75em;
+    border-collapse: collapse;
+}
+
+.markdownContent th,
+.markdownContent td {
+    padding: 8px 10px;
+    text-align: left;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    font-size: 0.92em;
+}
+
+.markdownContent th {
+    background: rgba(0, 0, 0, 0.04);
+    font-weight: 600;
+}
+
+.markdownContent tr:nth-child(even) {
+    background: rgba(0, 0, 0, 0.02);
+}
+
+/* Links */
+.markdownContent a {
+    color: var(--accent-primary);
+    text-decoration: none;
+}
+
+.markdownContent a:hover {
+    text-decoration: underline;
+}
+
+/* Horizontal Rule */
+.markdownContent hr {
+    margin: 0.8em 0;
+    border: none;
+    border-top: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+/* Task Lists (GFM) */
+.markdownContent input[type="checkbox"] {
+    margin-right: 6px;
+}
