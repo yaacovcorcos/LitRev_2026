@@ -8,6 +8,10 @@ const DATABASE_URL = process.env.DATABASE_URL || "";
 
 const pool = new Pool({
   connectionString: DATABASE_URL.replace('&sslmode=require', '&sslmode=no-verify'),
+  // Optimize for remote database with high latency
+  connectionTimeoutMillis: 30000,  // 30s connection timeout
+  idleTimeoutMillis: 30000,        // Close idle connections after 30s
+  max: 10,                          // Max 10 connections in pool
 });
 
 const adapter = new PrismaPg(pool);

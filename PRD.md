@@ -1,4 +1,4 @@
-# Product Requirements Document: AntiGravity
+# Product Requirements Document: LitRev_2026
 
 **Status:** Draft (Comprehensive Evolution)  
 **Version:** 1.0  
@@ -7,7 +7,7 @@
 ---
 
 ## 1. Executive Overview
-AntiGravity is an AI-powered platform designed for medical scientists to plan research, review literature, and write scholarly articles. It transforms a research question into a structured research plan, executes database searches, triages evidence into an **Evidence Ledger**, and composes manuscripts with evidence-binding.
+LitRev_2026 is an AI-powered platform designed for medical scientists to plan research, review literature, and write scholarly articles. It transforms a research question into a structured research plan, executes database searches, triages evidence into an **Evidence Ledger**, and composes manuscripts with evidence-binding.
 
 The **Evidence Ledger** is the architectural keystone—the source of truth that grounds AI-generated claims in vetted, traceable sources with specific locators (page/paragraph/sentence).
 
@@ -24,7 +24,7 @@ The **Evidence Ledger** is the architectural keystone—the source of truth that
 
 ## 3. Product Roadmap & Feature Status
 
-AntiGravity follows a phased release strategy:
+LitRev_2026 follows a phased release strategy:
 *   **Parent Version (Current Focus):** Core workspace, basic literature review engine, and article drafting.
 *   **Descendant Version (Future):** Advanced meta-analysis engine, federated discovery, and multi-rater collaboration.
 
@@ -65,10 +65,10 @@ AntiGravity follows a phased release strategy:
 ---
 
 ## 4. Technical Architecture Philosophy
-AntiGravity is built as a **modular monolith** with clear boundaries between the **Evidence Ledger**, **Search/Triage Engine**, and **Authoring/Compose** modules.
+LitRev_2026 is built as a **modular monolith** with clear boundaries between the **Evidence Ledger**, **Search/Triage Engine**, and **Authoring/Compose** modules.
 
 ### 5.1 AI Memory System (Longitudinal Intelligence)
-Unlike simple LLM wrappers, AntiGravity uses a structured retrieval system:
+Unlike simple LLM wrappers, LitRev_2026 uses a structured retrieval system:
 *   **User Memory:** "Citation style is APA," "Writing tone is formal."
 *   **Project Memory:** "Exclude studies with N < 50," "Primary outcome is sensitivity."
 *   **Study Memory:** "Study A used RCT," "Study B found 85% accuracy."

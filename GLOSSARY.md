@@ -1,6 +1,6 @@
 # Glossary
 
-Definitions of key terms and concepts in the AntiGravity platform.
+Definitions of key terms and concepts in the LitRev_2026 platform.
 
 - **Evidence Ledger:** Structured store of accepted references with provenance and locators.
 - **Locator:** Specific page/paragraph/sentence reference used to ground a claim.

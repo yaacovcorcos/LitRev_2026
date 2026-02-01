@@ -14,6 +14,14 @@ This file tracks upcoming features and improvements for the LitRev platform.
 
 ## Upcoming Tasks
 
+### AI (Near‑term)
+- **OpenAI Responses API migration**: move provider from chat.completions to Responses API.
+- **End‑to‑end AI verification**: UI → OpenAI → streaming → AIUsage logging.
+- **AI Assistant regeneration**: add “regenerate response” for the last assistant message.
+- **PDF extraction + study analysis**: add parser + extraction actions (store results in Study.details).
+- **Draft assistance**: outline generation, improve writing, evidence synthesis.
+- **Protocol generation**: PICO suggestions + search strategy generation.
+
 ### 1. Copilot Scrolling Isolation Across Pages
 - **Problem**: Copilot on the Protocol page scrolls together with the main page, which causes incorrect page behavior. Copilot should scroll fully independently from the rest of the page.
 - **Reference Behavior**: Review the Draft Copilot implementation first. It keeps the input box visible without requiring scroll and behaves like a proper, isolated copilot.
@@ -51,4 +59,4 @@ This file tracks upcoming features and improvements for the LitRev platform.
 - **Duplicate Warning**: Detect duplicates and show a non-blocking warning message when a study already exists.
 
 ---
-*Last updated: January 28, 2026*
+*Last updated: February 1, 2026*

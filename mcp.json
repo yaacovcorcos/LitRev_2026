@@ -1,0 +1,19 @@
+{
+  "servers": {
+    "supabase": {
+      "url": "https://mcp.supabase.com/mcp?project_ref=mkjykdbksggludoahwjx&features=docs%2Caccount%2Cdatabase%2Cdebugging%2Cdevelopment%2Cfunctions%2Cbranching%2Cstorage",
+      "auth": {
+        "type": "bearer",
+        "env": "SUPABASE_MCP_PAT"
+      },
+      "notes": "Set SUPABASE_MCP_PAT in your environment. Do not commit tokens."
+    },
+    "vercel": {
+      "url": "https://mcp.vercel.com",
+      "auth": {
+        "type": "oauth"
+      },
+      "notes": "Run 'codex mcp login vercel' to authorize."
+    }
+  }
+}

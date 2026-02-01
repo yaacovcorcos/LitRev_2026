@@ -3,7 +3,10 @@
 import "dotenv/config";
 import { defineConfig } from "prisma/config";
 
+// Use pooler URL for application queries
 const databaseUrl = process.env["DATABASE_URL"];
+// Use direct URL for migrations (bypasses pooler for faster schema changes)
+const directUrl = process.env["DIRECT_URL"];
 
 export default defineConfig({
   schema: "prisma/schema.prisma",
@@ -11,6 +14,7 @@ export default defineConfig({
     path: "prisma/migrations",
   },
   datasource: {
-    url: databaseUrl,
+    // directUrl bypasses pgbouncer/pooler for migrations - much faster
+    url: directUrl || databaseUrl,
   },
 });
