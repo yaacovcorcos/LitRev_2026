@@ -13,7 +13,7 @@ import { ProjectCopilot } from "@/components/ProjectCopilot";
 import { useProjectCopilot } from "@/contexts/ProjectCopilotContext";
 import { listProjectFilesAction, deleteFileAssetAction, uploadStudyFileAction } from "@/app/actions/files";
 import type { FileAsset } from "@/types/files";
-import type { Study, StudyDetails } from "@/types/ledger";
+import type { Study, StudyDetails, TriageDecision } from "@/types/ledger";
 import { validateStudyFile } from "@/lib/fileValidation";
 
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
@@ -23,7 +23,7 @@ const RAIL_WIDTH = 44;
 export default function LedgerPage() {
     const { id } = useParams<{ id: string }>();
     const { getProjectById } = useProjects();
-    const { getStudiesByProject, updateStudies } = useLedger();
+    const { getStudiesByProject, updateStudies, updateSingleStudy } = useLedger();
     const { isCollapsed, panelWidth, setPanelWidth } = useProjectCopilot();
 
     const project = id ? getProjectById(id) : undefined;
@@ -51,6 +51,19 @@ export default function LedgerPage() {
     const selectAllRef = useRef<HTMLInputElement | null>(null);
 
     const extractedCount = studies.filter((s) => s.status === "extracted").length;
+
+    // Triage counts
+    const triageCounts = useMemo(() => {
+        let keep = 0, exclude = 0, maybe = 0, pending = 0;
+        for (const s of studies) {
+            const decision = s.details?.triageDecision;
+            if (decision === "keep") keep++;
+            else if (decision === "exclude") exclude++;
+            else if (decision === "maybe") maybe++;
+            else pending++;
+        }
+        return { keep, exclude, maybe, pending };
+    }, [studies]);
 
     // Study files panel state
     const [selectedStudy, setSelectedStudy] = useState<Study | null>(null);
@@ -159,6 +172,22 @@ export default function LedgerPage() {
             if (importInputRef.current) importInputRef.current.value = "";
         }
     };
+
+    // Triage handler
+    const handleTriage = useCallback(async (studyId: string, decision: TriageDecision) => {
+        if (!id) return;
+        try {
+            await updateSingleStudy(id, studyId, {
+                details: {
+                    ...studies.find(s => s.id === studyId)?.details,
+                    triageDecision: decision,
+                    triageDate: new Date().toISOString(),
+                },
+            });
+        } catch (err) {
+            console.error("Failed to update triage decision", err);
+        }
+    }, [id, updateSingleStudy, studies]);
 
     // Calculate panel widths
     const computePanelVars = (): CSSProperties => {
@@ -347,15 +376,23 @@ export default function LedgerPage() {
                             <div className={styles.statsRow}>
                                 <div className={styles.statChip}>
                                     <span className="material-icons-round">description</span>
-                                    <span>{studies.length} total studies</span>
+                                    <span>{studies.length} total</span>
                                 </div>
-                                <div className={styles.statChip}>
+                                <div className={styles.statChip} style={{ color: "var(--status-ready-text)" }}>
                                     <span className="material-icons-round">check_circle</span>
-                                    <span>{extractedCount} extracted</span>
+                                    <span>{triageCounts.keep} kept</span>
+                                </div>
+                                <div className={styles.statChip} style={{ color: "#c0392b" }}>
+                                    <span className="material-icons-round">cancel</span>
+                                    <span>{triageCounts.exclude} excluded</span>
+                                </div>
+                                <div className={styles.statChip} style={{ color: "var(--accent-tertiary)" }}>
+                                    <span className="material-icons-round">help_outline</span>
+                                    <span>{triageCounts.maybe} maybe</span>
                                 </div>
                                 <div className={styles.statChip}>
                                     <span className="material-icons-round">pending</span>
-                                    <span>{studies.length - extractedCount} pending</span>
+                                    <span>{triageCounts.pending} untriaged</span>
                                 </div>
                                 {hasSelection ? (
                                     <div className={styles.statChip}>
@@ -387,6 +424,7 @@ export default function LedgerPage() {
                                             <th>Year</th>
                                             <th>Status</th>
                                             <th>Quality</th>
+                                            <th>Triage</th>
                                             <th>Actions</th>
                                         </tr>
                                     </thead>
@@ -452,6 +490,7 @@ export default function LedgerPage() {
                                                         <option value="Low">Low</option>
                                                     </select>
                                                 </td>
+                                                <td>{/* Triage - empty for new study */}</td>
                                                 <td>
                                                     <div className={styles.addActions}>
                                                         <button className={styles.addBtn} onClick={handleAddStudy}>
@@ -534,6 +573,24 @@ export default function LedgerPage() {
                                                             </span>
                                                         </td>
                                                         <td>
+                                                            {d.triageDecision ? (
+                                                                <span className={`${styles.triageBadge} ${
+                                                                    d.triageDecision === "keep" ? styles.triageBadgeKeep :
+                                                                    d.triageDecision === "exclude" ? styles.triageBadgeExclude :
+                                                                    styles.triageBadgeMaybe
+                                                                }`}>
+                                                                    <span className="material-icons-round">
+                                                                        {d.triageDecision === "keep" ? "check_circle" :
+                                                                         d.triageDecision === "exclude" ? "cancel" : "help_outline"}
+                                                                    </span>
+                                                                    {d.triageDecision === "keep" ? "Keep" :
+                                                                     d.triageDecision === "exclude" ? "Exclude" : "Maybe"}
+                                                                </span>
+                                                            ) : (
+                                                                <span className={styles.triageBadge} style={{ opacity: 0.5 }}>—</span>
+                                                            )}
+                                                        </td>
+                                                        <td>
                                                             <button
                                                                 className={styles.actionBtn}
                                                                 title="Manage Files"
@@ -556,12 +613,37 @@ export default function LedgerPage() {
                                                     </tr>
                                                     {isExpanded && (
                                                         <tr key={`${study.id}-details`} className={styles.expandedRow}>
-                                                            <td colSpan={isSelectMode ? 8 : 7}>
+                                                            <td colSpan={isSelectMode ? 9 : 8}>
                                                                 <div className={styles.expandedContent}>
                                                                     <div className={styles.expandedSection}>
                                                                         <p className={styles.abstractText}>
                                                                             {displaySummary}
                                                                         </p>
+                                                                    </div>
+
+                                                                    {/* Triage Actions */}
+                                                                    <div className={styles.triageActions}>
+                                                                        <button
+                                                                            className={`${styles.triageBtn} ${styles.triageBtnKeep} ${d.triageDecision === "keep" ? styles.active : ""}`}
+                                                                            onClick={(e) => { e.stopPropagation(); handleTriage(study.id, "keep"); }}
+                                                                        >
+                                                                            <span className="material-icons-round">check_circle</span>
+                                                                            Keep
+                                                                        </button>
+                                                                        <button
+                                                                            className={`${styles.triageBtn} ${styles.triageBtnExclude} ${d.triageDecision === "exclude" ? styles.active : ""}`}
+                                                                            onClick={(e) => { e.stopPropagation(); handleTriage(study.id, "exclude"); }}
+                                                                        >
+                                                                            <span className="material-icons-round">cancel</span>
+                                                                            Exclude
+                                                                        </button>
+                                                                        <button
+                                                                            className={`${styles.triageBtn} ${styles.triageBtnMaybe} ${d.triageDecision === "maybe" ? styles.active : ""}`}
+                                                                            onClick={(e) => { e.stopPropagation(); handleTriage(study.id, "maybe"); }}
+                                                                        >
+                                                                            <span className="material-icons-round">help_outline</span>
+                                                                            Maybe
+                                                                        </button>
                                                                     </div>
 
                                                                     <div className={styles.expandedMeta}>
