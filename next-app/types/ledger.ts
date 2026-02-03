@@ -51,6 +51,20 @@ export type StudyDetails = {
   source?: StudySource;
   verified?: boolean;
 
+  // Protocol criteria matching (computed on demand)
+  criteriaMatch?: {
+    /** Matches protocol time frame */
+    matchesYearRange?: boolean;
+    /** Matches protocol study designs */
+    matchesStudyDesign?: boolean;
+    /** Overall eligibility score (0-100) */
+    eligibilityScore?: number;
+    /** Reasons for exclusion based on protocol */
+    exclusionReasons?: string[];
+    /** Last time criteria was checked */
+    checkedAt?: string;
+  };
+
   // Extensible
   [key: string]: unknown;
 };

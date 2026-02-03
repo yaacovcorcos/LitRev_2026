@@ -72,6 +72,18 @@ export async function listProjectFiles(
   return files.map(toFileAsset);
 }
 
+export async function getFileAssetById(
+  scopeInput: Partial<ServiceScope> | null | undefined,
+  projectId: string,
+  fileId: string
+): Promise<FileAsset | null> {
+  await assertProjectAccess(scopeInput, projectId);
+  const file = await prisma.fileAsset.findFirst({
+    where: { id: fileId, projectId },
+  });
+  return file ? toFileAsset(file) : null;
+}
+
 export async function createFileAsset(
   scopeInput: Partial<ServiceScope> | null | undefined,
   projectId: string,

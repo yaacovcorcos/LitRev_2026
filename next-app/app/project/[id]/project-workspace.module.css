@@ -40,6 +40,20 @@
     box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2);
 }
 
+.statCardLink {
+    text-decoration: none;
+    color: inherit;
+    cursor: pointer;
+}
+
+.statCardLink:hover {
+    border-color: var(--accent-primary);
+}
+
+.statCardLink:hover .statIcon {
+    transform: scale(1.1);
+}
+
 .statIcon {
     font-size: 24px;
     color: var(--accent-primary);

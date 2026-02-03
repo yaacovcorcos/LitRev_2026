@@ -29,18 +29,29 @@ type StatCardProps = {
   label: string;
   value: string;
   icon: string;
+  href?: string;
 };
 
-function StatCard({ label, value, icon }: StatCardProps) {
-  return (
-    <div className={styles.statCard}>
+function StatCard({ label, value, icon, href }: StatCardProps) {
+  const content = (
+    <>
       <span className={`material-icons-round ${styles.statIcon}`}>{icon}</span>
       <div className={styles.statContent}>
         <span className={styles.statLabel}>{label}</span>
         <span className={styles.statValue}>{value}</span>
       </div>
-    </div>
+    </>
   );
+
+  if (href) {
+    return (
+      <Link href={href} className={`${styles.statCard} ${styles.statCardLink}`}>
+        {content}
+      </Link>
+    );
+  }
+
+  return <div className={styles.statCard}>{content}</div>;
 }
 
 type WorkstationCardProps = {
@@ -127,7 +138,7 @@ export default function ProjectDetail() {
   const vitalSigns = useMemo(() => {
     if (!project) return [];
     return [
-      { label: "Phase", value: project.status === "harvesting" ? "Harvesting" : "Review", icon: "flag" },
+      { label: "Memory", value: "Knowledge", icon: "psychology", href: `/project/${project.id}/memory` },
       { label: "Papers", value: `${totalPapersFor(project)}`, icon: "description" },
       { label: "Status", value: project.status === "harvesting" ? "In Progress" : "Ready", icon: "check_circle" },
       { label: "Modified", value: formatRelativeTime(project.modified), icon: "schedule" },
@@ -176,7 +187,7 @@ export default function ProjectDetail() {
         {/* Vital Signs Row */}
         <section className={styles.vitalSignsRow}>
           {vitalSigns.map((stat) => (
-            <StatCard key={stat.label} label={stat.label} value={stat.value} icon={stat.icon} />
+            <StatCard key={stat.label} label={stat.label} value={stat.value} icon={stat.icon} href={stat.href} />
           ))}
         </section>
 

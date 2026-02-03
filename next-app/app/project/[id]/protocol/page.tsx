@@ -4,6 +4,7 @@ import { CSSProperties, useCallback, useEffect, useMemo, useRef } from "react";
 import { useParams } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
 import { useProjects } from "@/contexts/ProjectsContext";
+import { useLedger } from "@/contexts/LedgerContext";
 import Link from "next/link";
 import { BaseBackButton } from "@/components/BaseBackButton";
 import styles from "./protocol.module.css";
@@ -16,6 +17,7 @@ import { EditableList } from "@/components/EditableList";
 import { EditableChips } from "@/components/EditableChips";
 import { ProtocolSection } from "@/types/protocol";
 import { getMockProtocolData } from "@/data/mockProtocols";
+import { calculatePRISMACounts } from "@/lib/criteriaMatching";
 
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 
@@ -50,6 +52,16 @@ function ProtocolPageContent() {
     } = useProtocol();
 
     const project = id ? getProjectById(id) : undefined;
+
+    // Get studies from ledger for PRISMA counts
+    const { getStudiesByProject } = useLedger();
+    const studies = useMemo(() => (id ? getStudiesByProject(id) : []), [id, getStudiesByProject]);
+
+    // Calculate PRISMA flow counts
+    const prismaCounts = useMemo(
+        () => calculatePRISMACounts(studies, protocol),
+        [studies, protocol]
+    );
 
     // Handle inserting Copilot suggestions into the active field
     const handleInsert = useCallback((text: string) => {
@@ -435,6 +447,58 @@ function ProtocolPageContent() {
                                     )}
                                 </div>
                             </div>
+
+                            {/* PRISMA Flow Summary */}
+                            {studies.length > 0 && (
+                                <div className={styles.prismaPanel}>
+                                    <div className={styles.prismaHeader}>
+                                        <h3 className={styles.prismaTitle}>
+                                            <span className="material-icons-round">account_tree</span>
+                                            PRISMA Flow Summary
+                                        </h3>
+                                        <Link href={`/project/${id}/ledger`} className={styles.prismaLink}>
+                                            View Ledger
+                                        </Link>
+                                    </div>
+                                    <div className={styles.prismaFlow}>
+                                        <div className={styles.prismaStage}>
+                                            <span className={styles.prismaStageLabel}>Identified</span>
+                                            <span className={styles.prismaStageCount}>{prismaCounts.recordsIdentified}</span>
+                                        </div>
+                                        <span className={styles.prismaArrow}>→</span>
+                                        <div className={styles.prismaStage}>
+                                            <span className={styles.prismaStageLabel}>Screened</span>
+                                            <span className={styles.prismaStageCount}>{prismaCounts.recordsScreened}</span>
+                                        </div>
+                                        <span className={styles.prismaArrow}>→</span>
+                                        <div className={`${styles.prismaStage} ${styles.prismaStageExcluded}`}>
+                                            <span className={styles.prismaStageLabel}>Excluded</span>
+                                            <span className={styles.prismaStageCount}>{prismaCounts.recordsExcludedScreening}</span>
+                                        </div>
+                                        <span className={styles.prismaArrow}>→</span>
+                                        <div className={`${styles.prismaStage} ${styles.prismaStageIncluded}`}>
+                                            <span className={styles.prismaStageLabel}>Included</span>
+                                            <span className={styles.prismaStageCount}>{prismaCounts.includedQualitative}</span>
+                                        </div>
+                                    </div>
+                                    <div className={styles.prismaCriteria}>
+                                        <div className={styles.prismaCriteriaItem}>
+                                            <span className={`${styles.prismaDot} ${styles.prismaDotMeets}`} />
+                                            <span>Meets criteria: {prismaCounts.meetsCriteria}</span>
+                                        </div>
+                                        <div className={styles.prismaCriteriaItem}>
+                                            <span className={`${styles.prismaDot} ${styles.prismaDotFails}`} />
+                                            <span>Fails criteria: {prismaCounts.failsCriteria}</span>
+                                        </div>
+                                        {prismaCounts.needsReview > 0 && (
+                                            <div className={styles.prismaCriteriaItem}>
+                                                <span className={`${styles.prismaDot} ${styles.prismaDotMaybe}`} />
+                                                <span>Needs review: {prismaCounts.needsReview}</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
 
                             <div className={styles.content}>
                                 {/* PICO Framework Section */}

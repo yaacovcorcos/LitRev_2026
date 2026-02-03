@@ -12,9 +12,14 @@ import { useLedger } from "@/contexts/LedgerContext";
 import { ProjectCopilot } from "@/components/ProjectCopilot";
 import { useProjectCopilot } from "@/contexts/ProjectCopilotContext";
 import { listProjectFilesAction, deleteFileAssetAction, uploadStudyFileAction } from "@/app/actions/files";
+import { getProtocolAction } from "@/app/actions/protocols";
+import { evaluateCriteria, type CriteriaMatchResult } from "@/lib/criteriaMatching";
+import { createDefaultProtocolData, type ProtocolData } from "@/types/protocol";
 import type { FileAsset } from "@/types/files";
 import type { Study, StudyDetails, TriageDecision } from "@/types/ledger";
 import { validateStudyFile } from "@/lib/fileValidation";
+
+type CriteriaFilter = "all" | "meets-criteria" | "fails-criteria" | "in-date-range" | "matching-design";
 
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 
@@ -72,6 +77,78 @@ export default function LedgerPage() {
     const [isImporting, setIsImporting] = useState(false);
     const importInputRef = useRef<HTMLInputElement | null>(null);
     const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+
+    // Protocol & criteria filtering
+    const [protocol, setProtocol] = useState<ProtocolData>(createDefaultProtocolData);
+    const [criteriaFilter, setCriteriaFilter] = useState<CriteriaFilter>("all");
+
+    // Load protocol data
+    useEffect(() => {
+        if (!id) return;
+        let active = true;
+        getProtocolAction(id)
+            .then((data) => {
+                if (active && data) setProtocol(data);
+            })
+            .catch((err) => {
+                console.error("Failed to load protocol", err);
+            });
+        return () => { active = false; };
+    }, [id]);
+
+    // Compute criteria matches for all studies
+    const studyCriteriaMap = useMemo(() => {
+        const map = new Map<string, CriteriaMatchResult>();
+        for (const study of studies) {
+            map.set(study.id, evaluateCriteria(study, protocol));
+        }
+        return map;
+    }, [studies, protocol]);
+
+    // Criteria counts
+    const criteriaCounts = useMemo(() => {
+        let meetsCriteria = 0;
+        let failsCriteria = 0;
+        let inDateRange = 0;
+        let matchingDesign = 0;
+        for (const result of studyCriteriaMap.values()) {
+            if (result.meetsAllCriteria) meetsCriteria++;
+            else failsCriteria++;
+            if (result.matchesYearRange) inDateRange++;
+            if (result.matchesStudyDesign) matchingDesign++;
+        }
+        return { meetsCriteria, failsCriteria, inDateRange, matchingDesign };
+    }, [studyCriteriaMap]);
+
+    // Check if protocol has any criteria defined
+    const hasProtocolCriteria = useMemo(() => {
+        return (
+            protocol.methodology.timeFrameStart ||
+            protocol.methodology.timeFrameEnd ||
+            protocol.methodology.studyDesigns.length > 0
+        );
+    }, [protocol]);
+
+    // Filter studies based on criteria filter
+    const filteredStudies = useMemo(() => {
+        if (criteriaFilter === "all" || !hasProtocolCriteria) return studies;
+        return studies.filter((study) => {
+            const match = studyCriteriaMap.get(study.id);
+            if (!match) return true;
+            switch (criteriaFilter) {
+                case "meets-criteria":
+                    return match.meetsAllCriteria;
+                case "fails-criteria":
+                    return !match.meetsAllCriteria;
+                case "in-date-range":
+                    return match.matchesYearRange;
+                case "matching-design":
+                    return match.matchesStudyDesign;
+                default:
+                    return true;
+            }
+        });
+    }, [studies, criteriaFilter, studyCriteriaMap, hasProtocolCriteria]);
 
     // Toggle select mode
     const toggleSelectMode = () => {
@@ -402,6 +479,62 @@ export default function LedgerPage() {
                                 ) : null}
                             </div>
 
+                            {/* Protocol Criteria Filters */}
+                            {hasProtocolCriteria && (
+                                <div className={styles.criteriaFilters}>
+                                    <span className={styles.criteriaLabel}>
+                                        <span className="material-icons-round">filter_list</span>
+                                        Protocol Criteria:
+                                    </span>
+                                    <button
+                                        type="button"
+                                        className={`${styles.criteriaChip} ${criteriaFilter === "all" ? styles.criteriaChipActive : ""}`}
+                                        onClick={() => setCriteriaFilter("all")}
+                                    >
+                                        All
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className={`${styles.criteriaChip} ${styles.criteriaChipMeets} ${criteriaFilter === "meets-criteria" ? styles.criteriaChipActive : ""}`}
+                                        onClick={() => setCriteriaFilter("meets-criteria")}
+                                    >
+                                        <span className="material-icons-round">check</span>
+                                        Meets Criteria ({criteriaCounts.meetsCriteria})
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className={`${styles.criteriaChip} ${styles.criteriaChipFails} ${criteriaFilter === "fails-criteria" ? styles.criteriaChipActive : ""}`}
+                                        onClick={() => setCriteriaFilter("fails-criteria")}
+                                    >
+                                        <span className="material-icons-round">close</span>
+                                        Fails Criteria ({criteriaCounts.failsCriteria})
+                                    </button>
+                                    {(protocol.methodology.timeFrameStart || protocol.methodology.timeFrameEnd) && (
+                                        <button
+                                            type="button"
+                                            className={`${styles.criteriaChip} ${criteriaFilter === "in-date-range" ? styles.criteriaChipActive : ""}`}
+                                            onClick={() => setCriteriaFilter("in-date-range")}
+                                        >
+                                            <span className="material-icons-round">date_range</span>
+                                            In Date Range ({criteriaCounts.inDateRange})
+                                        </button>
+                                    )}
+                                    {protocol.methodology.studyDesigns.length > 0 && (
+                                        <button
+                                            type="button"
+                                            className={`${styles.criteriaChip} ${criteriaFilter === "matching-design" ? styles.criteriaChipActive : ""}`}
+                                            onClick={() => setCriteriaFilter("matching-design")}
+                                        >
+                                            <span className="material-icons-round">science</span>
+                                            Matching Design ({criteriaCounts.matchingDesign})
+                                        </button>
+                                    )}
+                                    <Link href={`/project/${id}/protocol`} className={styles.criteriaLink}>
+                                        Edit Protocol
+                                    </Link>
+                                </div>
+                            )}
+
                             <div className={styles.tableWrapper}>
                                 <table className={styles.ledgerTable}>
                                     <thead>
@@ -425,6 +558,7 @@ export default function LedgerPage() {
                                             <th>Status</th>
                                             <th>Quality</th>
                                             <th>Triage</th>
+                                            {hasProtocolCriteria && <th>Criteria</th>}
                                             <th>Actions</th>
                                         </tr>
                                     </thead>
@@ -509,8 +643,9 @@ export default function LedgerPage() {
                                                 </td>
                                             </tr>
                                         ) : null}
-                                        {studies.map((study) => {
+                                        {filteredStudies.map((study) => {
                                             const d: StudyDetails = study.details ?? {};
+                                            const criteriaMatch = studyCriteriaMap.get(study.id);
                                             const isExpanded = expandedIds.has(study.id);
                                             const toggleExpand = () => {
                                                 setExpandedIds((prev) => {
@@ -579,10 +714,6 @@ export default function LedgerPage() {
                                                                     d.triageDecision === "exclude" ? styles.triageBadgeExclude :
                                                                     styles.triageBadgeMaybe
                                                                 }`}>
-                                                                    <span className="material-icons-round">
-                                                                        {d.triageDecision === "keep" ? "check_circle" :
-                                                                         d.triageDecision === "exclude" ? "cancel" : "help_outline"}
-                                                                    </span>
                                                                     {d.triageDecision === "keep" ? "Keep" :
                                                                      d.triageDecision === "exclude" ? "Exclude" : "Maybe"}
                                                                 </span>
@@ -590,6 +721,24 @@ export default function LedgerPage() {
                                                                 <span className={styles.triageBadge} style={{ opacity: 0.5 }}>—</span>
                                                             )}
                                                         </td>
+                                                        {hasProtocolCriteria && (
+                                                            <td>
+                                                                {criteriaMatch?.meetsAllCriteria ? (
+                                                                    <span className={`${styles.criteriaBadge} ${styles.criteriaBadgeMeets}`} title="Meets all protocol criteria">
+                                                                        <span className="material-icons-round">check_circle</span>
+                                                                    </span>
+                                                                ) : criteriaMatch?.exclusionReasons?.length ? (
+                                                                    <span
+                                                                        className={`${styles.criteriaBadge} ${styles.criteriaBadgeFails}`}
+                                                                        title={criteriaMatch.exclusionReasons.join("; ")}
+                                                                    >
+                                                                        <span className="material-icons-round">error</span>
+                                                                    </span>
+                                                                ) : (
+                                                                    <span className={styles.criteriaBadge} style={{ opacity: 0.5 }}>—</span>
+                                                                )}
+                                                            </td>
+                                                        )}
                                                         <td>
                                                             <button
                                                                 className={styles.actionBtn}
@@ -597,9 +746,6 @@ export default function LedgerPage() {
                                                                 onClick={() => handleOpenStudyFiles(study)}
                                                             >
                                                                 <span className="material-icons-round">attach_file</span>
-                                                            </button>
-                                                            <button className={styles.actionBtn} title="Extract Data">
-                                                                <span className="material-icons-round">edit_note</span>
                                                             </button>
                                                             <button
                                                                 className={styles.actionBtn}
@@ -613,7 +759,7 @@ export default function LedgerPage() {
                                                     </tr>
                                                     {isExpanded && (
                                                         <tr key={`${study.id}-details`} className={styles.expandedRow}>
-                                                            <td colSpan={isSelectMode ? 9 : 8}>
+                                                            <td colSpan={isSelectMode ? (hasProtocolCriteria ? 10 : 9) : (hasProtocolCriteria ? 9 : 8)}>
                                                                 <div className={styles.expandedContent}>
                                                                     <div className={styles.expandedSection}>
                                                                         <p className={styles.abstractText}>
@@ -627,21 +773,18 @@ export default function LedgerPage() {
                                                                             className={`${styles.triageBtn} ${styles.triageBtnKeep} ${d.triageDecision === "keep" ? styles.active : ""}`}
                                                                             onClick={(e) => { e.stopPropagation(); handleTriage(study.id, "keep"); }}
                                                                         >
-                                                                            <span className="material-icons-round">check_circle</span>
                                                                             Keep
                                                                         </button>
                                                                         <button
                                                                             className={`${styles.triageBtn} ${styles.triageBtnExclude} ${d.triageDecision === "exclude" ? styles.active : ""}`}
                                                                             onClick={(e) => { e.stopPropagation(); handleTriage(study.id, "exclude"); }}
                                                                         >
-                                                                            <span className="material-icons-round">cancel</span>
                                                                             Exclude
                                                                         </button>
                                                                         <button
                                                                             className={`${styles.triageBtn} ${styles.triageBtnMaybe} ${d.triageDecision === "maybe" ? styles.active : ""}`}
                                                                             onClick={(e) => { e.stopPropagation(); handleTriage(study.id, "maybe"); }}
                                                                         >
-                                                                            <span className="material-icons-round">help_outline</span>
                                                                             Maybe
                                                                         </button>
                                                                     </div>
@@ -718,19 +861,22 @@ export default function LedgerPage() {
                     />
                 </div>
 
-                {/* Study Files Side Panel */}
+                {/* Study Files Popup */}
                 {selectedStudy && (
-                    <div className={styles.filesPanel}>
-                        <StudyFilesPanel
-                            projectId={id}
-                            studyId={selectedStudy.id}
-                            studyTitle={selectedStudy.title}
-                            files={studyFiles}
-                            onUpload={handleUploadFile}
-                            onDelete={handleDeleteFile}
-                            onClose={handleCloseStudyFiles}
-                        />
-                    </div>
+                    <>
+                        <div className={styles.filesPopupBackdrop} onClick={handleCloseStudyFiles} />
+                        <div className={styles.filesPopup}>
+                            <StudyFilesPanel
+                                projectId={id}
+                                studyId={selectedStudy.id}
+                                studyTitle={selectedStudy.title}
+                                files={studyFiles}
+                                onUpload={handleUploadFile}
+                                onDelete={handleDeleteFile}
+                                onClose={handleCloseStudyFiles}
+                            />
+                        </div>
+                    </>
                 )}
             </div>
         </AppShell>

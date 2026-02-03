@@ -253,3 +253,17 @@
   color: #dc3545;
   background: rgba(220, 53, 69, 0.1);
 }
+
+.extractBtn {
+  color: var(--accent-secondary);
+}
+
+.extractBtn:hover:not(:disabled) {
+  color: var(--accent-secondary);
+  background: rgba(129, 140, 248, 0.1);
+}
+
+.extractBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

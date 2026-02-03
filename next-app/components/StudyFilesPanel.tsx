@@ -13,6 +13,10 @@ type StudyFilesPanelProps = {
   onUpload: (file: File) => Promise<void>;
   onDelete: (fileId: string) => Promise<void>;
   onClose: () => void;
+  /** Optional: callback to extract study data from a PDF */
+  onExtract?: (fileId: string) => Promise<void>;
+  /** Optional: ID of file currently being extracted */
+  extractingFileId?: string;
 };
 
 function formatFileSize(bytes: number): string {
@@ -37,6 +41,8 @@ export function StudyFilesPanel({
   onUpload,
   onDelete,
   onClose,
+  onExtract,
+  extractingFileId,
 }: StudyFilesPanelProps) {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -172,6 +178,20 @@ export function StudyFilesPanel({
                 </span>
               </div>
               <div className={styles.fileActions}>
+                {/* Extract button for PDF files */}
+                {file.format === "pdf" && onExtract && (
+                  <button
+                    type="button"
+                    className={`${styles.actionBtn} ${styles.extractBtn}`}
+                    onClick={() => onExtract(file.id)}
+                    disabled={!!extractingFileId}
+                    title={extractingFileId === file.id ? "Extracting..." : "Extract study data from PDF"}
+                  >
+                    <span className={`material-icons-round ${extractingFileId === file.id ? styles.spinIcon : ""}`}>
+                      {extractingFileId === file.id ? "sync" : "auto_awesome"}
+                    </span>
+                  </button>
+                )}
                 {file.publicUrl && (
                   <a
                     href={file.publicUrl}

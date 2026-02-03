@@ -472,6 +472,137 @@
     display: block;
 }
 
+/* PRISMA Flow Summary */
+.prismaPanel {
+    background: rgba(129, 140, 248, 0.06);
+    border: 1px solid rgba(129, 140, 248, 0.15);
+    border-radius: var(--radius-md);
+    padding: 16px 20px;
+}
+
+.prismaHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+}
+
+.prismaTitle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0;
+}
+
+.prismaTitle .material-icons-round {
+    font-size: 18px;
+    color: var(--accent-secondary);
+}
+
+.prismaLink {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--accent-primary);
+    text-decoration: none;
+}
+
+.prismaLink:hover {
+    text-decoration: underline;
+}
+
+.prismaFlow {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+}
+
+.prismaStage {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 12px 20px;
+    background: rgba(255, 255, 255, 0.7);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-sm);
+    min-width: 80px;
+}
+
+.prismaStageLabel {
+    font-size: 11px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    color: var(--text-muted);
+}
+
+.prismaStageCount {
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.prismaStageExcluded {
+    background: rgba(192, 57, 43, 0.08);
+    border-color: rgba(192, 57, 43, 0.2);
+}
+
+.prismaStageExcluded .prismaStageCount {
+    color: #c0392b;
+}
+
+.prismaStageIncluded {
+    background: var(--status-ready-bg);
+    border-color: rgba(46, 125, 50, 0.25);
+}
+
+.prismaStageIncluded .prismaStageCount {
+    color: var(--status-ready-text);
+}
+
+.prismaArrow {
+    font-size: 16px;
+    color: var(--text-muted);
+}
+
+.prismaCriteria {
+    display: flex;
+    gap: 20px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(129, 140, 248, 0.15);
+}
+
+.prismaCriteriaItem {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+
+.prismaDot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+}
+
+.prismaDotMeets {
+    background: var(--status-ready-text);
+}
+
+.prismaDotFails {
+    background: #c0392b;
+}
+
+.prismaDotMaybe {
+    background: var(--accent-tertiary);
+}
+
 /* Responsive */
 @media (max-width: 900px) {
     .body {

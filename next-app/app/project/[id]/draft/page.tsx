@@ -16,8 +16,10 @@ import Link from "next/link";
 import { BaseBackButton } from "@/components/BaseBackButton";
 import { AppShell } from "@/components/AppShell";
 import { useProjects } from "@/contexts/ProjectsContext";
+import { useLedger } from "@/contexts/LedgerContext";
 import { ProjectCopilot } from "@/components/ProjectCopilot";
 import { useProjectCopilot } from "@/contexts/ProjectCopilotContext";
+import type { Study } from "@/types/ledger";
 import { DRAFT_SECTIONS, OPTIONAL_SECTION_KEYS, DraftMode, DraftSectionId, DraftSectionKey } from "@/types/draft";
 import {
   CopilotMessage,
@@ -42,55 +44,33 @@ import Underline from "@tiptap/extension-underline";
 import { Extension, Node as TiptapNode, mergeAttributes } from "@tiptap/core";
 import type { JSONContent } from "@tiptap/core";
 
-type Reference = {
-  id: string;
-  authorsShort: string;
-  year: number;
-  title: string;
-};
-
-const MOCK_REFERENCES: Reference[] = [
-  {
-    id: "r1",
-    authorsShort: "Smith et al.",
-    year: 2024,
-    title: "AI-assisted triage in radiopathology: a multi-center evaluation",
-  },
-  {
-    id: "r2",
-    authorsShort: "Nguyen",
-    year: 2023,
-    title: "Bias and calibration in clinical ML deployment pipelines",
-  },
-  {
-    id: "r3",
-    authorsShort: "Patel & Gomez",
-    year: 2022,
-    title: "Systematic review methods for imaging datasets",
-  },
-  {
-    id: "r4",
-    authorsShort: "Iyer",
-    year: 2021,
-    title: "Evidence synthesis workflows for rapid reviews",
-  },
-  {
-    id: "r5",
-    authorsShort: "Chen et al.",
-    year: 2020,
-    title: "Reproducibility practices in medical imaging research",
-  },
-  {
-    id: "r6",
-    authorsShort: "Wang",
-    year: 2019,
-    title: "Clinical trial reporting standards: a practical checklist",
-  },
-];
-
 const EMPTY_IDS: string[] = [];
 
-const referenceLabel = (ref: Reference) => `${ref.authorsShort}, ${ref.year}`;
+/**
+ * Format authors string for citation display.
+ * "John Smith, Jane Doe, Bob Johnson" → "Smith et al."
+ * "John Smith, Jane Doe" → "Smith & Doe"
+ * "John Smith" → "Smith"
+ */
+const formatAuthorsShort = (authors: string): string => {
+  if (!authors) return "Unknown";
+  // Split by comma or "and"
+  const parts = authors.split(/,|(?:\s+and\s+)/i).map((p) => p.trim()).filter(Boolean);
+  if (parts.length === 0) return "Unknown";
+  // Extract last name from first author (assumes "First Last" format)
+  const firstAuthor = parts[0];
+  const nameParts = firstAuthor.split(/\s+/);
+  const lastName = nameParts[nameParts.length - 1];
+  if (parts.length === 1) return lastName;
+  if (parts.length === 2) {
+    const secondNameParts = parts[1].split(/\s+/);
+    const secondLastName = secondNameParts[secondNameParts.length - 1];
+    return `${lastName} & ${secondLastName}`;
+  }
+  return `${lastName} et al.`;
+};
+
+const studyLabel = (study: Study) => `${formatAuthorsShort(study.authors)}, ${study.year}`;
 
 const isBaseSectionKey = (value: string | null): value is DraftSectionKey => {
   if (!value) return false;
@@ -397,7 +377,9 @@ function DraftContent() {
   const { id } = useParams<{ id: string }>();
   const searchParams = useSearchParams();
   const { getProjectById } = useProjects();
+  const { getStudiesByProject } = useLedger();
   const project = getProjectById(id);
+  const studies = useMemo(() => (id ? getStudiesByProject(id) : []), [id, getStudiesByProject]);
   const { isCollapsed: copilotCollapsed, panelWidth: copilotPanelWidth, setPanelWidth: setCopilotPanelWidth, setCollapsed: setCopilotCollapsed } = useProjectCopilot();
 
   const queryMode = searchParams.get("mode");
@@ -890,25 +872,29 @@ function DraftContent() {
 
   const usedEvidenceIds = draft.ledgerBySection[draft.activeSection] ?? EMPTY_IDS;
   const usedEvidence = useMemo(
-    () => MOCK_REFERENCES.filter((r) => usedEvidenceIds.includes(r.id)),
-    [usedEvidenceIds]
+    () => studies.filter((s) => usedEvidenceIds.includes(s.id)),
+    [studies, usedEvidenceIds]
   );
 
   const filteredEvidence = useMemo(() => {
     const q = evidenceQuery.trim().toLowerCase();
-    if (!q) return MOCK_REFERENCES;
-    return MOCK_REFERENCES.filter(
-      (r) => r.title.toLowerCase().includes(q) || referenceLabel(r).toLowerCase().includes(q)
+    if (!q) return studies;
+    return studies.filter(
+      (s) =>
+        s.title.toLowerCase().includes(q) ||
+        s.authors.toLowerCase().includes(q) ||
+        studyLabel(s).toLowerCase().includes(q) ||
+        s.details?.journal?.toLowerCase().includes(q)
     );
-  }, [evidenceQuery]);
+  }, [studies, evidenceQuery]);
 
-  const insertCitation = (ref: Reference) => {
+  const insertCitation = (study: Study) => {
     const editor = activeEditorRef.current;
     if (!editor) return;
     editor
       .chain()
       .focus()
-      .insertContent({ type: "citation", attrs: { id: ref.id, label: referenceLabel(ref) } })
+      .insertContent({ type: "citation", attrs: { id: study.id, label: studyLabel(study) } })
       .insertContent(" ")
       .run();
   };
@@ -1109,6 +1095,29 @@ function DraftContent() {
       lines.push("");
     }
 
+    // Collect all cited studies across all sections
+    const allCitedIds = new Set<string>();
+    for (const sectionIds of Object.values(draft.ledgerBySection)) {
+      for (const studyId of sectionIds) {
+        allCitedIds.add(studyId);
+      }
+    }
+
+    // Add References section if there are citations
+    const citedStudies = studies.filter((s) => allCitedIds.has(s.id));
+    if (citedStudies.length > 0) {
+      lines.push(`## References`);
+      lines.push("");
+      citedStudies
+        .sort((a, b) => a.authors.localeCompare(b.authors))
+        .forEach((study, idx) => {
+          const journalInfo = study.details?.journal ? ` *${study.details.journal}*.` : "";
+          const doiInfo = study.details?.doi ? ` https://doi.org/${study.details.doi}` : "";
+          lines.push(`${idx + 1}. ${study.authors} (${study.year}). ${study.title}.${journalInfo}${doiInfo}`);
+        });
+      lines.push("");
+    }
+
     const markdownContent = lines.join("\n");
     
     // Calculate version number
@@ -1139,7 +1148,7 @@ function DraftContent() {
     setLatestExport(newExport);
     
     return newExport;
-  }, [project, id, flushContentCommit, orderedSections, draft.contentBySection, jsonToText, latestExport]);
+  }, [project, id, flushContentCommit, orderedSections, draft.contentBySection, draft.ledgerBySection, jsonToText, latestExport, studies]);
 
   // Delete export
   const handleDeleteExport = useCallback(async (fileId: string) => {
@@ -1660,17 +1669,17 @@ function DraftContent() {
                   </div>
                 ) : (
                   <div className={styles.ledgerList}>
-                    {usedEvidence.map((ref) => (
-                      <div key={ref.id} className={styles.ledgerItem}>
+                    {usedEvidence.map((study) => (
+                      <div key={study.id} className={styles.ledgerItem}>
                         <div className={styles.ledgerMeta}>
-                          <div className={styles.ledgerLabel}>{referenceLabel(ref)}</div>
-                          <div className={styles.ledgerTitle}>{ref.title}</div>
+                          <div className={styles.ledgerLabel}>{studyLabel(study)}</div>
+                          <div className={styles.ledgerTitle}>{study.title}</div>
                         </div>
                         <div className={styles.ledgerActions}>
-                          <button type="button" className={styles.smallBtn} onClick={() => insertCitation(ref)}>
+                          <button type="button" className={styles.smallBtn} onClick={() => insertCitation(study)}>
                             Cite
                           </button>
-                          <button type="button" className={styles.smallBtnGhost} onClick={() => handleRemoveEvidence(ref.id)}>
+                          <button type="button" className={styles.smallBtnGhost} onClick={() => handleRemoveEvidence(study.id)}>
                             Remove
                           </button>
                         </div>
@@ -1949,25 +1958,36 @@ function DraftContent() {
             </div>
 
             <div className={styles.modalList}>
-              {filteredEvidence.map((ref) => {
-                const isAdded = usedEvidenceIds.includes(ref.id);
-                return (
-                  <div key={ref.id} className={styles.modalItem}>
-                    <div className={styles.modalItemMeta}>
-                      <div className={styles.ledgerLabel}>{referenceLabel(ref)}</div>
-                      <div className={styles.ledgerTitle}>{ref.title}</div>
+              {filteredEvidence.length === 0 ? (
+                <div className={styles.emptyModal}>
+                  <p>{studies.length === 0 ? "No studies in your Evidence Ledger yet." : "No matching studies found."}</p>
+                  {studies.length === 0 && (
+                    <Link href={`/project/${id}/ledger`} className="header-btn header-btn-primary">
+                      Go to Evidence Ledger
+                    </Link>
+                  )}
+                </div>
+              ) : (
+                filteredEvidence.map((study) => {
+                  const isAdded = usedEvidenceIds.includes(study.id);
+                  return (
+                    <div key={study.id} className={styles.modalItem}>
+                      <div className={styles.modalItemMeta}>
+                        <div className={styles.ledgerLabel}>{studyLabel(study)}</div>
+                        <div className={styles.ledgerTitle}>{study.title}</div>
+                      </div>
+                      <button
+                        type="button"
+                        className={isAdded ? styles.smallBtnDisabled : styles.smallBtn}
+                        disabled={isAdded}
+                        onClick={() => handleAddEvidence(study.id)}
+                      >
+                        {isAdded ? "Added" : "Add"}
+                      </button>
                     </div>
-                    <button
-                      type="button"
-                      className={isAdded ? styles.smallBtnDisabled : styles.smallBtn}
-                      disabled={isAdded}
-                      onClick={() => handleAddEvidence(ref.id)}
-                    >
-                      {isAdded ? "Added" : "Add"}
-                    </button>
-                  </div>
-                );
-              })}
+                  );
+                })
+              )}
             </div>
           </div>
         </div>

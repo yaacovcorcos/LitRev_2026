@@ -13,9 +13,24 @@ import { CitationBlock } from "@/components/CitationBlock";
 import { StudyQuickInfo } from "@/components/StudyQuickInfo";
 import { StudyFilesPanel } from "@/components/StudyFilesPanel";
 import { listProjectFilesAction, deleteFileAssetAction, uploadStudyFileAction } from "@/app/actions/files";
+import { extractStudyFromPdfAction } from "@/app/actions/extraction";
+import { getDraftAction } from "@/app/actions/drafts";
+import { DRAFT_SECTIONS, DraftSectionId } from "@/types/draft";
+import { loadDraftState, DraftState } from "@/lib/draftStorage";
 import type { Study, StudyDetails } from "@/types/ledger";
 import type { FileAsset } from "@/types/files";
 import styles from "./study.module.css";
+
+// Build lookup for section labels
+const SECTION_LABELS: Record<string, string> = {};
+for (const section of DRAFT_SECTIONS) {
+    SECTION_LABELS[section.key] = section.label;
+}
+
+type DraftBacklink = {
+    sectionId: DraftSectionId;
+    label: string;
+};
 
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 const RAIL_WIDTH = 44;
@@ -35,6 +50,13 @@ export default function StudyDetailPage() {
     // Files state
     const [studyFiles, setStudyFiles] = useState<FileAsset[]>([]);
     const [showFilesPanel, setShowFilesPanel] = useState(false);
+
+    // Extraction state
+    const [extractingFileId, setExtractingFileId] = useState<string | null>(null);
+    const [extractError, setExtractError] = useState<string | null>(null);
+
+    // Draft backlinks state
+    const [draftBacklinks, setDraftBacklinks] = useState<DraftBacklink[]>([]);
 
     // Load study
     useEffect(() => {
@@ -65,6 +87,43 @@ export default function StudyDetailPage() {
         loadFiles();
     }, [loadFiles]);
 
+    // Load draft backlinks (sections that cite this study)
+    useEffect(() => {
+        if (!id || !studyId) return;
+        let active = true;
+
+        const loadBacklinks = async () => {
+            try {
+                // Try to get draft from backend first, fallback to localStorage
+                let draft: DraftState | null = null;
+                try {
+                    draft = await getDraftAction(id);
+                } catch {
+                    draft = loadDraftState(id);
+                }
+
+                if (!draft || !active) return;
+
+                // Find all sections that reference this study
+                const backlinks: DraftBacklink[] = [];
+                for (const [sectionId, studyIds] of Object.entries(draft.ledgerBySection)) {
+                    if (studyIds.includes(studyId)) {
+                        // Get label from base sections or custom sections
+                        const label = SECTION_LABELS[sectionId] || draft.customSections[sectionId]?.label || sectionId;
+                        backlinks.push({ sectionId, label });
+                    }
+                }
+
+                setDraftBacklinks(backlinks);
+            } catch (err) {
+                console.error("Failed to load draft backlinks", err);
+            }
+        };
+
+        loadBacklinks();
+        return () => { active = false; };
+    }, [id, studyId]);
+
     const handleUploadFile = useCallback(async (file: File) => {
         if (!id || !studyId) return;
         const formData = new FormData();
@@ -78,6 +137,25 @@ export default function StudyDetailPage() {
         await deleteFileAssetAction(id, fileId);
         await loadFiles();
     }, [id, loadFiles]);
+
+    // Handle PDF extraction
+    const handleExtract = useCallback(async (fileId: string) => {
+        if (!id || !studyId) return;
+        setExtractingFileId(fileId);
+        setExtractError(null);
+        try {
+            const result = await extractStudyFromPdfAction(id, studyId, fileId);
+            if (result.success && result.study) {
+                setStudy(result.study);
+            } else {
+                setExtractError(result.error || "Extraction failed");
+            }
+        } catch (err) {
+            setExtractError(err instanceof Error ? err.message : "Unknown error");
+        } finally {
+            setExtractingFileId(null);
+        }
+    }, [id, studyId]);
 
     // Edit handlers
     const startEdit = () => {
@@ -339,16 +417,35 @@ export default function StudyDetailPage() {
                                 )}
                             </section>
 
-                            {/* Draft Backlinks Placeholder */}
+                            {/* Draft Backlinks */}
                             <section className={styles.section}>
                                 <h2 className={styles.sectionTitle}>
                                     <span className="material-icons-round">format_quote</span>
-                                    Draft References
+                                    Cited In Draft
                                 </h2>
-                                <div className={styles.placeholder}>
-                                    <span className="material-icons-round">link_off</span>
-                                    <p>No linked draft statements yet</p>
-                                </div>
+                                {draftBacklinks.length > 0 ? (
+                                    <div className={styles.backlinksList}>
+                                        {draftBacklinks.map((backlink) => (
+                                            <Link
+                                                key={backlink.sectionId}
+                                                href={`/project/${id}/draft?section=${backlink.sectionId}`}
+                                                className={styles.backlinkItem}
+                                            >
+                                                <span className="material-icons-round">edit_note</span>
+                                                <span>{backlink.label}</span>
+                                                <span className="material-icons-round">arrow_forward</span>
+                                            </Link>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className={styles.placeholder}>
+                                        <span className="material-icons-round">link_off</span>
+                                        <p>Not cited in any draft sections yet</p>
+                                        <Link href={`/project/${id}/draft`} className={styles.placeholderLink}>
+                                            Go to Draft
+                                        </Link>
+                                    </div>
+                                )}
                             </section>
                         </div>
                     </div>
@@ -384,19 +481,24 @@ export default function StudyDetailPage() {
                     />
                 </div>
 
-                {/* Files Panel */}
+                {/* Files Popup */}
                 {showFilesPanel && (
-                    <div className={styles.filesPanel}>
-                        <StudyFilesPanel
-                            projectId={id}
-                            studyId={studyId}
-                            studyTitle={study.title}
-                            files={studyFiles}
-                            onUpload={handleUploadFile}
-                            onDelete={handleDeleteFile}
-                            onClose={() => setShowFilesPanel(false)}
-                        />
-                    </div>
+                    <>
+                        <div className={styles.filesPopupBackdrop} onClick={() => setShowFilesPanel(false)} />
+                        <div className={styles.filesPopup}>
+                            <StudyFilesPanel
+                                projectId={id}
+                                studyId={studyId}
+                                studyTitle={study.title}
+                                files={studyFiles}
+                                onUpload={handleUploadFile}
+                                onDelete={handleDeleteFile}
+                                onClose={() => setShowFilesPanel(false)}
+                                onExtract={handleExtract}
+                                extractingFileId={extractingFileId ?? undefined}
+                            />
+                        </div>
+                    </>
                 )}
             </div>
         </AppShell>
