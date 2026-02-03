@@ -1,7 +1,7 @@
 "use client";
 
 import { CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { AppShell } from "@/components/AppShell";
 import { useProjects } from "@/contexts/ProjectsContext";
@@ -27,6 +27,7 @@ const RAIL_WIDTH = 44;
 
 export default function LedgerPage() {
     const { id } = useParams<{ id: string }>();
+    const router = useRouter();
     const { getProjectById } = useProjects();
     const { getStudiesByProject, updateStudies, updateSingleStudy } = useLedger();
     const { isCollapsed, panelWidth, setPanelWidth } = useProjectCopilot();
@@ -242,7 +243,7 @@ export default function LedgerPage() {
             await updateStudies(id, [...studies, newEntry]);
             await uploadStudyFileAction(id, newEntry.id, formData);
             // Navigate to the new study's detail page
-            window.location.href = `/project/${id}/ledger/${newEntry.id}`;
+            router.push(`/project/${id}/ledger/${newEntry.id}`);
         } catch (err) {
             window.alert(err instanceof Error ? err.message : "Import failed");
             setIsImporting(false);
@@ -431,7 +432,7 @@ export default function LedgerPage() {
                                             quality: "-",
                                         };
                                         await updateStudies(id, [...studies, newEntry]);
-                                        window.location.href = `/project/${id}/ledger/${newEntry.id}`;
+                                        router.push(`/project/${id}/ledger/${newEntry.id}`);
                                     }}>
                                         <span className="material-icons-round">add</span>
                                         Add Study
@@ -667,7 +668,7 @@ export default function LedgerPage() {
                                                 // Don't navigate if clicking on interactive elements
                                                 const target = e.target as HTMLElement;
                                                 if (target.closest('button, input, a, [role="button"]')) return;
-                                                window.location.href = `/project/${id}/ledger/${study.id}`;
+                                                router.push(`/project/${id}/ledger/${study.id}`);
                                             };
 
                                             return (
