@@ -2,40 +2,12 @@ import "server-only";
 
 import { prisma } from "@/lib/server/prisma";
 import { assertProjectAccess } from "@/lib/server/access";
+import { mergeDetails } from "@/lib/utils/merge";
+import { normalizeStudy, type StudyInput } from "@/lib/utils/normalize";
 import type { ServiceScope } from "@/lib/server/scope";
 import type { Study } from "@/types/ledger";
 
-export type StudyInput = Omit<Study, "id"> & { id?: string };
-
-type NormalizedStudy = {
-  id?: string;
-  title: string;
-  authors: string;
-  year: number;
-  status: string;
-  quality: string;
-  details?: Record<string, unknown>;
-};
-
-function normalizeStudy(input: StudyInput): NormalizedStudy {
-  const title = input.title?.trim() || "Untitled Study";
-  const authors = input.authors?.trim() || "Unknown";
-  const year = typeof input.year === "number" && Number.isFinite(input.year)
-    ? input.year
-    : new Date().getFullYear();
-  const status = input.status?.toString().trim() || "pending";
-  const quality = input.quality?.toString().trim() || "-";
-  const details = input.details ? (input.details as Record<string, unknown>) : undefined;
-  return {
-    id: input.id ?? undefined,
-    title,
-    authors,
-    year,
-    status,
-    quality,
-    details,
-  };
-}
+export type { StudyInput };
 
 function toStudy(record: {
   id: string;
@@ -179,10 +151,10 @@ export async function updateStudy(
     throw new Error("Study not found or access denied.");
   }
 
-  // Merge details to preserve existing fields
+  // Deep merge details to preserve existing nested fields
   const existingDetails = (existing.details as Record<string, unknown>) ?? {};
-  const incomingDetails = updates.details ?? {};
-  const mergedDetails = { ...existingDetails, ...incomingDetails };
+  const incomingDetails = (updates.details as Record<string, unknown>) ?? {};
+  const mergedDetails = mergeDetails(existingDetails, incomingDetails);
 
   const data: Record<string, unknown> = {};
   if (typeof updates.title !== "undefined") data.title = updates.title.trim() || existing.title;
