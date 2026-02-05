@@ -9,7 +9,7 @@ import { ControlsBar } from "@/components/ControlsBar";
 import { SortMode, ViewMode } from "@/types/view";
 import { AppShell } from "@/components/AppShell";
 import { useProjects } from "@/contexts/ProjectsContext";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import layoutStyles from "./home.module.css";
 
 const VALID_SORTS: SortMode[] = ["name", "created", "modified"];
@@ -17,6 +17,7 @@ const VALID_VIEWS: ViewMode[] = ["grid", "list"];
 
 function HomeContent() {
   const { projects, addProject, refresh } = useProjects();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const [sortMode, setSortMode] = useState<SortMode>(() => {
     const stored = loadSortPreference();
@@ -93,9 +94,9 @@ function HomeContent() {
 
 
   useEffect(() => {
-    if (!shouldOpenFromQuery || typeof window === "undefined") return;
-    window.history.replaceState(null, "", "/");
-  }, [shouldOpenFromQuery]);
+    if (!shouldOpenFromQuery) return;
+    router.replace("/", { scroll: false });
+  }, [shouldOpenFromQuery, router]);
 
   useEffect(() => {
     if (!isModalOpen || !modalRef.current) return;

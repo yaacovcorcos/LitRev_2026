@@ -97,6 +97,7 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
     const [isMounted, setIsMounted] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const abortControllerRef = useRef<AbortController | null>(null);
 
     // Conversation management state
     const [conversations, setConversations] = useState<ConversationListItem[]>([]);
@@ -239,6 +240,9 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
         return () => {
             if (saveTimerRef.current) {
                 clearTimeout(saveTimerRef.current);
+            }
+            if (abortControllerRef.current) {
+                abortControllerRef.current.abort();
             }
         };
     }, []);
@@ -409,6 +413,13 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
                 // Build system prompt based on context
                 const systemPrompt = buildSystemPrompt(page as CopilotContextType, section);
 
+                // Cancel any in-flight stream
+                if (abortControllerRef.current) {
+                    abortControllerRef.current.abort();
+                }
+                const controller = new AbortController();
+                abortControllerRef.current = controller;
+
                 // Call the streaming API
                 const response = await fetch("/api/ai/stream", {
                     method: "POST",
@@ -422,6 +433,7 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
                             model,
                         },
                     }),
+                    signal: controller.signal,
                 });
 
                 if (!response.ok) {
@@ -473,6 +485,49 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
                                         ),
                                     }));
                                 }
+                            } else if (data.type === "tool_call" && data.toolCall) {
+                                // Show tool status while AI is calling tools
+                                const toolName = data.toolCall.name;
+                                const statusText = toolName === "search_pubmed"
+                                    ? "Searching PubMed..."
+                                    : toolName === "add_to_ledger"
+                                    ? "Adding studies to ledger..."
+                                    : `Running ${toolName}...`;
+                                if (!aiMessageCreated) {
+                                    aiMessageCreated = true;
+                                    const aiMessage: CopilotMessage = {
+                                        id: aiMessageId,
+                                        sender: "ai",
+                                        text: `*${statusText}*`,
+                                        createdAt: new Date().toISOString(),
+                                        context: { page, section },
+                                    };
+                                    updateState((prev) => ({
+                                        ...prev,
+                                        messages: [...prev.messages, aiMessage],
+                                    }));
+                                } else {
+                                    updateState((prev) => ({
+                                        ...prev,
+                                        messages: prev.messages.map((msg) =>
+                                            msg.id === aiMessageId
+                                                ? { ...msg, text: fullContent || `*${statusText}*` }
+                                                : msg
+                                        ),
+                                    }));
+                                }
+                            } else if (data.type === "tool_result") {
+                                // Tool result received, content stream will resume
+                                if (aiMessageCreated && !fullContent) {
+                                    updateState((prev) => ({
+                                        ...prev,
+                                        messages: prev.messages.map((msg) =>
+                                            msg.id === aiMessageId
+                                                ? { ...msg, text: "*Processing results...*" }
+                                                : msg
+                                        ),
+                                    }));
+                                }
                             } else if (data.type === "error") {
                                 throw new Error(data.error);
                             }
@@ -494,6 +549,9 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
                 // Refresh conversation list to update titles/counts
                 loadConversations();
             } catch (error) {
+                // Silently ignore aborted requests (user navigated away or sent a new message)
+                if (error instanceof DOMException && error.name === "AbortError") return;
+
                 console.error("AI chat error:", error);
                 const errorText = `Sorry, I encountered an error: ${error instanceof Error ? error.message : "Unknown error"}. Please try again.`;
 

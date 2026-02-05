@@ -18,6 +18,7 @@ import { createDefaultProtocolData, type ProtocolData } from "@/types/protocol";
 import type { FileAsset } from "@/types/files";
 import type { Study, StudyDetails, TriageDecision } from "@/types/ledger";
 import { validateStudyFile } from "@/lib/fileValidation";
+import { ConfirmDialog, AlertDialog } from "@/components/ConfirmDialog";
 
 type CriteriaFilter = "all" | "meets-criteria" | "fails-criteria" | "in-date-range" | "matching-design";
 
@@ -78,6 +79,10 @@ export default function LedgerPage() {
     const [isImporting, setIsImporting] = useState(false);
     const importInputRef = useRef<HTMLInputElement | null>(null);
     const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+
+    // Dialog state (replaces window.alert / window.confirm)
+    const [alertMsg, setAlertMsg] = useState<string | null>(null);
+    const [confirmDialog, setConfirmDialog] = useState<{ message: string; onConfirm: () => void } | null>(null);
 
     // Protocol & criteria filtering
     const [protocol, setProtocol] = useState<ProtocolData>(createDefaultProtocolData);
@@ -223,7 +228,7 @@ export default function LedgerPage() {
         if (!file) return;
         const validationError = validateStudyFile(file);
         if (validationError) {
-            window.alert(validationError);
+            setAlertMsg(validationError);
             if (importInputRef.current) importInputRef.current.value = "";
             return;
         }
@@ -245,7 +250,7 @@ export default function LedgerPage() {
             // Navigate to the new study's detail page
             router.push(`/project/${id}/ledger/${newEntry.id}`);
         } catch (err) {
-            window.alert(err instanceof Error ? err.message : "Import failed");
+            setAlertMsg(err instanceof Error ? err.message : "Import failed");
             setIsImporting(false);
             if (importInputRef.current) importInputRef.current.value = "";
         }
@@ -343,17 +348,25 @@ export default function LedgerPage() {
 
     const handleDeleteStudy = (studyId: string) => {
         if (!id) return;
-        const confirmed = window.confirm("Delete this study from the evidence ledger?");
-        if (!confirmed) return;
-        updateStudies(id, studies.filter((study) => study.id !== studyId)).catch(() => undefined);
+        setConfirmDialog({
+            message: "Delete this study from the evidence ledger?",
+            onConfirm: () => {
+                updateStudies(id, studies.filter((study) => study.id !== studyId)).catch(() => undefined);
+                setConfirmDialog(null);
+            },
+        });
     };
 
     const handleBulkDelete = () => {
         if (!id || !hasSelection) return;
-        const confirmed = window.confirm(`Delete ${validSelectedIds.length} selected studies?`);
-        if (!confirmed) return;
-        updateStudies(id, studies.filter((study) => !selectedSet.has(study.id))).catch(() => undefined);
-        setSelectedIds([]);
+        setConfirmDialog({
+            message: `Delete ${validSelectedIds.length} selected studies?`,
+            onConfirm: () => {
+                updateStudies(id, studies.filter((study) => !selectedSet.has(study.id))).catch(() => undefined);
+                setSelectedIds([]);
+                setConfirmDialog(null);
+            },
+        });
     };
 
     const handleAddStudy = async () => {
@@ -375,7 +388,7 @@ export default function LedgerPage() {
             setIsAdding(false);
             resetNewStudy();
         } catch (err) {
-            window.alert(err instanceof Error ? err.message : "Failed to add study");
+            setAlertMsg(err instanceof Error ? err.message : "Failed to add study");
         }
     };
 
@@ -880,6 +893,23 @@ export default function LedgerPage() {
                     </>
                 )}
             </div>
+
+            {/* Dialogs */}
+            <AlertDialog
+                isOpen={alertMsg !== null}
+                title="Notice"
+                message={alertMsg ?? ""}
+                onClose={() => setAlertMsg(null)}
+            />
+            <ConfirmDialog
+                isOpen={confirmDialog !== null}
+                title="Confirm"
+                message={confirmDialog?.message ?? ""}
+                variant="danger"
+                confirmLabel="Delete"
+                onConfirm={() => confirmDialog?.onConfirm()}
+                onCancel={() => setConfirmDialog(null)}
+            />
         </AppShell>
     );
 }

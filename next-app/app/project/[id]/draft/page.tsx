@@ -11,7 +11,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { BaseBackButton } from "@/components/BaseBackButton";
 import { AppShell } from "@/components/AppShell";
@@ -376,6 +376,7 @@ function FullSectionEditor({
 
 function DraftContent() {
   const { id } = useParams<{ id: string }>();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const { getProjectById } = useProjects();
   const { getStudiesByProject } = useLedger();
@@ -542,6 +543,16 @@ function DraftContent() {
   const ledgerPanelId = "draft-ledger-panel";
   const copilotPanelId = "draft-copilot-panel";
 
+  const copilotEmptyState = useMemo(() => ({
+    icon: "tips_and_updates",
+    title: "Draft faster",
+    description: "Ask for an outline, rewrite, or evidence-backed phrasing.",
+    suggestions: [
+      { label: "Outline", prompt: `Outline the ${activeSectionLabel} section` },
+      { label: "Rewrite", prompt: `Rewrite this paragraph for the ${activeSectionLabel} section:` },
+    ],
+  }), [activeSectionLabel]);
+
   const scheduleSave = useCallback(
     (next: DraftState) => {
       if (saveTimerRef.current) {
@@ -612,15 +623,15 @@ function DraftContent() {
   );
 
   useEffect(() => {
-    if (!id || typeof window === "undefined") return;
+    if (!id) return;
     const params = new URLSearchParams();
     params.set("mode", draft.mode);
     params.set("section", draft.activeSection);
     const nextUrl = `/project/${id}/draft?${params.toString()}`;
     if (lastSyncedUrlRef.current === nextUrl) return;
     lastSyncedUrlRef.current = nextUrl;
-    window.history.replaceState(null, "", nextUrl);
-  }, [draft.activeSection, draft.mode, id]);
+    router.replace(nextUrl, { scroll: false });
+  }, [draft.activeSection, draft.mode, id, router]);
 
   useEffect(() => {
     return () => {
@@ -1912,15 +1923,7 @@ function DraftContent() {
             page="draft"
             section={draft.activeSection}
             contextDisplay={`${activeSectionLabel} · ${usedEvidence.length} evidence`}
-            emptyState={{
-              icon: "tips_and_updates",
-              title: "Draft faster",
-              description: "Ask for an outline, rewrite, or evidence-backed phrasing.",
-              suggestions: [
-                { label: "Outline", prompt: `Outline the ${activeSectionLabel} section` },
-                { label: "Rewrite", prompt: `Rewrite this paragraph for the ${activeSectionLabel} section:` },
-              ],
-            }}
+            emptyState={copilotEmptyState}
             inputPlaceholder={`Ask about ${activeSectionLabel}…`}
             onInsert={insertCopilotText}
             panelId={copilotPanelId}
