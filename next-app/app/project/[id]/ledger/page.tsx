@@ -12,6 +12,7 @@ import { useLedger } from "@/contexts/LedgerContext";
 import { ProjectCopilot } from "@/components/ProjectCopilot";
 import { useProjectCopilot } from "@/contexts/ProjectCopilotContext";
 import { listStudyFilesAction, deleteFileAssetAction, uploadStudyFileAction } from "@/app/actions/files";
+import { deleteStudyAction } from "@/app/actions/ledger";
 import { getProtocolAction } from "@/app/actions/protocols";
 import { evaluateCriteria, type CriteriaMatchResult } from "@/lib/criteriaMatching";
 import { createDefaultProtocolData, type ProtocolData } from "@/types/protocol";
@@ -436,6 +437,7 @@ export default function LedgerPage() {
             return;
         }
         setIsImporting(true);
+        let createdStudyId: string | null = null;
         try {
             const formData = new FormData();
             formData.append("file", file);
@@ -449,11 +451,19 @@ export default function LedgerPage() {
                 quality: "-",
             };
             await updateStudies(id, [...studies, newEntry]);
+            createdStudyId = newEntry.id;
             await uploadStudyFileAction(id, newEntry.id, formData);
-            // Navigate to the new study's detail page
             router.push(`/project/${id}/ledger/${newEntry.id}`);
         } catch (err) {
+            if (createdStudyId) {
+                try {
+                    await deleteStudyAction(id, createdStudyId);
+                } catch (rollbackErr) {
+                    console.error("Failed to roll back study after import failure", rollbackErr);
+                }
+            }
             setAlertMsg(err instanceof Error ? err.message : "Import failed");
+        } finally {
             setIsImporting(false);
             if (importInputRef.current) importInputRef.current.value = "";
         }

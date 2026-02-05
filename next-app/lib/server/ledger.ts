@@ -88,19 +88,58 @@ export async function replaceStudies(
   await assertProjectAccess(scopeInput, projectId);
   const normalized = studies.map(normalizeStudy);
   return prisma.$transaction(async (tx: any) => {
-    await tx.study.deleteMany({ where: { projectId } });
-    await tx.study.createMany({
-      data: normalized.map((study) => ({
-        id: study.id ?? undefined,
-        projectId,
-        title: study.title,
-        authors: study.authors,
-        year: study.year,
-        status: study.status,
-        quality: study.quality,
-        details: study.details as any,
-      })),
-    });
+    const incomingIds = normalized
+      .map((s) => s.id)
+      .filter((id): id is string => typeof id === "string" && id.length > 0);
+
+    // Sync semantics: delete only studies missing from the incoming list, then upsert the incoming rows.
+    // This avoids destructive "delete all + recreate" behavior which can cascade-delete attached FileAssets.
+    if (incomingIds.length === 0) {
+      await tx.study.deleteMany({ where: { projectId } });
+    } else {
+      await tx.study.deleteMany({
+        where: {
+          projectId,
+          id: { notIn: incomingIds },
+        },
+      });
+    }
+
+    for (const study of normalized) {
+      if (study.id) {
+        const existing = await tx.study.findFirst({
+          where: { id: study.id, projectId },
+          select: { id: true },
+        });
+        if (existing) {
+          await tx.study.update({
+            where: { id: study.id },
+            data: {
+              title: study.title,
+              authors: study.authors,
+              year: study.year,
+              status: study.status,
+              quality: study.quality,
+              details: study.details as any,
+            },
+          });
+          continue;
+        }
+      }
+
+      await tx.study.create({
+        data: {
+          id: study.id ?? undefined,
+          projectId,
+          title: study.title,
+          authors: study.authors,
+          year: study.year,
+          status: study.status,
+          quality: study.quality,
+          details: study.details as any,
+        },
+      });
+    }
     const saved = await tx.study.findMany({
       where: { projectId },
       orderBy: { createdAt: "asc" },

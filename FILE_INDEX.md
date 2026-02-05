@@ -17,7 +17,6 @@ A living index of files and folders in the repository with one-line descriptions
 - `planB`: Backend implementation plan and phase status.
 - `secrets.local.md`: Local secrets (gitignored).
 - `mcp.json`: MCP server definitions for shared agents.
-- `.env.local`: Local environment overrides (gitignored).
 - `next-app/`: Next.js application workspace.
 
 ## `/next-app` Directory

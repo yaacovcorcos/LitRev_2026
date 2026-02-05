@@ -8,7 +8,6 @@ import { randomUUID } from "crypto";
 
 const SUPABASE_URL = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const STORAGE_BUCKET = process.env.SUPABASE_STORAGE_BUCKET ?? "study-assets";
 
 export type FileAssetInput = {
@@ -136,9 +135,9 @@ function encodeStoragePath(path: string): string {
 }
 
 async function uploadToSupabaseStorage(path: string, file: File): Promise<{ storagePath: string; publicUrl: string }> {
-  const apiKey = SUPABASE_SERVICE_ROLE_KEY ?? SUPABASE_ANON_KEY;
+  const apiKey = SUPABASE_SERVICE_ROLE_KEY;
   if (!SUPABASE_URL || !apiKey) {
-    throw new Error("Supabase URL or API key is missing.");
+    throw new Error("Missing Supabase configuration (SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY).");
   }
 
   const encodedPath = encodeStoragePath(path);
@@ -166,6 +165,40 @@ async function uploadToSupabaseStorage(path: string, file: File): Promise<{ stor
     storagePath: `${STORAGE_BUCKET}/${path}`,
     publicUrl,
   };
+}
+
+function splitStoragePath(storagePath: string): { bucket: string; objectPath: string } {
+  const trimmed = storagePath.trim().replace(/^\/+/, "");
+  const idx = trimmed.indexOf("/");
+  if (idx === -1) {
+    return { bucket: STORAGE_BUCKET, objectPath: trimmed };
+  }
+  return { bucket: trimmed.slice(0, idx), objectPath: trimmed.slice(idx + 1) };
+}
+
+async function deleteFromSupabaseStorage(storagePath: string): Promise<void> {
+  const apiKey = SUPABASE_SERVICE_ROLE_KEY;
+  if (!SUPABASE_URL || !apiKey) {
+    throw new Error("Missing Supabase configuration (SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY).");
+  }
+
+  const { bucket, objectPath } = splitStoragePath(storagePath);
+  const encodedPath = encodeStoragePath(objectPath);
+  const deleteUrl = `${SUPABASE_URL}/storage/v1/object/${bucket}/${encodedPath}`;
+
+  const response = await fetch(deleteUrl, {
+    method: "DELETE",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      apikey: apiKey,
+    },
+  });
+
+  // Treat already-missing objects as success so DB cleanup can proceed.
+  if (!response.ok && response.status !== 404) {
+    const text = await response.text();
+    throw new Error(`Storage delete failed (${response.status}): ${text}`);
+  }
 }
 
 export async function uploadStudyFile(
@@ -203,7 +236,14 @@ export async function deleteFileAsset(
   fileId: string
 ): Promise<void> {
   await assertProjectAccess(scopeInput, projectId);
-  await prisma.fileAsset.deleteMany({
+
+  const existing = await prisma.fileAsset.findFirst({
     where: { id: fileId, projectId },
+    select: { storagePath: true },
   });
+  if (!existing) return;
+
+  // Delete blob first; if this fails, keep the DB record so the user can retry.
+  await deleteFromSupabaseStorage(existing.storagePath);
+  await prisma.fileAsset.deleteMany({ where: { id: fileId, projectId } });
 }

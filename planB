@@ -15,11 +15,12 @@ Status (keep updated):
 - Phase 4 ops done: Prisma migrations applied (direct DB connection working).
 - Phase 4 runtime fix: force Node.js runtime in app layout to avoid Prisma edge client errors.
 - Phase 5 done (code): LocalStorage migration added for Projects + Protocol; later expanded to include studies, drafts, and project copilot.
-- Phase 6 done (code): Ledger wired to backend actions (list/replace); no local fallback.
+- Phase 6 done (code): Ledger wired to backend actions (list + upsert/delete); removed destructive replace-on-save.
 - Phase 7 done (code): Draft page loads from backend with localStorage fallback and saves to backend + local.
 - Phase 8 done (code): Project-level copilot loads from backend with local fallback; saves to both.
 - Phase 9 done (code): FileAsset model + server actions + study file upload + export metadata wiring; actual export file generation still mocked.
 - Phase 9 runtime fix: Supabase storage uploads now support service-role key; require server env vars in production.
+- Phase 9 runtime fix: File deletes now also delete from Supabase Storage (prevents orphaned blobs).
 - Phase 9 ops: Supabase storage bucket `study-assets` exists and is public.
 - Phase 9 runtime fix: Server Actions body size limit raised for study imports; shared client-side file validation added.
 - Phase 9 ops: Vercel Production + Preview envs updated for DATABASE_URL, DIRECT_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY.
@@ -91,3 +92,4 @@ Phase 10 — Multi-user enablement (when ready)
 - Replace placeholder ID with real userId/workspaceId.
 - Enforce ownership in all queries.
 - Outcome: multi-user without schema rewrite.
+- Report: Codex quality/architecture report written to codex-quality-report.md (2026-02-02).
