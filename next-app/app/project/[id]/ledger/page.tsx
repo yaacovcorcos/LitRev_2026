@@ -11,7 +11,7 @@ import styles from "./ledger.module.css";
 import { useLedger } from "@/contexts/LedgerContext";
 import { ProjectCopilot } from "@/components/ProjectCopilot";
 import { useProjectCopilot } from "@/contexts/ProjectCopilotContext";
-import { listProjectFilesAction, deleteFileAssetAction, uploadStudyFileAction } from "@/app/actions/files";
+import { listStudyFilesAction, deleteFileAssetAction, uploadStudyFileAction } from "@/app/actions/files";
 import { getProtocolAction } from "@/app/actions/protocols";
 import { evaluateCriteria, type CriteriaMatchResult } from "@/lib/criteriaMatching";
 import { createDefaultProtocolData, type ProtocolData } from "@/types/protocol";
@@ -98,6 +98,7 @@ export default function LedgerPage() {
             })
             .catch((err) => {
                 console.error("Failed to load protocol", err);
+                if (active) setAlertMsg("Failed to load protocol criteria. Filtering may be unavailable.");
             });
         return () => { active = false; };
     }, [id]);
@@ -184,8 +185,8 @@ export default function LedgerPage() {
         if (!id) return;
         setIsLoadingFiles(true);
         try {
-            const allFiles = await listProjectFilesAction(id);
-            setStudyFiles(allFiles.filter((f) => f.studyId === studyId));
+            const files = await listStudyFilesAction(id, studyId);
+            setStudyFiles(files);
         } catch (err) {
             console.error("Failed to load study files", err);
             setStudyFiles([]);

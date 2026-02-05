@@ -12,13 +12,14 @@ import { useProjectCopilot } from "@/contexts/ProjectCopilotContext";
 import { CitationBlock } from "@/components/CitationBlock";
 import { StudyQuickInfo } from "@/components/StudyQuickInfo";
 import { StudyFilesPanel } from "@/components/StudyFilesPanel";
-import { listProjectFilesAction, deleteFileAssetAction, uploadStudyFileAction } from "@/app/actions/files";
+import { listStudyFilesAction, deleteFileAssetAction, uploadStudyFileAction } from "@/app/actions/files";
 import { extractStudyFromPdfAction } from "@/app/actions/extraction";
 import { getDraftAction } from "@/app/actions/drafts";
 import { DRAFT_SECTIONS, DraftSectionId } from "@/types/draft";
 import { loadDraftState, DraftState } from "@/lib/draftStorage";
 import type { Study, StudyDetails } from "@/types/ledger";
 import type { FileAsset } from "@/types/files";
+import { AlertDialog } from "@/components/ConfirmDialog";
 import styles from "./study.module.css";
 
 // Build lookup for section labels
@@ -58,6 +59,9 @@ export default function StudyDetailPage() {
     // Draft backlinks state
     const [draftBacklinks, setDraftBacklinks] = useState<DraftBacklink[]>([]);
 
+    // Error display state
+    const [alertMsg, setAlertMsg] = useState<string | null>(null);
+
     // Load study
     useEffect(() => {
         if (!id || !studyId) return;
@@ -76,10 +80,11 @@ export default function StudyDetailPage() {
     const loadFiles = useCallback(async () => {
         if (!id || !studyId) return;
         try {
-            const allFiles = await listProjectFilesAction(id);
-            setStudyFiles(allFiles.filter((f) => f.studyId === studyId));
+            const files = await listStudyFilesAction(id, studyId);
+            setStudyFiles(files);
         } catch (err) {
             console.error("Failed to load files", err);
+            setAlertMsg("Failed to load study files.");
         }
     }, [id, studyId]);
 
@@ -185,7 +190,7 @@ export default function StudyDetailPage() {
             setEditForm({});
         } catch (err) {
             console.error("Failed to update study", err);
-            window.alert("Failed to save changes");
+            setAlertMsg("Failed to save changes. Please try again.");
         }
     };
 
@@ -562,6 +567,13 @@ export default function StudyDetailPage() {
                     </>
                 )}
             </div>
+
+            <AlertDialog
+                isOpen={alertMsg !== null}
+                title="Error"
+                message={alertMsg ?? ""}
+                onClose={() => setAlertMsg(null)}
+            />
         </AppShell>
     );
 }

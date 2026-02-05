@@ -433,7 +433,7 @@ function DraftContent() {
       isActive = false;
     };
   }, [id, applyDraftFromQuery]);
-  const [saveStatus, setSaveStatus] = useState<"saved" | "saving">("saved");
+  const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "error">("saved");
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const activeEditorRef = useRef<Editor | null>(null);
@@ -564,6 +564,7 @@ function DraftContent() {
           saveDraftState(id, next);
           saveDraftAction(id, next).catch((err) => {
             console.error("Failed to save draft to backend", err);
+            setSaveStatus("error");
           });
         }
         setSaveStatus("saved");
@@ -1623,8 +1624,8 @@ function DraftContent() {
             </button>
 
             <div className={styles.saveBadge} role="status" aria-live="polite" aria-atomic="true">
-              <span className="material-icons-round">{saveStatus === "saving" ? "sync" : "check_circle"}</span>
-              {saveStatus === "saving" ? "Saving" : "Saved"}
+              <span className="material-icons-round">{saveStatus === "saving" ? "sync" : saveStatus === "error" ? "error_outline" : "check_circle"}</span>
+              {saveStatus === "saving" ? "Saving" : saveStatus === "error" ? "Save failed" : "Saved"}
             </div>
           </div>
         </div>
