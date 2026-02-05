@@ -42,8 +42,8 @@ import { Editor, EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
 import Underline from "@tiptap/extension-underline";
-import { Extension, Node as TiptapNode, mergeAttributes } from "@tiptap/core";
 import type { JSONContent } from "@tiptap/core";
+import { Citation, ParagraphDirection, EditorToolbar, FullSectionEditor } from "./DraftEditors";
 
 const EMPTY_IDS: string[] = [];
 
@@ -114,13 +114,6 @@ const createCustomSectionId = (label: string) => {
 
 const customSectionPlaceholder = (label: string) => `Draft the ${label} section.`;
 
-const formatCitationLabel = (label: string) => {
-  const trimmed = label.trim();
-  if (!trimmed) return "(Citation)";
-  if (trimmed.startsWith("(") && trimmed.endsWith(")")) return trimmed;
-  return `(${trimmed})`;
-};
-
 const docHasContent = (doc: JSONContent | null | undefined): boolean => {
   if (!doc || typeof doc !== "object") return false;
   const stack: JSONContent[] = [doc];
@@ -144,60 +137,6 @@ const docHasContent = (doc: JSONContent | null | undefined): boolean => {
   return false;
 };
 
-const Citation = TiptapNode.create({
-  name: "citation",
-  group: "inline",
-  inline: true,
-  atom: true,
-  selectable: true,
-
-  addAttributes() {
-    return {
-      id: { default: null },
-      label: { default: "" },
-    };
-  },
-
-  parseHTML() {
-    return [{ tag: "span[data-citation]" }];
-  },
-
-  renderHTML({ node, HTMLAttributes }) {
-    return [
-      "span",
-      mergeAttributes(HTMLAttributes, {
-        "data-citation": "true",
-      }),
-      formatCitationLabel(node.attrs.label ?? ""),
-    ];
-  },
-});
-
-const ParagraphDirection = Extension.create({
-  name: "paragraphDirection",
-  addGlobalAttributes() {
-    return [
-      {
-        types: ["paragraph"],
-        attributes: {
-          dir: {
-            default: null,
-            parseHTML: (element) => element.getAttribute("dir"),
-            renderHTML: (attributes) => {
-              if (!attributes.dir) return {};
-              const dir = attributes.dir === "rtl" ? "rtl" : "ltr";
-              return {
-                dir,
-                style: `direction: ${dir}; text-align: ${dir === "rtl" ? "right" : "left"};`,
-              };
-            },
-          },
-        },
-      },
-    ];
-  },
-});
-
 const FONT_FAMILY_OPTIONS = [
   { label: "Default (Manuscript)", value: "Georgia, 'Times New Roman', serif" },
   { label: "Sans (Outfit)", value: "Outfit, sans-serif" },
@@ -217,159 +156,138 @@ const formatToVars = (format: DraftSectionFormat): CSSProperties =>
     "--editor-font-family": format.fontFamily,
   }) as CSSProperties;
 
-type ToolbarProps = {
-  editor: Editor | null;
-  dir?: "ltr" | "rtl";
+type AddEvidenceModalProps = {
+  isOpen: boolean;
+  onClose: () => void;
+  studies: Study[];
+  usedEvidenceIds: string[];
+  onAddEvidence: (refId: string) => void;
+  projectId: string;
 };
 
-function EditorToolbar({ editor, dir = "ltr" }: ToolbarProps) {
-  if (!editor) return null;
-  return (
-    <div className={styles.toolbar} role="toolbar" aria-label="Formatting">
-      <button
-        type="button"
-        className={styles.toolbarButton}
-        aria-label="Bold"
-        aria-pressed={editor.isActive("bold")}
-        onClick={() => editor.chain().focus().toggleBold().run()}
-      >
-        <span className="material-icons-round">format_bold</span>
-      </button>
-      <button
-        type="button"
-        className={styles.toolbarButton}
-        aria-label="Italic"
-        aria-pressed={editor.isActive("italic")}
-        onClick={() => editor.chain().focus().toggleItalic().run()}
-      >
-        <span className="material-icons-round">format_italic</span>
-      </button>
-      <button
-        type="button"
-        className={styles.toolbarButton}
-        aria-label="Underline"
-        aria-pressed={editor.isActive("underline")}
-        onClick={() => editor.chain().focus().toggleUnderline().run()}
-      >
-        <span className="material-icons-round">format_underlined</span>
-      </button>
-      <div className={styles.toolbarDivider} aria-hidden="true" />
-      <button
-        type="button"
-        className={styles.toolbarButton}
-        aria-label="Bulleted list"
-        aria-pressed={editor.isActive("bulletList")}
-        onClick={() => editor.chain().focus().toggleBulletList().run()}
-      >
-        <span className="material-icons-round">format_list_bulleted</span>
-      </button>
-      <button
-        type="button"
-        className={styles.toolbarButton}
-        aria-label="Numbered list"
-        aria-pressed={editor.isActive("orderedList")}
-        onClick={() => editor.chain().focus().toggleOrderedList().run()}
-      >
-        <span className="material-icons-round">format_list_numbered</span>
-      </button>
-      <button
-        type="button"
-        className={styles.toolbarButton}
-        aria-label="Quote"
-        aria-pressed={editor.isActive("blockquote")}
-        onClick={() => editor.chain().focus().toggleBlockquote().run()}
-      >
-        <span className="material-icons-round">format_quote</span>
-      </button>
-      <div className={styles.toolbarDivider} aria-hidden="true" />
-      <button
-        type="button"
-        className={styles.toolbarButton}
-        aria-label="Toggle text direction"
-        onClick={() => {
-          editor.chain().focus().updateAttributes("paragraph", { dir: dir === "rtl" ? "ltr" : "rtl" }).run();
-        }}
-      >
-        <span className="material-icons-round">
-          {dir === "rtl" ? "format_align_right" : "format_align_left"}
-        </span>
-      </button>
-      <div className={styles.toolbarDivider} aria-hidden="true" />
-      <button
-        type="button"
-        className={styles.toolbarButton}
-        aria-label="Undo"
-        disabled={!editor.can().undo()}
-        onClick={() => editor.chain().focus().undo().run()}
-      >
-        <span className="material-icons-round">undo</span>
-      </button>
-      <button
-        type="button"
-        className={styles.toolbarButton}
-        aria-label="Redo"
-        disabled={!editor.can().redo()}
-        onClick={() => editor.chain().focus().redo().run()}
-      >
-        <span className="material-icons-round">redo</span>
-      </button>
-    </div>
-  );
-}
+function AddEvidenceModal({ isOpen, onClose, studies, usedEvidenceIds, onAddEvidence, projectId }: AddEvidenceModalProps) {
+  const [evidenceQuery, setEvidenceQuery] = useState("");
+  const overlayRef = useRef<HTMLDivElement | null>(null);
+  const lastFocusRef = useRef<HTMLElement | null>(null);
 
-type FullSectionEditorProps = {
-  sectionId: DraftSectionId;
-  content: JSONContent;
-  onFocusSection: (key: DraftSectionId, editor: Editor) => void;
-  onUpdateSection: (key: DraftSectionId, json: JSONContent) => void;
-  registerEditor: (key: DraftSectionId, editor: Editor | null) => void;
-  placeholderText?: string;
-  surfaceClassName?: string;
-  surfaceStyle?: CSSProperties;
-};
-
-function FullSectionEditor({
-  sectionId,
-  content,
-  onFocusSection,
-  onUpdateSection,
-  registerEditor,
-  placeholderText,
-  surfaceClassName,
-  surfaceStyle,
-}: FullSectionEditorProps) {
-  const editor = useEditor(
-    {
-      immediatelyRender: false,
-      extensions: [
-        StarterKit,
-        Underline,
-        Citation,
-        ParagraphDirection,
-        Placeholder.configure({
-          placeholder: placeholderText ?? "Start writing…",
-        }),
-      ],
-      content,
-      editorProps: {
-        attributes: {
-          class: styles.proseMirror,
-        },
-      },
-      onFocus: ({ editor }) => onFocusSection(sectionId, editor),
-      onUpdate: ({ editor }) => onUpdateSection(sectionId, editor.getJSON()),
-    },
-    []
-  );
+  const filteredEvidence = useMemo(() => {
+    const q = evidenceQuery.trim().toLowerCase();
+    if (!q) return studies;
+    return studies.filter(
+      (s) =>
+        s.title.toLowerCase().includes(q) ||
+        s.authors.toLowerCase().includes(q) ||
+        studyLabel(s).toLowerCase().includes(q) ||
+        s.details?.journal?.toLowerCase().includes(q)
+    );
+  }, [studies, evidenceQuery]);
 
   useEffect(() => {
-    registerEditor(sectionId, editor);
-    return () => registerEditor(sectionId, null);
-  }, [editor, registerEditor, sectionId]);
+    if (!isOpen) return;
+    setEvidenceQuery("");
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen || !overlayRef.current) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    lastFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+
+    const focusable = overlayRef.current.querySelectorAll<HTMLElement>(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    );
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    first?.focus();
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onClose();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      if (event.shiftKey) {
+        if (document.activeElement === first) {
+          event.preventDefault();
+          last?.focus();
+        }
+      } else if (document.activeElement === last) {
+        event.preventDefault();
+        first?.focus();
+      }
+    };
+
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", onKeyDown);
+      lastFocusRef.current?.focus();
+    };
+  }, [isOpen, onClose]);
 
   return (
-    <div className={surfaceClassName ?? styles.editorSurface} style={surfaceStyle}>
-      <EditorContent editor={editor} />
+    <div
+      className={`modal-overlay ${isOpen ? "active" : ""}`}
+      aria-hidden={!isOpen}
+      ref={overlayRef}
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <div className="modal-glass" role="dialog" aria-modal="true" aria-labelledby="addEvidenceTitle">
+        <div className="modal-header">
+          <h2 id="addEvidenceTitle">Add Evidence</h2>
+          <button className="close-modal-btn" aria-label="Close" onClick={onClose}>
+            <span className="material-icons-round">close</span>
+          </button>
+        </div>
+
+        <div className={styles.modalBody}>
+          <div className={styles.modalSearch}>
+            <span className={`material-icons-round ${styles.modalSearchIcon}`}>search</span>
+            <input
+              type="text"
+              value={evidenceQuery}
+              onChange={(e) => setEvidenceQuery(e.target.value)}
+              placeholder="Search references…"
+              aria-label="Search references"
+            />
+          </div>
+
+          <div className={styles.modalList}>
+            {filteredEvidence.length === 0 ? (
+              <div className={styles.emptyModal}>
+                <p>{studies.length === 0 ? "No studies in your Evidence Ledger yet." : "No matching studies found."}</p>
+                {studies.length === 0 && (
+                  <Link href={`/project/${projectId}/ledger`} className="header-btn header-btn-primary">
+                    Go to Evidence Ledger
+                  </Link>
+                )}
+              </div>
+            ) : (
+              filteredEvidence.map((study) => {
+                const isAdded = usedEvidenceIds.includes(study.id);
+                return (
+                  <div key={study.id} className={styles.modalItem}>
+                    <div className={styles.modalItemMeta}>
+                      <div className={styles.ledgerLabel}>{studyLabel(study)}</div>
+                      <div className={styles.ledgerTitle}>{study.title}</div>
+                    </div>
+                    <button
+                      type="button"
+                      className={isAdded ? styles.smallBtnDisabled : styles.smallBtn}
+                      disabled={isAdded}
+                      onClick={() => onAddEvidence(study.id)}
+                    >
+                      {isAdded ? "Added" : "Add"}
+                    </button>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -456,9 +374,6 @@ function DraftContent() {
   const lastSyncedUrlRef = useRef<string>("");
 
   const [isAddEvidenceOpen, setAddEvidenceOpen] = useState(false);
-  const [evidenceQuery, setEvidenceQuery] = useState("");
-  const addEvidenceRef = useRef<HTMLDivElement | null>(null);
-  const addEvidenceLastFocusRef = useRef<HTMLElement | null>(null);
 
   const [isAddSectionOpen, setAddSectionOpen] = useState(false);
   const addSectionRef = useRef<HTMLDivElement | null>(null);
@@ -889,18 +804,6 @@ function DraftContent() {
     [studies, usedEvidenceIds]
   );
 
-  const filteredEvidence = useMemo(() => {
-    const q = evidenceQuery.trim().toLowerCase();
-    if (!q) return studies;
-    return studies.filter(
-      (s) =>
-        s.title.toLowerCase().includes(q) ||
-        s.authors.toLowerCase().includes(q) ||
-        studyLabel(s).toLowerCase().includes(q) ||
-        s.details?.journal?.toLowerCase().includes(q)
-    );
-  }, [studies, evidenceQuery]);
-
   const insertCitation = (study: Study) => {
     const editor = activeEditorRef.current;
     if (!editor) return;
@@ -1295,44 +1198,6 @@ function DraftContent() {
       document.removeEventListener("keydown", onKeyDown);
     };
   }, [isFormatOpen]);
-
-  useEffect(() => {
-    if (!isAddEvidenceOpen || !addEvidenceRef.current) return;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    addEvidenceLastFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-
-    const focusable = addEvidenceRef.current.querySelectorAll<HTMLElement>(
-      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-    );
-    const first = focusable[0];
-    const last = focusable[focusable.length - 1];
-    first?.focus();
-
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setAddEvidenceOpen(false);
-        return;
-      }
-      if (event.key !== "Tab") return;
-      if (event.shiftKey) {
-        if (document.activeElement === first) {
-          event.preventDefault();
-          last?.focus();
-        }
-      } else if (document.activeElement === last) {
-        event.preventDefault();
-        first?.focus();
-      }
-    };
-
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      document.removeEventListener("keydown", onKeyDown);
-      addEvidenceLastFocusRef.current?.focus();
-    };
-  }, [isAddEvidenceOpen]);
 
   const sectionEditor = useEditor(
     {
@@ -1932,71 +1797,14 @@ function DraftContent() {
         </div>
       </div>
 
-      <div
-        className={`modal-overlay ${isAddEvidenceOpen ? "active" : ""}`}
-        aria-hidden={!isAddEvidenceOpen}
-        ref={addEvidenceRef}
-        onClick={(event) => {
-          if (event.target === event.currentTarget) {
-            setAddEvidenceOpen(false);
-          }
-        }}
-      >
-        <div className="modal-glass" role="dialog" aria-modal="true" aria-labelledby="addEvidenceTitle">
-          <div className="modal-header">
-            <h2 id="addEvidenceTitle">Add Evidence</h2>
-            <button className="close-modal-btn" aria-label="Close" onClick={() => setAddEvidenceOpen(false)}>
-              <span className="material-icons-round">close</span>
-            </button>
-          </div>
-
-          <div className={styles.modalBody}>
-            <div className={styles.modalSearch}>
-              <span className={`material-icons-round ${styles.modalSearchIcon}`}>search</span>
-              <input
-                type="text"
-                value={evidenceQuery}
-                onChange={(e) => setEvidenceQuery(e.target.value)}
-                placeholder="Search references…"
-                aria-label="Search references"
-              />
-            </div>
-
-            <div className={styles.modalList}>
-              {filteredEvidence.length === 0 ? (
-                <div className={styles.emptyModal}>
-                  <p>{studies.length === 0 ? "No studies in your Evidence Ledger yet." : "No matching studies found."}</p>
-                  {studies.length === 0 && (
-                    <Link href={`/project/${id}/ledger`} className="header-btn header-btn-primary">
-                      Go to Evidence Ledger
-                    </Link>
-                  )}
-                </div>
-              ) : (
-                filteredEvidence.map((study) => {
-                  const isAdded = usedEvidenceIds.includes(study.id);
-                  return (
-                    <div key={study.id} className={styles.modalItem}>
-                      <div className={styles.modalItemMeta}>
-                        <div className={styles.ledgerLabel}>{studyLabel(study)}</div>
-                        <div className={styles.ledgerTitle}>{study.title}</div>
-                      </div>
-                      <button
-                        type="button"
-                        className={isAdded ? styles.smallBtnDisabled : styles.smallBtn}
-                        disabled={isAdded}
-                        onClick={() => handleAddEvidence(study.id)}
-                      >
-                        {isAdded ? "Added" : "Add"}
-                      </button>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
+      <AddEvidenceModal
+        isOpen={isAddEvidenceOpen}
+        onClose={() => setAddEvidenceOpen(false)}
+        studies={studies}
+        usedEvidenceIds={usedEvidenceIds}
+        onAddEvidence={handleAddEvidence}
+        projectId={id}
+      />
 
       {/* Export Modal */}
       <ExportModal

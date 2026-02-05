@@ -2,8 +2,6 @@
 
 import { createProjectAction, deleteProjectAction, listProjectsAction } from "@/app/actions/projects";
 import { migrateLocalStorageToBackend } from "@/lib/migrateLocalStorage";
-import { seedLocalStorageIfEmpty } from "@/lib/seedLocalStorage";
-import { loadProjects, saveProjects } from "@/lib/storage";
 import { Project } from "@/types/project";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 
@@ -27,8 +25,6 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       })
       .catch((err) => {
         console.error("Failed to load projects from backend", err);
-        seedLocalStorageIfEmpty();
-        setProjects(loadProjects([]));
       });
   }, []);
 
@@ -61,10 +57,6 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       })
       .catch((err) => {
         console.error("Failed to create project", err);
-        const existing = loadProjects([]);
-        const next = [project, ...existing.filter((p) => p.id !== project.id)];
-        saveProjects(next);
-        setProjects(next);
       });
   }, []);
 
@@ -75,10 +67,6 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       })
       .catch((err) => {
         console.error("Failed to delete project", err);
-        const existing = loadProjects([]);
-        const next = existing.filter((project) => project.id !== id);
-        saveProjects(next);
-        setProjects(next);
       });
   }, []);
 

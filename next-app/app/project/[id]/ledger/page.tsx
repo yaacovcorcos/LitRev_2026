@@ -1,6 +1,6 @@
 "use client";
 
-import { CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { CSSProperties, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { AppShell } from "@/components/AppShell";
@@ -25,6 +25,208 @@ type CriteriaFilter = "all" | "meets-criteria" | "fails-criteria" | "in-date-ran
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 
 const RAIL_WIDTH = 44;
+
+type StudyRowProps = {
+    study: Study;
+    projectId: string;
+    isExpanded: boolean;
+    isSelected: boolean;
+    isSelectMode: boolean;
+    hasProtocolCriteria: boolean;
+    criteriaMatch: CriteriaMatchResult | undefined;
+    onToggleExpand: (studyId: string) => void;
+    onToggleSelect: (studyId: string) => void;
+    onOpenFiles: (study: Study) => void;
+    onDeleteStudy: (studyId: string) => void;
+    onTriage: (studyId: string, decision: TriageDecision) => void;
+};
+
+const StudyRow = memo(function StudyRow({
+    study,
+    projectId,
+    isExpanded,
+    isSelected,
+    isSelectMode,
+    hasProtocolCriteria,
+    criteriaMatch,
+    onToggleExpand,
+    onToggleSelect,
+    onOpenFiles,
+    onDeleteStudy,
+    onTriage,
+}: StudyRowProps) {
+    const router = useRouter();
+    const d: StudyDetails = study.details ?? {};
+
+    const summaryText = d.aiSummary || d.abstract || "No summary available.";
+    const oneSentence = summaryText.split(/[.!?](?:\s|$)/)[0] + ".";
+    const displaySummary = oneSentence.length > 200 ? oneSentence.slice(0, 200) + "..." : oneSentence;
+
+    const rowClass = `${isSelected ? styles.rowSelected : ""} ${isExpanded ? styles.rowExpanded : ""} ${styles.clickableRow}`.trim();
+
+    const colSpan = isSelectMode
+        ? (hasProtocolCriteria ? 10 : 9)
+        : (hasProtocolCriteria ? 9 : 8);
+
+    const handleRowClick = (e: React.MouseEvent) => {
+        const target = e.target as HTMLElement;
+        if (target.closest('button, input, a, [role="button"]')) return;
+        router.push(`/project/${projectId}/ledger/${study.id}`);
+    };
+
+    return (
+        <>
+            <tr className={rowClass} onClick={handleRowClick}>
+                <td className={styles.expandCell}>
+                    <button
+                        className={`${styles.expandBtn} ${isExpanded ? styles.expanded : ""}`}
+                        onClick={(e) => { e.stopPropagation(); onToggleExpand(study.id); }}
+                        aria-label={isExpanded ? "Collapse" : "Expand"}
+                        aria-expanded={isExpanded}
+                    >
+                        <span className="material-icons-round">expand_more</span>
+                    </button>
+                </td>
+                {isSelectMode && (
+                    <td className={styles.selectCell}>
+                        <input
+                            className={styles.selectCheckbox}
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => onToggleSelect(study.id)}
+                            aria-label={`Select ${study.title}`}
+                        />
+                    </td>
+                )}
+                <td className={styles.titleCell}>{study.title}</td>
+                <td>{study.authors}</td>
+                <td>{study.year}</td>
+                <td>
+                    <span className={`${styles.statusPill} ${study.status === "extracted" ? styles.statusExtracted : styles.statusPending}`}>
+                        {study.status === "extracted" ? "Extracted" : "Pending"}
+                    </span>
+                </td>
+                <td>
+                    <span className={`${styles.qualityBadge} ${study.quality === "High" ? styles.qualityHigh : study.quality === "Medium" ? styles.qualityMedium : ""}`}>
+                        {study.quality}
+                    </span>
+                </td>
+                <td>
+                    {d.triageDecision ? (
+                        <span className={`${styles.triageBadge} ${
+                            d.triageDecision === "keep" ? styles.triageBadgeKeep :
+                            d.triageDecision === "exclude" ? styles.triageBadgeExclude :
+                            styles.triageBadgeMaybe
+                        }`}>
+                            {d.triageDecision === "keep" ? "Keep" :
+                             d.triageDecision === "exclude" ? "Exclude" : "Maybe"}
+                        </span>
+                    ) : (
+                        <span className={styles.triageBadge} style={{ opacity: 0.5 }}>—</span>
+                    )}
+                </td>
+                {hasProtocolCriteria && (
+                    <td>
+                        {criteriaMatch?.meetsAllCriteria ? (
+                            <span className={`${styles.criteriaBadge} ${styles.criteriaBadgeMeets}`} title="Meets all protocol criteria">
+                                <span className="material-icons-round">check_circle</span>
+                            </span>
+                        ) : criteriaMatch?.exclusionReasons?.length ? (
+                            <span
+                                className={`${styles.criteriaBadge} ${styles.criteriaBadgeFails}`}
+                                title={criteriaMatch.exclusionReasons.join("; ")}
+                            >
+                                <span className="material-icons-round">error</span>
+                            </span>
+                        ) : (
+                            <span className={styles.criteriaBadge} style={{ opacity: 0.5 }}>—</span>
+                        )}
+                    </td>
+                )}
+                <td>
+                    <button
+                        className={styles.actionBtn}
+                        title="Manage Files"
+                        onClick={() => onOpenFiles(study)}
+                    >
+                        <span className="material-icons-round">attach_file</span>
+                    </button>
+                    <button
+                        className={styles.actionBtn}
+                        title="Delete Study"
+                        aria-label={`Delete ${study.title}`}
+                        onClick={() => onDeleteStudy(study.id)}
+                    >
+                        <span className="material-icons-round">delete</span>
+                    </button>
+                </td>
+            </tr>
+            {isExpanded && (
+                <tr className={styles.expandedRow}>
+                    <td colSpan={colSpan}>
+                        <div className={styles.expandedContent}>
+                            <div className={styles.expandedSection}>
+                                <p className={styles.abstractText}>
+                                    {displaySummary}
+                                </p>
+                            </div>
+
+                            <div className={styles.triageActions}>
+                                <button
+                                    className={`${styles.triageBtn} ${styles.triageBtnKeep} ${d.triageDecision === "keep" ? styles.active : ""}`}
+                                    onClick={(e) => { e.stopPropagation(); onTriage(study.id, "keep"); }}
+                                >
+                                    Keep
+                                </button>
+                                <button
+                                    className={`${styles.triageBtn} ${styles.triageBtnExclude} ${d.triageDecision === "exclude" ? styles.active : ""}`}
+                                    onClick={(e) => { e.stopPropagation(); onTriage(study.id, "exclude"); }}
+                                >
+                                    Exclude
+                                </button>
+                                <button
+                                    className={`${styles.triageBtn} ${styles.triageBtnMaybe} ${d.triageDecision === "maybe" ? styles.active : ""}`}
+                                    onClick={(e) => { e.stopPropagation(); onTriage(study.id, "maybe"); }}
+                                >
+                                    Maybe
+                                </button>
+                            </div>
+
+                            <div className={styles.expandedMeta}>
+                                {d.journal && (
+                                    <span className={styles.metaChip}>
+                                        <span className="material-icons-round">menu_book</span>
+                                        {d.journal}
+                                    </span>
+                                )}
+                                {d.studyType && (
+                                    <span className={styles.metaChip}>
+                                        <span className="material-icons-round">category</span>
+                                        {d.studyType}
+                                    </span>
+                                )}
+                                {d.doi && (
+                                    <a
+                                        href={`https://doi.org/${d.doi}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className={styles.metaChip}
+                                    >
+                                        <span className="material-icons-round">link</span>
+                                        DOI
+                                    </a>
+                                )}
+                                <Link href={`/project/${projectId}/ledger/${study.id}`} className={styles.viewDetailsLink}>
+                                    View Full Details →
+                                </Link>
+                            </div>
+                        </div>
+                    </td>
+                </tr>
+            )}
+        </>
+    );
+});
 
 export default function LedgerPage() {
     const { id } = useParams<{ id: string }>();
@@ -129,7 +331,7 @@ export default function LedgerPage() {
 
     // Check if protocol has any criteria defined
     const hasProtocolCriteria = useMemo(() => {
-        return (
+        return !!(
             protocol.methodology.timeFrameStart ||
             protocol.methodology.timeFrameEnd ||
             protocol.methodology.studyDesigns.length > 0
@@ -333,11 +535,20 @@ export default function LedgerPage() {
         selectAllRef.current.indeterminate = hasSelection && !allSelected;
     }, [hasSelection, allSelected]);
 
-    const toggleStudySelection = (studyId: string) => {
+    const toggleStudySelection = useCallback((studyId: string) => {
         setSelectedIds((prev) =>
             prev.includes(studyId) ? prev.filter((sId) => sId !== studyId) : [...prev, studyId]
         );
-    };
+    }, []);
+
+    const toggleExpand = useCallback((studyId: string) => {
+        setExpandedIds((prev) => {
+            const next = new Set(prev);
+            if (next.has(studyId)) next.delete(studyId);
+            else next.add(studyId);
+            return next;
+        });
+    }, []);
 
     const toggleSelectAll = () => {
         if (allSelected) {
@@ -658,187 +869,23 @@ export default function LedgerPage() {
                                                 </td>
                                             </tr>
                                         ) : null}
-                                        {filteredStudies.map((study) => {
-                                            const d: StudyDetails = study.details ?? {};
-                                            const criteriaMatch = studyCriteriaMap.get(study.id);
-                                            const isExpanded = expandedIds.has(study.id);
-                                            const toggleExpand = () => {
-                                                setExpandedIds((prev) => {
-                                                    const next = new Set(prev);
-                                                    if (next.has(study.id)) next.delete(study.id);
-                                                    else next.add(study.id);
-                                                    return next;
-                                                });
-                                            };
-
-                                            // Get one-sentence summary from abstract or AI summary
-                                            const summaryText = d.aiSummary || d.abstract || "No summary available.";
-                                            const oneSentence = summaryText.split(/[.!?](?:\s|$)/)[0] + ".";
-                                            const displaySummary = oneSentence.length > 200 ? oneSentence.slice(0, 200) + "..." : oneSentence;
-
-                                            const rowClass = `${selectedSet.has(study.id) ? styles.rowSelected : ""} ${isExpanded ? styles.rowExpanded : ""} ${styles.clickableRow}`.trim();
-
-                                            const handleRowClick = (e: React.MouseEvent) => {
-                                                // Don't navigate if clicking on interactive elements
-                                                const target = e.target as HTMLElement;
-                                                if (target.closest('button, input, a, [role="button"]')) return;
-                                                router.push(`/project/${id}/ledger/${study.id}`);
-                                            };
-
-                                            return (
-                                                <>
-                                                    <tr key={study.id} className={rowClass} onClick={handleRowClick}>
-                                                        <td className={styles.expandCell}>
-                                                            <button
-                                                                className={`${styles.expandBtn} ${isExpanded ? styles.expanded : ""}`}
-                                                                onClick={(e) => { e.stopPropagation(); toggleExpand(); }}
-                                                                aria-label={isExpanded ? "Collapse" : "Expand"}
-                                                                aria-expanded={isExpanded}
-                                                            >
-                                                                <span className="material-icons-round">expand_more</span>
-                                                            </button>
-                                                        </td>
-                                                        {isSelectMode && (
-                                                            <td className={styles.selectCell}>
-                                                                <input
-                                                                    className={styles.selectCheckbox}
-                                                                    type="checkbox"
-                                                                    checked={selectedSet.has(study.id)}
-                                                                    onChange={() => toggleStudySelection(study.id)}
-                                                                    aria-label={`Select ${study.title}`}
-                                                                />
-                                                            </td>
-                                                        )}
-                                                        <td className={styles.titleCell}>{study.title}</td>
-                                                        <td>{study.authors}</td>
-                                                        <td>{study.year}</td>
-                                                        <td>
-                                                            <span className={`${styles.statusPill} ${study.status === "extracted" ? styles.statusExtracted : styles.statusPending}`}>
-                                                                {study.status === "extracted" ? "Extracted" : "Pending"}
-                                                            </span>
-                                                        </td>
-                                                        <td>
-                                                            <span className={`${styles.qualityBadge} ${study.quality === "High" ? styles.qualityHigh : study.quality === "Medium" ? styles.qualityMedium : ""}`}>
-                                                                {study.quality}
-                                                            </span>
-                                                        </td>
-                                                        <td>
-                                                            {d.triageDecision ? (
-                                                                <span className={`${styles.triageBadge} ${
-                                                                    d.triageDecision === "keep" ? styles.triageBadgeKeep :
-                                                                    d.triageDecision === "exclude" ? styles.triageBadgeExclude :
-                                                                    styles.triageBadgeMaybe
-                                                                }`}>
-                                                                    {d.triageDecision === "keep" ? "Keep" :
-                                                                     d.triageDecision === "exclude" ? "Exclude" : "Maybe"}
-                                                                </span>
-                                                            ) : (
-                                                                <span className={styles.triageBadge} style={{ opacity: 0.5 }}>—</span>
-                                                            )}
-                                                        </td>
-                                                        {hasProtocolCriteria && (
-                                                            <td>
-                                                                {criteriaMatch?.meetsAllCriteria ? (
-                                                                    <span className={`${styles.criteriaBadge} ${styles.criteriaBadgeMeets}`} title="Meets all protocol criteria">
-                                                                        <span className="material-icons-round">check_circle</span>
-                                                                    </span>
-                                                                ) : criteriaMatch?.exclusionReasons?.length ? (
-                                                                    <span
-                                                                        className={`${styles.criteriaBadge} ${styles.criteriaBadgeFails}`}
-                                                                        title={criteriaMatch.exclusionReasons.join("; ")}
-                                                                    >
-                                                                        <span className="material-icons-round">error</span>
-                                                                    </span>
-                                                                ) : (
-                                                                    <span className={styles.criteriaBadge} style={{ opacity: 0.5 }}>—</span>
-                                                                )}
-                                                            </td>
-                                                        )}
-                                                        <td>
-                                                            <button
-                                                                className={styles.actionBtn}
-                                                                title="Manage Files"
-                                                                onClick={() => handleOpenStudyFiles(study)}
-                                                            >
-                                                                <span className="material-icons-round">attach_file</span>
-                                                            </button>
-                                                            <button
-                                                                className={styles.actionBtn}
-                                                                title="Delete Study"
-                                                                aria-label={`Delete ${study.title}`}
-                                                                onClick={() => handleDeleteStudy(study.id)}
-                                                            >
-                                                                <span className="material-icons-round">delete</span>
-                                                            </button>
-                                                        </td>
-                                                    </tr>
-                                                    {isExpanded && (
-                                                        <tr key={`${study.id}-details`} className={styles.expandedRow}>
-                                                            <td colSpan={isSelectMode ? (hasProtocolCriteria ? 10 : 9) : (hasProtocolCriteria ? 9 : 8)}>
-                                                                <div className={styles.expandedContent}>
-                                                                    <div className={styles.expandedSection}>
-                                                                        <p className={styles.abstractText}>
-                                                                            {displaySummary}
-                                                                        </p>
-                                                                    </div>
-
-                                                                    {/* Triage Actions */}
-                                                                    <div className={styles.triageActions}>
-                                                                        <button
-                                                                            className={`${styles.triageBtn} ${styles.triageBtnKeep} ${d.triageDecision === "keep" ? styles.active : ""}`}
-                                                                            onClick={(e) => { e.stopPropagation(); handleTriage(study.id, "keep"); }}
-                                                                        >
-                                                                            Keep
-                                                                        </button>
-                                                                        <button
-                                                                            className={`${styles.triageBtn} ${styles.triageBtnExclude} ${d.triageDecision === "exclude" ? styles.active : ""}`}
-                                                                            onClick={(e) => { e.stopPropagation(); handleTriage(study.id, "exclude"); }}
-                                                                        >
-                                                                            Exclude
-                                                                        </button>
-                                                                        <button
-                                                                            className={`${styles.triageBtn} ${styles.triageBtnMaybe} ${d.triageDecision === "maybe" ? styles.active : ""}`}
-                                                                            onClick={(e) => { e.stopPropagation(); handleTriage(study.id, "maybe"); }}
-                                                                        >
-                                                                            Maybe
-                                                                        </button>
-                                                                    </div>
-
-                                                                    <div className={styles.expandedMeta}>
-                                                                        {d.journal && (
-                                                                            <span className={styles.metaChip}>
-                                                                                <span className="material-icons-round">menu_book</span>
-                                                                                {d.journal}
-                                                                            </span>
-                                                                        )}
-                                                                        {d.studyType && (
-                                                                            <span className={styles.metaChip}>
-                                                                                <span className="material-icons-round">category</span>
-                                                                                {d.studyType}
-                                                                            </span>
-                                                                        )}
-                                                                        {d.doi && (
-                                                                            <a
-                                                                                href={`https://doi.org/${d.doi}`}
-                                                                                target="_blank"
-                                                                                rel="noopener noreferrer"
-                                                                                className={styles.metaChip}
-                                                                            >
-                                                                                <span className="material-icons-round">link</span>
-                                                                                DOI
-                                                                            </a>
-                                                                        )}
-                                                                        <Link href={`/project/${id}/ledger/${study.id}`} className={styles.viewDetailsLink}>
-                                                                            View Full Details →
-                                                                        </Link>
-                                                                    </div>
-                                                                </div>
-                                                            </td>
-                                                        </tr>
-                                                    )}
-                                                </>
-                                            );
-                                        })}
+                                        {filteredStudies.map((study) => (
+                                            <StudyRow
+                                                key={study.id}
+                                                study={study}
+                                                projectId={id}
+                                                isExpanded={expandedIds.has(study.id)}
+                                                isSelected={selectedSet.has(study.id)}
+                                                isSelectMode={isSelectMode}
+                                                hasProtocolCriteria={hasProtocolCriteria}
+                                                criteriaMatch={studyCriteriaMap.get(study.id)}
+                                                onToggleExpand={toggleExpand}
+                                                onToggleSelect={toggleStudySelection}
+                                                onOpenFiles={handleOpenStudyFiles}
+                                                onDeleteStudy={handleDeleteStudy}
+                                                onTriage={handleTriage}
+                                            />
+                                        ))}
                                     </tbody>
                                 </table>
                             </div>
