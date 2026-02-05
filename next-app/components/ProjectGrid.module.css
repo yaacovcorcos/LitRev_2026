@@ -312,13 +312,6 @@
     display: none;
 }
 
-.metaInfo {
-    display: none;
-    font-size: 11px;
-    color: var(--text-muted);
-    margin-top: 4px;
-    line-height: 1.4;
-}
 
 @media (max-width: 1200px) {
     .projectGrid {

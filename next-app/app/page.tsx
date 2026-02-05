@@ -1,5 +1,4 @@
 "use client";
-/* eslint-disable react-hooks/set-state-in-effect */
 
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { ProjectGrid } from "@/components/ProjectGrid";
@@ -13,11 +12,20 @@ import { useProjects } from "@/contexts/ProjectsContext";
 import { useSearchParams } from "next/navigation";
 import layoutStyles from "./home.module.css";
 
+const VALID_SORTS: SortMode[] = ["name", "created", "modified"];
+const VALID_VIEWS: ViewMode[] = ["grid", "list"];
+
 function HomeContent() {
   const { projects, addProject, refresh } = useProjects();
   const searchParams = useSearchParams();
-  const [sortMode, setSortMode] = useState<SortMode>("modified");
-  const [viewMode, setViewMode] = useState<ViewMode>("grid");
+  const [sortMode, setSortMode] = useState<SortMode>(() => {
+    const stored = loadSortPreference();
+    return VALID_SORTS.includes(stored as SortMode) ? (stored as SortMode) : "modified";
+  });
+  const [viewMode, setViewMode] = useState<ViewMode>(() => {
+    const stored = loadViewPreference();
+    return VALID_VIEWS.includes(stored as ViewMode) ? (stored as ViewMode) : "grid";
+  });
   const shouldOpenFromQuery = searchParams.get("create") === "new";
   const [isModalOpen, setModalOpen] = useState(() => shouldOpenFromQuery);
   const modalRef = useRef<HTMLDivElement | null>(null);
@@ -83,16 +91,6 @@ function HomeContent() {
     refresh();
   }, [refresh]);
 
-  useEffect(() => {
-    const storedSort = loadSortPreference();
-    if (storedSort === "name" || storedSort === "created" || storedSort === "modified") {
-      setSortMode(storedSort);
-    }
-    const storedView = loadViewPreference();
-    if (storedView === "grid" || storedView === "list") {
-      setViewMode(storedView);
-    }
-  }, []);
 
   useEffect(() => {
     if (!shouldOpenFromQuery || typeof window === "undefined") return;

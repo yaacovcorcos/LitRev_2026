@@ -33,7 +33,8 @@ import {
 } from "@/lib/draftStorage";
 import { getDraftAction, saveDraftAction } from "@/app/actions/drafts";
 import { listProjectFilesAction, createFileAssetAction, deleteFileAssetAction } from "@/app/actions/files";
-import { ExportModal } from "@/components/ExportModal";
+import dynamic from "next/dynamic";
+const ExportModal = dynamic(() => import("@/components/ExportModal").then(m => m.ExportModal), { ssr: false });
 import type { FileAsset } from "@/types/files";
 import styles from "./draft-studio.module.css";
 

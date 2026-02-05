@@ -437,9 +437,10 @@
 
 .extractionProgressFill {
     height: 100%;
-    width: 30%;
+    width: 100%;
     background: var(--accent-primary);
     border-radius: 2px;
+    transform-origin: left;
     animation: progress 1.5s ease-in-out infinite;
 }
 
@@ -450,16 +451,13 @@
 
 @keyframes progress {
     0% {
-        width: 10%;
-        margin-left: 0;
+        transform: translateX(0%) scaleX(0.1);
     }
     50% {
-        width: 50%;
-        margin-left: 25%;
+        transform: translateX(25%) scaleX(0.5);
     }
     100% {
-        width: 10%;
-        margin-left: 90%;
+        transform: translateX(90%) scaleX(0.1);
     }
 }
 

@@ -91,7 +91,6 @@ export function ProjectGrid({ projects, viewMode, onNewProject }: ProjectGridPro
                   </div>
                   {paperCountInline ? <div className={styles.paperCountInline}>{paperCount} Papers</div> : null}
                 </div>
-                <p className={styles.metaInfo}>Last modified recently.</p>
               </div>
             ) : null}
             {!paperCountInline ? <div className={styles.paperCountBottom}>{paperCount} Papers</div> : null}
