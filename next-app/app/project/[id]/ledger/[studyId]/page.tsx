@@ -124,20 +124,6 @@ export default function StudyDetailPage() {
         return () => { active = false; };
     }, [id, studyId]);
 
-    const handleUploadFile = useCallback(async (file: File) => {
-        if (!id || !studyId) return;
-        const formData = new FormData();
-        formData.append("file", file);
-        await uploadStudyFileAction(id, studyId, formData);
-        await loadFiles();
-    }, [id, studyId, loadFiles]);
-
-    const handleDeleteFile = useCallback(async (fileId: string) => {
-        if (!id) return;
-        await deleteFileAssetAction(id, fileId);
-        await loadFiles();
-    }, [id, loadFiles]);
-
     // Handle PDF extraction
     const handleExtract = useCallback(async (fileId: string) => {
         if (!id || !studyId) return;
@@ -156,6 +142,20 @@ export default function StudyDetailPage() {
             setExtractingFileId(null);
         }
     }, [id, studyId]);
+
+    const handleUploadFile = useCallback(async (file: File) => {
+        if (!id || !studyId) return;
+        const formData = new FormData();
+        formData.append("file", file);
+        await uploadStudyFileAction(id, studyId, formData);
+        await loadFiles();
+    }, [id, studyId, loadFiles]);
+
+    const handleDeleteFile = useCallback(async (fileId: string) => {
+        if (!id) return;
+        await deleteFileAssetAction(id, fileId);
+        await loadFiles();
+    }, [id, loadFiles]);
 
     // Edit handlers
     const startEdit = () => {
@@ -243,6 +243,7 @@ export default function StudyDetailPage() {
     }, []);
 
     const d: StudyDetails = study?.details ?? {};
+    const pdfFile = useMemo(() => studyFiles.find((f) => f.mimeType === "application/pdf"), [studyFiles]);
 
     if (!project) {
         return (
@@ -346,6 +347,51 @@ export default function StudyDetailPage() {
                                 </span>
                             </div>
 
+                            {/* Extraction Progress Banner */}
+                            {extractingFileId && (
+                                <div className={styles.extractionBanner}>
+                                    <div className={styles.extractionBannerContent}>
+                                        <span className={`material-icons-round ${styles.extractionBannerIcon}`}>auto_awesome</span>
+                                        <div>
+                                            <strong>Extracting study data from PDF...</strong>
+                                            <p>Reading title, abstract, authors, and more</p>
+                                        </div>
+                                    </div>
+                                    <div className={styles.extractionProgress}>
+                                        <div className={styles.extractionProgressFill} />
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Extraction Error Banner */}
+                            {extractError && !extractingFileId && (
+                                <div className={styles.extractionError}>
+                                    <span className="material-icons-round">error_outline</span>
+                                    <span>{extractError}</span>
+                                    <button className={styles.extractionErrorDismiss} onClick={() => setExtractError(null)}>
+                                        <span className="material-icons-round">close</span>
+                                    </button>
+                                </div>
+                            )}
+
+                            {/* Analyze with AI prompt */}
+                            {!extractingFileId && pdfFile && study.status === "pending" && (
+                                <div className={styles.analyzePrompt}>
+                                    <span className="material-icons-round">auto_awesome</span>
+                                    <div className={styles.analyzePromptText}>
+                                        <strong>PDF ready for analysis</strong>
+                                        <p>Extract title, abstract, authors, keywords, and AI summary</p>
+                                    </div>
+                                    <button
+                                        className={styles.analyzePromptBtn}
+                                        onClick={() => handleExtract(pdfFile.id)}
+                                    >
+                                        <span className="material-icons-round">psychology</span>
+                                        Analyze
+                                    </button>
+                                </div>
+                            )}
+
                             {/* Quick Info */}
                             <StudyQuickInfo study={study} />
 
@@ -385,6 +431,21 @@ export default function StudyDetailPage() {
                                     </div>
                                 )}
                             </section>
+
+                            {/* Keywords */}
+                            {d.keywords && d.keywords.length > 0 && (
+                                <section className={styles.section}>
+                                    <h2 className={styles.sectionTitle}>
+                                        <span className="material-icons-round">label</span>
+                                        Keywords
+                                    </h2>
+                                    <div className={styles.keywordsList}>
+                                        {d.keywords.map((kw) => (
+                                            <span key={kw} className={styles.keywordChip}>{kw}</span>
+                                        ))}
+                                    </div>
+                                </section>
+                            )}
 
                             {/* Citation */}
                             <section className={styles.section}>

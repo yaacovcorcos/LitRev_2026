@@ -338,6 +338,188 @@
     border: 1px solid var(--glass-border);
 }
 
+/* Analyze Prompt */
+.analyzePrompt {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 18px;
+    background: linear-gradient(135deg, rgba(129, 140, 248, 0.06), rgba(217, 116, 89, 0.06));
+    border: 1px solid rgba(129, 140, 248, 0.18);
+    border-radius: var(--radius-lg);
+}
+
+.analyzePrompt > .material-icons-round {
+    font-size: 22px;
+    color: var(--accent-secondary);
+}
+
+.analyzePromptText {
+    flex: 1;
+}
+
+.analyzePromptText strong {
+    font-size: 14px;
+    color: var(--text-primary);
+}
+
+.analyzePromptText p {
+    margin: 2px 0 0;
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.analyzePromptBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    background: var(--accent-primary);
+    color: #fff;
+    border: none;
+    border-radius: 99px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.15s ease;
+    white-space: nowrap;
+}
+
+.analyzePromptBtn:hover {
+    opacity: 0.88;
+}
+
+.analyzePromptBtn .material-icons-round {
+    font-size: 16px;
+}
+
+/* Extraction Banner */
+.extractionBanner {
+    background: linear-gradient(135deg, rgba(217, 116, 89, 0.08), rgba(129, 140, 248, 0.08));
+    border: 1px solid rgba(217, 116, 89, 0.2);
+    border-radius: var(--radius-lg);
+    padding: 16px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.extractionBannerContent {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.extractionBannerContent strong {
+    font-size: 14px;
+    color: var(--text-primary);
+}
+
+.extractionBannerContent p {
+    margin: 2px 0 0;
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.extractionBannerIcon {
+    font-size: 22px;
+    color: var(--accent-primary);
+    animation: spin 2s linear infinite;
+}
+
+.extractionProgress {
+    width: 100%;
+    height: 4px;
+    background: rgba(0, 0, 0, 0.08);
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.extractionProgressFill {
+    height: 100%;
+    width: 30%;
+    background: var(--accent-primary);
+    border-radius: 2px;
+    animation: progress 1.5s ease-in-out infinite;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+@keyframes progress {
+    0% {
+        width: 10%;
+        margin-left: 0;
+    }
+    50% {
+        width: 50%;
+        margin-left: 25%;
+    }
+    100% {
+        width: 10%;
+        margin-left: 90%;
+    }
+}
+
+/* Extraction Error */
+.extractionError {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    background: rgba(239, 68, 68, 0.08);
+    border: 1px solid rgba(239, 68, 68, 0.2);
+    border-radius: var(--radius-lg);
+    font-size: 13px;
+    color: #dc2626;
+}
+
+.extractionError .material-icons-round:first-child {
+    font-size: 18px;
+}
+
+.extractionErrorDismiss {
+    margin-left: auto;
+    background: none;
+    border: none;
+    padding: 4px;
+    cursor: pointer;
+    color: #dc2626;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.extractionErrorDismiss:hover {
+    background: rgba(239, 68, 68, 0.1);
+}
+
+.extractionErrorDismiss .material-icons-round {
+    font-size: 16px;
+}
+
+/* Keywords */
+.keywordsList {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.keywordChip {
+    display: inline-flex;
+    align-items: center;
+    padding: 6px 14px;
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: 99px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
 /* Files Popup */
 .filesPopupBackdrop {
     position: fixed;
