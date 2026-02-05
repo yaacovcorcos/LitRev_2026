@@ -2,7 +2,7 @@
  * AI Configuration Registry
  * Environment-driven configuration for AI providers and models
  *
- * Current setup: OpenAI GPT-5.2 models
+ * Current setup: OpenAI GPT-5.2 models, Anthropic Claude, xAI Grok
  * Token usage is tracked accurately via streaming API
  */
 
@@ -33,13 +33,36 @@ export const USER_SELECTABLE_MODELS = [
         id: "gpt-5.2",
         name: "GPT-5.2",
         description: "Most capable model for complex tasks",
-        icon: "auto_awesome"
+        icon: "auto_awesome",
+        provider: "openai",
     },
     {
         id: "gpt-5-mini",
         name: "GPT-5 Mini",
         description: "Fast and efficient for simpler tasks",
-        icon: "bolt"
+        icon: "bolt",
+        provider: "openai",
+    },
+    {
+        id: "gpt-5-nano",
+        name: "GPT-5 Nano",
+        description: "Ultra-cheap for bulk tasks",
+        icon: "savings",
+        provider: "openai",
+    },
+    {
+        id: "claude-haiku-4-5",
+        name: "Claude Haiku 4.5",
+        description: "Best writing quality per dollar",
+        icon: "edit_note",
+        provider: "anthropic",
+    },
+    {
+        id: "grok-4-1-fast",
+        name: "Grok 4.1 Fast",
+        description: "Fast tool calling, 2M context",
+        icon: "rocket_launch",
+        provider: "xai",
     },
 ] as const;
 
@@ -50,7 +73,25 @@ export const AVAILABLE_MODELS = {
     openai: [
         { id: "gpt-5.2", name: "GPT-5.2", contextWindow: 128000, capabilities: ["chat", "vision", "tools"] },
         { id: "gpt-5-mini", name: "GPT-5 Mini", contextWindow: 128000, capabilities: ["chat", "vision", "tools"] },
+        { id: "gpt-5-nano", name: "GPT-5 Nano", contextWindow: 128000, capabilities: ["chat", "tools"] },
         { id: "gpt-4o", name: "GPT-4o", contextWindow: 128000, capabilities: ["chat", "vision", "tools"] },
         { id: "gpt-4o-mini", name: "GPT-4o Mini", contextWindow: 128000, capabilities: ["chat", "vision", "tools"] },
     ],
+    anthropic: [
+        { id: "claude-haiku-4-5", name: "Claude Haiku 4.5", contextWindow: 200000, capabilities: ["chat", "vision", "tools"] },
+    ],
+    xai: [
+        { id: "grok-4-1-fast", name: "Grok 4.1 Fast", contextWindow: 2000000, capabilities: ["chat", "tools"] },
+    ],
 } as const;
+
+/** Look up which provider owns a given model ID */
+export function getProviderForModel(modelId: string): string | undefined {
+    for (const entry of USER_SELECTABLE_MODELS) {
+        if (entry.id === modelId) return entry.provider;
+    }
+    for (const [provider, models] of Object.entries(AVAILABLE_MODELS)) {
+        if (models.some(m => m.id === modelId)) return provider;
+    }
+    return undefined;
+}

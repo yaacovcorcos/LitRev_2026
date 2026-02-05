@@ -5,11 +5,11 @@
  */
 
 import type { AIMessage, AIResponse, ChatOptions, AIStreamChunk, ConversationContext, ToolCall } from "@/types/ai";
-import { BaseAIProvider, getOpenAIProvider } from "./providers";
+import { BaseAIProvider, getOpenAIProvider, getAnthropicProvider, getXAIProvider } from "./providers";
 import { getOrCreateConversation, addMessageToConversation } from "./memory";
 import { validateRateLimits, recordUsage } from "./rate-limiter";
 import { retrieveAndFormatMemories } from "@/lib/server/memory";
-import { AI_CONFIG } from "@/lib/ai/config";
+import { AI_CONFIG, getProviderForModel } from "@/lib/ai/config";
 import { AVAILABLE_TOOLS, getToolDefinitions, executeTool } from "./tools";
 
 const MAX_TOOL_ITERATIONS = 5;
@@ -19,8 +19,15 @@ class AIService {
     private activeProviderId: string = AI_CONFIG.defaultProvider;
 
     constructor() {
-        // Register default providers
-        this.registerProvider(getOpenAIProvider());
+        // Register all configured providers
+        const openai = getOpenAIProvider();
+        if (openai.isConfigured()) this.registerProvider(openai);
+
+        const anthropic = getAnthropicProvider();
+        if (anthropic.isConfigured()) this.registerProvider(anthropic);
+
+        const xai = getXAIProvider();
+        if (xai.isConfigured()) this.registerProvider(xai);
     }
 
     /**
@@ -52,6 +59,29 @@ class AIService {
     }
 
     /**
+     * Resolve the correct provider for a model ID.
+     * Falls back to the active provider if model is unspecified or unknown.
+     */
+    resolveProvider(modelId?: string): BaseAIProvider {
+        if (modelId) {
+            const providerId = getProviderForModel(modelId);
+            if (providerId) {
+                const provider = this.providers.get(providerId);
+                if (!provider) {
+                    const envVar = providerId === "anthropic" ? "ANTHROPIC_API_KEY"
+                        : providerId === "xai" ? "XAI_API_KEY"
+                        : "OPENAI_API_KEY";
+                    throw new Error(
+                        `Provider "${providerId}" is not configured. Set the ${envVar} environment variable.`
+                    );
+                }
+                return provider;
+            }
+        }
+        return this.getActiveProvider();
+    }
+
+    /**
      * Send a chat request
      */
     async chat(
@@ -63,7 +93,7 @@ class AIService {
         // Validate rate limits
         await validateRateLimits(projectId);
 
-        const provider = this.getActiveProvider();
+        const provider = this.resolveProvider(options?.model);
         const response = await provider.chat(messages, options);
 
         // Record usage
@@ -89,7 +119,7 @@ class AIService {
         // Validate rate limits
         await validateRateLimits(projectId);
 
-        const provider = this.getActiveProvider();
+        const provider = this.resolveProvider(options?.model);
 
         let totalInputTokens = 0;
         let totalOutputTokens = 0;

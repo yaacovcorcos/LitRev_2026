@@ -497,21 +497,47 @@ export function ProjectCopilot({
                             </button>
                             {showModelMenu && (
                                 <div className={styles.modelDropdown} role="listbox">
-                                    {USER_SELECTABLE_MODELS.map((model) => (
-                                        <button
-                                            key={model.id}
-                                            type="button"
-                                            className={`${styles.modelItem} ${selectedModel === model.id ? styles.modelItemActive : ""}`}
-                                            onClick={() => {
-                                                setSelectedModel(model.id);
-                                                setShowModelMenu(false);
-                                            }}
-                                            role="option"
-                                            aria-selected={selectedModel === model.id}
-                                        >
-                                            {model.name}
-                                        </button>
-                                    ))}
+                                    {(() => {
+                                        const groups = new Map<string, typeof USER_SELECTABLE_MODELS[number][]>();
+                                        for (const model of USER_SELECTABLE_MODELS) {
+                                            const list = groups.get(model.provider) || [];
+                                            list.push(model);
+                                            groups.set(model.provider, list);
+                                        }
+                                        const providerLabels: Record<string, string> = {
+                                            openai: "OpenAI",
+                                            anthropic: "Anthropic",
+                                            xai: "xAI",
+                                        };
+                                        return Array.from(groups.entries()).map(([provider, models]) => (
+                                            <div key={provider}>
+                                                <div className={styles.modelGroupLabel}>
+                                                    {providerLabels[provider] || provider}
+                                                </div>
+                                                {models.map((model) => (
+                                                    <button
+                                                        key={model.id}
+                                                        type="button"
+                                                        className={`${styles.modelItem} ${selectedModel === model.id ? styles.modelItemActive : ""}`}
+                                                        onClick={() => {
+                                                            setSelectedModel(model.id);
+                                                            setShowModelMenu(false);
+                                                        }}
+                                                        role="option"
+                                                        aria-selected={selectedModel === model.id}
+                                                    >
+                                                        <div className={styles.modelItemInner}>
+                                                            <span className={`material-icons-round ${styles.modelItemIcon}`}>
+                                                                {model.icon}
+                                                            </span>
+                                                            <span className={styles.modelItemName}>{model.name}</span>
+                                                            <span className={styles.modelItemDesc}>{model.description}</span>
+                                                        </div>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        ));
+                                    })()}
                                 </div>
                             )}
                         </div>

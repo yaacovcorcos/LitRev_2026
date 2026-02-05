@@ -433,13 +433,28 @@
     position: absolute;
     bottom: calc(100% + 4px);
     left: 0;
-    min-width: 140px;
+    min-width: 260px;
     background: white;
     border: 1px solid var(--glass-border);
     border-radius: 10px;
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
     padding: 4px;
     z-index: 100;
+}
+
+.modelGroupLabel {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    padding: 8px 12px 4px;
+}
+
+.modelGroupLabel:not(:first-child) {
+    border-top: 1px solid rgba(0, 0, 0, 0.06);
+    margin-top: 4px;
+    padding-top: 8px;
 }
 
 .modelItem {
@@ -463,6 +478,37 @@
 .modelItemActive {
     background: rgba(217, 116, 89, 0.1);
     color: var(--accent-primary);
+}
+
+.modelItemInner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+}
+
+.modelItemIcon {
+    font-size: 16px;
+    color: var(--text-muted);
+    flex-shrink: 0;
+}
+
+.modelItemActive .modelItemIcon {
+    color: var(--accent-primary);
+}
+
+.modelItemName {
+    font-size: 13px;
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+.modelItemDesc {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-left: auto;
+    white-space: nowrap;
+    flex-shrink: 0;
 }
 
 /* Action buttons */
