@@ -1,15 +1,18 @@
 /**
  * AI Service
  * Central service for AI operations
- * Now with structured memory integration
+ * Now with structured memory integration and tool execution loop
  */
 
-import type { AIMessage, AIResponse, ChatOptions, AIStreamChunk, ConversationContext } from "@/types/ai";
+import type { AIMessage, AIResponse, ChatOptions, AIStreamChunk, ConversationContext, ToolCall } from "@/types/ai";
 import { BaseAIProvider, getOpenAIProvider } from "./providers";
 import { getOrCreateConversation, addMessageToConversation } from "./memory";
 import { validateRateLimits, recordUsage } from "./rate-limiter";
 import { retrieveAndFormatMemories } from "@/lib/server/memory";
 import { AI_CONFIG } from "@/lib/ai/config";
+import { AVAILABLE_TOOLS, getToolDefinitions, executeTool } from "./tools";
+
+const MAX_TOOL_ITERATIONS = 5;
 
 class AIService {
     private providers = new Map<string, BaseAIProvider>();
@@ -109,6 +112,98 @@ class AIService {
     }
 
     /**
+     * Stream chat with tool execution loop.
+     * Handles multiple tool calls per turn and loops until the AI finishes with text.
+     * Tool-call/tool-result messages are kept in the local loop only — not persisted.
+     */
+    async *streamChatWithTools(
+        messages: AIMessage[],
+        options?: ChatOptions
+    ): AsyncIterable<AIStreamChunk> {
+        const toolDefs = getToolDefinitions();
+        if (toolDefs.length === 0) {
+            // No tools available, fall through to normal streaming
+            yield* this.streamChat(messages, options);
+            return;
+        }
+
+        const optionsWithTools: ChatOptions = {
+            ...options,
+            tools: toolDefs,
+        };
+
+        const currentMessages = [...messages];
+
+        for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
+            const collectedToolCalls: ToolCall[] = [];
+            let contentSoFar = "";
+            let gotDone = false;
+
+            for await (const chunk of this.streamChat(currentMessages, optionsWithTools)) {
+                if (chunk.type === "tool_call" && chunk.toolCall) {
+                    collectedToolCalls.push(chunk.toolCall);
+                    // Yield tool_call to client for status display
+                    yield chunk;
+                } else if (chunk.type === "content") {
+                    contentSoFar += chunk.content || "";
+                    yield chunk;
+                } else if (chunk.type === "done") {
+                    gotDone = true;
+                    // Don't yield done yet if we have tool calls to process
+                    if (collectedToolCalls.length === 0) {
+                        yield chunk;
+                    }
+                } else if (chunk.type === "error") {
+                    yield chunk;
+                    return;
+                }
+            }
+
+            // If no tool calls, we're done
+            if (collectedToolCalls.length === 0) {
+                return;
+            }
+
+            // Build assistant message with tool calls
+            const assistantMsg: AIMessage = {
+                id: `tool-loop-assistant-${iteration}`,
+                role: "assistant",
+                content: contentSoFar,
+                toolCalls: collectedToolCalls,
+                createdAt: new Date().toISOString(),
+            };
+            currentMessages.push(assistantMsg);
+
+            // Execute all tool calls and append results
+            for (const tc of collectedToolCalls) {
+                const result = await executeTool(tc.name, tc.arguments, tc.id);
+
+                // Yield tool result to client
+                yield { type: "tool_result", toolResult: result };
+
+                // Add tool result message for next iteration
+                const toolMsg: AIMessage = {
+                    id: `tool-result-${tc.id}`,
+                    role: "tool",
+                    content: JSON.stringify(result.result ?? result.error ?? ""),
+                    toolResultId: tc.id,
+                    createdAt: new Date().toISOString(),
+                };
+                currentMessages.push(toolMsg);
+            }
+
+            // Loop continues — next iteration will call the provider again
+            // with the tool results so the AI can respond
+        }
+
+        // Safety: if we hit the max iterations, yield what we have
+        yield {
+            type: "done",
+            content: "I've reached the maximum number of tool calls. Please try rephrasing your request.",
+        };
+    }
+
+    /**
      * Chat with conversation memory
      * Automatically loads conversation history and saves new messages
      * Also injects relevant structured memories (UserMemory, ProjectMemory, StudyMemory)
@@ -173,6 +268,7 @@ class AIService {
     /**
      * Stream chat with conversation memory
      * Also injects relevant structured memories (UserMemory, ProjectMemory, StudyMemory)
+     * Uses tool loop when tools are available
      */
     async *streamChatWithMemory(
         userMessage: string,
@@ -215,18 +311,24 @@ class AIService {
 
         let fullContent = "";
 
-        // Stream the response
-        for await (const chunk of this.streamChat(historyMessages, {
+        // Use tool loop when tools are available, otherwise fall through to normal streaming
+        const chatOptions = {
             ...options,
             projectId: projectId || "global",
-        })) {
+        };
+
+        const streamSource = AVAILABLE_TOOLS.length > 0
+            ? this.streamChatWithTools(historyMessages, chatOptions)
+            : this.streamChat(historyMessages, chatOptions);
+
+        for await (const chunk of streamSource) {
             if (chunk.type === "content" && chunk.content) {
                 fullContent += chunk.content;
             }
             yield { ...chunk, conversationId: conversation.id };
         }
 
-        // Save AI response to memory after streaming completes
+        // Save only the final AI text response to memory (not tool messages)
         if (fullContent) {
             await addMessageToConversation(conversation.id, {
                 role: "assistant",

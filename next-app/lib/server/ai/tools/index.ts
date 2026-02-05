@@ -8,3 +8,5 @@ export {
     getToolDefinitions,
     executeTool,
 } from "./base";
+export { pubmedSearchTool } from "./pubmed-search";
+export { addToLedgerTool } from "./add-to-ledger";

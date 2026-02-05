@@ -173,6 +173,7 @@ model AIMessage {
   role           String   // "system" | "user" | "assistant" | "tool"
   content        String
   toolCalls      Json?
+  toolResultId   String?  // For tool role messages: maps to the tool_call_id
   createdAt      DateTime @default(now())
 
   conversation AIConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)

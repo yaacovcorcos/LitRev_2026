@@ -337,6 +337,48 @@ export default function AIView() {
                   })
                 );
               }
+            } else if (data.type === "tool_call" && data.toolCall) {
+              const toolName = data.toolCall.name;
+              const statusText = toolName === "search_pubmed"
+                ? "Searching PubMed..."
+                : toolName === "add_to_ledger"
+                ? "Adding studies to ledger..."
+                : `Running ${toolName}...`;
+              if (!aiMessageCreated) {
+                aiMessageCreated = true;
+                setConversations((prev) =>
+                  prev.map((conv) => {
+                    if (conv.id !== convId) return conv;
+                    const messages: ChatMessage[] = [
+                      ...conv.messages,
+                      { id: aiMessageId, sender: "ai" as const, text: `*${statusText}*`, createdAt: new Date().toISOString() },
+                    ];
+                    return { ...conv, messages };
+                  })
+                );
+              } else {
+                setConversations((prev) =>
+                  prev.map((conv) => {
+                    if (conv.id !== convId) return conv;
+                    const messages = conv.messages.map((m) =>
+                      m.id === aiMessageId ? { ...m, text: fullContent || `*${statusText}*` } : m
+                    );
+                    return { ...conv, messages };
+                  })
+                );
+              }
+            } else if (data.type === "tool_result") {
+              if (aiMessageCreated && !fullContent) {
+                setConversations((prev) =>
+                  prev.map((conv) => {
+                    if (conv.id !== convId) return conv;
+                    const messages = conv.messages.map((m) =>
+                      m.id === aiMessageId ? { ...m, text: "*Processing results...*" } : m
+                    );
+                    return { ...conv, messages };
+                  })
+                );
+              }
             }
           } catch {
             // Skip parsing errors for incomplete chunks
@@ -533,6 +575,49 @@ export default function AIView() {
                     if (c.id !== convId) return c;
                     const messages = c.messages.map((m) =>
                       m.id === newAiMessageId ? { ...m, text: fullContent } : m
+                    );
+                    return { ...c, messages };
+                  })
+                );
+              }
+            } else if (data.type === "tool_call" && data.toolCall) {
+              const toolName = data.toolCall.name;
+              const statusText = toolName === "search_pubmed"
+                ? "Searching PubMed..."
+                : toolName === "add_to_ledger"
+                ? "Adding studies to ledger..."
+                : `Running ${toolName}...`;
+              if (!aiMessageCreated) {
+                aiMessageCreated = true;
+                setConversations((prev) =>
+                  prev.map((c) => {
+                    if (c.id !== convId) return c;
+                    const messages: ChatMessage[] = [
+                      ...c.messages.slice(0, msgIndex),
+                      { id: newAiMessageId, sender: "ai" as const, text: `*${statusText}*`, createdAt: new Date().toISOString() },
+                      ...c.messages.slice(msgIndex),
+                    ];
+                    return { ...c, messages };
+                  })
+                );
+              } else {
+                setConversations((prev) =>
+                  prev.map((c) => {
+                    if (c.id !== convId) return c;
+                    const messages = c.messages.map((m) =>
+                      m.id === newAiMessageId ? { ...m, text: fullContent || `*${statusText}*` } : m
+                    );
+                    return { ...c, messages };
+                  })
+                );
+              }
+            } else if (data.type === "tool_result") {
+              if (aiMessageCreated && !fullContent) {
+                setConversations((prev) =>
+                  prev.map((c) => {
+                    if (c.id !== convId) return c;
+                    const messages = c.messages.map((m) =>
+                      m.id === newAiMessageId ? { ...m, text: "*Processing results...*" } : m
                     );
                     return { ...c, messages };
                   })

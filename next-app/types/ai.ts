@@ -77,10 +77,12 @@ export type AIResponse = {
 
 // Streaming chunk
 export type AIStreamChunk = {
-    type: "content" | "done" | "error";
+    type: "content" | "tool_call" | "tool_result" | "done" | "error";
     content?: string;
     error?: string;
     usage?: AIResponse["usage"];
+    toolCall?: ToolCall;
+    toolResult?: ToolResult;
 };
 
 // Memory/Context types

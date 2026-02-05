@@ -51,6 +51,7 @@ export async function getOrCreateConversation(
                 role: m.role as AIMessage["role"],
                 content: m.content,
                 toolCalls: parseToolCalls(m.toolCalls),
+                toolResultId: m.toolResultId ?? undefined,
                 createdAt: m.createdAt.toISOString(),
             })),
             createdAt: existing.createdAt.toISOString(),
@@ -162,6 +163,7 @@ export async function addMessageToConversation(
             role: message.role,
             content: message.content,
             toolCalls: (message.toolCalls ?? undefined) as Prisma.InputJsonValue,
+            toolResultId: message.toolResultId ?? undefined,
         },
     });
 
@@ -176,6 +178,7 @@ export async function addMessageToConversation(
         role: created.role as AIMessage["role"],
         content: created.content,
         toolCalls: parseToolCalls(created.toolCalls),
+        toolResultId: created.toolResultId ?? undefined,
         createdAt: created.createdAt.toISOString(),
     };
 }
@@ -198,6 +201,7 @@ export async function getConversationMessages(
         role: m.role as AIMessage["role"],
         content: m.content,
         toolCalls: parseToolCalls(m.toolCalls),
+        toolResultId: m.toolResultId ?? undefined,
         createdAt: m.createdAt.toISOString(),
     }));
 }

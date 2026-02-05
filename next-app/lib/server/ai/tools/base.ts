@@ -1,10 +1,11 @@
 /**
  * AI Tool Interface
  * Base definitions for AI tools (PubMed search, web search, etc.)
- * Currently no-op, ready for future implementation
  */
 
 import type { ToolDefinition, ToolResult } from "@/types/ai";
+import { pubmedSearchTool } from "./pubmed-search";
+import { addToLedgerTool } from "./add-to-ledger";
 
 /**
  * Interface for AI tools that can be called by the AI
@@ -18,32 +19,12 @@ export interface AITool {
 }
 
 /**
- * Placeholder tools for future implementation
- * These are no-op for now but define the interface
+ * Tool registry — populated with implemented tools
  */
-export const PLACEHOLDER_TOOLS: AITool[] = [
-    // Future: PubMed Search Tool
-    // {
-    //   definition: {
-    //     name: "search_pubmed",
-    //     description: "Search PubMed for research articles",
-    //     parameters: {
-    //       type: "object",
-    //       properties: {
-    //         query: { type: "string", description: "Search query" },
-    //         maxResults: { type: "number", description: "Maximum results to return" },
-    //       },
-    //       required: ["query"],
-    //     },
-    //   },
-    //   execute: async (args) => ({ callId: "", result: null }),
-    // },
+export const AVAILABLE_TOOLS: AITool[] = [
+    pubmedSearchTool,
+    addToLedgerTool,
 ];
-
-/**
- * Tool registry - will be populated as tools are implemented
- */
-export const AVAILABLE_TOOLS: AITool[] = [];
 
 /**
  * Get tool definitions for the AI
