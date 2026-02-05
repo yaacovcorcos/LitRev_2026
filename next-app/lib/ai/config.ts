@@ -36,8 +36,8 @@ export const USER_SELECTABLE_MODELS = [
         icon: "auto_awesome"
     },
     {
-        id: "gpt-5.2-mini",
-        name: "GPT-5.2 Mini",
+        id: "gpt-5-mini",
+        name: "GPT-5 Mini",
         description: "Fast and efficient for simpler tasks",
         icon: "bolt"
     },
@@ -49,7 +49,7 @@ export type SelectableModelId = typeof USER_SELECTABLE_MODELS[number]["id"];
 export const AVAILABLE_MODELS = {
     openai: [
         { id: "gpt-5.2", name: "GPT-5.2", contextWindow: 128000, capabilities: ["chat", "vision", "tools"] },
-        { id: "gpt-5.2-mini", name: "GPT-5.2 Mini", contextWindow: 128000, capabilities: ["chat", "vision", "tools"] },
+        { id: "gpt-5-mini", name: "GPT-5 Mini", contextWindow: 128000, capabilities: ["chat", "vision", "tools"] },
         { id: "gpt-4o", name: "GPT-4o", contextWindow: 128000, capabilities: ["chat", "vision", "tools"] },
         { id: "gpt-4o-mini", name: "GPT-4o Mini", contextWindow: 128000, capabilities: ["chat", "vision", "tools"] },
     ],

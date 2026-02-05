@@ -62,7 +62,8 @@ export function ProjectCopilot({
     const [selectedModel, setSelectedModel] = useState<SelectableModelId>(() => {
         if (typeof window === "undefined") return "gpt-5.2";
         const stored = window.localStorage.getItem("litrev_copilot_model");
-        return (stored as SelectableModelId) || "gpt-5.2";
+        const valid = USER_SELECTABLE_MODELS.some(m => m.id === stored);
+        return valid ? (stored as SelectableModelId) : "gpt-5.2";
     });
     const [showModelMenu, setShowModelMenu] = useState(false);
     const [showConversationDropdown, setShowConversationDropdown] = useState(false);
