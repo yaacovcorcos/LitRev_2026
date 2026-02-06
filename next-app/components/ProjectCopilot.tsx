@@ -7,6 +7,7 @@ import { useProjectCopilot, CopilotPage } from "@/contexts/ProjectCopilotContext
 import styles from "./ProjectCopilot.module.css";
 import markdownStyles from "@/styles/markdown.module.css";
 import { USER_SELECTABLE_MODELS, type SelectableModelId } from "@/lib/ai/config";
+import { useVoiceInput } from "@/hooks/useVoiceInput";
 
 export type SuggestionConfig = {
     label: string;
@@ -72,6 +73,15 @@ export function ProjectCopilot({
     const autoScrollRef = useRef(true);
     const modelMenuRef = useRef<HTMLDivElement | null>(null);
     const conversationDropdownRef = useRef<HTMLDivElement | null>(null);
+
+    // Voice input
+    const handleTranscription = useCallback((text: string) => {
+        setInput((prev) => {
+            const separator = prev.trim() ? " " : "";
+            return prev + separator + text;
+        });
+    }, []);
+    const { state: voiceState, error: voiceError, toggleRecording, clearError: clearVoiceError } = useVoiceInput(handleTranscription);
 
     // Persist model preference
     useEffect(() => {
@@ -552,6 +562,20 @@ export function ProjectCopilot({
                         >
                             <span className="material-icons-round">add</span>
                         </button>
+
+                        {/* Voice input */}
+                        <button
+                            type="button"
+                            className={`${styles.actionBtn} ${voiceState === "recording" ? styles.actionBtnRecording : ""}`}
+                            onClick={toggleRecording}
+                            disabled={voiceState === "transcribing" || isLoading}
+                            aria-label={voiceState === "recording" ? "Stop recording" : voiceState === "transcribing" ? "Transcribing..." : "Voice input"}
+                            title={voiceState === "recording" ? "Stop recording" : voiceState === "transcribing" ? "Transcribing..." : "Voice input"}
+                        >
+                            <span className="material-icons-round">
+                                {voiceState === "recording" ? "stop_circle" : voiceState === "transcribing" ? "hourglass_top" : "mic"}
+                            </span>
+                        </button>
                     </div>
 
                     {/* Send button */}
@@ -566,6 +590,15 @@ export function ProjectCopilot({
                         </span>
                     </button>
                 </div>
+
+                {voiceError && (
+                    <div className={styles.voiceError}>
+                        <span>{voiceError}</span>
+                        <button type="button" onClick={clearVoiceError} aria-label="Dismiss">
+                            <span className="material-icons-round">close</span>
+                        </button>
+                    </div>
+                )}
             </form>
             </div>
         </aside>

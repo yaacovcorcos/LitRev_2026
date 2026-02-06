@@ -13,7 +13,7 @@ import { CitationBlock } from "@/components/CitationBlock";
 import { StudyQuickInfo } from "@/components/StudyQuickInfo";
 import { StudyFilesPanel } from "@/components/StudyFilesPanel";
 import { listStudyFilesAction, deleteFileAssetAction, uploadStudyFileAction } from "@/app/actions/files";
-import { extractStudyFromPdfAction } from "@/app/actions/extraction";
+import { extractStudyFromPdfAction, deepAnalyzeStudyAction } from "@/app/actions/extraction";
 import { getDraftAction } from "@/app/actions/drafts";
 import { DRAFT_SECTIONS, DraftSectionId } from "@/types/draft";
 import { loadDraftState, DraftState } from "@/lib/draftStorage";
@@ -56,25 +56,33 @@ export default function StudyDetailPage() {
     const [extractingFileId, setExtractingFileId] = useState<string | null>(null);
     const [extractError, setExtractError] = useState<string | null>(null);
 
+    // Deep analysis state
+    const [isDeepAnalyzing, setIsDeepAnalyzing] = useState(false);
+    const [deepAnalysisError, setDeepAnalysisError] = useState<string | null>(null);
+
     // Draft backlinks state
     const [draftBacklinks, setDraftBacklinks] = useState<DraftBacklink[]>([]);
 
     // Error display state
     const [alertMsg, setAlertMsg] = useState<string | null>(null);
 
+    // Keep a stable ref so the effect doesn't re-fire when ledgerMap changes
+    const getStudyByIdRef = useRef(getStudyById);
+    useEffect(() => { getStudyByIdRef.current = getStudyById; }, [getStudyById]);
+
     // Load study
     useEffect(() => {
         if (!id || !studyId) return;
         let active = true;
         setIsLoading(true);
-        getStudyById(id, studyId).then((s) => {
+        getStudyByIdRef.current(id, studyId).then((s) => {
             if (active) {
                 setStudy(s);
                 setIsLoading(false);
             }
         });
         return () => { active = false; };
-    }, [id, studyId, getStudyById]);
+    }, [id, studyId]);
 
     // Load files
     const loadFiles = useCallback(async () => {
@@ -145,6 +153,25 @@ export default function StudyDetailPage() {
             setExtractError(err instanceof Error ? err.message : "Unknown error");
         } finally {
             setExtractingFileId(null);
+        }
+    }, [id, studyId]);
+
+    // Handle deep analysis (Stage 2)
+    const handleDeepAnalysis = useCallback(async (fileId: string) => {
+        if (!id || !studyId) return;
+        setIsDeepAnalyzing(true);
+        setDeepAnalysisError(null);
+        try {
+            const result = await deepAnalyzeStudyAction(id, studyId, fileId);
+            if (result.success && result.study) {
+                setStudy(result.study);
+            } else {
+                setDeepAnalysisError(result.error || "Deep analysis failed");
+            }
+        } catch (err) {
+            setDeepAnalysisError(err instanceof Error ? err.message : "Unknown error");
+        } finally {
+            setIsDeepAnalyzing(false);
         }
     }, [id, studyId]);
 
@@ -352,7 +379,7 @@ export default function StudyDetailPage() {
                                 </span>
                             </div>
 
-                            {/* Extraction Progress Banner */}
+                            {/* Extraction Progress Banner (Stage 1) */}
                             {extractingFileId && (
                                 <div className={styles.extractionBanner}>
                                     <div className={styles.extractionBannerContent}>
@@ -360,6 +387,22 @@ export default function StudyDetailPage() {
                                         <div>
                                             <strong>Extracting study data from PDF...</strong>
                                             <p>Reading title, abstract, authors, and more</p>
+                                        </div>
+                                    </div>
+                                    <div className={styles.extractionProgress}>
+                                        <div className={styles.extractionProgressFill} />
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Deep Analysis Progress Banner (Stage 2) */}
+                            {isDeepAnalyzing && (
+                                <div className={styles.extractionBanner}>
+                                    <div className={styles.extractionBannerContent}>
+                                        <span className={`material-icons-round ${styles.extractionBannerIcon}`}>psychology</span>
+                                        <div>
+                                            <strong>Running deep analysis...</strong>
+                                            <p>Generating AI summary, study type, keywords, and quality assessment</p>
                                         </div>
                                     </div>
                                     <div className={styles.extractionProgress}>
@@ -379,22 +422,77 @@ export default function StudyDetailPage() {
                                 </div>
                             )}
 
-                            {/* Analyze with AI prompt */}
+                            {/* Deep Analysis Error Banner */}
+                            {deepAnalysisError && !isDeepAnalyzing && (
+                                <div className={styles.extractionError}>
+                                    <span className="material-icons-round">error_outline</span>
+                                    <span>{deepAnalysisError}</span>
+                                    <button className={styles.extractionErrorDismiss} onClick={() => setDeepAnalysisError(null)}>
+                                        <span className="material-icons-round">close</span>
+                                    </button>
+                                </div>
+                            )}
+
+                            {/* Stage 1: Quick Extract prompt (only if pending and not auto-extracted) */}
                             {!extractingFileId && pdfFile && study.status === "pending" && (
                                 <div className={styles.analyzePrompt}>
                                     <span className="material-icons-round">auto_awesome</span>
                                     <div className={styles.analyzePromptText}>
-                                        <strong>PDF ready for analysis</strong>
-                                        <p>Extract title, abstract, authors, keywords, and AI summary</p>
+                                        <strong>PDF ready for extraction</strong>
+                                        <p>Extract title, authors, abstract, and reference info</p>
                                     </div>
+                                    {pdfFile.publicUrl && (
+                                        <a
+                                            href={pdfFile.publicUrl}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className={styles.analyzePromptBtn}
+                                            style={{ background: "var(--bg-tertiary)", color: "var(--text-primary)" }}
+                                        >
+                                            <span className="material-icons-round">open_in_new</span>
+                                            View PDF
+                                        </a>
+                                    )}
                                     <button
                                         className={styles.analyzePromptBtn}
                                         onClick={() => handleExtract(pdfFile.id)}
                                     >
                                         <span className="material-icons-round">psychology</span>
+                                        Extract
+                                    </button>
+                                </div>
+                            )}
+
+                            {/* Stage 2: Deep Analysis prompt (extracted but not deeply analyzed) */}
+                            {!isDeepAnalyzing && !extractingFileId && pdfFile && study.status === "extracted" && !d.deepAnalysisComplete && (
+                                <div className={styles.analyzePrompt}>
+                                    <span className="material-icons-round">psychology</span>
+                                    <div className={styles.analyzePromptText}>
+                                        <strong>Run Deep Analysis</strong>
+                                        <p>Generate AI summary, study type, keywords, and quality assessment</p>
+                                    </div>
+                                    <button
+                                        className={styles.analyzePromptBtn}
+                                        onClick={() => handleDeepAnalysis(pdfFile.id)}
+                                    >
+                                        <span className="material-icons-round">auto_awesome</span>
                                         Analyze
                                     </button>
                                 </div>
+                            )}
+
+                            {/* View PDF link (when study is already extracted) */}
+                            {pdfFile?.publicUrl && study.status !== "pending" && !extractingFileId && (
+                                <a
+                                    href={pdfFile.publicUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className={styles.pdfLink}
+                                >
+                                    <span className="material-icons-round">picture_as_pdf</span>
+                                    <span>{pdfFile.filename}</span>
+                                    <span className="material-icons-round" style={{ fontSize: 16, marginLeft: "auto" }}>open_in_new</span>
+                                </a>
                             )}
 
                             {/* Quick Info */}
@@ -480,6 +578,9 @@ export default function StudyDetailPage() {
                                             {study.quality === "-" ? "Not Assessed" : study.quality}
                                         </span>
                                     </div>
+                                )}
+                                {d.qualityRationale && (
+                                    <p className={styles.qualityRationale}>{d.qualityRationale}</p>
                                 )}
                             </section>
 

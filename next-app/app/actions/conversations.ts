@@ -25,10 +25,19 @@ function getCurrentUserContext() {
     };
 }
 
+export type MessageAttachment = {
+    fileAssetId: string;
+    filename: string;
+    mimeType: string;
+    size: number;
+    isExisting?: boolean;
+};
+
 export type ConversationMessage = {
     id: string;
     role: "user" | "assistant" | "system";
     content: string;
+    attachments?: MessageAttachment[];
     createdAt: string;
 };
 
@@ -125,6 +134,9 @@ export async function getConversation(
             id: msg.id,
             role: msg.role as "user" | "assistant" | "system",
             content: msg.content,
+            attachments: msg.attachments
+                ? (msg.attachments as unknown as MessageAttachment[])
+                : undefined,
             createdAt: msg.createdAt.toISOString(),
         })),
     };
@@ -171,8 +183,9 @@ export async function addMessage(params: {
     conversationId: string;
     role: "user" | "assistant" | "system";
     content: string;
+    attachments?: MessageAttachment[];
 }): Promise<{ id: string }> {
-    const { conversationId, role, content } = params;
+    const { conversationId, role, content, attachments } = params;
 
     // Add the message
     const message = await prisma.aIMessage.create({
@@ -180,6 +193,9 @@ export async function addMessage(params: {
             conversationId,
             role,
             content,
+            attachments: attachments && attachments.length > 0
+                ? (attachments as unknown as any)
+                : undefined,
         },
     });
 
@@ -296,6 +312,9 @@ export async function getOrCreateConversation(params: {
                 id: msg.id,
                 role: msg.role as "user" | "assistant" | "system",
                 content: msg.content,
+                attachments: msg.attachments
+                    ? (msg.attachments as unknown as MessageAttachment[])
+                    : undefined,
                 createdAt: msg.createdAt.toISOString(),
             })),
         };

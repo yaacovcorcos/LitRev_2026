@@ -2,15 +2,21 @@ import "server-only";
 
 import { PDFParse } from "pdf-parse";
 import { getAIService } from "./ai/ai-service";
-import { EXTRACTION_SYSTEM_PROMPT, buildExtractionUserPrompt } from "./pdf-extraction-prompts";
+import {
+    QUICK_EXTRACT_SYSTEM_PROMPT,
+    DEEP_ANALYSIS_SYSTEM_PROMPT,
+    buildQuickExtractPrompt,
+    buildDeepAnalysisPrompt,
+} from "./pdf-extraction-prompts";
 import { AI_CONFIG } from "@/lib/ai/config";
 import type { StudyDetails, StudyType } from "@/types/ledger";
 
 // Constants
 const MAX_PDF_SIZE_MB = 50;
 const MAX_PDF_SIZE_BYTES = MAX_PDF_SIZE_MB * 1024 * 1024;
-const MAX_TEXT_CHARS = 40000; // ~10k tokens, approximately 4 pages worth
+const MAX_TEXT_CHARS = 40000; // ~10k tokens
 const AI_TIMEOUT_MS = 30000;
+const QUICK_EXTRACT_MODEL = "gpt-5-mini";
 
 // Environment variables (server-only)
 const SUPABASE_URL = process.env.SUPABASE_URL;
@@ -27,6 +33,14 @@ export type ExtractionResult = {
     details: Partial<StudyDetails>;
     confidence: Record<string, ConfidenceLevel>;
     missingFields: string[];
+    error?: string;
+    errorCode?: ExtractionErrorCode;
+};
+
+export type DeepAnalysisResult = {
+    success: boolean;
+    details: Partial<StudyDetails>;
+    quality?: "High" | "Medium" | "Low";
     error?: string;
     errorCode?: ExtractionErrorCode;
 };
@@ -52,7 +66,7 @@ export type RegexExtractionResult = {
 /**
  * Fetch PDF from Supabase storage using storagePath + service role key
  */
-async function fetchPdfFromStorage(storagePath: string): Promise<Buffer> {
+export async function fetchPdfFromStorage(storagePath: string): Promise<Buffer> {
     if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
         throw new ExtractionError(
             "CONFIG_ERROR",
@@ -60,8 +74,6 @@ async function fetchPdfFromStorage(storagePath: string): Promise<Buffer> {
         );
     }
 
-    // storagePath format: "{bucket}/projects/{projectId}/studies/{studyId}/{uuid}-{filename}"
-    // The storagePath already includes the bucket prefix, so we use it directly
     const encodedPath = storagePath.split("/").map(encodeURIComponent).join("/");
     const url = `${SUPABASE_URL}/storage/v1/object/${encodedPath}`;
 
@@ -88,8 +100,7 @@ async function fetchPdfFromStorage(storagePath: string): Promise<Buffer> {
 /**
  * Parse PDF buffer and extract text (limited to MAX_TEXT_CHARS)
  */
-async function extractTextFromPdf(buffer: Buffer): Promise<string> {
-    // Check size limit
+export async function extractTextFromPdf(buffer: Buffer): Promise<string> {
     if (buffer.length > MAX_PDF_SIZE_BYTES) {
         throw new ExtractionError(
             "PDF_TOO_LARGE",
@@ -101,9 +112,8 @@ async function extractTextFromPdf(buffer: Buffer): Promise<string> {
     try {
         parser = new PDFParse({ data: buffer });
         const result = await parser.getText();
-        // Sanitize and limit text
         const sanitizedText = result.text
-            .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "") // Strip script tags
+            .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
             .slice(0, MAX_TEXT_CHARS);
         return sanitizedText;
     } catch (err) {
@@ -112,7 +122,6 @@ async function extractTextFromPdf(buffer: Buffer): Promise<string> {
             `Failed to parse PDF: ${err instanceof Error ? err.message : "Unknown error"}`
         );
     } finally {
-        // Clean up parser to avoid memory leaks
         if (parser) {
             await parser.destroy().catch(() => {});
         }
@@ -121,19 +130,15 @@ async function extractTextFromPdf(buffer: Buffer): Promise<string> {
 
 /**
  * Layer 1: Regex-based extraction for structured fields
- * Fast and cheap - extracts DOI, PMID, year, and attempts title/authors
  */
 export function extractWithRegex(text: string): RegexExtractionResult {
     const result: RegexExtractionResult = {};
 
-    // DOI pattern: 10.xxxx/xxxxx
     const doiMatch = text.match(/10\.\d{4,9}\/[^\s\])"']+/);
     if (doiMatch) {
-        // Clean trailing punctuation
         result.doi = doiMatch[0].replace(/[.,;:]+$/, "");
     }
 
-    // PMID patterns
     const pmidPatterns = [
         /PMID[:\s]*(\d{6,9})/i,
         /pubmed\.ncbi\.nlm\.nih\.gov\/(\d{6,9})/i,
@@ -147,8 +152,6 @@ export function extractWithRegex(text: string): RegexExtractionResult {
         }
     }
 
-    // Year extraction - look for publication year patterns
-    // Priority: explicit "published 2024", "(2024)", copyright year
     const yearPatterns = [
         /(?:published|received|accepted)[:\s]+\w+\s+(\d{1,2},?\s+)?((?:19|20)\d{2})/i,
         /©\s*((?:19|20)\d{2})/,
@@ -167,13 +170,10 @@ export function extractWithRegex(text: string): RegexExtractionResult {
         }
     }
 
-    // Title extraction - typically first substantial line before "Abstract"
     const lines = text.split(/\n/).map((l) => l.trim()).filter((l) => l.length > 10);
     const abstractIndex = lines.findIndex((l) => /^abstract/i.test(l));
     if (abstractIndex > 0 && lines[0]) {
-        // Take the first line before abstract as potential title
         const potentialTitle = lines[0];
-        // Basic validation: not too short, not all caps (likely header), reasonable length
         if (
             potentialTitle.length > 20 &&
             potentialTitle.length < 300 &&
@@ -183,18 +183,13 @@ export function extractWithRegex(text: string): RegexExtractionResult {
         }
     }
 
-    // Authors extraction - look for patterns like "Name1, Name2, and Name3"
-    // This is fragile, so we only attempt it if we have a clear pattern
     const authorPatterns = [
-        // "by Author1, Author2, Author3"
         /by\s+([A-Z][a-z]+(?:\s+[A-Z]\.?)?(?:\s+[A-Z][a-z]+)?(?:,\s+[A-Z][a-z]+(?:\s+[A-Z]\.?)?(?:\s+[A-Z][a-z]+)?)+)/,
-        // Names with affiliations marked by superscript numbers: "John Smith1, Jane Doe2"
         /^([A-Z][a-z]+(?:\s+[A-Z]\.?)?(?:\s+[A-Z][a-z]+)?\d*(?:,\s+[A-Z][a-z]+(?:\s+[A-Z]\.?)?(?:\s+[A-Z][a-z]+)?\d*)+)/m,
     ];
     for (const pattern of authorPatterns) {
         const match = text.match(pattern);
         if (match) {
-            // Clean up: remove superscript numbers, excessive whitespace
             result.authors = match[1]
                 .replace(/\d+/g, "")
                 .replace(/\s+/g, " ")
@@ -207,27 +202,41 @@ export function extractWithRegex(text: string): RegexExtractionResult {
 }
 
 /**
- * Layer 2: AI-based extraction for complex fields
- * Uses OpenAI to extract abstract, study type, keywords, and summary
+ * Helper: parse JSON from AI response (handles markdown code fences)
  */
-export async function extractWithAI(
+function parseAIJson(content: string): Record<string, unknown> | null {
+    const jsonStr = content.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "");
+    try {
+        return JSON.parse(jsonStr);
+    } catch {
+        console.error("Failed to parse AI response as JSON:", content);
+        return null;
+    }
+}
+
+/**
+ * Stage 1 AI: Quick extraction of bibliographic metadata + abstract
+ * Uses gpt-5-mini for speed and cost
+ */
+export async function quickExtractWithAI(
     text: string,
     regexResults: RegexExtractionResult,
     projectId: string
 ): Promise<{
+    title?: string;
+    authors?: string;
+    year?: number;
     details: Partial<StudyDetails>;
     confidence: Record<string, ConfidenceLevel>;
 }> {
     const aiService = getAIService();
+    const userPrompt = buildQuickExtractPrompt(text, regexResults);
 
-    const userPrompt = buildExtractionUserPrompt(text, regexResults);
-
-    // Create messages for AI
     const messages = [
         {
             id: "system-1",
             role: "system" as const,
-            content: EXTRACTION_SYSTEM_PROMPT,
+            content: QUICK_EXTRACT_SYSTEM_PROMPT,
             createdAt: new Date().toISOString(),
         },
         {
@@ -238,80 +247,53 @@ export async function extractWithAI(
         },
     ];
 
-    // Call AI with timeout
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
 
     try {
         const response = await aiService.chat(messages, {
-            model: AI_CONFIG.defaultModel,
-            temperature: 0.2, // Low temperature for more deterministic extraction
+            model: QUICK_EXTRACT_MODEL,
+            temperature: 0.2,
             maxTokens: 2000,
             projectId,
         });
 
         clearTimeout(timeoutId);
 
-        // Parse JSON response
-        const content = response.content.trim();
-        // Remove markdown code fences if present
-        const jsonStr = content.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "");
+        const parsed = parseAIJson(response.content);
+        if (!parsed) return { details: {}, confidence: {} };
 
-        let parsed: Record<string, unknown>;
-        try {
-            parsed = JSON.parse(jsonStr);
-        } catch {
-            console.error("Failed to parse AI response as JSON:", content);
-            return { details: {}, confidence: {} };
-        }
-
-        // Extract confidence scores
-        const rawConfidence = (parsed._confidence as Record<string, string>) || {};
-        const confidence: Record<string, ConfidenceLevel> = {};
-        for (const [key, value] of Object.entries(rawConfidence)) {
-            if (value === "high" || value === "medium" || value === "low") {
-                confidence[key] = value;
-            }
-        }
-
-        // Build StudyDetails
         const details: Partial<StudyDetails> = {};
 
         if (typeof parsed.abstract === "string" && parsed.abstract.length > 20) {
             details.abstract = parsed.abstract;
         }
-
-        if (typeof parsed.journal === "string") {
+        if (typeof parsed.journal === "string" && parsed.journal.length > 0) {
             details.journal = parsed.journal;
         }
-
-        if (typeof parsed.aiSummary === "string") {
-            details.aiSummary = parsed.aiSummary;
+        if (typeof parsed.volume === "string" && parsed.volume.length > 0) {
+            details.volume = parsed.volume;
+        }
+        if (typeof parsed.issue === "string" && parsed.issue.length > 0) {
+            details.issue = parsed.issue;
+        }
+        if (typeof parsed.pages === "string" && parsed.pages.length > 0) {
+            details.pages = parsed.pages;
+        }
+        if (typeof parsed.doi === "string" && parsed.doi.length > 0) {
+            details.doi = parsed.doi;
+        }
+        if (typeof parsed.pmid === "string" && parsed.pmid.length > 0) {
+            details.pmid = parsed.pmid;
         }
 
-        if (Array.isArray(parsed.keywords)) {
-            details.keywords = parsed.keywords.filter((k): k is string => typeof k === "string");
-        }
-
-        // Map studyType to our enum
-        const validStudyTypes: StudyType[] = [
-            "RCT",
-            "Cohort",
-            "Case-Control",
-            "Cross-Sectional",
-            "Case-Report",
-            "Meta-Analysis",
-            "Systematic-Review",
-            "Other",
-        ];
-        if (typeof parsed.studyType === "string") {
-            const normalized = parsed.studyType.replace(/\s+/g, "-");
-            if (validStudyTypes.includes(normalized as StudyType)) {
-                details.studyType = normalized as StudyType;
-            }
-        }
-
-        return { details, confidence };
+        return {
+            title: typeof parsed.title === "string" ? parsed.title : undefined,
+            authors: typeof parsed.authors === "string" ? parsed.authors : undefined,
+            year: typeof parsed.year === "number" && Number.isFinite(parsed.year) ? parsed.year : undefined,
+            details,
+            confidence: {},
+        };
     } catch (err) {
         clearTimeout(timeoutId);
         if (err instanceof Error && err.name === "AbortError") {
@@ -325,18 +307,112 @@ export async function extractWithAI(
 }
 
 /**
- * Main extraction orchestrator
- * Combines regex and AI extraction layers
+ * Stage 2 AI: Deep analysis — summary, study type, keywords, quality
+ * Uses the default model (gpt-5.2) for nuanced analysis
+ */
+export async function deepAnalyzeWithAI(
+    text: string,
+    existingDetails: Partial<StudyDetails> & { title?: string; authors?: string },
+    projectId: string
+): Promise<DeepAnalysisResult> {
+    const aiService = getAIService();
+    const userPrompt = buildDeepAnalysisPrompt(text, {
+        title: existingDetails.title,
+        authors: existingDetails.authors,
+        abstract: existingDetails.abstract,
+        journal: existingDetails.journal,
+    });
+
+    const messages = [
+        {
+            id: "system-1",
+            role: "system" as const,
+            content: DEEP_ANALYSIS_SYSTEM_PROMPT,
+            createdAt: new Date().toISOString(),
+        },
+        {
+            id: "user-1",
+            role: "user" as const,
+            content: userPrompt,
+            createdAt: new Date().toISOString(),
+        },
+    ];
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
+
+    try {
+        const response = await aiService.chat(messages, {
+            model: AI_CONFIG.defaultModel,
+            temperature: 0.3,
+            maxTokens: 2000,
+            projectId,
+        });
+
+        clearTimeout(timeoutId);
+
+        const parsed = parseAIJson(response.content);
+        if (!parsed) return { success: false, details: {}, error: "Failed to parse AI response" };
+
+        const details: Partial<StudyDetails> = {};
+
+        if (typeof parsed.aiSummary === "string" && parsed.aiSummary.length > 0) {
+            details.aiSummary = parsed.aiSummary;
+        }
+
+        if (Array.isArray(parsed.keywords)) {
+            details.keywords = parsed.keywords.filter((k): k is string => typeof k === "string");
+        }
+
+        if (typeof parsed.qualityRationale === "string" && parsed.qualityRationale.length > 0) {
+            details.qualityRationale = parsed.qualityRationale;
+        }
+
+        const validStudyTypes: StudyType[] = [
+            "RCT", "Cohort", "Case-Control", "Cross-Sectional",
+            "Case-Report", "Meta-Analysis", "Systematic-Review", "Other",
+        ];
+        if (typeof parsed.studyType === "string") {
+            const normalized = parsed.studyType.replace(/\s+/g, "-");
+            if (validStudyTypes.includes(normalized as StudyType)) {
+                details.studyType = normalized as StudyType;
+            }
+        }
+
+        let quality: "High" | "Medium" | "Low" | undefined;
+        if (typeof parsed.quality === "string") {
+            const q = parsed.quality;
+            if (q === "High" || q === "Medium" || q === "Low") {
+                quality = q;
+            }
+        }
+
+        details.deepAnalysisComplete = true;
+
+        return { success: true, details, quality };
+    } catch (err) {
+        clearTimeout(timeoutId);
+        if (err instanceof Error && err.name === "AbortError") {
+            return { success: false, details: {}, error: "Deep analysis timed out", errorCode: "AI_FAILED" };
+        }
+        return {
+            success: false,
+            details: {},
+            error: `Deep analysis failed: ${err instanceof Error ? err.message : "Unknown error"}`,
+            errorCode: "AI_FAILED",
+        };
+    }
+}
+
+/**
+ * Stage 1 orchestrator: Quick extraction (regex + fast AI)
  */
 export async function extractStudyFromPdf(
     storagePath: string,
     projectId: string
 ): Promise<ExtractionResult> {
     try {
-        // Step 1: Fetch PDF from storage
         const pdfBuffer = await fetchPdfFromStorage(storagePath);
-
-        // Step 2: Extract text from PDF
         const text = await extractTextFromPdf(pdfBuffer);
 
         if (!text || text.length < 100) {
@@ -344,28 +420,24 @@ export async function extractStudyFromPdf(
                 success: false,
                 details: {},
                 confidence: {},
-                missingFields: ["abstract", "studyType", "keywords"],
+                missingFields: ["abstract"],
                 error: "PDF contains insufficient text (may be scanned/image-based)",
                 errorCode: "PDF_PARSE_FAILED",
             };
         }
 
-        // Step 3: Layer 1 - Regex extraction
         const regexResults = extractWithRegex(text);
+        const aiResult = await quickExtractWithAI(text, regexResults, projectId);
 
-        // Step 4: Layer 2 - AI extraction
-        const { details: aiDetails, confidence } = await extractWithAI(text, regexResults, projectId);
-
-        // Step 5: Merge results (regex takes precedence for structured fields)
+        // Merge: regex takes precedence for DOI/PMID
         const details: Partial<StudyDetails> = {
-            ...aiDetails,
-            doi: regexResults.doi || aiDetails.doi,
-            pmid: regexResults.pmid || aiDetails.pmid,
+            ...aiResult.details,
+            doi: regexResults.doi || aiResult.details.doi,
+            pmid: regexResults.pmid || aiResult.details.pmid,
             source: "pdf-import",
         };
 
-        // Determine which fields are missing
-        const expectedFields = ["abstract", "studyType", "keywords", "doi", "journal"];
+        const expectedFields = ["abstract", "doi", "journal"];
         const missingFields = expectedFields.filter((f) => {
             const value = details[f as keyof StudyDetails];
             if (Array.isArray(value)) return value.length === 0;
@@ -374,11 +446,11 @@ export async function extractStudyFromPdf(
 
         return {
             success: true,
-            title: regexResults.title,
-            authors: regexResults.authors,
-            year: regexResults.year,
+            title: aiResult.title || regexResults.title,
+            authors: aiResult.authors || regexResults.authors,
+            year: aiResult.year || regexResults.year,
             details,
-            confidence,
+            confidence: aiResult.confidence,
             missingFields,
         };
     } catch (err) {
@@ -403,8 +475,49 @@ export async function extractStudyFromPdf(
 }
 
 /**
- * Custom error class for extraction errors
+ * Stage 2 orchestrator: Deep analysis (fetches PDF, runs deep AI)
  */
+export async function deepAnalyzeStudyFromPdf(
+    storagePath: string,
+    existingStudy: { title: string; authors: string; details?: Partial<StudyDetails> },
+    projectId: string
+): Promise<DeepAnalysisResult> {
+    try {
+        const pdfBuffer = await fetchPdfFromStorage(storagePath);
+        const text = await extractTextFromPdf(pdfBuffer);
+
+        if (!text || text.length < 100) {
+            return {
+                success: false,
+                details: {},
+                error: "PDF contains insufficient text for analysis",
+                errorCode: "PDF_PARSE_FAILED",
+            };
+        }
+
+        return deepAnalyzeWithAI(text, {
+            title: existingStudy.title,
+            authors: existingStudy.authors,
+            abstract: existingStudy.details?.abstract,
+            journal: existingStudy.details?.journal,
+        }, projectId);
+    } catch (err) {
+        if (err instanceof ExtractionError) {
+            return {
+                success: false,
+                details: {},
+                error: err.message,
+                errorCode: err.code,
+            };
+        }
+        return {
+            success: false,
+            details: {},
+            error: err instanceof Error ? err.message : "Unknown error during deep analysis",
+        };
+    }
+}
+
 class ExtractionError extends Error {
     constructor(
         public code: ExtractionErrorCode,

@@ -6,7 +6,9 @@ import { getFileAssetById } from "@/lib/server/files";
 import { getStudy, updateStudy } from "@/lib/server/ledger";
 import {
     extractStudyFromPdf,
+    deepAnalyzeStudyFromPdf,
     type ExtractionResult,
+    type DeepAnalysisResult,
     type ExtractionErrorCode,
 } from "@/lib/server/pdf-extraction";
 import type { Study, StudyDetails } from "@/types/ledger";
@@ -15,6 +17,13 @@ export type ExtractionActionResult = {
     success: boolean;
     study?: Study;
     extractionResult?: ExtractionResult;
+    error?: string;
+    errorCode?: ExtractionErrorCode | "ACCESS_DENIED" | "STUDY_NOT_FOUND" | "FILE_NOT_FOUND" | "NOT_PDF";
+};
+
+export type DeepAnalysisActionResult = {
+    success: boolean;
+    study?: Study;
     error?: string;
     errorCode?: ExtractionErrorCode | "ACCESS_DENIED" | "STUDY_NOT_FOUND" | "FILE_NOT_FOUND" | "NOT_PDF";
 };
@@ -138,6 +147,88 @@ export async function extractStudyFromPdfAction(
         };
     } finally {
         // Always release lock
+        EXTRACTION_LOCKS.delete(lockKey);
+    }
+}
+
+/**
+ * Stage 2: Deep analysis of an already-extracted study PDF.
+ * Populates aiSummary, studyType, keywords, quality, qualityRationale.
+ */
+export async function deepAnalyzeStudyAction(
+    projectId: string,
+    studyId: string,
+    fileAssetId: string
+): Promise<DeepAnalysisActionResult> {
+    const lockKey = `deep:${projectId}:${studyId}`;
+
+    if (EXTRACTION_LOCKS.has(lockKey)) {
+        return {
+            success: false,
+            error: "Deep analysis already in progress for this study",
+            errorCode: "EXTRACTION_IN_PROGRESS",
+        };
+    }
+
+    try {
+        EXTRACTION_LOCKS.add(lockKey);
+
+        await assertProjectAccess(SINGLE_USER_SCOPE, projectId);
+
+        const file = await getFileAssetById(SINGLE_USER_SCOPE, projectId, fileAssetId);
+        if (!file) {
+            return { success: false, error: "File not found", errorCode: "FILE_NOT_FOUND" };
+        }
+
+        if (file.mimeType !== "application/pdf" && file.format !== "pdf") {
+            return { success: false, error: "File is not a PDF", errorCode: "NOT_PDF" };
+        }
+
+        const existingStudy = await getStudy(SINGLE_USER_SCOPE, projectId, studyId);
+        if (!existingStudy) {
+            return { success: false, error: "Study not found", errorCode: "STUDY_NOT_FOUND" };
+        }
+
+        const result = await deepAnalyzeStudyFromPdf(
+            file.storagePath,
+            {
+                title: existingStudy.title,
+                authors: existingStudy.authors,
+                details: existingStudy.details,
+            },
+            projectId
+        );
+
+        if (!result.success) {
+            return {
+                success: false,
+                error: result.error || "Deep analysis failed",
+                errorCode: result.errorCode,
+            };
+        }
+
+        // Build updates from deep analysis result
+        const updates: { quality?: Study["quality"]; details?: Partial<StudyDetails> } = {
+            details: {
+                ...result.details,
+                deepAnalysisComplete: true,
+            },
+        };
+
+        if (result.quality) {
+            updates.quality = result.quality;
+        }
+
+        const updatedStudy = await updateStudy(SINGLE_USER_SCOPE, projectId, studyId, updates);
+
+        return { success: true, study: updatedStudy };
+    } catch (err) {
+        console.error("Deep analysis action error:", err);
+        return {
+            success: false,
+            error: err instanceof Error ? err.message : "Unknown error during deep analysis",
+        };
+    } finally {
         EXTRACTION_LOCKS.delete(lockKey);
     }
 }

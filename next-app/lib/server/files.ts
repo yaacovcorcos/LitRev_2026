@@ -254,6 +254,82 @@ export async function deleteFileAsset(
   await prisma.fileAsset.deleteMany({ where: { id: fileId, projectId } });
 }
 
+/**
+ * Upload a PDF attachment for a copilot conversation.
+ * Uploads to Supabase, creates a FileAsset with kind="attachment",
+ * and extracts text for AI injection.
+ */
+export async function uploadChatAttachment(
+  scopeInput: Partial<ServiceScope> | null | undefined,
+  projectId: string,
+  file: File
+): Promise<{ fileAsset: FileAsset; extractedText: string }> {
+  await assertProjectAccess(scopeInput, projectId);
+  validateFileServer(file);
+
+  const ext = file.name.toLowerCase().slice(file.name.lastIndexOf(".") + 1);
+  if (ext !== "pdf") {
+    throw new Error("Only PDF files can be attached to conversations.");
+  }
+
+  const safeName = sanitizeFilename(file.name);
+  const objectPath = `projects/${projectId}/conversations/${randomUUID()}-${safeName}`;
+  const { storagePath, publicUrl } = await uploadToSupabaseStorage(objectPath, file);
+
+  // Extract text from the uploaded PDF
+  const { extractTextFromPdf } = await import("./pdf-extraction");
+  const buffer = Buffer.from(await file.arrayBuffer());
+  let extractedText: string;
+  try {
+    extractedText = await extractTextFromPdf(buffer);
+  } catch {
+    extractedText = "[PDF text extraction failed]";
+  }
+
+  const created = await prisma.fileAsset.create({
+    data: {
+      projectId,
+      kind: "attachment",
+      format: ext,
+      filename: file.name,
+      mimeType: file.type || "application/pdf",
+      size: file.size,
+      storagePath,
+      publicUrl,
+      metadata: { extractedTextLength: extractedText.length },
+    },
+  });
+
+  return { fileAsset: toFileAsset(created), extractedText };
+}
+
+/**
+ * Extract text from an existing FileAsset's PDF (for referencing study PDFs in chat).
+ */
+export async function extractTextFromExistingFile(
+  scopeInput: Partial<ServiceScope> | null | undefined,
+  projectId: string,
+  fileAssetId: string
+): Promise<{ fileAsset: FileAsset; extractedText: string }> {
+  await assertProjectAccess(scopeInput, projectId);
+
+  const file = await prisma.fileAsset.findFirst({
+    where: { id: fileAssetId, projectId },
+  });
+  if (!file) {
+    throw new Error("File not found.");
+  }
+  if (file.format !== "pdf" && !file.mimeType.includes("pdf")) {
+    throw new Error("Only PDF files can be attached to conversations.");
+  }
+
+  const { fetchPdfFromStorage, extractTextFromPdf } = await import("./pdf-extraction");
+  const buffer = await fetchPdfFromStorage(file.storagePath);
+  const extractedText = await extractTextFromPdf(buffer);
+
+  return { fileAsset: toFileAsset(file), extractedText };
+}
+
 function validateFileServer(file: File): void {
   if (file.size > MAX_STUDY_FILE_SIZE) {
     throw new Error(`File too large. Maximum size is 100 MB.`);

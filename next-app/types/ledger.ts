@@ -44,8 +44,10 @@ export type StudyDetails = {
   triageNote?: string;
   triageDate?: string; // ISO date string
 
-  // AI features (future)
+  // AI features
   aiSummary?: string;
+  qualityRationale?: string;
+  deepAnalysisComplete?: boolean;
 
   // Source tracking
   source?: StudySource;

@@ -338,6 +338,13 @@
     border: 1px solid var(--glass-border);
 }
 
+.qualityRationale {
+    margin: 12px 0 0;
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--text-secondary);
+}
+
 /* Analyze Prompt */
 .analyzePrompt {
     display: flex;
@@ -391,6 +398,31 @@
 
 .analyzePromptBtn .material-icons-round {
     font-size: 16px;
+}
+
+.pdfLink {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-lg);
+    color: var(--text-primary);
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+
+.pdfLink:hover {
+    background: var(--bg-tertiary);
+}
+
+.pdfLink > .material-icons-round:first-child {
+    font-size: 20px;
+    color: #e74c3c;
 }
 
 /* Extraction Banner */

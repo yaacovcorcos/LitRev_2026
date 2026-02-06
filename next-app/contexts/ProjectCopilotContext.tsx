@@ -12,12 +12,12 @@ import {
 } from "react";
 import {
     CopilotMessage,
+    CopilotMessageAttachment,
     ProjectCopilotState,
     loadProjectCopilotState,
     saveProjectCopilotState,
     createDefaultProjectCopilotState,
 } from "@/lib/projectCopilotStorage";
-// Note: We no longer use projectCopilot actions for message storage - conversations are stored in DB
 import { buildSystemPrompt, type CopilotContext as CopilotContextType } from "@/lib/ai/prompts/copilot-prompts";
 import {
     listConversations,
@@ -29,8 +29,21 @@ import {
     type ConversationSummary,
     type ConversationWithMessages,
 } from "@/app/actions/conversations";
+import {
+    uploadChatAttachmentAction,
+    extractTextFromExistingFileAction,
+} from "@/app/actions/files";
 
 export type CopilotPage = "draft" | "protocol" | "ledger" | "study";
+
+export type PendingAttachment = {
+    fileAssetId: string;
+    filename: string;
+    size: number;
+    mimeType: string;
+    extractedText: string;
+    isExisting: boolean;
+};
 
 type ConversationListItem = {
     id: string;
@@ -82,6 +95,18 @@ type ProjectCopilotContextValue = {
     deleteConversation: (conversationId: string) => Promise<void>;
     /** Refresh conversation list */
     refreshConversations: () => Promise<void>;
+
+    // Attachment support
+    /** Currently pending attachment (uploaded but not yet sent) */
+    pendingAttachment: PendingAttachment | null;
+    /** Whether an attachment is being uploaded/processed */
+    isAttaching: boolean;
+    /** Upload a new PDF and prepare it as an attachment */
+    attachFile: (file: File) => Promise<void>;
+    /** Attach an existing study PDF by its FileAsset ID */
+    attachExistingFile: (fileAssetId: string) => Promise<void>;
+    /** Remove the pending attachment */
+    clearAttachment: () => void;
 };
 
 
@@ -104,6 +129,10 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
     const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
     const [isLoadingConversations, setIsLoadingConversations] = useState(false);
     const [showConversationList, setShowConversationList] = useState(false);
+
+    // Attachment state
+    const [pendingAttachment, setPendingAttachment] = useState<PendingAttachment | null>(null);
+    const [isAttaching, setIsAttaching] = useState(false);
 
     // Load panel state from localStorage on mount (not messages - those come from conversations)
     useEffect(() => {
@@ -356,10 +385,57 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
         }
     }, [currentConversationId, updateState]);
 
+    const attachFile = useCallback(async (file: File) => {
+        if (!projectId) return;
+        setIsAttaching(true);
+        try {
+            const formData = new FormData();
+            formData.append("file", file);
+            const result = await uploadChatAttachmentAction(projectId, formData);
+            setPendingAttachment({
+                fileAssetId: result.fileAssetId,
+                filename: result.filename,
+                size: result.size,
+                mimeType: result.mimeType,
+                extractedText: result.extractedText,
+                isExisting: false,
+            });
+        } catch (err) {
+            console.error("Failed to upload attachment:", err);
+        } finally {
+            setIsAttaching(false);
+        }
+    }, [projectId]);
+
+    const attachExistingFile = useCallback(async (fileAssetId: string) => {
+        if (!projectId) return;
+        setIsAttaching(true);
+        try {
+            const result = await extractTextFromExistingFileAction(projectId, fileAssetId);
+            setPendingAttachment({
+                fileAssetId: result.fileAssetId,
+                filename: result.filename,
+                size: result.size,
+                mimeType: result.mimeType,
+                extractedText: result.extractedText,
+                isExisting: true,
+            });
+        } catch (err) {
+            console.error("Failed to attach existing file:", err);
+        } finally {
+            setIsAttaching(false);
+        }
+    }, [projectId]);
+
+    const clearAttachment = useCallback(() => {
+        setPendingAttachment(null);
+    }, []);
+
     const sendMessage = useCallback(
         async (text: string, page: CopilotPage, section?: string, model?: string) => {
             const trimmed = text.trim();
-            if (!trimmed || isLoading) return;
+            const attachment = pendingAttachment;
+            if ((!trimmed && !attachment) || isLoading) return;
 
             // Create conversation if needed
             let convId = currentConversationId;
@@ -377,13 +453,35 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
                 }
             }
 
-            // Add user message
+            // Build attachment metadata and augmented message for AI
+            let messageForAI = trimmed;
+            let attachmentsMeta: CopilotMessageAttachment[] | undefined;
+
+            if (attachment) {
+                const sizeStr = attachment.size >= 1024 * 1024
+                    ? `${(attachment.size / (1024 * 1024)).toFixed(1)} MB`
+                    : `${Math.round(attachment.size / 1024)} KB`;
+                const userText = trimmed || "I've attached a PDF. Please review it and summarize the key points.";
+                messageForAI = `<attached_document filename="${attachment.filename}" size="${sizeStr}">\n${attachment.extractedText}\n</attached_document>\n\n${userText}`;
+                attachmentsMeta = [{
+                    fileAssetId: attachment.fileAssetId,
+                    filename: attachment.filename,
+                    size: attachment.size,
+                    mimeType: attachment.mimeType,
+                    isExisting: attachment.isExisting,
+                }];
+                setPendingAttachment(null);
+            }
+
+            // Add user message (display text only, not the augmented AI text)
+            const displayText = trimmed || (attachment ? "I've attached a PDF. Please review it and summarize the key points." : "");
             const userMessage: CopilotMessage = {
                 id: `m-${Date.now()}`,
                 sender: "user",
-                text: trimmed,
+                text: displayText,
                 createdAt: new Date().toISOString(),
                 context: { page, section },
+                attachments: attachmentsMeta,
             };
 
             updateState((prev) => ({
@@ -391,12 +489,13 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
                 messages: [...prev.messages, userMessage],
             }));
 
-            // Save user message to DB
+            // Save user message to DB (with attachment metadata)
             if (convId) {
                 addMessage({
                     conversationId: convId,
                     role: "user",
-                    content: trimmed,
+                    content: displayText,
+                    attachments: attachmentsMeta,
                 }).catch(console.error);
             }
 

@@ -8,6 +8,14 @@ const PROJECT_COPILOT_KEY_PREFIX = "litrev_project_copilot_v1";
 
 export type CopilotSender = "user" | "ai";
 
+export type CopilotMessageAttachment = {
+  fileAssetId: string;
+  filename: string;
+  size: number;
+  mimeType: string;
+  isExisting?: boolean;
+};
+
 export type CopilotMessage = {
   id: string;
   sender: CopilotSender;
@@ -18,6 +26,8 @@ export type CopilotMessage = {
     page: "draft" | "protocol" | "ledger" | "study";
     section?: string;
   };
+  /** File attachments on this message */
+  attachments?: CopilotMessageAttachment[];
 };
 
 export type ProjectCopilotPanelState = {

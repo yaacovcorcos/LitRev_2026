@@ -535,6 +535,50 @@
     font-size: 20px;
 }
 
+/* Voice recording active state */
+.actionBtnRecording {
+    color: #e53935;
+    animation: recordingPulse 1.5s ease-in-out infinite;
+}
+
+.actionBtnRecording:hover {
+    color: #c62828;
+    background: rgba(229, 57, 53, 0.08);
+}
+
+@keyframes recordingPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+/* Voice error toast */
+.voiceError {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 6px 12px;
+    margin: -4px 8px 4px;
+    background: rgba(229, 57, 53, 0.08);
+    border-radius: 8px;
+    font-size: 12px;
+    color: #c62828;
+}
+
+.voiceError button {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: #c62828;
+    padding: 2px;
+    display: flex;
+    align-items: center;
+}
+
+.voiceError button .material-icons-round {
+    font-size: 14px;
+}
+
 /* Send Button */
 .sendBtn {
     display: flex;
