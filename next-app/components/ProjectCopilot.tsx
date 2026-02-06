@@ -79,6 +79,7 @@ export function ProjectCopilot({
     const [showConversationDropdown, setShowConversationDropdown] = useState(false);
     const [conversationSearch, setConversationSearch] = useState("");
     const listRef = useRef<HTMLDivElement | null>(null);
+    const textareaRef = useRef<HTMLTextAreaElement | null>(null);
     const autoScrollRef = useRef(true);
     const modelMenuRef = useRef<HTMLDivElement | null>(null);
     const conversationDropdownRef = useRef<HTMLDivElement | null>(null);
@@ -115,6 +116,14 @@ export function ProjectCopilot({
         }
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, [showModelMenu, showConversationDropdown]);
+
+    // Auto-resize textarea when input changes (covers transcription, suggestions, etc.)
+    useEffect(() => {
+        const el = textareaRef.current;
+        if (!el) return;
+        el.style.height = "auto";
+        el.style.height = Math.min(el.scrollHeight, 200) + "px";
+    }, [input]);
 
     // Auto-scroll to bottom when new messages arrive
     useEffect(() => {
@@ -576,13 +585,9 @@ export function ProjectCopilot({
 
                 {/* Upper floor: text input */}
                 <textarea
+                    ref={textareaRef}
                     value={input}
-                    onChange={(e) => {
-                        setInput(e.target.value);
-                        // Auto-resize
-                        e.target.style.height = "auto";
-                        e.target.style.height = Math.min(e.target.scrollHeight, 200) + "px";
-                    }}
+                    onChange={(e) => setInput(e.target.value)}
                     onKeyDown={(e) => {
                         if (e.key === "Enter" && !e.shiftKey) {
                             e.preventDefault();
