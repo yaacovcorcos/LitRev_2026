@@ -44,13 +44,6 @@ export const USER_SELECTABLE_MODELS = [
         provider: "openai",
     },
     {
-        id: "gpt-5-nano",
-        name: "GPT-5 Nano",
-        description: "Ultra-cheap for bulk tasks",
-        icon: "savings",
-        provider: "openai",
-    },
-    {
         id: "claude-haiku-4-5",
         name: "Claude Haiku 4.5",
         description: "Best writing quality per dollar",

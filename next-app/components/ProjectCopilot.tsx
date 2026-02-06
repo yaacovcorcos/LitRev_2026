@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useProjectCopilot, CopilotPage } from "@/contexts/ProjectCopilotContext";
@@ -8,6 +8,8 @@ import styles from "./ProjectCopilot.module.css";
 import markdownStyles from "@/styles/markdown.module.css";
 import { USER_SELECTABLE_MODELS, type SelectableModelId } from "@/lib/ai/config";
 import { useVoiceInput } from "@/hooks/useVoiceInput";
+import { listProjectFilesAction } from "@/app/actions/files";
+import type { FileAsset } from "@/types/files";
 
 export type SuggestionConfig = {
     label: string;
@@ -57,6 +59,13 @@ export function ProjectCopilot({
         selectConversation,
         newConversation,
         deleteConversation,
+        // Attachments
+        pendingAttachment,
+        isAttaching,
+        attachFile,
+        attachExistingFile,
+        clearAttachment,
+        projectId,
     } = useProjectCopilot();
 
     const [input, setInput] = useState("");
@@ -120,13 +129,32 @@ export function ProjectCopilot({
         autoScrollRef.current = scrollTop + clientHeight >= scrollHeight - 80;
     }, []);
 
+    // Attachment state
+    const fileInputRef = useRef<HTMLInputElement | null>(null);
+    const [showAttachPicker, setShowAttachPicker] = useState(false);
+    const [projectFiles, setProjectFiles] = useState<FileAsset[]>([]);
+    const [loadingProjectFiles, setLoadingProjectFiles] = useState(false);
+    const attachPickerRef = useRef<HTMLDivElement | null>(null);
+
+    // Close attachment picker on click outside
+    useEffect(() => {
+        if (!showAttachPicker) return;
+        const handleClick = (e: MouseEvent) => {
+            if (attachPickerRef.current && !attachPickerRef.current.contains(e.target as Node)) {
+                setShowAttachPicker(false);
+            }
+        };
+        document.addEventListener("mousedown", handleClick);
+        return () => document.removeEventListener("mousedown", handleClick);
+    }, [showAttachPicker]);
+
     const handleSend = useCallback(() => {
         const text = input.trim();
-        if (!text) return;
+        if (!text && !pendingAttachment) return;
         autoScrollRef.current = true;
         sendMessage(text, page, section, selectedModel);
         setInput("");
-    }, [input, page, section, sendMessage, selectedModel]);
+    }, [input, page, section, sendMessage, selectedModel, pendingAttachment]);
 
     const handleCopy = useCallback((text: string) => {
         navigator.clipboard.writeText(text).catch(console.error);
@@ -137,10 +165,42 @@ export function ProjectCopilot({
     }, []);
 
     const handleFileAttach = useCallback(() => {
-        // TODO: Implement file attachment backend
-        // For now, just show a placeholder interaction
-        console.log("File attachment clicked - backend not implemented yet");
+        setShowAttachPicker((prev) => {
+            if (!prev && projectFiles.length === 0 && !loadingProjectFiles) {
+                // Load project files when opening picker
+                setLoadingProjectFiles(true);
+                listProjectFilesAction(projectId)
+                    .then((files) => {
+                        const pdfs = files.filter((f) => f.format === "pdf" || f.mimeType.includes("pdf"));
+                        setProjectFiles(pdfs);
+                    })
+                    .catch(console.error)
+                    .finally(() => setLoadingProjectFiles(false));
+            }
+            return !prev;
+        });
+    }, [projectId, projectFiles.length, loadingProjectFiles]);
+
+    const handleUploadNew = useCallback(() => {
+        setShowAttachPicker(false);
+        fileInputRef.current?.click();
     }, []);
+
+    const handleFileSelected = useCallback((e: ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        if (!file.name.toLowerCase().endsWith(".pdf")) {
+            return;
+        }
+        attachFile(file);
+        // Reset input so the same file can be re-selected
+        e.target.value = "";
+    }, [attachFile]);
+
+    const handleAttachExisting = useCallback((fileAssetId: string) => {
+        setShowAttachPicker(false);
+        attachExistingFile(fileAssetId);
+    }, [attachExistingFile]);
 
     const selectedModelInfo = USER_SELECTABLE_MODELS.find(m => m.id === selectedModel);
 
@@ -415,6 +475,21 @@ export function ProjectCopilot({
                                 className={`${styles.chatMsg} ${msg.sender === "ai" ? styles.chatMsgAi : styles.chatMsgUser}`}
                             >
                                 <div className={styles.chatBubble}>
+                                    {msg.attachments && msg.attachments.length > 0 && (
+                                        <div className={styles.messageAttachments}>
+                                            {msg.attachments.map((att) => (
+                                                <div key={att.fileAssetId} className={styles.messageAttachment}>
+                                                    <span className="material-icons-round" style={{ fontSize: 14 }}>description</span>
+                                                    <span className={styles.messageAttachmentName}>{att.filename}</span>
+                                                    <span className={styles.messageAttachmentSize}>
+                                                        {att.size >= 1024 * 1024
+                                                            ? `${(att.size / (1024 * 1024)).toFixed(1)} MB`
+                                                            : `${Math.round(att.size / 1024)} KB`}
+                                                    </span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
                                     {msg.sender === "ai" ? (
                                         <div className={markdownStyles.markdownContent}>
                                             <ReactMarkdown remarkPlugins={[remarkGfm]}>
@@ -460,6 +535,15 @@ export function ProjectCopilot({
                 )}
             </div>
 
+            {/* Hidden file input */}
+            <input
+                ref={fileInputRef}
+                type="file"
+                accept=".pdf"
+                style={{ display: "none" }}
+                onChange={handleFileSelected}
+            />
+
             {/* Input Area - Two-floor design */}
             <form
                 className={styles.inputBox}
@@ -468,6 +552,28 @@ export function ProjectCopilot({
                     handleSend();
                 }}
             >
+                {/* Pending attachment chip */}
+                {(pendingAttachment || isAttaching) && (
+                    <div className={styles.pendingAttachment}>
+                        <span className="material-icons-round" style={{ fontSize: 16 }}>description</span>
+                        {isAttaching ? (
+                            <span className={styles.pendingAttachmentName}>Uploading...</span>
+                        ) : pendingAttachment ? (
+                            <>
+                                <span className={styles.pendingAttachmentName}>{pendingAttachment.filename}</span>
+                                <button
+                                    type="button"
+                                    className={styles.pendingAttachmentRemove}
+                                    onClick={clearAttachment}
+                                    aria-label="Remove attachment"
+                                >
+                                    <span className="material-icons-round" style={{ fontSize: 14 }}>close</span>
+                                </button>
+                            </>
+                        ) : null}
+                    </div>
+                )}
+
                 {/* Upper floor: text input */}
                 <textarea
                     value={input}
@@ -507,61 +613,80 @@ export function ProjectCopilot({
                             </button>
                             {showModelMenu && (
                                 <div className={styles.modelDropdown} role="listbox">
-                                    {(() => {
-                                        const groups = new Map<string, typeof USER_SELECTABLE_MODELS[number][]>();
-                                        for (const model of USER_SELECTABLE_MODELS) {
-                                            const list = groups.get(model.provider) || [];
-                                            list.push(model);
-                                            groups.set(model.provider, list);
-                                        }
-                                        const providerLabels: Record<string, string> = {
-                                            openai: "OpenAI",
-                                            anthropic: "Anthropic",
-                                            xai: "xAI",
-                                        };
-                                        return Array.from(groups.entries()).map(([provider, models]) => (
-                                            <div key={provider}>
-                                                <div className={styles.modelGroupLabel}>
-                                                    {providerLabels[provider] || provider}
-                                                </div>
-                                                {models.map((model) => (
-                                                    <button
-                                                        key={model.id}
-                                                        type="button"
-                                                        className={`${styles.modelItem} ${selectedModel === model.id ? styles.modelItemActive : ""}`}
-                                                        onClick={() => {
-                                                            setSelectedModel(model.id);
-                                                            setShowModelMenu(false);
-                                                        }}
-                                                        role="option"
-                                                        aria-selected={selectedModel === model.id}
-                                                    >
-                                                        <div className={styles.modelItemInner}>
-                                                            <span className={`material-icons-round ${styles.modelItemIcon}`}>
-                                                                {model.icon}
-                                                            </span>
-                                                            <span className={styles.modelItemName}>{model.name}</span>
-                                                            <span className={styles.modelItemDesc}>{model.description}</span>
-                                                        </div>
-                                                    </button>
-                                                ))}
+                                    {USER_SELECTABLE_MODELS.map((model) => (
+                                        <button
+                                            key={model.id}
+                                            type="button"
+                                            className={`${styles.modelItem} ${selectedModel === model.id ? styles.modelItemActive : ""}`}
+                                            onClick={() => {
+                                                setSelectedModel(model.id);
+                                                setShowModelMenu(false);
+                                            }}
+                                            role="option"
+                                            aria-selected={selectedModel === model.id}
+                                        >
+                                            <div className={styles.modelItemInner}>
+                                                <span className={`material-icons-round ${styles.modelItemIcon}`}>
+                                                    {model.icon}
+                                                </span>
+                                                <span className={styles.modelItemName}>{model.name}</span>
+                                                <span className={styles.modelItemDesc}>{model.description}</span>
                                             </div>
-                                        ));
-                                    })()}
+                                        </button>
+                                    ))}
                                 </div>
                             )}
                         </div>
 
                         {/* File attachment */}
-                        <button
-                            type="button"
-                            className={styles.actionBtn}
-                            onClick={handleFileAttach}
-                            aria-label="Attach file"
-                            title="Attach file"
-                        >
-                            <span className="material-icons-round">add</span>
-                        </button>
+                        <div className={styles.attachPickerWrapper} ref={attachPickerRef}>
+                            <button
+                                type="button"
+                                className={styles.actionBtn}
+                                onClick={handleFileAttach}
+                                aria-label="Attach file"
+                                title="Attach file"
+                                disabled={isAttaching}
+                            >
+                                <span className="material-icons-round">
+                                    {isAttaching ? "hourglass_top" : "add"}
+                                </span>
+                            </button>
+                            {showAttachPicker && (
+                                <div className={styles.attachPicker}>
+                                    <button
+                                        type="button"
+                                        className={styles.attachPickerItem}
+                                        onClick={handleUploadNew}
+                                    >
+                                        <span className="material-icons-round" style={{ fontSize: 16 }}>upload_file</span>
+                                        <span>Upload PDF</span>
+                                    </button>
+                                    {projectFiles.length > 0 && (
+                                        <>
+                                            <div className={styles.attachPickerDivider} />
+                                            <div className={styles.attachPickerLabel}>From project studies</div>
+                                            {projectFiles.slice(0, 10).map((file) => (
+                                                <button
+                                                    key={file.id}
+                                                    type="button"
+                                                    className={styles.attachPickerItem}
+                                                    onClick={() => handleAttachExisting(file.id)}
+                                                >
+                                                    <span className="material-icons-round" style={{ fontSize: 16 }}>description</span>
+                                                    <span className={styles.attachPickerFileName}>
+                                                        {file.filename}
+                                                    </span>
+                                                </button>
+                                            ))}
+                                        </>
+                                    )}
+                                    {loadingProjectFiles && (
+                                        <div className={styles.attachPickerLoading}>Loading...</div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
 
                         {/* Voice input */}
                         <button
@@ -581,9 +706,9 @@ export function ProjectCopilot({
                     {/* Send button */}
                     <button
                         type="submit"
-                        className={`${styles.sendBtn} ${input.trim() ? styles.sendBtnActive : ""}`}
+                        className={`${styles.sendBtn} ${(input.trim() || pendingAttachment) ? styles.sendBtnActive : ""}`}
                         aria-label="Send"
-                        disabled={isLoading || !input.trim()}
+                        disabled={isLoading || (!input.trim() && !pendingAttachment)}
                     >
                         <span className="material-icons-round">
                             {isLoading ? "more_horiz" : "arrow_upward"}
