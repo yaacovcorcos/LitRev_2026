@@ -15,7 +15,7 @@ const MAX_PDF_SIZE_MB = 50;
 const MAX_PDF_SIZE_BYTES = MAX_PDF_SIZE_MB * 1024 * 1024;
 const MAX_TEXT_CHARS = 40000; // ~10k tokens
 const AI_TIMEOUT_MS = 30000;
-const QUICK_EXTRACT_MODEL = "gpt-5-mini";
+const QUICK_EXTRACT_MODEL = "grok-4-1-fast";
 const DEEP_ANALYSIS_MODEL = "grok-4-1-fast";
 
 // Environment variables (server-only)
