@@ -211,6 +211,13 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
                                 sender: m.role === "user" ? "user" : "ai",
                                 text: m.content,
                                 createdAt: m.createdAt,
+                                attachments: m.attachments?.map((a) => ({
+                                    fileAssetId: a.fileAssetId,
+                                    filename: a.filename,
+                                    size: a.size,
+                                    mimeType: a.mimeType,
+                                    isExisting: a.isExisting,
+                                })),
                             }));
                         setState(prev => ({
                             ...prev,
@@ -524,7 +531,7 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
-                        userMessage: trimmed,
+                        userMessage: messageForAI,
                         context: "project",
                         options: {
                             projectId,
@@ -682,7 +689,7 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
                 setIsLoading(false);
             }
         },
-        [updateState, projectId, isLoading, currentConversationId, loadConversations]
+        [updateState, projectId, isLoading, currentConversationId, loadConversations, pendingAttachment]
     );
 
     const clearMessages = useCallback(() => {
