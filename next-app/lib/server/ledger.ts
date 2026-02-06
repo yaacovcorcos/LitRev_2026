@@ -157,6 +157,16 @@ export async function deleteStudy(
   await prisma.study.deleteMany({ where: { id: studyId, projectId } });
 }
 
+export async function deleteStudies(
+  scopeInput: Partial<ServiceScope> | null | undefined,
+  projectId: string,
+  studyIds: string[]
+): Promise<void> {
+  if (!studyIds.length) return;
+  await assertProjectAccess(scopeInput, projectId);
+  await prisma.study.deleteMany({ where: { id: { in: studyIds }, projectId } });
+}
+
 /**
  * Get a single study by ID.
  */

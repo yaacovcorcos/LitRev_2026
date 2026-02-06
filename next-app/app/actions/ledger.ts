@@ -1,7 +1,7 @@
 "use server";
 
 import type { Study } from "@/types/ledger";
-import { listStudies, replaceStudies, deleteStudy, upsertStudy, getStudy, updateStudy } from "@/lib/server/ledger";
+import { listStudies, replaceStudies, deleteStudy, deleteStudies, upsertStudy, getStudy, updateStudy } from "@/lib/server/ledger";
 import { SINGLE_USER_SCOPE } from "@/lib/server/scope";
 import type { StudyInput } from "@/lib/server/ledger";
 
@@ -19,6 +19,10 @@ export async function upsertStudyAction(projectId: string, study: Study): Promis
 
 export async function deleteStudyAction(projectId: string, studyId: string): Promise<void> {
   return deleteStudy(SINGLE_USER_SCOPE, projectId, studyId);
+}
+
+export async function deleteStudiesAction(projectId: string, studyIds: string[]): Promise<void> {
+  return deleteStudies(SINGLE_USER_SCOPE, projectId, studyIds);
 }
 
 export async function getStudyAction(projectId: string, studyId: string): Promise<Study | null> {

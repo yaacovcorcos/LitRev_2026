@@ -1,8 +1,9 @@
 "use server";
 
 import type { FileAsset } from "@/types/files";
+import type { Study } from "@/types/ledger";
 import type { FileAssetInput } from "@/lib/server/files";
-import { createFileAsset, deleteFileAsset, listProjectFiles, listStudyFiles, uploadStudyFile } from "@/lib/server/files";
+import { createFileAsset, deleteFileAsset, listProjectFiles, listStudyFiles, uploadStudyFile, importStudyWithPdf } from "@/lib/server/files";
 import { SINGLE_USER_SCOPE } from "@/lib/server/scope";
 
 export async function listProjectFilesAction(projectId: string): Promise<FileAsset[]> {
@@ -31,4 +32,15 @@ export async function uploadStudyFileAction(
     throw new Error("File is required.");
   }
   return uploadStudyFile(SINGLE_USER_SCOPE, projectId, studyId, file);
+}
+
+export async function importStudyWithPdfAction(
+  projectId: string,
+  formData: FormData
+): Promise<{ study: Study; fileAsset: FileAsset }> {
+  const file = formData.get("file");
+  if (!(file instanceof File)) {
+    throw new Error("File is required.");
+  }
+  return importStudyWithPdf(SINGLE_USER_SCOPE, projectId, file);
 }

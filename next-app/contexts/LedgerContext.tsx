@@ -5,7 +5,8 @@ import { Study } from "@/types/ledger";
 import { useProjects } from "@/contexts/ProjectsContext";
 import {
   listStudiesAction,
-  replaceStudiesAction,
+  upsertStudyAction,
+  deleteStudiesAction,
   getStudyAction,
   updateStudyAction,
 } from "@/app/actions/ledger";
@@ -13,7 +14,9 @@ import type { StudyInput } from "@/lib/server/ledger";
 
 type LedgerContextValue = {
   getStudiesByProject: (projectId: string) => Study[];
-  updateStudies: (projectId: string, studies: Study[]) => Promise<Study[]>;
+  addStudy: (projectId: string, study: Study) => void;
+  removeStudies: (projectId: string, studyIds: string[]) => Promise<void>;
+  upsertNewStudy: (projectId: string, study: Study) => Promise<Study>;
   getPaperCount: (projectId: string) => number;
   getStudyById: (projectId: string, studyId: string) => Promise<Study | null>;
   updateSingleStudy: (projectId: string, studyId: string, updates: Partial<StudyInput>) => Promise<Study>;
@@ -65,15 +68,37 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
     [ledgerMap]
   );
 
-  const updateStudies = useCallback(async (projectId: string, studies: Study[]) => {
+  /** Insert a study into the local cache (study already persisted server-side). */
+  const addStudy = useCallback((projectId: string, study: Study) => {
+    setLedgerMap((prev) => ({
+      ...prev,
+      [projectId]: [...(prev[projectId] ?? []), study],
+    }));
+  }, []);
+
+  /** Delete studies server-side (single query), then refresh from the server. */
+  const removeStudies = useCallback(async (projectId: string, studyIds: string[]) => {
+    await deleteStudiesAction(projectId, studyIds);
     try {
-      const saved = await replaceStudiesAction(projectId, studies);
-      setLedgerMap((prev) => ({ ...prev, [projectId]: saved }));
-      return saved;
-    } catch (err) {
-      console.error("Failed to save studies", err);
-      throw err;
+      const refreshed = await listStudiesAction(projectId);
+      setLedgerMap((prev) => ({ ...prev, [projectId]: refreshed }));
+    } catch {
+      // At minimum remove from local cache
+      setLedgerMap((prev) => ({
+        ...prev,
+        [projectId]: (prev[projectId] ?? []).filter((s) => !studyIds.includes(s.id)),
+      }));
     }
+  }, []);
+
+  /** Create a single new study via upsert (does NOT use replaceStudies). */
+  const upsertNewStudy = useCallback(async (projectId: string, study: Study) => {
+    const saved = await upsertStudyAction(projectId, study);
+    setLedgerMap((prev) => ({
+      ...prev,
+      [projectId]: [...(prev[projectId] ?? []), saved],
+    }));
+    return saved;
   }, []);
 
   const getPaperCount = useCallback(
@@ -114,12 +139,14 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo(
     () => ({
       getStudiesByProject,
-      updateStudies,
+      addStudy,
+      removeStudies,
+      upsertNewStudy,
       getPaperCount,
       getStudyById,
       updateSingleStudy,
     }),
-    [getStudiesByProject, updateStudies, getPaperCount, getStudyById, updateSingleStudy]
+    [getStudiesByProject, addStudy, removeStudies, upsertNewStudy, getPaperCount, getStudyById, updateSingleStudy]
   );
 
   return <LedgerContext.Provider value={value}>{children}</LedgerContext.Provider>;

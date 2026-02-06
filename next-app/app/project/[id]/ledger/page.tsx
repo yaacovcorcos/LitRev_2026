@@ -11,8 +11,7 @@ import styles from "./ledger.module.css";
 import { useLedger } from "@/contexts/LedgerContext";
 import { ProjectCopilot } from "@/components/ProjectCopilot";
 import { useProjectCopilot } from "@/contexts/ProjectCopilotContext";
-import { listStudyFilesAction, deleteFileAssetAction, uploadStudyFileAction } from "@/app/actions/files";
-import { deleteStudyAction } from "@/app/actions/ledger";
+import { listStudyFilesAction, deleteFileAssetAction, uploadStudyFileAction, importStudyWithPdfAction } from "@/app/actions/files";
 import { getProtocolAction } from "@/app/actions/protocols";
 import { evaluateCriteria, type CriteriaMatchResult } from "@/lib/criteriaMatching";
 import { createDefaultProtocolData, type ProtocolData } from "@/types/protocol";
@@ -233,7 +232,7 @@ export default function LedgerPage() {
     const { id } = useParams<{ id: string }>();
     const router = useRouter();
     const { getProjectById } = useProjects();
-    const { getStudiesByProject, updateStudies, updateSingleStudy } = useLedger();
+    const { getStudiesByProject, addStudy, removeStudies, upsertNewStudy, updateSingleStudy } = useLedger();
     const { isCollapsed, panelWidth, setPanelWidth } = useProjectCopilot();
 
     const project = id ? getProjectById(id) : undefined;
@@ -437,31 +436,13 @@ export default function LedgerPage() {
             return;
         }
         setIsImporting(true);
-        let createdStudyId: string | null = null;
         try {
             const formData = new FormData();
             formData.append("file", file);
-            const baseTitle = file.name.replace(/\.[^/.]+$/, "");
-            const newEntry: Study = {
-                id: createStudyId(),
-                title: baseTitle || "Untitled Study",
-                authors: "Unknown",
-                year: new Date().getFullYear(),
-                status: "pending",
-                quality: "-",
-            };
-            await updateStudies(id, [...studies, newEntry]);
-            createdStudyId = newEntry.id;
-            await uploadStudyFileAction(id, newEntry.id, formData);
-            router.push(`/project/${id}/ledger/${newEntry.id}`);
+            const { study } = await importStudyWithPdfAction(id, formData);
+            addStudy(id, study);
+            router.push(`/project/${id}/ledger/${study.id}`);
         } catch (err) {
-            if (createdStudyId) {
-                try {
-                    await deleteStudyAction(id, createdStudyId);
-                } catch (rollbackErr) {
-                    console.error("Failed to roll back study after import failure", rollbackErr);
-                }
-            }
             setAlertMsg(err instanceof Error ? err.message : "Import failed");
         } finally {
             setIsImporting(false);
@@ -573,7 +554,7 @@ export default function LedgerPage() {
         setConfirmDialog({
             message: "Delete this study from the evidence ledger?",
             onConfirm: () => {
-                updateStudies(id, studies.filter((study) => study.id !== studyId)).catch(() => undefined);
+                removeStudies(id, [studyId]).catch(() => undefined);
                 setConfirmDialog(null);
             },
         });
@@ -584,7 +565,7 @@ export default function LedgerPage() {
         setConfirmDialog({
             message: `Delete ${validSelectedIds.length} selected studies?`,
             onConfirm: () => {
-                updateStudies(id, studies.filter((study) => !selectedSet.has(study.id))).catch(() => undefined);
+                removeStudies(id, validSelectedIds).catch(() => undefined);
                 setSelectedIds([]);
                 setConfirmDialog(null);
             },
@@ -606,7 +587,7 @@ export default function LedgerPage() {
             quality: newStudy.quality,
         };
         try {
-            await updateStudies(id, [...studies, study]);
+            await upsertNewStudy(id, study);
             setIsAdding(false);
             resetNewStudy();
         } catch (err) {
@@ -666,7 +647,7 @@ export default function LedgerPage() {
                                             status: "pending",
                                             quality: "-",
                                         };
-                                        await updateStudies(id, [...studies, newEntry]);
+                                        await upsertNewStudy(id, newEntry);
                                         router.push(`/project/${id}/ledger/${newEntry.id}`);
                                     }}>
                                         <span className="material-icons-round">add</span>

@@ -4,7 +4,13 @@ import { prisma } from "@/lib/server/prisma";
 import { assertProjectAccess } from "@/lib/server/access";
 import type { ServiceScope } from "@/lib/server/scope";
 import type { FileAsset } from "@/types/files";
+import type { Study } from "@/types/ledger";
 import { randomUUID } from "crypto";
+import {
+  MAX_STUDY_FILE_SIZE,
+  ALLOWED_STUDY_FILE_TYPES,
+  ALLOWED_STUDY_FILE_EXTENSIONS,
+} from "@/lib/fileValidation";
 
 const SUPABASE_URL = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -246,4 +252,88 @@ export async function deleteFileAsset(
   // Delete blob first; if this fails, keep the DB record so the user can retry.
   await deleteFromSupabaseStorage(existing.storagePath);
   await prisma.fileAsset.deleteMany({ where: { id: fileId, projectId } });
+}
+
+function validateFileServer(file: File): void {
+  if (file.size > MAX_STUDY_FILE_SIZE) {
+    throw new Error(`File too large. Maximum size is 100 MB.`);
+  }
+  const ext = file.name.toLowerCase().slice(file.name.lastIndexOf("."));
+  if (!ALLOWED_STUDY_FILE_EXTENSIONS.includes(ext) && !ALLOWED_STUDY_FILE_TYPES.includes(file.type)) {
+    throw new Error("Only PDF and DOCX files are allowed.");
+  }
+}
+
+/**
+ * Atomic PDF import: creates a Study + uploads the file + creates the FileAsset
+ * in a single transaction. If the DB transaction fails, the uploaded blob is
+ * cleaned up (best-effort).
+ */
+export async function importStudyWithPdf(
+  scopeInput: Partial<ServiceScope> | null | undefined,
+  projectId: string,
+  file: File
+): Promise<{ study: Study; fileAsset: FileAsset }> {
+  await assertProjectAccess(scopeInput, projectId);
+  validateFileServer(file);
+
+  const studyId = randomUUID();
+  const ext = file.name.toLowerCase().slice(file.name.lastIndexOf(".") + 1);
+  const safeName = sanitizeFilename(file.name);
+  const objectPath = `projects/${projectId}/studies/${studyId}/${randomUUID()}-${safeName}`;
+
+  // 1. Upload blob first (can't be inside a DB transaction)
+  const { storagePath, publicUrl } = await uploadToSupabaseStorage(objectPath, file);
+
+  // 2. Create Study + FileAsset in a single DB transaction
+  try {
+    const [studyRecord, fileRecord] = await prisma.$transaction(async (tx: any) => {
+      const s = await tx.study.create({
+        data: {
+          id: studyId,
+          projectId,
+          title: file.name.replace(/\.[^/.]+$/, "") || "Untitled Study",
+          authors: "Unknown",
+          year: new Date().getFullYear(),
+          status: "pending",
+          quality: "-",
+          details: { source: "pdf-import" },
+        },
+      });
+      const f = await tx.fileAsset.create({
+        data: {
+          projectId,
+          studyId,
+          kind: "source",
+          format: ext || undefined,
+          filename: file.name,
+          mimeType: file.type || "application/octet-stream",
+          size: file.size,
+          storagePath,
+          publicUrl,
+        },
+      });
+      return [s, f] as const;
+    });
+
+    const study: Study = {
+      id: studyRecord.id,
+      title: studyRecord.title,
+      authors: studyRecord.authors,
+      year: studyRecord.year,
+      status: studyRecord.status as Study["status"],
+      quality: studyRecord.quality as Study["quality"],
+      details: (studyRecord.details as Study["details"]) ?? undefined,
+    };
+
+    return { study, fileAsset: toFileAsset(fileRecord) };
+  } catch (err) {
+    // Best-effort cleanup of the uploaded blob
+    try {
+      await deleteFromSupabaseStorage(storagePath);
+    } catch {
+      // Ignore cleanup failure — blob is orphaned but DB is clean
+    }
+    throw err;
+  }
 }
