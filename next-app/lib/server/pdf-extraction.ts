@@ -8,7 +8,6 @@ import {
     buildQuickExtractPrompt,
     buildDeepAnalysisPrompt,
 } from "./pdf-extraction-prompts";
-import { AI_CONFIG } from "@/lib/ai/config";
 import type { StudyDetails, StudyType } from "@/types/ledger";
 
 // Constants
@@ -17,6 +16,7 @@ const MAX_PDF_SIZE_BYTES = MAX_PDF_SIZE_MB * 1024 * 1024;
 const MAX_TEXT_CHARS = 40000; // ~10k tokens
 const AI_TIMEOUT_MS = 30000;
 const QUICK_EXTRACT_MODEL = "gpt-5-mini";
+const DEEP_ANALYSIS_MODEL = "grok-4-1-fast";
 
 // Environment variables (server-only)
 const SUPABASE_URL = process.env.SUPABASE_URL;
@@ -343,7 +343,7 @@ export async function deepAnalyzeWithAI(
 
     try {
         const response = await aiService.chat(messages, {
-            model: AI_CONFIG.defaultModel,
+            model: DEEP_ANALYSIS_MODEL,
             temperature: 0.3,
             maxTokens: 2000,
             projectId,

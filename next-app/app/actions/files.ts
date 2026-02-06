@@ -5,8 +5,6 @@ import type { Study } from "@/types/ledger";
 import type { FileAssetInput } from "@/lib/server/files";
 import { createFileAsset, deleteFileAsset, listProjectFiles, listStudyFiles, uploadStudyFile, importStudyWithPdf, uploadChatAttachment, extractTextFromExistingFile } from "@/lib/server/files";
 import { SINGLE_USER_SCOPE } from "@/lib/server/scope";
-import { extractStudyFromPdf } from "@/lib/server/pdf-extraction";
-import { updateStudy } from "@/lib/server/ledger";
 
 export async function listProjectFilesAction(projectId: string): Promise<FileAsset[]> {
   return listProjectFiles(SINGLE_USER_SCOPE, projectId);
@@ -44,34 +42,7 @@ export async function importStudyWithPdfAction(
   if (!(file instanceof File)) {
     throw new Error("File is required.");
   }
-  const { study, fileAsset } = await importStudyWithPdf(SINGLE_USER_SCOPE, projectId, file);
-
-  // Auto-run Stage 1: quick extraction (title, authors, year, abstract, etc.)
-  // Silent failure — if extraction fails, the study still exists with filename-based title
-  try {
-    const extraction = await extractStudyFromPdf(fileAsset.storagePath, projectId);
-    if (extraction.success) {
-      const updates: Record<string, unknown> = {
-        status: "extracted",
-        details: { ...extraction.details, source: "pdf-import" },
-      };
-      if (extraction.title && study.title === "Untitled Study") {
-        updates.title = extraction.title;
-      }
-      if (extraction.authors && study.authors === "Unknown") {
-        updates.authors = extraction.authors;
-      }
-      if (extraction.year && study.year === new Date().getFullYear()) {
-        updates.year = extraction.year;
-      }
-      const updated = await updateStudy(SINGLE_USER_SCOPE, projectId, study.id, updates);
-      return { study: updated, fileAsset };
-    }
-  } catch (err) {
-    console.error("Auto Stage 1 extraction failed (non-fatal):", err);
-  }
-
-  return { study, fileAsset };
+  return importStudyWithPdf(SINGLE_USER_SCOPE, projectId, file);
 }
 
 export async function uploadChatAttachmentAction(

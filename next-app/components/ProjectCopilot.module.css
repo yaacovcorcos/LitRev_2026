@@ -772,3 +772,160 @@
         transform: scale(1);
     }
 }
+
+/* ========================================
+   ATTACHMENT STYLES
+   ======================================== */
+
+/* Pending attachment chip in the input area */
+.pendingAttachment {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    margin: 0 2px;
+    background: rgba(59, 130, 246, 0.08);
+    border-radius: 8px 8px 0 0;
+    border-bottom: 1px solid rgba(59, 130, 246, 0.1);
+    color: var(--text-secondary);
+    font-size: 12px;
+}
+
+.pendingAttachment .material-icons-round {
+    color: #3b82f6;
+}
+
+.pendingAttachmentName {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 500;
+}
+
+.pendingAttachmentRemove {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border: none;
+    background: transparent;
+    border-radius: 4px;
+    cursor: pointer;
+    color: var(--text-muted);
+    padding: 0;
+}
+
+.pendingAttachmentRemove:hover {
+    background: rgba(0, 0, 0, 0.08);
+    color: var(--text-primary);
+}
+
+/* Message attachment chips */
+.messageAttachments {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-bottom: 6px;
+}
+
+.messageAttachment {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    background: rgba(59, 130, 246, 0.08);
+    border-radius: 6px;
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+
+.messageAttachment .material-icons-round {
+    color: #3b82f6;
+}
+
+.messageAttachmentName {
+    max-width: 140px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 500;
+}
+
+.messageAttachmentSize {
+    color: var(--text-muted);
+    font-size: 10px;
+}
+
+/* Attachment picker popover */
+.attachPickerWrapper {
+    position: relative;
+}
+
+.attachPicker {
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 0;
+    width: 220px;
+    background: white;
+    border: 1px solid var(--glass-border);
+    border-radius: 10px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+    padding: 4px;
+    z-index: 100;
+}
+
+.attachPickerItem {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 8px 10px;
+    border: none;
+    background: transparent;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--text-primary);
+    text-align: left;
+}
+
+.attachPickerItem:hover {
+    background: rgba(0, 0, 0, 0.04);
+}
+
+.attachPickerItem .material-icons-round {
+    color: var(--text-muted);
+}
+
+.attachPickerDivider {
+    height: 1px;
+    background: var(--glass-border);
+    margin: 4px 0;
+}
+
+.attachPickerLabel {
+    padding: 4px 10px 2px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+}
+
+.attachPickerFileName {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.attachPickerLoading {
+    padding: 8px 10px;
+    font-size: 12px;
+    color: var(--text-muted);
+    text-align: center;
+}

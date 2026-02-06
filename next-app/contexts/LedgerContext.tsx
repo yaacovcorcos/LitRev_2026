@@ -15,6 +15,7 @@ import type { StudyInput } from "@/lib/server/ledger";
 type LedgerContextValue = {
   getStudiesByProject: (projectId: string) => Study[];
   addStudy: (projectId: string, study: Study) => void;
+  replaceStudyInCache: (projectId: string, study: Study) => void;
   removeStudies: (projectId: string, studyIds: string[]) => Promise<void>;
   upsertNewStudy: (projectId: string, study: Study) => Promise<Study>;
   getPaperCount: (projectId: string) => number;
@@ -74,6 +75,18 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
       ...prev,
       [projectId]: [...(prev[projectId] ?? []), study],
     }));
+  }, []);
+
+  /** Replace a study in the local cache (already persisted server-side). */
+  const replaceStudyInCache = useCallback((projectId: string, study: Study) => {
+    setLedgerMap((prev) => {
+      const existing = prev[projectId] ?? [];
+      const idx = existing.findIndex((s) => s.id === study.id);
+      if (idx === -1) return prev;
+      const next = [...existing];
+      next[idx] = study;
+      return { ...prev, [projectId]: next };
+    });
   }, []);
 
   /** Delete studies server-side (single query), then refresh from the server. */
@@ -140,13 +153,14 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
     () => ({
       getStudiesByProject,
       addStudy,
+      replaceStudyInCache,
       removeStudies,
       upsertNewStudy,
       getPaperCount,
       getStudyById,
       updateSingleStudy,
     }),
-    [getStudiesByProject, addStudy, removeStudies, upsertNewStudy, getPaperCount, getStudyById, updateSingleStudy]
+    [getStudiesByProject, addStudy, replaceStudyInCache, removeStudies, upsertNewStudy, getPaperCount, getStudyById, updateSingleStudy]
   );
 
   return <LedgerContext.Provider value={value}>{children}</LedgerContext.Provider>;

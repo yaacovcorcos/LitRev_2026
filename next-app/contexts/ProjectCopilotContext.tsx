@@ -107,6 +107,8 @@ type ProjectCopilotContextValue = {
     attachExistingFile: (fileAssetId: string) => Promise<void>;
     /** Remove the pending attachment */
     clearAttachment: () => void;
+    /** Project ID for the current copilot */
+    projectId: string;
 };
 
 
@@ -328,6 +330,13 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
                         text: m.content,
                         createdAt: m.createdAt,
                         context: { page: convo.page as CopilotPage },
+                        attachments: m.attachments?.map((a) => ({
+                            fileAssetId: a.fileAssetId,
+                            filename: a.filename,
+                            size: a.size,
+                            mimeType: a.mimeType,
+                            isExisting: a.isExisting,
+                        })),
                     }));
                 updateState((prev) => ({
                     ...prev,
@@ -723,6 +732,13 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             renameConversation,
             deleteConversation: deleteConversationHandler,
             refreshConversations: loadConversations,
+            // Attachment support
+            pendingAttachment,
+            isAttaching,
+            attachFile,
+            attachExistingFile,
+            clearAttachment,
+            projectId,
         }),
         [
             state,
@@ -742,6 +758,11 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             renameConversation,
             deleteConversationHandler,
             loadConversations,
+            pendingAttachment,
+            isAttaching,
+            attachFile,
+            attachExistingFile,
+            clearAttachment,
         ]
     );
 

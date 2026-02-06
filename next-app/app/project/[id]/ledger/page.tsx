@@ -12,6 +12,7 @@ import { useLedger } from "@/contexts/LedgerContext";
 import { ProjectCopilot } from "@/components/ProjectCopilot";
 import { useProjectCopilot } from "@/contexts/ProjectCopilotContext";
 import { listStudyFilesAction, deleteFileAssetAction, uploadStudyFileAction, importStudyWithPdfAction } from "@/app/actions/files";
+import { extractStudyFromPdfAction } from "@/app/actions/extraction";
 import { getProtocolAction } from "@/app/actions/protocols";
 import { evaluateCriteria, type CriteriaMatchResult } from "@/lib/criteriaMatching";
 import { createDefaultProtocolData, type ProtocolData } from "@/types/protocol";
@@ -232,7 +233,7 @@ export default function LedgerPage() {
     const { id } = useParams<{ id: string }>();
     const router = useRouter();
     const { getProjectById } = useProjects();
-    const { getStudiesByProject, addStudy, removeStudies, upsertNewStudy, updateSingleStudy } = useLedger();
+    const { getStudiesByProject, addStudy, replaceStudyInCache, removeStudies, upsertNewStudy, updateSingleStudy } = useLedger();
     const { isCollapsed, panelWidth, setPanelWidth } = useProjectCopilot();
 
     const project = id ? getProjectById(id) : undefined;
@@ -439,8 +440,17 @@ export default function LedgerPage() {
         try {
             const formData = new FormData();
             formData.append("file", file);
-            const { study } = await importStudyWithPdfAction(id, formData);
+            const { study, fileAsset } = await importStudyWithPdfAction(id, formData);
             addStudy(id, study);
+
+            // Fire Stage 1 extraction in the background (non-blocking)
+            if (fileAsset.mimeType === "application/pdf") {
+                extractStudyFromPdfAction(id, study.id, fileAsset.id).then((result) => {
+                    if (result.success && result.study) {
+                        replaceStudyInCache(id, result.study);
+                    }
+                }).catch(() => { /* silent — study exists with filename title */ });
+            }
         } catch (err) {
             setAlertMsg(err instanceof Error ? err.message : "Import failed");
         } finally {
