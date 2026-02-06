@@ -34,9 +34,10 @@ import {
     extractTextFromExistingFileAction,
 } from "@/app/actions/files";
 import { reviewArtifactAction } from "@/app/actions/agent";
+import { summarizeConversationAction } from "@/app/actions/summarize-conversation";
 import type { ArtifactData, ArtifactStatus } from "@/types/artifacts";
 
-export type CopilotPage = "draft" | "protocol" | "ledger" | "study";
+export type CopilotPage = "draft" | "protocol" | "ledger" | "study" | "overview" | "notes";
 
 export type PendingAttachment = {
     fileAssetId: string;
@@ -119,6 +120,14 @@ type ProjectCopilotContextValue = {
     artifacts: Map<string, ArtifactData>;
     /** Review an artifact (accept/reject) */
     handleReviewArtifact: (artifactId: string, status: "accepted" | "rejected", note?: string) => Promise<void>;
+
+    // Summarize & fresh
+    /** Whether the conversation is long enough to offer summarization */
+    shouldOfferSummary: boolean;
+    /** Summarize current conversation and start fresh */
+    summarizeAndRefresh: () => Promise<void>;
+    /** Whether summarization is in progress */
+    isSummarizing: boolean;
 };
 
 
@@ -149,6 +158,10 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
     // Agent run state (Phase 2)
     const [currentRunId, setCurrentRunId] = useState<string | null>(null);
     const [artifacts, setArtifacts] = useState<Map<string, ArtifactData>>(new Map());
+
+    // Summarize state
+    const [isSummarizing, setIsSummarizing] = useState(false);
+    const shouldOfferSummary = state.messages.length > 20;
 
     // Load panel state from localStorage on mount (not messages - those come from conversations)
     useEffect(() => {
@@ -819,6 +832,21 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
         }
     }, []);
 
+    const summarizeAndRefresh = useCallback(async () => {
+        if (!currentConversationId || isSummarizing) return;
+        setIsSummarizing(true);
+        try {
+            const result = await summarizeConversationAction(currentConversationId);
+            // Switch to the new conversation
+            await selectConversation(result.newConversationId);
+            await loadConversations();
+        } catch (err) {
+            console.error("Failed to summarize conversation:", err);
+        } finally {
+            setIsSummarizing(false);
+        }
+    }, [currentConversationId, isSummarizing, selectConversation, loadConversations]);
+
     const clearMessages = useCallback(() => {
         updateState((prev) => ({
             ...prev,
@@ -861,6 +889,10 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             currentRunId,
             artifacts,
             handleReviewArtifact,
+            // Summarize & fresh
+            shouldOfferSummary,
+            summarizeAndRefresh,
+            isSummarizing,
         }),
         [
             state,
@@ -888,6 +920,9 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             currentRunId,
             artifacts,
             handleReviewArtifact,
+            shouldOfferSummary,
+            summarizeAndRefresh,
+            isSummarizing,
         ]
     );
 

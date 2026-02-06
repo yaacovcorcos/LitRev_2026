@@ -8,6 +8,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useParams } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { CopilotMessage } from "@/lib/projectCopilotStorage";
@@ -31,6 +32,23 @@ import { StreamingProgress } from "./StreamingProgress";
 import styles from "../ProjectCopilot.module.css";
 import artifactStyles from "@/styles/artifacts.module.css";
 import markdownStyles from "@/styles/markdown.module.css";
+
+const ARTIFACT_JUMP_MAP: Record<string, { tab: string; label: string }> = {
+    study_proposal: { tab: "ledger", label: "View in Ledger" },
+    screening_batch: { tab: "ledger", label: "View in Ledger" },
+    criteria_card: { tab: "protocol", label: "View in Protocol" },
+    protocol_suggestion: { tab: "protocol", label: "View in Protocol" },
+    draft_diff: { tab: "draft", label: "View in Draft" },
+};
+
+function getJumpToProps(artifactType: string, projectId: string): { jumpToLink?: string; jumpToLabel?: string } {
+    const mapping = ARTIFACT_JUMP_MAP[artifactType];
+    if (!mapping) return {};
+    return {
+        jumpToLink: `/project/${projectId}/${mapping.tab}`,
+        jumpToLabel: mapping.label,
+    };
+}
 
 export type TimelineRendererProps = {
     /** Legacy message input (backward compat) */
@@ -62,6 +80,8 @@ export function TimelineRenderer({
     onReviewArtifact,
     onSaveToNotes,
 }: TimelineRendererProps) {
+    const params = useParams<{ id: string }>();
+    const projectId = params?.id;
     const listRef = useRef<HTMLDivElement | null>(null);
     const autoScrollRef = useRef(true);
     const [savedNoteId, setSavedNoteId] = useState<string | null>(null);
@@ -125,6 +145,8 @@ export function TimelineRenderer({
             onReviewArtifact?.(item.artifactId, status, note);
         };
 
+        const jumpTo = projectId ? getJumpToProps(item.artifactType, projectId) : {};
+
         const wrapperProps = {
             artifactId: item.artifactId,
             artifactType: item.artifactType,
@@ -132,6 +154,7 @@ export function TimelineRenderer({
             title: item.title,
             version: item.version,
             onReview: handleReview,
+            ...jumpTo,
         };
 
         switch (item.artifactType) {

@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
 import { useProjects } from "@/contexts/ProjectsContext";
 import { useLedger } from "@/contexts/LedgerContext";
+import { useProjectShell } from "@/contexts/ProjectShellContext";
 import Link from "next/link";
 import { BaseBackButton } from "@/components/BaseBackButton";
 import styles from "./protocol.module.css";
@@ -27,6 +28,7 @@ const RAIL_WIDTH = 44;
 function ProtocolPageContent() {
     const { id } = useParams<{ id: string }>();
     const { getProjectById } = useProjects();
+    const { isEmbeddedInProjectShell } = useProjectShell();
     const { isCollapsed, panelWidth, setPanelWidth, sendMessage, setCollapsed } = useProjectCopilot();
     const {
         protocol,
@@ -373,6 +375,16 @@ function ProtocolPageContent() {
     };
 
     if (!project) {
+        if (isEmbeddedInProjectShell) {
+            return (
+                <div className={styles.notFound}>
+                    <h1>Project not found</h1>
+                    <Link href="/" className="btn btn-primary" style={{ width: "auto", padding: "12px 24px" }}>
+                        Back to Dashboard
+                    </Link>
+                </div>
+            );
+        }
         return (
             <AppShell activeNav="projects">
                 <div className={styles.notFound}>
@@ -385,19 +397,17 @@ function ProtocolPageContent() {
         );
     }
 
-    return (
-        <AppShell activeNav="projects" mainClassName={styles.appMainOverride}>
-            <div className={styles.page}>
-                <div className={styles.body} style={computePanelVars()}>
-                    {/* Main Content */}
+    const mainContent = (
                     <div className={styles.mainContent}>
                         <div className={styles.layout}>
                             <header className={styles.header}>
                                 <div className={styles.headerText}>
+                                    {!isEmbeddedInProjectShell && (
                                     <div style={{ display: "flex", alignItems: "center" }}>
                                         <BaseBackButton href={`/project/${project.id}`} />
                                         <span className={styles.eyebrow}>Study Protocol</span>
                                     </div>
+                                    )}
                                     <h1>{project.name}</h1>
                                 </div>
                                 <div className={styles.headerActions}>
@@ -756,6 +766,18 @@ function ProtocolPageContent() {
                             </div>
                         </div>
                     </div>
+    );
+
+    // Embedded in project shell: content only, no AppShell/copilot
+    if (isEmbeddedInProjectShell) {
+        return <div className={styles.page}>{mainContent}</div>;
+    }
+
+    return (
+        <AppShell activeNav="projects" mainClassName={styles.appMainOverride}>
+            <div className={styles.page}>
+                <div className={styles.body} style={computePanelVars()}>
+                    {mainContent}
 
                     {/* Resize Handle */}
                     <div

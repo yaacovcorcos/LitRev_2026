@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { AppShell } from "@/components/AppShell";
 import { useProjects } from "@/contexts/ProjectsContext";
+import { useProjectShell } from "@/contexts/ProjectShellContext";
 import { BaseBackButton } from "@/components/BaseBackButton";
 import { StudyFilesPanel } from "@/components/StudyFilesPanel";
 import styles from "./ledger.module.css";
@@ -233,6 +234,7 @@ export default function LedgerPage() {
     const { id } = useParams<{ id: string }>();
     const router = useRouter();
     const { getProjectById } = useProjects();
+    const { isEmbeddedInProjectShell } = useProjectShell();
     const { getStudiesByProject, addStudy, replaceStudyInCache, removeStudies, upsertNewStudy, updateSingleStudy } = useLedger();
     const { isCollapsed, panelWidth, setPanelWidth } = useProjectCopilot();
 
@@ -609,31 +611,28 @@ export default function LedgerPage() {
     };
 
     if (!project) {
-        return (
-            <AppShell activeNav="projects">
-                <div className={styles.notFound}>
-                    <h1>Project not found</h1>
-                    <Link href="/" className="btn-minimal" style={{ width: "auto", padding: "12px 24px" }}>
-                        Back to Dashboard
-                    </Link>
-                </div>
-            </AppShell>
+        const notFoundContent = (
+            <div className={styles.notFound}>
+                <h1>Project not found</h1>
+                <Link href="/" className="btn-minimal" style={{ width: "auto", padding: "12px 24px" }}>
+                    Back to Dashboard
+                </Link>
+            </div>
         );
+        if (isEmbeddedInProjectShell) return notFoundContent;
+        return <AppShell activeNav="projects">{notFoundContent}</AppShell>;
     }
 
-    return (
-        <AppShell activeNav="projects" mainClassName={styles.appMainOverride}>
-            <div className={styles.page}>
-                <div className={styles.body} style={computePanelVars()}>
-                    {/* Main Content */}
-                    <div className={styles.mainContent}>
-                        <div className={styles.layout}>
-                            <header className={styles.header}>
-                                <div className={styles.headerText}>
-                                    <div style={{ display: "flex", alignItems: "center" }}>
-                                        <BaseBackButton href={`/project/${project.id}`} />
-                                        <span className={styles.eyebrow}>Evidence Ledger</span>
-                                    </div>
+    const mainContent = (
+        <div className={styles.layout}>
+            <header className={styles.header}>
+                <div className={styles.headerText}>
+                    {!isEmbeddedInProjectShell && (
+                        <div style={{ display: "flex", alignItems: "center" }}>
+                            <BaseBackButton href={`/project/${project.id}`} />
+                            <span className={styles.eyebrow}>Evidence Ledger</span>
+                        </div>
+                    )}
                                     <h1>{project.name}</h1>
                                 </div>
                                 <div className={styles.headerActions}>
@@ -896,7 +895,64 @@ export default function LedgerPage() {
                                     </tbody>
                                 </table>
                             </div>
-                        </div>
+        </div>
+    );
+
+    const filesPopup = selectedStudy ? (
+        <>
+            <div className={styles.filesPopupBackdrop} onClick={handleCloseStudyFiles} />
+            <div className={styles.filesPopup}>
+                <StudyFilesPanel
+                    projectId={id}
+                    studyId={selectedStudy.id}
+                    studyTitle={selectedStudy.title}
+                    files={studyFiles}
+                    onUpload={handleUploadFile}
+                    onDelete={handleDeleteFile}
+                    onClose={handleCloseStudyFiles}
+                />
+            </div>
+        </>
+    ) : null;
+
+    const dialogs = (
+        <>
+            <AlertDialog
+                isOpen={alertMsg !== null}
+                title="Notice"
+                message={alertMsg ?? ""}
+                onClose={() => setAlertMsg(null)}
+            />
+            <ConfirmDialog
+                isOpen={confirmDialog !== null}
+                title="Confirm"
+                message={confirmDialog?.message ?? ""}
+                variant="danger"
+                confirmLabel="Delete"
+                onConfirm={() => confirmDialog?.onConfirm()}
+                onCancel={() => setConfirmDialog(null)}
+            />
+        </>
+    );
+
+    if (isEmbeddedInProjectShell) {
+        return (
+            <div className={styles.page}>
+                <div className={styles.mainContent}>
+                    {mainContent}
+                </div>
+                {filesPopup}
+                {dialogs}
+            </div>
+        );
+    }
+
+    return (
+        <AppShell activeNav="projects" mainClassName={styles.appMainOverride}>
+            <div className={styles.page}>
+                <div className={styles.body} style={computePanelVars()}>
+                    <div className={styles.mainContent}>
+                        {mainContent}
                     </div>
 
                     {/* Resize Handle */}
@@ -930,41 +986,9 @@ export default function LedgerPage() {
                     />
                 </div>
 
-                {/* Study Files Popup */}
-                {selectedStudy && (
-                    <>
-                        <div className={styles.filesPopupBackdrop} onClick={handleCloseStudyFiles} />
-                        <div className={styles.filesPopup}>
-                            <StudyFilesPanel
-                                projectId={id}
-                                studyId={selectedStudy.id}
-                                studyTitle={selectedStudy.title}
-                                files={studyFiles}
-                                onUpload={handleUploadFile}
-                                onDelete={handleDeleteFile}
-                                onClose={handleCloseStudyFiles}
-                            />
-                        </div>
-                    </>
-                )}
+                {filesPopup}
+                {dialogs}
             </div>
-
-            {/* Dialogs */}
-            <AlertDialog
-                isOpen={alertMsg !== null}
-                title="Notice"
-                message={alertMsg ?? ""}
-                onClose={() => setAlertMsg(null)}
-            />
-            <ConfirmDialog
-                isOpen={confirmDialog !== null}
-                title="Confirm"
-                message={confirmDialog?.message ?? ""}
-                variant="danger"
-                confirmLabel="Delete"
-                onConfirm={() => confirmDialog?.onConfirm()}
-                onCancel={() => setConfirmDialog(null)}
-            />
         </AppShell>
     );
 }

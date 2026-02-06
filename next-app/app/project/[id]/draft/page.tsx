@@ -19,6 +19,7 @@ import { useProjects } from "@/contexts/ProjectsContext";
 import { useLedger } from "@/contexts/LedgerContext";
 import { ProjectCopilot } from "@/components/ProjectCopilot";
 import { useProjectCopilot } from "@/contexts/ProjectCopilotContext";
+import { useProjectShell } from "@/contexts/ProjectShellContext";
 import type { Study } from "@/types/ledger";
 import { DRAFT_SECTIONS, OPTIONAL_SECTION_KEYS, DraftMode, DraftSectionId, DraftSectionKey } from "@/types/draft";
 import {
@@ -301,6 +302,7 @@ function DraftContent() {
   const project = getProjectById(id);
   const studies = useMemo(() => (id ? getStudiesByProject(id) : []), [id, getStudiesByProject]);
   const { isCollapsed: copilotCollapsed, panelWidth: copilotPanelWidth, setPanelWidth: setCopilotPanelWidth, setCollapsed: setCopilotCollapsed } = useProjectCopilot();
+  const { isEmbeddedInProjectShell } = useProjectShell();
 
   const queryMode = searchParams.get("mode");
   const querySection = searchParams.get("section");
@@ -1270,12 +1272,18 @@ function DraftContent() {
   const layoutVars = useMemo(() => {
     const rail = 48;
     const ledger = draft.panels.ledgerCollapsed ? rail : clamp(draft.panels.ledgerWidth, 260, 520);
+    if (isEmbeddedInProjectShell) {
+      return {
+        "--ledger-width": `${ledger}px`,
+        gridTemplateColumns: `${ledger}px 1px 1fr`,
+      } as CSSProperties;
+    }
     const copilot = copilotCollapsed ? rail : clamp(copilotPanelWidth, 300, 560);
     return {
       "--ledger-width": `${ledger}px`,
       "--copilot-width": `${copilot}px`,
     } as CSSProperties;
-  }, [draft.panels, copilotCollapsed, copilotPanelWidth]);
+  }, [draft.panels, copilotCollapsed, copilotPanelWidth, isEmbeddedInProjectShell]);
 
   const dragStateRef = useRef<
     | { side: "ledger"; startX: number; startWidth: number }
@@ -1319,29 +1327,31 @@ function DraftContent() {
   }, [updateDraft]);
 
   if (!project) {
-    return (
-      <AppShell activeNav="projects">
-        <div className={styles.notFound}>
-          <h1>Project not found</h1>
-          <Link href="/" className="header-btn header-btn-primary">
-            Back to Dashboard
-          </Link>
-        </div>
-      </AppShell>
+    const notFoundContent = (
+      <div className={styles.notFound}>
+        <h1>Project not found</h1>
+        <Link href="/" className="header-btn header-btn-primary">
+          Back to Dashboard
+        </Link>
+      </div>
     );
+    if (isEmbeddedInProjectShell) return notFoundContent;
+    return <AppShell activeNav="projects">{notFoundContent}</AppShell>;
   }
 
   const copilotMessages = draft.copilotBySection[draft.activeSection] ?? [];
 
-  return (
-    <AppShell activeNav="projects" noMainPadding initiallyCollapsed mainClassName={styles.appMainOverride}>
+  const pageContent = (
+    <>
       <div className={styles.page}>
         <div className={styles.top}>
           <div className={styles.topLeft}>
-            <Link href={`/project/${project.id}`} className={styles.backLink}>
-              <span className="material-icons-round">arrow_back</span>
-              Project
-            </Link>
+            {!isEmbeddedInProjectShell && (
+              <Link href={`/project/${project.id}`} className={styles.backLink}>
+                <span className="material-icons-round">arrow_back</span>
+                Project
+              </Link>
+            )}
             <div className={styles.projectName} title={project.name}>
               {project.name}
             </div>
@@ -1601,7 +1611,7 @@ function DraftContent() {
           <section className={styles.center} aria-label="Draft editor">
             <div className={styles.centerHeader}>
               <div className={styles.centerTitle}>
-                <BaseBackButton href={`/project/${id}`} className={styles.draftBackBtn} />
+                {!isEmbeddedInProjectShell && <BaseBackButton href={`/project/${id}`} className={styles.draftBackBtn} />}
                 <span className="material-icons-round">edit</span>
                 {activeSectionLabel}
               </div>
@@ -1768,32 +1778,36 @@ function DraftContent() {
             )}
           </section>
 
-          <div
-            className={`${styles.resizeHandle} ${copilotCollapsed ? styles.resizeHandleHidden : ""}`}
-            role="separator"
-            aria-label="Resize copilot panel"
-            aria-hidden={copilotCollapsed}
-            onPointerDown={(e) => {
-              if (copilotCollapsed) return;
-              dragStateRef.current = {
-                side: "copilot",
-                startX: e.clientX,
-                startWidth: clamp(copilotPanelWidth, 300, 560),
-              };
-              document.body.style.userSelect = "none";
-              document.body.style.cursor = "col-resize";
-            }}
-          />
+          {!isEmbeddedInProjectShell && (
+            <>
+              <div
+                className={`${styles.resizeHandle} ${copilotCollapsed ? styles.resizeHandleHidden : ""}`}
+                role="separator"
+                aria-label="Resize copilot panel"
+                aria-hidden={copilotCollapsed}
+                onPointerDown={(e) => {
+                  if (copilotCollapsed) return;
+                  dragStateRef.current = {
+                    side: "copilot",
+                    startX: e.clientX,
+                    startWidth: clamp(copilotPanelWidth, 300, 560),
+                  };
+                  document.body.style.userSelect = "none";
+                  document.body.style.cursor = "col-resize";
+                }}
+              />
 
-          <ProjectCopilot
-            page="draft"
-            section={draft.activeSection}
-            contextDisplay={`${activeSectionLabel} · ${usedEvidence.length} evidence`}
-            emptyState={copilotEmptyState}
-            inputPlaceholder={`Ask about ${activeSectionLabel}…`}
-            onInsert={insertCopilotText}
-            panelId={copilotPanelId}
-          />
+              <ProjectCopilot
+                page="draft"
+                section={draft.activeSection}
+                contextDisplay={`${activeSectionLabel} · ${usedEvidence.length} evidence`}
+                emptyState={copilotEmptyState}
+                inputPlaceholder={`Ask about ${activeSectionLabel}…`}
+                onInsert={insertCopilotText}
+                panelId={copilotPanelId}
+              />
+            </>
+          )}
         </div>
       </div>
 
@@ -1815,6 +1829,14 @@ function DraftContent() {
         exportHistory={exportHistory}
         onDeleteExport={handleDeleteExport}
       />
+    </>
+  );
+
+  if (isEmbeddedInProjectShell) return pageContent;
+
+  return (
+    <AppShell activeNav="projects" noMainPadding initiallyCollapsed mainClassName={styles.appMainOverride}>
+      {pageContent}
     </AppShell>
   );
 }

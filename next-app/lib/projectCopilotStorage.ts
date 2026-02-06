@@ -23,7 +23,7 @@ export type CopilotMessage = {
   createdAt: string;
   /** Optional context about where this message was sent from */
   context?: {
-    page: "draft" | "protocol" | "ledger" | "study";
+    page: "draft" | "protocol" | "ledger" | "study" | "overview" | "notes";
     section?: string;
   };
   /** File attachments on this message */

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import type { ArtifactType, ArtifactStatus } from "@/types/artifacts";
 import styles from "@/styles/artifacts.module.css";
 
@@ -47,6 +48,22 @@ export function ArtifactWrapper({
     const isTerminal = status === "accepted" || status === "rejected" || status === "auto_applied" || status === "collapsed";
     const [isCollapsed, setIsCollapsed] = useState(isTerminal);
     const [showProvenance, setShowProvenance] = useState(false);
+    const prevStatusRef = useRef(status);
+
+    // Auto-collapse when status transitions to accepted/auto_applied
+    useEffect(() => {
+        if (prevStatusRef.current === status) return;
+        prevStatusRef.current = status;
+
+        if (status === "auto_applied") {
+            setIsCollapsed(true);
+            return;
+        }
+        if (status === "accepted") {
+            const timer = setTimeout(() => setIsCollapsed(true), 2000);
+            return () => clearTimeout(timer);
+        }
+    }, [status]);
 
     const cardClass = [
         styles.artifactCard,
@@ -74,9 +91,9 @@ export function ArtifactWrapper({
                     )}
                     <span className={styles.summaryText}>{summaryText}</span>
                     {jumpToLink && jumpToLabel && (
-                        <a href={jumpToLink} className={styles.jumpToLink}>
+                        <Link href={jumpToLink} className={styles.jumpToLink}>
                             {jumpToLabel} &rarr;
-                        </a>
+                        </Link>
                     )}
                     <button
                         type="button"
@@ -97,16 +114,14 @@ export function ArtifactWrapper({
             <div className={styles.cardHeader}>
                 <span className={styles.cardTitle}>{title}</span>
                 <span className={statusBadgeClass}>{STATUS_LABELS[status] || status}</span>
-                {isTerminal && (
-                    <button
-                        type="button"
-                        className={`${styles.collapseToggle} ${!isCollapsed ? styles.collapseToggleExpanded : ""}`}
-                        onClick={() => setIsCollapsed(!isCollapsed)}
-                        aria-label={isCollapsed ? "Expand" : "Collapse"}
-                    >
-                        <span className="material-icons-round">expand_more</span>
-                    </button>
-                )}
+                <button
+                    type="button"
+                    className={`${styles.collapseToggle} ${!isCollapsed ? styles.collapseToggleExpanded : ""}`}
+                    onClick={() => setIsCollapsed(!isCollapsed)}
+                    aria-label={isCollapsed ? "Expand" : "Collapse"}
+                >
+                    <span className="material-icons-round">expand_more</span>
+                </button>
             </div>
 
             <div className={`${styles.cardBody} ${isCollapsed ? styles.cardBodyCollapsed : ""}`}>

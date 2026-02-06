@@ -1,0 +1,59 @@
+.chips {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px 4px;
+    flex-shrink: 0;
+}
+
+.chipRow {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    flex: 1;
+}
+
+.chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 6px 14px;
+    border: 1px solid var(--glass-border);
+    border-radius: 20px;
+    background: var(--glass-bg);
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+}
+
+.chip:hover {
+    background: rgba(217, 116, 89, 0.08);
+    border-color: var(--accent-primary);
+    color: var(--accent-primary);
+}
+
+.dismissBtn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border: none;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: all 0.15s;
+}
+
+.dismissBtn:hover {
+    background: rgba(0, 0, 0, 0.06);
+    color: var(--text-secondary);
+}
+
+.dismissBtn .material-icons-round {
+    font-size: 16px;
+}

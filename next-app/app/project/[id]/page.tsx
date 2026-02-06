@@ -6,6 +6,7 @@ import { AppShell } from "@/components/AppShell";
 import { Modal } from "@/components/Modal";
 import { TopBar } from "@/components/TopBar";
 import { useProjects } from "@/contexts/ProjectsContext";
+import { useProjectShell } from "@/contexts/ProjectShellContext";
 import Link from "next/link";
 import styles from "./project-workspace.module.css";
 import { Project } from "@/types/project";
@@ -89,6 +90,7 @@ export default function ProjectDetail() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const { getProjectById, deleteProject } = useProjects();
+  const { isEmbeddedInProjectShell } = useProjectShell();
   const project = id ? getProjectById(id) : undefined;
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const closeDeleteModal = useCallback(() => setIsDeleteOpen(false), []);
@@ -104,6 +106,16 @@ export default function ProjectDetail() {
   }, [project]);
 
   if (!project) {
+    if (isEmbeddedInProjectShell) {
+      return (
+        <div className={styles.notFound}>
+          <h1>Project not found</h1>
+          <Link href="/" className="btn btn-primary" style={{ width: "auto", padding: "12px 24px" }}>
+            Back to Dashboard
+          </Link>
+        </div>
+      );
+    }
     return (
       <AppShell activeNav="projects">
         <div className={styles.notFound}>
@@ -116,9 +128,8 @@ export default function ProjectDetail() {
     );
   }
 
-  return (
-    <AppShell activeNav="projects">
-      <div className={styles.overviewLayout}>
+  const contentJSX = (
+    <div className={styles.overviewLayout} style={isEmbeddedInProjectShell ? { padding: "24px" } : undefined}>
         <TopBar
           title={project.name}
           subtitle={project.description || "No description provided."}
@@ -220,7 +231,9 @@ export default function ProjectDetail() {
           </div>
         </section>
       </div>
+  );
 
+  const deleteModal = (
       <Modal isOpen={isDeleteOpen} onClose={closeDeleteModal} ariaLabelledBy="deleteProjectTitle">
         <div className="modal-header">
           <h2 id="deleteProjectTitle">Delete project</h2>
@@ -251,6 +264,21 @@ export default function ProjectDetail() {
           </button>
         </div>
       </Modal>
+  );
+
+  if (isEmbeddedInProjectShell) {
+    return (
+      <>
+        {contentJSX}
+        {deleteModal}
+      </>
+    );
+  }
+
+  return (
+    <AppShell activeNav="projects">
+      {contentJSX}
+      {deleteModal}
     </AppShell>
   );
 }

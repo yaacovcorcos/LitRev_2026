@@ -1,0 +1,52 @@
+/* Project Shell Layout — Phase 3 */
+
+.shellMain {
+    /* Override AppShell's main padding */
+    padding: 0 !important;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+}
+
+/* Conversation-centric mode: full-width chat */
+.conversationBody {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+}
+
+/* View mode: workspace content + copilot side panel */
+.viewBody {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 1fr 1px var(--copilot-width, 360px);
+    overflow: hidden;
+}
+
+.viewContent {
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+.resizeHandle {
+    width: 1px;
+    background: var(--glass-border);
+    cursor: col-resize;
+    position: relative;
+    z-index: 2;
+    transition: background 0.15s;
+}
+
+.resizeHandle:hover,
+.resizeHandle:active {
+    background: var(--accent-primary);
+    width: 3px;
+    margin-left: -1px;
+}
+
+.resizeHandleHidden {
+    cursor: default;
+    pointer-events: none;
+    width: 0;
+}
