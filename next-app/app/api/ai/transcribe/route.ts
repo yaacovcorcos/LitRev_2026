@@ -22,8 +22,8 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        const language = formData.get("language") as string | undefined;
-        const prompt = formData.get("prompt") as string | undefined;
+        const language = (formData.get("language") as string) || undefined;
+        const prompt = (formData.get("prompt") as string) || undefined;
 
         const result = await transcribeAudio(audioFile, { language, prompt });
 

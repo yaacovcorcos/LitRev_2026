@@ -20,14 +20,20 @@ function HomeContent() {
   const { projects, addProject, refresh } = useProjects();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [sortMode, setSortMode] = useState<SortMode>(() => {
-    const stored = loadSortPreference();
-    return VALID_SORTS.includes(stored as SortMode) ? (stored as SortMode) : "modified";
-  });
-  const [viewMode, setViewMode] = useState<ViewMode>(() => {
-    const stored = loadViewPreference();
-    return VALID_VIEWS.includes(stored as ViewMode) ? (stored as ViewMode) : "grid";
-  });
+  const [sortMode, setSortMode] = useState<SortMode>("modified");
+  const [viewMode, setViewMode] = useState<ViewMode>("grid");
+
+  // Sync from localStorage after hydration to avoid SSR mismatch
+  useEffect(() => {
+    const storedSort = loadSortPreference();
+    if (storedSort && VALID_SORTS.includes(storedSort as SortMode)) {
+      setSortMode(storedSort as SortMode);
+    }
+    const storedView = loadViewPreference();
+    if (storedView && VALID_VIEWS.includes(storedView as ViewMode)) {
+      setViewMode(storedView as ViewMode);
+    }
+  }, []);
   const shouldOpenFromQuery = searchParams.get("create") === "new";
   const [isModalOpen, setModalOpen] = useState(() => shouldOpenFromQuery);
   const formRef = useRef<HTMLFormElement | null>(null);

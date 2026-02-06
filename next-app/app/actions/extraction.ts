@@ -100,7 +100,7 @@ export async function extractStudyFromPdfAction(
             };
         }
 
-        // Prepare updates - merge extracted data with existing
+        // Prepare updates - always prefer AI-extracted data over filename defaults
         const updates: {
             title?: string;
             authors?: string;
@@ -115,14 +115,13 @@ export async function extractStudyFromPdfAction(
             },
         };
 
-        // Only update top-level fields if extracted and not already set
-        if (extractionResult.title && existingStudy.title === "Untitled Study") {
+        if (extractionResult.title) {
             updates.title = extractionResult.title;
         }
-        if (extractionResult.authors && existingStudy.authors === "Unknown") {
+        if (extractionResult.authors) {
             updates.authors = extractionResult.authors;
         }
-        if (extractionResult.year && existingStudy.year === new Date().getFullYear()) {
+        if (extractionResult.year) {
             updates.year = extractionResult.year;
         }
 

@@ -35,8 +35,8 @@ export async function transcribeAudio(
         file: audioFile,
         model: "whisper-large-v3-turbo",
         response_format: "json",
-        language: options?.language,
-        prompt: options?.prompt,
+        ...(options?.language ? { language: options.language } : {}),
+        ...(options?.prompt ? { prompt: options.prompt } : {}),
     });
 
     return { text: transcription.text };

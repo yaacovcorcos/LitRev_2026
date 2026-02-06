@@ -448,8 +448,12 @@ export default function LedgerPage() {
                 extractStudyFromPdfAction(id, study.id, fileAsset.id).then((result) => {
                     if (result.success && result.study) {
                         replaceStudyInCache(id, result.study);
+                    } else if (result.error) {
+                        console.error("Background extraction failed:", result.error);
                     }
-                }).catch(() => { /* silent — study exists with filename title */ });
+                }).catch((err) => {
+                    console.error("Background extraction error:", err);
+                });
             }
         } catch (err) {
             setAlertMsg(err instanceof Error ? err.message : "Import failed");
