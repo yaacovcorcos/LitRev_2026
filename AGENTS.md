@@ -40,6 +40,18 @@ All run from `next-app/` except deploy:
 - `components/` — Reusable client components
 - `app/project/[id]/` — Route-level pages and co-located components
 
+## Open-Source Code Adaptation
+
+planC references ~12 open-source codebases to steal patterns from. When working with any of them:
+- **Never copy-paste verbatim.** Rewrite every snippet to match our stack, naming, and file layout.
+- **Strip foreign abstractions.** Extract the idea, not their framework-specific implementation.
+- **Respect our design system.** All UI must use our CSS tokens (`tokens.css`), not imported styles.
+- **Check licenses.** MIT/Apache 2.0 are fine. Be cautious with AGPL or source-available licenses.
+- **Take only what's needed.** Don't port entire modules when we need one pattern.
+- **Test after every adaptation.** Must pass `npx tsc --noEmit` and `npx vitest run` before moving on.
+
+See the full adaptation rules in the "Reference Codebases" section of `planC`.
+
 ## Other
 
 - When completing or changing any task in planB, update `planB` immediately so the plan stays current.

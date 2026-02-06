@@ -87,9 +87,344 @@ Phase 9 — Files + Exports (optional)
   - Duplicates: allow (no warning yet).
   - Metadata: manual only for now (no auto-extract).
 
-Phase 10 — Multi-user enablement (when ready)
-- Add auth provider.
-- Replace placeholder ID with real userId/workspaceId.
-- Enforce ownership in all queries.
-- Outcome: multi-user without schema rewrite.
-- Report: Codex quality/architecture report written to codex-quality-report.md (2026-02-02).
+Phase 10 — Authentication & Multi-User Enablement
+================================================================================
+
+Decisions:
+- Provider: Auth.js v5 (next-auth@5) + @auth/prisma-adapter
+- Sessions: Database sessions in PostgreSQL (not JWT-only) — instant revocation, works on serverless
+- Login methods: Google OAuth (primary button) + Email magic link via Resend (secondary, expandable)
+- Multi-tenant: Single workspace per user at launch, auto-created on signup. Schema already supports multi-workspace for later.
+- Roles: owner/viewer only at launch. WorkspaceMember.role field supports more values later.
+- Future SSO: ORCID (OAuth2, easy add), Institutional SAML via BoxyHQ SAML Jackson when needed
+- Core principle: ServiceScope remains the internal contract — just populate from real session instead of SINGLE_USER_SCOPE
+
+Status:
+- [ ] Phase 10.1 — Foundation
+- [ ] Phase 10.2 — Core auth infrastructure
+- [ ] Phase 10.3 — Login page + SessionProvider
+- [ ] Phase 10.4 — Middleware (route protection)
+- [ ] Phase 10.5 — Server action migration
+- [ ] Phase 10.6 — API routes + rate limiter
+- [ ] Phase 10.7 — Polish + cleanup
+
+------------------------------------------------------------------------
+Phase 10.1 — Foundation (no behavioral changes)
+------------------------------------------------------------------------
+
+Install packages:
+  cd next-app && npm install next-auth@5 @auth/prisma-adapter
+
+Prisma schema changes (next-app/prisma/schema.prisma):
+  Modify User model — add fields Auth.js requires:
+    - emailVerified DateTime?
+    - image         String?
+    - accounts      Account[]   (new relation)
+    - sessions      Session[]   (new relation)
+
+  Add 3 new models:
+    - Account (OAuth provider links — provider, providerAccountId, tokens)
+      - @@unique([provider, providerAccountId])
+    - Session (DB sessions — sessionToken @unique, userId, expires)
+    - VerificationToken (magic link tokens — identifier, token, expires)
+      - @@unique([identifier, token])
+
+  Push + regenerate:
+    cd next-app && npx prisma db push && npx prisma generate
+
+Environment variables — add to next-app/.env.local:
+  AUTH_SECRET=<generate with: npx auth secret>
+  AUTH_URL=http://localhost:3000                    (prod: https://litrev.app)
+  AUTH_GOOGLE_ID=<from Google Cloud Console>
+  AUTH_GOOGLE_SECRET=<from Google Cloud Console>
+  AUTH_RESEND_KEY=<from resend.com>
+  EMAIL_FROM=noreply@litrev.app
+  Update .env.local.example with placeholder versions.
+
+  Google OAuth setup:
+    console.cloud.google.com → APIs & Services → Credentials → OAuth 2.0
+    Redirect URI: http://localhost:3000/api/auth/callback/google (+ prod equivalent)
+
+  Resend setup:
+    resend.com → create API key, verify domain for production emails
+
+Auth.js configuration (split config pattern):
+
+  CREATE next-app/auth.config.ts — lightweight provider config:
+    - Google provider (auto-configured from AUTH_GOOGLE_ID/SECRET env vars)
+    - Resend provider (magic link, from: EMAIL_FROM)
+    - pages.signIn: "/auth/login"
+
+  CREATE next-app/auth.ts — full config with adapter:
+    - PrismaAdapter(prisma) using existing singleton from lib/server/prisma.ts
+    - session.strategy: "database", maxAge: 30 days
+    - session callback: attach user.id + cached workspaceId to session
+    - createUser event: call provisionWorkspace() (built in Phase 10.2)
+    - Exports: handlers, auth, signIn, signOut
+
+  CREATE next-app/app/api/auth/[...nextauth]/route.ts:
+    import { handlers } from "@/auth";
+    export const { GET, POST } = handlers;
+
+  CREATE next-app/types/next-auth.d.ts — extend Session type:
+    - session.user.id: string
+    - session.workspaceId: string
+
+  Verify: npx tsc --noEmit passes, app compiles, no behavioral changes.
+
+------------------------------------------------------------------------
+Phase 10.2 — Core auth infrastructure
+------------------------------------------------------------------------
+
+CREATE next-app/lib/server/provision.ts — workspace auto-provisioning:
+  provisionWorkspace(userId, displayName):
+    - Check if user already has a WorkspaceMember (idempotent)
+    - If not, create Workspace + WorkspaceMember in a $transaction
+    - Workspace name: "{displayName}'s Workspace"
+    - WorkspaceMember role: "owner"
+    - Called from Auth.js createUser event in auth.ts
+    - Replaces ensureSingleUserSeed() from bootstrap.ts
+
+CREATE next-app/lib/server/auth.ts — the key function:
+  requireAuth(): Promise<ServiceScope>
+    - Reads session via auth() from @/auth
+    - Throws "Authentication required." if no session or no user.id
+    - Reads workspaceId from session (cached in session callback to avoid extra DB query)
+    - Returns { ownerId: userId, workspaceId }
+    - This single function replaces every SINGLE_USER_SCOPE reference
+
+  getOptionalAuth(): Promise<ServiceScope | null>
+    - Non-throwing variant for conditional UI in server components
+
+  Performance note: workspaceId is cached in the session callback during session read.
+  No extra DB query per server action call — auth() already hits the DB for session validation.
+
+Tests:
+  CREATE next-app/lib/server/__tests__/auth.test.ts:
+    - No session → throws "Authentication required."
+    - Session without user.id → throws
+    - Valid session + workspace → returns correct ServiceScope
+    - Valid session, no workspace → throws
+
+  CREATE next-app/lib/server/__tests__/provision.test.ts:
+    - Creates workspace + member in transaction
+    - Idempotent (no-op if membership exists)
+
+  Verify: npx vitest run passes.
+
+------------------------------------------------------------------------
+Phase 10.3 — Login page + SessionProvider
+------------------------------------------------------------------------
+
+CREATE next-app/app/auth/layout.tsx:
+  Minimal layout — no AppShell, no sidebar. Just renders children.
+
+CREATE next-app/app/auth/login/page.tsx:
+  Server component wrapper with metadata: title "Sign in - LitRev"
+
+CREATE next-app/app/auth/login/LoginCard.tsx — client component:
+  - Brand heading: "LitRev" + tagline "Systematic literature review, simplified"
+  - Google sign-in button: large, prominent, white bg with Google G icon
+    - Calls signIn("google", { callbackUrl: "/" })
+  - Subtle "or" divider
+  - "Continue with email" text button (btn-minimal)
+    - Expands to: email input + "Send magic link" button
+    - Calls signIn("resend", { email, redirect: false })
+  - Success state: "Check your email" with mark_email_read icon + email shown
+  - Error handling: reads ?error= query param from Auth.js redirects
+
+CREATE next-app/app/auth/login/login.module.css — matches design system:
+  - Full-viewport centered layout on var(--bg-body)
+  - Card: glass morphism (rgba(255,255,255,0.85), blur 20px, radius 24px)
+  - Reuses existing form-group input styles (glass border, terracotta focus ring)
+  - .btn for primary actions, .btn-minimal for "Continue with email"
+  - Outfit font, terracotta accent colors, consistent with modal.css patterns
+
+MODIFY next-app/app/providers.tsx:
+  Wrap with SessionProvider from next-auth/react as outermost provider:
+    <SessionProvider>
+      <ProjectsProvider>
+        <LedgerProvider>{children}</LedgerProvider>
+      </ProjectsProvider>
+    </SessionProvider>
+
+  Verify: navigate to /auth/login, see styled login card.
+
+------------------------------------------------------------------------
+Phase 10.4 — Middleware (route protection)
+------------------------------------------------------------------------
+
+CREATE next-app/middleware.ts:
+  Strategy: cookie-presence check (fast, no DB hit in middleware):
+    - Check for authjs.session-token or __Secure-authjs.session-token cookie
+    - Public routes (skip check): /auth/*, /api/auth/*, /_next/*, /favicon*
+    - All other routes: redirect to /auth/login?callbackUrl=<path> if no cookie
+    - Actual session validation happens in requireAuth() in server actions (defense in depth)
+
+  matcher config:
+    ["/((?!_next/static|_next/image|favicon.ico).*)"]
+
+  Note: Using cookie check (not auth() in middleware) for performance.
+  Session validity is enforced server-side by requireAuth() in every action.
+
+  Verify: unauthenticated → redirected to login. Sign in → redirected back. Full flow works.
+
+------------------------------------------------------------------------
+Phase 10.5 — Server action migration (the big swap)
+------------------------------------------------------------------------
+
+Replace all SINGLE_USER_SCOPE / placeholder usage with await requireAuth().
+Six migration patterns:
+
+Pattern A — Direct scope swap (5 files, ~24 functions):
+  Files: ledger.ts, files.ts, protocols.ts, drafts.ts, projectCopilot.ts
+  Before: return listStudies(SINGLE_USER_SCOPE, projectId);
+  After:  const scope = await requireAuth(); return listStudies(scope, projectId);
+
+Pattern B — Remove ensureSingleUserSeed (1 file, 5 functions):
+  File: projects.ts
+  Remove all ensureSingleUserSeed() calls (provisioning now in Auth.js createUser event).
+  Replace SINGLE_USER_SCOPE with await requireAuth().
+
+Pattern C — assertProjectAccess swap (1 file, 2 functions):
+  File: extraction.ts
+  assertProjectAccess(SINGLE_USER_SCOPE, projectId) → assertProjectAccess(scope, projectId)
+
+Pattern D — Auth gate only (1 file, ~8 functions):
+  File: ai.ts
+  Add await requireAuth() at top as a gate. Scope not passed deeper yet.
+
+Pattern E — Replace getCurrentUserContext (1 file, 8 functions):
+  File: conversations.ts
+  Delete PLACEHOLDER_USER_ID, PLACEHOLDER_WORKSPACE_ID, getCurrentUserContext().
+  Replace with: const { ownerId: userId, workspaceId } = await requireAuth();
+
+Pattern F — Secure userId params (1 file, ~18 functions):
+  File: memory.ts
+  User memory functions currently accept userId from client (insecure).
+  Change signatures to read userId from session:
+    getUserMemoryAction(userId, key)  → getUserMemoryAction(key)
+    getUserMemoriesAction(userId, opts) → getUserMemoriesAction(opts)
+    searchUserMemoriesAction(userId, q) → searchUserMemoriesAction(q)
+    setUserMemoryAction(input) → inject userId from requireAuth() into input
+  Update client-side callers accordingly.
+
+  Migration checklist:
+    projects.ts       5 functions   Pattern B
+    ledger.ts         7 functions   Pattern A
+    files.ts          8 functions   Pattern A
+    extraction.ts     2 functions   Pattern C
+    protocols.ts      2 functions   Pattern A
+    drafts.ts         2 functions   Pattern A
+    projectCopilot.ts 2 functions   Pattern A
+    ai.ts             8 functions   Pattern D
+    conversations.ts  8 functions   Pattern E
+    memory.ts        ~18 functions  Pattern F
+
+  Verify: npx tsc --noEmit passes. Full app works with real auth.
+
+------------------------------------------------------------------------
+Phase 10.6 — API routes + rate limiter
+------------------------------------------------------------------------
+
+MODIFY next-app/app/api/ai/stream/route.ts:
+  Add auth() check at top of POST handler, return 401 if unauthenticated.
+
+MODIFY next-app/app/api/ai/transcribe/route.ts:
+  Same pattern.
+
+MODIFY next-app/lib/server/ai/rate-limiter.ts:
+  Add optional userId and workspaceId params to recordUsage().
+  Fields already exist in AIUsage schema (nullable).
+  Populate from scope in calling code.
+  Optional: add checkUserRateLimit(userId) for per-user throttling.
+
+------------------------------------------------------------------------
+Phase 10.7 — Polish + cleanup
+------------------------------------------------------------------------
+
+Sign-out + user display:
+  MODIFY next-app/components/Sidebar.tsx:
+    - Show user name/avatar from session in sidebar bottom area
+    - Add sign-out button
+    - Use useSession() from next-auth/react
+
+Data migration (one-time):
+  Two placeholder user sets exist:
+    scope.ts:         "local-user"    / "local-workspace"
+    conversations.ts: "single-user"   / "single-workspace"
+  In the createUser event, check if placeholder data exists.
+  Reassign all projects/studies/conversations/memories to the first real user.
+  Delete placeholder User/Workspace records.
+
+Cleanup:
+  - Remove ensureSingleUserSeed() calls from action files (done in 10.5)
+  - Remove or deprecate SINGLE_USER_SCOPE export from scope.ts
+  - Keep bootstrap.ts for dev seeding reference only
+  - Update vitest.setup.ts: add next-auth/react mock (SessionProvider, useSession, signIn, signOut)
+  - Update .env.local.example with all auth env vars
+
+Final verification:
+  cd next-app
+  npx tsc --noEmit    # type check
+  npx vitest run       # tests
+  npx next build       # full build
+
+------------------------------------------------------------------------
+Files summary
+------------------------------------------------------------------------
+
+New files (10):
+  next-app/auth.config.ts                         Provider config (Google + Resend)
+  next-app/auth.ts                                Full Auth.js config with Prisma adapter
+  next-app/middleware.ts                           Route protection
+  next-app/types/next-auth.d.ts                   Session type extensions
+  next-app/app/api/auth/[...nextauth]/route.ts    Auth API handler
+  next-app/app/auth/layout.tsx                    Auth pages layout
+  next-app/app/auth/login/page.tsx                Login page
+  next-app/app/auth/login/LoginCard.tsx           Login card component
+  next-app/app/auth/login/login.module.css        Login styles
+  next-app/lib/server/provision.ts                Workspace auto-provisioning
+  next-app/lib/server/auth.ts                     requireAuth() function
+
+Modified files (~16):
+  next-app/prisma/schema.prisma                   Add Account, Session, VerificationToken; modify User
+  next-app/app/providers.tsx                       Add SessionProvider
+  next-app/app/actions/projects.ts                Pattern B
+  next-app/app/actions/ledger.ts                  Pattern A
+  next-app/app/actions/files.ts                   Pattern A
+  next-app/app/actions/extraction.ts              Pattern C
+  next-app/app/actions/protocols.ts               Pattern A
+  next-app/app/actions/drafts.ts                  Pattern A
+  next-app/app/actions/projectCopilot.ts          Pattern A
+  next-app/app/actions/ai.ts                      Pattern D
+  next-app/app/actions/conversations.ts           Pattern E
+  next-app/app/actions/memory.ts                  Pattern F
+  next-app/app/api/ai/stream/route.ts             Auth check
+  next-app/app/api/ai/transcribe/route.ts         Auth check
+  next-app/lib/server/ai/rate-limiter.ts          Add userId/workspaceId params
+  next-app/components/Sidebar.tsx                 Sign-out button + user display
+
+New test files (2):
+  next-app/lib/server/__tests__/auth.test.ts
+  next-app/lib/server/__tests__/provision.test.ts
+
+------------------------------------------------------------------------
+Future SSO roadmap (not part of this implementation)
+------------------------------------------------------------------------
+
+Near-term:
+  - ORCID OAuth provider — add as custom Auth.js provider in auth.config.ts
+    (ORCID is OAuth 2.0, minimal config needed, very relevant for academics)
+
+When institutions request it:
+  - BoxyHQ SAML Jackson (open source, self-hosted)
+    Acts as SAML→OIDC bridge. Institutions connect via SAML/Shibboleth/OpenAthens,
+    app sees it as another OIDC provider in Auth.js. No architecture change needed.
+  - Covers: university SSO, hospital SSO, InCommon, eduGAIN, OpenAthens
+
+If enterprise demand grows:
+  - WorkOS (managed service) as alternative to self-hosted SAML Jackson
+  - Has first-party Auth.js provider
+
+Report: Codex quality/architecture report written to codex-quality-report.md (2026-02-02).

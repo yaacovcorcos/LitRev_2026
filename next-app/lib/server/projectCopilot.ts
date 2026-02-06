@@ -25,7 +25,7 @@ export async function saveProjectCopilotState(
   await assertProjectAccess(scopeInput, projectId);
   const project = await prisma.project.update({
     where: { id: projectId },
-    data: { projectCopilot: state },
+    data: { projectCopilot: state as object },
     select: { projectCopilot: true },
   });
   return project.projectCopilot as ProjectCopilotState;

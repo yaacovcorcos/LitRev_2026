@@ -1,9 +1,13 @@
 /**
  * AI Tool Interface
- * Base definitions for AI tools (PubMed search, web search, etc.)
+ * Base definitions for AI tools with Zod validation and autonomy metadata
+ * (planC Phase 0.4)
  */
 
+import { z } from "zod";
 import type { ToolDefinition, ToolResult } from "@/types/ai";
+import type { ToolAutonomyMeta, AutonomyLevel } from "@/types/agent";
+import { HARD_CAPS } from "@/types/agent";
 import { pubmedSearchTool } from "./pubmed-search";
 import { addToLedgerTool } from "./add-to-ledger";
 
@@ -11,11 +15,28 @@ import { addToLedgerTool } from "./add-to-ledger";
  * Interface for AI tools that can be called by the AI
  */
 export interface AITool {
-    /** Tool definition for the AI */
+    /** Tool definition for the AI (JSON Schema for provider API) */
     definition: ToolDefinition;
 
+    /** Zod schema for input validation (optional during migration) */
+    inputSchema?: z.ZodType;
+
+    /** Zod schema for output validation (optional during migration) */
+    outputSchema?: z.ZodType;
+
+    /** Autonomy metadata — determines approval behavior */
+    autonomy?: ToolAutonomyMeta;
+
     /** Execute the tool with the given arguments */
-    execute(args: Record<string, unknown>): Promise<ToolResult>;
+    execute(args: Record<string, unknown>, context?: ToolExecutionContext): Promise<ToolResult>;
+}
+
+/** Runtime context passed to tool execution */
+export interface ToolExecutionContext {
+    projectId?: string;
+    userId?: string;
+    runId?: string;
+    autonomyLevel?: AutonomyLevel;
 }
 
 /**
@@ -34,14 +55,84 @@ export function getToolDefinitions(): ToolDefinition[] {
 }
 
 /**
- * Execute a tool by name
+ * Get a tool by name
+ */
+export function getTool(name: string): AITool | undefined {
+    return AVAILABLE_TOOLS.find((t) => t.definition.name === name);
+}
+
+/**
+ * Resolve effective autonomy level for a tool, respecting hard caps
+ */
+export function resolveAutonomyLevel(
+    toolName: string,
+    configuredLevel: AutonomyLevel,
+    toolMeta?: ToolAutonomyMeta
+): AutonomyLevel {
+    let level = configuredLevel;
+
+    // Respect tool's allowed range
+    if (toolMeta) {
+        const [min, max] = toolMeta.allowedRange;
+        level = Math.max(min, Math.min(max, level)) as AutonomyLevel;
+    }
+
+    // Respect hard caps (system safety — cannot be overridden)
+    const hardCap = HARD_CAPS[toolName] ?? toolMeta?.hardCap;
+    if (hardCap !== undefined && level > hardCap) {
+        level = hardCap;
+    }
+
+    return level;
+}
+
+/**
+ * Validate tool input against its Zod schema.
+ * Returns { success: true, data } or { success: false, error }.
+ */
+export function validateToolInput(
+    tool: AITool,
+    args: Record<string, unknown>
+): { success: true; data: unknown } | { success: false; error: string } {
+    if (!tool.inputSchema) {
+        return { success: true, data: args };
+    }
+    const result = tool.inputSchema.safeParse(args);
+    if (result.success) {
+        return { success: true, data: result.data };
+    }
+    const issues = result.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");
+    return { success: false, error: `Input validation failed: ${issues}` };
+}
+
+/**
+ * Validate tool output against its Zod schema.
+ */
+export function validateToolOutput(
+    tool: AITool,
+    output: unknown
+): { success: true; data: unknown } | { success: false; error: string } {
+    if (!tool.outputSchema) {
+        return { success: true, data: output };
+    }
+    const result = tool.outputSchema.safeParse(output);
+    if (result.success) {
+        return { success: true, data: result.data };
+    }
+    const issues = result.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");
+    return { success: false, error: `Output validation failed: ${issues}` };
+}
+
+/**
+ * Execute a tool by name with validation
  */
 export async function executeTool(
     name: string,
     args: Record<string, unknown>,
-    callId: string
+    callId: string,
+    context?: ToolExecutionContext
 ): Promise<ToolResult> {
-    const tool = AVAILABLE_TOOLS.find((t) => t.definition.name === name);
+    const tool = getTool(name);
     if (!tool) {
         return {
             callId,
@@ -50,8 +141,28 @@ export async function executeTool(
         };
     }
 
+    // 1. Validate input
+    const inputValidation = validateToolInput(tool, args);
+    if (!inputValidation.success) {
+        return {
+            callId,
+            result: null,
+            error: inputValidation.error,
+        };
+    }
+
     try {
-        const result = await tool.execute(args);
+        // 2. Execute tool
+        const result = await tool.execute(args, context);
+
+        // 3. Validate output (warn but don't block — output schema is advisory)
+        if (result.result !== null && result.result !== undefined) {
+            const outputValidation = validateToolOutput(tool, result.result);
+            if (!outputValidation.success) {
+                console.warn(`[tool:${name}] ${outputValidation.error}`);
+            }
+        }
+
         return { ...result, callId };
     } catch (error) {
         return {

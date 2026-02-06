@@ -114,16 +114,8 @@ function groupConversationsByDate(conversations: ChatConversation[]): {
 export default function AIView() {
   const { projects } = useProjects();
   const [isHistoryCollapsed, setHistoryCollapsed] = useState(false);
-  const [tone, setTone] = useState<Tone>(() => {
-    if (typeof window === "undefined") return "standard";
-    const stored = window.localStorage.getItem("litrev_ai_tone");
-    return stored === "deep" ? "deep" : "standard";
-  });
-  const [selectedModel, setSelectedModel] = useState<SelectableModelId>(() => {
-    if (typeof window === "undefined") return "gpt-5.2";
-    const stored = window.localStorage.getItem("litrev_ai_model");
-    return (stored as SelectableModelId) || "gpt-5.2";
-  });
+  const [tone, setTone] = useState<Tone>("standard");
+  const [selectedModel, setSelectedModel] = useState<SelectableModelId>("gpt-5.2");
 
   const [conversations, setConversations] = useState<ChatConversation[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
@@ -141,18 +133,24 @@ export default function AIView() {
 
   const selectedModelInfo = USER_SELECTABLE_MODELS.find((m) => m.id === selectedModel) || USER_SELECTABLE_MODELS[0];
 
-  // Persist tone preference
+  // Hydrate preferences from localStorage on mount
+  const hydratedRef = useRef(false);
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem("litrev_ai_tone", tone);
-    }
+    const storedTone = localStorage.getItem("litrev_ai_tone");
+    if (storedTone === "deep") setTone("deep");
+    const storedModel = localStorage.getItem("litrev_ai_model");
+    if (storedModel) setSelectedModel(storedModel as SelectableModelId);
+    hydratedRef.current = true;
+  }, []);
+
+  // Persist tone preference (skip until hydrated)
+  useEffect(() => {
+    if (hydratedRef.current) localStorage.setItem("litrev_ai_tone", tone);
   }, [tone]);
 
-  // Persist model preference
+  // Persist model preference (skip until hydrated)
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem("litrev_ai_model", selectedModel);
-    }
+    if (hydratedRef.current) localStorage.setItem("litrev_ai_model", selectedModel);
   }, [selectedModel]);
 
   // Close project dropdown on outside click

@@ -14,11 +14,12 @@ export const runtime = "nodejs";
 export async function POST(request: NextRequest) {
     try {
         const body = await request.json();
-        const { messages, userMessage, context, options } = body as {
+        const { messages, userMessage, context, options, planId } = body as {
             messages?: AIMessage[];
             userMessage?: string;
             context?: ConversationContext;
-            options?: ChatOptions & { projectId?: string; studyId?: string };
+            options?: ChatOptions & { projectId?: string; studyId?: string; userId?: string };
+            planId?: string;
         };
 
         const service = getAIService();
@@ -28,9 +29,11 @@ export async function POST(request: NextRequest) {
         const stream = new ReadableStream({
             async start(controller) {
                 try {
-                    // If using conversation memory
+                    // If using conversation memory — use artifact-aware streaming
                     if (userMessage && context) {
-                        for await (const chunk of service.streamChatWithMemory(userMessage, context, options)) {
+                        for await (const chunk of service.streamChatWithArtifacts(
+                            userMessage, context, { ...options, planId }
+                        )) {
                             const data = JSON.stringify(chunk) + "\n";
                             controller.enqueue(encoder.encode(data));
                         }

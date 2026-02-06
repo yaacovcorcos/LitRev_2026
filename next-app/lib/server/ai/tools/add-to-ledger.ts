@@ -1,8 +1,24 @@
+import { z } from "zod";
 import type { AITool } from "./base";
 import type { SearchResult } from "@/types/search";
 import { searchResultToStudyInput } from "@/lib/server/search/to-study";
 import { findDuplicates } from "@/lib/server/search/dedup";
 import { listStudies, upsertStudy } from "@/lib/server/ledger";
+
+const inputSchema = z.object({
+    projectId: z.string().min(1, "projectId is required"),
+    results: z.array(z.object({
+        title: z.string(),
+        authors: z.string(),
+        year: z.number(),
+    }).passthrough()).min(1, "results must not be empty"),
+});
+
+const outputSchema = z.object({
+    added: z.number(),
+    duplicatesSkipped: z.number(),
+    titles: z.array(z.string()),
+});
 
 export const addToLedgerTool: AITool = {
     definition: {
@@ -42,6 +58,14 @@ export const addToLedgerTool: AITool = {
             },
             required: ["projectId", "results"],
         },
+    },
+
+    inputSchema,
+    outputSchema,
+
+    autonomy: {
+        defaultLevel: 2,
+        allowedRange: [1, 3],
     },
 
     async execute(args: Record<string, unknown>) {

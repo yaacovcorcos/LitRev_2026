@@ -1,0 +1,978 @@
+/* ========================================
+   ARTIFACT CARD STYLES
+   Shared across all inline artifact components
+   ======================================== */
+
+/* ── Card Shell ─────────────────────────────────────────────── */
+
+.artifactCard {
+    max-width: 100%;
+    min-width: 0;
+    padding: 0;
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--glass-border);
+    background: rgba(255, 255, 255, 0.75);
+    border-left: 3px solid #5b9bd5;
+    overflow: hidden;
+    transition: border-color 0.2s ease, box-shadow 0.15s ease;
+}
+
+.artifactCard:hover {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.artifactCardAccepted {
+    border-left-color: var(--accent-secondary);
+}
+
+.artifactCardRejected {
+    border-left-color: #c0392b;
+}
+
+.artifactCardCollapsed {
+    border-left-color: var(--text-muted);
+}
+
+.artifactCardAutoApplied {
+    border-left-color: var(--accent-secondary);
+}
+
+/* ── Card Header ────────────────────────────────────────────── */
+
+.cardHeader {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+    min-width: 0;
+}
+
+.cardTitle {
+    flex: 1;
+    min-width: 0;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.statusBadge {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 999px;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.statusBadgeProposed {
+    background: rgba(91, 155, 213, 0.12);
+    color: #3a7cc3;
+}
+
+.statusBadgeAccepted {
+    background: rgba(118, 140, 123, 0.15);
+    color: #556b5a;
+}
+
+.statusBadgeRejected {
+    background: rgba(192, 57, 43, 0.1);
+    color: #a93226;
+}
+
+.statusBadgeAutoApplied {
+    background: rgba(118, 140, 123, 0.15);
+    color: #556b5a;
+}
+
+.collapseToggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    background: transparent;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    color: var(--text-muted);
+    transition: background 0.15s ease, transform 0.2s ease;
+    flex-shrink: 0;
+    padding: 0;
+}
+
+.collapseToggle:hover {
+    background: rgba(0, 0, 0, 0.05);
+    color: var(--text-secondary);
+}
+
+.collapseToggleExpanded {
+    transform: rotate(180deg);
+}
+
+.collapseToggle .material-icons-round {
+    font-size: 18px;
+}
+
+/* ── Card Body ──────────────────────────────────────────────── */
+
+.cardBody {
+    padding: 12px;
+    overflow: hidden;
+    transition: max-height 0.25s ease, opacity 0.2s ease, padding 0.25s ease;
+}
+
+.cardBodyCollapsed {
+    max-height: 0;
+    opacity: 0;
+    padding: 0 12px;
+}
+
+/* ── Card Actions ───────────────────────────────────────────── */
+
+.cardActions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 8px 12px;
+    border-top: 1px solid rgba(0, 0, 0, 0.04);
+}
+
+/* Primary action button (terracotta) */
+.actionBtn {
+    border-radius: 8px;
+    padding: 6px 12px;
+    font-weight: 600;
+    font-size: 12px;
+    border: none;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: var(--accent-primary);
+    color: white;
+}
+
+.actionBtn:hover {
+    background: #c4634a;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(217, 116, 89, 0.3);
+}
+
+.actionBtn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+/* Ghost action button */
+.actionBtnGhost {
+    border-radius: 8px;
+    padding: 6px 12px;
+    font-weight: 600;
+    font-size: 12px;
+    border: none;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: rgba(0, 0, 0, 0.05);
+    color: var(--text-secondary);
+}
+
+.actionBtnGhost:hover {
+    background: rgba(0, 0, 0, 0.08);
+    color: var(--text-primary);
+}
+
+/* Triage buttons (Keep/Exclude/Maybe) */
+.keepBtn {
+    composes: actionBtn;
+    background: var(--accent-secondary);
+}
+
+.keepBtn:hover {
+    background: #657d6b;
+    box-shadow: 0 4px 12px rgba(118, 140, 123, 0.3);
+}
+
+.excludeBtn {
+    composes: actionBtn;
+    background: #c0392b;
+}
+
+.excludeBtn:hover {
+    background: #a93226;
+    box-shadow: 0 4px 12px rgba(192, 57, 43, 0.3);
+}
+
+.maybeBtn {
+    composes: actionBtn;
+    background: var(--accent-tertiary);
+    color: var(--text-primary);
+}
+
+.maybeBtn:hover {
+    background: #c49565;
+    box-shadow: 0 4px 12px rgba(212, 163, 115, 0.3);
+}
+
+/* ── Summary Line (accepted/collapsed) ──────────────────────── */
+
+.summaryLine {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    min-width: 0;
+}
+
+.summaryIcon {
+    flex-shrink: 0;
+    font-size: 16px;
+}
+
+.summaryText {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.jumpToLink {
+    flex-shrink: 0;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--accent-primary);
+    text-decoration: none;
+    cursor: pointer;
+    background: none;
+    border: none;
+    padding: 0;
+    transition: color 0.15s ease;
+}
+
+.jumpToLink:hover {
+    color: #c4634a;
+    text-decoration: underline;
+}
+
+/* ── Provenance ("Why?") ────────────────────────────────────── */
+
+.provenanceToggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0;
+    margin: 8px 0 0;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    transition: color 0.15s ease;
+}
+
+.provenanceToggle:hover {
+    color: var(--text-secondary);
+}
+
+.provenanceToggle .material-icons-round {
+    font-size: 14px;
+    transition: transform 0.2s ease;
+}
+
+.provenanceToggleExpanded .material-icons-round {
+    transform: rotate(90deg);
+}
+
+.provenanceContent {
+    margin-top: 6px;
+    padding: 8px 10px;
+    background: rgba(0, 0, 0, 0.02);
+    border-radius: 6px;
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--text-secondary);
+}
+
+/* ── Criteria Match Indicators ──────────────────────────────── */
+
+.criteriaIndicators {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin: 6px 0;
+}
+
+.criteriaChip {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 6px;
+    border-radius: 4px;
+    white-space: nowrap;
+}
+
+.criteriaChipMatch {
+    background: rgba(118, 140, 123, 0.15);
+    color: #556b5a;
+}
+
+.criteriaChipMiss {
+    background: rgba(192, 57, 43, 0.08);
+    color: #a93226;
+}
+
+/* ── Confidence Badge ───────────────────────────────────────── */
+
+.confidenceBadge {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 999px;
+    white-space: nowrap;
+}
+
+.confidenceHigh {
+    background: rgba(118, 140, 123, 0.15);
+    color: #556b5a;
+}
+
+.confidenceMedium {
+    background: rgba(212, 163, 115, 0.15);
+    color: #9c724f;
+}
+
+.confidenceLow {
+    background: rgba(192, 57, 43, 0.08);
+    color: #a93226;
+}
+
+/* ── Recommendation Badge ───────────────────────────────────── */
+
+.recommendBadge {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+.recommendKeep {
+    color: #556b5a;
+}
+
+.recommendExclude {
+    color: #a93226;
+}
+
+.recommendMaybe {
+    color: #9c724f;
+}
+
+/* ── Study Card Specifics ───────────────────────────────────── */
+
+.studyMeta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 4px 0;
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.studyMetaItem {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+}
+
+.studyTitle {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+    line-height: 1.4;
+    margin: 0 0 2px;
+}
+
+.studyAuthors {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.abstractSection {
+    margin-top: 8px;
+    padding: 8px 10px;
+    background: rgba(0, 0, 0, 0.02);
+    border-radius: 6px;
+    font-size: 12px;
+    line-height: 1.6;
+    color: var(--text-secondary);
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.studyRecommendationRow {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 8px 0;
+}
+
+/* ── Exclude Reason Dropdown ────────────────────────────────── */
+
+.excludeDropdown {
+    position: relative;
+    display: inline-block;
+}
+
+.excludeMenu {
+    position: absolute;
+    bottom: calc(100% + 4px);
+    left: 0;
+    min-width: 200px;
+    background: white;
+    border: 1px solid var(--glass-border);
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+    padding: 4px;
+    z-index: 50;
+}
+
+.excludeMenuItem {
+    display: block;
+    width: 100%;
+    padding: 8px 10px;
+    border: none;
+    background: transparent;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--text-primary);
+    text-align: left;
+    transition: background 0.1s ease;
+}
+
+.excludeMenuItem:hover {
+    background: rgba(0, 0, 0, 0.04);
+}
+
+/* ── Plan Card Specifics ────────────────────────────────────── */
+
+.planStepList {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.planStep {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    font-size: 13px;
+    line-height: 1.4;
+    color: var(--text-primary);
+}
+
+.planStepNumber {
+    flex-shrink: 0;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: rgba(91, 155, 213, 0.1);
+    color: #3a7cc3;
+    font-size: 11px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.planStepCompleted .planStepNumber {
+    background: rgba(118, 140, 123, 0.15);
+    color: #556b5a;
+}
+
+.planStepFailed .planStepNumber {
+    background: rgba(192, 57, 43, 0.08);
+    color: #a93226;
+}
+
+.planStepLabel {
+    flex: 1;
+    min-width: 0;
+}
+
+.planStepDesc {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: 2px;
+}
+
+.planEstimate {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 8px;
+}
+
+.planStepIcon {
+    flex-shrink: 0;
+    font-size: 16px;
+}
+
+/* ── PICO Card Specifics ────────────────────────────────────── */
+
+.picoGrid {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.picoField {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.picoFieldLabel {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+}
+
+.picoFieldValue {
+    font-size: 13px;
+    color: var(--text-primary);
+    line-height: 1.5;
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+}
+
+.picoEditBtn {
+    flex-shrink: 0;
+    padding: 0;
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    color: var(--text-muted);
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.picoEditBtn:hover {
+    background: rgba(0, 0, 0, 0.05);
+    color: var(--text-secondary);
+}
+
+.picoEditBtn .material-icons-round {
+    font-size: 14px;
+}
+
+/* ── Inline Edit ────────────────────────────────────────────── */
+
+.inlineEdit {
+    width: 100%;
+    padding: 6px 8px;
+    border: 1px solid rgba(0, 0, 0, 0.12);
+    border-radius: 6px;
+    font-size: 13px;
+    font-family: inherit;
+    color: var(--text-primary);
+    background: white;
+    outline: none;
+    transition: border-color 0.15s ease;
+}
+
+.inlineEdit:focus {
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 2px rgba(217, 116, 89, 0.15);
+}
+
+/* ── Criteria Card Specifics ────────────────────────────────── */
+
+.criteriaSection {
+    margin-bottom: 10px;
+}
+
+.criteriaSection:last-child {
+    margin-bottom: 0;
+}
+
+.criteriaSectionLabel {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-secondary);
+    margin-bottom: 4px;
+}
+
+.criteriaList {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.criteriaItem {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: var(--text-primary);
+    line-height: 1.4;
+    padding: 4px 0;
+}
+
+.criteriaItemIcon {
+    flex-shrink: 0;
+    font-size: 14px;
+}
+
+.criteriaItemText {
+    flex: 1;
+    min-width: 0;
+}
+
+.criteriaRemoveBtn {
+    flex-shrink: 0;
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    color: var(--text-muted);
+    opacity: 0;
+    transition: opacity 0.15s ease, background 0.15s ease;
+}
+
+.criteriaItem:hover .criteriaRemoveBtn {
+    opacity: 1;
+}
+
+.criteriaRemoveBtn:hover {
+    background: rgba(192, 57, 43, 0.08);
+    color: #c0392b;
+}
+
+.criteriaRemoveBtn .material-icons-round {
+    font-size: 14px;
+}
+
+.criteriaAddBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 0;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--accent-primary);
+    transition: color 0.15s ease;
+}
+
+.criteriaAddBtn:hover {
+    color: #c4634a;
+}
+
+.criteriaAddBtn .material-icons-round {
+    font-size: 14px;
+}
+
+.criteriaRationale {
+    margin-top: 8px;
+    font-size: 12px;
+    font-style: italic;
+    color: var(--text-muted);
+    line-height: 1.5;
+}
+
+/* ── Draft Block Specifics ──────────────────────────────────── */
+
+.draftSectionLabel {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+}
+
+.draftContent {
+    font-size: 13px;
+    line-height: 1.7;
+    color: var(--text-primary);
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.draftWordCount {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 8px;
+    text-align: right;
+}
+
+/* ── Screening Batch Specifics ──────────────────────────────── */
+
+.batchSummary {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 10px;
+}
+
+.batchTableWrapper {
+    max-height: 400px;
+    overflow-y: auto;
+    border: 1px solid rgba(0, 0, 0, 0.06);
+    border-radius: 8px;
+}
+
+.batchTable {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+}
+
+.batchTable th {
+    position: sticky;
+    top: 0;
+    background: rgba(242, 240, 233, 0.95);
+    padding: 8px 10px;
+    text-align: left;
+    font-weight: 600;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    color: var(--text-muted);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.batchTable td {
+    padding: 8px 10px;
+    color: var(--text-primary);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+    vertical-align: middle;
+}
+
+.batchTable tr:last-child td {
+    border-bottom: none;
+}
+
+.batchTable tr:hover td {
+    background: rgba(0, 0, 0, 0.02);
+}
+
+.batchTitleCell {
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 500;
+}
+
+.batchOverrideSelect {
+    padding: 4px 6px;
+    font-size: 11px;
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    border-radius: 4px;
+    background: white;
+    cursor: pointer;
+    color: var(--text-primary);
+}
+
+/* ── Streaming Progress ─────────────────────────────────────── */
+
+.progressItem {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: var(--radius-md);
+    background: rgba(91, 155, 213, 0.06);
+    border: 1px solid rgba(91, 155, 213, 0.12);
+}
+
+.progressSpinner {
+    width: 16px;
+    height: 16px;
+    border: 2px solid rgba(91, 155, 213, 0.2);
+    border-top-color: #5b9bd5;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    flex-shrink: 0;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+.progressMessage {
+    flex: 1;
+    font-size: 13px;
+    color: var(--text-secondary);
+    min-width: 0;
+}
+
+.progressBarOuter {
+    width: 100%;
+    height: 3px;
+    background: rgba(91, 155, 213, 0.15);
+    border-radius: 2px;
+    margin-top: 6px;
+    overflow: hidden;
+}
+
+.progressBarInner {
+    height: 100%;
+    background: #5b9bd5;
+    border-radius: 2px;
+    transition: width 0.3s ease;
+}
+
+/* ── Checkpoint Divider ─────────────────────────────────────── */
+
+.checkpoint {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 4px 0;
+}
+
+.checkpointLine {
+    flex: 1;
+    height: 1px;
+    background: rgba(0, 0, 0, 0.08);
+}
+
+.checkpointLabel {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
+/* ── Error Card ─────────────────────────────────────────────── */
+
+.errorCard {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: var(--radius-md);
+    background: rgba(192, 57, 43, 0.06);
+    border: 1px solid rgba(192, 57, 43, 0.12);
+    font-size: 13px;
+    color: #a93226;
+}
+
+.errorCard .material-icons-round {
+    font-size: 18px;
+    flex-shrink: 0;
+}
+
+.errorMessage {
+    flex: 1;
+    min-width: 0;
+}
+
+.errorRetryBtn {
+    flex-shrink: 0;
+    padding: 4px 10px;
+    font-size: 12px;
+    font-weight: 600;
+    background: rgba(192, 57, 43, 0.1);
+    color: #a93226;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+
+.errorRetryBtn:hover {
+    background: rgba(192, 57, 43, 0.18);
+}
+
+/* ── Message Actions (Save to Notes / Copy) ─────────────────── */
+
+.messageActions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+    margin-top: 6px;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+}
+
+.messageActionsVisible {
+    opacity: 1;
+}
+
+.msgActionBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    background: transparent;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.msgActionBtn:hover {
+    background: rgba(0, 0, 0, 0.05);
+    color: var(--text-secondary);
+}
+
+.msgActionBtn .material-icons-round {
+    font-size: 14px;
+}
+
+.savedConfirm {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--accent-secondary);
+    padding: 4px 8px;
+}

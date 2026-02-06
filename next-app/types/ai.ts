@@ -77,12 +77,32 @@ export type AIResponse = {
 
 // Streaming chunk
 export type AIStreamChunk = {
-    type: "content" | "tool_call" | "tool_result" | "done" | "error";
+    type: "content" | "tool_call" | "tool_result" | "done" | "error"
+        | "artifact" | "progress" | "checkpoint"
+        | "run_start" | "run_end";
     content?: string;
     error?: string;
     usage?: AIResponse["usage"];
     toolCall?: ToolCall;
     toolResult?: ToolResult;
+    // Artifact chunk fields (Phase 1)
+    artifactId?: string;
+    artifactType?: string;
+    artifactStatus?: string;
+    artifactTitle?: string;
+    artifactPayload?: unknown;
+    artifactVersion?: number;
+    // Progress chunk fields (Phase 1)
+    progressMessage?: string;
+    progressCurrent?: number;
+    progressTotal?: number;
+    // Checkpoint chunk fields (Phase 1)
+    checkpointLabel?: string;
+    // Run lifecycle fields (Phase 2)
+    runId?: string;
+    runStatus?: string;
+    runCostTokensIn?: number;
+    runCostTokensOut?: number;
 };
 
 // Memory/Context types

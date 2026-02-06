@@ -204,6 +204,27 @@
     color: var(--accent-primary);
 }
 
+.sectionTitleCollapsible {
+    cursor: pointer;
+    user-select: none;
+}
+
+.sectionTitleCollapsible:hover {
+    opacity: 0.8;
+}
+
+.collapseChevron {
+    margin-left: auto;
+    font-size: 20px !important;
+    color: var(--text-muted) !important;
+    transition: transform 0.2s ease;
+    transform: rotate(-90deg);
+}
+
+.collapseChevronOpen {
+    transform: rotate(0deg);
+}
+
 .abstractText,
 .summaryText {
     margin: 0;

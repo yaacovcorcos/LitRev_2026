@@ -28,6 +28,15 @@ export type CopilotMessage = {
   };
   /** File attachments on this message */
   attachments?: CopilotMessageAttachment[];
+  /** Artifact data when this message represents an inline artifact (Phase 2) */
+  artifact?: {
+    id: string;
+    type: string;
+    status: string;
+    title: string;
+    payload: Record<string, unknown>;
+    version: number;
+  };
 };
 
 export type ProjectCopilotPanelState = {

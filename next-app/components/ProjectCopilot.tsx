@@ -1,15 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import { useProjectCopilot, CopilotPage } from "@/contexts/ProjectCopilotContext";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useProjectCopilot, type CopilotPage } from "@/contexts/ProjectCopilotContext";
+import { TimelineRenderer } from "./copilot/TimelineRenderer";
+import { CopilotInput } from "./copilot/CopilotInput";
 import styles from "./ProjectCopilot.module.css";
-import markdownStyles from "@/styles/markdown.module.css";
-import { USER_SELECTABLE_MODELS, type SelectableModelId } from "@/lib/ai/config";
-import { useVoiceInput } from "@/hooks/useVoiceInput";
-import { listProjectFilesAction } from "@/app/actions/files";
-import type { FileAsset } from "@/types/files";
 
 export type SuggestionConfig = {
     label: string;
@@ -52,166 +47,34 @@ export function ProjectCopilot({
         isCollapsed,
         isLoading,
         setCollapsed,
-        sendMessage,
         // Conversation management
         conversations,
         currentConversationId,
         selectConversation,
         newConversation,
-        deleteConversation,
-        // Attachments
-        pendingAttachment,
-        isAttaching,
-        attachFile,
-        attachExistingFile,
-        clearAttachment,
-        projectId,
     } = useProjectCopilot();
 
-    const [input, setInput] = useState("");
-    const [selectedModel, setSelectedModel] = useState<SelectableModelId>(() => {
-        if (typeof window === "undefined") return "gpt-5.2";
-        const stored = window.localStorage.getItem("litrev_copilot_model");
-        const valid = USER_SELECTABLE_MODELS.some(m => m.id === stored);
-        return valid ? (stored as SelectableModelId) : "gpt-5.2";
-    });
-    const [showModelMenu, setShowModelMenu] = useState(false);
     const [showConversationDropdown, setShowConversationDropdown] = useState(false);
     const [conversationSearch, setConversationSearch] = useState("");
-    const listRef = useRef<HTMLDivElement | null>(null);
-    const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-    const autoScrollRef = useRef(true);
-    const modelMenuRef = useRef<HTMLDivElement | null>(null);
     const conversationDropdownRef = useRef<HTMLDivElement | null>(null);
 
-    // Voice input
-    const handleTranscription = useCallback((text: string) => {
-        setInput((prev) => {
-            const separator = prev.trim() ? " " : "";
-            return prev + separator + text;
-        });
-    }, []);
-    const { state: voiceState, error: voiceError, toggleRecording, clearError: clearVoiceError } = useVoiceInput(handleTranscription);
-
-    // Persist model preference
+    // Close dropdown on click outside
     useEffect(() => {
-        if (typeof window !== "undefined") {
-            window.localStorage.setItem("litrev_copilot_model", selectedModel);
-        }
-    }, [selectedModel]);
-
-    // Close dropdowns on click outside
-    useEffect(() => {
+        if (!showConversationDropdown) return;
         const handleClickOutside = (e: MouseEvent) => {
-            if (modelMenuRef.current && !modelMenuRef.current.contains(e.target as Node)) {
-                setShowModelMenu(false);
-            }
             if (conversationDropdownRef.current && !conversationDropdownRef.current.contains(e.target as Node)) {
                 setShowConversationDropdown(false);
                 setConversationSearch("");
             }
         };
-        if (showModelMenu || showConversationDropdown) {
-            document.addEventListener("mousedown", handleClickOutside);
-        }
+        document.addEventListener("mousedown", handleClickOutside);
         return () => document.removeEventListener("mousedown", handleClickOutside);
-    }, [showModelMenu, showConversationDropdown]);
+    }, [showConversationDropdown]);
 
-    // Auto-resize textarea when input changes (covers transcription, suggestions, etc.)
-    useEffect(() => {
-        const el = textareaRef.current;
-        if (!el) return;
-        el.style.height = "auto";
-        el.style.height = Math.min(el.scrollHeight, 200) + "px";
-    }, [input]);
-
-    // Auto-scroll to bottom when new messages arrive
-    useEffect(() => {
-        if (!listRef.current) return;
-        if (!autoScrollRef.current) return;
-        listRef.current.scrollTop = listRef.current.scrollHeight;
-    }, [messages]);
-
-    const handleScroll = useCallback(() => {
-        if (!listRef.current) return;
-        const { scrollTop, clientHeight, scrollHeight } = listRef.current;
-        autoScrollRef.current = scrollTop + clientHeight >= scrollHeight - 80;
+    const handleSuggestionClick = useCallback((_prompt: string) => {
+        // Suggestions populate the input — currently handled by CopilotInput
+        // Phase 4.2 will upgrade this to send the message directly
     }, []);
-
-    // Attachment state
-    const fileInputRef = useRef<HTMLInputElement | null>(null);
-    const [showAttachPicker, setShowAttachPicker] = useState(false);
-    const [projectFiles, setProjectFiles] = useState<FileAsset[]>([]);
-    const [loadingProjectFiles, setLoadingProjectFiles] = useState(false);
-    const attachPickerRef = useRef<HTMLDivElement | null>(null);
-
-    // Close attachment picker on click outside
-    useEffect(() => {
-        if (!showAttachPicker) return;
-        const handleClick = (e: MouseEvent) => {
-            if (attachPickerRef.current && !attachPickerRef.current.contains(e.target as Node)) {
-                setShowAttachPicker(false);
-            }
-        };
-        document.addEventListener("mousedown", handleClick);
-        return () => document.removeEventListener("mousedown", handleClick);
-    }, [showAttachPicker]);
-
-    const handleSend = useCallback(() => {
-        const text = input.trim();
-        if (!text && !pendingAttachment) return;
-        autoScrollRef.current = true;
-        sendMessage(text, page, section, selectedModel);
-        setInput("");
-    }, [input, page, section, sendMessage, selectedModel, pendingAttachment]);
-
-    const handleCopy = useCallback((text: string) => {
-        navigator.clipboard.writeText(text).catch(console.error);
-    }, []);
-
-    const handleSuggestionClick = useCallback((prompt: string) => {
-        setInput(prompt);
-    }, []);
-
-    const handleFileAttach = useCallback(() => {
-        setShowAttachPicker((prev) => {
-            if (!prev && projectFiles.length === 0 && !loadingProjectFiles) {
-                // Load project files when opening picker
-                setLoadingProjectFiles(true);
-                listProjectFilesAction(projectId)
-                    .then((files) => {
-                        const pdfs = files.filter((f) => f.format === "pdf" || f.mimeType.includes("pdf"));
-                        setProjectFiles(pdfs);
-                    })
-                    .catch(console.error)
-                    .finally(() => setLoadingProjectFiles(false));
-            }
-            return !prev;
-        });
-    }, [projectId, projectFiles.length, loadingProjectFiles]);
-
-    const handleUploadNew = useCallback(() => {
-        setShowAttachPicker(false);
-        fileInputRef.current?.click();
-    }, []);
-
-    const handleFileSelected = useCallback((e: ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-        if (!file.name.toLowerCase().endsWith(".pdf")) {
-            return;
-        }
-        attachFile(file);
-        // Reset input so the same file can be re-selected
-        e.target.value = "";
-    }, [attachFile]);
-
-    const handleAttachExisting = useCallback((fileAssetId: string) => {
-        setShowAttachPicker(false);
-        attachExistingFile(fileAssetId);
-    }, [attachExistingFile]);
-
-    const selectedModelInfo = USER_SELECTABLE_MODELS.find(m => m.id === selectedModel);
 
     if (isCollapsed) {
         return (
@@ -229,7 +92,7 @@ export function ProjectCopilot({
         );
     }
 
-    // Format relative time (e.g., "7m", "1h", "2d")
+    // Format relative time
     const formatRelativeTime = (dateStr: string) => {
         const date = new Date(dateStr);
         const now = new Date();
@@ -237,24 +100,21 @@ export function ProjectCopilot({
         const minutes = Math.floor(diff / (1000 * 60));
         const hours = Math.floor(diff / (1000 * 60 * 60));
         const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-
         if (minutes < 60) return `${minutes}m`;
         if (hours < 24) return `${hours}h`;
         return `${days}d`;
     };
 
-    // Get current conversation title
+    // Conversation management
     const currentConversation = conversations.find(c => c.id === currentConversationId);
     const currentTitle = currentConversation?.title || "New conversation";
 
-    // Filter conversations by search
     const filteredConversations = conversationSearch
         ? conversations.filter(c =>
             (c.title || "New conversation").toLowerCase().includes(conversationSearch.toLowerCase())
           )
         : conversations;
 
-    // Group conversations by date
     const groupConversations = () => {
         const today: typeof conversations = [];
         const yesterday: typeof conversations = [];
@@ -265,7 +125,6 @@ export function ProjectCopilot({
             const date = new Date(conv.updatedAt);
             const diff = now.getTime() - date.getTime();
             const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-
             if (days === 0) today.push(conv);
             else if (days === 1) yesterday.push(conv);
             else older.push(conv);
@@ -276,13 +135,40 @@ export function ProjectCopilot({
 
     const groupedConversations = groupConversations();
 
+    const renderConversationGroup = (label: string, convs: typeof conversations) => {
+        if (convs.length === 0) return null;
+        return (
+            <>
+                <div className={styles.conversationGroupLabel}>{label}</div>
+                {convs.map((conv) => (
+                    <div
+                        key={conv.id}
+                        className={`${styles.conversationDropdownItem} ${currentConversationId === conv.id ? styles.conversationDropdownItemActive : ""}`}
+                        onClick={() => {
+                            selectConversation(conv.id);
+                            setShowConversationDropdown(false);
+                            setConversationSearch("");
+                        }}
+                        role="option"
+                        aria-selected={currentConversationId === conv.id}
+                    >
+                        <span className={styles.conversationDropdownTitle}>
+                            {conv.title || "New conversation"}
+                        </span>
+                        <span className={styles.conversationDropdownTime}>
+                            {formatRelativeTime(conv.updatedAt)}
+                        </span>
+                    </div>
+                ))}
+            </>
+        );
+    };
+
     return (
         <aside className={styles.copilot} aria-label="AI copilot" id={panelId}>
-            {/* Main Chat Area */}
             <div className={styles.chatArea}>
-                {/* Header - Clean design with dropdown and icons */}
+                {/* Header */}
                 <div className={styles.panelHeader}>
-                    {/* Conversation Dropdown Selector */}
                     <div className={styles.conversationSelector} ref={conversationDropdownRef}>
                         <button
                             type="button"
@@ -297,10 +183,8 @@ export function ProjectCopilot({
                             </svg>
                         </button>
 
-                        {/* Dropdown */}
                         {showConversationDropdown && (
                             <div className={styles.conversationDropdown}>
-                                {/* Search */}
                                 <div className={styles.conversationSearchWrapper}>
                                     <input
                                         type="text"
@@ -311,8 +195,6 @@ export function ProjectCopilot({
                                         autoFocus
                                     />
                                 </div>
-
-                                {/* Conversation List */}
                                 <div className={styles.conversationDropdownList}>
                                     {filteredConversations.length === 0 ? (
                                         <div className={styles.noConversationsDropdown}>
@@ -320,81 +202,9 @@ export function ProjectCopilot({
                                         </div>
                                     ) : (
                                         <>
-                                            {groupedConversations.today.length > 0 && (
-                                                <>
-                                                    <div className={styles.conversationGroupLabel}>Today</div>
-                                                    {groupedConversations.today.map((conv) => (
-                                                        <div
-                                                            key={conv.id}
-                                                            className={`${styles.conversationDropdownItem} ${currentConversationId === conv.id ? styles.conversationDropdownItemActive : ""}`}
-                                                            onClick={() => {
-                                                                selectConversation(conv.id);
-                                                                setShowConversationDropdown(false);
-                                                                setConversationSearch("");
-                                                            }}
-                                                            role="option"
-                                                            aria-selected={currentConversationId === conv.id}
-                                                        >
-                                                            <span className={styles.conversationDropdownTitle}>
-                                                                {conv.title || "New conversation"}
-                                                            </span>
-                                                            <span className={styles.conversationDropdownTime}>
-                                                                {formatRelativeTime(conv.updatedAt)}
-                                                            </span>
-                                                        </div>
-                                                    ))}
-                                                </>
-                                            )}
-                                            {groupedConversations.yesterday.length > 0 && (
-                                                <>
-                                                    <div className={styles.conversationGroupLabel}>Yesterday</div>
-                                                    {groupedConversations.yesterday.map((conv) => (
-                                                        <div
-                                                            key={conv.id}
-                                                            className={`${styles.conversationDropdownItem} ${currentConversationId === conv.id ? styles.conversationDropdownItemActive : ""}`}
-                                                            onClick={() => {
-                                                                selectConversation(conv.id);
-                                                                setShowConversationDropdown(false);
-                                                                setConversationSearch("");
-                                                            }}
-                                                            role="option"
-                                                            aria-selected={currentConversationId === conv.id}
-                                                        >
-                                                            <span className={styles.conversationDropdownTitle}>
-                                                                {conv.title || "New conversation"}
-                                                            </span>
-                                                            <span className={styles.conversationDropdownTime}>
-                                                                {formatRelativeTime(conv.updatedAt)}
-                                                            </span>
-                                                        </div>
-                                                    ))}
-                                                </>
-                                            )}
-                                            {groupedConversations.older.length > 0 && (
-                                                <>
-                                                    <div className={styles.conversationGroupLabel}>Older</div>
-                                                    {groupedConversations.older.map((conv) => (
-                                                        <div
-                                                            key={conv.id}
-                                                            className={`${styles.conversationDropdownItem} ${currentConversationId === conv.id ? styles.conversationDropdownItemActive : ""}`}
-                                                            onClick={() => {
-                                                                selectConversation(conv.id);
-                                                                setShowConversationDropdown(false);
-                                                                setConversationSearch("");
-                                                            }}
-                                                            role="option"
-                                                            aria-selected={currentConversationId === conv.id}
-                                                        >
-                                                            <span className={styles.conversationDropdownTitle}>
-                                                                {conv.title || "New conversation"}
-                                                            </span>
-                                                            <span className={styles.conversationDropdownTime}>
-                                                                {formatRelativeTime(conv.updatedAt)}
-                                                            </span>
-                                                        </div>
-                                                    ))}
-                                                </>
-                                            )}
+                                            {renderConversationGroup("Today", groupedConversations.today)}
+                                            {renderConversationGroup("Yesterday", groupedConversations.yesterday)}
+                                            {renderConversationGroup("Older", groupedConversations.older)}
                                         </>
                                     )}
                                 </div>
@@ -402,16 +212,14 @@ export function ProjectCopilot({
                         )}
                     </div>
 
-                    {/* Right side icons - minimalist */}
+                    {/* Header icons */}
                     <div className={styles.headerIcons}>
                         <button
                             type="button"
                             className={styles.headerIconBtn}
                             onClick={async () => {
-                                // Close dropdown if open
                                 setShowConversationDropdown(false);
                                 setConversationSearch("");
-                                // Create new conversation
                                 await newConversation(page);
                             }}
                             aria-label="New conversation"
@@ -449,287 +257,26 @@ export function ProjectCopilot({
                     </div>
                 </div>
 
-                {/* Context Subhead - more subtle */}
+                {/* Context subhead */}
                 <div className={styles.panelSubhead}>
                     <span className={styles.subValue}>{contextDisplay}</span>
                 </div>
 
-            {/* Message List */}
-            <div className={styles.copilotBody} ref={listRef} onScroll={handleScroll}>
-                {messages.length === 0 ? (
-                    <div className={styles.emptyPanel}>
-                        <div className={styles.emptyIcon}>
-                            <span className="material-icons-round">{emptyState.icon}</span>
-                        </div>
-                        <h3>{emptyState.title}</h3>
-                        <p>{emptyState.description}</p>
-                        <div className={styles.suggestRow}>
-                            {emptyState.suggestions.map((suggestion) => (
-                                <button
-                                    key={suggestion.label}
-                                    type="button"
-                                    className={styles.suggestChip}
-                                    onClick={() => handleSuggestionClick(suggestion.prompt)}
-                                >
-                                    {suggestion.label}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-                ) : (
-                    <div className={styles.chatList}>
-                        {messages.map((msg) => (
-                            <div
-                                key={msg.id}
-                                className={`${styles.chatMsg} ${msg.sender === "ai" ? styles.chatMsgAi : styles.chatMsgUser}`}
-                            >
-                                <div className={styles.chatBubble}>
-                                    {msg.attachments && msg.attachments.length > 0 && (
-                                        <div className={styles.messageAttachments}>
-                                            {msg.attachments.map((att) => (
-                                                <div key={att.fileAssetId} className={styles.messageAttachment}>
-                                                    <span className="material-icons-round" style={{ fontSize: 14 }}>description</span>
-                                                    <span className={styles.messageAttachmentName}>{att.filename}</span>
-                                                    <span className={styles.messageAttachmentSize}>
-                                                        {att.size >= 1024 * 1024
-                                                            ? `${(att.size / (1024 * 1024)).toFixed(1)} MB`
-                                                            : `${Math.round(att.size / 1024)} KB`}
-                                                    </span>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
-                                    {msg.sender === "ai" ? (
-                                        <div className={markdownStyles.markdownContent}>
-                                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                                                {msg.text}
-                                            </ReactMarkdown>
-                                        </div>
-                                    ) : (
-                                        <p className={styles.chatText}>{msg.text}</p>
-                                    )}
-                                    {msg.sender === "ai" ? (
-                                        <div className={styles.chatActions}>
-                                            {onInsert ? (
-                                                <button
-                                                    type="button"
-                                                    className={styles.smallBtn}
-                                                    onClick={() => onInsert(msg.text)}
-                                                >
-                                                    Insert
-                                                </button>
-                                            ) : null}
-                                            <button
-                                                type="button"
-                                                className={styles.smallBtnGhost}
-                                                onClick={() => handleCopy(msg.text)}
-                                            >
-                                                Copy
-                                            </button>
-                                        </div>
-                                    ) : null}
-                                </div>
-                            </div>
-                        ))}
-                        {isLoading && messages.length > 0 && messages[messages.length - 1].sender === "user" && (
-                            <div className={styles.loadingIndicator}>
-                                <div className={styles.loadingDots}>
-                                    <span className={styles.loadingDot} />
-                                    <span className={styles.loadingDot} />
-                                    <span className={styles.loadingDot} />
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                )}
-            </div>
-
-            {/* Hidden file input */}
-            <input
-                ref={fileInputRef}
-                type="file"
-                accept=".pdf"
-                style={{ display: "none" }}
-                onChange={handleFileSelected}
-            />
-
-            {/* Input Area - Two-floor design */}
-            <form
-                className={styles.inputBox}
-                onSubmit={(e) => {
-                    e.preventDefault();
-                    handleSend();
-                }}
-            >
-                {/* Pending attachment chip */}
-                {(pendingAttachment || isAttaching) && (
-                    <div className={styles.pendingAttachment}>
-                        <span className="material-icons-round" style={{ fontSize: 16 }}>description</span>
-                        {isAttaching ? (
-                            <span className={styles.pendingAttachmentName}>Uploading...</span>
-                        ) : pendingAttachment ? (
-                            <>
-                                <span className={styles.pendingAttachmentName}>{pendingAttachment.filename}</span>
-                                <button
-                                    type="button"
-                                    className={styles.pendingAttachmentRemove}
-                                    onClick={clearAttachment}
-                                    aria-label="Remove attachment"
-                                >
-                                    <span className="material-icons-round" style={{ fontSize: 14 }}>close</span>
-                                </button>
-                            </>
-                        ) : null}
-                    </div>
-                )}
-
-                {/* Upper floor: text input */}
-                <textarea
-                    ref={textareaRef}
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    onKeyDown={(e) => {
-                        if (e.key === "Enter" && !e.shiftKey) {
-                            e.preventDefault();
-                            handleSend();
-                        }
-                    }}
-                    placeholder={isLoading ? "Thinking..." : inputPlaceholder}
-                    aria-label="Copilot prompt"
-                    disabled={isLoading}
-                    className={styles.inputTextarea}
-                    rows={1}
+                {/* Timeline / Message list */}
+                <TimelineRenderer
+                    messages={messages}
+                    isLoading={isLoading}
+                    onInsert={onInsert}
+                    emptyState={emptyState}
+                    onSuggestionClick={handleSuggestionClick}
                 />
 
-                {/* Lower floor: actions */}
-                <div className={styles.inputBar}>
-                    <div className={styles.inputBarLeft}>
-                        {/* Model selector */}
-                        <div className={styles.modelSelector} ref={modelMenuRef}>
-                            <button
-                                type="button"
-                                className={styles.modelBtn}
-                                onClick={() => setShowModelMenu(!showModelMenu)}
-                                aria-haspopup="listbox"
-                                aria-expanded={showModelMenu}
-                            >
-                                {selectedModelInfo?.name || "GPT-5.2"}
-                                <span className="material-icons-round">expand_more</span>
-                            </button>
-                            {showModelMenu && (
-                                <div className={styles.modelDropdown} role="listbox">
-                                    {USER_SELECTABLE_MODELS.map((model) => (
-                                        <button
-                                            key={model.id}
-                                            type="button"
-                                            className={`${styles.modelItem} ${selectedModel === model.id ? styles.modelItemActive : ""}`}
-                                            onClick={() => {
-                                                setSelectedModel(model.id);
-                                                setShowModelMenu(false);
-                                            }}
-                                            role="option"
-                                            aria-selected={selectedModel === model.id}
-                                        >
-                                            <div className={styles.modelItemInner}>
-                                                <span className={`material-icons-round ${styles.modelItemIcon}`}>
-                                                    {model.icon}
-                                                </span>
-                                                <span className={styles.modelItemName}>{model.name}</span>
-                                                <span className={styles.modelItemDesc}>{model.description}</span>
-                                            </div>
-                                        </button>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-
-                        {/* File attachment */}
-                        <div className={styles.attachPickerWrapper} ref={attachPickerRef}>
-                            <button
-                                type="button"
-                                className={styles.actionBtn}
-                                onClick={handleFileAttach}
-                                aria-label="Attach file"
-                                title="Attach file"
-                                disabled={isAttaching}
-                            >
-                                <span className="material-icons-round">
-                                    {isAttaching ? "hourglass_top" : "add"}
-                                </span>
-                            </button>
-                            {showAttachPicker && (
-                                <div className={styles.attachPicker}>
-                                    <button
-                                        type="button"
-                                        className={styles.attachPickerItem}
-                                        onClick={handleUploadNew}
-                                    >
-                                        <span className="material-icons-round" style={{ fontSize: 16 }}>upload_file</span>
-                                        <span>Upload PDF</span>
-                                    </button>
-                                    {projectFiles.length > 0 && (
-                                        <>
-                                            <div className={styles.attachPickerDivider} />
-                                            <div className={styles.attachPickerLabel}>From project studies</div>
-                                            {projectFiles.slice(0, 10).map((file) => (
-                                                <button
-                                                    key={file.id}
-                                                    type="button"
-                                                    className={styles.attachPickerItem}
-                                                    onClick={() => handleAttachExisting(file.id)}
-                                                >
-                                                    <span className="material-icons-round" style={{ fontSize: 16 }}>description</span>
-                                                    <span className={styles.attachPickerFileName}>
-                                                        {file.filename}
-                                                    </span>
-                                                </button>
-                                            ))}
-                                        </>
-                                    )}
-                                    {loadingProjectFiles && (
-                                        <div className={styles.attachPickerLoading}>Loading...</div>
-                                    )}
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Voice input */}
-                        <button
-                            type="button"
-                            className={`${styles.actionBtn} ${voiceState === "recording" ? styles.actionBtnRecording : ""}`}
-                            onClick={toggleRecording}
-                            disabled={voiceState === "transcribing" || isLoading}
-                            aria-label={voiceState === "recording" ? "Stop recording" : voiceState === "transcribing" ? "Transcribing..." : "Voice input"}
-                            title={voiceState === "recording" ? "Stop recording" : voiceState === "transcribing" ? "Transcribing..." : "Voice input"}
-                        >
-                            <span className="material-icons-round">
-                                {voiceState === "recording" ? "stop_circle" : voiceState === "transcribing" ? "hourglass_top" : "mic"}
-                            </span>
-                        </button>
-                    </div>
-
-                    {/* Send button */}
-                    <button
-                        type="submit"
-                        className={`${styles.sendBtn} ${(input.trim() || pendingAttachment) ? styles.sendBtnActive : ""}`}
-                        aria-label="Send"
-                        disabled={isLoading || (!input.trim() && !pendingAttachment)}
-                    >
-                        <span className="material-icons-round">
-                            {isLoading ? "more_horiz" : "arrow_upward"}
-                        </span>
-                    </button>
-                </div>
-
-                {voiceError && (
-                    <div className={styles.voiceError}>
-                        <span>{voiceError}</span>
-                        <button type="button" onClick={clearVoiceError} aria-label="Dismiss">
-                            <span className="material-icons-round">close</span>
-                        </button>
-                    </div>
-                )}
-            </form>
+                {/* Input area */}
+                <CopilotInput
+                    page={page}
+                    section={section}
+                    inputPlaceholder={inputPlaceholder}
+                />
             </div>
         </aside>
     );

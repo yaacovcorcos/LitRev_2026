@@ -33,6 +33,8 @@ import {
     uploadChatAttachmentAction,
     extractTextFromExistingFileAction,
 } from "@/app/actions/files";
+import { reviewArtifactAction } from "@/app/actions/agent";
+import type { ArtifactData, ArtifactStatus } from "@/types/artifacts";
 
 export type CopilotPage = "draft" | "protocol" | "ledger" | "study";
 
@@ -109,6 +111,14 @@ type ProjectCopilotContextValue = {
     clearAttachment: () => void;
     /** Project ID for the current copilot */
     projectId: string;
+
+    // Agent run state (planC Phase 2)
+    /** Current active run ID (null when no agent is running) */
+    currentRunId: string | null;
+    /** Artifacts map for quick lookup by ID */
+    artifacts: Map<string, ArtifactData>;
+    /** Review an artifact (accept/reject) */
+    handleReviewArtifact: (artifactId: string, status: "accepted" | "rejected", note?: string) => Promise<void>;
 };
 
 
@@ -135,6 +145,10 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
     // Attachment state
     const [pendingAttachment, setPendingAttachment] = useState<PendingAttachment | null>(null);
     const [isAttaching, setIsAttaching] = useState(false);
+
+    // Agent run state (Phase 2)
+    const [currentRunId, setCurrentRunId] = useState<string | null>(null);
+    const [artifacts, setArtifacts] = useState<Map<string, ArtifactData>>(new Map());
 
     // Load panel state from localStorage on mount (not messages - those come from conversations)
     useEffect(() => {
@@ -643,6 +657,79 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
                                         ),
                                     }));
                                 }
+                            } else if (data.type === "run_start") {
+                                setCurrentRunId(data.runId ?? null);
+                            } else if (data.type === "run_end") {
+                                setCurrentRunId(null);
+                            } else if (data.type === "artifact") {
+                                // Store artifact in local map
+                                const artifactData: ArtifactData = {
+                                    id: data.artifactId ?? `art-${Date.now()}`,
+                                    runId: currentRunId ?? "",
+                                    projectId,
+                                    conversationId: convId ?? null,
+                                    type: data.artifactType ?? "plan",
+                                    status: (data.artifactStatus ?? "proposed") as ArtifactStatus,
+                                    title: data.artifactTitle ?? "Artifact",
+                                    payload: data.artifactPayload ?? {},
+                                    version: data.artifactVersion ?? 1,
+                                    sourceEventId: null,
+                                    appliedAt: null,
+                                    reviewedAt: null,
+                                    reviewNote: null,
+                                    createdAt: new Date().toISOString(),
+                                };
+                                setArtifacts((prev) => {
+                                    const next = new Map(prev);
+                                    next.set(artifactData.id, artifactData);
+                                    return next;
+                                });
+                                // Also add as a CopilotMessage so TimelineRenderer can display it
+                                const artifactMessage: CopilotMessage = {
+                                    id: `artifact-${artifactData.id}`,
+                                    sender: "ai",
+                                    text: `[${data.artifactType}] ${data.artifactTitle}`,
+                                    createdAt: new Date().toISOString(),
+                                    context: { page },
+                                    artifact: {
+                                        id: artifactData.id,
+                                        type: data.artifactType,
+                                        status: data.artifactStatus,
+                                        title: data.artifactTitle,
+                                        payload: (data.artifactPayload ?? {}) as Record<string, unknown>,
+                                        version: data.artifactVersion ?? 1,
+                                    },
+                                };
+                                updateState((prev) => ({
+                                    ...prev,
+                                    messages: [...prev.messages, artifactMessage],
+                                }));
+                            } else if (data.type === "progress") {
+                                // Update or create progress status in the AI message
+                                const progressText = data.progressMessage ?? "Working...";
+                                if (!aiMessageCreated) {
+                                    aiMessageCreated = true;
+                                    const aiMessage: CopilotMessage = {
+                                        id: aiMessageId,
+                                        sender: "ai",
+                                        text: `*${progressText}*`,
+                                        createdAt: new Date().toISOString(),
+                                        context: { page, section },
+                                    };
+                                    updateState((prev) => ({
+                                        ...prev,
+                                        messages: [...prev.messages, aiMessage],
+                                    }));
+                                } else if (!fullContent) {
+                                    updateState((prev) => ({
+                                        ...prev,
+                                        messages: prev.messages.map((msg) =>
+                                            msg.id === aiMessageId
+                                                ? { ...msg, text: `*${progressText}*` }
+                                                : msg
+                                        ),
+                                    }));
+                                }
                             } else if (data.type === "error") {
                                 throw new Error(data.error);
                             }
@@ -701,6 +788,37 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
         [updateState, projectId, isLoading, currentConversationId, loadConversations, pendingAttachment]
     );
 
+    const handleReviewArtifact = useCallback(async (
+        artifactId: string,
+        status: "accepted" | "rejected",
+        note?: string
+    ) => {
+        // Optimistic update
+        setArtifacts((prev) => {
+            const next = new Map(prev);
+            const existing = next.get(artifactId);
+            if (existing) {
+                next.set(artifactId, { ...existing, status, reviewedAt: new Date().toISOString(), reviewNote: note ?? null });
+            }
+            return next;
+        });
+
+        // Call server action
+        const result = await reviewArtifactAction(artifactId, status, note);
+        if (!result.success) {
+            console.error("Failed to review artifact:", result.error);
+            // Revert optimistic update on failure
+            setArtifacts((prev) => {
+                const next = new Map(prev);
+                const existing = next.get(artifactId);
+                if (existing) {
+                    next.set(artifactId, { ...existing, status: "proposed", reviewedAt: null, reviewNote: null });
+                }
+                return next;
+            });
+        }
+    }, []);
+
     const clearMessages = useCallback(() => {
         updateState((prev) => ({
             ...prev,
@@ -739,6 +857,10 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             attachExistingFile,
             clearAttachment,
             projectId,
+            // Agent run state (Phase 2)
+            currentRunId,
+            artifacts,
+            handleReviewArtifact,
         }),
         [
             state,
@@ -763,6 +885,9 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             attachFile,
             attachExistingFile,
             clearAttachment,
+            currentRunId,
+            artifacts,
+            handleReviewArtifact,
         ]
     );
 

@@ -63,6 +63,9 @@ export default function StudyDetailPage() {
     // Draft backlinks state
     const [draftBacklinks, setDraftBacklinks] = useState<DraftBacklink[]>([]);
 
+    // Collapsible abstract
+    const [abstractOpen, setAbstractOpen] = useState(false);
+
     // Error display state
     const [alertMsg, setAlertMsg] = useState<string | null>(null);
 
@@ -500,9 +503,17 @@ export default function StudyDetailPage() {
 
                             {/* Abstract */}
                             <section className={styles.section}>
-                                <h2 className={styles.sectionTitle}>
+                                <h2
+                                    className={`${styles.sectionTitle} ${styles.sectionTitleCollapsible}`}
+                                    onClick={() => !isEditing && setAbstractOpen((o) => !o)}
+                                >
                                     <span className="material-icons-round">description</span>
                                     Abstract
+                                    {!isEditing && (
+                                        <span className={`material-icons-round ${styles.collapseChevron} ${abstractOpen ? styles.collapseChevronOpen : ""}`}>
+                                            expand_more
+                                        </span>
+                                    )}
                                 </h2>
                                 {isEditing ? (
                                     <textarea
@@ -512,11 +523,13 @@ export default function StudyDetailPage() {
                                         placeholder="Enter abstract..."
                                         rows={6}
                                     />
-                                ) : d.abstract ? (
-                                    <p className={styles.abstractText}>{d.abstract}</p>
-                                ) : (
-                                    <p className={styles.emptyText}>No abstract available</p>
-                                )}
+                                ) : abstractOpen ? (
+                                    d.abstract ? (
+                                        <p className={styles.abstractText}>{d.abstract}</p>
+                                    ) : (
+                                        <p className={styles.emptyText}>No abstract available</p>
+                                    )
+                                ) : null}
                             </section>
 
                             {/* AI Summary Placeholder */}

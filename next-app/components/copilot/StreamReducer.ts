@@ -1,0 +1,166 @@
+/**
+ * Stream Reducer
+ * Pure function: accumulates SSE events into TimelineItem[]
+ * Handles content, error, artifact, progress, and checkpoint events.
+ * (planC Phase 0.6 + Phase 1)
+ */
+
+import type { TimelineItem } from "@/types/timeline";
+import type { CopilotMessage } from "@/lib/projectCopilotStorage";
+import type { AIStreamChunk } from "@/types/ai";
+import type { ArtifactType, ArtifactStatus } from "@/types/artifacts";
+
+/**
+ * Convert legacy CopilotMessage[] to TimelineItem[]
+ * Bridge between old message format and new timeline format
+ */
+export function messagesToTimeline(messages: CopilotMessage[]): TimelineItem[] {
+    return messages.map((msg) => {
+        if (msg.sender === "user") {
+            return {
+                type: "user_message" as const,
+                id: msg.id,
+                content: msg.text,
+                attachments: msg.attachments?.map((att) => ({
+                    fileAssetId: att.fileAssetId,
+                    filename: att.filename,
+                    mimeType: att.mimeType,
+                    size: att.size,
+                })),
+                createdAt: new Date().toISOString(),
+            };
+        }
+        // Artifact messages → TimelineArtifact
+        if (msg.artifact) {
+            return {
+                type: "artifact" as const,
+                id: msg.id,
+                artifactId: msg.artifact.id,
+                artifactType: msg.artifact.type as ArtifactType,
+                status: (msg.artifact.status ?? "proposed") as ArtifactStatus,
+                title: msg.artifact.title,
+                payload: msg.artifact.payload ?? {},
+                version: msg.artifact.version ?? 1,
+                createdAt: msg.createdAt,
+            };
+        }
+        return {
+            type: "assistant_message" as const,
+            id: msg.id,
+            content: msg.text,
+            createdAt: new Date().toISOString(),
+        };
+    });
+}
+
+/**
+ * Reduce an SSE chunk into the current timeline.
+ * Returns the updated timeline (immutable — new array).
+ */
+export function reduceStreamChunk(
+    timeline: TimelineItem[],
+    chunk: AIStreamChunk,
+    currentAssistantId: string
+): TimelineItem[] {
+    switch (chunk.type) {
+        case "content": {
+            const last = timeline[timeline.length - 1];
+            if (last && last.type === "assistant_message" && last.id === currentAssistantId) {
+                // Append to existing assistant message
+                return [
+                    ...timeline.slice(0, -1),
+                    { ...last, content: last.content + (chunk.content ?? "") },
+                ];
+            }
+            // Start new assistant message
+            return [
+                ...timeline,
+                {
+                    type: "assistant_message",
+                    id: currentAssistantId,
+                    content: chunk.content ?? "",
+                    createdAt: new Date().toISOString(),
+                },
+            ];
+        }
+
+        case "artifact": {
+            return [
+                ...timeline,
+                {
+                    type: "artifact",
+                    id: `artifact-${chunk.artifactId ?? Date.now()}`,
+                    artifactId: chunk.artifactId ?? "",
+                    artifactType: (chunk.artifactType ?? "plan") as ArtifactType,
+                    status: (chunk.artifactStatus ?? "proposed") as ArtifactStatus,
+                    title: chunk.artifactTitle ?? "Artifact",
+                    payload: chunk.artifactPayload ?? {},
+                    version: chunk.artifactVersion ?? 1,
+                    createdAt: new Date().toISOString(),
+                },
+            ];
+        }
+
+        case "progress": {
+            // Replace the last progress item if one exists, otherwise append
+            const lastIdx = timeline.length - 1;
+            const last = timeline[lastIdx];
+            if (last && last.type === "progress") {
+                return [
+                    ...timeline.slice(0, -1),
+                    {
+                        type: "progress",
+                        id: last.id,
+                        message: chunk.progressMessage ?? last.message,
+                        current: chunk.progressCurrent,
+                        total: chunk.progressTotal,
+                    },
+                ];
+            }
+            return [
+                ...timeline,
+                {
+                    type: "progress",
+                    id: `progress-${Date.now()}`,
+                    message: chunk.progressMessage ?? "Working...",
+                    current: chunk.progressCurrent,
+                    total: chunk.progressTotal,
+                },
+            ];
+        }
+
+        case "checkpoint": {
+            return [
+                ...timeline,
+                {
+                    type: "checkpoint",
+                    id: `checkpoint-${Date.now()}`,
+                    label: chunk.checkpointLabel ?? "Checkpoint",
+                    createdAt: new Date().toISOString(),
+                },
+            ];
+        }
+
+        case "error": {
+            return [
+                ...timeline,
+                {
+                    type: "error",
+                    id: `error-${Date.now()}`,
+                    message: chunk.error ?? "Unknown error",
+                    retryable: true,
+                    createdAt: new Date().toISOString(),
+                },
+            ];
+        }
+
+        // run_start, run_end — handled at context level, not in timeline
+        case "run_start":
+        case "run_end":
+            return timeline;
+
+        // tool_call, tool_result, done — pass through
+        default:
+            return timeline;
+    }
+}

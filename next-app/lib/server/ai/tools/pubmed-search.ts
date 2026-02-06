@@ -1,5 +1,21 @@
+import { z } from "zod";
 import type { AITool } from "./base";
 import { searchPubMed } from "@/lib/server/search/pubmed";
+
+const inputSchema = z.object({
+    query: z.string().min(1, "Query is required"),
+    maxResults: z.number().int().min(1).max(50).optional().default(10),
+});
+
+const outputSchema = z.object({
+    results: z.array(z.object({
+        pmid: z.string().optional(),
+        title: z.string(),
+        authors: z.string(),
+        year: z.number(),
+    }).passthrough()),
+    totalCount: z.number().optional(),
+}).passthrough();
 
 export const pubmedSearchTool: AITool = {
     definition: {
@@ -20,6 +36,14 @@ export const pubmedSearchTool: AITool = {
             },
             required: ["query"],
         },
+    },
+
+    inputSchema,
+    outputSchema,
+
+    autonomy: {
+        defaultLevel: 2,
+        allowedRange: [1, 4],
     },
 
     async execute(args: Record<string, unknown>) {

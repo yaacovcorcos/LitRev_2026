@@ -67,6 +67,8 @@ model Project {
   files          FileAsset[]
   projectMemories ProjectMemory[]
   studyMemories  StudyMemory[]
+  artifacts      Artifact[]
+  notes          Note[]
 
   @@index([workspaceId])
   @@index([ownerId])
@@ -337,4 +339,123 @@ model MemoryRetrieval {
   @@index([conversationId])
   @@index([projectId])
   @@index([createdAt])
+}
+
+// ============================================================================
+// AGENT RUN SYSTEM
+// Event-sourced agent lifecycle (AgentRun = trace, RunEvent = span)
+// See planC Phase 0.2
+// ============================================================================
+
+model AgentRun {
+  id              String    @id @default(cuid())
+  projectId       String
+  conversationId  String?
+  userId          String?
+  trigger         String    // "user_message" | "proactive" | "event"
+  agentMode       String    // "protocol" | "search" | "screening" | "drafting" | "qa" | "general"
+  status          String    // "running" | "completed" | "failed" | "cancelled"
+  model           String?
+  costTokensIn    Int       @default(0)
+  costTokensOut   Int       @default(0)
+  startedAt       DateTime  @default(now())
+  completedAt     DateTime?
+
+  events    RunEvent[]
+  artifacts Artifact[]
+
+  @@index([projectId, startedAt])
+  @@index([conversationId])
+  @@index([userId])
+}
+
+model RunEvent {
+  id          String   @id @default(cuid())
+  runId       String
+  sequence    Int
+  type        String   // "message" | "tool_call" | "tool_result" | "artifact_proposed" |
+                       //  "artifact_reviewed" | "memory_retrieval" | "context_assembly" |
+                       //  "plan_proposed" | "plan_approved" | "checkpoint" | "error"
+  payload     Json
+  toolName    String?
+  artifactId  String?
+  messageRole String?
+  tokensIn    Int?
+  tokensOut   Int?
+  errorCode   String?
+  durationMs  Int?
+  createdAt   DateTime @default(now())
+
+  run AgentRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId, sequence])
+  @@index([runId, type])
+  @@index([artifactId])
+}
+
+model Artifact {
+  id              String    @id @default(cuid())
+  runId           String
+  projectId       String
+  conversationId  String?
+  userId          String?
+  type            String    // "study_proposal" | "draft_diff" | "screening_batch" |
+                            //  "protocol_suggestion" | "criteria_card" | "evidence_table" |
+                            //  "plan" | "memory_proposal"
+  status          String    // "proposed" | "accepted" | "rejected" | "edited" |
+                            //  "auto_applied" | "expired" | "collapsed"
+  title           String
+  payload         Json
+  snapshot        Json?
+  version         Int       @default(1)
+  sourceEventId   String?
+  applyId         String?   @unique
+  appliedAt       DateTime?
+  appliedByUserId String?
+  reviewedAt      DateTime?
+  reviewNote      String?
+  createdAt       DateTime  @default(now())
+
+  run     AgentRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  project Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([runId])
+  @@index([projectId, status])
+  @@index([conversationId])
+  @@index([type, status])
+}
+
+model AutonomyConfig {
+  id            String   @id @default(cuid())
+  userId        String?
+  projectId     String?
+  preset        String   // "manual" | "assisted" | "autonomous" | "custom"
+  toolOverrides Json     @default("{}")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([userId, projectId])
+  @@index([userId])
+  @@index([projectId])
+}
+
+model Note {
+  id                     String   @id @default(cuid())
+  projectId              String
+  userId                 String?
+  title                  String?
+  content                Json
+  tags                   String[] @default([])
+  linkedStudyId          String?
+  linkedSection          String?
+  source                 String   @default("manual") // "manual" | "conversation"
+  sourceConversationId   String?
+  sourceMessageId        String?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([projectId, source])
 }
