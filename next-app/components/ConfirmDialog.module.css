@@ -1,0 +1,30 @@
+.dialogTitle {
+    font-size: 18px;
+    font-weight: 600;
+    margin: 0;
+}
+
+.dialogMessage {
+    font-size: 14px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+    margin: 0;
+}
+
+.dialogGlass {
+    max-width: 400px;
+}
+
+.actionBtn {
+    flex: 1;
+}
+
+.confirmDanger {
+    background: #dc2626;
+    border-color: #dc2626;
+}
+
+.confirmDanger:hover {
+    background: #b91c1c;
+    border-color: #b91c1c;
+}

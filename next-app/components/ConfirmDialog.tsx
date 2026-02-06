@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import css from "./ConfirmDialog.module.css";
 
 type ConfirmDialogProps = {
   isOpen: boolean;
@@ -40,7 +41,10 @@ export function ConfirmDialog({
     return () => document.removeEventListener("keydown", handleKey);
   }, [isOpen, onCancel]);
 
-  const confirmColor = variant === "danger" ? "#dc2626" : "var(--accent-primary)";
+  const confirmBtnClass =
+    variant === "danger"
+      ? `btn btn-primary ${css.actionBtn} ${css.confirmDanger}`
+      : `btn btn-primary ${css.actionBtn}`;
 
   return (
     <div
@@ -48,24 +52,22 @@ export function ConfirmDialog({
       aria-hidden={!isOpen}
       onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}
     >
-      <div className="modal-glass" style={{ maxWidth: 400 }}>
+      <div className={`modal-glass ${css.dialogGlass}`}>
         <div className="modal-header">
-          <h2 style={{ fontSize: 18 }}>{title}</h2>
+          <h2 className={css.dialogTitle}>{title}</h2>
         </div>
-        <p style={{ fontSize: 14, color: "var(--text-secondary)", lineHeight: 1.5, margin: 0 }}>{message}</p>
+        <p className={css.dialogMessage}>{message}</p>
         <div className="modal-actions">
           <button
             ref={cancelRef}
-            className="btn btn-outline"
+            className={`btn btn-outline ${css.actionBtn}`}
             onClick={onCancel}
-            style={{ flex: 1 }}
           >
             {cancelLabel}
           </button>
           <button
-            className="btn btn-primary"
+            className={confirmBtnClass}
             onClick={onConfirm}
-            style={{ flex: 1, background: confirmColor, borderColor: confirmColor }}
           >
             {confirmLabel}
           </button>
@@ -104,13 +106,13 @@ export function AlertDialog({
       aria-hidden={!isOpen}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="modal-glass" style={{ maxWidth: 400 }}>
+      <div className={`modal-glass ${css.dialogGlass}`}>
         <div className="modal-header">
-          <h2 style={{ fontSize: 18 }}>{title}</h2>
+          <h2 className={css.dialogTitle}>{title}</h2>
         </div>
-        <p style={{ fontSize: 14, color: "var(--text-secondary)", lineHeight: 1.5, margin: 0 }}>{message}</p>
+        <p className={css.dialogMessage}>{message}</p>
         <div className="modal-actions">
-          <button className="btn btn-primary" onClick={onClose} style={{ flex: 1 }}>
+          <button className={`btn btn-primary ${css.actionBtn}`} onClick={onClose}>
             {buttonLabel}
           </button>
         </div>

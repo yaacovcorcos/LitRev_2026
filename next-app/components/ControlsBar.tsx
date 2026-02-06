@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { SortMode, ViewMode } from "@/types/view";
 import styles from "@/components/ControlsBar.module.css";
+
+const SORT_OPTIONS: SortMode[] = ["modified", "name", "created"];
 
 type ControlsBarProps = {
   sortMode: SortMode;
@@ -13,7 +15,9 @@ type ControlsBarProps = {
 
 export function ControlsBar({ sortMode, viewMode, onSortChange, onViewChange }: ControlsBarProps) {
   const [isSortOpen, setSortOpen] = useState(false);
+  const [focusedIndex, setFocusedIndex] = useState(-1);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const optionRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
   useEffect(() => {
     if (!isSortOpen) return;
@@ -24,25 +28,71 @@ export function ControlsBar({ sortMode, viewMode, onSortChange, onViewChange }: 
       }
     };
 
-    const handleKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setSortOpen(false);
-      }
-    };
-
     document.addEventListener("mousedown", handleClick);
-    document.addEventListener("keydown", handleKey);
-
-    return () => {
-      document.removeEventListener("mousedown", handleClick);
-      document.removeEventListener("keydown", handleKey);
-    };
+    return () => document.removeEventListener("mousedown", handleClick);
   }, [isSortOpen]);
+
+  // Focus the active option when dropdown opens
+  useEffect(() => {
+    if (isSortOpen) {
+      const activeIndex = SORT_OPTIONS.indexOf(sortMode);
+      setFocusedIndex(activeIndex >= 0 ? activeIndex : 0);
+      optionRefs.current[activeIndex >= 0 ? activeIndex : 0]?.focus();
+    }
+  }, [isSortOpen, sortMode]);
 
   const selectSort = (mode: SortMode) => {
     onSortChange(mode);
     setSortOpen(false);
   };
+
+  const handleListboxKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      switch (e.key) {
+        case "ArrowDown": {
+          e.preventDefault();
+          const next = (focusedIndex + 1) % SORT_OPTIONS.length;
+          setFocusedIndex(next);
+          optionRefs.current[next]?.focus();
+          break;
+        }
+        case "ArrowUp": {
+          e.preventDefault();
+          const prev = (focusedIndex - 1 + SORT_OPTIONS.length) % SORT_OPTIONS.length;
+          setFocusedIndex(prev);
+          optionRefs.current[prev]?.focus();
+          break;
+        }
+        case "Home": {
+          e.preventDefault();
+          setFocusedIndex(0);
+          optionRefs.current[0]?.focus();
+          break;
+        }
+        case "End": {
+          e.preventDefault();
+          const last = SORT_OPTIONS.length - 1;
+          setFocusedIndex(last);
+          optionRefs.current[last]?.focus();
+          break;
+        }
+        case "Escape": {
+          e.preventDefault();
+          setSortOpen(false);
+          break;
+        }
+        case "Enter":
+        case " ": {
+          e.preventDefault();
+          if (focusedIndex >= 0 && focusedIndex < SORT_OPTIONS.length) {
+            selectSort(SORT_OPTIONS[focusedIndex]);
+          }
+          break;
+        }
+      }
+    },
+    [focusedIndex, selectSort]
+  );
 
   return (
     <div className={styles.controlsBar}>
@@ -74,37 +124,44 @@ export function ControlsBar({ sortMode, viewMode, onSortChange, onViewChange }: 
             className={`${styles.options} ${isSortOpen ? styles.optionsOpen : ""}`}
             id="sortOptions"
             role="listbox"
-            aria-activedescendant={`sort-${sortMode}`}
+            aria-activedescendant={focusedIndex >= 0 ? `sort-${SORT_OPTIONS[focusedIndex]}` : undefined}
+            onKeyDown={handleListboxKeyDown}
           >
             <button
               type="button"
+              ref={(el) => { optionRefs.current[0] = el; }}
               id="sort-modified"
               className={`${styles.option} ${sortMode === "modified" ? styles.selected : ""}`}
               data-value="modified"
               role="option"
               aria-selected={sortMode === "modified"}
+              tabIndex={focusedIndex === 0 ? 0 : -1}
               onClick={() => selectSort("modified")}
             >
               Recently Modified
             </button>
             <button
               type="button"
+              ref={(el) => { optionRefs.current[1] = el; }}
               id="sort-name"
               className={`${styles.option} ${sortMode === "name" ? styles.selected : ""}`}
               data-value="name"
               role="option"
               aria-selected={sortMode === "name"}
+              tabIndex={focusedIndex === 1 ? 0 : -1}
               onClick={() => selectSort("name")}
             >
               Name
             </button>
             <button
               type="button"
+              ref={(el) => { optionRefs.current[2] = el; }}
               id="sort-created"
               className={`${styles.option} ${sortMode === "created" ? styles.selected : ""}`}
               data-value="created"
               role="option"
               aria-selected={sortMode === "created"}
+              tabIndex={focusedIndex === 2 ? 0 : -1}
               onClick={() => selectSort("created")}
             >
               Date Created

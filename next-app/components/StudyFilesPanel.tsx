@@ -4,6 +4,7 @@ import { useCallback, useRef, useState } from "react";
 import styles from "./StudyFilesPanel.module.css";
 import type { FileAsset } from "@/types/files";
 import { validateStudyFile } from "@/lib/fileValidation";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 
 type StudyFilesPanelProps = {
   projectId: string;
@@ -47,6 +48,7 @@ export function StudyFilesPanel({
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [deleteFileId, setDeleteFileId] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const sortedFiles = [...files].sort(
@@ -96,10 +98,12 @@ export function StudyFilesPanel({
     setIsDragging(false);
   };
 
-  const handleDelete = async (fileId: string) => {
-    if (!confirm("Delete this file?")) return;
+  const handleDeleteConfirm = async () => {
+    if (!deleteFileId) return;
+    const id = deleteFileId;
+    setDeleteFileId(null);
     try {
-      await onDelete(fileId);
+      await onDelete(id);
     } catch (err) {
       setUploadError(err instanceof Error ? err.message : "Delete failed");
     }
@@ -214,7 +218,7 @@ export function StudyFilesPanel({
                 <button
                   type="button"
                   className={`${styles.actionBtn} ${styles.deleteBtn}`}
-                  onClick={() => handleDelete(file.id)}
+                  onClick={() => setDeleteFileId(file.id)}
                   title="Delete file"
                 >
                   <span className="material-icons-round">delete</span>
@@ -224,6 +228,17 @@ export function StudyFilesPanel({
           ))
         )}
       </div>
+
+      <ConfirmDialog
+        isOpen={deleteFileId !== null}
+        title="Delete file"
+        message="Are you sure you want to delete this file? This action cannot be undone."
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        variant="danger"
+        onConfirm={handleDeleteConfirm}
+        onCancel={() => setDeleteFileId(null)}
+      />
     </div>
   );
 }

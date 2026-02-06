@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
+import { Modal } from "@/components/Modal";
 import { TopBar } from "@/components/TopBar";
 import { useProjects } from "@/contexts/ProjectsContext";
 import Link from "next/link";
@@ -64,24 +65,10 @@ type WorkstationCardProps = {
 };
 
 function WorkstationCard({ title, subtitle, description, icon, href }: WorkstationCardProps) {
-  const router = useRouter();
-
   return (
-    <div
+    <Link
+      href={href}
       className={styles.workstationCard}
-      onClick={(e) => {
-        const target = e.target as HTMLElement;
-        if (target.closest("a")) return;
-        router.push(href);
-      }}
-      role="link"
-      tabIndex={0}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          router.push(href);
-        }
-      }}
     >
       <div className={styles.workstationIconCircle}>
         <span className="material-icons-round">{icon}</span>
@@ -91,10 +78,10 @@ function WorkstationCard({ title, subtitle, description, icon, href }: Workstati
         <h3 className={styles.workstationTitle}>{title}</h3>
         <p className={styles.workstationDesc}>{description}</p>
       </div>
-      <Link href={href} className={styles.workstationAction}>
+      <span className={styles.workstationAction}>
         Enter
-      </Link>
-    </div>
+      </span>
+    </Link>
   );
 }
 
@@ -104,36 +91,7 @@ export default function ProjectDetail() {
   const { getProjectById, deleteProject } = useProjects();
   const project = id ? getProjectById(id) : undefined;
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
-  const deleteModalRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    if (!isDeleteOpen || !deleteModalRef.current) return;
-    const modalEl = deleteModalRef.current;
-    const focusable = modalEl.querySelectorAll<HTMLElement>(
-      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-    );
-    const first = focusable[0];
-    const last = focusable[focusable.length - 1];
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setIsDeleteOpen(false);
-        return;
-      }
-      if (event.key !== "Tab" || focusable.length === 0) return;
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last?.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first?.focus();
-      }
-    };
-
-    document.addEventListener("keydown", handleKeyDown);
-    first?.focus();
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [isDeleteOpen]);
+  const closeDeleteModal = useCallback(() => setIsDeleteOpen(false), []);
 
   const vitalSigns = useMemo(() => {
     if (!project) return [];
@@ -263,47 +221,36 @@ export default function ProjectDetail() {
         </section>
       </div>
 
-      <div
-        className={`modal-overlay ${isDeleteOpen ? "active" : ""}`}
-        aria-hidden={!isDeleteOpen}
-        ref={deleteModalRef}
-        onClick={(event) => {
-          if (event.target === event.currentTarget) {
-            setIsDeleteOpen(false);
-          }
-        }}
-      >
-        <div className="modal-glass" role="dialog" aria-modal="true" aria-labelledby="deleteProjectTitle">
-          <div className="modal-header">
-            <h2 id="deleteProjectTitle">Delete project</h2>
-            <button className="close-modal-btn" aria-label="Close dialog" onClick={() => setIsDeleteOpen(false)}>
-              <span className="material-icons-round">close</span>
-            </button>
-          </div>
-          <div className="modal-body">
-            <p>
-              This will permanently delete <strong>{project.name}</strong> and all related data. This action cannot be
-              undone.
-            </p>
-          </div>
-          <div className="modal-actions">
-            <button type="button" className="btn btn-outline cancel-btn" onClick={() => setIsDeleteOpen(false)}>
-              Cancel
-            </button>
-            <button
-              type="button"
-              className="btn btn-danger"
-              onClick={() => {
-                setIsDeleteOpen(false);
-                deleteProject(project.id);
-                router.push("/");
-              }}
-            >
-              Delete project
-            </button>
-          </div>
+      <Modal isOpen={isDeleteOpen} onClose={closeDeleteModal} ariaLabelledBy="deleteProjectTitle">
+        <div className="modal-header">
+          <h2 id="deleteProjectTitle">Delete project</h2>
+          <button className="close-modal-btn" aria-label="Close dialog" onClick={closeDeleteModal}>
+            <span className="material-icons-round">close</span>
+          </button>
         </div>
-      </div>
+        <div className="modal-body">
+          <p>
+            This will permanently delete <strong>{project.name}</strong> and all related data. This action cannot be
+            undone.
+          </p>
+        </div>
+        <div className="modal-actions">
+          <button type="button" className="btn btn-outline cancel-btn" onClick={closeDeleteModal}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="btn btn-danger"
+            onClick={() => {
+              closeDeleteModal();
+              deleteProject(project.id);
+              router.push("/");
+            }}
+          >
+            Delete project
+          </button>
+        </div>
+      </Modal>
     </AppShell>
   );
 }

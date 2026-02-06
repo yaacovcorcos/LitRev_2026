@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import styles from "./ExportModal.module.css";
 import type { FileAsset } from "@/types/files";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 
 type ExportStatus = "idle" | "exporting" | "success" | "error";
 
@@ -44,6 +45,7 @@ export function ExportModal({
   const [newExport, setNewExport] = useState<FileAsset | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [deleteExportId, setDeleteExportId] = useState<string | null>(null);
   const modalRef = useRef<HTMLDivElement>(null);
 
   const resetState = useCallback(() => {
@@ -52,6 +54,7 @@ export function ExportModal({
     setNewExport(null);
     setShowHistory(false);
     setCopiedId(null);
+    setDeleteExportId(null);
   }, []);
 
   useEffect(() => {
@@ -109,11 +112,12 @@ export function ExportModal({
     }
   };
 
-  const handleDeleteExport = async (fileId: string) => {
-    if (!onDeleteExport) return;
-    if (!confirm("Delete this export version?")) return;
+  const handleDeleteExportConfirm = async () => {
+    if (!onDeleteExport || !deleteExportId) return;
+    const id = deleteExportId;
+    setDeleteExportId(null);
     try {
-      await onDeleteExport(fileId);
+      await onDeleteExport(id);
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : "Delete failed");
     }
@@ -297,7 +301,7 @@ export function ExportModal({
                           <button
                             type="button"
                             className={`${styles.historyBtn} ${styles.historyDeleteBtn}`}
-                            onClick={() => handleDeleteExport(file.id)}
+                            onClick={() => setDeleteExportId(file.id)}
                             title="Delete"
                           >
                             <span className="material-icons-round">delete</span>
@@ -315,6 +319,17 @@ export function ExportModal({
             </div>
           )}
         </div>
+
+        <ConfirmDialog
+          isOpen={deleteExportId !== null}
+          title="Delete export"
+          message="Delete this export version? This action cannot be undone."
+          confirmLabel="Delete"
+          cancelLabel="Cancel"
+          variant="danger"
+          onConfirm={handleDeleteExportConfirm}
+          onCancel={() => setDeleteExportId(null)}
+        />
       </div>
     </div>
   );

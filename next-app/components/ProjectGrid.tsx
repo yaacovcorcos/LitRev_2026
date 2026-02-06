@@ -1,6 +1,5 @@
 import { Project } from "@/types/project";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import styles from "@/components/ProjectGrid.module.css";
 import { useLedger } from "@/contexts/LedgerContext";
 
@@ -11,7 +10,6 @@ type ProjectGridProps = {
 };
 
 export function ProjectGrid({ projects, viewMode, onNewProject }: ProjectGridProps) {
-  const router = useRouter();
   const { getPaperCount } = useLedger();
   const gridClass = viewMode === "list" ? `${styles.projectGrid} ${styles.listView}` : styles.projectGrid;
 
@@ -53,27 +51,15 @@ export function ProjectGrid({ projects, viewMode, onNewProject }: ProjectGridPro
         const paperCountInline = !isList && isHarvesting;
 
         return (
-          <div
+          <Link
             key={p.id}
+            href={`/project/${p.id}`}
             className={cardClass}
             data-name={p.name}
             data-modified={p.modified}
             data-created={p.created}
             data-id={p.id}
-            role="link"
-            tabIndex={0}
             aria-label={`Open project ${p.name}`}
-            onClick={(event) => {
-              const target = event.target as HTMLElement;
-              if (target.closest("a")) return;
-              router.push(`/project/${p.id}`);
-            }}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" || event.key === " ") {
-                event.preventDefault();
-                router.push(`/project/${p.id}`);
-              }
-            }}
           >
             <div className={statusClass}>
               {p.statusText}
@@ -94,10 +80,10 @@ export function ProjectGrid({ projects, viewMode, onNewProject }: ProjectGridPro
               </div>
             ) : null}
             {!paperCountInline ? <div className={styles.paperCountBottom}>{paperCount} Papers</div> : null}
-            <Link href={`/project/${p.id}`} className={buttonClass} data-id={p.id}>
+            <span className={buttonClass} data-id={p.id}>
               View Project
-            </Link>
-          </div>
+            </span>
+          </Link>
         );
       })}
     </div>

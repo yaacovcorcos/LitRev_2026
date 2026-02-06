@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { ProjectGrid } from "@/components/ProjectGrid";
 import { loadSortPreference, loadViewPreference, saveSortPreference, saveViewPreference } from "@/lib/storage";
 import { Project } from "@/types/project";
@@ -8,6 +8,7 @@ import { TopBar } from "@/components/TopBar";
 import { ControlsBar } from "@/components/ControlsBar";
 import { SortMode, ViewMode } from "@/types/view";
 import { AppShell } from "@/components/AppShell";
+import { Modal } from "@/components/Modal";
 import { useProjects } from "@/contexts/ProjectsContext";
 import { useRouter, useSearchParams } from "next/navigation";
 import layoutStyles from "./home.module.css";
@@ -29,9 +30,7 @@ function HomeContent() {
   });
   const shouldOpenFromQuery = searchParams.get("create") === "new";
   const [isModalOpen, setModalOpen] = useState(() => shouldOpenFromQuery);
-  const modalRef = useRef<HTMLDivElement | null>(null);
   const formRef = useRef<HTMLFormElement | null>(null);
-  const lastFocusRef = useRef<HTMLElement | null>(null);
 
   const sortedProjects = useMemo(() => {
     const copy = [...projects];
@@ -60,17 +59,14 @@ function HomeContent() {
     saveViewPreference(mode);
   };
 
-  const openModal = () => {
-    lastFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    setModalOpen(true);
-  };
+  const openModal = useCallback(() => setModalOpen(true), []);
 
-  const closeModal = () => {
+  const closeModal = useCallback(() => {
     setModalOpen(false);
     if (formRef.current) {
       formRef.current.reset();
     }
-  };
+  }, []);
 
   const handleCreateProject = (name: string, description: string) => {
     const newProject: Project = {
@@ -98,56 +94,6 @@ function HomeContent() {
     router.replace("/", { scroll: false });
   }, [shouldOpenFromQuery, router]);
 
-  useEffect(() => {
-    if (!isModalOpen || !modalRef.current) return;
-
-    const modalEl = modalRef.current;
-    const focusable = modalEl.querySelectorAll<HTMLElement>(
-      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-    );
-    const first = focusable[0];
-    const last = focusable[focusable.length - 1];
-    first?.focus();
-
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        closeModal();
-      } else if (e.key === "Tab") {
-        if (e.shiftKey) {
-          if (document.activeElement === first) {
-            e.preventDefault();
-            last?.focus();
-          }
-        } else {
-          if (document.activeElement === last) {
-            e.preventDefault();
-            first?.focus();
-          }
-        }
-      }
-    };
-
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("keydown", onKeyDown);
-    };
-  }, [isModalOpen]);
-
-  useEffect(() => {
-    if (!isModalOpen && lastFocusRef.current) {
-      lastFocusRef.current.focus();
-      lastFocusRef.current = null;
-    }
-  }, [isModalOpen]);
-
-  useEffect(() => {
-    if (!isModalOpen) return;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = previousOverflow;
-    };
-  }, [isModalOpen]);
 
   return (
     <>
@@ -173,54 +119,43 @@ function HomeContent() {
         </div>
       </AppShell>
 
-      <div
-        className={`modal-overlay ${isModalOpen ? "active" : ""}`}
-        aria-hidden={!isModalOpen}
-        ref={modalRef}
-        onClick={(event) => {
-          if (event.target === event.currentTarget) {
-            closeModal();
-          }
-        }}
-      >
-        <div className="modal-glass" role="dialog" aria-modal="true" aria-labelledby="createProjectTitle">
-          <div className="modal-header">
-            <h2 id="createProjectTitle">Create New Project</h2>
-            <button className="close-modal-btn" aria-label="Close Modal" onClick={closeModal}>
-              <span className="material-icons-round">close</span>
+      <Modal isOpen={isModalOpen} onClose={closeModal} ariaLabelledBy="createProjectTitle">
+        <div className="modal-header">
+          <h2 id="createProjectTitle">Create New Project</h2>
+          <button className="close-modal-btn" aria-label="Close Modal" onClick={closeModal}>
+            <span className="material-icons-round">close</span>
+          </button>
+        </div>
+        <form
+          ref={formRef}
+          onSubmit={(e) => {
+            e.preventDefault();
+            const formData = new FormData(e.currentTarget);
+            const name = (formData.get("projectName") as string).trim();
+            const desc = (formData.get("projectDesc") as string).trim();
+            if (!name) return;
+            handleCreateProject(name, desc);
+            e.currentTarget.reset();
+          }}
+        >
+          <div className="form-group">
+            <label htmlFor="projectName">Project Name</label>
+            <input type="text" id="projectName" name="projectName" placeholder="e.g., AI in Healthcare Review" required />
+          </div>
+          <div className="form-group">
+            <label htmlFor="projectDesc">Description (Optional)</label>
+            <textarea id="projectDesc" name="projectDesc" placeholder="Brief description of the research goal..." rows={3} />
+          </div>
+          <div className="modal-actions">
+            <button type="button" className="btn btn-outline cancel-btn" onClick={closeModal}>
+              Cancel
+            </button>
+            <button type="submit" className="btn btn-primary create-btn">
+              Create Project
             </button>
           </div>
-          <form
-            ref={formRef}
-            onSubmit={(e) => {
-              e.preventDefault();
-              const formData = new FormData(e.currentTarget);
-              const name = (formData.get("projectName") as string).trim();
-              const desc = (formData.get("projectDesc") as string).trim();
-              if (!name) return;
-              handleCreateProject(name, desc);
-              e.currentTarget.reset();
-            }}
-          >
-            <div className="form-group">
-              <label htmlFor="projectName">Project Name</label>
-              <input type="text" id="projectName" name="projectName" placeholder="e.g., AI in Healthcare Review" required />
-            </div>
-            <div className="form-group">
-              <label htmlFor="projectDesc">Description (Optional)</label>
-              <textarea id="projectDesc" name="projectDesc" placeholder="Brief description of the research goal..." rows={3} />
-            </div>
-            <div className="modal-actions">
-              <button type="button" className="btn btn-outline cancel-btn" onClick={closeModal}>
-                Cancel
-              </button>
-              <button type="submit" className="btn btn-primary create-btn">
-                Create Project
-              </button>
-            </div>
-          </form>
-        </div>
-      </div>
+        </form>
+      </Modal>
     </>
   );
 }

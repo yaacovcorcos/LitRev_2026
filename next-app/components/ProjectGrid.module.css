@@ -21,6 +21,8 @@
     position: relative;
     overflow: hidden;
     height: 220px;
+    text-decoration: none;
+    color: inherit;
 }
 
 .card:focus-visible {
