@@ -3,6 +3,7 @@ import "server-only";
 import { PDFParse } from "pdf-parse";
 import { getAIService } from "./ai/ai-service";
 import { EXTRACTION_SYSTEM_PROMPT, buildExtractionUserPrompt } from "./pdf-extraction-prompts";
+import { AI_CONFIG } from "@/lib/ai/config";
 import type { StudyDetails, StudyType } from "@/types/ledger";
 
 // Constants
@@ -243,7 +244,7 @@ export async function extractWithAI(
 
     try {
         const response = await aiService.chat(messages, {
-            model: "gpt-4o", // Use a reliable model
+            model: AI_CONFIG.defaultModel,
             temperature: 0.2, // Low temperature for more deterministic extraction
             maxTokens: 2000,
             projectId,

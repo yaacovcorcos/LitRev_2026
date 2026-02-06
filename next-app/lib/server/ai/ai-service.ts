@@ -245,7 +245,7 @@ class AIService {
     ): Promise<{ response: AIResponse; conversationId: string }> {
         const projectId = options?.projectId;
         const studyId = options?.studyId;
-        const userId = options?.userId || "default-user"; // TODO: Get from auth context
+        const userId = options?.userId || "single-user"; // TODO: Replace with auth session lookup
 
         // Get or create conversation
         const conversation = await getOrCreateConversation(context, projectId, studyId);
@@ -307,7 +307,7 @@ class AIService {
     ): AsyncIterable<AIStreamChunk & { conversationId?: string }> {
         const projectId = options?.projectId;
         const studyId = options?.studyId;
-        const userId = options?.userId || "default-user"; // TODO: Get from auth context
+        const userId = options?.userId || "single-user"; // TODO: Replace with auth session lookup
 
         // Get or create conversation
         const conversation = await getOrCreateConversation(context, projectId, studyId);

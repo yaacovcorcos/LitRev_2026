@@ -441,7 +441,6 @@ export default function LedgerPage() {
             formData.append("file", file);
             const { study } = await importStudyWithPdfAction(id, formData);
             addStudy(id, study);
-            router.push(`/project/${id}/ledger/${study.id}`);
         } catch (err) {
             setAlertMsg(err instanceof Error ? err.message : "Import failed");
         } finally {
@@ -647,8 +646,11 @@ export default function LedgerPage() {
                                             status: "pending",
                                             quality: "-",
                                         };
-                                        await upsertNewStudy(id, newEntry);
-                                        router.push(`/project/${id}/ledger/${newEntry.id}`);
+                                        try {
+                                            await upsertNewStudy(id, newEntry);
+                                        } catch (err) {
+                                            setAlertMsg(err instanceof Error ? err.message : "Failed to add study");
+                                        }
                                     }}>
                                         <span className="material-icons-round">add</span>
                                         Add Study
