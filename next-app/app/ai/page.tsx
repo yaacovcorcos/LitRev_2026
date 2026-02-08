@@ -5,6 +5,7 @@ import { useProjects } from "@/contexts/ProjectsContext";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { markdownComponents } from "@/components/markdown/CodeBlock";
 import styles from "./ai-view.module.css";
 import markdownStyles from "@/styles/markdown.module.css";
 import {
@@ -186,7 +187,7 @@ export default function AIView() {
       if (!isActive) return;
       const mapped = convs.map(mapConversation);
       setConversations(mapped);
-      setActiveConversationId(mapped[0]?.id ?? null);
+      setActiveConversationId(null);
     };
     load().catch((err) => {
       console.error("Failed to load AI conversations", err);
@@ -779,8 +780,9 @@ export default function AIView() {
             </div>
           </div>
 
+          <div className={`${styles.chatContent} ${showEmptyState ? styles.chatContentEmpty : ''}`}>
           <div
-            className={styles.chatMessages}
+            className={`${styles.chatMessages} ${showEmptyState ? styles.chatMessagesEmpty : ''}`}
             role="log"
             aria-live="polite"
             ref={messagesRef}
@@ -834,7 +836,7 @@ export default function AIView() {
                       <div className={`${styles.messageContent} ${msg.sender === "ai" ? styles.aiBubble : styles.userBubble}`}>
                         {msg.sender === "ai" ? (
                           <div className={markdownStyles.markdownContent}>
-                            <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.text}</ReactMarkdown>
+                            <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{msg.text}</ReactMarkdown>
                           </div>
                         ) : (
                           <p>{msg.text}</p>
@@ -985,6 +987,7 @@ export default function AIView() {
               </div>
             </form>
             <p className={styles.disclaimer}>AI can make mistakes. Please verify important information.</p>
+          </div>
           </div>
         </section>
       </div>

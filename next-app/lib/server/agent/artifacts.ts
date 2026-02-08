@@ -5,14 +5,21 @@
 
 import "server-only";
 import { prisma } from "@/lib/server/prisma";
-import type { ArtifactType, ArtifactStatus } from "@/types/artifacts";
+import type { ArtifactType, ArtifactStatus, CriteriaCardPayload, ProtocolSuggestionPayload, MemoryProposalPayload, StudyProposalPayload, DraftDiffPayload, ScreeningBatchPayload } from "@/types/artifacts";
+import type { StudyType, StudySource } from "@/types/ledger";
 import { ARTIFACT_PAYLOAD_SCHEMAS } from "@/types/artifacts";
+import type { ProtocolData } from "@/types/protocol";
 import { emitEvent } from "./events";
+import { onStudyAccepted, onStudyExcluded, onDraftAccepted, onArtifactEdited } from "@/lib/server/memory/decision-extractor";
+import { syncProtocolToMemory } from "@/lib/server/memory/protocol-sync";
+import { setUserMemory, createProjectMemory } from "@/lib/server/memory";
+import { createNote, updateNote, textToTipTapDoc, listNotes, type NoteContent, extractTextFromContent } from "@/lib/server/notes";
+import { upsertStudy } from "@/lib/server/ledger";
 
 // ── Apply function registry ──────────────────────────────────────────────────
 
 type ApplyFunction = (
-    artifact: { id: string; projectId: string; payload: unknown; snapshot: unknown },
+    artifact: { id: string; projectId: string; payload: unknown; snapshot: unknown; conversationId?: string | null; userId?: string | null },
 ) => Promise<void>;
 
 const applyFunctions = new Map<ArtifactType, ApplyFunction>();
@@ -98,13 +105,21 @@ export async function reviewArtifact(
         await applyArtifact(artifactId);
     }
 
+    // Decision memory extraction (fire-and-forget)
+    extractDecisionMemory(artifact, status, reviewNote).catch((err) =>
+        console.error("[decision-extractor] Failed:", err)
+    );
+
     return updated;
 }
 
 /**
  * Apply an artifact — run the type-specific apply function
  */
-export async function applyArtifact(artifactId: string) {
+export async function applyArtifact(
+    artifactId: string,
+    statusOverride?: Extract<ArtifactStatus, "accepted" | "auto_applied">
+) {
     const artifact = await prisma.artifact.findUnique({ where: { id: artifactId } });
     if (!artifact) throw new Error("Artifact not found");
 
@@ -117,7 +132,10 @@ export async function applyArtifact(artifactId: string) {
         // Still mark as applied — the artifact was accepted
         return prisma.artifact.update({
             where: { id: artifactId },
-            data: { appliedAt: new Date() },
+            data: {
+                appliedAt: new Date(),
+                ...(statusOverride ? { status: statusOverride } : {}),
+            },
         });
     }
 
@@ -127,6 +145,8 @@ export async function applyArtifact(artifactId: string) {
         projectId: artifact.projectId,
         payload: artifact.payload,
         snapshot: artifact.snapshot,
+        conversationId: artifact.conversationId,
+        userId: artifact.userId,
     });
 
     // Mark applied
@@ -135,6 +155,7 @@ export async function applyArtifact(artifactId: string) {
         data: {
             appliedAt: new Date(),
             applyId: artifact.id, // self-referencing idempotency key
+            ...(statusOverride ? { status: statusOverride } : {}),
         },
     });
 
@@ -213,3 +234,192 @@ export async function getArtifactsForRun(runId: string) {
 export async function getArtifact(artifactId: string) {
     return prisma.artifact.findUnique({ where: { id: artifactId } });
 }
+
+// ── Decision memory extraction helper ────────────────────────────────────────
+
+async function extractDecisionMemory(
+    artifact: { type: string; projectId: string; runId: string | null; conversationId: string | null; userId: string | null; payload: unknown; snapshot: unknown },
+    status: string,
+    reviewNote?: string,
+): Promise<void> {
+    const payload = artifact.payload as Record<string, unknown>;
+
+    if (artifact.type === "study_proposal") {
+        const sp = payload as unknown as import("@/types/artifacts").StudyProposalPayload;
+        if (status === "accepted" && sp.recommendation === "keep") {
+            // Look up study by title to get studyId
+            const study = await prisma.study.findFirst({
+                where: { projectId: artifact.projectId, title: sp.title },
+                select: { id: true },
+            });
+            if (study) {
+                await onStudyAccepted(artifact.projectId, study.id, sp);
+            }
+        } else if (status === "rejected" || sp.recommendation === "exclude") {
+            await onStudyExcluded(artifact.projectId, sp, reviewNote);
+        }
+    } else if (artifact.type === "draft_diff" && status === "accepted") {
+        const dp = payload as unknown as import("@/types/artifacts").DraftDiffPayload;
+        await onDraftAccepted(artifact.projectId, dp);
+    } else if (status === "edited" && artifact.snapshot && artifact.runId) {
+        await onArtifactEdited(
+            artifact.runId,
+            artifact.projectId,
+            artifact.conversationId,
+            artifact.userId ?? undefined,
+            artifact.snapshot,
+            artifact.payload,
+            artifact.type as ArtifactType,
+        );
+    }
+}
+
+// ── Apply function registrations ─────────────────────────────────────────────
+
+function setNestedValue(obj: Record<string, unknown>, path: string, value: unknown) {
+    const keys = path.split(".");
+    let current: Record<string, unknown> = obj;
+    for (let i = 0; i < keys.length - 1; i++) {
+        current = current[keys[i]] as Record<string, unknown>;
+        if (!current) return;
+    }
+    current[keys[keys.length - 1]] = value;
+}
+
+// criteria_card: update protocol eligibility, then sync to memory
+registerApplyFunction("criteria_card", async (artifact) => {
+    const payload = artifact.payload as CriteriaCardPayload;
+    const protocol = await prisma.protocol.findUnique({ where: { projectId: artifact.projectId } });
+    if (!protocol) return;
+    const data = protocol.data as unknown as ProtocolData;
+    data.eligibility.inclusion = payload.inclusion;
+    data.eligibility.exclusion = payload.exclusion;
+    await prisma.protocol.update({
+        where: { projectId: artifact.projectId },
+        data: { data: data as unknown as object },
+    });
+    await syncProtocolToMemory(artifact.projectId, data);
+});
+
+// protocol_suggestion: update protocol field, then sync
+registerApplyFunction("protocol_suggestion", async (artifact) => {
+    const payload = artifact.payload as ProtocolSuggestionPayload;
+    const protocol = await prisma.protocol.findUnique({ where: { projectId: artifact.projectId } });
+    if (!protocol) return;
+    const data = protocol.data as unknown as ProtocolData;
+    setNestedValue(data as unknown as Record<string, unknown>, payload.field, payload.value);
+    await prisma.protocol.update({
+        where: { projectId: artifact.projectId },
+        data: { data: data as unknown as object },
+    });
+    await syncProtocolToMemory(artifact.projectId, data);
+});
+
+// memory_proposal: create the actual memory entry
+registerApplyFunction("memory_proposal", async (artifact) => {
+    const payload = artifact.payload as MemoryProposalPayload;
+    if (payload.memoryType === "user") {
+        await setUserMemory({
+            userId: artifact.userId || "single-user",
+            type: "preference",
+            key: payload.key || `auto-${Date.now()}`,
+            value: payload.value,
+            rationale: payload.rationale,
+            tags: ["ai-proposed"],
+        });
+    } else if (payload.memoryType === "project") {
+        await createProjectMemory({
+            projectId: artifact.projectId,
+            type: "decision",
+            statement: payload.value,
+            rationale: payload.rationale,
+            importance: "normal",
+            tags: ["ai-proposed"],
+        });
+    } else if (payload.memoryType === "note") {
+        await createNote({
+            projectId: artifact.projectId,
+            title: payload.key || undefined,
+            content: textToTipTapDoc(payload.value),
+            source: "conversation",
+            sourceConversationId: artifact.conversationId ?? undefined,
+            tags: ["ai-proposed"],
+        });
+    }
+});
+
+// study_proposal: upsert the study with triage decision
+registerApplyFunction("study_proposal", async (artifact) => {
+    const payload = artifact.payload as StudyProposalPayload;
+    await upsertStudy(null, artifact.projectId, {
+        title: payload.title,
+        authors: payload.authors,
+        year: payload.year,
+        status: "pending",
+        quality: "-",
+        details: {
+            doi: payload.doi,
+            pmid: payload.pmid,
+            abstract: payload.abstract,
+            journal: payload.journal,
+            studyType: payload.studyType as StudyType | undefined,
+            sampleSize: payload.sampleSize,
+            triageDecision: payload.recommendation,
+            matchRationale: payload.matchRationale,
+            source: payload.source as StudySource | undefined,
+            sourceUrl: payload.sourceUrl,
+        },
+    });
+});
+
+// draft_diff: create or update the note for the section
+registerApplyFunction("draft_diff", async (artifact) => {
+    const payload = artifact.payload as DraftDiffPayload;
+    const existing = await listNotes(artifact.projectId);
+    const sectionNote = existing.find(
+        (n) => n.linkedSection?.toLowerCase() === payload.section.toLowerCase()
+    );
+
+    if (sectionNote) {
+        await updateNote(sectionNote.id, {
+            content: textToTipTapDoc(payload.content),
+        });
+    } else {
+        await createNote({
+            projectId: artifact.projectId,
+            title: payload.section,
+            content: textToTipTapDoc(payload.content),
+            linkedSection: payload.section,
+            source: "conversation",
+            sourceConversationId: artifact.conversationId ?? undefined,
+            tags: ["draft", payload.section.toLowerCase()],
+        });
+    }
+});
+
+// screening_batch: apply each study's triage decision
+registerApplyFunction("screening_batch", async (artifact) => {
+    const payload = artifact.payload as ScreeningBatchPayload;
+    for (const study of payload.studies) {
+        // Find the study in the ledger by title
+        const existing = await prisma.study.findFirst({
+            where: { projectId: artifact.projectId, title: study.title },
+            select: { id: true, details: true },
+        });
+        if (!existing) continue;
+
+        const details = (existing.details as Record<string, unknown>) ?? {};
+        await prisma.study.update({
+            where: { id: existing.id },
+            data: {
+                status: study.recommendation === "exclude" ? "excluded" : "active",
+                details: {
+                    ...details,
+                    triageDecision: study.recommendation,
+                    matchRationale: study.matchRationale,
+                    screenedAt: new Date().toISOString(),
+                },
+            },
+        });
+    }
+});

@@ -250,6 +250,16 @@ export async function getMemoryRetrievalStatsAction(projectId: string) {
 }
 
 // ============================================================================
+// PRISMA STATS ACTIONS
+// ============================================================================
+
+import { getPRISMAStats, type PRISMAStats } from "@/lib/server/memory";
+
+export async function getPRISMAStatsAction(projectId: string): Promise<PRISMAStats> {
+    return getPRISMAStats(projectId);
+}
+
+// ============================================================================
 // EXPORT TYPES FOR CLIENT-SIDE USE
 // ============================================================================
 

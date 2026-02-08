@@ -14,3 +14,12 @@ export * from "./study-memory";
 
 // Memory Retrieval
 export * from "./memory-retrieval";
+
+// PRISMA Stats
+export * from "./prisma-stats";
+
+// Protocol Sync
+export * from "./protocol-sync";
+
+// Conversation Extraction
+export * from "./conversation-extractor";

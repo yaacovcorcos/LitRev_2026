@@ -6,6 +6,7 @@
 import "server-only";
 import { prisma } from "@/lib/server/prisma";
 import type { AgentMode, RunStatus, RunTrigger } from "@/types/agent";
+import { extractMemoriesFromConversation } from "@/lib/server/memory/conversation-extractor";
 
 export interface StartRunInput {
     projectId: string;
@@ -42,7 +43,7 @@ export async function endRun(
     costTokensIn?: number,
     costTokensOut?: number
 ) {
-    return prisma.agentRun.update({
+    const run = await prisma.agentRun.update({
         where: { id: runId },
         data: {
             status,
@@ -51,6 +52,28 @@ export async function endRun(
             ...(costTokensOut !== undefined ? { costTokensOut } : {}),
         },
     });
+
+    // Fire-and-forget: extract memories from completed conversations
+    if (status === "completed" && run.conversationId && run.projectId) {
+        scheduleMemoryExtraction(run.id, run.conversationId, run.projectId, run.userId ?? undefined)
+            .catch((err) => console.error("[conversation-extractor] Failed:", err));
+    }
+
+    return run;
+}
+
+async function scheduleMemoryExtraction(
+    runId: string,
+    conversationId: string,
+    projectId: string,
+    userId?: string,
+) {
+    const count = await prisma.aIMessage.count({
+        where: { conversationId, role: { in: ["user", "assistant"] } },
+    });
+    if (count >= 5) {
+        await extractMemoriesFromConversation(conversationId, projectId, runId, userId);
+    }
 }
 
 /**

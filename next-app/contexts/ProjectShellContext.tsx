@@ -11,8 +11,6 @@ type ProjectShellContextValue = {
     activeTab: ViewTab | null;
     setActiveTab: (tab: ViewTab) => void;
     returnToConversation: () => void;
-    isNoAiMode: boolean;
-    setNoAiMode: (v: boolean) => void;
 };
 
 const defaultValue: ProjectShellContextValue = {
@@ -21,8 +19,6 @@ const defaultValue: ProjectShellContextValue = {
     activeTab: null,
     setActiveTab: () => {},
     returnToConversation: () => {},
-    isNoAiMode: false,
-    setNoAiMode: () => {},
 };
 
 const ProjectShellContext = createContext<ProjectShellContextValue>(defaultValue);

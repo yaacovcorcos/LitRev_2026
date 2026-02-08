@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { AppShell } from "@/components/AppShell";
@@ -19,7 +19,67 @@ import {
   MEMORY_CATEGORY_LABELS,
   MEMORY_IMPORTANCE_LABELS,
 } from "@/types/memory";
+import {
+  getUserMemoriesAction,
+  getProjectStudyMemoriesAction,
+  getPRISMAStatsAction,
+} from "@/app/actions/memory";
+import type { PRISMAStats } from "@/lib/server/memory/prisma-stats";
 import styles from "./memory.module.css";
+
+// ── Types for tab data ───────────────────────────────────────────────────────
+
+type TabId = "project" | "study" | "preferences" | "prisma";
+
+interface UserPref {
+  id: string;
+  type: string;
+  key: string;
+  value: string;
+  rationale?: string | null;
+  tags: string[];
+  status: string;
+}
+
+interface StudyMemoryItem {
+  id: string;
+  type: string;
+  category?: string | null;
+  content: string;
+  source?: string | null;
+  confidence?: number | null;
+  tags: string[];
+  study: { id: string; title: string; authors?: string | null; year?: number | null };
+}
+
+// ── Provenance helper ────────────────────────────────────────────────────────
+
+function getProvenance(tags: string[]): { label: string; icon: string } {
+  if (tags.some((t) => t.startsWith("protocol-sync:")))
+    return { label: "Protocol sync", icon: "sync" };
+  if (tags.includes("conversation-extracted"))
+    return { label: "AI-extracted", icon: "smart_toy" };
+  if (tags.includes("ai-proposed"))
+    return { label: "AI-proposed", icon: "auto_awesome" };
+  if (tags.includes("artifact-decision"))
+    return { label: "From artifact", icon: "task_alt" };
+  return { label: "User-defined", icon: "person" };
+}
+
+// ── SINGLE USER ID (matches existing pattern) ───────────────────────────────
+
+const SINGLE_USER_ID = "single-user";
+
+// ── Tabs definition ──────────────────────────────────────────────────────────
+
+const TABS: { id: TabId; label: string; icon: string }[] = [
+  { id: "project", label: "Project Memory", icon: "psychology" },
+  { id: "study", label: "Study Memory", icon: "science" },
+  { id: "preferences", label: "Preferences", icon: "tune" },
+  { id: "prisma", label: "PRISMA Stats", icon: "analytics" },
+];
+
+// ── Main content ─────────────────────────────────────────────────────────────
 
 function MemoryPageContent() {
   const { id } = useParams<{ id: string }>();
@@ -41,10 +101,21 @@ function MemoryPageContent() {
     deleteMemory,
   } = useProjectMemory();
 
-  const [isAddOpen, setIsAddOpen] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
+  // Tab state
+  const [activeTab, setActiveTab] = useState<TabId>("project");
+
+  // Lazy-loaded tab data
+  const [studyMemories, setStudyMemories] = useState<StudyMemoryItem[] | null>(null);
+  const [userPreferences, setUserPreferences] = useState<UserPref[] | null>(null);
+  const [prismaStats, setPrismaStats] = useState<PRISMAStats | null>(null);
+  const [tabLoading, setTabLoading] = useState(false);
+
+  // Study accordion state
+  const [expandedStudies, setExpandedStudies] = useState<Set<string>>(new Set());
 
   // Form state
+  const [isAddOpen, setIsAddOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [formType, setFormType] = useState<ProjectMemoryType>("decision");
   const [formCategory, setFormCategory] = useState<ProjectMemoryCategory | "">("");
   const [formStatement, setFormStatement] = useState("");
@@ -58,6 +129,35 @@ function MemoryPageContent() {
     setFormRationale("");
     setFormImportance("normal");
   };
+
+  // Fetch tab data on tab switch
+  useEffect(() => {
+    if (!id) return;
+
+    if (activeTab === "study" && studyMemories === null) {
+      setTabLoading(true);
+      getProjectStudyMemoriesAction(id)
+        .then((data) => setStudyMemories(data as unknown as StudyMemoryItem[]))
+        .catch(() => setStudyMemories([]))
+        .finally(() => setTabLoading(false));
+    }
+
+    if (activeTab === "preferences" && userPreferences === null) {
+      setTabLoading(true);
+      getUserMemoriesAction(SINGLE_USER_ID, { status: "active" })
+        .then((data) => setUserPreferences(data as unknown as UserPref[]))
+        .catch(() => setUserPreferences([]))
+        .finally(() => setTabLoading(false));
+    }
+
+    if (activeTab === "prisma" && prismaStats === null) {
+      setTabLoading(true);
+      getPRISMAStatsAction(id)
+        .then((data) => setPrismaStats(data))
+        .catch(() => setPrismaStats(null))
+        .finally(() => setTabLoading(false));
+    }
+  }, [activeTab, id, studyMemories, userPreferences, prismaStats]);
 
   const handleCreate = async () => {
     if (!formStatement.trim()) return;
@@ -92,12 +192,21 @@ function MemoryPageContent() {
     setEditingId(null);
   };
 
-  const handleArchive = async (id: string) => {
-    await archiveMemory(id);
+  const handleArchive = async (memId: string) => {
+    await archiveMemory(memId);
   };
 
-  const handleDelete = async (id: string) => {
-    await deleteMemory(id);
+  const handleDelete = async (memId: string) => {
+    await deleteMemory(memId);
+  };
+
+  const toggleStudy = (studyId: string) => {
+    setExpandedStudies((prev) => {
+      const next = new Set(prev);
+      if (next.has(studyId)) next.delete(studyId);
+      else next.add(studyId);
+      return next;
+    });
   };
 
   if (!project) {
@@ -114,6 +223,23 @@ function MemoryPageContent() {
   const typeOptions: ProjectMemoryType[] = ["decision", "definition", "criterion", "goal"];
   const categoryOptions: ProjectMemoryCategory[] = ["inclusion", "exclusion", "outcome", "population", "intervention", "comparison"];
 
+  // Group study memories by study
+  const studyGroups = studyMemories
+    ? Object.values(
+        studyMemories.reduce(
+          (acc, sm) => {
+            const key = sm.study.id;
+            if (!acc[key]) {
+              acc[key] = { study: sm.study, memories: [] };
+            }
+            acc[key].memories.push(sm);
+            return acc;
+          },
+          {} as Record<string, { study: StudyMemoryItem["study"]; memories: StudyMemoryItem[] }>,
+        ),
+      )
+    : [];
+
   return (
     <AppShell activeNav="projects">
       <div className={styles.page}>
@@ -129,143 +255,348 @@ function MemoryPageContent() {
               Decisions, definitions, and criteria that guide your review
             </p>
           </div>
-          <button className="header-btn" onClick={() => setIsAddOpen(true)}>
-            <span className="material-icons-round">add</span>
-            Add Memory
-          </button>
+          {activeTab === "project" && (
+            <button className="header-btn" onClick={() => setIsAddOpen(true)}>
+              <span className="material-icons-round">add</span>
+              Add Memory
+            </button>
+          )}
         </header>
 
-        {/* Filters */}
-        <div className={styles.filters}>
-          <div className={styles.searchBox}>
-            <span className="material-icons-round">search</span>
-            <input
-              type="text"
-              placeholder="Search memories..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-          </div>
-          <div className={styles.filterChips}>
+        {/* Tab Bar */}
+        <div className={styles.tabBar}>
+          {TABS.map((tab) => (
             <button
-              className={`${styles.filterChip} ${!filterType ? styles.active : ""}`}
-              onClick={() => setFilterType(null)}
+              key={tab.id}
+              className={`${styles.tab} ${activeTab === tab.id ? styles.tabActive : ""}`}
+              onClick={() => setActiveTab(tab.id)}
             >
-              All Types
+              <span className="material-icons-round">{tab.icon}</span>
+              {tab.label}
             </button>
-            {typeOptions.map((t) => (
-              <button
-                key={t}
-                className={`${styles.filterChip} ${filterType === t ? styles.active : ""}`}
-                onClick={() => setFilterType(filterType === t ? null : t)}
-              >
-                {MEMORY_TYPE_LABELS[t]}
-              </button>
-            ))}
-          </div>
-          <div className={styles.filterChips}>
-            <button
-              className={`${styles.filterChip} ${!filterCategory ? styles.active : ""}`}
-              onClick={() => setFilterCategory(null)}
-            >
-              All Categories
-            </button>
-            {categoryOptions.map((c) => (
-              <button
-                key={c}
-                className={`${styles.filterChip} ${filterCategory === c ? styles.active : ""}`}
-                onClick={() => setFilterCategory(filterCategory === c ? null : c)}
-              >
-                {MEMORY_CATEGORY_LABELS[c]}
-              </button>
-            ))}
-          </div>
+          ))}
         </div>
 
-        {/* Stats */}
-        <div className={styles.stats}>
-          <span>{filteredMemories.length} memories</span>
-          {filteredMemories.filter((m) => m.importance === "critical").length > 0 && (
-            <span className={styles.criticalBadge}>
-              {filteredMemories.filter((m) => m.importance === "critical").length} critical
-            </span>
-          )}
-        </div>
-
-        {/* Memory List */}
-        <div className={styles.memoryList}>
-          {isLoading ? (
-            <div className={styles.emptyState}>Loading...</div>
-          ) : error ? (
-            <div className={styles.emptyState}>{error}</div>
-          ) : filteredMemories.length === 0 ? (
-            <div className={styles.emptyState}>
-              <span className="material-icons-round">psychology</span>
-              <p>No memories yet</p>
-              <p className={styles.emptyHint}>
-                Add decisions, definitions, or criteria to guide your review
-              </p>
+        {/* ── Project Memory Tab ────────────────────────────────────────── */}
+        {activeTab === "project" && (
+          <>
+            {/* Filters */}
+            <div className={styles.filters}>
+              <div className={styles.searchBox}>
+                <span className="material-icons-round">search</span>
+                <input
+                  type="text"
+                  placeholder="Search memories..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+              </div>
+              <div className={styles.filterChips}>
+                <button
+                  className={`${styles.filterChip} ${!filterType ? styles.active : ""}`}
+                  onClick={() => setFilterType(null)}
+                >
+                  All Types
+                </button>
+                {typeOptions.map((t) => (
+                  <button
+                    key={t}
+                    className={`${styles.filterChip} ${filterType === t ? styles.active : ""}`}
+                    onClick={() => setFilterType(filterType === t ? null : t)}
+                  >
+                    {MEMORY_TYPE_LABELS[t]}
+                  </button>
+                ))}
+              </div>
+              <div className={styles.filterChips}>
+                <button
+                  className={`${styles.filterChip} ${!filterCategory ? styles.active : ""}`}
+                  onClick={() => setFilterCategory(null)}
+                >
+                  All Categories
+                </button>
+                {categoryOptions.map((c) => (
+                  <button
+                    key={c}
+                    className={`${styles.filterChip} ${filterCategory === c ? styles.active : ""}`}
+                    onClick={() => setFilterCategory(filterCategory === c ? null : c)}
+                  >
+                    {MEMORY_CATEGORY_LABELS[c]}
+                  </button>
+                ))}
+              </div>
             </div>
-          ) : (
-            filteredMemories.map((memory) => (
-              <div
-                key={memory.id}
-                className={`${styles.memoryCard} ${memory.importance === "critical" ? styles.critical : ""}`}
-              >
-                <div className={styles.memoryHeader}>
-                  <span className={styles.memoryType}>
-                    <span className="material-icons-round">{MEMORY_TYPE_ICONS[memory.type as ProjectMemoryType]}</span>
-                    {MEMORY_TYPE_LABELS[memory.type as ProjectMemoryType]}
-                  </span>
-                  {memory.category && (
-                    <span className={styles.memoryCategory}>
-                      {MEMORY_CATEGORY_LABELS[memory.category as ProjectMemoryCategory]}
-                    </span>
-                  )}
-                  <span className={`${styles.importanceBadge} ${styles[memory.importance]}`}>
-                    {MEMORY_IMPORTANCE_LABELS[memory.importance as ProjectMemoryImportance]}
-                  </span>
-                </div>
-                <p className={styles.memoryStatement}>{memory.statement}</p>
-                {memory.rationale && (
-                  <p className={styles.memoryRationale}>
-                    <strong>Rationale:</strong> {memory.rationale}
+
+            {/* Stats */}
+            <div className={styles.stats}>
+              <span>{filteredMemories.length} memories</span>
+              {filteredMemories.filter((m) => m.importance === "critical").length > 0 && (
+                <span className={styles.criticalBadge}>
+                  {filteredMemories.filter((m) => m.importance === "critical").length} critical
+                </span>
+              )}
+            </div>
+
+            {/* Memory List */}
+            <div className={styles.memoryList}>
+              {isLoading ? (
+                <div className={styles.emptyState}>Loading...</div>
+              ) : error ? (
+                <div className={styles.emptyState}>{error}</div>
+              ) : filteredMemories.length === 0 ? (
+                <div className={styles.emptyState}>
+                  <span className="material-icons-round">psychology</span>
+                  <p>No memories yet</p>
+                  <p className={styles.emptyHint}>
+                    Add decisions, definitions, or criteria to guide your review
                   </p>
-                )}
-                {memory.tags.length > 0 && (
-                  <div className={styles.memoryTags}>
-                    {memory.tags.map((tag) => (
-                      <span key={tag} className={styles.tag}>{tag}</span>
-                    ))}
+                </div>
+              ) : (
+                filteredMemories.map((memory) => {
+                  const prov = getProvenance(memory.tags);
+                  return (
+                    <div
+                      key={memory.id}
+                      className={`${styles.memoryCard} ${memory.importance === "critical" ? styles.critical : ""}`}
+                    >
+                      <div className={styles.memoryHeader}>
+                        <span className={styles.memoryType}>
+                          <span className="material-icons-round">{MEMORY_TYPE_ICONS[memory.type as ProjectMemoryType]}</span>
+                          {MEMORY_TYPE_LABELS[memory.type as ProjectMemoryType]}
+                        </span>
+                        {memory.category && (
+                          <span className={styles.memoryCategory}>
+                            {MEMORY_CATEGORY_LABELS[memory.category as ProjectMemoryCategory]}
+                          </span>
+                        )}
+                        <span className={styles.provenanceBadge}>
+                          <span className="material-icons-round">{prov.icon}</span>
+                          {prov.label}
+                        </span>
+                        <span className={`${styles.importanceBadge} ${styles[memory.importance]}`}>
+                          {MEMORY_IMPORTANCE_LABELS[memory.importance as ProjectMemoryImportance]}
+                        </span>
+                      </div>
+                      <p className={styles.memoryStatement}>{memory.statement}</p>
+                      {memory.rationale && (
+                        <p className={styles.memoryRationale}>
+                          <strong>Rationale:</strong> {memory.rationale}
+                        </p>
+                      )}
+                      <div className={styles.memoryMeta}>
+                        {memory.tags.length > 0 && (
+                          <div className={styles.memoryTags}>
+                            {memory.tags.map((tag) => (
+                              <span key={tag} className={styles.tag}>{tag}</span>
+                            ))}
+                          </div>
+                        )}
+                        <span className={styles.dateInfo}>
+                          {new Date(memory.createdAt).toLocaleDateString()}
+                        </span>
+                      </div>
+                      <div className={styles.memoryActions}>
+                        <button
+                          className={styles.actionBtn}
+                          onClick={() => startEdit(memory)}
+                          title="Edit"
+                        >
+                          <span className="material-icons-round">edit</span>
+                        </button>
+                        <button
+                          className={styles.actionBtn}
+                          onClick={() => handleArchive(memory.id)}
+                          title="Archive"
+                        >
+                          <span className="material-icons-round">archive</span>
+                        </button>
+                        <button
+                          className={`${styles.actionBtn} ${styles.deleteBtn}`}
+                          onClick={() => handleDelete(memory.id)}
+                          title="Delete"
+                        >
+                          <span className="material-icons-round">delete</span>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </>
+        )}
+
+        {/* ── Study Memory Tab ──────────────────────────────────────────── */}
+        {activeTab === "study" && (
+          <div className={styles.memoryList}>
+            {tabLoading ? (
+              <div className={styles.emptyState}>Loading study memories...</div>
+            ) : studyGroups.length === 0 ? (
+              <div className={styles.emptyState}>
+                <span className="material-icons-round">science</span>
+                <p>No study memories yet</p>
+                <p className={styles.emptyHint}>
+                  Study memories are created when studies are accepted via artifact review
+                </p>
+              </div>
+            ) : (
+              studyGroups.map(({ study, memories }) => (
+                <div key={study.id} className={styles.studyGroup}>
+                  <button
+                    className={styles.studyGroupHeader}
+                    onClick={() => toggleStudy(study.id)}
+                  >
+                    <span className="material-icons-round">
+                      {expandedStudies.has(study.id) ? "expand_more" : "chevron_right"}
+                    </span>
+                    <div className={styles.studyGroupTitle}>
+                      <strong>{study.title}</strong>
+                      <span className={styles.studyGroupMeta}>
+                        {study.authors && `${study.authors}`}
+                        {study.year && `, ${study.year}`}
+                        {` \u2022 ${memories.length} memories`}
+                      </span>
+                    </div>
+                  </button>
+                  {expandedStudies.has(study.id) && (
+                    <div className={styles.studyGroupBody}>
+                      {memories.map((sm) => (
+                        <div key={sm.id} className={styles.studyMemoryCard}>
+                          <div className={styles.memoryHeader}>
+                            <span className={styles.memoryType}>{sm.type}</span>
+                            {sm.category && (
+                              <span className={styles.memoryCategory}>{sm.category}</span>
+                            )}
+                            {sm.confidence != null && (
+                              <span className={styles.confidenceBadge}>
+                                {Math.round(sm.confidence * 100)}%
+                              </span>
+                            )}
+                            {sm.source && (
+                              <span className={styles.provenanceBadge}>
+                                <span className="material-icons-round">
+                                  {sm.source === "ai_generated" ? "smart_toy" : "person"}
+                                </span>
+                                {sm.source === "ai_generated" ? "AI" : sm.source}
+                              </span>
+                            )}
+                          </div>
+                          <p className={styles.memoryStatement}>{sm.content}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+        )}
+
+        {/* ── Preferences Tab ───────────────────────────────────────────── */}
+        {activeTab === "preferences" && (
+          <div className={styles.memoryList}>
+            {tabLoading ? (
+              <div className={styles.emptyState}>Loading preferences...</div>
+            ) : !userPreferences || userPreferences.length === 0 ? (
+              <div className={styles.emptyState}>
+                <span className="material-icons-round">tune</span>
+                <p>No preferences saved</p>
+                <p className={styles.emptyHint}>
+                  Preferences are learned from your editing patterns and conversation
+                </p>
+              </div>
+            ) : (
+              userPreferences.map((pref) => (
+                <div key={pref.id} className={styles.preferenceCard}>
+                  <div className={styles.preferenceHeader}>
+                    <span className={styles.preferenceKey}>{pref.key}</span>
+                    <span className={styles.provenanceBadge}>
+                      <span className="material-icons-round">
+                        {getProvenance(pref.tags).icon}
+                      </span>
+                      {getProvenance(pref.tags).label}
+                    </span>
+                  </div>
+                  <p className={styles.preferenceValue}>{pref.value}</p>
+                  {pref.rationale && (
+                    <p className={styles.memoryRationale}>
+                      <strong>Rationale:</strong> {pref.rationale}
+                    </p>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+        )}
+
+        {/* ── PRISMA Stats Tab ──────────────────────────────────────────── */}
+        {activeTab === "prisma" && (
+          <div className={styles.prismaSection}>
+            {tabLoading ? (
+              <div className={styles.emptyState}>Loading PRISMA stats...</div>
+            ) : !prismaStats ? (
+              <div className={styles.emptyState}>
+                <span className="material-icons-round">analytics</span>
+                <p>Could not load PRISMA statistics</p>
+              </div>
+            ) : (
+              <>
+                <div className={styles.prismaGrid}>
+                  <div className={styles.prismaCard}>
+                    <span className={styles.prismaLabel}>Identified</span>
+                    <span className={styles.prismaValue}>{prismaStats.identification.total}</span>
+                  </div>
+                  <div className={styles.prismaCard}>
+                    <span className={styles.prismaLabel}>Screened</span>
+                    <span className={styles.prismaValue}>{prismaStats.screening.screened}</span>
+                  </div>
+                  <div className={styles.prismaCard}>
+                    <span className={styles.prismaLabel}>Excluded</span>
+                    <span className={`${styles.prismaValue} ${styles.prismaExcluded}`}>
+                      {prismaStats.screening.excluded}
+                    </span>
+                  </div>
+                  <div className={styles.prismaCard}>
+                    <span className={styles.prismaLabel}>Included</span>
+                    <span className={`${styles.prismaValue} ${styles.prismaIncluded}`}>
+                      {prismaStats.included.total}
+                    </span>
+                  </div>
+                  <div className={styles.prismaCard}>
+                    <span className={styles.prismaLabel}>Pending (maybe)</span>
+                    <span className={styles.prismaValue}>{prismaStats.pending.maybe}</span>
+                  </div>
+                  <div className={styles.prismaCard}>
+                    <span className={styles.prismaLabel}>Unscreened</span>
+                    <span className={styles.prismaValue}>{prismaStats.pending.unscreened}</span>
+                  </div>
+                </div>
+
+                {prismaStats.screening.exclusionReasons.length > 0 && (
+                  <div className={styles.exclusionSection}>
+                    <h3>Exclusion Reasons</h3>
+                    <table className={styles.exclusionTable}>
+                      <thead>
+                        <tr>
+                          <th>Reason</th>
+                          <th>Count</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {prismaStats.screening.exclusionReasons.map((r) => (
+                          <tr key={r.reason}>
+                            <td>{r.reason}</td>
+                            <td>{r.count}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 )}
-                <div className={styles.memoryActions}>
-                  <button
-                    className={styles.actionBtn}
-                    onClick={() => startEdit(memory)}
-                    title="Edit"
-                  >
-                    <span className="material-icons-round">edit</span>
-                  </button>
-                  <button
-                    className={styles.actionBtn}
-                    onClick={() => handleArchive(memory.id)}
-                    title="Archive"
-                  >
-                    <span className="material-icons-round">archive</span>
-                  </button>
-                  <button
-                    className={`${styles.actionBtn} ${styles.deleteBtn}`}
-                    onClick={() => handleDelete(memory.id)}
-                    title="Delete"
-                  >
-                    <span className="material-icons-round">delete</span>
-                  </button>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
+              </>
+            )}
+          </div>
+        )}
 
         {/* Add/Edit Modal */}
         {(isAddOpen || editingId) && (

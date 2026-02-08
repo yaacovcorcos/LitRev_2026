@@ -241,6 +241,12 @@
     overscroll-behavior: contain;
 }
 
+/* Empty body: don't take all space, let parent center */
+.copilotBodyEmpty {
+    flex: 0 1 auto;
+    overflow-y: visible;
+}
+
 .emptyPanel {
     margin: auto 0;
     padding: 24px 20px;
@@ -332,8 +338,53 @@
 .chatActions {
     display: flex;
     justify-content: flex-end;
-    margin-top: 10px;
-    gap: 8px;
+    align-items: center;
+    margin-top: 6px;
+    gap: 2px;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+}
+
+.chatMsgAi:hover .chatActions {
+    opacity: 1;
+}
+
+.chatActionsVisible {
+    opacity: 1;
+}
+
+.chatActions:focus-within {
+    opacity: 1;
+}
+
+@media (hover: none) {
+    .chatActions {
+        opacity: 1;
+    }
+}
+
+.chatActionBtn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    background: transparent;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    color: var(--text-muted);
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.chatActionBtn:hover {
+    background: rgba(0, 0, 0, 0.06);
+    color: var(--text-primary);
+}
+
+.chatActionBtn .material-icons-round {
+    font-size: 16px;
 }
 
 /* ========================================
@@ -341,17 +392,20 @@
    ======================================== */
 
 .inputBox {
-    margin: 12px;
-    background: white;
-    border: 1px solid var(--glass-border);
-    border-radius: 16px;
+    margin: 12px 12px 16px;
+    background: rgba(255, 255, 255, 0.65);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(0, 0, 0, 0.06);
+    border-radius: 24px;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
     transition: border-color 0.2s ease, box-shadow 0.2s ease;
     position: relative;
 }
 
 .inputBox:focus-within {
-    border-color: rgba(0, 0, 0, 0.2);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+    border-color: rgba(0, 0, 0, 0.1);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
 }
 
 /* Upper floor - textarea */
@@ -390,8 +444,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 4px 8px 8px;
-    border-top: 1px solid rgba(0, 0, 0, 0.04);
+    padding: 4px 12px 8px;
 }
 
 .inputBarLeft {
@@ -588,7 +641,7 @@
     height: 32px;
     background: rgba(0, 0, 0, 0.05);
     border: none;
-    border-radius: 10px;
+    border-radius: 50%;
     cursor: not-allowed;
     color: var(--text-muted);
     transition: all 0.15s ease;
@@ -625,39 +678,34 @@
     font-size: 12px;
     cursor: pointer;
     transition: border-color 0.2s ease, color 0.2s ease;
+    animation: fadeInUp 0.3s ease-out both;
 }
+
+.suggestChip:nth-child(1) { animation-delay: 0ms; }
+.suggestChip:nth-child(2) { animation-delay: 50ms; }
+.suggestChip:nth-child(3) { animation-delay: 100ms; }
 
 .suggestChip:hover {
     border-color: rgba(217, 116, 89, 0.35);
     color: var(--accent-primary);
 }
 
-/* Expand rail (collapsed state) */
-.expandRailRight {
+/* Collapsed rail — slim column with toggle button at top */
+.collapsedRail {
     width: 100%;
     height: 100%;
     min-width: 44px;
-    border: none;
-    background: rgba(255, 255, 255, 0.35);
-    backdrop-filter: blur(16px);
-    color: var(--text-secondary);
-    cursor: pointer;
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
-    gap: 8px;
-    padding: 10px 0;
+    padding: 12px 0;
+    gap: 12px;
+    background: rgba(255, 255, 255, 0.35);
+    backdrop-filter: blur(16px);
     border-left: 1px solid var(--glass-border);
-    transition: background 0.2s ease, color 0.2s ease;
 }
 
-.expandRailRight:hover {
-    background: rgba(255, 255, 255, 0.55);
-    color: var(--text-primary);
-}
-
-.expandRailText {
+.collapsedLabel {
     writing-mode: vertical-rl;
     transform: rotate(180deg);
     text-transform: uppercase;
@@ -665,6 +713,30 @@
     font-weight: 800;
     font-size: 11px;
     color: var(--text-muted);
+}
+
+/* Panel toggle — matches Sidebar.sidebarToggle */
+.panelToggle {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+}
+
+.panelToggle:hover {
+    background: var(--glass-bg);
+    color: var(--text-primary);
+}
+
+/* When in collapsed rail, rotate icon 180deg */
+.collapsedRail .panelToggle {
+    transform: rotate(180deg);
 }
 
 /* Small action buttons */
@@ -928,4 +1000,489 @@
     font-size: 12px;
     color: var(--text-muted);
     text-align: center;
+}
+
+/* ========================================
+   AGENT MODE PILL (Phase 4.1)
+   ======================================== */
+
+.modePill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 4px 3px 8px;
+    margin: 8px 14px 0;
+    border-radius: 12px;
+    background: rgba(217, 116, 89, 0.06);
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-weight: 500;
+    position: relative;
+}
+
+.modePillIcon {
+    font-size: 13px !important;
+    color: var(--accent-primary);
+}
+
+.modePillLabel {
+    white-space: nowrap;
+}
+
+.modePillChevron {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border: none;
+    background: transparent;
+    border-radius: 4px;
+    cursor: pointer;
+    color: var(--text-muted);
+    padding: 0;
+}
+
+.modePillChevron:hover {
+    background: rgba(0, 0, 0, 0.06);
+    color: var(--text-secondary);
+}
+
+.modePillChevron .material-icons-round {
+    font-size: 14px;
+}
+
+.modeDropdown {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    min-width: 240px;
+    background: white;
+    border: 1px solid var(--glass-border);
+    border-radius: 10px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
+    padding: 4px;
+    z-index: 100;
+}
+
+.modeItem {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 8px 10px;
+    background: transparent;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    text-align: left;
+    transition: background 0.1s ease;
+}
+
+.modeItem:hover {
+    background: rgba(0, 0, 0, 0.04);
+}
+
+.modeItemActive {
+    background: rgba(217, 116, 89, 0.1);
+}
+
+.modeItemIcon {
+    font-size: 16px;
+    color: var(--text-muted);
+    flex-shrink: 0;
+}
+
+.modeItemActive .modeItemIcon {
+    color: var(--accent-primary);
+}
+
+.modeItemName {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-primary);
+    white-space: nowrap;
+}
+
+.modeItemDesc {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-left: auto;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+/* ========================================
+   AUTONOMY PRESET SELECTOR (Phase 7.2)
+   ======================================== */
+
+.presetSelector {
+    position: relative;
+}
+
+.presetBtn {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 10px;
+    background: transparent;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    color: var(--text-muted);
+    font-size: 12px;
+    font-weight: 500;
+    transition: background 0.15s ease, color 0.15s ease;
+    white-space: nowrap;
+}
+
+.presetBtn:hover {
+    background: rgba(0, 0, 0, 0.04);
+    color: var(--text-secondary);
+}
+
+.presetDropdown {
+    position: absolute;
+    bottom: calc(100% + 4px);
+    left: 0;
+    min-width: 220px;
+    background: white;
+    border: 1px solid var(--glass-border);
+    border-radius: 10px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
+    padding: 4px;
+    z-index: 100;
+}
+
+.presetItem {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 8px 12px;
+    background: transparent;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    text-align: left;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    transition: background 0.1s ease;
+}
+
+.presetItem:hover {
+    background: rgba(0, 0, 0, 0.04);
+}
+
+.presetItemActive {
+    background: rgba(217, 116, 89, 0.1);
+    color: var(--accent-primary);
+}
+
+.presetItemIcon {
+    font-size: 16px;
+    color: var(--text-muted);
+    flex-shrink: 0;
+}
+
+.presetItemActive .presetItemIcon {
+    color: var(--accent-primary);
+}
+
+.presetItemName {
+    font-size: 13px;
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+.presetItemDesc {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-left: auto;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.presetDivider {
+    height: 1px;
+    background: var(--glass-border);
+    margin: 4px 0;
+}
+
+/* ========================================
+   AUTONOMY SETTINGS MODAL (Phase 7.3)
+   ======================================== */
+
+.autonomyHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+}
+
+.autonomyTitle {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0;
+}
+
+.autonomyCloseBtn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    background: transparent;
+    border: none;
+    border-radius: 8px;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+
+.autonomyCloseBtn:hover {
+    background: rgba(0, 0, 0, 0.06);
+    color: var(--text-secondary);
+}
+
+.autonomyPresetRow {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 20px;
+}
+
+.autonomyPresetBtn {
+    flex: 1;
+    padding: 8px 12px;
+    background: rgba(0, 0, 0, 0.04);
+    border: 1px solid transparent;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.autonomyPresetBtn:hover {
+    background: rgba(0, 0, 0, 0.06);
+}
+
+.autonomyPresetBtnActive {
+    background: rgba(217, 116, 89, 0.1);
+    border-color: rgba(217, 116, 89, 0.3);
+    color: var(--accent-primary);
+}
+
+.autonomyToolTable {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    max-height: 360px;
+    overflow-y: auto;
+}
+
+.autonomyToolRow {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 10px;
+    border-radius: 8px;
+    transition: background 0.1s ease;
+}
+
+.autonomyToolRow:hover {
+    background: rgba(0, 0, 0, 0.02);
+}
+
+.autonomyToolInfo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 1;
+    min-width: 0;
+}
+
+.autonomyToolIcon {
+    font-size: 18px;
+    color: var(--text-muted);
+    flex-shrink: 0;
+}
+
+.autonomyToolName {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.autonomyToolDesc {
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.autonomyLevelSelector {
+    display: flex;
+    gap: 2px;
+    flex-shrink: 0;
+}
+
+.autonomyLevelBtn {
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--glass-border);
+    border-radius: 6px;
+    background: transparent;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.1s ease;
+}
+
+.autonomyLevelBtn:hover:not(:disabled) {
+    background: rgba(0, 0, 0, 0.04);
+    color: var(--text-secondary);
+}
+
+.autonomyLevelBtnActive {
+    background: rgba(217, 116, 89, 0.15);
+    border-color: rgba(217, 116, 89, 0.3);
+    color: var(--accent-primary);
+}
+
+.autonomyLevelBtn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
+.autonomyLegend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 16px;
+    padding-top: 12px;
+    border-top: 1px solid var(--glass-border);
+}
+
+.autonomyLegendItem {
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.autonomyLegendItem strong {
+    color: var(--text-secondary);
+    margin-right: 2px;
+}
+
+/* ========================================
+   STREAMING CURSOR (on last AI message)
+   ======================================== */
+
+.streaming :global(:last-child)::after,
+.streaming:not(:has(*))::after {
+    content: "\25CE";
+    animation: cursorBlink 1s step-end infinite;
+    color: var(--accent-primary);
+    font-weight: 300;
+    margin-left: 1px;
+}
+
+@keyframes cursorBlink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
+}
+
+/* ========================================
+   FADE-IN-UP ANIMATION (chips)
+   ======================================== */
+
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(8px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* ========================================
+   SCROLL-TO-BOTTOM FAB
+   ======================================== */
+
+.scrollFab {
+    position: sticky;
+    bottom: 8px;
+    align-self: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    border: 1px solid var(--glass-border);
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    color: var(--text-secondary);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    z-index: 5;
+    flex-shrink: 0;
+}
+
+.scrollFab:hover {
+    background: rgba(255, 255, 255, 0.95);
+    color: var(--text-primary);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.scrollFab .material-icons-round {
+    font-size: 20px;
+}
+
+/* ========================================
+   PAGE LAYOUT VARIANT (conversation mode)
+   Full-width messages, no bubbles.
+   ======================================== */
+
+.pageLayout .chatList {
+    gap: 4px;
+}
+
+.pageLayout .chatMsg {
+    justify-content: flex-start;
+}
+
+.pageLayout .chatBubble {
+    max-width: 100%;
+    border: none;
+    border-radius: 0;
+    background: transparent;
+    padding: 12px 0;
+}
+
+/* User messages: left accent bar + subtle tint */
+.pageLayout .chatMsgUser .chatBubble {
+    border-left: 3px solid rgba(217, 116, 89, 0.35);
+    padding-left: 14px;
+    background: rgba(217, 116, 89, 0.04);
+    border-radius: 0 8px 8px 0;
+}
+
+/* AI messages: no decoration, full-width content */
+.pageLayout .chatMsgAi .chatBubble {
+    padding: 12px 0;
+}
+
+/* Hover actions: left-align in page mode */
+.pageLayout .chatActions {
+    justify-content: flex-start;
 }

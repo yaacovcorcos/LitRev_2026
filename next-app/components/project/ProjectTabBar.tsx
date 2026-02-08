@@ -1,6 +1,7 @@
 "use client";
 
 import type { FocusMode, ViewTab } from "@/contexts/ProjectShellContext";
+import { StatusIndicator } from "./StatusIndicator";
 import styles from "./ProjectTabBar.module.css";
 
 type TabDef = {
@@ -20,24 +21,20 @@ const TABS: TabDef[] = [
 export type ProjectTabBarProps = {
     focusMode: FocusMode;
     activeTab: ViewTab | null;
-    isNoAiMode: boolean;
     onTabClick: (tab: ViewTab) => void;
     onConversationClick: () => void;
-    onToggleNoAi: () => void;
 };
 
 export function ProjectTabBar({
     focusMode,
     activeTab,
-    isNoAiMode,
     onTabClick,
     onConversationClick,
-    onToggleNoAi,
 }: ProjectTabBarProps) {
     return (
         <nav className={styles.tabBar} aria-label="Project navigation">
-            {/* Conversation button — visible only in view mode when AI enabled */}
-            {focusMode === "view" && !isNoAiMode && (
+            {/* Conversation button — visible in view mode */}
+            {focusMode === "view" && (
                 <button
                     type="button"
                     className={styles.conversationBtn}
@@ -64,20 +61,7 @@ export function ProjectTabBar({
                 ))}
             </div>
 
-            <button
-                type="button"
-                className={`${styles.aiToggle} ${isNoAiMode ? styles.aiToggleOff : ""}`}
-                onClick={onToggleNoAi}
-                aria-label={isNoAiMode ? "Enable AI" : "Disable AI"}
-                title={isNoAiMode ? "Enable AI" : "Disable AI"}
-            >
-                <span className="material-icons-round">
-                    {isNoAiMode ? "smart_toy" : "smart_toy"}
-                </span>
-                <span className={styles.aiToggleLabel}>
-                    {isNoAiMode ? "AI Off" : "AI On"}
-                </span>
-            </button>
+            <StatusIndicator />
         </nav>
     );
 }

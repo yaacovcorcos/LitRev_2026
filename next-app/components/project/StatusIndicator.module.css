@@ -1,0 +1,35 @@
+/* Status Indicator — compact pill in tab bar */
+
+.status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: 8px;
+}
+
+.runIndicator {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    color: var(--accent-primary, #D97459);
+    font-weight: 500;
+}
+
+.runDot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent-primary, #D97459);
+    animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+}
+
+.tokenCount {
+    font-size: 11px;
+    color: var(--text-muted, rgba(0, 0, 0, 0.4));
+}

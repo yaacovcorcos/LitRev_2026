@@ -51,6 +51,45 @@
   margin: 4px 0 0 0;
 }
 
+/* Tab Bar */
+.tabBar {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--glass-border);
+  padding-bottom: 0;
+  overflow-x: auto;
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px;
+  border: none;
+  background: transparent;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.tab .material-icons-round {
+  font-size: 18px;
+}
+
+.tab:hover {
+  color: var(--text-primary);
+}
+
+.tabActive {
+  color: var(--accent-primary);
+  border-bottom-color: var(--accent-primary);
+}
+
 /* Filters */
 .filters {
   display: flex;
@@ -215,6 +254,33 @@
   color: var(--text-secondary);
 }
 
+/* Provenance Badge */
+.provenanceBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: rgba(52, 152, 219, 0.08);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--accent-secondary, #3498db);
+}
+
+.provenanceBadge .material-icons-round {
+  font-size: 14px;
+}
+
+/* Confidence Badge */
+.confidenceBadge {
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: rgba(39, 174, 96, 0.08);
+  font-size: 11px;
+  font-weight: 600;
+  color: #27ae60;
+}
+
 .importanceBadge {
   margin-left: auto;
   padding: 2px 8px;
@@ -258,6 +324,13 @@
   font-weight: 500;
 }
 
+.memoryMeta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
 .memoryTags {
   display: flex;
   gap: 6px;
@@ -270,6 +343,13 @@
   background: rgba(0, 0, 0, 0.04);
   font-size: 11px;
   color: var(--text-muted);
+}
+
+.dateInfo {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .memoryActions {
@@ -299,6 +379,196 @@
 
 .deleteBtn:hover {
   background: rgba(192, 57, 43, 0.08);
+  color: #c0392b;
+}
+
+/* Study Group (accordion) */
+.studyGroup {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.studyGroupHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 14px 16px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s ease;
+}
+
+.studyGroupHeader:hover {
+  background: rgba(0, 0, 0, 0.02);
+}
+
+.studyGroupHeader > .material-icons-round {
+  font-size: 20px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.studyGroupTitle {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.studyGroupTitle strong {
+  font-size: 14px;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.studyGroupMeta {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.studyGroupBody {
+  border-top: 1px solid var(--glass-border);
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.studyMemoryCard {
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: rgba(0, 0, 0, 0.02);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* Preference Card */
+.preferenceCard {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.preferenceHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.preferenceKey {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent-primary);
+  font-family: monospace;
+}
+
+.preferenceValue {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-primary);
+}
+
+/* PRISMA Stats */
+.prismaSection {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.prismaGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.prismaCard {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  padding: 20px 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+}
+
+.prismaLabel {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.prismaValue {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.prismaExcluded {
+  color: #c0392b;
+}
+
+.prismaIncluded {
+  color: #27ae60;
+}
+
+.exclusionSection {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  padding: 20px;
+}
+
+.exclusionSection h3 {
+  margin: 0 0 16px 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.exclusionTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.exclusionTable th {
+  text-align: left;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--glass-border);
+  font-weight: 600;
+  color: var(--text-muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.exclusionTable td {
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+  color: var(--text-primary);
+}
+
+.exclusionTable td:last-child {
+  text-align: right;
+  font-weight: 600;
   color: #c0392b;
 }
 
@@ -455,5 +725,13 @@
 
   .filterChip {
     white-space: nowrap;
+  }
+
+  .tabBar {
+    overflow-x: auto;
+  }
+
+  .prismaGrid {
+    grid-template-columns: repeat(2, 1fr);
   }
 }

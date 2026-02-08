@@ -12,3 +12,8 @@ export {
 } from "./base";
 export { pubmedSearchTool } from "./pubmed-search";
 export { addToLedgerTool } from "./add-to-ledger";
+export { excludeStudyTool } from "./exclude-study";
+export { updateCriteriaTool } from "./update-criteria";
+export { bulkScreeningTool } from "./bulk-screening";
+export { extractPdfTool } from "./extract-pdf";
+export { updateNoteTool } from "./update-note";

@@ -4,6 +4,7 @@ import { CSSProperties, ReactNode, useCallback, useEffect, useMemo, useState } f
 import { useParams, useRouter, usePathname } from "next/navigation";
 import { ProjectCopilotProvider, useProjectCopilot } from "@/contexts/ProjectCopilotContext";
 import { ProjectShellProvider, type FocusMode, type ViewTab } from "@/contexts/ProjectShellContext";
+import { useCommandPalette } from "@/contexts/CommandPaletteContext";
 import { AppShell } from "@/components/AppShell";
 import { ProjectTabBar } from "@/components/project/ProjectTabBar";
 import { ConversationMainView } from "@/components/project/ConversationMainView";
@@ -30,7 +31,13 @@ type ProjectShellInnerProps = {
 function ProjectShellInner({ projectId, children }: ProjectShellInnerProps) {
     const router = useRouter();
     const pathname = usePathname();
-    const { isCollapsed, panelWidth, setPanelWidth } = useProjectCopilot();
+    const { isCollapsed, panelWidth, setPanelWidth, toggleCollapsed } = useProjectCopilot();
+    const { registerCopilotToggle } = useCommandPalette();
+
+    useEffect(() => {
+        registerCopilotToggle(toggleCollapsed);
+        return () => registerCopilotToggle(null);
+    }, [registerCopilotToggle, toggleCollapsed]);
 
     // Focus mode and tab state
     const [focusMode, setFocusMode] = useState<FocusMode>(() => {
@@ -42,27 +49,6 @@ function ProjectShellInner({ projectId, children }: ProjectShellInnerProps) {
     const [activeTab, setActiveTabState] = useState<ViewTab | null>(() => {
         return tabFromPathname(pathname) ?? "overview";
     });
-
-    // No-AI mode from localStorage
-    const [isNoAiMode, setIsNoAiMode] = useState(false);
-    useEffect(() => {
-        if (typeof window === "undefined") return;
-        const stored = window.localStorage.getItem(`litrev_no_ai_${projectId}`);
-        if (stored === "true") setIsNoAiMode(true);
-    }, [projectId]);
-
-    const setNoAiMode = useCallback((v: boolean) => {
-        setIsNoAiMode(v);
-        if (typeof window !== "undefined") {
-            window.localStorage.setItem(`litrev_no_ai_${projectId}`, v ? "true" : "false");
-        }
-        // If turning off AI and in conversation mode, switch to view mode
-        if (v && focusMode === "conversation") {
-            setFocusMode("view");
-            setActiveTabState("overview");
-            router.push(`/project/${projectId}`);
-        }
-    }, [projectId, focusMode, router]);
 
     // Sync activeTab when pathname changes (e.g., browser back/forward)
     useEffect(() => {
@@ -91,7 +77,7 @@ function ProjectShellInner({ projectId, children }: ProjectShellInnerProps) {
                 router.push(`/project/${projectId}/draft`);
                 break;
             case "notes":
-                router.push(`/project/${projectId}/memory`);
+                router.push(`/project/${projectId}/notes`);
                 break;
         }
     }, [projectId, router]);
@@ -110,18 +96,8 @@ function ProjectShellInner({ projectId, children }: ProjectShellInnerProps) {
         returnToConversation();
     }, [returnToConversation]);
 
-    const handleToggleNoAi = useCallback(() => {
-        setNoAiMode(!isNoAiMode);
-    }, [isNoAiMode, setNoAiMode]);
-
-    // Effective focus mode: if no-AI and in conversation, force view
-    const effectiveFocusMode = isNoAiMode ? "view" : focusMode;
-
     // Panel vars for view mode
     const computePanelVars = (): CSSProperties => {
-        if (isNoAiMode) {
-            return { "--copilot-width": "0px", gridTemplateColumns: "1fr 0px 0px" } as CSSProperties;
-        }
         const copilot = isCollapsed ? RAIL_WIDTH : clamp(panelWidth, 300, 560);
         const gridCols = isCollapsed
             ? `1fr 0px ${RAIL_WIDTH}px`
@@ -151,16 +127,14 @@ function ProjectShellInner({ projectId, children }: ProjectShellInnerProps) {
     // Context value for shell-aware child pages
     const shellValue = useMemo(() => ({
         isEmbeddedInProjectShell: true,
-        focusMode: effectiveFocusMode,
+        focusMode,
         activeTab,
         setActiveTab,
         returnToConversation,
-        isNoAiMode,
-        setNoAiMode,
-    }), [effectiveFocusMode, activeTab, setActiveTab, returnToConversation, isNoAiMode, setNoAiMode]);
+    }), [focusMode, activeTab, setActiveTab, returnToConversation]);
 
     // Copilot props for the view mode panel
-    const copilotPage = activeTab === "notes" ? "protocol" : (activeTab ?? "overview");
+    const copilotPage = activeTab ?? "overview";
     const copilotContextDisplay = activeTab
         ? `${activeTab.charAt(0).toUpperCase() + activeTab.slice(1)}`
         : "Project";
@@ -169,15 +143,13 @@ function ProjectShellInner({ projectId, children }: ProjectShellInnerProps) {
         <ProjectShellProvider value={shellValue}>
             <AppShell activeNav="projects" mainClassName={styles.shellMain} noMainPadding>
                 <ProjectTabBar
-                    focusMode={effectiveFocusMode}
+                    focusMode={focusMode}
                     activeTab={activeTab}
-                    isNoAiMode={isNoAiMode}
                     onTabClick={handleTabClick}
                     onConversationClick={handleConversationClick}
-                    onToggleNoAi={handleToggleNoAi}
                 />
 
-                {effectiveFocusMode === "conversation" ? (
+                {focusMode === "conversation" ? (
                     <div className={styles.conversationBody}>
                         <ConversationMainView projectId={projectId} />
                     </div>
@@ -185,35 +157,31 @@ function ProjectShellInner({ projectId, children }: ProjectShellInnerProps) {
                     <div className={styles.viewBody} style={computePanelVars()}>
                         <div className={styles.viewContent}>{children}</div>
 
-                        {!isNoAiMode && (
-                            <>
-                                <div
-                                    className={`${styles.resizeHandle} ${isCollapsed ? styles.resizeHandleHidden : ""}`}
-                                    role="separator"
-                                    aria-label="Resize copilot panel"
-                                    aria-hidden={isCollapsed}
-                                    onMouseDown={(e) => {
-                                        if (isCollapsed) return;
-                                        startResize(e.clientX);
-                                    }}
-                                />
-                                <ProjectCopilot
-                                    page={copilotPage as import("@/contexts/ProjectCopilotContext").CopilotPage}
-                                    contextDisplay={copilotContextDisplay}
-                                    emptyState={{
-                                        icon: "smart_toy",
-                                        title: "AI Copilot",
-                                        description: "Ask questions about your project or get help with your current task.",
-                                        suggestions: [
-                                            { label: "Help", prompt: "What can you help me with?" },
-                                            { label: "Summarize", prompt: "Summarize my project progress" },
-                                        ],
-                                    }}
-                                    inputPlaceholder={`Ask about ${copilotContextDisplay.toLowerCase()}...`}
-                                    panelId="shell-copilot-panel"
-                                />
-                            </>
-                        )}
+                        <div
+                            className={`${styles.resizeHandle} ${isCollapsed ? styles.resizeHandleHidden : ""}`}
+                            role="separator"
+                            aria-label="Resize copilot panel"
+                            aria-hidden={isCollapsed}
+                            onMouseDown={(e) => {
+                                if (isCollapsed) return;
+                                startResize(e.clientX);
+                            }}
+                        />
+                        <ProjectCopilot
+                            page={copilotPage as import("@/contexts/ProjectCopilotContext").CopilotPage}
+                            contextDisplay={copilotContextDisplay}
+                            emptyState={{
+                                icon: "smart_toy",
+                                title: "AI Copilot",
+                                description: "Ask questions about your project or get help with your current task.",
+                                suggestions: [
+                                    { label: "Help", prompt: "What can you help me with?" },
+                                    { label: "Summarize", prompt: "Summarize my project progress" },
+                                ],
+                            }}
+                            inputPlaceholder={`Ask about ${copilotContextDisplay.toLowerCase()}...`}
+                            panelId="shell-copilot-panel"
+                        />
                     </div>
                 )}
             </AppShell>

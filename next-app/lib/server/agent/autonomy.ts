@@ -7,48 +7,8 @@ import "server-only";
 import { prisma } from "@/lib/server/prisma";
 import type { AutonomyLevel, AutonomyPreset } from "@/types/agent";
 import { HARD_CAPS } from "@/types/agent";
+import { PRESET_LEVELS } from "@/lib/agent/autonomy-presets";
 import { getTool } from "@/lib/server/ai/tools/base";
-
-/** Default presets — tool name → autonomy level */
-const PRESET_LEVELS: Record<AutonomyPreset, Record<string, AutonomyLevel>> = {
-    manual: {
-        search_pubmed: 1,
-        extract_pdf: 1,
-        add_to_ledger: 1,
-        exclude_study: 1,
-        edit_draft: 1,
-        update_criteria: 1,
-        delete_study: 1,
-        bulk_screening: 1,
-        retrieve_memory: 1,
-        create_note: 1,
-    },
-    assisted: {
-        search_pubmed: 2,
-        extract_pdf: 3,
-        add_to_ledger: 2,
-        exclude_study: 2,
-        edit_draft: 2,
-        update_criteria: 2,
-        delete_study: 2,
-        bulk_screening: 2,
-        retrieve_memory: 4,
-        create_note: 3,
-    },
-    autonomous: {
-        search_pubmed: 4,
-        extract_pdf: 4,
-        add_to_ledger: 3,
-        exclude_study: 3,
-        edit_draft: 3,
-        update_criteria: 2,
-        delete_study: 2,
-        bulk_screening: 3,
-        retrieve_memory: 4,
-        create_note: 4,
-    },
-    custom: {},
-};
 
 /**
  * Get the effective autonomy config for a user+project combination.
@@ -127,22 +87,36 @@ export async function updateAutonomyConfig(
     toolOverrides?: Record<string, AutonomyLevel>,
     projectId?: string
 ) {
-    return prisma.autonomyConfig.upsert({
-        where: {
-            userId_projectId: {
-                userId,
-                projectId: projectId ?? "",
+    const data = {
+        preset,
+        toolOverrides: (toolOverrides ?? {}) as object,
+    };
+
+    // Project-specific config: safe to use compound unique upsert
+    if (projectId) {
+        return prisma.autonomyConfig.upsert({
+            where: {
+                userId_projectId: { userId, projectId },
             },
-        },
-        create: {
-            userId,
-            projectId: projectId ?? null,
-            preset,
-            toolOverrides: (toolOverrides ?? {}) as object,
-        },
-        update: {
-            preset,
-            toolOverrides: (toolOverrides ?? {}) as object,
-        },
+            create: { userId, projectId, ...data },
+            update: data,
+        });
+    }
+
+    // User default (projectId = null): findFirst + update/create since
+    // Prisma compound unique can't match null values in the where clause
+    const existing = await prisma.autonomyConfig.findFirst({
+        where: { userId, projectId: null },
+    });
+
+    if (existing) {
+        return prisma.autonomyConfig.update({
+            where: { id: existing.id },
+            data,
+        });
+    }
+
+    return prisma.autonomyConfig.create({
+        data: { userId, projectId: null, ...data },
     });
 }

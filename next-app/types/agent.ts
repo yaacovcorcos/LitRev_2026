@@ -109,7 +109,7 @@ export interface ToolAutonomyMeta {
 /** Hard safety caps — cannot be overridden by any config */
 export const HARD_CAPS: Record<string, AutonomyLevel> = {
     update_criteria: 2,
-    delete_study: 2,
-    bulk_screening: 3,
-    edit_draft_rewrite: 2,
+    bulk_screening: 2,
+    update_note: 2,
+    exclude_study: 2,
 };

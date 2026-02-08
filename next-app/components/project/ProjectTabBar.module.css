@@ -86,49 +86,9 @@
     /* Hidden on very narrow screens */
 }
 
-.aiToggle {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    padding: 5px 10px;
-    border: 1px solid var(--glass-border);
-    border-radius: var(--radius-sm);
-    background: rgba(217, 116, 89, 0.06);
-    color: var(--accent-primary);
-    font-size: 12px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    margin-left: auto;
-}
-
-.aiToggle:hover {
-    background: rgba(217, 116, 89, 0.12);
-}
-
-.aiToggle .material-icons-round {
-    font-size: 18px;
-}
-
-.aiToggleOff {
-    background: rgba(0, 0, 0, 0.04);
-    color: var(--text-muted);
-    border-color: var(--glass-border);
-}
-
-.aiToggleOff:hover {
-    background: rgba(0, 0, 0, 0.08);
-    color: var(--text-secondary);
-}
-
-.aiToggleLabel {
-    white-space: nowrap;
-}
-
 @media (max-width: 768px) {
     .tabLabel,
-    .btnLabel,
-    .aiToggleLabel {
+    .btnLabel {
         display: none;
     }
 

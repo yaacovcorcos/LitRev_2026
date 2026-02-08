@@ -1522,7 +1522,7 @@ function DraftContent() {
                     </button>
                     <button
                       type="button"
-                      className={styles.iconBtn}
+                      className={styles.panelToggle}
                       aria-label="Collapse evidence ledger"
                       aria-controls={ledgerPanelId}
                       aria-expanded={!draft.panels.ledgerCollapsed}
@@ -1533,7 +1533,7 @@ function DraftContent() {
                         }))
                       }
                     >
-                      <span className="material-icons-round">chevron_left</span>
+                      <span className="material-icons-round">menu_open</span>
                     </button>
                   </div>
                 </div>
@@ -1578,17 +1578,19 @@ function DraftContent() {
               </div>
             </aside>
           ) : (
-            <button
-              type="button"
-              className={styles.expandRailLeft}
-              aria-label="Expand evidence ledger"
-              aria-controls={ledgerPanelId}
-              aria-expanded={!draft.panels.ledgerCollapsed}
-              onClick={() => updateDraft((prev) => ({ ...prev, panels: { ...prev.panels, ledgerCollapsed: false } }))}
-            >
-              <span className="material-icons-round">chevron_right</span>
-              <span className={styles.expandRailText}>Evidence</span>
-            </button>
+            <div className={styles.collapsedRailLeft} aria-label="Evidence ledger (collapsed)">
+              <button
+                type="button"
+                className={styles.panelToggle}
+                aria-label="Expand evidence ledger"
+                aria-controls={ledgerPanelId}
+                aria-expanded={false}
+                onClick={() => updateDraft((prev) => ({ ...prev, panels: { ...prev.panels, ledgerCollapsed: false } }))}
+              >
+                <span className="material-icons-round">menu_open</span>
+              </button>
+              <span className={styles.collapsedLabel}>Evidence</span>
+            </div>
           )}
 
           <div

@@ -1,9 +1,13 @@
 "use client";
 
-import { useCallback, useState, useRef, useEffect } from "react";
+import { useCallback, useState, useRef, useEffect, useMemo } from "react";
 import { useProjectCopilot, type CopilotPage } from "@/contexts/ProjectCopilotContext";
+import { useProjectState } from "@/hooks/useProjectState";
+import { getSuggestions } from "@/lib/agent/suggestions";
+import { createNoteAction } from "@/app/actions/notes";
 import { TimelineRenderer } from "../copilot/TimelineRenderer";
 import { CopilotInput } from "../copilot/CopilotInput";
+import { AutonomySettings } from "../copilot/AutonomySettings";
 import { SuggestionChips } from "./SuggestionChips";
 import styles from "./ConversationMainView.module.css";
 
@@ -20,6 +24,7 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
         selectConversation,
         newConversation,
         sendMessage,
+        handleReviewArtifact,
     } = useProjectCopilot();
 
     const [showDropdown, setShowDropdown] = useState(false);
@@ -47,13 +52,27 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
         )
         : conversations;
 
-    const handleSuggestionClick = useCallback((_prompt: string) => {
-        // Handled by CopilotInput
+    // Dynamic suggestion chips from project state (Phase 4.2)
+    const snapshot = useProjectState(projectId);
+    const chips = useMemo(() => getSuggestions(snapshot), [snapshot]);
+
+    const [prefill, setPrefill] = useState("");
+
+    const handleSuggestionClick = useCallback((prompt: string) => {
+        setPrefill(prompt);
     }, []);
 
     const handleChipSend = useCallback((prompt: string) => {
-        sendMessage(prompt, "overview" as CopilotPage);
-    }, [sendMessage]);
+        setPrefill(prompt);
+    }, []);
+
+    const handlePrefillConsumed = useCallback(() => {
+        setPrefill("");
+    }, []);
+
+    const handleSaveToNotes = useCallback(async (content: string, messageId: string) => {
+        await createNoteAction(projectId, content, "conversation", currentConversationId ?? undefined, messageId);
+    }, [projectId, currentConversationId]);
 
     const hasMessages = messages.length > 0;
 
@@ -135,37 +154,42 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
                     </button>
                 </div>
 
-                {/* Timeline */}
-                <TimelineRenderer
-                    messages={messages}
-                    isLoading={isLoading}
-                    emptyState={{
-                        icon: "chat",
-                        title: "Start a conversation",
-                        description: "Ask anything about your project, search for studies, or plan your next steps.",
-                        suggestions: [
-                            { label: "Define PICO", prompt: "Help me define my PICO criteria for this systematic review" },
-                            { label: "Search PubMed", prompt: "Search PubMed for studies related to my research question" },
-                            { label: "Start drafting", prompt: "Help me start drafting the introduction section" },
-                        ],
-                    }}
-                    onSuggestionClick={handleSuggestionClick}
-                />
-
-                {/* Suggestion chips (shown when no messages) */}
-                {!hasMessages && (
-                    <SuggestionChips
-                        projectId={projectId}
-                        onSend={handleChipSend}
+                {/* Content area — centers when empty */}
+                <div className={`${styles.contentArea} ${!hasMessages ? styles.contentAreaEmpty : ''}`}>
+                    <TimelineRenderer
+                        variant="page"
+                        messages={messages}
+                        isLoading={isLoading}
+                        emptyState={{
+                            icon: "chat",
+                            title: "Start a conversation",
+                            description: "Ask anything about your project, search for studies, or plan your next steps.",
+                            suggestions: [],
+                        }}
+                        onSuggestionClick={handleSuggestionClick}
+                        onReviewArtifact={handleReviewArtifact}
+                        onSaveToNotes={handleSaveToNotes}
                     />
-                )}
 
-                {/* Input */}
-                <CopilotInput
-                    page={"overview" as CopilotPage}
-                    inputPlaceholder="Ask about your project..."
-                />
+                    {/* Suggestion chips (shown when no messages) */}
+                    {!hasMessages && (
+                        <SuggestionChips
+                            projectId={projectId}
+                            onSend={handleChipSend}
+                            chips={chips}
+                        />
+                    )}
+
+                    {/* Input */}
+                    <CopilotInput
+                        page={"overview" as CopilotPage}
+                        inputPlaceholder="Ask about your project..."
+                        prefill={prefill}
+                        onPrefillConsumed={handlePrefillConsumed}
+                    />
+                </div>
             </div>
+            <AutonomySettings />
         </div>
     );
 }

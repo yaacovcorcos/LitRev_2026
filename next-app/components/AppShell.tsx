@@ -5,8 +5,9 @@ import { MobileNav } from "@/components/MobileNav";
 import { mainNavLinks, bottomNavLinks, mobileNavLinks } from "@/data/navLinks";
 import styles from "@/components/AppShell.module.css";
 import { useRouter } from "next/navigation";
-import { CSSProperties, ReactNode, useMemo, useState } from "react";
+import { CSSProperties, ReactNode, useEffect, useMemo, useState } from "react";
 import { SlimHeader } from "@/components/SlimHeader";
+import { useCommandPalette } from "@/contexts/CommandPaletteContext";
 
 type AppShellProps = {
   activeNav: string;
@@ -29,6 +30,12 @@ export function AppShell({
 }: AppShellProps) {
   const [collapsed, setCollapsed] = useState(initiallyCollapsed);
   const router = useRouter();
+  const { registerSidebarToggle } = useCommandPalette();
+
+  useEffect(() => {
+    registerSidebarToggle(() => setCollapsed((prev) => !prev));
+    return () => registerSidebarToggle(null);
+  }, [registerSidebarToggle]);
 
   const cssVars = useMemo(() => {
     return {

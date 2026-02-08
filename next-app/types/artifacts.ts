@@ -95,7 +95,7 @@ export interface PlanStep {
 }
 
 export interface MemoryProposalPayload {
-    memoryType: "user" | "project" | "study";
+    memoryType: "user" | "project" | "study" | "note";
     key?: string;
     value: string;
     rationale?: string;
@@ -172,7 +172,7 @@ export const PlanSchema = z.object({
 });
 
 export const MemoryProposalSchema = z.object({
-    memoryType: z.enum(["user", "project", "study"]),
+    memoryType: z.enum(["user", "project", "study", "note"]),
     key: z.string().optional(),
     value: z.string().min(1),
     rationale: z.string().optional(),

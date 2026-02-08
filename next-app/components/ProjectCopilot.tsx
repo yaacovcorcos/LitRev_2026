@@ -1,9 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useParams } from "next/navigation";
 import { useProjectCopilot, type CopilotPage } from "@/contexts/ProjectCopilotContext";
+import { createNoteAction } from "@/app/actions/notes";
 import { TimelineRenderer } from "./copilot/TimelineRenderer";
 import { CopilotInput } from "./copilot/CopilotInput";
+import { AutonomySettings } from "./copilot/AutonomySettings";
 import styles from "./ProjectCopilot.module.css";
 
 export type SuggestionConfig = {
@@ -42,6 +45,7 @@ export function ProjectCopilot({
     onInsert,
     panelId = "project-copilot-panel",
 }: ProjectCopilotProps) {
+    const params = useParams<{ id: string }>();
     const {
         messages,
         isCollapsed,
@@ -52,6 +56,9 @@ export function ProjectCopilot({
         currentConversationId,
         selectConversation,
         newConversation,
+        handleReviewArtifact,
+        // Autonomy settings (Phase 7)
+        setShowAutonomySettings,
     } = useProjectCopilot();
 
     const [showConversationDropdown, setShowConversationDropdown] = useState(false);
@@ -76,19 +83,26 @@ export function ProjectCopilot({
         // Phase 4.2 will upgrade this to send the message directly
     }, []);
 
+    const handleSaveToNotes = useCallback(async (content: string, messageId: string) => {
+        if (!params?.id) return;
+        await createNoteAction(params.id, content, "conversation", currentConversationId ?? undefined, messageId);
+    }, [params?.id, currentConversationId]);
+
     if (isCollapsed) {
         return (
-            <button
-                type="button"
-                className={styles.expandRailRight}
-                aria-label="Expand copilot"
-                aria-controls={panelId}
-                aria-expanded={false}
-                onClick={() => setCollapsed(false)}
-            >
-                <span className={styles.expandRailText}>Copilot</span>
-                <span className="material-icons-round">chevron_left</span>
-            </button>
+            <div className={styles.collapsedRail} aria-label="Copilot (collapsed)">
+                <button
+                    type="button"
+                    className={styles.panelToggle}
+                    aria-label="Expand copilot"
+                    aria-controls={panelId}
+                    aria-expanded={false}
+                    onClick={() => setCollapsed(false)}
+                >
+                    <span className="material-icons-round">menu_open</span>
+                </button>
+                <span className={styles.collapsedLabel}>Copilot</span>
+            </div>
         );
     }
 
@@ -169,6 +183,18 @@ export function ProjectCopilot({
             <div className={styles.chatArea}>
                 {/* Header */}
                 <div className={styles.panelHeader}>
+                    <button
+                        type="button"
+                        className={styles.panelToggle}
+                        aria-label="Collapse copilot"
+                        aria-controls={panelId}
+                        aria-expanded={true}
+                        onClick={() => setCollapsed(true)}
+                        title="Collapse"
+                    >
+                        <span className="material-icons-round">menu_open</span>
+                    </button>
+
                     <div className={styles.conversationSelector} ref={conversationDropdownRef}>
                         <button
                             type="button"
@@ -233,25 +259,13 @@ export function ProjectCopilot({
                         <button
                             type="button"
                             className={styles.headerIconBtn}
-                            aria-label="Settings"
-                            title="Settings"
+                            aria-label="Autonomy settings"
+                            title="Autonomy settings"
+                            onClick={() => setShowAutonomySettings(true)}
                         >
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                 <circle cx="12" cy="12" r="3"/>
                                 <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-                            </svg>
-                        </button>
-                        <button
-                            type="button"
-                            className={styles.headerIconBtn}
-                            aria-label="Collapse copilot"
-                            aria-controls={panelId}
-                            aria-expanded={true}
-                            onClick={() => setCollapsed(true)}
-                            title="Collapse"
-                        >
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <polyline points="9 18 15 12 9 6"/>
                             </svg>
                         </button>
                     </div>
@@ -269,6 +283,8 @@ export function ProjectCopilot({
                     onInsert={onInsert}
                     emptyState={emptyState}
                     onSuggestionClick={handleSuggestionClick}
+                    onReviewArtifact={handleReviewArtifact}
+                    onSaveToNotes={handleSaveToNotes}
                 />
 
                 {/* Input area */}
@@ -278,6 +294,7 @@ export function ProjectCopilot({
                     inputPlaceholder={inputPlaceholder}
                 />
             </div>
+            <AutonomySettings />
         </aside>
     );
 }

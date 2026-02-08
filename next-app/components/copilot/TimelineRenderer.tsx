@@ -11,6 +11,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { markdownComponents } from "../markdown/CodeBlock";
 import type { CopilotMessage } from "@/lib/projectCopilotStorage";
 import type { TimelineItem, TimelineArtifact } from "@/types/timeline";
 import type {
@@ -67,7 +68,9 @@ export type TimelineRendererProps = {
     /** Callback when user reviews an artifact (accept/reject) */
     onReviewArtifact?: (artifactId: string, status: "accepted" | "rejected", note?: string) => void;
     /** Callback to save a message to notes */
-    onSaveToNotes?: (content: string, messageId: string) => void;
+    onSaveToNotes?: (content: string, messageId: string) => void | Promise<void>;
+    /** Layout variant: "panel" for copilot sidebar (bubbles), "page" for conversation mode (full-width) */
+    variant?: "panel" | "page";
 };
 
 export function TimelineRenderer({
@@ -79,11 +82,13 @@ export function TimelineRenderer({
     onSuggestionClick,
     onReviewArtifact,
     onSaveToNotes,
+    variant = "panel",
 }: TimelineRendererProps) {
     const params = useParams<{ id: string }>();
     const projectId = params?.id;
     const listRef = useRef<HTMLDivElement | null>(null);
     const autoScrollRef = useRef(true);
+    const [isAtBottom, setIsAtBottom] = useState(true);
     const [savedNoteId, setSavedNoteId] = useState<string | null>(null);
 
     // Resolve timeline: prefer items, fall back to legacy messages
@@ -98,25 +103,38 @@ export function TimelineRenderer({
     const handleScroll = useCallback(() => {
         if (!listRef.current) return;
         const { scrollTop, clientHeight, scrollHeight } = listRef.current;
-        autoScrollRef.current = scrollTop + clientHeight >= scrollHeight - 80;
+        const atBottom = scrollTop + clientHeight >= scrollHeight - 80;
+        autoScrollRef.current = atBottom;
+        setIsAtBottom(atBottom);
+    }, []);
+
+    const scrollToBottom = useCallback(() => {
+        if (!listRef.current) return;
+        listRef.current.scrollTo({ top: listRef.current.scrollHeight, behavior: "smooth" });
+        autoScrollRef.current = true;
+        setIsAtBottom(true);
     }, []);
 
     const handleCopy = useCallback((text: string) => {
         navigator.clipboard.writeText(text).catch(console.error);
     }, []);
 
-    const handleSaveToNotes = useCallback((content: string, messageId: string) => {
+    const handleSaveToNotes = useCallback(async (content: string, messageId: string) => {
         if (onSaveToNotes) {
-            onSaveToNotes(content, messageId);
-            setSavedNoteId(messageId);
-            setTimeout(() => setSavedNoteId(null), 2000);
+            try {
+                await onSaveToNotes(content, messageId);
+                setSavedNoteId(messageId);
+                setTimeout(() => setSavedNoteId(null), 2000);
+            } catch {
+                // Silently fail — note creation error doesn't need to block UI
+            }
         }
     }, [onSaveToNotes]);
 
     // Empty state
     if (timeline.length === 0) {
         return (
-            <div className={styles.copilotBody} ref={listRef}>
+            <div className={`${styles.copilotBody} ${variant === "page" ? styles.copilotBodyEmpty : ""}`} ref={listRef}>
                 <div className={styles.emptyPanel}>
                     <div className={styles.emptyIcon}>
                         <span className="material-icons-round">{emptyState.icon}</span>
@@ -258,7 +276,13 @@ export function TimelineRenderer({
         }
     };
 
-    const renderTimelineItem = (item: TimelineItem) => {
+    // Streaming cursor: detect when last AI message is actively receiving tokens
+    const lastAssistantIndex = timeline.length > 0 && timeline[timeline.length - 1].type === "assistant_message"
+        ? timeline.length - 1
+        : -1;
+    const isStreaming = isLoading && lastAssistantIndex >= 0;
+
+    const renderTimelineItem = (item: TimelineItem, index: number) => {
         switch (item.type) {
             case "user_message":
                 return (
@@ -288,42 +312,44 @@ export function TimelineRenderer({
                 return (
                     <div key={item.id} className={`${styles.chatMsg} ${styles.chatMsgAi}`}>
                         <div className={styles.chatBubble}>
-                            <div className={markdownStyles.markdownContent}>
-                                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                            <div className={`${markdownStyles.markdownContent} ${isStreaming && index === lastAssistantIndex ? styles.streaming : ""}`}>
+                                <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
                                     {item.content}
                                 </ReactMarkdown>
                             </div>
-                            <div className={styles.chatActions}>
-                                {onInsert && (
-                                    <button
-                                        type="button"
-                                        className={styles.smallBtn}
-                                        onClick={() => onInsert(item.content)}
-                                    >
-                                        Insert
-                                    </button>
-                                )}
+                            <div className={`${styles.chatActions} ${savedNoteId === item.id ? styles.chatActionsVisible : ""}`}>
+                                <button
+                                    type="button"
+                                    className={styles.chatActionBtn}
+                                    onClick={() => handleCopy(item.content)}
+                                    title="Copy to clipboard"
+                                >
+                                    <span className="material-icons-round">content_copy</span>
+                                </button>
                                 {onSaveToNotes && (
                                     savedNoteId === item.id ? (
                                         <span className={artifactStyles.savedConfirm}>Saved!</span>
                                     ) : (
                                         <button
                                             type="button"
-                                            className={artifactStyles.msgActionBtn}
+                                            className={styles.chatActionBtn}
                                             onClick={() => handleSaveToNotes(item.content, item.id)}
+                                            title="Save to Notes"
                                         >
-                                            <span className="material-icons-round">bookmark</span>
-                                            Save to Notes
+                                            <span className="material-icons-round">bookmark_border</span>
                                         </button>
                                     )
                                 )}
-                                <button
-                                    type="button"
-                                    className={styles.smallBtnGhost}
-                                    onClick={() => handleCopy(item.content)}
-                                >
-                                    Copy
-                                </button>
+                                {onInsert && (
+                                    <button
+                                        type="button"
+                                        className={styles.chatActionBtn}
+                                        onClick={() => onInsert(item.content)}
+                                        title="Insert into draft"
+                                    >
+                                        <span className="material-icons-round">add_circle_outline</span>
+                                    </button>
+                                )}
                             </div>
                         </div>
                     </div>
@@ -375,9 +401,9 @@ export function TimelineRenderer({
     };
 
     return (
-        <div className={styles.copilotBody} ref={listRef} onScroll={handleScroll}>
+        <div className={`${styles.copilotBody} ${variant === "page" ? styles.pageLayout : ""}`} ref={listRef} onScroll={handleScroll}>
             <div className={styles.chatList}>
-                {timeline.map(renderTimelineItem)}
+                {timeline.map((item, index) => renderTimelineItem(item, index))}
                 {isLoading && timeline.length > 0 && timeline[timeline.length - 1].type === "user_message" && (
                     <div className={styles.loadingIndicator}>
                         <div className={styles.loadingDots}>
@@ -388,6 +414,16 @@ export function TimelineRenderer({
                     </div>
                 )}
             </div>
+            {!isAtBottom && (
+                <button
+                    type="button"
+                    className={styles.scrollFab}
+                    onClick={scrollToBottom}
+                    aria-label="Scroll to bottom"
+                >
+                    <span className="material-icons-round">keyboard_arrow_down</span>
+                </button>
+            )}
         </div>
     );
 }

@@ -18,7 +18,6 @@ import {
     saveProjectCopilotState,
     createDefaultProjectCopilotState,
 } from "@/lib/projectCopilotStorage";
-import { buildSystemPrompt, type CopilotContext as CopilotContextType } from "@/lib/ai/prompts/copilot-prompts";
 import {
     listConversations,
     getConversation,
@@ -26,16 +25,15 @@ import {
     addMessage,
     archiveConversation,
     updateConversationTitle,
-    type ConversationSummary,
-    type ConversationWithMessages,
 } from "@/app/actions/conversations";
 import {
     uploadChatAttachmentAction,
     extractTextFromExistingFileAction,
 } from "@/app/actions/files";
-import { reviewArtifactAction } from "@/app/actions/agent";
+import { reviewArtifactAction, getAutonomyConfigAction, updateAutonomyAction } from "@/app/actions/agent";
 import { summarizeConversationAction } from "@/app/actions/summarize-conversation";
 import type { ArtifactData, ArtifactStatus } from "@/types/artifacts";
+import type { AgentMode, AutonomyPreset, AutonomyLevel } from "@/types/agent";
 
 export type CopilotPage = "draft" | "protocol" | "ledger" | "study" | "overview" | "notes";
 
@@ -73,7 +71,7 @@ type ProjectCopilotContextValue = {
     /** Update the panel width */
     setPanelWidth: (width: number) => void;
     /** Send a message to the copilot */
-    sendMessage: (text: string, page: CopilotPage, section?: string, model?: string) => void;
+    sendMessage: (text: string, page: CopilotPage, section?: string, model?: string, agentMode?: AgentMode) => void;
     /** Clear all messages */
     clearMessages: () => void;
 
@@ -128,6 +126,22 @@ type ProjectCopilotContextValue = {
     summarizeAndRefresh: () => Promise<void>;
     /** Whether summarization is in progress */
     isSummarizing: boolean;
+
+    // Autonomy configuration (Phase 7)
+    /** Current autonomy preset */
+    autonomyPreset: AutonomyPreset;
+    /** Current per-tool overrides */
+    autonomyToolOverrides: Record<string, AutonomyLevel>;
+    /** Whether autonomy settings modal is open */
+    showAutonomySettings: boolean;
+    /** Open/close autonomy settings modal */
+    setShowAutonomySettings: (show: boolean) => void;
+    /** Update the active preset (clears overrides) */
+    updateAutonomyPreset: (preset: AutonomyPreset) => Promise<void>;
+    /** Update per-tool overrides (switches to "custom" preset) */
+    updateAutonomyOverrides: (overrides: Record<string, AutonomyLevel>) => Promise<void>;
+    /** Reset to a named preset (clears overrides) */
+    resetToPreset: (preset: AutonomyPreset) => Promise<void>;
 };
 
 
@@ -140,7 +154,6 @@ type ProjectCopilotProviderProps = {
 
 export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotProviderProps) {
     const [state, setState] = useState<ProjectCopilotState>(createDefaultProjectCopilotState());
-    const [isMounted, setIsMounted] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const abortControllerRef = useRef<AbortController | null>(null);
@@ -163,9 +176,13 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
     const [isSummarizing, setIsSummarizing] = useState(false);
     const shouldOfferSummary = state.messages.length > 20;
 
+    // Autonomy configuration state (Phase 7)
+    const [autonomyPreset, setAutonomyPreset] = useState<AutonomyPreset>("assisted");
+    const [autonomyToolOverrides, setAutonomyToolOverrides] = useState<Record<string, AutonomyLevel>>({});
+    const [showAutonomySettings, setShowAutonomySettings] = useState(false);
+
     // Load panel state from localStorage on mount (not messages - those come from conversations)
     useEffect(() => {
-        let isActive = true;
         if (projectId) {
             // Only load panel state (width, collapsed), not messages
             const local = loadProjectCopilotState(projectId);
@@ -175,13 +192,39 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
                 // Messages will be loaded from the conversation system
                 messages: [],
             }));
-            if (isActive) setIsMounted(true);
-        } else {
-            setIsMounted(true);
         }
-        return () => {
-            isActive = false;
-        };
+    }, [projectId]);
+
+    // Load autonomy config on mount (Phase 7)
+    useEffect(() => {
+        getAutonomyConfigAction(projectId)
+            .then((result) => {
+                if (result.success && result.config) {
+                    setAutonomyPreset(result.config.preset as AutonomyPreset);
+                    setAutonomyToolOverrides(
+                        (result.config.toolOverrides ?? {}) as Record<string, AutonomyLevel>,
+                    );
+                }
+            })
+            .catch(console.error);
+    }, [projectId]);
+
+    const updateAutonomyPreset = useCallback(async (preset: AutonomyPreset) => {
+        setAutonomyPreset(preset);
+        setAutonomyToolOverrides({});
+        await updateAutonomyAction(preset, undefined, projectId).catch(console.error);
+    }, [projectId]);
+
+    const updateAutonomyOverrides = useCallback(async (overrides: Record<string, AutonomyLevel>) => {
+        setAutonomyToolOverrides(overrides);
+        setAutonomyPreset("custom");
+        await updateAutonomyAction("custom", overrides, projectId).catch(console.error);
+    }, [projectId]);
+
+    const resetToPreset = useCallback(async (preset: AutonomyPreset) => {
+        setAutonomyPreset(preset);
+        setAutonomyToolOverrides({});
+        await updateAutonomyAction(preset, undefined, projectId).catch(console.error);
     }, [projectId]);
 
     // Load conversations list
@@ -207,10 +250,9 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
     // Initial load: get conversations and auto-select the most recent one
     useEffect(() => {
         let isActive = true;
-        let hasAutoSelected = false;
 
         const initializeConversations = async () => {
-            if (!projectId || hasAutoSelected) return;
+            if (!projectId) return;
 
             setIsLoadingConversations(true);
             try {
@@ -224,36 +266,6 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
 
                 if (!isActive) return;
                 setConversations(mapped);
-
-                // Auto-select the most recent conversation if one exists
-                if (mapped.length > 0) {
-                    hasAutoSelected = true;
-                    const mostRecent = mapped[0]; // Already sorted by updatedAt desc
-                    const convo = await getConversation(mostRecent.id);
-                    if (convo && isActive) {
-                        setCurrentConversationId(convo.id);
-                        // Load messages from the conversation
-                        const copilotMessages: CopilotMessage[] = convo.messages
-                            .filter((m) => m.role !== "system")
-                            .map((m) => ({
-                                id: m.id,
-                                sender: m.role === "user" ? "user" : "ai",
-                                text: m.content,
-                                createdAt: m.createdAt,
-                                attachments: m.attachments?.map((a) => ({
-                                    fileAssetId: a.fileAssetId,
-                                    filename: a.filename,
-                                    size: a.size,
-                                    mimeType: a.mimeType,
-                                    isExisting: a.isExisting,
-                                })),
-                            }));
-                        setState(prev => ({
-                            ...prev,
-                            messages: copilotMessages,
-                        }));
-                    }
-                }
             } catch (err) {
                 console.error("Failed to load conversations:", err);
             } finally {
@@ -475,7 +487,7 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
     }, []);
 
     const sendMessage = useCallback(
-        async (text: string, page: CopilotPage, section?: string, model?: string) => {
+        async (text: string, page: CopilotPage, section?: string, model?: string, agentMode?: AgentMode) => {
             const trimmed = text.trim();
             const attachment = pendingAttachment;
             if ((!trimmed && !attachment) || isLoading) return;
@@ -552,9 +564,6 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             let fullContent = "";
 
             try {
-                // Build system prompt based on context
-                const systemPrompt = buildSystemPrompt(page as CopilotContextType, section);
-
                 // Cancel any in-flight stream
                 if (abortControllerRef.current) {
                     abortControllerRef.current.abort();
@@ -571,8 +580,10 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
                         context: "project",
                         options: {
                             projectId,
-                            systemPrompt,
                             model,
+                            agentMode: agentMode || "general",
+                            page,
+                            section,
                         },
                     }),
                     signal: controller.signal,
@@ -893,6 +904,14 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             shouldOfferSummary,
             summarizeAndRefresh,
             isSummarizing,
+            // Autonomy configuration (Phase 7)
+            autonomyPreset,
+            autonomyToolOverrides,
+            showAutonomySettings,
+            setShowAutonomySettings,
+            updateAutonomyPreset,
+            updateAutonomyOverrides,
+            resetToPreset,
         }),
         [
             state,
@@ -923,14 +942,14 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             shouldOfferSummary,
             summarizeAndRefresh,
             isSummarizing,
+            autonomyPreset,
+            autonomyToolOverrides,
+            showAutonomySettings,
+            updateAutonomyPreset,
+            updateAutonomyOverrides,
+            resetToPreset,
         ]
     );
-
-
-    if (!isMounted) {
-        // Return a consistent skeleton or null to avoid hydration mismatch
-        return null;
-    }
 
     return (
         <ProjectCopilotContext.Provider value={value}>
@@ -945,4 +964,9 @@ export function useProjectCopilot() {
         throw new Error("useProjectCopilot must be used within ProjectCopilotProvider");
     }
     return ctx;
+}
+
+/** Safe accessor — returns undefined outside ProjectCopilotProvider (no throw) */
+export function useProjectCopilotSafe() {
+    return useContext(ProjectCopilotContext);
 }

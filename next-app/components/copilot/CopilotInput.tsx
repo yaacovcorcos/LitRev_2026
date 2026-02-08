@@ -1,7 +1,7 @@
 /**
  * CopilotInput
  * Extracted input area: textarea, model selector, attachments, voice, send button
- * (planC Phase 0.6)
+ * Now with agent mode indicator pill (planC Phase 4.1)
  */
 
 "use client";
@@ -11,6 +11,8 @@ import { useProjectCopilot, type CopilotPage } from "@/contexts/ProjectCopilotCo
 import { USER_SELECTABLE_MODELS, type SelectableModelId } from "@/lib/ai/config";
 import { useVoiceInput } from "@/hooks/useVoiceInput";
 import { listProjectFilesAction } from "@/app/actions/files";
+import { routeToAgent, type RouterPage } from "@/lib/agent/router";
+import { AGENT_MODE_META, type AgentMode, type AutonomyPreset } from "@/types/agent";
 import type { FileAsset } from "@/types/files";
 import styles from "../ProjectCopilot.module.css";
 
@@ -18,9 +20,11 @@ export type CopilotInputProps = {
     page: CopilotPage;
     section?: string;
     inputPlaceholder: string;
+    prefill?: string;
+    onPrefillConsumed?: () => void;
 };
 
-export function CopilotInput({ page, section, inputPlaceholder }: CopilotInputProps) {
+export function CopilotInput({ page, section, inputPlaceholder, prefill, onPrefillConsumed }: CopilotInputProps) {
     const {
         isLoading,
         sendMessage,
@@ -30,6 +34,9 @@ export function CopilotInput({ page, section, inputPlaceholder }: CopilotInputPr
         attachExistingFile,
         clearAttachment,
         projectId,
+        autonomyPreset,
+        updateAutonomyPreset,
+        setShowAutonomySettings,
     } = useProjectCopilot();
 
     const [input, setInput] = useState("");
@@ -42,6 +49,52 @@ export function CopilotInput({ page, section, inputPlaceholder }: CopilotInputPr
     const [showModelMenu, setShowModelMenu] = useState(false);
     const textareaRef = useRef<HTMLTextAreaElement | null>(null);
     const modelMenuRef = useRef<HTMLDivElement | null>(null);
+    const sendLockRef = useRef(false);
+
+    // Agent mode state (Phase 4.1)
+    const [currentMode, setCurrentMode] = useState<AgentMode>("general");
+    const [modeOverride, setModeOverride] = useState<AgentMode | null>(null);
+    const [showModeMenu, setShowModeMenu] = useState(false);
+    const modeMenuRef = useRef<HTMLDivElement | null>(null);
+
+    // Autonomy preset state (Phase 7.2)
+    const [showPresetMenu, setShowPresetMenu] = useState(false);
+    const presetMenuRef = useRef<HTMLDivElement | null>(null);
+
+    const effectiveMode = modeOverride || currentMode;
+    const modeMeta = AGENT_MODE_META[effectiveMode];
+
+    // Debounced mode computation from input text
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setCurrentMode(routeToAgent(input, page as RouterPage));
+        }, 200);
+        return () => clearTimeout(timer);
+    }, [input, page]);
+
+    // Close mode menu on click outside
+    useEffect(() => {
+        if (!showModeMenu) return;
+        const handleClick = (e: MouseEvent) => {
+            if (modeMenuRef.current && !modeMenuRef.current.contains(e.target as Node)) {
+                setShowModeMenu(false);
+            }
+        };
+        document.addEventListener("mousedown", handleClick);
+        return () => document.removeEventListener("mousedown", handleClick);
+    }, [showModeMenu]);
+
+    // Close preset menu on click outside
+    useEffect(() => {
+        if (!showPresetMenu) return;
+        const handleClick = (e: MouseEvent) => {
+            if (presetMenuRef.current && !presetMenuRef.current.contains(e.target as Node)) {
+                setShowPresetMenu(false);
+            }
+        };
+        document.addEventListener("mousedown", handleClick);
+        return () => document.removeEventListener("mousedown", handleClick);
+    }, [showPresetMenu]);
 
     // Voice input
     const handleTranscription = useCallback((text: string) => {
@@ -79,6 +132,26 @@ export function CopilotInput({ page, section, inputPlaceholder }: CopilotInputPr
         el.style.height = Math.min(el.scrollHeight, 200) + "px";
     }, [input]);
 
+    // Consume prefill from parent (suggestion chips)
+    useEffect(() => {
+        if (!prefill) return;
+        setInput(prefill);
+        onPrefillConsumed?.();
+        // Focus textarea and move cursor to end
+        requestAnimationFrame(() => {
+            const el = textareaRef.current;
+            if (el) {
+                el.focus();
+                el.selectionStart = el.selectionEnd = el.value.length;
+            }
+        });
+    }, [prefill, onPrefillConsumed]);
+
+    // Prevent double-sends within the same event loop before isLoading flips true.
+    useEffect(() => {
+        if (!isLoading) sendLockRef.current = false;
+    }, [isLoading]);
+
     // Attachment state
     const fileInputRef = useRef<HTMLInputElement | null>(null);
     const [showAttachPicker, setShowAttachPicker] = useState(false);
@@ -99,11 +172,15 @@ export function CopilotInput({ page, section, inputPlaceholder }: CopilotInputPr
     }, [showAttachPicker]);
 
     const handleSend = useCallback(() => {
+        // Allow composing while the model is responding, but keep sends serialized.
+        if (isLoading || sendLockRef.current) return;
         const text = input.trim();
         if (!text && !pendingAttachment) return;
-        sendMessage(text, page, section, selectedModel);
+        sendLockRef.current = true;
+        sendMessage(text, page, section, selectedModel, effectiveMode);
         setInput("");
-    }, [input, page, section, sendMessage, selectedModel, pendingAttachment]);
+        setModeOverride(null);
+    }, [input, isLoading, page, section, sendMessage, selectedModel, pendingAttachment, effectiveMode]);
 
     const handleFileAttach = useCallback(() => {
         setShowAttachPicker((prev) => {
@@ -141,6 +218,8 @@ export function CopilotInput({ page, section, inputPlaceholder }: CopilotInputPr
 
     const selectedModelInfo = USER_SELECTABLE_MODELS.find(m => m.id === selectedModel);
 
+    const ALL_MODES: AgentMode[] = ["general", "protocol", "search", "screening", "drafting", "qa"];
+
     return (
         <>
             {/* Hidden file input */}
@@ -159,6 +238,56 @@ export function CopilotInput({ page, section, inputPlaceholder }: CopilotInputPr
                     handleSend();
                 }}
             >
+                {/* Mode indicator pill — shown when input has text */}
+                {input.trim() && (
+                    <div className={styles.modePill} ref={modeMenuRef}>
+                        <span className={`material-icons-round ${styles.modePillIcon}`}>
+                            {modeMeta.icon}
+                        </span>
+                        <span className={styles.modePillLabel}>
+                            {modeMeta.label}
+                            {modeOverride && " (manual)"}
+                        </span>
+                        <button
+                            type="button"
+                            className={styles.modePillChevron}
+                            onClick={() => setShowModeMenu(!showModeMenu)}
+                            aria-haspopup="listbox"
+                            aria-expanded={showModeMenu}
+                            aria-label="Change agent mode"
+                        >
+                            <span className="material-icons-round">expand_more</span>
+                        </button>
+                        {showModeMenu && (
+                            <div className={styles.modeDropdown} role="listbox">
+                                {ALL_MODES.map((mode) => {
+                                    const meta = AGENT_MODE_META[mode];
+                                    const isActive = mode === effectiveMode;
+                                    return (
+                                        <button
+                                            key={mode}
+                                            type="button"
+                                            className={`${styles.modeItem} ${isActive ? styles.modeItemActive : ""}`}
+                                            role="option"
+                                            aria-selected={isActive}
+                                            onClick={() => {
+                                                setModeOverride(mode === currentMode ? null : mode);
+                                                setShowModeMenu(false);
+                                            }}
+                                        >
+                                            <span className={`material-icons-round ${styles.modeItemIcon}`}>
+                                                {meta.icon}
+                                            </span>
+                                            <span className={styles.modeItemName}>{meta.label}</span>
+                                            <span className={styles.modeItemDesc}>{meta.description}</span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+                )}
+
                 {/* Pending attachment chip */}
                 {(pendingAttachment || isAttaching) && (
                     <div className={styles.pendingAttachment}>
@@ -192,9 +321,8 @@ export function CopilotInput({ page, section, inputPlaceholder }: CopilotInputPr
                             handleSend();
                         }
                     }}
-                    placeholder={isLoading ? "Thinking..." : inputPlaceholder}
+                    placeholder={isLoading ? "Keep typing..." : inputPlaceholder}
                     aria-label="Copilot prompt"
-                    disabled={isLoading}
                     className={styles.inputTextarea}
                     rows={1}
                 />
@@ -237,6 +365,72 @@ export function CopilotInput({ page, section, inputPlaceholder }: CopilotInputPr
                                             </div>
                                         </button>
                                     ))}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Autonomy preset selector */}
+                        <div className={styles.presetSelector} ref={presetMenuRef}>
+                            <button
+                                type="button"
+                                className={styles.presetBtn}
+                                onClick={() => setShowPresetMenu(!showPresetMenu)}
+                                aria-haspopup="listbox"
+                                aria-expanded={showPresetMenu}
+                                title={`Autonomy: ${autonomyPreset}`}
+                            >
+                                <span className="material-icons-round" style={{ fontSize: 14 }}>
+                                    {autonomyPreset === "manual" ? "back_hand"
+                                        : autonomyPreset === "autonomous" ? "smart_toy"
+                                        : autonomyPreset === "custom" ? "tune"
+                                        : "handshake"}
+                                </span>
+                                <span>
+                                    {autonomyPreset === "manual" ? "Manual"
+                                        : autonomyPreset === "autonomous" ? "Auto"
+                                        : autonomyPreset === "custom" ? "Custom"
+                                        : "Assisted"}
+                                </span>
+                                <span className="material-icons-round" style={{ fontSize: 14 }}>expand_more</span>
+                            </button>
+                            {showPresetMenu && (
+                                <div className={styles.presetDropdown} role="listbox">
+                                    {([
+                                        { key: "manual" as const, icon: "back_hand", label: "Manual", desc: "Suggest only" },
+                                        { key: "assisted" as const, icon: "handshake", label: "Assisted", desc: "Propose & confirm" },
+                                        { key: "autonomous" as const, icon: "smart_toy", label: "Auto", desc: "Act & notify" },
+                                    ]).map((preset) => (
+                                        <button
+                                            key={preset.key}
+                                            type="button"
+                                            className={`${styles.presetItem} ${autonomyPreset === preset.key ? styles.presetItemActive : ""}`}
+                                            role="option"
+                                            aria-selected={autonomyPreset === preset.key}
+                                            onClick={() => {
+                                                updateAutonomyPreset(preset.key);
+                                                setShowPresetMenu(false);
+                                            }}
+                                        >
+                                            <span className={`material-icons-round ${styles.presetItemIcon}`}>
+                                                {preset.icon}
+                                            </span>
+                                            <span className={styles.presetItemName}>{preset.label}</span>
+                                            <span className={styles.presetItemDesc}>{preset.desc}</span>
+                                        </button>
+                                    ))}
+                                    <div className={styles.presetDivider} />
+                                    <button
+                                        type="button"
+                                        className={`${styles.presetItem} ${autonomyPreset === "custom" ? styles.presetItemActive : ""}`}
+                                        onClick={() => {
+                                            setShowPresetMenu(false);
+                                            setShowAutonomySettings(true);
+                                        }}
+                                    >
+                                        <span className={`material-icons-round ${styles.presetItemIcon}`}>tune</span>
+                                        <span className={styles.presetItemName}>Customize...</span>
+                                        <span className={styles.presetItemDesc}>Per-tool settings</span>
+                                    </button>
                                 </div>
                             )}
                         </div>

@@ -36,7 +36,9 @@ Return ONLY valid JSON (no markdown, no explanation, no code fences):
   "studyType": "RCT|Cohort|Case-Control|Systematic-Review|Meta-Analysis|Cross-Sectional|Case-Report|Other",
   "keywords": ["keyword1", "keyword2", "keyword3"],
   "quality": "High|Medium|Low",
-  "qualityRationale": "Brief explanation of why this quality rating was assigned"
+  "qualityRationale": "Brief explanation of why this quality rating was assigned",
+  "sampleSize": 150,
+  "primaryOutcome": "30-day mortality"
 }
 
 StudyType detection rules:
@@ -59,7 +61,8 @@ Rules:
 2. Keywords should come from the paper's keyword list if present; otherwise infer the 3-5 most relevant terms
 3. The qualityRationale must justify the quality rating with specific observations from the paper
 4. Omit fields you cannot confidently determine — do not guess
-5. Return ONLY the JSON object, nothing else`;
+5. Include sampleSize and primaryOutcome if clearly stated in the paper; omit if not explicit
+6. Return ONLY the JSON object, nothing else`;
 
 /**
  * Build user prompt for Stage 1 quick extraction

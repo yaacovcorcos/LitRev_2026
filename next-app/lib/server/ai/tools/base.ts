@@ -6,10 +6,16 @@
 
 import { z } from "zod";
 import type { ToolDefinition, ToolResult } from "@/types/ai";
-import type { ToolAutonomyMeta, AutonomyLevel } from "@/types/agent";
+import type { ToolAutonomyMeta, AutonomyLevel, AgentMode } from "@/types/agent";
 import { HARD_CAPS } from "@/types/agent";
+import { AGENT_MODE_CONFIG } from "@/lib/agent/router";
 import { pubmedSearchTool } from "./pubmed-search";
 import { addToLedgerTool } from "./add-to-ledger";
+import { excludeStudyTool } from "./exclude-study";
+import { updateCriteriaTool } from "./update-criteria";
+import { bulkScreeningTool } from "./bulk-screening";
+import { extractPdfTool } from "./extract-pdf";
+import { updateNoteTool } from "./update-note";
 
 /**
  * Interface for AI tools that can be called by the AI
@@ -45,13 +51,28 @@ export interface ToolExecutionContext {
 export const AVAILABLE_TOOLS: AITool[] = [
     pubmedSearchTool,
     addToLedgerTool,
+    excludeStudyTool,
+    updateCriteriaTool,
+    bulkScreeningTool,
+    extractPdfTool,
+    updateNoteTool,
 ];
 
 /**
- * Get tool definitions for the AI
+ * Get tool definitions for the AI, optionally filtered by agent mode.
+ * When agentMode is provided and the mode has a non-empty allowedTools list,
+ * only those tools are returned. Otherwise all tools are returned.
  */
-export function getToolDefinitions(): ToolDefinition[] {
-    return AVAILABLE_TOOLS.map((tool) => tool.definition);
+export function getToolDefinitions(agentMode?: AgentMode): ToolDefinition[] {
+    if (agentMode) {
+        const allowed = AGENT_MODE_CONFIG[agentMode]?.allowedTools;
+        if (allowed && allowed.length > 0) {
+            return AVAILABLE_TOOLS
+                .filter((t) => allowed.includes(t.definition.name))
+                .map((t) => t.definition);
+        }
+    }
+    return AVAILABLE_TOOLS.map((t) => t.definition);
 }
 
 /**

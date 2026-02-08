@@ -43,7 +43,7 @@ export function detectMultiStepWorkflow(
         extract_pdf: ["extract", "pdf", "parse"],
         bulk_screening: ["screen", "batch", "screening"],
         update_criteria: ["criteria", "inclusion", "exclusion"],
-        edit_draft: ["draft", "write", "section"],
+        update_note: ["draft", "write", "section"],
     };
 
     let toolMatches = 0;
@@ -152,7 +152,7 @@ function generateHeuristicPlan(message: string, _context: PlanContext): PlanPayl
     if (/\b(?:draft|write|section|summary)\b/.test(lower)) {
         steps.push({
             label: "Draft review section",
-            toolName: "edit_draft",
+            toolName: "update_note",
             description: "Write or update a section of the review",
             status: "pending",
         });

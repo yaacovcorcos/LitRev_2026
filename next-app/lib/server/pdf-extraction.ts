@@ -368,6 +368,13 @@ export async function deepAnalyzeWithAI(
             details.qualityRationale = parsed.qualityRationale;
         }
 
+        if (typeof parsed.sampleSize === "number" && Number.isFinite(parsed.sampleSize)) {
+            details.sampleSize = parsed.sampleSize;
+        }
+        if (typeof parsed.primaryOutcome === "string" && parsed.primaryOutcome.length > 0) {
+            details.primaryOutcome = parsed.primaryOutcome;
+        }
+
         const validStudyTypes: StudyType[] = [
             "RCT", "Cohort", "Case-Control", "Cross-Sectional",
             "Case-Report", "Meta-Analysis", "Systematic-Review", "Other",

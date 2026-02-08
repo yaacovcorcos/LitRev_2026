@@ -162,3 +162,19 @@
     flex-shrink: 0;
     margin-left: 8px;
 }
+
+/* ========================================
+   CONTENT AREA — centers when empty
+   ======================================== */
+
+.contentArea {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    flex: 1;
+}
+
+.contentAreaEmpty {
+    justify-content: center;
+    overflow-y: auto;
+}

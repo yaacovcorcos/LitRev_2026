@@ -80,13 +80,13 @@ export async function getRunTimelineAction(runId: string) {
 /**
  * Get current autonomy config
  */
-export async function getAutonomyConfigAction(userId?: string, projectId?: string) {
+export async function getAutonomyConfigAction(projectId?: string, userId?: string) {
     try {
-        const config = await getAutonomyConfig(userId, projectId);
-        return { success: true, config };
+        const config = await getAutonomyConfig(userId || "single-user", projectId);
+        return { success: true as const, config };
     } catch (error) {
         return {
-            success: false,
+            success: false as const,
             error: error instanceof Error ? error.message : "Failed to get autonomy config",
         };
     }
@@ -96,17 +96,17 @@ export async function getAutonomyConfigAction(userId?: string, projectId?: strin
  * Update autonomy config
  */
 export async function updateAutonomyAction(
-    userId: string,
     preset: AutonomyPreset,
     toolOverrides?: Record<string, AutonomyLevel>,
-    projectId?: string
+    projectId?: string,
+    userId?: string,
 ) {
     try {
-        const config = await updateAutonomyConfig(userId, preset, toolOverrides, projectId);
-        return { success: true, config };
+        const config = await updateAutonomyConfig(userId || "single-user", preset, toolOverrides, projectId);
+        return { success: true as const, config };
     } catch (error) {
         return {
-            success: false,
+            success: false as const,
             error: error instanceof Error ? error.message : "Failed to update autonomy config",
         };
     }

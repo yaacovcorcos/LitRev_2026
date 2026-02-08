@@ -7,6 +7,7 @@
 import { NextRequest } from "next/server";
 import { getAIService } from "@/lib/server/ai";
 import type { AIMessage, ChatOptions, ConversationContext } from "@/types/ai";
+import type { AgentMode } from "@/types/agent";
 
 // Force Node runtime for Prisma compatibility
 export const runtime = "nodejs";
@@ -18,7 +19,7 @@ export async function POST(request: NextRequest) {
             messages?: AIMessage[];
             userMessage?: string;
             context?: ConversationContext;
-            options?: ChatOptions & { projectId?: string; studyId?: string; userId?: string };
+            options?: ChatOptions & { projectId?: string; studyId?: string; userId?: string; agentMode?: AgentMode; page?: string; section?: string };
             planId?: string;
         };
 

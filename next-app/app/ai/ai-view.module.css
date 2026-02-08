@@ -219,6 +219,19 @@
     min-height: 0;
 }
 
+/* Content wrapper — centers when empty */
+.chatContent {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    flex: 1;
+}
+
+.chatContentEmpty {
+    justify-content: center;
+    overflow-y: auto;
+}
+
 .chatHeader {
     padding: 16px 32px;
     display: flex;
@@ -459,6 +472,15 @@
     max-width: 900px;
     margin: 0 auto;
     width: 100%;
+}
+
+.chatMessagesEmpty {
+    flex: 0 1 auto;
+    overflow-y: visible;
+}
+
+.chatMessagesEmpty .emptyState {
+    flex: 0 0 auto;
 }
 
 /* Empty State */
@@ -702,17 +724,19 @@
 .inputBox {
     width: 100%;
     max-width: 800px;
-    background: white;
-    border: 1px solid var(--glass-border);
-    border-radius: 20px;
-    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
+    background: rgba(255, 255, 255, 0.65);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(0, 0, 0, 0.06);
+    border-radius: 24px;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
     transition: border-color 0.2s ease, box-shadow 0.2s ease;
     position: relative;
 }
 
 .inputBox:focus-within {
-    border-color: rgba(0, 0, 0, 0.2);
-    box-shadow: 0 6px 32px rgba(0, 0, 0, 0.1);
+    border-color: rgba(0, 0, 0, 0.1);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
 }
 
 /* Upper floor - textarea */
@@ -752,8 +776,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 8px 12px 12px;
-    border-top: 1px solid rgba(0, 0, 0, 0.04);
+    padding: 8px 16px 12px;
 }
 
 .inputBarLeft {
@@ -954,7 +977,7 @@
 .inputSendBtn {
     width: 36px;
     height: 36px;
-    border-radius: 10px;
+    border-radius: 50%;
     background: rgba(0, 0, 0, 0.05);
     border: none;
     color: var(--text-muted);
@@ -1031,6 +1054,6 @@
     }
 
     .inputBox {
-        border-radius: 16px;
+        border-radius: 20px;
     }
 }

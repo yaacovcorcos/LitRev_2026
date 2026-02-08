@@ -1,6 +1,7 @@
 "use client";
 
-import { ReactNode, useCallback, useEffect, useRef } from "react";
+import { ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 type ModalProps = {
   isOpen: boolean;
@@ -13,6 +14,12 @@ type ModalProps = {
 export function Modal({ isOpen, onClose, ariaLabelledBy, children }: ModalProps) {
   const overlayRef = useRef<HTMLDivElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
+  const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null);
+
+  // Resolve portal target on mount (client-only)
+  useEffect(() => {
+    setPortalTarget(document.body);
+  }, []);
 
   // Capture focus on open, restore on close
   useEffect(() => {
@@ -82,7 +89,7 @@ export function Modal({ isOpen, onClose, ariaLabelledBy, children }: ModalProps)
     [onClose]
   );
 
-  return (
+  const overlay = (
     <div
       className={`modal-overlay ${isOpen ? "active" : ""}`}
       aria-hidden={!isOpen}
@@ -99,4 +106,11 @@ export function Modal({ isOpen, onClose, ariaLabelledBy, children }: ModalProps)
       </div>
     </div>
   );
+
+  // Portal to document.body to escape ancestor backdrop-filter/transform containment
+  if (portalTarget) {
+    return createPortal(overlay, portalTarget);
+  }
+
+  return overlay;
 }

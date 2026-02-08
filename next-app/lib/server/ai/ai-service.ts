@@ -6,7 +6,7 @@
 
 import type { AIMessage, AIResponse, ChatOptions, AIStreamChunk, ConversationContext, ToolCall, ToolResult } from "@/types/ai";
 import type { ArtifactType } from "@/types/artifacts";
-import type { AutonomyLevel } from "@/types/agent";
+import type { AutonomyLevel, AgentMode } from "@/types/agent";
 import { BaseAIProvider, getOpenAIProvider, getAnthropicProvider, getXAIProvider } from "./providers";
 import { getOrCreateConversation, addMessageToConversation } from "./memory";
 import { validateRateLimits, recordUsage } from "./rate-limiter";
@@ -17,6 +17,10 @@ import { startRun, endRun } from "@/lib/server/agent/run";
 import { emitEvent } from "@/lib/server/agent/events";
 import { createArtifact, applyArtifact } from "@/lib/server/agent/artifacts";
 import { getAutonomyConfig, getToolAutonomyLevel } from "@/lib/server/agent/autonomy";
+import { assembleSystemPrompt, buildProtocolContext, buildLedgerContext, buildAutonomyContext } from "@/lib/ai/prompts/copilot-prompts";
+import { AGENT_MODE_CONFIG } from "@/lib/agent/router";
+import { prisma } from "@/lib/server/prisma";
+import type { ProtocolData } from "@/types/protocol";
 
 const MAX_TOOL_ITERATIONS = 5;
 
@@ -249,8 +253,23 @@ class AIService {
         runId: string,
         projectId: string,
         conversationId: string,
-        userId?: string
+        userId?: string,
+        agentMode?: AgentMode
     ): AsyncGenerator<AIStreamChunk, ToolResult> {
+        // Defense-in-depth: reject tool calls not allowed in the current mode
+        if (agentMode) {
+            const allowed = AGENT_MODE_CONFIG[agentMode]?.allowedTools;
+            if (allowed && allowed.length > 0 && !allowed.includes(toolCall.name)) {
+                const result: ToolResult = {
+                    callId: toolCall.id,
+                    result: null,
+                    error: `Tool "${toolCall.name}" is not available in ${agentMode} mode.`,
+                };
+                await emitEvent(runId, "tool_result", { error: result.error }, { toolName: toolCall.name });
+                return result;
+            }
+        }
+
         const tool = getTool(toolCall.name);
 
         // Resolve autonomy level
@@ -347,7 +366,7 @@ class AIService {
                     payload: result.result,
                 });
 
-                await applyArtifact(artifact.id);
+                await applyArtifact(artifact.id, "auto_applied");
 
                 yield {
                     type: "artifact",
@@ -371,7 +390,7 @@ class AIService {
                     payload: result.result,
                 });
 
-                await applyArtifact(artifact.id);
+                await applyArtifact(artifact.id, "auto_applied");
             }
         }
 
@@ -386,11 +405,12 @@ class AIService {
     async *streamChatWithArtifacts(
         userMessage: string,
         context: ConversationContext,
-        options?: ChatOptions & { projectId?: string; studyId?: string; userId?: string; planId?: string }
+        options?: ChatOptions & { projectId?: string; studyId?: string; userId?: string; planId?: string; agentMode?: AgentMode; page?: string; section?: string }
     ): AsyncIterable<AIStreamChunk & { conversationId?: string }> {
         const projectId = options?.projectId;
         const studyId = options?.studyId;
         const userId = options?.userId || "single-user";
+        const agentMode: AgentMode = (options?.agentMode as AgentMode) || "general";
 
         // Get or create conversation
         const conversation = await getOrCreateConversation(context, projectId, studyId);
@@ -401,7 +421,7 @@ class AIService {
             conversationId: conversation.id,
             userId,
             trigger: "user_message",
-            agentMode: "general",
+            agentMode,
             model: options?.model,
         });
 
@@ -412,12 +432,28 @@ class AIService {
         await emitEvent(run.id, "message", { content: userMessage }, { messageRole: "user" });
 
         try {
-            // Retrieve relevant memories
-            const memoriesContext = await retrieveAndFormatMemories({
-                userId,
-                projectId,
-                studyId,
-                query: userMessage,
+            // Retrieve memories + project context in parallel
+            const [memoriesContext, protocolRow, studyCounts, autonomyConfig] = await Promise.all([
+                retrieveAndFormatMemories({ userId, projectId, studyId, query: userMessage, agentMode, runId: run.id }),
+                projectId ? prisma.protocol.findFirst({ where: { projectId }, select: { data: true } }) : null,
+                projectId ? computeStudyCounts(projectId) : null,
+                getAutonomyConfig(userId, projectId),
+            ]);
+
+            // Assemble context-aware system prompt (Phase 4.3)
+            const protocolContext = protocolRow?.data
+                ? buildProtocolContext(protocolRow.data as unknown as ProtocolData)
+                : "";
+            const ledgerContext = studyCounts ? buildLedgerContext(studyCounts) : "";
+            const autonomyContext = buildAutonomyContext(autonomyConfig.preset);
+
+            const systemPrompt = assembleSystemPrompt({
+                agentMode,
+                protocolContext,
+                ledgerContext,
+                memoryContext: memoriesContext || undefined,
+                autonomyContext,
+                additionalContext: options?.section,
             });
 
             // Add user message to conversation
@@ -426,21 +462,22 @@ class AIService {
                 content: userMessage,
             });
 
-            // Prepare messages
-            const historyMessages: AIMessage[] = [...conversation.messages, userMsg];
-            if (memoriesContext) {
-                historyMessages.unshift({
-                    id: "memory-context",
+            // Prepare messages with system prompt at the front
+            const historyMessages: AIMessage[] = [
+                {
+                    id: "system-prompt",
                     role: "system",
-                    content: memoriesContext,
+                    content: systemPrompt,
                     createdAt: new Date().toISOString(),
-                });
-            }
+                },
+                ...conversation.messages,
+                userMsg,
+            ];
 
             // Check for multi-step workflow (plan-before-act)
             if (!options?.planId) {
                 const { detectMultiStepWorkflow, generatePlan } = await import("@/lib/server/agent/planner");
-                const toolNames = AVAILABLE_TOOLS.map((t) => t.definition.name);
+                const toolNames = getToolDefinitions(agentMode).map((t) => t.name);
                 if (detectMultiStepWorkflow(userMessage, toolNames)) {
                     yield { type: "progress", progressMessage: "Creating a plan...", conversationId: conversation.id };
 
@@ -478,7 +515,7 @@ class AIService {
             }
 
             // Run the tool execution loop with autonomy
-            const toolDefs = getToolDefinitions();
+            const toolDefs = getToolDefinitions(agentMode);
             const chatOptions: ChatOptions = {
                 ...options,
                 projectId: projectId || "global",
@@ -545,7 +582,7 @@ class AIService {
                     };
 
                     // Execute with autonomy (may yield artifact chunks)
-                    const gen = this.executeToolWithAutonomy(tc, run.id, projectId || "global", conversation.id, userId);
+                    const gen = this.executeToolWithAutonomy(tc, run.id, projectId || "global", conversation.id, userId, agentMode);
                     let genResult = await gen.next();
                     while (!genResult.done) {
                         yield { ...genResult.value, conversationId: conversation.id };
@@ -745,7 +782,7 @@ function mapToolToArtifactType(toolName: string): ArtifactType | null {
         extract_pdf: "study_proposal",
         bulk_screening: "screening_batch",
         update_criteria: "criteria_card",
-        edit_draft: "draft_diff",
+        update_note: "draft_diff",
     };
     return mapping[toolName] ?? null;
 }
@@ -765,7 +802,7 @@ function mapToolToArtifactTitle(toolName: string, args: Record<string, unknown>)
             return "Batch screening results";
         case "update_criteria":
             return "Updated criteria";
-        case "edit_draft":
+        case "update_note":
             return `Draft: ${args.section ?? "section"}`;
         default:
             return toolName;
@@ -781,11 +818,31 @@ function mapToolToProgressMessage(toolName: string): string {
         extract_pdf: "Extracting PDF data...",
         bulk_screening: "Screening studies...",
         update_criteria: "Updating criteria...",
-        edit_draft: "Writing draft...",
+        update_note: "Writing draft...",
         retrieve_memory: "Retrieving memories...",
         create_note: "Creating note...",
     };
     return messages[toolName] ?? `Running ${toolName}...`;
+}
+
+// ── Study count helper for prompt context ────────────────────────────────────
+
+async function computeStudyCounts(projectId: string) {
+    const studies = await prisma.study.findMany({
+        where: { projectId },
+        select: { details: true },
+    });
+    let included = 0, excluded = 0, maybe = 0, unscreened = 0;
+    for (const s of studies) {
+        const d = s.details as Record<string, unknown> | null;
+        switch (d?.triageDecision) {
+            case "keep": included++; break;
+            case "exclude": excluded++; break;
+            case "maybe": maybe++; break;
+            default: unscreened++; break;
+        }
+    }
+    return { total: studies.length, included, excluded, maybe, unscreened };
 }
 
 // Singleton instance

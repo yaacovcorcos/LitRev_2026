@@ -4,20 +4,23 @@ import { prisma } from "@/lib/server/prisma";
 import { getAIService } from "@/lib/server/ai";
 import type { AIMessage } from "@/types/ai";
 
-const SUMMARIZE_PROMPT = `You are summarizing a conversation between a user and an AI research assistant.
-Produce a structured summary with these sections:
-1. **Summary**: A 2-3 sentence overview of what was discussed.
-2. **Key Points**: 3-6 bullet points of the most important topics or findings.
-3. **Decisions Made**: Any explicit decisions or choices the user committed to.
-4. **Follow-up Needed**: Outstanding questions or next steps mentioned.
+const SUMMARIZE_PROMPT = `You are summarizing a conversation between a researcher and an AI assistant working on a systematic literature review.
 
-Return ONLY valid JSON in this shape:
+Produce a structured summary:
+1. **Summary**: 2-3 sentences covering what was discussed. Note what phase of the review it relates to (protocol, search, screening, drafting, QA, or general).
+2. **Key Points**: 3-6 single-sentence bullet points. Prioritize: studies discussed, screening decisions, methodological choices, and protocol refinements.
+3. **Decisions Made**: Explicit decisions or choices the user committed to.
+4. **Follow-up Needed**: Outstanding items. If the conversation ended mid-task (e.g., criteria discussed but not applied to unscreened studies), infer the follow-up.
+
+Return ONLY valid JSON:
 {
   "summary": "...",
   "keyPoints": ["..."],
   "decisions": ["..."],
   "followUpNeeded": ["..."]
-}`;
+}
+
+Keep the total output under 400 words.`;
 
 type SummarizeResult = {
     newConversationId: string;
@@ -141,11 +144,20 @@ export async function summarizeConversationAction(
         data: {
             projectId: conversation.projectId,
             studyId: conversation.studyId,
-            context: contextNote,
+            context: conversation.context,
             page: conversation.page,
             title: conversation.title
                 ? `${conversation.title} (continued)`
                 : null,
+        },
+    });
+
+    // Inject summary as a system message in the new conversation
+    await prisma.aIMessage.create({
+        data: {
+            conversationId: newConversation.id,
+            role: "system",
+            content: contextNote,
         },
     });
 

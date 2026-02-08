@@ -1242,30 +1242,20 @@
     color: var(--accent-primary);
 }
 
-.expandRailLeft,
-.expandRailRight {
+/* Collapsed rail (left side — for evidence ledger) */
+.collapsedRailLeft {
     height: 100%;
-    border: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 12px 0;
+    gap: 12px;
     background: rgba(255, 255, 255, 0.35);
     backdrop-filter: blur(16px);
-    color: var(--text-secondary);
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    padding: 10px 0;
-}
-
-.expandRailLeft {
     border-right: 1px solid var(--glass-border);
 }
 
-.expandRailRight {
-    border-left: 1px solid var(--glass-border);
-}
-
-.expandRailText {
+.collapsedLabel {
     writing-mode: vertical-rl;
     transform: rotate(180deg);
     text-transform: uppercase;
@@ -1273,6 +1263,30 @@
     font-weight: 800;
     font-size: 11px;
     color: var(--text-muted);
+}
+
+/* Panel toggle — matches Sidebar.sidebarToggle */
+.panelToggle {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+}
+
+.panelToggle:hover {
+    background: var(--glass-bg);
+    color: var(--text-primary);
+}
+
+/* Left-side collapsed rail: rotate icon 180deg */
+.collapsedRailLeft .panelToggle {
+    transform: rotate(180deg);
 }
 
 .modalBody {
