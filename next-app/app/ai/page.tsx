@@ -711,22 +711,28 @@ export default function AIView() {
                 <div className={styles.historyGroup} key={group.title}>
                   <h4 className={styles.historyHeading}>{group.title}</h4>
                   {group.items.map((conv) => (
-                    <button
+                    <div
                       key={conv.id}
                       className={`${styles.historyItem} ${activeConversationId === conv.id ? styles.activeHistory : ""}`}
-                      onClick={() => handleSelectConversation(conv.id)}
-                      aria-pressed={activeConversationId === conv.id}
                     >
-                      <span className="material-icons-round">chat_bubble_outline</span>
-                      <span className={styles.historyTitle}>{conv.title}</span>
                       <button
+                        type="button"
+                        className={styles.historySelectBtn}
+                        onClick={() => handleSelectConversation(conv.id)}
+                        aria-current={activeConversationId === conv.id ? "true" : undefined}
+                      >
+                        <span className="material-icons-round">chat_bubble_outline</span>
+                        <span className={styles.historyTitle}>{conv.title}</span>
+                      </button>
+                      <button
+                        type="button"
                         className={styles.deleteBtn}
                         onClick={(e) => handleDeleteConversation(conv.id, e)}
                         aria-label="Delete conversation"
                       >
                         <span className="material-icons-round">close</span>
                       </button>
-                    </button>
+                    </div>
                   ))}
                 </div>
               ))}

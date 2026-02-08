@@ -16,5 +16,5 @@ export const mobileNavLinks: NavLink[] = [
   { label: "Projects", icon: "grid_view", href: "/", navKey: "projects" },
   { label: "AI", icon: "smart_toy", href: "/ai", navKey: "ai" },
   { label: "New", icon: "add_circle", href: "#", navKey: "new" },
-  { label: "Settings", icon: "settings", href: "/library", navKey: "library" },
+  { label: "Library", icon: "bookmarks", href: "/library", navKey: "library" },
 ];

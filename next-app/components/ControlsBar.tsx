@@ -96,16 +96,6 @@ export function ControlsBar({ sortMode, viewMode, onSortChange, onViewChange }: 
 
   return (
     <div className={styles.controlsBar}>
-      <div className={styles.searchWrapper}>
-        <span className={`material-icons-round ${styles.searchIcon}`}>search</span>
-        <input
-          type="text"
-          placeholder="Search projects, papers, or authors..."
-          className={styles.searchInput}
-          aria-label="Search projects, papers, or authors"
-        />
-      </div>
-
       <div className={styles.viewControls}>
         <div className={styles.customSelect} ref={dropdownRef}>
           <button
