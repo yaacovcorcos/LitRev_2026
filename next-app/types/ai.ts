@@ -60,6 +60,7 @@ export type ChatOptions = {
     projectId?: string;
     studyId?: string;
     stream?: boolean;
+    signal?: AbortSignal;
 };
 
 // Response types
@@ -103,6 +104,10 @@ export type AIStreamChunk = {
     runStatus?: string;
     runCostTokensIn?: number;
     runCostTokensOut?: number;
+    // Loop control metadata (Phase 3)
+    stopReason?: string;
+    iterationCount?: number;
+    toolCallCount?: number;
 };
 
 // Memory/Context types

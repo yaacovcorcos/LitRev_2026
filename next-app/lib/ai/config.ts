@@ -88,3 +88,16 @@ export function getProviderForModel(modelId: string): string | undefined {
     }
     return undefined;
 }
+
+const DEFAULT_CONTEXT_BUDGET = 80_000;
+
+/** Get the token budget for message history, derived from model context window.
+ *  Reserves 40% for system prompt, tool definitions, and response. */
+export function getContextBudget(modelId?: string): number {
+    if (!modelId) return DEFAULT_CONTEXT_BUDGET;
+    for (const models of Object.values(AVAILABLE_MODELS)) {
+        const found = models.find(m => m.id === modelId);
+        if (found) return Math.floor(found.contextWindow * 0.6);
+    }
+    return DEFAULT_CONTEXT_BUDGET;
+}

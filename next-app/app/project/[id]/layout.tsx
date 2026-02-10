@@ -134,10 +134,13 @@ function ProjectShellInner({ projectId, children }: ProjectShellInnerProps) {
     }), [focusMode, activeTab, setActiveTab, returnToConversation]);
 
     // Copilot props for the view mode panel
-    const copilotPage = activeTab ?? "overview";
-    const copilotContextDisplay = activeTab
-        ? `${activeTab.charAt(0).toUpperCase() + activeTab.slice(1)}`
-        : "Project";
+    const isStudyDetail = /\/ledger\/[^/]+\/?$/.test(pathname);
+    const copilotPage = isStudyDetail ? "study" : (activeTab ?? "overview");
+    const copilotContextDisplay = isStudyDetail
+        ? "Study"
+        : activeTab
+            ? `${activeTab.charAt(0).toUpperCase() + activeTab.slice(1)}`
+            : "Project";
 
     return (
         <ProjectShellProvider value={shellValue}>

@@ -7,6 +7,7 @@ import OpenAI from "openai";
 import type { AIMessage, AIModel, AIResponse, ChatOptions, AIStreamChunk, ToolCall } from "@/types/ai";
 import { BaseAIProvider } from "./base";
 import { AI_CONFIG, AVAILABLE_MODELS } from "@/lib/ai/config";
+import { parseToolArgs } from "../json-repair";
 
 export class XAIProvider extends BaseAIProvider {
     readonly id = "xai";
@@ -50,7 +51,8 @@ export class XAIProvider extends BaseAIProvider {
             }));
         }
 
-        const response = await client.chat.completions.create(params);
+        // Pass AbortSignal through so callers can cancel in-flight requests.
+        const response = await client.chat.completions.create(params, { signal: options?.signal });
 
         const choice = response.choices[0];
 
@@ -63,7 +65,7 @@ export class XAIProvider extends BaseAIProvider {
                 .map((tc) => ({
                     id: tc.id,
                     name: tc.function.name,
-                    arguments: JSON.parse(tc.function.arguments),
+                    arguments: parseToolArgs(tc.function.arguments, tc.function.name, "xai"),
                 })),
             usage: {
                 inputTokens: response.usage?.prompt_tokens || 0,
@@ -98,7 +100,8 @@ export class XAIProvider extends BaseAIProvider {
             }));
         }
 
-        const stream = await client.chat.completions.create(params);
+        // Pass AbortSignal through so callers can cancel in-flight streaming requests.
+        const stream = await client.chat.completions.create(params, { signal: options?.signal });
 
         let totalContent = "";
         let usage: AIStreamChunk["usage"] | undefined;
@@ -134,16 +137,10 @@ export class XAIProvider extends BaseAIProvider {
 
                     if (choice.finish_reason === "tool_calls") {
                         for (const [, tc] of pendingToolCalls) {
-                            let parsedArgs: Record<string, unknown> = {};
-                            try {
-                                parsedArgs = JSON.parse(tc.arguments);
-                            } catch {
-                                // fallback to empty if JSON parse fails
-                            }
                             const toolCall: ToolCall = {
                                 id: tc.id,
                                 name: tc.name,
-                                arguments: parsedArgs,
+                                arguments: parseToolArgs(tc.arguments, tc.name, "xai:stream"),
                             };
                             yield { type: "tool_call", toolCall };
                         }

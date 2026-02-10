@@ -9,3 +9,6 @@ dotenv.config({ path: path.resolve(__dirname, '.env') })
 
 // Mock server-only globally so server modules can be imported in tests
 vi.mock('server-only', () => ({}))
+
+// Register axe-core a11y matchers (safe in node env — only extends expect)
+import 'vitest-axe/extend-expect'

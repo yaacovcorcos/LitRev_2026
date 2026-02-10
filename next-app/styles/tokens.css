@@ -29,6 +29,18 @@
     --status-harvesting-bg: rgba(212, 163, 115, 0.15);
     --status-harvesting-text: #9c724f;
 
+    /* Surface & Border Tokens */
+    --bg-secondary: rgba(0, 0, 0, 0.03);
+    --bg-tertiary: rgba(0, 0, 0, 0.06);
+    --border-default: rgba(0, 0, 0, 0.1);
+
+    /* Semantic Status Colors — Danger */
+    --color-danger: #c0392b;
+    --color-danger-hover: #a93226;
+    --color-danger-bg: rgba(192, 57, 43, 0.08);
+    --color-danger-bg-hover: rgba(192, 57, 43, 0.16);
+    --color-danger-border: rgba(192, 57, 43, 0.3);
+
     /* Spacing & Radius */
     --radius-lg: 10px;
     /* Reduced even further as requested */

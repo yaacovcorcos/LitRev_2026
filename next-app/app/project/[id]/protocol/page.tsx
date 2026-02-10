@@ -379,7 +379,7 @@ function ProtocolPageContent() {
             return (
                 <div className={styles.notFound}>
                     <h1>Project not found</h1>
-                    <Link href="/" className="btn btn-primary" style={{ width: "auto", padding: "12px 24px" }}>
+                    <Link href="/" className="btn-minimal">
                         Back to Dashboard
                     </Link>
                 </div>
@@ -389,7 +389,7 @@ function ProtocolPageContent() {
             <AppShell activeNav="projects">
                 <div className={styles.notFound}>
                     <h1>Project not found</h1>
-                    <Link href="/" className="btn btn-primary" style={{ width: "auto", padding: "12px 24px" }}>
+                    <Link href="/" className="btn-minimal">
                         Back to Dashboard
                     </Link>
                 </div>
@@ -404,7 +404,7 @@ function ProtocolPageContent() {
                                 <div className={styles.headerText}>
                                     {!isEmbeddedInProjectShell && (
                                     <div style={{ display: "flex", alignItems: "center" }}>
-                                        <BaseBackButton href={`/project/${project.id}`} />
+                                        <BaseBackButton href={`/project/${project.id}`} label="Back to project" />
                                         <span className={styles.eyebrow}>Study Protocol</span>
                                     </div>
                                     )}

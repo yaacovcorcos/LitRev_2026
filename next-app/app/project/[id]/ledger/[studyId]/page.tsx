@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { AppShell } from "@/components/AppShell";
 import { useProjects } from "@/contexts/ProjectsContext";
+import { useProjectShell } from "@/contexts/ProjectShellContext";
 import { useLedger } from "@/contexts/LedgerContext";
 import { BaseBackButton } from "@/components/BaseBackButton";
 import { ProjectCopilot } from "@/components/ProjectCopilot";
@@ -41,6 +42,7 @@ export default function StudyDetailPage() {
     const { getProjectById } = useProjects();
     const { getStudyById, updateSingleStudy } = useLedger();
     const { isCollapsed, panelWidth, setPanelWidth } = useProjectCopilot();
+    const { isEmbeddedInProjectShell } = useProjectShell();
 
     const project = id ? getProjectById(id) : undefined;
     const [study, setStudy] = useState<Study | null>(null);
@@ -281,47 +283,42 @@ export default function StudyDetailPage() {
     const pdfFile = useMemo(() => studyFiles.find((f) => f.mimeType === "application/pdf"), [studyFiles]);
 
     if (!project) {
-        return (
-            <AppShell activeNav="projects">
-                <div className={styles.notFound}>
-                    <h1>Project not found</h1>
-                    <Link href="/" className="btn-minimal">Back to Dashboard</Link>
-                </div>
-            </AppShell>
+        const notFoundContent = (
+            <div className={styles.notFound}>
+                <h1>Project not found</h1>
+                <Link href="/" className="btn-minimal">Back to Dashboard</Link>
+            </div>
         );
+        if (isEmbeddedInProjectShell) return notFoundContent;
+        return <AppShell activeNav="projects">{notFoundContent}</AppShell>;
     }
 
     if (isLoading) {
-        return (
-            <AppShell activeNav="projects" mainClassName={styles.appMainOverride}>
-                <div className={styles.loading}>Loading study...</div>
-            </AppShell>
-        );
+        const loadingContent = <div className={styles.loading}>Loading study...</div>;
+        if (isEmbeddedInProjectShell) return loadingContent;
+        return <AppShell activeNav="projects" mainClassName={styles.appMainOverride}>{loadingContent}</AppShell>;
     }
 
     if (!study) {
-        return (
-            <AppShell activeNav="projects">
-                <div className={styles.notFound}>
-                    <h1>Study not found</h1>
-                    <Link href={`/project/${id}/ledger`} className="btn-minimal">Back to Ledger</Link>
-                </div>
-            </AppShell>
+        const studyNotFoundContent = (
+            <div className={styles.notFound}>
+                <h1>Study not found</h1>
+                <Link href={`/project/${id}/ledger`} className="btn-minimal">Back to Ledger</Link>
+            </div>
         );
+        if (isEmbeddedInProjectShell) return studyNotFoundContent;
+        return <AppShell activeNav="projects">{studyNotFoundContent}</AppShell>;
     }
 
-    return (
-        <AppShell activeNav="projects" mainClassName={styles.appMainOverride}>
-            <div className={styles.page}>
-                <div className={styles.body} style={computePanelVars()}>
-                    {/* Main Content */}
-                    <div className={styles.mainContent}>
-                        <div className={styles.layout}>
-                            {/* Header */}
-                            <header className={styles.header}>
+    // Shared content: main pane with header, sections, files popup, alert
+    const mainPane = (
+        <div className={styles.mainContent}>
+            <div className={styles.layout}>
+                {/* Header */}
+                <header className={styles.header}>
                                 <div className={styles.headerText}>
                                     <div style={{ display: "flex", alignItems: "center" }}>
-                                        <BaseBackButton href={`/project/${id}/ledger`} />
+                                        <BaseBackButton href={`/project/${id}/ledger`} label="Back to ledger" />
                                         <span className={styles.eyebrow}>Study Details</span>
                                     </div>
                                     {isEditing ? (
@@ -629,6 +626,52 @@ export default function StudyDetailPage() {
                             </section>
                         </div>
                     </div>
+    );
+
+    const filesPopup = showFilesPanel && (
+        <>
+            <div className={styles.filesPopupBackdrop} onClick={() => setShowFilesPanel(false)} />
+            <div className={styles.filesPopup}>
+                <StudyFilesPanel
+                    projectId={id}
+                    studyId={studyId}
+                    studyTitle={study.title}
+                    files={studyFiles}
+                    onUpload={handleUploadFile}
+                    onDelete={handleDeleteFile}
+                    onClose={() => setShowFilesPanel(false)}
+                    onExtract={handleExtract}
+                    extractingFileId={extractingFileId ?? undefined}
+                />
+            </div>
+        </>
+    );
+
+    const alertDialog = (
+        <AlertDialog
+            isOpen={alertMsg !== null}
+            title="Error"
+            message={alertMsg ?? ""}
+            onClose={() => setAlertMsg(null)}
+        />
+    );
+
+    // When embedded in the project shell, render content directly (no AppShell, grid, copilot, or resize handle)
+    if (isEmbeddedInProjectShell) {
+        return (
+            <>
+                {mainPane}
+                {filesPopup}
+                {alertDialog}
+            </>
+        );
+    }
+
+    return (
+        <AppShell activeNav="projects" mainClassName={styles.appMainOverride}>
+            <div className={styles.page}>
+                <div className={styles.body} style={computePanelVars()}>
+                    {mainPane}
 
                     {/* Resize Handle */}
                     <div
@@ -661,33 +704,10 @@ export default function StudyDetailPage() {
                     />
                 </div>
 
-                {/* Files Popup */}
-                {showFilesPanel && (
-                    <>
-                        <div className={styles.filesPopupBackdrop} onClick={() => setShowFilesPanel(false)} />
-                        <div className={styles.filesPopup}>
-                            <StudyFilesPanel
-                                projectId={id}
-                                studyId={studyId}
-                                studyTitle={study.title}
-                                files={studyFiles}
-                                onUpload={handleUploadFile}
-                                onDelete={handleDeleteFile}
-                                onClose={() => setShowFilesPanel(false)}
-                                onExtract={handleExtract}
-                                extractingFileId={extractingFileId ?? undefined}
-                            />
-                        </div>
-                    </>
-                )}
+                {filesPopup}
             </div>
 
-            <AlertDialog
-                isOpen={alertMsg !== null}
-                title="Error"
-                message={alertMsg ?? ""}
-                onClose={() => setAlertMsg(null)}
-            />
+            {alertDialog}
         </AppShell>
     );
 }

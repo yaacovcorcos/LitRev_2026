@@ -4,3 +4,5 @@
 .env.*
 secrets.local.md
 .vercel
+node_modules/
+~$*

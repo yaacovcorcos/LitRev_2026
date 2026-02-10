@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
                     // If using conversation memory — use artifact-aware streaming
                     if (userMessage && context) {
                         for await (const chunk of service.streamChatWithArtifacts(
-                            userMessage, context, { ...options, planId }
+                            userMessage, context, { ...options, planId, signal: request.signal }
                         )) {
                             const data = JSON.stringify(chunk) + "\n";
                             controller.enqueue(encoder.encode(data));
@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
                     }
                     // Direct message streaming
                     else if (messages && messages.length > 0) {
-                        for await (const chunk of service.streamChat(messages, options)) {
+                        for await (const chunk of service.streamChat(messages, { ...options, signal: request.signal })) {
                             const data = JSON.stringify(chunk) + "\n";
                             controller.enqueue(encoder.encode(data));
                         }

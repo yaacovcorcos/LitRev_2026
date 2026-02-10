@@ -426,13 +426,15 @@
     overflow-y: auto;
 }
 
-/* Override global focus-visible outline for elements */
-.inputTextarea:focus-visible,
-.inputBox button:focus-visible,
-.conversationSearchInput:focus-visible,
-.headerIconBtn:focus-visible,
-.conversationSelectorBtn:focus-visible {
+/* Textarea: parent .inputBox:focus-within provides the visual indicator */
+.inputTextarea:focus-visible {
     outline: none;
+}
+
+/* Search input: embedded in dropdown, provide subtle ring instead of default outline */
+.conversationSearchInput:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(217, 116, 89, 0.4);
 }
 
 .inputTextarea::placeholder {

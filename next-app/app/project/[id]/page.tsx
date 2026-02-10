@@ -110,7 +110,7 @@ export default function ProjectDetail() {
       return (
         <div className={styles.notFound}>
           <h1>Project not found</h1>
-          <Link href="/" className="btn btn-primary" style={{ width: "auto", padding: "12px 24px" }}>
+          <Link href="/" className="btn-minimal">
             Back to Dashboard
           </Link>
         </div>
@@ -120,7 +120,7 @@ export default function ProjectDetail() {
       <AppShell activeNav="projects">
         <div className={styles.notFound}>
           <h1>Project not found</h1>
-          <Link href="/" className="btn btn-primary" style={{ width: "auto", padding: "12px 24px" }}>
+          <Link href="/" className="btn-minimal">
             Back to Dashboard
           </Link>
         </div>

@@ -1,0 +1,141 @@
+/**
+ * Loop Controller
+ * Budget-aware control for the AI tool execution loop.
+ * Pure module — no server-only, no DB imports. (planC Phase 3)
+ */
+
+// ── Types ────────────────────────────────────────────────────────────────────
+
+export type StopReason =
+    | "natural"
+    | "max_iterations"
+    | "max_tool_calls"
+    | "wall_time"
+    | "repeat_detected"
+    | "cancelled"
+    | "error";
+
+export interface LoopBudget {
+    maxIterations: number;
+    maxToolCalls: number;
+    maxWallTimeMs: number;
+}
+
+export const DEFAULT_LOOP_BUDGET: LoopBudget = {
+    maxIterations: 10,
+    maxToolCalls: 25,
+    maxWallTimeMs: 120_000,
+};
+
+// ── Tool Call Hashing ────────────────────────────────────────────────────────
+
+/** Deterministic hash of a tool call for repeat detection. */
+export function hashToolCall(name: string, args: Record<string, unknown>): string {
+    return name + ":" + stableStringify(args);
+}
+
+function stableStringify(obj: unknown): string {
+    if (obj === null || obj === undefined) return String(obj);
+    if (typeof obj !== "object") return JSON.stringify(obj);
+    if (Array.isArray(obj)) {
+        return "[" + obj.map(stableStringify).join(",") + "]";
+    }
+    const sorted = Object.keys(obj as Record<string, unknown>).sort();
+    return "{" + sorted.map(k =>
+        JSON.stringify(k) + ":" + stableStringify((obj as Record<string, unknown>)[k])
+    ).join(",") + "}";
+}
+
+// ── Loop State ───────────────────────────────────────────────────────────────
+
+export class LoopState {
+    readonly budget: LoopBudget;
+    private startedAt: number;
+    private _iterations = 0;
+    private _totalToolCalls = 0;
+    private _seenHashes = new Set<string>();
+    private _repeatDetected = false;
+    private _stopReason: StopReason | null = null;
+
+    constructor(budget?: Partial<LoopBudget>) {
+        this.budget = { ...DEFAULT_LOOP_BUDGET, ...budget };
+        this.startedAt = Date.now();
+    }
+
+    get iterations(): number { return this._iterations; }
+    get totalToolCalls(): number { return this._totalToolCalls; }
+    get stopReason(): StopReason | null { return this._stopReason; }
+    get elapsedMs(): number { return Date.now() - this.startedAt; }
+
+    /**
+     * Record tool calls from one iteration.
+     * Returns true if a repeat was detected.
+     */
+    recordToolCalls(calls: { name: string; arguments: Record<string, unknown> }[]): boolean {
+        this._totalToolCalls += calls.length;
+        for (const call of calls) {
+            const hash = hashToolCall(call.name, call.arguments);
+            if (this._seenHashes.has(hash)) {
+                this._repeatDetected = true;
+                return true;
+            }
+            this._seenHashes.add(hash);
+        }
+        return false;
+    }
+
+    /**
+     * Call at the top of each iteration.
+     * Returns { continue: true } or { continue: false, stopReason }.
+     */
+    shouldContinue(signal?: AbortSignal): { continue: true } | { continue: false; stopReason: StopReason } {
+        // Already stopped
+        if (this._stopReason) {
+            return { continue: false, stopReason: this._stopReason };
+        }
+
+        // Cancel check
+        if (signal?.aborted) {
+            this._stopReason = "cancelled";
+            return { continue: false, stopReason: "cancelled" };
+        }
+
+        // Iteration budget
+        if (this._iterations >= this.budget.maxIterations) {
+            this._stopReason = "max_iterations";
+            return { continue: false, stopReason: "max_iterations" };
+        }
+
+        // Tool call budget
+        if (this._totalToolCalls >= this.budget.maxToolCalls) {
+            this._stopReason = "max_tool_calls";
+            return { continue: false, stopReason: "max_tool_calls" };
+        }
+
+        // Wall time budget
+        if (this.elapsedMs >= this.budget.maxWallTimeMs) {
+            this._stopReason = "wall_time";
+            return { continue: false, stopReason: "wall_time" };
+        }
+
+        // Repeat detection (set by recordToolCalls)
+        if (this._repeatDetected) {
+            this._stopReason = "repeat_detected";
+            return { continue: false, stopReason: "repeat_detected" };
+        }
+
+        // Increment and allow
+        this._iterations++;
+        return { continue: true };
+    }
+
+    /**
+     * Mark the loop as stopped for a given reason (e.g., "natural" or "error").
+     * First write wins — subsequent calls are ignored.
+     */
+    markStopped(reason: StopReason): void {
+        if (!this._stopReason) {
+            this._stopReason = reason;
+        }
+    }
+}

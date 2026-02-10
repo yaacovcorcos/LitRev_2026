@@ -1330,7 +1330,7 @@ function DraftContent() {
     const notFoundContent = (
       <div className={styles.notFound}>
         <h1>Project not found</h1>
-        <Link href="/" className="header-btn header-btn-primary">
+        <Link href="/" className="btn-minimal">
           Back to Dashboard
         </Link>
       </div>
@@ -1346,12 +1346,6 @@ function DraftContent() {
       <div className={styles.page}>
         <div className={styles.top}>
           <div className={styles.topLeft}>
-            {!isEmbeddedInProjectShell && (
-              <Link href={`/project/${project.id}`} className={styles.backLink}>
-                <span className="material-icons-round">arrow_back</span>
-                Project
-              </Link>
-            )}
             <div className={styles.projectName} title={project.name}>
               {project.name}
             </div>
@@ -1613,7 +1607,7 @@ function DraftContent() {
           <section className={styles.center} aria-label="Draft editor">
             <div className={styles.centerHeader}>
               <div className={styles.centerTitle}>
-                {!isEmbeddedInProjectShell && <BaseBackButton href={`/project/${id}`} className={styles.draftBackBtn} />}
+                {!isEmbeddedInProjectShell && <BaseBackButton href={`/project/${id}`} label="Back to project" className={styles.draftBackBtn} />}
                 <span className="material-icons-round">edit</span>
                 {activeSectionLabel}
               </div>

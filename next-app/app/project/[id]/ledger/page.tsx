@@ -629,7 +629,7 @@ export default function LedgerPage() {
                 <div className={styles.headerText}>
                     {!isEmbeddedInProjectShell && (
                         <div style={{ display: "flex", alignItems: "center" }}>
-                            <BaseBackButton href={`/project/${project.id}`} />
+                            <BaseBackButton href={`/project/${project.id}`} label="Back to project" />
                             <span className={styles.eyebrow}>Evidence Ledger</span>
                         </div>
                     )}

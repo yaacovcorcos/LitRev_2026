@@ -15,6 +15,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { AIMessage, AIModel, AIResponse, ChatOptions, AIStreamChunk, ToolCall } from "@/types/ai";
 import { BaseAIProvider } from "./base";
 import { AI_CONFIG, AVAILABLE_MODELS } from "@/lib/ai/config";
+import { parseToolArgs } from "../json-repair";
 
 export class AnthropicProvider extends BaseAIProvider {
     readonly id = "anthropic";
@@ -66,7 +67,8 @@ export class AnthropicProvider extends BaseAIProvider {
             }));
         }
 
-        const response = await client.messages.create(params);
+        // Pass AbortSignal through so callers can cancel in-flight requests.
+        const response = await client.messages.create(params, { signal: options?.signal } as any);
 
         let content = "";
         const toolCalls: ToolCall[] = [];
@@ -139,7 +141,8 @@ export class AnthropicProvider extends BaseAIProvider {
         let hasToolCalls = false;
 
         try {
-            const stream = await client.messages.create(params);
+            // Pass AbortSignal through so callers can cancel in-flight streaming requests.
+            const stream = await client.messages.create(params, { signal: options?.signal } as any);
 
             for await (const event of stream as AsyncIterable<Anthropic.MessageStreamEvent>) {
                 switch (event.type) {
@@ -176,16 +179,10 @@ export class AnthropicProvider extends BaseAIProvider {
                     case "content_block_stop": {
                         // If we were assembling a tool call, yield it now
                         if (currentToolId) {
-                            let parsedArgs: Record<string, unknown> = {};
-                            try {
-                                parsedArgs = JSON.parse(currentToolArgs);
-                            } catch {
-                                // fallback to empty
-                            }
                             const toolCall: ToolCall = {
                                 id: currentToolId,
                                 name: currentToolName,
-                                arguments: parsedArgs,
+                                arguments: parseToolArgs(currentToolArgs, currentToolName, "anthropic:stream"),
                             };
                             yield { type: "tool_call", toolCall };
                             currentToolId = "";

@@ -1,11 +1,13 @@
 /**
  * Plan-before-act
  * Detects multi-step workflows and generates execution plans.
- * (planC Phase 2)
+ * (planC Phase 2 + Phase 5 validation)
  */
 
 import "server-only";
 import type { PlanPayload, PlanStep } from "@/types/artifacts";
+import { PlanSchema } from "@/types/artifacts";
+import { AVAILABLE_TOOLS } from "@/lib/server/ai/tools/base";
 
 // ── Multi-step detection ────────────────────────────────────────────────────
 
@@ -70,15 +72,21 @@ interface PlanContext {
 /**
  * Generate an execution plan from a user message.
  * Uses a lightweight AI call to produce structured plan steps.
- * Falls back to a simple heuristic plan if AI call fails.
+ * Returns null if the generated plan fails validation (safe fallback —
+ * callers should skip plan creation and continue normal chat).
+ *
+ * @param allowedToolNames - Mode-filtered tool names. If provided, plan steps
+ *   referencing tools outside this set are rejected. Pass undefined to allow all.
  */
 export async function generatePlan(
     message: string,
-    context: PlanContext
-): Promise<PlanPayload> {
+    context: PlanContext,
+    allowedToolNames?: string[]
+): Promise<PlanPayload | null> {
     // For Phase 2, use heuristic plan generation.
     // Full AI-powered planning (with a fast model call) is Phase 4.
-    return generateHeuristicPlan(message, context);
+    const raw = generateHeuristicPlan(message, context);
+    return validatePlan(raw, allowedToolNames);
 }
 
 /**
@@ -171,4 +179,56 @@ function generateHeuristicPlan(message: string, _context: PlanContext): PlanPayl
         steps,
         estimatedActions: steps.length,
     };
+}
+
+// ── Plan validation ─────────────────────────────────────────────────────────
+
+const REGISTERED_TOOL_NAMES = new Set(AVAILABLE_TOOLS.map((t) => t.definition.name));
+
+/**
+ * Validate a plan payload against the Zod schema and cross-check tool references.
+ * Returns the validated plan, or null if validation fails.
+ *
+ * @param allowedToolNames - If provided, tool references are checked against this
+ *   mode-filtered set instead of the global registry. This ensures plans are
+ *   actionable within the current agent mode.
+ */
+export function validatePlan(raw: unknown, allowedToolNames?: string[]): PlanPayload | null {
+    // 1. Structural validation via Zod
+    const parsed = PlanSchema.safeParse(raw);
+    if (!parsed.success) {
+        const issues = parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");
+        console.warn(`[planner] Plan failed Zod validation: ${issues}`);
+        return null;
+    }
+
+    const plan = parsed.data as PlanPayload;
+
+    // 2. Must have at least one step
+    if (plan.steps.length === 0) {
+        console.warn("[planner] Plan has zero steps");
+        return null;
+    }
+
+    // 3. Cross-check: every toolName must reference a valid tool.
+    //    If allowedToolNames is provided (mode-filtered), check against that set;
+    //    otherwise fall back to global registry.
+    const validTools = allowedToolNames
+        ? new Set(allowedToolNames)
+        : REGISTERED_TOOL_NAMES;
+
+    for (const step of plan.steps) {
+        if (step.toolName && !validTools.has(step.toolName)) {
+            console.warn(`[planner] Plan references disallowed tool: ${step.toolName}`);
+            return null;
+        }
+    }
+
+    // 4. Consistency: estimatedActions should match steps.length
+    if (plan.estimatedActions !== plan.steps.length) {
+        // Auto-fix rather than reject — this is a soft invariant
+        plan.estimatedActions = plan.steps.length;
+    }
+
+    return plan;
 }

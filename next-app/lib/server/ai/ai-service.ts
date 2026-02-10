@@ -8,10 +8,11 @@ import type { AIMessage, AIResponse, ChatOptions, AIStreamChunk, ConversationCon
 import type { ArtifactType } from "@/types/artifacts";
 import type { AutonomyLevel, AgentMode } from "@/types/agent";
 import { BaseAIProvider, getOpenAIProvider, getAnthropicProvider, getXAIProvider } from "./providers";
-import { getOrCreateConversation, addMessageToConversation } from "./memory";
+import { getOrCreateConversation, addMessageToConversation, getConversationWithSummary, autoSummarizeIfNeeded } from "./memory";
 import { validateRateLimits, recordUsage } from "./rate-limiter";
 import { retrieveAndFormatMemories } from "@/lib/server/memory";
-import { AI_CONFIG, getProviderForModel } from "@/lib/ai/config";
+import { AI_CONFIG, getProviderForModel, getContextBudget } from "@/lib/ai/config";
+import { compactToolResult, compactLoopMessages, buildCompactedHistory, estimateMessagesTokens, formatSummaryAsMessage } from "@/lib/agent/compaction";
 import { AVAILABLE_TOOLS, getToolDefinitions, executeTool, getTool, resolveAutonomyLevel } from "./tools";
 import { startRun, endRun } from "@/lib/server/agent/run";
 import { emitEvent } from "@/lib/server/agent/events";
@@ -19,10 +20,9 @@ import { createArtifact, applyArtifact } from "@/lib/server/agent/artifacts";
 import { getAutonomyConfig, getToolAutonomyLevel } from "@/lib/server/agent/autonomy";
 import { assembleSystemPrompt, buildProtocolContext, buildLedgerContext, buildAutonomyContext } from "@/lib/ai/prompts/copilot-prompts";
 import { AGENT_MODE_CONFIG } from "@/lib/agent/router";
+import { LoopState, type StopReason } from "@/lib/agent/loop-controller";
 import { prisma } from "@/lib/server/prisma";
 import type { ProtocolData } from "@/types/protocol";
-
-const MAX_TOOL_ITERATIONS = 5;
 
 class AIService {
     private providers = new Map<string, BaseAIProvider>();
@@ -155,6 +155,7 @@ class AIService {
      * Stream chat with tool execution loop.
      * Handles multiple tool calls per turn and loops until the AI finishes with text.
      * Tool-call/tool-result messages are kept in the local loop only — not persisted.
+     * Uses LoopState for budget-aware control, repeat detection, and cancel support. (Phase 3)
      */
     async *streamChatWithTools(
         messages: AIMessage[],
@@ -162,51 +163,71 @@ class AIService {
     ): AsyncIterable<AIStreamChunk> {
         const toolDefs = getToolDefinitions();
         if (toolDefs.length === 0) {
-            // No tools available, fall through to normal streaming
             yield* this.streamChat(messages, options);
             return;
         }
 
-        const optionsWithTools: ChatOptions = {
-            ...options,
-            tools: toolDefs,
-        };
-
+        const optionsWithTools: ChatOptions = { ...options, tools: toolDefs };
         const currentMessages = [...messages];
+        const loop = new LoopState();
+        const budget = getContextBudget(options?.model);
 
-        for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
+        while (true) {
+            const check = loop.shouldContinue(options?.signal);
+            if (!check.continue) {
+                yield {
+                    type: "done",
+                    content: stopReasonMessage(check.stopReason),
+                    stopReason: check.stopReason,
+                };
+                return;
+            }
+
+            // Pre-call budget check: compact if over budget before sending to model
+            if (estimateMessagesTokens(currentMessages) > budget) {
+                const compacted = compactLoopMessages(currentMessages, budget);
+                currentMessages.length = 0;
+                currentMessages.push(...compacted.messages);
+            }
+
             const collectedToolCalls: ToolCall[] = [];
             let contentSoFar = "";
-            let gotDone = false;
 
             for await (const chunk of this.streamChat(currentMessages, optionsWithTools)) {
                 if (chunk.type === "tool_call" && chunk.toolCall) {
                     collectedToolCalls.push(chunk.toolCall);
-                    // Yield tool_call to client for status display
                     yield chunk;
                 } else if (chunk.type === "content") {
                     contentSoFar += chunk.content || "";
                     yield chunk;
                 } else if (chunk.type === "done") {
-                    gotDone = true;
-                    // Don't yield done yet if we have tool calls to process
                     if (collectedToolCalls.length === 0) {
+                        loop.markStopped("natural");
                         yield chunk;
                     }
                 } else if (chunk.type === "error") {
+                    loop.markStopped("error");
                     yield chunk;
                     return;
                 }
             }
 
-            // If no tool calls, we're done
             if (collectedToolCalls.length === 0) {
                 return;
             }
 
-            // Build assistant message with tool calls
+            // Check for repeated tool calls
+            if (loop.recordToolCalls(collectedToolCalls)) {
+                yield {
+                    type: "done",
+                    content: stopReasonMessage("repeat_detected"),
+                    stopReason: "repeat_detected",
+                };
+                return;
+            }
+
             const assistantMsg: AIMessage = {
-                id: `tool-loop-assistant-${iteration}`,
+                id: `tool-loop-assistant-${loop.iterations}`,
                 role: "assistant",
                 content: contentSoFar,
                 toolCalls: collectedToolCalls,
@@ -214,33 +235,20 @@ class AIService {
             };
             currentMessages.push(assistantMsg);
 
-            // Execute all tool calls and append results
             for (const tc of collectedToolCalls) {
                 const result = await executeTool(tc.name, tc.arguments, tc.id);
-
-                // Yield tool result to client
                 yield { type: "tool_result", toolResult: result };
 
-                // Add tool result message for next iteration
                 const toolMsg: AIMessage = {
                     id: `tool-result-${tc.id}`,
                     role: "tool",
-                    content: JSON.stringify(result.result ?? result.error ?? ""),
+                    content: compactToolResult(tc.name, result.result ?? result.error ?? ""),
                     toolResultId: tc.id,
                     createdAt: new Date().toISOString(),
                 };
                 currentMessages.push(toolMsg);
             }
-
-            // Loop continues — next iteration will call the provider again
-            // with the tool results so the AI can respond
         }
-
-        // Safety: if we hit the max iterations, yield what we have
-        yield {
-            type: "done",
-            content: "I've reached the maximum number of tool calls. Please try rephrasing your request.",
-        };
     }
 
     /**
@@ -412,8 +420,9 @@ class AIService {
         const userId = options?.userId || "single-user";
         const agentMode: AgentMode = (options?.agentMode as AgentMode) || "general";
 
-        // Get or create conversation
-        const conversation = await getOrCreateConversation(context, projectId, studyId);
+        // Get or create conversation (with summary for compaction)
+        const conversation = await getConversationWithSummary(context, projectId, studyId);
+        const budget = getContextBudget(options?.model);
 
         // Start an agent run
         const run = await startRun({
@@ -462,7 +471,23 @@ class AIService {
                 content: userMessage,
             });
 
-            // Prepare messages with system prompt at the front
+            // Prepare messages with compacted history
+            const summaryText = conversation.summaryData
+                ? formatSummaryAsMessage(
+                    conversation.summaryData.summary,
+                    conversation.summaryData.keyPoints,
+                    conversation.summaryData.decisions,
+                    conversation.summaryData.followUpNeeded,
+                    conversation.summaryData.messageCount
+                )
+                : null;
+            const rawHistory = [...conversation.messages, userMsg];
+            const compactedHistory = buildCompactedHistory(
+                rawHistory,
+                summaryText,
+                conversation.summaryData?.messageCount ?? 0,
+                budget
+            );
             const historyMessages: AIMessage[] = [
                 {
                     id: "system-prompt",
@@ -470,8 +495,7 @@ class AIService {
                     content: systemPrompt,
                     createdAt: new Date().toISOString(),
                 },
-                ...conversation.messages,
-                userMsg,
+                ...compactedHistory,
             ];
 
             // Check for multi-step workflow (plan-before-act)
@@ -485,32 +509,36 @@ class AIService {
                         projectId: projectId || "global",
                         hasProtocol: false, // TODO: check project state
                         studyCount: 0,
-                    });
+                    }, toolNames);
 
-                    const artifact = await createArtifact({
-                        runId: run.id,
-                        projectId: projectId || "global",
-                        conversationId: conversation.id,
-                        userId,
-                        type: "plan",
-                        title: "Execution Plan",
-                        payload: planPayload,
-                    });
+                    // If plan validation failed, skip plan artifact and continue normal chat
+                    if (planPayload) {
+                        const artifact = await createArtifact({
+                            runId: run.id,
+                            projectId: projectId || "global",
+                            conversationId: conversation.id,
+                            userId,
+                            type: "plan",
+                            title: "Execution Plan",
+                            payload: planPayload,
+                        });
 
-                    yield {
-                        type: "artifact",
-                        artifactId: artifact.id,
-                        artifactType: "plan",
-                        artifactStatus: "proposed",
-                        artifactTitle: "Execution Plan",
-                        artifactPayload: planPayload,
-                        artifactVersion: 1,
-                        conversationId: conversation.id,
-                    };
+                        yield {
+                            type: "artifact",
+                            artifactId: artifact.id,
+                            artifactType: "plan",
+                            artifactStatus: "proposed",
+                            artifactTitle: "Execution Plan",
+                            artifactPayload: planPayload,
+                            artifactVersion: 1,
+                            conversationId: conversation.id,
+                        };
 
-                    await endRun(run.id, "completed");
-                    yield { type: "run_end", runId: run.id, runStatus: "completed", conversationId: conversation.id };
-                    return;
+                        await endRun(run.id, "completed");
+                        yield { type: "run_end", runId: run.id, runStatus: "completed", conversationId: conversation.id };
+                        return;
+                    }
+                    // planPayload is null — validation failed, fall through to normal chat
                 }
             }
 
@@ -526,11 +554,24 @@ class AIService {
             let fullContent = "";
             let totalTokensIn = 0;
             let totalTokensOut = 0;
+            const loop = new LoopState();
 
-            for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
+            while (true) {
+                const check = loop.shouldContinue(options?.signal);
+                if (!check.continue) break;
+
+                // Pre-call budget check: compact if over budget before sending to model
+                if (estimateMessagesTokens(currentMessages) > budget) {
+                    const compacted = compactLoopMessages(currentMessages, budget);
+                    currentMessages.length = 0;
+                    currentMessages.push(...compacted.messages);
+                    if (compacted.removed > 0) {
+                        yield { type: "checkpoint", checkpointLabel: `Compacted ${compacted.removed} messages`, conversationId: conversation.id };
+                    }
+                }
+
                 const collectedToolCalls: ToolCall[] = [];
                 let contentSoFar = "";
-                let gotDone = false;
 
                 for await (const chunk of this.streamChat(currentMessages, chatOptions)) {
                     if (chunk.type === "tool_call" && chunk.toolCall) {
@@ -541,30 +582,31 @@ class AIService {
                         fullContent += chunk.content || "";
                         yield { ...chunk, conversationId: conversation.id };
                     } else if (chunk.type === "done") {
-                        gotDone = true;
                         if (chunk.usage) {
                             totalTokensIn += chunk.usage.inputTokens;
                             totalTokensOut += chunk.usage.outputTokens;
                         }
-                        if (collectedToolCalls.length === 0) {
-                            // Don't yield done — we yield run_end instead
-                        }
                     } else if (chunk.type === "error") {
+                        loop.markStopped("error");
                         yield { ...chunk, conversationId: conversation.id };
                         await endRun(run.id, "failed");
-                        yield { type: "run_end", runId: run.id, runStatus: "failed", conversationId: conversation.id };
+                        yield { type: "run_end", runId: run.id, runStatus: "failed", stopReason: "error", conversationId: conversation.id };
                         return;
                     }
                 }
 
-                // If no tool calls, we're done
                 if (collectedToolCalls.length === 0) {
+                    loop.markStopped("natural");
                     break;
                 }
 
-                // Build assistant message with tool calls
+                // Check for repeated tool calls
+                if (loop.recordToolCalls(collectedToolCalls)) {
+                    break; // repeat_detected — shouldContinue will catch it next iteration
+                }
+
                 const assistantMsg: AIMessage = {
-                    id: `tool-loop-assistant-${iteration}`,
+                    id: `tool-loop-assistant-${loop.iterations}`,
                     role: "assistant",
                     content: contentSoFar,
                     toolCalls: collectedToolCalls,
@@ -574,14 +616,12 @@ class AIService {
 
                 // Execute all tool calls with autonomy
                 for (const tc of collectedToolCalls) {
-                    // Yield progress
                     yield {
                         type: "progress",
                         progressMessage: mapToolToProgressMessage(tc.name),
                         conversationId: conversation.id,
                     };
 
-                    // Execute with autonomy (may yield artifact chunks)
                     const gen = this.executeToolWithAutonomy(tc, run.id, projectId || "global", conversation.id, userId, agentMode);
                     let genResult = await gen.next();
                     while (!genResult.done) {
@@ -590,20 +630,22 @@ class AIService {
                     }
                     const toolResult = genResult.value;
 
-                    // Yield tool result to client
                     yield { type: "tool_result", toolResult, conversationId: conversation.id };
 
-                    // Add tool result message for next iteration
                     const toolMsg: AIMessage = {
                         id: `tool-result-${tc.id}`,
                         role: "tool",
-                        content: JSON.stringify(toolResult.result ?? toolResult.error ?? ""),
+                        content: compactToolResult(tc.name, toolResult.result ?? toolResult.error ?? ""),
                         toolResultId: tc.id,
                         createdAt: new Date().toISOString(),
                     };
                     currentMessages.push(toolMsg);
                 }
             }
+
+            // Determine final stop reason and run status
+            const finalStopReason = loop.stopReason ?? "natural";
+            const runStatus = finalStopReason === "cancelled" ? "cancelled" as const : "completed" as const;
 
             // Save final AI text response to conversation
             if (fullContent) {
@@ -614,14 +656,26 @@ class AIService {
                 await emitEvent(run.id, "message", { content: fullContent }, { messageRole: "assistant" });
             }
 
-            // End run successfully
-            await endRun(run.id, "completed", totalTokensIn, totalTokensOut);
+            // Trigger auto-summarization if conversation is growing large.
+            // Awaited so the function can block when near budget (Vercel cuts fire-and-forget).
+            const totalMsgs = conversation.messages.length + 2; // +user +assistant
+            const currentTokens = estimateMessagesTokens(conversation.messages);
+            await autoSummarizeIfNeeded(
+                conversation.id, totalMsgs,
+                conversation.summaryData?.messageCount ?? 0,
+                budget, currentTokens
+            );
+
+            await endRun(run.id, runStatus, totalTokensIn, totalTokensOut);
             yield {
                 type: "run_end",
                 runId: run.id,
-                runStatus: "completed",
+                runStatus,
                 runCostTokensIn: totalTokensIn,
                 runCostTokensOut: totalTokensOut,
+                stopReason: finalStopReason,
+                iterationCount: loop.iterations,
+                toolCallCount: loop.totalToolCalls,
                 conversationId: conversation.id,
             };
         } catch (error) {
@@ -843,6 +897,21 @@ async function computeStudyCounts(projectId: string) {
         }
     }
     return { total: studies.length, included, excluded, maybe, unscreened };
+}
+
+// ── Loop stop reason messages ────────────────────────────────────────────────
+
+function stopReasonMessage(reason: StopReason): string {
+    const messages: Record<StopReason, string> = {
+        natural: "",
+        max_iterations: "I've reached the maximum number of iterations. Please try a more specific request.",
+        max_tool_calls: "I've reached the maximum number of tool calls. Please try a more focused request.",
+        wall_time: "This operation took too long. Please try a simpler request.",
+        repeat_detected: "I noticed I was about to repeat the same action. Let me summarize what I found so far.",
+        cancelled: "The operation was cancelled.",
+        error: "An error occurred during processing.",
+    };
+    return messages[reason];
 }
 
 // Singleton instance

@@ -774,9 +774,8 @@
     opacity: 0.7;
 }
 
-/* Override global focus-visible outline for elements inside input box */
-.inputTextarea:focus-visible,
-.inputBox button:focus-visible {
+/* Textarea: parent .inputBox:focus-within provides the visual indicator */
+.inputTextarea:focus-visible {
     outline: none;
 }
 

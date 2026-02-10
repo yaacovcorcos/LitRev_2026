@@ -6,6 +6,7 @@ import Link from "next/link";
 import { AppShell } from "@/components/AppShell";
 import { BaseBackButton } from "@/components/BaseBackButton";
 import { useProjects } from "@/contexts/ProjectsContext";
+import { useProjectShell } from "@/contexts/ProjectShellContext";
 import { ProjectMemoryProvider, useProjectMemory } from "@/contexts/ProjectMemoryContext";
 import type {
   ProjectMemory,
@@ -84,6 +85,7 @@ const TABS: { id: TabId; label: string; icon: string }[] = [
 function MemoryPageContent() {
   const { id } = useParams<{ id: string }>();
   const { getProjectById } = useProjects();
+  const { isEmbeddedInProjectShell } = useProjectShell();
   const project = id ? getProjectById(id) : undefined;
   const {
     filteredMemories,
@@ -210,14 +212,14 @@ function MemoryPageContent() {
   };
 
   if (!project) {
-    return (
-      <AppShell activeNav="projects">
-        <div className={styles.notFound}>
-          <h1>Project not found</h1>
-          <Link href="/" className="btn-minimal">Back to Dashboard</Link>
-        </div>
-      </AppShell>
+    const notFoundContent = (
+      <div className={styles.notFound}>
+        <h1>Project not found</h1>
+        <Link href="/" className="btn-minimal">Back to Dashboard</Link>
+      </div>
     );
+    if (isEmbeddedInProjectShell) return notFoundContent;
+    return <AppShell activeNav="projects">{notFoundContent}</AppShell>;
   }
 
   const typeOptions: ProjectMemoryType[] = ["decision", "definition", "criterion", "goal"];
@@ -240,16 +242,15 @@ function MemoryPageContent() {
       )
     : [];
 
-  return (
-    <AppShell activeNav="projects">
-      <div className={styles.page}>
-        {/* Header */}
-        <header className={styles.header}>
-          <div className={styles.headerText}>
-            <div style={{ display: "flex", alignItems: "center" }}>
-              <BaseBackButton href={`/project/${id}`} />
-              <span className={styles.eyebrow}>Project Memory</span>
-            </div>
+  const pageContent = (
+    <div className={styles.page}>
+      {/* Header */}
+      <header className={styles.header}>
+        <div className={styles.headerText}>
+          <div style={{ display: "flex", alignItems: "center" }}>
+            {!isEmbeddedInProjectShell && <BaseBackButton href={`/project/${id}`} label="Back to project" />}
+            <span className={styles.eyebrow}>Project Memory</span>
+          </div>
             <h1>{project.name}</h1>
             <p className={styles.subtitle}>
               Decisions, definitions, and criteria that guide your review
@@ -707,9 +708,11 @@ function MemoryPageContent() {
             </div>
           </>
         )}
-      </div>
-    </AppShell>
+    </div>
   );
+
+  if (isEmbeddedInProjectShell) return pageContent;
+  return <AppShell activeNav="projects">{pageContent}</AppShell>;
 }
 
 export default function MemoryPage() {
