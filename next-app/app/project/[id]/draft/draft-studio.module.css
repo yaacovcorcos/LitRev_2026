@@ -259,7 +259,7 @@
 }
 
 .customSectionBtn:hover {
-    background: #c4634a;
+    background: var(--accent-primary-hover);
 }
 
 .customSectionBtn:disabled {
@@ -711,7 +711,7 @@
 }
 
 .smallBtn:hover {
-    background: #c4634a;
+    background: var(--accent-primary-hover);
     transform: translateY(-1px);
     box-shadow: 0 4px 12px rgba(217, 116, 89, 0.3);
 }

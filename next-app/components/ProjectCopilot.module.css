@@ -592,12 +592,12 @@
 
 /* Voice recording active state */
 .actionBtnRecording {
-    color: #e53935;
+    color: var(--color-danger);
     animation: recordingPulse 1.5s ease-in-out infinite;
 }
 
 .actionBtnRecording:hover {
-    color: #c62828;
+    color: var(--color-danger-hover);
     background: rgba(229, 57, 53, 0.08);
 }
 
@@ -617,14 +617,14 @@
     background: rgba(229, 57, 53, 0.08);
     border-radius: 8px;
     font-size: 12px;
-    color: #c62828;
+    color: var(--color-danger-hover);
 }
 
 .voiceError button {
     background: none;
     border: none;
     cursor: pointer;
-    color: #c62828;
+    color: var(--color-danger-hover);
     padding: 2px;
     display: flex;
     align-items: center;
@@ -660,7 +660,7 @@
 }
 
 .sendBtnActive:hover {
-    background: #1a1a1a;
+    background: var(--color-interactive-dark);
 }
 
 .suggestRow {
@@ -759,7 +759,7 @@
 }
 
 .smallBtn:hover {
-    background: #c4634a;
+    background: var(--accent-primary-hover);
     transform: translateY(-1px);
     box-shadow: 0 4px 12px rgba(217, 116, 89, 0.3);
 }
@@ -858,15 +858,15 @@
     gap: 6px;
     padding: 6px 10px;
     margin: 0 2px;
-    background: rgba(59, 130, 246, 0.08);
+    background: var(--color-info-bg);
     border-radius: 8px 8px 0 0;
-    border-bottom: 1px solid rgba(59, 130, 246, 0.1);
+    border-bottom: 1px solid var(--color-info-border);
     color: var(--text-secondary);
     font-size: 12px;
 }
 
 .pendingAttachment .material-icons-round {
-    color: #3b82f6;
+    color: var(--color-info);
 }
 
 .pendingAttachmentName {
@@ -910,14 +910,14 @@
     align-items: center;
     gap: 4px;
     padding: 3px 8px;
-    background: rgba(59, 130, 246, 0.08);
+    background: var(--color-info-bg);
     border-radius: 6px;
     font-size: 11px;
     color: var(--text-secondary);
 }
 
 .messageAttachment .material-icons-round {
-    color: #3b82f6;
+    color: var(--color-info);
 }
 
 .messageAttachmentName {

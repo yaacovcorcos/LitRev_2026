@@ -110,7 +110,7 @@
 }
 
 .exportBtn:hover {
-  background: var(--accent-primary-hover, #c06045);
+  background: var(--accent-primary-hover);
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(217, 116, 89, 0.3);
 }
@@ -147,7 +147,7 @@
 
 .errorIcon {
   font-size: 40px;
-  color: #dc3545;
+  color: var(--color-danger);
 }
 
 .progressBar {
@@ -183,8 +183,8 @@
 .retryBtn {
   padding: 10px 20px;
   background: rgba(220, 53, 69, 0.1);
-  color: #dc3545;
-  border: 1px solid rgba(220, 53, 69, 0.3);
+  color: var(--color-danger);
+  border: 1px solid var(--color-danger-border);
   border-radius: var(--radius-md);
   font-size: 14px;
   font-weight: 500;
@@ -215,7 +215,7 @@
 
 .successIcon .material-icons-round {
   font-size: 32px;
-  color: #28a745;
+  color: var(--color-success);
 }
 
 .successText {
@@ -278,7 +278,7 @@
 }
 
 .downloadBtn:hover {
-  background: var(--accent-primary-hover, #c06045);
+  background: var(--accent-primary-hover);
 }
 
 .downloadBtn .material-icons-round {
@@ -448,7 +448,7 @@
 }
 
 .historyDeleteBtn:hover {
-  color: #dc3545;
+  color: var(--color-danger);
   background: rgba(220, 53, 69, 0.1);
 }
 

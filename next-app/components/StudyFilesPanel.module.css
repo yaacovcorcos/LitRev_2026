@@ -130,7 +130,7 @@
   background: rgba(220, 53, 69, 0.1);
   border: 1px solid rgba(220, 53, 69, 0.3);
   border-radius: var(--radius-sm);
-  color: #dc3545;
+  color: var(--color-danger);
   font-size: 13px;
 }
 
@@ -250,7 +250,7 @@
 }
 
 .deleteBtn:hover {
-  color: #dc3545;
+  color: var(--color-danger);
   background: rgba(220, 53, 69, 0.1);
 }
 

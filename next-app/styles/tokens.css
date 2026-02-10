@@ -41,6 +41,25 @@
     --color-danger-bg-hover: rgba(192, 57, 43, 0.16);
     --color-danger-border: rgba(192, 57, 43, 0.3);
 
+    /* Semantic Status Colors — Info (warm muted slate) */
+    --color-info: #6b7c8a;
+    --color-info-bg: rgba(107, 124, 138, 0.08);
+    --color-info-bg-solid: rgba(107, 124, 138, 0.15);
+    --color-info-border: rgba(107, 124, 138, 0.2);
+    --color-info-text: #566874;
+
+    /* Semantic Status Colors — Success */
+    --color-success: #5a8a62;
+    --color-success-bg: rgba(90, 138, 98, 0.1);
+
+    /* Accent Hover Variants */
+    --accent-primary-hover: #c4634a;
+    --accent-secondary-hover: #657d6b;
+    --accent-tertiary-hover: #c49565;
+
+    /* Interactive */
+    --color-interactive-dark: #1a1a1a;
+
     /* Spacing & Radius */
     --radius-lg: 10px;
     /* Reduced even further as requested */

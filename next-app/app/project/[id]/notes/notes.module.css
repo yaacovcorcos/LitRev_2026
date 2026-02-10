@@ -77,7 +77,7 @@
 }
 
 .newNoteBtn:hover {
-    background: var(--accent-primary-hover, #c45a3a);
+    background: var(--accent-primary-hover);
 }
 
 .newNoteBtn .material-icons-round {

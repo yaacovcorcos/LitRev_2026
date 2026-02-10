@@ -524,7 +524,7 @@
     border: 1px solid rgba(239, 68, 68, 0.2);
     border-radius: var(--radius-lg);
     font-size: 13px;
-    color: #dc2626;
+    color: var(--color-danger);
 }
 
 .extractionError .material-icons-round:first-child {
@@ -537,7 +537,7 @@
     border: none;
     padding: 4px;
     cursor: pointer;
-    color: #dc2626;
+    color: var(--color-danger);
     border-radius: 4px;
     display: flex;
     align-items: center;

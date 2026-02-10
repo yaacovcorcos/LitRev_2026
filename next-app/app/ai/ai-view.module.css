@@ -180,7 +180,7 @@
 }
 
 .deleteBtn:hover {
-    color: #ef4444;
+    color: var(--color-danger);
     background: rgba(239, 68, 68, 0.1);
 }
 
@@ -280,7 +280,7 @@
     width: 8px;
     height: 8px;
     border-radius: 50%;
-    background: #10b981;
+    background: var(--color-success);
     margin-left: 4px;
 }
 
@@ -1008,7 +1008,7 @@
 }
 
 .inputSendBtnActive:hover {
-    background: #1a1a1a;
+    background: var(--color-interactive-dark);
 }
 
 .inputSendBtn:disabled {

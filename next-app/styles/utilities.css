@@ -22,7 +22,7 @@
 }
 
 .btn-primary:hover {
-    background: #c25e45;
+    background: var(--accent-primary-hover);
     color: white;
     border-color: transparent;
     transform: translateY(-2px);
@@ -119,14 +119,14 @@
 }
 
 .header-btn-primary:hover {
-    background: #c25e45;
+    background: var(--accent-primary-hover);
     color: #fff;
-    border-color: #c25e45;
+    border-color: var(--accent-primary-hover);
 }
 
 .header-btn-danger {
     background: rgba(217, 116, 89, 0.12);
-    color: #b44c38;
+    color: var(--color-danger-hover);
     border-color: rgba(217, 116, 89, 0.45);
 }
 
