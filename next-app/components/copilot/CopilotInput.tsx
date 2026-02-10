@@ -183,20 +183,19 @@ export function CopilotInput({ page, section, inputPlaceholder, prefill, onPrefi
     }, [input, isLoading, page, section, sendMessage, selectedModel, pendingAttachment, effectiveMode]);
 
     const handleFileAttach = useCallback(() => {
-        setShowAttachPicker((prev) => {
-            if (!prev && projectFiles.length === 0 && !loadingProjectFiles) {
-                setLoadingProjectFiles(true);
-                listProjectFilesAction(projectId)
-                    .then((files) => {
-                        const pdfs = files.filter((f) => f.format === "pdf" || f.mimeType.includes("pdf"));
-                        setProjectFiles(pdfs);
-                    })
-                    .catch(console.error)
-                    .finally(() => setLoadingProjectFiles(false));
-            }
-            return !prev;
-        });
-    }, [projectId, projectFiles.length, loadingProjectFiles]);
+        const shouldFetch = !showAttachPicker && projectFiles.length === 0 && !loadingProjectFiles;
+        setShowAttachPicker((prev) => !prev);
+        if (shouldFetch) {
+            setLoadingProjectFiles(true);
+            listProjectFilesAction(projectId)
+                .then((files) => {
+                    const pdfs = files.filter((f) => f.format === "pdf" || f.mimeType.includes("pdf"));
+                    setProjectFiles(pdfs);
+                })
+                .catch(console.error)
+                .finally(() => setLoadingProjectFiles(false));
+        }
+    }, [projectId, showAttachPicker, projectFiles.length, loadingProjectFiles]);
 
     const handleUploadNew = useCallback(() => {
         setShowAttachPicker(false);
