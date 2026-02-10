@@ -1,13 +1,25 @@
 import type { SearchResult } from "@/types/search";
 import type { StudyInput } from "@/lib/utils/normalize";
-import type { StudyDetails } from "@/types/ledger";
+import type { StudyDetails, StudySource } from "@/types/ledger";
+
+/** Map SearchResult.source to the StudySource enum used in the ledger. */
+function resolveStudySource(resultSource: string): StudySource {
+  switch (resultSource) {
+    case "pubmed": return "pubmed";
+    case "semantic-scholar": return "semantic-scholar";
+    default: return "copilot";
+  }
+}
+
+/** Only these metadata keys are copied into StudyDetails — prevents collisions with reserved fields */
+const ALLOWED_METADATA_KEYS = ["s2PaperId", "citationCount", "influentialCitationCount", "isOpenAccess"];
 
 /**
  * Convert a SearchResult to a StudyInput for upsert into the ledger.
  */
 export function searchResultToStudyInput(result: SearchResult): StudyInput {
   const details: StudyDetails = {
-    source: "pubmed",
+    source: resolveStudySource(result.source),
   };
 
   if (result.abstract) details.abstract = result.abstract;
@@ -18,6 +30,16 @@ export function searchResultToStudyInput(result: SearchResult): StudyInput {
   if (result.issue) details.issue = result.issue;
   if (result.pages) details.pages = result.pages;
   if (result.keywords?.length) details.keywords = result.keywords;
+
+  // Copy whitelisted metadata keys into details
+  if (result.metadata) {
+    for (const key of ALLOWED_METADATA_KEYS) {
+      const value = result.metadata[key];
+      if (value !== undefined && value !== null) {
+        details[key] = value;
+      }
+    }
+  }
 
   return {
     title: result.title,

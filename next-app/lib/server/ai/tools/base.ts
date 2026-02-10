@@ -16,6 +16,8 @@ import { updateCriteriaTool } from "./update-criteria";
 import { bulkScreeningTool } from "./bulk-screening";
 import { extractPdfTool } from "./extract-pdf";
 import { updateNoteTool } from "./update-note";
+import { semanticScholarSearchTool } from "./semantic-scholar-search";
+import { recommendStudiesTool } from "./recommend-studies";
 
 /**
  * Interface for AI tools that can be called by the AI
@@ -50,12 +52,14 @@ export interface ToolExecutionContext {
  */
 export const AVAILABLE_TOOLS: AITool[] = [
     pubmedSearchTool,
+    semanticScholarSearchTool,
     addToLedgerTool,
     excludeStudyTool,
     updateCriteriaTool,
     bulkScreeningTool,
     extractPdfTool,
     updateNoteTool,
+    recommendStudiesTool,
 ];
 
 /**

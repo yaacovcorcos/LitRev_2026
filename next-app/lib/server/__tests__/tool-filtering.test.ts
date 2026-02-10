@@ -19,13 +19,13 @@ describe("getToolDefinitions", () => {
     it("filters tools for protocol mode", () => {
         const defs = getToolDefinitions("protocol");
         const names = defs.map((d) => d.name).sort();
-        expect(names).toEqual(["search_pubmed", "update_criteria"]);
+        expect(names).toEqual(["search_pubmed", "search_semantic_scholar", "update_criteria"]);
     });
 
     it("filters tools for search mode", () => {
         const defs = getToolDefinitions("search");
         const names = defs.map((d) => d.name).sort();
-        expect(names).toEqual(["add_to_ledger", "search_pubmed"]);
+        expect(names).toEqual(["add_to_ledger", "recommend_studies", "search_pubmed", "search_semantic_scholar"]);
     });
 
     it("filters tools for screening mode", () => {
@@ -43,7 +43,7 @@ describe("getToolDefinitions", () => {
     it("filters tools for qa mode", () => {
         const defs = getToolDefinitions("qa");
         const names = defs.map((d) => d.name);
-        expect(names).toEqual(["search_pubmed"]);
+        expect(names).toEqual(["search_pubmed", "search_semantic_scholar"]);
     });
 
     it("every allowedTools entry in AGENT_MODE_CONFIG exists in AVAILABLE_TOOLS", () => {

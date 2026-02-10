@@ -18,11 +18,11 @@ export interface AgentModeConfig {
 }
 
 export const AGENT_MODE_CONFIG: Record<AgentMode, AgentModeConfig> = {
-    protocol: { systemPromptKey: "protocol", allowedTools: ["update_criteria", "search_pubmed"], memoryScope: "project", description: "Defining PICO and criteria" },
-    search: { systemPromptKey: "search", allowedTools: ["search_pubmed", "add_to_ledger"], memoryScope: "project", description: "Finding studies" },
+    protocol: { systemPromptKey: "protocol", allowedTools: ["update_criteria", "search_pubmed", "search_semantic_scholar"], memoryScope: "project", description: "Defining PICO and criteria" },
+    search: { systemPromptKey: "search", allowedTools: ["search_pubmed", "search_semantic_scholar", "add_to_ledger", "recommend_studies"], memoryScope: "project", description: "Finding studies" },
     screening: { systemPromptKey: "screening", allowedTools: ["bulk_screening", "exclude_study", "extract_pdf"], memoryScope: "study", description: "Evaluating studies" },
     drafting: { systemPromptKey: "drafting", allowedTools: ["update_note"], memoryScope: "project", description: "Writing sections" },
-    qa: { systemPromptKey: "qa", allowedTools: ["search_pubmed"], memoryScope: "project", description: "Checking citations" },
+    qa: { systemPromptKey: "qa", allowedTools: ["search_pubmed", "search_semantic_scholar"], memoryScope: "project", description: "Checking citations" },
     general: { systemPromptKey: "general", allowedTools: [], memoryScope: "project", description: "General conversation" },
 };
 
@@ -37,7 +37,7 @@ export function routeToAgent(message: string, currentPage: RouterPage): AgentMod
     // 2. Message-driven rules (priority order)
     const msg = message.toLowerCase();
     if (/pico|criteria|inclusion|exclusion|eligib/.test(msg)) return "protocol";
-    if (/search|find stud|pubmed|look for|literature/.test(msg)) return "search";
+    if (/search|find stud|pubmed|semantic scholar|look for|literature|recommend/.test(msg)) return "search";
     if (/screen|triage|evaluat|review against|match criteria/.test(msg)) return "screening";
     if (/write|draft|compose|methods|results|discussion|introduction/.test(msg)) return "drafting";
     if (/check|verify|cite|unsupported|claim|conflict/.test(msg)) return "qa";

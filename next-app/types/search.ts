@@ -15,8 +15,9 @@ export type SearchResult = {
   pages?: string;
   abstract?: string;
   keywords?: string[]; // MeSH terms
-  source: "pubmed" | "crossref" | "openalex";
+  source: "pubmed" | "crossref" | "openalex" | "semantic-scholar";
   sourceUrl?: string;
+  metadata?: Record<string, unknown>;
 };
 
 export type SearchResponse = {

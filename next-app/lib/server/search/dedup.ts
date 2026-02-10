@@ -8,7 +8,7 @@ export type DedupResult = {
 
 /**
  * Check search results against existing studies and partition into unique/duplicate.
- * Matches on PMID or DOI.
+ * Matches on PMID, DOI, or Semantic Scholar paper ID.
  */
 export function findDuplicates(
   existingStudies: Study[],
@@ -16,11 +16,13 @@ export function findDuplicates(
 ): DedupResult {
   const pmidSet = new Set<string>();
   const doiSet = new Set<string>();
+  const s2IdSet = new Set<string>();
 
   for (const study of existingStudies) {
     const details = study.details;
     if (details?.pmid) pmidSet.add(details.pmid);
     if (details?.doi) doiSet.add(details.doi.toLowerCase());
+    if (typeof details?.s2PaperId === "string") s2IdSet.add(details.s2PaperId);
   }
 
   const unique: SearchResult[] = [];
@@ -29,8 +31,11 @@ export function findDuplicates(
   for (const result of results) {
     const hasPmidMatch = result.pmid && pmidSet.has(result.pmid);
     const hasDoiMatch = result.doi && doiSet.has(result.doi.toLowerCase());
+    const hasS2Match = result.metadata?.s2PaperId
+      && typeof result.metadata.s2PaperId === "string"
+      && s2IdSet.has(result.metadata.s2PaperId);
 
-    if (hasPmidMatch || hasDoiMatch) {
+    if (hasPmidMatch || hasDoiMatch || hasS2Match) {
       duplicates.push(result);
     } else {
       unique.push(result);

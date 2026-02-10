@@ -10,7 +10,7 @@ export type StudyType =
   | "Systematic-Review"
   | "Other";
 
-export type StudySource = "manual" | "pdf-import" | "pubmed" | "copilot";
+export type StudySource = "manual" | "pdf-import" | "pubmed" | "semantic-scholar" | "copilot";
 
 /**
  * Triage decision for screening workflow.
