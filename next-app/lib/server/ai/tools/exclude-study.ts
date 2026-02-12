@@ -1,10 +1,9 @@
 import { z } from "zod";
-import type { AITool } from "./base";
+import type { AITool, ToolExecutionContext } from "./base";
 import { prisma } from "@/lib/server/prisma";
 
 const inputSchema = z.object({
     studyId: z.string().min(1, "studyId is required"),
-    projectId: z.string().min(1, "projectId is required"),
     reason: z.string().min(1, "reason is required"),
 });
 
@@ -26,16 +25,12 @@ export const excludeStudyTool: AITool = {
                     type: "string",
                     description: "The ID of the study to exclude",
                 },
-                projectId: {
-                    type: "string",
-                    description: "The project ID the study belongs to",
-                },
                 reason: {
                     type: "string",
                     description: "The reason for exclusion (e.g., 'wrong population', 'case report', 'no control group')",
                 },
             },
-            required: ["studyId", "projectId", "reason"],
+            required: ["studyId", "reason"],
         },
     },
 
@@ -48,14 +43,14 @@ export const excludeStudyTool: AITool = {
         hardCap: 2,
     },
 
-    async execute(args: Record<string, unknown>) {
+    async execute(args: Record<string, unknown>, context?: ToolExecutionContext) {
         const studyId = args.studyId as string;
-        const projectId = args.projectId as string;
+        const projectId = (context?.projectId ?? args.projectId) as string;
         const reason = args.reason as string;
 
         try {
             const study = await prisma.study.findFirst({
-                where: { id: studyId, projectId },
+                where: { id: studyId, ...(projectId ? { projectId } : {}) },
                 select: { id: true, title: true, details: true },
             });
 

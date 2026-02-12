@@ -1,11 +1,10 @@
 import { z } from "zod";
-import type { AITool } from "./base";
+import type { AITool, ToolExecutionContext } from "./base";
 import type { Study } from "@/types/ledger";
 import { getRecommendations, buildS2PaperIds } from "@/lib/server/search/semantic-scholar";
 import { listStudies } from "@/lib/server/ledger";
 
 const inputSchema = z.object({
-    projectId: z.string().min(1, "projectId is required"),
     studyIds: z.array(z.string()).optional(),
     limit: z.number().int().min(1).max(100).optional().default(10),
 });
@@ -30,10 +29,6 @@ export const recommendStudiesTool: AITool = {
         parameters: {
             type: "object",
             properties: {
-                projectId: {
-                    type: "string",
-                    description: "The project ID whose ledger studies serve as the recommendation seed",
-                },
                 studyIds: {
                     type: "array",
                     items: { type: "string" },
@@ -44,7 +39,6 @@ export const recommendStudiesTool: AITool = {
                     description: "Maximum recommendations to return (1-100, default 10)",
                 },
             },
-            required: ["projectId"],
         },
     },
 
@@ -56,10 +50,10 @@ export const recommendStudiesTool: AITool = {
         allowedRange: [1, 4],
     },
 
-    async execute(args: Record<string, unknown>) {
-        const projectId = args.projectId as string;
+    async execute(args: Record<string, unknown>, context?: ToolExecutionContext) {
+        const projectId = (context?.projectId ?? args.projectId) as string;
         if (!projectId) {
-            return { callId: "", result: null, error: "projectId is required" };
+            return { callId: "", result: null, error: "No project context available" };
         }
 
         const studyIds = args.studyIds as string[] | undefined;

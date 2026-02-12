@@ -7,7 +7,6 @@ const MAX_BATCH_SIZE = 20;
 const SCREENING_MODEL = "grok-4-1-fast";
 
 const inputSchema = z.object({
-    projectId: z.string().min(1, "projectId is required"),
     studyIds: z.array(z.string()).optional(),
 });
 
@@ -45,17 +44,12 @@ export const bulkScreeningTool: AITool = {
         parameters: {
             type: "object",
             properties: {
-                projectId: {
-                    type: "string",
-                    description: "The project ID",
-                },
                 studyIds: {
                     type: "array",
                     items: { type: "string" },
                     description: "Optional array of specific study IDs to screen. If omitted, screens all unscreened studies.",
                 },
             },
-            required: ["projectId"],
         },
     },
 
@@ -68,8 +62,11 @@ export const bulkScreeningTool: AITool = {
         hardCap: 2,
     },
 
-    async execute(args: Record<string, unknown>) {
-        const projectId = args.projectId as string;
+    async execute(args: Record<string, unknown>, context?: ToolExecutionContext) {
+        const projectId = (context?.projectId ?? args.projectId) as string;
+        if (!projectId) {
+            return { callId: "", result: null, error: "No project context available" };
+        }
         const studyIds = args.studyIds as string[] | undefined;
 
         try {

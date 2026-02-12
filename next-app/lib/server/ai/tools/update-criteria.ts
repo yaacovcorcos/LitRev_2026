@@ -1,11 +1,10 @@
 import { z } from "zod";
-import type { AITool } from "./base";
+import type { AITool, ToolExecutionContext } from "./base";
 import { prisma } from "@/lib/server/prisma";
 import { syncProtocolToMemory } from "@/lib/server/memory/protocol-sync";
 import type { ProtocolData } from "@/types/protocol";
 
 const inputSchema = z.object({
-    projectId: z.string().min(1, "projectId is required"),
     action: z.enum(["add", "remove"]),
     type: z.enum(["inclusion", "exclusion"]),
     criterion: z.string().min(1, "criterion is required"),
@@ -26,10 +25,6 @@ export const updateCriteriaTool: AITool = {
         parameters: {
             type: "object",
             properties: {
-                projectId: {
-                    type: "string",
-                    description: "The project ID",
-                },
                 action: {
                     type: "string",
                     enum: ["add", "remove"],
@@ -45,7 +40,7 @@ export const updateCriteriaTool: AITool = {
                     description: "The criterion text to add or remove",
                 },
             },
-            required: ["projectId", "action", "type", "criterion"],
+            required: ["action", "type", "criterion"],
         },
     },
 
@@ -58,8 +53,11 @@ export const updateCriteriaTool: AITool = {
         hardCap: 2,
     },
 
-    async execute(args: Record<string, unknown>) {
-        const projectId = args.projectId as string;
+    async execute(args: Record<string, unknown>, context?: ToolExecutionContext) {
+        const projectId = (context?.projectId ?? args.projectId) as string;
+        if (!projectId) {
+            return { callId: "", result: null, error: "No project context available" };
+        }
         const action = args.action as "add" | "remove";
         const type = args.type as "inclusion" | "exclusion";
         const criterion = args.criterion as string;

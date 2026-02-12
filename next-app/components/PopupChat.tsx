@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -71,6 +71,20 @@ function contextToPage(ctx: PopupChatContext): CopilotPage {
     }
 }
 
+/** Dynamic placeholder based on context type. */
+function getPlaceholder(ctx: PopupChatContext): string {
+    switch (ctx.type) {
+        case "study":
+            return `Ask a question about this study...`;
+        case "criterion":
+            return `Ask a question about this ${ctx.criterionType} criterion...`;
+        case "draft_selection":
+            return `Ask a question about ${ctx.section}...`;
+        case "protocol_section":
+            return `Ask a question about ${ctx.section}...`;
+    }
+}
+
 /** Icon for context type. */
 function contextIcon(ctx: PopupChatContext): string {
     switch (ctx.type) {
@@ -98,6 +112,12 @@ export function PopupChat({ projectId }: PopupChatProps) {
     const abortRef = useRef<AbortController | null>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
+    const cardRef = useRef<HTMLDivElement>(null);
+
+    // Drag state (refs to avoid re-renders during drag)
+    const isDragging = useRef(false);
+    const dragOffset = useRef({ x: 0, y: 0 });
+    const posRef = useRef<{ x: number; y: number } | null>(null);
 
     // Count user messages
     const userTurnCount = messages.filter((m) => m.role === "user").length;
@@ -111,6 +131,14 @@ export function PopupChat({ projectId }: PopupChatProps) {
         setTurnHintDismissed(false);
         abortRef.current?.abort();
         abortRef.current = null;
+        // Reset position to default bottom-right
+        posRef.current = null;
+        if (cardRef.current) {
+            cardRef.current.style.left = "";
+            cardRef.current.style.bottom = "";
+            cardRef.current.style.right = "100px";
+            cardRef.current.style.top = "80px";
+        }
     }, [context]);
 
     // Show turn hint after threshold
@@ -235,6 +263,53 @@ export function PopupChat({ projectId }: PopupChatProps) {
         [handleSend],
     );
 
+    // ---- Drag handling ----
+    const handleDragStart = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
+        // Only drag from the header area, not from buttons inside it
+        if ((e.target as HTMLElement).closest("button")) return;
+
+        const card = cardRef.current;
+        if (!card) return;
+
+        isDragging.current = true;
+        const rect = card.getBoundingClientRect();
+
+        // If first drag, convert from bottom/right to top/left positioning
+        if (!posRef.current) {
+            posRef.current = { x: rect.left, y: rect.top };
+            card.style.right = "auto";
+            card.style.bottom = "auto";
+            card.style.left = `${rect.left}px`;
+            card.style.top = `${rect.top}px`;
+        }
+
+        dragOffset.current = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+        card.setPointerCapture(e.pointerId);
+        card.style.transition = "none";
+    }, []);
+
+    const handleDragMove = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
+        if (!isDragging.current || !cardRef.current) return;
+
+        const card = cardRef.current;
+        const maxX = window.innerWidth - card.offsetWidth;
+        const maxY = window.innerHeight - card.offsetHeight;
+
+        const x = Math.max(0, Math.min(e.clientX - dragOffset.current.x, maxX));
+        const y = Math.max(0, Math.min(e.clientY - dragOffset.current.y, maxY));
+
+        posRef.current = { x, y };
+        card.style.left = `${x}px`;
+        card.style.top = `${y}px`;
+    }, []);
+
+    const handleDragEnd = useCallback(() => {
+        isDragging.current = false;
+        if (cardRef.current) {
+            cardRef.current.style.transition = "";
+        }
+    }, []);
+
     const handleContinueInCopilot = useCallback(async () => {
         if (!context || messages.length === 0) return;
 
@@ -288,6 +363,7 @@ export function PopupChat({ projectId }: PopupChatProps) {
             <Dialog.Portal>
                 <Dialog.Overlay className={styles.overlay} />
                 <Dialog.Content
+                    ref={cardRef}
                     className={styles.popupChat}
                     aria-label="Ask AI mini-chat"
                     onEscapeKeyDown={() => closePopupChat()}
@@ -295,9 +371,14 @@ export function PopupChat({ projectId }: PopupChatProps) {
                         // Don't close if clicking inside the popup itself
                         e.preventDefault();
                     }}
+                    onPointerMove={handleDragMove}
+                    onPointerUp={handleDragEnd}
                 >
-                    {/* Header */}
-                    <div className={styles.header}>
+                    {/* Header — drag handle */}
+                    <div
+                        className={styles.header}
+                        onPointerDown={handleDragStart}
+                    >
                         <div className={styles.contextBadge}>
                             <div className={styles.contextIcon}>
                                 <span className="material-icons-round">{icon}</span>
@@ -314,7 +395,7 @@ export function PopupChat({ projectId }: PopupChatProps) {
                     {/* Messages */}
                     <div className={styles.messages}>
                         {messages.length === 0 ? (
-                            <div className={styles.emptyMessages}>Ask a question about this context...</div>
+                            <div className={styles.emptyMessages}>{getPlaceholder(context)}</div>
                         ) : (
                             messages.map((msg, i) => (
                                 <div
@@ -368,7 +449,7 @@ export function PopupChat({ projectId }: PopupChatProps) {
                             <textarea
                                 ref={textareaRef}
                                 className={styles.inputField}
-                                placeholder="Ask a question..."
+                                placeholder={getPlaceholder(context)}
                                 value={input}
                                 onChange={(e) => setInput(e.target.value)}
                                 onKeyDown={handleKeyDown}

@@ -1,12 +1,11 @@
 import { z } from "zod";
-import type { AITool } from "./base";
+import type { AITool, ToolExecutionContext } from "./base";
 import { prisma } from "@/lib/server/prisma";
 import { extractStudyFromPdf, deepAnalyzeStudyFromPdf } from "@/lib/server/pdf-extraction";
 import { createMemoriesFromDeepAnalysis } from "@/lib/server/memory/study-memory";
 
 const inputSchema = z.object({
     studyId: z.string().min(1, "studyId is required"),
-    projectId: z.string().min(1, "projectId is required"),
     deep: z.boolean().optional().default(false),
 });
 
@@ -30,16 +29,12 @@ export const extractPdfTool: AITool = {
                     type: "string",
                     description: "The study ID to extract PDF data for",
                 },
-                projectId: {
-                    type: "string",
-                    description: "The project ID the study belongs to",
-                },
                 deep: {
                     type: "boolean",
                     description: "If true, run deep analysis (study type, quality, keywords) in addition to basic extraction. Default: false.",
                 },
             },
-            required: ["studyId", "projectId"],
+            required: ["studyId"],
         },
     },
 
@@ -51,15 +46,15 @@ export const extractPdfTool: AITool = {
         allowedRange: [2, 4],
     },
 
-    async execute(args: Record<string, unknown>) {
+    async execute(args: Record<string, unknown>, context?: ToolExecutionContext) {
         const studyId = args.studyId as string;
-        const projectId = args.projectId as string;
+        const projectId = (context?.projectId ?? args.projectId) as string;
         const deep = (args.deep as boolean) ?? false;
 
         try {
             // Find the study and its PDF file
             const study = await prisma.study.findFirst({
-                where: { id: studyId, projectId },
+                where: { id: studyId, ...(projectId ? { projectId } : {}) },
                 select: { id: true, title: true, authors: true, year: true, details: true },
             });
 

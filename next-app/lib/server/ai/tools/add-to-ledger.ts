@@ -1,12 +1,11 @@
 import { z } from "zod";
-import type { AITool } from "./base";
+import type { AITool, ToolExecutionContext } from "./base";
 import type { SearchResult } from "@/types/search";
 import { searchResultToStudyInput } from "@/lib/server/search/to-study";
 import { findDuplicates } from "@/lib/server/search/dedup";
 import { listStudies, upsertStudy } from "@/lib/server/ledger";
 
 const inputSchema = z.object({
-    projectId: z.string().min(1, "projectId is required"),
     results: z.array(z.object({
         title: z.string(),
         authors: z.string(),
@@ -24,14 +23,10 @@ export const addToLedgerTool: AITool = {
     definition: {
         name: "add_to_ledger",
         description:
-            "Add search results to the project's Evidence Ledger. Only call this after the user has approved which studies to add. Requires a projectId and an array of search results.",
+            "Add search results to the project's Evidence Ledger. Only call this after the user has approved which studies to add. Requires an array of search results.",
         parameters: {
             type: "object",
             properties: {
-                projectId: {
-                    type: "string",
-                    description: "The project ID to add studies to",
-                },
                 results: {
                     type: "array",
                     description: "Array of search results to add",
@@ -56,7 +51,7 @@ export const addToLedgerTool: AITool = {
                     },
                 },
             },
-            required: ["projectId", "results"],
+            required: ["results"],
         },
     },
 
@@ -68,12 +63,12 @@ export const addToLedgerTool: AITool = {
         allowedRange: [1, 3],
     },
 
-    async execute(args: Record<string, unknown>) {
-        const projectId = args.projectId as string;
+    async execute(args: Record<string, unknown>, context?: ToolExecutionContext) {
+        const projectId = (context?.projectId ?? args.projectId) as string;
         const results = args.results as SearchResult[];
 
         if (!projectId) {
-            return { callId: "", result: null, error: "projectId is required" };
+            return { callId: "", result: null, error: "No project context available" };
         }
         if (!results?.length) {
             return { callId: "", result: null, error: "results array is required and must not be empty" };

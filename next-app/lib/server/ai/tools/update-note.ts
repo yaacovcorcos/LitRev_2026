@@ -1,9 +1,8 @@
 import { z } from "zod";
-import type { AITool } from "./base";
+import type { AITool, ToolExecutionContext } from "./base";
 import { createNote, updateNote, listNotes, textToTipTapDoc, extractTextFromContent, type NoteContent } from "@/lib/server/notes";
 
 const inputSchema = z.object({
-    projectId: z.string().min(1, "projectId is required"),
     section: z.string().min(1, "section is required"),
     content: z.string().min(1, "content is required"),
     action: z.enum(["replace", "append", "revise"]),
@@ -24,10 +23,6 @@ export const updateNoteTool: AITool = {
         parameters: {
             type: "object",
             properties: {
-                projectId: {
-                    type: "string",
-                    description: "The project ID",
-                },
                 section: {
                     type: "string",
                     description: "The review section name (e.g., 'Introduction', 'Methods', 'Results', 'Discussion')",
@@ -42,7 +37,7 @@ export const updateNoteTool: AITool = {
                     description: "How to apply the content: 'replace' overwrites, 'append' adds to end, 'revise' rewrites the section",
                 },
             },
-            required: ["projectId", "section", "content", "action"],
+            required: ["section", "content", "action"],
         },
     },
 
@@ -55,8 +50,11 @@ export const updateNoteTool: AITool = {
         hardCap: 2,
     },
 
-    async execute(args: Record<string, unknown>) {
-        const projectId = args.projectId as string;
+    async execute(args: Record<string, unknown>, context?: ToolExecutionContext) {
+        const projectId = (context?.projectId ?? args.projectId) as string;
+        if (!projectId) {
+            return { callId: "", result: null, error: "No project context available" };
+        }
         const section = args.section as string;
         const content = args.content as string;
         const action = args.action as "replace" | "append" | "revise";

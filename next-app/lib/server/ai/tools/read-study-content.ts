@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { AITool } from "./base";
+import type { AITool, ToolExecutionContext } from "./base";
 import { prisma } from "@/lib/server/prisma";
 import { fetchPdfFromStorage, extractTextFromPdf } from "@/lib/server/pdf-extraction";
 
@@ -7,7 +7,6 @@ const MAX_RETURN_CHARS = 12000; // ~3k tokens — fits in context without overwh
 
 const inputSchema = z.object({
     studyId: z.string().min(1, "studyId is required"),
-    projectId: z.string().min(1, "projectId is required"),
     section: z
         .enum(["abstract", "introduction", "methods", "results", "discussion", "conclusion", "full"])
         .optional()
@@ -60,10 +59,6 @@ export const readStudyContentTool: AITool = {
                     type: "string",
                     description: "The study ID to read content from",
                 },
-                projectId: {
-                    type: "string",
-                    description: "The project ID the study belongs to",
-                },
                 section: {
                     type: "string",
                     enum: ["abstract", "introduction", "methods", "results", "discussion", "conclusion", "full"],
@@ -71,7 +66,7 @@ export const readStudyContentTool: AITool = {
                         "Which section to extract. Defaults to 'full'. Use a specific section to get focused content within token limits.",
                 },
             },
-            required: ["studyId", "projectId"],
+            required: ["studyId"],
         },
     },
 
@@ -83,15 +78,15 @@ export const readStudyContentTool: AITool = {
         allowedRange: [3, 4],
     },
 
-    async execute(args: Record<string, unknown>) {
+    async execute(args: Record<string, unknown>, context?: ToolExecutionContext) {
         const studyId = args.studyId as string;
-        const projectId = args.projectId as string;
+        const projectId = (context?.projectId ?? args.projectId) as string;
         const section = (args.section as string) ?? "full";
 
         try {
             // Find the study
             const study = await prisma.study.findFirst({
-                where: { id: studyId, projectId },
+                where: { id: studyId, ...(projectId ? { projectId } : {}) },
                 select: { id: true, title: true },
             });
 
