@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "WebFetch(domain:bricxlabs.com)"
+      "WebFetch(domain:bricxlabs.com)",
+      "Bash(supabase --version:*)"
     ]
   }
 }

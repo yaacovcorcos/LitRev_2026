@@ -1,6 +1,6 @@
 # Agent System Improvements
 
-## P0: Context Window Management
+## P0: Context Window Management ✅
 
 **Problem:** The tool loop in `streamChatWithArtifacts()` appends every tool result to `currentMessages`, growing linearly. With longer workflows (screening 50 studies, multi-step searches), this will blow through the model's token limit and cause failures.
 
@@ -21,7 +21,7 @@
 
 ---
 
-## P1: Dynamic Loop Control (stopWhen + prepareStep)
+## P1: Dynamic Loop Control (stopWhen + prepareStep) ✅
 
 **Problem:** `MAX_TOOL_ITERATIONS = 5` is a hard-coded arbitrary cap. Some tasks need 1 iteration (simple question), others need 15+ (screen 20 studies one by one). The model should decide when it's done, with a safety limit.
 
@@ -44,7 +44,7 @@
 
 ---
 
-## P3: Implement Missing Tools
+## P3: Implement Missing Tools ✅
 
 **Problem:** Only 2 of 8 planned tools are implemented. The model can search PubMed and add to the ledger, but can't screen, exclude, extract PDFs, update criteria, or edit drafts. This limits the agent to ~30% of its intended workflow.
 
@@ -94,7 +94,7 @@
 
 ---
 
-## P4: AI-Powered Planning
+## P4: AI-Powered Planning ✅
 
 **Problem:** `planner.ts` uses regex patterns to detect multi-step workflows and generates plans heuristically. It can't reason about novel task decompositions like "search for RCTs on metformin, screen them against our criteria, then draft the results section."
 
@@ -117,7 +117,7 @@
 
 ---
 
-## P5: Handoffs Between Agent Modes
+## P5: Handoffs Between Agent Modes ✅
 
 **Problem:** Switching agent modes currently just swaps the system prompt. All modes share the same tool set, same loop, same context. A user in `drafting` mode still has `search_pubmed` available even though it's irrelevant, which wastes tool-definition tokens and confuses the model's tool selection.
 
@@ -142,7 +142,7 @@
 
 ---
 
-## P6: Prompt Caching Optimization
+## P6: Prompt Caching Optimization ✅
 
 **Problem:** Every iteration of the tool loop sends the full message array including the system prompt. Without cache-friendly ordering, we pay full token price on every LLM call. With OpenAI and Anthropic's prompt caching, we can cut costs significantly by ensuring the prompt prefix stays stable.
 
@@ -166,7 +166,7 @@
 
 ---
 
-## P7: Self-Healing JSON (from Instructor JS / zod-gpt patterns)
+## P7: Self-Healing JSON (from Instructor JS / zod-gpt patterns) ✅
 
 **Problem:** When the LLM returns a malformed tool result or artifact payload that fails Zod validation, we throw an error and the tool call fails. The LLM never gets a chance to fix its output.
 
@@ -182,7 +182,7 @@
 
 ---
 
-## P8: Semantic Scholar Search + Recommendations (from academic research)
+## P8: Semantic Scholar Search + Recommendations (from academic research) ✅
 
 **Problem:** PubMed only covers biomedical literature. Many systematic reviews span multiple disciplines.
 
@@ -200,7 +200,7 @@
 
 ---
 
-## P9: Langfuse Observability (from research)
+## P9: Langfuse Observability (from research) ✅
 
 **Problem:** No visibility into agent run costs, latency breakdown, or tool call success rates. Debugging failed runs requires manually querying RunEvent records.
 

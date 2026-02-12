@@ -241,11 +241,16 @@ CREATE next-app/app/auth/login/login.module.css — matches design system:
   - Outfit font, terracotta accent colors, consistent with modal.css patterns
 
 MODIFY next-app/app/providers.tsx:
-  Wrap with SessionProvider from next-auth/react as outermost provider:
+  Add SessionProvider from next-auth/react as outermost provider:
     <SessionProvider>
-      <ProjectsProvider>
-        <LedgerProvider>{children}</LedgerProvider>
-      </ProjectsProvider>
+      <CommandPaletteProvider>
+        <ProjectsProvider>
+          <LedgerProvider>
+            {children}
+            <CommandPalette />
+          </LedgerProvider>
+        </ProjectsProvider>
+      </CommandPaletteProvider>
     </SessionProvider>
 
   Verify: navigate to /auth/login, see styled login card.
@@ -290,14 +295,19 @@ Pattern C — assertProjectAccess swap (1 file, 2 functions):
   File: extraction.ts
   assertProjectAccess(SINGLE_USER_SCOPE, projectId) → assertProjectAccess(scope, projectId)
 
-Pattern D — Auth gate only (1 file, ~8 functions):
-  File: ai.ts
+Pattern D — Auth gate only (3 files, ~12 functions):
+  Files: ai.ts, summarize-conversation.ts, usage.ts
   Add await requireAuth() at top as a gate. Scope not passed deeper yet.
+  summarize-conversation.ts: queries conversations by ID with no ownership check — add gate.
+  usage.ts: queries AIUsage by projectId only — add gate + scope filtering.
 
-Pattern E — Replace getCurrentUserContext (1 file, 8 functions):
+Pattern E — Replace placeholder userId (2 files, ~12 functions):
   File: conversations.ts
-  Delete PLACEHOLDER_USER_ID, PLACEHOLDER_WORKSPACE_ID, getCurrentUserContext().
-  Replace with: const { ownerId: userId, workspaceId } = await requireAuth();
+    Delete PLACEHOLDER_USER_ID, PLACEHOLDER_WORKSPACE_ID, getCurrentUserContext().
+    Replace with: const { ownerId: userId, workspaceId } = await requireAuth();
+  File: agent.ts
+    Replace hardcoded "single-user" fallbacks with requireAuth().
+    Currently uses: userId || "single-user" — must get userId from session instead.
 
 Pattern F — Secure userId params (1 file, ~18 functions):
   File: memory.ts
@@ -309,17 +319,25 @@ Pattern F — Secure userId params (1 file, ~18 functions):
     setUserMemoryAction(input) → inject userId from requireAuth() into input
   Update client-side callers accordingly.
 
-  Migration checklist:
-    projects.ts       5 functions   Pattern B
-    ledger.ts         7 functions   Pattern A
-    files.ts          8 functions   Pattern A
-    extraction.ts     2 functions   Pattern C
-    protocols.ts      2 functions   Pattern A
-    drafts.ts         2 functions   Pattern A
-    projectCopilot.ts 2 functions   Pattern A
-    ai.ts             8 functions   Pattern D
-    conversations.ts  8 functions   Pattern E
-    memory.ts        ~18 functions  Pattern F
+  Migration checklist (14 action files):
+    projects.ts                5 functions   Pattern B
+    ledger.ts                  7 functions   Pattern A
+    files.ts                   8 functions   Pattern A
+    extraction.ts              2 functions   Pattern C
+    protocols.ts               2 functions   Pattern A
+    drafts.ts                  2 functions   Pattern A
+    projectCopilot.ts          2 functions   Pattern A
+    ai.ts                      8 functions   Pattern D
+    summarize-conversation.ts  1 function    Pattern D
+    usage.ts                   1 function    Pattern D
+    notes.ts                   ~4 functions  Pattern D (no auth at all currently)
+    agent.ts                   ~4 functions  Pattern E (hardcoded "single-user")
+    conversations.ts           8 functions   Pattern E
+    memory.ts                 ~18 functions  Pattern F
+
+  Service layer fix (not an action file):
+    lib/server/ai/ai-service.ts — has "single-user" hardcoded at ~2 locations
+      with TODO comments. Replace with userId param passed from action layer.
 
   Verify: npx tsc --noEmit passes. Full app works with real auth.
 
@@ -350,12 +368,19 @@ Sign-out + user display:
     - Use useSession() from next-auth/react
 
 Data migration (one-time):
-  Two placeholder user sets exist:
+  Three placeholder user patterns exist:
     scope.ts:         "local-user"    / "local-workspace"
     conversations.ts: "single-user"   / "single-workspace"
+    agent.ts + ai-service.ts: "single-user" (no workspace pair)
   In the createUser event, check if placeholder data exists.
-  Reassign all projects/studies/conversations/memories to the first real user.
+  Reassign all projects/studies/conversations/memories/agentRuns/artifacts/notes to first real user.
   Delete placeholder User/Workspace records.
+
+Schema gaps to fix before or during auth implementation:
+  AgentRun, Artifact, Note — have nullable userId but no workspaceId.
+    Add workspaceId String? + @@index([workspaceId]) to each for multi-tenant scoping.
+  AutonomyConfig — @@unique([userId, projectId]) on nullable fields is problematic.
+    Fix: make userId non-nullable after auth (it will always come from session).
 
 Cleanup:
   - Remove ensureSingleUserSeed() calls from action files (done in 10.5)
@@ -387,23 +412,30 @@ New files (10):
   next-app/lib/server/provision.ts                Workspace auto-provisioning
   next-app/lib/server/auth.ts                     requireAuth() function
 
-Modified files (~16):
-  next-app/prisma/schema.prisma                   Add Account, Session, VerificationToken; modify User
-  next-app/app/providers.tsx                       Add SessionProvider
-  next-app/app/actions/projects.ts                Pattern B
-  next-app/app/actions/ledger.ts                  Pattern A
-  next-app/app/actions/files.ts                   Pattern A
-  next-app/app/actions/extraction.ts              Pattern C
-  next-app/app/actions/protocols.ts               Pattern A
-  next-app/app/actions/drafts.ts                  Pattern A
-  next-app/app/actions/projectCopilot.ts          Pattern A
-  next-app/app/actions/ai.ts                      Pattern D
-  next-app/app/actions/conversations.ts           Pattern E
-  next-app/app/actions/memory.ts                  Pattern F
-  next-app/app/api/ai/stream/route.ts             Auth check
-  next-app/app/api/ai/transcribe/route.ts         Auth check
-  next-app/lib/server/ai/rate-limiter.ts          Add userId/workspaceId params
-  next-app/components/Sidebar.tsx                 Sign-out button + user display
+Modified files (~21):
+  next-app/prisma/schema.prisma                         Add Account, Session, VerificationToken; modify User;
+                                                        add workspaceId to AgentRun, Artifact, Note;
+                                                        fix AutonomyConfig unique constraint
+  next-app/app/providers.tsx                             Add SessionProvider (outermost)
+  next-app/app/actions/projects.ts                      Pattern B
+  next-app/app/actions/ledger.ts                        Pattern A
+  next-app/app/actions/files.ts                         Pattern A
+  next-app/app/actions/extraction.ts                    Pattern C
+  next-app/app/actions/protocols.ts                     Pattern A
+  next-app/app/actions/drafts.ts                        Pattern A
+  next-app/app/actions/projectCopilot.ts                Pattern A
+  next-app/app/actions/ai.ts                            Pattern D
+  next-app/app/actions/summarize-conversation.ts        Pattern D
+  next-app/app/actions/usage.ts                         Pattern D
+  next-app/app/actions/notes.ts                         Pattern D
+  next-app/app/actions/agent.ts                         Pattern E
+  next-app/app/actions/conversations.ts                 Pattern E
+  next-app/app/actions/memory.ts                        Pattern F
+  next-app/lib/server/ai/ai-service.ts                  Replace "single-user" hardcoded userId
+  next-app/app/api/ai/stream/route.ts                   Auth check
+  next-app/app/api/ai/transcribe/route.ts               Auth check
+  next-app/lib/server/ai/rate-limiter.ts                Add userId/workspaceId params
+  next-app/components/Sidebar.tsx                       Sign-out button + user display
 
 New test files (2):
   next-app/lib/server/__tests__/auth.test.ts
@@ -427,4 +459,4 @@ If enterprise demand grows:
   - WorkOS (managed service) as alternative to self-hosted SAML Jackson
   - Has first-party Auth.js provider
 
-Report: Codex quality/architecture report written to codex-quality-report.md (2026-02-02).
+Report: Current consolidated quality report lives in QUALITY_REPORT.md (updated 2026-02-11).
