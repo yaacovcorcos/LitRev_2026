@@ -7,7 +7,7 @@
 
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -90,32 +90,56 @@ export function TimelineRenderer({
     const params = useParams<{ id: string }>();
     const projectId = params?.id;
     const listRef = useRef<HTMLDivElement | null>(null);
-    const autoScrollRef = useRef(true);
+    const sentinelRef = useRef<HTMLDivElement | null>(null);
+    const followRef = useRef(true);      // strict follow-mode: only toggled by explicit user intent
+    const rafRef = useRef<number | null>(null);
+    const lastScrollTs = useRef(0);       // timestamp of last programmatic scroll
     const [isAtBottom, setIsAtBottom] = useState(true);
     const [savedNoteId, setSavedNoteId] = useState<string | null>(null);
 
     // Resolve timeline: prefer items, fall back to legacy messages
     const timeline = items ?? messagesToTimeline(messages);
 
-    // Auto-scroll to bottom when new items arrive
-    useEffect(() => {
-        if (!listRef.current || !autoScrollRef.current) return;
-        listRef.current.scrollTop = listRef.current.scrollHeight;
+    // ── Follow-mode auto-scroll (rAF-coalesced) ────────────────────────────
+    // Runs when timeline identity changes (new message OR token append).
+    // Only scrolls when follow-mode is ON; batches to one scroll per frame.
+    useLayoutEffect(() => {
+        if (!listRef.current || !followRef.current) return;
+        if (rafRef.current) cancelAnimationFrame(rafRef.current);
+        rafRef.current = requestAnimationFrame(() => {
+            if (listRef.current && followRef.current) {
+                lastScrollTs.current = Date.now();
+                listRef.current.scrollTop = listRef.current.scrollHeight;
+            }
+        });
+        return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
     }, [timeline]);
+
+    // ── Scroll handler — distinguishes user scroll from programmatic scroll ─
+    // Programmatic scrolls are identified by timestamp proximity (<80ms).
+    // User scrolling up disables follow; user scrolling back to bottom re-enables.
+    const BOTTOM_THRESHOLD = 20;
 
     const handleScroll = useCallback(() => {
         if (!listRef.current) return;
+        // Ignore scroll events triggered by our own programmatic scrollTop assignment
+        if (Date.now() - lastScrollTs.current < 80) return;
+
         const { scrollTop, clientHeight, scrollHeight } = listRef.current;
-        const atBottom = scrollTop + clientHeight >= scrollHeight - 80;
-        autoScrollRef.current = atBottom;
+        const atBottom = scrollTop + clientHeight >= scrollHeight - BOTTOM_THRESHOLD;
+        // User scrolled back to bottom → re-enable follow
+        if (atBottom && !followRef.current) followRef.current = true;
+        // User scrolled up → disable follow
+        if (!atBottom && followRef.current) followRef.current = false;
         setIsAtBottom(atBottom);
     }, []);
 
     const scrollToBottom = useCallback(() => {
         if (!listRef.current) return;
-        listRef.current.scrollTo({ top: listRef.current.scrollHeight, behavior: "smooth" });
-        autoScrollRef.current = true;
+        followRef.current = true;
         setIsAtBottom(true);
+        lastScrollTs.current = Date.now();
+        listRef.current.scrollTo({ top: listRef.current.scrollHeight, behavior: "smooth" });
     }, []);
 
     const handleCopy = useCallback((text: string) => {
@@ -445,6 +469,8 @@ export function TimelineRenderer({
                         </div>
                     </div>
                 )}
+                {/* Bottom sentinel — used for future IntersectionObserver if needed */}
+                <div ref={sentinelRef} style={{ height: 1, flexShrink: 0 }} aria-hidden="true" />
             </div>
             {!isAtBottom && (
                 <button

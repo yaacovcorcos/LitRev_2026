@@ -239,9 +239,13 @@ export function CopilotInput({ page, section, studyId, inputPlaceholder, prefill
                     </div>
                 )}
 
-                {/* AI-generated choice chips */}
-                {pendingChoices.length > 0 && !isLoading && (
-                    <div className={styles.choicesRow} role="group" aria-label="Suggested responses">
+                {/* AI-generated choice chips — always rendered, collapses to 0 when empty to avoid layout shift */}
+                <div
+                    className={`${styles.choicesSlot} ${pendingChoices.length > 0 && !isLoading ? styles.choicesSlotOpen : ""}`}
+                    role={pendingChoices.length > 0 ? "group" : undefined}
+                    aria-label={pendingChoices.length > 0 ? "Suggested responses" : undefined}
+                >
+                    <div className={styles.choicesRow}>
                         {pendingChoices.map((choice) => (
                             <button
                                 key={choice.value}
@@ -264,7 +268,7 @@ export function CopilotInput({ page, section, studyId, inputPlaceholder, prefill
                             </button>
                         ))}
                     </div>
-                )}
+                </div>
 
                 {/* Text input */}
                 <textarea
