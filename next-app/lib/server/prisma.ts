@@ -5,13 +5,15 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
 
 const DATABASE_URL = process.env.DATABASE_URL || "";
+const isLocalDb = DATABASE_URL.includes("localhost") || DATABASE_URL.includes("127.0.0.1");
 
 const pool = new Pool({
-  connectionString: DATABASE_URL.replace('&sslmode=require', '&sslmode=no-verify'),
-  // Optimize for remote database with high latency
-  connectionTimeoutMillis: 30000,  // 30s connection timeout
-  idleTimeoutMillis: 30000,        // Close idle connections after 30s
-  max: 10,                          // Max 10 connections in pool
+  connectionString: isLocalDb
+    ? DATABASE_URL
+    : DATABASE_URL.replace('&sslmode=require', '&sslmode=no-verify'),
+  connectionTimeoutMillis: isLocalDb ? 5000 : 30000,
+  idleTimeoutMillis: isLocalDb ? 10000 : 30000,
+  max: 10,
 });
 
 const adapter = new PrismaPg(pool);
