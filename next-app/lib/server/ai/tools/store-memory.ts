@@ -69,13 +69,14 @@ export const storeMemoryTool: AITool = {
         const value = args.value as string;
         const rationale = args.rationale as string | undefined;
 
-        // Server-side dedupe guard
+        // Server-side dedupe guard — return null result to skip artifact creation
         if (memoryType === "user" && context?.userId) {
             const existing = await getUserMemory(context.userId, key);
             if (existing && existing.value === value) {
                 return {
                     callId: "",
-                    result: { skipped: true, reason: `Already remembered: "${key}"` },
+                    result: null,
+                    error: `Already remembered: "${key}". No action needed.`,
                 };
             }
         } else if (memoryType === "project" && context?.projectId) {
@@ -86,7 +87,8 @@ export const storeMemoryTool: AITool = {
             if (duplicate) {
                 return {
                     callId: "",
-                    result: { skipped: true, reason: `Already remembered: "${key}"` },
+                    result: null,
+                    error: `Already remembered: "${key}". No action needed.`,
                 };
             }
         }

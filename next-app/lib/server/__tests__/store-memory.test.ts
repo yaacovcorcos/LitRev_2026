@@ -68,10 +68,8 @@ describe("storeMemoryTool", () => {
             { userId: "user-1", projectId: "proj-1" },
         );
 
-        expect(result.result).toEqual({
-            skipped: true,
-            reason: 'Already remembered: "citation_format"',
-        });
+        expect(result.result).toBeNull();
+        expect(result.error).toBe('Already remembered: "citation_format". No action needed.');
     });
 
     it("allows update when value differs from existing", async () => {
@@ -128,10 +126,8 @@ describe("storeMemoryTool", () => {
             { userId: "user-1", projectId: "proj-1" },
         );
 
-        expect(result.result).toEqual({
-            skipped: true,
-            reason: 'Already remembered: "exclusion_rule"',
-        });
+        expect(result.result).toBeNull();
+        expect(result.error).toBe('Already remembered: "exclusion_rule". No action needed.');
     });
 
     it("defaults memoryType to user when not provided", async () => {

@@ -10,16 +10,20 @@ const inputSchema = z.object({
     studyIds: z.array(z.string()).optional(),
 });
 
-const screeningResultSchema = z.object({
-    studyId: z.string(),
-    title: z.string(),
-    decision: z.enum(["keep", "exclude", "maybe"]),
-    reason: z.string(),
-    confidence: z.number().min(0).max(1),
-});
-
+/**
+ * Output matches ScreeningBatchSchema (studies: StudyProposalPayload[])
+ * so it can be stored as a screening_batch artifact directly.
+ */
 const outputSchema = z.object({
-    results: z.array(screeningResultSchema),
+    studies: z.array(z.object({
+        title: z.string(),
+        authors: z.string(),
+        year: z.number(),
+        source: z.string(),
+        recommendation: z.enum(["keep", "exclude", "maybe"]),
+        confidence: z.number().min(0).max(1),
+        matchRationale: z.string().optional(),
+    }).passthrough()),
     summary: z.object({
         total: z.number(),
         keepCount: z.number(),
@@ -29,11 +33,13 @@ const outputSchema = z.object({
 });
 
 interface ScreeningResult {
-    studyId: string;
     title: string;
-    decision: "keep" | "exclude" | "maybe";
-    reason: string;
+    authors: string;
+    year: number;
+    source: string;
+    recommendation: "keep" | "exclude" | "maybe";
     confidence: number;
+    matchRationale: string;
 }
 
 export const bulkScreeningTool: AITool = {
@@ -109,7 +115,7 @@ export const bulkScreeningTool: AITool = {
                 return {
                     callId: "",
                     result: {
-                        results: [],
+                        studies: [],
                         summary: { total: 0, keepCount: 0, excludeCount: 0, maybeCount: 0 },
                     },
                 };
@@ -189,19 +195,23 @@ Return ONLY valid JSON.`,
                     const parsed = JSON.parse(jsonStr);
 
                     results.push({
-                        studyId: study.id,
                         title: study.title,
-                        decision: ["keep", "exclude", "maybe"].includes(parsed.decision) ? parsed.decision : "maybe",
-                        reason: typeof parsed.reason === "string" ? parsed.reason : "Unable to determine",
+                        authors: study.authors || "Unknown",
+                        year: study.year || 0,
+                        source: "bulk-screening",
+                        recommendation: ["keep", "exclude", "maybe"].includes(parsed.decision) ? parsed.decision : "maybe",
+                        matchRationale: typeof parsed.reason === "string" ? parsed.reason : "Unable to determine",
                         confidence: typeof parsed.confidence === "number" ? Math.min(1, Math.max(0, parsed.confidence)) : 0.5,
                     });
                 } catch {
                     // If AI fails for one study, mark as maybe
                     results.push({
-                        studyId: study.id,
                         title: study.title,
-                        decision: "maybe",
-                        reason: "Screening failed — needs manual review",
+                        authors: study.authors || "Unknown",
+                        year: study.year || 0,
+                        source: "bulk-screening",
+                        recommendation: "maybe",
+                        matchRationale: "Screening failed — needs manual review",
                         confidence: 0,
                     });
                 }
@@ -209,14 +219,14 @@ Return ONLY valid JSON.`,
 
             const summary = {
                 total: results.length,
-                keepCount: results.filter((r) => r.decision === "keep").length,
-                excludeCount: results.filter((r) => r.decision === "exclude").length,
-                maybeCount: results.filter((r) => r.decision === "maybe").length,
+                keepCount: results.filter((r) => r.recommendation === "keep").length,
+                excludeCount: results.filter((r) => r.recommendation === "exclude").length,
+                maybeCount: results.filter((r) => r.recommendation === "maybe").length,
             };
 
             return {
                 callId: "",
-                result: { results, summary },
+                result: { studies: results, summary },
             };
         } catch (error) {
             return {

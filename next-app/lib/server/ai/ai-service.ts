@@ -917,16 +917,18 @@ class AIService {
 
 // ── Helper functions for tool → artifact mapping ────────────────────────────
 
-/** Map tool name → artifact type (null if tool doesn't produce artifacts) */
+/**
+ * Map tool name → artifact type (null if tool doesn't produce artifacts).
+ *
+ * Only proposal tools belong here — tools whose execute() returns a payload
+ * for user review WITHOUT persisting side effects. Tools that already write
+ * to DB (search_pubmed, add_to_ledger, exclude_study, extract_pdf, update_note)
+ * communicate results through the AI's text response, not artifacts.
+ */
 function mapToolToArtifactType(toolName: string): ArtifactType | null {
     const mapping: Record<string, ArtifactType> = {
-        search_pubmed: "study_proposal",
-        add_to_ledger: "study_proposal",
-        exclude_study: "study_proposal",
-        extract_pdf: "study_proposal",
         bulk_screening: "screening_batch",
         update_protocol: "protocol_suggestion",
-        update_note: "draft_diff",
         store_memory: "memory_proposal",
     };
     return mapping[toolName] ?? null;
@@ -935,20 +937,10 @@ function mapToolToArtifactType(toolName: string): ArtifactType | null {
 /** Map tool name → human-readable artifact title */
 function mapToolToArtifactTitle(toolName: string, args: Record<string, unknown>): string {
     switch (toolName) {
-        case "search_pubmed":
-            return `PubMed: ${args.query ?? "search"}`;
-        case "add_to_ledger":
-            return `Add study: ${args.title ?? "study"}`;
-        case "exclude_study":
-            return `Exclude: ${args.title ?? "study"}`;
-        case "extract_pdf":
-            return `Extract: ${args.filename ?? "PDF"}`;
         case "bulk_screening":
             return "Batch screening results";
         case "update_protocol":
             return `Protocol: ${args.field ?? "update"}`;
-        case "update_note":
-            return `Draft: ${args.section ?? "section"}`;
         case "store_memory":
             return `Remember: ${args.key ?? "preference"}`;
         default:
