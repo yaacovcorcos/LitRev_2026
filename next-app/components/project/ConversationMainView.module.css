@@ -24,7 +24,6 @@
 }
 
 .selector {
-    position: relative;
     flex: 1;
     min-width: 0;
 }
@@ -77,9 +76,6 @@
 
 /* Dropdown */
 .dropdown {
-    position: absolute;
-    top: calc(100% + 4px);
-    left: 0;
     width: 320px;
     max-height: 360px;
     background: var(--glass-bg);
@@ -143,6 +139,12 @@
 
 .dropdownItemActive {
     background: rgba(217, 116, 89, 0.08);
+}
+
+.dropdownItemHighlight {
+    background: rgba(0, 0, 0, 0.06);
+    outline: 2px solid var(--accent-primary);
+    outline-offset: -2px;
 }
 
 .dropdownItemTitle {

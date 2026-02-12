@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import * as RadixAlertDialog from "@radix-ui/react-alert-dialog";
+import * as Dialog from "@radix-ui/react-dialog";
 import css from "./ConfirmDialog.module.css";
 
 type ConfirmDialogProps = {
@@ -24,56 +25,43 @@ export function ConfirmDialog({
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
-  const cancelRef = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    if (isOpen && cancelRef.current) {
-      cancelRef.current.focus();
-    }
-  }, [isOpen]);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onCancel();
-    };
-    document.addEventListener("keydown", handleKey);
-    return () => document.removeEventListener("keydown", handleKey);
-  }, [isOpen, onCancel]);
-
   const confirmBtnClass =
     variant === "danger"
       ? `btn btn-primary ${css.actionBtn} ${css.confirmDanger}`
       : `btn btn-primary ${css.actionBtn}`;
 
   return (
-    <div
-      className={`modal-overlay ${isOpen ? "active" : ""}`}
-      aria-hidden={!isOpen}
-      onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}
-    >
-      <div className={`modal-glass ${css.dialogGlass}`}>
-        <div className="modal-header">
-          <h2 className={css.dialogTitle}>{title}</h2>
-        </div>
-        <p className={css.dialogMessage}>{message}</p>
-        <div className="modal-actions">
-          <button
-            ref={cancelRef}
-            className={`btn btn-outline ${css.actionBtn}`}
-            onClick={onCancel}
-          >
-            {cancelLabel}
-          </button>
-          <button
-            className={confirmBtnClass}
-            onClick={onConfirm}
-          >
-            {confirmLabel}
-          </button>
-        </div>
-      </div>
-    </div>
+    <RadixAlertDialog.Root open={isOpen}>
+      <RadixAlertDialog.Portal>
+        <RadixAlertDialog.Overlay className="modal-overlay" />
+        <RadixAlertDialog.Content
+          className={`modal-glass ${css.dialogGlass}`}
+          onEscapeKeyDown={onCancel}
+        >
+          <RadixAlertDialog.Title className={css.dialogTitle}>
+            {title}
+          </RadixAlertDialog.Title>
+          <RadixAlertDialog.Description className={css.dialogMessage}>
+            {message}
+          </RadixAlertDialog.Description>
+          <div className="modal-actions">
+            <RadixAlertDialog.Cancel asChild>
+              <button
+                className={`btn btn-outline ${css.actionBtn}`}
+                onClick={onCancel}
+              >
+                {cancelLabel}
+              </button>
+            </RadixAlertDialog.Cancel>
+            <RadixAlertDialog.Action asChild>
+              <button className={confirmBtnClass} onClick={onConfirm}>
+                {confirmLabel}
+              </button>
+            </RadixAlertDialog.Action>
+          </div>
+        </RadixAlertDialog.Content>
+      </RadixAlertDialog.Portal>
+    </RadixAlertDialog.Root>
   );
 }
 
@@ -91,32 +79,34 @@ export function AlertDialog({
   buttonLabel?: string;
   onClose: () => void;
 }) {
-  useEffect(() => {
-    if (!isOpen) return;
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" || e.key === "Enter") onClose();
-    };
-    document.addEventListener("keydown", handleKey);
-    return () => document.removeEventListener("keydown", handleKey);
-  }, [isOpen, onClose]);
-
   return (
-    <div
-      className={`modal-overlay ${isOpen ? "active" : ""}`}
-      aria-hidden={!isOpen}
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
-    >
-      <div className={`modal-glass ${css.dialogGlass}`}>
-        <div className="modal-header">
-          <h2 className={css.dialogTitle}>{title}</h2>
-        </div>
-        <p className={css.dialogMessage}>{message}</p>
-        <div className="modal-actions">
-          <button className={`btn btn-primary ${css.actionBtn}`} onClick={onClose}>
-            {buttonLabel}
-          </button>
-        </div>
-      </div>
-    </div>
+    <Dialog.Root open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="modal-overlay" />
+        <Dialog.Content
+          className={`modal-glass ${css.dialogGlass}`}
+          onKeyDown={(e) => {
+            if (
+              e.key === "Enter" &&
+              !(e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement)
+            ) {
+              onClose();
+            }
+          }}
+        >
+          <Dialog.Title className={css.dialogTitle}>{title}</Dialog.Title>
+          <Dialog.Description className={css.dialogMessage}>
+            {message}
+          </Dialog.Description>
+          <div className="modal-actions">
+            <Dialog.Close asChild>
+              <button className={`btn btn-primary ${css.actionBtn}`}>
+                {buttonLabel}
+              </button>
+            </Dialog.Close>
+          </div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }

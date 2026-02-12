@@ -7,6 +7,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
+import * as Popover from "@radix-ui/react-popover";
 import { useProjectCopilot, type CopilotPage } from "@/contexts/ProjectCopilotContext";
 import { USER_SELECTABLE_MODELS, type SelectableModelId } from "@/lib/ai/config";
 import { useVoiceInput } from "@/hooks/useVoiceInput";
@@ -28,6 +30,7 @@ export function CopilotInput({ page, section, inputPlaceholder, prefill, onPrefi
     const {
         isLoading,
         sendMessage,
+        cancelStream,
         pendingAttachment,
         isAttaching,
         attachFile,
@@ -46,20 +49,12 @@ export function CopilotInput({ page, section, inputPlaceholder, prefill, onPrefi
         const valid = USER_SELECTABLE_MODELS.some(m => m.id === stored);
         return valid ? (stored as SelectableModelId) : "gpt-5.2";
     });
-    const [showModelMenu, setShowModelMenu] = useState(false);
     const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-    const modelMenuRef = useRef<HTMLDivElement | null>(null);
     const sendLockRef = useRef(false);
 
     // Agent mode state (Phase 4.1)
     const [currentMode, setCurrentMode] = useState<AgentMode>("general");
     const [modeOverride, setModeOverride] = useState<AgentMode | null>(null);
-    const [showModeMenu, setShowModeMenu] = useState(false);
-    const modeMenuRef = useRef<HTMLDivElement | null>(null);
-
-    // Autonomy preset state (Phase 7.2)
-    const [showPresetMenu, setShowPresetMenu] = useState(false);
-    const presetMenuRef = useRef<HTMLDivElement | null>(null);
 
     const effectiveMode = modeOverride || currentMode;
     const modeMeta = AGENT_MODE_META[effectiveMode];
@@ -71,30 +66,6 @@ export function CopilotInput({ page, section, inputPlaceholder, prefill, onPrefi
         }, 200);
         return () => clearTimeout(timer);
     }, [input, page]);
-
-    // Close mode menu on click outside
-    useEffect(() => {
-        if (!showModeMenu) return;
-        const handleClick = (e: MouseEvent) => {
-            if (modeMenuRef.current && !modeMenuRef.current.contains(e.target as Node)) {
-                setShowModeMenu(false);
-            }
-        };
-        document.addEventListener("mousedown", handleClick);
-        return () => document.removeEventListener("mousedown", handleClick);
-    }, [showModeMenu]);
-
-    // Close preset menu on click outside
-    useEffect(() => {
-        if (!showPresetMenu) return;
-        const handleClick = (e: MouseEvent) => {
-            if (presetMenuRef.current && !presetMenuRef.current.contains(e.target as Node)) {
-                setShowPresetMenu(false);
-            }
-        };
-        document.addEventListener("mousedown", handleClick);
-        return () => document.removeEventListener("mousedown", handleClick);
-    }, [showPresetMenu]);
 
     // Voice input
     const handleTranscription = useCallback((text: string) => {
@@ -111,18 +82,6 @@ export function CopilotInput({ page, section, inputPlaceholder, prefill, onPrefi
             window.localStorage.setItem("litrev_copilot_model", selectedModel);
         }
     }, [selectedModel]);
-
-    // Close model menu on click outside
-    useEffect(() => {
-        if (!showModelMenu) return;
-        const handleClickOutside = (e: MouseEvent) => {
-            if (modelMenuRef.current && !modelMenuRef.current.contains(e.target as Node)) {
-                setShowModelMenu(false);
-            }
-        };
-        document.addEventListener("mousedown", handleClickOutside);
-        return () => document.removeEventListener("mousedown", handleClickOutside);
-    }, [showModelMenu]);
 
     // Auto-resize textarea
     useEffect(() => {
@@ -157,49 +116,22 @@ export function CopilotInput({ page, section, inputPlaceholder, prefill, onPrefi
     const [showAttachPicker, setShowAttachPicker] = useState(false);
     const [projectFiles, setProjectFiles] = useState<FileAsset[]>([]);
     const [loadingProjectFiles, setLoadingProjectFiles] = useState(false);
-    const attachPickerRef = useRef<HTMLDivElement | null>(null);
-
-    // Close attachment picker on click outside
-    useEffect(() => {
-        if (!showAttachPicker) return;
-        const handleClick = (e: MouseEvent) => {
-            if (attachPickerRef.current && !attachPickerRef.current.contains(e.target as Node)) {
-                setShowAttachPicker(false);
-            }
-        };
-        document.addEventListener("mousedown", handleClick);
-        return () => document.removeEventListener("mousedown", handleClick);
-    }, [showAttachPicker]);
 
     const handleSend = useCallback(() => {
-        // Allow composing while the model is responding, but keep sends serialized.
-        if (isLoading || sendLockRef.current) return;
+        if (sendLockRef.current) return;
         const text = input.trim();
         if (!text && !pendingAttachment) return;
         sendLockRef.current = true;
         sendMessage(text, page, section, selectedModel, effectiveMode);
         setInput("");
         setModeOverride(null);
-    }, [input, isLoading, page, section, sendMessage, selectedModel, pendingAttachment, effectiveMode]);
+    }, [input, page, section, sendMessage, selectedModel, pendingAttachment, effectiveMode]);
 
-    const handleFileAttach = useCallback(() => {
-        const shouldFetch = !showAttachPicker && projectFiles.length === 0 && !loadingProjectFiles;
-        setShowAttachPicker((prev) => !prev);
-        if (shouldFetch) {
-            setLoadingProjectFiles(true);
-            listProjectFilesAction(projectId)
-                .then((files) => {
-                    const pdfs = files.filter((f) => f.format === "pdf" || f.mimeType.includes("pdf"));
-                    setProjectFiles(pdfs);
-                })
-                .catch(console.error)
-                .finally(() => setLoadingProjectFiles(false));
-        }
-    }, [projectId, showAttachPicker, projectFiles.length, loadingProjectFiles]);
+    const handleStop = useCallback(() => cancelStream(), [cancelStream]);
 
     const handleUploadNew = useCallback(() => {
         setShowAttachPicker(false);
-        fileInputRef.current?.click();
+        requestAnimationFrame(() => fileInputRef.current?.click());
     }, []);
 
     const handleFileSelected = useCallback((e: ChangeEvent<HTMLInputElement>) => {
@@ -239,7 +171,7 @@ export function CopilotInput({ page, section, inputPlaceholder, prefill, onPrefi
             >
                 {/* Mode indicator pill — shown when input has text */}
                 {input.trim() && (
-                    <div className={styles.modePill} ref={modeMenuRef}>
+                    <div className={styles.modePill}>
                         <span className={`material-icons-round ${styles.modePillIcon}`}>
                             {modeMeta.icon}
                         </span>
@@ -247,43 +179,38 @@ export function CopilotInput({ page, section, inputPlaceholder, prefill, onPrefi
                             {modeMeta.label}
                             {modeOverride && " (manual)"}
                         </span>
-                        <button
-                            type="button"
-                            className={styles.modePillChevron}
-                            onClick={() => setShowModeMenu(!showModeMenu)}
-                            aria-haspopup="listbox"
-                            aria-expanded={showModeMenu}
-                            aria-label="Change agent mode"
-                        >
-                            <span className="material-icons-round">expand_more</span>
-                        </button>
-                        {showModeMenu && (
-                            <div className={styles.modeDropdown} role="listbox">
-                                {ALL_MODES.map((mode) => {
-                                    const meta = AGENT_MODE_META[mode];
-                                    const isActive = mode === effectiveMode;
-                                    return (
-                                        <button
-                                            key={mode}
-                                            type="button"
-                                            className={`${styles.modeItem} ${isActive ? styles.modeItemActive : ""}`}
-                                            role="option"
-                                            aria-selected={isActive}
-                                            onClick={() => {
-                                                setModeOverride(mode === currentMode ? null : mode);
-                                                setShowModeMenu(false);
-                                            }}
-                                        >
-                                            <span className={`material-icons-round ${styles.modeItemIcon}`}>
-                                                {meta.icon}
-                                            </span>
-                                            <span className={styles.modeItemName}>{meta.label}</span>
-                                            <span className={styles.modeItemDesc}>{meta.description}</span>
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                        )}
+                        <DropdownMenu.Root>
+                            <DropdownMenu.Trigger asChild>
+                                <button
+                                    type="button"
+                                    className={styles.modePillChevron}
+                                    aria-label="Change agent mode"
+                                >
+                                    <span className="material-icons-round">expand_more</span>
+                                </button>
+                            </DropdownMenu.Trigger>
+                            <DropdownMenu.Portal>
+                                <DropdownMenu.Content className={styles.modeDropdown} side="bottom" align="start" sideOffset={4}>
+                                    {ALL_MODES.map((mode) => {
+                                        const meta = AGENT_MODE_META[mode];
+                                        const isActive = mode === effectiveMode;
+                                        return (
+                                            <DropdownMenu.Item
+                                                key={mode}
+                                                className={`${styles.modeItem} ${isActive ? styles.modeItemActive : ""}`}
+                                                onSelect={() => setModeOverride(mode === currentMode ? null : mode)}
+                                            >
+                                                <span className={`material-icons-round ${styles.modeItemIcon}`}>
+                                                    {meta.icon}
+                                                </span>
+                                                <span className={styles.modeItemName}>{meta.label}</span>
+                                                <span className={styles.modeItemDesc}>{meta.description}</span>
+                                            </DropdownMenu.Item>
+                                        );
+                                    })}
+                                </DropdownMenu.Content>
+                            </DropdownMenu.Portal>
+                        </DropdownMenu.Root>
                     </div>
                 )}
 
@@ -330,126 +257,134 @@ export function CopilotInput({ page, section, inputPlaceholder, prefill, onPrefi
                 <div className={styles.inputBar}>
                     <div className={styles.inputBarLeft}>
                         {/* Model selector */}
-                        <div className={styles.modelSelector} ref={modelMenuRef}>
-                            <button
-                                type="button"
-                                className={styles.modelBtn}
-                                onClick={() => setShowModelMenu(!showModelMenu)}
-                                aria-haspopup="listbox"
-                                aria-expanded={showModelMenu}
-                            >
-                                {selectedModelInfo?.name || "GPT-5.2"}
-                                <span className="material-icons-round">expand_more</span>
-                            </button>
-                            {showModelMenu && (
-                                <div className={styles.modelDropdown} role="listbox">
-                                    {USER_SELECTABLE_MODELS.map((model) => (
-                                        <button
-                                            key={model.id}
-                                            type="button"
-                                            className={`${styles.modelItem} ${selectedModel === model.id ? styles.modelItemActive : ""}`}
-                                            onClick={() => {
-                                                setSelectedModel(model.id);
-                                                setShowModelMenu(false);
-                                            }}
-                                            role="option"
-                                            aria-selected={selectedModel === model.id}
-                                        >
-                                            <div className={styles.modelItemInner}>
-                                                <span className={`material-icons-round ${styles.modelItemIcon}`}>
-                                                    {model.icon}
-                                                </span>
-                                                <span className={styles.modelItemName}>{model.name}</span>
-                                                <span className={styles.modelItemDesc}>{model.description}</span>
-                                            </div>
-                                        </button>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
+                        <DropdownMenu.Root>
+                            <DropdownMenu.Trigger asChild>
+                                <button
+                                    type="button"
+                                    className={styles.modelBtn}
+                                >
+                                    {selectedModelInfo?.name || "GPT-5.2"}
+                                    <span className="material-icons-round">expand_more</span>
+                                </button>
+                            </DropdownMenu.Trigger>
+                            <DropdownMenu.Portal>
+                                <DropdownMenu.Content className={styles.modelDropdown} side="top" align="start" sideOffset={4}>
+                                    <DropdownMenu.RadioGroup
+                                        value={selectedModel}
+                                        onValueChange={(v) => setSelectedModel(v as SelectableModelId)}
+                                    >
+                                        {USER_SELECTABLE_MODELS.map((model) => (
+                                            <DropdownMenu.RadioItem
+                                                key={model.id}
+                                                value={model.id}
+                                                className={`${styles.modelItem} ${selectedModel === model.id ? styles.modelItemActive : ""}`}
+                                            >
+                                                <div className={styles.modelItemInner}>
+                                                    <span className={`material-icons-round ${styles.modelItemIcon}`}>
+                                                        {model.icon}
+                                                    </span>
+                                                    <span className={styles.modelItemName}>{model.name}</span>
+                                                    <span className={styles.modelItemDesc}>{model.description}</span>
+                                                </div>
+                                            </DropdownMenu.RadioItem>
+                                        ))}
+                                    </DropdownMenu.RadioGroup>
+                                </DropdownMenu.Content>
+                            </DropdownMenu.Portal>
+                        </DropdownMenu.Root>
 
                         {/* Autonomy preset selector */}
-                        <div className={styles.presetSelector} ref={presetMenuRef}>
-                            <button
-                                type="button"
-                                className={styles.presetBtn}
-                                onClick={() => setShowPresetMenu(!showPresetMenu)}
-                                aria-haspopup="listbox"
-                                aria-expanded={showPresetMenu}
-                                title={`Autonomy: ${autonomyPreset}`}
-                            >
-                                <span className="material-icons-round" style={{ fontSize: 14 }}>
-                                    {autonomyPreset === "manual" ? "back_hand"
-                                        : autonomyPreset === "autonomous" ? "smart_toy"
-                                        : autonomyPreset === "custom" ? "tune"
-                                        : "handshake"}
-                                </span>
-                                <span>
-                                    {autonomyPreset === "manual" ? "Manual"
-                                        : autonomyPreset === "autonomous" ? "Auto"
-                                        : autonomyPreset === "custom" ? "Custom"
-                                        : "Assisted"}
-                                </span>
-                                <span className="material-icons-round" style={{ fontSize: 14 }}>expand_more</span>
-                            </button>
-                            {showPresetMenu && (
-                                <div className={styles.presetDropdown} role="listbox">
-                                    {([
-                                        { key: "manual" as const, icon: "back_hand", label: "Manual", desc: "Suggest only" },
-                                        { key: "assisted" as const, icon: "handshake", label: "Assisted", desc: "Propose & confirm" },
-                                        { key: "autonomous" as const, icon: "smart_toy", label: "Auto", desc: "Act & notify" },
-                                    ]).map((preset) => (
-                                        <button
-                                            key={preset.key}
-                                            type="button"
-                                            className={`${styles.presetItem} ${autonomyPreset === preset.key ? styles.presetItemActive : ""}`}
-                                            role="option"
-                                            aria-selected={autonomyPreset === preset.key}
-                                            onClick={() => {
-                                                updateAutonomyPreset(preset.key);
-                                                setShowPresetMenu(false);
-                                            }}
-                                        >
-                                            <span className={`material-icons-round ${styles.presetItemIcon}`}>
-                                                {preset.icon}
-                                            </span>
-                                            <span className={styles.presetItemName}>{preset.label}</span>
-                                            <span className={styles.presetItemDesc}>{preset.desc}</span>
-                                        </button>
-                                    ))}
-                                    <div className={styles.presetDivider} />
-                                    <button
-                                        type="button"
+                        <DropdownMenu.Root>
+                            <DropdownMenu.Trigger asChild>
+                                <button
+                                    type="button"
+                                    className={styles.presetBtn}
+                                    title={`Autonomy: ${autonomyPreset}`}
+                                >
+                                    <span className="material-icons-round" style={{ fontSize: 14 }}>
+                                        {autonomyPreset === "manual" ? "back_hand"
+                                            : autonomyPreset === "autonomous" ? "smart_toy"
+                                            : autonomyPreset === "custom" ? "tune"
+                                            : "handshake"}
+                                    </span>
+                                    <span>
+                                        {autonomyPreset === "manual" ? "Manual"
+                                            : autonomyPreset === "autonomous" ? "Auto"
+                                            : autonomyPreset === "custom" ? "Custom"
+                                            : "Assisted"}
+                                    </span>
+                                    <span className="material-icons-round" style={{ fontSize: 14 }}>expand_more</span>
+                                </button>
+                            </DropdownMenu.Trigger>
+                            <DropdownMenu.Portal>
+                                <DropdownMenu.Content className={styles.presetDropdown} side="top" align="start" sideOffset={4}>
+                                    <DropdownMenu.RadioGroup
+                                        value={autonomyPreset}
+                                        onValueChange={(v) => updateAutonomyPreset(v as AutonomyPreset)}
+                                    >
+                                        {([
+                                            { key: "manual" as const, icon: "back_hand", label: "Manual", desc: "Suggest only" },
+                                            { key: "assisted" as const, icon: "handshake", label: "Assisted", desc: "Propose & confirm" },
+                                            { key: "autonomous" as const, icon: "smart_toy", label: "Auto", desc: "Act & notify" },
+                                        ]).map((preset) => (
+                                            <DropdownMenu.RadioItem
+                                                key={preset.key}
+                                                value={preset.key}
+                                                className={`${styles.presetItem} ${autonomyPreset === preset.key ? styles.presetItemActive : ""}`}
+                                            >
+                                                <span className={`material-icons-round ${styles.presetItemIcon}`}>
+                                                    {preset.icon}
+                                                </span>
+                                                <span className={styles.presetItemName}>{preset.label}</span>
+                                                <span className={styles.presetItemDesc}>{preset.desc}</span>
+                                            </DropdownMenu.RadioItem>
+                                        ))}
+                                    </DropdownMenu.RadioGroup>
+                                    <DropdownMenu.Separator className={styles.presetDivider} />
+                                    <DropdownMenu.Item
                                         className={`${styles.presetItem} ${autonomyPreset === "custom" ? styles.presetItemActive : ""}`}
-                                        onClick={() => {
-                                            setShowPresetMenu(false);
-                                            setShowAutonomySettings(true);
-                                        }}
+                                        onSelect={() => setShowAutonomySettings(true)}
                                     >
                                         <span className={`material-icons-round ${styles.presetItemIcon}`}>tune</span>
                                         <span className={styles.presetItemName}>Customize...</span>
                                         <span className={styles.presetItemDesc}>Per-tool settings</span>
-                                    </button>
-                                </div>
-                            )}
-                        </div>
+                                    </DropdownMenu.Item>
+                                </DropdownMenu.Content>
+                            </DropdownMenu.Portal>
+                        </DropdownMenu.Root>
 
                         {/* File attachment */}
-                        <div className={styles.attachPickerWrapper} ref={attachPickerRef}>
-                            <button
-                                type="button"
-                                className={styles.actionBtn}
-                                onClick={handleFileAttach}
-                                aria-label="Attach file"
-                                title="Attach file"
-                                disabled={isAttaching}
-                            >
-                                <span className="material-icons-round">
-                                    {isAttaching ? "hourglass_top" : "add"}
-                                </span>
-                            </button>
-                            {showAttachPicker && (
-                                <div className={styles.attachPicker}>
+                        <Popover.Root
+                            open={showAttachPicker}
+                            onOpenChange={(open) => {
+                                if (open && projectFiles.length === 0 && !loadingProjectFiles) {
+                                    setLoadingProjectFiles(true);
+                                    listProjectFilesAction(projectId)
+                                        .then((files) => {
+                                            const pdfs = files.filter((f) => f.format === "pdf" || f.mimeType.includes("pdf"));
+                                            setProjectFiles(pdfs);
+                                        })
+                                        .catch(console.error)
+                                        .finally(() => setLoadingProjectFiles(false));
+                                }
+                                setShowAttachPicker(open);
+                            }}
+                        >
+                            <Popover.Trigger asChild>
+                                <button
+                                    type="button"
+                                    className={styles.actionBtn}
+                                    aria-label="Attach file"
+                                    title="Attach file"
+                                    disabled={isAttaching}
+                                >
+                                    <span className="material-icons-round">
+                                        {isAttaching ? "hourglass_top" : "add"}
+                                    </span>
+                                </button>
+                            </Popover.Trigger>
+                            <Popover.Portal>
+                                <Popover.Content className={styles.attachPicker} side="top" align="start" sideOffset={6}>
                                     <button
                                         type="button"
                                         className={styles.attachPickerItem}
@@ -480,16 +415,16 @@ export function CopilotInput({ page, section, inputPlaceholder, prefill, onPrefi
                                     {loadingProjectFiles && (
                                         <div className={styles.attachPickerLoading}>Loading...</div>
                                     )}
-                                </div>
-                            )}
-                        </div>
+                                </Popover.Content>
+                            </Popover.Portal>
+                        </Popover.Root>
 
                         {/* Voice input */}
                         <button
                             type="button"
                             className={`${styles.actionBtn} ${voiceState === "recording" ? styles.actionBtnRecording : ""}`}
                             onClick={toggleRecording}
-                            disabled={voiceState === "transcribing" || isLoading}
+                            disabled={voiceState === "transcribing"}
                             aria-label={voiceState === "recording" ? "Stop recording" : voiceState === "transcribing" ? "Transcribing..." : "Voice input"}
                             title={voiceState === "recording" ? "Stop recording" : voiceState === "transcribing" ? "Transcribing..." : "Voice input"}
                         >
@@ -499,17 +434,26 @@ export function CopilotInput({ page, section, inputPlaceholder, prefill, onPrefi
                         </button>
                     </div>
 
-                    {/* Send button */}
-                    <button
-                        type="submit"
-                        className={`${styles.sendBtn} ${(input.trim() || pendingAttachment) ? styles.sendBtnActive : ""}`}
-                        aria-label="Send"
-                        disabled={isLoading || (!input.trim() && !pendingAttachment)}
-                    >
-                        <span className="material-icons-round">
-                            {isLoading ? "more_horiz" : "arrow_upward"}
-                        </span>
-                    </button>
+                    {/* Send / Stop button */}
+                    {isLoading && !input.trim() && !pendingAttachment ? (
+                        <button
+                            type="button"
+                            className={`${styles.sendBtn} ${styles.sendBtnStop}`}
+                            aria-label="Stop generating"
+                            onClick={handleStop}
+                        >
+                            <span className="material-icons-round">stop</span>
+                        </button>
+                    ) : (
+                        <button
+                            type="submit"
+                            className={`${styles.sendBtn} ${(input.trim() || pendingAttachment) ? styles.sendBtnActive : ""}`}
+                            aria-label={isLoading ? "Send and interrupt" : "Send"}
+                            disabled={!input.trim() && !pendingAttachment}
+                        >
+                            <span className="material-icons-round">arrow_upward</span>
+                        </button>
+                    )}
                 </div>
 
                 {voiceError && (

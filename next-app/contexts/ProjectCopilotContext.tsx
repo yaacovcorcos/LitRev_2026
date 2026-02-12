@@ -72,6 +72,8 @@ type ProjectCopilotContextValue = {
     setPanelWidth: (width: number) => void;
     /** Send a message to the copilot */
     sendMessage: (text: string, page: CopilotPage, section?: string, model?: string, agentMode?: AgentMode) => void;
+    /** Cancel the current stream */
+    cancelStream: () => void;
     /** Clear all messages */
     clearMessages: () => void;
 
@@ -157,6 +159,8 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
     const [isLoading, setIsLoading] = useState(false);
     const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const abortControllerRef = useRef<AbortController | null>(null);
+    const streamGenRef = useRef(0);
+    const isLoadingRef = useRef(false);
 
     // Conversation management state
     const [conversations, setConversations] = useState<ConversationListItem[]>([]);
@@ -208,6 +212,9 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             })
             .catch(console.error);
     }, [projectId]);
+
+    // Mirror isLoading to ref so sendMessage can read it without stale closures
+    useEffect(() => { isLoadingRef.current = isLoading; }, [isLoading]);
 
     const updateAutonomyPreset = useCallback(async (preset: AutonomyPreset) => {
         setAutonomyPreset(preset);
@@ -486,11 +493,21 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
         setPendingAttachment(null);
     }, []);
 
+    const cancelStream = useCallback(() => {
+        streamGenRef.current++;
+        if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
+            abortControllerRef.current = null;
+        }
+        setIsLoading(false);
+    }, []);
+
     const sendMessage = useCallback(
         async (text: string, page: CopilotPage, section?: string, model?: string, agentMode?: AgentMode) => {
             const trimmed = text.trim();
             const attachment = pendingAttachment;
-            if ((!trimmed && !attachment) || isLoading) return;
+            if (!trimmed && !attachment) return;
+            if (isLoadingRef.current) cancelStream();
 
             // Create conversation if needed
             let convId = currentConversationId;
@@ -556,6 +573,8 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
 
             // Set loading state
             setIsLoading(true);
+            streamGenRef.current++;
+            const myGen = streamGenRef.current;
 
             // AI message ID - message will be created when first content arrives
             const aiMessageId = `m-${Date.now() + 1}`;
@@ -563,13 +582,14 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
 
             let fullContent = "";
 
+            // Cancel any in-flight stream
+            if (abortControllerRef.current) {
+                abortControllerRef.current.abort();
+            }
+            const controller = new AbortController();
+            abortControllerRef.current = controller;
+
             try {
-                // Cancel any in-flight stream
-                if (abortControllerRef.current) {
-                    abortControllerRef.current.abort();
-                }
-                const controller = new AbortController();
-                abortControllerRef.current = controller;
 
                 // Call the streaming API
                 const response = await fetch("/api/ai/stream", {
@@ -608,6 +628,7 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
                     const lines = chunk.split("\n").filter(Boolean);
 
                     for (const line of lines) {
+                        if (streamGenRef.current !== myGen) break;
                         try {
                             const data = JSON.parse(line);
                             if (data.type === "content" && data.content) {
@@ -763,6 +784,9 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
                     }
                 }
 
+                // Stale generation — skip DB save and refresh
+                if (streamGenRef.current !== myGen) return;
+
                 // Save AI response to DB
                 if (convId && fullContent) {
                     addMessage({
@@ -776,7 +800,13 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
                 loadConversations();
             } catch (error) {
                 // Silently ignore aborted requests (user navigated away or sent a new message)
-                if (error instanceof DOMException && error.name === "AbortError") return;
+                if (error instanceof DOMException && error.name === "AbortError") {
+                    // Save partial content on abort if this generation is still current
+                    if (streamGenRef.current === myGen && convId && fullContent) {
+                        addMessage({ conversationId: convId, role: "assistant", content: fullContent }).catch(console.error);
+                    }
+                    return;
+                }
 
                 console.error("AI chat error:", error);
                 const errorText = `Sorry, I encountered an error: ${error instanceof Error ? error.message : "Unknown error"}. Please try again.`;
@@ -806,10 +836,16 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
                     }));
                 }
             } finally {
-                setIsLoading(false);
+                if (streamGenRef.current === myGen) {
+                    setIsLoading(false);
+                }
+                // Defensive: clear ref only if it still points to this stream's controller
+                if (abortControllerRef.current === controller) {
+                    abortControllerRef.current = null;
+                }
             }
         },
-        [updateState, projectId, isLoading, currentConversationId, loadConversations, pendingAttachment]
+        [updateState, projectId, cancelStream, currentConversationId, loadConversations, pendingAttachment]
     );
 
     const handleReviewArtifact = useCallback(async (
@@ -877,6 +913,7 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             setCollapsed,
             setPanelWidth,
             sendMessage,
+            cancelStream,
             clearMessages,
             // Conversation management
             conversations,
@@ -920,6 +957,7 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             setCollapsed,
             setPanelWidth,
             sendMessage,
+            cancelStream,
             clearMessages,
             conversations,
             currentConversationId,
