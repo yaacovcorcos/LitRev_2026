@@ -22,10 +22,10 @@ describe("PRESET_LEVELS", () => {
     const EXPECTED_TOOLS = [
         "search_pubmed", "extract_pdf", "add_to_ledger", "exclude_study",
         "update_note", "update_criteria", "bulk_screening",
-        "retrieve_memory", "create_note",
+        "retrieve_memory", "create_note", "store_memory",
     ];
 
-    it("all 10 tools are present in each non-custom preset", () => {
+    it("all expected tools are present in each non-custom preset", () => {
         for (const preset of ["manual", "assisted", "autonomous"] as const) {
             const tools = Object.keys(PRESET_LEVELS[preset]).sort();
             expect(tools).toEqual(EXPECTED_TOOLS.sort());

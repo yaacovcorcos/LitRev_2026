@@ -19,31 +19,31 @@ describe("getToolDefinitions", () => {
     it("filters tools for protocol mode", () => {
         const defs = getToolDefinitions("protocol");
         const names = defs.map((d) => d.name).sort();
-        expect(names).toEqual(["search_pubmed", "search_semantic_scholar", "update_criteria"]);
+        expect(names).toEqual(["search_pubmed", "search_semantic_scholar", "store_memory", "update_criteria"]);
     });
 
     it("filters tools for search mode", () => {
         const defs = getToolDefinitions("search");
         const names = defs.map((d) => d.name).sort();
-        expect(names).toEqual(["add_to_ledger", "recommend_studies", "search_pubmed", "search_semantic_scholar"]);
+        expect(names).toEqual(["add_to_ledger", "recommend_studies", "search_pubmed", "search_semantic_scholar", "store_memory"]);
     });
 
     it("filters tools for screening mode", () => {
         const defs = getToolDefinitions("screening");
         const names = defs.map((d) => d.name).sort();
-        expect(names).toEqual(["bulk_screening", "exclude_study", "extract_pdf"]);
+        expect(names).toEqual(["bulk_screening", "exclude_study", "extract_pdf", "read_study_content", "store_memory"]);
     });
 
     it("filters tools for drafting mode", () => {
         const defs = getToolDefinitions("drafting");
-        const names = defs.map((d) => d.name);
-        expect(names).toEqual(["update_note"]);
+        const names = defs.map((d) => d.name).sort();
+        expect(names).toEqual(["read_study_content", "store_memory", "update_note"]);
     });
 
     it("filters tools for qa mode", () => {
         const defs = getToolDefinitions("qa");
-        const names = defs.map((d) => d.name);
-        expect(names).toEqual(["search_pubmed", "search_semantic_scholar"]);
+        const names = defs.map((d) => d.name).sort();
+        expect(names).toEqual(["read_study_content", "search_pubmed", "search_semantic_scholar", "store_memory"]);
     });
 
     it("every allowedTools entry in AGENT_MODE_CONFIG exists in AVAILABLE_TOOLS", () => {

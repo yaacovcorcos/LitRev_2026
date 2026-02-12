@@ -19,6 +19,7 @@ import { updateNoteTool } from "./update-note";
 import { semanticScholarSearchTool } from "./semantic-scholar-search";
 import { recommendStudiesTool } from "./recommend-studies";
 import { readStudyContentTool } from "./read-study-content";
+import { storeMemoryTool } from "./store-memory";
 
 /**
  * Interface for AI tools that can be called by the AI
@@ -63,6 +64,7 @@ export const AVAILABLE_TOOLS: AITool[] = [
     updateNoteTool,
     recommendStudiesTool,
     readStudyContentTool,
+    storeMemoryTool,
 ];
 
 /**

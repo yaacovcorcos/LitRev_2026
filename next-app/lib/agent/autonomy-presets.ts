@@ -17,6 +17,7 @@ export const PRESET_LEVELS: Record<AutonomyPreset, Record<string, AutonomyLevel>
         bulk_screening: 1,
         retrieve_memory: 1,
         create_note: 1,
+        store_memory: 1,
     },
     assisted: {
         search_pubmed: 2,
@@ -28,6 +29,7 @@ export const PRESET_LEVELS: Record<AutonomyPreset, Record<string, AutonomyLevel>
         bulk_screening: 2,
         retrieve_memory: 4,
         create_note: 3,
+        store_memory: 2,
     },
     autonomous: {
         search_pubmed: 4,
@@ -39,6 +41,7 @@ export const PRESET_LEVELS: Record<AutonomyPreset, Record<string, AutonomyLevel>
         bulk_screening: 2,
         retrieve_memory: 4,
         create_note: 4,
+        store_memory: 2,
     },
     custom: {},
 };

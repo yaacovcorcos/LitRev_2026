@@ -99,8 +99,6 @@ export interface MemoryProposalPayload {
     key?: string;
     value: string;
     rationale?: string;
-    category?: string;
-    importance?: string;
 }
 
 // ── Zod Schemas ──────────────────────────────────────────────────────────────
@@ -176,8 +174,6 @@ export const MemoryProposalSchema = z.object({
     key: z.string().optional(),
     value: z.string().min(1),
     rationale: z.string().optional(),
-    category: z.string().optional(),
-    importance: z.string().optional(),
 });
 
 /** Map artifact type → Zod schema for payload validation */

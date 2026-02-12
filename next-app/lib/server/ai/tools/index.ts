@@ -19,3 +19,4 @@ export { extractPdfTool } from "./extract-pdf";
 export { updateNoteTool } from "./update-note";
 export { semanticScholarSearchTool } from "./semantic-scholar-search";
 export { recommendStudiesTool } from "./recommend-studies";
+export { storeMemoryTool } from "./store-memory";

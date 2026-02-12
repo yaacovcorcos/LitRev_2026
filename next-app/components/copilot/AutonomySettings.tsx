@@ -22,6 +22,7 @@ const TOOLS: { name: string; label: string; icon: string; desc: string }[] = [
     { name: "bulk_screening", label: "Batch Screening", icon: "filter_list", desc: "Screen multiple" },
     { name: "retrieve_memory", label: "Retrieve Memory", icon: "psychology", desc: "Access past context" },
     { name: "create_note", label: "Create Note", icon: "note_add", desc: "Save observations" },
+    { name: "store_memory", label: "Store Memory", icon: "bookmark", desc: "Remember preferences" },
 ];
 
 const PRESETS: { key: Exclude<AutonomyPreset, "custom">; label: string }[] = [

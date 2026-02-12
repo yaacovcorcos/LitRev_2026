@@ -20,6 +20,7 @@ import type {
     ScreeningBatchPayload,
     CriteriaCardPayload,
     DraftDiffPayload,
+    MemoryProposalPayload,
 } from "@/types/artifacts";
 import { messagesToTimeline } from "./StreamReducer";
 import { ArtifactWrapper } from "../artifacts/ArtifactWrapper";
@@ -29,6 +30,7 @@ import { ScreeningBatch } from "../artifacts/ScreeningBatch";
 import { PICOCard, type PICOValues } from "../artifacts/PICOCard";
 import { CriteriaCard } from "../artifacts/CriteriaCard";
 import { DraftBlock } from "../artifacts/DraftBlock";
+import { MemoryCard } from "../artifacts/MemoryCard";
 import { StreamingProgress } from "./StreamingProgress";
 import styles from "../ProjectCopilot.module.css";
 import artifactStyles from "@/styles/artifacts.module.css";
@@ -264,8 +266,23 @@ export function TimelineRenderer({
                     </ArtifactWrapper>
                 );
 
+            case "memory_proposal":
+                return (
+                    <ArtifactWrapper
+                        {...wrapperProps}
+                        summaryText={`Remembered: ${(item.payload as MemoryProposalPayload)?.key ?? "preference"}`}
+                    >
+                        <MemoryCard
+                            payload={item.payload as MemoryProposalPayload}
+                            onAccept={() => handleReview("accepted")}
+                            onReject={() => handleReview("rejected")}
+                            onEditAndAccept={() => handleReview("accepted")}
+                        />
+                    </ArtifactWrapper>
+                );
+
             default:
-                // evidence_table, memory_proposal — deferred to later phases
+                // evidence_table — deferred to later phases
                 return (
                     <ArtifactWrapper {...wrapperProps} summaryText={item.title}>
                         <div style={{ padding: 8, fontSize: 13, color: "var(--text-secondary)" }}>

@@ -911,6 +911,7 @@ function mapToolToArtifactType(toolName: string): ArtifactType | null {
         bulk_screening: "screening_batch",
         update_criteria: "criteria_card",
         update_note: "draft_diff",
+        store_memory: "memory_proposal",
     };
     return mapping[toolName] ?? null;
 }
@@ -932,6 +933,8 @@ function mapToolToArtifactTitle(toolName: string, args: Record<string, unknown>)
             return "Updated criteria";
         case "update_note":
             return `Draft: ${args.section ?? "section"}`;
+        case "store_memory":
+            return `Remember: ${args.key ?? "preference"}`;
         default:
             return toolName;
     }
@@ -950,6 +953,7 @@ function mapToolToProgressMessage(toolName: string): string {
         retrieve_memory: "Retrieving memories...",
         create_note: "Creating note...",
         read_study_content: "Reading study PDF...",
+        store_memory: "Saving to memory...",
         search_semantic_scholar: "Searching Semantic Scholar...",
         recommend_studies: "Finding recommendations...",
     };

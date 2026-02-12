@@ -18,11 +18,11 @@ export interface AgentModeConfig {
 }
 
 export const AGENT_MODE_CONFIG: Record<AgentMode, AgentModeConfig> = {
-    protocol: { systemPromptKey: "protocol", allowedTools: ["update_criteria", "search_pubmed", "search_semantic_scholar"], memoryScope: "project", description: "Defining PICO and criteria" },
-    search: { systemPromptKey: "search", allowedTools: ["search_pubmed", "search_semantic_scholar", "add_to_ledger", "recommend_studies"], memoryScope: "project", description: "Finding studies" },
-    screening: { systemPromptKey: "screening", allowedTools: ["bulk_screening", "exclude_study", "extract_pdf", "read_study_content"], memoryScope: "study", description: "Evaluating studies" },
-    drafting: { systemPromptKey: "drafting", allowedTools: ["update_note", "read_study_content"], memoryScope: "project", description: "Writing sections" },
-    qa: { systemPromptKey: "qa", allowedTools: ["search_pubmed", "search_semantic_scholar", "read_study_content"], memoryScope: "project", description: "Checking citations" },
+    protocol: { systemPromptKey: "protocol", allowedTools: ["update_criteria", "search_pubmed", "search_semantic_scholar", "store_memory"], memoryScope: "project", description: "Defining PICO and criteria" },
+    search: { systemPromptKey: "search", allowedTools: ["search_pubmed", "search_semantic_scholar", "add_to_ledger", "recommend_studies", "store_memory"], memoryScope: "project", description: "Finding studies" },
+    screening: { systemPromptKey: "screening", allowedTools: ["bulk_screening", "exclude_study", "extract_pdf", "read_study_content", "store_memory"], memoryScope: "study", description: "Evaluating studies" },
+    drafting: { systemPromptKey: "drafting", allowedTools: ["update_note", "read_study_content", "store_memory"], memoryScope: "project", description: "Writing sections" },
+    qa: { systemPromptKey: "qa", allowedTools: ["search_pubmed", "search_semantic_scholar", "read_study_content", "store_memory"], memoryScope: "project", description: "Checking citations" },
     general: { systemPromptKey: "general", allowedTools: [], memoryScope: "project", description: "General conversation" },
 };
 

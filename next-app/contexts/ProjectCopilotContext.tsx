@@ -870,7 +870,7 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
         status: "accepted" | "rejected",
         note?: string
     ) => {
-        // Optimistic update
+        // Optimistic update — artifacts map
         setArtifacts((prev) => {
             const next = new Map(prev);
             const existing = next.get(artifactId);
@@ -879,6 +879,16 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             }
             return next;
         });
+
+        // Optimistic update — message-level artifact status (drives TimelineRenderer)
+        updateState((prev) => ({
+            ...prev,
+            messages: prev.messages.map((msg) =>
+                msg.artifact?.id === artifactId
+                    ? { ...msg, artifact: { ...msg.artifact, status } }
+                    : msg
+            ),
+        }));
 
         // Call server action
         const result = await reviewArtifactAction(artifactId, status, note);
@@ -893,8 +903,16 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
                 }
                 return next;
             });
+            updateState((prev) => ({
+                ...prev,
+                messages: prev.messages.map((msg) =>
+                    msg.artifact?.id === artifactId
+                        ? { ...msg, artifact: { ...msg.artifact, status: "proposed" } }
+                        : msg
+                ),
+            }));
         }
-    }, []);
+    }, [updateState]);
 
     const summarizeAndRefresh = useCallback(async () => {
         if (!currentConversationId || isSummarizing) return;
