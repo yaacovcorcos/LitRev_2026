@@ -15,7 +15,7 @@
     transition: all 0.3s ease;
 }
 
-.modal-overlay.active {
+.modal-overlay[data-state="open"] {
     opacity: 1;
     visibility: visible;
 }
@@ -33,7 +33,7 @@
     transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.modal-overlay.active .modal-glass {
+.modal-overlay[data-state="open"] .modal-glass {
     transform: translateY(0);
 }
 
