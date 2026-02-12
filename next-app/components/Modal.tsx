@@ -22,6 +22,7 @@ export function Modal({ isOpen, onClose, title = "Dialog", ariaLabelledBy, child
         <Dialog.Content
           className="modal-glass"
           aria-labelledby={ariaLabelledBy}
+          aria-describedby={undefined}
         >
           <VisuallyHidden>
             <Dialog.Title>{title}</Dialog.Title>

@@ -21,20 +21,24 @@
 }
 
 .modal-glass {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    translate: -50% calc(-50% + 20px);
+    z-index: 2001;
     background: rgba(255, 255, 255, 0.85);
     backdrop-filter: blur(20px);
     border: 1px solid rgba(255, 255, 255, 0.9);
     padding: 32px;
     border-radius: 24px;
-    width: 100%;
+    width: calc(100% - 32px);
     max-width: 500px;
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
-    transform: translateY(20px);
-    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: translate 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.modal-overlay[data-state="open"] .modal-glass {
-    transform: translateY(0);
+.modal-glass[data-state="open"] {
+    translate: -50% -50%;
 }
 
 .modal-header {
