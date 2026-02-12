@@ -8,14 +8,17 @@ const inputSchema = z.object({
 });
 
 const outputSchema = z.object({
+    query: z.string(),
+    source: z.string(),
+    totalResults: z.number(),
+    returnedCount: z.number(),
     results: z.array(z.object({
-        pmid: z.string().optional(),
         title: z.string(),
         authors: z.string(),
         year: z.number(),
     }).passthrough()),
-    totalCount: z.number().optional(),
-}).passthrough();
+    nextCursor: z.string().optional(),
+});
 
 export const pubmedSearchTool: AITool = {
     definition: {

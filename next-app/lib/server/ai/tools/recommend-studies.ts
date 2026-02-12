@@ -11,13 +11,16 @@ const inputSchema = z.object({
 });
 
 const outputSchema = z.object({
+    source: z.string(),
+    basedOn: z.number(),
+    negativeSeeds: z.number(),
+    returnedCount: z.number(),
     results: z.array(z.object({
         title: z.string(),
         authors: z.string(),
         year: z.number(),
     }).passthrough()),
-    basedOn: z.number(),
-}).passthrough();
+});
 
 export const recommendStudiesTool: AITool = {
     definition: {
