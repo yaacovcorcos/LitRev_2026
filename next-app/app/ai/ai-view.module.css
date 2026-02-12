@@ -640,15 +640,21 @@
     border-top-right-radius: 4px;
 }
 
+.messageStack {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
 .messageActions {
     display: flex;
     gap: 4px;
-    margin-top: 8px;
+    margin-top: 2px;
     opacity: 0;
     transition: opacity 0.2s;
 }
 
-.messageContent:hover .messageActions {
+.messageStack:hover .messageActions {
     opacity: 1;
 }
 
@@ -1009,6 +1015,16 @@
 
 .inputSendBtnActive:hover {
     background: var(--color-interactive-dark);
+}
+
+.inputSendBtnStop {
+    background: var(--color-danger);
+    color: white;
+    cursor: pointer;
+}
+
+.inputSendBtnStop:hover {
+    background: var(--color-danger-hover);
 }
 
 .inputSendBtn:disabled {

@@ -131,6 +131,9 @@ export default function AIView() {
   const shouldAutoScrollRef = useRef(true);
   const projectDropdownRef = useRef<HTMLDivElement | null>(null);
   const modelDropdownRef = useRef<HTMLDivElement | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const streamGenRef = useRef(0);
+  const sendLockRef = useRef(false);
 
   const selectedModelInfo = USER_SELECTABLE_MODELS.find((m) => m.id === selectedModel) || USER_SELECTABLE_MODELS[0];
 
@@ -178,6 +181,16 @@ export default function AIView() {
     return () => document.removeEventListener("mousedown", handleClick);
   }, [isModelDropdownOpen]);
 
+  // Reset send lock when streaming ends
+  useEffect(() => {
+    if (!isTyping) sendLockRef.current = false;
+  }, [isTyping]);
+
+  // Abort any in-flight stream on unmount
+  useEffect(() => {
+    return () => { abortControllerRef.current?.abort(); };
+  }, []);
+
   // Load conversations when project context changes
   useEffect(() => {
     let isActive = true;
@@ -220,9 +233,20 @@ export default function AIView() {
     return `You are a literature review assistant for researchers. ${toneLine} ${projectLine}`;
   }, []);
 
+  const cancelStream = useCallback(() => {
+    streamGenRef.current++;
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    setIsTyping(false);
+  }, []);
+
   const handleSend = async (text?: string) => {
     const msgText = (text ?? input).trim();
-    if (!msgText || isTyping) return;
+    if (!msgText || sendLockRef.current) return;
+    if (isTyping) cancelStream();
+    sendLockRef.current = true;
 
     const toneSnapshot = tone;
     const modelSnapshot = selectedModel;
@@ -269,6 +293,15 @@ export default function AIView() {
     let aiMessageCreated = false;
 
     setIsTyping(true);
+    streamGenRef.current++;
+    const myGen = streamGenRef.current;
+
+    // Cancel any in-flight stream
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
 
     let fullContent = "";
 
@@ -285,6 +318,7 @@ export default function AIView() {
             model: modelSnapshot,
           },
         }),
+        signal: controller.signal,
       });
 
       if (!response.ok) {
@@ -306,6 +340,7 @@ export default function AIView() {
         const lines = chunk.split("\n").filter(Boolean);
 
         for (const line of lines) {
+          if (streamGenRef.current !== myGen) break;
           try {
             const data = JSON.parse(line);
             if (data.type === "content" && data.content) {
@@ -385,6 +420,8 @@ export default function AIView() {
         }
       }
     } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return;
+
       const errorText = err instanceof Error ? err.message : "AI request failed";
 
       // Create error message if no AI message was created yet
@@ -412,13 +449,18 @@ export default function AIView() {
         );
       }
     } finally {
-      setIsTyping(false);
-      setConversations((prev) => {
-        const next = prev.map((conv) =>
-          conv.id === convId ? { ...conv, updatedAt: new Date().toISOString() } : conv
-        );
-        return next.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
-      });
+      if (streamGenRef.current === myGen) {
+        setIsTyping(false);
+        setConversations((prev) => {
+          const next = prev.map((conv) =>
+            conv.id === convId ? { ...conv, updatedAt: new Date().toISOString() } : conv
+          );
+          return next.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+        });
+      }
+      if (abortControllerRef.current === controller) {
+        abortControllerRef.current = null;
+      }
     }
   };
 
@@ -477,7 +519,9 @@ export default function AIView() {
   };
 
   const handleRegenerateMessage = async (messageId: string) => {
-    if (isTyping || !activeConversationId) return;
+    if (sendLockRef.current || !activeConversationId) return;
+    if (isTyping) cancelStream();
+    sendLockRef.current = true;
 
     const convId = activeConversationId;
     const conv = conversations.find((c) => c.id === convId);
@@ -510,7 +554,16 @@ export default function AIView() {
     );
 
     setIsTyping(true);
+    streamGenRef.current++;
+    const myGen = streamGenRef.current;
     shouldAutoScrollRef.current = true;
+
+    // Cancel any in-flight stream
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
 
     let fullContent = "";
 
@@ -527,6 +580,7 @@ export default function AIView() {
             model: modelSnapshot,
           },
         }),
+        signal: controller.signal,
       });
 
       if (!response.ok) {
@@ -548,6 +602,7 @@ export default function AIView() {
         const lines = chunk.split("\n").filter(Boolean);
 
         for (const line of lines) {
+          if (streamGenRef.current !== myGen) break;
           try {
             const data = JSON.parse(line);
             if (data.type === "content" && data.content) {
@@ -629,6 +684,8 @@ export default function AIView() {
         }
       }
     } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return;
+
       const errorText = err instanceof Error ? err.message : "AI request failed";
 
       // Create error message if no AI message was created yet
@@ -656,13 +713,18 @@ export default function AIView() {
         );
       }
     } finally {
-      setIsTyping(false);
-      setConversations((prev) => {
-        const next = prev.map((c) =>
-          c.id === convId ? { ...c, updatedAt: new Date().toISOString() } : c
-        );
-        return next.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
-      });
+      if (streamGenRef.current === myGen) {
+        setIsTyping(false);
+        setConversations((prev) => {
+          const next = prev.map((c) =>
+            c.id === convId ? { ...c, updatedAt: new Date().toISOString() } : c
+          );
+          return next.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+        });
+      }
+      if (abortControllerRef.current === controller) {
+        abortControllerRef.current = null;
+      }
     }
   };
 
@@ -839,36 +901,40 @@ export default function AIView() {
                           <span className="material-icons-round">smart_toy</span>
                         </div>
                       )}
-                      <div className={`${styles.messageContent} ${msg.sender === "ai" ? styles.aiBubble : styles.userBubble}`}>
-                        {msg.sender === "ai" ? (
-                          <div className={markdownStyles.markdownContent}>
-                            <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{msg.text}</ReactMarkdown>
+                      {msg.sender === "ai" ? (
+                        <div className={styles.messageStack}>
+                          <div className={`${styles.messageContent} ${styles.aiBubble}`}>
+                            <div className={markdownStyles.markdownContent}>
+                              <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{msg.text}</ReactMarkdown>
+                            </div>
                           </div>
-                        ) : (
-                          <p>{msg.text}</p>
-                        )}
-                        {msg.sender === "ai" && msg.text && (
-                          <div className={styles.messageActions}>
-                            {isLastAiMessage && (
+                          {msg.text && (
+                            <div className={styles.messageActions}>
+                              {isLastAiMessage && (
+                                <button
+                                  className={styles.messageActionBtn}
+                                  onClick={() => handleRegenerateMessage(msg.id)}
+                                  aria-label="Regenerate response"
+                                  disabled={isTyping}
+                                >
+                                  <span className="material-icons-round">refresh</span>
+                                </button>
+                              )}
                               <button
                                 className={styles.messageActionBtn}
-                                onClick={() => handleRegenerateMessage(msg.id)}
-                                aria-label="Regenerate response"
-                                disabled={isTyping}
+                                onClick={() => handleCopyMessage(msg.text)}
+                                aria-label="Copy message"
                               >
-                                <span className="material-icons-round">refresh</span>
+                                <span className="material-icons-round">content_copy</span>
                               </button>
-                            )}
-                            <button
-                              className={styles.messageActionBtn}
-                              onClick={() => handleCopyMessage(msg.text)}
-                              aria-label="Copy message"
-                            >
-                              <span className="material-icons-round">content_copy</span>
-                            </button>
-                          </div>
-                        )}
-                      </div>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className={`${styles.messageContent} ${styles.userBubble}`}>
+                          <p>{msg.text}</p>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -900,7 +966,7 @@ export default function AIView() {
             >
               {/* Upper floor: textarea */}
               <textarea
-                placeholder={isTyping ? "Thinking..." : "Ask anything about your research..."}
+                placeholder={isTyping ? "Keep typing..." : "Ask anything about your research..."}
                 aria-label="Chat input"
                 value={input}
                 onChange={(e) => {
@@ -915,7 +981,6 @@ export default function AIView() {
                     handleSend();
                   }
                 }}
-                disabled={isTyping}
                 rows={1}
                 className={styles.inputTextarea}
               />
@@ -979,17 +1044,26 @@ export default function AIView() {
                   </div>
                 </div>
 
-                {/* Send button */}
-                <button
-                  type="submit"
-                  className={`${styles.inputSendBtn} ${input.trim() ? styles.inputSendBtnActive : ""}`}
-                  aria-label="Send"
-                  disabled={isTyping || !input.trim()}
-                >
-                  <span className="material-icons-round">
-                    {isTyping ? "more_horiz" : "arrow_upward"}
-                  </span>
-                </button>
+                {/* Send / Stop button */}
+                {isTyping && !input.trim() ? (
+                  <button
+                    type="button"
+                    className={`${styles.inputSendBtn} ${styles.inputSendBtnStop}`}
+                    aria-label="Stop generating"
+                    onClick={cancelStream}
+                  >
+                    <span className="material-icons-round">stop</span>
+                  </button>
+                ) : (
+                  <button
+                    type="submit"
+                    className={`${styles.inputSendBtn} ${input.trim() ? styles.inputSendBtnActive : ""}`}
+                    aria-label={isTyping ? "Send and interrupt" : "Send"}
+                    disabled={!input.trim()}
+                  >
+                    <span className="material-icons-round">arrow_upward</span>
+                  </button>
+                )}
               </div>
             </form>
             <p className={styles.disclaimer}>AI can make mistakes. Please verify important information.</p>

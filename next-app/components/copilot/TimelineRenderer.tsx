@@ -311,11 +311,13 @@ export function TimelineRenderer({
             case "assistant_message":
                 return (
                     <div key={item.id} className={`${styles.chatMsg} ${styles.chatMsgAi}`}>
-                        <div className={styles.chatBubble}>
-                            <div className={`${markdownStyles.markdownContent} ${isStreaming && index === lastAssistantIndex ? styles.streaming : ""}`}>
-                                <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-                                    {item.content}
-                                </ReactMarkdown>
+                        <div className={styles.chatStack}>
+                            <div className={styles.chatBubble}>
+                                <div className={`${markdownStyles.markdownContent} ${isStreaming && index === lastAssistantIndex ? styles.streaming : ""}`}>
+                                    <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                                        {item.content}
+                                    </ReactMarkdown>
+                                </div>
                             </div>
                             <div className={`${styles.chatActions} ${savedNoteId === item.id ? styles.chatActionsVisible : ""}`}>
                                 <button

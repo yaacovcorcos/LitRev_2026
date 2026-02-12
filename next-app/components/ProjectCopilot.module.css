@@ -38,7 +38,6 @@
 
 /* Conversation Selector Dropdown */
 .conversationSelector {
-    position: relative;
     flex: 1;
     min-width: 0;
 }
@@ -75,16 +74,12 @@
     transition: transform 0.2s ease;
 }
 
-.conversationSelectorBtn[aria-expanded="true"] .chevronIcon {
+.conversationSelectorBtn[data-state="open"] .chevronIcon {
     transform: rotate(180deg);
 }
 
 /* Conversation Dropdown */
 .conversationDropdown {
-    position: absolute;
-    top: calc(100% + 4px);
-    left: 0;
-    right: 0;
     min-width: 240px;
     max-width: 320px;
     background: white;
@@ -151,6 +146,12 @@
 
 .conversationDropdownItemActive {
     background: rgba(217, 116, 89, 0.1);
+}
+
+.conversationDropdownItemHighlight {
+    background: rgba(0, 0, 0, 0.06);
+    outline: 2px solid var(--accent-primary);
+    outline-offset: -2px;
 }
 
 .conversationDropdownTitle {
@@ -308,8 +309,15 @@
     justify-content: flex-end;
 }
 
-.chatBubble {
+.chatStack {
+    display: flex;
+    flex-direction: column;
     max-width: 92%;
+    min-width: 0;
+}
+
+.chatBubble {
+    max-width: 100%;
     min-width: 0;
     padding: 12px;
     border-radius: 16px;
@@ -339,13 +347,13 @@
     display: flex;
     justify-content: flex-end;
     align-items: center;
-    margin-top: 6px;
+    margin-top: 2px;
     gap: 2px;
     opacity: 0;
     transition: opacity 0.15s ease;
 }
 
-.chatMsgAi:hover .chatActions {
+.chatStack:hover .chatActions {
     opacity: 1;
 }
 
@@ -367,12 +375,12 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 28px;
-    height: 28px;
+    width: 24px;
+    height: 24px;
     padding: 0;
     background: transparent;
     border: none;
-    border-radius: 6px;
+    border-radius: 5px;
     cursor: pointer;
     color: var(--text-muted);
     transition: background 0.15s ease, color 0.15s ease;
@@ -384,7 +392,7 @@
 }
 
 .chatActionBtn .material-icons-round {
-    font-size: 16px;
+    font-size: 14px;
 }
 
 /* ========================================
@@ -456,10 +464,6 @@
 }
 
 /* Model Selector */
-.modelSelector {
-    position: relative;
-}
-
 .modelBtn {
     display: flex;
     align-items: center;
@@ -485,9 +489,6 @@
 }
 
 .modelDropdown {
-    position: absolute;
-    bottom: calc(100% + 4px);
-    left: 0;
     min-width: 260px;
     background: white;
     border: 1px solid var(--glass-border);
@@ -661,6 +662,16 @@
 
 .sendBtnActive:hover {
     background: var(--color-interactive-dark);
+}
+
+.sendBtnStop {
+    background: var(--color-danger);
+    color: white;
+    cursor: pointer;
+}
+
+.sendBtnStop:hover {
+    background: var(--color-danger-hover);
 }
 
 .suggestRow {
@@ -934,14 +945,7 @@
 }
 
 /* Attachment picker popover */
-.attachPickerWrapper {
-    position: relative;
-}
-
 .attachPicker {
-    position: absolute;
-    bottom: calc(100% + 6px);
-    left: 0;
     width: 220px;
     background: white;
     border: 1px solid var(--glass-border);
@@ -1019,7 +1023,6 @@
     color: var(--text-secondary);
     font-size: 11px;
     font-weight: 500;
-    position: relative;
 }
 
 .modePillIcon {
@@ -1055,9 +1058,6 @@
 }
 
 .modeDropdown {
-    position: absolute;
-    top: calc(100% + 4px);
-    left: 0;
     min-width: 240px;
     background: white;
     border: 1px solid var(--glass-border);
@@ -1118,10 +1118,6 @@
    AUTONOMY PRESET SELECTOR (Phase 7.2)
    ======================================== */
 
-.presetSelector {
-    position: relative;
-}
-
 .presetBtn {
     display: flex;
     align-items: center;
@@ -1144,9 +1140,6 @@
 }
 
 .presetDropdown {
-    position: absolute;
-    bottom: calc(100% + 4px);
-    left: 0;
     min-width: 220px;
     background: white;
     border: 1px solid var(--glass-border);
@@ -1477,6 +1470,11 @@
     padding-left: 14px;
     background: rgba(217, 116, 89, 0.04);
     border-radius: 0 8px 8px 0;
+}
+
+/* AI messages: full-width stack in page mode */
+.pageLayout .chatStack {
+    max-width: 100%;
 }
 
 /* AI messages: no decoration, full-width content */
