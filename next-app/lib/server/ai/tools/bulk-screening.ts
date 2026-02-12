@@ -134,7 +134,7 @@ export const bulkScreeningTool: AITool = {
                 const details = (study.details as Record<string, unknown>) ?? {};
                 const abstract = (details.abstract as string) || "No abstract available";
 
-                const prompt = `Screen this study against the criteria below. Return ONLY a JSON object with: { "decision": "keep"|"exclude"|"maybe", "reason": "one sentence", "confidence": 0.0-1.0 }
+                const prompt = `Screen this study against the criteria below. Return ONLY a JSON object with: { "decision": "keep"|"exclude"|"maybe", "reason": "brief criterion-linked rationale", "confidence": 0.0-1.0 }
 
 Study: "${study.title}" (${study.authors}, ${study.year})
 Abstract: ${abstract.slice(0, 2000)}
@@ -147,7 +147,24 @@ ${criteriaText}`;
                             {
                                 id: "system",
                                 role: "system" as const,
-                                content: "You are a study screening assistant. Evaluate studies against inclusion/exclusion criteria. Return only valid JSON.",
+                                content: `You are screening one study for a systematic review using title and abstract only.
+
+At this stage, prioritize recall: when evidence is incomplete or ambiguous, prefer "maybe" over "exclude".
+
+Decision guidance:
+- keep: likely aligns with inclusion criteria and no clear exclusion trigger.
+- exclude: clear mismatch with a required inclusion criterion or clear match to an exclusion criterion.
+- maybe: borderline fit, missing abstract/details, or uncertainty that requires full-text review.
+
+Evaluate criterion fit (population, intervention/exposure, outcomes, study design), not just keyword overlap.
+
+Use only the provided study text and criteria. Do not infer unsupported details.
+
+Return a brief rationale that cites the strongest criterion signal driving the decision.
+
+Set confidence (0-1) based on how explicit the evidence is in title/abstract; lower confidence when inference is needed.
+
+Return ONLY valid JSON.`,
                                 createdAt: new Date().toISOString(),
                             },
                             {
