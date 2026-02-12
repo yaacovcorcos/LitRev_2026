@@ -6,7 +6,7 @@ import { fetchPdfFromStorage, extractTextFromPdf } from "@/lib/server/pdf-extrac
 const MAX_RETURN_CHARS = 12000; // ~3k tokens — fits in context without overwhelming
 
 const inputSchema = z.object({
-    studyId: z.string().min(1, "studyId is required"),
+    studyId: z.string().optional(),
     section: z
         .enum(["abstract", "introduction", "methods", "results", "discussion", "conclusion", "full"])
         .optional()
@@ -51,13 +51,13 @@ export const readStudyContentTool: AITool = {
     definition: {
         name: "read_study_content",
         description:
-            "Read the full text or a specific section of a study's uploaded PDF. Use this when you need to reference specific passages, verify claims, or analyze content beyond what's in the study snapshot context. Sections: abstract, introduction, methods, results, discussion, conclusion, or full.",
+            "Read the full text or a specific section of a study's uploaded PDF. Use the study ID from [STUDY_CONTEXT] or [LEDGER_CONTEXT] — do not ask the user for it.",
         parameters: {
             type: "object",
             properties: {
                 studyId: {
                     type: "string",
-                    description: "The study ID to read content from",
+                    description: "The study ID. If omitted, defaults to the study the user is currently viewing.",
                 },
                 section: {
                     type: "string",
@@ -66,7 +66,7 @@ export const readStudyContentTool: AITool = {
                         "Which section to extract. Defaults to 'full'. Use a specific section to get focused content within token limits.",
                 },
             },
-            required: ["studyId"],
+            required: [],
         },
     },
 
@@ -79,14 +79,21 @@ export const readStudyContentTool: AITool = {
     },
 
     async execute(args: Record<string, unknown>, context?: ToolExecutionContext) {
-        const studyId = args.studyId as string;
-        const projectId = (context?.projectId ?? args.projectId) as string;
+        const studyId = (args.studyId ?? context?.studyId) as string | undefined;
+        const projectId = (context?.projectId ?? args.projectId) as string | undefined;
         const section = (args.section as string) ?? "full";
+
+        if (!studyId) {
+            return { callId: "", result: null, error: "No study specified and no study in current view" };
+        }
+        if (!projectId) {
+            return { callId: "", result: null, error: "No project context available" };
+        }
 
         try {
             // Find the study
             const study = await prisma.study.findFirst({
-                where: { id: studyId, ...(projectId ? { projectId } : {}) },
+                where: { id: studyId, projectId },
                 select: { id: true, title: true },
             });
 

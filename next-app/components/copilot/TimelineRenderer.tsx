@@ -19,6 +19,7 @@ import type {
     StudyProposalPayload,
     ScreeningBatchPayload,
     CriteriaCardPayload,
+    ProtocolSuggestionPayload,
     DraftDiffPayload,
     MemoryProposalPayload,
 } from "@/types/artifacts";
@@ -27,7 +28,7 @@ import { ArtifactWrapper } from "../artifacts/ArtifactWrapper";
 import { PlanCard } from "../artifacts/PlanCard";
 import { StudyCard } from "../artifacts/StudyCard";
 import { ScreeningBatch } from "../artifacts/ScreeningBatch";
-import { PICOCard, type PICOValues } from "../artifacts/PICOCard";
+import { ProtocolEditCard } from "../artifacts/ProtocolEditCard";
 import { CriteriaCard } from "../artifacts/CriteriaCard";
 import { DraftBlock } from "../artifacts/DraftBlock";
 import { MemoryCard } from "../artifacts/MemoryCard";
@@ -226,27 +227,28 @@ export function TimelineRenderer({
                 return (
                     <ArtifactWrapper
                         {...wrapperProps}
-                        summaryText="PICO saved to protocol"
+                        summaryText={`Protocol updated: ${(item.payload as ProtocolSuggestionPayload)?.field ?? "field"}`}
                     >
-                        <PICOCard
-                            payload={item.payload as PICOValues}
+                        <ProtocolEditCard
+                            payload={item.payload as ProtocolSuggestionPayload}
                             onAccept={() => handleReview("accepted")}
-                            onEdit={() => {/* Phase 2: handle inline edits */}}
+                            onEdit={() => {/* TODO: edit-then-accept flow */}}
                         />
                     </ArtifactWrapper>
                 );
 
             case "criteria_card":
+                // Legacy: read-only renderer for old criteria_card artifacts still in DB
                 return (
                     <ArtifactWrapper
                         {...wrapperProps}
-                        summaryText={`${(item.payload as CriteriaCardPayload)?.inclusion?.length ?? 0} inclusion + ${(item.payload as CriteriaCardPayload)?.exclusion?.length ?? 0} exclusion criteria saved`}
+                        summaryText={`${(item.payload as CriteriaCardPayload)?.inclusion?.length ?? 0} inclusion + ${(item.payload as CriteriaCardPayload)?.exclusion?.length ?? 0} exclusion criteria`}
                     >
                         <CriteriaCard
                             payload={item.payload as CriteriaCardPayload}
                             onSave={() => handleReview("accepted")}
-                            onAdd={() => {/* Phase 2: handle adds */}}
-                            onRemove={() => {/* Phase 2: handle removes */}}
+                            onAdd={() => {}}
+                            onRemove={() => {}}
                         />
                     </ArtifactWrapper>
                 );

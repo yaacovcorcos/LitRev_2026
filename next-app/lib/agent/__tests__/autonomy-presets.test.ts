@@ -21,7 +21,7 @@ describe("PRESET_LEVELS", () => {
 
     const EXPECTED_TOOLS = [
         "search_pubmed", "extract_pdf", "add_to_ledger", "exclude_study",
-        "update_note", "update_criteria", "bulk_screening",
+        "update_note", "update_protocol", "bulk_screening",
         "retrieve_memory", "create_note", "store_memory",
     ];
 

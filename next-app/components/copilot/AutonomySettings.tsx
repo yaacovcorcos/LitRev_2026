@@ -18,7 +18,7 @@ const TOOLS: { name: string; label: string; icon: string; desc: string }[] = [
     { name: "add_to_ledger", label: "Add to Ledger", icon: "playlist_add", desc: "Add studies" },
     { name: "exclude_study", label: "Exclude Study", icon: "remove_circle_outline", desc: "Remove studies" },
     { name: "update_note", label: "Update Note", icon: "edit_note", desc: "Write draft sections" },
-    { name: "update_criteria", label: "Update Criteria", icon: "rule", desc: "Change protocol" },
+    { name: "update_protocol", label: "Update Protocol", icon: "rule", desc: "Change protocol fields" },
     { name: "bulk_screening", label: "Batch Screening", icon: "filter_list", desc: "Screen multiple" },
     { name: "retrieve_memory", label: "Retrieve Memory", icon: "psychology", desc: "Access past context" },
     { name: "create_note", label: "Create Note", icon: "note_add", desc: "Save observations" },

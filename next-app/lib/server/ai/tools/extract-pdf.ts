@@ -5,7 +5,7 @@ import { extractStudyFromPdf, deepAnalyzeStudyFromPdf } from "@/lib/server/pdf-e
 import { createMemoriesFromDeepAnalysis } from "@/lib/server/memory/study-memory";
 
 const inputSchema = z.object({
-    studyId: z.string().min(1, "studyId is required"),
+    studyId: z.string().optional(),
     deep: z.boolean().optional().default(false),
 });
 
@@ -21,20 +21,20 @@ export const extractPdfTool: AITool = {
     definition: {
         name: "extract_pdf",
         description:
-            "Extract metadata and content from a study's uploaded PDF. Runs regex extraction + AI analysis to pull title, authors, year, abstract, DOI, and other fields. Set deep=true for full analysis (study type, quality, keywords). Idempotent: skips extraction if the study already has extracted data.",
+            "Extract metadata and content from a study's uploaded PDF. Runs regex extraction + AI analysis to pull title, authors, year, abstract, DOI, and other fields. Set deep=true for full analysis (study type, quality, keywords). Idempotent. Use the study ID from [STUDY_CONTEXT] or [LEDGER_CONTEXT] — do not ask the user for it.",
         parameters: {
             type: "object",
             properties: {
                 studyId: {
                     type: "string",
-                    description: "The study ID to extract PDF data for",
+                    description: "The study ID. If omitted, defaults to the study the user is currently viewing.",
                 },
                 deep: {
                     type: "boolean",
                     description: "If true, run deep analysis (study type, quality, keywords) in addition to basic extraction. Default: false.",
                 },
             },
-            required: ["studyId"],
+            required: [],
         },
     },
 
@@ -47,14 +47,21 @@ export const extractPdfTool: AITool = {
     },
 
     async execute(args: Record<string, unknown>, context?: ToolExecutionContext) {
-        const studyId = args.studyId as string;
-        const projectId = (context?.projectId ?? args.projectId) as string;
+        const studyId = (args.studyId ?? context?.studyId) as string | undefined;
+        const projectId = (context?.projectId ?? args.projectId) as string | undefined;
         const deep = (args.deep as boolean) ?? false;
+
+        if (!studyId) {
+            return { callId: "", result: null, error: "No study specified and no study in current view" };
+        }
+        if (!projectId) {
+            return { callId: "", result: null, error: "No project context available" };
+        }
 
         try {
             // Find the study and its PDF file
             const study = await prisma.study.findFirst({
-                where: { id: studyId, ...(projectId ? { projectId } : {}) },
+                where: { id: studyId, projectId },
                 select: { id: true, title: true, authors: true, year: true, details: true },
             });
 

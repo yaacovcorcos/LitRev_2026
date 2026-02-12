@@ -68,6 +68,7 @@ export interface ScreeningBatchPayload {
 export interface ProtocolSuggestionPayload {
     field: string;
     value: unknown;
+    oldValue?: unknown;
     rationale: string;
 }
 
@@ -143,6 +144,7 @@ export const ScreeningBatchSchema = z.object({
 export const ProtocolSuggestionSchema = z.object({
     field: z.string().min(1),
     value: z.unknown(),
+    oldValue: z.unknown().optional(),
     rationale: z.string(),
 });
 

@@ -26,6 +26,7 @@ function buildPopupSystemPrompt(ctx: PopupChatContext): string {
     switch (ctx.type) {
         case "study":
             contextBlock = buildStudyContext({
+                id: ctx.studyId ?? "",
                 title: ctx.title,
                 authors: ctx.authors ?? "",
                 year: 0,

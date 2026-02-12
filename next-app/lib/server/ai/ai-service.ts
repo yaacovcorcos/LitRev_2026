@@ -18,7 +18,7 @@ import { startRun, endRun } from "@/lib/server/agent/run";
 import { emitEvent } from "@/lib/server/agent/events";
 import { createArtifact, applyArtifact } from "@/lib/server/agent/artifacts";
 import { getAutonomyConfig, getToolAutonomyLevel } from "@/lib/server/agent/autonomy";
-import { assembleSystemPrompt, buildProtocolContext, buildLedgerContext, buildAutonomyContext, buildLocationContext, buildStudyContext } from "@/lib/ai/prompts/copilot-prompts";
+import { assembleSystemPrompt, buildProjectContext, buildProtocolContext, buildLedgerContext, buildAutonomyContext, buildLocationContext, buildStudyContext } from "@/lib/ai/prompts/copilot-prompts";
 import type { StudyContextData } from "@/lib/ai/prompts/copilot-prompts";
 import { AGENT_MODE_CONFIG } from "@/lib/agent/router";
 import { LoopState, type StopReason } from "@/lib/agent/loop-controller";
@@ -267,7 +267,7 @@ class AIService {
     async *executeToolWithAutonomy(
         toolCall: ToolCall,
         runId: string,
-        projectId: string,
+        projectId: string | undefined,
         conversationId: string,
         userId?: string,
         agentMode?: AgentMode,
@@ -353,7 +353,7 @@ class AIService {
         // Determine artifact type from tool name
         const artifactType = mapToolToArtifactType(toolCall.name);
 
-        if (artifactType && result.result) {
+        if (artifactType && result.result && projectId) {
             if (level === 2) {
                 // Propose: create artifact with "proposed" status, yield to client
                 const artifact = await createArtifact({
@@ -465,25 +465,32 @@ class AIService {
         try {
             // Retrieve memories + project context in parallel
             const ctxSpan = startContextSpan(trace, "context-assembly");
-            const [memoriesContext, protocolRow, studyCounts, autonomyConfig, studyRow] = await Promise.all([
+            const [memoriesContext, protocolRow, studyLedger, autonomyConfig, studyRow, projectRow] = await Promise.all([
                 retrieveAndFormatMemories({ userId, projectId, studyId, query: userMessage, agentMode, runId: run.id }),
                 projectId ? prisma.protocol.findFirst({ where: { projectId }, select: { data: true } }) : null,
-                projectId ? computeStudyCounts(projectId) : null,
+                projectId ? computeStudyLedger(projectId) : null,
                 getAutonomyConfig(userId, projectId),
-                studyId ? prisma.study.findUnique({ where: { id: studyId }, select: { title: true, authors: true, year: true, quality: true, details: true } }) : null,
+                studyId ? prisma.study.findUnique({ where: { id: studyId }, select: { id: true, title: true, authors: true, year: true, quality: true, details: true } }) : null,
+                projectId ? prisma.project.findUnique({ where: { id: projectId }, select: { name: true } }) : null,
             ]);
             ctxSpan.update({ output: {
                 hasMemories: !!memoriesContext,
                 hasProtocol: !!protocolRow,
                 hasStudy: !!studyRow,
-                studyCounts,
+                studyLedger: studyLedger?.counts,
+                hasProject: !!projectRow,
             }}).end();
 
             // Assemble context-aware system prompt (Phase 4.3)
+            const projectContext = projectRow && projectId
+                ? buildProjectContext(projectRow.name, projectId)
+                : "";
             const protocolContext = protocolRow?.data
                 ? buildProtocolContext(protocolRow.data as unknown as ProtocolData)
                 : "";
-            const ledgerContext = studyCounts ? buildLedgerContext(studyCounts) : "";
+            const ledgerContext = studyLedger
+                ? buildLedgerContext(studyLedger.counts, studyLedger.list, studyLedger.truncated)
+                : "";
             const autonomyContext = buildAutonomyContext(autonomyConfig.preset);
 
             // Build study context from study metadata + details JSON
@@ -491,6 +498,7 @@ class AIService {
             if (studyRow) {
                 const d = (studyRow.details ?? {}) as Record<string, unknown>;
                 studyContext = buildStudyContext({
+                    id: studyRow.id,
                     title: studyRow.title,
                     authors: studyRow.authors,
                     year: studyRow.year,
@@ -510,6 +518,7 @@ class AIService {
 
             const systemPrompt = assembleSystemPrompt({
                 agentMode,
+                projectContext,
                 protocolContext,
                 ledgerContext,
                 locationContext: buildLocationContext(options?.page, options?.section),
@@ -690,7 +699,7 @@ class AIService {
                         conversationId: conversation.id,
                     };
 
-                    const gen = this.executeToolWithAutonomy(tc, run.id, projectId || "global", conversation.id, userId, agentMode, trace, studyId);
+                    const gen = this.executeToolWithAutonomy(tc, run.id, projectId, conversation.id, userId, agentMode, trace, studyId);
                     let genResult = await gen.next();
                     while (!genResult.done) {
                         yield { ...genResult.value, conversationId: conversation.id };
@@ -916,7 +925,7 @@ function mapToolToArtifactType(toolName: string): ArtifactType | null {
         exclude_study: "study_proposal",
         extract_pdf: "study_proposal",
         bulk_screening: "screening_batch",
-        update_criteria: "criteria_card",
+        update_protocol: "protocol_suggestion",
         update_note: "draft_diff",
         store_memory: "memory_proposal",
     };
@@ -936,8 +945,8 @@ function mapToolToArtifactTitle(toolName: string, args: Record<string, unknown>)
             return `Extract: ${args.filename ?? "PDF"}`;
         case "bulk_screening":
             return "Batch screening results";
-        case "update_criteria":
-            return "Updated criteria";
+        case "update_protocol":
+            return `Protocol: ${args.field ?? "update"}`;
         case "update_note":
             return `Draft: ${args.section ?? "section"}`;
         case "store_memory":
@@ -955,7 +964,7 @@ function mapToolToProgressMessage(toolName: string): string {
         exclude_study: "Excluding study...",
         extract_pdf: "Extracting PDF data...",
         bulk_screening: "Screening studies...",
-        update_criteria: "Updating criteria...",
+        update_protocol: "Updating protocol...",
         update_note: "Writing draft...",
         retrieve_memory: "Retrieving memories...",
         create_note: "Creating note...",
@@ -969,22 +978,35 @@ function mapToolToProgressMessage(toolName: string): string {
 
 // ── Study count helper for prompt context ────────────────────────────────────
 
-async function computeStudyCounts(projectId: string) {
+const MAX_STUDY_LIST = 50;
+
+async function computeStudyLedger(projectId: string) {
     const studies = await prisma.study.findMany({
         where: { projectId },
-        select: { details: true },
+        select: { id: true, title: true, authors: true, year: true, details: true },
+        orderBy: { createdAt: "asc" },
     });
     let included = 0, excluded = 0, maybe = 0, unscreened = 0;
+    const list: { id: string; title: string; authors: string; year: number; status: string }[] = [];
     for (const s of studies) {
         const d = s.details as Record<string, unknown> | null;
-        switch (d?.triageDecision) {
+        const status = (d?.triageDecision as string) || "unscreened";
+        switch (status) {
             case "keep": included++; break;
             case "exclude": excluded++; break;
             case "maybe": maybe++; break;
             default: unscreened++; break;
         }
+        // Only include per-study list when ledger is reasonably sized
+        if (list.length < MAX_STUDY_LIST && studies.length <= 200) {
+            list.push({ id: s.id, title: s.title, authors: s.authors, year: s.year, status });
+        }
     }
-    return { total: studies.length, included, excluded, maybe, unscreened };
+    return {
+        counts: { total: studies.length, included, excluded, maybe, unscreened },
+        list,
+        truncated: studies.length > MAX_STUDY_LIST,
+    };
 }
 
 // ── Loop stop reason messages ────────────────────────────────────────────────

@@ -19,7 +19,7 @@ describe("getToolDefinitions", () => {
     it("filters tools for protocol mode", () => {
         const defs = getToolDefinitions("protocol");
         const names = defs.map((d) => d.name).sort();
-        expect(names).toEqual(["search_pubmed", "search_semantic_scholar", "store_memory", "update_criteria"]);
+        expect(names).toEqual(["search_pubmed", "search_semantic_scholar", "store_memory", "update_protocol"]);
     });
 
     it("filters tools for search mode", () => {

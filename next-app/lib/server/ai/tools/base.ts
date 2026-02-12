@@ -12,7 +12,7 @@ import { AGENT_MODE_CONFIG } from "@/lib/agent/router";
 import { pubmedSearchTool } from "./pubmed-search";
 import { addToLedgerTool } from "./add-to-ledger";
 import { excludeStudyTool } from "./exclude-study";
-import { updateCriteriaTool } from "./update-criteria";
+import { updateProtocolTool } from "./update-protocol";
 import { bulkScreeningTool } from "./bulk-screening";
 import { extractPdfTool } from "./extract-pdf";
 import { updateNoteTool } from "./update-note";
@@ -58,7 +58,7 @@ export const AVAILABLE_TOOLS: AITool[] = [
     semanticScholarSearchTool,
     addToLedgerTool,
     excludeStudyTool,
-    updateCriteriaTool,
+    updateProtocolTool,
     bulkScreeningTool,
     extractPdfTool,
     updateNoteTool,

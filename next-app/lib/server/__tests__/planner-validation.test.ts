@@ -184,7 +184,7 @@ function getHeuristicToolName(msg: string): string {
         "screen studies": "bulk_screening",
         "add to ledger": "add_to_ledger",
         "exclude study": "exclude_study",
-        "update criteria": "update_criteria",
+        "update criteria": "update_protocol",
         "draft section": "update_note",
     };
     return map[msg] ?? "";

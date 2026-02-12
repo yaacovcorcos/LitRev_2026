@@ -3,7 +3,7 @@ import type { AITool, ToolExecutionContext } from "./base";
 import { prisma } from "@/lib/server/prisma";
 
 const inputSchema = z.object({
-    studyId: z.string().min(1, "studyId is required"),
+    studyId: z.string().optional(),
     reason: z.string().min(1, "reason is required"),
 });
 
@@ -17,20 +17,20 @@ export const excludeStudyTool: AITool = {
     definition: {
         name: "exclude_study",
         description:
-            "Exclude a study from the evidence ledger with a reason. Sets the study's triage decision to 'exclude'. Use this when a study does not meet the inclusion criteria or should be removed from the review for a specific reason.",
+            "Exclude a study from the evidence ledger with a reason. Sets the study's triage decision to 'exclude'. Use the study ID from [STUDY_CONTEXT] or [LEDGER_CONTEXT] — do not ask the user for it.",
         parameters: {
             type: "object",
             properties: {
                 studyId: {
                     type: "string",
-                    description: "The ID of the study to exclude",
+                    description: "The study ID. If omitted, defaults to the study the user is currently viewing.",
                 },
                 reason: {
                     type: "string",
                     description: "The reason for exclusion (e.g., 'wrong population', 'case report', 'no control group')",
                 },
             },
-            required: ["studyId", "reason"],
+            required: ["reason"],
         },
     },
 
@@ -44,13 +44,20 @@ export const excludeStudyTool: AITool = {
     },
 
     async execute(args: Record<string, unknown>, context?: ToolExecutionContext) {
-        const studyId = args.studyId as string;
-        const projectId = (context?.projectId ?? args.projectId) as string;
+        const studyId = (args.studyId ?? context?.studyId) as string | undefined;
+        const projectId = (context?.projectId ?? args.projectId) as string | undefined;
         const reason = args.reason as string;
+
+        if (!studyId) {
+            return { callId: "", result: null, error: "No study specified and no study in current view" };
+        }
+        if (!projectId) {
+            return { callId: "", result: null, error: "No project context available" };
+        }
 
         try {
             const study = await prisma.study.findFirst({
-                where: { id: studyId, ...(projectId ? { projectId } : {}) },
+                where: { id: studyId, projectId },
                 select: { id: true, title: true, details: true },
             });
 

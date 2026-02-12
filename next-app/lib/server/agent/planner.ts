@@ -44,7 +44,7 @@ export function detectMultiStepWorkflow(
         exclude_study: ["exclude", "remove", "reject"],
         extract_pdf: ["extract", "pdf", "parse"],
         bulk_screening: ["screen", "batch", "screening"],
-        update_criteria: ["criteria", "inclusion", "exclusion"],
+        update_protocol: ["criteria", "inclusion", "exclusion", "pico", "population", "intervention"],
         update_note: ["draft", "write", "section"],
     };
 
@@ -149,9 +149,9 @@ function generateHeuristicPlan(message: string, _context: PlanContext): PlanPayl
     // Criteria step
     if (/\b(?:criteria|inclusion|exclusion)\b/.test(lower)) {
         steps.push({
-            label: "Update inclusion/exclusion criteria",
-            toolName: "update_criteria",
-            description: "Refine the review criteria",
+            label: "Update protocol criteria",
+            toolName: "update_protocol",
+            description: "Refine the review protocol",
             status: "pending",
         });
     }
