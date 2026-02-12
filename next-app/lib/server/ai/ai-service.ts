@@ -7,7 +7,7 @@
 import type { AIMessage, AIResponse, ChatOptions, AIStreamChunk, ConversationContext, ToolCall, ToolResult } from "@/types/ai";
 import type { ArtifactType } from "@/types/artifacts";
 import type { AutonomyLevel, AgentMode } from "@/types/agent";
-import { BaseAIProvider, getOpenAIProvider, getAnthropicProvider, getXAIProvider } from "./providers";
+import { BaseAIProvider, getOpenAIProvider, getAnthropicProvider, getXAIProvider, getGoogleProvider } from "./providers";
 import { getOrCreateConversation, addMessageToConversation, getConversationWithSummary, autoSummarizeIfNeeded } from "./memory";
 import { validateRateLimits, recordUsage } from "./rate-limiter";
 import { retrieveAndFormatMemories } from "@/lib/server/memory";
@@ -21,6 +21,8 @@ import { getAutonomyConfig, getToolAutonomyLevel } from "@/lib/server/agent/auto
 import { assembleSystemPrompt, buildProtocolContext, buildLedgerContext, buildAutonomyContext } from "@/lib/ai/prompts/copilot-prompts";
 import { AGENT_MODE_CONFIG } from "@/lib/agent/router";
 import { LoopState, type StopReason } from "@/lib/agent/loop-controller";
+import { startRunTrace, startLLMGeneration, startToolSpan, startContextSpan, flushTracing, NOOP_SPAN } from "./tracing";
+import type { TracingSpan } from "./tracing";
 import { prisma } from "@/lib/server/prisma";
 import type { ProtocolData } from "@/types/protocol";
 
@@ -38,6 +40,9 @@ class AIService {
 
         const xai = getXAIProvider();
         if (xai.isConfigured()) this.registerProvider(xai);
+
+        const google = getGoogleProvider();
+        if (google.isConfigured()) this.registerProvider(google);
     }
 
     /**
@@ -80,6 +85,7 @@ class AIService {
                 if (!provider) {
                     const envVar = providerId === "anthropic" ? "ANTHROPIC_API_KEY"
                         : providerId === "xai" ? "XAI_API_KEY"
+                        : providerId === "google" ? "GEMINI_API_KEY"
                         : "OPENAI_API_KEY";
                     throw new Error(
                         `Provider "${providerId}" is not configured. Set the ${envVar} environment variable.`
@@ -262,7 +268,8 @@ class AIService {
         projectId: string,
         conversationId: string,
         userId?: string,
-        agentMode?: AgentMode
+        agentMode?: AgentMode,
+        traceSpan?: TracingSpan
     ): AsyncGenerator<AIStreamChunk, ToolResult> {
         // Defense-in-depth: reject tool calls not allowed in the current mode
         if (agentMode) {
@@ -317,6 +324,7 @@ class AIService {
         }
 
         // Level >= 2: execute the tool
+        const toolSpan = startToolSpan(traceSpan ?? NOOP_SPAN, toolCall.name, toolCall.arguments);
         const startTime = Date.now();
         const result = await executeTool(toolCall.name, toolCall.arguments, toolCall.id, {
             projectId,
@@ -325,6 +333,7 @@ class AIService {
             autonomyLevel: level,
         });
         const durationMs = Date.now() - startTime;
+        toolSpan.update({ output: { success: !result.error, durationMs } }).end();
 
         // Emit tool_result event
         await emitEvent(runId, "tool_result", {
@@ -434,6 +443,15 @@ class AIService {
             model: options?.model,
         });
 
+        // Start Langfuse trace for this run
+        const trace = startRunTrace(run.id, {
+            projectId: projectId || "global",
+            agentMode,
+            model: options?.model,
+            userId,
+            conversationId: conversation.id,
+        });
+
         // Yield run_start event
         yield { type: "run_start", runId: run.id, conversationId: conversation.id };
 
@@ -442,12 +460,18 @@ class AIService {
 
         try {
             // Retrieve memories + project context in parallel
+            const ctxSpan = startContextSpan(trace, "context-assembly");
             const [memoriesContext, protocolRow, studyCounts, autonomyConfig] = await Promise.all([
                 retrieveAndFormatMemories({ userId, projectId, studyId, query: userMessage, agentMode, runId: run.id }),
                 projectId ? prisma.protocol.findFirst({ where: { projectId }, select: { data: true } }) : null,
                 projectId ? computeStudyCounts(projectId) : null,
                 getAutonomyConfig(userId, projectId),
             ]);
+            ctxSpan.update({ output: {
+                hasMemories: !!memoriesContext,
+                hasProtocol: !!protocolRow,
+                studyCounts,
+            }}).end();
 
             // Assemble context-aware system prompt (Phase 4.3)
             const protocolContext = protocolRow?.data
@@ -573,6 +597,12 @@ class AIService {
                 const collectedToolCalls: ToolCall[] = [];
                 let contentSoFar = "";
 
+                const genSpan = startLLMGeneration(trace, `llm-call-${loop.iterations}`, {
+                    model: chatOptions.model,
+                    inputMessageCount: currentMessages.length,
+                    toolCount: toolDefs.length,
+                });
+
                 for await (const chunk of this.streamChat(currentMessages, chatOptions)) {
                     if (chunk.type === "tool_call" && chunk.toolCall) {
                         collectedToolCalls.push(chunk.toolCall);
@@ -585,8 +615,10 @@ class AIService {
                         if (chunk.usage) {
                             totalTokensIn += chunk.usage.inputTokens;
                             totalTokensOut += chunk.usage.outputTokens;
+                            genSpan.update({ usageDetails: { input: chunk.usage.inputTokens, output: chunk.usage.outputTokens } });
                         }
                     } else if (chunk.type === "error") {
+                        genSpan.end();
                         loop.markStopped("error");
                         yield { ...chunk, conversationId: conversation.id };
                         await endRun(run.id, "failed");
@@ -594,6 +626,7 @@ class AIService {
                         return;
                     }
                 }
+                genSpan.end();
 
                 if (collectedToolCalls.length === 0) {
                     loop.markStopped("natural");
@@ -622,7 +655,7 @@ class AIService {
                         conversationId: conversation.id,
                     };
 
-                    const gen = this.executeToolWithAutonomy(tc, run.id, projectId || "global", conversation.id, userId, agentMode);
+                    const gen = this.executeToolWithAutonomy(tc, run.id, projectId || "global", conversation.id, userId, agentMode, trace);
                     let genResult = await gen.next();
                     while (!genResult.done) {
                         yield { ...genResult.value, conversationId: conversation.id };
@@ -666,6 +699,16 @@ class AIService {
                 budget, currentTokens
             );
 
+            // Finalize trace
+            trace.update({ metadata: {
+                stopReason: finalStopReason,
+                iterations: loop.iterations,
+                toolCalls: loop.totalToolCalls,
+                totalTokensIn,
+                totalTokensOut,
+            }}).end();
+            await flushTracing();
+
             await endRun(run.id, runStatus, totalTokensIn, totalTokensOut);
             yield {
                 type: "run_end",
@@ -679,7 +722,10 @@ class AIService {
                 conversationId: conversation.id,
             };
         } catch (error) {
-            // End run with failure
+            // End trace + run with failure
+            trace.update({ metadata: { error: error instanceof Error ? error.message : "Unknown" } }).end();
+            await flushTracing();
+
             await endRun(run.id, "failed");
             yield {
                 type: "error",

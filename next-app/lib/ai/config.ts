@@ -2,7 +2,7 @@
  * AI Configuration Registry
  * Environment-driven configuration for AI providers and models
  *
- * Current setup: OpenAI GPT-5.2 models, Anthropic Claude, xAI Grok
+ * Current setup: OpenAI GPT-5.2 models, Anthropic Claude, xAI Grok, Google Gemini
  * Token usage is tracked accurately via streaming API
  */
 
@@ -57,6 +57,13 @@ export const USER_SELECTABLE_MODELS = [
         icon: "rocket_launch",
         provider: "xai",
     },
+    {
+        id: "gemini-3-flash-preview",
+        name: "Gemini 3 Flash",
+        description: "Fast and cheap, 1M context",
+        icon: "flash_on",
+        provider: "google",
+    },
 ] as const;
 
 export type SelectableModelId = typeof USER_SELECTABLE_MODELS[number]["id"];
@@ -75,6 +82,9 @@ export const AVAILABLE_MODELS = {
     ],
     xai: [
         { id: "grok-4-1-fast", name: "Grok 4.1 Fast", contextWindow: 2000000, capabilities: ["chat", "tools"] },
+    ],
+    google: [
+        { id: "gemini-3-flash-preview", name: "Gemini 3 Flash", contextWindow: 1048576, capabilities: ["chat", "vision", "tools"] },
     ],
 } as const;
 
