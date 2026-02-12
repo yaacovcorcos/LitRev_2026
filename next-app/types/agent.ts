@@ -112,4 +112,5 @@ export const HARD_CAPS: Record<string, AutonomyLevel> = {
     bulk_screening: 2,
     update_note: 2,
     exclude_study: 2,
+    store_memory: 2,
 };

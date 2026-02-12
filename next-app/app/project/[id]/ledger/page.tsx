@@ -21,6 +21,7 @@ import type { FileAsset } from "@/types/files";
 import type { Study, StudyDetails, TriageDecision } from "@/types/ledger";
 import { validateStudyFile } from "@/lib/fileValidation";
 import { ConfirmDialog, AlertDialog } from "@/components/ConfirmDialog";
+import { usePopupChat } from "@/contexts/PopupChatContext";
 
 type CriteriaFilter = "all" | "meets-criteria" | "fails-criteria" | "in-date-range" | "matching-design";
 
@@ -58,6 +59,7 @@ const StudyRow = memo(function StudyRow({
     onTriage,
 }: StudyRowProps) {
     const router = useRouter();
+    const { openPopupChat } = usePopupChat();
     const d: StudyDetails = study.details ?? {};
 
     const summaryText = d.aiSummary || d.abstract || "No summary available.";
@@ -191,6 +193,22 @@ const StudyRow = memo(function StudyRow({
                                     onClick={(e) => { e.stopPropagation(); onTriage(study.id, "maybe"); }}
                                 >
                                     Maybe
+                                </button>
+                                <button
+                                    className={styles.triageBtn}
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        openPopupChat({
+                                            type: "study",
+                                            studyId: study.id,
+                                            title: study.title,
+                                            abstract: displaySummary,
+                                            authors: study.authors,
+                                        });
+                                    }}
+                                >
+                                    <span className="material-icons-round">smart_toy</span>
+                                    Ask AI
                                 </button>
                             </div>
 

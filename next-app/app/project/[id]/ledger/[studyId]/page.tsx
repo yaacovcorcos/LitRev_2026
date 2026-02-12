@@ -688,6 +688,7 @@ export default function StudyDetailPage() {
                     {/* Copilot Panel */}
                     <ProjectCopilot
                         page="study"
+                        studyId={studyId}
                         contextDisplay={study.title}
                         emptyState={{
                             icon: "psychology",

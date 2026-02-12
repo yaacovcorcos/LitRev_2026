@@ -9,6 +9,9 @@ import { AppShell } from "@/components/AppShell";
 import { ProjectTabBar } from "@/components/project/ProjectTabBar";
 import { ConversationMainView } from "@/components/project/ConversationMainView";
 import { ProjectCopilot } from "@/components/ProjectCopilot";
+import { PopupChat } from "@/components/PopupChat";
+import { PopupChatProvider } from "@/contexts/PopupChatContext";
+import { getStudyAction } from "@/app/actions/ledger";
 import styles from "./project-shell.module.css";
 
 const RAIL_WIDTH = 44;
@@ -134,10 +137,25 @@ function ProjectShellInner({ projectId, children }: ProjectShellInnerProps) {
     }), [focusMode, activeTab, setActiveTab, returnToConversation]);
 
     // Copilot props for the view mode panel
-    const isStudyDetail = /\/ledger\/[^/]+\/?$/.test(pathname);
+    const studyDetailMatch = pathname.match(/\/ledger\/([^/]+)\/?$/);
+    const isStudyDetail = !!studyDetailMatch;
+    const copilotStudyId = studyDetailMatch?.[1];
     const copilotPage = isStudyDetail ? "study" : (activeTab ?? "overview");
+
+    // Fetch study title for the copilot context display
+    const [studyTitle, setStudyTitle] = useState<string | null>(null);
+    useEffect(() => {
+        if (copilotStudyId && projectId) {
+            getStudyAction(projectId, copilotStudyId)
+                .then((study) => setStudyTitle(study?.title ?? null))
+                .catch(() => setStudyTitle(null));
+        } else {
+            setStudyTitle(null);
+        }
+    }, [copilotStudyId, projectId]);
+
     const copilotContextDisplay = isStudyDetail
-        ? "Study"
+        ? (studyTitle || "Study")
         : activeTab
             ? `${activeTab.charAt(0).toUpperCase() + activeTab.slice(1)}`
             : "Project";
@@ -172,6 +190,7 @@ function ProjectShellInner({ projectId, children }: ProjectShellInnerProps) {
                         />
                         <ProjectCopilot
                             page={copilotPage as import("@/contexts/ProjectCopilotContext").CopilotPage}
+                            studyId={copilotStudyId}
                             contextDisplay={copilotContextDisplay}
                             emptyState={{
                                 icon: "smart_toy",
@@ -202,9 +221,12 @@ export default function ProjectLayout({ children }: ProjectLayoutProps) {
 
     return (
         <ProjectCopilotProvider projectId={projectId}>
-            <ProjectShellInner projectId={projectId}>
-                {children}
-            </ProjectShellInner>
+            <PopupChatProvider>
+                <ProjectShellInner projectId={projectId}>
+                    {children}
+                </ProjectShellInner>
+                <PopupChat projectId={projectId} />
+            </PopupChatProvider>
         </ProjectCopilotProvider>
     );
 }

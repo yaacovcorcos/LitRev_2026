@@ -71,4 +71,11 @@
     --header-height: 44px;
     --content-top-offset: 12px;
     --mobile-nav-height: 72px;
+
+    /* Scrollbar */
+    --scrollbar-size: 4px;
+    --scrollbar-thumb: rgba(0, 0, 0, 0.10);
+    --scrollbar-thumb-hover: rgba(0, 0, 0, 0.20);
+    --scrollbar-track: transparent;
+    --scrollbar-radius: 3px;
 }

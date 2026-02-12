@@ -18,6 +18,7 @@ import { EditableList } from "@/components/EditableList";
 import { EditableChips } from "@/components/EditableChips";
 import { ProtocolSection } from "@/types/protocol";
 import { getMockProtocolData } from "@/data/mockProtocols";
+import { usePopupChat } from "@/contexts/PopupChatContext";
 import { calculatePRISMACounts } from "@/lib/criteriaMatching";
 
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
@@ -30,6 +31,7 @@ function ProtocolPageContent() {
     const { getProjectById } = useProjects();
     const { isEmbeddedInProjectShell } = useProjectShell();
     const { isCollapsed, panelWidth, setPanelWidth, sendMessage, setCollapsed } = useProjectCopilot();
+    const { openPopupChat } = usePopupChat();
     const {
         protocol,
         activeSection,
@@ -523,10 +525,14 @@ function ProtocolPageContent() {
                                         <button
                                             type="button"
                                             className={styles.askCopilotBtn}
-                                            onClick={() => handleQuickAction("Help me refine my PICO criteria", "pico-population")}
+                                            onClick={() => openPopupChat({
+                                                type: "protocol_section",
+                                                section: "PICO Framework",
+                                                currentContent: `Population: ${protocol.pico.population}\nIntervention: ${protocol.pico.intervention}\nComparison: ${protocol.pico.comparison}\nOutcome: ${protocol.pico.outcome}`,
+                                            })}
                                         >
                                             <span className="material-icons-round">smart_toy</span>
-                                            Ask Copilot
+                                            Ask AI
                                         </button>
                                     </div>
                                     <div className={styles.picoGrid}>
@@ -589,10 +595,14 @@ function ProtocolPageContent() {
                                         <button
                                             type="button"
                                             className={styles.askCopilotBtn}
-                                            onClick={() => handleQuickAction("Review my eligibility criteria for gaps", "eligibility-inclusion")}
+                                            onClick={() => openPopupChat({
+                                                type: "protocol_section",
+                                                section: "Eligibility Criteria",
+                                                currentContent: `Inclusion: ${protocol.eligibility.inclusion.join("; ")}\nExclusion: ${protocol.eligibility.exclusion.join("; ")}`,
+                                            })}
                                         >
                                             <span className="material-icons-round">smart_toy</span>
-                                            Ask Copilot
+                                            Ask AI
                                         </button>
                                     </div>
                                     <div className={styles.criteriaLists}>
@@ -639,10 +649,14 @@ function ProtocolPageContent() {
                                         <button
                                             type="button"
                                             className={styles.askCopilotBtn}
-                                            onClick={() => handleQuickAction("Help optimize my search query", "search-query")}
+                                            onClick={() => openPopupChat({
+                                                type: "protocol_section",
+                                                section: "Search Strategy",
+                                                currentContent: `Query: ${protocol.searchStrategy.query}\nDatabases: ${protocol.searchStrategy.databases.join(", ")}`,
+                                            })}
                                         >
                                             <span className="material-icons-round">smart_toy</span>
-                                            Ask Copilot
+                                            Ask AI
                                         </button>
                                     </div>
                                     <div className={styles.searchBox}>
@@ -684,10 +698,14 @@ function ProtocolPageContent() {
                                         <button
                                             type="button"
                                             className={styles.askCopilotBtn}
-                                            onClick={() => handleQuickAction("Help me choose appropriate study designs and quality assessment tools", "methodology-designs")}
+                                            onClick={() => openPopupChat({
+                                                type: "protocol_section",
+                                                section: "Methodology",
+                                                currentContent: `Study designs: ${protocol.methodology.studyDesigns.join(", ")}\nTime frame: ${protocol.methodology.timeFrameStart} - ${protocol.methodology.timeFrameEnd}\nQuality tool: ${protocol.methodology.qualityAssessmentTool}`,
+                                            })}
                                         >
                                             <span className="material-icons-round">smart_toy</span>
-                                            Ask Copilot
+                                            Ask AI
                                         </button>
                                     </div>
 
@@ -794,7 +812,7 @@ function ProtocolPageContent() {
                     {/* Copilot Panel */}
                     <ProjectCopilot
                         page="protocol"
-                        section={activeSection ?? undefined}
+                        section={activeSectionLabel ?? undefined}
                         contextDisplay={getContextDisplay()}
                         emptyState={{
                             icon: "assignment",

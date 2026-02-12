@@ -65,16 +65,18 @@ export async function listConversations(params: {
     userId?: string;
     workspaceId?: string;
     projectId?: string;
+    studyId?: string;
     page?: CopilotPage;
     limit?: number;
 }): Promise<ConversationSummary[]> {
-    const { userId, workspaceId, projectId, page, limit = 50 } = params;
+    const { userId, workspaceId, projectId, studyId, page, limit = 50 } = params;
 
     const conversations = await prisma.aIConversation.findMany({
         where: {
             userId: userId || undefined,
             workspaceId: workspaceId || undefined,
             projectId: projectId || undefined,
+            studyId: studyId || undefined,
             page: page || undefined,
             archived: false,
         },
@@ -169,6 +171,7 @@ export async function createConversation(params: {
             workspaceId,
             projectId,
             studyId,
+            page: params.page,
             context,
             title: title || null,
         },

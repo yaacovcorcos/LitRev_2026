@@ -12,6 +12,7 @@ import {
     type ExtractionErrorCode,
 } from "@/lib/server/pdf-extraction";
 import type { Study, StudyDetails } from "@/types/ledger";
+import { createMemoriesFromDeepAnalysis } from "@/lib/server/memory/study-memory";
 
 export type ExtractionActionResult = {
     success: boolean;
@@ -219,6 +220,16 @@ export async function deepAnalyzeStudyAction(
         }
 
         const updatedStudy = await updateStudy(SINGLE_USER_SCOPE, projectId, studyId, updates);
+
+        // Create StudyMemory records from deep analysis
+        await createMemoriesFromDeepAnalysis(
+            studyId,
+            projectId,
+            { ...result.details, deepAnalysisComplete: true } as Record<string, unknown>,
+            result.quality
+        ).catch((err) => {
+            console.error("Failed to create study memories from deep analysis:", err);
+        });
 
         return { success: true, study: updatedStudy };
     } catch (err) {

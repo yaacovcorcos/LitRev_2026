@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { AITool } from "./base";
 import { prisma } from "@/lib/server/prisma";
 import { extractStudyFromPdf, deepAnalyzeStudyFromPdf } from "@/lib/server/pdf-extraction";
+import { createMemoriesFromDeepAnalysis } from "@/lib/server/memory/study-memory";
 
 const inputSchema = z.object({
     studyId: z.string().min(1, "studyId is required"),
@@ -125,6 +126,16 @@ export const extractPdfTool: AITool = {
                         ...(result.quality ? { quality: result.quality.toLowerCase() } : {}),
                         details: mergedDetails as object,
                     },
+                });
+
+                // Create StudyMemory records from deep analysis
+                await createMemoriesFromDeepAnalysis(
+                    studyId,
+                    projectId,
+                    mergedDetails as Record<string, unknown>,
+                    result.quality
+                ).catch((err) => {
+                    console.error("Failed to create study memories from deep analysis:", err);
                 });
 
                 return {

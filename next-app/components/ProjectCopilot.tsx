@@ -20,6 +20,8 @@ export type ProjectCopilotProps = {
     page: CopilotPage;
     /** Optional section context (e.g., for draft sections) */
     section?: string;
+    /** Optional study ID for study-scoped context */
+    studyId?: string;
     /** Context display string (e.g., "Introduction · 3 evidence") */
     contextDisplay: string;
     /** Empty state configuration */
@@ -40,6 +42,7 @@ export type ProjectCopilotProps = {
 export function ProjectCopilot({
     page,
     section,
+    studyId,
     contextDisplay,
     emptyState,
     inputPlaceholder,
@@ -58,6 +61,8 @@ export function ProjectCopilot({
         selectConversation,
         newConversation,
         handleReviewArtifact,
+        // Study-scoped conversation filtering
+        setStudyFilter,
         // Autonomy settings (Phase 7)
         setShowAutonomySettings,
     } = useProjectCopilot();
@@ -66,6 +71,12 @@ export function ProjectCopilot({
     const [conversationSearch, setConversationSearch] = useState("");
     const [activeDescendantId, setActiveDescendantId] = useState<string | null>(null);
     const listRef = useRef<HTMLDivElement | null>(null);
+
+    // Scope conversations to this study when on a study page
+    useEffect(() => {
+        setStudyFilter(studyId);
+        return () => setStudyFilter(undefined);
+    }, [studyId, setStudyFilter]);
 
     // Reset active descendant when search changes
     useEffect(() => {
@@ -292,7 +303,7 @@ export function ProjectCopilot({
                             onClick={async () => {
                                 setShowConversationDropdown(false);
                                 setConversationSearch("");
-                                await newConversation(page);
+                                await newConversation(page, studyId);
                             }}
                             aria-label="New conversation"
                             title="New conversation"
@@ -337,6 +348,7 @@ export function ProjectCopilot({
                 <CopilotInput
                     page={page}
                     section={section}
+                    studyId={studyId}
                     inputPlaceholder={inputPlaceholder}
                 />
             </div>

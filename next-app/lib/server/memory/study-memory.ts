@@ -144,6 +144,23 @@ export async function deleteStudyMemory(id: string) {
 }
 
 /**
+ * Delete all study memories for a study that have a specific tag.
+ * Used for idempotent re-creation (e.g., deep analysis re-runs).
+ */
+export async function deleteStudyMemoriesByTag(
+    studyId: string,
+    tag: string
+): Promise<number> {
+    const result = await prisma.studyMemory.deleteMany({
+        where: {
+            studyId,
+            tags: { has: tag },
+        },
+    });
+    return result.count;
+}
+
+/**
  * Search study memories
  */
 export async function searchStudyMemories(
@@ -207,4 +224,77 @@ export async function getStudyMemorySummary(studyId: string) {
     }, {} as Record<string, typeof memories>);
 
     return grouped;
+}
+
+/**
+ * Create StudyMemory records from deep analysis results.
+ * Idempotent: deletes any existing "deep-analysis" tagged memories first.
+ */
+export async function createMemoriesFromDeepAnalysis(
+    studyId: string,
+    projectId: string,
+    details: Record<string, unknown>,
+    quality?: string
+): Promise<void> {
+    await deleteStudyMemoriesByTag(studyId, "deep-analysis");
+
+    const memories: CreateStudyMemoryInput[] = [];
+
+    if (typeof details.aiSummary === "string" && details.aiSummary.length > 0) {
+        memories.push({
+            studyId,
+            projectId,
+            type: "summary",
+            content: details.aiSummary,
+            source: "ai_generated",
+            confidence: 0.8,
+            tags: ["deep-analysis"],
+        });
+    }
+
+    const methodsParts: string[] = [];
+    if (typeof details.studyType === "string") methodsParts.push(`Study type: ${details.studyType}`);
+    if (typeof details.sampleSize === "number") methodsParts.push(`Sample size: ${details.sampleSize}`);
+    if (methodsParts.length > 0) {
+        memories.push({
+            studyId,
+            projectId,
+            type: "methods",
+            content: methodsParts.join(". "),
+            source: "ai_generated",
+            confidence: 0.7,
+            tags: ["deep-analysis"],
+        });
+    }
+
+    const qualityParts: string[] = [];
+    if (quality && quality !== "-") qualityParts.push(`Quality: ${quality}`);
+    if (typeof details.qualityRationale === "string") qualityParts.push(details.qualityRationale);
+    if (qualityParts.length > 0) {
+        memories.push({
+            studyId,
+            projectId,
+            type: "quality",
+            content: qualityParts.join(". "),
+            source: "ai_generated",
+            confidence: 0.75,
+            tags: ["deep-analysis"],
+        });
+    }
+
+    if (typeof details.primaryOutcome === "string" && details.primaryOutcome.length > 0) {
+        memories.push({
+            studyId,
+            projectId,
+            type: "results",
+            content: `Primary outcome: ${details.primaryOutcome}`,
+            source: "ai_generated",
+            confidence: 0.7,
+            tags: ["deep-analysis"],
+        });
+    }
+
+    if (memories.length > 0) {
+        await batchCreateStudyMemories(memories);
+    }
 }

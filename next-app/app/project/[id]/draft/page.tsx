@@ -45,6 +45,7 @@ import Placeholder from "@tiptap/extension-placeholder";
 import Underline from "@tiptap/extension-underline";
 import type { JSONContent } from "@tiptap/core";
 import { Citation, ParagraphDirection, EditorToolbar, FullSectionEditor } from "./DraftEditors";
+import { usePopupChat } from "@/contexts/PopupChatContext";
 
 const EMPTY_IDS: string[] = [];
 
@@ -303,6 +304,7 @@ function DraftContent() {
   const studies = useMemo(() => (id ? getStudiesByProject(id) : []), [id, getStudiesByProject]);
   const { isCollapsed: copilotCollapsed, panelWidth: copilotPanelWidth, setPanelWidth: setCopilotPanelWidth, setCollapsed: setCopilotCollapsed } = useProjectCopilot();
   const { isEmbeddedInProjectShell } = useProjectShell();
+  const { openPopupChat } = usePopupChat();
 
   const queryMode = searchParams.get("mode");
   const querySection = searchParams.get("section");
@@ -1617,6 +1619,17 @@ function DraftContent() {
               <EditorToolbar
                 editor={draft.mode === "section" ? sectionEditor : activeEditor}
                 dir={paragraphDir}
+                onAskAi={() => {
+                  const ed = draft.mode === "section" ? sectionEditor : activeEditor;
+                  const selectedText = ed && !ed.state.selection.empty
+                    ? ed.state.doc.textBetween(ed.state.selection.from, ed.state.selection.to)
+                    : ed?.getText().slice(0, 500) ?? "";
+                  openPopupChat({
+                    type: "draft_selection",
+                    section: activeSectionLabel,
+                    selectedText,
+                  });
+                }}
               />
               <div className={styles.formattingControls} ref={formatRef}>
                 <button
@@ -1795,7 +1808,7 @@ function DraftContent() {
 
               <ProjectCopilot
                 page="draft"
-                section={draft.activeSection}
+                section={activeSectionLabel}
                 contextDisplay={`${activeSectionLabel} · ${usedEvidence.length} evidence`}
                 emptyState={copilotEmptyState}
                 inputPlaceholder={`Ask about ${activeSectionLabel}…`}

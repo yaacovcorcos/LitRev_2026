@@ -18,6 +18,7 @@ import { extractPdfTool } from "./extract-pdf";
 import { updateNoteTool } from "./update-note";
 import { semanticScholarSearchTool } from "./semantic-scholar-search";
 import { recommendStudiesTool } from "./recommend-studies";
+import { readStudyContentTool } from "./read-study-content";
 
 /**
  * Interface for AI tools that can be called by the AI
@@ -42,6 +43,7 @@ export interface AITool {
 /** Runtime context passed to tool execution */
 export interface ToolExecutionContext {
     projectId?: string;
+    studyId?: string;
     userId?: string;
     runId?: string;
     autonomyLevel?: AutonomyLevel;
@@ -60,6 +62,7 @@ export const AVAILABLE_TOOLS: AITool[] = [
     extractPdfTool,
     updateNoteTool,
     recommendStudiesTool,
+    readStudyContentTool,
 ];
 
 /**

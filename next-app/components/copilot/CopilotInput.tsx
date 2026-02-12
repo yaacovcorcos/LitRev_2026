@@ -21,12 +21,13 @@ import styles from "../ProjectCopilot.module.css";
 export type CopilotInputProps = {
     page: CopilotPage;
     section?: string;
+    studyId?: string;
     inputPlaceholder: string;
     prefill?: string;
     onPrefillConsumed?: () => void;
 };
 
-export function CopilotInput({ page, section, inputPlaceholder, prefill, onPrefillConsumed }: CopilotInputProps) {
+export function CopilotInput({ page, section, studyId, inputPlaceholder, prefill, onPrefillConsumed }: CopilotInputProps) {
     const {
         isLoading,
         sendMessage,
@@ -122,10 +123,10 @@ export function CopilotInput({ page, section, inputPlaceholder, prefill, onPrefi
         const text = input.trim();
         if (!text && !pendingAttachment) return;
         sendLockRef.current = true;
-        sendMessage(text, page, section, selectedModel, effectiveMode);
+        sendMessage(text, page, section, selectedModel, effectiveMode, studyId);
         setInput("");
         setModeOverride(null);
-    }, [input, page, section, sendMessage, selectedModel, pendingAttachment, effectiveMode]);
+    }, [input, page, section, studyId, sendMessage, selectedModel, pendingAttachment, effectiveMode]);
 
     const handleStop = useCallback(() => cancelStream(), [cancelStream]);
 
@@ -393,25 +394,53 @@ export function CopilotInput({ page, section, inputPlaceholder, prefill, onPrefi
                                         <span className="material-icons-round" style={{ fontSize: 16 }}>upload_file</span>
                                         <span>Upload PDF</span>
                                     </button>
-                                    {projectFiles.length > 0 && (
-                                        <>
-                                            <div className={styles.attachPickerDivider} />
-                                            <div className={styles.attachPickerLabel}>From project studies</div>
-                                            {projectFiles.slice(0, 10).map((file) => (
-                                                <button
-                                                    key={file.id}
-                                                    type="button"
-                                                    className={styles.attachPickerItem}
-                                                    onClick={() => handleAttachExisting(file.id)}
-                                                >
-                                                    <span className="material-icons-round" style={{ fontSize: 16 }}>description</span>
-                                                    <span className={styles.attachPickerFileName}>
-                                                        {file.filename}
-                                                    </span>
-                                                </button>
-                                            ))}
-                                        </>
-                                    )}
+                                    {projectFiles.length > 0 && (() => {
+                                        const thisStudyFiles = studyId
+                                            ? projectFiles.filter((f) => f.studyId === studyId)
+                                            : [];
+                                        const otherFiles = studyId
+                                            ? projectFiles.filter((f) => f.studyId !== studyId)
+                                            : projectFiles;
+                                        return (
+                                            <>
+                                                <div className={styles.attachPickerDivider} />
+                                                {thisStudyFiles.length > 0 && (
+                                                    <>
+                                                        <div className={styles.attachPickerLabel}>This study</div>
+                                                        {thisStudyFiles.map((file) => (
+                                                            <button
+                                                                key={file.id}
+                                                                type="button"
+                                                                className={styles.attachPickerItem}
+                                                                onClick={() => handleAttachExisting(file.id)}
+                                                            >
+                                                                <span className="material-icons-round" style={{ fontSize: 16 }}>description</span>
+                                                                <span className={styles.attachPickerFileName}>{file.filename}</span>
+                                                            </button>
+                                                        ))}
+                                                    </>
+                                                )}
+                                                {otherFiles.length > 0 && (
+                                                    <>
+                                                        <div className={styles.attachPickerLabel}>
+                                                            {thisStudyFiles.length > 0 ? "Other studies" : "From project studies"}
+                                                        </div>
+                                                        {otherFiles.slice(0, 10).map((file) => (
+                                                            <button
+                                                                key={file.id}
+                                                                type="button"
+                                                                className={styles.attachPickerItem}
+                                                                onClick={() => handleAttachExisting(file.id)}
+                                                            >
+                                                                <span className="material-icons-round" style={{ fontSize: 16 }}>description</span>
+                                                                <span className={styles.attachPickerFileName}>{file.filename}</span>
+                                                            </button>
+                                                        ))}
+                                                    </>
+                                                )}
+                                            </>
+                                        );
+                                    })()}
                                     {loadingProjectFiles && (
                                         <div className={styles.attachPickerLoading}>Loading...</div>
                                     )}

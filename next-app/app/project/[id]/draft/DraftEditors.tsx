@@ -74,9 +74,10 @@ export const ParagraphDirection = Extension.create({
 type ToolbarProps = {
   editor: Editor | null;
   dir?: "ltr" | "rtl";
+  onAskAi?: () => void;
 };
 
-export function EditorToolbar({ editor, dir = "ltr" }: ToolbarProps) {
+export function EditorToolbar({ editor, dir = "ltr", onAskAi }: ToolbarProps) {
   if (!editor) return null;
   return (
     <div className={styles.toolbar} role="toolbar" aria-label="Formatting">
@@ -167,6 +168,19 @@ export function EditorToolbar({ editor, dir = "ltr" }: ToolbarProps) {
       >
         <span className="material-icons-round">redo</span>
       </button>
+      {onAskAi && (
+        <>
+          <div className={styles.toolbarDivider} aria-hidden="true" />
+          <button
+            type="button"
+            className={styles.toolbarButton}
+            aria-label="Ask AI"
+            onClick={onAskAi}
+          >
+            <span className="material-icons-round">smart_toy</span>
+          </button>
+        </>
+      )}
     </div>
   );
 }

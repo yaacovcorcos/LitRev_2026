@@ -18,7 +18,8 @@ import { startRun, endRun } from "@/lib/server/agent/run";
 import { emitEvent } from "@/lib/server/agent/events";
 import { createArtifact, applyArtifact } from "@/lib/server/agent/artifacts";
 import { getAutonomyConfig, getToolAutonomyLevel } from "@/lib/server/agent/autonomy";
-import { assembleSystemPrompt, buildProtocolContext, buildLedgerContext, buildAutonomyContext } from "@/lib/ai/prompts/copilot-prompts";
+import { assembleSystemPrompt, buildProtocolContext, buildLedgerContext, buildAutonomyContext, buildLocationContext, buildStudyContext } from "@/lib/ai/prompts/copilot-prompts";
+import type { StudyContextData } from "@/lib/ai/prompts/copilot-prompts";
 import { AGENT_MODE_CONFIG } from "@/lib/agent/router";
 import { LoopState, type StopReason } from "@/lib/agent/loop-controller";
 import { startRunTrace, startLLMGeneration, startToolSpan, startContextSpan, flushTracing, NOOP_SPAN } from "./tracing";
@@ -269,7 +270,8 @@ class AIService {
         conversationId: string,
         userId?: string,
         agentMode?: AgentMode,
-        traceSpan?: TracingSpan
+        traceSpan?: TracingSpan,
+        studyId?: string
     ): AsyncGenerator<AIStreamChunk, ToolResult> {
         // Defense-in-depth: reject tool calls not allowed in the current mode
         if (agentMode) {
@@ -328,6 +330,7 @@ class AIService {
         const startTime = Date.now();
         const result = await executeTool(toolCall.name, toolCall.arguments, toolCall.id, {
             projectId,
+            studyId,
             userId,
             runId,
             autonomyLevel: level,
@@ -461,15 +464,17 @@ class AIService {
         try {
             // Retrieve memories + project context in parallel
             const ctxSpan = startContextSpan(trace, "context-assembly");
-            const [memoriesContext, protocolRow, studyCounts, autonomyConfig] = await Promise.all([
+            const [memoriesContext, protocolRow, studyCounts, autonomyConfig, studyRow] = await Promise.all([
                 retrieveAndFormatMemories({ userId, projectId, studyId, query: userMessage, agentMode, runId: run.id }),
                 projectId ? prisma.protocol.findFirst({ where: { projectId }, select: { data: true } }) : null,
                 projectId ? computeStudyCounts(projectId) : null,
                 getAutonomyConfig(userId, projectId),
+                studyId ? prisma.study.findUnique({ where: { id: studyId }, select: { title: true, authors: true, year: true, quality: true, details: true } }) : null,
             ]);
             ctxSpan.update({ output: {
                 hasMemories: !!memoriesContext,
                 hasProtocol: !!protocolRow,
+                hasStudy: !!studyRow,
                 studyCounts,
             }}).end();
 
@@ -480,13 +485,36 @@ class AIService {
             const ledgerContext = studyCounts ? buildLedgerContext(studyCounts) : "";
             const autonomyContext = buildAutonomyContext(autonomyConfig.preset);
 
+            // Build study context from study metadata + details JSON
+            let studyContext = "";
+            if (studyRow) {
+                const d = (studyRow.details ?? {}) as Record<string, unknown>;
+                studyContext = buildStudyContext({
+                    title: studyRow.title,
+                    authors: studyRow.authors,
+                    year: studyRow.year,
+                    quality: studyRow.quality,
+                    abstract: d.abstract as string | undefined,
+                    doi: d.doi as string | undefined,
+                    journal: d.journal as string | undefined,
+                    studyType: d.studyType as string | undefined,
+                    keywords: d.keywords as string[] | undefined,
+                    aiSummary: d.aiSummary as string | undefined,
+                    qualityRationale: d.qualityRationale as string | undefined,
+                    triageDecision: d.triageDecision as string | undefined,
+                    sampleSize: d.sampleSize as number | undefined,
+                    primaryOutcome: d.primaryOutcome as string | undefined,
+                });
+            }
+
             const systemPrompt = assembleSystemPrompt({
                 agentMode,
                 protocolContext,
                 ledgerContext,
+                locationContext: buildLocationContext(options?.page, options?.section),
+                studyContext,
                 memoryContext: memoriesContext || undefined,
                 autonomyContext,
-                additionalContext: options?.section,
             });
 
             // Add user message to conversation
@@ -655,7 +683,7 @@ class AIService {
                         conversationId: conversation.id,
                     };
 
-                    const gen = this.executeToolWithAutonomy(tc, run.id, projectId || "global", conversation.id, userId, agentMode, trace);
+                    const gen = this.executeToolWithAutonomy(tc, run.id, projectId || "global", conversation.id, userId, agentMode, trace, studyId);
                     let genResult = await gen.next();
                     while (!genResult.done) {
                         yield { ...genResult.value, conversationId: conversation.id };
@@ -921,6 +949,9 @@ function mapToolToProgressMessage(toolName: string): string {
         update_note: "Writing draft...",
         retrieve_memory: "Retrieving memories...",
         create_note: "Creating note...",
+        read_study_content: "Reading study PDF...",
+        search_semantic_scholar: "Searching Semantic Scholar...",
+        recommend_studies: "Finding recommendations...",
     };
     return messages[toolName] ?? `Running ${toolName}...`;
 }
