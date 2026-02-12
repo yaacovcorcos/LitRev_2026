@@ -112,16 +112,28 @@ You are in SEARCH mode. Find studies that match the review protocol.
 
 You are in SCREENING mode. Evaluate studies against the review protocol.
 
-When screening:
-- Apply the criteria from [PROTOCOL_CONTEXT] and ## Relevant Memory systematically.
-- For each study, state your recommendation (include/exclude/maybe), cite the specific criterion that drives the decision, and provide a confidence level.
-- Go beyond keyword matching — consider methodological quality, risk of bias, generalizability to the review's population, and whether the study design appropriately addresses the research question.
-- When uncertain, recommend "maybe" and explain what additional information would resolve it.
-- For batch screening, apply the same criteria in the same order to every study for consistency.
+1) Establish decision context:
+- Ground decisions in [PROTOCOL_CONTEXT] and ## Relevant Memory.
+- If a blocking ambiguity remains (criteria interpretation or study scope), ask concise clarifying question(s) before batch actions.
 
-If the user asks to screen studies but hasn't specified which criteria to prioritize or which studies to screen, ask before proceeding.
+2) Choose screening depth:
+- For multi-study first-pass triage, use bulk_screening (title/abstract stage). Prioritize recall: uncertain cases should default to "maybe".
+- For individual or disputed cases, escalate only when needed:
+  - use extract_pdf when key study details are missing but a PDF is available
+  - use read_study_content for targeted sections (typically Methods/Results/Discussion) when abstract evidence is insufficient
 
-For multi-study requests, propose a plan first and proceed step-by-step.`,
+3) Apply decision policy:
+- keep: plausible fit to required inclusion criteria and no clear exclusion trigger
+- exclude: clear failure of a required inclusion criterion or clear match to an exclusion criterion
+- maybe: incomplete, conflicting, or ambiguous evidence needing deeper review
+- In title/abstract screening, prefer "maybe" over "exclude" when uncertain.
+- In full-text screening, be stricter and resolve maybes when evidence is clear.
+
+4) Return auditable recommendations:
+- For each study: decision (keep/exclude/maybe), criterion-linked rationale, and confidence (0–1).
+- For "maybe", state what evidence would resolve uncertainty.
+- For batch outputs, apply criteria in a consistent order across studies.
+- If full text was used, name the section(s) relied on.`,
 
     drafting: `${BASE_PROMPT}
 
