@@ -24,6 +24,7 @@ import { AGENT_MODE_CONFIG } from "@/lib/agent/router";
 import { LoopState, type StopReason } from "@/lib/agent/loop-controller";
 import { startRunTrace, startLLMGeneration, startToolSpan, startContextSpan, flushTracing, NOOP_SPAN } from "./tracing";
 import type { TracingSpan } from "./tracing";
+import { withChoicesExtraction } from "./choices-extractor";
 import { prisma } from "@/lib/server/prisma";
 import type { ProtocolData } from "@/types/protocol";
 
@@ -515,7 +516,10 @@ class AIService {
                 studyContext,
                 memoryContext: memoriesContext || undefined,
                 autonomyContext,
-            });
+            })
+            // Scoped to streamChatWithArtifacts only — not in global BASE_PROMPT
+            // so PopupChat (which reuses AGENT_MODE_PROMPTS) doesn't emit choices without rendering support
+            + `\n- When you ask a question that has a small number of clear options (2–5), or when suggesting specific next steps, end your response with a <choices> block. Each <choice> is a short actionable phrase the user can click. Only use this for genuine choices — not every response.\n  Format:\n  <choices>\n  <choice>Option text here</choice>\n  <choice icon="search">Search PubMed for related studies</choice>\n  </choices>\n  The optional icon attribute uses Material Icons names. The block must be the very last thing in your response.`;
 
             // Add user message to conversation
             const userMsg = await addMessageToConversation(conversation.id, {
@@ -631,7 +635,8 @@ class AIService {
                     toolCount: toolDefs.length,
                 });
 
-                for await (const chunk of this.streamChat(currentMessages, chatOptions)) {
+                const rawStream = this.streamChat(currentMessages, chatOptions);
+                for await (const chunk of withChoicesExtraction(rawStream)) {
                     if (chunk.type === "tool_call" && chunk.toolCall) {
                         collectedToolCalls.push(chunk.toolCall);
                         yield { ...chunk, conversationId: conversation.id };
@@ -639,6 +644,8 @@ class AIService {
                         contentSoFar += chunk.content || "";
                         fullContent += chunk.content || "";
                         yield { ...chunk, conversationId: conversation.id };
+                    } else if (chunk.type === "choices" && chunk.choices) {
+                        yield { type: "choices", choices: chunk.choices, conversationId: conversation.id };
                     } else if (chunk.type === "done") {
                         if (chunk.usage) {
                             totalTokensIn += chunk.usage.inputTokens;

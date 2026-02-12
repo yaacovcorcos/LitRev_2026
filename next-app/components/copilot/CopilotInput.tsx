@@ -41,6 +41,8 @@ export function CopilotInput({ page, section, studyId, inputPlaceholder, prefill
         autonomyPreset,
         updateAutonomyPreset,
         setShowAutonomySettings,
+        pendingChoices,
+        clearChoices,
     } = useProjectCopilot();
 
     const [input, setInput] = useState("");
@@ -234,6 +236,33 @@ export function CopilotInput({ page, section, studyId, inputPlaceholder, prefill
                                 </button>
                             </>
                         ) : null}
+                    </div>
+                )}
+
+                {/* AI-generated choice chips */}
+                {pendingChoices.length > 0 && !isLoading && (
+                    <div className={styles.choicesRow} role="group" aria-label="Suggested responses">
+                        {pendingChoices.map((choice) => (
+                            <button
+                                key={choice.value}
+                                type="button"
+                                className={styles.choiceChip}
+                                onClick={() => {
+                                    if (sendLockRef.current) return;
+                                    sendLockRef.current = true;
+                                    clearChoices();
+                                    sendMessage(choice.value, page, section, selectedModel, effectiveMode, studyId);
+                                    setInput("");
+                                }}
+                            >
+                                {choice.icon && (
+                                    <span className="material-icons-round" style={{ fontSize: 14 }} aria-hidden="true">
+                                        {choice.icon}
+                                    </span>
+                                )}
+                                {choice.label}
+                            </button>
+                        ))}
                     </div>
                 )}
 

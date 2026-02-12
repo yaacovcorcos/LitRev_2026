@@ -49,6 +49,13 @@ export type ToolResult = {
     error?: string;
 };
 
+// Clickable choice option (AI-generated quick replies)
+export type ChoiceOption = {
+    label: string;
+    value: string;
+    icon?: string;
+};
+
 // Chat options
 export type ChatOptions = {
     model?: string;
@@ -80,7 +87,8 @@ export type AIResponse = {
 export type AIStreamChunk = {
     type: "content" | "tool_call" | "tool_result" | "done" | "error"
         | "artifact" | "progress" | "checkpoint"
-        | "run_start" | "run_end";
+        | "run_start" | "run_end"
+        | "choices";
     content?: string;
     error?: string;
     usage?: AIResponse["usage"];
@@ -108,6 +116,8 @@ export type AIStreamChunk = {
     stopReason?: string;
     iterationCount?: number;
     toolCallCount?: number;
+    // Clickable choices (AI-generated quick replies)
+    choices?: ChoiceOption[];
 };
 
 // Memory/Context types

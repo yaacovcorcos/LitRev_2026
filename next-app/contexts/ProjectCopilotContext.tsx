@@ -35,6 +35,7 @@ import { reviewArtifactAction, getAutonomyConfigAction, updateAutonomyAction } f
 import { summarizeConversationAction } from "@/app/actions/summarize-conversation";
 import type { ArtifactData, ArtifactStatus, ArtifactType } from "@/types/artifacts";
 import type { AgentMode, AutonomyPreset, AutonomyLevel } from "@/types/agent";
+import type { ChoiceOption } from "@/types/ai";
 
 export type CopilotPage = "draft" | "protocol" | "ledger" | "study" | "overview" | "notes";
 
@@ -147,6 +148,12 @@ type ProjectCopilotContextValue = {
     updateAutonomyOverrides: (overrides: Record<string, AutonomyLevel>) => Promise<void>;
     /** Reset to a named preset (clears overrides) */
     resetToPreset: (preset: AutonomyPreset) => Promise<void>;
+
+    // AI-generated clickable choices
+    /** Current pending choices from AI (shown as pills above input) */
+    pendingChoices: ChoiceOption[];
+    /** Clear pending choices */
+    clearChoices: () => void;
 };
 
 
@@ -185,6 +192,9 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
     // Summarize state
     const [isSummarizing, setIsSummarizing] = useState(false);
     const shouldOfferSummary = state.messages.length > 20;
+
+    // AI-generated clickable choices
+    const [pendingChoices, setPendingChoices] = useState<ChoiceOption[]>([]);
 
     // Autonomy configuration state (Phase 7)
     const [autonomyPreset, setAutonomyPreset] = useState<AutonomyPreset>("assisted");
@@ -386,6 +396,7 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
 
     const selectConversation = useCallback(async (conversationId: string) => {
         try {
+            setPendingChoices([]);
             const convo = await getConversation(conversationId);
             if (convo) {
                 setCurrentConversationId(convo.id);
@@ -421,6 +432,7 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             console.error("Cannot create conversation: no projectId");
             return;
         }
+        setPendingChoices([]);
         try {
             const { id } = await createConversation({
                 projectId,
@@ -523,6 +535,7 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             abortControllerRef.current = null;
         }
         setIsLoading(false);
+        setPendingChoices([]);
     }, []);
 
     const sendMessage = useCallback(
@@ -531,6 +544,7 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             const attachment = pendingAttachment;
             if (!trimmed && !attachment) return;
             if (isLoadingRef.current) cancelStream();
+            setPendingChoices([]);
 
             // Determine conversation context based on page
             const conversationContext = studyId ? "study" : "project";
@@ -796,6 +810,11 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
                                 ),
                             }));
                         }
+                    } else if (data.type === "choices" && data.choices) {
+                        // Only apply if this generation is still current (avoid stale/race)
+                        if (streamGenRef.current === myGen) {
+                            setPendingChoices(data.choices);
+                        }
                     } else if (data.type === "error") {
                         throw new Error(data.error);
                     }
@@ -826,6 +845,7 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
                 }
 
                 console.error("AI chat error:", error);
+                setPendingChoices([]);
                 const errorText = `Sorry, I encountered an error: ${error instanceof Error ? error.message : "Unknown error"}. Please try again.`;
 
                 // Create error message if no AI message was created yet
@@ -935,7 +955,10 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             messages: [],
         }));
         setCurrentConversationId(null);
+        setPendingChoices([]);
     }, [updateState]);
+
+    const clearChoices = useCallback(() => setPendingChoices([]), []);
 
     const value = useMemo(
         () => ({
@@ -985,6 +1008,9 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             updateAutonomyPreset,
             updateAutonomyOverrides,
             resetToPreset,
+            // AI-generated clickable choices
+            pendingChoices,
+            clearChoices,
         }),
         [
             state,
@@ -1023,6 +1049,8 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             updateAutonomyPreset,
             updateAutonomyOverrides,
             resetToPreset,
+            pendingChoices,
+            clearChoices,
         ]
     );
 
