@@ -123,7 +123,7 @@ type ProjectCopilotContextValue = {
     /** Artifacts map for quick lookup by ID */
     artifacts: Map<string, ArtifactData>;
     /** Review an artifact (accept/reject) */
-    handleReviewArtifact: (artifactId: string, status: "accepted" | "rejected", note?: string) => Promise<void>;
+    handleReviewArtifact: (artifactId: string, status: "accepted" | "rejected", note?: string, editedPayload?: Record<string, unknown>) => Promise<void>;
 
     // Summarize & fresh
     /** Whether the conversation is long enough to offer summarization */
@@ -888,7 +888,8 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
     const handleReviewArtifact = useCallback(async (
         artifactId: string,
         status: "accepted" | "rejected",
-        note?: string
+        note?: string,
+        editedPayload?: Record<string, unknown>,
     ) => {
         // Optimistic update — artifacts map
         setArtifacts((prev) => {
@@ -910,8 +911,8 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             ),
         }));
 
-        // Call server action
-        const result = await reviewArtifactAction(artifactId, status, note);
+        // Call server action (passes editedPayload for edit-then-accept flow)
+        const result = await reviewArtifactAction(artifactId, status, note, editedPayload);
         if (!result.success) {
             console.error("Failed to review artifact:", result.error);
             // Revert optimistic update on failure

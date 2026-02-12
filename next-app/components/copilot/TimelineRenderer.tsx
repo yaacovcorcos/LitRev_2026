@@ -68,8 +68,8 @@ export type TimelineRendererProps = {
         suggestions: { label: string; prompt: string }[];
     };
     onSuggestionClick: (prompt: string) => void;
-    /** Callback when user reviews an artifact (accept/reject) */
-    onReviewArtifact?: (artifactId: string, status: "accepted" | "rejected", note?: string) => void;
+    /** Callback when user reviews an artifact (accept/reject). editedPayload is set when user edits before accepting. */
+    onReviewArtifact?: (artifactId: string, status: "accepted" | "rejected", note?: string, editedPayload?: Record<string, unknown>) => void;
     /** Callback to save a message to notes */
     onSaveToNotes?: (content: string, messageId: string) => void | Promise<void>;
     /** Layout variant: "panel" for copilot sidebar (bubbles), "page" for conversation mode (full-width) */
@@ -162,8 +162,8 @@ export function TimelineRenderer({
     }
 
     const renderArtifactContent = (item: TimelineArtifact) => {
-        const handleReview = (status: "accepted" | "rejected", note?: string) => {
-            onReviewArtifact?.(item.artifactId, status, note);
+        const handleReview = (status: "accepted" | "rejected", note?: string, editedPayload?: Record<string, unknown>) => {
+            onReviewArtifact?.(item.artifactId, status, note, editedPayload);
         };
 
         const jumpTo = projectId ? getJumpToProps(item.artifactType, projectId) : {};
@@ -223,19 +223,30 @@ export function TimelineRenderer({
                     </ArtifactWrapper>
                 );
 
-            case "protocol_suggestion":
+            case "protocol_suggestion": {
+                const protocolPayload = item.payload as ProtocolSuggestionPayload;
                 return (
                     <ArtifactWrapper
                         {...wrapperProps}
-                        summaryText={`Protocol updated: ${(item.payload as ProtocolSuggestionPayload)?.field ?? "field"}`}
+                        summaryText={`Protocol updated: ${protocolPayload?.field ?? "field"}`}
                     >
                         <ProtocolEditCard
-                            payload={item.payload as ProtocolSuggestionPayload}
-                            onAccept={() => handleReview("accepted")}
-                            onEdit={() => {/* TODO: edit-then-accept flow */}}
+                            payload={protocolPayload}
+                            onAccept={(editedValue) => {
+                                if (editedValue !== undefined) {
+                                    // User edited the value — pass edited payload through the review pipeline
+                                    handleReview("accepted", undefined, {
+                                        ...protocolPayload,
+                                        value: editedValue,
+                                    });
+                                } else {
+                                    handleReview("accepted");
+                                }
+                            }}
                         />
                     </ArtifactWrapper>
                 );
+            }
 
             case "criteria_card":
                 // Legacy: read-only renderer for old criteria_card artifacts still in DB

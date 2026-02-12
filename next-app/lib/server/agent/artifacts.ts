@@ -12,6 +12,7 @@ import type { ProtocolData } from "@/types/protocol";
 import { emitEvent } from "./events";
 import { onStudyAccepted, onStudyExcluded, onDraftAccepted, onArtifactEdited } from "@/lib/server/memory/decision-extractor";
 import { syncProtocolToMemory } from "@/lib/server/memory/protocol-sync";
+import { validateFieldValue, isValidFieldPath } from "@/lib/protocol-fields";
 import { setUserMemory, createProjectMemory } from "@/lib/server/memory";
 import { createNote, updateNote, textToTipTapDoc, listNotes, type NoteContent, extractTextFromContent } from "@/lib/server/notes";
 import { upsertStudy } from "@/lib/server/ledger";
@@ -78,17 +79,39 @@ export async function createArtifact(input: CreateArtifactInput) {
 }
 
 /**
- * Review an artifact (accept, reject, or edit)
+ * Review an artifact (accept, reject, or edit).
+ * If `editedPayload` is provided, the artifact's payload is updated before applying.
+ * This supports the edit-then-accept flow where the user tweaks a proposal before saving.
  */
 export async function reviewArtifact(
     artifactId: string,
     status: Extract<ArtifactStatus, "accepted" | "rejected" | "edited">,
-    reviewNote?: string
+    reviewNote?: string,
+    editedPayload?: Record<string, unknown>,
 ) {
     const artifact = await prisma.artifact.findUnique({ where: { id: artifactId } });
     if (!artifact) throw new Error("Artifact not found");
     if (artifact.status !== "proposed") {
         throw new Error(`Cannot review artifact with status "${artifact.status}"`);
+    }
+
+    // If the user edited the payload, validate and update it atomically with the review
+    if (editedPayload && status === "accepted") {
+        const schema = ARTIFACT_PAYLOAD_SCHEMAS[artifact.type as ArtifactType];
+        if (schema) {
+            const validation = schema.safeParse(editedPayload);
+            if (!validation.success) {
+                const issues = validation.error.issues
+                    .map((i) => `${i.path.join(".")}: ${i.message}`)
+                    .join("; ");
+                throw new Error(`Invalid edited payload for ${artifact.type}: ${issues}`);
+            }
+        }
+        // Update payload in DB before applying
+        await prisma.artifact.update({
+            where: { id: artifactId },
+            data: { payload: editedPayload as object },
+        });
     }
 
     const updated = await prisma.artifact.update({
@@ -100,7 +123,7 @@ export async function reviewArtifact(
         },
     });
 
-    // If accepted, apply the artifact
+    // If accepted, apply the artifact (reads payload from DB — includes edits if any)
     if (status === "accepted") {
         await applyArtifact(artifactId);
     }
@@ -304,10 +327,20 @@ registerApplyFunction("criteria_card", async (artifact) => {
 // protocol_suggestion: update protocol field, then sync
 registerApplyFunction("protocol_suggestion", async (artifact) => {
     const payload = artifact.payload as ProtocolSuggestionPayload;
+
+    // Final gate: validate field path and value type before writing
+    if (!isValidFieldPath(payload.field)) {
+        throw new Error(`Invalid protocol field: "${payload.field}"`);
+    }
+    const fieldCheck = validateFieldValue(payload.field, payload.value);
+    if (!fieldCheck.valid) {
+        throw new Error(`Cannot apply protocol_suggestion: ${fieldCheck.error}`);
+    }
+
     const protocol = await prisma.protocol.findUnique({ where: { projectId: artifact.projectId } });
     if (!protocol) return;
     const data = protocol.data as unknown as ProtocolData;
-    setNestedValue(data as unknown as Record<string, unknown>, payload.field, payload.value);
+    setNestedValue(data as unknown as Record<string, unknown>, payload.field, fieldCheck.value);
     await prisma.protocol.update({
         where: { projectId: artifact.projectId },
         data: { data: data as unknown as object },

@@ -13,15 +13,17 @@ import type { ArtifactStatus } from "@/types/artifacts";
 import type { AutonomyPreset, AutonomyLevel } from "@/types/agent";
 
 /**
- * Review an artifact (accept/reject/edit)
+ * Review an artifact (accept/reject/edit).
+ * Pass `editedPayload` to update the artifact's payload before applying (edit-then-accept).
  */
 export async function reviewArtifactAction(
     artifactId: string,
     status: Extract<ArtifactStatus, "accepted" | "rejected" | "edited">,
-    reviewNote?: string
+    reviewNote?: string,
+    editedPayload?: Record<string, unknown>,
 ) {
     try {
-        const result = await reviewArtifact(artifactId, status, reviewNote);
+        const result = await reviewArtifact(artifactId, status, reviewNote, editedPayload);
         return { success: true, artifact: result };
     } catch (error) {
         return {
