@@ -245,7 +245,7 @@ class AIService {
 
             for (const tc of collectedToolCalls) {
                 const result = await executeTool(tc.name, tc.arguments, tc.id);
-                yield { type: "tool_result", toolResult: result };
+                yield { type: "tool_result", toolName: tc.name, toolResult: result };
 
                 const toolMsg: AIMessage = {
                     id: `tool-result-${tc.id}`,
@@ -426,14 +426,16 @@ class AIService {
     async *streamChatWithArtifacts(
         userMessage: string,
         context: ConversationContext,
-        options?: ChatOptions & { projectId?: string; studyId?: string; userId?: string; planId?: string; agentMode?: AgentMode; page?: string; section?: string }
+        options?: ChatOptions & { projectId?: string; studyId?: string; userId?: string; planId?: string; selectedSteps?: number[]; agentMode?: AgentMode; page?: string; section?: string }
     ): AsyncIterable<AIStreamChunk & { conversationId?: string }> {
         const projectId = options?.projectId;
         const studyId = options?.studyId;
         const userId = options?.userId || "single-user";
         const agentMode: AgentMode = (options?.agentMode as AgentMode) || "general";
+        const executionMode = !!(options?.planId && options?.selectedSteps?.length);
 
         // Get or create conversation (with summary for compaction)
+        // For plan execution, resolve the exact conversation from the artifact (done after startPlanExecution below)
         const conversation = await getConversationWithSummary(context, projectId, studyId);
         const budget = getContextBudget(options?.model);
 
@@ -459,8 +461,15 @@ class AIService {
         // Yield run_start event
         yield { type: "run_start", runId: run.id, conversationId: conversation.id };
 
-        // Emit user message event
-        await emitEvent(run.id, "message", { content: userMessage }, { messageRole: "user" });
+        // Emit user message event (skip for plan execution — no user message to record)
+        if (!executionMode) {
+            await emitEvent(run.id, "message", { content: userMessage }, { messageRole: "user" });
+        }
+
+        // Declared outside try so catch block can access them for plan finalization
+        interface StepQueueEntry { originalIndex: number; toolName?: string; consumed: boolean; finalStatus: import("@/types/artifacts").PlanStep["status"] }
+        let planData: { plan: import("@/types/artifacts").PlanPayload; selectedSteps: import("@/lib/server/agent/plan-execution").SelectedStep[] } | null = null;
+        let stepQueue: StepQueueEntry[] = [];
 
         try {
             // Retrieve memories + project context in parallel
@@ -505,6 +514,7 @@ class AIService {
                     quality: studyRow.quality,
                     abstract: d.abstract as string | undefined,
                     doi: d.doi as string | undefined,
+                    pmid: d.pmid as string | undefined,
                     journal: d.journal as string | undefined,
                     studyType: d.studyType as string | undefined,
                     keywords: d.keywords as string[] | undefined,
@@ -530,11 +540,14 @@ class AIService {
             // so PopupChat (which reuses AGENT_MODE_PROMPTS) doesn't emit choices without rendering support
             + `\n- When you ask a question that has a small number of clear options (2–5), or when suggesting specific next steps, end your response with a <choices> block. Each <choice> is a short actionable phrase the user can click. Only use this for genuine choices — not every response.\n  Format:\n  <choices>\n  <choice>Option text here</choice>\n  <choice icon="search">Search PubMed for related studies</choice>\n  </choices>\n  The optional icon attribute uses Material Icons names. The block must be the very last thing in your response.`;
 
-            // Add user message to conversation
-            const userMsg = await addMessageToConversation(conversation.id, {
-                role: "user",
-                content: userMessage,
-            });
+            // Add user message to conversation (skip for plan execution)
+            let userMsg: AIMessage | null = null;
+            if (!executionMode && userMessage) {
+                userMsg = await addMessageToConversation(conversation.id, {
+                    role: "user",
+                    content: userMessage,
+                });
+            }
 
             // Prepare messages with compacted history
             const summaryText = conversation.summaryData
@@ -546,7 +559,9 @@ class AIService {
                     conversation.summaryData.messageCount
                 )
                 : null;
-            const rawHistory = [...conversation.messages, userMsg];
+            const rawHistory = userMsg
+                ? [...conversation.messages, userMsg]
+                : [...conversation.messages];
             const compactedHistory = buildCompactedHistory(
                 rawHistory,
                 summaryText,
@@ -605,6 +620,34 @@ class AIService {
                     }
                     // planPayload is null — validation failed, fall through to normal chat
                 }
+            }
+
+            // ── Plan execution mode: load plan, inject execution instruction ──
+            if (executionMode && options?.planId && options?.selectedSteps) {
+                const { startPlanExecution } = await import("@/lib/server/agent/plan-execution");
+                yield { type: "progress", progressMessage: "Starting plan execution...", conversationId: conversation.id };
+
+                planData = await startPlanExecution(options.planId, options.selectedSteps, projectId || "global");
+
+                // Build execution instruction
+                const stepList = planData.selectedSteps
+                    .map((s, i) => `${i + 1}. ${s.label}${s.toolName ? ` — tool: ${s.toolName}` : ""}${s.description ? ` — ${s.description}` : ""}`)
+                    .join("\n");
+
+                historyMessages.push({
+                    id: "plan-execution-instruction",
+                    role: "system",
+                    content: `You are executing a pre-approved plan. Complete each step in order using the appropriate tools.\nDetermine tool arguments from the conversation context and protocol.\n\nSteps to execute:\n${stepList}\n\nAfter completing all steps, briefly summarize what was accomplished.`,
+                    createdAt: new Date().toISOString(),
+                });
+
+                // Initialize step queue for tracking
+                stepQueue = planData.selectedSteps.map(s => ({
+                    originalIndex: s.originalIndex,
+                    toolName: s.toolName,
+                    consumed: false,
+                    finalStatus: "pending" as const,
+                }));
             }
 
             // Run the tool execution loop with autonomy
@@ -693,6 +736,17 @@ class AIService {
 
                 // Execute all tool calls with autonomy
                 for (const tc of collectedToolCalls) {
+                    // Plan step tracking: match tool call to next unconsumed step
+                    let matchedStep: StepQueueEntry | undefined;
+                    if (executionMode) {
+                        matchedStep = stepQueue.find(s => !s.consumed && s.toolName === tc.name);
+                        if (matchedStep) {
+                            matchedStep.consumed = true;
+                            matchedStep.finalStatus = "running";
+                            yield { type: "plan_step_update", planId: options!.planId!, stepIndex: matchedStep.originalIndex, stepStatus: "running", conversationId: conversation.id };
+                        }
+                    }
+
                     yield {
                         type: "progress",
                         progressMessage: mapToolToProgressMessage(tc.name),
@@ -707,7 +761,14 @@ class AIService {
                     }
                     const toolResult = genResult.value;
 
-                    yield { type: "tool_result", toolResult, conversationId: conversation.id };
+                    // Plan step tracking: mark completed or failed based on tool result
+                    if (executionMode && matchedStep) {
+                        const stepStatus = toolResult.error ? "failed" : "completed";
+                        matchedStep.finalStatus = stepStatus;
+                        yield { type: "plan_step_update", planId: options!.planId!, stepIndex: matchedStep.originalIndex, stepStatus, conversationId: conversation.id };
+                    }
+
+                    yield { type: "tool_result", toolName: tc.name, toolResult, conversationId: conversation.id };
 
                     const toolMsg: AIMessage = {
                         id: `tool-result-${tc.id}`,
@@ -723,6 +784,37 @@ class AIService {
             // Determine final stop reason and run status
             const finalStopReason = loop.stopReason ?? "natural";
             const runStatus = finalStopReason === "cancelled" ? "cancelled" as const : "completed" as const;
+
+            // ── Plan execution finalization ──
+            if (executionMode && options?.planId && planData) {
+                const { completePlanExecution, failPlanExecution } = await import("@/lib/server/agent/plan-execution");
+
+                // Mark unconsumed selected steps based on stop reason
+                const terminalStatus = finalStopReason === "natural" ? "skipped" as const : "failed" as const;
+                for (const step of stepQueue) {
+                    if (!step.consumed) {
+                        step.finalStatus = terminalStatus;
+                        yield { type: "plan_step_update", planId: options.planId, stepIndex: step.originalIndex, stepStatus: terminalStatus, conversationId: conversation.id };
+                    }
+                }
+
+                // Build final steps array with updated statuses
+                const finalSteps = planData.plan.steps.map((s, i) => {
+                    const queued = stepQueue.find(q => q.originalIndex === i);
+                    return { ...s, status: queued?.finalStatus ?? s.status };
+                });
+
+                // Determine plan outcome
+                const anyFailed = stepQueue.some(s => s.finalStatus === "failed");
+                if (anyFailed || finalStopReason === "cancelled" || finalStopReason === "error") {
+                    const reason = finalStopReason === "cancelled" ? "Cancelled by user"
+                        : finalStopReason === "error" ? "Execution error"
+                        : "One or more steps failed";
+                    await failPlanExecution(options.planId, finalSteps, reason);
+                } else {
+                    await completePlanExecution(options.planId, finalSteps);
+                }
+            }
 
             // Save final AI text response to conversation
             if (fullContent) {
@@ -766,6 +858,23 @@ class AIService {
                 conversationId: conversation.id,
             };
         } catch (error) {
+            // ── Plan execution failure finalization ──
+            if (executionMode && options?.planId && planData) {
+                try {
+                    const { failPlanExecution } = await import("@/lib/server/agent/plan-execution");
+                    for (const step of stepQueue) {
+                        if (!step.consumed) step.finalStatus = "failed";
+                    }
+                    const finalSteps = planData.plan.steps.map((s, i) => {
+                        const queued = stepQueue.find(q => q.originalIndex === i);
+                        return { ...s, status: queued?.finalStatus ?? s.status };
+                    });
+                    await failPlanExecution(options.planId, finalSteps, error instanceof Error ? error.message : "Unknown error");
+                } catch {
+                    // Best-effort — don't mask the original error
+                }
+            }
+
             // End trace + run with failure
             trace.update({ metadata: { error: error instanceof Error ? error.message : "Unknown" } }).end();
             await flushTracing();
@@ -921,15 +1030,17 @@ class AIService {
  * Map tool name → artifact type (null if tool doesn't produce artifacts).
  *
  * Only proposal tools belong here — tools whose execute() returns a payload
- * for user review WITHOUT persisting side effects. Tools that already write
- * to DB (search_pubmed, add_to_ledger, exclude_study, extract_pdf, update_note)
- * communicate results through the AI's text response, not artifacts.
+ * for user review WITHOUT persisting side effects. Action tools (search_pubmed,
+ * add_to_ledger, extract_pdf, read_study_content) communicate results through
+ * the AI's text response, not artifacts.
  */
 function mapToolToArtifactType(toolName: string): ArtifactType | null {
     const mapping: Record<string, ArtifactType> = {
         bulk_screening: "screening_batch",
         update_protocol: "protocol_suggestion",
         store_memory: "memory_proposal",
+        update_note: "draft_diff",
+        exclude_study: "study_proposal",
     };
     return mapping[toolName] ?? null;
 }
@@ -943,6 +1054,10 @@ function mapToolToArtifactTitle(toolName: string, args: Record<string, unknown>)
             return `Protocol: ${args.field ?? "update"}`;
         case "store_memory":
             return `Remember: ${args.key ?? "preference"}`;
+        case "update_note":
+            return `Draft: ${args.section ?? "section"}`;
+        case "exclude_study":
+            return `Exclude: ${args.reason ?? "study"}`;
         default:
             return toolName;
     }
@@ -979,7 +1094,7 @@ async function computeStudyLedger(projectId: string) {
         orderBy: { createdAt: "asc" },
     });
     let included = 0, excluded = 0, maybe = 0, unscreened = 0;
-    const list: { id: string; title: string; authors: string; year: number; status: string }[] = [];
+    const list: { id: string; title: string; authors: string; year: number; status: string; doi?: string; pmid?: string }[] = [];
     for (const s of studies) {
         const d = s.details as Record<string, unknown> | null;
         const status = (d?.triageDecision as string) || "unscreened";
@@ -991,7 +1106,11 @@ async function computeStudyLedger(projectId: string) {
         }
         // Only include per-study list when ledger is reasonably sized
         if (list.length < MAX_STUDY_LIST && studies.length <= 200) {
-            list.push({ id: s.id, title: s.title, authors: s.authors, year: s.year, status });
+            list.push({
+                id: s.id, title: s.title, authors: s.authors, year: s.year, status,
+                doi: (d?.doi as string) || undefined,
+                pmid: (d?.pmid as string) || undefined,
+            });
         }
     }
     return {
