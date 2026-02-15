@@ -412,9 +412,12 @@ registerApplyFunction("study_proposal", async (artifact) => {
     });
 });
 
-// draft_diff: create or update the note for the section
+// draft_diff: write content to the Draft table (displayed by draft page) and Note table (provenance)
 registerApplyFunction("draft_diff", async (artifact) => {
     const payload = artifact.payload as DraftDiffPayload;
+    const tipTapContent = textToTipTapDoc(payload.content);
+
+    // 1. Write to Note table (provenance/backup)
     const existing = await listNotes(artifact.projectId);
     const sectionNote = existing.find(
         (n) => n.linkedSection?.toLowerCase() === payload.section.toLowerCase()
@@ -422,19 +425,36 @@ registerApplyFunction("draft_diff", async (artifact) => {
 
     if (sectionNote) {
         await updateNote(sectionNote.id, {
-            content: textToTipTapDoc(payload.content),
+            content: tipTapContent,
         });
     } else {
         await createNote({
             projectId: artifact.projectId,
             title: payload.section,
-            content: textToTipTapDoc(payload.content),
+            content: tipTapContent,
             linkedSection: payload.section,
             source: "conversation",
             sourceConversationId: artifact.conversationId ?? undefined,
             tags: ["draft", payload.section.toLowerCase()],
         });
     }
+
+    // 2. Write to Draft table so the draft page displays it
+    const { getDraft, saveDraft } = await import("@/lib/server/drafts");
+    const { createDefaultDraftState } = await import("@/lib/draftStorage");
+    const { DRAFT_SECTIONS } = await import("@/types/draft");
+
+    // Match section name to draft section key (case-insensitive)
+    const sectionKey = DRAFT_SECTIONS.find(
+        (s) => s.key === payload.section.toLowerCase() || s.label.toLowerCase() === payload.section.toLowerCase()
+    )?.key ?? payload.section.toLowerCase();
+
+    const currentDraft = await getDraft(SINGLE_USER_SCOPE, artifact.projectId);
+    const draftState = currentDraft ?? createDefaultDraftState();
+
+    draftState.contentBySection[sectionKey] = tipTapContent as typeof draftState.contentBySection[string];
+
+    await saveDraft(SINGLE_USER_SCOPE, artifact.projectId, draftState);
 });
 
 // screening_batch: apply each study's triage decision
