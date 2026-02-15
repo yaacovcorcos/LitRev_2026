@@ -22,6 +22,7 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  "use no memo";
   return (
     <html lang="en">
       <head>

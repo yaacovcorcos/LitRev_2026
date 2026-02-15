@@ -7,6 +7,7 @@ import { ProtocolData } from "@/types/protocol";
 
 /** Mock protocol data for the ML in Radiopathology project (p1) */
 export const mockProtocolP1: ProtocolData = {
+    researchQuestion: "How does AI-assisted imaging analysis compare to standard radiologist review in detecting early-stage tumors in adults, in terms of diagnostic accuracy and time to diagnosis?",
     pico: {
         population: "Adults diagnosed with early-stage tumors",
         intervention: "AI-assisted imaging analysis",
@@ -47,6 +48,7 @@ export const mockProtocolP1: ProtocolData = {
 
 /** Mock protocol data for Climate Change project (p2) */
 export const mockProtocolP2: ProtocolData = {
+    researchQuestion: "What is the effectiveness of climate change adaptation strategies in urban areas compared to traditional urban planning approaches, as measured by resilience metrics, cost-effectiveness, and community outcomes?",
     pico: {
         population: "Urban areas in developed and developing countries",
         intervention: "Climate change adaptation strategies",
@@ -87,6 +89,7 @@ export const mockProtocolP2: ProtocolData = {
 
 /** Mock protocol data for CRISPR project (p3) */
 export const mockProtocolP3: ProtocolData = {
+    researchQuestion: "What is the safety and efficacy of CRISPR-based gene therapy compared to standard pharmacological treatment in patients with neurodegenerative diseases?",
     pico: {
         population: "Patients with neurodegenerative diseases (Alzheimer's, Parkinson's, ALS)",
         intervention: "CRISPR-based gene therapy",

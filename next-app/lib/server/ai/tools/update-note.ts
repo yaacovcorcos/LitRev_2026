@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { AITool, ToolExecutionContext } from "./base";
-import { createNote, updateNote, listNotes, textToTipTapDoc, extractTextFromContent, type NoteContent } from "@/lib/server/notes";
+import { listNotes, extractTextFromContent, type NoteContent } from "@/lib/server/notes";
 
 const inputSchema = z.object({
     section: z.string().min(1, "section is required"),
@@ -8,18 +8,22 @@ const inputSchema = z.object({
     action: z.enum(["replace", "append", "revise"]),
 });
 
+/**
+ * Output matches DraftDiffSchema so it can be stored as a draft_diff artifact.
+ * Persistence happens via the draft_diff apply function when the user accepts.
+ */
 const outputSchema = z.object({
-    noteId: z.string(),
-    section: z.string(),
-    action: z.string(),
-    wordCount: z.number(),
+    section: z.string().min(1),
+    content: z.string().min(1),
+    citations: z.array(z.object({ studyId: z.string(), label: z.string() })),
+    wordCount: z.number().int().nonnegative(),
 });
 
 export const updateNoteTool: AITool = {
     definition: {
         name: "update_note",
         description:
-            "Create or update a note linked to a review section (e.g., 'Introduction', 'Methods', 'Results', 'Discussion'). Use 'replace' to overwrite the section content, 'append' to add to the end, or 'revise' to rewrite based on the new content. The content should be markdown-formatted academic prose.",
+            "Create or update a note linked to a review section (e.g., 'Introduction', 'Methods', 'Results', 'Discussion'). Use 'replace' to overwrite the section content, 'append' to add to the end, or 'revise' to rewrite based on the new content. The content should be markdown-formatted academic prose. Returns a proposal for user review — does not auto-apply.",
         parameters: {
             type: "object",
             properties: {
@@ -45,7 +49,7 @@ export const updateNoteTool: AITool = {
     outputSchema,
 
     autonomy: {
-        defaultLevel: 1,
+        defaultLevel: 2,
         allowedRange: [1, 2],
         hardCap: 2,
     },
@@ -60,67 +64,42 @@ export const updateNoteTool: AITool = {
         const action = args.action as "replace" | "append" | "revise";
 
         try {
-            // Find existing note for this section
-            const existing = await listNotes(projectId, { linkedStudyId: undefined });
-            const sectionNote = existing.find(
-                (n) => n.linkedSection?.toLowerCase() === section.toLowerCase()
-            );
-
-            const wordCount = content.split(/\s+/).filter(Boolean).length;
-
-            if (sectionNote) {
-                // Note exists — apply action
-                if (action === "replace" || action === "revise") {
-                    await updateNote(sectionNote.id, {
-                        content: textToTipTapDoc(content),
-                    });
-                } else if (action === "append") {
+            // For append, read existing note to produce the combined text
+            let finalContent = content;
+            if (action === "append") {
+                const existing = await listNotes(projectId, { linkedStudyId: undefined });
+                const sectionNote = existing.find(
+                    (n) => n.linkedSection?.toLowerCase() === section.toLowerCase()
+                );
+                if (sectionNote) {
                     const existingText = extractTextFromContent(
                         sectionNote.content as NoteContent
                     );
-                    const combined = existingText
-                        ? `${existingText}\n\n${content}`
-                        : content;
-                    await updateNote(sectionNote.id, {
-                        content: textToTipTapDoc(combined),
-                    });
+                    if (existingText) {
+                        finalContent = `${existingText}\n\n${content}`;
+                    }
                 }
-
-                return {
-                    callId: "",
-                    result: {
-                        noteId: sectionNote.id,
-                        section,
-                        action,
-                        wordCount,
-                    },
-                };
-            } else {
-                // Create new note linked to section
-                const note = await createNote({
-                    projectId,
-                    title: section,
-                    content: textToTipTapDoc(content),
-                    linkedSection: section,
-                    source: "conversation",
-                    tags: ["draft", section.toLowerCase()],
-                });
-
-                return {
-                    callId: "",
-                    result: {
-                        noteId: note.id,
-                        section,
-                        action: "replace",
-                        wordCount,
-                    },
-                };
             }
+
+            const wordCount = finalContent.split(/\s+/).filter(Boolean).length;
+
+            // Return proposal payload — does NOT persist.
+            // Persistence happens via the draft_diff apply function
+            // when the user accepts the artifact.
+            return {
+                callId: "",
+                result: {
+                    section,
+                    content: finalContent,
+                    citations: [],
+                    wordCount,
+                },
+            };
         } catch (error) {
             return {
                 callId: "",
                 result: null,
-                error: error instanceof Error ? error.message : "Failed to update note",
+                error: error instanceof Error ? error.message : "Failed to prepare draft",
             };
         }
     },

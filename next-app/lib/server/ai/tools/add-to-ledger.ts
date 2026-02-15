@@ -4,6 +4,7 @@ import type { SearchResult } from "@/types/search";
 import { searchResultToStudyInput } from "@/lib/server/search/to-study";
 import { findDuplicates } from "@/lib/server/search/dedup";
 import { listStudies, upsertStudy } from "@/lib/server/ledger";
+import { SINGLE_USER_SCOPE } from "@/lib/server/scope";
 
 const inputSchema = z.object({
     results: z.array(z.object({
@@ -17,6 +18,12 @@ const outputSchema = z.object({
     added: z.number(),
     duplicatesSkipped: z.number(),
     titles: z.array(z.string()),
+    duplicateDetails: z.array(z.object({
+        title: z.string(),
+        matchedBy: z.string(),
+        matchedValue: z.string(),
+        existingTitle: z.string(),
+    })).optional(),
 });
 
 export const addToLedgerTool: AITool = {
@@ -59,8 +66,8 @@ export const addToLedgerTool: AITool = {
     outputSchema,
 
     autonomy: {
-        defaultLevel: 2,
-        allowedRange: [1, 3],
+        defaultLevel: 3,
+        allowedRange: [2, 3],
     },
 
     async execute(args: Record<string, unknown>, context?: ToolExecutionContext) {
@@ -76,14 +83,14 @@ export const addToLedgerTool: AITool = {
 
         try {
             // Load existing studies for dedup
-            const existingStudies = await listStudies(null, projectId);
+            const existingStudies = await listStudies(SINGLE_USER_SCOPE, projectId);
             const { unique, duplicates } = findDuplicates(existingStudies, results);
 
             // Upsert unique studies
             const addedTitles: string[] = [];
             for (const result of unique) {
                 const studyInput = searchResultToStudyInput(result);
-                await upsertStudy(null, projectId, studyInput);
+                await upsertStudy(SINGLE_USER_SCOPE, projectId, studyInput);
                 addedTitles.push(result.title);
             }
 
@@ -93,6 +100,12 @@ export const addToLedgerTool: AITool = {
                     added: unique.length,
                     duplicatesSkipped: duplicates.length,
                     titles: addedTitles,
+                    duplicateDetails: duplicates.map((d) => ({
+                        title: d.result.title,
+                        matchedBy: d.matchedBy,
+                        matchedValue: d.matchedValue,
+                        existingTitle: d.existingTitle,
+                    })),
                 },
             };
         } catch (error) {

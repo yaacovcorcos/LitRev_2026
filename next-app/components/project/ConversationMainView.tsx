@@ -2,7 +2,8 @@
 
 import { useCallback, useState, useRef, useEffect, useMemo } from "react";
 import * as Popover from "@radix-ui/react-popover";
-import { useProjectCopilot, type CopilotPage } from "@/contexts/ProjectCopilotContext";
+import { useProjectCopilot } from "@/contexts/ProjectCopilotContext";
+import type { CopilotPage } from "@/types/ai";
 import { useProjectState } from "@/hooks/useProjectState";
 import { getSuggestions } from "@/lib/agent/suggestions";
 import { createNoteAction } from "@/app/actions/notes";
@@ -26,6 +27,7 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
         newConversation,
         sendMessage,
         handleReviewArtifact,
+        executePlan,
     } = useProjectCopilot();
 
     const [showDropdown, setShowDropdown] = useState(false);
@@ -211,6 +213,7 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
                         }}
                         onSuggestionClick={handleSuggestionClick}
                         onReviewArtifact={handleReviewArtifact}
+                        onExecutePlan={executePlan}
                         onSaveToNotes={handleSaveToNotes}
                     />
 

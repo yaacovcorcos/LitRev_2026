@@ -16,10 +16,12 @@ export interface ProtocolFieldMeta {
 }
 
 /**
- * All 13 protocol fields with their metadata.
+ * All 14 protocol fields with their metadata.
  * Order follows the ProtocolData structure.
  */
 export const PROTOCOL_FIELD_META: readonly ProtocolFieldMeta[] = [
+    // Research Question
+    { path: "researchQuestion", label: "Research Question", type: "string" },
     // PICO
     { path: "pico.population", label: "P \u2014 Population", type: "string" },
     { path: "pico.intervention", label: "I \u2014 Intervention", type: "string" },

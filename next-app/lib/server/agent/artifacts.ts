@@ -16,6 +16,7 @@ import { validateFieldValue, isValidFieldPath } from "@/lib/protocol-fields";
 import { setUserMemory, createProjectMemory } from "@/lib/server/memory";
 import { createNote, updateNote, textToTipTapDoc, listNotes, type NoteContent, extractTextFromContent } from "@/lib/server/notes";
 import { upsertStudy } from "@/lib/server/ledger";
+import { SINGLE_USER_SCOPE } from "@/lib/server/scope";
 
 // ── Apply function registry ──────────────────────────────────────────────────
 
@@ -91,6 +92,10 @@ export async function reviewArtifact(
 ) {
     const artifact = await prisma.artifact.findUnique({ where: { id: artifactId } });
     if (!artifact) throw new Error("Artifact not found");
+    // Idempotent: if already in the requested status, return as-is
+    if (artifact.status === status) {
+        return artifact;
+    }
     if (artifact.status !== "proposed") {
         throw new Error(`Cannot review artifact with status "${artifact.status}"`);
     }
@@ -384,11 +389,13 @@ registerApplyFunction("memory_proposal", async (artifact) => {
 // study_proposal: upsert the study with triage decision
 registerApplyFunction("study_proposal", async (artifact) => {
     const payload = artifact.payload as StudyProposalPayload;
-    await upsertStudy(null, artifact.projectId, {
+    await upsertStudy(SINGLE_USER_SCOPE, artifact.projectId, {
         title: payload.title,
         authors: payload.authors,
         year: payload.year,
-        status: "pending",
+        status: payload.recommendation === "exclude" ? "excluded"
+              : payload.recommendation === "keep" ? "active"
+              : "pending",
         quality: "-",
         details: {
             doi: payload.doi,

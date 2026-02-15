@@ -3,6 +3,9 @@
  * Core types for the AI integration system
  */
 
+// Copilot page context (which project tab the user is on)
+export type CopilotPage = "draft" | "protocol" | "ledger" | "study" | "overview" | "notes";
+
 // AI message roles
 export type AIRole = "system" | "user" | "assistant" | "tool";
 
@@ -88,12 +91,14 @@ export type AIStreamChunk = {
     type: "content" | "tool_call" | "tool_result" | "done" | "error"
         | "artifact" | "progress" | "checkpoint"
         | "run_start" | "run_end"
-        | "choices";
+        | "choices"
+        | "plan_step_update";
     content?: string;
     error?: string;
     usage?: AIResponse["usage"];
     toolCall?: ToolCall;
     toolResult?: ToolResult;
+    toolName?: string;
     // Artifact chunk fields (Phase 1)
     artifactId?: string;
     artifactType?: string;
@@ -118,6 +123,10 @@ export type AIStreamChunk = {
     toolCallCount?: number;
     // Clickable choices (AI-generated quick replies)
     choices?: ChoiceOption[];
+    // Plan step update fields (plan execution)
+    planId?: string;
+    stepIndex?: number;
+    stepStatus?: string;
 };
 
 // Memory/Context types

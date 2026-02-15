@@ -70,6 +70,8 @@ export type TimelineRendererProps = {
     onSuggestionClick: (prompt: string) => void;
     /** Callback when user reviews an artifact (accept/reject). editedPayload is set when user edits before accepting. */
     onReviewArtifact?: (artifactId: string, status: "accepted" | "rejected", note?: string, editedPayload?: Record<string, unknown>) => void;
+    /** Callback when user clicks Run on a plan artifact with selected step indexes. */
+    onExecutePlan?: (artifactId: string, selectedIndexes: number[]) => void;
     /** Callback to save a message to notes */
     onSaveToNotes?: (content: string, messageId: string) => void | Promise<void>;
     /** Layout variant: "panel" for copilot sidebar (bubbles), "page" for conversation mode (full-width) */
@@ -84,6 +86,7 @@ export function TimelineRenderer({
     emptyState,
     onSuggestionClick,
     onReviewArtifact,
+    onExecutePlan,
     onSaveToNotes,
     variant = "panel",
 }: TimelineRendererProps) {
@@ -211,26 +214,30 @@ export function TimelineRenderer({
                     >
                         <PlanCard
                             payload={item.payload as PlanPayload}
-                            onRun={() => handleReview("accepted")}
+                            status={item.status}
+                            onRun={(selectedIndexes) => onExecutePlan?.(item.artifactId, selectedIndexes)}
                             onCancel={() => handleReview("rejected")}
                         />
                     </ArtifactWrapper>
                 );
 
-            case "study_proposal":
+            case "study_proposal": {
+                const studyPayload = item.payload as StudyProposalPayload;
+                const isExclusion = studyPayload?.recommendation === "exclude";
                 return (
                     <ArtifactWrapper
                         {...wrapperProps}
-                        summaryText={`${(item.payload as StudyProposalPayload)?.title ?? "Study"}`}
+                        summaryText={`${studyPayload?.title ?? "Study"}`}
                     >
                         <StudyCard
-                            payload={item.payload as StudyProposalPayload}
-                            onKeep={() => handleReview("accepted")}
-                            onExclude={(reason) => handleReview("rejected", reason)}
+                            payload={studyPayload}
+                            onKeep={() => handleReview(isExclusion ? "rejected" : "accepted")}
+                            onExclude={(reason) => handleReview(isExclusion ? "accepted" : "rejected", reason)}
                             onMaybe={() => {/* Phase 2: handle maybe status */}}
                         />
                     </ArtifactWrapper>
                 );
+            }
 
             case "screening_batch":
                 return (

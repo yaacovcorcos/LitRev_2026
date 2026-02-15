@@ -1,23 +1,24 @@
 import { z } from "zod";
 import type { AITool, ToolExecutionContext } from "./base";
 import { prisma } from "@/lib/server/prisma";
+import { StudyProposalSchema } from "@/types/artifacts";
 
 const inputSchema = z.object({
     studyId: z.string().optional(),
     reason: z.string().min(1, "reason is required"),
 });
 
-const outputSchema = z.object({
-    success: z.boolean(),
-    studyId: z.string(),
-    title: z.string(),
-});
+/**
+ * Output matches StudyProposalSchema so it can be stored as a study_proposal artifact.
+ * Persistence happens via the study_proposal apply function when the user accepts.
+ */
+const outputSchema = StudyProposalSchema;
 
 export const excludeStudyTool: AITool = {
     definition: {
         name: "exclude_study",
         description:
-            "Exclude a study from the evidence ledger with a reason. Sets the study's triage decision to 'exclude'. Use the study ID from [STUDY_CONTEXT] or [LEDGER_CONTEXT] — do not ask the user for it.",
+            "Propose excluding a study from the evidence ledger with a reason. Returns a proposal for user review — does not auto-apply. Use the study ID from [STUDY_CONTEXT] or [LEDGER_CONTEXT] — do not ask the user for it.",
         parameters: {
             type: "object",
             properties: {
@@ -58,7 +59,7 @@ export const excludeStudyTool: AITool = {
         try {
             const study = await prisma.study.findFirst({
                 where: { id: studyId, projectId },
-                select: { id: true, title: true, details: true },
+                select: { id: true, title: true, authors: true, year: true, details: true },
             });
 
             if (!study) {
@@ -66,28 +67,32 @@ export const excludeStudyTool: AITool = {
             }
 
             const details = (study.details as Record<string, unknown>) ?? {};
-            await prisma.study.update({
-                where: { id: studyId },
-                data: {
-                    status: "excluded",
-                    details: {
-                        ...details,
-                        triageDecision: "exclude",
-                        exclusionReason: reason,
-                        excludedAt: new Date().toISOString(),
-                    },
-                },
-            });
 
+            // Return proposal payload — does NOT persist.
+            // Persistence happens via the study_proposal apply function
+            // when the user accepts the artifact.
             return {
                 callId: "",
-                result: { success: true, studyId, title: study.title },
+                result: {
+                    title: study.title,
+                    authors: study.authors || "Unknown",
+                    year: study.year || 0,
+                    source: "exclusion",
+                    recommendation: "exclude" as const,
+                    confidence: 1.0,
+                    matchRationale: reason,
+                    doi: (details.doi as string) || undefined,
+                    pmid: (details.pmid as string) || undefined,
+                    abstract: (details.abstract as string) || undefined,
+                    journal: (details.journal as string) || undefined,
+                    studyType: (details.studyType as string) || undefined,
+                },
             };
         } catch (error) {
             return {
                 callId: "",
                 result: null,
-                error: error instanceof Error ? error.message : "Failed to exclude study",
+                error: error instanceof Error ? error.message : "Failed to prepare exclusion",
             };
         }
     },

@@ -15,12 +15,13 @@ export const runtime = "nodejs";
 export async function POST(request: NextRequest) {
     try {
         const body = await request.json();
-        const { messages, userMessage, context, options, planId } = body as {
+        const { messages, userMessage, context, options, planId, selectedSteps } = body as {
             messages?: AIMessage[];
             userMessage?: string;
             context?: ConversationContext;
-            options?: ChatOptions & { projectId?: string; studyId?: string; userId?: string; agentMode?: AgentMode; page?: string; section?: string };
+            options?: ChatOptions & { projectId?: string; studyId?: string; userId?: string; agentMode?: AgentMode; page?: string; section?: string; planId?: string };
             planId?: string;
+            selectedSteps?: number[];
         };
 
         const service = getAIService();
@@ -31,9 +32,10 @@ export async function POST(request: NextRequest) {
             async start(controller) {
                 try {
                     // If using conversation memory — use artifact-aware streaming
-                    if (userMessage && context) {
+                    if ((userMessage || planId) && context) {
+                        const mergedPlanId = planId ?? options?.planId;
                         for await (const chunk of service.streamChatWithArtifacts(
-                            userMessage, context, { ...options, planId, signal: request.signal }
+                            userMessage || "", context, { ...options, planId: mergedPlanId, selectedSteps, signal: request.signal }
                         )) {
                             const data = JSON.stringify(chunk) + "\n";
                             controller.enqueue(encoder.encode(data));

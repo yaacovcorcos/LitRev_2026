@@ -24,7 +24,8 @@ export type ArtifactStatus =
     | "edited"
     | "auto_applied"
     | "expired"
-    | "collapsed";
+    | "collapsed"
+    | "running";
 
 // ── Per-Type Payloads ────────────────────────────────────────────────────────
 

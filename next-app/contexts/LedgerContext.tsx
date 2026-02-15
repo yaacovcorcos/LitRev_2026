@@ -62,6 +62,19 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
     };
   }, [projects]);
 
+  // Refresh a single project's studies when AI tools mutate the ledger
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const projectId = (e as CustomEvent).detail?.projectId as string | undefined;
+      if (!projectId) return;
+      listStudiesAction(projectId)
+        .then((studies) => setLedgerMap((prev) => ({ ...prev, [projectId]: studies })))
+        .catch(console.error);
+    };
+    window.addEventListener("litrev:ledger-changed", handler);
+    return () => window.removeEventListener("litrev:ledger-changed", handler);
+  }, []);
+
   const getStudiesByProject = useCallback(
     (projectId: string) => {
       return ledgerMap[projectId] ?? [];
@@ -89,20 +102,30 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
-  /** Delete studies server-side (single query), then refresh from the server. */
+  /** Delete studies: optimistic UI removal, then server delete + refresh. */
   const removeStudies = useCallback(async (projectId: string, studyIds: string[]) => {
-    await deleteStudiesAction(projectId, studyIds);
+    const idSet = new Set(studyIds);
+
+    // Snapshot for rollback
+    const snapshot = ledgerMap[projectId] ?? [];
+
+    // Optimistic: remove from UI immediately
+    setLedgerMap((prev) => ({
+      ...prev,
+      [projectId]: (prev[projectId] ?? []).filter((s) => !idSet.has(s.id)),
+    }));
+
     try {
+      await deleteStudiesAction(projectId, studyIds);
+      // Refresh from server to ensure consistency
       const refreshed = await listStudiesAction(projectId);
       setLedgerMap((prev) => ({ ...prev, [projectId]: refreshed }));
     } catch {
-      // At minimum remove from local cache
-      setLedgerMap((prev) => ({
-        ...prev,
-        [projectId]: (prev[projectId] ?? []).filter((s) => !studyIds.includes(s.id)),
-      }));
+      // Rollback on failure
+      setLedgerMap((prev) => ({ ...prev, [projectId]: snapshot }));
+      throw new Error("Failed to delete studies");
     }
-  }, []);
+  }, [ledgerMap]);
 
   /** Create a single new study via upsert (does NOT use replaceStudies). */
   const upsertNewStudy = useCallback(async (projectId: string, study: Study) => {

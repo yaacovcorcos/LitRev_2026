@@ -121,6 +121,7 @@ export function loadProtocolData(projectId: string): ProtocolData {
         if (!parsed || typeof parsed !== "object") return fallback;
 
         return {
+            researchQuestion: typeof parsed.researchQuestion === "string" ? parsed.researchQuestion : "",
             pico: validatePICO(parsed.pico),
             eligibility: validateEligibility(parsed.eligibility),
             searchStrategy: validateSearchStrategy(parsed.searchStrategy),

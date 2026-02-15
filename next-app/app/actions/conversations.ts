@@ -1,7 +1,7 @@
 "use server";
 
 import { prisma } from "@/lib/server/prisma";
-import type { CopilotPage } from "@/contexts/ProjectCopilotContext";
+import type { CopilotPage } from "@/types/ai";
 
 // =============================================================================
 // MULTI-USER READINESS

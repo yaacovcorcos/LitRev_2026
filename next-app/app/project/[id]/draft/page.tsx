@@ -229,14 +229,15 @@ function AddEvidenceModal({ isOpen, onClose, studies, usedEvidenceIds, onAddEvid
 
   return (
     <div
-      className={`modal-overlay ${isOpen ? "active" : ""}`}
+      className="modal-overlay"
+      data-state={isOpen ? "open" : "closed"}
       aria-hidden={!isOpen}
       ref={overlayRef}
       onClick={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
     >
-      <div className="modal-glass" role="dialog" aria-modal="true" aria-labelledby="addEvidenceTitle">
+      <div className="modal-glass" data-state={isOpen ? "open" : "closed"} role="dialog" aria-modal="true" aria-labelledby="addEvidenceTitle">
         <div className="modal-header">
           <h2 id="addEvidenceTitle">Add Evidence</h2>
           <button className="close-modal-btn" aria-label="Close" onClick={onClose}>
@@ -809,7 +810,9 @@ function DraftContent() {
   );
 
   const insertCitation = (study: Study) => {
-    const editor = activeEditorRef.current;
+    const editor = activeEditorRef.current
+      ?? (draft.mode === "section" ? sectionEditor : editorBySectionRef.current[draft.activeSection])
+      ?? null;
     if (!editor) return;
     editor
       .chain()

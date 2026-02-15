@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import * as Popover from "@radix-ui/react-popover";
-import { useProjectCopilot, type CopilotPage } from "@/contexts/ProjectCopilotContext";
+import { useProjectCopilot } from "@/contexts/ProjectCopilotContext";
+import type { CopilotPage } from "@/types/ai";
 import { createNoteAction } from "@/app/actions/notes";
 import { TimelineRenderer } from "./copilot/TimelineRenderer";
 import { CopilotInput } from "./copilot/CopilotInput";
@@ -61,22 +62,21 @@ export function ProjectCopilot({
         selectConversation,
         newConversation,
         handleReviewArtifact,
-        // Study-scoped conversation filtering
-        setStudyFilter,
+        executePlan,
         // Autonomy settings (Phase 7)
         setShowAutonomySettings,
     } = useProjectCopilot();
+
+    // Defer Radix-heavy UI until after hydration to avoid ID mismatch warnings
+    const [hasMounted, setHasMounted] = useState(false);
+    useEffect(() => { setHasMounted(true); }, []);
 
     const [showConversationDropdown, setShowConversationDropdown] = useState(false);
     const [conversationSearch, setConversationSearch] = useState("");
     const [activeDescendantId, setActiveDescendantId] = useState<string | null>(null);
     const listRef = useRef<HTMLDivElement | null>(null);
 
-    // Scope conversations to this study when on a study page
-    useEffect(() => {
-        setStudyFilter(studyId);
-        return () => setStudyFilter(undefined);
-    }, [studyId, setStudyFilter]);
+    // Scope is now driven centrally from layout.tsx — no mount/cleanup effect here
 
     // Reset active descendant when search changes
     useEffect(() => {
@@ -216,6 +216,10 @@ export function ProjectCopilot({
         );
     };
 
+    if (!hasMounted) {
+        return <aside className={styles.copilot} aria-label="AI copilot" id={panelId} />;
+    }
+
     return (
         <aside className={styles.copilot} aria-label="AI copilot" id={panelId}>
             <div className={styles.chatArea}>
@@ -341,6 +345,7 @@ export function ProjectCopilot({
                     emptyState={emptyState}
                     onSuggestionClick={handleSuggestionClick}
                     onReviewArtifact={handleReviewArtifact}
+                    onExecutePlan={executePlan}
                     onSaveToNotes={handleSaveToNotes}
                 />
 

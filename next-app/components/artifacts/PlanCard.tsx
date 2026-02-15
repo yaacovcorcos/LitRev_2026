@@ -1,11 +1,13 @@
 "use client";
 
-import type { PlanPayload, PlanStep } from "@/types/artifacts";
+import { useMemo, useState } from "react";
+import type { ArtifactStatus, PlanPayload, PlanStep } from "@/types/artifacts";
 import styles from "@/styles/artifacts.module.css";
 
 export type PlanCardProps = {
     payload: PlanPayload;
-    onRun: () => void;
+    status: ArtifactStatus;
+    onRun: (selectedIndexes: number[]) => void;
     onCancel: () => void;
 };
 
@@ -25,38 +27,100 @@ const STEP_STYLES: Record<PlanStep["status"], string> = {
     skipped: "",
 };
 
-export function PlanCard({ payload, onRun, onCancel }: PlanCardProps) {
+export function PlanCard({ payload, status, onRun, onCancel }: PlanCardProps) {
+    const allIndexes = useMemo(
+        () => new Set(payload.steps.map((_, i) => i)),
+        [payload.steps.length],
+    );
+    const [selected, setSelected] = useState<Set<number>>(allIndexes);
+
+    const isProposed = status === "proposed";
+    const isRunning = status === "running";
+
+    const toggleStep = (index: number) => {
+        if (!isProposed) return;
+        setSelected((prev) => {
+            const next = new Set(prev);
+            if (next.has(index)) next.delete(index);
+            else next.add(index);
+            return next;
+        });
+    };
+
+    const handleRun = () => {
+        if (selected.size === 0) return;
+        onRun([...selected].sort((a, b) => a - b));
+    };
+
     return (
         <>
             <ol className={styles.planStepList}>
-                {payload.steps.map((step, i) => (
-                    <li key={i} className={`${styles.planStep} ${STEP_STYLES[step.status]}`}>
-                        <span className={styles.planStepNumber}>{i + 1}</span>
-                        <div className={styles.planStepLabel}>
-                            <span>{step.label}</span>
-                            {step.description && (
-                                <div className={styles.planStepDesc}>{step.description}</div>
+                {payload.steps.map((step, i) => {
+                    const isSelected = selected.has(i);
+                    const stepClass = [
+                        styles.planStep,
+                        STEP_STYLES[step.status],
+                        !isSelected && isProposed ? styles.planStepDeselected : "",
+                    ].filter(Boolean).join(" ");
+
+                    // When running/terminal, show execution status icon
+                    // When proposed, show selection toggle
+                    const showToggle = isProposed;
+
+                    return (
+                        <li key={i} className={stepClass}>
+                            <span className={styles.planStepNumber}>{i + 1}</span>
+                            <div className={styles.planStepLabel}>
+                                <span>{step.label}</span>
+                                {step.description && (
+                                    <div className={styles.planStepDesc}>{step.description}</div>
+                                )}
+                            </div>
+                            {showToggle ? (
+                                <button
+                                    type="button"
+                                    className={styles.planStepToggle}
+                                    onClick={() => toggleStep(i)}
+                                    aria-label={isSelected ? `Deselect step ${i + 1}` : `Select step ${i + 1}`}
+                                >
+                                    <span className="material-icons-round">
+                                        {isSelected ? "check_circle_outline" : "radio_button_unchecked"}
+                                    </span>
+                                </button>
+                            ) : (
+                                <span className={`material-icons-round ${styles.planStepIcon}`}>
+                                    {STEP_ICONS[step.status]}
+                                </span>
                             )}
-                        </div>
-                        <span className={`material-icons-round ${styles.planStepIcon}`}>
-                            {STEP_ICONS[step.status]}
-                        </span>
-                    </li>
-                ))}
+                        </li>
+                    );
+                })}
             </ol>
             {payload.estimatedActions > 0 && (
                 <div className={styles.planEstimate}>
                     ~{payload.estimatedActions} action{payload.estimatedActions !== 1 ? "s" : ""}
                 </div>
             )}
-            <div className={styles.cardActions}>
-                <button type="button" className={styles.actionBtnGhost} onClick={onCancel}>
-                    Cancel
-                </button>
-                <button type="button" className={styles.actionBtn} onClick={onRun}>
-                    Run
-                </button>
-            </div>
+            {isProposed && (
+                <div className={styles.cardActions}>
+                    <button type="button" className={styles.actionBtnGhost} onClick={onCancel}>
+                        Cancel
+                    </button>
+                    <button
+                        type="button"
+                        className={styles.actionBtn}
+                        onClick={handleRun}
+                        disabled={selected.size === 0}
+                    >
+                        Run{selected.size < payload.steps.length ? ` (${selected.size}/${payload.steps.length})` : ""}
+                    </button>
+                </div>
+            )}
+            {isRunning && (
+                <div className={styles.planEstimate}>
+                    Executing plan...
+                </div>
+            )}
         </>
     );
 }

@@ -12,6 +12,7 @@ import { ProjectCopilot } from "@/components/ProjectCopilot";
 import { PopupChat } from "@/components/PopupChat";
 import { PopupChatProvider } from "@/contexts/PopupChatContext";
 import { getStudyAction } from "@/app/actions/ledger";
+import type { CopilotPage } from "@/types/ai";
 import styles from "./project-shell.module.css";
 
 const RAIL_WIDTH = 44;
@@ -34,7 +35,7 @@ type ProjectShellInnerProps = {
 function ProjectShellInner({ projectId, children }: ProjectShellInnerProps) {
     const router = useRouter();
     const pathname = usePathname();
-    const { isCollapsed, panelWidth, setPanelWidth, toggleCollapsed } = useProjectCopilot();
+    const { isCollapsed, panelWidth, setPanelWidth, toggleCollapsed, setStudyFilter } = useProjectCopilot();
     const { registerCopilotToggle } = useCommandPalette();
 
     useEffect(() => {
@@ -160,6 +161,11 @@ function ProjectShellInner({ projectId, children }: ProjectShellInnerProps) {
             ? `${activeTab.charAt(0).toUpperCase() + activeTab.slice(1)}`
             : "Project";
 
+    // Centralized scope ownership — driven by pathname, no cleanup return
+    useEffect(() => {
+        setStudyFilter(copilotStudyId);
+    }, [copilotStudyId, setStudyFilter]);
+
     return (
         <ProjectShellProvider value={shellValue}>
             <AppShell activeNav="projects" mainClassName={styles.shellMain} noMainPadding>
@@ -189,7 +195,7 @@ function ProjectShellInner({ projectId, children }: ProjectShellInnerProps) {
                             }}
                         />
                         <ProjectCopilot
-                            page={copilotPage as import("@/contexts/ProjectCopilotContext").CopilotPage}
+                            page={copilotPage as CopilotPage}
                             studyId={copilotStudyId}
                             contextDisplay={copilotContextDisplay}
                             emptyState={{

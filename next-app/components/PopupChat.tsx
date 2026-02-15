@@ -11,7 +11,7 @@ import { createConversation, addMessage } from "@/app/actions/conversations";
 import { AGENT_MODE_PROMPTS, buildStudyContext, sanitizeContext } from "@/lib/ai/prompts/copilot-prompts";
 import { parseNDJSONStream } from "@/lib/ai/stream-parser";
 import type { PopupChatContext, PopupMessage } from "@/types/popup-chat";
-import type { CopilotPage } from "@/contexts/ProjectCopilotContext";
+import type { CopilotPage } from "@/types/ai";
 import styles from "./PopupChat.module.css";
 
 const TURN_HINT_THRESHOLD = 3;

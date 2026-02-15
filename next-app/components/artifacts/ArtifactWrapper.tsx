@@ -27,6 +27,7 @@ const STATUS_LABELS: Record<string, string> = {
     auto_applied: "Auto-applied",
     expired: "Expired",
     collapsed: "Collapsed",
+    running: "Running",
 };
 
 const STATUS_ICONS: Record<string, string> = {
@@ -34,6 +35,7 @@ const STATUS_ICONS: Record<string, string> = {
     rejected: "cancel",
     auto_applied: "check_circle",
     edited: "edit",
+    running: "pending",
 };
 
 export function ArtifactWrapper({
@@ -69,7 +71,8 @@ export function ArtifactWrapper({
         styles.artifactCard,
         status === "accepted" || status === "auto_applied" ? styles.artifactCardAccepted : "",
         status === "rejected" ? styles.artifactCardRejected : "",
-        isCollapsed && status !== "proposed" ? styles.artifactCardCollapsed : "",
+        status === "running" ? styles.artifactCardRunning : "",
+        isCollapsed && status !== "proposed" && status !== "running" ? styles.artifactCardCollapsed : "",
     ].filter(Boolean).join(" ");
 
     const statusBadgeClass = [
@@ -77,6 +80,7 @@ export function ArtifactWrapper({
         status === "proposed" ? styles.statusBadgeProposed : "",
         status === "accepted" || status === "edited" || status === "auto_applied" ? styles.statusBadgeAccepted : "",
         status === "rejected" ? styles.statusBadgeRejected : "",
+        status === "running" ? styles.statusBadgeRunning : "",
     ].filter(Boolean).join(" ");
 
     // Collapsed / terminal view: one-liner summary

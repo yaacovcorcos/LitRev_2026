@@ -3,6 +3,7 @@ import type { AITool, ToolExecutionContext } from "./base";
 import type { Study } from "@/types/ledger";
 import { getRecommendations, buildS2PaperIds } from "@/lib/server/search/semantic-scholar";
 import { listStudies } from "@/lib/server/ledger";
+import { SINGLE_USER_SCOPE } from "@/lib/server/scope";
 
 const inputSchema = z.object({
     studyIds: z.array(z.string()).optional(),
@@ -63,7 +64,7 @@ export const recommendStudiesTool: AITool = {
 
         try {
             // 1. Load studies from ledger
-            const allStudies = await listStudies(null, projectId);
+            const allStudies = await listStudies(SINGLE_USER_SCOPE, projectId);
 
             // 2. Determine positive seeds
             let positiveStudies: Study[];

@@ -16,7 +16,7 @@ import {
     type CommandDefinition,
 } from "@/lib/commands/registry";
 import type { AgentMode } from "@/types/agent";
-import type { CopilotPage } from "@/contexts/ProjectCopilotContext";
+import type { CopilotPage } from "@/types/ai";
 import styles from "./CommandPalette.module.css";
 
 const SECTION_LABELS: Record<string, string> = {

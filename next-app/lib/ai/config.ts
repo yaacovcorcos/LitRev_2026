@@ -16,7 +16,7 @@ export const AI_CONFIG = {
 
     // Rate limiting
     maxRequestsPerMinute: parseInt((process.env.AI_RATE_LIMIT || "20").trim(), 10),
-    maxTokensPerDay: parseInt((process.env.AI_DAILY_TOKEN_LIMIT || "100000").trim(), 10),
+    maxTokensPerDay: parseInt((process.env.AI_DAILY_TOKEN_LIMIT || "500000").trim(), 10),
 
     // Default chat parameters
     defaultTemperature: 0.7,

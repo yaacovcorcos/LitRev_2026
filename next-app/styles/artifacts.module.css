@@ -33,6 +33,16 @@
     border-left-color: var(--text-muted);
 }
 
+.artifactCardRunning {
+    border-left-color: var(--accent-primary);
+    animation: planRunningPulse 2s ease-in-out infinite;
+}
+
+@keyframes planRunningPulse {
+    0%, 100% { border-left-color: var(--accent-primary); }
+    50% { border-left-color: var(--color-info); }
+}
+
 .artifactCardAutoApplied {
     border-left-color: var(--accent-secondary);
 }
@@ -81,6 +91,11 @@
 .statusBadgeRejected {
     background: rgba(192, 57, 43, 0.1);
     color: #a93226;
+}
+
+.statusBadgeRunning {
+    background: rgba(200, 160, 80, 0.15);
+    color: #8a6d3b;
 }
 
 .statusBadgeAutoApplied {
@@ -537,6 +552,35 @@
 .planStepIcon {
     flex-shrink: 0;
     font-size: 16px;
+}
+
+.planStepToggle {
+    flex-shrink: 0;
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    font-size: 18px;
+    line-height: 1;
+    color: var(--text-secondary);
+    transition: color 0.15s ease;
+}
+
+.planStepToggle:hover {
+    color: var(--accent-primary);
+}
+
+.planStepToggle:disabled {
+    cursor: default;
+    opacity: 0.5;
+}
+
+.planStepDeselected {
+    opacity: 0.4;
+}
+
+.planStepDeselected .planStepLabel {
+    text-decoration: line-through;
 }
 
 /* ── PICO Card Specifics ────────────────────────────────────── */

@@ -28,6 +28,7 @@ function makeStudy(overrides: Partial<Study> = {}): Study {
 
 function makeProtocol(overrides: Partial<ProtocolData> = {}): ProtocolData {
   return {
+    researchQuestion: '',
     pico: { population: '', intervention: '', comparison: '', outcome: '' },
     eligibility: { inclusion: [], exclusion: [] },
     searchStrategy: { query: '', databases: [] },

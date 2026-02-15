@@ -43,6 +43,7 @@ const seedProjects: Project[] = [
 
 const seedProtocols: Record<string, ProtocolData> = {
   p6: {
+    researchQuestion: "How effective are AI/ML early warning systems compared to standard clinical screening tools in predicting sepsis onset in adult ICU patients?",
     pico: {
       population: "Adult ICU patients at risk of sepsis",
       intervention: "AI/ML early warning systems",
@@ -75,6 +76,7 @@ const seedProtocols: Record<string, ProtocolData> = {
     },
   },
   p7: {
+    researchQuestion: "What is the impact of telemedicine consultations compared to in-person care on healthcare access, clinical outcomes, and patient satisfaction in rural primary care settings?",
     pico: {
       population: "Adults in rural primary care settings",
       intervention: "Telemedicine consultations",

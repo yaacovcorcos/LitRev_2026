@@ -9,7 +9,8 @@
 import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import * as Popover from "@radix-ui/react-popover";
-import { useProjectCopilot, type CopilotPage } from "@/contexts/ProjectCopilotContext";
+import { useProjectCopilot } from "@/contexts/ProjectCopilotContext";
+import type { CopilotPage } from "@/types/ai";
 import { USER_SELECTABLE_MODELS, type SelectableModelId } from "@/lib/ai/config";
 import { useVoiceInput } from "@/hooks/useVoiceInput";
 import { listProjectFilesAction } from "@/app/actions/files";
@@ -46,12 +47,17 @@ export function CopilotInput({ page, section, studyId, inputPlaceholder, prefill
     } = useProjectCopilot();
 
     const [input, setInput] = useState("");
-    const [selectedModel, setSelectedModel] = useState<SelectableModelId>(() => {
-        if (typeof window === "undefined") return "gpt-5.2";
+    const [selectedModel, setSelectedModel] = useState<SelectableModelId>("gpt-5.2");
+
+    // Sync model selection from localStorage after hydration
+    useEffect(() => {
         const stored = window.localStorage.getItem("litrev_copilot_model");
         const valid = USER_SELECTABLE_MODELS.some(m => m.id === stored);
-        return valid ? (stored as SelectableModelId) : "gpt-5.2";
-    });
+        if (valid && stored !== selectedModel) {
+            setSelectedModel(stored as SelectableModelId);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
     const textareaRef = useRef<HTMLTextAreaElement | null>(null);
     const sendLockRef = useRef(false);
 

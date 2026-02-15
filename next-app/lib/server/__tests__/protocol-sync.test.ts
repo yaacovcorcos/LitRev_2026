@@ -24,6 +24,7 @@ const mockArchive = vi.mocked(archiveProjectMemory);
 
 function makeProtocol(overrides?: Partial<ProtocolData>): ProtocolData {
     return {
+        researchQuestion: "",
         pico: {
             population: "Adults with hypertension",
             intervention: "ACE inhibitors",

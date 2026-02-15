@@ -37,7 +37,9 @@ describe("findDuplicates", () => {
 
     const { unique, duplicates } = findDuplicates(existing, results);
     expect(duplicates).toHaveLength(1);
-    expect(duplicates[0].title).toBe("Duplicate");
+    expect(duplicates[0].result.title).toBe("Duplicate");
+    expect(duplicates[0].matchedBy).toBe("pmid");
+    expect(duplicates[0].existingTitle).toBe("Test Study");
     expect(unique).toHaveLength(1);
     expect(unique[0].title).toBe("Unique");
   });
@@ -53,7 +55,8 @@ describe("findDuplicates", () => {
 
     const { unique, duplicates } = findDuplicates(existing, results);
     expect(duplicates).toHaveLength(1);
-    expect(duplicates[0].title).toBe("Duplicate");
+    expect(duplicates[0].result.title).toBe("Duplicate");
+    expect(duplicates[0].matchedBy).toBe("doi");
     expect(unique).toHaveLength(1);
   });
 

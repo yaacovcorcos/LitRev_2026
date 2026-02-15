@@ -587,8 +587,10 @@ export default function LedgerPage() {
         setConfirmDialog({
             message: "Delete this study from the evidence ledger?",
             onConfirm: () => {
-                removeStudies(id, [studyId]).catch(() => undefined);
                 setConfirmDialog(null);
+                removeStudies(id, [studyId]).catch(() => {
+                    setAlertMsg("Failed to delete study. Please try again.");
+                });
             },
         });
     };
@@ -598,9 +600,12 @@ export default function LedgerPage() {
         setConfirmDialog({
             message: `Delete ${validSelectedIds.length} selected studies?`,
             onConfirm: () => {
-                removeStudies(id, validSelectedIds).catch(() => undefined);
+                const ids = [...validSelectedIds];
                 setSelectedIds([]);
                 setConfirmDialog(null);
+                removeStudies(id, ids).catch(() => {
+                    setAlertMsg("Failed to delete studies. Please try again.");
+                });
             },
         });
     };

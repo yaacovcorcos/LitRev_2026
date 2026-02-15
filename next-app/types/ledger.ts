@@ -1,4 +1,4 @@
-export type StudyStatus = "pending" | "extracted";
+export type StudyStatus = "pending" | "extracted" | "active" | "excluded";
 
 export type StudyType =
   | "RCT"

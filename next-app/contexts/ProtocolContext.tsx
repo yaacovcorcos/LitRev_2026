@@ -74,6 +74,8 @@ type ProtocolContextValue = {
     updateQualityTool: (value: string) => void;
     /** Update quality assessment notes */
     updateQualityNotes: (value: string) => void;
+    /** Update the research question */
+    updateResearchQuestion: (value: string) => void;
     /** Reset protocol to defaults */
     resetProtocol: () => void;
 };
@@ -387,6 +389,14 @@ export function ProtocolProvider({ projectId, initialData, children }: ProtocolP
         [updateProtocol]
     );
 
+    // Research question
+    const updateResearchQuestion = useCallback(
+        (value: string) => {
+            updateProtocol((prev) => ({ ...prev, researchQuestion: value }));
+        },
+        [updateProtocol]
+    );
+
     // Reset
     const resetProtocol = useCallback(() => {
         const defaults = createDefaultProtocolData();
@@ -429,6 +439,7 @@ export function ProtocolProvider({ projectId, initialData, children }: ProtocolP
             updateTimeFrameEnd,
             updateQualityTool,
             updateQualityNotes,
+            updateResearchQuestion,
             resetProtocol,
         }),
         [
@@ -453,6 +464,7 @@ export function ProtocolProvider({ projectId, initialData, children }: ProtocolP
             updateTimeFrameEnd,
             updateQualityTool,
             updateQualityNotes,
+            updateResearchQuestion,
             resetProtocol,
         ]
     );

@@ -53,6 +53,7 @@ function ProtocolPageContent() {
         updateTimeFrameEnd,
         updateQualityTool,
         updateQualityNotes,
+        updateResearchQuestion,
     } = useProtocol();
 
     const project = id ? getProjectById(id) : undefined;
@@ -88,6 +89,10 @@ function ProtocolPageContent() {
         }
 
         // Insert based on active section
+        if (activeSection === "research-question") {
+            updateResearchQuestion(insertText);
+            return;
+        }
         if (activeSection.startsWith("pico-")) {
             const field = activeSection.replace("pico-", "") as keyof typeof protocol.pico;
             if (field in protocol.pico) {
@@ -107,7 +112,7 @@ function ProtocolPageContent() {
         } else if (activeSection === "search-databases") {
             addDatabase(insertText);
         }
-    }, [activeSection, protocol, updatePICO, addInclusion, addExclusion, updateSearchQuery, addDatabase]);
+    }, [activeSection, protocol, updatePICO, addInclusion, addExclusion, updateSearchQuery, addDatabase, updateResearchQuestion]);
 
     // Handle quick action button clicks - opens copilot and sends a prompt
     const handleQuickAction = useCallback((prompt: string, section: ProtocolSection) => {
@@ -119,6 +124,8 @@ function ProtocolPageContent() {
     // Calculate protocol completeness
     const completeness = useMemo(() => {
         const checks = [
+            // Research question
+            { name: "Research question", complete: !!protocol.researchQuestion?.trim(), section: "research-question" },
             // PICO fields
             { name: "Population", complete: !!protocol.pico.population.trim(), section: "pico" },
             { name: "Intervention", complete: !!protocol.pico.intervention.trim(), section: "pico" },
@@ -159,6 +166,12 @@ function ProtocolPageContent() {
         lines.push(`# Study Protocol: ${project.name}`);
         lines.push("");
         lines.push(`Generated: ${new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}`);
+        lines.push("");
+
+        // Research Question
+        lines.push("## Research Question");
+        lines.push("");
+        lines.push(protocol.researchQuestion?.trim() || "_Not defined_");
         lines.push("");
 
         // PICO Framework
@@ -339,6 +352,13 @@ function ProtocolPageContent() {
 
     // Generate suggestions based on active section
     const getSuggestions = () => {
+        if (activeSection === "research-question") {
+            return [
+                { label: "Refine question", prompt: "Help me refine my research question to be more specific and answerable" },
+                { label: "Derive PICO", prompt: "Based on my research question, suggest PICO components" },
+                { label: "Check scope", prompt: "Is my research question too broad or too narrow for a systematic review?" },
+            ];
+        }
         if (activeSection?.startsWith("pico-")) {
             const field = activeSection.replace("pico-", "");
             return [
@@ -513,6 +533,39 @@ function ProtocolPageContent() {
                             )}
 
                             <div className={styles.content}>
+                                {/* Research Question Section */}
+                                <section
+                                    className={`${styles.section} ${activeSection === "research-question" ? styles.sectionActive : ""}`}
+                                >
+                                    <div className={styles.sectionHeader}>
+                                        <h2 className={styles.sectionTitle}>
+                                            <span className="material-icons-round">help_outline</span>
+                                            Research Question
+                                        </h2>
+                                        <button
+                                            type="button"
+                                            className={styles.askCopilotBtn}
+                                            onClick={() => openPopupChat({
+                                                type: "protocol_section",
+                                                section: "Research Question",
+                                                currentContent: protocol.researchQuestion || "",
+                                            })}
+                                        >
+                                            <span className="material-icons-round">smart_toy</span>
+                                            Ask AI
+                                        </button>
+                                    </div>
+                                    <EditableTextArea
+                                        value={protocol.researchQuestion ?? ""}
+                                        onChange={updateResearchQuestion}
+                                        placeholder="What is the primary question this systematic review aims to answer?"
+                                        isActive={activeSection === "research-question"}
+                                        {...createSectionHandlers("research-question")}
+                                        ariaLabel="Research question"
+                                        minHeight={60}
+                                    />
+                                </section>
+
                                 {/* PICO Framework Section */}
                                 <section
                                     className={`${styles.section} ${activeSection?.startsWith("pico-") ? styles.sectionActive : ""}`}

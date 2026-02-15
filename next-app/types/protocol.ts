@@ -57,6 +57,8 @@ export interface MethodologyData {
 
 /** Complete protocol data for a project */
 export interface ProtocolData {
+    /** Primary research question driving the review */
+    researchQuestion: string;
     pico: PICOData;
     eligibility: EligibilityData;
     searchStrategy: SearchStrategyData;
@@ -65,6 +67,7 @@ export interface ProtocolData {
 
 /** Protocol section identifiers for context tracking */
 export type ProtocolSection =
+    | "research-question"
     | "pico-population"
     | "pico-intervention"
     | "pico-comparison"
@@ -80,6 +83,7 @@ export type ProtocolSection =
 
 /** Human-readable labels for protocol sections */
 export const PROTOCOL_SECTION_LABELS: Record<NonNullable<ProtocolSection>, string> = {
+    "research-question": "Research Question",
     "pico-population": "Population",
     "pico-intervention": "Intervention",
     "pico-comparison": "Comparison",
@@ -102,6 +106,7 @@ export function getProtocolSectionLabel(section: ProtocolSection): string {
 /** Default/empty protocol data */
 export function createDefaultProtocolData(): ProtocolData {
     return {
+        researchQuestion: "",
         pico: {
             population: "",
             intervention: "",
