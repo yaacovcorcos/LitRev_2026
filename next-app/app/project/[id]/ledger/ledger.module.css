@@ -236,6 +236,16 @@
     box-shadow: 0 0 0 2px rgba(217, 116, 89, 0.2);
 }
 
+.addRowMeta {
+    display: flex;
+    gap: 8px;
+    margin-top: 6px;
+}
+
+.inputFieldYear {
+    max-width: 80px;
+}
+
 .addActions {
     display: flex;
     gap: 8px;
@@ -261,9 +271,23 @@
 }
 
 .titleCell {
-    font-weight: 500;
     color: var(--text-primary) !important;
-    max-width: 300px;
+}
+
+.studyTitle {
+    font-weight: 500;
+    line-height: 1.35;
+}
+
+.studyCitation {
+    margin-top: 2px;
+    font-size: 12px;
+    color: var(--text-muted);
+    font-weight: 400;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 400px;
 }
 
 .statusPill {

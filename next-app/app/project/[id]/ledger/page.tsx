@@ -66,11 +66,21 @@ const StudyRow = memo(function StudyRow({
     const oneSentence = summaryText.split(/[.!?](?:\s|$)/)[0] + ".";
     const displaySummary = oneSentence.length > 200 ? oneSentence.slice(0, 200) + "..." : oneSentence;
 
+    // Compact citation line: "Smith et al., 2024 · JAMA · RCT"
+    const authorParts = study.authors.split(/,\s*/);
+    const shortAuthors = authorParts.length >= 3
+        ? `${authorParts[0]} et al.`
+        : study.authors;
+    const metaParts = [shortAuthors, String(study.year)];
+    if (d.journal) metaParts.push(d.journal);
+    if (d.studyType) metaParts.push(d.studyType);
+    const citationLine = metaParts.join(" · ");
+
     const rowClass = `${isSelected ? styles.rowSelected : ""} ${isExpanded ? styles.rowExpanded : ""} ${styles.clickableRow}`.trim();
 
     const colSpan = isSelectMode
-        ? (hasProtocolCriteria ? 10 : 9)
-        : (hasProtocolCriteria ? 9 : 8);
+        ? (hasProtocolCriteria ? 8 : 7)
+        : (hasProtocolCriteria ? 7 : 6);
 
     const handleRowClick = (e: React.MouseEvent) => {
         const target = e.target as HTMLElement;
@@ -102,9 +112,10 @@ const StudyRow = memo(function StudyRow({
                         />
                     </td>
                 )}
-                <td className={styles.titleCell}>{study.title}</td>
-                <td>{study.authors}</td>
-                <td>{study.year}</td>
+                <td className={styles.titleCell}>
+                    <div className={styles.studyTitle}>{study.title}</div>
+                    <div className={styles.studyCitation} title={study.authors}>{citationLine}</div>
+                </td>
                 <td>
                     <span className={`${styles.statusPill} ${study.status === "extracted" ? styles.statusExtracted : styles.statusPending}`}>
                         {study.status === "extracted" ? "Extracted" : "Pending"}
@@ -808,8 +819,6 @@ export default function LedgerPage() {
                                                 </th>
                                             )}
                                             <th>Study</th>
-                                            <th>Authors</th>
-                                            <th>Year</th>
                                             <th>Status</th>
                                             <th>Quality</th>
                                             <th>Triage</th>
@@ -829,23 +838,21 @@ export default function LedgerPage() {
                                                         value={newStudy.title}
                                                         onChange={(e) => setNewStudy((prev) => ({ ...prev, title: e.target.value }))}
                                                     />
-                                                </td>
-                                                <td>
-                                                    <input
-                                                        className={styles.inputField}
-                                                        placeholder="Authors"
-                                                        value={newStudy.authors}
-                                                        onChange={(e) => setNewStudy((prev) => ({ ...prev, authors: e.target.value }))}
-                                                    />
-                                                </td>
-                                                <td>
-                                                    <input
-                                                        className={styles.inputField}
-                                                        type="number"
-                                                        placeholder="Year"
-                                                        value={newStudy.year}
-                                                        onChange={(e) => setNewStudy((prev) => ({ ...prev, year: e.target.value }))}
-                                                    />
+                                                    <div className={styles.addRowMeta}>
+                                                        <input
+                                                            className={styles.inputField}
+                                                            placeholder="Authors"
+                                                            value={newStudy.authors}
+                                                            onChange={(e) => setNewStudy((prev) => ({ ...prev, authors: e.target.value }))}
+                                                        />
+                                                        <input
+                                                            className={`${styles.inputField} ${styles.inputFieldYear}`}
+                                                            type="number"
+                                                            placeholder="Year"
+                                                            value={newStudy.year}
+                                                            onChange={(e) => setNewStudy((prev) => ({ ...prev, year: e.target.value }))}
+                                                        />
+                                                    </div>
                                                 </td>
                                                 <td>
                                                     <select

@@ -96,7 +96,7 @@ export function TimelineRenderer({
     const sentinelRef = useRef<HTMLDivElement | null>(null);
     const followRef = useRef(true);      // strict follow-mode: only toggled by explicit user intent
     const rafRef = useRef<number | null>(null);
-    const lastScrollTs = useRef(0);       // timestamp of last programmatic scroll
+    const programmaticScrollRef = useRef(false);
     const [isAtBottom, setIsAtBottom] = useState(true);
     const [savedNoteId, setSavedNoteId] = useState<string | null>(null);
 
@@ -111,22 +111,24 @@ export function TimelineRenderer({
         if (rafRef.current) cancelAnimationFrame(rafRef.current);
         rafRef.current = requestAnimationFrame(() => {
             if (listRef.current && followRef.current) {
-                lastScrollTs.current = Date.now();
+                programmaticScrollRef.current = true;
                 listRef.current.scrollTop = listRef.current.scrollHeight;
+                // Clear on next frame so user-driven scrolls can immediately disable follow-mode.
+                requestAnimationFrame(() => { programmaticScrollRef.current = false; });
             }
         });
         return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
     }, [timeline]);
 
     // ── Scroll handler — distinguishes user scroll from programmatic scroll ─
-    // Programmatic scrolls are identified by timestamp proximity (<80ms).
+    // Programmatic scrolls are ignored via a short-lived ref set by our own scrollTop changes.
     // User scrolling up disables follow; user scrolling back to bottom re-enables.
     const BOTTOM_THRESHOLD = 20;
 
     const handleScroll = useCallback(() => {
         if (!listRef.current) return;
         // Ignore scroll events triggered by our own programmatic scrollTop assignment
-        if (Date.now() - lastScrollTs.current < 80) return;
+        if (programmaticScrollRef.current) return;
 
         const { scrollTop, clientHeight, scrollHeight } = listRef.current;
         const atBottom = scrollTop + clientHeight >= scrollHeight - BOTTOM_THRESHOLD;
@@ -141,8 +143,9 @@ export function TimelineRenderer({
         if (!listRef.current) return;
         followRef.current = true;
         setIsAtBottom(true);
-        lastScrollTs.current = Date.now();
-        listRef.current.scrollTo({ top: listRef.current.scrollHeight, behavior: "smooth" });
+        programmaticScrollRef.current = true;
+        listRef.current.scrollTo({ top: listRef.current.scrollHeight, behavior: "auto" });
+        requestAnimationFrame(() => { programmaticScrollRef.current = false; });
     }, []);
 
     const handleCopy = useCallback((text: string) => {

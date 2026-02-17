@@ -310,6 +310,54 @@ export async function getConversationWithSummary(
 }
 
 /**
+ * Load a conversation (by ID) with summary data loaded in one query.
+ * Returns null when the conversation doesn't exist.
+ */
+export async function getConversationWithSummaryById(
+    conversationId: string
+): Promise<AIConversationWithSummary | null> {
+    const existing = await prisma.aIConversation.findUnique({
+        where: { id: conversationId },
+        include: {
+            messages: { orderBy: { createdAt: "asc" } },
+            summary: true,
+        },
+    });
+
+    if (!existing) return null;
+
+    const result: AIConversationWithSummary = {
+        id: existing.id,
+        context: existing.context as ConversationContext,
+        projectId: existing.projectId || undefined,
+        studyId: existing.studyId || undefined,
+        messages: existing.messages.map((m) => ({
+            id: m.id,
+            role: m.role as AIMessage["role"],
+            content: m.content,
+            toolCalls: parseToolCalls(m.toolCalls),
+            toolResultId: m.toolResultId ?? undefined,
+            createdAt: m.createdAt.toISOString(),
+        })),
+        createdAt: existing.createdAt.toISOString(),
+        updatedAt: existing.updatedAt.toISOString(),
+    };
+
+    if (existing.summary) {
+        result.summaryData = {
+            summary: existing.summary.summary,
+            keyPoints: existing.summary.keyPoints,
+            decisions: existing.summary.decisions,
+            followUpNeeded: existing.summary.followUpNeeded,
+            messageCount: existing.summary.messageCount,
+            lastSummarizedAt: existing.summary.lastSummarizedAt.toISOString(),
+        };
+    }
+
+    return result;
+}
+
+/**
  * Auto-summarize conversation if it's grown past the threshold.
  * Blocking when near budget, fire-and-forget otherwise.
  */

@@ -1,6 +1,5 @@
 import "server-only";
 
-import { PDFParse } from "pdf-parse";
 import { getAIService } from "./ai/ai-service";
 import {
     QUICK_EXTRACT_SYSTEM_PROMPT,
@@ -108,8 +107,9 @@ export async function extractTextFromPdf(buffer: Buffer): Promise<string> {
         );
     }
 
-    let parser: PDFParse | null = null;
+    let parser: InstanceType<typeof import("pdf-parse").PDFParse> | null = null;
     try {
+        const { PDFParse } = await import("pdf-parse");
         parser = new PDFParse({ data: buffer });
         const result = await parser.getText();
         const sanitizedText = result.text

@@ -287,6 +287,16 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
     const setStudyFilter = useCallback((id: string | undefined) => {
         if (studyFilterRef.current === id) return;
 
+        // Scope switch must invalidate any in-flight stream to prevent cross-scope ghost updates.
+        streamGenRef.current++;
+        if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
+            abortControllerRef.current = null;
+        }
+        setIsLoading(false);
+        setCurrentRunId(null);
+        setPendingChoices([]);
+
         const toScopeKey = (v: string | undefined) => v ? `study:${v}` : "project";
         const oldScope = toScopeKey(studyFilterRef.current);
         const newScope = toScopeKey(id);
@@ -432,6 +442,14 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
 
     const selectConversation = useCallback(async (conversationId: string) => {
         try {
+            // Switching conversations must invalidate any in-flight stream to prevent ghost updates.
+            streamGenRef.current++;
+            if (abortControllerRef.current) {
+                abortControllerRef.current.abort();
+                abortControllerRef.current = null;
+            }
+            setIsLoading(false);
+            setCurrentRunId(null);
             setPendingChoices([]);
             const convo = await getConversation(conversationId);
             if (convo) {
@@ -471,6 +489,14 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             console.error("Cannot create conversation: no projectId");
             return;
         }
+        // Starting a new conversation must stop any active stream first.
+        streamGenRef.current++;
+        if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
+            abortControllerRef.current = null;
+        }
+        setIsLoading(false);
+        setCurrentRunId(null);
         setPendingChoices([]);
         try {
             const { id } = await createConversation({
@@ -589,6 +615,7 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
         onPlanStepUpdate?: (planId: string, stepIndex: number, stepStatus: string) => void;
     }): Promise<{ success: boolean; aborted: boolean }> => {
         const { body, page, section, convId, onPlanStepUpdate } = params;
+        let effectiveConvId = convId;
 
         // Stream lifecycle guards
         setIsLoading(true);
@@ -701,6 +728,12 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
                 } else if (data.type === "run_start") {
                     localRunId = data.runId ?? "";
                     setCurrentRunId(data.runId ?? null);
+                    if (data.conversationId && effectiveConvId !== data.conversationId) {
+                        effectiveConvId = data.conversationId;
+                        if (currentConversationIdRef.current !== data.conversationId) {
+                            setCurrentConversationId(data.conversationId);
+                        }
+                    }
                 } else if (data.type === "run_end") {
                     setCurrentRunId(null);
                 } else if (data.type === "artifact") {
@@ -711,7 +744,7 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
                         id: data.artifactId ?? `art-${Date.now()}`,
                         runId: localRunId,
                         projectId,
-                        conversationId: convId ?? null,
+                        conversationId: effectiveConvId ?? null,
                         type: artType,
                         status: artStatus,
                         title: artTitle,
@@ -785,17 +818,8 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
                 }
             }
 
-            // Stale generation — skip DB save and refresh
+            // Stale generation — skip refresh
             if (streamGenRef.current !== myGen) return { success: false, aborted: true };
-
-            // Save AI response to DB
-            if (convId && fullContent) {
-                addMessage({
-                    conversationId: convId,
-                    role: "assistant",
-                    content: fullContent,
-                }).catch(console.error);
-            }
 
             // Refresh conversation list to update titles/counts
             loadConversations();
@@ -803,9 +827,6 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
         } catch (error) {
             // Silently ignore aborted requests
             if (error instanceof DOMException && error.name === "AbortError") {
-                if (streamGenRef.current === myGen && convId && fullContent) {
-                    addMessage({ conversationId: convId, role: "assistant", content: fullContent }).catch(console.error);
-                }
                 return { success: false, aborted: true };
             }
 
@@ -911,13 +932,21 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             }));
 
             // Save user message to DB (with attachment metadata)
+            let didPersistUserMessage = false;
+            let persistedUserMessageId: string | undefined;
             if (convId) {
-                addMessage({
-                    conversationId: convId,
-                    role: "user",
-                    content: displayText,
-                    attachments: attachmentsMeta,
-                }).catch(console.error);
+                try {
+                    const persisted = await addMessage({
+                        conversationId: convId,
+                        role: "user",
+                        content: displayText,
+                        attachments: attachmentsMeta,
+                    });
+                    didPersistUserMessage = true;
+                    persistedUserMessageId = persisted.id;
+                } catch (err) {
+                    console.error("Failed to save user message:", err);
+                }
             }
 
             // Run the stream
@@ -926,12 +955,16 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
                     userMessage: messageForAI,
                     context: conversationContext,
                     options: {
+                        conversationId: convId ?? undefined,
                         projectId,
                         studyId,
                         model,
                         agentMode: agentMode || "general",
                         page,
                         section,
+                        persistUserMessage: !didPersistUserMessage,
+                        persistedUserMessageContent: displayText,
+                        persistedUserMessageId,
                     },
                 },
                 page,
@@ -974,6 +1007,7 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
                 userMessage: "",
                 context: conversationContext,
                 options: {
+                    conversationId: convId ?? undefined,
                     projectId,
                     agentMode: "general",
                 },

@@ -375,6 +375,7 @@ export function PopupChat({ projectId }: PopupChatProps) {
                     onPointerMove={handleDragMove}
                     onPointerUp={handleDragEnd}
                 >
+                    <Dialog.Title className="sr-only">Ask AI mini-chat</Dialog.Title>
                     {/* Header — drag handle */}
                     <div
                         className={styles.header}

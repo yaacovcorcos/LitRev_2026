@@ -127,6 +127,8 @@ export type AIStreamChunk = {
     planId?: string;
     stepIndex?: number;
     stepStatus?: string;
+    // Conversation identity (server-side source of truth)
+    conversationId?: string;
 };
 
 // Memory/Context types

@@ -27,7 +27,7 @@ export function messagesToTimeline(messages: CopilotMessage[]): TimelineItem[] {
                     mimeType: att.mimeType,
                     size: att.size,
                 })),
-                createdAt: new Date().toISOString(),
+                createdAt: msg.createdAt,
             };
         }
         // Artifact messages → TimelineArtifact
@@ -48,7 +48,7 @@ export function messagesToTimeline(messages: CopilotMessage[]): TimelineItem[] {
             type: "assistant_message" as const,
             id: msg.id,
             content: msg.text,
-            createdAt: new Date().toISOString(),
+            createdAt: msg.createdAt,
         };
     });
 }

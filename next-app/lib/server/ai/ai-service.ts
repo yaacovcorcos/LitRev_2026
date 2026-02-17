@@ -8,7 +8,7 @@ import type { AIMessage, AIResponse, ChatOptions, AIStreamChunk, ConversationCon
 import type { ArtifactType } from "@/types/artifacts";
 import type { AutonomyLevel, AgentMode } from "@/types/agent";
 import { BaseAIProvider, getOpenAIProvider, getAnthropicProvider, getXAIProvider, getGoogleProvider } from "./providers";
-import { getOrCreateConversation, addMessageToConversation, getConversationWithSummary, autoSummarizeIfNeeded } from "./memory";
+import { getOrCreateConversation, addMessageToConversation, getConversationWithSummary, getConversationWithSummaryById, autoSummarizeIfNeeded } from "./memory";
 import { validateRateLimits, recordUsage } from "./rate-limiter";
 import { retrieveAndFormatMemories } from "@/lib/server/memory";
 import { AI_CONFIG, getProviderForModel, getContextBudget } from "@/lib/ai/config";
@@ -426,17 +426,46 @@ class AIService {
     async *streamChatWithArtifacts(
         userMessage: string,
         context: ConversationContext,
-        options?: ChatOptions & { projectId?: string; studyId?: string; userId?: string; planId?: string; selectedSteps?: number[]; agentMode?: AgentMode; page?: string; section?: string }
+        options?: ChatOptions & {
+            projectId?: string;
+            studyId?: string;
+            userId?: string;
+            planId?: string;
+            selectedSteps?: number[];
+            agentMode?: AgentMode;
+            page?: string;
+            section?: string;
+            /** When false, caller is responsible for persisting the user message (prevents double-writes). */
+            persistUserMessage?: boolean;
+            /** UI-persisted message content to drop from trailing history before appending augmented content. */
+            persistedUserMessageContent?: string;
+            /** ID of the UI-persisted user message for robust deduplication. */
+            persistedUserMessageId?: string;
+        }
     ): AsyncIterable<AIStreamChunk & { conversationId?: string }> {
-        const projectId = options?.projectId;
-        const studyId = options?.studyId;
+        let projectId = options?.projectId;
+        let studyId = options?.studyId;
         const userId = options?.userId || "single-user";
         const agentMode: AgentMode = (options?.agentMode as AgentMode) || "general";
         const executionMode = !!(options?.planId && options?.selectedSteps?.length);
 
         // Get or create conversation (with summary for compaction)
-        // For plan execution, resolve the exact conversation from the artifact (done after startPlanExecution below)
-        const conversation = await getConversationWithSummary(context, projectId, studyId);
+        // When conversationId is provided, load by ID and treat its scope as canonical.
+        // This prevents cross-conversation writes when client scope drifts from the actual thread.
+        let conversation;
+        if (options?.conversationId) {
+            const byId = await getConversationWithSummaryById(options.conversationId);
+            if (byId) {
+                conversation = byId;
+                // Canonical ownership: conversation's stored scope is source of truth
+                projectId = byId.projectId;
+                studyId = byId.studyId;
+            } else {
+                conversation = await getConversationWithSummary(context, projectId, studyId);
+            }
+        } else {
+            conversation = await getConversationWithSummary(context, projectId, studyId);
+        }
         const budget = getContextBudget(options?.model);
 
         // Start an agent run
@@ -470,6 +499,7 @@ class AIService {
         interface StepQueueEntry { originalIndex: number; toolName?: string; consumed: boolean; finalStatus: import("@/types/artifacts").PlanStep["status"] }
         let planData: { plan: import("@/types/artifacts").PlanPayload; selectedSteps: import("@/lib/server/agent/plan-execution").SelectedStep[] } | null = null;
         let stepQueue: StepQueueEntry[] = [];
+        let fullContent = "";
 
         try {
             // Retrieve memories + project context in parallel
@@ -543,10 +573,21 @@ class AIService {
             // Add user message to conversation (skip for plan execution)
             let userMsg: AIMessage | null = null;
             if (!executionMode && userMessage) {
-                userMsg = await addMessageToConversation(conversation.id, {
-                    role: "user",
-                    content: userMessage,
-                });
+                const shouldPersistUserMessage = options?.persistUserMessage !== false;
+                if (shouldPersistUserMessage) {
+                    const persistedUserContent = options?.persistedUserMessageContent || userMessage;
+                    userMsg = await addMessageToConversation(conversation.id, {
+                        role: "user",
+                        content: persistedUserContent,
+                    });
+                } else {
+                    userMsg = {
+                        id: `ephemeral-user-${Date.now()}`,
+                        role: "user",
+                        content: userMessage,
+                        createdAt: new Date().toISOString(),
+                    };
+                }
             }
 
             // Prepare messages with compacted history
@@ -559,9 +600,27 @@ class AIService {
                     conversation.summaryData.messageCount
                 )
                 : null;
-            const rawHistory = userMsg
-                ? [...conversation.messages, userMsg]
-                : [...conversation.messages];
+            const shouldPersistUserMessage = options?.persistUserMessage !== false;
+            const baseHistory = [...conversation.messages];
+            if (!shouldPersistUserMessage && options?.persistedUserMessageContent) {
+                let removed = false;
+                if (options.persistedUserMessageId) {
+                    for (let index = baseHistory.length - 1; index >= 0; index--) {
+                        if (baseHistory[index]?.id === options.persistedUserMessageId) {
+                            baseHistory.splice(index, 1);
+                            removed = true;
+                            break;
+                        }
+                    }
+                }
+                if (!removed) {
+                    const last = baseHistory[baseHistory.length - 1];
+                    if (last?.role === "user" && last.content === options.persistedUserMessageContent) {
+                        baseHistory.pop();
+                    }
+                }
+            }
+            const rawHistory = userMsg ? [...baseHistory, userMsg] : baseHistory;
             const compactedHistory = buildCompactedHistory(
                 rawHistory,
                 summaryText,
@@ -659,7 +718,6 @@ class AIService {
             };
 
             const currentMessages = [...historyMessages];
-            let fullContent = "";
             let totalTokensIn = 0;
             let totalTokensOut = 0;
             const loop = new LoopState();
@@ -858,6 +916,27 @@ class AIService {
                 conversationId: conversation.id,
             };
         } catch (error) {
+            const isAbortError =
+                options?.signal?.aborted ||
+                (error instanceof Error && error.name === "AbortError") ||
+                (typeof DOMException !== "undefined" && error instanceof DOMException && error.name === "AbortError");
+
+            if (isAbortError) {
+                if (fullContent) {
+                    await addMessageToConversation(conversation.id, {
+                        role: "assistant",
+                        content: fullContent,
+                    });
+                    await emitEvent(run.id, "message", { content: fullContent }, { messageRole: "assistant" });
+                }
+
+                trace.update({ metadata: { aborted: true } }).end();
+                await flushTracing();
+                await endRun(run.id, "cancelled");
+                yield { type: "run_end", runId: run.id, runStatus: "cancelled", conversationId: conversation.id };
+                return;
+            }
+
             // ── Plan execution failure finalization ──
             if (executionMode && options?.planId && planData) {
                 try {
