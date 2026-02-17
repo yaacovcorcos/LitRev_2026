@@ -24,6 +24,11 @@ Status (keep updated):
 - Phase 9 ops: Supabase storage bucket `study-assets` exists and is public.
 - Phase 9 runtime fix: Server Actions body size limit raised for study imports; shared client-side file validation added.
 - Phase 9 ops: Vercel Production + Preview envs updated for DATABASE_URL, DIRECT_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY.
+- AI convergence Phase 1 done: /ai now uses shared NDJSON parser, handles full stream chunk protocol (including choices/artifacts/progress), routes agentMode server-side, removes broken tone toggle, and replaces duplicate regenerate stream path with retry-last-user-message flow.
+- AI convergence Phase 2 done: /ai now reuses shared UI primitives (`TimelineRenderer` + `CopilotInputCore`), `CopilotInput` was split into core + adapter, route-param safety was added for `/ai`, and legacy inline chat rendering/input code on `/ai` was removed.
+- AI convergence Phase 3 done: scope governance is enforced (global `/ai` only exposes global-safe tools, project mode exposes full toolset), `/ai` now shows an explicit scope badge, and tone control was reintroduced as a real server-side prompt modifier (`standard`/`deep`).
+- AI convergence Phase 4 done: `/ai` now adds command-center differentiation with global cross-project context injection, a global methodology-advisor scope instruction, and conversation export actions (`Export MD`, print-to-PDF) in the header.
+- AI convergence UI polish done: `/ai` progress rows are transient during streaming (no stale entries after response), header scope display is simplified to a single project/global selector, tone control was moved from the crowded header to the input zone, dead `/ai` CSS was removed, `TimelineRenderer.messages` is now optional, and PDF export uses structured printable HTML instead of raw markdown `<pre>` output.
 
 Phase 0 — Decisions (1–2 hours)
 - Confirm Supabase project + connection details.

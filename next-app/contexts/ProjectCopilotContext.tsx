@@ -23,7 +23,6 @@ import {
     listConversations,
     getConversation,
     createConversation,
-    addMessage,
     archiveConversation,
     updateConversationTitle,
 } from "@/app/actions/conversations";
@@ -222,6 +221,25 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
         }
     }, [projectId]);
 
+    // Project switch guard: clear scope-cached conversation IDs and active conversation state.
+    // Prevents restoring/selecting a conversation from a previous project.
+    useEffect(() => {
+        streamGenRef.current++;
+        if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
+            abortControllerRef.current = null;
+        }
+        setIsLoading(false);
+        setCurrentRunId(null);
+        setPendingChoices([]);
+        setConversations([]);
+        setCurrentConversationId(null);
+        currentConversationIdRef.current = null;
+        studyFilterRef.current = undefined;
+        scopeConversationMapRef.current.clear();
+        setState((prev) => ({ ...prev, messages: [] }));
+    }, [projectId]);
+
     // Load autonomy config on mount (Phase 7)
     useEffect(() => {
         getAutonomyConfigAction(projectId)
@@ -297,7 +315,10 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
         setCurrentRunId(null);
         setPendingChoices([]);
 
-        const toScopeKey = (v: string | undefined) => v ? `study:${v}` : "project";
+        const projectScope = projectId || "no-project";
+        const toScopeKey = (v: string | undefined) => (
+            v ? `${projectScope}:study:${v}` : `${projectScope}:project`
+        );
         const oldScope = toScopeKey(studyFilterRef.current);
         const newScope = toScopeKey(id);
 
@@ -327,7 +348,7 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
         }
 
         loadConversations();
-    }, [loadConversations]);
+    }, [loadConversations, projectId]);
 
     // Initial load: get conversations and auto-select the most recent one
     useEffect(() => {
@@ -451,7 +472,8 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             setIsLoading(false);
             setCurrentRunId(null);
             setPendingChoices([]);
-            const convo = await getConversation(conversationId);
+            if (!projectId) return;
+            const convo = await getConversation(conversationId, { expectedProjectId: projectId });
             if (convo) {
                 setCurrentConversationId(convo.id);
                 // Convert conversation messages to CopilotMessages
@@ -475,11 +497,17 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
                     ...prev,
                     messages: copilotMessages,
                 }));
+            } else {
+                setCurrentConversationId(null);
+                updateState((prev) => ({
+                    ...prev,
+                    messages: [],
+                }));
             }
         } catch (err) {
             console.error("Failed to select conversation:", err);
         }
-    }, [updateState]);
+    }, [updateState, projectId]);
 
     // Keep ref in sync so setStudyFilter (declared earlier) can call it
     selectConversationRef.current = selectConversation;
@@ -931,24 +959,6 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
                 messages: [...prev.messages, userMessage],
             }));
 
-            // Save user message to DB (with attachment metadata)
-            let didPersistUserMessage = false;
-            let persistedUserMessageId: string | undefined;
-            if (convId) {
-                try {
-                    const persisted = await addMessage({
-                        conversationId: convId,
-                        role: "user",
-                        content: displayText,
-                        attachments: attachmentsMeta,
-                    });
-                    didPersistUserMessage = true;
-                    persistedUserMessageId = persisted.id;
-                } catch (err) {
-                    console.error("Failed to save user message:", err);
-                }
-            }
-
             // Run the stream
             await runStream({
                 body: {
@@ -962,9 +972,8 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
                         agentMode: agentMode || "general",
                         page,
                         section,
-                        persistUserMessage: !didPersistUserMessage,
                         persistedUserMessageContent: displayText,
-                        persistedUserMessageId,
+                        userMessageAttachments: attachmentsMeta,
                     },
                 },
                 page,

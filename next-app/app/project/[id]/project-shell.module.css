@@ -21,6 +21,7 @@
     flex: 1;
     display: grid;
     grid-template-columns: 1fr 1px var(--copilot-width, 360px);
+    grid-template-rows: minmax(0, 1fr);
     overflow: hidden;
 }
 

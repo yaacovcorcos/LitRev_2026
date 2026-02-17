@@ -5,7 +5,12 @@
 
 import { prisma } from "@/lib/server/prisma";
 import type { Prisma } from "@prisma/client";
-import type { AIMessage, ConversationContext, AIConversation } from "@/types/ai";
+import type {
+    AIMessage,
+    ConversationContext,
+    AIConversation,
+    ConversationMessageAttachment,
+} from "@/types/ai";
 import { COMPACTION_THRESHOLD_MESSAGES, COMPACTION_SUMMARY_PROMPT } from "@/lib/agent/compaction";
 
 export type SummaryData = {
@@ -167,13 +172,16 @@ export async function listConversations(
  */
 export async function addMessageToConversation(
     conversationId: string,
-    message: Omit<AIMessage, "id" | "createdAt">
+    message: Omit<AIMessage, "id" | "createdAt"> & { attachments?: ConversationMessageAttachment[] }
 ): Promise<AIMessage> {
     const created = await prisma.aIMessage.create({
         data: {
             conversationId,
             role: message.role,
             content: message.content,
+            attachments: message.attachments && message.attachments.length > 0
+                ? (message.attachments as unknown as Prisma.InputJsonValue)
+                : undefined,
             toolCalls: (message.toolCalls ?? undefined) as Prisma.InputJsonValue,
             toolResultId: message.toolResultId ?? undefined,
         },
@@ -314,7 +322,8 @@ export async function getConversationWithSummary(
  * Returns null when the conversation doesn't exist.
  */
 export async function getConversationWithSummaryById(
-    conversationId: string
+    conversationId: string,
+    expectedUserId?: string
 ): Promise<AIConversationWithSummary | null> {
     const existing = await prisma.aIConversation.findUnique({
         where: { id: conversationId },
@@ -325,6 +334,11 @@ export async function getConversationWithSummaryById(
     });
 
     if (!existing) return null;
+    // Never allow streaming into archived conversations.
+    if (existing.archived) return null;
+    // Ownership guard when user scope is available.
+    // Legacy rows may have null userId; allow those for backward compatibility.
+    if (expectedUserId && existing.userId && existing.userId !== expectedUserId) return null;
 
     const result: AIConversationWithSummary = {
         id: existing.id,

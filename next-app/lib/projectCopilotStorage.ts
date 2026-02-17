@@ -4,6 +4,8 @@
  * all project pages (Draft, Protocol, Ledger).
  */
 
+import type { CopilotPage } from "@/types/ai";
+
 const PROJECT_COPILOT_KEY_PREFIX = "litrev_project_copilot_v1";
 
 export type CopilotSender = "user" | "ai";
@@ -23,7 +25,7 @@ export type CopilotMessage = {
   createdAt: string;
   /** Optional context about where this message was sent from */
   context?: {
-    page: "draft" | "protocol" | "ledger" | "study" | "overview" | "notes";
+    page: CopilotPage;
     section?: string;
   };
   /** File attachments on this message */

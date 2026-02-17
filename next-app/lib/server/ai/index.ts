@@ -14,4 +14,4 @@ export {
 } from "./memory";
 export { validateRateLimits, recordUsage, getUsageStats, checkRateLimit, checkDailyTokenLimit } from "./rate-limiter";
 export { BaseAIProvider, OpenAIProvider, getOpenAIProvider } from "./providers";
-export { AVAILABLE_TOOLS, getToolDefinitions, executeTool } from "./tools";
+export { AVAILABLE_TOOLS, getToolDefinitions, isToolAllowedInScope, executeTool } from "./tools";

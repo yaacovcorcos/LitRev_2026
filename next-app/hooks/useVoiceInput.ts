@@ -112,5 +112,5 @@ export function useVoiceInput(onTranscription: (text: string) => void) {
 
     const clearError = useCallback(() => setError(null), []);
 
-    return { state, error, toggleRecording, clearError };
+    return { state, error, toggleRecording, stopRecording, clearError };
 }

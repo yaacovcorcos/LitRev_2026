@@ -106,10 +106,28 @@ export async function listConversations(params: {
  * Get a single conversation with all messages
  */
 export async function getConversation(
-    conversationId: string
+    conversationId: string,
+    params?: {
+        userId?: string;
+        workspaceId?: string;
+        expectedProjectId?: string;
+        includeArchived?: boolean;
+    }
 ): Promise<ConversationWithMessages | null> {
-    const conversation = await prisma.aIConversation.findUnique({
-        where: { id: conversationId },
+    const userContext = getCurrentUserContext();
+    const userId = params?.userId || userContext.userId;
+    const workspaceId = params?.workspaceId || userContext.workspaceId;
+    const expectedProjectId = params?.expectedProjectId;
+    const includeArchived = params?.includeArchived === true;
+
+    const conversation = await prisma.aIConversation.findFirst({
+        where: {
+            id: conversationId,
+            userId: userId || undefined,
+            workspaceId: workspaceId || undefined,
+            projectId: expectedProjectId || undefined,
+            archived: includeArchived ? undefined : false,
+        },
         include: {
             messages: {
                 orderBy: { createdAt: "asc" },
@@ -202,21 +220,15 @@ export async function addMessage(params: {
         },
     });
 
-    // Auto-generate title from first user message if no title exists
+    // Auto-generate title from first user message if no title exists.
+    // Uses updateMany with a null-title filter so concurrent first messages
+    // don't race — only the first writer wins; subsequent writes are no-ops.
     if (role === "user") {
-        const conversation = await prisma.aIConversation.findUnique({
-            where: { id: conversationId },
-            select: { title: true },
+        const autoTitle = content.length > 50 ? content.slice(0, 47) + "..." : content;
+        await prisma.aIConversation.updateMany({
+            where: { id: conversationId, title: null },
+            data: { title: autoTitle },
         });
-
-        if (!conversation?.title) {
-            // Use first ~50 chars of user message as title
-            const autoTitle = content.length > 50 ? content.slice(0, 47) + "..." : content;
-            await prisma.aIConversation.update({
-                where: { id: conversationId },
-                data: { title: autoTitle },
-            });
-        }
     }
 
     // Update conversation's updatedAt

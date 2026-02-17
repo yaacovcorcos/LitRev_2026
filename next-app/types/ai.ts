@@ -4,7 +4,7 @@
  */
 
 // Copilot page context (which project tab the user is on)
-export type CopilotPage = "draft" | "protocol" | "ledger" | "study" | "overview" | "notes";
+export type CopilotPage = "draft" | "protocol" | "ledger" | "study" | "overview" | "notes" | "ai";
 
 // AI message roles
 export type AIRole = "system" | "user" | "assistant" | "tool";
@@ -59,16 +59,29 @@ export type ChoiceOption = {
     icon?: string;
 };
 
+export type ConversationMessageAttachment = {
+    fileAssetId: string;
+    filename: string;
+    mimeType: string;
+    size: number;
+    isExisting?: boolean;
+};
+
+export type AITone = "standard" | "deep";
+
 // Chat options
 export type ChatOptions = {
     model?: string;
     temperature?: number;
     maxTokens?: number;
+    tone?: AITone;
+    additionalContext?: string;
     systemPrompt?: string;
     tools?: ToolDefinition[];
     conversationId?: string;
     projectId?: string;
     studyId?: string;
+    userMessageAttachments?: ConversationMessageAttachment[];
     stream?: boolean;
     signal?: AbortSignal;
 };

@@ -197,13 +197,12 @@
 .msgText strong { font-weight: 600; }
 
 /* Streaming cursor */
-.streaming :global(:last-child)::after,
-.streaming:not(:has(*))::after {
-    content: "\25CE";
-    animation: cursorBlink 1s step-end infinite;
+.streamingCursor {
+    display: inline;
     color: var(--accent-primary);
     font-weight: 300;
     margin-left: 1px;
+    animation: cursorBlink 1s step-end infinite;
 }
 
 @keyframes cursorBlink {

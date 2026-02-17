@@ -406,12 +406,13 @@ export function PopupChat({ projectId }: PopupChatProps) {
                                 >
                                     <div className={styles.msgBubble}>
                                         {msg.role === "assistant" ? (
-                                            <div
-                                                className={`${styles.msgText} ${isStreaming && i === messages.length - 1 ? styles.streaming : ""}`}
-                                            >
+                                            <div className={styles.msgText}>
                                                 <ReactMarkdown remarkPlugins={[remarkGfm]}>
                                                     {msg.content}
                                                 </ReactMarkdown>
+                                                {isStreaming && i === messages.length - 1 && (
+                                                    <span className={styles.streamingCursor} aria-hidden="true">◎</span>
+                                                )}
                                             </div>
                                         ) : (
                                             <div className={styles.msgText}>{msg.content}</div>

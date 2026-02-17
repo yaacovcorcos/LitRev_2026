@@ -1,77 +1,46 @@
 "use client";
 
 import { AppShell } from "@/components/AppShell";
+import { TimelineRenderer } from "@/components/copilot/TimelineRenderer";
+import { CopilotInputCore } from "@/components/copilot/CopilotInputCore";
 import { useProjects } from "@/contexts/ProjectsContext";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import { markdownComponents } from "@/components/markdown/CodeBlock";
-import styles from "./ai-view.module.css";
-import markdownStyles from "@/styles/markdown.module.css";
 import {
-  createConversationAction,
-  deleteConversationAction,
-  getConversationMessagesAction,
-  listConversationsAction,
-} from "@/app/actions/ai";
-import type { AIConversation, AIMessage, ConversationContext } from "@/types/ai";
-import { USER_SELECTABLE_MODELS, type SelectableModelId } from "@/lib/ai/config";
-
-type Tone = "standard" | "deep";
-
-const INITIAL_AI_MESSAGE = "Hello! I'm your Literature Review Assistant. I can help you find papers, summarize findings, or draft sections of your review. How can I help you today?";
+  listConversations,
+  createConversation,
+  getConversation,
+  archiveConversation,
+} from "@/app/actions/conversations";
+import { getGlobalWorkspaceContextAction } from "@/app/actions/ai-assistant";
+import type { AgentMode } from "@/types/agent";
+import type { CopilotPage, ConversationContext, ChoiceOption } from "@/types/ai";
+import type { ArtifactStatus, ArtifactType } from "@/types/artifacts";
+import type { TimelineItem } from "@/types/timeline";
+import { parseNDJSONStream } from "@/lib/ai/stream-parser";
+import { routeToAgent } from "@/lib/agent/router";
+import styles from "./ai-view.module.css";
 
 const quickActions = [
-  { id: "summarize", icon: "description", label: "Summarize a paper" },
-  { id: "draft", icon: "edit_note", label: "Help draft a section" },
-  { id: "find", icon: "search", label: "Find related studies" },
-  { id: "analyze", icon: "analytics", label: "Analyze findings" },
+  { id: "summarize", icon: "description", label: "Summarize a paper", prompt: "I need help summarizing a paper. Here's the abstract: " },
+  { id: "draft", icon: "edit_note", label: "Help draft a section", prompt: "Help me draft the Introduction section of my literature review." },
+  { id: "find", icon: "search", label: "Find related studies", prompt: "Find me recent papers about " },
+  { id: "analyze", icon: "analytics", label: "Analyze findings", prompt: "Analyze the key findings across my collected papers." },
+  { id: "compare", icon: "compare_arrows", label: "Compare projects", prompt: "Compare inclusion criteria and progress across my projects. Highlight conflicts and give recommendations." },
+  { id: "methodology", icon: "school", label: "Methodology advisor", prompt: "Act as my methodology advisor. Critique my review design and suggest improvements using PRISMA and evidence-quality best practices." },
 ];
-
-type ChatMessage = {
-  id: string;
-  sender: "ai" | "user";
-  text: string;
-  createdAt: string;
-};
 
 type ChatConversation = {
   id: string;
   title: string;
-  messages: ChatMessage[];
   projectId?: string;
   createdAt: string;
   updatedAt: string;
 };
 
-const EMPTY_MESSAGES: ChatMessage[] = [];
-
-function messageToChat(message: AIMessage): ChatMessage | null {
-  if (message.role === "assistant") {
-    return { id: message.id, sender: "ai", text: message.content, createdAt: message.createdAt };
-  }
-  if (message.role === "user") {
-    return { id: message.id, sender: "user", text: message.content, createdAt: message.createdAt };
-  }
-  return null;
-}
-
-function deriveTitle(messages: ChatMessage[]): string {
-  const firstUser = messages.find((m) => m.sender === "user");
-  if (!firstUser) return "New Chat";
-  return firstUser.text.slice(0, 40) + (firstUser.text.length > 40 ? "..." : "");
-}
-
-function mapConversation(conv: AIConversation): ChatConversation {
-  const messages = conv.messages.map(messageToChat).filter(Boolean) as ChatMessage[];
-  return {
-    id: conv.id,
-    title: deriveTitle(messages),
-    messages,
-    projectId: conv.projectId,
-    createdAt: conv.createdAt,
-    updatedAt: conv.updatedAt,
-  };
+function deriveTitleFromPrompt(text: string): string {
+  const trimmed = text.trim();
+  if (!trimmed) return "New Chat";
+  return trimmed.slice(0, 40) + (trimmed.length > 40 ? "..." : "");
 }
 
 function groupConversationsByDate(conversations: ChatConversation[]): {
@@ -112,52 +81,270 @@ function groupConversationsByDate(conversations: ChatConversation[]): {
   return groups.filter((g) => g.items.length > 0);
 }
 
+function mapDbMessagesToTimeline(messages: Array<{
+  id: string;
+  role: string;
+  content: string;
+  createdAt: string;
+  attachments?: Array<{ fileAssetId: string; filename: string; mimeType: string; size: number; isExisting?: boolean }>;
+}>): TimelineItem[] {
+  const items: TimelineItem[] = [];
+  for (const msg of messages) {
+    if (msg.role === "user") {
+      items.push({
+        type: "user_message",
+        id: msg.id,
+        content: msg.content,
+        createdAt: msg.createdAt,
+        attachments: msg.attachments?.map((a) => ({
+          fileAssetId: a.fileAssetId,
+          filename: a.filename,
+          mimeType: a.mimeType,
+          size: a.size,
+        })),
+      });
+      continue;
+    }
+    if (msg.role === "assistant") {
+      items.push({
+        type: "assistant_message",
+        id: msg.id,
+        content: msg.content,
+        createdAt: msg.createdAt,
+      });
+    }
+  }
+  return items;
+}
+
+function slugifyFilename(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 64) || "conversation";
+}
+
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function buildTimelineMarkdown(items: TimelineItem[], title: string): string {
+  const lines: string[] = [`# ${title}`, "", `Exported: ${new Date().toISOString()}`, ""];
+
+  for (const item of items) {
+    if (item.type === "user_message") {
+      lines.push("## User");
+      lines.push(item.content);
+      lines.push("");
+      continue;
+    }
+    if (item.type === "assistant_message") {
+      lines.push("## Assistant");
+      lines.push(item.content);
+      lines.push("");
+      continue;
+    }
+    if (item.type === "artifact") {
+      lines.push(`## Artifact: ${item.title} (${item.artifactType}, ${item.status})`);
+      lines.push("```json");
+      lines.push(JSON.stringify(item.payload, null, 2));
+      lines.push("```");
+      lines.push("");
+      continue;
+    }
+    if (item.type === "progress") {
+      const progress = item.current !== undefined && item.total !== undefined
+        ? ` (${item.current}/${item.total})`
+        : "";
+      lines.push(`- Progress: ${item.message}${progress}`);
+      continue;
+    }
+    if (item.type === "checkpoint") {
+      lines.push(`- Checkpoint: ${item.label}`);
+      continue;
+    }
+    if (item.type === "error") {
+      lines.push(`- Error: ${item.message}`);
+      continue;
+    }
+  }
+
+  return lines.join("\n").trim() + "\n";
+}
+
+function formatMultilineHtml(text: string): string {
+  return escapeHtml(text).replace(/\n/g, "<br />");
+}
+
+function buildTimelinePrintHtml(items: TimelineItem[], title: string): string {
+  const blocks: string[] = [];
+
+  for (const item of items) {
+    if (item.type === "user_message") {
+      blocks.push(
+        `<section class="entry user"><h2>User</h2><p>${formatMultilineHtml(item.content)}</p></section>`
+      );
+      continue;
+    }
+    if (item.type === "assistant_message") {
+      blocks.push(
+        `<section class="entry assistant"><h2>Assistant</h2><p>${formatMultilineHtml(item.content)}</p></section>`
+      );
+      continue;
+    }
+    if (item.type === "artifact") {
+      blocks.push(
+        `<section class="entry artifact"><h2>Artifact: ${escapeHtml(item.title)}</h2><p class="meta">${escapeHtml(
+          `${item.artifactType} · ${item.status}`
+        )}</p><pre>${escapeHtml(JSON.stringify(item.payload, null, 2))}</pre></section>`
+      );
+      continue;
+    }
+    if (item.type === "progress") {
+      const progressText = item.current !== undefined && item.total !== undefined
+        ? `${item.message} (${item.current}/${item.total})`
+        : item.message;
+      blocks.push(`<section class="entry progress"><p>${escapeHtml(progressText)}</p></section>`);
+      continue;
+    }
+    if (item.type === "checkpoint") {
+      blocks.push(`<section class="entry checkpoint"><p>Checkpoint: ${escapeHtml(item.label)}</p></section>`);
+      continue;
+    }
+    if (item.type === "error") {
+      blocks.push(`<section class="entry error"><p>Error: ${escapeHtml(item.message)}</p></section>`);
+    }
+  }
+
+  return `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>${escapeHtml(title)}</title>
+    <style>
+      :root { color-scheme: light; }
+      body {
+        font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        margin: 0;
+        color: #1f2937;
+        background: #ffffff;
+      }
+      main {
+        max-width: 900px;
+        margin: 0 auto;
+        padding: 28px 24px 40px;
+      }
+      h1 { margin: 0 0 6px; font-size: 30px; line-height: 1.2; }
+      .meta { color: #6b7280; font-size: 13px; margin: 0 0 20px; }
+      .entry {
+        margin: 0 0 14px;
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        padding: 12px 14px;
+        break-inside: avoid;
+      }
+      .entry h2 { font-size: 13px; letter-spacing: 0.02em; text-transform: uppercase; color: #6b7280; margin: 0 0 8px; }
+      .entry p { margin: 0; line-height: 1.6; }
+      .entry.user { background: #f9fafb; }
+      .entry.assistant { background: #ffffff; }
+      .entry.artifact pre {
+        margin: 10px 0 0;
+        white-space: pre-wrap;
+        word-break: break-word;
+        background: #f8fafc;
+        border-radius: 10px;
+        padding: 10px;
+        font-size: 12px;
+        line-height: 1.5;
+      }
+      .entry.progress, .entry.checkpoint { background: #fefce8; border-color: #fde68a; color: #92400e; }
+      .entry.error { background: #fef2f2; border-color: #fecaca; color: #991b1b; }
+      @media print {
+        main { padding: 12mm; }
+        .entry { page-break-inside: avoid; }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>${escapeHtml(title)}</h1>
+      <p class="meta">Exported: ${escapeHtml(new Date().toISOString())}</p>
+      ${blocks.join("\n")}
+    </main>
+  </body>
+</html>`;
+}
+
 export default function AIView() {
   const { projects } = useProjects();
   const [isHistoryCollapsed, setHistoryCollapsed] = useState(false);
-  const [tone, setTone] = useState<Tone>("standard");
-  const [selectedModel, setSelectedModel] = useState<SelectableModelId>("gpt-5.2");
 
   const [conversations, setConversations] = useState<ChatConversation[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [isProjectDropdownOpen, setProjectDropdownOpen] = useState(false);
-  const [isModelDropdownOpen, setModelDropdownOpen] = useState(false);
-  const [input, setInput] = useState("");
+
+  const [workspaceContextText, setWorkspaceContextText] = useState("");
+  const [workspaceProjectCount, setWorkspaceProjectCount] = useState(0);
   const [isTyping, setIsTyping] = useState(false);
+  const [pendingChoices, setPendingChoices] = useState<ChoiceOption[]>([]);
+  const [prefill, setPrefill] = useState("");
+
+  const [timelineByConversation, setTimelineByConversation] = useState<Record<string, TimelineItem[]>>({});
+  const [isConversationLoading, setIsConversationLoading] = useState(false);
+  // LRU order: tracks up to 5 recently accessed conversation IDs so we evict old timelines
+  const timelineLruRef = useRef<string[]>([]);
 
   const historyContentId = "chat-history-panel";
-  const messagesRef = useRef<HTMLDivElement | null>(null);
-  const shouldAutoScrollRef = useRef(true);
   const projectDropdownRef = useRef<HTMLDivElement | null>(null);
-  const modelDropdownRef = useRef<HTMLDivElement | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const streamGenRef = useRef(0);
   const sendLockRef = useRef(false);
 
-  const selectedModelInfo = USER_SELECTABLE_MODELS.find((m) => m.id === selectedModel) || USER_SELECTABLE_MODELS[0];
-
-  // Hydrate preferences from localStorage on mount
-  const hydratedRef = useRef(false);
   useEffect(() => {
-    const storedTone = localStorage.getItem("litrev_ai_tone");
-    if (storedTone === "deep") setTone("deep");
-    const storedModel = localStorage.getItem("litrev_ai_model");
-    if (storedModel) setSelectedModel(storedModel as SelectableModelId);
-    hydratedRef.current = true;
+    if (!isTyping) sendLockRef.current = false;
+  }, [isTyping]);
+
+
+  useEffect(() => {
+    let active = true;
+
+    if (selectedProjectId) {
+      setWorkspaceContextText("");
+      setWorkspaceProjectCount(0);
+      return () => {
+        active = false;
+      };
+    }
+
+    getGlobalWorkspaceContextAction()
+      .then((result) => {
+        if (!active) return;
+        setWorkspaceContextText(result.contextText);
+        setWorkspaceProjectCount(result.projectCount);
+      })
+      .catch((err) => {
+        console.error("Failed to load global workspace context", err);
+        if (!active) return;
+        setWorkspaceContextText("");
+        setWorkspaceProjectCount(0);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [selectedProjectId]);
+
+  useEffect(() => {
+    return () => {
+      abortControllerRef.current?.abort();
+    };
   }, []);
 
-  // Persist tone preference (skip until hydrated)
-  useEffect(() => {
-    if (hydratedRef.current) localStorage.setItem("litrev_ai_tone", tone);
-  }, [tone]);
-
-  // Persist model preference (skip until hydrated)
-  useEffect(() => {
-    if (hydratedRef.current) localStorage.setItem("litrev_ai_model", selectedModel);
-  }, [selectedModel]);
-
-  // Close project dropdown on outside click
   useEffect(() => {
     if (!isProjectDropdownOpen) return;
     const handleClick = (e: MouseEvent) => {
@@ -169,38 +356,26 @@ export default function AIView() {
     return () => document.removeEventListener("mousedown", handleClick);
   }, [isProjectDropdownOpen]);
 
-  // Close model dropdown on outside click
-  useEffect(() => {
-    if (!isModelDropdownOpen) return;
-    const handleClick = (e: MouseEvent) => {
-      if (modelDropdownRef.current && !modelDropdownRef.current.contains(e.target as Node)) {
-        setModelDropdownOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, [isModelDropdownOpen]);
-
-  // Reset send lock when streaming ends
-  useEffect(() => {
-    if (!isTyping) sendLockRef.current = false;
-  }, [isTyping]);
-
-  // Abort any in-flight stream on unmount
-  useEffect(() => {
-    return () => { abortControllerRef.current?.abort(); };
-  }, []);
-
-  // Load conversations when project context changes
   useEffect(() => {
     let isActive = true;
     const load = async () => {
-      const context: ConversationContext = selectedProjectId ? "project" : "global";
-      const convs = await listConversationsAction(context, selectedProjectId ?? undefined);
+      const summaries = await listConversations({
+        projectId: selectedProjectId ?? undefined,
+        page: "ai",
+      });
       if (!isActive) return;
-      const mapped = convs.map(mapConversation);
+      const mapped: ChatConversation[] = summaries.map((s) => ({
+        id: s.id,
+        title: s.title ?? "New Chat",
+        projectId: s.projectId ?? undefined,
+        createdAt: s.createdAt,
+        updatedAt: s.updatedAt,
+      }));
       setConversations(mapped);
       setActiveConversationId(null);
+      setTimelineByConversation({});
+      setPendingChoices([]);
+      setPrefill("");
     };
     load().catch((err) => {
       console.error("Failed to load AI conversations", err);
@@ -210,27 +385,43 @@ export default function AIView() {
     };
   }, [selectedProjectId]);
 
+  const selectedProject = projects.find((p) => p.id === selectedProjectId);
+  const selectedScopeLabel = selectedProject
+    ? selectedProject.name
+    : `Global${workspaceProjectCount > 0 ? ` (${workspaceProjectCount} projects)` : ""}`;
   const historyClass = useMemo(
     () => `${styles.historySidebar} ${isHistoryCollapsed ? styles.collapsed : ""}`,
     [isHistoryCollapsed]
   );
-
   const historyGroups = useMemo(() => groupConversationsByDate(conversations), [conversations]);
+  const activeTimeline = activeConversationId ? (timelineByConversation[activeConversationId] ?? []) : [];
 
-  const activeConversation = useMemo(
-    () => conversations.find((c) => c.id === activeConversationId),
-    [conversations, activeConversationId]
-  );
+  const sortConversationsByUpdatedAt = useCallback((items: ChatConversation[]) => {
+    return [...items].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+  }, []);
 
-  const messages = activeConversation?.messages ?? EMPTY_MESSAGES;
-  const selectedProject = projects.find((p) => p.id === selectedProjectId);
+  const LRU_LIMIT = 5;
 
-  const buildSystemPrompt = useCallback((snapshotTone: Tone, projectName?: string) => {
-    const toneLine = snapshotTone === "deep"
-      ? "Use a deep, analytical tone with detailed evidence and reasoning."
-      : "Keep the response concise, practical, and easy to act on.";
-    const projectLine = projectName ? `Focus on the project: "${projectName}".` : "If no project is selected, answer generally.";
-    return `You are a literature review assistant for researchers. ${toneLine} ${projectLine}`;
+  const updateConversationTimeline = useCallback((conversationId: string, updater: (prev: TimelineItem[]) => TimelineItem[]) => {
+    // Keep LRU order up to date
+    const lru = timelineLruRef.current;
+    const existing = lru.indexOf(conversationId);
+    if (existing !== -1) lru.splice(existing, 1);
+    lru.push(conversationId);
+
+    setTimelineByConversation((prev) => {
+      const current = prev[conversationId] ?? [];
+      const updated = { ...prev, [conversationId]: updater(current) };
+      // Evict oldest entries beyond the LRU limit
+      if (lru.length > LRU_LIMIT) {
+        const evictIds = lru.slice(0, lru.length - LRU_LIMIT);
+        for (const id of evictIds) {
+          delete updated[id];
+        }
+        timelineLruRef.current = lru.slice(lru.length - LRU_LIMIT);
+      }
+      return updated;
+    });
   }, []);
 
   const cancelStream = useCallback(() => {
@@ -240,70 +431,259 @@ export default function AIView() {
       abortControllerRef.current = null;
     }
     setIsTyping(false);
+    setPendingChoices([]);
   }, []);
 
-  const handleSend = async (text?: string) => {
-    const msgText = (text ?? input).trim();
+  const ensureConversation = useCallback(async (context: ConversationContext): Promise<string> => {
+    if (activeConversationId) return activeConversationId;
+
+    const { id } = await createConversation({
+      context,
+      projectId: selectedProjectId ?? undefined,
+      page: "ai",
+    });
+
+    const now = new Date().toISOString();
+    const newConv: ChatConversation = {
+      id,
+      title: "New Chat",
+      projectId: selectedProjectId ?? undefined,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    setConversations((prev) => sortConversationsByUpdatedAt([newConv, ...prev]));
+    setActiveConversationId(id);
+    setTimelineByConversation((prev) => ({ ...prev, [id]: [] }));
+    return id;
+  }, [activeConversationId, selectedProjectId, sortConversationsByUpdatedAt]);
+
+  const handleSelectConversation = useCallback(async (id: string) => {
+    setActiveConversationId(id);
+    setPendingChoices([]);
+    // Only show skeleton if we don't already have this conversation cached
+    const alreadyCached = !!timelineByConversation[id];
+    if (!alreadyCached) setIsConversationLoading(true);
+    try {
+      const full = await getConversation(id);
+      if (!full) return;
+      const mappedItems = mapDbMessagesToTimeline(full.messages);
+      updateConversationTimeline(id, () => mappedItems);
+      setConversations((prev) => prev.map((conv) =>
+        conv.id === id
+          ? { ...conv, title: full.title ?? conv.title }
+          : conv
+      ));
+    } catch (err) {
+      console.error("Failed to load conversation messages", err);
+    } finally {
+      setIsConversationLoading(false);
+    }
+  }, [timelineByConversation, updateConversationTimeline]);
+
+  const handleDeleteConversation = useCallback(async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      await archiveConversation(id);
+    } catch (err) {
+      console.error("Failed to archive conversation", err);
+    }
+
+    setConversations((prev) => prev.filter((c) => c.id !== id));
+    setTimelineByConversation((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+    setPendingChoices([]);
+
+    if (activeConversationId === id) {
+      const remaining = conversations.filter((c) => c.id !== id);
+      setActiveConversationId(remaining[0]?.id ?? null);
+    }
+  }, [activeConversationId, conversations]);
+
+  const handleNewChat = useCallback(async () => {
+    const context: ConversationContext = selectedProjectId ? "project" : "global";
+    const { id } = await createConversation({
+      context,
+      projectId: selectedProjectId ?? undefined,
+      page: "ai",
+    });
+
+    const now = new Date().toISOString();
+    const newConv: ChatConversation = {
+      id,
+      title: "New Chat",
+      projectId: selectedProjectId ?? undefined,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    setConversations((prev) => sortConversationsByUpdatedAt([newConv, ...prev]));
+    setActiveConversationId(id);
+    setTimelineByConversation((prev) => ({ ...prev, [id]: [] }));
+    setPendingChoices([]);
+    setPrefill("");
+  }, [selectedProjectId, sortConversationsByUpdatedAt]);
+
+  const handleSend = useCallback(async (
+    rawText: string,
+    currentPage: CopilotPage,
+    _section?: string,
+    model?: string,
+    agentMode?: AgentMode,
+    _studyId?: string,
+  ) => {
+    const msgText = rawText.trim();
     if (!msgText || sendLockRef.current) return;
     if (isTyping) cancelStream();
     sendLockRef.current = true;
+    setPendingChoices([]);
 
-    const toneSnapshot = tone;
-    const modelSnapshot = selectedModel;
-    const projectName = selectedProject?.name;
     const context: ConversationContext = selectedProjectId ? "project" : "global";
+    const effectiveAgentMode = agentMode ?? routeToAgent(msgText, "overview");
 
-    // Ensure we have an active conversation
-    let convId = activeConversationId;
-    if (!convId) {
-      const newConv = await createConversationAction(context, selectedProjectId ?? undefined);
-      const mapped = mapConversation(newConv);
-      setConversations((prev) => [mapped, ...prev]);
-      convId = mapped.id;
-      setActiveConversationId(convId);
-    }
+    let convId = await ensureConversation(context);
 
     const nowIso = new Date().toISOString();
-    const userMsg: ChatMessage = {
-      id: `m-${Date.now()}`,
-      sender: "user",
-      text: msgText,
-      createdAt: nowIso,
-    };
+    const userId = `m-${Date.now()}`;
 
-    setConversations((prev) => {
-      const next = prev.map((conv) => {
-        if (conv.id !== convId) return conv;
-        const messages = [...conv.messages, userMsg];
-        return {
-          ...conv,
-          messages,
-          title: deriveTitle(messages),
-          updatedAt: nowIso,
-        };
-      });
-      return next.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
-    });
+    updateConversationTimeline(convId, (prev) => [
+      ...prev,
+      {
+        type: "user_message",
+        id: userId,
+        content: msgText,
+        createdAt: nowIso,
+      },
+    ]);
 
-    setInput("");
-    shouldAutoScrollRef.current = true;
+    setConversations((prev) =>
+      sortConversationsByUpdatedAt(
+        prev.map((conv) =>
+          conv.id === convId
+            ? {
+                ...conv,
+                title: conv.title === "New Chat" ? deriveTitleFromPrompt(msgText) : conv.title,
+                updatedAt: nowIso,
+              }
+            : conv,
+        )
+      )
+    );
 
-    // AI message will be created when first content arrives
-    const aiMessageId = `m-${Date.now() + 1}`;
-    let aiMessageCreated = false;
-
+    setPrefill("");
     setIsTyping(true);
     streamGenRef.current++;
     const myGen = streamGenRef.current;
 
-    // Cancel any in-flight stream
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
+    const aiMessageId = `m-${Date.now() + 1}`;
+    let aiMessageCreated = false;
     let fullContent = "";
+    let progressItemId: string | null = null;
+
+    const upsertAssistant = (content: string) => {
+      updateConversationTimeline(convId, (items) => {
+        const idx = items.findIndex((it) => it.type === "assistant_message" && it.id === aiMessageId);
+        if (idx === -1) {
+          return [
+            ...items,
+            {
+              type: "assistant_message",
+              id: aiMessageId,
+              content,
+              createdAt: new Date().toISOString(),
+            },
+          ];
+        }
+
+        const next = [...items];
+        const current = next[idx] as Extract<TimelineItem, { type: "assistant_message" }>;
+        next[idx] = { ...current, content };
+        return next;
+      });
+      aiMessageCreated = true;
+    };
+
+    const upsertProgress = (message: string, current?: number, total?: number) => {
+      updateConversationTimeline(convId, (items) => {
+        if (!progressItemId) {
+          progressItemId = `progress-${Date.now()}`;
+          return [
+            ...items,
+            {
+              type: "progress",
+              id: progressItemId,
+              message,
+              current,
+              total,
+            },
+          ];
+        }
+
+        const idx = items.findIndex((it) => it.type === "progress" && it.id === progressItemId);
+        if (idx === -1) {
+          return [
+            ...items,
+            {
+              type: "progress",
+              id: progressItemId,
+              message,
+              current,
+              total,
+            },
+          ];
+        }
+
+        const next = [...items];
+        const prevProgress = next[idx] as Extract<TimelineItem, { type: "progress" }>;
+        next[idx] = {
+          ...prevProgress,
+          message,
+          current,
+          total,
+        };
+        return next;
+      });
+    };
+
+    const clearProgress = () => {
+      if (!progressItemId) return;
+      const progressId = progressItemId;
+      progressItemId = null;
+      updateConversationTimeline(convId, (items) =>
+        items.filter((item) => !(item.type === "progress" && item.id === progressId))
+      );
+    };
+
+    const updatePlanStepStatus = (planId: string, stepIndex: number, stepStatus: string) => {
+      updateConversationTimeline(convId, (items) =>
+        items.map((item) => {
+          if (item.type !== "artifact" || item.artifactId !== planId) return item;
+          const payload = item.payload as { steps?: Array<Record<string, unknown>> };
+          if (!payload?.steps || !Array.isArray(payload.steps)) return item;
+
+          const updatedSteps = payload.steps.map((step, idx) =>
+            idx === stepIndex ? { ...step, status: stepStatus } : step
+          );
+
+          return {
+            ...item,
+            payload: {
+              ...payload,
+              steps: updatedSteps,
+            },
+          };
+        })
+      );
+    };
 
     try {
       const response = await fetch("/api/ai/stream", {
@@ -313,9 +693,13 @@ export default function AIView() {
           userMessage: msgText,
           context,
           options: {
+            conversationId: convId,
             projectId: selectedProjectId ?? undefined,
-            systemPrompt: buildSystemPrompt(toneSnapshot, projectName),
-            model: modelSnapshot,
+            model,
+            agentMode: effectiveAgentMode,
+            page: currentPage,
+
+            additionalContext: selectedProjectId ? undefined : (workspaceContextText || undefined),
           },
         }),
         signal: controller.signal,
@@ -330,417 +714,239 @@ export default function AIView() {
         throw new Error("No response body");
       }
 
-      const decoder = new TextDecoder();
+      for await (const data of parseNDJSONStream(reader, controller.signal)) {
+        if (streamGenRef.current !== myGen) break;
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        const chunk = decoder.decode(value, { stream: true });
-        const lines = chunk.split("\n").filter(Boolean);
-
-        for (const line of lines) {
-          if (streamGenRef.current !== myGen) break;
-          try {
-            const data = JSON.parse(line);
-            if (data.type === "content" && data.content) {
-              fullContent += data.content;
-
-              // Create AI message on first content arrival
-              if (!aiMessageCreated) {
-                aiMessageCreated = true;
-                setConversations((prev) =>
-                  prev.map((conv) => {
-                    if (conv.id !== convId) return conv;
-                    const messages: ChatMessage[] = [
-                      ...conv.messages,
-                      { id: aiMessageId, sender: "ai" as const, text: fullContent, createdAt: new Date().toISOString() },
-                    ];
-                    return { ...conv, messages };
-                  })
-                );
-              } else {
-                // Update existing AI message with streaming content
-                setConversations((prev) =>
-                  prev.map((conv) => {
-                    if (conv.id !== convId) return conv;
-                    const messages = conv.messages.map((m) =>
-                      m.id === aiMessageId ? { ...m, text: fullContent } : m
-                    );
-                    return { ...conv, messages };
-                  })
-                );
-              }
-            } else if (data.type === "tool_call" && data.toolCall) {
-              const toolName = data.toolCall.name;
-              const statusText = toolName === "search_pubmed"
-                ? "Searching PubMed..."
-                : toolName === "add_to_ledger"
-                ? "Adding studies to ledger..."
-                : `Running ${toolName}...`;
-              if (!aiMessageCreated) {
-                aiMessageCreated = true;
-                setConversations((prev) =>
-                  prev.map((conv) => {
-                    if (conv.id !== convId) return conv;
-                    const messages: ChatMessage[] = [
-                      ...conv.messages,
-                      { id: aiMessageId, sender: "ai" as const, text: `*${statusText}*`, createdAt: new Date().toISOString() },
-                    ];
-                    return { ...conv, messages };
-                  })
-                );
-              } else {
-                setConversations((prev) =>
-                  prev.map((conv) => {
-                    if (conv.id !== convId) return conv;
-                    const messages = conv.messages.map((m) =>
-                      m.id === aiMessageId ? { ...m, text: fullContent || `*${statusText}*` } : m
-                    );
-                    return { ...conv, messages };
-                  })
-                );
-              }
-            } else if (data.type === "tool_result") {
-              if (aiMessageCreated && !fullContent) {
-                setConversations((prev) =>
-                  prev.map((conv) => {
-                    if (conv.id !== convId) return conv;
-                    const messages = conv.messages.map((m) =>
-                      m.id === aiMessageId ? { ...m, text: "*Processing results...*" } : m
-                    );
-                    return { ...conv, messages };
-                  })
-                );
-              }
-            }
-          } catch {
-            // Skip parsing errors for incomplete chunks
+        if (data.type === "run_start") {
+          if (data.conversationId && convId !== data.conversationId) {
+            convId = data.conversationId;
+            setActiveConversationId(data.conversationId);
+            setTimelineByConversation((prev) => ({
+              ...prev,
+              [data.conversationId!]: prev[data.conversationId!] ?? [],
+            }));
           }
+          continue;
+        }
+
+        if (data.type === "content" && data.content) {
+          clearProgress();
+          fullContent += data.content;
+          upsertAssistant(fullContent);
+          continue;
+        }
+
+        if (data.type === "tool_call" && data.toolCall && !fullContent) {
+          const toolName = data.toolCall.name;
+          const statusText = toolName === "search_pubmed"
+            ? "Searching PubMed..."
+            : toolName === "add_to_ledger"
+              ? "Adding studies to ledger..."
+              : `Running ${toolName}...`;
+          upsertProgress(statusText);
+          continue;
+        }
+
+        if (data.type === "tool_result" && !fullContent) {
+          upsertProgress("Processing results...");
+          continue;
+        }
+
+        if (data.type === "artifact") {
+          updateConversationTimeline(convId, (items) => [
+            ...items,
+            {
+              type: "artifact",
+              id: `artifact-${data.artifactId ?? Date.now()}`,
+              artifactId: data.artifactId ?? "",
+              artifactType: (data.artifactType ?? "plan") as ArtifactType,
+              status: (data.artifactStatus ?? "proposed") as ArtifactStatus,
+              title: data.artifactTitle ?? "Artifact",
+              payload: data.artifactPayload ?? {},
+              version: data.artifactVersion ?? 1,
+              createdAt: new Date().toISOString(),
+            },
+          ]);
+          continue;
+        }
+
+        if (data.type === "progress") {
+          upsertProgress(data.progressMessage ?? "Working...", data.progressCurrent, data.progressTotal);
+          continue;
+        }
+
+        if (data.type === "checkpoint") {
+          updateConversationTimeline(convId, (items) => [
+            ...items,
+            {
+              type: "checkpoint",
+              id: `checkpoint-${Date.now()}`,
+              label: data.checkpointLabel ?? "Checkpoint",
+              createdAt: new Date().toISOString(),
+            },
+          ]);
+          continue;
+        }
+
+        if (data.type === "choices") {
+          setPendingChoices(data.choices ?? []);
+          continue;
+        }
+
+        if (data.type === "plan_step_update" && data.planId && data.stepIndex !== undefined && data.stepStatus) {
+          updatePlanStepStatus(data.planId, data.stepIndex, data.stepStatus);
+          continue;
+        }
+
+        if (data.type === "error") {
+          throw new Error(data.error ?? "AI stream error");
         }
       }
     } catch (err) {
-      if (err instanceof DOMException && err.name === "AbortError") return;
-
-      const errorText = err instanceof Error ? err.message : "AI request failed";
-
-      // Create error message if no AI message was created yet
-      if (!aiMessageCreated) {
-        setConversations((prev) =>
-          prev.map((conv) => {
-            if (conv.id !== convId) return conv;
-            const messages: ChatMessage[] = [
-              ...conv.messages,
-              { id: aiMessageId, sender: "ai" as const, text: `Error: ${errorText}`, createdAt: new Date().toISOString() },
-            ];
-            return { ...conv, messages };
-          })
-        );
-      } else {
-        // Update existing message with error
-        setConversations((prev) =>
-          prev.map((conv) => {
-            if (conv.id !== convId) return conv;
-            const messages = conv.messages.map((m) =>
-              m.id === aiMessageId ? { ...m, text: `${fullContent}\n\nError: ${errorText}` } : m
-            );
-            return { ...conv, messages };
-          })
-        );
+      if (!(err instanceof DOMException && err.name === "AbortError")) {
+        const errorText = err instanceof Error ? err.message : "AI request failed";
+        if (!aiMessageCreated) {
+          updateConversationTimeline(convId, (items) => [
+            ...items,
+            {
+              type: "error",
+              id: `error-${Date.now()}`,
+              message: errorText,
+              retryable: true,
+              createdAt: new Date().toISOString(),
+            },
+          ]);
+        } else {
+          upsertAssistant(`${fullContent}\n\nError: ${errorText}`);
+        }
       }
     } finally {
+      clearProgress();
       if (streamGenRef.current === myGen) {
         setIsTyping(false);
-        setConversations((prev) => {
-          const next = prev.map((conv) =>
-            conv.id === convId ? { ...conv, updatedAt: new Date().toISOString() } : conv
-          );
-          return next.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
-        });
+        setConversations((prev) =>
+          sortConversationsByUpdatedAt(
+            prev.map((conv) =>
+              conv.id === convId
+                ? { ...conv, updatedAt: new Date().toISOString() }
+                : conv
+            )
+          )
+        );
       }
       if (abortControllerRef.current === controller) {
         abortControllerRef.current = null;
       }
     }
-  };
+  }, [
+    isTyping,
+    cancelStream,
+    selectedProjectId,
 
-  const handleNewChat = async () => {
-    const context: ConversationContext = selectedProjectId ? "project" : "global";
-    const newConv = await createConversationAction(context, selectedProjectId ?? undefined);
-    const mapped = mapConversation(newConv);
-    setConversations((prev) => [mapped, ...prev]);
-    setActiveConversationId(mapped.id);
-  };
+    workspaceContextText,
+    ensureConversation,
+    updateConversationTimeline,
+    sortConversationsByUpdatedAt,
+  ]);
 
-  const handleSelectConversation = async (id: string) => {
-    setActiveConversationId(id);
-    try {
-      const messages = await getConversationMessagesAction(id);
-      const mappedMessages = messages.map(messageToChat).filter(Boolean) as ChatMessage[];
-      setConversations((prev) =>
-        prev.map((conv) =>
-          conv.id === id
-            ? { ...conv, messages: mappedMessages, title: deriveTitle(mappedMessages) }
-            : conv
-        )
-      );
-    } catch (err) {
-      console.error("Failed to load conversation messages", err);
-    }
-  };
+  const handleSuggestionClick = useCallback((prompt: string) => {
+    setPrefill(prompt);
+  }, []);
 
-  const handleDeleteConversation = async (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    try {
-      await deleteConversationAction(id);
-    } catch (err) {
-      console.error("Failed to delete conversation", err);
-    }
-    setConversations((prev) => prev.filter((c) => c.id !== id));
-    if (activeConversationId === id) {
-      const remaining = conversations.filter((c) => c.id !== id);
-      setActiveConversationId(remaining[0]?.id ?? null);
-    }
-  };
-
-  const handleQuickAction = (actionId: string) => {
-    const prompts: Record<string, string> = {
-      summarize: "I need help summarizing a paper. Here's the abstract: ",
-      draft: "Help me draft the Introduction section of my literature review.",
-      find: "Find me recent papers about ",
-      analyze: "Analyze the key findings across my collected papers.",
-    };
-    const prompt = prompts[actionId] ?? "";
-    setInput(prompt);
-  };
-
-  const handleCopyMessage = (text: string) => {
-    navigator.clipboard.writeText(text);
-  };
-
-  const handleRegenerateMessage = async (messageId: string) => {
-    if (sendLockRef.current || !activeConversationId) return;
-    if (isTyping) cancelStream();
-    sendLockRef.current = true;
-
+  const handleRetryLastMessage = useCallback(() => {
+    if (isTyping) return;
     const convId = activeConversationId;
-    const conv = conversations.find((c) => c.id === convId);
-    if (!conv) return;
+    if (!convId) return;
 
-    // Find the message to regenerate and the user message before it
-    const msgIndex = conv.messages.findIndex((m) => m.id === messageId);
-    if (msgIndex <= 0) return; // Can't regenerate if no previous user message
-
-    const userMessage = conv.messages[msgIndex - 1];
-    if (userMessage.sender !== "user") return;
-
-    const toneSnapshot = tone;
-    const modelSnapshot = selectedModel;
-    const projectName = selectedProject?.name;
-    const context: ConversationContext = selectedProjectId ? "project" : "global";
-
-    // Remove the old AI message, new one will be created when content arrives
-    const newAiMessageId = `m-${Date.now()}`;
-    let aiMessageCreated = false;
-    setConversations((prev) =>
-      prev.map((c) => {
-        if (c.id !== convId) return c;
-        const messages: ChatMessage[] = [
-          ...c.messages.slice(0, msgIndex),
-          ...c.messages.slice(msgIndex + 1),
-        ];
-        return { ...c, messages, updatedAt: new Date().toISOString() };
-      })
-    );
-
-    setIsTyping(true);
-    streamGenRef.current++;
-    const myGen = streamGenRef.current;
-    shouldAutoScrollRef.current = true;
-
-    // Cancel any in-flight stream
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
+    const items = timelineByConversation[convId] ?? [];
+    let lastUserIndex = -1;
+    for (let index = items.length - 1; index >= 0; index--) {
+      if (items[index]?.type === "user_message") {
+        lastUserIndex = index;
+        break;
+      }
     }
-    const controller = new AbortController();
-    abortControllerRef.current = controller;
+    if (lastUserIndex < 0) return;
 
-    let fullContent = "";
+    const lastUser = items[lastUserIndex];
+    if (!lastUser || lastUser.type !== "user_message") return;
+    const retryText = lastUser.content.trim();
+    if (!retryText) return;
 
-    try {
-      const response = await fetch("/api/ai/stream", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          userMessage: userMessage.text,
-          context,
-          options: {
-            projectId: selectedProjectId ?? undefined,
-            systemPrompt: buildSystemPrompt(toneSnapshot, projectName),
-            model: modelSnapshot,
-          },
-        }),
-        signal: controller.signal,
-      });
-
-      if (!response.ok) {
-        throw new Error(`AI request failed: ${response.statusText}`);
-      }
-
-      const reader = response.body?.getReader();
-      if (!reader) {
-        throw new Error("No response body");
-      }
-
-      const decoder = new TextDecoder();
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        const chunk = decoder.decode(value, { stream: true });
-        const lines = chunk.split("\n").filter(Boolean);
-
-        for (const line of lines) {
-          if (streamGenRef.current !== myGen) break;
-          try {
-            const data = JSON.parse(line);
-            if (data.type === "content" && data.content) {
-              fullContent += data.content;
-
-              // Create AI message on first content arrival
-              if (!aiMessageCreated) {
-                aiMessageCreated = true;
-                setConversations((prev) =>
-                  prev.map((c) => {
-                    if (c.id !== convId) return c;
-                    const messages: ChatMessage[] = [
-                      ...c.messages.slice(0, msgIndex),
-                      { id: newAiMessageId, sender: "ai" as const, text: fullContent, createdAt: new Date().toISOString() },
-                      ...c.messages.slice(msgIndex),
-                    ];
-                    return { ...c, messages };
-                  })
-                );
-              } else {
-                // Update existing AI message
-                setConversations((prev) =>
-                  prev.map((c) => {
-                    if (c.id !== convId) return c;
-                    const messages = c.messages.map((m) =>
-                      m.id === newAiMessageId ? { ...m, text: fullContent } : m
-                    );
-                    return { ...c, messages };
-                  })
-                );
-              }
-            } else if (data.type === "tool_call" && data.toolCall) {
-              const toolName = data.toolCall.name;
-              const statusText = toolName === "search_pubmed"
-                ? "Searching PubMed..."
-                : toolName === "add_to_ledger"
-                ? "Adding studies to ledger..."
-                : `Running ${toolName}...`;
-              if (!aiMessageCreated) {
-                aiMessageCreated = true;
-                setConversations((prev) =>
-                  prev.map((c) => {
-                    if (c.id !== convId) return c;
-                    const messages: ChatMessage[] = [
-                      ...c.messages.slice(0, msgIndex),
-                      { id: newAiMessageId, sender: "ai" as const, text: `*${statusText}*`, createdAt: new Date().toISOString() },
-                      ...c.messages.slice(msgIndex),
-                    ];
-                    return { ...c, messages };
-                  })
-                );
-              } else {
-                setConversations((prev) =>
-                  prev.map((c) => {
-                    if (c.id !== convId) return c;
-                    const messages = c.messages.map((m) =>
-                      m.id === newAiMessageId ? { ...m, text: fullContent || `*${statusText}*` } : m
-                    );
-                    return { ...c, messages };
-                  })
-                );
-              }
-            } else if (data.type === "tool_result") {
-              if (aiMessageCreated && !fullContent) {
-                setConversations((prev) =>
-                  prev.map((c) => {
-                    if (c.id !== convId) return c;
-                    const messages = c.messages.map((m) =>
-                      m.id === newAiMessageId ? { ...m, text: "*Processing results...*" } : m
-                    );
-                    return { ...c, messages };
-                  })
-                );
-              }
-            }
-          } catch {
-            // Skip parsing errors for incomplete chunks
-          }
+    // Remove the failed turn from UI (last user message + trailing AI output/errors),
+    // then send the same user prompt again as a fresh turn.
+    setTimelineByConversation((prev) => {
+      const convItems = prev[convId] ?? [];
+      let userIndex = -1;
+      for (let index = convItems.length - 1; index >= 0; index--) {
+        if (convItems[index]?.type === "user_message") {
+          userIndex = index;
+          break;
         }
       }
-    } catch (err) {
-      if (err instanceof DOMException && err.name === "AbortError") return;
+      if (userIndex < 0) return prev;
+      return {
+        ...prev,
+        [convId]: convItems.slice(0, userIndex),
+      };
+    });
 
-      const errorText = err instanceof Error ? err.message : "AI request failed";
+    setPendingChoices([]);
+    setPrefill("");
+    void handleSend(retryText, "ai");
+  }, [isTyping, activeConversationId, timelineByConversation, handleSend]);
 
-      // Create error message if no AI message was created yet
-      if (!aiMessageCreated) {
-        setConversations((prev) =>
-          prev.map((c) => {
-            if (c.id !== convId) return c;
-            const messages: ChatMessage[] = [
-              ...c.messages.slice(0, msgIndex),
-              { id: newAiMessageId, sender: "ai" as const, text: `Error: ${errorText}`, createdAt: new Date().toISOString() },
-              ...c.messages.slice(msgIndex),
-            ];
-            return { ...c, messages };
-          })
-        );
-      } else {
-        setConversations((prev) =>
-          prev.map((c) => {
-            if (c.id !== convId) return c;
-            const messages = c.messages.map((m) =>
-              m.id === newAiMessageId ? { ...m, text: `${fullContent}\n\nError: ${errorText}` } : m
-            );
-            return { ...c, messages };
-          })
-        );
-      }
-    } finally {
-      if (streamGenRef.current === myGen) {
-        setIsTyping(false);
-        setConversations((prev) => {
-          const next = prev.map((c) =>
-            c.id === convId ? { ...c, updatedAt: new Date().toISOString() } : c
-          );
-          return next.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
-        });
-      }
-      if (abortControllerRef.current === controller) {
-        abortControllerRef.current = null;
-      }
-    }
-  };
+  const handlePrefillConsumed = useCallback(() => {
+    setPrefill("");
+  }, []);
 
-  useEffect(() => {
-    if (!messagesRef.current) return;
-    if (!shouldAutoScrollRef.current) return;
-    messagesRef.current.scrollTop = messagesRef.current.scrollHeight;
-  }, [messages, isTyping]);
+  const activeConversation = useMemo(
+    () => conversations.find((conv) => conv.id === activeConversationId) ?? null,
+    [conversations, activeConversationId]
+  );
 
-  const handleMessagesScroll = () => {
-    if (!messagesRef.current) return;
-    const { scrollTop, clientHeight, scrollHeight } = messagesRef.current;
-    shouldAutoScrollRef.current = scrollTop + clientHeight >= scrollHeight - 80;
-  };
+  const exportBaseName = useMemo(() => {
+    const scopePart = selectedProject?.name ?? "global";
+    const titlePart = activeConversation?.title ?? "conversation";
+    return `${slugifyFilename(scopePart)}-${slugifyFilename(titlePart)}`;
+  }, [selectedProject, activeConversation]);
 
-  const showEmptyState = messages.length === 0 && !isTyping;
+  const handleExportMarkdown = useCallback(() => {
+    if (activeTimeline.length === 0) return;
+    const title = activeConversation?.title ?? "AI Conversation";
+    const markdown = buildTimelineMarkdown(activeTimeline, title);
+    const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" });
+    const href = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = href;
+    link.download = `${exportBaseName}.md`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(href);
+  }, [activeTimeline, activeConversation, exportBaseName]);
+
+  const handleExportPdf = useCallback(() => {
+    if (activeTimeline.length === 0) return;
+    const title = activeConversation?.title ?? "AI Conversation";
+    const html = buildTimelinePrintHtml(activeTimeline, title);
+    const printWindow = window.open("", "_blank", "noopener,noreferrer");
+    if (!printWindow) return;
+    printWindow.document.open();
+    printWindow.document.write(html);
+    printWindow.document.close();
+    let hasPrinted = false;
+    const triggerPrint = () => {
+      if (hasPrinted || printWindow.closed) return;
+      hasPrinted = true;
+      printWindow.focus();
+      printWindow.print();
+    };
+    printWindow.onload = () => {
+      triggerPrint();
+    };
+    window.setTimeout(triggerPrint, 180);
+  }, [activeTimeline, activeConversation]);
 
   return (
     <AppShell activeNav="ai" noMainPadding initiallyCollapsed>
@@ -757,6 +963,7 @@ export default function AIView() {
               <span className="material-icons-round">menu_open</span>
             </button>
           </div>
+
           <div className={styles.newChatWrapper}>
             <button
               className={`btn btn-primary ${styles.newChatButton}`}
@@ -767,6 +974,7 @@ export default function AIView() {
               New Chat
             </button>
           </div>
+
           <div id={historyContentId} aria-hidden={isHistoryCollapsed}>
             <div className={styles.historyList}>
               {historyGroups.map((group) => (
@@ -798,6 +1006,7 @@ export default function AIView() {
                   ))}
                 </div>
               ))}
+
               {conversations.length === 0 && (
                 <div className={styles.emptyHistory}>
                   <span className="material-icons-round">forum</span>
@@ -816,10 +1025,11 @@ export default function AIView() {
                 onClick={() => setProjectDropdownOpen((prev) => !prev)}
                 aria-expanded={isProjectDropdownOpen}
               >
-                <span className="material-icons-round">folder</span>
-                <span>{selectedProject?.name ?? "No Project"}</span>
+                <span className="material-icons-round">{selectedProject ? "folder" : "public"}</span>
+                <span>{selectedScopeLabel}</span>
                 <span className="material-icons-round">expand_more</span>
               </button>
+
               {isProjectDropdownOpen && (
                 <div className={styles.projectDropdown}>
                   <button
@@ -829,7 +1039,7 @@ export default function AIView() {
                       setProjectDropdownOpen(false);
                     }}
                   >
-                    No Project
+                    Global
                   </button>
                   {projects.map((project) => (
                     <button
@@ -846,228 +1056,66 @@ export default function AIView() {
                 </div>
               )}
             </div>
+
+            <div className={styles.headerActions}>
+              <button
+                type="button"
+                className={styles.exportBtn}
+                onClick={handleExportMarkdown}
+                disabled={activeTimeline.length === 0}
+              >
+                <span className="material-icons-round">download</span>
+                Export MD
+              </button>
+              <button
+                type="button"
+                className={styles.exportBtn}
+                onClick={handleExportPdf}
+                disabled={activeTimeline.length === 0}
+              >
+                <span className="material-icons-round">picture_as_pdf</span>
+                Export PDF
+              </button>
+            </div>
           </div>
 
-          <div className={`${styles.chatContent} ${showEmptyState ? styles.chatContentEmpty : ''}`}>
-          <div
-            className={`${styles.chatMessages} ${showEmptyState ? styles.chatMessagesEmpty : ''}`}
-            role="log"
-            aria-live="polite"
-            ref={messagesRef}
-            onScroll={handleMessagesScroll}
-          >
-            {showEmptyState ? (
-              <div className={styles.emptyState}>
-                <div className={styles.emptyIcon}>
-                  <span className="material-icons-round">auto_awesome</span>
-                </div>
-                <h2>How can I help with your research?</h2>
-                <p>Ask me anything about your literature review, or try one of these:</p>
-                <div className={styles.quickActions}>
-                  {quickActions.map((action) => (
-                    <button
-                      key={action.id}
-                      className={styles.quickActionBtn}
-                      onClick={() => handleQuickAction(action.id)}
-                    >
-                      <span className="material-icons-round">{action.icon}</span>
-                      {action.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              <>
-                {/* Initial AI greeting if no messages */}
-                {messages.length === 0 && (
-                  <div className={`${styles.messageBubble} ${styles.aiMessage}`}>
-                    <div className={styles.aiAvatar}>
-                      <span className="material-icons-round">smart_toy</span>
-                    </div>
-                    <div className={`${styles.messageContent} ${styles.aiBubble}`}>
-                      <p>{INITIAL_AI_MESSAGE}</p>
-                    </div>
-                  </div>
-                )}
-                {messages.map((msg, index) => {
-                  const isLastAiMessage = msg.sender === "ai" && index === messages.length - 1;
-                  return (
-                    <div
-                      key={msg.id}
-                      className={`${styles.messageBubble} ${msg.sender === "ai" ? styles.aiMessage : styles.userMessage}`}
-                    >
-                      {msg.sender === "ai" && (
-                        <div className={styles.aiAvatar}>
-                          <span className="material-icons-round">smart_toy</span>
-                        </div>
-                      )}
-                      {msg.sender === "ai" ? (
-                        <div className={styles.messageStack}>
-                          <div className={`${styles.messageContent} ${styles.aiBubble}`}>
-                            <div className={markdownStyles.markdownContent}>
-                              <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{msg.text}</ReactMarkdown>
-                            </div>
-                          </div>
-                          {msg.text && (
-                            <div className={styles.messageActions}>
-                              {isLastAiMessage && (
-                                <button
-                                  className={styles.messageActionBtn}
-                                  onClick={() => handleRegenerateMessage(msg.id)}
-                                  aria-label="Regenerate response"
-                                  disabled={isTyping}
-                                >
-                                  <span className="material-icons-round">refresh</span>
-                                </button>
-                              )}
-                              <button
-                                className={styles.messageActionBtn}
-                                onClick={() => handleCopyMessage(msg.text)}
-                                aria-label="Copy message"
-                              >
-                                <span className="material-icons-round">content_copy</span>
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      ) : (
-                        <div className={`${styles.messageContent} ${styles.userBubble}`}>
-                          <p>{msg.text}</p>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-                {isTyping && messages.length > 0 && messages[messages.length - 1].sender === "user" && (
-                  <div className={`${styles.messageBubble} ${styles.aiMessage}`}>
-                    <div className={styles.aiAvatar}>
-                      <span className="material-icons-round">smart_toy</span>
-                    </div>
-                    <div className={`${styles.messageContent} ${styles.aiBubble} ${styles.typingBubble}`}>
-                      <div className={styles.typingIndicator}>
-                        <span></span>
-                        <span></span>
-                        <span></span>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-
-          <div className={styles.chatInputContainer}>
-            <form
-              className={styles.inputBox}
-              onSubmit={(e) => {
-                e.preventDefault();
-                handleSend();
+          <div className={styles.chatContent}>
+            <TimelineRenderer
+              variant="page"
+              items={activeTimeline}
+              isLoading={isTyping}
+              isConversationLoading={isConversationLoading}
+              emptyState={{
+                icon: "auto_awesome",
+                title: "How can I help with your research?",
+                description: "Ask me anything about your literature review, or try one of these:",
+                suggestions: quickActions.map((action) => ({
+                  label: action.label,
+                  prompt: action.prompt,
+                })),
               }}
-            >
-              {/* Upper floor: textarea */}
-              <textarea
-                placeholder={isTyping ? "Keep typing..." : "Ask anything about your research..."}
-                aria-label="Chat input"
-                value={input}
-                onChange={(e) => {
-                  setInput(e.target.value);
-                  // Auto-resize
-                  e.target.style.height = "auto";
-                  e.target.style.height = Math.min(e.target.scrollHeight, 200) + "px";
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    handleSend();
-                  }
-                }}
-                rows={1}
-                className={styles.inputTextarea}
+              onSuggestionClick={handleSuggestionClick}
+              onRetryLastMessage={handleRetryLastMessage}
+            />
+
+            <div className={styles.chatInputContainer}>
+              <CopilotInputCore
+                page="ai"
+                inputPlaceholder="Ask anything about your research..."
+                prefill={prefill}
+                onPrefillConsumed={handlePrefillConsumed}
+                isLoading={isTyping}
+                sendMessage={handleSend}
+                cancelStream={cancelStream}
+                pendingChoices={pendingChoices}
+                clearChoices={() => setPendingChoices([])}
+                modelStorageKey="litrev_ai_model"
+                showAutonomyPreset={false}
+                showAttachments={false}
+                showVoice
               />
-
-              {/* Lower floor: actions */}
-              <div className={styles.inputBar}>
-                <div className={styles.inputBarLeft}>
-                  {/* Model selector */}
-                  <div className={styles.inputModelSelector} ref={modelDropdownRef}>
-                    <button
-                      type="button"
-                      className={styles.inputModelBtn}
-                      onClick={() => setModelDropdownOpen((prev) => !prev)}
-                      aria-haspopup="listbox"
-                      aria-expanded={isModelDropdownOpen}
-                    >
-                      <span className="material-icons-round">{selectedModelInfo.icon}</span>
-                      <span>{selectedModelInfo.name}</span>
-                      <span className="material-icons-round">expand_more</span>
-                    </button>
-                    {isModelDropdownOpen && (
-                      <div className={styles.inputModelDropdown} role="listbox">
-                        {USER_SELECTABLE_MODELS.map((model) => (
-                          <button
-                            key={model.id}
-                            type="button"
-                            className={`${styles.inputModelItem} ${selectedModel === model.id ? styles.inputModelItemActive : ""}`}
-                            onClick={() => {
-                              setSelectedModel(model.id);
-                              setModelDropdownOpen(false);
-                            }}
-                            role="option"
-                            aria-selected={selectedModel === model.id}
-                          >
-                            <span className="material-icons-round">{model.icon}</span>
-                            <span>{model.name}</span>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Tone toggle */}
-                  <div className={styles.inputToneToggle} role="group" aria-label="Tone">
-                    <button
-                      type="button"
-                      className={`${styles.inputToneOption} ${tone === "standard" ? styles.inputToneActive : ""}`}
-                      onClick={() => setTone("standard")}
-                      aria-pressed={tone === "standard"}
-                    >
-                      Standard
-                    </button>
-                    <button
-                      type="button"
-                      className={`${styles.inputToneOption} ${tone === "deep" ? styles.inputToneActive : ""}`}
-                      onClick={() => setTone("deep")}
-                      aria-pressed={tone === "deep"}
-                    >
-                      Deep
-                    </button>
-                  </div>
-                </div>
-
-                {/* Send / Stop button */}
-                {isTyping && !input.trim() ? (
-                  <button
-                    type="button"
-                    className={`${styles.inputSendBtn} ${styles.inputSendBtnStop}`}
-                    aria-label="Stop generating"
-                    onClick={cancelStream}
-                  >
-                    <span className="material-icons-round">stop</span>
-                  </button>
-                ) : (
-                  <button
-                    type="submit"
-                    className={`${styles.inputSendBtn} ${input.trim() ? styles.inputSendBtnActive : ""}`}
-                    aria-label={isTyping ? "Send and interrupt" : "Send"}
-                    disabled={!input.trim()}
-                  >
-                    <span className="material-icons-round">arrow_upward</span>
-                  </button>
-                )}
-              </div>
-            </form>
-            <p className={styles.disclaimer}>AI can make mistakes. Please verify important information.</p>
-          </div>
+              <p className={styles.disclaimer}>AI can make mistakes. Please verify important information.</p>
+            </div>
           </div>
         </section>
       </div>

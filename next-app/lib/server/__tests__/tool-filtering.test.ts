@@ -11,9 +11,21 @@ describe("getToolDefinitions", () => {
         expect(defs.map((d) => d.name).sort()).toEqual(ALL_TOOL_NAMES);
     });
 
+    it("returns only global-safe tools in global scope", () => {
+        const defs = getToolDefinitions(undefined, "global");
+        const names = defs.map((d) => d.name).sort();
+        expect(names).toEqual(["search_pubmed", "search_semantic_scholar", "store_memory"]);
+    });
+
     it("returns all tools for general mode (empty allowedTools)", () => {
         const defs = getToolDefinitions("general");
         expect(defs.map((d) => d.name).sort()).toEqual(ALL_TOOL_NAMES);
+    });
+
+    it("applies scope filter before mode filter", () => {
+        const defs = getToolDefinitions("search", "global");
+        const names = defs.map((d) => d.name).sort();
+        expect(names).toEqual(["search_pubmed", "search_semantic_scholar", "store_memory"]);
     });
 
     it("filters tools for protocol mode", () => {

@@ -299,6 +299,12 @@
 .chatMsg {
     display: flex;
     min-width: 0;
+    animation: msgIn 0.18s ease-out both;
+}
+
+@keyframes msgIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: none; }
 }
 
 .chatMsgAi {
@@ -1378,18 +1384,64 @@
    STREAMING CURSOR (on last AI message)
    ======================================== */
 
-.streaming :global(:last-child)::after,
-.streaming:not(:has(*))::after {
-    content: "\25CE";
-    animation: cursorBlink 1s step-end infinite;
+.streamingCursor {
+    display: inline;
     color: var(--accent-primary);
     font-weight: 300;
     margin-left: 1px;
+    animation: cursorBlink 1s step-end infinite;
 }
 
 @keyframes cursorBlink {
     0%, 100% { opacity: 1; }
     50% { opacity: 0; }
+}
+
+/* ========================================
+   CONVERSATION LOADING SKELETON
+   ======================================== */
+
+.skeletonList {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 16px 12px;
+}
+
+.skeletonRow {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.skeletonBubble {
+    height: 14px;
+    border-radius: 8px;
+    background: linear-gradient(90deg, rgba(0,0,0,0.06) 25%, rgba(0,0,0,0.10) 50%, rgba(0,0,0,0.06) 75%);
+    background-size: 200% 100%;
+    animation: skeletonShimmer 1.4s ease-in-out infinite;
+}
+
+.skeletonBubbleShort {
+    width: 55%;
+}
+
+.skeletonBubbleMid {
+    width: 78%;
+}
+
+.skeletonBubbleLong {
+    width: 92%;
+}
+
+.skeletonBubbleUser {
+    width: 60%;
+    align-self: flex-end;
+}
+
+@keyframes skeletonShimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
 }
 
 /* ========================================
@@ -1428,9 +1480,15 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: all 0.2s ease;
+    transition: opacity 0.18s ease, transform 0.18s ease, background 0.2s ease, box-shadow 0.2s ease;
     z-index: 5;
     flex-shrink: 0;
+}
+
+.scrollFabHidden {
+    opacity: 0;
+    transform: translateY(8px);
+    pointer-events: none;
 }
 
 .scrollFab:hover {
@@ -1466,10 +1524,14 @@
 
 /* User messages: left accent bar + subtle tint */
 .pageLayout .chatMsgUser .chatBubble {
-    border-left: 3px solid rgba(217, 116, 89, 0.35);
-    padding-left: 14px;
+    border-inline-start: 3px solid rgba(217, 116, 89, 0.35);
+    padding-block: 12px;
+    padding-inline-start: 14px;
+    padding-inline-end: 18px;
     background: rgba(217, 116, 89, 0.04);
     border-radius: 0 8px 8px 0;
+    width: fit-content;
+    max-width: min(100%, 78ch);
 }
 
 /* AI messages: full-width stack in page mode */
@@ -1517,6 +1579,10 @@
     padding-bottom: 8px;
 }
 
+.choicesSlot:not(.choicesSlotOpen) .choiceChip {
+    opacity: 0;
+}
+
 .choiceChip {
     display: inline-flex;
     align-items: center;
@@ -1529,7 +1595,7 @@
     font-weight: 600;
     color: var(--text-secondary);
     cursor: pointer;
-    transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+    transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease, opacity 0.12s ease;
     white-space: nowrap;
 }
 

@@ -4,8 +4,10 @@
 
 export {
     type AITool,
+    type ToolScope,
     AVAILABLE_TOOLS,
     getToolDefinitions,
+    isToolAllowedInScope,
     executeTool,
     getTool,
     resolveAutonomyLevel,

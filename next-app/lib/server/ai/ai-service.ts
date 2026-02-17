@@ -13,7 +13,7 @@ import { validateRateLimits, recordUsage } from "./rate-limiter";
 import { retrieveAndFormatMemories } from "@/lib/server/memory";
 import { AI_CONFIG, getProviderForModel, getContextBudget } from "@/lib/ai/config";
 import { compactToolResult, compactLoopMessages, buildCompactedHistory, estimateMessagesTokens, formatSummaryAsMessage } from "@/lib/agent/compaction";
-import { AVAILABLE_TOOLS, getToolDefinitions, executeTool, getTool, resolveAutonomyLevel } from "./tools";
+import { AVAILABLE_TOOLS, getToolDefinitions, executeTool, getTool, resolveAutonomyLevel, isToolAllowedInScope } from "./tools";
 import { startRun, endRun } from "@/lib/server/agent/run";
 import { emitEvent } from "@/lib/server/agent/events";
 import { createArtifact, applyArtifact } from "@/lib/server/agent/artifacts";
@@ -169,7 +169,9 @@ class AIService {
         messages: AIMessage[],
         options?: ChatOptions
     ): AsyncIterable<AIStreamChunk> {
-        const toolDefs = getToolDefinitions();
+        const hasProjectScope = !!(options?.projectId && options.projectId !== "global");
+        const scope = hasProjectScope ? "project" as const : "global" as const;
+        const toolDefs = getToolDefinitions(undefined, scope);
         if (toolDefs.length === 0) {
             yield* this.streamChat(messages, options);
             return;
@@ -272,8 +274,21 @@ class AIService {
         userId?: string,
         agentMode?: AgentMode,
         traceSpan?: TracingSpan,
-        studyId?: string
+        studyId?: string,
+        cachedAutonomyConfig?: Awaited<ReturnType<typeof getAutonomyConfig>>
     ): AsyncGenerator<AIStreamChunk, ToolResult> {
+        // Defense-in-depth: reject tool calls not allowed in the current mode
+        const scope = projectId && projectId !== "global" ? "project" as const : "global" as const;
+        if (!isToolAllowedInScope(toolCall.name, scope)) {
+            const result: ToolResult = {
+                callId: toolCall.id,
+                result: null,
+                error: `Tool "${toolCall.name}" is not available in ${scope} scope.`,
+            };
+            await emitEvent(runId, "tool_result", { error: result.error }, { toolName: toolCall.name });
+            return result;
+        }
+
         // Defense-in-depth: reject tool calls not allowed in the current mode
         if (agentMode) {
             const allowed = AGENT_MODE_CONFIG[agentMode]?.allowedTools;
@@ -290,8 +305,8 @@ class AIService {
 
         const tool = getTool(toolCall.name);
 
-        // Resolve autonomy level
-        const autonomyConfig = await getAutonomyConfig(userId, projectId);
+        // Resolve autonomy level — use cached config if provided to avoid a redundant DB round-trip per tool call
+        const autonomyConfig = cachedAutonomyConfig ?? await getAutonomyConfig(userId, projectId);
         const configuredLevel = getToolAutonomyLevel(toolCall.name, {
             preset: autonomyConfig.preset,
             toolOverrides: (autonomyConfig.toolOverrides ?? {}) as Record<string, unknown>,
@@ -454,14 +469,14 @@ class AIService {
         // This prevents cross-conversation writes when client scope drifts from the actual thread.
         let conversation;
         if (options?.conversationId) {
-            const byId = await getConversationWithSummaryById(options.conversationId);
+            const byId = await getConversationWithSummaryById(options.conversationId, userId);
             if (byId) {
                 conversation = byId;
                 // Canonical ownership: conversation's stored scope is source of truth
                 projectId = byId.projectId;
                 studyId = byId.studyId;
             } else {
-                conversation = await getConversationWithSummary(context, projectId, studyId);
+                throw new Error(`Invalid, archived, or inaccessible conversationId: ${options.conversationId}`);
             }
         } else {
             conversation = await getConversationWithSummary(context, projectId, studyId);
@@ -531,6 +546,11 @@ class AIService {
                 ? buildLedgerContext(studyLedger.counts, studyLedger.list, studyLedger.truncated)
                 : "";
             const autonomyContext = buildAutonomyContext(autonomyConfig.preset);
+            const isGlobalAssistantScope = (!projectId || projectId === "global") && options?.page === "ai";
+            const scopeInstruction = isGlobalAssistantScope
+                ? `\n\n[SCOPE]\nYou are operating in global AI command-center mode. You may compare and synthesize across projects when [ADDITIONAL_CONTEXT] includes multi-project data. If project-level details are missing, state what is unknown and suggest the next best step.`
+                : "";
+            const additionalContextMaxChars = isGlobalAssistantScope ? 3000 : 500;
 
             // Build study context from study metadata + details JSON
             let studyContext = "";
@@ -558,6 +578,8 @@ class AIService {
 
             const systemPrompt = assembleSystemPrompt({
                 agentMode,
+                tone: options?.tone,
+                scopeInstruction,
                 projectContext,
                 protocolContext,
                 ledgerContext,
@@ -565,6 +587,8 @@ class AIService {
                 studyContext,
                 memoryContext: memoriesContext || undefined,
                 autonomyContext,
+                additionalContext: options?.additionalContext,
+                additionalContextMaxChars,
             })
             // Scoped to streamChatWithArtifacts only — not in global BASE_PROMPT
             // so PopupChat (which reuses AGENT_MODE_PROMPTS) doesn't emit choices without rendering support
@@ -579,6 +603,7 @@ class AIService {
                     userMsg = await addMessageToConversation(conversation.id, {
                         role: "user",
                         content: persistedUserContent,
+                        attachments: options?.userMessageAttachments,
                     });
                 } else {
                     userMsg = {
@@ -640,7 +665,8 @@ class AIService {
             // Check for multi-step workflow (plan-before-act)
             if (!options?.planId) {
                 const { detectMultiStepWorkflow, generatePlan } = await import("@/lib/server/agent/planner");
-                const toolNames = getToolDefinitions(agentMode).map((t) => t.name);
+                const toolScope = projectId && projectId !== "global" ? "project" as const : "global" as const;
+                const toolNames = getToolDefinitions(agentMode, toolScope).map((t) => t.name);
                 if (detectMultiStepWorkflow(userMessage, toolNames)) {
                     yield { type: "progress", progressMessage: "Creating a plan...", conversationId: conversation.id };
 
@@ -710,7 +736,8 @@ class AIService {
             }
 
             // Run the tool execution loop with autonomy
-            const toolDefs = getToolDefinitions(agentMode);
+            const toolScope = projectId && projectId !== "global" ? "project" as const : "global" as const;
+            const toolDefs = getToolDefinitions(agentMode, toolScope);
             const chatOptions: ChatOptions = {
                 ...options,
                 projectId: projectId || "global",
@@ -811,7 +838,7 @@ class AIService {
                         conversationId: conversation.id,
                     };
 
-                    const gen = this.executeToolWithAutonomy(tc, run.id, projectId, conversation.id, userId, agentMode, trace, studyId);
+                    const gen = this.executeToolWithAutonomy(tc, run.id, projectId, conversation.id, userId, agentMode, trace, studyId, autonomyConfig);
                     let genResult = await gen.next();
                     while (!genResult.done) {
                         yield { ...genResult.value, conversationId: conversation.id };

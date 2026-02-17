@@ -7,7 +7,8 @@
 
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Component, memo, useCallback, useLayoutEffect, useRef, useState } from "react";
+import type { ErrorInfo, ReactNode } from "react";
 import { useParams } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -37,6 +38,34 @@ import styles from "../ProjectCopilot.module.css";
 import artifactStyles from "@/styles/artifacts.module.css";
 import markdownStyles from "@/styles/markdown.module.css";
 
+// ── Per-artifact error boundary (P5) ─────────────────────────────────────────
+// Prevents a single broken artifact card from crashing the whole timeline.
+
+class ArtifactErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
+    constructor(props: { children: ReactNode }) {
+        super(props);
+        this.state = { hasError: false };
+    }
+    static getDerivedStateFromError(): { hasError: boolean } {
+        return { hasError: true };
+    }
+    componentDidCatch(error: Error, info: ErrorInfo) {
+        console.error("[ArtifactErrorBoundary]", error, info.componentStack);
+    }
+    render() {
+        if (this.state.hasError) {
+            return (
+                <div style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid var(--glass-border)", background: "rgba(192,57,43,0.06)", color: "var(--color-danger, #c0392b)", fontSize: 13 }}>
+                    Failed to render this artifact.
+                </div>
+            );
+        }
+        return this.props.children;
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 const ARTIFACT_JUMP_MAP: Record<string, { tab: string; label: string }> = {
     study_proposal: { tab: "ledger", label: "View in Ledger" },
     screening_batch: { tab: "ledger", label: "View in Ledger" },
@@ -54,9 +83,115 @@ function getJumpToProps(artifactType: string, projectId: string): { jumpToLink?:
     };
 }
 
+// ── Memo-wrapped row components (P1 / P2) ─────────────────────────────────────
+// Defined at module level so React treats them as stable component types and
+// memo's shallow-prop comparison actually prevents re-renders of unchanged rows.
+
+type UserMessageRowProps = {
+    item: Extract<TimelineItem, { type: "user_message" }>;
+};
+
+const UserMessageRow = memo(function UserMessageRow({ item }: UserMessageRowProps) {
+    return (
+        <div className={`${styles.chatMsg} ${styles.chatMsgUser}`}>
+            <div className={styles.chatBubble}>
+                {item.attachments && item.attachments.length > 0 && (
+                    <div className={styles.messageAttachments}>
+                        {item.attachments.map((att) => (
+                            <div key={att.fileAssetId ?? att.filename} className={styles.messageAttachment}>
+                                <span className="material-icons-round" style={{ fontSize: 14 }}>description</span>
+                                <span className={styles.messageAttachmentName}>{att.filename}</span>
+                                <span className={styles.messageAttachmentSize}>
+                                    {att.size >= 1024 * 1024
+                                        ? `${(att.size / (1024 * 1024)).toFixed(1)} MB`
+                                        : `${Math.round(att.size / 1024)} KB`}
+                                </span>
+                            </div>
+                        ))}
+                    </div>
+                )}
+                <p className={styles.chatText}>{item.content}</p>
+            </div>
+        </div>
+    );
+});
+
+type AssistantMessageRowProps = {
+    item: Extract<TimelineItem, { type: "assistant_message" }>;
+    /** True only when this specific message is actively receiving streaming tokens */
+    isStreaming: boolean;
+    /** True when this message was just saved to Notes (shows confirmation) */
+    isSaved: boolean;
+    onCopy: (text: string) => void;
+    onSaveToNotes?: (content: string, messageId: string) => void | Promise<void>;
+    onInsert?: (text: string) => void;
+};
+
+const AssistantMessageRow = memo(function AssistantMessageRow({
+    item,
+    isStreaming,
+    isSaved,
+    onCopy,
+    onSaveToNotes,
+    onInsert,
+}: AssistantMessageRowProps) {
+    return (
+        <div className={`${styles.chatMsg} ${styles.chatMsgAi}`}>
+            <div className={styles.chatStack}>
+                <div className={styles.chatBubble}>
+                    <div className={markdownStyles.markdownContent}>
+                        <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                            {item.content}
+                        </ReactMarkdown>
+                        {isStreaming && (
+                            <span className={styles.streamingCursor} aria-hidden="true">◎</span>
+                        )}
+                    </div>
+                </div>
+                <div className={`${styles.chatActions} ${isSaved ? styles.chatActionsVisible : ""}`}>
+                    <button
+                        type="button"
+                        className={styles.chatActionBtn}
+                        onClick={() => onCopy(item.content)}
+                        title="Copy to clipboard"
+                    >
+                        <span className="material-icons-round">content_copy</span>
+                    </button>
+                    {onSaveToNotes && (
+                        isSaved ? (
+                            <span className={artifactStyles.savedConfirm}>Saved!</span>
+                        ) : (
+                            <button
+                                type="button"
+                                className={styles.chatActionBtn}
+                                onClick={() => onSaveToNotes(item.content, item.id)}
+                                title="Save to Notes"
+                            >
+                                <span className="material-icons-round">bookmark_border</span>
+                            </button>
+                        )
+                    )}
+                    {onInsert && (
+                        <button
+                            type="button"
+                            className={styles.chatActionBtn}
+                            onClick={() => onInsert(item.content)}
+                            title="Insert into draft"
+                        >
+                            <span className="material-icons-round">add_circle_outline</span>
+                        </button>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 export type TimelineRendererProps = {
     /** Legacy message input (backward compat) */
-    messages: CopilotMessage[];
+    messages?: CopilotMessage[];
     /** New timeline item input — takes priority over messages when provided */
     items?: TimelineItem[];
     isLoading: boolean;
@@ -74,12 +209,16 @@ export type TimelineRendererProps = {
     onExecutePlan?: (artifactId: string, selectedIndexes: number[]) => void;
     /** Callback to save a message to notes */
     onSaveToNotes?: (content: string, messageId: string) => void | Promise<void>;
+    /** Optional retry callback for retryable error cards */
+    onRetryLastMessage?: () => void;
     /** Layout variant: "panel" for copilot sidebar (bubbles), "page" for conversation mode (full-width) */
     variant?: "panel" | "page";
+    /** When true (conversation being fetched), show a shimmer skeleton instead of the empty state */
+    isConversationLoading?: boolean;
 };
 
 export function TimelineRenderer({
-    messages,
+    messages = [],
     items,
     isLoading,
     onInsert,
@@ -88,12 +227,15 @@ export function TimelineRenderer({
     onReviewArtifact,
     onExecutePlan,
     onSaveToNotes,
+    onRetryLastMessage,
     variant = "panel",
+    isConversationLoading = false,
 }: TimelineRendererProps) {
-    const params = useParams<{ id: string }>();
-    const projectId = params?.id;
+    const params = useParams();
+    const projectId = params && typeof params === "object" && "id" in params
+        ? String((params as Record<string, unknown>).id)
+        : undefined;
     const listRef = useRef<HTMLDivElement | null>(null);
-    const sentinelRef = useRef<HTMLDivElement | null>(null);
     const followRef = useRef(true);      // strict follow-mode: only toggled by explicit user intent
     const rafRef = useRef<number | null>(null);
     const programmaticScrollRef = useRef(false);
@@ -121,20 +263,15 @@ export function TimelineRenderer({
     }, [timeline]);
 
     // ── Scroll handler — distinguishes user scroll from programmatic scroll ─
-    // Programmatic scrolls are ignored via a short-lived ref set by our own scrollTop changes.
-    // User scrolling up disables follow; user scrolling back to bottom re-enables.
     const BOTTOM_THRESHOLD = 20;
 
     const handleScroll = useCallback(() => {
         if (!listRef.current) return;
-        // Ignore scroll events triggered by our own programmatic scrollTop assignment
         if (programmaticScrollRef.current) return;
 
         const { scrollTop, clientHeight, scrollHeight } = listRef.current;
         const atBottom = scrollTop + clientHeight >= scrollHeight - BOTTOM_THRESHOLD;
-        // User scrolled back to bottom → re-enable follow
         if (atBottom && !followRef.current) followRef.current = true;
-        // User scrolled up → disable follow
         if (!atBottom && followRef.current) followRef.current = false;
         setIsAtBottom(atBottom);
     }, []);
@@ -163,6 +300,31 @@ export function TimelineRenderer({
             }
         }
     }, [onSaveToNotes]);
+
+    // Skeleton while a conversation is being fetched from the server
+    if (isConversationLoading && timeline.length === 0) {
+        return (
+            <div className={`${styles.copilotBody} ${variant === "page" ? styles.copilotBodyEmpty : ""}`} ref={listRef}>
+                <div className={styles.skeletonList} aria-busy="true" aria-label="Loading conversation">
+                    <div className={styles.skeletonRow}>
+                        <div className={`${styles.skeletonBubble} ${styles.skeletonBubbleUser}`} />
+                    </div>
+                    <div className={styles.skeletonRow}>
+                        <div className={`${styles.skeletonBubble} ${styles.skeletonBubbleLong}`} />
+                        <div className={`${styles.skeletonBubble} ${styles.skeletonBubbleMid}`} />
+                        <div className={`${styles.skeletonBubble} ${styles.skeletonBubbleShort}`} />
+                    </div>
+                    <div className={styles.skeletonRow}>
+                        <div className={`${styles.skeletonBubble} ${styles.skeletonBubbleUser}`} />
+                    </div>
+                    <div className={styles.skeletonRow}>
+                        <div className={`${styles.skeletonBubble} ${styles.skeletonBubbleMid}`} />
+                        <div className={`${styles.skeletonBubble} ${styles.skeletonBubbleShort}`} />
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     // Empty state
     if (timeline.length === 0) {
@@ -268,7 +430,6 @@ export function TimelineRenderer({
                             payload={protocolPayload}
                             onAccept={(editedValue) => {
                                 if (editedValue !== undefined) {
-                                    // User edited the value — pass edited payload through the review pipeline
                                     handleReview("accepted", undefined, {
                                         ...protocolPayload,
                                         value: editedValue,
@@ -340,7 +501,7 @@ export function TimelineRenderer({
         }
     };
 
-    // Streaming cursor: detect when last AI message is actively receiving tokens
+    // Streaming cursor: which assistant message is actively receiving tokens
     const lastAssistantIndex = timeline.length > 0 && timeline[timeline.length - 1].type === "assistant_message"
         ? timeline.length - 1
         : -1;
@@ -349,82 +510,27 @@ export function TimelineRenderer({
     const renderTimelineItem = (item: TimelineItem, index: number) => {
         switch (item.type) {
             case "user_message":
-                return (
-                    <div key={item.id} className={`${styles.chatMsg} ${styles.chatMsgUser}`}>
-                        <div className={styles.chatBubble}>
-                            {item.attachments && item.attachments.length > 0 && (
-                                <div className={styles.messageAttachments}>
-                                    {item.attachments.map((att) => (
-                                        <div key={att.fileAssetId ?? att.filename} className={styles.messageAttachment}>
-                                            <span className="material-icons-round" style={{ fontSize: 14 }}>description</span>
-                                            <span className={styles.messageAttachmentName}>{att.filename}</span>
-                                            <span className={styles.messageAttachmentSize}>
-                                                {att.size >= 1024 * 1024
-                                                    ? `${(att.size / (1024 * 1024)).toFixed(1)} MB`
-                                                    : `${Math.round(att.size / 1024)} KB`}
-                                            </span>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                            <p className={styles.chatText}>{item.content}</p>
-                        </div>
-                    </div>
-                );
+                return <UserMessageRow key={item.id} item={item} />;
 
             case "assistant_message":
                 return (
-                    <div key={item.id} className={`${styles.chatMsg} ${styles.chatMsgAi}`}>
-                        <div className={styles.chatStack}>
-                            <div className={styles.chatBubble}>
-                                <div className={`${markdownStyles.markdownContent} ${isStreaming && index === lastAssistantIndex ? styles.streaming : ""}`}>
-                                    <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-                                        {item.content}
-                                    </ReactMarkdown>
-                                </div>
-                            </div>
-                            <div className={`${styles.chatActions} ${savedNoteId === item.id ? styles.chatActionsVisible : ""}`}>
-                                <button
-                                    type="button"
-                                    className={styles.chatActionBtn}
-                                    onClick={() => handleCopy(item.content)}
-                                    title="Copy to clipboard"
-                                >
-                                    <span className="material-icons-round">content_copy</span>
-                                </button>
-                                {onSaveToNotes && (
-                                    savedNoteId === item.id ? (
-                                        <span className={artifactStyles.savedConfirm}>Saved!</span>
-                                    ) : (
-                                        <button
-                                            type="button"
-                                            className={styles.chatActionBtn}
-                                            onClick={() => handleSaveToNotes(item.content, item.id)}
-                                            title="Save to Notes"
-                                        >
-                                            <span className="material-icons-round">bookmark_border</span>
-                                        </button>
-                                    )
-                                )}
-                                {onInsert && (
-                                    <button
-                                        type="button"
-                                        className={styles.chatActionBtn}
-                                        onClick={() => onInsert(item.content)}
-                                        title="Insert into draft"
-                                    >
-                                        <span className="material-icons-round">add_circle_outline</span>
-                                    </button>
-                                )}
-                            </div>
-                        </div>
-                    </div>
+                    <AssistantMessageRow
+                        key={item.id}
+                        item={item}
+                        isStreaming={isStreaming && index === lastAssistantIndex}
+                        isSaved={savedNoteId === item.id}
+                        onCopy={handleCopy}
+                        onSaveToNotes={onSaveToNotes ? handleSaveToNotes : undefined}
+                        onInsert={onInsert}
+                    />
                 );
 
             case "artifact":
                 return (
                     <div key={item.id} className={styles.chatMsg}>
-                        {renderArtifactContent(item)}
+                        <ArtifactErrorBoundary>
+                            {renderArtifactContent(item)}
+                        </ArtifactErrorBoundary>
                     </div>
                 );
 
@@ -453,8 +559,8 @@ export function TimelineRenderer({
                     <div key={item.id} className={artifactStyles.errorCard}>
                         <span className="material-icons-round">error_outline</span>
                         <span className={artifactStyles.errorMessage}>{item.message}</span>
-                        {item.retryable && (
-                            <button type="button" className={artifactStyles.errorRetryBtn}>
+                        {item.retryable && onRetryLastMessage && (
+                            <button type="button" className={artifactStyles.errorRetryBtn} onClick={onRetryLastMessage}>
                                 Retry
                             </button>
                         )}
@@ -479,19 +585,18 @@ export function TimelineRenderer({
                         </div>
                     </div>
                 )}
-                {/* Bottom sentinel — used for future IntersectionObserver if needed */}
-                <div ref={sentinelRef} style={{ height: 1, flexShrink: 0 }} aria-hidden="true" />
+                {/* Bottom sentinel — scroll anchor and screen-reader suppression */}
+                <div style={{ height: 1, flexShrink: 0 }} aria-hidden="true" />
             </div>
-            {!isAtBottom && (
-                <button
-                    type="button"
-                    className={styles.scrollFab}
-                    onClick={scrollToBottom}
-                    aria-label="Scroll to bottom"
-                >
-                    <span className="material-icons-round">keyboard_arrow_down</span>
-                </button>
-            )}
+            <button
+                type="button"
+                className={`${styles.scrollFab} ${isAtBottom ? styles.scrollFabHidden : ""}`}
+                onClick={scrollToBottom}
+                aria-label="Scroll to bottom"
+                tabIndex={isAtBottom ? -1 : 0}
+            >
+                <span className="material-icons-round">keyboard_arrow_down</span>
+            </button>
         </div>
     );
 }

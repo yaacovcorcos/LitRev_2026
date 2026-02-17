@@ -67,21 +67,36 @@ export const AVAILABLE_TOOLS: AITool[] = [
     storeMemoryTool,
 ];
 
+export type ToolScope = "global" | "project";
+
+const GLOBAL_SCOPE_TOOL_ALLOWLIST = new Set<string>([
+    "search_pubmed",
+    "search_semantic_scholar",
+    "store_memory",
+]);
+
+export function isToolAllowedInScope(toolName: string, scope: ToolScope): boolean {
+    if (scope === "project") return true;
+    return GLOBAL_SCOPE_TOOL_ALLOWLIST.has(toolName);
+}
+
 /**
  * Get tool definitions for the AI, optionally filtered by agent mode.
  * When agentMode is provided and the mode has a non-empty allowedTools list,
  * only those tools are returned. Otherwise all tools are returned.
+ * Scope filtering is applied first.
  */
-export function getToolDefinitions(agentMode?: AgentMode): ToolDefinition[] {
+export function getToolDefinitions(agentMode?: AgentMode, scope: ToolScope = "project"): ToolDefinition[] {
+    let tools = AVAILABLE_TOOLS.filter((t) => isToolAllowedInScope(t.definition.name, scope));
+
     if (agentMode) {
-        const allowed = AGENT_MODE_CONFIG[agentMode]?.allowedTools;
-        if (allowed && allowed.length > 0) {
-            return AVAILABLE_TOOLS
-                .filter((t) => allowed.includes(t.definition.name))
-                .map((t) => t.definition);
+        const allowedInMode = AGENT_MODE_CONFIG[agentMode]?.allowedTools;
+        if (allowedInMode && allowedInMode.length > 0) {
+            tools = tools.filter((t) => allowedInMode.includes(t.definition.name));
         }
     }
-    return AVAILABLE_TOOLS.map((t) => t.definition);
+
+    return tools.map((t) => t.definition);
 }
 
 /**
