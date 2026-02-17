@@ -141,6 +141,10 @@
     opacity: 1;
 }
 
+.historyItem:hover .branchBtn {
+    opacity: 1;
+}
+
 .historySelectBtn {
     flex: 1;
     min-width: 0;
@@ -185,6 +189,34 @@
 }
 
 .deleteBtn .material-icons-round {
+    font-size: 16px;
+}
+
+.branchBtn {
+    opacity: 0;
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 2px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+}
+
+.branchBtn:hover:not(:disabled) {
+    color: var(--accent-primary);
+    background: rgba(217, 116, 89, 0.1);
+}
+
+.branchBtn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.branchBtn .material-icons-round {
     font-size: 16px;
 }
 
@@ -413,5 +445,19 @@
 
     .projectButton span:nth-child(2) {
         max-width: 48vw;
+    }
+}
+
+/* ---- Glass morphism fallback (A11y) ---- */
+
+@supports not (backdrop-filter: blur(1px)) {
+    .historySidebar {
+        background: rgba(255, 255, 255, 0.97);
+        backdrop-filter: none;
+    }
+
+    .projectDropdown {
+        background: rgba(255, 255, 255, 0.98);
+        backdrop-filter: none;
     }
 }

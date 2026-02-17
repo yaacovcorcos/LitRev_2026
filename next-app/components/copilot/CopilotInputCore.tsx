@@ -564,18 +564,32 @@ export function CopilotInputCore({
                         )}
 
                         {showVoice && (
-                            <button
-                                type="button"
-                                className={`${styles.actionBtn} ${voiceState === "recording" ? styles.actionBtnRecording : ""}`}
-                                onClick={toggleRecording}
-                                disabled={voiceState === "transcribing"}
-                                aria-label={voiceState === "recording" ? "Stop recording" : voiceState === "transcribing" ? "Transcribing..." : "Voice input"}
-                                title={voiceState === "recording" ? "Stop recording" : voiceState === "transcribing" ? "Transcribing..." : "Voice input"}
-                            >
-                                <span className="material-icons-round">
-                                    {voiceState === "recording" ? "stop_circle" : voiceState === "transcribing" ? "hourglass_top" : "mic"}
+                            <>
+                                {/* Screen-reader live region for voice state (V8 / A11y) */}
+                                <span
+                                    className="sr-only"
+                                    aria-live="polite"
+                                    aria-atomic="true"
+                                >
+                                    {voiceState === "recording"
+                                        ? "Recording in progress"
+                                        : voiceState === "transcribing"
+                                        ? "Transcribing..."
+                                        : ""}
                                 </span>
-                            </button>
+                                <button
+                                    type="button"
+                                    className={`${styles.actionBtn} ${voiceState === "recording" ? styles.actionBtnRecording : ""}`}
+                                    onClick={toggleRecording}
+                                    disabled={voiceState === "transcribing"}
+                                    aria-label={voiceState === "recording" ? "Stop recording" : voiceState === "transcribing" ? "Transcribing..." : "Voice input"}
+                                    title={voiceState === "recording" ? "Stop recording" : voiceState === "transcribing" ? "Transcribing..." : "Voice input"}
+                                >
+                                    <span className="material-icons-round">
+                                        {voiceState === "recording" ? "stop_circle" : voiceState === "transcribing" ? "hourglass_top" : "mic"}
+                                    </span>
+                                </button>
+                            </>
                         )}
                     </div>
 

@@ -57,6 +57,10 @@ export type ConversationWithMessages = ConversationSummary & {
     messages: ConversationMessage[];
 };
 
+export type BranchedConversationResult = ConversationSummary & {
+    sourceConversationId: string;
+};
+
 /**
  * List all conversations for a given context
  * Multi-user ready: filters by workspaceId when provided
@@ -270,6 +274,111 @@ export async function deleteConversation(conversationId: string): Promise<void> 
     await prisma.aIConversation.delete({
         where: { id: conversationId },
     });
+}
+
+/**
+ * Create a branched conversation by copying messages from an existing one.
+ * If upToMessageId is provided, only messages up to and including that message are copied.
+ */
+export async function branchConversation(params: {
+    conversationId: string;
+    upToMessageId?: string;
+    title?: string;
+}): Promise<BranchedConversationResult> {
+    const { conversationId, upToMessageId, title } = params;
+    const userContext = getCurrentUserContext();
+
+    const source = await prisma.aIConversation.findFirst({
+        where: {
+            id: conversationId,
+            userId: userContext.userId,
+            workspaceId: userContext.workspaceId,
+            archived: false,
+        },
+        include: {
+            messages: {
+                orderBy: { createdAt: "asc" },
+            },
+            summary: true,
+            _count: {
+                select: { messages: true },
+            },
+        },
+    });
+
+    if (!source) {
+        throw new Error("Conversation not found");
+    }
+
+    let sourceMessages = source.messages;
+    if (upToMessageId) {
+        const cutoffIndex = sourceMessages.findIndex((m) => m.id === upToMessageId);
+        if (cutoffIndex < 0) {
+            throw new Error("Branch cutoff message not found");
+        }
+        sourceMessages = sourceMessages.slice(0, cutoffIndex + 1);
+    }
+
+    const branchTitle = title
+        ?? (source.title ? `${source.title} (branch)` : "Branched conversation");
+
+    const created = await prisma.$transaction(async (tx) => {
+        const conversation = await tx.aIConversation.create({
+            data: {
+                userId: source.userId,
+                workspaceId: source.workspaceId,
+                title: branchTitle,
+                context: source.context,
+                page: source.page,
+                projectId: source.projectId,
+                studyId: source.studyId,
+            },
+        });
+
+        if (sourceMessages.length > 0) {
+            await tx.aIMessage.createMany({
+                data: sourceMessages.map((m) => ({
+                    conversationId: conversation.id,
+                    role: m.role,
+                    content: m.content,
+                    toolCalls: m.toolCalls as any,
+                    toolResultId: m.toolResultId,
+                    attachments: m.attachments as any,
+                    createdAt: m.createdAt,
+                })),
+            });
+        }
+
+        // When branching from the entire conversation, carry over compaction summary.
+        if (!upToMessageId && source.summary) {
+            await tx.conversationSummary.create({
+                data: {
+                    conversationId: conversation.id,
+                    summary: source.summary.summary,
+                    keyPoints: source.summary.keyPoints,
+                    decisions: source.summary.decisions,
+                    followUpNeeded: source.summary.followUpNeeded,
+                    messageCount: source.summary.messageCount,
+                    lastSummarizedAt: source.summary.lastSummarizedAt,
+                },
+            });
+        }
+
+        return conversation;
+    });
+
+    return {
+        id: created.id,
+        title: created.title,
+        context: created.context,
+        page: created.page,
+        projectId: created.projectId,
+        studyId: created.studyId,
+        messageCount: sourceMessages.length,
+        createdAt: created.createdAt.toISOString(),
+        updatedAt: created.updatedAt.toISOString(),
+        sourceConversationId: source.id,
+    };
 }
 
 /**

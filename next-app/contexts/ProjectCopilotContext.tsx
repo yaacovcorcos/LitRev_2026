@@ -24,6 +24,7 @@ import {
     getConversation,
     createConversation,
     archiveConversation,
+    branchConversation as branchConversationAction,
     updateConversationTitle,
 } from "@/app/actions/conversations";
 import {
@@ -95,6 +96,8 @@ type ProjectCopilotContextValue = {
     renameConversation: (conversationId: string, title: string) => Promise<void>;
     /** Delete a conversation */
     deleteConversation: (conversationId: string) => Promise<void>;
+    /** Branch a conversation into a new forked conversation */
+    branchConversation: (conversationId: string) => Promise<void>;
     /** Refresh conversation list */
     refreshConversations: () => Promise<void>;
     /** Set study filter for conversation scoping (undefined = show all) */
@@ -574,6 +577,27 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             console.error("Failed to delete conversation:", err);
         }
     }, [currentConversationId, updateState]);
+
+    const branchConversationHandler = useCallback(async (conversationId: string) => {
+        if (!projectId) return;
+        try {
+            // Branching is a context switch; stop active stream before switching.
+            streamGenRef.current++;
+            if (abortControllerRef.current) {
+                abortControllerRef.current.abort();
+                abortControllerRef.current = null;
+            }
+            setIsLoading(false);
+            setCurrentRunId(null);
+            setPendingChoices([]);
+
+            const branched = await branchConversationAction({ conversationId });
+            await loadConversations();
+            await selectConversation(branched.id);
+        } catch (err) {
+            console.error("Failed to branch conversation:", err);
+        }
+    }, [projectId, loadConversations, selectConversation]);
 
     const attachFile = useCallback(async (file: File) => {
         if (!projectId) return;
@@ -1172,6 +1196,7 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             newConversation,
             renameConversation,
             deleteConversation: deleteConversationHandler,
+            branchConversation: branchConversationHandler,
             refreshConversations: loadConversations,
             setStudyFilter,
             // Attachment support
@@ -1220,6 +1245,7 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             newConversation,
             renameConversation,
             deleteConversationHandler,
+            branchConversationHandler,
             loadConversations,
             setStudyFilter,
             pendingAttachment,

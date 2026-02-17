@@ -10,8 +10,10 @@ import {
   createConversation,
   getConversation,
   archiveConversation,
+  branchConversation,
 } from "@/app/actions/conversations";
 import { getGlobalWorkspaceContextAction } from "@/app/actions/ai-assistant";
+import { summarizeConversationAction } from "@/app/actions/summarize-conversation";
 import type { AgentMode } from "@/types/agent";
 import type { CopilotPage, ConversationContext, ChoiceOption } from "@/types/ai";
 import type { ArtifactStatus, ArtifactType } from "@/types/artifacts";
@@ -291,6 +293,8 @@ export default function AIView() {
   const [workspaceContextText, setWorkspaceContextText] = useState("");
   const [workspaceProjectCount, setWorkspaceProjectCount] = useState(0);
   const [isTyping, setIsTyping] = useState(false);
+  const [isCompressing, setIsCompressing] = useState(false);
+  const [branchingConversationId, setBranchingConversationId] = useState<string | null>(null);
   const [pendingChoices, setPendingChoices] = useState<ChoiceOption[]>([]);
   const [prefill, setPrefill] = useState("");
 
@@ -374,6 +378,7 @@ export default function AIView() {
       setConversations(mapped);
       setActiveConversationId(null);
       setTimelineByConversation({});
+      timelineLruRef.current = [];   // reset LRU so eviction doesn't drift across scopes
       setPendingChoices([]);
       setPrefill("");
     };
@@ -454,9 +459,9 @@ export default function AIView() {
 
     setConversations((prev) => sortConversationsByUpdatedAt([newConv, ...prev]));
     setActiveConversationId(id);
-    setTimelineByConversation((prev) => ({ ...prev, [id]: [] }));
+    updateConversationTimeline(id, () => []);
     return id;
-  }, [activeConversationId, selectedProjectId, sortConversationsByUpdatedAt]);
+  }, [activeConversationId, selectedProjectId, sortConversationsByUpdatedAt, updateConversationTimeline]);
 
   const handleSelectConversation = useCallback(async (id: string) => {
     setActiveConversationId(id);
@@ -489,19 +494,116 @@ export default function AIView() {
       console.error("Failed to archive conversation", err);
     }
 
-    setConversations((prev) => prev.filter((c) => c.id !== id));
+    // Derive nextId from the updater's `prev` argument (always fresh state, avoids stale closure)
+    let nextId: string | null = null;
+    setConversations((prev) => {
+      const filtered = prev.filter((c) => c.id !== id);
+      if (activeConversationId === id) {
+        nextId = filtered[0]?.id ?? null;
+      }
+      return filtered;
+    });
     setTimelineByConversation((prev) => {
       const next = { ...prev };
       delete next[id];
       return next;
     });
+    // Keep LRU ref in sync with the evicted entry
+    timelineLruRef.current = timelineLruRef.current.filter((lruId) => lruId !== id);
     setPendingChoices([]);
 
     if (activeConversationId === id) {
-      const remaining = conversations.filter((c) => c.id !== id);
-      setActiveConversationId(remaining[0]?.id ?? null);
+      if (nextId) {
+        // Load the next conversation's timeline (skeleton + DB fetch) to avoid a blank view
+        void handleSelectConversation(nextId);
+      } else {
+        setActiveConversationId(null);
+      }
     }
-  }, [activeConversationId, conversations]);
+  }, [activeConversationId, handleSelectConversation]);
+
+  const handleBranchConversation = useCallback(async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (branchingConversationId) return;
+    if (isTyping) cancelStream();
+    setBranchingConversationId(id);
+    try {
+      const branched = await branchConversation({ conversationId: id });
+      const full = await getConversation(branched.id);
+      if (!full) return;
+
+      const mappedItems = mapDbMessagesToTimeline(full.messages);
+      const newConv: ChatConversation = {
+        id: full.id,
+        title: full.title ?? "New Chat",
+        projectId: full.projectId ?? undefined,
+        createdAt: full.createdAt,
+        updatedAt: full.updatedAt,
+      };
+      setConversations((prev) =>
+        sortConversationsByUpdatedAt([newConv, ...prev.filter((c) => c.id !== newConv.id)])
+      );
+      updateConversationTimeline(full.id, () => mappedItems);
+      setActiveConversationId(full.id);
+      setPendingChoices([]);
+      setPrefill("");
+    } catch (err) {
+      console.error("Failed to branch conversation", err);
+    } finally {
+      setBranchingConversationId(null);
+    }
+  }, [branchingConversationId, isTyping, cancelStream, sortConversationsByUpdatedAt, updateConversationTimeline]);
+
+  const handleCompressHistory = useCallback(async () => {
+    const sourceId = activeConversationId;
+    if (!sourceId || isCompressing) return;
+    if (isTyping) cancelStream();
+    setIsCompressing(true);
+    try {
+      const result = await summarizeConversationAction(sourceId);
+
+      // Remove the archived source conversation from the sidebar regardless of
+      // whether we can load the new one — avoids leaving a dead (archived) entry.
+      setConversations((prev) =>
+        sortConversationsByUpdatedAt(prev.filter((c) => c.id !== sourceId))
+      );
+      setTimelineByConversation((prev) => {
+        const next = { ...prev };
+        delete next[sourceId];
+        return next;
+      });
+      timelineLruRef.current = timelineLruRef.current.filter((lruId) => lruId !== sourceId);
+
+      const full = await getConversation(result.newConversationId);
+      if (!full) {
+        setActiveConversationId(null);
+        return;
+      }
+
+      const mappedItems = mapDbMessagesToTimeline(full.messages);
+      const newConv: ChatConversation = {
+        id: full.id,
+        title: full.title ?? "New Chat",
+        projectId: full.projectId ?? undefined,
+        createdAt: full.createdAt,
+        updatedAt: full.updatedAt,
+      };
+
+      setConversations((prev) =>
+        sortConversationsByUpdatedAt(
+          [newConv, ...prev.filter((c) => c.id !== newConv.id)]
+        )
+      );
+      updateConversationTimeline(full.id, () => mappedItems);
+      setActiveConversationId(full.id);
+      setPendingChoices([]);
+      setPrefill("");
+    } catch (err) {
+      console.error("Failed to compress conversation history", err);
+    } finally {
+      setIsCompressing(false);
+    }
+  }, [activeConversationId, isCompressing, isTyping, cancelStream, sortConversationsByUpdatedAt, updateConversationTimeline]);
 
   const handleNewChat = useCallback(async () => {
     const context: ConversationContext = selectedProjectId ? "project" : "global";
@@ -522,10 +624,10 @@ export default function AIView() {
 
     setConversations((prev) => sortConversationsByUpdatedAt([newConv, ...prev]));
     setActiveConversationId(id);
-    setTimelineByConversation((prev) => ({ ...prev, [id]: [] }));
+    updateConversationTimeline(id, () => []);
     setPendingChoices([]);
     setPrefill("");
-  }, [selectedProjectId, sortConversationsByUpdatedAt]);
+  }, [selectedProjectId, sortConversationsByUpdatedAt, updateConversationTimeline]);
 
   const handleSend = useCallback(async (
     rawText: string,
@@ -996,6 +1098,18 @@ export default function AIView() {
                       </button>
                       <button
                         type="button"
+                        className={styles.branchBtn}
+                        onClick={(e) => handleBranchConversation(conv.id, e)}
+                        aria-label="Branch conversation"
+                        title="Branch conversation"
+                        disabled={!!branchingConversationId}
+                      >
+                        <span className="material-icons-round">
+                          {branchingConversationId === conv.id ? "hourglass_top" : "call_split"}
+                        </span>
+                      </button>
+                      <button
+                        type="button"
                         className={styles.deleteBtn}
                         onClick={(e) => handleDeleteConversation(conv.id, e)}
                         aria-label="Delete conversation"
@@ -1066,6 +1180,18 @@ export default function AIView() {
               >
                 <span className="material-icons-round">download</span>
                 Export MD
+              </button>
+              <button
+                type="button"
+                className={styles.exportBtn}
+                onClick={handleCompressHistory}
+                disabled={activeTimeline.length < 20 || isCompressing}
+                title={activeTimeline.length < 20 ? "Compress history (available after longer chats)" : "Compress history"}
+              >
+                <span className="material-icons-round">
+                  {isCompressing ? "hourglass_top" : "compress"}
+                </span>
+                Compress
               </button>
               <button
                 type="button"

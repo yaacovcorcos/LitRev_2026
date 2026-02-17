@@ -25,14 +25,19 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
         currentConversationId,
         selectConversation,
         newConversation,
+        branchConversation,
         sendMessage,
         handleReviewArtifact,
         executePlan,
+        shouldOfferSummary,
+        summarizeAndRefresh,
+        isSummarizing,
     } = useProjectCopilot();
 
     const [showDropdown, setShowDropdown] = useState(false);
     const [search, setSearch] = useState("");
     const [activeDescendantId, setActiveDescendantId] = useState<string | null>(null);
+    const [isBranching, setIsBranching] = useState(false);
     const listRef = useRef<HTMLDivElement | null>(null);
 
     // Reset active descendant when search changes
@@ -73,6 +78,25 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
             setShowDropdown(false);
             setSearch("");
             setActiveDescendantId(null);
+        } else if (e.key === "Home") {
+            e.preventDefault();
+            const firstId = flatIds[0];
+            if (firstId) {
+                setActiveDescendantId(firstId);
+                document.getElementById(`cmv-opt-${firstId}`)?.scrollIntoView({ block: "nearest" });
+            }
+        } else if (e.key === "End") {
+            e.preventDefault();
+            const lastId = flatIds[flatIds.length - 1];
+            if (lastId) {
+                setActiveDescendantId(lastId);
+                document.getElementById(`cmv-opt-${lastId}`)?.scrollIntoView({ block: "nearest" });
+            }
+        } else if (e.key === "Escape") {
+            e.preventDefault();
+            setShowDropdown(false);
+            setSearch("");
+            setActiveDescendantId(null);
         }
     };
 
@@ -110,7 +134,10 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
                             open={showDropdown}
                             onOpenChange={(open) => {
                                 setShowDropdown(open);
-                                if (!open) {
+                                if (open) {
+                                    const initialId = currentConversationId ?? flatIds[0] ?? null;
+                                    setActiveDescendantId(initialId);
+                                } else {
                                     setSearch("");
                                     setActiveDescendantId(null);
                                 }
@@ -120,6 +147,10 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
                                 <button
                                     type="button"
                                     className={styles.selectorBtn}
+                                    title={currentTitle}
+                                    aria-haspopup="listbox"
+                                    aria-expanded={showDropdown}
+                                    aria-controls="cmv-listbox"
                                 >
                                     <span className={styles.selectorTitle}>{currentTitle}</span>
                                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -138,8 +169,9 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
                                             className={styles.dropdownSearchInput}
                                             autoFocus
                                             role="combobox"
+                                            aria-autocomplete="list"
                                             aria-controls="cmv-listbox"
-                                            aria-expanded={true}
+                                            aria-expanded={showDropdown}
                                             aria-activedescendant={activeDescendantId ? `cmv-opt-${activeDescendantId}` : undefined}
                                             onKeyDown={handleListboxKeyDown}
                                         />
@@ -182,21 +214,55 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
                         </Popover.Root>
                     </div>
 
-                    <button
-                        type="button"
-                        className={styles.newBtn}
-                        onClick={async () => {
-                            setShowDropdown(false);
-                            await newConversation("overview" as CopilotPage);
-                        }}
-                        aria-label="New conversation"
-                        title="New conversation"
-                    >
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M12 20h9" />
-                            <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
-                        </svg>
-                    </button>
+                    <div className={styles.headerActions}>
+                        <button
+                            type="button"
+                            className={styles.newBtn}
+                            onClick={async () => {
+                                setShowDropdown(false);
+                                await newConversation("overview" as CopilotPage);
+                            }}
+                            aria-label="New conversation"
+                            title="New conversation"
+                        >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M12 20h9" />
+                                <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+                            </svg>
+                        </button>
+                        <button
+                            type="button"
+                            className={styles.newBtn}
+                            onClick={async () => {
+                                if (!currentConversationId || isBranching) return;
+                                setIsBranching(true);
+                                try {
+                                    await branchConversation(currentConversationId);
+                                } finally {
+                                    setIsBranching(false);
+                                }
+                            }}
+                            disabled={!currentConversationId || isBranching}
+                            aria-label="Branch conversation"
+                            title="Branch conversation"
+                        >
+                            <span className="material-icons-round" style={{ fontSize: 16 }}>
+                                {isBranching ? "hourglass_top" : "call_split"}
+                            </span>
+                        </button>
+                        <button
+                            type="button"
+                            className={styles.newBtn}
+                            onClick={() => { void summarizeAndRefresh(); }}
+                            disabled={!currentConversationId || !shouldOfferSummary || isSummarizing}
+                            aria-label="Compress history"
+                            title={shouldOfferSummary ? "Compress history" : "Compress history (available after longer chats)"}
+                        >
+                            <span className="material-icons-round" style={{ fontSize: 16 }}>
+                                {isSummarizing ? "hourglass_top" : "compress"}
+                            </span>
+                        </button>
+                    </div>
                 </div>
 
                 {/* Content area — centers when empty */}

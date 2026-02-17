@@ -91,9 +91,11 @@ type UserMessageRowProps = {
     item: Extract<TimelineItem, { type: "user_message" }>;
 };
 
+const USER_MARKDOWN_ELEMENTS = ["p", "strong", "em", "code", "a", "br"] as const;
+
 const UserMessageRow = memo(function UserMessageRow({ item }: UserMessageRowProps) {
     return (
-        <div className={`${styles.chatMsg} ${styles.chatMsgUser}`}>
+        <div className={`${styles.chatMsg} ${styles.chatMsgUser}`} role="article" aria-label="You">
             <div className={styles.chatBubble}>
                 {item.attachments && item.attachments.length > 0 && (
                     <div className={styles.messageAttachments}>
@@ -110,7 +112,16 @@ const UserMessageRow = memo(function UserMessageRow({ item }: UserMessageRowProp
                         ))}
                     </div>
                 )}
-                <p className={styles.chatText}>{item.content}</p>
+                {/* Inline-only markdown: bold, italic, code, links — no headers/lists */}
+                <div className={styles.chatText}>
+                    <ReactMarkdown
+                        remarkPlugins={[remarkGfm]}
+                        allowedElements={USER_MARKDOWN_ELEMENTS}
+                        unwrapDisallowed
+                    >
+                        {item.content}
+                    </ReactMarkdown>
+                </div>
             </div>
         </div>
     );
@@ -122,6 +133,8 @@ type AssistantMessageRowProps = {
     isStreaming: boolean;
     /** True when this message was just saved to Notes (shows confirmation) */
     isSaved: boolean;
+    /** True while the save-to-notes request is in-flight (shows spinner) */
+    isSaving: boolean;
     onCopy: (text: string) => void;
     onSaveToNotes?: (content: string, messageId: string) => void | Promise<void>;
     onInsert?: (text: string) => void;
@@ -131,12 +144,13 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
     item,
     isStreaming,
     isSaved,
+    isSaving,
     onCopy,
     onSaveToNotes,
     onInsert,
 }: AssistantMessageRowProps) {
     return (
-        <div className={`${styles.chatMsg} ${styles.chatMsgAi}`}>
+        <div className={`${styles.chatMsg} ${styles.chatMsgAi}`} role="article" aria-label="Assistant">
             <div className={styles.chatStack}>
                 <div className={styles.chatBubble}>
                     <div className={markdownStyles.markdownContent}>
@@ -148,7 +162,7 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
                         )}
                     </div>
                 </div>
-                <div className={`${styles.chatActions} ${isSaved ? styles.chatActionsVisible : ""}`}>
+                <div className={`${styles.chatActions} ${isSaved || isSaving ? styles.chatActionsVisible : ""}`}>
                     <button
                         type="button"
                         className={styles.chatActionBtn}
@@ -160,6 +174,10 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
                     {onSaveToNotes && (
                         isSaved ? (
                             <span className={artifactStyles.savedConfirm}>Saved!</span>
+                        ) : isSaving ? (
+                            <span className={styles.savingSpinner} aria-label="Saving…">
+                                <span className="material-icons-round">sync</span>
+                            </span>
                         ) : (
                             <button
                                 type="button"
@@ -241,6 +259,7 @@ export function TimelineRenderer({
     const programmaticScrollRef = useRef(false);
     const [isAtBottom, setIsAtBottom] = useState(true);
     const [savedNoteId, setSavedNoteId] = useState<string | null>(null);
+    const [savingNoteId, setSavingNoteId] = useState<string | null>(null);
 
     // Resolve timeline: prefer items, fall back to legacy messages
     const timeline = items ?? messagesToTimeline(messages);
@@ -291,12 +310,15 @@ export function TimelineRenderer({
 
     const handleSaveToNotes = useCallback(async (content: string, messageId: string) => {
         if (onSaveToNotes) {
+            setSavingNoteId(messageId);
             try {
                 await onSaveToNotes(content, messageId);
                 setSavedNoteId(messageId);
                 setTimeout(() => setSavedNoteId(null), 2000);
             } catch {
                 // Silently fail — note creation error doesn't need to block UI
+            } finally {
+                setSavingNoteId(null);
             }
         }
     }, [onSaveToNotes]);
@@ -490,11 +512,20 @@ export function TimelineRenderer({
                 );
 
             default:
-                // evidence_table — deferred to later phases
                 return (
                     <ArtifactWrapper {...wrapperProps} summaryText={item.title}>
-                        <div style={{ padding: 8, fontSize: 13, color: "var(--text-secondary)" }}>
-                            {item.title}
+                        <div style={{ padding: "12px 14px", display: "flex", alignItems: "center", gap: 12 }}>
+                            <span className="material-icons-round" style={{ fontSize: 22, color: "var(--text-muted)", flexShrink: 0 }}>
+                                pending_actions
+                            </span>
+                            <div>
+                                <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-secondary)" }}>
+                                    {item.title}
+                                </div>
+                                <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>
+                                    This artifact type is not yet supported in the UI.
+                                </div>
+                            </div>
                         </div>
                     </ArtifactWrapper>
                 );
@@ -519,6 +550,7 @@ export function TimelineRenderer({
                         item={item}
                         isStreaming={isStreaming && index === lastAssistantIndex}
                         isSaved={savedNoteId === item.id}
+                        isSaving={savingNoteId === item.id}
                         onCopy={handleCopy}
                         onSaveToNotes={onSaveToNotes ? handleSaveToNotes : undefined}
                         onInsert={onInsert}

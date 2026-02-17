@@ -375,3 +375,20 @@
         width: auto;
     }
 }
+
+/* ---- Reduced motion (A11y) ---- */
+
+@media (prefers-reduced-motion: reduce) {
+    .popupChat       { animation: none; }
+    .streamingCursor { animation: none; }
+}
+
+/* ---- Glass morphism fallback (A11y) ---- */
+
+@supports not (backdrop-filter: blur(1px)) {
+    .popupChat {
+        background: rgba(255, 255, 255, 0.98);
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+    }
+}

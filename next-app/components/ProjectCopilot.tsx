@@ -61,8 +61,12 @@ export function ProjectCopilot({
         currentConversationId,
         selectConversation,
         newConversation,
+        branchConversation,
         handleReviewArtifact,
         executePlan,
+        shouldOfferSummary,
+        summarizeAndRefresh,
+        isSummarizing,
         // Autonomy settings (Phase 7)
         setShowAutonomySettings,
     } = useProjectCopilot();
@@ -74,6 +78,7 @@ export function ProjectCopilot({
     const [showConversationDropdown, setShowConversationDropdown] = useState(false);
     const [conversationSearch, setConversationSearch] = useState("");
     const [activeDescendantId, setActiveDescendantId] = useState<string | null>(null);
+    const [isBranching, setIsBranching] = useState(false);
     const listRef = useRef<HTMLDivElement | null>(null);
 
     // Scope is now driven centrally from layout.tsx — no mount/cleanup effect here
@@ -182,6 +187,25 @@ export function ProjectCopilot({
             setShowConversationDropdown(false);
             setConversationSearch("");
             setActiveDescendantId(null);
+        } else if (e.key === "Home") {
+            e.preventDefault();
+            const firstId = flatConversationIds[0];
+            if (firstId) {
+                setActiveDescendantId(firstId);
+                document.getElementById(`convo-opt-${firstId}`)?.scrollIntoView({ block: "nearest" });
+            }
+        } else if (e.key === "End") {
+            e.preventDefault();
+            const lastId = flatConversationIds[flatConversationIds.length - 1];
+            if (lastId) {
+                setActiveDescendantId(lastId);
+                document.getElementById(`convo-opt-${lastId}`)?.scrollIntoView({ block: "nearest" });
+            }
+        } else if (e.key === "Escape") {
+            e.preventDefault();
+            setShowConversationDropdown(false);
+            setConversationSearch("");
+            setActiveDescendantId(null);
         }
     };
 
@@ -242,7 +266,10 @@ export function ProjectCopilot({
                             open={showConversationDropdown}
                             onOpenChange={(open) => {
                                 setShowConversationDropdown(open);
-                                if (!open) {
+                                if (open) {
+                                    const initialId = currentConversationId ?? flatConversationIds[0] ?? null;
+                                    setActiveDescendantId(initialId);
+                                } else {
                                     setConversationSearch("");
                                     setActiveDescendantId(null);
                                 }
@@ -252,6 +279,10 @@ export function ProjectCopilot({
                                 <button
                                     type="button"
                                     className={styles.conversationSelectorBtn}
+                                    title={currentTitle}
+                                    aria-haspopup="listbox"
+                                    aria-expanded={showConversationDropdown}
+                                    aria-controls="convo-listbox"
                                 >
                                     <span className={styles.conversationSelectorTitle}>{currentTitle}</span>
                                     <svg className={styles.chevronIcon} width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -270,8 +301,9 @@ export function ProjectCopilot({
                                             className={styles.conversationSearchInput}
                                             autoFocus
                                             role="combobox"
+                                            aria-autocomplete="list"
                                             aria-controls="convo-listbox"
-                                            aria-expanded={true}
+                                            aria-expanded={showConversationDropdown}
                                             aria-activedescendant={activeDescendantId ? `convo-opt-${activeDescendantId}` : undefined}
                                             onKeyDown={handleListboxKeyDown}
                                         />
@@ -316,6 +348,38 @@ export function ProjectCopilot({
                                 <path d="M12 20h9"/>
                                 <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
                             </svg>
+                        </button>
+                        <button
+                            type="button"
+                            className={styles.headerIconBtn}
+                            onClick={async () => {
+                                if (!currentConversationId || isBranching) return;
+                                setIsBranching(true);
+                                try {
+                                    await branchConversation(currentConversationId);
+                                } finally {
+                                    setIsBranching(false);
+                                }
+                            }}
+                            disabled={!currentConversationId || isBranching}
+                            aria-label="Branch conversation"
+                            title="Branch conversation"
+                        >
+                            <span className="material-icons-round" style={{ fontSize: 16 }}>
+                                {isBranching ? "hourglass_top" : "call_split"}
+                            </span>
+                        </button>
+                        <button
+                            type="button"
+                            className={styles.headerIconBtn}
+                            onClick={() => { void summarizeAndRefresh(); }}
+                            disabled={!currentConversationId || !shouldOfferSummary || isSummarizing}
+                            aria-label="Compress history"
+                            title={shouldOfferSummary ? "Compress history" : "Compress history (available after longer chats)"}
+                        >
+                            <span className="material-icons-round" style={{ fontSize: 16 }}>
+                                {isSummarizing ? "hourglass_top" : "compress"}
+                            </span>
                         </button>
                         <button
                             type="button"

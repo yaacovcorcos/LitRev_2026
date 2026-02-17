@@ -207,6 +207,11 @@
     color: var(--text-primary);
 }
 
+.headerIconBtn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
 .headerIconBtn svg {
     width: 16px;
     height: 16px;
@@ -851,6 +856,25 @@
 
 .loadingDot:nth-child(3) {
     animation-delay: 0.4s;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
+}
+
+.savingSpinner {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    color: var(--text-muted);
+}
+
+.savingSpinner .material-icons-round {
+    font-size: 14px;
+    animation: spin 0.8s linear infinite;
 }
 
 @keyframes dotPulse {
@@ -1512,6 +1536,13 @@
 
 .pageLayout .chatMsg {
     justify-content: flex-start;
+    /* Suppress entry animation for all messages to avoid batch-load spam (V2 fix) */
+    animation: none;
+}
+
+/* Re-enable animation for the most recently added message only */
+.pageLayout .chatMsg:last-child {
+    animation: msgIn 0.18s ease-out both;
 }
 
 .pageLayout .chatBubble {
@@ -1608,4 +1639,99 @@
 .choiceChip:focus-visible {
     outline: 2px solid var(--accent-primary);
     outline-offset: 2px;
+}
+
+/* ========================================
+   PAGE-VARIANT SUGGESTION CHIPS (V9)
+   Slightly larger padding + terracotta hover tint
+   ======================================== */
+
+.pageLayout .suggestChip {
+    padding: 10px 16px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+}
+
+.pageLayout .suggestChip:hover {
+    border-color: rgba(217, 116, 89, 0.4);
+    background: rgba(217, 116, 89, 0.07);
+    color: var(--accent-primary);
+}
+
+/* ========================================
+   USER MESSAGE INLINE MARKDOWN (V6)
+   Resets for <p>, <a>, <code> rendered by ReactMarkdown
+   inside .chatText (user bubble only)
+   ======================================== */
+
+.chatText :global(p) {
+    margin: 0;
+}
+
+.chatText :global(a) {
+    color: var(--accent-primary);
+    text-decoration: underline;
+    word-break: break-all;
+}
+
+.chatText :global(code) {
+    background: rgba(0, 0, 0, 0.07);
+    padding: 1px 4px;
+    border-radius: 3px;
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 0.88em;
+}
+
+.chatText :global(strong) {
+    font-weight: 700;
+}
+
+.chatText :global(em) {
+    font-style: italic;
+}
+
+/* ========================================
+   PREFERS-REDUCED-MOTION (V7 / A11y)
+   Disables decorative animations for users who have
+   enabled "Reduce motion" in their OS settings.
+   ======================================== */
+
+@media (prefers-reduced-motion: reduce) {
+    .chatMsg          { animation: none; }
+    .loadingDot       { animation: none; opacity: 0.5; }
+    .streamingCursor  { animation: none; }
+    .actionBtnRecording { animation: none; }
+    .skeletonBubble   { animation: none; background: rgba(0, 0, 0, 0.08); }
+    .suggestChip      { animation: none; }
+    /* Save-to-notes in-flight spinner */
+    .savingSpinner .material-icons-round { animation: none; }
+}
+
+/* ========================================
+   GLASS-MORPHISM FALLBACK (A3 / A11y)
+   Browsers that don't support backdrop-filter (or users
+   who have disabled background effects) get a solid
+   background so text stays readable.
+   ======================================== */
+
+@supports not (backdrop-filter: blur(1px)) {
+    .copilot {
+        background: rgba(255, 255, 255, 0.97);
+    }
+
+    .inputBox {
+        background: rgba(255, 255, 255, 0.97);
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+    }
+
+    .scrollFab {
+        background: rgba(255, 255, 255, 0.97);
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+    }
+
+    .collapsedRail {
+        background: rgba(255, 255, 255, 0.97);
+        backdrop-filter: none;
+    }
 }

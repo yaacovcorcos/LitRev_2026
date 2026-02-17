@@ -28,6 +28,13 @@
     min-width: 0;
 }
 
+.headerActions {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
 .selectorBtn {
     display: flex;
     align-items: center;
@@ -72,6 +79,11 @@
 .newBtn:hover {
     background: rgba(0, 0, 0, 0.06);
     color: var(--text-primary);
+}
+
+.newBtn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
 }
 
 /* Dropdown */
