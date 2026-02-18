@@ -25,6 +25,7 @@ import { LoopState, type StopReason } from "@/lib/agent/loop-controller";
 import { startRunTrace, startLLMGeneration, startToolSpan, startContextSpan, flushTracing, NOOP_SPAN } from "./tracing";
 import type { TracingSpan } from "./tracing";
 import { withChoicesExtraction } from "./choices-extractor";
+import { sanitizeGeneratedConversationTitle, buildFallbackConversationTitle } from "./title-generator";
 import { prisma } from "@/lib/server/prisma";
 import type { ProtocolData } from "@/types/protocol";
 
@@ -97,6 +98,72 @@ class AIService {
             }
         }
         return this.getActiveProvider();
+    }
+
+    private async maybeGenerateConversationTitle(params: {
+        conversationId: string;
+        projectId?: string;
+        model?: string;
+        historicalAssistantCount: number;
+        firstUserMessage: string;
+        assistantMessage: string;
+    }): Promise<string | null> {
+        const {
+            conversationId,
+            projectId,
+            model,
+            historicalAssistantCount,
+            firstUserMessage,
+            assistantMessage,
+        } = params;
+
+        // Only name a conversation on its first assistant reply.
+        if (historicalAssistantCount > 0) return null;
+        if (!assistantMessage.trim()) return null;
+        if (!firstUserMessage.trim()) return null;
+
+        const existing = await prisma.aIConversation.findUnique({
+            where: { id: conversationId },
+            select: { title: true },
+        });
+        if (!existing || existing.title) return null;
+
+        const fallbackSeed = firstUserMessage || assistantMessage;
+        let candidate = buildFallbackConversationTitle(fallbackSeed);
+
+        try {
+            const response = await this.chat(
+                [
+                    {
+                        id: "title-system",
+                        role: "system",
+                        content: "Generate a concise conversation title. Max 8 words. No quotes. Return only the title text.",
+                        createdAt: new Date().toISOString(),
+                    },
+                    {
+                        id: "title-user",
+                        role: "user",
+                        content: `User message:\n${firstUserMessage.slice(0, 220)}\n\nAssistant response:\n${assistantMessage.slice(0, 220)}`,
+                        createdAt: new Date().toISOString(),
+                    },
+                ],
+                {
+                    projectId,
+                    model: "grok-4-1-fast",
+                    temperature: 0.2,
+                    maxTokens: 24,
+                }
+            );
+            candidate = sanitizeGeneratedConversationTitle(response.content, fallbackSeed);
+        } catch {
+            // Fall back to deterministic truncation when title generation fails.
+        }
+
+        const updated = await prisma.aIConversation.updateMany({
+            where: { id: conversationId, title: null },
+            data: { title: candidate },
+        });
+        return updated.count > 0 ? candidate : null;
     }
 
     /**
@@ -515,6 +582,9 @@ class AIService {
         let planData: { plan: import("@/types/artifacts").PlanPayload; selectedSteps: import("@/lib/server/agent/plan-execution").SelectedStep[] } | null = null;
         let stepQueue: StepQueueEntry[] = [];
         let fullContent = "";
+        const historicalAssistantCount = conversation.messages.filter((m) => m.role === "assistant").length;
+        const firstPersistedUserMessage = conversation.messages.find((m) => m.role === "user")?.content ?? "";
+        let persistedUserContentForTitle = "";
 
         try {
             // Retrieve memories + project context in parallel
@@ -600,6 +670,7 @@ class AIService {
                 const shouldPersistUserMessage = options?.persistUserMessage !== false;
                 if (shouldPersistUserMessage) {
                     const persistedUserContent = options?.persistedUserMessageContent || userMessage;
+                    persistedUserContentForTitle = persistedUserContent;
                     userMsg = await addMessageToConversation(conversation.id, {
                         role: "user",
                         content: persistedUserContent,
@@ -914,6 +985,24 @@ class AIService {
                     content: fullContent,
                 });
                 await emitEvent(run.id, "message", { content: fullContent }, { messageRole: "assistant" });
+
+                if (!executionMode) {
+                    const generatedTitle = await this.maybeGenerateConversationTitle({
+                        conversationId: conversation.id,
+                        projectId: projectId || undefined,
+                        model: options?.model,
+                        historicalAssistantCount,
+                        firstUserMessage: firstPersistedUserMessage || persistedUserContentForTitle || userMessage,
+                        assistantMessage: fullContent,
+                    });
+                    if (generatedTitle) {
+                        yield {
+                            type: "conversation_title",
+                            conversationId: conversation.id,
+                            conversationTitle: generatedTitle,
+                        };
+                    }
+                }
             }
 
             // Trigger auto-summarization if conversation is growing large.
