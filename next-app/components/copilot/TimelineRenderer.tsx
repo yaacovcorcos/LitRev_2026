@@ -312,14 +312,25 @@ export function TimelineRenderer({
     // positioning once the new timeline arrives, avoiding a visible jump.
     useLayoutEffect(() => {
         if (conversationId === undefined) return;
-        followRef.current = true;
+        // Historical conversation switch: start with follow OFF so users can scroll/read.
+        // While a conversation is actively loading, keep follow ON for the initial paint.
+        followRef.current = isConversationLoading;
         programmaticScrollRef.current = false;
-        setIsAtBottom(true);
+        setIsAtBottom(isConversationLoading);
         if (rafRef.current) {
             cancelAnimationFrame(rafRef.current);
             rafRef.current = null;
         }
-    }, [conversationId]);
+    }, [conversationId, isConversationLoading]);
+
+    // When a new stream starts, re-enable follow mode so fresh responses stay in view.
+    // This preserves "read old history" behavior on switch while restoring "live follow"
+    // for newly sent messages.
+    useLayoutEffect(() => {
+        if (!isLoading) return;
+        followRef.current = true;
+        setIsAtBottom(true);
+    }, [isLoading]);
 
     // ── Follow-mode auto-scroll (rAF-coalesced) ────────────────────────────
     // Runs when timeline identity changes (new message OR token append).

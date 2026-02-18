@@ -2,7 +2,7 @@
 
 import { AppShell } from "@/components/AppShell";
 import { TimelineRenderer } from "@/components/copilot/TimelineRenderer";
-import { CopilotInputCore } from "@/components/copilot/CopilotInputCore";
+import { CopilotInputCoreClient } from "@/components/copilot/CopilotInputCoreClient";
 import { useProjects } from "@/contexts/ProjectsContext";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -1629,7 +1629,7 @@ export default function AIView() {
             />
 
             <div className={styles.chatInputContainer}>
-              <CopilotInputCore
+              <CopilotInputCoreClient
                 page="ai"
                 inputPlaceholder="Ask anything about your research..."
                 prefill={prefill}

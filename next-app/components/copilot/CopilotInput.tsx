@@ -7,7 +7,7 @@
 
 import { useProjectCopilot } from "@/contexts/ProjectCopilotContext";
 import type { CopilotPage } from "@/types/ai";
-import { CopilotInputCore } from "./CopilotInputCore";
+import { CopilotInputCoreClient } from "./CopilotInputCoreClient";
 
 export type CopilotInputProps = {
     page: CopilotPage;
@@ -37,7 +37,7 @@ export function CopilotInput({ page, section, studyId, inputPlaceholder, prefill
     } = useProjectCopilot();
 
     return (
-        <CopilotInputCore
+        <CopilotInputCoreClient
             page={page}
             section={section}
             studyId={studyId}

@@ -92,8 +92,15 @@ export function CopilotInputCore({
     showAttachments,
     showVoice = true,
 }: CopilotInputCoreProps) {
+    const [hasMounted, setHasMounted] = useState(false);
     const [input, setInput] = useState("");
     const [selectedModel, setSelectedModel] = useState<SelectableModelId>("gpt-5.2");
+
+    // Radix generates runtime IDs; defer Radix-driven controls until after mount
+    // so server markup always matches the first client render.
+    useEffect(() => {
+        setHasMounted(true);
+    }, []);
 
     // Sync model selection from localStorage after hydration
     useEffect(() => {
@@ -261,38 +268,49 @@ export function CopilotInputCore({
                             {modeMeta.label}
                             {modeOverride && " (manual)"}
                         </span>
-                        <DropdownMenu.Root>
-                            <DropdownMenu.Trigger asChild>
-                                <button
-                                    type="button"
-                                    className={styles.modePillChevron}
-                                    aria-label="Change agent mode"
-                                >
-                                    <span className="material-icons-round">expand_more</span>
-                                </button>
-                            </DropdownMenu.Trigger>
-                            <DropdownMenu.Portal>
-                                <DropdownMenu.Content className={styles.modeDropdown} side="bottom" align="start" sideOffset={4}>
-                                    {ALL_MODES.map((mode) => {
-                                        const meta = AGENT_MODE_META[mode];
-                                        const isActive = mode === effectiveMode;
-                                        return (
-                                            <DropdownMenu.Item
-                                                key={mode}
-                                                className={`${styles.modeItem} ${isActive ? styles.modeItemActive : ""}`}
-                                                onSelect={() => setModeOverride(mode === currentMode ? null : mode)}
-                                            >
-                                                <span className={`material-icons-round ${styles.modeItemIcon}`}>
-                                                    {meta.icon}
-                                                </span>
-                                                <span className={styles.modeItemName}>{meta.label}</span>
-                                                <span className={styles.modeItemDesc}>{meta.description}</span>
-                                            </DropdownMenu.Item>
-                                        );
-                                    })}
-                                </DropdownMenu.Content>
-                            </DropdownMenu.Portal>
-                        </DropdownMenu.Root>
+                        {hasMounted ? (
+                            <DropdownMenu.Root>
+                                <DropdownMenu.Trigger asChild>
+                                    <button
+                                        type="button"
+                                        className={styles.modePillChevron}
+                                        aria-label="Change agent mode"
+                                    >
+                                        <span className="material-icons-round">expand_more</span>
+                                    </button>
+                                </DropdownMenu.Trigger>
+                                <DropdownMenu.Portal>
+                                    <DropdownMenu.Content className={styles.modeDropdown} side="bottom" align="start" sideOffset={4}>
+                                        {ALL_MODES.map((mode) => {
+                                            const meta = AGENT_MODE_META[mode];
+                                            const isActive = mode === effectiveMode;
+                                            return (
+                                                <DropdownMenu.Item
+                                                    key={mode}
+                                                    className={`${styles.modeItem} ${isActive ? styles.modeItemActive : ""}`}
+                                                    onSelect={() => setModeOverride(mode === currentMode ? null : mode)}
+                                                >
+                                                    <span className={`material-icons-round ${styles.modeItemIcon}`}>
+                                                        {meta.icon}
+                                                    </span>
+                                                    <span className={styles.modeItemName}>{meta.label}</span>
+                                                    <span className={styles.modeItemDesc}>{meta.description}</span>
+                                                </DropdownMenu.Item>
+                                            );
+                                        })}
+                                    </DropdownMenu.Content>
+                                </DropdownMenu.Portal>
+                            </DropdownMenu.Root>
+                        ) : (
+                            <button
+                                type="button"
+                                className={styles.modePillChevron}
+                                aria-label="Change agent mode"
+                                disabled
+                            >
+                                <span className="material-icons-round">expand_more</span>
+                            </button>
+                        )}
                     </div>
                 )}
 
@@ -366,40 +384,47 @@ export function CopilotInputCore({
 
                 <div className={styles.inputBar}>
                     <div className={styles.inputBarLeft}>
-                        <DropdownMenu.Root>
-                            <DropdownMenu.Trigger asChild>
-                                <button type="button" className={styles.modelBtn}>
-                                    {selectedModelInfo?.name || "GPT-5.2"}
-                                    <span className="material-icons-round">expand_more</span>
-                                </button>
-                            </DropdownMenu.Trigger>
-                            <DropdownMenu.Portal>
-                                <DropdownMenu.Content className={styles.modelDropdown} side="top" align="start" sideOffset={4}>
-                                    <DropdownMenu.RadioGroup
-                                        value={selectedModel}
-                                        onValueChange={(v) => setSelectedModel(v as SelectableModelId)}
-                                    >
-                                        {USER_SELECTABLE_MODELS.map((model) => (
-                                            <DropdownMenu.RadioItem
-                                                key={model.id}
-                                                value={model.id}
-                                                className={`${styles.modelItem} ${selectedModel === model.id ? styles.modelItemActive : ""}`}
-                                            >
-                                                <div className={styles.modelItemInner}>
-                                                    <span className={`material-icons-round ${styles.modelItemIcon}`}>
-                                                        {model.icon}
-                                                    </span>
-                                                    <span className={styles.modelItemName}>{model.name}</span>
-                                                    <span className={styles.modelItemDesc}>{model.description}</span>
-                                                </div>
-                                            </DropdownMenu.RadioItem>
-                                        ))}
-                                    </DropdownMenu.RadioGroup>
-                                </DropdownMenu.Content>
-                            </DropdownMenu.Portal>
-                        </DropdownMenu.Root>
+                        {hasMounted ? (
+                            <DropdownMenu.Root>
+                                <DropdownMenu.Trigger asChild>
+                                    <button type="button" className={styles.modelBtn}>
+                                        {selectedModelInfo?.name || "GPT-5.2"}
+                                        <span className="material-icons-round">expand_more</span>
+                                    </button>
+                                </DropdownMenu.Trigger>
+                                <DropdownMenu.Portal>
+                                    <DropdownMenu.Content className={styles.modelDropdown} side="top" align="start" sideOffset={4}>
+                                        <DropdownMenu.RadioGroup
+                                            value={selectedModel}
+                                            onValueChange={(v) => setSelectedModel(v as SelectableModelId)}
+                                        >
+                                            {USER_SELECTABLE_MODELS.map((model) => (
+                                                <DropdownMenu.RadioItem
+                                                    key={model.id}
+                                                    value={model.id}
+                                                    className={`${styles.modelItem} ${selectedModel === model.id ? styles.modelItemActive : ""}`}
+                                                >
+                                                    <div className={styles.modelItemInner}>
+                                                        <span className={`material-icons-round ${styles.modelItemIcon}`}>
+                                                            {model.icon}
+                                                        </span>
+                                                        <span className={styles.modelItemName}>{model.name}</span>
+                                                        <span className={styles.modelItemDesc}>{model.description}</span>
+                                                    </div>
+                                                </DropdownMenu.RadioItem>
+                                            ))}
+                                        </DropdownMenu.RadioGroup>
+                                    </DropdownMenu.Content>
+                                </DropdownMenu.Portal>
+                            </DropdownMenu.Root>
+                        ) : (
+                            <button type="button" className={styles.modelBtn} disabled>
+                                {selectedModelInfo?.name || "GPT-5.2"}
+                                <span className="material-icons-round">expand_more</span>
+                            </button>
+                        )}
 
-                        {canShowAutonomy && (
+                        {canShowAutonomy && (hasMounted ? (
                             <DropdownMenu.Root>
                                 <DropdownMenu.Trigger asChild>
                                     <button
@@ -458,9 +483,30 @@ export function CopilotInputCore({
                                     </DropdownMenu.Content>
                                 </DropdownMenu.Portal>
                             </DropdownMenu.Root>
-                        )}
+                        ) : (
+                            <button
+                                type="button"
+                                className={styles.presetBtn}
+                                title={`Autonomy: ${autonomyPreset}`}
+                                disabled
+                            >
+                                <span className="material-icons-round" style={{ fontSize: 14 }}>
+                                    {autonomyPreset === "manual" ? "back_hand"
+                                        : autonomyPreset === "autonomous" ? "smart_toy"
+                                        : autonomyPreset === "custom" ? "tune"
+                                        : "handshake"}
+                                </span>
+                                <span>
+                                    {autonomyPreset === "manual" ? "Manual"
+                                        : autonomyPreset === "autonomous" ? "Auto"
+                                        : autonomyPreset === "custom" ? "Custom"
+                                        : "Assisted"}
+                                </span>
+                                <span className="material-icons-round" style={{ fontSize: 14 }}>expand_more</span>
+                            </button>
+                        ))}
 
-                        {canShowAttachments && (
+                        {canShowAttachments && (hasMounted ? (
                             <Popover.Root
                                 open={showAttachPicker}
                                 onOpenChange={(open) => {
@@ -561,7 +607,20 @@ export function CopilotInputCore({
                                     </Popover.Content>
                                 </Popover.Portal>
                             </Popover.Root>
-                        )}
+                        ) : (
+                            <button
+                                type="button"
+                                className={styles.actionBtn}
+                                aria-label="Attach file"
+                                title="Attach file"
+                                disabled={isAttaching}
+                                onClick={handleUploadNew}
+                            >
+                                <span className="material-icons-round">
+                                    {isAttaching ? "hourglass_top" : "add"}
+                                </span>
+                            </button>
+                        ))}
 
                         {showVoice && (
                             <>
