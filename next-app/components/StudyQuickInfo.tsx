@@ -37,6 +37,16 @@ export function StudyQuickInfo({ study }: StudyQuickInfoProps) {
         });
     }
 
+    // Source URL
+    if (typeof d.sourceUrl === "string" && d.sourceUrl.length > 0) {
+        items.push({
+            icon: "open_in_new",
+            label: "Source",
+            value: d.sourceUrl,
+            href: d.sourceUrl,
+        });
+    }
+
     // Study Type
     if (d.studyType) {
         items.push({ icon: "category", label: "Type", value: d.studyType });

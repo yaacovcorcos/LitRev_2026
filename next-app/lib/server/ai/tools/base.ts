@@ -20,6 +20,7 @@ import { semanticScholarSearchTool } from "./semantic-scholar-search";
 import { recommendStudiesTool } from "./recommend-studies";
 import { readStudyContentTool } from "./read-study-content";
 import { storeMemoryTool } from "./store-memory";
+import { updateStudyTool } from "./update-study";
 
 /**
  * Interface for AI tools that can be called by the AI
@@ -65,6 +66,7 @@ export const AVAILABLE_TOOLS: AITool[] = [
     recommendStudiesTool,
     readStudyContentTool,
     storeMemoryTool,
+    updateStudyTool,
 ];
 
 export type ToolScope = "global" | "project";

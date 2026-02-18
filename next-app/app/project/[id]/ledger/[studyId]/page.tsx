@@ -89,6 +89,20 @@ export default function StudyDetailPage() {
         return () => { active = false; };
     }, [id, studyId]);
 
+    // Refresh current study if ledger mutations happen elsewhere (copilot artifact apply, AI page, etc.)
+    useEffect(() => {
+        if (!id || !studyId) return;
+        const handler = (e: Event) => {
+            const projectId = (e as CustomEvent).detail?.projectId as string | undefined;
+            if (!projectId || projectId !== id) return;
+            getStudyByIdRef.current(id, studyId)
+                .then((s) => setStudy(s))
+                .catch((err) => console.error("Failed to refresh study after ledger update", err));
+        };
+        window.addEventListener("litrev:ledger-changed", handler);
+        return () => window.removeEventListener("litrev:ledger-changed", handler);
+    }, [id, studyId]);
+
     // Load files
     const loadFiles = useCallback(async () => {
         if (!id || !studyId) return;

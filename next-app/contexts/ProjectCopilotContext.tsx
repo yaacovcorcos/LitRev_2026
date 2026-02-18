@@ -1202,6 +1202,8 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
         note?: string,
         editedPayload?: Record<string, unknown>,
     ) => {
+        const artifactType = artifacts.get(artifactId)?.type;
+
         // Optimistic update — artifacts map
         setArtifacts((prev) => {
             const next = new Map(prev);
@@ -1243,8 +1245,16 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
                         : msg
                 ),
             }));
+            return;
         }
-    }, [updateState]);
+
+        if (
+            status === "accepted" &&
+            (artifactType === "study_update" || artifactType === "study_proposal")
+        ) {
+            window.dispatchEvent(new CustomEvent("litrev:ledger-changed", { detail: { projectId } }));
+        }
+    }, [artifacts, projectId, updateState]);
 
     const summarizeAndRefresh = useCallback(async () => {
         if (!currentConversationId || isSummarizing) return;

@@ -33,6 +33,7 @@ export type StudyDetails = {
   volume?: string;
   issue?: string;
   pages?: string;
+  sourceUrl?: string;
 
   // Classification
   keywords?: string[];

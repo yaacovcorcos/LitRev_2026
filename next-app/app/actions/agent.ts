@@ -6,6 +6,7 @@
 
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { reviewArtifact, undoArtifact, getArtifact } from "@/lib/server/agent/artifacts";
 import { getRunTimeline } from "@/lib/server/agent/events";
 import { getAutonomyConfig, updateAutonomyConfig } from "@/lib/server/agent/autonomy";
@@ -24,6 +25,15 @@ export async function reviewArtifactAction(
 ) {
     try {
         const result = await reviewArtifact(artifactId, status, reviewNote, editedPayload);
+
+        if (status === "accepted" && result.type === "study_update") {
+            const payload = (result.payload ?? {}) as { studyId?: string };
+            if (result.projectId && payload.studyId) {
+                revalidatePath(`/project/${result.projectId}/ledger/${payload.studyId}`);
+                revalidatePath(`/project/${result.projectId}/ledger`);
+            }
+        }
+
         return { success: true, artifact: result };
     } catch (error) {
         return {

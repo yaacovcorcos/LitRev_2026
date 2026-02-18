@@ -35,6 +35,7 @@ describe("searchResultToStudyInput", () => {
     expect(input.details?.volume).toBe("45");
     expect(input.details?.issue).toBe("3");
     expect(input.details?.pages).toBe("100-110");
+    expect(input.details?.sourceUrl).toBe("https://pubmed.ncbi.nlm.nih.gov/12345678/");
     expect(input.details?.abstract).toBe("This is the abstract.");
     expect(input.details?.keywords).toEqual(["Randomized Controlled Trial", "Statins"]);
   });

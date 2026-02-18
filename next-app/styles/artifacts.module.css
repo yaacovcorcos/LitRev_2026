@@ -450,6 +450,87 @@
     margin: 8px 0;
 }
 
+/* ── Study Update Card ─────────────────────────────────────── */
+
+.studyUpdateHeader {
+    margin-bottom: 10px;
+}
+
+.studyUpdateTitle {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.studyUpdateRationale {
+    margin: 6px 0 0;
+    font-size: 12px;
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+.studyUpdateTableWrapper {
+    border: 1px solid rgba(0, 0, 0, 0.06);
+    border-radius: 8px;
+    overflow: auto;
+}
+
+.studyUpdateTable {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+}
+
+.studyUpdateTable th {
+    background: rgba(242, 240, 233, 0.95);
+    padding: 8px 10px;
+    text-align: left;
+    font-weight: 600;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    color: var(--text-muted);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.studyUpdateTable td {
+    padding: 8px 10px;
+    color: var(--text-primary);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+    vertical-align: top;
+}
+
+.studyUpdateTable tr:last-child td {
+    border-bottom: none;
+}
+
+.studyUpdateFieldCell {
+    font-weight: 600;
+    white-space: nowrap;
+    vertical-align: top;
+}
+
+.studyUpdateValueCell {
+    min-width: 180px;
+    white-space: pre-wrap;
+    line-height: 1.5;
+}
+
+.studyUpdateToggle {
+    margin-top: 4px;
+    padding: 0;
+    border: none;
+    background: none;
+    color: var(--accent-primary);
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.studyUpdateToggle:hover {
+    text-decoration: underline;
+}
+
 /* ── Exclude Reason Dropdown ────────────────────────────────── */
 
 .excludeDropdown {

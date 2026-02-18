@@ -1076,6 +1076,13 @@ export default function AIView() {
         };
       })
     );
+
+    if (
+      status === "accepted" &&
+      (result.artifact.type === "study_update" || result.artifact.type === "study_proposal")
+    ) {
+      window.dispatchEvent(new CustomEvent("litrev:ledger-changed", { detail: { projectId: result.artifact.projectId } }));
+    }
   }, [activeConversationId, updateConversationTimeline]);
 
   const handleExecutePlan = useCallback(async (artifactId: string, selectedIndexes: number[]) => {

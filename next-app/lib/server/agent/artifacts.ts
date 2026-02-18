@@ -5,8 +5,8 @@
 
 import "server-only";
 import { prisma } from "@/lib/server/prisma";
-import type { ArtifactType, ArtifactStatus, CriteriaCardPayload, ProtocolSuggestionPayload, MemoryProposalPayload, StudyProposalPayload, DraftDiffPayload, ScreeningBatchPayload } from "@/types/artifacts";
-import type { StudyType, StudySource } from "@/types/ledger";
+import type { ArtifactType, ArtifactStatus, CriteriaCardPayload, ProtocolSuggestionPayload, MemoryProposalPayload, StudyProposalPayload, StudyUpdatePayload, DraftDiffPayload, ScreeningBatchPayload } from "@/types/artifacts";
+import type { StudyType, StudySource, StudyDetails } from "@/types/ledger";
 import { ARTIFACT_PAYLOAD_SCHEMAS } from "@/types/artifacts";
 import type { ProtocolData } from "@/types/protocol";
 import { emitEvent } from "./events";
@@ -15,7 +15,7 @@ import { syncProtocolToMemory } from "@/lib/server/memory/protocol-sync";
 import { validateFieldValue, isValidFieldPath } from "@/lib/protocol-fields";
 import { setUserMemory, createProjectMemory } from "@/lib/server/memory";
 import { createNote, updateNote, textToTipTapDoc, listNotes, type NoteContent, extractTextFromContent } from "@/lib/server/notes";
-import { upsertStudy } from "@/lib/server/ledger";
+import { upsertStudy, updateStudy } from "@/lib/server/ledger";
 import { SINGLE_USER_SCOPE } from "@/lib/server/scope";
 
 // ── Apply function registry ──────────────────────────────────────────────────
@@ -409,6 +409,39 @@ registerApplyFunction("study_proposal", async (artifact) => {
             source: payload.source as StudySource | undefined,
             sourceUrl: payload.sourceUrl,
         },
+    });
+});
+
+// study_update: apply a typed patch to an existing study
+registerApplyFunction("study_update", async (artifact) => {
+    const payload = artifact.payload as StudyUpdatePayload;
+
+    // Defensive idempotency check in case of retries/races around accept/apply
+    const existingArtifact = await prisma.artifact.findUnique({
+        where: { id: artifact.id },
+        select: { appliedAt: true },
+    });
+    if (existingArtifact?.appliedAt) return;
+
+    const currentStudy = await prisma.study.findFirst({
+        where: { id: payload.studyId, projectId: artifact.projectId },
+        select: { updatedAt: true },
+    });
+    if (!currentStudy) {
+        throw new Error(`Study not found: ${payload.studyId}`);
+    }
+
+    const snapshotMs = new Date(payload.snapshotAt).getTime();
+    const currentMs = new Date(currentStudy.updatedAt).getTime();
+    if (Number.isFinite(snapshotMs) && currentMs > snapshotMs) {
+        console.warn(
+            `[study_update] Concurrency warning for study ${payload.studyId}: current updatedAt is newer than snapshotAt. Applying accepted patch.`
+        );
+    }
+
+    await updateStudy(SINGLE_USER_SCOPE, artifact.projectId, payload.studyId, {
+        ...(payload.patch.top ?? {}),
+        ...(payload.patch.details ? { details: payload.patch.details as Partial<StudyDetails> } : {}),
     });
 });
 

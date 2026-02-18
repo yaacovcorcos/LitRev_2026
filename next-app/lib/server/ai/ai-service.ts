@@ -1153,6 +1153,7 @@ function mapToolToArtifactType(toolName: string): ArtifactType | null {
         store_memory: "memory_proposal",
         update_note: "draft_diff",
         exclude_study: "study_proposal",
+        update_study: "study_update",
     };
     return mapping[toolName] ?? null;
 }
@@ -1170,6 +1171,8 @@ function mapToolToArtifactTitle(toolName: string, args: Record<string, unknown>)
             return `Draft: ${args.section ?? "section"}`;
         case "exclude_study":
             return `Exclude: ${args.reason ?? "study"}`;
+        case "update_study":
+            return "Study metadata update";
         default:
             return toolName;
     }
@@ -1185,6 +1188,7 @@ function mapToolToProgressMessage(toolName: string): string {
         bulk_screening: "Screening studies...",
         update_protocol: "Updating protocol...",
         update_note: "Writing draft...",
+        update_study: "Preparing study update...",
         retrieve_memory: "Retrieving memories...",
         create_note: "Creating note...",
         read_study_content: "Reading study PDF...",

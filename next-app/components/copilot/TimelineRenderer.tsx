@@ -18,6 +18,7 @@ import type { TimelineItem, TimelineArtifact } from "@/types/timeline";
 import type {
     PlanPayload,
     StudyProposalPayload,
+    StudyUpdatePayload,
     ScreeningBatchPayload,
     CriteriaCardPayload,
     ProtocolSuggestionPayload,
@@ -28,6 +29,7 @@ import { messagesToTimeline } from "./StreamReducer";
 import { ArtifactWrapper } from "../artifacts/ArtifactWrapper";
 import { PlanCard } from "../artifacts/PlanCard";
 import { StudyCard } from "../artifacts/StudyCard";
+import { StudyUpdateCard } from "../artifacts/StudyUpdateCard";
 import { ScreeningBatch } from "../artifacts/ScreeningBatch";
 import { ProtocolEditCard } from "../artifacts/ProtocolEditCard";
 import { CriteriaCard } from "../artifacts/CriteriaCard";
@@ -68,6 +70,7 @@ class ArtifactErrorBoundary extends Component<{ children: ReactNode }, { hasErro
 
 const ARTIFACT_JUMP_MAP: Record<string, { tab: string; label: string }> = {
     study_proposal: { tab: "ledger", label: "View in Ledger" },
+    study_update: { tab: "ledger", label: "View in Ledger" },
     screening_batch: { tab: "ledger", label: "View in Ledger" },
     criteria_card: { tab: "protocol", label: "View in Protocol" },
     protocol_suggestion: { tab: "protocol", label: "View in Protocol" },
@@ -478,6 +481,23 @@ export function TimelineRenderer({
                             onKeep={() => handleReview(isExclusion ? "rejected" : "accepted")}
                             onExclude={(reason) => handleReview(isExclusion ? "accepted" : "rejected", reason)}
                             onMaybe={() => {/* Phase 2: handle maybe status */}}
+                        />
+                    </ArtifactWrapper>
+                );
+            }
+
+            case "study_update": {
+                const updatePayload = item.payload as StudyUpdatePayload;
+                const n = updatePayload?.changes?.length ?? 0;
+                return (
+                    <ArtifactWrapper
+                        {...wrapperProps}
+                        summaryText={`${n} field${n === 1 ? "" : "s"} updated on "${updatePayload?.studyTitle ?? "study"}"`}
+                    >
+                        <StudyUpdateCard
+                            payload={updatePayload}
+                            onAccept={() => handleReview("accepted")}
+                            onReject={() => handleReview("rejected")}
                         />
                     </ArtifactWrapper>
                 );

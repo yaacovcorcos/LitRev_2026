@@ -46,6 +46,7 @@ export function detectMultiStepWorkflow(
         bulk_screening: ["screen", "batch", "screening"],
         update_protocol: ["criteria", "inclusion", "exclusion", "pico", "population", "intervention"],
         update_note: ["draft", "write", "section"],
+        update_study: ["edit study", "update study", "change abstract", "update doi", "update pmid", "fix metadata"],
     };
 
     let toolMatches = 0;
@@ -162,6 +163,16 @@ function generateHeuristicPlan(message: string, _context: PlanContext): PlanPayl
             label: "Draft review section",
             toolName: "update_note",
             description: "Write or update a section of the review",
+            status: "pending",
+        });
+    }
+
+    // Study metadata edit step
+    if (/\b(?:edit|update|change|fix)\b/.test(lower) && /\b(?:study|abstract|doi|pmid|journal|keyword|quality|summary|metadata)\b/.test(lower)) {
+        steps.push({
+            label: "Update study metadata",
+            toolName: "update_study",
+            description: "Prepare a reviewable patch for requested study fields",
             status: "pending",
         });
     }

@@ -29,6 +29,7 @@ export function searchResultToStudyInput(result: SearchResult): StudyInput {
   if (result.volume) details.volume = result.volume;
   if (result.issue) details.issue = result.issue;
   if (result.pages) details.pages = result.pages;
+  if (result.sourceUrl) details.sourceUrl = result.sourceUrl;
   if (result.keywords?.length) details.keywords = result.keywords;
 
   // Copy whitelisted metadata keys into details

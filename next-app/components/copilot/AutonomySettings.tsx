@@ -17,6 +17,7 @@ const TOOLS: { name: string; label: string; icon: string; desc: string }[] = [
     { name: "extract_pdf", label: "Extract PDF", icon: "picture_as_pdf", desc: "Parse uploaded PDFs" },
     { name: "add_to_ledger", label: "Add to Ledger", icon: "playlist_add", desc: "Add studies" },
     { name: "exclude_study", label: "Exclude Study", icon: "remove_circle_outline", desc: "Remove studies" },
+    { name: "update_study", label: "Update Study", icon: "edit", desc: "Edit study metadata" },
     { name: "update_note", label: "Update Note", icon: "edit_note", desc: "Write draft sections" },
     { name: "update_protocol", label: "Update Protocol", icon: "rule", desc: "Change protocol fields" },
     { name: "bulk_screening", label: "Batch Screening", icon: "filter_list", desc: "Screen multiple" },

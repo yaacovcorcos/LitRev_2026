@@ -9,6 +9,7 @@ import { z } from "zod";
 
 export type ArtifactType =
     | "study_proposal"
+    | "study_update"
     | "draft_diff"
     | "screening_batch"
     | "protocol_suggestion"
@@ -46,6 +47,35 @@ export interface StudyProposalPayload {
     confidence: number;
     criteriaMatch?: Record<string, boolean>;
     matchRationale?: string;
+}
+
+export interface StudyFieldChange {
+    field: string;
+    label: string;
+    operation: "set" | "clear" | "append";
+    typedOldValue: unknown;
+    typedNewValue: unknown;
+    displayOld: string;
+    displayNew: string;
+}
+
+export interface StudyUpdatePayload {
+    studyId: string;
+    studyTitle: string;
+    snapshotAt: string;
+    idempotencyKey: string;
+    patch: {
+        top?: {
+            title?: string;
+            authors?: string;
+            year?: number;
+            quality?: "High" | "Medium" | "Low" | "-";
+            status?: "pending" | "extracted" | "active" | "excluded";
+        };
+        details?: Record<string, unknown>;
+    };
+    changes: StudyFieldChange[];
+    rationale: string;
 }
 
 export interface DraftDiffPayload {
@@ -124,6 +154,37 @@ export const StudyProposalSchema = z.object({
     matchRationale: z.string().optional(),
 });
 
+export const StudyFieldChangeSchema = z.object({
+    field: z.string(),
+    label: z.string(),
+    operation: z.enum(["set", "clear", "append"]),
+    typedOldValue: z.unknown(),
+    typedNewValue: z.unknown(),
+    displayOld: z.string(),
+    displayNew: z.string(),
+});
+
+const StudyPatchTopSchema = z.object({
+    title: z.string().min(1).optional(),
+    authors: z.string().min(1).optional(),
+    year: z.number().int().min(1900).max(2100).optional(),
+    quality: z.enum(["High", "Medium", "Low", "-"]).optional(),
+    status: z.enum(["pending", "extracted", "active", "excluded"]).optional(),
+});
+
+export const StudyUpdateSchema = z.object({
+    studyId: z.string().min(1),
+    studyTitle: z.string().min(1),
+    snapshotAt: z.string().min(1),
+    idempotencyKey: z.string().min(1),
+    patch: z.object({
+        top: StudyPatchTopSchema.optional(),
+        details: z.record(z.string(), z.unknown()).optional(),
+    }),
+    changes: z.array(StudyFieldChangeSchema).min(1),
+    rationale: z.string().min(1),
+});
+
 export const DraftDiffSchema = z.object({
     section: z.string().min(1),
     subsection: z.string().optional(),
@@ -182,6 +243,7 @@ export const MemoryProposalSchema = z.object({
 /** Map artifact type → Zod schema for payload validation */
 export const ARTIFACT_PAYLOAD_SCHEMAS: Record<ArtifactType, z.ZodType> = {
     study_proposal: StudyProposalSchema,
+    study_update: StudyUpdateSchema,
     draft_diff: DraftDiffSchema,
     screening_batch: ScreeningBatchSchema,
     protocol_suggestion: ProtocolSuggestionSchema,
