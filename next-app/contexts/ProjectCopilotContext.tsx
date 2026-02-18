@@ -857,6 +857,23 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
                         }
                     } else if (data.type === "run_end") {
                         setCurrentRunId(null);
+                    } else if (data.type === "conversation_title") {
+                        const targetId = data.conversationId || effectiveConvId;
+                        const nextTitle = data.conversationTitle?.trim();
+                        if (targetId && nextTitle) {
+                            setConversations((prev) => {
+                                const existing = prev.find((c) => c.id === targetId);
+                                if (!existing) {
+                                    return [{
+                                        id: targetId,
+                                        title: nextTitle,
+                                        messageCount: 0,
+                                        updatedAt: new Date().toISOString(),
+                                    }, ...prev];
+                                }
+                                return prev.map((c) => (c.id === targetId ? { ...c, title: nextTitle } : c));
+                            });
+                        }
                     } else if (data.type === "artifact") {
                         const artType = (data.artifactType ?? "plan") as ArtifactType;
                         const artStatus = (data.artifactStatus ?? "proposed") as ArtifactStatus;

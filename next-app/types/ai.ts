@@ -104,6 +104,7 @@ export type AIStreamChunk = {
     type: "content" | "tool_call" | "tool_result" | "done" | "error"
         | "artifact" | "progress" | "checkpoint"
         | "run_start" | "run_end"
+        | "conversation_title"
         | "choices"
         | "plan_step_update";
     content?: string;
@@ -142,6 +143,7 @@ export type AIStreamChunk = {
     stepStatus?: string;
     // Conversation identity (server-side source of truth)
     conversationId?: string;
+    conversationTitle?: string;
 };
 
 // Memory/Context types

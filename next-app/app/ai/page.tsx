@@ -34,17 +34,11 @@ const quickActions = [
 
 type ChatConversation = {
   id: string;
-  title: string;
+  title: string | null;
   projectId?: string;
   createdAt: string;
   updatedAt: string;
 };
-
-function deriveTitleFromPrompt(text: string): string {
-  const trimmed = text.trim();
-  if (!trimmed) return "New Chat";
-  return trimmed.slice(0, 40) + (trimmed.length > 40 ? "..." : "");
-}
 
 function groupConversationsByDate(conversations: ChatConversation[]): {
   title: string;
@@ -403,7 +397,7 @@ export default function AIView() {
       if (!isActive) return;
       const mapped: ChatConversation[] = summaries.map((s) => ({
         id: s.id,
-        title: s.title ?? "New Chat",
+        title: s.title ?? null,
         projectId: s.projectId ?? undefined,
         createdAt: s.createdAt,
         updatedAt: s.updatedAt,
@@ -484,7 +478,7 @@ export default function AIView() {
     const now = new Date().toISOString();
     const newConv: ChatConversation = {
       id,
-      title: "New Chat",
+      title: null,
       projectId: selectedProjectId ?? undefined,
       createdAt: now,
       updatedAt: now,
@@ -568,7 +562,7 @@ export default function AIView() {
       const mappedItems = mapDbMessagesToTimeline(full.messages, full.artifacts);
       const newConv: ChatConversation = {
         id: full.id,
-        title: full.title ?? "New Chat",
+        title: full.title ?? null,
         projectId: full.projectId ?? undefined,
         createdAt: full.createdAt,
         updatedAt: full.updatedAt,
@@ -604,7 +598,7 @@ export default function AIView() {
       const mappedItems = mapDbMessagesToTimeline(full.messages, full.artifacts);
       const newConv: ChatConversation = {
         id: full.id,
-        title: full.title ?? "New Chat",
+        title: full.title ?? null,
         projectId: full.projectId ?? undefined,
         createdAt: full.createdAt,
         updatedAt: full.updatedAt,
@@ -660,7 +654,7 @@ export default function AIView() {
       const mappedItems = mapDbMessagesToTimeline(full.messages, full.artifacts);
       const newConv: ChatConversation = {
         id: full.id,
-        title: full.title ?? "New Chat",
+        title: full.title ?? null,
         projectId: full.projectId ?? undefined,
         createdAt: full.createdAt,
         updatedAt: full.updatedAt,
@@ -693,7 +687,7 @@ export default function AIView() {
     const now = new Date().toISOString();
     const newConv: ChatConversation = {
       id,
-      title: "New Chat",
+      title: null,
       projectId: selectedProjectId ?? undefined,
       createdAt: now,
       updatedAt: now,
@@ -744,7 +738,6 @@ export default function AIView() {
           conv.id === convId
             ? {
                 ...conv,
-                title: conv.title === "New Chat" ? deriveTitleFromPrompt(msgText) : conv.title,
                 updatedAt: nowIso,
               }
             : conv,
@@ -907,6 +900,28 @@ export default function AIView() {
                 ...prev,
                 [data.conversationId!]: prev[data.conversationId!] ?? [],
               }));
+            }
+            return;
+          }
+
+          if (data.type === "conversation_title") {
+            const targetId = data.conversationId || convId;
+            const nextTitle = data.conversationTitle?.trim();
+            if (targetId && nextTitle) {
+              setConversations((prev) => {
+                const existing = prev.find((c) => c.id === targetId);
+                if (!existing) {
+                  const now = new Date().toISOString();
+                  return sortConversationsByUpdatedAt([{
+                    id: targetId,
+                    title: nextTitle,
+                    projectId: selectedProjectId ?? undefined,
+                    createdAt: now,
+                    updatedAt: now,
+                  }, ...prev]);
+                }
+                return prev.map((c) => (c.id === targetId ? { ...c, title: nextTitle } : c));
+              });
             }
             return;
           }
@@ -1215,6 +1230,27 @@ export default function AIView() {
             }
             return;
           }
+          if (data.type === "conversation_title") {
+            const targetId = data.conversationId || convId;
+            const nextTitle = data.conversationTitle?.trim();
+            if (targetId && nextTitle) {
+              setConversations((prev) => {
+                const existing = prev.find((c) => c.id === targetId);
+                if (!existing) {
+                  const now = new Date().toISOString();
+                  return sortConversationsByUpdatedAt([{
+                    id: targetId,
+                    title: nextTitle,
+                    projectId: selectedProjectId ?? undefined,
+                    createdAt: now,
+                    updatedAt: now,
+                  }, ...prev]);
+                }
+                return prev.map((c) => (c.id === targetId ? { ...c, title: nextTitle } : c));
+              });
+            }
+            return;
+          }
           if (data.type === "content" && data.content) {
             clearProgress();
             fullContent += data.content;
@@ -1459,7 +1495,7 @@ export default function AIView() {
                         aria-current={activeConversationId === conv.id ? "true" : undefined}
                       >
                         <span className="material-icons-round">chat_bubble_outline</span>
-                        <span className={styles.historyTitle}>{conv.title}</span>
+                        <span className={styles.historyTitle}>{conv.title ?? "New conversation"}</span>
                       </button>
                       <button
                         type="button"
