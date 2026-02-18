@@ -29,6 +29,7 @@ Status (keep updated):
 - AI convergence Phase 3 done: scope governance is enforced (global `/ai` only exposes global-safe tools, project mode exposes full toolset), `/ai` now shows an explicit scope badge, and tone control was reintroduced as a real server-side prompt modifier (`standard`/`deep`).
 - AI convergence Phase 4 done: `/ai` now adds command-center differentiation with global cross-project context injection, a global methodology-advisor scope instruction, and conversation export actions (`Export MD`, print-to-PDF) in the header.
 - AI convergence UI polish done: `/ai` progress rows are transient during streaming (no stale entries after response), header scope display is simplified to a single project/global selector, tone control was moved from the crowded header to the input zone, dead `/ai` CSS was removed, `TimelineRenderer.messages` is now optional, and PDF export uses structured printable HTML instead of raw markdown `<pre>` output.
+- AI convergence reliability hardening done: plan execution now uses authoritative `run_end` status on the client, `/ai` is fully wired for plan run/review actions, conversation reload hydrates artifacts so plan cards persist across switches, and server-side plan completion now requires all selected steps to complete (with non-executable steps rejected up front).
 
 Phase 0 — Decisions (1–2 hours)
 - Confirm Supabase project + connection details.

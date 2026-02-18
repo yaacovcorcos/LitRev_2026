@@ -210,7 +210,7 @@ export function validatePlan(raw: unknown, allowedToolNames?: string[]): PlanPay
         return null;
     }
 
-    // 3. Cross-check: every toolName must reference a valid tool.
+    // 3. Cross-check: every step must be actionable with a valid tool.
     //    If allowedToolNames is provided (mode-filtered), check against that set;
     //    otherwise fall back to global registry.
     const validTools = allowedToolNames
@@ -218,6 +218,10 @@ export function validatePlan(raw: unknown, allowedToolNames?: string[]): PlanPay
         : REGISTERED_TOOL_NAMES;
 
     for (const step of plan.steps) {
+        if (!step.toolName) {
+            console.warn("[planner] Plan contains non-executable step without toolName");
+            return null;
+        }
         if (step.toolName && !validTools.has(step.toolName)) {
             console.warn(`[planner] Plan references disallowed tool: ${step.toolName}`);
             return null;

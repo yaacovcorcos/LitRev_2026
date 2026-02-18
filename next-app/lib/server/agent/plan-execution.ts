@@ -56,6 +56,11 @@ export async function startPlanExecution(
         await prisma.artifact.update({ where: { id: planId }, data: { status: "proposed" } });
         throw new Error("No valid steps selected");
     }
+    const nonExecutable = selectedSteps.filter((step) => !step.toolName);
+    if (nonExecutable.length > 0) {
+        await prisma.artifact.update({ where: { id: planId }, data: { status: "proposed" } });
+        throw new Error("Selected plan includes non-executable step(s) without toolName");
+    }
 
     return { plan: payload, selectedSteps, conversationId: artifact.conversationId };
 }

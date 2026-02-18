@@ -7,7 +7,7 @@
 
 "use client";
 
-import { Component, memo, useCallback, useLayoutEffect, useRef, useState } from "react";
+import { Component, memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ErrorInfo, ReactNode } from "react";
 import { useParams } from "next/navigation";
 import ReactMarkdown from "react-markdown";
@@ -89,39 +89,54 @@ function getJumpToProps(artifactType: string, projectId: string): { jumpToLink?:
 
 type UserMessageRowProps = {
     item: Extract<TimelineItem, { type: "user_message" }>;
+    onBranchFromMessage?: (messageId: string, createdAt: string) => void | Promise<void>;
 };
 
 const USER_MARKDOWN_ELEMENTS = ["p", "strong", "em", "code", "a", "br"] as const;
 
-const UserMessageRow = memo(function UserMessageRow({ item }: UserMessageRowProps) {
+const UserMessageRow = memo(function UserMessageRow({ item, onBranchFromMessage }: UserMessageRowProps) {
     return (
         <div className={`${styles.chatMsg} ${styles.chatMsgUser}`} role="article" aria-label="You">
-            <div className={styles.chatBubble}>
-                {item.attachments && item.attachments.length > 0 && (
-                    <div className={styles.messageAttachments}>
-                        {item.attachments.map((att) => (
-                            <div key={att.fileAssetId ?? att.filename} className={styles.messageAttachment}>
-                                <span className="material-icons-round" style={{ fontSize: 14 }}>description</span>
-                                <span className={styles.messageAttachmentName}>{att.filename}</span>
-                                <span className={styles.messageAttachmentSize}>
-                                    {att.size >= 1024 * 1024
-                                        ? `${(att.size / (1024 * 1024)).toFixed(1)} MB`
-                                        : `${Math.round(att.size / 1024)} KB`}
-                                </span>
-                            </div>
-                        ))}
+            <div className={styles.chatStack}>
+                <div className={styles.chatBubble}>
+                    {item.attachments && item.attachments.length > 0 && (
+                        <div className={styles.messageAttachments}>
+                            {item.attachments.map((att) => (
+                                <div key={att.fileAssetId ?? att.filename} className={styles.messageAttachment}>
+                                    <span className="material-icons-round" style={{ fontSize: 14 }}>description</span>
+                                    <span className={styles.messageAttachmentName}>{att.filename}</span>
+                                    <span className={styles.messageAttachmentSize}>
+                                        {att.size >= 1024 * 1024
+                                            ? `${(att.size / (1024 * 1024)).toFixed(1)} MB`
+                                            : `${Math.round(att.size / 1024)} KB`}
+                                    </span>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                    {/* Inline-only markdown: bold, italic, code, links — no headers/lists */}
+                    <div className={styles.chatText}>
+                        <ReactMarkdown
+                            remarkPlugins={[remarkGfm]}
+                            allowedElements={USER_MARKDOWN_ELEMENTS}
+                            unwrapDisallowed
+                        >
+                            {item.content}
+                        </ReactMarkdown>
+                    </div>
+                </div>
+                {onBranchFromMessage && (
+                    <div className={styles.chatActions}>
+                        <button
+                            type="button"
+                            className={styles.chatActionBtn}
+                            onClick={() => onBranchFromMessage(item.id, item.createdAt)}
+                            title="Branch from this message"
+                        >
+                            <span className="material-icons-round">call_split</span>
+                        </button>
                     </div>
                 )}
-                {/* Inline-only markdown: bold, italic, code, links — no headers/lists */}
-                <div className={styles.chatText}>
-                    <ReactMarkdown
-                        remarkPlugins={[remarkGfm]}
-                        allowedElements={USER_MARKDOWN_ELEMENTS}
-                        unwrapDisallowed
-                    >
-                        {item.content}
-                    </ReactMarkdown>
-                </div>
             </div>
         </div>
     );
@@ -138,6 +153,7 @@ type AssistantMessageRowProps = {
     onCopy: (text: string) => void;
     onSaveToNotes?: (content: string, messageId: string) => void | Promise<void>;
     onInsert?: (text: string) => void;
+    onBranchFromMessage?: (messageId: string, createdAt: string) => void | Promise<void>;
 };
 
 const AssistantMessageRow = memo(function AssistantMessageRow({
@@ -148,6 +164,7 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
     onCopy,
     onSaveToNotes,
     onInsert,
+    onBranchFromMessage,
 }: AssistantMessageRowProps) {
     return (
         <div className={`${styles.chatMsg} ${styles.chatMsgAi}`} role="article" aria-label="Assistant">
@@ -199,6 +216,16 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
                             <span className="material-icons-round">add_circle_outline</span>
                         </button>
                     )}
+                    {onBranchFromMessage && (
+                        <button
+                            type="button"
+                            className={styles.chatActionBtn}
+                            onClick={() => onBranchFromMessage(item.id, item.createdAt)}
+                            title="Branch from this message"
+                        >
+                            <span className="material-icons-round">call_split</span>
+                        </button>
+                    )}
                 </div>
             </div>
         </div>
@@ -229,10 +256,14 @@ export type TimelineRendererProps = {
     onSaveToNotes?: (content: string, messageId: string) => void | Promise<void>;
     /** Optional retry callback for retryable error cards */
     onRetryLastMessage?: () => void;
+    /** Optional callback to branch conversation history up to a specific message */
+    onBranchFromMessage?: (messageId: string, createdAt: string) => void | Promise<void>;
     /** Layout variant: "panel" for copilot sidebar (bubbles), "page" for conversation mode (full-width) */
     variant?: "panel" | "page";
     /** When true (conversation being fetched), show a shimmer skeleton instead of the empty state */
     isConversationLoading?: boolean;
+    /** Stable ID of the active conversation — used to reset scroll state on switch */
+    conversationId?: string;
 };
 
 export function TimelineRenderer({
@@ -246,8 +277,10 @@ export function TimelineRenderer({
     onExecutePlan,
     onSaveToNotes,
     onRetryLastMessage,
+    onBranchFromMessage,
     variant = "panel",
     isConversationLoading = false,
+    conversationId,
 }: TimelineRendererProps) {
     const params = useParams();
     const projectId = params && typeof params === "object" && "id" in params
@@ -261,8 +294,29 @@ export function TimelineRenderer({
     const [savedNoteId, setSavedNoteId] = useState<string | null>(null);
     const [savingNoteId, setSavingNoteId] = useState<string | null>(null);
 
-    // Resolve timeline: prefer items, fall back to legacy messages
-    const timeline = items ?? messagesToTimeline(messages);
+    // Resolve timeline: prefer items, fall back to legacy messages.
+    // Memoized so useLayoutEffect([timeline]) only fires on real content changes,
+    // not on every unrelated re-render.
+    const timeline = useMemo(
+        () => items ?? messagesToTimeline(messages),
+        [items, messages]
+    );
+
+    // ── Conversation-switch reset ───────────────────────────────────────────
+    // Runs synchronously before paint whenever the active conversation changes.
+    // Resets scroll-control refs so the auto-scroll effect starts clean.
+    // We do NOT force scrollTop here — the auto-scroll effect below handles
+    // positioning once the new timeline arrives, avoiding a visible jump.
+    useLayoutEffect(() => {
+        if (conversationId === undefined) return;
+        followRef.current = true;
+        programmaticScrollRef.current = false;
+        setIsAtBottom(true);
+        if (rafRef.current) {
+            cancelAnimationFrame(rafRef.current);
+            rafRef.current = null;
+        }
+    }, [conversationId]);
 
     // ── Follow-mode auto-scroll (rAF-coalesced) ────────────────────────────
     // Runs when timeline identity changes (new message OR token append).
@@ -393,7 +447,8 @@ export function TimelineRenderer({
         };
 
         switch (item.artifactType) {
-            case "plan":
+            case "plan": {
+                const canExecutePlan = !!onExecutePlan && !isLoading && !isConversationLoading;
                 return (
                     <ArtifactWrapper
                         {...wrapperProps}
@@ -402,11 +457,13 @@ export function TimelineRenderer({
                         <PlanCard
                             payload={item.payload as PlanPayload}
                             status={item.status}
-                            onRun={(selectedIndexes) => onExecutePlan?.(item.artifactId, selectedIndexes)}
+                            onRun={canExecutePlan ? (selectedIndexes) => onExecutePlan(item.artifactId, selectedIndexes) : undefined}
                             onCancel={() => handleReview("rejected")}
+                            canRun={canExecutePlan}
                         />
                     </ArtifactWrapper>
                 );
+            }
 
             case "study_proposal": {
                 const studyPayload = item.payload as StudyProposalPayload;
@@ -541,7 +598,7 @@ export function TimelineRenderer({
     const renderTimelineItem = (item: TimelineItem, index: number) => {
         switch (item.type) {
             case "user_message":
-                return <UserMessageRow key={item.id} item={item} />;
+                return <UserMessageRow key={item.id} item={item} onBranchFromMessage={onBranchFromMessage} />;
 
             case "assistant_message":
                 return (
@@ -554,6 +611,7 @@ export function TimelineRenderer({
                         onCopy={handleCopy}
                         onSaveToNotes={onSaveToNotes ? handleSaveToNotes : undefined}
                         onInsert={onInsert}
+                        onBranchFromMessage={onBranchFromMessage}
                     />
                 );
 

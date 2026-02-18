@@ -18,7 +18,7 @@ import {
     saveProjectCopilotState,
     createDefaultProjectCopilotState,
 } from "@/lib/projectCopilotStorage";
-import { parseNDJSONStream } from "@/lib/ai/stream-parser";
+import { processAIStream } from "@/lib/ai/stream-processor";
 import {
     listConversations,
     getConversation,
@@ -97,7 +97,7 @@ type ProjectCopilotContextValue = {
     /** Delete a conversation */
     deleteConversation: (conversationId: string) => Promise<void>;
     /** Branch a conversation into a new forked conversation */
-    branchConversation: (conversationId: string) => Promise<void>;
+    branchConversation: (conversationId: string, upToMessageId?: string, upToCreatedAt?: string) => Promise<void>;
     /** Refresh conversation list */
     refreshConversations: () => Promise<void>;
     /** Set study filter for conversation scoping (undefined = show all) */
@@ -134,6 +134,8 @@ type ProjectCopilotContextValue = {
     summarizeAndRefresh: () => Promise<void>;
     /** Whether summarization is in progress */
     isSummarizing: boolean;
+    /** Whether a conversation is being fetched from the server (shows skeleton in TimelineRenderer) */
+    isConversationLoading: boolean;
 
     // Autonomy configuration (Phase 7)
     /** Current autonomy preset */
@@ -168,6 +170,7 @@ type ProjectCopilotProviderProps = {
 
 export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotProviderProps) {
     const [state, setState] = useState<ProjectCopilotState>(createDefaultProjectCopilotState());
+    const stateRef = useRef<ProjectCopilotState>(createDefaultProjectCopilotState());
     const [isLoading, setIsLoading] = useState(false);
     const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const abortControllerRef = useRef<AbortController | null>(null);
@@ -179,6 +182,9 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
     const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
     const [isLoadingConversations, setIsLoadingConversations] = useState(false);
     const [showConversationList, setShowConversationList] = useState(false);
+    const [isConversationLoading, setIsConversationLoading] = useState(false);
+    // Generation counter for selectConversation — last-wins guard against rapid switches
+    const selectGenRef = useRef(0);
 
     // Study filter for conversation scoping (ref to avoid re-render loops)
     const studyFilterRef = useRef<string | undefined>(undefined);
@@ -259,6 +265,7 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
 
     // Mirror isLoading to ref so sendMessage can read it without stale closures
     useEffect(() => { isLoadingRef.current = isLoading; }, [isLoading]);
+    useEffect(() => { stateRef.current = state; }, [state]);
 
     // Mirror currentConversationId to ref for scope-switch reads
     useEffect(() => { currentConversationIdRef.current = currentConversationId; }, [currentConversationId]);
@@ -465,6 +472,9 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
     }, []);
 
     const selectConversation = useCallback(async (conversationId: string) => {
+        // Each call claims a generation slot. State writes after the await are
+        // guarded so only the last caller (newest selection) applies results.
+        const gen = ++selectGenRef.current;
         try {
             // Switching conversations must invalidate any in-flight stream to prevent ghost updates.
             streamGenRef.current++;
@@ -476,11 +486,14 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             setCurrentRunId(null);
             setPendingChoices([]);
             if (!projectId) return;
+            setIsConversationLoading(true);
             const convo = await getConversation(conversationId, { expectedProjectId: projectId });
+            // Bail if a newer selectConversation call has already taken over.
+            if (gen !== selectGenRef.current) return;
             if (convo) {
                 setCurrentConversationId(convo.id);
                 // Convert conversation messages to CopilotMessages
-                const copilotMessages: CopilotMessage[] = convo.messages
+                const persistedMessages: CopilotMessage[] = convo.messages
                     .filter((m) => m.role !== "system")
                     .map((m) => ({
                         id: m.id,
@@ -496,19 +509,66 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
                             isExisting: a.isExisting,
                         })),
                     }));
+                const artifactMessages: CopilotMessage[] = (convo.artifacts ?? []).map((artifact) => ({
+                    id: `artifact-${artifact.id}`,
+                    sender: "ai",
+                    text: `[${artifact.type}] ${artifact.title}`,
+                    createdAt: artifact.createdAt,
+                    context: { page: convo.page as CopilotPage },
+                    artifact: {
+                        id: artifact.id,
+                        type: artifact.type,
+                        status: artifact.status,
+                        title: artifact.title,
+                        payload: (artifact.payload ?? {}) as Record<string, unknown>,
+                        version: artifact.version,
+                    },
+                }));
+                const copilotMessages: CopilotMessage[] = [...persistedMessages, ...artifactMessages].sort(
+                    (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+                );
+                setArtifacts(() => {
+                    const next = new Map<string, ArtifactData>();
+                    for (const artifact of convo.artifacts ?? []) {
+                        next.set(artifact.id, {
+                            id: artifact.id,
+                            runId: "",
+                            projectId: convo.projectId ?? projectId,
+                            conversationId: convo.id,
+                            type: artifact.type as ArtifactType,
+                            status: artifact.status as ArtifactStatus,
+                            title: artifact.title,
+                            payload: artifact.payload,
+                            version: artifact.version,
+                            sourceEventId: null,
+                            appliedAt: null,
+                            reviewedAt: null,
+                            reviewNote: null,
+                            createdAt: artifact.createdAt,
+                        });
+                    }
+                    return next;
+                });
                 updateState((prev) => ({
                     ...prev,
                     messages: copilotMessages,
                 }));
             } else {
                 setCurrentConversationId(null);
+                setArtifacts(new Map());
                 updateState((prev) => ({
                     ...prev,
                     messages: [],
                 }));
             }
         } catch (err) {
+            if (gen !== selectGenRef.current) return;
             console.error("Failed to select conversation:", err);
+        } finally {
+            // Only the winning generation clears the loading flag.
+            if (gen === selectGenRef.current) {
+                setIsConversationLoading(false);
+            }
         }
     }, [updateState, projectId]);
 
@@ -578,7 +638,11 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
         }
     }, [currentConversationId, updateState]);
 
-    const branchConversationHandler = useCallback(async (conversationId: string) => {
+    const branchConversationHandler = useCallback(async (
+        conversationId: string,
+        upToMessageId?: string,
+        upToCreatedAt?: string
+    ) => {
         if (!projectId) return;
         try {
             // Branching is a context switch; stop active stream before switching.
@@ -591,7 +655,7 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             setCurrentRunId(null);
             setPendingChoices([]);
 
-            const branched = await branchConversationAction({ conversationId });
+            const branched = await branchConversationAction({ conversationId, upToMessageId, upToCreatedAt });
             await loadConversations();
             await selectConversation(branched.id);
         } catch (err) {
@@ -665,7 +729,7 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
         section?: string;
         convId: string | null;
         onPlanStepUpdate?: (planId: string, stepIndex: number, stepStatus: string) => void;
-    }): Promise<{ success: boolean; aborted: boolean }> => {
+    }): Promise<{ success: boolean; aborted: boolean; runStatus: string | null; stopReason: string | null; errorMessage: string | null }> => {
         const { body, page, section, convId, onPlanStepUpdate } = params;
         let effectiveConvId = convId;
 
@@ -678,6 +742,9 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
         let aiMessageCreated = false;
         let fullContent = "";
         let localRunId = "";
+        let runStatus: string | null = null;
+        let stopReason: string | null = null;
+        let streamErrorMessage: string | null = null;
 
         // Cancel any in-flight stream
         if (abortControllerRef.current) {
@@ -703,183 +770,189 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
                 throw new Error("No response body");
             }
 
-            for await (const data of parseNDJSONStream(reader, controller.signal)) {
-                if (streamGenRef.current !== myGen) break;
+            const summary = await processAIStream({
+                reader,
+                signal: controller.signal,
+                shouldContinue: () => streamGenRef.current === myGen,
+                throwOnErrorChunk: true,
+                onChunk: (data) => {
+                    if (data.type === "content" && data.content) {
+                        fullContent += data.content;
 
-                if (data.type === "content" && data.content) {
-                    fullContent += data.content;
-
-                    if (!aiMessageCreated) {
-                        aiMessageCreated = true;
-                        const aiMessage: CopilotMessage = {
-                            id: aiMessageId,
-                            sender: "ai",
-                            text: fullContent,
-                            createdAt: new Date().toISOString(),
-                            context: { page, section },
-                        };
-                        updateState((prev) => ({
-                            ...prev,
-                            messages: [...prev.messages, aiMessage],
-                        }));
-                    } else {
-                        updateState((prev) => ({
-                            ...prev,
-                            messages: prev.messages.map((msg) =>
-                                msg.id === aiMessageId
-                                    ? { ...msg, text: fullContent }
-                                    : msg
-                            ),
-                        }));
-                    }
-                } else if (data.type === "tool_call" && data.toolCall) {
-                    const toolName = data.toolCall.name;
-                    const statusText = toolName === "search_pubmed"
-                        ? "Searching PubMed..."
-                        : toolName === "add_to_ledger"
-                        ? "Adding studies to ledger..."
-                        : `Running ${toolName}...`;
-                    if (!aiMessageCreated) {
-                        aiMessageCreated = true;
-                        const aiMessage: CopilotMessage = {
-                            id: aiMessageId,
-                            sender: "ai",
-                            text: `*${statusText}*`,
-                            createdAt: new Date().toISOString(),
-                            context: { page, section },
-                        };
-                        updateState((prev) => ({
-                            ...prev,
-                            messages: [...prev.messages, aiMessage],
-                        }));
-                    } else {
-                        updateState((prev) => ({
-                            ...prev,
-                            messages: prev.messages.map((msg) =>
-                                msg.id === aiMessageId
-                                    ? { ...msg, text: fullContent || `*${statusText}*` }
-                                    : msg
-                            ),
-                        }));
-                    }
-                } else if (data.type === "tool_result") {
-                    // Notify other contexts when data-mutating tools complete
-                    if (data.toolName === "add_to_ledger" || data.toolName === "exclude_study") {
-                        window.dispatchEvent(new CustomEvent("litrev:ledger-changed", { detail: { projectId } }));
-                    }
-                    if (aiMessageCreated && !fullContent) {
-                        updateState((prev) => ({
-                            ...prev,
-                            messages: prev.messages.map((msg) =>
-                                msg.id === aiMessageId
-                                    ? { ...msg, text: "*Processing results...*" }
-                                    : msg
-                            ),
-                        }));
-                    }
-                } else if (data.type === "run_start") {
-                    localRunId = data.runId ?? "";
-                    setCurrentRunId(data.runId ?? null);
-                    if (data.conversationId && effectiveConvId !== data.conversationId) {
-                        effectiveConvId = data.conversationId;
-                        if (currentConversationIdRef.current !== data.conversationId) {
-                            setCurrentConversationId(data.conversationId);
+                        if (!aiMessageCreated) {
+                            aiMessageCreated = true;
+                            const aiMessage: CopilotMessage = {
+                                id: aiMessageId,
+                                sender: "ai",
+                                text: fullContent,
+                                createdAt: new Date().toISOString(),
+                                context: { page, section },
+                            };
+                            updateState((prev) => ({
+                                ...prev,
+                                messages: [...prev.messages, aiMessage],
+                            }));
+                        } else {
+                            updateState((prev) => ({
+                                ...prev,
+                                messages: prev.messages.map((msg) =>
+                                    msg.id === aiMessageId
+                                        ? { ...msg, text: fullContent }
+                                        : msg
+                                ),
+                            }));
                         }
-                    }
-                } else if (data.type === "run_end") {
-                    setCurrentRunId(null);
-                } else if (data.type === "artifact") {
-                    const artType = (data.artifactType ?? "plan") as ArtifactType;
-                    const artStatus = (data.artifactStatus ?? "proposed") as ArtifactStatus;
-                    const artTitle = data.artifactTitle ?? "Artifact";
-                    const artifactData: ArtifactData = {
-                        id: data.artifactId ?? `art-${Date.now()}`,
-                        runId: localRunId,
-                        projectId,
-                        conversationId: effectiveConvId ?? null,
-                        type: artType,
-                        status: artStatus,
-                        title: artTitle,
-                        payload: data.artifactPayload ?? {},
-                        version: data.artifactVersion ?? 1,
-                        sourceEventId: null,
-                        appliedAt: null,
-                        reviewedAt: null,
-                        reviewNote: null,
-                        createdAt: new Date().toISOString(),
-                    };
-                    setArtifacts((prev) => {
-                        const next = new Map(prev);
-                        next.set(artifactData.id, artifactData);
-                        return next;
-                    });
-                    const artifactMessage: CopilotMessage = {
-                        id: `artifact-${artifactData.id}`,
-                        sender: "ai",
-                        text: `[${artType}] ${artTitle}`,
-                        createdAt: new Date().toISOString(),
-                        context: { page },
-                        artifact: {
-                            id: artifactData.id,
+                    } else if (data.type === "tool_call" && data.toolCall) {
+                        const toolName = data.toolCall.name;
+                        const statusText = toolName === "search_pubmed"
+                            ? "Searching PubMed..."
+                            : toolName === "add_to_ledger"
+                                ? "Adding studies to ledger..."
+                                : `Running ${toolName}...`;
+                        if (!aiMessageCreated) {
+                            aiMessageCreated = true;
+                            const aiMessage: CopilotMessage = {
+                                id: aiMessageId,
+                                sender: "ai",
+                                text: `*${statusText}*`,
+                                createdAt: new Date().toISOString(),
+                                context: { page, section },
+                            };
+                            updateState((prev) => ({
+                                ...prev,
+                                messages: [...prev.messages, aiMessage],
+                            }));
+                        } else {
+                            updateState((prev) => ({
+                                ...prev,
+                                messages: prev.messages.map((msg) =>
+                                    msg.id === aiMessageId
+                                        ? { ...msg, text: fullContent || `*${statusText}*` }
+                                        : msg
+                                ),
+                            }));
+                        }
+                    } else if (data.type === "tool_result") {
+                        if (data.toolName === "add_to_ledger" || data.toolName === "exclude_study") {
+                            window.dispatchEvent(new CustomEvent("litrev:ledger-changed", { detail: { projectId } }));
+                        }
+                        if (aiMessageCreated && !fullContent) {
+                            updateState((prev) => ({
+                                ...prev,
+                                messages: prev.messages.map((msg) =>
+                                    msg.id === aiMessageId
+                                        ? { ...msg, text: "*Processing results...*" }
+                                        : msg
+                                ),
+                            }));
+                        }
+                    } else if (data.type === "run_start") {
+                        localRunId = data.runId ?? "";
+                        setCurrentRunId(data.runId ?? null);
+                        if (data.conversationId && effectiveConvId !== data.conversationId) {
+                            effectiveConvId = data.conversationId;
+                            if (currentConversationIdRef.current !== data.conversationId) {
+                                setCurrentConversationId(data.conversationId);
+                            }
+                        }
+                    } else if (data.type === "run_end") {
+                        setCurrentRunId(null);
+                    } else if (data.type === "artifact") {
+                        const artType = (data.artifactType ?? "plan") as ArtifactType;
+                        const artStatus = (data.artifactStatus ?? "proposed") as ArtifactStatus;
+                        const artTitle = data.artifactTitle ?? "Artifact";
+                        const artifactData: ArtifactData = {
+                            id: data.artifactId ?? `art-${Date.now()}`,
+                            runId: localRunId,
+                            projectId,
+                            conversationId: effectiveConvId ?? null,
                             type: artType,
                             status: artStatus,
                             title: artTitle,
-                            payload: (data.artifactPayload ?? {}) as Record<string, unknown>,
+                            payload: data.artifactPayload ?? {},
                             version: data.artifactVersion ?? 1,
-                        },
-                    };
-                    updateState((prev) => ({
-                        ...prev,
-                        messages: [...prev.messages, artifactMessage],
-                    }));
-                } else if (data.type === "progress") {
-                    const progressText = data.progressMessage ?? "Working...";
-                    if (!aiMessageCreated) {
-                        aiMessageCreated = true;
-                        const aiMessage: CopilotMessage = {
-                            id: aiMessageId,
-                            sender: "ai",
-                            text: `*${progressText}*`,
+                            sourceEventId: null,
+                            appliedAt: null,
+                            reviewedAt: null,
+                            reviewNote: null,
                             createdAt: new Date().toISOString(),
-                            context: { page, section },
+                        };
+                        setArtifacts((prev) => {
+                            const next = new Map(prev);
+                            next.set(artifactData.id, artifactData);
+                            return next;
+                        });
+                        const artifactMessage: CopilotMessage = {
+                            id: `artifact-${artifactData.id}`,
+                            sender: "ai",
+                            text: `[${artType}] ${artTitle}`,
+                            createdAt: new Date().toISOString(),
+                            context: { page },
+                            artifact: {
+                                id: artifactData.id,
+                                type: artType,
+                                status: artStatus,
+                                title: artTitle,
+                                payload: (data.artifactPayload ?? {}) as Record<string, unknown>,
+                                version: data.artifactVersion ?? 1,
+                            },
                         };
                         updateState((prev) => ({
                             ...prev,
-                            messages: [...prev.messages, aiMessage],
+                            messages: [...prev.messages, artifactMessage],
                         }));
-                    } else if (!fullContent) {
-                        updateState((prev) => ({
-                            ...prev,
-                            messages: prev.messages.map((msg) =>
-                                msg.id === aiMessageId
-                                    ? { ...msg, text: `*${progressText}*` }
-                                    : msg
-                            ),
-                        }));
+                    } else if (data.type === "progress") {
+                        const progressText = data.progressMessage ?? "Working...";
+                        if (!aiMessageCreated) {
+                            aiMessageCreated = true;
+                            const aiMessage: CopilotMessage = {
+                                id: aiMessageId,
+                                sender: "ai",
+                                text: `*${progressText}*`,
+                                createdAt: new Date().toISOString(),
+                                context: { page, section },
+                            };
+                            updateState((prev) => ({
+                                ...prev,
+                                messages: [...prev.messages, aiMessage],
+                            }));
+                        } else if (!fullContent) {
+                            updateState((prev) => ({
+                                ...prev,
+                                messages: prev.messages.map((msg) =>
+                                    msg.id === aiMessageId
+                                        ? { ...msg, text: `*${progressText}*` }
+                                        : msg
+                                ),
+                            }));
+                        }
+                    } else if (data.type === "choices" && data.choices) {
+                        if (streamGenRef.current === myGen) {
+                            setPendingChoices(data.choices);
+                        }
+                    } else if (data.type === "plan_step_update") {
+                        if (data.planId && data.stepIndex !== undefined && data.stepStatus) {
+                            onPlanStepUpdate?.(data.planId, data.stepIndex, data.stepStatus);
+                        }
                     }
-                } else if (data.type === "choices" && data.choices) {
-                    if (streamGenRef.current === myGen) {
-                        setPendingChoices(data.choices);
-                    }
-                } else if (data.type === "plan_step_update") {
-                    if (data.planId && data.stepIndex !== undefined && data.stepStatus) {
-                        onPlanStepUpdate?.(data.planId, data.stepIndex, data.stepStatus);
-                    }
-                } else if (data.type === "error") {
-                    throw new Error(data.error);
-                }
-            }
+                },
+            });
+            runStatus = summary.runStatus;
+            stopReason = summary.stopReason;
+            streamErrorMessage = summary.errorMessage;
 
             // Stale generation — skip refresh
-            if (streamGenRef.current !== myGen) return { success: false, aborted: true };
+            if (streamGenRef.current !== myGen) {
+                return { success: false, aborted: true, runStatus, stopReason, errorMessage: streamErrorMessage };
+            }
 
             // Refresh conversation list to update titles/counts
             loadConversations();
-            return { success: true, aborted: false };
+            return { success: true, aborted: false, runStatus, stopReason, errorMessage: streamErrorMessage };
         } catch (error) {
             // Silently ignore aborted requests
             if (error instanceof DOMException && error.name === "AbortError") {
-                return { success: false, aborted: true };
+                return { success: false, aborted: true, runStatus, stopReason, errorMessage: streamErrorMessage };
             }
 
             console.error("AI chat error:", error);
@@ -908,7 +981,13 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
                     ),
                 }));
             }
-            return { success: false, aborted: false };
+            return {
+                success: false,
+                aborted: false,
+                runStatus,
+                stopReason,
+                errorMessage: error instanceof Error ? error.message : streamErrorMessage,
+            };
         } finally {
             if (streamGenRef.current === myGen) {
                 setIsLoading(false);
@@ -1032,6 +1111,8 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
 
         const conversationContext = studyFilterRef.current ? "study" : "project";
         const convId = currentConversationId;
+        const planMessage = stateRef.current.messages.find((msg) => msg.artifact?.id === artifactId);
+        const executionPage = planMessage?.context?.page ?? "overview";
 
         const result = await runStream({
             body: {
@@ -1045,15 +1126,16 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
                     agentMode: "general",
                 },
             },
-            page: "protocol" as CopilotPage,
+            page: executionPage,
             convId,
             onPlanStepUpdate: (planId, stepIndex, stepStatus) => {
                 // Update artifact payload step statuses
                 setArtifacts((prev) => {
                     const next = new Map(prev);
                     const existing = next.get(planId);
-                    if (existing && existing.payload) {
-                        const payload = existing.payload as { steps: Array<{ label: string; toolName?: string; description?: string; status: string }>; estimatedActions: number };
+                    if (existing && existing.payload && typeof existing.payload === "object") {
+                        const payload = existing.payload as { steps?: Array<{ label: string; toolName?: string; description?: string; status: string }>; estimatedActions?: number };
+                        if (!Array.isArray(payload.steps)) return next;
                         const updatedSteps = payload.steps.map((s, i) =>
                             i === stepIndex ? { ...s, status: stepStatus } : s
                         );
@@ -1066,7 +1148,8 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
                     ...prev,
                     messages: prev.messages.map((msg) => {
                         if (msg.artifact?.id !== planId) return msg;
-                        const payload = msg.artifact.payload as { steps: Array<{ label: string; toolName?: string; description?: string; status: string }>; estimatedActions: number };
+                        const payload = msg.artifact.payload as { steps?: Array<{ label: string; toolName?: string; description?: string; status: string }>; estimatedActions?: number };
+                        if (!Array.isArray(payload.steps)) return msg;
                         const updatedSteps = payload.steps.map((s, i) =>
                             i === stepIndex ? { ...s, status: stepStatus } : s
                         );
@@ -1078,7 +1161,8 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
 
         // Finalize local plan status based on stream result
         // Server already finalized — this updates the client-side optimistic state
-        const finalStatus: ArtifactStatus = result.success ? "accepted" : "proposed";
+        const didComplete = result.runStatus === "completed";
+        const finalStatus: ArtifactStatus = didComplete ? "accepted" : "proposed";
         setArtifacts((prev) => {
             const next = new Map(prev);
             const existing = next.get(artifactId);
@@ -1095,6 +1179,21 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
                     : msg
             ),
         }));
+        if (!didComplete && !result.aborted && result.success) {
+            const reason = result.errorMessage
+                ?? (result.stopReason ? `Execution stopped: ${result.stopReason}` : "Execution did not complete.");
+            const feedback: CopilotMessage = {
+                id: `plan-feedback-${Date.now()}`,
+                sender: "ai",
+                text: `Plan execution failed: ${reason}`,
+                createdAt: new Date().toISOString(),
+                context: { page: executionPage },
+            };
+            updateState((prev) => ({
+                ...prev,
+                messages: [...prev.messages, feedback],
+            }));
+        }
     }, [cancelStream, currentConversationId, projectId, runStream, updateState]);
 
     const handleReviewArtifact = useCallback(async (
@@ -1215,6 +1314,7 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             shouldOfferSummary,
             summarizeAndRefresh,
             isSummarizing,
+            isConversationLoading,
             // Autonomy configuration (Phase 7)
             autonomyPreset,
             autonomyToolOverrides,
@@ -1260,6 +1360,7 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             shouldOfferSummary,
             summarizeAndRefresh,
             isSummarizing,
+            isConversationLoading,
             autonomyPreset,
             autonomyToolOverrides,
             showAutonomySettings,

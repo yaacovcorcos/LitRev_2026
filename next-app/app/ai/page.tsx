@@ -12,13 +12,14 @@ import {
   archiveConversation,
   branchConversation,
 } from "@/app/actions/conversations";
+import { reviewArtifactAction } from "@/app/actions/agent";
 import { getGlobalWorkspaceContextAction } from "@/app/actions/ai-assistant";
 import { summarizeConversationAction } from "@/app/actions/summarize-conversation";
 import type { AgentMode } from "@/types/agent";
 import type { CopilotPage, ConversationContext, ChoiceOption } from "@/types/ai";
 import type { ArtifactStatus, ArtifactType } from "@/types/artifacts";
 import type { TimelineItem } from "@/types/timeline";
-import { parseNDJSONStream } from "@/lib/ai/stream-parser";
+import { processAIStream } from "@/lib/ai/stream-processor";
 import { routeToAgent } from "@/lib/agent/router";
 import styles from "./ai-view.module.css";
 
@@ -83,17 +84,28 @@ function groupConversationsByDate(conversations: ChatConversation[]): {
   return groups.filter((g) => g.items.length > 0);
 }
 
-function mapDbMessagesToTimeline(messages: Array<{
+function mapDbMessagesToTimeline(
+  messages: Array<{
   id: string;
   role: string;
   content: string;
   createdAt: string;
   attachments?: Array<{ fileAssetId: string; filename: string; mimeType: string; size: number; isExisting?: boolean }>;
-}>): TimelineItem[] {
-  const items: TimelineItem[] = [];
+}>,
+  artifacts: Array<{
+    id: string;
+    type: string;
+    status: string;
+    title: string;
+    payload: unknown;
+    version: number;
+    createdAt: string;
+  }> = [],
+): TimelineItem[] {
+  const messageItems: TimelineItem[] = [];
   for (const msg of messages) {
     if (msg.role === "user") {
-      items.push({
+      messageItems.push({
         type: "user_message",
         id: msg.id,
         content: msg.content,
@@ -108,7 +120,7 @@ function mapDbMessagesToTimeline(messages: Array<{
       continue;
     }
     if (msg.role === "assistant") {
-      items.push({
+      messageItems.push({
         type: "assistant_message",
         id: msg.id,
         content: msg.content,
@@ -116,7 +128,27 @@ function mapDbMessagesToTimeline(messages: Array<{
       });
     }
   }
-  return items;
+  const artifactItems: TimelineItem[] = artifacts.map((artifact) => ({
+    type: "artifact",
+    id: `artifact-${artifact.id}`,
+    artifactId: artifact.id,
+    artifactType: artifact.type as ArtifactType,
+    status: artifact.status as ArtifactStatus,
+    title: artifact.title,
+    payload: artifact.payload ?? {},
+    version: artifact.version,
+    createdAt: artifact.createdAt,
+  }));
+  const getCreatedAt = (item: TimelineItem): string => {
+    if (item.type === "user_message" || item.type === "assistant_message" || item.type === "artifact" || item.type === "checkpoint" || item.type === "error") {
+      return item.createdAt;
+    }
+    return "";
+  };
+
+  return [...messageItems, ...artifactItems].sort(
+    (a, b) => new Date(getCreatedAt(a)).getTime() - new Date(getCreatedAt(b)).getTime(),
+  );
 }
 
 function slugifyFilename(name: string): string {
@@ -295,6 +327,7 @@ export default function AIView() {
   const [isTyping, setIsTyping] = useState(false);
   const [isCompressing, setIsCompressing] = useState(false);
   const [branchingConversationId, setBranchingConversationId] = useState<string | null>(null);
+  const [branchingMessageId, setBranchingMessageId] = useState<string | null>(null);
   const [pendingChoices, setPendingChoices] = useState<ChoiceOption[]>([]);
   const [prefill, setPrefill] = useState("");
 
@@ -472,7 +505,7 @@ export default function AIView() {
     try {
       const full = await getConversation(id);
       if (!full) return;
-      const mappedItems = mapDbMessagesToTimeline(full.messages);
+      const mappedItems = mapDbMessagesToTimeline(full.messages, full.artifacts);
       updateConversationTimeline(id, () => mappedItems);
       setConversations((prev) => prev.map((conv) =>
         conv.id === id
@@ -524,7 +557,7 @@ export default function AIView() {
 
   const handleBranchConversation = useCallback(async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (branchingConversationId) return;
+    if (branchingConversationId || branchingMessageId) return;
     if (isTyping) cancelStream();
     setBranchingConversationId(id);
     try {
@@ -532,7 +565,7 @@ export default function AIView() {
       const full = await getConversation(branched.id);
       if (!full) return;
 
-      const mappedItems = mapDbMessagesToTimeline(full.messages);
+      const mappedItems = mapDbMessagesToTimeline(full.messages, full.artifacts);
       const newConv: ChatConversation = {
         id: full.id,
         title: full.title ?? "New Chat",
@@ -552,7 +585,51 @@ export default function AIView() {
     } finally {
       setBranchingConversationId(null);
     }
-  }, [branchingConversationId, isTyping, cancelStream, sortConversationsByUpdatedAt, updateConversationTimeline]);
+  }, [branchingConversationId, branchingMessageId, isTyping, cancelStream, sortConversationsByUpdatedAt, updateConversationTimeline]);
+
+  const handleBranchFromMessage = useCallback(async (messageId: string, createdAt: string) => {
+    const sourceConversationId = activeConversationId;
+    if (!sourceConversationId || branchingConversationId || branchingMessageId) return;
+    if (isTyping) cancelStream();
+    setBranchingMessageId(messageId);
+    try {
+      const branched = await branchConversation({
+        conversationId: sourceConversationId,
+        upToMessageId: messageId,
+        upToCreatedAt: createdAt,
+      });
+      const full = await getConversation(branched.id);
+      if (!full) return;
+
+      const mappedItems = mapDbMessagesToTimeline(full.messages, full.artifacts);
+      const newConv: ChatConversation = {
+        id: full.id,
+        title: full.title ?? "New Chat",
+        projectId: full.projectId ?? undefined,
+        createdAt: full.createdAt,
+        updatedAt: full.updatedAt,
+      };
+      setConversations((prev) =>
+        sortConversationsByUpdatedAt([newConv, ...prev.filter((c) => c.id !== newConv.id)])
+      );
+      updateConversationTimeline(full.id, () => mappedItems);
+      setActiveConversationId(full.id);
+      setPendingChoices([]);
+      setPrefill("");
+    } catch (err) {
+      console.error("Failed to branch from message", err);
+    } finally {
+      setBranchingMessageId(null);
+    }
+  }, [
+    activeConversationId,
+    branchingConversationId,
+    branchingMessageId,
+    isTyping,
+    cancelStream,
+    sortConversationsByUpdatedAt,
+    updateConversationTimeline,
+  ]);
 
   const handleCompressHistory = useCallback(async () => {
     const sourceId = activeConversationId;
@@ -580,7 +657,7 @@ export default function AIView() {
         return;
       }
 
-      const mappedItems = mapDbMessagesToTimeline(full.messages);
+      const mappedItems = mapDbMessagesToTimeline(full.messages, full.artifacts);
       const newConv: ChatConversation = {
         id: full.id,
         title: full.title ?? "New Chat",
@@ -816,94 +893,93 @@ export default function AIView() {
         throw new Error("No response body");
       }
 
-      for await (const data of parseNDJSONStream(reader, controller.signal)) {
-        if (streamGenRef.current !== myGen) break;
-
-        if (data.type === "run_start") {
-          if (data.conversationId && convId !== data.conversationId) {
-            convId = data.conversationId;
-            setActiveConversationId(data.conversationId);
-            setTimelineByConversation((prev) => ({
-              ...prev,
-              [data.conversationId!]: prev[data.conversationId!] ?? [],
-            }));
+      await processAIStream({
+        reader,
+        signal: controller.signal,
+        shouldContinue: () => streamGenRef.current === myGen,
+        throwOnErrorChunk: true,
+        onChunk: (data) => {
+          if (data.type === "run_start") {
+            if (data.conversationId && convId !== data.conversationId) {
+              convId = data.conversationId;
+              setActiveConversationId(data.conversationId);
+              setTimelineByConversation((prev) => ({
+                ...prev,
+                [data.conversationId!]: prev[data.conversationId!] ?? [],
+              }));
+            }
+            return;
           }
-          continue;
-        }
 
-        if (data.type === "content" && data.content) {
-          clearProgress();
-          fullContent += data.content;
-          upsertAssistant(fullContent);
-          continue;
-        }
+          if (data.type === "content" && data.content) {
+            clearProgress();
+            fullContent += data.content;
+            upsertAssistant(fullContent);
+            return;
+          }
 
-        if (data.type === "tool_call" && data.toolCall && !fullContent) {
-          const toolName = data.toolCall.name;
-          const statusText = toolName === "search_pubmed"
-            ? "Searching PubMed..."
-            : toolName === "add_to_ledger"
-              ? "Adding studies to ledger..."
-              : `Running ${toolName}...`;
-          upsertProgress(statusText);
-          continue;
-        }
+          if (data.type === "tool_call" && data.toolCall && !fullContent) {
+            const toolName = data.toolCall.name;
+            const statusText = toolName === "search_pubmed"
+              ? "Searching PubMed..."
+              : toolName === "add_to_ledger"
+                ? "Adding studies to ledger..."
+                : `Running ${toolName}...`;
+            upsertProgress(statusText);
+            return;
+          }
 
-        if (data.type === "tool_result" && !fullContent) {
-          upsertProgress("Processing results...");
-          continue;
-        }
+          if (data.type === "tool_result" && !fullContent) {
+            upsertProgress("Processing results...");
+            return;
+          }
 
-        if (data.type === "artifact") {
-          updateConversationTimeline(convId, (items) => [
-            ...items,
-            {
-              type: "artifact",
-              id: `artifact-${data.artifactId ?? Date.now()}`,
-              artifactId: data.artifactId ?? "",
-              artifactType: (data.artifactType ?? "plan") as ArtifactType,
-              status: (data.artifactStatus ?? "proposed") as ArtifactStatus,
-              title: data.artifactTitle ?? "Artifact",
-              payload: data.artifactPayload ?? {},
-              version: data.artifactVersion ?? 1,
-              createdAt: new Date().toISOString(),
-            },
-          ]);
-          continue;
-        }
+          if (data.type === "artifact") {
+            updateConversationTimeline(convId, (items) => [
+              ...items,
+              {
+                type: "artifact",
+                id: `artifact-${data.artifactId ?? Date.now()}`,
+                artifactId: data.artifactId ?? "",
+                artifactType: (data.artifactType ?? "plan") as ArtifactType,
+                status: (data.artifactStatus ?? "proposed") as ArtifactStatus,
+                title: data.artifactTitle ?? "Artifact",
+                payload: data.artifactPayload ?? {},
+                version: data.artifactVersion ?? 1,
+                createdAt: new Date().toISOString(),
+              },
+            ]);
+            return;
+          }
 
-        if (data.type === "progress") {
-          upsertProgress(data.progressMessage ?? "Working...", data.progressCurrent, data.progressTotal);
-          continue;
-        }
+          if (data.type === "progress") {
+            upsertProgress(data.progressMessage ?? "Working...", data.progressCurrent, data.progressTotal);
+            return;
+          }
 
-        if (data.type === "checkpoint") {
-          updateConversationTimeline(convId, (items) => [
-            ...items,
-            {
-              type: "checkpoint",
-              id: `checkpoint-${Date.now()}`,
-              label: data.checkpointLabel ?? "Checkpoint",
-              createdAt: new Date().toISOString(),
-            },
-          ]);
-          continue;
-        }
+          if (data.type === "checkpoint") {
+            updateConversationTimeline(convId, (items) => [
+              ...items,
+              {
+                type: "checkpoint",
+                id: `checkpoint-${Date.now()}`,
+                label: data.checkpointLabel ?? "Checkpoint",
+                createdAt: new Date().toISOString(),
+              },
+            ]);
+            return;
+          }
 
-        if (data.type === "choices") {
-          setPendingChoices(data.choices ?? []);
-          continue;
-        }
+          if (data.type === "choices") {
+            setPendingChoices(data.choices ?? []);
+            return;
+          }
 
-        if (data.type === "plan_step_update" && data.planId && data.stepIndex !== undefined && data.stepStatus) {
-          updatePlanStepStatus(data.planId, data.stepIndex, data.stepStatus);
-          continue;
-        }
-
-        if (data.type === "error") {
-          throw new Error(data.error ?? "AI stream error");
-        }
-      }
+          if (data.type === "plan_step_update" && data.planId && data.stepIndex !== undefined && data.stepStatus) {
+            updatePlanStepStatus(data.planId, data.stepIndex, data.stepStatus);
+          }
+        },
+      });
     } catch (err) {
       if (!(err instanceof DOMException && err.name === "AbortError")) {
         const errorText = err instanceof Error ? err.message : "AI request failed";
@@ -949,6 +1025,288 @@ export default function AIView() {
     ensureConversation,
     updateConversationTimeline,
     sortConversationsByUpdatedAt,
+  ]);
+
+  const handleReviewArtifact = useCallback(async (
+    artifactId: string,
+    status: "accepted" | "rejected",
+    note?: string,
+    editedPayload?: Record<string, unknown>,
+  ) => {
+    const convId = activeConversationId;
+    if (!convId) return;
+
+    // Optimistic update
+    updateConversationTimeline(convId, (items) =>
+      items.map((item) => {
+        if (item.type !== "artifact" || item.artifactId !== artifactId) return item;
+        return {
+          ...item,
+          status: status as ArtifactStatus,
+          payload: status === "accepted" && editedPayload ? editedPayload : item.payload,
+        };
+      })
+    );
+
+    const result = await reviewArtifactAction(artifactId, status, note, editedPayload);
+    if (!result.success || !result.artifact) {
+      updateConversationTimeline(convId, (items) => ([
+        ...items.map((item) => {
+          if (item.type !== "artifact" || item.artifactId !== artifactId) return item;
+          return { ...item, status: "proposed" as ArtifactStatus };
+        }),
+        {
+          type: "error",
+          id: `artifact-review-error-${Date.now()}`,
+          message: result.success ? "Artifact review failed." : (result.error ?? "Artifact review failed."),
+          retryable: false,
+          createdAt: new Date().toISOString(),
+        },
+      ]));
+      return;
+    }
+
+    updateConversationTimeline(convId, (items) =>
+      items.map((item) => {
+        if (item.type !== "artifact" || item.artifactId !== artifactId) return item;
+        return {
+          ...item,
+          status: result.artifact.status as ArtifactStatus,
+          payload: (result.artifact.payload ?? item.payload) as unknown,
+        };
+      })
+    );
+  }, [activeConversationId, updateConversationTimeline]);
+
+  const handleExecutePlan = useCallback(async (artifactId: string, selectedIndexes: number[]) => {
+    if (selectedIndexes.length === 0 || isConversationLoading) return;
+    const convId = activeConversationId;
+    if (!convId) return;
+    if (isTyping) cancelStream();
+    setPendingChoices([]);
+
+    const setPlanStatus = (nextStatus: ArtifactStatus) => {
+      updateConversationTimeline(convId, (items) =>
+        items.map((item) =>
+          item.type === "artifact" && item.artifactId === artifactId
+            ? { ...item, status: nextStatus }
+            : item
+        )
+      );
+    };
+    const updatePlanStepStatus = (planId: string, stepIndex: number, stepStatus: string) => {
+      updateConversationTimeline(convId, (items) =>
+        items.map((item) => {
+          if (item.type !== "artifact" || item.artifactId !== planId) return item;
+          const payload = item.payload as { steps?: Array<Record<string, unknown>> };
+          if (!payload?.steps || !Array.isArray(payload.steps)) return item;
+          const updatedSteps = payload.steps.map((step, idx) =>
+            idx === stepIndex ? { ...step, status: stepStatus } : step
+          );
+          return { ...item, payload: { ...payload, steps: updatedSteps } };
+        })
+      );
+    };
+
+    setPlanStatus("running");
+    setIsTyping(true);
+    streamGenRef.current++;
+    const myGen = streamGenRef.current;
+
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
+    const aiMessageId = `m-${Date.now() + 1}`;
+    let aiMessageCreated = false;
+    let fullContent = "";
+    let progressItemId: string | null = null;
+    let runStatus: string | null = null;
+    let stopReason: string | null = null;
+    let errorMessage: string | null = null;
+
+    const upsertAssistant = (content: string) => {
+      updateConversationTimeline(convId, (items) => {
+        const idx = items.findIndex((it) => it.type === "assistant_message" && it.id === aiMessageId);
+        if (idx === -1) {
+          return [...items, { type: "assistant_message", id: aiMessageId, content, createdAt: new Date().toISOString() }];
+        }
+        const next = [...items];
+        const current = next[idx] as Extract<TimelineItem, { type: "assistant_message" }>;
+        next[idx] = { ...current, content };
+        return next;
+      });
+      aiMessageCreated = true;
+    };
+    const upsertProgress = (message: string, current?: number, total?: number) => {
+      updateConversationTimeline(convId, (items) => {
+        if (!progressItemId) {
+          progressItemId = `progress-${Date.now()}`;
+          return [...items, { type: "progress", id: progressItemId, message, current, total }];
+        }
+        const idx = items.findIndex((it) => it.type === "progress" && it.id === progressItemId);
+        if (idx === -1) {
+          return [...items, { type: "progress", id: progressItemId, message, current, total }];
+        }
+        const next = [...items];
+        const prevProgress = next[idx] as Extract<TimelineItem, { type: "progress" }>;
+        next[idx] = { ...prevProgress, message, current, total };
+        return next;
+      });
+    };
+    const clearProgress = () => {
+      if (!progressItemId) return;
+      const progressId = progressItemId;
+      progressItemId = null;
+      updateConversationTimeline(convId, (items) =>
+        items.filter((item) => !(item.type === "progress" && item.id === progressId))
+      );
+    };
+
+    try {
+      const response = await fetch("/api/ai/stream", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          planId: artifactId,
+          selectedSteps: selectedIndexes,
+          userMessage: "",
+          context: selectedProjectId ? "project" : "global",
+          options: {
+            conversationId: convId,
+            projectId: selectedProjectId ?? undefined,
+            agentMode: "general",
+            page: "ai",
+            additionalContext: selectedProjectId ? undefined : (workspaceContextText || undefined),
+          },
+        }),
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        throw new Error(`AI request failed: ${response.statusText}`);
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error("No response body");
+
+      const summary = await processAIStream({
+        reader,
+        signal: controller.signal,
+        shouldContinue: () => streamGenRef.current === myGen,
+        throwOnErrorChunk: true,
+        onChunk: (data) => {
+          if (data.type === "run_start") {
+            if (data.conversationId && convId !== data.conversationId) {
+              setActiveConversationId(data.conversationId);
+              setTimelineByConversation((prev) => ({
+                ...prev,
+                [data.conversationId!]: prev[data.conversationId!] ?? [],
+              }));
+            }
+            return;
+          }
+          if (data.type === "content" && data.content) {
+            clearProgress();
+            fullContent += data.content;
+            upsertAssistant(fullContent);
+            return;
+          }
+          if (data.type === "tool_call" && data.toolCall && !fullContent) {
+            upsertProgress(`Running ${data.toolCall.name}...`);
+            return;
+          }
+          if (data.type === "tool_result" && !fullContent) {
+            upsertProgress("Processing results...");
+            return;
+          }
+          if (data.type === "progress") {
+            upsertProgress(data.progressMessage ?? "Working...", data.progressCurrent, data.progressTotal);
+            return;
+          }
+          if (data.type === "plan_step_update" && data.planId && data.stepIndex !== undefined && data.stepStatus) {
+            updatePlanStepStatus(data.planId, data.stepIndex, data.stepStatus);
+            return;
+          }
+          if (data.type === "choices") {
+            setPendingChoices(data.choices ?? []);
+            return;
+          }
+          if (data.type === "artifact") {
+            updateConversationTimeline(convId, (items) => [
+              ...items,
+              {
+                type: "artifact",
+                id: `artifact-${data.artifactId ?? Date.now()}`,
+                artifactId: data.artifactId ?? "",
+                artifactType: (data.artifactType ?? "plan") as ArtifactType,
+                status: (data.artifactStatus ?? "proposed") as ArtifactStatus,
+                title: data.artifactTitle ?? "Artifact",
+                payload: data.artifactPayload ?? {},
+                version: data.artifactVersion ?? 1,
+                createdAt: new Date().toISOString(),
+              },
+            ]);
+          }
+        },
+      });
+      runStatus = summary.runStatus;
+      stopReason = summary.stopReason;
+      errorMessage = summary.errorMessage;
+    } catch (err) {
+      if (!(err instanceof DOMException && err.name === "AbortError")) {
+        errorMessage = err instanceof Error ? err.message : "Plan execution failed";
+      }
+    } finally {
+      clearProgress();
+      if (streamGenRef.current === myGen) {
+        setIsTyping(false);
+        setConversations((prev) =>
+          sortConversationsByUpdatedAt(
+            prev.map((conv) =>
+              conv.id === convId
+                ? { ...conv, updatedAt: new Date().toISOString() }
+                : conv
+            )
+          )
+        );
+      }
+      if (abortControllerRef.current === controller) {
+        abortControllerRef.current = null;
+      }
+    }
+
+    const didComplete = runStatus === "completed";
+    setPlanStatus(didComplete ? "accepted" : "proposed");
+
+    if (!didComplete && streamGenRef.current === myGen) {
+      const reason = errorMessage ?? (stopReason ? `Execution stopped: ${stopReason}` : "Execution did not complete.");
+      if (!aiMessageCreated) {
+        updateConversationTimeline(convId, (items) => [
+          ...items,
+          {
+            type: "error",
+            id: `plan-error-${Date.now()}`,
+            message: `Plan execution failed: ${reason}`,
+            retryable: false,
+            createdAt: new Date().toISOString(),
+          },
+        ]);
+      } else {
+        upsertAssistant(`${fullContent}\n\nPlan execution failed: ${reason}`);
+      }
+    }
+  }, [
+    activeConversationId,
+    isConversationLoading,
+    isTyping,
+    cancelStream,
+    selectedProjectId,
+    workspaceContextText,
+    sortConversationsByUpdatedAt,
+    updateConversationTimeline,
   ]);
 
   const handleSuggestionClick = useCallback((prompt: string) => {
@@ -1222,6 +1580,9 @@ export default function AIView() {
               }}
               onSuggestionClick={handleSuggestionClick}
               onRetryLastMessage={handleRetryLastMessage}
+              onBranchFromMessage={handleBranchFromMessage}
+              onReviewArtifact={handleReviewArtifact}
+              onExecutePlan={handleExecutePlan}
             />
 
             <div className={styles.chatInputContainer}>

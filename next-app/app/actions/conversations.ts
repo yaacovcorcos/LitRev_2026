@@ -55,6 +55,15 @@ export type ConversationSummary = {
 
 export type ConversationWithMessages = ConversationSummary & {
     messages: ConversationMessage[];
+    artifacts: {
+        id: string;
+        type: string;
+        status: string;
+        title: string;
+        payload: unknown;
+        version: number;
+        createdAt: string;
+    }[];
 };
 
 export type BranchedConversationResult = ConversationSummary & {
@@ -144,6 +153,20 @@ export async function getConversation(
 
     if (!conversation) return null;
 
+    const artifacts = await prisma.artifact.findMany({
+        where: { conversationId: conversation.id },
+        orderBy: { createdAt: "asc" },
+        select: {
+            id: true,
+            type: true,
+            status: true,
+            title: true,
+            payload: true,
+            version: true,
+            createdAt: true,
+        },
+    });
+
     return {
         id: conversation.id,
         title: conversation.title,
@@ -162,6 +185,15 @@ export async function getConversation(
                 ? (msg.attachments as unknown as MessageAttachment[])
                 : undefined,
             createdAt: msg.createdAt.toISOString(),
+        })),
+        artifacts: artifacts.map((artifact) => ({
+            id: artifact.id,
+            type: artifact.type,
+            status: artifact.status,
+            title: artifact.title,
+            payload: artifact.payload,
+            version: artifact.version,
+            createdAt: artifact.createdAt.toISOString(),
         })),
     };
 }
@@ -283,9 +315,10 @@ export async function deleteConversation(conversationId: string): Promise<void> 
 export async function branchConversation(params: {
     conversationId: string;
     upToMessageId?: string;
+    upToCreatedAt?: string;
     title?: string;
 }): Promise<BranchedConversationResult> {
-    const { conversationId, upToMessageId, title } = params;
+    const { conversationId, upToMessageId, upToCreatedAt, title } = params;
     const userContext = getCurrentUserContext();
 
     const source = await prisma.aIConversation.findFirst({
@@ -311,11 +344,31 @@ export async function branchConversation(params: {
     }
 
     let sourceMessages = source.messages;
-    if (upToMessageId) {
-        const cutoffIndex = sourceMessages.findIndex((m) => m.id === upToMessageId);
+    if (upToMessageId || upToCreatedAt) {
+        let cutoffIndex = -1;
+
+        if (upToMessageId) {
+            cutoffIndex = sourceMessages.findIndex((m) => m.id === upToMessageId);
+        }
+
+        // Fallback for optimistic client-only IDs: resolve by timestamp boundary.
+        if (cutoffIndex < 0 && upToCreatedAt) {
+            const cutoffMs = new Date(upToCreatedAt).getTime();
+            if (!Number.isNaN(cutoffMs)) {
+                for (let i = sourceMessages.length - 1; i >= 0; i--) {
+                    const msgMs = new Date(sourceMessages[i].createdAt).getTime();
+                    if (msgMs <= cutoffMs) {
+                        cutoffIndex = i;
+                        break;
+                    }
+                }
+            }
+        }
+
         if (cutoffIndex < 0) {
             throw new Error("Branch cutoff message not found");
         }
+
         sourceMessages = sourceMessages.slice(0, cutoffIndex + 1);
     }
 
@@ -350,7 +403,7 @@ export async function branchConversation(params: {
         }
 
         // When branching from the entire conversation, carry over compaction summary.
-        if (!upToMessageId && source.summary) {
+        if (!upToMessageId && !upToCreatedAt && source.summary) {
             await tx.conversationSummary.create({
                 data: {
                     conversationId: conversation.id,
@@ -441,6 +494,7 @@ export async function getOrCreateConversation(params: {
                     : undefined,
                 createdAt: msg.createdAt.toISOString(),
             })),
+            artifacts: [],
         };
     }
 
@@ -467,5 +521,6 @@ export async function getOrCreateConversation(params: {
         createdAt: newConv.createdAt.toISOString(),
         updatedAt: newConv.updatedAt.toISOString(),
         messages: [],
+        artifacts: [],
     };
 }

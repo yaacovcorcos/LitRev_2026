@@ -17,12 +17,14 @@ describe("validatePlan", () => {
         expect(validatePlan(plan)).toEqual(plan);
     });
 
-    it("accepts a step without toolName (generic step)", () => {
+    it("rejects a step without toolName (generic step)", () => {
+        const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
         const plan: PlanPayload = {
             steps: [{ label: "Process request", description: "Do something", status: "pending" }],
             estimatedActions: 1,
         };
-        expect(validatePlan(plan)).toEqual(plan);
+        expect(validatePlan(plan)).toBeNull();
+        spy.mockRestore();
     });
 
     it("returns null for an empty steps array", () => {
@@ -152,15 +154,13 @@ describe("generatePlan", () => {
         expect(plan!.steps.length).toBeGreaterThanOrEqual(2);
     });
 
-    it("returns a valid fallback plan for an unmatched message", async () => {
+    it("returns null for an unmatched message (non-actionable fallback)", async () => {
         const plan = await generatePlan("hello world", {
             projectId: "test",
             hasProtocol: false,
             studyCount: 0,
         });
-        expect(plan).not.toBeNull();
-        expect(plan!.steps.length).toBe(1);
-        expect(plan!.steps[0].toolName).toBeUndefined();
+        expect(plan).toBeNull();
     });
 
     it("all generated steps have pending status", async () => {

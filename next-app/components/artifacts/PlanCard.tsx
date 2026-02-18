@@ -7,8 +7,9 @@ import styles from "@/styles/artifacts.module.css";
 export type PlanCardProps = {
     payload: PlanPayload;
     status: ArtifactStatus;
-    onRun: (selectedIndexes: number[]) => void;
+    onRun?: (selectedIndexes: number[]) => void;
     onCancel: () => void;
+    canRun?: boolean;
 };
 
 const STEP_ICONS: Record<PlanStep["status"], string> = {
@@ -27,7 +28,7 @@ const STEP_STYLES: Record<PlanStep["status"], string> = {
     skipped: "",
 };
 
-export function PlanCard({ payload, status, onRun, onCancel }: PlanCardProps) {
+export function PlanCard({ payload, status, onRun, onCancel, canRun = true }: PlanCardProps) {
     const allIndexes = useMemo(
         () => new Set(payload.steps.map((_, i) => i)),
         [payload.steps.length],
@@ -48,7 +49,7 @@ export function PlanCard({ payload, status, onRun, onCancel }: PlanCardProps) {
     };
 
     const handleRun = () => {
-        if (selected.size === 0) return;
+        if (selected.size === 0 || !onRun || !canRun) return;
         onRun([...selected].sort((a, b) => a - b));
     };
 
@@ -106,14 +107,16 @@ export function PlanCard({ payload, status, onRun, onCancel }: PlanCardProps) {
                     <button type="button" className={styles.actionBtnGhost} onClick={onCancel}>
                         Cancel
                     </button>
-                    <button
-                        type="button"
-                        className={styles.actionBtn}
-                        onClick={handleRun}
-                        disabled={selected.size === 0}
-                    >
-                        Run{selected.size < payload.steps.length ? ` (${selected.size}/${payload.steps.length})` : ""}
-                    </button>
+                    {onRun && (
+                        <button
+                            type="button"
+                            className={styles.actionBtn}
+                            onClick={handleRun}
+                            disabled={selected.size === 0 || !canRun}
+                        >
+                            Run{selected.size < payload.steps.length ? ` (${selected.size}/${payload.steps.length})` : ""}
+                        </button>
+                    )}
                 </div>
             )}
             {isRunning && (

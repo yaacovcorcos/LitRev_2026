@@ -59,6 +59,7 @@ export function ProjectCopilot({
         // Conversation management
         conversations,
         currentConversationId,
+        isConversationLoading,
         selectConversation,
         newConversation,
         branchConversation,
@@ -97,6 +98,16 @@ export function ProjectCopilot({
         if (!params?.id) return;
         await createNoteAction(params.id, content, "conversation", currentConversationId ?? undefined, messageId);
     }, [params?.id, currentConversationId]);
+
+    const handleBranchFromMessage = useCallback(async (messageId: string, createdAt: string) => {
+        if (!currentConversationId || isBranching || isLoading) return;
+        setIsBranching(true);
+        try {
+            await branchConversation(currentConversationId, messageId, createdAt);
+        } finally {
+            setIsBranching(false);
+        }
+    }, [currentConversationId, isBranching, isLoading, branchConversation]);
 
     if (isCollapsed) {
         return (
@@ -405,12 +416,15 @@ export function ProjectCopilot({
                 <TimelineRenderer
                     messages={messages}
                     isLoading={isLoading}
+                    isConversationLoading={isConversationLoading}
+                    conversationId={currentConversationId ?? undefined}
                     onInsert={onInsert}
                     emptyState={emptyState}
                     onSuggestionClick={handleSuggestionClick}
                     onReviewArtifact={handleReviewArtifact}
                     onExecutePlan={executePlan}
                     onSaveToNotes={handleSaveToNotes}
+                    onBranchFromMessage={handleBranchFromMessage}
                 />
 
                 {/* Input area */}

@@ -867,8 +867,9 @@ class AIService {
             }
 
             // Determine final stop reason and run status
-            const finalStopReason = loop.stopReason ?? "natural";
-            const runStatus = finalStopReason === "cancelled" ? "cancelled" as const : "completed" as const;
+            let finalStopReason = loop.stopReason ?? "natural";
+            let runStatus: "completed" | "cancelled" | "failed" =
+                finalStopReason === "cancelled" ? "cancelled" : "completed";
 
             // ── Plan execution finalization ──
             if (executionMode && options?.planId && planData) {
@@ -889,13 +890,18 @@ class AIService {
                     return { ...s, status: queued?.finalStatus ?? s.status };
                 });
 
-                // Determine plan outcome
-                const anyFailed = stepQueue.some(s => s.finalStatus === "failed");
-                if (anyFailed || finalStopReason === "cancelled" || finalStopReason === "error") {
-                    const reason = finalStopReason === "cancelled" ? "Cancelled by user"
-                        : finalStopReason === "error" ? "Execution error"
-                        : "One or more steps failed";
+                // Determine plan outcome: every selected step must complete.
+                const allCompleted = stepQueue.length > 0 && stepQueue.every(s => s.finalStatus === "completed");
+                if (!allCompleted || finalStopReason === "cancelled" || finalStopReason === "error") {
+                    const reason = finalStopReason === "cancelled"
+                        ? "Cancelled by user"
+                        : finalStopReason === "error"
+                            ? "Execution error"
+                            : "Plan did not complete all selected steps";
                     await failPlanExecution(options.planId, finalSteps, reason);
+                    if (finalStopReason !== "cancelled") {
+                        runStatus = "failed";
+                    }
                 } else {
                     await completePlanExecution(options.planId, finalSteps);
                 }

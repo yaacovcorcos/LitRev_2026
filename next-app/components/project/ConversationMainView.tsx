@@ -21,6 +21,7 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
     const {
         messages,
         isLoading,
+        isConversationLoading,
         conversations,
         currentConversationId,
         selectConversation,
@@ -121,6 +122,16 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
     const handleSaveToNotes = useCallback(async (content: string, messageId: string) => {
         await createNoteAction(projectId, content, "conversation", currentConversationId ?? undefined, messageId);
     }, [projectId, currentConversationId]);
+
+    const handleBranchFromMessage = useCallback(async (messageId: string, createdAt: string) => {
+        if (!currentConversationId || isBranching || isLoading) return;
+        setIsBranching(true);
+        try {
+            await branchConversation(currentConversationId, messageId, createdAt);
+        } finally {
+            setIsBranching(false);
+        }
+    }, [currentConversationId, isBranching, isLoading, branchConversation]);
 
     const hasMessages = messages.length > 0;
 
@@ -271,6 +282,8 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
                         variant="page"
                         messages={messages}
                         isLoading={isLoading}
+                        isConversationLoading={isConversationLoading}
+                        conversationId={currentConversationId ?? undefined}
                         emptyState={{
                             icon: "chat",
                             title: "Start a conversation",
@@ -281,6 +294,7 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
                         onReviewArtifact={handleReviewArtifact}
                         onExecutePlan={executePlan}
                         onSaveToNotes={handleSaveToNotes}
+                        onBranchFromMessage={handleBranchFromMessage}
                     />
 
                     {/* Suggestion chips (shown when no messages) */}
