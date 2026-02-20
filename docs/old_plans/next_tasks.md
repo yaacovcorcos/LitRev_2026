@@ -1,3 +1,6 @@
+# [ARCHIVED]
+> **Note:** This file is obsolete. Active plans have moved to `docs/plans/README.md`.
+
 # Project Roadmap & Task Ideas
 
 This file tracks upcoming features and improvements for the LitRev platform.

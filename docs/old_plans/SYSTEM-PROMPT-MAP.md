@@ -1,3 +1,6 @@
+# [ARCHIVED]
+> **Note:** This file is obsolete. Active plans have moved to `docs/plans/README.md`.
+
 # LitRev 2026 — System Prompt Map
 
 > Complete reference for every AI system prompt in the app.

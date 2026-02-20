@@ -1,3 +1,6 @@
+# [ARCHIVED]
+> **Note:** This file is obsolete. Active plans have moved to `docs/plans/README.md`.
+
 Backend Implementation Plan (Phased)
 
 Note: Supabase is the chosen DB host for this plan.
@@ -30,6 +33,196 @@ Status (keep updated):
 - AI convergence Phase 4 done: `/ai` now adds command-center differentiation with global cross-project context injection, a global methodology-advisor scope instruction, and conversation export actions (`Export MD`, print-to-PDF) in the header.
 - AI convergence UI polish done: `/ai` progress rows are transient during streaming (no stale entries after response), header scope display is simplified to a single project/global selector, tone control was moved from the crowded header to the input zone, dead `/ai` CSS was removed, `TimelineRenderer.messages` is now optional, and PDF export uses structured printable HTML instead of raw markdown `<pre>` output.
 - AI convergence reliability hardening done: plan execution now uses authoritative `run_end` status on the client, `/ai` is fully wired for plan run/review actions, conversation reload hydrates artifacts so plan cards persist across switches, and server-side plan completion now requires all selected steps to complete (with non-executable steps rejected up front).
+- Memory foundation done: structured memory tables (`UserMemory`, `ProjectMemory`, `StudyMemory`), retrieval pipeline, context injection, and memory dashboard are implemented.
+- Memory proposal flow mostly done: `store_memory` tool + `memory_proposal` artifacts + `MemoryCard` review UI are implemented.
+- Project shell navigation now includes a first-class `Memory` tab (separate from `Notes`), and `/project/[id]/memory` correctly maps to activeTab=`memory`.
+- New active workstream opened: Phase 11 (memory correctness, retrieval quality, and lifecycle hardening).
+- New active workstream opened: Phase 12 (DraftVersion hidden backup history).
+
+------------------------------------------------------------------------
+Phase 11 — Memory Reliability & Retrieval Quality (active)
+------------------------------------------------------------------------
+
+Goal:
+- Make memory trustworthy first (no silent mismatch between UI and persisted memory), then improve retrieval quality and lifecycle management.
+
+Implementation boundaries:
+- Keep Postgres/Prisma as source of truth for memory.
+- Do not introduce `MEMORY.md` file-based canonical storage.
+- Do not add SQLite session storage (conversations already persist in DB).
+- Defer graph-memory infrastructure until retrieval metrics prove need.
+
+Phase 11.0 — Decision Gate (locked):
+- [x] Contradiction policy:
+  - Deterministic conflicts (same normalized key/category, different value) require user resolution by default.
+  - If the current user instruction explicitly updates/replaces prior memory, treat as intended replacement (still proposal-first).
+  - Semantic/low-confidence conflicts are flagged and routed to user review; never silent auto-overwrite.
+- [x] Relevance model:
+  - Use/relevance-based utility scoring only (no day/time decay rules).
+  - Ranking and maintenance use utility signals (retrieval/use/accept/reject/conflict + pinned).
+- [x] Vector architecture:
+  - Postgres + pgvector hybrid retrieval (no separate vector DB in this phase).
+
+Phase 11.1 — P0 correctness fixes (must ship first):
+- [x] Fix edited memory proposal acceptance path.
+  - `next-app/components/copilot/TimelineRenderer.tsx`
+  - Ensure `onEditAndAccept` passes edited payload to `reviewArtifactAction`.
+- [x] Harden `store_memory` dedupe with normalized comparisons.
+  - `next-app/lib/server/ai/tools/store-memory.ts`
+- [x] Add robust conversation-extraction idempotency.
+  - `next-app/lib/server/memory/conversation-extractor.ts`
+  - Add extraction ledger table/marker to avoid re-processing same conversation.
+- [x] Attach conversation linkage to memory retrieval logs.
+  - `next-app/lib/server/memory/memory-retrieval.ts`
+  - Pass context from `next-app/lib/server/ai/ai-service.ts`.
+- [x] Expand protocol→memory sync coverage beyond current subset.
+  - `next-app/lib/server/memory/protocol-sync.ts`
+- [x] Implement contradiction detection + user-resolution flow.
+  - Conflict detection in memory creation/proposal path.
+  - User review path before superseding archived/active conflicting memory.
+
+Phase 11.2 — P1 hybrid retrieval (Postgres-native):
+- P1 kickoff implemented:
+  - Identifier-aware lexical ranking boost landed in `next-app/lib/server/memory/memory-retrieval.ts`.
+  - Semantic layer is now implemented via `next-app/lib/server/memory/semantic-memory.ts` (pgvector query + OpenAI embeddings + idempotent embedding refresh).
+  - Weighted fusion is now active for non-deterministic layers (lexical 0.7 + semantic 0.3 + utility weighting).
+  - Scoped study-memory lexical search is now included when `projectId + query` are present.
+  - Study-memory retrieval now enforces project-scope filtering when `projectId` is available.
+  - Added `MemoryEmbedding` schema + migration with pgvector extension and HNSW cosine index.
+  - Coverage added in `next-app/lib/server/__tests__/memory-retrieval.test.ts`.
+- [x] Add lexical + semantic hybrid ranking on top of deterministic includes.
+- [x] Implement weighted fusion with importance/utility/confidence adjustments.
+- [x] Add pgvector embedding storage + cosine index + idempotent embedding refresh.
+- [x] Keep strict project/user scoping in every retrieval path.
+- [x] Add one-time embedding warmup/backfill script (`next-app/scripts/warmup-memory-embeddings.ts`).
+- [ ] Run Prisma migration in active environments and smoke-test semantic retrieval end-to-end.
+- [ ] Add scoping metadata sanitization guard in memory extraction/summarization paths (strip internal `SCOPING_REPORT` markup before extraction).
+
+Phase 11.3 — P2 lifecycle management:
+- [x] Add lifecycle metadata (`source`, `confidence`, `retrievalCount`, `usedInAnswerCount`, `acceptedCount`, `rejectedCount`, `contradictionCount`, `pinned`, optional `expiresAt`, optional contradiction linkage).
+- [ ] Expand lifecycle wiring beyond baseline counters (add robust `usedInAnswerCount` attribution + utility scoring pipeline) after scoping metadata sanitization lands.
+- [ ] Add scoping-specific memory policy: persist only explicit user decisions/preferences from scoping handoff; avoid transient landscape summaries as durable memory.
+- [ ] Add archival/maintenance job for low-utility or superseded memories.
+- [ ] Add explicit user controls for remember/forget/inspect memory.
+
+Phase 11.4 — P3 observability + evals:
+- [ ] Add memory quality metrics (acceptance rate by source, retrieval hit/use rate, stale-memory usage rate, conflict rate).
+- [ ] Add dashboard/reporting view for memory quality over time.
+
+Verification gates for each sub-phase:
+- `cd next-app && npx tsc --noEmit`
+- `cd next-app && npx vitest run`
+- Manual scenario checks for proposal, accept/reject/edit, cross-session recall, and project-scope isolation.
+
+------------------------------------------------------------------------
+Phase 12 — DraftVersion Hidden Backup History (active)
+------------------------------------------------------------------------
+
+Goal:
+- Keep full draft backup/version history in DB while keeping it invisible in Notes UI.
+- Preserve current Draft behavior (single latest `Draft` row) and add append-only version rows for recovery/audit.
+
+Decisions (locked):
+- Canonical history model name: `DraftVersion` (one immutable version per row).
+- Keep `Draft` table as current state snapshot for fast page loads.
+- Stop using `Note` rows as draft backup storage in `draft_diff` apply flow.
+- Version writes must be idempotent and skip duplicates for identical content.
+
+Phase 12.0 — Contract + scope:
+- [ ] Define `DraftVersion` record contract:
+  - `id`, `projectId`, `sectionKey`, `content`, `contentHash`, `source`, `sourceArtifactId`, `createdAt`.
+- [ ] Define source enum values for provenance:
+  - `manual_editor`, `artifact_accept`, `migration_backfill`, `restore`.
+- [ ] Define dedupe rule:
+  - no new version row when latest (`projectId`, `sectionKey`) has same `contentHash`.
+- [ ] Define retention rule (initial):
+  - keep all rows now; add optional pruning in follow-up.
+
+Phase 12.1 — Schema + migration:
+- [ ] Add Prisma model `DraftVersion` in `next-app/prisma/schema.prisma`.
+- [ ] Add indexes:
+  - `@@index([projectId, sectionKey, createdAt])`
+  - `@@index([projectId, createdAt])`
+  - `@@index([sourceArtifactId])`
+- [ ] Generate/apply migration and Prisma client from `next-app/`.
+- [ ] Add migration note in planB once applied in target environments.
+
+Phase 12.2 — Server write path:
+- [ ] Add server module `next-app/lib/server/draft-versions.ts`:
+  - create version
+  - fetch latest version per section
+  - dedupe by hash
+- [ ] Update `draft_diff` apply function:
+  - remove Note backup write in `next-app/lib/server/agent/artifacts.ts`
+  - write Draft current state + append `DraftVersion` in one transaction
+  - set `source=\"artifact_accept\"` and `sourceArtifactId=artifact.id`
+- [ ] Update manual draft editor save path:
+  - after debounced save, append `DraftVersion` only for changed section(s)
+  - set `source=\"manual_editor\"`
+- [ ] Ensure idempotency/race safety:
+  - read latest version hash inside tx and skip if unchanged.
+
+Phase 12.3 — Visibility + UX boundaries:
+- [ ] Keep Notes page behavior unchanged except it should no longer receive new draft backup rows.
+- [ ] Add internal-only server action to list `DraftVersion` rows (no UI exposure yet).
+- [ ] Add restore action:
+  - restore a selected version into `Draft.state`
+  - append a new `DraftVersion` row with `source=\"restore\"`.
+
+Phase 12.4 — Backfill + compatibility:
+- [ ] Optional one-time script:
+  - backfill `DraftVersion` from current `Draft.state` (one row per non-empty section, `source=\"migration_backfill\"`).
+- [ ] Do not delete existing Note backups in initial rollout.
+- [ ] Add follow-up task (optional) to hide/archive old draft-tagged notes if desired.
+
+Phase 12.5 — Tests + verification:
+- [ ] Unit tests for `draft-versions.ts`:
+  - insert, dedupe, latest-per-section.
+- [ ] Artifact apply tests:
+  - `draft_diff` accepted writes Draft + DraftVersion, does not create/update Note.
+- [ ] Draft editor integration test:
+  - manual edit creates version only on content change.
+- [ ] Regression tests:
+  - Notes CRUD/search unaffected.
+- [ ] Verification gates:
+  - `cd next-app && npx tsc --noEmit`
+  - `cd next-app && npx vitest run`
+
+Rollout strategy:
+- [ ] Ship schema + dual write behind feature flag if needed.
+- [ ] Enable in dev, validate restore + dedupe behavior.
+- [ ] Deploy migration + app together to avoid runtime mismatch.
+
+------------------------------------------------------------------------
+Phase 13 — Inline Numbered Citations & Bibliography (planned)
+------------------------------------------------------------------------
+
+**Status:** Design deferred — placeholder for future implementation
+
+**Goal:**
+Implement ledger-synchronized inline citations in the draft editor with automatic numbering and bibliography generation. This is a core systematic review requirement for proper evidence grounding.
+
+**Key components (identified, not yet specified):**
+- Schema: citation-to-study mapping table, citation order tracking
+- TipTap editor: custom citation node/mark rendering as clickable `[1]`
+- Ledger sync: automatic renumbering when studies are removed/reordered
+- AI drafting integration: agent produces ledger-backed citations (not hallucinated)
+- Bibliography generation: auto-generated reference list from cited studies
+- Export: citations and bibliography render correctly in DOCX/PDF output
+
+**Dependencies:**
+- Draft editor (Phase 7 ✓)
+- Ledger (Phase 6 ✓)
+- Export infrastructure (Phase 9 ✓)
+
+**Blocking for:**
+- PRD.md §4.3 "Ledger-Based Compose" and "Source Locators"
+- Proper systematic review compliance (PRISMA)
+- Academic export quality
+
+**Next step:** Full design spec to be written when Phases 11-12 are complete.
+
+------------------------------------------------------------------------
 
 Phase 0 — Decisions (1–2 hours)
 - Confirm Supabase project + connection details.

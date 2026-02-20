@@ -31,6 +31,10 @@ All run from `next-app/` except deploy:
 - All credentials (DATABASE_URL, DIRECT_URL, Supabase keys, OpenAI key) are in `secrets.local.md` at the repo root. If env values are missing or wrong, copy from there into `next-app/.env.local`. Do NOT invent or guess credentials.
 - **Supabase is used for file storage only** (PDF uploads/downloads), not as the database. Requires `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` in env. See `lib/server/files.ts` and `lib/server/pdf-extraction.ts`.
 - For tests, Prisma is mocked (see `vitest.setup.ts`). Real DB tests are gated behind `RUN_DB_TESTS=1`.
+- Scoping mode feature flags:
+  - `NEXT_PUBLIC_ENABLE_SCOPING_MODE` (client routing/mode picker)
+  - `ENABLE_SCOPING_MODE` (server normalization fallback)
+  - Current default when unset is enabled; set both to `0` to disable.
 
 ## Code Layout
 
@@ -42,7 +46,7 @@ All run from `next-app/` except deploy:
 
 ## Open-Source Code Adaptation
 
-planC references ~12 open-source codebases to steal patterns from. When working with any of them:
+The agentic architecture references several open-source codebases to steal patterns from (documented in the archived `planC` and current agentic plans). When working with any of them:
 - **Never copy-paste verbatim.** Rewrite every snippet to match our stack, naming, and file layout.
 - **Strip foreign abstractions.** Extract the idea, not their framework-specific implementation.
 - **Respect our design system.** All UI must use our CSS tokens (`tokens.css`), not imported styles.
@@ -50,8 +54,25 @@ planC references ~12 open-source codebases to steal patterns from. When working 
 - **Take only what's needed.** Don't port entire modules when we need one pattern.
 - **Test after every adaptation.** Must pass `npx tsc --noEmit` and `npx vitest run` before moving on.
 
-See the full adaptation rules in the "Reference Codebases" section of `planC`.
+## Plan Governance (Strictly Enforced)
 
-## Other
+We use a decentralized, domain-specific planning system located in `docs/plans/`.
+The canonical index mapping domains to their plan files is `docs/plans/README.md`.
 
-- When completing or changing any task in planB, update `planB` immediately so the plan stays current.
+**CRITICAL RULE: The "Prune and Migrate" Policy**
+When you complete a task in any `plan-*.md` file, you MUST NOT append a log or write a phase diary at the bottom. Instead, you must:
+1. Delete the task from the `Active Tasks` section.
+2. If the task changed the system's architecture, add a 1-2 sentence factual summary to the `Current Architecture` section.
+3. Move the task to the top of the `Recently Completed` section (if it exists).
+4. Prune the oldest items from `Recently Completed` to keep it capped at 5-10 items.
+
+**Memory Tracking:**
+`docs/plans/plan-memory.md` is the SINGLE source of truth for all memory implementation routing and tasks. No other plan file should contain memory tracking tasks.
+
+**Legacy Plans:**
+Files in `docs/old_plans/` (like `planB`, `planC`) are ARCHIVED. Do not read them for active tasks or write to them under any circumstances.
+
+**PRD vs. Domain Plans Policy (The "What vs. How" Rule)**
+- **Change `PRD.md` ONLY IF:** A decision changes **WHAT** the product does, **WHO** it is for, or **WHY** we are building it (e.g., changes to user-visible behavior, product scope, trust/safety rules, or success metrics).
+- **Change Domain Plans (`docs/plans/*.md`) ONLY IF:** A decision changes **HOW** the product is built (e.g., architectural choices, prompt structures, server actions).
+- If a PR changes the product contract, it must update `PRD.md`, add an entry to the `PRD.md` decision log, and update the linked plan. If it's implementation-only, update the `plan-*.md` file with NO changes to `PRD.md`.

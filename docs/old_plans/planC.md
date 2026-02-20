@@ -1,3 +1,6 @@
+# [ARCHIVED]
+> **Note:** This file is obsolete. Active plans have moved to `docs/plans/README.md`.
+
 Chat-First Agentic Research Workspace — Implementation Plan
 ================================================================================
 
@@ -33,7 +36,7 @@ Layout:
 Agent behavior:
 - Plan-before-act for multi-step workflows; direct response for questions
 - Autonomy: configurable spectrum (manual → assisted → autonomous)
-- Agent modes: protocol, search, screening, drafting, qa, general
+- Agent modes: protocol, scoping, search, screening, drafting, qa, general
 - Proactive suggestions based on project state
 
 Artifacts:
@@ -234,7 +237,7 @@ Add to next-app/prisma/schema.prisma:
     conversationId  String?
     userId          String?   // nullable until auth ships
     trigger         String    // "user_message" | "proactive" | "event"
-    agentMode       String    // "protocol" | "search" | "screening" | "drafting" | "qa" | "general"
+    agentMode       String    // "protocol" | "scoping" | "search" | "screening" | "drafting" | "qa" | "general"
     status          String    // "running" | "completed" | "failed" | "cancelled"
     model           String?
     costTokensIn    Int       @default(0)
@@ -358,7 +361,7 @@ Push + regenerate:
   ToolCall, ToolResult, Message type definitions.
 
 CREATE next-app/types/agent.ts:
-  - AgentMode = "protocol" | "search" | "screening" | "drafting" | "qa" | "general"
+  - AgentMode = "protocol" | "scoping" | "search" | "screening" | "drafting" | "qa" | "general"
   - RunStatus = "running" | "completed" | "failed" | "cancelled"
   - RunEventType = "message" | "tool_call" | "tool_result" | "artifact_proposed" | ...
   - AgentRunData, RunEventData (matching Prisma models for client use)
@@ -973,6 +976,7 @@ Status:
 - [x] 4.1 — Agent mode router
 - [x] 4.2 — Proactive suggestions
 - [x] 4.3 — Context-aware system prompts
+- [x] 4.4 — Scoping mode (pre-protocol exploration)
 
 ------------------------------------------------------------------------
 4.1 — Agent mode router
@@ -991,12 +995,17 @@ Status:
   prompts, and tool access. Same concept as our agent modes. Study how they
   configure per-agent tool sets and system prompts.
 
-CREATE next-app/lib/server/agent/router.ts:
+CREATE next-app/lib/agent/router.ts:
   routeToAgent(message, currentPage, projectState): AgentMode
 
   Rules (v1, rule-based):
     - currentPage is "protocol" OR message matches /pico|criteria|inclusion|exclusion|eligib/i
         → "protocol"
+    - message matches explicit scoping intent
+      /landscape|scoping|what.*out there|research question|exploratory/i
+        → "scoping"
+    - message matches /search|find stud|pubmed|look for|literature/i AND !projectState.hasProtocol
+        → "scoping"
     - message matches /search|find stud|pubmed|look for|literature/i
         → "search"
     - message matches /screen|triage|evaluat|review against|match criteria/i
@@ -1067,6 +1076,184 @@ Verify: agent routes correctly and produces appropriate inline artifacts.
   Manual test: send messages that trigger each mode, verify correct system prompt and tools.
   After Phase 4 is stable: set up promptfoo (ref #12) eval suite to regression-test
   router accuracy, artifact JSON payload validity, and citation completeness.
+
+------------------------------------------------------------------------
+4.4 — Scoping mode (pre-protocol exploration)
+------------------------------------------------------------------------
+
+Implementation progress:
+  - [x] Add "scoping" to AgentMode + AGENT_MODE_META
+  - [x] Add AGENT_MODE_CONFIG.scoping with mode-level tool allowlist
+  - [x] Add router disambiguation rules (explicit scoping intent + no-protocol search-intent)
+  - [x] Add AGENT_MODE_PROMPTS.scoping template
+  - [x] Expose "scoping" in input mode selector
+  - [x] Route with protocol-awareness in input mode detection (hasProtocol signal)
+  - [x] Contextual tool filtering: hide recommend_studies when no seedable identifiers exist
+  - [x] Add/extend tests: router + tool filtering
+  - [x] Low-autonomy batch search-pack approval behavior
+  - [x] Deterministic handoff action (selected question -> update_protocol proposal)
+  - [x] Strict machine-validated scoping response contract
+  - [x] Feature flag + staged rollout wiring
+  - [x] Add/extend tests: scoping contract + handoff selection parsing
+  - [x] Add explicit tests: contextual recommend_studies filtering + low-autonomy batch-plan trigger
+  - [x] Document scoping feature-flag defaults in env/docs
+  - [x] Add visible `scoping_report` artifact type + timeline card renderer
+
+Latest implementation notes:
+  - Feature flag wired via `NEXT_PUBLIC_ENABLE_SCOPING_MODE` (client) and `ENABLE_SCOPING_MODE` (server fallback):
+      - router falls back to `search` when scoping is disabled
+      - user mode picker hides `scoping` when disabled
+      - server normalizes inbound `agentMode="scoping"` -> `search` when disabled
+  - Low-autonomy scoping behavior:
+      - if scoping is selected and search autonomy is Suggest-level, server returns one `plan` artifact:
+        "Exploratory Search Pack" (single approval path) instead of triggering many per-search approvals
+  - Deterministic handoff:
+      - server parses latest scoping report from assistant history
+      - detects user selection (`question 2`, `option 2`, ordinal words, verbatim question text, or single-option "yes")
+      - injects/forces `update_protocol` call with `field=researchQuestion` and selected question text
+  - Strict response contract:
+      - scoping replies persist a machine-validated contract as hidden HTML comment:
+        `<!-- SCOPING_REPORT: {...} -->`
+      - schema-validated parser supports comment, XML block, and fenced fallback forms
+      - fallback contract is generated server-side when missing to guarantee parseability for handoff
+  - Additional hardening:
+      - direct unit tests for `getContextualToolDefinitions` seed/no-seed behavior
+      - direct unit tests for `shouldUseScopingBatchPlan` + `buildScopingSearchPackPlan`
+      - flag defaults documented in `next-app/.env.local.example` and `AGENTS.md`
+  - UX visibility:
+      - each completed scoping synthesis now emits a `scoping_report` artifact
+      - card is rendered inline in timeline with topic, searches, landscape, questions, and next step
+      - artifact auto-marked `auto_applied` (informational; no approval buttons)
+  - UX iteration:
+      - `ScopingReportCard` is now decision-first (recommended questions + direct action buttons)
+      - one-click actions from the card now send scoping prompts directly on both project conversation and `/ai`
+      - protocol handoff remains proposal-first (`update_protocol`) and requires explicit user approval
+      - scoping mode inference in input keeps scoping stable across turns unless protocol transition is explicit
+
+Purpose:
+  Add a dedicated "scoping" mode for users who do not yet have a well-formed
+  review question and need a landscape view of the literature before protocol
+  definition.
+
+Mode behavior (v1):
+  - Run 3-5 exploratory searches across different angles
+    (population/intervention/outcome/design/timeframe)
+  - Synthesize landscape: major themes, evidence density, notable gaps
+  - Propose 2-3 refined research questions with feasibility rationale
+  - End with a clear handoff question into Protocol mode
+
+Triggering:
+  - Keep protocol-intent rules highest priority.
+  - Route to scoping when:
+      - explicit scoping language ("what's out there", "landscape", "scoping", "exploratory")
+      - OR search-intent text while protocol is missing (!projectState.hasProtocol)
+  - Route to search (not scoping) for specific search queries when protocol exists.
+  - Allow explicit re-entry into scoping even after protocol exists.
+  - Router rule examples (next-app/lib/agent/router.ts):
+      if (/landscape|scoping|what.*out there|what.*been (?:done|studied)|feasib|is there enough|exploratory/i.test(msg)) return "scoping";
+      if (!projectState.hasProtocol && /search|find stud|pubmed|look for|literature/i.test(msg)) return "scoping";
+      // keep explicit search rule below this, so protocol-backed search requests stay in "search"
+
+Tool policy:
+  - Allowed by default:
+      - search_pubmed
+      - search_semantic_scholar
+  - Conditionally allowed:
+      - recommend_studies (only if seed studies exist in ledger)
+  - Allowed with strict policy:
+      - store_memory only for explicit durable user preferences/decisions
+        (not transient literature findings)
+  - Disallowed in v1:
+      - add_to_ledger, bulk_screening, exclude_study, update_study, update_note
+      - update_protocol except explicit handoff step after user choice
+  - Context requirement:
+      - ensure [LEDGER_CONTEXT] includes study count and seedable studies when present
+      - prompt rule: if ledger count is 0, skip recommend_studies entirely
+      - seed rule: recommend_studies may run only when at least 1 seed study has DOI/PMID/S2 id
+
+Autonomy UX:
+  - Respect existing preset/tool autonomy (no hardcoded mode-level L4).
+  - For low-autonomy presets, use one batch-approval step:
+      "I plan to run these N exploratory searches. Proceed?"
+    If approved, execute as one search pack and return one synthesis.
+  - Use existing PlanCard pattern for search pack approval:
+      [Run search pack] [Edit queries] [Cancel]
+
+Output contract (v1, structured response first):
+  - topic
+  - searchesRun[]: source, query, resultCount
+  - landscape:
+      evidenceDensity (sparse|moderate|dense)
+      majorThemes[]
+      methodologicalPatterns[]
+      timeRange { earliest?, latest? }
+      notableGaps[]
+  - recommendedQuestions[]:
+      question, rationale, feasibility (low|medium|high), novelty (low|medium|high)
+  - nextStep (explicit protocol handoff prompt)
+  Note: strict structured output remains canonical, and a dedicated
+  scoping_report artifact/card UI is now implemented for visibility.
+  - Synthesis implementation note:
+      - v1 synthesis is prompt-driven from accumulated search results
+      - no separate synthesize_literature tool in v1
+
+Handoff flow:
+  - Agent ends report with explicit prompt:
+      "I recommend Question X. Ready to build your protocol around it?"
+  - User confirms ("yes" / "use question X")
+  - Agent proposes update_protocol with researchQuestion set to selected question
+  - User reviews/accepts (no silent auto-save), then continue in protocol mode
+
+Prompt template stub (add to AGENT_MODE_PROMPTS.scoping):
+  - Workflow:
+      1. Run 3-5 diverse exploratory searches (PubMed + Semantic Scholar)
+      2. Synthesize landscape (themes, methods, gaps, evidence density)
+      3. Propose 2-3 refined research questions with rationale
+      4. Ask for question selection; on confirmation, propose update_protocol
+  - Search diversification guidance:
+      1. Broad query: core concepts + synonyms
+      2. Intervention/exposure-focused query
+      3. Outcome-focused query
+      4. Methodological query (study design filters)
+      5. Interdisciplinary query (Semantic Scholar)
+      - Avoid near-duplicate queries; each query should add new coverage
+  - Rules:
+      - Do not add studies to ledger in scoping mode
+      - Do not update protocol before explicit user selection
+      - Use recommend_studies only when seed studies exist
+      - Use store_memory only for durable preferences, not transient topic findings
+      - store_memory examples:
+          YES: "User prefers population-focused questions over intervention-focused"
+          YES: "User prioritizes novelty over feasibility"
+          NO: "This topic has ~40 RCTs"
+          NO: "User asked about mindfulness and pain"
+
+Validation and rollout:
+  - Add tests for routing priority and tool filtering in scoping mode
+  - Add conditional recommend_studies tests:
+      - Scenario A: ledger empty -> skip recommend_studies
+      - Scenario B: ledger has seeds -> recommend_studies may be used
+  - Add low-autonomy batch-approval test:
+      - one search-pack approval instead of per-query approvals
+  - Add eval set for synthesis quality and handoff clarity
+  - Feature-flag rollout:
+      ENABLE_SCOPING_MODE -> internal dogfood -> full rollout after eval pass
+  - Implementation checklist:
+      - next-app/types/agent.ts:
+          add "scoping" to AgentMode and AGENT_MODE_META
+      - next-app/lib/agent/router.ts:
+          add scoping trigger rules and AGENT_MODE_CONFIG.scoping
+      - next-app/lib/ai/prompts/copilot-prompts.ts:
+          add AGENT_MODE_PROMPTS.scoping template
+      - next-app/lib/server/ai/ai-service.ts:
+          enforce mode-filtered tool allowlist + low-autonomy search-pack behavior
+      - next-app/lib/server/__tests__/tool-filtering.test.ts:
+          add scoping tool allowlist assertions
+      - next-app/lib/agent/__tests__/router.test.ts:
+          add scoping trigger and disambiguation tests
+      - add/extend tests for conditional recommend_studies:
+          Scenario A: empty ledger -> skip
+          Scenario B: seedable studies present -> may use recommend_studies
 
 ================================================================================
 Phase 5 — Memory System (Deep Rework)
@@ -1205,7 +1392,7 @@ MODIFY next-app/lib/server/memory/memory-retrieval.ts:
 ------------------------------------------------------------------------
 
 CREATE next-app/components/MemoryDashboard.tsx:
-  Accessible from sidebar "Memory" link or from within Notes tab.
+  Accessible from project shell `Memory` tab and direct `/project/[id]/memory` route.
   Sections:
     - Project Memory: grouped by type (criteria, decisions, goals, exclusions)
     - Study Memory: per study, expandable
@@ -1436,7 +1623,7 @@ New files (~30):
   next-app/lib/server/agent/run.ts                   AgentRun lifecycle
   next-app/lib/server/agent/events.ts                RunEvent creation/querying
   next-app/lib/server/agent/artifacts.ts             Artifact CRUD + apply/undo
-  next-app/lib/server/agent/router.ts                Agent mode routing
+  next-app/lib/agent/router.ts                       Agent mode routing
   next-app/lib/server/agent/planner.ts               Plan-before-act logic
   next-app/lib/server/agent/autonomy.ts              Autonomy level resolution
   next-app/lib/server/notes.ts                       Notes service layer

@@ -1,3 +1,6 @@
+# [ARCHIVED]
+> **Note:** This file is obsolete. Active plans have moved to `docs/plans/README.md`.
+
 # UX/UI Roadmap
 
 Tracked ideas for chat interface and agent UX improvements.
