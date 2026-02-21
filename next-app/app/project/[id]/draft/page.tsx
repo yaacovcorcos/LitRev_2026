@@ -329,6 +329,10 @@ function DraftContent() {
         mode,
         activeSection,
         sectionOrder: order,
+        panels: {
+          ...loaded.panels,
+          ledgerCollapsed: true,
+        },
       };
     },
     [queryMode, querySection]
