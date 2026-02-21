@@ -468,3 +468,36 @@
 .confirmDelete:hover {
     background: #a82a1f;
 }
+
+@media (max-width: 900px) {
+    .header {
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .headerLeft {
+        flex-wrap: wrap;
+        width: 100%;
+    }
+
+    .searchWrapper {
+        width: 100%;
+    }
+
+    .body {
+        flex-direction: column;
+    }
+
+    .sidebar {
+        width: 100%;
+        min-width: unset;
+        max-height: 200px;
+        flex-shrink: 0;
+        border-right: none;
+        border-bottom: 1px solid var(--glass-border);
+    }
+
+    .editorArea {
+        padding: 16px;
+    }
+}

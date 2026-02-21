@@ -1,0 +1,137 @@
+import "server-only";
+
+import { safeParseJson } from "@/lib/server/ai/json-repair";
+import { ScopingReportSchema, type ScopingReportPayload } from "@/types/artifacts";
+
+export type ScopingReport = ScopingReportPayload;
+
+type MessageLike = { role: string; content: string };
+
+const COMMENT_RE = /<!--\s*SCOPING_REPORT:\s*([\s\S]*?)\s*-->/i;
+const XML_RE = /<scoping_report>\s*([\s\S]*?)\s*<\/scoping_report>/i;
+const FENCED_RE = /```(?:scoping_report|json)\s*([\s\S]*?)```/gi;
+const FENCED_SCOPING_STRIP_RE = /```scoping_report[\s\S]*?```/gi;
+
+function normalizeText(value: string): string {
+    return value.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function parseReportCandidate(raw: string): ScopingReport | null {
+    const parsed = safeParseJson(raw);
+    const validated = ScopingReportSchema.safeParse(parsed);
+    return validated.success ? validated.data : null;
+}
+
+export function extractScopingReportFromText(text: string): ScopingReport | null {
+    if (!text) return null;
+    const commentMatch = text.match(COMMENT_RE);
+    if (commentMatch?.[1]) {
+        const report = parseReportCandidate(commentMatch[1]);
+        if (report) return report;
+    }
+
+    const xmlMatch = text.match(XML_RE);
+    if (xmlMatch?.[1]) {
+        const report = parseReportCandidate(xmlMatch[1]);
+        if (report) return report;
+    }
+
+    const fenced = [...text.matchAll(FENCED_RE)].map((m) => m[1]).filter(Boolean);
+    for (const candidate of fenced) {
+        if (!candidate.includes("recommendedQuestions")) continue;
+        const report = parseReportCandidate(candidate);
+        if (report) return report;
+    }
+
+    return null;
+}
+
+export function extractLatestScopingReport(messages: MessageLike[]): ScopingReport | null {
+    for (let idx = messages.length - 1; idx >= 0; idx--) {
+        const msg = messages[idx];
+        if (msg?.role !== "assistant" || !msg.content) continue;
+        const report = extractScopingReportFromText(msg.content);
+        if (report) return report;
+    }
+    return null;
+}
+
+export function stripScopingReportMarkup(text: string): string {
+    return text
+        .replace(COMMENT_RE, "")
+        .replace(FENCED_SCOPING_STRIP_RE, "")
+        .replace(XML_RE, "")
+        .trim();
+}
+
+export function appendScopingReportComment(text: string, report: ScopingReport): string {
+    const clean = stripScopingReportMarkup(text);
+    const encoded = JSON.stringify(report);
+    return `${clean}\n\n<!-- SCOPING_REPORT: ${encoded} -->`;
+}
+
+export function buildFallbackScopingReport(topic: string): ScopingReport {
+    return {
+        topic: topic.trim() || "Literature scoping",
+        searchesRun: [],
+        landscape: {
+            majorThemes: [],
+            evidenceGaps: [],
+            methodologicalPatterns: [],
+            evidenceDensity: "moderate",
+        },
+        recommendedQuestions: [],
+        nextStep: "Choose a focused question to continue in protocol mode.",
+    };
+}
+
+function parseOrdinalSelection(message: string): number | null {
+    const explicit = message.match(/\b(?:question|option)\s*#?\s*(\d+)\b/i);
+    if (explicit) return Math.max(1, Number.parseInt(explicit[1], 10));
+
+    const ordinals: Record<string, number> = {
+        first: 1,
+        second: 2,
+        third: 3,
+        fourth: 4,
+        fifth: 5,
+    };
+    for (const [word, index] of Object.entries(ordinals)) {
+        if (new RegExp(`\\b${word}\\b`, "i").test(message)) return index;
+    }
+    return null;
+}
+
+function isAffirmative(message: string): boolean {
+    return /^(yes|yep|yeah|go ahead|proceed|lets do it|let's do it|sounds good|ok|okay)$/i.test(
+        message.trim()
+    );
+}
+
+export function detectScopingHandoffSelection(
+    message: string,
+    report: ScopingReport | null
+): { question: string; index: number } | null {
+    if (!report?.recommendedQuestions?.length) return null;
+
+    const byIndex = parseOrdinalSelection(message);
+    if (byIndex !== null) {
+        const selected = report.recommendedQuestions[byIndex - 1];
+        if (selected) return { question: selected.question, index: byIndex };
+    }
+
+    const normalizedMessage = normalizeText(message);
+    for (let i = 0; i < report.recommendedQuestions.length; i++) {
+        const candidate = report.recommendedQuestions[i];
+        const normalizedQuestion = normalizeText(candidate.question);
+        if (normalizedQuestion && normalizedMessage.includes(normalizedQuestion)) {
+            return { question: candidate.question, index: i + 1 };
+        }
+    }
+
+    if (report.recommendedQuestions.length === 1 && isAffirmative(message)) {
+        return { question: report.recommendedQuestions[0].question, index: 1 };
+    }
+
+    return null;
+}

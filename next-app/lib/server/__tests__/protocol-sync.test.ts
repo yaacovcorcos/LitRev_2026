@@ -113,6 +113,72 @@ describe("syncProtocolToMemory", () => {
         }));
     });
 
+    it("syncs research question, search strategy, and methodology fields when present", async () => {
+        const protocol = makeProtocol({
+            researchQuestion: "Do ACE inhibitors reduce blood pressure in adults with hypertension?",
+            searchStrategy: {
+                query: "(hypertension) AND (ACE inhibitor)",
+                databases: ["PubMed", "Embase"],
+            },
+            methodology: {
+                studyDesigns: ["Randomized Controlled Trials (RCTs)", "Prospective Cohort Studies"],
+                timeFrameStart: "2010",
+                timeFrameEnd: "2024",
+                qualityAssessmentTool: "GRADE",
+                qualityAssessmentNotes: "Assess risk of bias independently by two reviewers",
+            },
+        });
+
+        const result = await syncProtocolToMemory("proj-1", protocol);
+
+        expect(result.created).toBe(18); // 4 PICO + 2 inclusion + 2 exclusion + 10 additional fields
+        expect(mockCreate).toHaveBeenCalledWith(expect.objectContaining({
+            type: "goal",
+            statement: "Do ACE inhibitors reduce blood pressure in adults with hypertension?",
+            tags: ["protocol-sync:research-question"],
+        }));
+        expect(mockCreate).toHaveBeenCalledWith(expect.objectContaining({
+            type: "definition",
+            statement: "Search query: (hypertension) AND (ACE inhibitor)",
+            tags: ["protocol-sync:search-query"],
+        }));
+        expect(mockCreate).toHaveBeenCalledWith(expect.objectContaining({
+            type: "definition",
+            statement: "Database: PubMed",
+            tags: ["protocol-sync:database-0"],
+        }));
+        expect(mockCreate).toHaveBeenCalledWith(expect.objectContaining({
+            type: "definition",
+            statement: "Database: Embase",
+            tags: ["protocol-sync:database-1"],
+        }));
+        expect(mockCreate).toHaveBeenCalledWith(expect.objectContaining({
+            type: "definition",
+            statement: "Study design: Randomized Controlled Trials (RCTs)",
+            tags: ["protocol-sync:study-design-0"],
+        }));
+        expect(mockCreate).toHaveBeenCalledWith(expect.objectContaining({
+            type: "definition",
+            statement: "Time frame start: 2010",
+            tags: ["protocol-sync:timeframe-start"],
+        }));
+        expect(mockCreate).toHaveBeenCalledWith(expect.objectContaining({
+            type: "definition",
+            statement: "Time frame end: 2024",
+            tags: ["protocol-sync:timeframe-end"],
+        }));
+        expect(mockCreate).toHaveBeenCalledWith(expect.objectContaining({
+            type: "definition",
+            statement: "Quality assessment tool: GRADE",
+            tags: ["protocol-sync:quality-tool"],
+        }));
+        expect(mockCreate).toHaveBeenCalledWith(expect.objectContaining({
+            type: "definition",
+            statement: "Quality assessment notes: Assess risk of bias independently by two reviewers",
+            tags: ["protocol-sync:quality-notes"],
+        }));
+    });
+
     it("skips empty PICO fields", async () => {
         const protocol = makeProtocol({
             pico: { population: "Adults", intervention: "", comparison: "", outcome: "Mortality" },

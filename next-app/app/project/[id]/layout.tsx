@@ -198,22 +198,24 @@ function ProjectShellInner({ projectId, children }: ProjectShellInnerProps) {
                                 startResize(e.clientX);
                             }}
                         />
-                        <ProjectCopilot
-                            page={copilotPage as CopilotPage}
-                            studyId={copilotStudyId}
-                            contextDisplay={copilotContextDisplay}
-                            emptyState={{
-                                icon: "smart_toy",
-                                title: "AI Copilot",
-                                description: "Ask questions about your project or get help with your current task.",
-                                suggestions: [
-                                    { label: "Help", prompt: "What can you help me with?" },
-                                    { label: "Summarize", prompt: "Summarize my project progress" },
-                                ],
-                            }}
-                            inputPlaceholder={`Ask about ${copilotContextDisplay.toLowerCase()}...`}
-                            panelId="shell-copilot-panel"
-                        />
+                        <div className={styles.copilotPane}>
+                            <ProjectCopilot
+                                page={copilotPage as CopilotPage}
+                                studyId={copilotStudyId}
+                                contextDisplay={copilotContextDisplay}
+                                emptyState={{
+                                    icon: "smart_toy",
+                                    title: "AI Copilot",
+                                    description: "Ask questions about your project or get help with your current task.",
+                                    suggestions: [
+                                        { label: "Help", prompt: "What can you help me with?" },
+                                        { label: "Summarize", prompt: "Summarize my project progress" },
+                                    ],
+                                }}
+                                inputPlaceholder={`Ask about ${copilotContextDisplay.toLowerCase()}...`}
+                                panelId="shell-copilot-panel"
+                            />
+                        </div>
                     </div>
                 )}
             </AppShell>

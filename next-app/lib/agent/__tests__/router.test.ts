@@ -1,7 +1,23 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { routeToAgent, AGENT_MODE_CONFIG, type RouterPage } from "../router";
 
 describe("routeToAgent", () => {
+    const originalScopingFlag = process.env.NEXT_PUBLIC_ENABLE_SCOPING_MODE;
+    beforeEach(() => {
+        if (originalScopingFlag === undefined) {
+            delete process.env.NEXT_PUBLIC_ENABLE_SCOPING_MODE;
+        } else {
+            process.env.NEXT_PUBLIC_ENABLE_SCOPING_MODE = originalScopingFlag;
+        }
+    });
+    afterEach(() => {
+        if (originalScopingFlag === undefined) {
+            delete process.env.NEXT_PUBLIC_ENABLE_SCOPING_MODE;
+        } else {
+            process.env.NEXT_PUBLIC_ENABLE_SCOPING_MODE = originalScopingFlag;
+        }
+    });
+
     // Page-driven routing
     it("routes to protocol when on protocol page regardless of message", () => {
         expect(routeToAgent("hello world", "protocol")).toBe("protocol");
@@ -20,6 +36,28 @@ describe("routeToAgent", () => {
         expect(routeToAgent("Check eligibility requirements", "overview")).toBe("protocol");
     });
 
+    // Scoping keywords
+    it("routes to scoping for explicit exploratory language", () => {
+        expect(routeToAgent("What's out there on mindfulness and pain?", "overview")).toBe("scoping");
+        expect(routeToAgent("Help me scope the literature landscape", "overview")).toBe("scoping");
+        expect(routeToAgent("Is there enough evidence to do a review on this?", "overview")).toBe("scoping");
+    });
+
+    it("routes search intent to scoping when protocol is missing", () => {
+        expect(routeToAgent("Search PubMed for cardiac MRI studies", "overview", { hasProtocol: false })).toBe("scoping");
+        expect(routeToAgent("Find studies about diabetes", "overview", { hasProtocol: false })).toBe("scoping");
+    });
+
+    it("falls back to search when scoping mode feature flag is disabled", () => {
+        process.env.NEXT_PUBLIC_ENABLE_SCOPING_MODE = "0";
+        expect(routeToAgent("What's out there on mindfulness and pain?", "overview")).toBe("search");
+        expect(routeToAgent("Search PubMed for cardiac MRI studies", "overview", { hasProtocol: false })).toBe("search");
+    });
+
+    it("keeps explicit search intent in search mode when protocol exists", () => {
+        expect(routeToAgent("Search PubMed for cardiac MRI studies", "overview", { hasProtocol: true })).toBe("search");
+    });
+
     // Search keywords
     it("routes to search for search keywords", () => {
         expect(routeToAgent("Search PubMed for RCTs on statins", "overview")).toBe("search");
@@ -32,6 +70,11 @@ describe("routeToAgent", () => {
         expect(routeToAgent("Screen these studies against my protocol", "overview")).toBe("screening");
         expect(routeToAgent("Triage the remaining papers", "ledger")).toBe("screening");
         expect(routeToAgent("Evaluate this study for quality", "overview")).toBe("screening");
+    });
+
+    it("routes explicit delete-study intents to screening", () => {
+        expect(routeToAgent("Delete this study from the ledger", "overview")).toBe("screening");
+        expect(routeToAgent("Please remove study 123 from ledger", "overview")).toBe("screening");
     });
 
     // Drafting keywords
@@ -82,8 +125,8 @@ describe("routeToAgent", () => {
 });
 
 describe("AGENT_MODE_CONFIG", () => {
-    it("has config for all 6 modes", () => {
-        const modes = ["protocol", "search", "screening", "drafting", "qa", "general"];
+    it("has config for all 7 modes", () => {
+        const modes = ["protocol", "scoping", "search", "screening", "drafting", "qa", "general"];
         for (const mode of modes) {
             expect(AGENT_MODE_CONFIG[mode as keyof typeof AGENT_MODE_CONFIG]).toBeDefined();
         }

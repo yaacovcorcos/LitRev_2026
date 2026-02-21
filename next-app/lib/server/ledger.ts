@@ -1,13 +1,30 @@
 import "server-only";
 
+import { createHash } from "crypto";
 import { prisma } from "@/lib/server/prisma";
 import { assertProjectAccess } from "@/lib/server/access";
 import { mergeDetails } from "@/lib/utils/merge";
 import { normalizeStudy, type StudyInput } from "@/lib/utils/normalize";
 import type { ServiceScope } from "@/lib/server/scope";
-import type { Study } from "@/types/ledger";
+import type { Study, StudyDetails } from "@/types/ledger";
 
 export type { StudyInput };
+
+export type MentionedStudyInput = {
+  title?: string;
+  authors?: string;
+  year?: number;
+  doi?: string;
+  pmid?: string;
+  s2PaperId?: string;
+  sourceUrl?: string;
+};
+
+export type MentionedStudyUpsertResult = {
+  study: Study;
+  created: boolean;
+  matchedBy?: "doi" | "pmid" | "s2PaperId" | "titleYear";
+};
 
 function toStudy(record: {
   id: string;
@@ -27,6 +44,50 @@ function toStudy(record: {
     quality: record.quality as Study["quality"],
     details: (record.details as Study["details"]) ?? undefined,
   };
+}
+
+function normalizeDoi(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  const normalized = value
+    .trim()
+    .replace(/^https?:\/\/(?:dx\.)?doi\.org\//i, "")
+    .replace(/^doi\s*:\s*/i, "")
+    .replace(/[),.;:\]]+$/g, "")
+    .trim()
+    .toLowerCase();
+
+  if (!/^10\.\d{4,9}\/.+/.test(normalized)) return undefined;
+  return normalized;
+}
+
+function normalizePmid(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  const digits = value.replace(/\D/g, "");
+  if (digits.length < 6 || digits.length > 9) return undefined;
+  return digits;
+}
+
+function normalizeTitle(value: string | undefined): string {
+  return (value ?? "").trim();
+}
+
+function stableMentionStudyId(projectId: string, input: {
+  doi?: string;
+  pmid?: string;
+  s2PaperId?: string;
+  title: string;
+  year: number;
+}): string {
+  const key = input.doi
+    ? `doi:${input.doi}`
+    : input.pmid
+      ? `pmid:${input.pmid}`
+      : input.s2PaperId
+        ? `s2:${input.s2PaperId}`
+        : `title-year:${input.title.toLowerCase()}|${input.year}`;
+
+  const digest = createHash("sha1").update(`${projectId}|${key}`).digest("hex");
+  return `study_${digest.slice(0, 16)}`;
 }
 
 export async function listStudies(
@@ -219,4 +280,100 @@ export async function updateStudy(
   });
 
   return toStudy(updated);
+}
+
+export async function addMentionedStudy(
+  scopeInput: Partial<ServiceScope> | null | undefined,
+  projectId: string,
+  mention: MentionedStudyInput
+): Promise<MentionedStudyUpsertResult> {
+  await assertProjectAccess(scopeInput, projectId);
+
+  const doi = normalizeDoi(mention.doi);
+  const pmid = normalizePmid(mention.pmid);
+  const s2PaperId = mention.s2PaperId?.trim() || undefined;
+  const title = normalizeTitle(mention.title) || doi || (pmid ? `PMID ${pmid}` : undefined) || "Untitled Study";
+  const authors = normalizeTitle(mention.authors) || "Unknown";
+  const year = Number.isFinite(mention.year) ? Number(mention.year) : new Date().getFullYear();
+  const normalizedTitleForMatch = title.toLowerCase();
+
+  const existingStudies = await prisma.study.findMany({
+    where: { projectId },
+    select: {
+      id: true,
+      title: true,
+      authors: true,
+      year: true,
+      status: true,
+      quality: true,
+      details: true,
+    },
+  });
+
+  for (const row of existingStudies) {
+    const details = (row.details as Record<string, unknown> | null) ?? {};
+    const rowDoi = normalizeDoi(typeof details.doi === "string" ? details.doi : undefined);
+    const rowPmid = normalizePmid(typeof details.pmid === "string" ? details.pmid : undefined);
+    const rowS2 = typeof details.s2PaperId === "string" ? details.s2PaperId.trim() : undefined;
+
+    if (doi && rowDoi && doi === rowDoi) {
+      return { study: toStudy(row), created: false, matchedBy: "doi" };
+    }
+    if (pmid && rowPmid && pmid === rowPmid) {
+      return { study: toStudy(row), created: false, matchedBy: "pmid" };
+    }
+    if (s2PaperId && rowS2 && s2PaperId === rowS2) {
+      return { study: toStudy(row), created: false, matchedBy: "s2PaperId" };
+    }
+    if (row.title.trim().toLowerCase() === normalizedTitleForMatch && row.year === year) {
+      return { study: toStudy(row), created: false, matchedBy: "titleYear" };
+    }
+  }
+
+  const id = stableMentionStudyId(projectId, { doi, pmid, s2PaperId, title, year });
+  const details: StudyDetails = {
+    doi,
+    pmid,
+    s2PaperId,
+    sourceUrl: mention.sourceUrl?.trim() || undefined,
+    source: "copilot",
+    addedVia: "chat_mention",
+    addedAt: new Date().toISOString(),
+  };
+
+  try {
+    const created = await upsertStudy(scopeInput, projectId, {
+      id,
+      title,
+      authors,
+      year,
+      status: "pending",
+      quality: "-",
+      details,
+    });
+    return { study: created, created: true };
+  } catch (error) {
+    // Concurrency-safe retry path: if another request won the race on deterministic ID,
+    // treat this call as idempotent and return the persisted row.
+    const raced = await prisma.study.findFirst({
+      where: { id, projectId },
+      select: {
+        id: true,
+        title: true,
+        authors: true,
+        year: true,
+        status: true,
+        quality: true,
+        details: true,
+      },
+    });
+    if (raced) {
+      return {
+        study: toStudy(raced),
+        created: false,
+        matchedBy: doi ? "doi" : pmid ? "pmid" : s2PaperId ? "s2PaperId" : "titleYear",
+      };
+    }
+    throw error;
+  }
 }

@@ -12,7 +12,9 @@ import { AGENT_MODE_CONFIG } from "@/lib/agent/router";
 import { pubmedSearchTool } from "./pubmed-search";
 import { addToLedgerTool } from "./add-to-ledger";
 import { excludeStudyTool } from "./exclude-study";
+import { deleteStudyTool } from "./delete-study";
 import { updateProtocolTool } from "./update-protocol";
+import { updateCriteriaTool } from "./update-criteria";
 import { bulkScreeningTool } from "./bulk-screening";
 import { extractPdfTool } from "./extract-pdf";
 import { updateNoteTool } from "./update-note";
@@ -21,6 +23,8 @@ import { recommendStudiesTool } from "./recommend-studies";
 import { readStudyContentTool } from "./read-study-content";
 import { storeMemoryTool } from "./store-memory";
 import { updateStudyTool } from "./update-study";
+import { forgetMemoryTool } from "./forget-memory";
+import { inspectMemoryTool } from "./inspect-memory";
 
 /**
  * Interface for AI tools that can be called by the AI
@@ -59,13 +63,17 @@ export const AVAILABLE_TOOLS: AITool[] = [
     semanticScholarSearchTool,
     addToLedgerTool,
     excludeStudyTool,
+    deleteStudyTool,
     updateProtocolTool,
+    updateCriteriaTool,
     bulkScreeningTool,
     extractPdfTool,
     updateNoteTool,
     recommendStudiesTool,
     readStudyContentTool,
     storeMemoryTool,
+    forgetMemoryTool,
+    inspectMemoryTool,
     updateStudyTool,
 ];
 
@@ -75,6 +83,8 @@ const GLOBAL_SCOPE_TOOL_ALLOWLIST = new Set<string>([
     "search_pubmed",
     "search_semantic_scholar",
     "store_memory",
+    "forget_memory",
+    "inspect_memory",
 ]);
 
 export function isToolAllowedInScope(toolName: string, scope: ToolScope): boolean {

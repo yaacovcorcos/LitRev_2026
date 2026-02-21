@@ -1613,6 +1613,7 @@ export default function AIView() {
           <div className={styles.chatContent}>
             <TimelineRenderer
               variant="page"
+              projectId={selectedProjectId ?? undefined}
               items={activeTimeline}
               isLoading={isTyping}
               isConversationLoading={isConversationLoading}

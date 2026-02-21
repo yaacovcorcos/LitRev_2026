@@ -23,3 +23,12 @@ export * from "./protocol-sync";
 
 // Conversation Extraction
 export * from "./conversation-extractor";
+
+// Semantic Retrieval / Embeddings
+export * from "./semantic-memory";
+
+// Memory Health / Metrics
+export * from "./memory-health";
+
+// Utility-based lifecycle maintenance
+export * from "./maintenance";

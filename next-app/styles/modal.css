@@ -110,3 +110,18 @@
     gap: 12px;
     margin-top: 32px;
 }
+
+@media (max-width: 600px) {
+    .modal-glass {
+        padding: 20px;
+        border-radius: 16px;
+    }
+
+    .modal-header h2 {
+        font-size: 20px;
+    }
+
+    .modal-actions {
+        flex-direction: column;
+    }
+}

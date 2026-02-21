@@ -4,13 +4,13 @@
  * Now with structured memory integration and tool execution loop
  */
 
-import type { AIMessage, AIResponse, ChatOptions, AIStreamChunk, ConversationContext, ToolCall, ToolResult } from "@/types/ai";
+import type { AIMessage, AIResponse, ChatOptions, AIStreamChunk, ConversationContext, ToolCall, ToolDefinition, ToolResult } from "@/types/ai";
 import type { ArtifactType } from "@/types/artifacts";
 import type { AutonomyLevel, AgentMode } from "@/types/agent";
 import { BaseAIProvider, getOpenAIProvider, getAnthropicProvider, getXAIProvider, getGoogleProvider } from "./providers";
 import { getOrCreateConversation, addMessageToConversation, getConversationWithSummary, getConversationWithSummaryById, autoSummarizeIfNeeded } from "./memory";
 import { validateRateLimits, recordUsage } from "./rate-limiter";
-import { retrieveAndFormatMemories } from "@/lib/server/memory";
+import { retrieveMemories, formatMemoriesForContext, markMemoriesUsedInAnswer, type RetrievedMemory } from "@/lib/server/memory";
 import { AI_CONFIG, getProviderForModel, getContextBudget } from "@/lib/ai/config";
 import { compactToolResult, compactLoopMessages, buildCompactedHistory, estimateMessagesTokens, formatSummaryAsMessage } from "@/lib/agent/compaction";
 import { AVAILABLE_TOOLS, getToolDefinitions, executeTool, getTool, resolveAutonomyLevel, isToolAllowedInScope } from "./tools";
@@ -21,13 +21,16 @@ import { getAutonomyConfig, getToolAutonomyLevel } from "@/lib/server/agent/auto
 import { assembleSystemPrompt, buildProjectContext, buildProtocolContext, buildLedgerContext, buildAutonomyContext, buildLocationContext, buildStudyContext } from "@/lib/ai/prompts/copilot-prompts";
 import type { StudyContextData } from "@/lib/ai/prompts/copilot-prompts";
 import { AGENT_MODE_CONFIG } from "@/lib/agent/router";
+import { normalizeAgentMode } from "@/lib/agent/feature-flags";
 import { LoopState, type StopReason } from "@/lib/agent/loop-controller";
 import { startRunTrace, startLLMGeneration, startToolSpan, startContextSpan, flushTracing, NOOP_SPAN } from "./tracing";
 import type { TracingSpan } from "./tracing";
 import { withChoicesExtraction } from "./choices-extractor";
 import { sanitizeGeneratedConversationTitle, buildFallbackConversationTitle } from "./title-generator";
+import { appendScopingReportComment, buildFallbackScopingReport, detectScopingHandoffSelection, extractLatestScopingReport, extractScopingReportFromText, stripScopingReportMarkup } from "./scoping";
 import { prisma } from "@/lib/server/prisma";
 import type { ProtocolData } from "@/types/protocol";
+import type { PlanPayload, ScopingReportPayload } from "@/types/artifacts";
 
 class AIService {
     private providers = new Map<string, BaseAIProvider>();
@@ -528,7 +531,8 @@ class AIService {
         let projectId = options?.projectId;
         let studyId = options?.studyId;
         const userId = options?.userId || "single-user";
-        const agentMode: AgentMode = (options?.agentMode as AgentMode) || "general";
+        const requestedMode: AgentMode = (options?.agentMode as AgentMode) || "general";
+        const agentMode: AgentMode = normalizeAgentMode(requestedMode);
         const executionMode = !!(options?.planId && options?.selectedSteps?.length);
 
         // Get or create conversation (with summary for compaction)
@@ -585,18 +589,31 @@ class AIService {
         const historicalAssistantCount = conversation.messages.filter((m) => m.role === "assistant").length;
         const firstPersistedUserMessage = conversation.messages.find((m) => m.role === "user")?.content ?? "";
         let persistedUserContentForTitle = "";
+        const latestScopingReport = agentMode === "scoping"
+            ? extractLatestScopingReport(conversation.messages)
+            : null;
+        const handoffSelection = agentMode === "scoping"
+            ? detectScopingHandoffSelection(userMessage, latestScopingReport)
+            : null;
+        const effectiveHandoffSelection = handoffSelection && projectId ? handoffSelection : null;
+        let scopingSearchCallsThisRun = 0;
+        let protocolHandoffExecuted = false;
+        let scopingReportPayload: ScopingReportPayload | null = null;
+        let retrievedMemoriesForRun: RetrievedMemory[] = [];
 
         try {
             // Retrieve memories + project context in parallel
             const ctxSpan = startContextSpan(trace, "context-assembly");
-            const [memoriesContext, protocolRow, studyLedger, autonomyConfig, studyRow, projectRow] = await Promise.all([
-                retrieveAndFormatMemories({ userId, projectId, studyId, query: userMessage, agentMode, runId: run.id }),
+            const [retrievedMemories, protocolRow, studyLedger, autonomyConfig, studyRow, projectRow] = await Promise.all([
+                retrieveMemories({ userId, projectId, studyId, conversationId: conversation.id, query: userMessage, agentMode, runId: run.id }),
                 projectId ? prisma.protocol.findFirst({ where: { projectId }, select: { data: true } }) : null,
                 projectId ? computeStudyLedger(projectId) : null,
                 getAutonomyConfig(userId, projectId),
                 studyId ? prisma.study.findUnique({ where: { id: studyId }, select: { id: true, title: true, authors: true, year: true, quality: true, details: true } }) : null,
                 projectId ? prisma.project.findUnique({ where: { id: projectId }, select: { name: true } }) : null,
             ]);
+            retrievedMemoriesForRun = retrievedMemories;
+            const memoriesContext = formatMemoriesForContext(retrievedMemories);
             ctxSpan.update({ output: {
                 hasMemories: !!memoriesContext,
                 hasProtocol: !!protocolRow,
@@ -733,19 +750,72 @@ class AIService {
                 ...compactedHistory,
             ];
 
+            const toolScope = projectId && projectId !== "global" ? "project" as const : "global" as const;
+            const modeToolDefs = getContextualToolDefinitions({
+                agentMode,
+                scope: toolScope,
+                studyLedger,
+            });
+            const modeToolNames = modeToolDefs.map((t) => t.name);
+
+            if (effectiveHandoffSelection) {
+                historyMessages.push({
+                    id: "scoping-handoff",
+                    role: "system",
+                    content:
+                        `The user selected scoping question #${effectiveHandoffSelection.index}: "${effectiveHandoffSelection.question}". ` +
+                        `Immediately call update_protocol with field="researchQuestion", value exactly that question, ` +
+                        `and rationale="Selected by user during scoping handoff". ` +
+                        `Do not run search tools in this turn.`,
+                    createdAt: new Date().toISOString(),
+                });
+            }
+
+            if (!executionMode && shouldUseScopingBatchPlan({
+                agentMode,
+                userMessage,
+                autonomyConfig,
+            })) {
+                const planPayload = buildScopingSearchPackPlan({
+                    includeRecommendations: modeToolNames.includes("recommend_studies"),
+                });
+                const artifact = await createArtifact({
+                    runId: run.id,
+                    projectId: projectId || "global",
+                    conversationId: conversation.id,
+                    userId,
+                    type: "plan",
+                    title: "Exploratory Search Pack",
+                    payload: planPayload,
+                });
+
+                yield {
+                    type: "artifact",
+                    artifactId: artifact.id,
+                    artifactType: "plan",
+                    artifactStatus: "proposed",
+                    artifactTitle: "Exploratory Search Pack",
+                    artifactPayload: planPayload,
+                    artifactVersion: 1,
+                    conversationId: conversation.id,
+                };
+
+                await endRun(run.id, "completed");
+                yield { type: "run_end", runId: run.id, runStatus: "completed", conversationId: conversation.id };
+                return;
+            }
+
             // Check for multi-step workflow (plan-before-act)
             if (!options?.planId) {
                 const { detectMultiStepWorkflow, generatePlan } = await import("@/lib/server/agent/planner");
-                const toolScope = projectId && projectId !== "global" ? "project" as const : "global" as const;
-                const toolNames = getToolDefinitions(agentMode, toolScope).map((t) => t.name);
-                if (detectMultiStepWorkflow(userMessage, toolNames)) {
+                if (detectMultiStepWorkflow(userMessage, modeToolNames)) {
                     yield { type: "progress", progressMessage: "Creating a plan...", conversationId: conversation.id };
 
                     const planPayload = await generatePlan(userMessage, {
                         projectId: projectId || "global",
                         hasProtocol: false, // TODO: check project state
                         studyCount: 0,
-                    }, toolNames);
+                    }, modeToolNames);
 
                     // If plan validation failed, skip plan artifact and continue normal chat
                     if (planPayload) {
@@ -807,8 +877,7 @@ class AIService {
             }
 
             // Run the tool execution loop with autonomy
-            const toolScope = projectId && projectId !== "global" ? "project" as const : "global" as const;
-            const toolDefs = getToolDefinitions(agentMode, toolScope);
+            const toolDefs = modeToolDefs;
             const chatOptions: ChatOptions = {
                 ...options,
                 projectId: projectId || "global",
@@ -834,7 +903,7 @@ class AIService {
                     }
                 }
 
-                const collectedToolCalls: ToolCall[] = [];
+                let collectedToolCalls: ToolCall[] = [];
                 let contentSoFar = "";
 
                 const genSpan = startLLMGeneration(trace, `llm-call-${loop.iterations}`, {
@@ -847,7 +916,9 @@ class AIService {
                 for await (const chunk of withChoicesExtraction(rawStream)) {
                     if (chunk.type === "tool_call" && chunk.toolCall) {
                         collectedToolCalls.push(chunk.toolCall);
-                        yield { ...chunk, conversationId: conversation.id };
+                        if (!(effectiveHandoffSelection && !protocolHandoffExecuted)) {
+                            yield { ...chunk, conversationId: conversation.id };
+                        }
                     } else if (chunk.type === "content") {
                         contentSoFar += chunk.content || "";
                         fullContent += chunk.content || "";
@@ -871,6 +942,13 @@ class AIService {
                 }
                 genSpan.end();
 
+                if (effectiveHandoffSelection && !protocolHandoffExecuted) {
+                    const updateProtocolCall = collectedToolCalls.find((tc) => tc.name === "update_protocol");
+                    collectedToolCalls = [
+                        updateProtocolCall ?? buildScopingHandoffToolCall(effectiveHandoffSelection.question),
+                    ];
+                }
+
                 if (collectedToolCalls.length === 0) {
                     loop.markStopped("natural");
                     break;
@@ -892,6 +970,10 @@ class AIService {
 
                 // Execute all tool calls with autonomy
                 for (const tc of collectedToolCalls) {
+                    if (tc.name === "search_pubmed" || tc.name === "search_semantic_scholar" || tc.name === "recommend_studies") {
+                        scopingSearchCallsThisRun += 1;
+                    }
+
                     // Plan step tracking: match tool call to next unconsumed step
                     let matchedStep: StepQueueEntry | undefined;
                     if (executionMode) {
@@ -917,6 +999,10 @@ class AIService {
                     }
                     const toolResult = genResult.value;
 
+                    if (effectiveHandoffSelection && tc.name === "update_protocol" && !toolResult.error) {
+                        protocolHandoffExecuted = true;
+                    }
+
                     // Plan step tracking: mark completed or failed based on tool result
                     if (executionMode && matchedStep) {
                         const stepStatus = toolResult.error ? "failed" : "completed";
@@ -934,6 +1020,11 @@ class AIService {
                         createdAt: new Date().toISOString(),
                     };
                     currentMessages.push(toolMsg);
+                }
+
+                if (effectiveHandoffSelection && protocolHandoffExecuted) {
+                    loop.markStopped("natural");
+                    break;
                 }
             }
 
@@ -978,6 +1069,20 @@ class AIService {
                 }
             }
 
+            if (effectiveHandoffSelection && protocolHandoffExecuted && !fullContent.trim()) {
+                fullContent = `Proposed protocol handoff for Question ${effectiveHandoffSelection.index}: "${effectiveHandoffSelection.question}". Review and accept the protocol proposal card to continue in Protocol mode.`;
+                yield { type: "content", content: fullContent, conversationId: conversation.id };
+            }
+
+            const finalizedScoping = finalizeScopingResponse({
+                agentMode,
+                fullContent,
+                userMessage,
+                hasHandoffSelection: !!effectiveHandoffSelection,
+            });
+            fullContent = finalizedScoping.content;
+            scopingReportPayload = finalizedScoping.report;
+
             // Save final AI text response to conversation
             if (fullContent) {
                 await addMessageToConversation(conversation.id, {
@@ -985,6 +1090,7 @@ class AIService {
                     content: fullContent,
                 });
                 await emitEvent(run.id, "message", { content: fullContent }, { messageRole: "assistant" });
+                await markMemoriesUsedInAnswer(retrievedMemoriesForRun, fullContent).catch(() => {});
 
                 if (!executionMode) {
                     const generatedTitle = await this.maybeGenerateConversationTitle({
@@ -1005,6 +1111,40 @@ class AIService {
                 }
             }
 
+            if (scopingReportPayload) {
+                const topic = scopingReportPayload.topic?.trim();
+                const title = topic ? `Scoping: ${topic}`.slice(0, 120) : "Scoping Report";
+                const artifact = await createArtifact({
+                    runId: run.id,
+                    projectId: projectId || "global",
+                    conversationId: conversation.id,
+                    userId,
+                    type: "scoping_report",
+                    title,
+                    payload: scopingReportPayload,
+                });
+
+                const finalized = await prisma.artifact.update({
+                    where: { id: artifact.id },
+                    data: {
+                        status: "auto_applied",
+                        appliedAt: new Date(),
+                        applyId: artifact.id,
+                    },
+                });
+
+                yield {
+                    type: "artifact",
+                    artifactId: artifact.id,
+                    artifactType: "scoping_report",
+                    artifactStatus: finalized.status,
+                    artifactTitle: artifact.title,
+                    artifactPayload: artifact.payload,
+                    artifactVersion: artifact.version,
+                    conversationId: conversation.id,
+                };
+            }
+
             // Trigger auto-summarization if conversation is growing large.
             // Awaited so the function can block when near budget (Vercel cuts fire-and-forget).
             const totalMsgs = conversation.messages.length + 2; // +user +assistant
@@ -1022,6 +1162,8 @@ class AIService {
                 toolCalls: loop.totalToolCalls,
                 totalTokensIn,
                 totalTokensOut,
+                scopingSearchCalls: scopingSearchCallsThisRun,
+                protocolHandoffExecuted,
             }}).end();
             await flushTracing();
 
@@ -1108,12 +1250,14 @@ class AIService {
         const conversation = await getOrCreateConversation(context, projectId, studyId);
 
         // Retrieve relevant memories
-        const memoriesContext = await retrieveAndFormatMemories({
+        const memories = await retrieveMemories({
             userId,
             projectId,
             studyId,
+            conversationId: conversation.id,
             query: userMessage,
         });
+        const memoriesContext = formatMemoriesForContext(memories);
 
         // Add user message to conversation
         const userMsg = await addMessageToConversation(conversation.id, {
@@ -1145,6 +1289,7 @@ class AIService {
             role: "assistant",
             content: response.content,
         });
+        await markMemoriesUsedInAnswer(memories, response.content).catch(() => {});
 
         return {
             response,
@@ -1170,12 +1315,14 @@ class AIService {
         const conversation = await getOrCreateConversation(context, projectId, studyId);
 
         // Retrieve relevant memories
-        const memoriesContext = await retrieveAndFormatMemories({
+        const memories = await retrieveMemories({
             userId,
             projectId,
             studyId,
+            conversationId: conversation.id,
             query: userMessage,
         });
+        const memoriesContext = formatMemoriesForContext(memories);
 
         // Add user message to conversation
         const userMsg = await addMessageToConversation(conversation.id, {
@@ -1221,6 +1368,7 @@ class AIService {
                 role: "assistant",
                 content: fullContent,
             });
+            await markMemoriesUsedInAnswer(memories, fullContent).catch(() => {});
         }
     }
 }
@@ -1240,6 +1388,7 @@ function mapToolToArtifactType(toolName: string): ArtifactType | null {
         bulk_screening: "screening_batch",
         update_protocol: "protocol_suggestion",
         store_memory: "memory_proposal",
+        forget_memory: "memory_forget_proposal",
         update_note: "draft_diff",
         exclude_study: "study_proposal",
         update_study: "study_update",
@@ -1256,6 +1405,8 @@ function mapToolToArtifactTitle(toolName: string, args: Record<string, unknown>)
             return `Protocol: ${args.field ?? "update"}`;
         case "store_memory":
             return `Remember: ${args.key ?? "preference"}`;
+        case "forget_memory":
+            return `Forget: ${args.key ?? "memory"}`;
         case "update_note":
             return `Draft: ${args.section ?? "section"}`;
         case "exclude_study":
@@ -1273,6 +1424,7 @@ function mapToolToProgressMessage(toolName: string): string {
         search_pubmed: "Searching PubMed...",
         add_to_ledger: "Adding study to ledger...",
         exclude_study: "Excluding study...",
+        delete_study: "Deleting study from ledger...",
         extract_pdf: "Extracting PDF data...",
         bulk_screening: "Screening studies...",
         update_protocol: "Updating protocol...",
@@ -1282,6 +1434,8 @@ function mapToolToProgressMessage(toolName: string): string {
         create_note: "Creating note...",
         read_study_content: "Reading study PDF...",
         store_memory: "Saving to memory...",
+        forget_memory: "Preparing forget proposal...",
+        inspect_memory: "Inspecting memory...",
         search_semantic_scholar: "Searching Semantic Scholar...",
         recommend_studies: "Finding recommendations...",
     };
@@ -1299,10 +1453,20 @@ async function computeStudyLedger(projectId: string) {
         orderBy: { createdAt: "asc" },
     });
     let included = 0, excluded = 0, maybe = 0, unscreened = 0;
+    let hasRecommendationSeeds = false;
     const list: { id: string; title: string; authors: string; year: number; status: string; doi?: string; pmid?: string }[] = [];
     for (const s of studies) {
         const d = s.details as Record<string, unknown> | null;
         const status = (d?.triageDecision as string) || "unscreened";
+        if (!hasRecommendationSeeds) {
+            const doi = typeof d?.doi === "string" ? d.doi : "";
+            const pmid = typeof d?.pmid === "string" ? d.pmid : "";
+            const s2PaperId = typeof d?.s2PaperId === "string" ? d.s2PaperId : "";
+            const hasDoi = doi.trim().length > 0;
+            const hasPmid = pmid.trim().length > 0;
+            const hasS2 = s2PaperId.trim().length > 0;
+            hasRecommendationSeeds = hasDoi || hasPmid || hasS2;
+        }
         switch (status) {
             case "keep": included++; break;
             case "exclude": excluded++; break;
@@ -1322,7 +1486,123 @@ async function computeStudyLedger(projectId: string) {
         counts: { total: studies.length, included, excluded, maybe, unscreened },
         list,
         truncated: studies.length > MAX_STUDY_LIST,
+        hasRecommendationSeeds,
     };
+}
+
+export function getContextualToolDefinitions(params: {
+    agentMode: AgentMode;
+    scope: "project" | "global";
+    studyLedger: Awaited<ReturnType<typeof computeStudyLedger>> | null;
+}): ToolDefinition[] {
+    const { agentMode, scope, studyLedger } = params;
+    const defs = getToolDefinitions(agentMode, scope);
+    if (agentMode !== "scoping") return defs;
+    if (studyLedger?.hasRecommendationSeeds) return defs;
+    return defs.filter((d) => d.name !== "recommend_studies");
+}
+
+function buildScopingHandoffToolCall(question: string): ToolCall {
+    return {
+        id: `scoping-handoff-${Date.now()}`,
+        name: "update_protocol",
+        arguments: {
+            field: "researchQuestion",
+            value: question,
+            rationale: "Selected by user during scoping handoff",
+        },
+    };
+}
+
+export function shouldUseScopingBatchPlan(params: {
+    agentMode: AgentMode;
+    userMessage: string;
+    autonomyConfig: { preset: string; toolOverrides: unknown };
+}): boolean {
+    const { agentMode, userMessage, autonomyConfig } = params;
+    if (agentMode !== "scoping") return false;
+
+    const trimmed = userMessage.trim();
+    if (!trimmed) return false;
+    if (/^(yes|yep|yeah|go ahead|proceed|ok|okay|question\s*#?\d+|option\s*#?\d+)$/i.test(trimmed)) {
+        return false;
+    }
+
+    const normalizedAutonomy = {
+        preset: autonomyConfig.preset,
+        toolOverrides: (autonomyConfig.toolOverrides ?? {}) as Record<string, unknown>,
+    };
+
+    const pubmedLevel = resolveAutonomyLevel(
+        "search_pubmed",
+        getToolAutonomyLevel("search_pubmed", normalizedAutonomy),
+        getTool("search_pubmed")?.autonomy
+    );
+    const semanticLevel = resolveAutonomyLevel(
+        "search_semantic_scholar",
+        getToolAutonomyLevel("search_semantic_scholar", normalizedAutonomy),
+        getTool("search_semantic_scholar")?.autonomy
+    );
+
+    return pubmedLevel <= 1 || semanticLevel <= 1;
+}
+
+export function buildScopingSearchPackPlan(params: { includeRecommendations: boolean }): PlanPayload {
+    const steps: PlanPayload["steps"] = [
+        {
+            label: "Run broad landscape search in PubMed",
+            toolName: "search_pubmed",
+            description: "High-recall query with topic synonyms and broad framing",
+            status: "pending",
+        },
+        {
+            label: "Run interdisciplinary landscape search",
+            toolName: "search_semantic_scholar",
+            description: "Cross-domain query to capture non-biomedical coverage",
+            status: "pending",
+        },
+        {
+            label: "Run method-focused search",
+            toolName: "search_pubmed",
+            description: "Target trial/review design patterns and methodology signals",
+            status: "pending",
+        },
+        {
+            label: "Run gap-focused follow-up search",
+            toolName: "search_semantic_scholar",
+            description: "Probe likely evidence gaps by population/outcome variants",
+            status: "pending",
+        },
+    ];
+    if (params.includeRecommendations) {
+        steps.push({
+            label: "Expand with recommendation seeding",
+            toolName: "recommend_studies",
+            description: "Use identifier-backed seeds from the current ledger",
+            status: "pending",
+        });
+    }
+    return {
+        steps,
+        estimatedActions: steps.length,
+    };
+}
+
+export function finalizeScopingResponse(params: {
+    agentMode: AgentMode;
+    fullContent: string;
+    userMessage: string;
+    hasHandoffSelection: boolean;
+}): { content: string; report: ScopingReportPayload | null } {
+    const { agentMode, fullContent, userMessage, hasHandoffSelection } = params;
+    if (agentMode !== "scoping" || !fullContent.trim() || hasHandoffSelection) {
+        return { content: fullContent, report: null };
+    }
+
+    const extractedReport = extractScopingReportFromText(fullContent);
+    const report = extractedReport ?? buildFallbackScopingReport(userMessage);
+    const content = appendScopingReportComment(stripScopingReportMarkup(fullContent), report);
+    return { content, report };
 }
 
 // ── Loop stop reason messages ────────────────────────────────────────────────

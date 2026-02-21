@@ -572,6 +572,45 @@
   color: #c0392b;
 }
 
+.healthActionRow {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.healthNotice {
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--glass-border);
+  background: rgba(0, 0, 0, 0.02);
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.healthStatusRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.rolloutBadge {
+  padding: 4px 10px;
+  border-radius: 99px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.rolloutOk {
+  background: rgba(39, 174, 96, 0.12);
+  color: #1f7a46;
+}
+
+.rolloutWarn {
+  background: rgba(192, 57, 43, 0.12);
+  color: #c0392b;
+}
+
 /* Modal */
 .modalBackdrop {
   position: fixed;

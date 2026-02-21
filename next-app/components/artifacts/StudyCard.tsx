@@ -8,7 +8,7 @@ export type StudyCardProps = {
     payload: StudyProposalPayload;
     onKeep: () => void;
     onExclude: (reason: string) => void;
-    onMaybe: () => void;
+    onMaybe?: () => void;
 };
 
 const EXCLUDE_REASONS = [
@@ -119,9 +119,11 @@ export function StudyCard({ payload, onKeep, onExclude, onMaybe }: StudyCardProp
                     </button>
                 )}
 
-                <button type="button" className={styles.maybeBtn} onClick={onMaybe}>
-                    Maybe
-                </button>
+                {onMaybe && (
+                    <button type="button" className={styles.maybeBtn} onClick={onMaybe}>
+                        Maybe
+                    </button>
+                )}
 
                 <div className={styles.excludeDropdown} ref={excludeMenuRef}>
                     <button

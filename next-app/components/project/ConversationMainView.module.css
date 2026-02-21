@@ -105,6 +105,13 @@
     flex-direction: column;
 }
 
+@media (max-width: 480px) {
+    .dropdown {
+        width: calc(100vw - 32px);
+        max-width: 320px;
+    }
+}
+
 .dropdownSearch {
     padding: 8px;
     border-bottom: 1px solid var(--glass-border);

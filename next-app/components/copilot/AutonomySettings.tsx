@@ -17,13 +17,17 @@ const TOOLS: { name: string; label: string; icon: string; desc: string }[] = [
     { name: "extract_pdf", label: "Extract PDF", icon: "picture_as_pdf", desc: "Parse uploaded PDFs" },
     { name: "add_to_ledger", label: "Add to Ledger", icon: "playlist_add", desc: "Add studies" },
     { name: "exclude_study", label: "Exclude Study", icon: "remove_circle_outline", desc: "Remove studies" },
+    { name: "delete_study", label: "Delete Study", icon: "delete_forever", desc: "Permanently delete from ledger" },
     { name: "update_study", label: "Update Study", icon: "edit", desc: "Edit study metadata" },
     { name: "update_note", label: "Update Note", icon: "edit_note", desc: "Write draft sections" },
     { name: "update_protocol", label: "Update Protocol", icon: "rule", desc: "Change protocol fields" },
+    { name: "update_criteria", label: "Update Criteria", icon: "checklist", desc: "Add/remove protocol criteria" },
     { name: "bulk_screening", label: "Batch Screening", icon: "filter_list", desc: "Screen multiple" },
     { name: "retrieve_memory", label: "Retrieve Memory", icon: "psychology", desc: "Access past context" },
     { name: "create_note", label: "Create Note", icon: "note_add", desc: "Save observations" },
     { name: "store_memory", label: "Store Memory", icon: "bookmark", desc: "Remember preferences" },
+    { name: "forget_memory", label: "Forget Memory", icon: "bookmark_remove", desc: "Archive remembered items" },
+    { name: "inspect_memory", label: "Inspect Memory", icon: "manage_search", desc: "List remembered items" },
 ];
 
 const PRESETS: { key: Exclude<AutonomyPreset, "custom">; label: string }[] = [

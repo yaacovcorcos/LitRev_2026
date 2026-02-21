@@ -47,6 +47,21 @@
     padding: 8px 0;
 }
 
+@media (max-width: 600px) {
+    .overlay {
+        padding-top: 8vh;
+    }
+
+    .palette {
+        margin: 0 12px;
+        width: calc(100% - 24px);
+    }
+
+    .list {
+        max-height: 240px;
+    }
+}
+
 .empty {
     padding: 24px 20px;
     text-align: center;

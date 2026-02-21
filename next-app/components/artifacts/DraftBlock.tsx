@@ -9,8 +9,8 @@ import markdownStyles from "@/styles/markdown.module.css";
 export type DraftBlockProps = {
     payload: DraftDiffPayload;
     onAccept: () => void;
-    onEdit: () => void;
-    onRedo: () => void;
+    onEdit?: () => void;
+    onRedo?: () => void;
 };
 
 export function DraftBlock({ payload, onAccept, onEdit, onRedo }: DraftBlockProps) {
@@ -35,12 +35,16 @@ export function DraftBlock({ payload, onAccept, onEdit, onRedo }: DraftBlockProp
                 {payload.wordCount} word{payload.wordCount !== 1 ? "s" : ""}
             </div>
             <div className={styles.cardActions}>
-                <button type="button" className={styles.actionBtnGhost} onClick={onRedo}>
-                    Redo
-                </button>
-                <button type="button" className={styles.actionBtnGhost} onClick={onEdit}>
-                    Edit first
-                </button>
+                {onRedo ? (
+                    <button type="button" className={styles.actionBtnGhost} onClick={onRedo}>
+                        Redo
+                    </button>
+                ) : null}
+                {onEdit ? (
+                    <button type="button" className={styles.actionBtnGhost} onClick={onEdit}>
+                        Edit first
+                    </button>
+                ) : null}
                 <button type="button" className={styles.actionBtn} onClick={onAccept}>
                     Accept &amp; save to draft
                 </button>

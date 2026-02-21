@@ -10,6 +10,7 @@ import type { AIMessage } from "@/types/ai";
 import type { MemoryProposalPayload } from "@/types/artifacts";
 import { createProjectMemory, type ProjectMemoryCategory } from "./project-memory";
 import { createArtifact } from "@/lib/server/agent/artifacts";
+import { stripScopingReportMarkup } from "@/lib/server/ai/scoping";
 
 const VALID_CATEGORIES: ProjectMemoryCategory[] = [
     "inclusion", "exclusion", "outcome", "population", "intervention", "comparison",
@@ -38,6 +39,42 @@ Rules:
 - If nothing is extractable, return empty arrays
 - Keep statements concise (under 250 characters)`;
 
+const SCOPING_TRANSIENT_PATTERNS = [
+    /\bliterature landscape\b/i,
+    /\bevidence density\b/i,
+    /\bevidence gaps?\b/i,
+    /\bmajor themes?\b/i,
+    /\bmethodological patterns?\b/i,
+    /\bsearch(?:es)? (?:run|results?|yielded)\b/i,
+    /\brecommended questions?\b/i,
+];
+
+function buildExtractionPrompt(isScopingConversation: boolean): string {
+    if (!isScopingConversation) return EXTRACTION_PROMPT;
+    return `${EXTRACTION_PROMPT}
+
+Scoping-specific guardrails:
+- Only extract explicit user decisions or explicit user preferences.
+- Do NOT extract transient scoping summaries (themes, gaps, evidence density, search counts, or recommended question lists) as memories.
+- If unsure whether something is an explicit user decision, leave it out.`;
+}
+
+function isScopingConversation(messages: { role: string; content: string }[]): boolean {
+    return messages.some((m) =>
+        m.role === "assistant" &&
+        (/SCOPING_REPORT/i.test(m.content) || /<scoping_report>/i.test(m.content)),
+    );
+}
+
+function sanitizeTranscriptContent(role: string, content: string): string {
+    if (role === "assistant") return stripScopingReportMarkup(content).trim();
+    return content.trim();
+}
+
+function looksTransientScopingSummary(statement: string): boolean {
+    return SCOPING_TRANSIENT_PATTERNS.some((pattern) => pattern.test(statement));
+}
+
 export interface ExtractionResult {
     decisions: { statement: string; category?: string; rationale?: string }[];
     preferences: { key: string; value: string; rationale?: string }[];
@@ -56,12 +93,26 @@ export async function extractMemoriesFromConversation(
     runId?: string,
     userId?: string,
 ): Promise<ExtractionResult> {
+    const extractionMarker = `conversation-extractor:${conversationId}`;
+
     // 0. Dedup guard — skip if this conversation was already extracted
-    const alreadyExtracted = await prisma.projectMemory.findFirst({
-        where: { projectId, tags: { has: `conversation:${conversationId}` } },
-        select: { id: true },
-    });
-    if (alreadyExtracted) return EMPTY_RESULT;
+    // ProjectMemory catches decision/fact extraction; artifact marker catches preference-only extraction.
+    const [existingMemoryExtraction, existingPreferenceExtraction] = await Promise.all([
+        prisma.projectMemory.findFirst({
+            where: { projectId, tags: { has: `conversation:${conversationId}` } },
+            select: { id: true },
+        }),
+        prisma.artifact.findFirst({
+            where: {
+                projectId,
+                conversationId,
+                type: "memory_proposal",
+                sourceEventId: extractionMarker,
+            },
+            select: { id: true },
+        }),
+    ]);
+    if (existingMemoryExtraction || existingPreferenceExtraction) return EMPTY_RESULT;
 
     // 1. Fetch conversation messages
     const messages = await prisma.aIMessage.findMany({
@@ -70,10 +121,16 @@ export async function extractMemoriesFromConversation(
         select: { role: true, content: true },
     });
 
-    // Filter to substantive messages
-    const substantive = messages.filter(
-        (m) => (m.role === "user" || m.role === "assistant") && m.content.trim().length > 20,
-    );
+    const scopingContext = isScopingConversation(messages);
+
+    // Filter to substantive messages and sanitize hidden markup before extraction.
+    const substantive = messages
+        .filter((m) => m.role === "user" || m.role === "assistant")
+        .map((m) => ({
+            role: m.role,
+            content: sanitizeTranscriptContent(m.role, m.content),
+        }))
+        .filter((m) => m.content.length > 20);
 
     if (substantive.length < 5) return EMPTY_RESULT;
 
@@ -86,7 +143,7 @@ export async function extractMemoriesFromConversation(
     // 3. Call AI
     const aiService = getAIService();
     const aiMessages: AIMessage[] = [
-        { id: "sys", role: "system", content: EXTRACTION_PROMPT, createdAt: new Date().toISOString() },
+        { id: "sys", role: "system", content: buildExtractionPrompt(scopingContext), createdAt: new Date().toISOString() },
         { id: "user", role: "user", content: `Conversation:\n\n${transcript}`, createdAt: new Date().toISOString() },
     ];
 
@@ -109,6 +166,10 @@ export async function extractMemoriesFromConversation(
         if (!Array.isArray(parsed.decisions)) parsed.decisions = [];
         if (!Array.isArray(parsed.preferences)) parsed.preferences = [];
         if (!Array.isArray(parsed.facts)) parsed.facts = [];
+        if (scopingContext) {
+            parsed.facts = [];
+            parsed.decisions = parsed.decisions.filter((d) => d.statement && !looksTransientScopingSummary(d.statement));
+        }
     } catch {
         return EMPTY_RESULT;
     }
@@ -161,6 +222,9 @@ export async function extractMemoriesFromConversation(
                 type: "memory_proposal",
                 title: `Preference: ${pref.key}`,
                 payload,
+                // Use sourceEventId as an extraction ledger marker so preference-only
+                // extractions are still idempotent (no ProjectMemory side-effects).
+                sourceEventId: extractionMarker,
             });
         }
     }

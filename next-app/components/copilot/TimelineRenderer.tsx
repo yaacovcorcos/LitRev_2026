@@ -26,6 +26,7 @@ import type {
     ScopingReportPayload,
     DraftDiffPayload,
     MemoryProposalPayload,
+    MemoryForgetProposalPayload,
 } from "@/types/artifacts";
 import { messagesToTimeline } from "./StreamReducer";
 import { ArtifactWrapper } from "../artifacts/ArtifactWrapper";
@@ -37,8 +38,12 @@ import { ProtocolEditCard } from "../artifacts/ProtocolEditCard";
 import { CriteriaCard } from "../artifacts/CriteriaCard";
 import { DraftBlock } from "../artifacts/DraftBlock";
 import { MemoryCard } from "../artifacts/MemoryCard";
+import { MemoryForgetCard } from "../artifacts/MemoryForgetCard";
 import { ScopingReportCard } from "../artifacts/ScopingReportCard";
 import { StreamingProgress } from "./StreamingProgress";
+import { addMentionedStudyAction } from "@/app/actions/ledger";
+import { extractMentionedStudies, stripMentionedStudiesMarkup, type MentionedStudy } from "@/lib/ai/mentioned-studies";
+import { isChatStudyMentionsEnabled } from "@/lib/agent/feature-flags";
 import styles from "../ProjectCopilot.module.css";
 import artifactStyles from "@/styles/artifacts.module.css";
 import markdownStyles from "@/styles/markdown.module.css";
@@ -79,6 +84,7 @@ const ARTIFACT_JUMP_MAP: Record<string, { tab: string; label: string }> = {
     protocol_suggestion: { tab: "protocol", label: "View in Protocol" },
     scoping_report: { tab: "protocol", label: "Refine Protocol" },
     draft_diff: { tab: "draft", label: "View in Draft" },
+    memory_forget_proposal: { tab: "memory", label: "View in Memory" },
 };
 
 function getJumpToProps(artifactType: string, projectId: string): { jumpToLink?: string; jumpToLabel?: string } {
@@ -104,6 +110,7 @@ const SCOPING_REPORT_COMMENT_RE = /<!--\s*SCOPING_REPORT:\s*[\s\S]*?-->/gi;
 const SCOPING_REPORT_COMMENT_OPEN_RE = /<!--\s*SCOPING_REPORT:\s*[\s\S]*$/i;
 const SCOPING_REPORT_XML_RE = /<scoping_report>\s*[\s\S]*?<\/scoping_report>/gi;
 const SCOPING_REPORT_XML_OPEN_RE = /<scoping_report>[\s\S]*$/i;
+const CHAT_STUDY_MENTIONS_ENABLED = isChatStudyMentionsEnabled();
 
 function stripInternalAssistantMetadata(content: string): string {
     return content
@@ -111,6 +118,11 @@ function stripInternalAssistantMetadata(content: string): string {
         .replace(SCOPING_REPORT_XML_RE, "")
         .replace(SCOPING_REPORT_COMMENT_OPEN_RE, "")
         .replace(SCOPING_REPORT_XML_OPEN_RE, "")
+        .trimEnd();
+}
+
+function stripAssistantMarkupForDisplay(content: string): string {
+    return stripMentionedStudiesMarkup(stripInternalAssistantMetadata(content))
         .trimEnd();
 }
 
@@ -164,6 +176,7 @@ const UserMessageRow = memo(function UserMessageRow({ item, onBranchFromMessage 
 
 type AssistantMessageRowProps = {
     item: Extract<TimelineItem, { type: "assistant_message" }>;
+    projectId?: string;
     /** True only when this specific message is actively receiving streaming tokens */
     isStreaming: boolean;
     /** True when this message was just saved to Notes (shows confirmation) */
@@ -176,8 +189,28 @@ type AssistantMessageRowProps = {
     onBranchFromMessage?: (messageId: string, createdAt: string) => void | Promise<void>;
 };
 
+type MentionAddState = "idle" | "adding" | "added" | "exists" | "error";
+
+function mentionDisplayTitle(study: MentionedStudy): string {
+    if (study.title) return study.title;
+    if (study.doi) return study.doi;
+    if (study.pmid) return `PMID ${study.pmid}`;
+    if (study.s2PaperId) return `S2 ${study.s2PaperId}`;
+    return "Untitled study";
+}
+
+function mentionButtonText(state: MentionAddState, hasProject: boolean): string {
+    if (!hasProject) return "Select project";
+    if (state === "adding") return "Adding...";
+    if (state === "added") return "Added";
+    if (state === "exists") return "Already in ledger";
+    if (state === "error") return "Retry";
+    return "Add to ledger";
+}
+
 const AssistantMessageRow = memo(function AssistantMessageRow({
     item,
+    projectId,
     isStreaming,
     isSaved,
     isSaving,
@@ -186,7 +219,37 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
     onInsert,
     onBranchFromMessage,
 }: AssistantMessageRowProps) {
-    const displayContent = stripInternalAssistantMetadata(item.content);
+    const displayContent = stripAssistantMarkupForDisplay(item.content);
+    const mentions = useMemo(
+        () => (CHAT_STUDY_MENTIONS_ENABLED ? extractMentionedStudies(item.content) : []),
+        [item.content]
+    );
+    const [mentionStates, setMentionStates] = useState<Record<string, MentionAddState>>({});
+
+    const addMentionedStudy = useCallback(async (study: MentionedStudy) => {
+        if (!projectId) return;
+        setMentionStates((prev) => ({ ...prev, [study.key]: "adding" }));
+
+        try {
+            const result = await addMentionedStudyAction(projectId, {
+                title: study.title,
+                authors: study.authors,
+                year: study.year,
+                doi: study.doi,
+                pmid: study.pmid,
+                s2PaperId: study.s2PaperId,
+                sourceUrl: study.sourceUrl,
+            });
+            setMentionStates((prev) => ({
+                ...prev,
+                [study.key]: result.created ? "added" : "exists",
+            }));
+            window.dispatchEvent(new CustomEvent("litrev:ledger-changed", { detail: { projectId } }));
+        } catch (error) {
+            console.error("[mentions] add to ledger failed", error);
+            setMentionStates((prev) => ({ ...prev, [study.key]: "error" }));
+        }
+    }, [projectId]);
 
     return (
         <div className={`${styles.chatMsg} ${styles.chatMsgAi}`} role="article" aria-label="Assistant">
@@ -201,6 +264,43 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
                         )}
                     </div>
                 </div>
+                {mentions.length > 0 && (
+                    <div className={styles.mentionedStudiesRow}>
+                        <span className={styles.mentionedStudiesLabel}>Mentioned studies</span>
+                        <div className={styles.mentionedStudiesList}>
+                            {mentions.map((study) => {
+                                const state = mentionStates[study.key] ?? "idle";
+                                const disabled = !projectId || state === "adding" || state === "added" || state === "exists";
+                                return (
+                                    <div key={study.key} className={styles.mentionedStudyChip}>
+                                        <span className={styles.mentionedStudyTitle}>{mentionDisplayTitle(study)}</span>
+                                        {study.year && <span className={styles.mentionedStudyYear}>{study.year}</span>}
+                                        {study.sourceUrl && (
+                                            <a
+                                                href={study.sourceUrl}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                className={styles.mentionedStudyLink}
+                                                aria-label={`Open source for ${mentionDisplayTitle(study)}`}
+                                                title="Open source"
+                                            >
+                                                <span className="material-icons-round">open_in_new</span>
+                                            </a>
+                                        )}
+                                        <button
+                                            type="button"
+                                            className={styles.mentionedStudyAddBtn}
+                                            onClick={() => { void addMentionedStudy(study); }}
+                                            disabled={disabled}
+                                        >
+                                            {mentionButtonText(state, !!projectId)}
+                                        </button>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                )}
                 <div className={`${styles.chatActions} ${isSaved || isSaving ? styles.chatActionsVisible : ""}`}>
                     <button
                         type="button"
@@ -288,6 +388,8 @@ export type TimelineRendererProps = {
     isConversationLoading?: boolean;
     /** Stable ID of the active conversation — used to reset scroll state on switch */
     conversationId?: string;
+    /** Optional explicit project ID override (used in /ai route where useParams has no project id). */
+    projectId?: string;
 };
 
 export function TimelineRenderer({
@@ -306,11 +408,13 @@ export function TimelineRenderer({
     variant = "panel",
     isConversationLoading = false,
     conversationId,
+    projectId: projectIdProp,
 }: TimelineRendererProps) {
     const params = useParams();
-    const projectId = params && typeof params === "object" && "id" in params
+    const routeProjectId = params && typeof params === "object" && "id" in params
         ? String((params as Record<string, unknown>).id)
         : undefined;
+    const projectId = projectIdProp ?? routeProjectId;
     const listRef = useRef<HTMLDivElement | null>(null);
     const followRef = useRef(true);      // strict follow-mode: only toggled by explicit user intent
     const rafRef = useRef<number | null>(null);
@@ -513,7 +617,6 @@ export function TimelineRenderer({
                             payload={studyPayload}
                             onKeep={() => handleReview(isExclusion ? "rejected" : "accepted")}
                             onExclude={(reason) => handleReview(isExclusion ? "accepted" : "rejected", reason)}
-                            onMaybe={() => {/* Phase 2: handle maybe status */}}
                         />
                     </ArtifactWrapper>
                 );
@@ -545,8 +648,6 @@ export function TimelineRenderer({
                         <ScreeningBatch
                             payload={item.payload as ScreeningBatchPayload}
                             onAcceptAll={() => handleReview("accepted")}
-                            onReviewEach={() => {/* Phase 2: expand to individual cards */}}
-                            onOverride={() => {/* Phase 2: handle overrides */}}
                         />
                     </ArtifactWrapper>
                 );
@@ -560,6 +661,14 @@ export function TimelineRenderer({
                     >
                         <ProtocolEditCard
                             payload={protocolPayload}
+                            onDiscuss={() => {
+                                const prompt = `Let's discuss the proposed protocol update to "${protocolPayload?.field ?? "this field"}" before applying it.`;
+                                if (onActionPrompt) {
+                                    onActionPrompt(prompt, "protocol");
+                                    return;
+                                }
+                                onSuggestionClick(prompt);
+                            }}
                             onAccept={(editedValue) => {
                                 if (editedValue !== undefined) {
                                     handleReview("accepted", undefined, {
@@ -606,9 +715,15 @@ export function TimelineRenderer({
                     >
                         <CriteriaCard
                             payload={item.payload as CriteriaCardPayload}
+                            onDiscuss={() => {
+                                const prompt = "Let's discuss these criteria before saving them to the protocol.";
+                                if (onActionPrompt) {
+                                    onActionPrompt(prompt, "protocol");
+                                    return;
+                                }
+                                onSuggestionClick(prompt);
+                            }}
                             onSave={() => handleReview("accepted")}
-                            onAdd={() => {}}
-                            onRemove={() => {}}
                         />
                     </ArtifactWrapper>
                 );
@@ -622,8 +737,6 @@ export function TimelineRenderer({
                         <DraftBlock
                             payload={item.payload as DraftDiffPayload}
                             onAccept={() => handleReview("accepted")}
-                            onEdit={() => {/* Phase 2: navigate to draft editor */}}
-                            onRedo={() => {/* Phase 2: re-send message */}}
                         />
                     </ArtifactWrapper>
                 );
@@ -639,6 +752,20 @@ export function TimelineRenderer({
                             onAccept={() => handleReview("accepted")}
                             onReject={() => handleReview("rejected")}
                             onEditAndAccept={(edited) => handleReview("accepted", undefined, edited as unknown as Record<string, unknown>)}
+                        />
+                    </ArtifactWrapper>
+                );
+
+            case "memory_forget_proposal":
+                return (
+                    <ArtifactWrapper
+                        {...wrapperProps}
+                        summaryText={`Forget: ${(item.payload as MemoryForgetProposalPayload)?.key ?? "memory"}`}
+                    >
+                        <MemoryForgetCard
+                            payload={item.payload as MemoryForgetProposalPayload}
+                            onAccept={() => handleReview("accepted")}
+                            onReject={() => handleReview("rejected")}
                         />
                     </ArtifactWrapper>
                 );
@@ -680,6 +807,7 @@ export function TimelineRenderer({
                     <AssistantMessageRow
                         key={item.id}
                         item={item}
+                        projectId={projectId}
                         isStreaming={isStreaming && index === lastAssistantIndex}
                         isSaved={savedNoteId === item.id}
                         isSaving={savingNoteId === item.id}

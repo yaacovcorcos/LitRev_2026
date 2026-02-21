@@ -24,13 +24,17 @@ import {
   getUserMemoriesAction,
   getProjectStudyMemoriesAction,
   getPRISMAStatsAction,
+  getMemoryRetrievalStatsAction,
+  getMemoryQualityMetricsAction,
+  getSemanticRolloutStatusAction,
+  runMemoryMaintenanceAction,
 } from "@/app/actions/memory";
 import type { PRISMAStats } from "@/lib/server/memory/prisma-stats";
 import styles from "./memory.module.css";
 
 // ── Types for tab data ───────────────────────────────────────────────────────
 
-type TabId = "project" | "study" | "preferences" | "prisma";
+type TabId = "project" | "study" | "preferences" | "prisma" | "health";
 
 interface UserPref {
   id: string;
@@ -51,6 +55,44 @@ interface StudyMemoryItem {
   confidence?: number | null;
   tags: string[];
   study: { id: string; title: string; authors?: string | null; year?: number | null };
+}
+
+interface RetrievalStats {
+  totalRetrievals: number;
+  totalMemoriesRetrieved: number;
+  avgMemoriesPerRetrieval: number;
+  memoryTypeCounts: Record<string, number>;
+}
+
+interface MemoryQualityMetrics {
+  retrievalHitRate: number;
+  staleMemoryUsageRate: number;
+  contradictionRate: number;
+  proposalAcceptanceBySource: Array<{
+    source: string;
+    accepted: number;
+    rejected: number;
+    acceptanceRate: number;
+  }>;
+  totals: {
+    retrievalEvents: number;
+    retrievedMemoryMentions: number;
+    staleRetrievedMentions: number;
+    retrievalCount: number;
+    usedInAnswerCount: number;
+    acceptedCount: number;
+    rejectedCount: number;
+    contradictionCount: number;
+  };
+}
+
+interface SemanticRolloutStatus {
+  extensionInstalled: boolean;
+  embeddingTablePresent: boolean;
+  hnswIndexPresent: boolean;
+  totalEmbeddings: number;
+  model: string;
+  healthy: boolean;
 }
 
 // ── Provenance helper ────────────────────────────────────────────────────────
@@ -78,6 +120,7 @@ const TABS: { id: TabId; label: string; icon: string }[] = [
   { id: "study", label: "Study Memory", icon: "science" },
   { id: "preferences", label: "Preferences", icon: "tune" },
   { id: "prisma", label: "PRISMA Stats", icon: "analytics" },
+  { id: "health", label: "Memory Health", icon: "monitor_heart" },
 ];
 
 // ── Main content ─────────────────────────────────────────────────────────────
@@ -110,6 +153,11 @@ function MemoryPageContent() {
   const [studyMemories, setStudyMemories] = useState<StudyMemoryItem[] | null>(null);
   const [userPreferences, setUserPreferences] = useState<UserPref[] | null>(null);
   const [prismaStats, setPrismaStats] = useState<PRISMAStats | null>(null);
+  const [retrievalStats, setRetrievalStats] = useState<RetrievalStats | null>(null);
+  const [qualityMetrics, setQualityMetrics] = useState<MemoryQualityMetrics | null>(null);
+  const [rolloutStatus, setRolloutStatus] = useState<SemanticRolloutStatus | null>(null);
+  const [maintenanceResult, setMaintenanceResult] = useState<string | null>(null);
+  const [maintenanceRunning, setMaintenanceRunning] = useState(false);
   const [tabLoading, setTabLoading] = useState(false);
 
   // Study accordion state
@@ -159,7 +207,27 @@ function MemoryPageContent() {
         .catch(() => setPrismaStats(null))
         .finally(() => setTabLoading(false));
     }
-  }, [activeTab, id, studyMemories, userPreferences, prismaStats]);
+
+    if (activeTab === "health" && (retrievalStats === null || qualityMetrics === null || rolloutStatus === null)) {
+      setTabLoading(true);
+      Promise.all([
+        getMemoryRetrievalStatsAction(id),
+        getMemoryQualityMetricsAction(id, SINGLE_USER_ID),
+        getSemanticRolloutStatusAction(),
+      ])
+        .then(([retrieval, quality, rollout]) => {
+          setRetrievalStats(retrieval as RetrievalStats);
+          setQualityMetrics(quality as MemoryQualityMetrics);
+          setRolloutStatus(rollout as SemanticRolloutStatus);
+        })
+        .catch(() => {
+          setRetrievalStats(null);
+          setQualityMetrics(null);
+          setRolloutStatus(null);
+        })
+        .finally(() => setTabLoading(false));
+    }
+  }, [activeTab, id, studyMemories, userPreferences, prismaStats, retrievalStats, qualityMetrics, rolloutStatus]);
 
   const handleCreate = async () => {
     if (!formStatement.trim()) return;
@@ -201,6 +269,32 @@ function MemoryPageContent() {
   const handleDelete = async (memId: string) => {
     await deleteMemory(memId);
   };
+
+  const runMaintenance = useCallback(async (dryRun: boolean) => {
+    if (!id) return;
+    setMaintenanceRunning(true);
+    setMaintenanceResult(null);
+    try {
+      const result = await runMemoryMaintenanceAction(id, { userId: SINGLE_USER_ID, dryRun });
+      const archived = `${result.archived.user + result.archived.project + result.archived.study}`;
+      const candidates = `${result.candidates.user + result.candidates.project + result.candidates.study}`;
+      setMaintenanceResult(
+        dryRun
+          ? `Dry run complete: ${candidates} low-utility memories flagged.`
+          : `Maintenance complete: archived ${archived} low-utility memories.`,
+      );
+      const [retrieval, quality] = await Promise.all([
+        getMemoryRetrievalStatsAction(id),
+        getMemoryQualityMetricsAction(id, SINGLE_USER_ID),
+      ]);
+      setRetrievalStats(retrieval as RetrievalStats);
+      setQualityMetrics(quality as MemoryQualityMetrics);
+    } catch {
+      setMaintenanceResult("Maintenance failed. Please retry.");
+    } finally {
+      setMaintenanceRunning(false);
+    }
+  }, [id]);
 
   const toggleStudy = (studyId: string) => {
     setExpandedStudies((prev) => {
@@ -594,6 +688,97 @@ function MemoryPageContent() {
                     </table>
                   </div>
                 )}
+              </>
+            )}
+          </div>
+        )}
+
+        {/* ── Memory Health Tab ─────────────────────────────────────────── */}
+        {activeTab === "health" && (
+          <div className={styles.prismaSection}>
+            {tabLoading ? (
+              <div className={styles.emptyState}>Loading memory health...</div>
+            ) : !retrievalStats || !qualityMetrics || !rolloutStatus ? (
+              <div className={styles.emptyState}>
+                <span className="material-icons-round">warning</span>
+                <p>Could not load memory health metrics</p>
+              </div>
+            ) : (
+              <>
+                <div className={styles.healthActionRow}>
+                  <button className="btn btn-outline" disabled={maintenanceRunning} onClick={() => runMaintenance(true)}>
+                    Dry-run maintenance
+                  </button>
+                  <button className="btn btn-primary" disabled={maintenanceRunning} onClick={() => runMaintenance(false)}>
+                    Archive low-utility memories
+                  </button>
+                </div>
+                {maintenanceResult && <div className={styles.healthNotice}>{maintenanceResult}</div>}
+
+                <div className={styles.prismaGrid}>
+                  <div className={styles.prismaCard}>
+                    <span className={styles.prismaLabel}>Retrieval Hit Rate</span>
+                    <span className={styles.prismaValue}>{Math.round(qualityMetrics.retrievalHitRate * 100)}%</span>
+                  </div>
+                  <div className={styles.prismaCard}>
+                    <span className={styles.prismaLabel}>Stale Usage Rate</span>
+                    <span className={styles.prismaValue}>{Math.round(qualityMetrics.staleMemoryUsageRate * 100)}%</span>
+                  </div>
+                  <div className={styles.prismaCard}>
+                    <span className={styles.prismaLabel}>Contradiction Rate</span>
+                    <span className={styles.prismaValue}>{Math.round(qualityMetrics.contradictionRate * 100)}%</span>
+                  </div>
+                  <div className={styles.prismaCard}>
+                    <span className={styles.prismaLabel}>Retrieval Events</span>
+                    <span className={styles.prismaValue}>{retrievalStats.totalRetrievals}</span>
+                  </div>
+                  <div className={styles.prismaCard}>
+                    <span className={styles.prismaLabel}>Memories Retrieved</span>
+                    <span className={styles.prismaValue}>{retrievalStats.totalMemoriesRetrieved}</span>
+                  </div>
+                  <div className={styles.prismaCard}>
+                    <span className={styles.prismaLabel}>Embeddings Indexed</span>
+                    <span className={styles.prismaValue}>{rolloutStatus.totalEmbeddings}</span>
+                  </div>
+                </div>
+
+                <div className={styles.healthStatusRow}>
+                  <span className={`${styles.rolloutBadge} ${rolloutStatus.healthy ? styles.rolloutOk : styles.rolloutWarn}`}>
+                    {rolloutStatus.healthy ? "pgvector rollout healthy" : "pgvector rollout needs attention"}
+                  </span>
+                  <span className={styles.tag}>extension: {rolloutStatus.extensionInstalled ? "ok" : "missing"}</span>
+                  <span className={styles.tag}>table: {rolloutStatus.embeddingTablePresent ? "ok" : "missing"}</span>
+                  <span className={styles.tag}>hnsw: {rolloutStatus.hnswIndexPresent ? "ok" : "missing"}</span>
+                  <span className={styles.tag}>model: {rolloutStatus.model}</span>
+                </div>
+
+                <div className={styles.exclusionSection}>
+                  <h3>Proposal Acceptance by Source</h3>
+                  {qualityMetrics.proposalAcceptanceBySource.length === 0 ? (
+                    <div className={styles.emptyHint}>No acceptance/rejection signals yet.</div>
+                  ) : (
+                    <table className={styles.exclusionTable}>
+                      <thead>
+                        <tr>
+                          <th>Source</th>
+                          <th>Accepted</th>
+                          <th>Rejected</th>
+                          <th>Acceptance</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {qualityMetrics.proposalAcceptanceBySource.map((row) => (
+                          <tr key={row.source}>
+                            <td>{row.source}</td>
+                            <td>{row.accepted}</td>
+                            <td>{row.rejected}</td>
+                            <td>{Math.round(row.acceptanceRate * 100)}%</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
               </>
             )}
           </div>

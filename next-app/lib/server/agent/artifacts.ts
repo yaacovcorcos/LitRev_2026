@@ -5,7 +5,8 @@
 
 import "server-only";
 import { prisma } from "@/lib/server/prisma";
-import type { ArtifactType, ArtifactStatus, CriteriaCardPayload, ProtocolSuggestionPayload, MemoryProposalPayload, StudyProposalPayload, StudyUpdatePayload, DraftDiffPayload, ScreeningBatchPayload } from "@/types/artifacts";
+import { Prisma } from "@prisma/client";
+import type { ArtifactType, ArtifactStatus, CriteriaCardPayload, ProtocolSuggestionPayload, MemoryProposalPayload, MemoryForgetProposalPayload, StudyProposalPayload, StudyUpdatePayload, DraftDiffPayload, ScreeningBatchPayload, EvidenceTablePayload } from "@/types/artifacts";
 import type { StudyType, StudySource, StudyDetails } from "@/types/ledger";
 import { ARTIFACT_PAYLOAD_SCHEMAS } from "@/types/artifacts";
 import type { ProtocolData } from "@/types/protocol";
@@ -13,7 +14,8 @@ import { emitEvent } from "./events";
 import { onStudyAccepted, onStudyExcluded, onDraftAccepted, onArtifactEdited } from "@/lib/server/memory/decision-extractor";
 import { syncProtocolToMemory } from "@/lib/server/memory/protocol-sync";
 import { validateFieldValue, isValidFieldPath } from "@/lib/protocol-fields";
-import { setUserMemory, createProjectMemory } from "@/lib/server/memory";
+import { setUserMemory, createProjectMemory, getProjectMemories, getUserMemories } from "@/lib/server/memory";
+import { normalizedMemoryKey, normalizedMemoryValue } from "@/lib/server/memory/conflict-policy";
 import { createNote, updateNote, textToTipTapDoc, listNotes, type NoteContent, extractTextFromContent } from "@/lib/server/notes";
 import { upsertStudy, updateStudy } from "@/lib/server/ledger";
 import { SINGLE_USER_SCOPE } from "@/lib/server/scope";
@@ -127,6 +129,8 @@ export async function reviewArtifact(
             reviewNote: reviewNote ?? null,
         },
     });
+
+    await trackMemoryProposalReview(artifact, status);
 
     // If accepted, apply the artifact (reads payload from DB — includes edits if any)
     if (status === "accepted") {
@@ -314,6 +318,76 @@ function setNestedValue(obj: Record<string, unknown>, path: string, value: unkno
     current[keys[keys.length - 1]] = value;
 }
 
+function escapeMarkdownCell(value: unknown): string {
+    return String(value ?? "")
+        .replace(/\|/g, "\\|")
+        .replace(/\r?\n/g, " ")
+        .trim();
+}
+
+export function buildEvidenceTableMarkdown(payload: EvidenceTablePayload): string {
+    const explicitColumns = payload.columns.map((c) => String(c).trim()).filter(Boolean);
+    const inferredColumns = payload.rows.flatMap((row) => Object.keys(row).map((k) => k.trim()).filter(Boolean));
+    const columns = explicitColumns.length > 0
+        ? explicitColumns
+        : Array.from(new Set(inferredColumns));
+
+    if (columns.length === 0) {
+        return "## Evidence Table\n\n_No structured evidence rows were generated._";
+    }
+
+    const header = `| ${columns.map(escapeMarkdownCell).join(" | ")} |`;
+    const separator = `| ${columns.map(() => "---").join(" | ")} |`;
+    const lines = [header, separator];
+
+    for (const row of payload.rows) {
+        const values = columns.map((column) => escapeMarkdownCell(row[column] ?? ""));
+        lines.push(`| ${values.join(" | ")} |`);
+    }
+
+    return `## Evidence Table\n\n${lines.join("\n")}`;
+}
+
+async function trackMemoryProposalReview(
+    artifact: { projectId: string; userId: string | null; payload: unknown; type: string },
+    status: Extract<ArtifactStatus, "accepted" | "rejected" | "edited">,
+) {
+    if (artifact.type !== "memory_proposal" || status !== "rejected") return;
+
+    const payload = artifact.payload as MemoryProposalPayload;
+    if (payload.memoryType === "user" && artifact.userId && payload.key) {
+        await prisma.$executeRaw`
+            UPDATE "UserMemory"
+            SET "rejectedCount" = "rejectedCount" + 1
+            WHERE "userId" = ${artifact.userId}
+              AND "key" = ${payload.key}
+              AND "status" = 'active'
+        `;
+    }
+
+    if (payload.memoryType === "project") {
+        const normalizedKey = payload.key ? normalizedMemoryKey(payload.key) : "";
+        const keyTag = normalizedKey ? `memory-key:${normalizedKey}` : null;
+        if (keyTag) {
+            await prisma.$executeRaw`
+                UPDATE "ProjectMemory"
+                SET "rejectedCount" = "rejectedCount" + 1
+                WHERE "projectId" = ${artifact.projectId}
+                  AND "status" = 'active'
+                  AND ${keyTag} = ANY("tags")
+            `;
+        } else {
+            await prisma.$executeRaw`
+                UPDATE "ProjectMemory"
+                SET "rejectedCount" = "rejectedCount" + 1
+                WHERE "projectId" = ${artifact.projectId}
+                  AND "status" = 'active'
+                  AND "statement" = ${payload.value}
+            `;
+        }
+    }
+}
+
 // criteria_card: update protocol eligibility, then sync to memory
 registerApplyFunction("criteria_card", async (artifact) => {
     const payload = artifact.payload as CriteriaCardPayload;
@@ -357,23 +431,106 @@ registerApplyFunction("protocol_suggestion", async (artifact) => {
 registerApplyFunction("memory_proposal", async (artifact) => {
     const payload = artifact.payload as MemoryProposalPayload;
     if (payload.memoryType === "user") {
+        const userId = artifact.userId || "single-user";
+        const key = normalizedMemoryKey(payload.key || `auto_${Date.now()}`);
+        const keyTag = `memory-key:${key}`;
+        const incomingValue = normalizedMemoryValue(payload.value);
+        const activeUserMemories = await getUserMemories(userId, { status: "active" });
+        const sameLogicalKey = activeUserMemories.filter((memory) => normalizedMemoryKey(memory.key) === key);
+        const hasConflict = sameLogicalKey.some((memory) => normalizedMemoryValue(memory.value) !== incomingValue);
+        const variantIds = sameLogicalKey
+            .filter((memory) => memory.key !== key)
+            .map((memory) => memory.id);
+
+        if (variantIds.length > 0) {
+            await prisma.userMemory.updateMany({
+                where: {
+                    id: { in: variantIds },
+                    userId,
+                    status: "active",
+                },
+                data: {
+                    status: "archived",
+                    archivedAt: new Date(),
+                },
+            });
+        }
+
         await setUserMemory({
-            userId: artifact.userId || "single-user",
+            userId,
             type: "preference",
-            key: payload.key || `auto-${Date.now()}`,
+            key,
             value: payload.value,
             rationale: payload.rationale,
-            tags: ["ai-proposed"],
+            tags: ["ai-proposed", keyTag],
         });
+        await prisma.$executeRaw`
+            UPDATE "UserMemory"
+            SET "acceptedCount" = "acceptedCount" + 1,
+                "contradictionCount" = "contradictionCount" + ${hasConflict ? 1 : 0}
+            WHERE "userId" = ${userId}
+              AND "key" = ${key}
+        `;
     } else if (payload.memoryType === "project") {
-        await createProjectMemory({
+        const normalizedKey = payload.key ? normalizedMemoryKey(payload.key) : "";
+        const keyTag = normalizedKey ? `memory-key:${normalizedKey}` : null;
+        const normalizedValue = normalizedMemoryValue(payload.value);
+        let conflictCount = 0;
+
+        // If this proposal is keyed and accepted, supersede conflicting active memories with the same key.
+        if (keyTag) {
+            const existing = await getProjectMemories(artifact.projectId, { status: "active", tags: [keyTag] });
+            const exact = existing.find((m) => normalizedMemoryValue(m.statement) === normalizedValue);
+            if (exact) {
+                await prisma.projectMemory.update({
+                    where: { id: exact.id },
+                    data: {
+                        rationale: payload.rationale ?? exact.rationale,
+                    },
+                });
+                await prisma.$executeRaw`
+                    UPDATE "ProjectMemory"
+                    SET "acceptedCount" = "acceptedCount" + 1
+                    WHERE "id" = ${exact.id}
+                `;
+                return;
+            }
+
+            const conflictingIds = existing
+                .filter((m) => normalizedMemoryValue(m.statement) !== normalizedValue)
+                .map((m) => m.id);
+            conflictCount = conflictingIds.length;
+            if (conflictingIds.length > 0) {
+                await prisma.projectMemory.updateMany({
+                    where: { id: { in: conflictingIds } },
+                    data: {
+                        status: "archived",
+                        archivedAt: new Date(),
+                    },
+                });
+                const idValues = conflictingIds.map((id) => Prisma.sql`${id}`);
+                await prisma.$executeRaw`
+                    UPDATE "ProjectMemory"
+                    SET "contradictionCount" = "contradictionCount" + 1
+                    WHERE "id" IN (${Prisma.join(idValues)})
+                `;
+            }
+        }
+
+        const created = await createProjectMemory({
             projectId: artifact.projectId,
             type: "decision",
             statement: payload.value,
             rationale: payload.rationale,
             importance: "normal",
-            tags: ["ai-proposed"],
+            tags: keyTag ? ["ai-proposed", keyTag] : ["ai-proposed"],
         });
+        await prisma.$executeRaw`
+            UPDATE "ProjectMemory"
+            SET "acceptedCount" = "acceptedCount" + 1,
+                "contradictionCount" = "contradictionCount" + ${conflictCount > 0 ? 1 : 0}
+            WHERE "id" = ${created.id}
+        `;
     } else if (payload.memoryType === "note") {
         await createNote({
             projectId: artifact.projectId,
@@ -384,6 +541,53 @@ registerApplyFunction("memory_proposal", async (artifact) => {
             tags: ["ai-proposed"],
         });
     }
+});
+
+// memory_forget_proposal: archive selected memories (forget semantics = archive, not hard delete)
+registerApplyFunction("memory_forget_proposal", async (artifact) => {
+    const payload = artifact.payload as MemoryForgetProposalPayload;
+    const matchIds = payload.matches.map((m) => m.id);
+    if (matchIds.length === 0) return;
+
+    if (payload.memoryType === "user") {
+        const userId = artifact.userId || "single-user";
+        await prisma.userMemory.updateMany({
+            where: {
+                id: { in: matchIds },
+                userId,
+                status: "active",
+            },
+            data: {
+                status: "archived",
+                archivedAt: new Date(),
+            },
+        });
+        const idValues = matchIds.map((id) => Prisma.sql`${id}`);
+        await prisma.$executeRaw`
+            UPDATE "UserMemory"
+            SET "rejectedCount" = "rejectedCount" + 1
+            WHERE "id" IN (${Prisma.join(idValues)})
+        `;
+        return;
+    }
+
+    await prisma.projectMemory.updateMany({
+        where: {
+            id: { in: matchIds },
+            projectId: artifact.projectId,
+            status: "active",
+        },
+        data: {
+            status: "archived",
+            archivedAt: new Date(),
+        },
+    });
+    const idValues = matchIds.map((id) => Prisma.sql`${id}`);
+    await prisma.$executeRaw`
+        UPDATE "ProjectMemory"
+        SET "rejectedCount" = "rejectedCount" + 1
+        WHERE "id" IN (${Prisma.join(idValues)})
+    `;
 });
 
 // study_proposal: upsert the study with triage decision
@@ -488,6 +692,39 @@ registerApplyFunction("draft_diff", async (artifact) => {
     draftState.contentBySection[sectionKey] = tipTapContent as typeof draftState.contentBySection[string];
 
     await saveDraft(SINGLE_USER_SCOPE, artifact.projectId, draftState);
+});
+
+// evidence_table: persist the accepted table as a project note for downstream drafting/export
+registerApplyFunction("evidence_table", async (artifact) => {
+    const payload = artifact.payload as EvidenceTablePayload;
+    const content = textToTipTapDoc(buildEvidenceTableMarkdown(payload));
+
+    const existing = await listNotes(artifact.projectId);
+    const evidenceNote = existing.find((note) =>
+        note.title?.toLowerCase() === "evidence table"
+        || note.linkedSection?.toLowerCase() === "evidence table"
+        || note.tags?.some((tag) => tag.toLowerCase() === "evidence-table")
+    );
+
+    if (evidenceNote) {
+        await updateNote(evidenceNote.id, {
+            title: "Evidence Table",
+            linkedSection: "Evidence Table",
+            content,
+            tags: Array.from(new Set([...(evidenceNote.tags ?? []), "evidence-table"])),
+        });
+        return;
+    }
+
+    await createNote({
+        projectId: artifact.projectId,
+        title: "Evidence Table",
+        linkedSection: "Evidence Table",
+        content,
+        source: "conversation",
+        sourceConversationId: artifact.conversationId ?? undefined,
+        tags: ["evidence-table"],
+    });
 });
 
 // screening_batch: apply each study's triage decision

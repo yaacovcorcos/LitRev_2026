@@ -794,7 +794,13 @@ a.metaChip {
 /* Responsive */
 @media (max-width: 900px) {
     .body {
-        grid-template-columns: 1fr;
+        grid-template-columns: 1fr !important;
+    }
+
+    /* hide resize handle and copilot panel on mobile */
+    .body > *:nth-child(2),
+    .body > *:nth-child(3) {
+        display: none;
     }
 
     .resizeHandle {

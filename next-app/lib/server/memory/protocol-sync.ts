@@ -14,11 +14,14 @@ import {
 } from "./project-memory";
 
 interface DesiredMemory {
-    type: "definition" | "criterion";
-    category: ProjectMemoryCategory;
+    type: "definition" | "criterion" | "goal";
+    category?: ProjectMemoryCategory;
     statement: string;
     tag: string;
 }
+
+// Note: methodology/search scalar/list fields are currently mapped to `definition`
+// because ProjectMemoryType does not yet include methodology-specific subtypes.
 
 const PICO_FIELDS: { key: keyof ProtocolData["pico"]; category: ProjectMemoryCategory }[] = [
     { key: "population", category: "population" },
@@ -29,8 +32,9 @@ const PICO_FIELDS: { key: keyof ProtocolData["pico"]; category: ProjectMemoryCat
 
 /**
  * Sync protocol data to ProjectMemory entries.
- * - PICO fields → type: "definition"
- * - Eligibility criteria → type: "criterion"
+ * - Research question → type: "goal"
+ * - PICO/search/methodology scalar fields → type: "definition"
+ * - Eligibility criteria + list-style methodology fields → type: "criterion"/"definition"
  * - All synced memories get importance: "critical" and a "protocol-sync:" tag
  * - Diffs against existing: creates new, revises changed, archives removed
  */
@@ -41,6 +45,15 @@ export async function syncProtocolToMemory(
     // 1. Build desired memory list from protocol data
     const desired: DesiredMemory[] = [];
 
+    const researchQuestion = protocolData.researchQuestion?.trim();
+    if (researchQuestion) {
+        desired.push({
+            type: "goal",
+            statement: researchQuestion,
+            tag: "protocol-sync:research-question",
+        });
+    }
+
     for (const { key, category } of PICO_FIELDS) {
         const value = protocolData.pico[key]?.trim();
         if (value) {
@@ -49,6 +62,26 @@ export async function syncProtocolToMemory(
                 category,
                 statement: value,
                 tag: `protocol-sync:pico-${key}`,
+            });
+        }
+    }
+
+    const searchQuery = protocolData.searchStrategy.query?.trim();
+    if (searchQuery) {
+        desired.push({
+            type: "definition",
+            statement: `Search query: ${searchQuery}`,
+            tag: "protocol-sync:search-query",
+        });
+    }
+
+    for (let i = 0; i < protocolData.searchStrategy.databases.length; i++) {
+        const value = protocolData.searchStrategy.databases[i]?.trim();
+        if (value) {
+            desired.push({
+                type: "definition",
+                statement: `Database: ${value}`,
+                tag: `protocol-sync:database-${i}`,
             });
         }
     }
@@ -75,6 +108,53 @@ export async function syncProtocolToMemory(
                 tag: `protocol-sync:exclusion-${i}`,
             });
         }
+    }
+
+    for (let i = 0; i < protocolData.methodology.studyDesigns.length; i++) {
+        const value = protocolData.methodology.studyDesigns[i]?.trim();
+        if (value) {
+            desired.push({
+                type: "definition",
+                statement: `Study design: ${value}`,
+                tag: `protocol-sync:study-design-${i}`,
+            });
+        }
+    }
+
+    const timeFrameStart = protocolData.methodology.timeFrameStart?.trim();
+    if (timeFrameStart) {
+        desired.push({
+            type: "definition",
+            statement: `Time frame start: ${timeFrameStart}`,
+            tag: "protocol-sync:timeframe-start",
+        });
+    }
+
+    const timeFrameEnd = protocolData.methodology.timeFrameEnd?.trim();
+    if (timeFrameEnd) {
+        desired.push({
+            type: "definition",
+            statement: `Time frame end: ${timeFrameEnd}`,
+            tag: "protocol-sync:timeframe-end",
+        });
+    }
+
+    const qualityTool = protocolData.methodology.qualityAssessmentTool?.trim();
+    if (qualityTool) {
+        desired.push({
+            type: "definition",
+            statement: `Quality assessment tool: ${qualityTool}`,
+            tag: "protocol-sync:quality-tool",
+        });
+    }
+
+    const qualityNotes = protocolData.methodology.qualityAssessmentNotes?.trim();
+    if (qualityNotes) {
+        desired.push({
+            type: "definition",
+            statement: `Quality assessment notes: ${qualityNotes}`,
+            tag: "protocol-sync:quality-notes",
+        });
     }
 
     // 2. Fetch existing protocol-synced memories

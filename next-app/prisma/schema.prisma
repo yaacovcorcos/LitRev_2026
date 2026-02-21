@@ -220,6 +220,14 @@ model UserMemory {
 
   // Lifecycle
   status     String    @default("active") // "active" | "archived"
+  source     String    @default("explicit") // "explicit" | "extracted" | "sync" | "decision"
+  confidence Float     @default(1)
+  retrievalCount    Int @default(0)
+  usedInAnswerCount Int @default(0)
+  acceptedCount     Int @default(0)
+  rejectedCount     Int @default(0)
+  contradictionCount Int @default(0)
+  pinned      Boolean   @default(false)
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
   archivedAt DateTime?
@@ -249,6 +257,14 @@ model ProjectMemory {
 
   // Lifecycle
   status       String    @default("active") // "active" | "revised" | "archived"
+  source       String    @default("decision") // "explicit" | "extracted" | "sync" | "decision"
+  confidence   Float     @default(1)
+  retrievalCount    Int  @default(0)
+  usedInAnswerCount Int  @default(0)
+  acceptedCount     Int  @default(0)
+  rejectedCount     Int  @default(0)
+  contradictionCount Int @default(0)
+  pinned       Boolean   @default(false)
   version      Int       @default(1)
   supersededBy String?   // ID of newer version
   createdAt    DateTime  @default(now())
@@ -282,6 +298,12 @@ model StudyMemory {
 
   // Lifecycle
   status     String   @default("active")
+  retrievalCount    Int @default(0)
+  usedInAnswerCount Int @default(0)
+  acceptedCount     Int @default(0)
+  rejectedCount     Int @default(0)
+  contradictionCount Int @default(0)
+  pinned     Boolean @default(false)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
@@ -339,6 +361,27 @@ model MemoryRetrieval {
   @@index([conversationId])
   @@index([projectId])
   @@index([createdAt])
+}
+
+// Semantic embedding index for hybrid memory retrieval (pgvector-backed)
+model MemoryEmbedding {
+  id          String   @id @default(cuid())
+  memoryType  String   // "user" | "project" | "study"
+  memoryId    String
+  userId      String?
+  projectId   String?
+  studyId     String?
+  model       String
+  contentHash String
+  sourceText  String
+  embedding   Unsupported("vector")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([memoryType, memoryId, model])
+  @@index([projectId, memoryType])
+  @@index([userId, memoryType])
+  @@index([studyId, memoryType])
 }
 
 // ============================================================================

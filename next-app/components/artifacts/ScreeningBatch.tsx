@@ -6,12 +6,13 @@ import styles from "@/styles/artifacts.module.css";
 export type ScreeningBatchProps = {
     payload: ScreeningBatchPayload;
     onAcceptAll: () => void;
-    onReviewEach: () => void;
-    onOverride: (index: number, recommendation: "keep" | "exclude" | "maybe") => void;
+    onReviewEach?: () => void;
+    onOverride?: (index: number, recommendation: "keep" | "exclude" | "maybe") => void;
 };
 
 export function ScreeningBatch({ payload, onAcceptAll, onReviewEach, onOverride }: ScreeningBatchProps) {
     const { summary, studies } = payload;
+    const canOverride = typeof onOverride === "function";
 
     return (
         <>
@@ -28,7 +29,7 @@ export function ScreeningBatch({ payload, onAcceptAll, onReviewEach, onOverride 
                             <th>N</th>
                             <th>Rec.</th>
                             <th>Conf.</th>
-                            <th>Override</th>
+                            {canOverride ? <th>Override</th> : null}
                         </tr>
                     </thead>
                     <tbody>
@@ -49,19 +50,21 @@ export function ScreeningBatch({ payload, onAcceptAll, onReviewEach, onOverride 
                                     </span>
                                 </td>
                                 <td>{Math.round(study.confidence * 100)}%</td>
-                                <td>
-                                    <select
-                                        className={styles.batchOverrideSelect}
-                                        value={study.recommendation}
-                                        onChange={(e) =>
-                                            onOverride(i, e.target.value as "keep" | "exclude" | "maybe")
-                                        }
-                                    >
-                                        <option value="keep">Keep</option>
-                                        <option value="exclude">Exclude</option>
-                                        <option value="maybe">Maybe</option>
-                                    </select>
-                                </td>
+                                {canOverride ? (
+                                    <td>
+                                        <select
+                                            className={styles.batchOverrideSelect}
+                                            value={study.recommendation}
+                                            onChange={(e) =>
+                                                onOverride(i, e.target.value as "keep" | "exclude" | "maybe")
+                                            }
+                                        >
+                                            <option value="keep">Keep</option>
+                                            <option value="exclude">Exclude</option>
+                                            <option value="maybe">Maybe</option>
+                                        </select>
+                                    </td>
+                                ) : null}
                             </tr>
                         ))}
                     </tbody>
@@ -69,9 +72,11 @@ export function ScreeningBatch({ payload, onAcceptAll, onReviewEach, onOverride 
             </div>
 
             <div className={styles.cardActions}>
-                <button type="button" className={styles.actionBtnGhost} onClick={onReviewEach}>
-                    Review each
-                </button>
+                {onReviewEach ? (
+                    <button type="button" className={styles.actionBtnGhost} onClick={onReviewEach}>
+                        Review each
+                    </button>
+                ) : null}
                 <button type="button" className={styles.actionBtn} onClick={onAcceptAll}>
                     Accept all recommendations
                 </button>

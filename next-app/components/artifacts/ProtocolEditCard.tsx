@@ -17,9 +17,10 @@ export type ProtocolEditCardProps = {
     payload: ProtocolSuggestionPayload;
     /** Accept the artifact. If the user edited the value, `editedValue` is the new value; otherwise undefined. */
     onAccept: (editedValue?: string | string[]) => void;
+    onDiscuss?: () => void;
 };
 
-export function ProtocolEditCard({ payload, onAccept }: ProtocolEditCardProps) {
+export function ProtocolEditCard({ payload, onAccept, onDiscuss }: ProtocolEditCardProps) {
     const { field, value, oldValue, rationale } = payload;
     const label = getFieldLabel(field);
     const arrayField = isArrayField(field);
@@ -155,9 +156,11 @@ export function ProtocolEditCard({ payload, onAccept }: ProtocolEditCardProps) {
             </div>
 
             <div className={styles.cardActions}>
-                <button type="button" className={styles.actionBtnGhost}>
-                    Discuss more
-                </button>
+                {onDiscuss ? (
+                    <button type="button" className={styles.actionBtnGhost} onClick={onDiscuss}>
+                        Discuss more
+                    </button>
+                ) : null}
                 <button type="button" className={styles.actionBtn} onClick={handleAccept}>
                     {hasEdited ? "Accept Edited & Save" : "Accept & Save to Protocol"}
                 </button>

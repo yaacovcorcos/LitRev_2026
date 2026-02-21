@@ -24,3 +24,13 @@
     padding-left: 0 !important;
     padding-right: 0 !important;
 }
+
+@media (max-width: 900px) {
+    .headerArea {
+        padding: 0 16px;
+    }
+
+    .scrollArea {
+        padding: 20px 16px calc(20px + var(--mobile-nav-offset));
+    }
+}

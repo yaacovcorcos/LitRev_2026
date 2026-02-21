@@ -6,6 +6,7 @@
 "use client";
 
 import { useProjectCopilot } from "@/contexts/ProjectCopilotContext";
+import { useProjectState } from "@/hooks/useProjectState";
 import type { CopilotPage } from "@/types/ai";
 import { CopilotInputCoreClient } from "./CopilotInputCoreClient";
 
@@ -35,6 +36,7 @@ export function CopilotInput({ page, section, studyId, inputPlaceholder, prefill
         pendingChoices,
         clearChoices,
     } = useProjectCopilot();
+    const projectSnapshot = useProjectState(projectId);
 
     return (
         <CopilotInputCoreClient
@@ -53,6 +55,7 @@ export function CopilotInput({ page, section, studyId, inputPlaceholder, prefill
             attachExistingFile={attachExistingFile}
             clearAttachment={clearAttachment}
             projectId={projectId}
+            hasProtocol={projectSnapshot.hasProtocol}
             autonomyPreset={autonomyPreset}
             updateAutonomyPreset={updateAutonomyPreset}
             setShowAutonomySettings={setShowAutonomySettings}

@@ -41,10 +41,12 @@ export function detectMultiStepWorkflow(
     const toolKeywords: Record<string, string[]> = {
         search_pubmed: ["search", "pubmed", "find studies", "look up", "look for"],
         add_to_ledger: ["add", "include", "ledger", "save study"],
-        exclude_study: ["exclude", "remove", "reject"],
+        exclude_study: ["exclude", "reject", "triage out"],
+        delete_study: ["delete study", "delete from ledger", "purge study", "remove from ledger", "hard delete"],
         extract_pdf: ["extract", "pdf", "parse"],
         bulk_screening: ["screen", "batch", "screening"],
-        update_protocol: ["criteria", "inclusion", "exclusion", "pico", "population", "intervention"],
+        update_protocol: ["pico", "population", "intervention", "comparison", "outcome", "protocol"],
+        update_criteria: ["criteria", "inclusion", "exclusion", "eligibility"],
         update_note: ["draft", "write", "section"],
         update_study: ["edit study", "update study", "change abstract", "update doi", "update pmid", "fix metadata"],
     };
@@ -137,8 +139,18 @@ function generateHeuristicPlan(message: string, _context: PlanContext): PlanPayl
         });
     }
 
+    // Delete step
+    if (/\b(?:delete|purge)\b/.test(lower) || /\bremove\b.*\bledger\b/.test(lower)) {
+        steps.push({
+            label: "Delete study from ledger",
+            toolName: "delete_study",
+            description: "Permanently remove the study record from this project",
+            status: "pending",
+        });
+    }
+
     // Exclude step
-    if (/\b(?:exclude|remove|reject)\b/.test(lower)) {
+    if (/\b(?:exclude|reject)\b/.test(lower)) {
         steps.push({
             label: "Exclude non-qualifying studies",
             toolName: "exclude_study",
@@ -151,8 +163,8 @@ function generateHeuristicPlan(message: string, _context: PlanContext): PlanPayl
     if (/\b(?:criteria|inclusion|exclusion)\b/.test(lower)) {
         steps.push({
             label: "Update protocol criteria",
-            toolName: "update_protocol",
-            description: "Refine the review protocol",
+            toolName: "update_criteria",
+            description: "Apply an atomic inclusion/exclusion criteria change",
             status: "pending",
         });
     }

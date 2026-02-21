@@ -15,7 +15,9 @@ export {
 export { pubmedSearchTool } from "./pubmed-search";
 export { addToLedgerTool } from "./add-to-ledger";
 export { excludeStudyTool } from "./exclude-study";
+export { deleteStudyTool } from "./delete-study";
 export { updateProtocolTool } from "./update-protocol";
+export { updateCriteriaTool } from "./update-criteria";
 export { bulkScreeningTool } from "./bulk-screening";
 export { extractPdfTool } from "./extract-pdf";
 export { updateNoteTool } from "./update-note";
@@ -23,3 +25,5 @@ export { semanticScholarSearchTool } from "./semantic-scholar-search";
 export { recommendStudiesTool } from "./recommend-studies";
 export { storeMemoryTool } from "./store-memory";
 export { updateStudyTool } from "./update-study";
+export { forgetMemoryTool } from "./forget-memory";
+export { inspectMemoryTool } from "./inspect-memory";

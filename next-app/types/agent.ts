@@ -7,6 +7,7 @@
 
 export type AgentMode =
     | "protocol"
+    | "scoping"
     | "search"
     | "screening"
     | "drafting"
@@ -15,6 +16,7 @@ export type AgentMode =
 
 export const AGENT_MODE_META: Record<AgentMode, { label: string; icon: string; description: string }> = {
     protocol: { label: "Protocol", icon: "description", description: "Defining PICO, criteria, and review protocol" },
+    scoping: { label: "Scoping", icon: "travel_explore", description: "Mapping literature landscape before protocol lock-in" },
     search: { label: "Search", icon: "search", description: "Finding studies via PubMed and other sources" },
     screening: { label: "Screening", icon: "filter_list", description: "Evaluating studies against criteria" },
     drafting: { label: "Drafting", icon: "edit_note", description: "Writing review sections" },
@@ -109,9 +111,12 @@ export interface ToolAutonomyMeta {
 /** Hard safety caps — cannot be overridden by any config */
 export const HARD_CAPS: Record<string, AutonomyLevel> = {
     update_protocol: 2,
+    update_criteria: 2,
     update_study: 2,
     bulk_screening: 2,
     update_note: 2,
     exclude_study: 2,
+    delete_study: 2,
     store_memory: 2,
+    forget_memory: 2,
 };

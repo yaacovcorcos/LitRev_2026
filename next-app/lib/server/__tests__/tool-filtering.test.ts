@@ -14,7 +14,7 @@ describe("getToolDefinitions", () => {
     it("returns only global-safe tools in global scope", () => {
         const defs = getToolDefinitions(undefined, "global");
         const names = defs.map((d) => d.name).sort();
-        expect(names).toEqual(["search_pubmed", "search_semantic_scholar", "store_memory"]);
+        expect(names).toEqual(["forget_memory", "inspect_memory", "search_pubmed", "search_semantic_scholar", "store_memory"]);
     });
 
     it("returns all tools for general mode (empty allowedTools)", () => {
@@ -25,37 +25,43 @@ describe("getToolDefinitions", () => {
     it("applies scope filter before mode filter", () => {
         const defs = getToolDefinitions("search", "global");
         const names = defs.map((d) => d.name).sort();
-        expect(names).toEqual(["search_pubmed", "search_semantic_scholar", "store_memory"]);
+        expect(names).toEqual(["forget_memory", "inspect_memory", "search_pubmed", "search_semantic_scholar", "store_memory"]);
     });
 
     it("filters tools for protocol mode", () => {
         const defs = getToolDefinitions("protocol");
         const names = defs.map((d) => d.name).sort();
-        expect(names).toEqual(["search_pubmed", "search_semantic_scholar", "store_memory", "update_protocol", "update_study"]);
+        expect(names).toEqual(["forget_memory", "inspect_memory", "search_pubmed", "search_semantic_scholar", "store_memory", "update_criteria", "update_protocol", "update_study"]);
     });
 
     it("filters tools for search mode", () => {
         const defs = getToolDefinitions("search");
         const names = defs.map((d) => d.name).sort();
-        expect(names).toEqual(["add_to_ledger", "recommend_studies", "search_pubmed", "search_semantic_scholar", "store_memory", "update_study"]);
+        expect(names).toEqual(["add_to_ledger", "forget_memory", "inspect_memory", "recommend_studies", "search_pubmed", "search_semantic_scholar", "store_memory", "update_study"]);
+    });
+
+    it("filters tools for scoping mode", () => {
+        const defs = getToolDefinitions("scoping");
+        const names = defs.map((d) => d.name).sort();
+        expect(names).toEqual(["forget_memory", "inspect_memory", "recommend_studies", "search_pubmed", "search_semantic_scholar", "store_memory"]);
     });
 
     it("filters tools for screening mode", () => {
         const defs = getToolDefinitions("screening");
         const names = defs.map((d) => d.name).sort();
-        expect(names).toEqual(["bulk_screening", "exclude_study", "extract_pdf", "read_study_content", "store_memory", "update_study"]);
+        expect(names).toEqual(["bulk_screening", "delete_study", "exclude_study", "extract_pdf", "forget_memory", "inspect_memory", "read_study_content", "store_memory", "update_study"]);
     });
 
     it("filters tools for drafting mode", () => {
         const defs = getToolDefinitions("drafting");
         const names = defs.map((d) => d.name).sort();
-        expect(names).toEqual(["read_study_content", "store_memory", "update_note", "update_study"]);
+        expect(names).toEqual(["forget_memory", "inspect_memory", "read_study_content", "store_memory", "update_note", "update_study"]);
     });
 
     it("filters tools for qa mode", () => {
         const defs = getToolDefinitions("qa");
         const names = defs.map((d) => d.name).sort();
-        expect(names).toEqual(["read_study_content", "search_pubmed", "search_semantic_scholar", "store_memory", "update_study"]);
+        expect(names).toEqual(["forget_memory", "inspect_memory", "read_study_content", "search_pubmed", "search_semantic_scholar", "store_memory", "update_study"]);
     });
 
     it("every allowedTools entry in AGENT_MODE_CONFIG exists in AVAILABLE_TOOLS", () => {
@@ -70,7 +76,7 @@ describe("getToolDefinitions", () => {
     });
 
     it("filtered results are a subset of all tools", () => {
-        const modes: AgentMode[] = ["protocol", "search", "screening", "drafting", "qa", "general"];
+        const modes: AgentMode[] = ["protocol", "scoping", "search", "screening", "drafting", "qa", "general"];
         for (const mode of modes) {
             const filtered = getToolDefinitions(mode).map((d) => d.name);
             for (const name of filtered) {

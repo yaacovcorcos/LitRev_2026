@@ -7,21 +7,24 @@ import styles from "@/styles/artifacts.module.css";
 export type CriteriaCardProps = {
     payload: CriteriaCardPayload;
     onSave: () => void;
-    onAdd: (type: "inclusion" | "exclusion", criterion: string) => void;
-    onRemove: (type: "inclusion" | "exclusion", index: number) => void;
+    onAdd?: (type: "inclusion" | "exclusion", criterion: string) => void;
+    onRemove?: (type: "inclusion" | "exclusion", index: number) => void;
+    onDiscuss?: () => void;
 };
 
-export function CriteriaCard({ payload, onSave, onAdd, onRemove }: CriteriaCardProps) {
+export function CriteriaCard({ payload, onSave, onAdd, onRemove, onDiscuss }: CriteriaCardProps) {
     const [addingType, setAddingType] = useState<"inclusion" | "exclusion" | null>(null);
     const [addValue, setAddValue] = useState("");
 
     const commitAdd = () => {
-        if (addingType && addValue.trim()) {
+        if (addingType && addValue.trim() && onAdd) {
             onAdd(addingType, addValue.trim());
         }
         setAddingType(null);
         setAddValue("");
     };
+
+    const canEdit = !!onAdd && !!onRemove;
 
     const renderList = (type: "inclusion" | "exclusion", items: string[], icon: string) => (
         <div className={styles.criteriaSection}>
@@ -33,18 +36,20 @@ export function CriteriaCard({ payload, onSave, onAdd, onRemove }: CriteriaCardP
                     <li key={i} className={styles.criteriaItem}>
                         <span className={`material-icons-round ${styles.criteriaItemIcon}`}>{icon}</span>
                         <span className={styles.criteriaItemText}>{item}</span>
-                        <button
-                            type="button"
-                            className={styles.criteriaRemoveBtn}
-                            onClick={() => onRemove(type, i)}
-                            aria-label={`Remove: ${item}`}
-                        >
-                            <span className="material-icons-round">close</span>
-                        </button>
+                        {onRemove ? (
+                            <button
+                                type="button"
+                                className={styles.criteriaRemoveBtn}
+                                onClick={() => onRemove(type, i)}
+                                aria-label={`Remove: ${item}`}
+                            >
+                                <span className="material-icons-round">close</span>
+                            </button>
+                        ) : null}
                     </li>
                 ))}
             </ul>
-            {addingType === type ? (
+            {canEdit && addingType === type ? (
                 <input
                     className={styles.inlineEdit}
                     value={addValue}
@@ -60,7 +65,7 @@ export function CriteriaCard({ payload, onSave, onAdd, onRemove }: CriteriaCardP
                     placeholder={`Add ${type} criterion...`}
                     autoFocus
                 />
-            ) : (
+            ) : canEdit ? (
                 <button
                     type="button"
                     className={styles.criteriaAddBtn}
@@ -69,7 +74,7 @@ export function CriteriaCard({ payload, onSave, onAdd, onRemove }: CriteriaCardP
                     <span className="material-icons-round">add</span>
                     Add criterion
                 </button>
-            )}
+            ) : null}
         </div>
     );
 
@@ -81,9 +86,11 @@ export function CriteriaCard({ payload, onSave, onAdd, onRemove }: CriteriaCardP
                 <div className={styles.criteriaRationale}>{payload.rationale}</div>
             )}
             <div className={styles.cardActions}>
-                <button type="button" className={styles.actionBtnGhost}>
-                    Discuss more
-                </button>
+                {onDiscuss ? (
+                    <button type="button" className={styles.actionBtnGhost} onClick={onDiscuss}>
+                        Discuss more
+                    </button>
+                ) : null}
                 <button type="button" className={styles.actionBtn} onClick={onSave}>
                     Save to Protocol
                 </button>

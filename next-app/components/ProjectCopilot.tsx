@@ -1,8 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import * as Popover from "@radix-ui/react-popover";
 import { useProjectCopilot } from "@/contexts/ProjectCopilotContext";
 import type { CopilotPage } from "@/types/ai";
 import type { AgentMode } from "@/types/agent";
@@ -10,6 +9,7 @@ import { createNoteAction } from "@/app/actions/notes";
 import { TimelineRenderer } from "./copilot/TimelineRenderer";
 import { CopilotInput } from "./copilot/CopilotInput";
 import { AutonomySettings } from "./copilot/AutonomySettings";
+import { ConversationPicker } from "./ui/ConversationPicker";
 import styles from "./ProjectCopilot.module.css";
 
 export type SuggestionConfig = {
@@ -79,21 +79,15 @@ export function ProjectCopilot({
     useEffect(() => { setHasMounted(true); }, []);
 
     const [showConversationDropdown, setShowConversationDropdown] = useState(false);
-    const [conversationSearch, setConversationSearch] = useState("");
-    const [activeDescendantId, setActiveDescendantId] = useState<string | null>(null);
     const [isBranching, setIsBranching] = useState(false);
-    const listRef = useRef<HTMLDivElement | null>(null);
+    const [prefill, setPrefill] = useState("");
 
-    // Scope is now driven centrally from layout.tsx — no mount/cleanup effect here
+    const handleSuggestionClick = useCallback((prompt: string) => {
+        setPrefill(prompt);
+    }, []);
 
-    // Reset active descendant when search changes
-    useEffect(() => {
-        setActiveDescendantId(null);
-    }, [conversationSearch]);
-
-    const handleSuggestionClick = useCallback((_prompt: string) => {
-        // Suggestions populate the input — currently handled by CopilotInput
-        // Phase 4.2 will upgrade this to send the message directly
+    const handlePrefillConsumed = useCallback(() => {
+        setPrefill("");
     }, []);
 
     const handleActionPrompt = useCallback((prompt: string, mode?: AgentMode) => {
@@ -149,113 +143,15 @@ export function ProjectCopilot({
     // Conversation management
     const currentConversation = conversations.find(c => c.id === currentConversationId);
     const currentTitle = currentConversation?.title || "New conversation";
-
-    const filteredConversations = conversationSearch
-        ? conversations.filter(c =>
-            (c.title || "New conversation").toLowerCase().includes(conversationSearch.toLowerCase())
-          )
-        : conversations;
-
-    const groupConversations = () => {
-        const today: typeof conversations = [];
-        const yesterday: typeof conversations = [];
-        const older: typeof conversations = [];
+    const getConversationGroupLabel = useCallback((conversation: (typeof conversations)[number]) => {
+        const date = new Date(conversation.updatedAt);
         const now = new Date();
-
-        filteredConversations.forEach(conv => {
-            const date = new Date(conv.updatedAt);
-            const diff = now.getTime() - date.getTime();
-            const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-            if (days === 0) today.push(conv);
-            else if (days === 1) yesterday.push(conv);
-            else older.push(conv);
-        });
-
-        return { today, yesterday, older };
-    };
-
-    const groupedConversations = groupConversations();
-
-    // Flat list of all visible conversation IDs for keyboard navigation
-    const flatConversationIds = [
-        ...groupedConversations.today,
-        ...groupedConversations.yesterday,
-        ...groupedConversations.older,
-    ].map(c => c.id);
-
-    const handleListboxKeyDown = (e: React.KeyboardEvent) => {
-        if (e.key === "ArrowDown") {
-            e.preventDefault();
-            const currentIndex = activeDescendantId ? flatConversationIds.indexOf(activeDescendantId) : -1;
-            const nextIndex = currentIndex < flatConversationIds.length - 1 ? currentIndex + 1 : 0;
-            const nextId = flatConversationIds[nextIndex];
-            setActiveDescendantId(nextId);
-            document.getElementById(`convo-opt-${nextId}`)?.scrollIntoView({ block: "nearest" });
-        } else if (e.key === "ArrowUp") {
-            e.preventDefault();
-            const currentIndex = activeDescendantId ? flatConversationIds.indexOf(activeDescendantId) : 0;
-            const prevIndex = currentIndex > 0 ? currentIndex - 1 : flatConversationIds.length - 1;
-            const prevId = flatConversationIds[prevIndex];
-            setActiveDescendantId(prevId);
-            document.getElementById(`convo-opt-${prevId}`)?.scrollIntoView({ block: "nearest" });
-        } else if (e.key === "Enter" && activeDescendantId) {
-            e.preventDefault();
-            selectConversation(activeDescendantId);
-            setShowConversationDropdown(false);
-            setConversationSearch("");
-            setActiveDescendantId(null);
-        } else if (e.key === "Home") {
-            e.preventDefault();
-            const firstId = flatConversationIds[0];
-            if (firstId) {
-                setActiveDescendantId(firstId);
-                document.getElementById(`convo-opt-${firstId}`)?.scrollIntoView({ block: "nearest" });
-            }
-        } else if (e.key === "End") {
-            e.preventDefault();
-            const lastId = flatConversationIds[flatConversationIds.length - 1];
-            if (lastId) {
-                setActiveDescendantId(lastId);
-                document.getElementById(`convo-opt-${lastId}`)?.scrollIntoView({ block: "nearest" });
-            }
-        } else if (e.key === "Escape") {
-            e.preventDefault();
-            setShowConversationDropdown(false);
-            setConversationSearch("");
-            setActiveDescendantId(null);
-        }
-    };
-
-    const renderConversationGroup = (label: string, convs: typeof conversations) => {
-        if (convs.length === 0) return null;
-        return (
-            <>
-                <div className={styles.conversationGroupLabel}>{label}</div>
-                {convs.map((conv) => (
-                    <div
-                        key={conv.id}
-                        id={`convo-opt-${conv.id}`}
-                        className={`${styles.conversationDropdownItem} ${currentConversationId === conv.id ? styles.conversationDropdownItemActive : ""} ${activeDescendantId === conv.id ? styles.conversationDropdownItemHighlight : ""}`}
-                        onClick={() => {
-                            selectConversation(conv.id);
-                            setShowConversationDropdown(false);
-                            setConversationSearch("");
-                            setActiveDescendantId(null);
-                        }}
-                        role="option"
-                        aria-selected={currentConversationId === conv.id}
-                    >
-                        <span className={styles.conversationDropdownTitle}>
-                            {conv.title || "New conversation"}
-                        </span>
-                        <span className={styles.conversationDropdownTime}>
-                            {formatRelativeTime(conv.updatedAt)}
-                        </span>
-                    </div>
-                ))}
-            </>
-        );
-    };
+        const diff = now.getTime() - date.getTime();
+        const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+        if (days === 0) return "Today";
+        if (days === 1) return "Yesterday";
+        return "Older";
+    }, []);
 
     if (!hasMounted) {
         return <aside className={styles.copilot} aria-label="AI copilot" id={panelId} />;
@@ -279,73 +175,19 @@ export function ProjectCopilot({
                     </button>
 
                     <div className={styles.conversationSelector}>
-                        <Popover.Root
+                        <ConversationPicker
+                            variant="panel"
                             open={showConversationDropdown}
-                            onOpenChange={(open) => {
-                                setShowConversationDropdown(open);
-                                if (open) {
-                                    const initialId = currentConversationId ?? flatConversationIds[0] ?? null;
-                                    setActiveDescendantId(initialId);
-                                } else {
-                                    setConversationSearch("");
-                                    setActiveDescendantId(null);
-                                }
-                            }}
-                        >
-                            <Popover.Trigger asChild>
-                                <button
-                                    type="button"
-                                    className={styles.conversationSelectorBtn}
-                                    title={currentTitle}
-                                    aria-haspopup="listbox"
-                                    aria-expanded={showConversationDropdown}
-                                    aria-controls="convo-listbox"
-                                >
-                                    <span className={styles.conversationSelectorTitle}>{currentTitle}</span>
-                                    <svg className={styles.chevronIcon} width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                        <polyline points="6 9 12 15 18 9"/>
-                                    </svg>
-                                </button>
-                            </Popover.Trigger>
-                            <Popover.Portal>
-                                <Popover.Content className={styles.conversationDropdown} side="bottom" align="start" sideOffset={4}>
-                                    <div className={styles.conversationSearchWrapper}>
-                                        <input
-                                            type="text"
-                                            placeholder="Search sessions..."
-                                            value={conversationSearch}
-                                            onChange={(e) => setConversationSearch(e.target.value)}
-                                            className={styles.conversationSearchInput}
-                                            autoFocus
-                                            role="combobox"
-                                            aria-autocomplete="list"
-                                            aria-controls="convo-listbox"
-                                            aria-expanded={showConversationDropdown}
-                                            aria-activedescendant={activeDescendantId ? `convo-opt-${activeDescendantId}` : undefined}
-                                            onKeyDown={handleListboxKeyDown}
-                                        />
-                                    </div>
-                                    <div
-                                        ref={listRef}
-                                        className={styles.conversationDropdownList}
-                                        role="listbox"
-                                        id="convo-listbox"
-                                    >
-                                        {filteredConversations.length === 0 ? (
-                                            <div className={styles.noConversationsDropdown}>
-                                                No conversations found
-                                            </div>
-                                        ) : (
-                                            <>
-                                                {renderConversationGroup("Today", groupedConversations.today)}
-                                                {renderConversationGroup("Yesterday", groupedConversations.yesterday)}
-                                                {renderConversationGroup("Older", groupedConversations.older)}
-                                            </>
-                                        )}
-                                    </div>
-                                </Popover.Content>
-                            </Popover.Portal>
-                        </Popover.Root>
+                            onOpenChange={setShowConversationDropdown}
+                            currentConversationId={currentConversationId}
+                            currentTitle={currentTitle}
+                            conversations={conversations}
+                            searchPlaceholder="Search sessions..."
+                            groupBy={getConversationGroupLabel}
+                            groupOrder={["Today", "Yesterday", "Older"]}
+                            renderMeta={(conversation) => formatRelativeTime(conversation.updatedAt)}
+                            onSelect={selectConversation}
+                        />
                     </div>
 
                     {/* Header icons */}
@@ -355,7 +197,6 @@ export function ProjectCopilot({
                             className={styles.headerIconBtn}
                             onClick={async () => {
                                 setShowConversationDropdown(false);
-                                setConversationSearch("");
                                 await newConversation(page, studyId);
                             }}
                             aria-label="New conversation"
@@ -440,6 +281,8 @@ export function ProjectCopilot({
                     section={section}
                     studyId={studyId}
                     inputPlaceholder={inputPlaceholder}
+                    prefill={prefill}
+                    onPrefillConsumed={handlePrefillConsumed}
                 />
             </div>
             <AutonomySettings />

@@ -1,7 +1,17 @@
 import { z } from "zod";
 import type { AITool, ToolExecutionContext } from "./base";
-import { getUserMemory } from "@/lib/server/memory/user-memory";
-import { searchProjectMemories } from "@/lib/server/memory/project-memory";
+import { getUserMemories, getUserMemory } from "@/lib/server/memory/user-memory";
+import { getProjectMemories } from "@/lib/server/memory/project-memory";
+import {
+    classifyMemoryConflict,
+    normalizedMemoryKey,
+    normalizedMemoryValue,
+} from "@/lib/server/memory/conflict-policy";
+
+function mergeRationale(base: string | undefined, addition: string): string {
+    if (!base) return addition;
+    return base.includes(addition) ? base : `${base} ${addition}`;
+}
 
 const inputSchema = z.object({
     memoryType: z.enum(["user", "project"]).default("user"),
@@ -65,24 +75,59 @@ export const storeMemoryTool: AITool = {
 
     async execute(args: Record<string, unknown>, context?: ToolExecutionContext) {
         const memoryType = (args.memoryType as string) || "user";
-        const key = args.key as string;
-        const value = args.value as string;
-        const rationale = args.rationale as string | undefined;
+        const key = normalizedMemoryKey(args.key as string);
+        const value = (args.value as string).trim();
+        const normalizedValue = normalizedMemoryValue(value);
+        const rationaleRaw = args.rationale as string | undefined;
+        let rationale = rationaleRaw?.trim() ? rationaleRaw.trim() : undefined;
+
+        if (!key) {
+            return {
+                callId: "",
+                result: null,
+                error: "Memory key is empty after normalization.",
+            };
+        }
+        if (!value) {
+            return {
+                callId: "",
+                result: null,
+                error: "Memory value is empty after trimming.",
+            };
+        }
 
         // Server-side dedupe guard — return null result to skip artifact creation
         if (memoryType === "user" && context?.userId) {
             const existing = await getUserMemory(context.userId, key);
-            if (existing && existing.value === value) {
+            if (existing && normalizedMemoryValue(existing.value) === normalizedValue) {
                 return {
                     callId: "",
                     result: null,
                     error: `Already remembered: "${key}". No action needed.`,
                 };
             }
+            if (existing && normalizedMemoryValue(existing.value) !== normalizedValue) {
+                rationale = mergeRationale(
+                    rationale,
+                    `Deterministic conflict: currently remembered "${key}" is "${existing.value}". Confirm replacement.`,
+                );
+            } else {
+                const active = await getUserMemories(context.userId, { status: "active" });
+                const semantic = active.find((memory) => classifyMemoryConflict(
+                    { key, value },
+                    { key: memory.key, value: memory.value },
+                ) === "semantic");
+                if (semantic) {
+                    rationale = mergeRationale(
+                        rationale,
+                        `Possible semantic conflict with "${semantic.key}: ${semantic.value}". Please verify before saving.`,
+                    );
+                }
+            }
         } else if (memoryType === "project" && context?.projectId) {
-            const existing = await searchProjectMemories(context.projectId, key);
+            const existing = await getProjectMemories(context.projectId, { status: "active" });
             const duplicate = existing.find(
-                (m) => m.statement === value && m.status === "active",
+                (m) => normalizedMemoryValue(m.statement) === normalizedValue,
             );
             if (duplicate) {
                 return {
@@ -90,6 +135,30 @@ export const storeMemoryTool: AITool = {
                     result: null,
                     error: `Already remembered: "${key}". No action needed.`,
                 };
+            }
+            const keyTag = `memory-key:${key}`;
+            const conflicting = existing.find(
+                (m) => m.tags.includes(keyTag) && normalizedMemoryValue(m.statement) !== normalizedValue,
+            );
+            if (conflicting) {
+                rationale = mergeRationale(
+                    rationale,
+                    `Deterministic conflict: existing project memory for "${key}" says "${conflicting.statement}". Confirm replacement.`,
+                );
+            } else {
+                const semantic = existing.find((memory) => {
+                    const taggedKey = memory.tags.find((tag) => tag.startsWith("memory-key:"))?.replace("memory-key:", "") || memory.statement;
+                    return classifyMemoryConflict(
+                        { key, value },
+                        { key: taggedKey, value: memory.statement },
+                    ) === "semantic";
+                });
+                if (semantic) {
+                    rationale = mergeRationale(
+                        rationale,
+                        `Possible semantic conflict with existing project memory "${semantic.statement}". Confirm replacement if intentional.`,
+                    );
+                }
             }
         }
 

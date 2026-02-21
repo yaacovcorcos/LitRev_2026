@@ -3,6 +3,7 @@ import { retrieveMemories } from "../memory/memory-retrieval";
 
 vi.mock("@/lib/server/prisma", () => ({
     prisma: {
+        $executeRaw: vi.fn().mockResolvedValue(1),
         memoryRetrieval: { create: vi.fn().mockResolvedValue({}) },
     },
 }));
@@ -25,21 +26,36 @@ vi.mock("@/lib/server/memory/study-memory", () => ({
     searchStudyMemories: vi.fn().mockResolvedValue([]),
 }));
 
+vi.mock("@/lib/server/memory/semantic-memory", () => ({
+    searchSemanticMemories: vi.fn().mockResolvedValue([]),
+}));
+
 const { getUserMemories } = await import("@/lib/server/memory/user-memory");
-const { getProjectMemories } = await import("@/lib/server/memory/project-memory");
-const { getStudyMemories } = await import("@/lib/server/memory/study-memory");
+const { getProjectMemories, searchProjectMemories } = await import("@/lib/server/memory/project-memory");
+const { getStudyMemories, searchStudyMemories } = await import("@/lib/server/memory/study-memory");
+const { searchSemanticMemories } = await import("@/lib/server/memory/semantic-memory");
 const { emitEvent } = await import("@/lib/server/agent/events");
+const { prisma } = await import("@/lib/server/prisma");
 
 const mockGetUserMemories = vi.mocked(getUserMemories);
 const mockGetProjectMemories = vi.mocked(getProjectMemories);
+const mockSearchProjectMemories = vi.mocked(searchProjectMemories);
 const mockGetStudyMemories = vi.mocked(getStudyMemories);
+const mockSearchStudyMemories = vi.mocked(searchStudyMemories);
+const mockSearchSemanticMemories = vi.mocked(searchSemanticMemories);
 const mockEmitEvent = vi.mocked(emitEvent);
+const mockMemoryRetrievalCreate = vi.mocked(prisma.memoryRetrieval.create);
+const mockExecuteRaw = vi.mocked(prisma.$executeRaw);
 
 beforeEach(() => {
     vi.clearAllMocks();
     mockGetUserMemories.mockResolvedValue([]);
     mockGetProjectMemories.mockResolvedValue([]);
+    mockSearchProjectMemories.mockResolvedValue([]);
     mockGetStudyMemories.mockResolvedValue([]);
+    mockSearchStudyMemories.mockResolvedValue([]);
+    mockSearchSemanticMemories.mockResolvedValue([]);
+    mockExecuteRaw.mockResolvedValue(1 as any);
 });
 
 describe("retrieveMemories — deterministic scope rules", () => {
@@ -87,7 +103,7 @@ describe("retrieveMemories — deterministic scope rules", () => {
 
     it("in drafting mode with citedStudyIds: includes StudyMemories", async () => {
         mockGetStudyMemories.mockResolvedValue([
-            { id: "sm-1", type: "summary", category: null, content: "Study findings...", source: "ai_generated", confidence: 0.9, tags: [], status: "active" },
+            { id: "sm-1", studyId: "study-A", projectId: "p1", type: "summary", category: null, content: "Study findings...", source: "ai_generated", confidence: 0.9, tags: [], status: "active" },
         ] as any);
 
         const result = await retrieveMemories({
@@ -99,6 +115,21 @@ describe("retrieveMemories — deterministic scope rules", () => {
 
         expect(result.some((m) => m.id === "sm-1")).toBe(true);
         expect(mockGetStudyMemories).toHaveBeenCalledWith("study-A", { status: "active" });
+    });
+
+    it("filters study memories that do not belong to the active project", async () => {
+        mockGetStudyMemories.mockResolvedValue([
+            { id: "sm-other", studyId: "study-A", projectId: "p-other", type: "summary", category: null, content: "Other project summary", source: "ai_generated", confidence: 0.9, tags: [], status: "active" },
+        ] as any);
+
+        const result = await retrieveMemories({
+            userId: "u1",
+            projectId: "p1",
+            agentMode: "drafting",
+            citedStudyIds: ["study-A"],
+        });
+
+        expect(result.some((m) => m.id === "sm-other")).toBe(false);
     });
 
     it("in qa mode: includes exclusion decisions", async () => {
@@ -220,5 +251,212 @@ describe("retrieveMemories — deterministic scope rules", () => {
         // Critical memory should be first (deterministic phase)
         const critIndex = result.findIndex((m) => m.id === "crit-1");
         expect(critIndex).toBe(0);
+    });
+
+    it("keyword ranking boosts exact identifier matches", async () => {
+        mockSearchProjectMemories.mockResolvedValue([
+            {
+                id: "pm-doi",
+                projectId: "p1",
+                type: "decision",
+                category: "outcome",
+                statement: "Key source DOI: 10.1000/xyz123",
+                rationale: null,
+                context: null,
+                status: "active",
+                version: 1,
+                supersededBy: null,
+                tags: ["source"],
+                importance: "normal",
+                createdAt: new Date(),
+                updatedAt: new Date(),
+                archivedAt: null,
+            },
+            {
+                id: "pm-generic",
+                projectId: "p1",
+                type: "decision",
+                category: "outcome",
+                statement: "Some general blood pressure outcome rule",
+                rationale: null,
+                context: null,
+                status: "active",
+                version: 1,
+                supersededBy: null,
+                tags: ["source"],
+                importance: "normal",
+                createdAt: new Date(),
+                updatedAt: new Date(),
+                archivedAt: null,
+            },
+        ] as any);
+
+        const result = await retrieveMemories(
+            {
+                userId: "u1",
+                projectId: "p1",
+                query: "10.1000/xyz123 blood pressure",
+            },
+            { includeUser: false, includeStudy: false, maxMemories: 5 },
+        );
+
+        const doiIndex = result.findIndex((m) => m.id === "pm-doi");
+        const genericIndex = result.findIndex((m) => m.id === "pm-generic");
+        expect(doiIndex).toBeGreaterThanOrEqual(0);
+        expect(genericIndex).toBeGreaterThanOrEqual(0);
+        expect(doiIndex).toBeLessThan(genericIndex);
+    });
+
+    it("searches scoped study memories by query when project is present", async () => {
+        mockSearchStudyMemories.mockResolvedValue([
+            {
+                id: "sm-query",
+                studyId: "study-1",
+                projectId: "p1",
+                type: "finding",
+                category: "results",
+                content: "Smith 2023 reports reduced anxiety in RCT cohort",
+                source: "extracted",
+                confidence: 0.92,
+                status: "active",
+                tags: ["smith", "2023"],
+                createdAt: new Date(),
+                updatedAt: new Date(),
+            },
+        ] as any);
+
+        const result = await retrieveMemories(
+            {
+                userId: "u1",
+                projectId: "p1",
+                query: "smith 2023 anxiety",
+            },
+            {
+                includeUser: false,
+                includeProject: false,
+                includeStudy: true,
+            },
+        );
+
+        expect(mockSearchStudyMemories).toHaveBeenCalledWith("p1", "smith 2023 anxiety", undefined);
+        expect(result.some((m) => m.id === "sm-query")).toBe(true);
+    });
+
+    it("applies utility weighting so criteria/decisions rank above equally matched generic memories", async () => {
+        mockSearchProjectMemories.mockResolvedValue([
+            {
+                id: "pm-criterion",
+                projectId: "p1",
+                type: "criterion",
+                category: "inclusion",
+                statement: "Include randomized controlled trials with adults",
+                rationale: null,
+                context: null,
+                status: "active",
+                version: 1,
+                supersededBy: null,
+                tags: [],
+                importance: "normal",
+                createdAt: new Date(),
+                updatedAt: new Date(),
+                archivedAt: null,
+            },
+            {
+                id: "pm-definition",
+                projectId: "p1",
+                type: "definition",
+                category: "population",
+                statement: "Adults are participants over age 18",
+                rationale: null,
+                context: null,
+                status: "active",
+                version: 1,
+                supersededBy: null,
+                tags: [],
+                importance: "normal",
+                createdAt: new Date(),
+                updatedAt: new Date(),
+                archivedAt: null,
+            },
+        ] as any);
+
+        const result = await retrieveMemories(
+            {
+                userId: "u1",
+                projectId: "p1",
+                query: "adults",
+            },
+            {
+                includeUser: false,
+                includeStudy: false,
+                maxMemories: 5,
+            },
+        );
+
+        const criterionIndex = result.findIndex((m) => m.id === "pm-criterion");
+        const definitionIndex = result.findIndex((m) => m.id === "pm-definition");
+        expect(criterionIndex).toBeGreaterThanOrEqual(0);
+        expect(definitionIndex).toBeGreaterThanOrEqual(0);
+        expect(criterionIndex).toBeLessThan(definitionIndex);
+    });
+
+    it("logs retrieval with conversationId when provided", async () => {
+        mockGetUserMemories.mockResolvedValue([
+            { id: "um-1", type: "preference", key: "style", value: "formal", rationale: null, tags: [], status: "active" },
+        ] as any);
+
+        await retrieveMemories({
+            userId: "u1",
+            projectId: "p1",
+            conversationId: "conv-123",
+            query: "style",
+        });
+
+        expect(mockMemoryRetrievalCreate).toHaveBeenCalled();
+        const firstCall = mockMemoryRetrievalCreate.mock.calls[0]?.[0] as {
+            data?: { conversationId?: string | null };
+        };
+        expect(firstCall?.data?.conversationId).toBe("conv-123");
+        expect(mockExecuteRaw).toHaveBeenCalled();
+    });
+
+    it("merges semantic layer results into retrieval output", async () => {
+        mockSearchSemanticMemories.mockResolvedValue([
+            {
+                id: "pm-semantic",
+                type: "project",
+                memoryType: "definition",
+                content: "[definition - outcome] Symptom burden score is primary outcome",
+                relevance: 0.91,
+                tags: ["outcome"],
+            },
+        ] as any);
+
+        const result = await retrieveMemories(
+            {
+                userId: "u1",
+                projectId: "p1",
+                query: "symptom burden endpoint",
+            },
+            {
+                includeUser: false,
+                includeProject: true,
+                includeStudy: false,
+            },
+        );
+
+        expect(mockSearchSemanticMemories).toHaveBeenCalledWith(
+            expect.objectContaining({
+                userId: "u1",
+                projectId: "p1",
+                query: "symptom burden endpoint",
+            }),
+            expect.objectContaining({
+                minRelevance: 0.3,
+                includeProject: true,
+            }),
+            expect.any(Set),
+        );
+        expect(result.some((memory) => memory.id === "pm-semantic")).toBe(true);
     });
 });

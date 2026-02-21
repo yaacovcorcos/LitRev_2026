@@ -1,7 +1,6 @@
 "use client";
 
-import { useCallback, useState, useRef, useEffect, useMemo } from "react";
-import * as Popover from "@radix-ui/react-popover";
+import { useCallback, useMemo, useState } from "react";
 import { useProjectCopilot } from "@/contexts/ProjectCopilotContext";
 import type { CopilotPage } from "@/types/ai";
 import type { AgentMode } from "@/types/agent";
@@ -12,6 +11,7 @@ import { TimelineRenderer } from "../copilot/TimelineRenderer";
 import { CopilotInput } from "../copilot/CopilotInput";
 import { AutonomySettings } from "../copilot/AutonomySettings";
 import { SuggestionChips } from "./SuggestionChips";
+import { ConversationPicker } from "../ui/ConversationPicker";
 import styles from "./ConversationMainView.module.css";
 
 export type ConversationMainViewProps = {
@@ -37,70 +37,11 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
     } = useProjectCopilot();
 
     const [showDropdown, setShowDropdown] = useState(false);
-    const [search, setSearch] = useState("");
-    const [activeDescendantId, setActiveDescendantId] = useState<string | null>(null);
     const [isBranching, setIsBranching] = useState(false);
-    const listRef = useRef<HTMLDivElement | null>(null);
-
-    // Reset active descendant when search changes
-    useEffect(() => {
-        setActiveDescendantId(null);
-    }, [search]);
 
     const currentConversation = conversations.find(c => c.id === currentConversationId);
     const currentTitle = currentConversation?.title || "New conversation";
 
-    const filtered = search
-        ? conversations.filter(c =>
-            (c.title || "New conversation").toLowerCase().includes(search.toLowerCase())
-        )
-        : conversations;
-
-    // Flat list of IDs for keyboard navigation
-    const flatIds = filtered.map(c => c.id);
-
-    const handleListboxKeyDown = (e: React.KeyboardEvent) => {
-        if (e.key === "ArrowDown") {
-            e.preventDefault();
-            const currentIndex = activeDescendantId ? flatIds.indexOf(activeDescendantId) : -1;
-            const nextIndex = currentIndex < flatIds.length - 1 ? currentIndex + 1 : 0;
-            const nextId = flatIds[nextIndex];
-            setActiveDescendantId(nextId);
-            document.getElementById(`cmv-opt-${nextId}`)?.scrollIntoView({ block: "nearest" });
-        } else if (e.key === "ArrowUp") {
-            e.preventDefault();
-            const currentIndex = activeDescendantId ? flatIds.indexOf(activeDescendantId) : 0;
-            const prevIndex = currentIndex > 0 ? currentIndex - 1 : flatIds.length - 1;
-            const prevId = flatIds[prevIndex];
-            setActiveDescendantId(prevId);
-            document.getElementById(`cmv-opt-${prevId}`)?.scrollIntoView({ block: "nearest" });
-        } else if (e.key === "Enter" && activeDescendantId) {
-            e.preventDefault();
-            selectConversation(activeDescendantId);
-            setShowDropdown(false);
-            setSearch("");
-            setActiveDescendantId(null);
-        } else if (e.key === "Home") {
-            e.preventDefault();
-            const firstId = flatIds[0];
-            if (firstId) {
-                setActiveDescendantId(firstId);
-                document.getElementById(`cmv-opt-${firstId}`)?.scrollIntoView({ block: "nearest" });
-            }
-        } else if (e.key === "End") {
-            e.preventDefault();
-            const lastId = flatIds[flatIds.length - 1];
-            if (lastId) {
-                setActiveDescendantId(lastId);
-                document.getElementById(`cmv-opt-${lastId}`)?.scrollIntoView({ block: "nearest" });
-            }
-        } else if (e.key === "Escape") {
-            e.preventDefault();
-            setShowDropdown(false);
-            setSearch("");
-            setActiveDescendantId(null);
-        }
-    };
 
     // Dynamic suggestion chips from project state (Phase 4.2)
     const snapshot = useProjectState(projectId);
@@ -146,88 +87,17 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
                 {/* Conversation header */}
                 <div className={styles.header}>
                     <div className={styles.selector}>
-                        <Popover.Root
+                        <ConversationPicker
+                            variant="page"
                             open={showDropdown}
-                            onOpenChange={(open) => {
-                                setShowDropdown(open);
-                                if (open) {
-                                    const initialId = currentConversationId ?? flatIds[0] ?? null;
-                                    setActiveDescendantId(initialId);
-                                } else {
-                                    setSearch("");
-                                    setActiveDescendantId(null);
-                                }
-                            }}
-                        >
-                            <Popover.Trigger asChild>
-                                <button
-                                    type="button"
-                                    className={styles.selectorBtn}
-                                    title={currentTitle}
-                                    aria-haspopup="listbox"
-                                    aria-expanded={showDropdown}
-                                    aria-controls="cmv-listbox"
-                                >
-                                    <span className={styles.selectorTitle}>{currentTitle}</span>
-                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                        <polyline points="6 9 12 15 18 9" />
-                                    </svg>
-                                </button>
-                            </Popover.Trigger>
-                            <Popover.Portal>
-                                <Popover.Content className={styles.dropdown} side="bottom" align="start" sideOffset={4}>
-                                    <div className={styles.dropdownSearch}>
-                                        <input
-                                            type="text"
-                                            placeholder="Search sessions..."
-                                            value={search}
-                                            onChange={(e) => setSearch(e.target.value)}
-                                            className={styles.dropdownSearchInput}
-                                            autoFocus
-                                            role="combobox"
-                                            aria-autocomplete="list"
-                                            aria-controls="cmv-listbox"
-                                            aria-expanded={showDropdown}
-                                            aria-activedescendant={activeDescendantId ? `cmv-opt-${activeDescendantId}` : undefined}
-                                            onKeyDown={handleListboxKeyDown}
-                                        />
-                                    </div>
-                                    <div
-                                        ref={listRef}
-                                        className={styles.dropdownList}
-                                        role="listbox"
-                                        id="cmv-listbox"
-                                    >
-                                        {filtered.length === 0 ? (
-                                            <div className={styles.dropdownEmpty}>No conversations found</div>
-                                        ) : (
-                                            filtered.map((conv) => (
-                                                <div
-                                                    key={conv.id}
-                                                    id={`cmv-opt-${conv.id}`}
-                                                    className={`${styles.dropdownItem} ${currentConversationId === conv.id ? styles.dropdownItemActive : ""} ${activeDescendantId === conv.id ? styles.dropdownItemHighlight : ""}`}
-                                                    onClick={() => {
-                                                        selectConversation(conv.id);
-                                                        setShowDropdown(false);
-                                                        setSearch("");
-                                                        setActiveDescendantId(null);
-                                                    }}
-                                                    role="option"
-                                                    aria-selected={currentConversationId === conv.id}
-                                                >
-                                                    <span className={styles.dropdownItemTitle}>
-                                                        {conv.title || "New conversation"}
-                                                    </span>
-                                                    <span className={styles.dropdownItemCount}>
-                                                        {conv.messageCount} msgs
-                                                    </span>
-                                                </div>
-                                            ))
-                                        )}
-                                    </div>
-                                </Popover.Content>
-                            </Popover.Portal>
-                        </Popover.Root>
+                            onOpenChange={setShowDropdown}
+                            currentConversationId={currentConversationId}
+                            currentTitle={currentTitle}
+                            conversations={conversations}
+                            searchPlaceholder="Search sessions..."
+                            renderMeta={(conversation) => `${conversation.messageCount} msgs`}
+                            onSelect={selectConversation}
+                        />
                     </div>
 
                     <div className={styles.headerActions}>

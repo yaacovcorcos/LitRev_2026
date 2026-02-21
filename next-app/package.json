@@ -9,7 +9,9 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest",
-    "test:run": "vitest run"
+    "test:run": "vitest run",
+    "memory:warmup": "tsx scripts/warmup-memory-embeddings.ts",
+    "memory:validate": "tsx scripts/validate-memory-rollout.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.73.0",
@@ -52,6 +54,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.1.4",
     "jsdom": "^28.0.0",
+    "tsx": "^4.20.6",
     "typescript": "^5",
     "vitest": "^4.0.18",
     "vitest-axe": "^0.1.0"

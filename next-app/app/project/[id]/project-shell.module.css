@@ -31,6 +31,11 @@
     overflow-x: hidden;
 }
 
+.copilotPane {
+    min-width: 0;
+    min-height: 0;
+}
+
 .resizeHandle {
     width: 1px;
     background: var(--glass-border);
@@ -51,4 +56,22 @@
     cursor: default;
     pointer-events: none;
     width: 0;
+}
+
+@media (max-width: 900px) {
+    .shellMain {
+        padding-bottom: var(--mobile-nav-offset) !important;
+    }
+
+    .viewBody {
+        grid-template-columns: 1fr !important;
+    }
+
+    .resizeHandle {
+        display: none;
+    }
+
+    .copilotPane {
+        display: none;
+    }
 }

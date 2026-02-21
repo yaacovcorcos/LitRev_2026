@@ -13,10 +13,12 @@ export type ArtifactType =
     | "draft_diff"
     | "screening_batch"
     | "protocol_suggestion"
+    | "scoping_report"
     | "criteria_card"
     | "evidence_table"
     | "plan"
-    | "memory_proposal";
+    | "memory_proposal"
+    | "memory_forget_proposal";
 
 export type ArtifactStatus =
     | "proposed"
@@ -103,6 +105,37 @@ export interface ProtocolSuggestionPayload {
     rationale: string;
 }
 
+export interface ScopingSearchEntry {
+    database: string;
+    query: string;
+    resultCount?: number;
+    angle?: string;
+}
+
+export interface ScopingQuestionRecommendation {
+    question: string;
+    rationale: string;
+    feasibility: "low" | "medium" | "high";
+    novelty: "low" | "medium" | "high";
+}
+
+export interface ScopingReportPayload {
+    topic: string;
+    searchesRun: ScopingSearchEntry[];
+    landscape: {
+        majorThemes: string[];
+        evidenceGaps: string[];
+        methodologicalPatterns: string[];
+        evidenceDensity: "sparse" | "moderate" | "dense";
+        timeframe?: {
+            earliest?: number;
+            latest?: number;
+        };
+    };
+    recommendedQuestions: ScopingQuestionRecommendation[];
+    nextStep: string;
+}
+
 export interface CriteriaCardPayload {
     inclusion: string[];
     exclusion: string[];
@@ -131,6 +164,20 @@ export interface MemoryProposalPayload {
     key?: string;
     value: string;
     rationale?: string;
+}
+
+export interface MemoryForgetMatch {
+    id: string;
+    label: string;
+    value: string;
+}
+
+export interface MemoryForgetProposalPayload {
+    memoryType: "user" | "project";
+    key: string;
+    mode: "archive";
+    reason?: string;
+    matches: MemoryForgetMatch[];
 }
 
 // ── Zod Schemas ──────────────────────────────────────────────────────────────
@@ -210,6 +257,40 @@ export const ProtocolSuggestionSchema = z.object({
     rationale: z.string(),
 });
 
+const ScopingScoreSchema = z.enum(["low", "medium", "high"]);
+const ScopingDensitySchema = z.enum(["sparse", "moderate", "dense"]);
+
+export const ScopingSearchEntrySchema = z.object({
+    database: z.string().min(1),
+    query: z.string().min(1),
+    resultCount: z.number().int().nonnegative().optional(),
+    angle: z.string().min(1).optional(),
+});
+
+export const ScopingQuestionRecommendationSchema = z.object({
+    question: z.string().min(1),
+    rationale: z.string().min(1),
+    feasibility: ScopingScoreSchema,
+    novelty: ScopingScoreSchema,
+});
+
+export const ScopingReportSchema = z.object({
+    topic: z.string().min(1),
+    searchesRun: z.array(ScopingSearchEntrySchema),
+    landscape: z.object({
+        majorThemes: z.array(z.string()),
+        evidenceGaps: z.array(z.string()),
+        methodologicalPatterns: z.array(z.string()),
+        evidenceDensity: ScopingDensitySchema,
+        timeframe: z.object({
+            earliest: z.number().int().optional(),
+            latest: z.number().int().optional(),
+        }).optional(),
+    }),
+    recommendedQuestions: z.array(ScopingQuestionRecommendationSchema).max(5),
+    nextStep: z.string().min(1),
+});
+
 export const CriteriaCardSchema = z.object({
     inclusion: z.array(z.string()),
     exclusion: z.array(z.string()),
@@ -240,6 +321,18 @@ export const MemoryProposalSchema = z.object({
     rationale: z.string().optional(),
 });
 
+export const MemoryForgetProposalSchema = z.object({
+    memoryType: z.enum(["user", "project"]),
+    key: z.string().min(1),
+    mode: z.literal("archive"),
+    reason: z.string().optional(),
+    matches: z.array(z.object({
+        id: z.string().min(1),
+        label: z.string().min(1),
+        value: z.string().min(1),
+    })).min(1),
+});
+
 /** Map artifact type → Zod schema for payload validation */
 export const ARTIFACT_PAYLOAD_SCHEMAS: Record<ArtifactType, z.ZodType> = {
     study_proposal: StudyProposalSchema,
@@ -247,10 +340,12 @@ export const ARTIFACT_PAYLOAD_SCHEMAS: Record<ArtifactType, z.ZodType> = {
     draft_diff: DraftDiffSchema,
     screening_batch: ScreeningBatchSchema,
     protocol_suggestion: ProtocolSuggestionSchema,
+    scoping_report: ScopingReportSchema,
     criteria_card: CriteriaCardSchema,
     evidence_table: EvidenceTableSchema,
     plan: PlanSchema,
     memory_proposal: MemoryProposalSchema,
+    memory_forget_proposal: MemoryForgetProposalSchema,
 };
 
 // ── Client-facing Artifact Data ──────────────────────────────────────────────

@@ -85,7 +85,7 @@ export function createDefaultDraftState(): DraftState {
     panels: {
       ledgerWidth: 320,
       copilotWidth: 360,
-      ledgerCollapsed: false,
+      ledgerCollapsed: true,
       copilotCollapsed: false,
     },
     contentBySection: buildSectionRecord(BASE_SECTION_IDS, () => emptyDoc()),

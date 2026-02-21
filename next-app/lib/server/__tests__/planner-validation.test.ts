@@ -99,6 +99,7 @@ describe("validatePlan", () => {
             "screen studies",
             "add to ledger",
             "exclude study",
+            "delete study",
             "update criteria",
             "draft section",
         ];
@@ -184,7 +185,8 @@ function getHeuristicToolName(msg: string): string {
         "screen studies": "bulk_screening",
         "add to ledger": "add_to_ledger",
         "exclude study": "exclude_study",
-        "update criteria": "update_protocol",
+        "delete study": "delete_study",
+        "update criteria": "update_criteria",
         "draft section": "update_note",
     };
     return map[msg] ?? "";

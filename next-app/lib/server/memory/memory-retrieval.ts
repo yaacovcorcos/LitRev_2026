@@ -4,9 +4,12 @@
  */
 
 import { prisma } from "@/lib/server/prisma";
+import { Prisma } from "@prisma/client";
 import { getUserMemories } from "./user-memory";
 import { getProjectMemories, searchProjectMemories } from "./project-memory";
 import { getStudyMemories, searchStudyMemories } from "./study-memory";
+import { searchSemanticMemories } from "./semantic-memory";
+import { runMemoryMaintenanceLoop } from "./maintenance";
 import { emitEvent } from "@/lib/server/agent/events";
 import type { AgentMode } from "@/types/agent";
 
@@ -14,6 +17,7 @@ export interface MemoryContext {
     userId: string;
     projectId?: string;
     studyId?: string;
+    conversationId?: string;
     query?: string;
     agentMode?: AgentMode;
     citedStudyIds?: string[];
@@ -29,6 +33,12 @@ export interface RetrievedMemory {
     source?: string;
     tags?: string[];
 }
+
+const SIGNAL_STOPWORDS = new Set([
+    "about", "after", "again", "because", "between", "could", "does", "from", "have", "into",
+    "more", "most", "other", "should", "their", "there", "these", "those", "this", "using",
+    "with", "without", "were", "what", "when", "where", "which", "will", "would", "into",
+]);
 
 // ── Token estimation ────────────────────────────────────────────────────────
 
@@ -46,6 +56,27 @@ function trimToTokenBudget(memories: RetrievedMemory[], budget: number): Retriev
         usedTokens += tokens;
     }
     return result;
+}
+
+function normalizedTerms(input: string): string[] {
+    return input
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, " ")
+        .split(/\s+/)
+        .map((term) => term.trim())
+        .filter((term) => term.length >= 4 && !SIGNAL_STOPWORDS.has(term));
+}
+
+function likelyUsedInAnswer(memoryContent: string, answerText: string): boolean {
+    const memoryTerms = normalizedTerms(memoryContent);
+    const answerSet = new Set(normalizedTerms(answerText));
+    if (memoryTerms.length === 0 || answerSet.size === 0) return false;
+    let overlap = 0;
+    for (const term of memoryTerms) {
+        if (answerSet.has(term)) overlap += 1;
+        if (overlap >= 2) return true;
+    }
+    return false;
 }
 
 // ── Relevance scoring ───────────────────────────────────────────────────────
@@ -77,7 +108,99 @@ function calculateRelevance(query: string, text: string, tags: string[]): number
         score += (matchingTags / tags.length) * 0.3;
     }
 
+    // Identifier bonus (DOI/PMID/study-id style exact matches)
+    const identifierTokens = lowerQuery.match(/\b(?:10\.\d{4,9}\/[-._;()/:a-z0-9]+|pmid:\s*\d+|c[a-z0-9]{8,})\b/gi) || [];
+    if (identifierTokens.length > 0) {
+        const exactIdentifierMatches = identifierTokens.filter((token) => lowerText.includes(token.trim())).length;
+        if (exactIdentifierMatches > 0) {
+            score += (exactIdentifierMatches / identifierTokens.length) * 0.9;
+        }
+    }
+
     return Math.min(score, 1.0);
+}
+
+function utilityMultiplier(memory: RetrievedMemory): number {
+    let multiplier = 1.0;
+
+    if (memory.type === "project" && (memory.memoryType === "criterion" || memory.memoryType === "decision")) {
+        multiplier += 0.15;
+    }
+
+    if (memory.type === "user") {
+        multiplier += 0.1;
+    }
+
+    if (memory.type === "study" && (memory.tags || []).length > 0) {
+        multiplier += 0.05;
+    }
+
+    return multiplier;
+}
+
+function fuseMemoryLayers(
+    deterministic: RetrievedMemory[],
+    keyword: RetrievedMemory[],
+    semantic: RetrievedMemory[],
+): RetrievedMemory[] {
+    const deterministicIds = new Set(deterministic.map((m) => m.id));
+    const fused = new Map<string, {
+        memory: RetrievedMemory;
+        lexical: number;
+        semantic: number;
+    }>();
+
+    for (const memory of keyword) {
+        if (deterministicIds.has(memory.id)) continue;
+        const existing = fused.get(memory.id);
+        if (!existing) {
+            fused.set(memory.id, {
+                memory,
+                lexical: memory.relevance,
+                semantic: 0,
+            });
+            continue;
+        }
+
+        if (memory.relevance > existing.lexical) {
+            existing.memory = memory;
+        }
+        existing.lexical = Math.max(existing.lexical, memory.relevance);
+    }
+
+    for (const memory of semantic) {
+        if (deterministicIds.has(memory.id)) continue;
+        const existing = fused.get(memory.id);
+        if (!existing) {
+            fused.set(memory.id, {
+                memory,
+                lexical: 0,
+                semantic: memory.relevance,
+            });
+            continue;
+        }
+
+        if (memory.relevance > existing.semantic && memory.relevance > existing.lexical) {
+            existing.memory = memory;
+        }
+        existing.semantic = Math.max(existing.semantic, memory.relevance);
+    }
+
+    const ranked = [...fused.values()]
+        .map((entry) => {
+            // Weighted fusion:
+            // - lexical dominates exact matching
+            // - semantic boosts paraphrase recall when available
+            const fusedScore = (entry.lexical * 0.7) + (entry.semantic * 0.3);
+            const weightedScore = Math.min(fusedScore * utilityMultiplier(entry.memory), 1.0);
+            return {
+                ...entry.memory,
+                relevance: weightedScore,
+            };
+        })
+        .sort((a, b) => b.relevance - a.relevance);
+
+    return [...deterministic, ...ranked];
 }
 
 // ── Phase 1: Deterministic scope rules ──────────────────────────────────────
@@ -136,6 +259,7 @@ async function gatherDeterministicMemories(
         for (const studyId of context.citedStudyIds) {
             const studyMems = await getStudyMemories(studyId, { status: "active" });
             for (const m of studyMems) {
+                if (context.projectId && m.projectId !== context.projectId) continue;
                 addMemory({
                     id: m.id,
                     type: "study",
@@ -229,6 +353,7 @@ async function gatherKeywordMemories(
     if (opts.includeStudy && context.studyId) {
         const studyMemories = await getStudyMemories(context.studyId, { status: "active" });
         for (const m of studyMemories) {
+            if (context.projectId && m.projectId !== context.projectId) continue;
             if (excludeIds.has(m.id)) continue;
             const content = `[${m.type}${m.category ? ` - ${m.category}` : ""}] ${m.content}`;
             const relevance = calculateRelevance(query, m.content, m.tags) * (m.confidence ?? 1.0);
@@ -241,7 +366,45 @@ async function gatherKeywordMemories(
         }
     }
 
+    if (opts.includeStudy && context.projectId && query) {
+        const scopedStudyMatches = await searchStudyMemories(context.projectId, query, context.studyId
+            ? { studyId: context.studyId }
+            : undefined);
+
+        for (const m of scopedStudyMatches) {
+            if (excludeIds.has(m.id)) continue;
+            const content = `[${m.type}${m.category ? ` - ${m.category}` : ""}] ${m.content}`;
+            const relevance = calculateRelevance(query, m.content, m.tags) * (m.confidence ?? 1.0);
+            if (relevance >= opts.minRelevance) {
+                results.push({
+                    id: m.id,
+                    type: "study",
+                    memoryType: m.type,
+                    content,
+                    relevance,
+                    source: m.source || undefined,
+                    tags: m.tags,
+                });
+            }
+        }
+    }
+
     return results.sort((a, b) => b.relevance - a.relevance);
+}
+
+// ── Phase 3: Semantic retrieval (pgvector-backed) ────────────────────────────
+
+async function gatherSemanticMemories(
+    context: MemoryContext,
+    opts: {
+        minRelevance: number;
+        includeUser: boolean;
+        includeProject: boolean;
+        includeStudy: boolean;
+    },
+    excludeIds: Set<string>,
+): Promise<RetrievedMemory[]> {
+    return searchSemanticMemories(context, opts, excludeIds);
 }
 
 // ── Main retrieval ──────────────────────────────────────────────────────────
@@ -277,11 +440,19 @@ export async function retrieveMemories(
         deterministicIds,
     );
 
-    // Phase 3: Merge and trim to budget
-    const merged = [...deterministic, ...keyword].slice(0, maxMemories);
+    // Phase 3: Semantic retrieval
+    const semantic = await gatherSemanticMemories(
+        context,
+        { minRelevance, includeUser, includeProject, includeStudy },
+        new Set([...deterministicIds, ...keyword.map((k) => k.id)]),
+    );
+
+    // Phase 4: Fuse lexical + semantic layers, then trim by count and token budget
+    const fused = fuseMemoryLayers(deterministic, keyword, semantic);
+    const merged = fused.slice(0, maxMemories);
     const trimmed = trimToTokenBudget(merged, memoryBudgetTokens);
 
-    // Phase 4: Emit context_assembly event if runId provided
+    // Phase 5: Emit context_assembly event if runId provided
     if (context.runId && trimmed.length > 0) {
         const excluded = merged
             .filter((m) => !trimmed.some((t) => t.id === m.id))
@@ -293,6 +464,7 @@ export async function retrieveMemories(
         await emitEvent(context.runId, "context_assembly", {
             deterministicCount: deterministic.length,
             keywordCount: keyword.length,
+            semanticCount: semantic.length,
             finalCount: trimmed.length,
             tokenEstimate: trimmed.reduce((s, m) => s + estimateTokens(m.content), 0),
             budget: memoryBudgetTokens,
@@ -310,12 +482,56 @@ export async function retrieveMemories(
         await logMemoryRetrieval({
             userId: context.userId,
             projectId: context.projectId,
+            conversationId: context.conversationId,
             query: context.query || "context-based",
             memories: trimmed,
         });
+        await incrementRetrievalCounters(trimmed).catch(() => {});
+        await runMemoryMaintenanceLoop({ projectId: context.projectId, userId: context.userId }).catch(() => null);
     }
 
     return trimmed;
+}
+
+/**
+ * Heuristically mark retrieved memories as used in the final assistant answer.
+ * This powers retrieval-hit quality metrics without blocking response generation.
+ */
+export async function markMemoriesUsedInAnswer(memories: RetrievedMemory[], answerText: string): Promise<void> {
+    if (!answerText.trim() || memories.length === 0) return;
+    const used = memories.filter((memory) => likelyUsedInAnswer(memory.content, answerText));
+    if (used.length === 0) return;
+
+    const userIds = [...new Set(used.filter((m) => m.type === "user").map((m) => m.id))];
+    const projectIds = [...new Set(used.filter((m) => m.type === "project").map((m) => m.id))];
+    const studyIds = [...new Set(used.filter((m) => m.type === "study").map((m) => m.id))];
+
+    const updates: Promise<unknown>[] = [];
+    if (userIds.length > 0) {
+        const values = userIds.map((id) => Prisma.sql`${id}`);
+        updates.push(prisma.$executeRaw`
+            UPDATE "UserMemory"
+            SET "usedInAnswerCount" = "usedInAnswerCount" + 1
+            WHERE "id" IN (${Prisma.join(values)})
+        `);
+    }
+    if (projectIds.length > 0) {
+        const values = projectIds.map((id) => Prisma.sql`${id}`);
+        updates.push(prisma.$executeRaw`
+            UPDATE "ProjectMemory"
+            SET "usedInAnswerCount" = "usedInAnswerCount" + 1
+            WHERE "id" IN (${Prisma.join(values)})
+        `);
+    }
+    if (studyIds.length > 0) {
+        const values = studyIds.map((id) => Prisma.sql`${id}`);
+        updates.push(prisma.$executeRaw`
+            UPDATE "StudyMemory"
+            SET "usedInAnswerCount" = "usedInAnswerCount" + 1
+            WHERE "id" IN (${Prisma.join(values)})
+        `);
+    }
+    if (updates.length > 0) await Promise.all(updates);
 }
 
 // ── Audit logging ───────────────────────────────────────────────────────────
@@ -348,6 +564,48 @@ async function logMemoryRetrieval(input: {
                 projectId: input.projectId,
             },
         });
+    }
+}
+
+async function incrementRetrievalCounters(memories: RetrievedMemory[]) {
+    const userIds = [...new Set(memories.filter((m) => m.type === "user").map((m) => m.id))];
+    const projectIds = [...new Set(memories.filter((m) => m.type === "project").map((m) => m.id))];
+    const studyIds = [...new Set(memories.filter((m) => m.type === "study").map((m) => m.id))];
+
+    const updates: Promise<unknown>[] = [];
+    if (userIds.length > 0) {
+        const userIdValues = userIds.map((id) => Prisma.sql`${id}`);
+        updates.push(
+            prisma.$executeRaw`
+                UPDATE "UserMemory"
+                SET "retrievalCount" = "retrievalCount" + 1
+                WHERE "id" IN (${Prisma.join(userIdValues)})
+            `,
+        );
+    }
+    if (projectIds.length > 0) {
+        const projectIdValues = projectIds.map((id) => Prisma.sql`${id}`);
+        updates.push(
+            prisma.$executeRaw`
+                UPDATE "ProjectMemory"
+                SET "retrievalCount" = "retrievalCount" + 1
+                WHERE "id" IN (${Prisma.join(projectIdValues)})
+            `,
+        );
+    }
+    if (studyIds.length > 0) {
+        const studyIdValues = studyIds.map((id) => Prisma.sql`${id}`);
+        updates.push(
+            prisma.$executeRaw`
+                UPDATE "StudyMemory"
+                SET "retrievalCount" = "retrievalCount" + 1
+                WHERE "id" IN (${Prisma.join(studyIdValues)})
+            `,
+        );
+    }
+
+    if (updates.length > 0) {
+        await Promise.all(updates);
     }
 }
 

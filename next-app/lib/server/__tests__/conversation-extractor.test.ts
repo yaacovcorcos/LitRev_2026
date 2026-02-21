@@ -5,6 +5,7 @@ vi.mock("@/lib/server/prisma", () => ({
     prisma: {
         aIMessage: { findMany: vi.fn() },
         projectMemory: { findFirst: vi.fn() },
+        artifact: { findFirst: vi.fn() },
     },
 }));
 
@@ -35,6 +36,7 @@ const { getAIService } = await import("@/lib/server/ai");
 
 const mockFindMany = vi.mocked(prisma.aIMessage.findMany);
 const mockMemoryFindFirst = vi.mocked(prisma.projectMemory.findFirst);
+const mockArtifactFindFirst = vi.mocked(prisma.artifact.findFirst);
 const mockCreatePM = vi.mocked(createProjectMemory);
 const mockCreateArtifact = vi.mocked(createArtifact);
 
@@ -49,6 +51,7 @@ beforeEach(() => {
     vi.clearAllMocks();
     // Default: no prior extraction exists (dedup guard passes)
     mockMemoryFindFirst.mockResolvedValue(null);
+    mockArtifactFindFirst.mockResolvedValue(null);
 });
 
 describe("extractMemoriesFromConversation", () => {
@@ -106,12 +109,26 @@ describe("extractMemoriesFromConversation", () => {
         expect(mockCreateArtifact).toHaveBeenCalledWith(expect.objectContaining({
             type: "memory_proposal",
             title: "Preference: citation_style",
+            sourceEventId: "conversation-extractor:conv-1",
             payload: expect.objectContaining({
                 memoryType: "user",
                 key: "citation_style",
                 value: "APA",
             }),
         }));
+    });
+
+    it("skips extraction when preference artifacts already exist for the conversation", async () => {
+        mockMemoryFindFirst.mockResolvedValue(null);
+        mockArtifactFindFirst.mockResolvedValue({ id: "art-existing" } as any);
+        mockFindMany.mockResolvedValue(makeMessages(6) as any);
+
+        const result = await extractMemoriesFromConversation("conv-1", "proj-1", "run-1", "user-1");
+
+        expect(result).toEqual({ decisions: [], preferences: [], facts: [] });
+        expect(mockChat).not.toHaveBeenCalled();
+        expect(mockCreatePM).not.toHaveBeenCalled();
+        expect(mockCreateArtifact).not.toHaveBeenCalled();
     });
 
     it("handles AI returning invalid JSON gracefully", async () => {
@@ -132,5 +149,44 @@ describe("extractMemoriesFromConversation", () => {
             expect(call[0].tags).toContain("conversation-extracted");
             expect(call[0].tags).toContain("conversation:conv-1");
         }
+    });
+
+    it("strips hidden scoping metadata from assistant transcript before extraction", async () => {
+        mockFindMany.mockResolvedValue([
+            { role: "assistant", content: `Landscape summary\n\n<!-- SCOPING_REPORT: {"topic":"x","searchesRun":[],"landscape":{"majorThemes":[],"evidenceGaps":[],"methodologicalPatterns":[],"evidenceDensity":"moderate"},"recommendedQuestions":[],"nextStep":"x"} -->` },
+            ...makeMessages(5),
+        ] as any);
+
+        await extractMemoriesFromConversation("conv-1", "proj-1");
+
+        const lastCall = mockChat.mock.calls.at(-1);
+        const payload = lastCall?.[0] as Array<{ role: string; content: string }>;
+        const transcriptMessage = payload.find((m) => m.role === "user")?.content || "";
+        expect(transcriptMessage.includes("SCOPING_REPORT")).toBe(false);
+    });
+
+    it("applies scoping policy: keeps explicit decisions but drops transient scoping summaries/facts", async () => {
+        mockFindMany.mockResolvedValue([
+            { role: "assistant", content: `Scoping narrative\n<scoping_report>{"topic":"x","searchesRun":[],"landscape":{"majorThemes":[],"evidenceGaps":[],"methodologicalPatterns":[],"evidenceDensity":"moderate"},"recommendedQuestions":[],"nextStep":"x"}</scoping_report>` },
+            ...makeMessages(5),
+        ] as any);
+        mockChat.mockResolvedValueOnce({
+            content: JSON.stringify({
+                decisions: [
+                    { statement: "Literature landscape: major themes include telemedicine", category: "outcome" },
+                    { statement: "User chose to focus on adults over 65", category: "population", rationale: "Explicitly selected in chat" },
+                ],
+                preferences: [],
+                facts: [{ statement: "Evidence density is moderate", category: "outcome" }],
+            }),
+        });
+
+        await extractMemoriesFromConversation("conv-1", "proj-1");
+
+        expect(mockCreatePM).toHaveBeenCalledTimes(1);
+        expect(mockCreatePM).toHaveBeenCalledWith(expect.objectContaining({
+            statement: "User chose to focus on adults over 65",
+            category: "population",
+        }));
     });
 });

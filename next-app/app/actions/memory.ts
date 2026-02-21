@@ -55,6 +55,9 @@ import {
     retrieveMemories,
     retrieveAndFormatMemories,
     getMemoryRetrievalStats,
+    getMemoryQualityMetrics,
+    runMemoryMaintenance,
+    validateSemanticRolloutStatus,
     type MemoryContext,
     type RetrievedMemory,
 } from "@/lib/server/memory";
@@ -247,6 +250,25 @@ export async function retrieveAndFormatMemoriesAction(
 
 export async function getMemoryRetrievalStatsAction(projectId: string) {
     return getMemoryRetrievalStats(projectId);
+}
+
+export async function getMemoryQualityMetricsAction(projectId: string, userId: string = "single-user") {
+    return getMemoryQualityMetrics(projectId, userId);
+}
+
+export async function runMemoryMaintenanceAction(
+    projectId: string,
+    options?: { userId?: string; dryRun?: boolean },
+) {
+    return runMemoryMaintenance({
+        projectId,
+        userId: options?.userId ?? "single-user",
+        dryRun: options?.dryRun ?? false,
+    });
+}
+
+export async function getSemanticRolloutStatusAction() {
+    return validateSemanticRolloutStatus();
 }
 
 // ============================================================================

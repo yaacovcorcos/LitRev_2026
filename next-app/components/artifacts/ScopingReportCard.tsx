@@ -2,12 +2,15 @@
 
 import { useMemo, useState } from "react";
 import type { ScopingReportPayload } from "@/types/artifacts";
+import { isScopingDecisionCardV2Enabled } from "@/lib/agent/feature-flags";
 import styles from "@/styles/artifacts.module.css";
 
 type ScopingReportCardProps = {
     payload: ScopingReportPayload;
     onActionPrompt?: (prompt: string) => void;
 };
+
+const SCOPING_CARD_V2_ENABLED = isScopingDecisionCardV2Enabled();
 
 function scoreClass(score: "low" | "medium" | "high") {
     if (score === "high") return styles.confidenceHigh;
@@ -20,6 +23,16 @@ function buildUseQuestionPrompt(question: string, index: number) {
 }
 
 export function ScopingReportCard({ payload, onActionPrompt }: ScopingReportCardProps) {
+    if (!SCOPING_CARD_V2_ENABLED) {
+        return (
+            <>
+                <div className={styles.draftSectionLabel}>Scoping Report</div>
+                <div className={styles.scopingTopic}>{payload.topic}</div>
+                <div className={styles.criteriaRationale}>{payload.nextStep}</div>
+            </>
+        );
+    }
+
     const [showAnalysis, setShowAnalysis] = useState(false);
     const topQuestions = useMemo(() => payload.recommendedQuestions.slice(0, 3), [payload.recommendedQuestions]);
     const canAct = typeof onActionPrompt === "function";
