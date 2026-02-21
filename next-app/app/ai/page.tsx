@@ -1356,6 +1356,10 @@ export default function AIView() {
     setPrefill(prompt);
   }, []);
 
+  const handleActionPrompt = useCallback((prompt: string, mode?: AgentMode) => {
+    void handleSend(prompt, "overview", undefined, undefined, mode);
+  }, [handleSend]);
+
   const handleRetryLastMessage = useCallback(() => {
     if (isTyping) return;
     const convId = activeConversationId;
@@ -1622,6 +1626,7 @@ export default function AIView() {
                 })),
               }}
               onSuggestionClick={handleSuggestionClick}
+              onActionPrompt={handleActionPrompt}
               onRetryLastMessage={handleRetryLastMessage}
               onBranchFromMessage={handleBranchFromMessage}
               onReviewArtifact={handleReviewArtifact}

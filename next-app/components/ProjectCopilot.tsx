@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import * as Popover from "@radix-ui/react-popover";
 import { useProjectCopilot } from "@/contexts/ProjectCopilotContext";
 import type { CopilotPage } from "@/types/ai";
+import type { AgentMode } from "@/types/agent";
 import { createNoteAction } from "@/app/actions/notes";
 import { TimelineRenderer } from "./copilot/TimelineRenderer";
 import { CopilotInput } from "./copilot/CopilotInput";
@@ -63,6 +64,7 @@ export function ProjectCopilot({
         selectConversation,
         newConversation,
         branchConversation,
+        sendMessage,
         handleReviewArtifact,
         executePlan,
         shouldOfferSummary,
@@ -93,6 +95,10 @@ export function ProjectCopilot({
         // Suggestions populate the input — currently handled by CopilotInput
         // Phase 4.2 will upgrade this to send the message directly
     }, []);
+
+    const handleActionPrompt = useCallback((prompt: string, mode?: AgentMode) => {
+        sendMessage(prompt, page, section, undefined, mode, studyId);
+    }, [sendMessage, page, section, studyId]);
 
     const handleSaveToNotes = useCallback(async (content: string, messageId: string) => {
         if (!params?.id) return;
@@ -421,6 +427,7 @@ export function ProjectCopilot({
                     onInsert={onInsert}
                     emptyState={emptyState}
                     onSuggestionClick={handleSuggestionClick}
+                    onActionPrompt={handleActionPrompt}
                     onReviewArtifact={handleReviewArtifact}
                     onExecutePlan={executePlan}
                     onSaveToNotes={handleSaveToNotes}

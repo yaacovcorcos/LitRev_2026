@@ -3,7 +3,7 @@
 import { createContext, useContext, type ReactNode } from "react";
 
 export type FocusMode = "conversation" | "view";
-export type ViewTab = "overview" | "protocol" | "ledger" | "draft" | "notes";
+export type ViewTab = "overview" | "protocol" | "ledger" | "draft" | "notes" | "memory";
 
 type ProjectShellContextValue = {
     isEmbeddedInProjectShell: boolean;

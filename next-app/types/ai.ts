@@ -4,7 +4,7 @@
  */
 
 // Copilot page context (which project tab the user is on)
-export type CopilotPage = "draft" | "protocol" | "ledger" | "study" | "overview" | "notes" | "ai";
+export type CopilotPage = "draft" | "protocol" | "ledger" | "study" | "overview" | "notes" | "memory" | "ai";
 
 // AI message roles
 export type AIRole = "system" | "user" | "assistant" | "tool";

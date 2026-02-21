@@ -107,6 +107,15 @@ export const COMMANDS: CommandDefinition[] = [
         execute: (h) => { h.closePalette(); h.setActiveTab("draft"); },
     },
     {
+        id: "nav-memory",
+        label: "Go to Memory",
+        icon: "psychology",
+        section: "navigation",
+        keywords: ["knowledge", "memory", "preferences", "prisma"],
+        when: inProject,
+        execute: (h) => { h.closePalette(); h.setActiveTab("memory"); },
+    },
+    {
         id: "nav-notes",
         label: "Go to Notes",
         icon: "sticky_note_2",

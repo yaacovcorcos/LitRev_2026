@@ -15,6 +15,7 @@ import remarkGfm from "remark-gfm";
 import { markdownComponents } from "../markdown/CodeBlock";
 import type { CopilotMessage } from "@/lib/projectCopilotStorage";
 import type { TimelineItem, TimelineArtifact } from "@/types/timeline";
+import type { AgentMode } from "@/types/agent";
 import type {
     PlanPayload,
     StudyProposalPayload,
@@ -22,6 +23,7 @@ import type {
     ScreeningBatchPayload,
     CriteriaCardPayload,
     ProtocolSuggestionPayload,
+    ScopingReportPayload,
     DraftDiffPayload,
     MemoryProposalPayload,
 } from "@/types/artifacts";
@@ -35,6 +37,7 @@ import { ProtocolEditCard } from "../artifacts/ProtocolEditCard";
 import { CriteriaCard } from "../artifacts/CriteriaCard";
 import { DraftBlock } from "../artifacts/DraftBlock";
 import { MemoryCard } from "../artifacts/MemoryCard";
+import { ScopingReportCard } from "../artifacts/ScopingReportCard";
 import { StreamingProgress } from "./StreamingProgress";
 import styles from "../ProjectCopilot.module.css";
 import artifactStyles from "@/styles/artifacts.module.css";
@@ -74,6 +77,7 @@ const ARTIFACT_JUMP_MAP: Record<string, { tab: string; label: string }> = {
     screening_batch: { tab: "ledger", label: "View in Ledger" },
     criteria_card: { tab: "protocol", label: "View in Protocol" },
     protocol_suggestion: { tab: "protocol", label: "View in Protocol" },
+    scoping_report: { tab: "protocol", label: "Refine Protocol" },
     draft_diff: { tab: "draft", label: "View in Draft" },
 };
 
@@ -96,6 +100,19 @@ type UserMessageRowProps = {
 };
 
 const USER_MARKDOWN_ELEMENTS = ["p", "strong", "em", "code", "a", "br"] as const;
+const SCOPING_REPORT_COMMENT_RE = /<!--\s*SCOPING_REPORT:\s*[\s\S]*?-->/gi;
+const SCOPING_REPORT_COMMENT_OPEN_RE = /<!--\s*SCOPING_REPORT:\s*[\s\S]*$/i;
+const SCOPING_REPORT_XML_RE = /<scoping_report>\s*[\s\S]*?<\/scoping_report>/gi;
+const SCOPING_REPORT_XML_OPEN_RE = /<scoping_report>[\s\S]*$/i;
+
+function stripInternalAssistantMetadata(content: string): string {
+    return content
+        .replace(SCOPING_REPORT_COMMENT_RE, "")
+        .replace(SCOPING_REPORT_XML_RE, "")
+        .replace(SCOPING_REPORT_COMMENT_OPEN_RE, "")
+        .replace(SCOPING_REPORT_XML_OPEN_RE, "")
+        .trimEnd();
+}
 
 const UserMessageRow = memo(function UserMessageRow({ item, onBranchFromMessage }: UserMessageRowProps) {
     return (
@@ -169,13 +186,15 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
     onInsert,
     onBranchFromMessage,
 }: AssistantMessageRowProps) {
+    const displayContent = stripInternalAssistantMetadata(item.content);
+
     return (
         <div className={`${styles.chatMsg} ${styles.chatMsgAi}`} role="article" aria-label="Assistant">
             <div className={styles.chatStack}>
                 <div className={styles.chatBubble}>
                     <div className={markdownStyles.markdownContent}>
                         <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-                            {item.content}
+                            {displayContent}
                         </ReactMarkdown>
                         {isStreaming && (
                             <span className={styles.streamingCursor} aria-hidden="true">◎</span>
@@ -186,7 +205,7 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
                     <button
                         type="button"
                         className={styles.chatActionBtn}
-                        onClick={() => onCopy(item.content)}
+                        onClick={() => onCopy(displayContent)}
                         title="Copy to clipboard"
                     >
                         <span className="material-icons-round">content_copy</span>
@@ -202,7 +221,7 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
                             <button
                                 type="button"
                                 className={styles.chatActionBtn}
-                                onClick={() => onSaveToNotes(item.content, item.id)}
+                                onClick={() => onSaveToNotes(displayContent, item.id)}
                                 title="Save to Notes"
                             >
                                 <span className="material-icons-round">bookmark_border</span>
@@ -213,7 +232,7 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
                         <button
                             type="button"
                             className={styles.chatActionBtn}
-                            onClick={() => onInsert(item.content)}
+                            onClick={() => onInsert(displayContent)}
                             title="Insert into draft"
                         >
                             <span className="material-icons-round">add_circle_outline</span>
@@ -251,6 +270,8 @@ export type TimelineRendererProps = {
         suggestions: { label: string; prompt: string }[];
     };
     onSuggestionClick: (prompt: string) => void;
+    /** Callback for one-click action prompts from artifact cards (e.g., scoping decision actions). */
+    onActionPrompt?: (prompt: string, mode?: AgentMode) => void;
     /** Callback when user reviews an artifact (accept/reject). editedPayload is set when user edits before accepting. */
     onReviewArtifact?: (artifactId: string, status: "accepted" | "rejected", note?: string, editedPayload?: Record<string, unknown>) => void;
     /** Callback when user clicks Run on a plan artifact with selected step indexes. */
@@ -276,6 +297,7 @@ export function TimelineRenderer({
     onInsert,
     emptyState,
     onSuggestionClick,
+    onActionPrompt,
     onReviewArtifact,
     onExecutePlan,
     onSaveToNotes,
@@ -553,6 +575,28 @@ export function TimelineRenderer({
                 );
             }
 
+            case "scoping_report": {
+                const scopingPayload = item.payload as ScopingReportPayload;
+                const qCount = scopingPayload?.recommendedQuestions?.length ?? 0;
+                return (
+                    <ArtifactWrapper
+                        {...wrapperProps}
+                        summaryText={`Scoping complete: ${qCount} recommended question${qCount === 1 ? "" : "s"}`}
+                    >
+                        <ScopingReportCard
+                            payload={scopingPayload}
+                            onActionPrompt={(prompt) => {
+                                if (onActionPrompt) {
+                                    onActionPrompt(prompt, "scoping");
+                                    return;
+                                }
+                                onSuggestionClick(prompt);
+                            }}
+                        />
+                    </ArtifactWrapper>
+                );
+            }
+
             case "criteria_card":
                 // Legacy: read-only renderer for old criteria_card artifacts still in DB
                 return (
@@ -594,7 +638,7 @@ export function TimelineRenderer({
                             payload={item.payload as MemoryProposalPayload}
                             onAccept={() => handleReview("accepted")}
                             onReject={() => handleReview("rejected")}
-                            onEditAndAccept={() => handleReview("accepted")}
+                            onEditAndAccept={(edited) => handleReview("accepted", undefined, edited as unknown as Record<string, unknown>)}
                         />
                     </ArtifactWrapper>
                 );

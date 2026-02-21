@@ -4,6 +4,7 @@ import { useCallback, useState, useRef, useEffect, useMemo } from "react";
 import * as Popover from "@radix-ui/react-popover";
 import { useProjectCopilot } from "@/contexts/ProjectCopilotContext";
 import type { CopilotPage } from "@/types/ai";
+import type { AgentMode } from "@/types/agent";
 import { useProjectState } from "@/hooks/useProjectState";
 import { getSuggestions } from "@/lib/agent/suggestions";
 import { createNoteAction } from "@/app/actions/notes";
@@ -110,6 +111,10 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
     const handleSuggestionClick = useCallback((prompt: string) => {
         setPrefill(prompt);
     }, []);
+
+    const handleActionPrompt = useCallback((prompt: string, mode?: AgentMode) => {
+        sendMessage(prompt, "overview" as CopilotPage, undefined, undefined, mode);
+    }, [sendMessage]);
 
     const handleChipSend = useCallback((prompt: string) => {
         setPrefill(prompt);
@@ -291,6 +296,7 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
                             suggestions: [],
                         }}
                         onSuggestionClick={handleSuggestionClick}
+                        onActionPrompt={handleActionPrompt}
                         onReviewArtifact={handleReviewArtifact}
                         onExecutePlan={executePlan}
                         onSaveToNotes={handleSaveToNotes}

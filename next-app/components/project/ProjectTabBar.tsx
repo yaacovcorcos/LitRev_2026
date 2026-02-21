@@ -15,6 +15,7 @@ const TABS: TabDef[] = [
     { key: "protocol", label: "Protocol", icon: "assignment" },
     { key: "ledger", label: "Ledger", icon: "table_chart" },
     { key: "draft", label: "Draft", icon: "edit_note" },
+    { key: "memory", label: "Memory", icon: "psychology" },
     { key: "notes", label: "Notes", icon: "sticky_note_2" },
 ];
 

@@ -6,8 +6,12 @@
  */
 
 import type { AgentMode } from "@/types/agent";
+import { isScopingModeEnabled } from "@/lib/agent/feature-flags";
 
-export type RouterPage = "draft" | "protocol" | "ledger" | "study" | "overview" | "notes";
+export type RouterPage = "draft" | "protocol" | "ledger" | "study" | "overview" | "notes" | "memory";
+export type RouterProjectState = {
+    hasProtocol?: boolean;
+};
 
 export interface AgentModeConfig {
     systemPromptKey: AgentMode;
@@ -19,6 +23,7 @@ export interface AgentModeConfig {
 
 export const AGENT_MODE_CONFIG: Record<AgentMode, AgentModeConfig> = {
     protocol: { systemPromptKey: "protocol", allowedTools: ["update_protocol", "update_study", "search_pubmed", "search_semantic_scholar", "store_memory"], memoryScope: "project", description: "Defining PICO and criteria" },
+    scoping: { systemPromptKey: "scoping", allowedTools: ["search_pubmed", "search_semantic_scholar", "recommend_studies", "store_memory"], memoryScope: "project", description: "Exploring the literature landscape" },
     search: { systemPromptKey: "search", allowedTools: ["search_pubmed", "search_semantic_scholar", "add_to_ledger", "recommend_studies", "update_study", "store_memory"], memoryScope: "project", description: "Finding studies" },
     screening: { systemPromptKey: "screening", allowedTools: ["bulk_screening", "exclude_study", "extract_pdf", "read_study_content", "update_study", "store_memory"], memoryScope: "study", description: "Evaluating studies" },
     drafting: { systemPromptKey: "drafting", allowedTools: ["update_note", "read_study_content", "update_study", "store_memory"], memoryScope: "project", description: "Writing sections" },
@@ -30,13 +35,21 @@ export const AGENT_MODE_CONFIG: Record<AgentMode, AgentModeConfig> = {
  * Rule-based routing. Page takes priority for "protocol" only;
  * everything else is message-driven, checked in priority order.
  */
-export function routeToAgent(message: string, currentPage: RouterPage): AgentMode {
+export function routeToAgent(message: string, currentPage: RouterPage, projectState?: RouterProjectState): AgentMode {
     // 1. Page-driven: protocol page always → protocol mode
     if (currentPage === "protocol") return "protocol";
 
     // 2. Message-driven rules (priority order)
     const msg = message.toLowerCase();
+    const hasProtocol = projectState?.hasProtocol ?? true;
+    const scopingEnabled = isScopingModeEnabled();
     if (/pico|criteria|inclusion|exclusion|eligib/.test(msg)) return "protocol";
+    if (/landscape|scoping|what.*out there|what.*been (?:done|studied)|research question|exploratory|feasib|is there enough/.test(msg)) {
+        return scopingEnabled ? "scoping" : "search";
+    }
+    if (!hasProtocol && /search|find stud|pubmed|semantic scholar|look for|literature|recommend/.test(msg)) {
+        return scopingEnabled ? "scoping" : "search";
+    }
     if (/search|find stud|pubmed|semantic scholar|look for|literature|recommend/.test(msg)) return "search";
     if (/screen|triage|evaluat|review against|match criteria/.test(msg)) return "screening";
     if (/write|draft|compose|methods|results|discussion|introduction/.test(msg)) return "drafting";

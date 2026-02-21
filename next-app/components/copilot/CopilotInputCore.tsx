@@ -14,6 +14,7 @@ import { USER_SELECTABLE_MODELS, type SelectableModelId } from "@/lib/ai/config"
 import { useVoiceInput } from "@/hooks/useVoiceInput";
 import { listProjectFilesAction } from "@/app/actions/files";
 import { routeToAgent, type RouterPage } from "@/lib/agent/router";
+import { getUserSelectableAgentModes } from "@/lib/agent/feature-flags";
 import { AGENT_MODE_META, type AgentMode, type AutonomyPreset } from "@/types/agent";
 import type { FileAsset } from "@/types/files";
 import styles from "../ProjectCopilot.module.css";
@@ -52,6 +53,7 @@ export type CopilotInputCoreProps = {
     attachExistingFile?: (fileAssetId: string) => void | Promise<void>;
     clearAttachment?: () => void;
     projectId?: string;
+    hasProtocol?: boolean;
 
     autonomyPreset?: AutonomyPreset;
     updateAutonomyPreset?: (preset: AutonomyPreset) => void | Promise<void>;
@@ -82,6 +84,7 @@ export function CopilotInputCore({
     attachExistingFile,
     clearAttachment,
     projectId,
+    hasProtocol,
     autonomyPreset,
     updateAutonomyPreset,
     setShowAutonomySettings,
@@ -122,14 +125,34 @@ export function CopilotInputCore({
     const effectiveMode = modeOverride || currentMode;
     const modeMeta = AGENT_MODE_META[effectiveMode];
 
+    const PROTOCOL_SWITCH_INTENT_RE = /\b(?:switch|move|go|start|enter)\b[\w\s]{0,24}\bprotocol\b|\bprotocol mode\b|\bupdate protocol\b/i;
+
     // Debounced mode computation from input text
     useEffect(() => {
         const timer = setTimeout(() => {
+            const trimmed = input.trim();
+            // Keep the last inferred mode when input is empty; avoids noisy
+            // reset-to-general and keeps scoping stable across turns.
+            if (!trimmed) return;
+
             const routerPage: RouterPage = page === "ai" ? "overview" : (page as RouterPage);
-            setCurrentMode(routeToAgent(input, routerPage));
+            const nextMode = routeToAgent(trimmed, routerPage, { hasProtocol });
+
+            // Transition policy for scoping: don't silently jump into protocol
+            // from protocol-like phrasing; require explicit transition wording.
+            if (
+                currentMode === "scoping" &&
+                nextMode === "protocol" &&
+                !PROTOCOL_SWITCH_INTENT_RE.test(trimmed)
+            ) {
+                setCurrentMode("scoping");
+                return;
+            }
+
+            setCurrentMode(nextMode);
         }, 200);
         return () => clearTimeout(timer);
-    }, [input, page]);
+    }, [input, page, hasProtocol, currentMode]);
 
     // Voice input
     const handleTranscription = useCallback((text: string) => {
@@ -237,7 +260,7 @@ export function CopilotInputCore({
     }, [attachExistingFile]);
 
     const selectedModelInfo = USER_SELECTABLE_MODELS.find((m) => m.id === selectedModel);
-    const ALL_MODES: AgentMode[] = ["general", "protocol", "search", "screening", "drafting", "qa"];
+    const ALL_MODES: AgentMode[] = getUserSelectableAgentModes();
 
     return (
         <>

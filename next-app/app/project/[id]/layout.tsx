@@ -23,7 +23,8 @@ function tabFromPathname(pathname: string): ViewTab | null {
     if (pathname.endsWith("/protocol")) return "protocol";
     if (pathname.endsWith("/ledger") || pathname.includes("/ledger/")) return "ledger";
     if (pathname.endsWith("/draft")) return "draft";
-    if (pathname.endsWith("/notes") || pathname.endsWith("/memory")) return "notes";
+    if (pathname.endsWith("/memory")) return "memory";
+    if (pathname.endsWith("/notes")) return "notes";
     return null;
 }
 
@@ -82,6 +83,9 @@ function ProjectShellInner({ projectId, children }: ProjectShellInnerProps) {
                 break;
             case "notes":
                 router.push(`/project/${projectId}/notes`);
+                break;
+            case "memory":
+                router.push(`/project/${projectId}/memory`);
                 break;
         }
     }, [projectId, router]);
@@ -168,7 +172,7 @@ function ProjectShellInner({ projectId, children }: ProjectShellInnerProps) {
 
     return (
         <ProjectShellProvider value={shellValue}>
-            <AppShell activeNav="projects" mainClassName={styles.shellMain} noMainPadding>
+            <AppShell activeNav="projects" mainClassName={styles.shellMain} noMainPadding initiallyCollapsed>
                 <ProjectTabBar
                     focusMode={focusMode}
                     activeTab={activeTab}
