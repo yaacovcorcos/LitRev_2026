@@ -23,6 +23,10 @@ function buildUseQuestionPrompt(question: string, index: number) {
 }
 
 export function ScopingReportCard({ payload, onActionPrompt }: ScopingReportCardProps) {
+    const [showAnalysis, setShowAnalysis] = useState(false);
+    const topQuestions = useMemo(() => payload.recommendedQuestions.slice(0, 3), [payload.recommendedQuestions]);
+    const canAct = typeof onActionPrompt === "function";
+
     if (!SCOPING_CARD_V2_ENABLED) {
         return (
             <>
@@ -32,10 +36,6 @@ export function ScopingReportCard({ payload, onActionPrompt }: ScopingReportCard
             </>
         );
     }
-
-    const [showAnalysis, setShowAnalysis] = useState(false);
-    const topQuestions = useMemo(() => payload.recommendedQuestions.slice(0, 3), [payload.recommendedQuestions]);
-    const canAct = typeof onActionPrompt === "function";
 
     return (
         <>

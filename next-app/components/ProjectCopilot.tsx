@@ -109,6 +109,16 @@ export function ProjectCopilot({
         }
     }, [currentConversationId, isBranching, isLoading, branchConversation]);
 
+    const getConversationGroupLabel = useCallback((conversation: (typeof conversations)[number]) => {
+        const date = new Date(conversation.updatedAt);
+        const now = new Date();
+        const diff = now.getTime() - date.getTime();
+        const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+        if (days === 0) return "Today";
+        if (days === 1) return "Yesterday";
+        return "Older";
+    }, []);
+
     if (isCollapsed) {
         return (
             <div className={styles.collapsedRail} aria-label="Copilot (collapsed)">
@@ -143,15 +153,6 @@ export function ProjectCopilot({
     // Conversation management
     const currentConversation = conversations.find(c => c.id === currentConversationId);
     const currentTitle = currentConversation?.title || "New conversation";
-    const getConversationGroupLabel = useCallback((conversation: (typeof conversations)[number]) => {
-        const date = new Date(conversation.updatedAt);
-        const now = new Date();
-        const diff = now.getTime() - date.getTime();
-        const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-        if (days === 0) return "Today";
-        if (days === 1) return "Yesterday";
-        return "Older";
-    }, []);
 
     if (!hasMounted) {
         return <aside className={styles.copilot} aria-label="AI copilot" id={panelId} />;
