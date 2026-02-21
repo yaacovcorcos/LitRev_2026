@@ -4,7 +4,7 @@ import { Sidebar } from "@/components/Sidebar";
 import { MobileNav } from "@/components/MobileNav";
 import { mainNavLinks, bottomNavLinks, mobileNavLinks } from "@/data/navLinks";
 import styles from "@/components/AppShell.module.css";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { CSSProperties, ReactNode, useEffect, useMemo, useState } from "react";
 import { SlimHeader } from "@/components/SlimHeader";
 import { useCommandPalette } from "@/contexts/CommandPaletteContext";
@@ -26,9 +26,11 @@ export function AppShell({
   onNewProject,
   noMainPadding = false,
   mainClassName = "",
-  initiallyCollapsed = false,
+  initiallyCollapsed,
 }: AppShellProps) {
-  const [collapsed, setCollapsed] = useState(initiallyCollapsed);
+  const pathname = usePathname();
+  const shouldDefaultCollapse = pathname !== "/";
+  const [collapsed, setCollapsed] = useState(initiallyCollapsed ?? shouldDefaultCollapse);
   const router = useRouter();
   const { registerSidebarToggle } = useCommandPalette();
 
