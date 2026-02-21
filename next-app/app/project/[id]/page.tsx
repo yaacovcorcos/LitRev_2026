@@ -8,6 +8,7 @@ import { TopBar } from "@/components/TopBar";
 import { useProjects } from "@/contexts/ProjectsContext";
 import { useProjectShell } from "@/contexts/ProjectShellContext";
 import Link from "next/link";
+import { RecentActivityPanel } from "@/components/project/RecentActivityPanel";
 import styles from "./project-workspace.module.css";
 import { Project } from "@/types/project";
 
@@ -210,13 +211,7 @@ export default function ProjectDetail() {
         <section className={styles.infoPanelsRow}>
           <div className={styles.infoPanel}>
             <h4 className={styles.infoPanelTitle}>Recent Activity</h4>
-            <ul className={styles.activityList}>
-              <li>
-                <span className={styles.activityTime}>2h ago</span> You added a note to &quot;Smith et al.&quot;
-              </li>
-              <li><span className={styles.activityTime}>Yesterday</span> AI summarized 5 key papers</li>
-              <li><span className={styles.activityTime}>2 days ago</span> Sarah uploaded 12 PDFs</li>
-            </ul>
+            <RecentActivityPanel projectId={project.id} />
           </div>
           <div className={styles.infoPanel}>
             <h4 className={styles.infoPanelTitle}>Project Details</h4>
