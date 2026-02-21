@@ -48,6 +48,15 @@ describe("mentioned-studies parsing", () => {
         expect(studies[0]?.year).toBe(2022);
     });
 
+    it("supports long quoted title-year mentions", () => {
+        const longTitle = "A".repeat(260);
+        const text = `Classic: "${longTitle}" (2021) with extended naming.`;
+        const studies = extractMentionedStudies(text);
+        expect(studies).toHaveLength(1);
+        expect(studies[0]?.title).toBe(longTitle);
+        expect(studies[0]?.year).toBe(2021);
+    });
+
     it("strips mentioned-studies hidden markup from visible text", () => {
         const text = 'Narrative\n\n<!-- MENTIONED_STUDIES: {"studies":[]} -->';
         expect(stripMentionedStudiesMarkup(text)).toBe("Narrative");

@@ -7,7 +7,9 @@ import { prisma } from "@/lib/server/prisma";
 
 const EMBEDDING_MODEL = process.env.MEMORY_EMBEDDING_MODEL || "text-embedding-3-small";
 const EMBEDDING_DIMENSION = 1536;
-const EMBEDDING_BATCH_SIZE = 64;
+const EMBEDDING_BATCH_SIZE = 20;
+const EMBEDDING_MAX_RETRIES = 3;
+const EMBEDDING_RETRY_BASE_MS = 500;
 const MAX_USER_SCOPE_MEMORIES = 80;
 const MAX_PROJECT_SCOPE_MEMORIES = 160;
 const MAX_STUDY_SCOPE_MEMORIES = 160;
@@ -117,6 +119,45 @@ function chunk<T>(items: T[], size: number): T[][] {
         result.push(items.slice(i, i + size));
     }
     return result;
+}
+
+function sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => {
+        setTimeout(resolve, ms);
+    });
+}
+
+function isRetriableEmbeddingError(error: unknown): boolean {
+    if (!error || typeof error !== "object") return false;
+    const status = "status" in error ? Number((error as { status?: unknown }).status) : NaN;
+    if (!Number.isFinite(status)) return false;
+    return status === 408 || status === 409 || status === 429 || status >= 500;
+}
+
+function retryDelayMs(attempt: number): number {
+    const jitter = Math.floor(Math.random() * 100);
+    return EMBEDDING_RETRY_BASE_MS * (2 ** attempt) + jitter;
+}
+
+async function createEmbeddingsWithRetry(client: OpenAI, input: string[] | string) {
+    let lastError: unknown = null;
+
+    for (let attempt = 0; attempt < EMBEDDING_MAX_RETRIES; attempt += 1) {
+        try {
+            return await client.embeddings.create({
+                model: EMBEDDING_MODEL,
+                input,
+                dimensions: EMBEDDING_DIMENSION,
+            });
+        } catch (error) {
+            lastError = error;
+            const shouldRetry = isRetriableEmbeddingError(error) && attempt < EMBEDDING_MAX_RETRIES - 1;
+            if (!shouldRetry) throw error;
+            await sleep(retryDelayMs(attempt));
+        }
+    }
+
+    throw lastError instanceof Error ? lastError : new Error("Embedding request failed");
 }
 
 async function collectScopeMemories(
@@ -308,11 +349,7 @@ async function ensureScopeEmbeddings(candidates: ScopeMemory[]): Promise<void> {
 
     for (const batch of chunk(missing, EMBEDDING_BATCH_SIZE)) {
         const inputs = batch.map((candidate) => candidate.content.slice(0, 8000));
-        const response = await client.embeddings.create({
-            model: EMBEDDING_MODEL,
-            input: inputs,
-            dimensions: EMBEDDING_DIMENSION,
-        });
+        const response = await createEmbeddingsWithRetry(client, inputs);
 
         for (let i = 0; i < batch.length; i += 1) {
             const candidate = batch[i];
@@ -488,19 +525,16 @@ export async function searchSemanticMemories(
         const scopeMemories = await collectScopeMemories(context, options);
         await ensureScopeEmbeddings(scopeMemories);
 
-        const response = await getOpenAIClient()!.embeddings.create({
-            model: EMBEDDING_MODEL,
-            input: query.slice(0, 8000),
-            dimensions: EMBEDDING_DIMENSION,
-        });
+        const response = await createEmbeddingsWithRetry(getOpenAIClient()!, query.slice(0, 8000));
         const queryEmbedding = response.data[0]?.embedding;
         if (!queryEmbedding) return [];
 
         const scoreRows = await querySemanticScores(context, options, queryEmbedding);
         const hydrated = await hydrateSemanticRows(scoreRows, context, options, excludeIds);
         return hydrated.filter((memory) => memory.relevance >= options.minRelevance);
-    } catch {
+    } catch (error) {
         // Semantic retrieval is a ranking enhancement, never a hard dependency.
+        console.error("[memory] semantic retrieval failed; falling back to lexical ranking", error);
         return [];
     }
 }
@@ -529,45 +563,65 @@ export async function warmupSemanticEmbeddings(
 }
 
 export async function validateSemanticRolloutStatus(): Promise<SemanticRolloutStatus> {
-    const extensionRows = await prisma.$queryRaw<Array<{ installed: boolean }>>`
-        SELECT EXISTS (
-            SELECT 1 FROM pg_extension WHERE extname = 'vector'
-        ) AS installed
-    `;
-    const tableRows = await prisma.$queryRaw<Array<{ present: boolean }>>`
-        SELECT EXISTS (
-            SELECT 1
-            FROM information_schema.tables
-            WHERE table_schema = 'public' AND table_name = 'MemoryEmbedding'
-        ) AS present
-    `;
-    const indexRows = await prisma.$queryRaw<Array<{ present: boolean }>>`
-        SELECT EXISTS (
-            SELECT 1
-            FROM pg_indexes
-            WHERE schemaname = 'public'
-              AND tablename = 'MemoryEmbedding'
-              AND indexname = 'MemoryEmbedding_embedding_hnsw_idx'
-        ) AS present
-    `;
-    const embeddingCountRows = await prisma.$queryRaw<Array<{ count: bigint | number }>>`
-        SELECT COUNT(*)::bigint AS count FROM "MemoryEmbedding"
-    `;
+    try {
+        const extensionRows = await prisma.$queryRaw<Array<{ installed: boolean }>>`
+            SELECT EXISTS (
+                SELECT 1 FROM pg_extension WHERE extname = 'vector'
+            ) AS installed
+        `;
+        const tableRows = await prisma.$queryRaw<Array<{ present: boolean }>>`
+            SELECT EXISTS (
+                SELECT 1
+                FROM information_schema.tables
+                WHERE table_schema = 'public' AND table_name = 'MemoryEmbedding'
+            ) AS present
+        `;
 
-    const extensionInstalled = !!extensionRows[0]?.installed;
-    const embeddingTablePresent = !!tableRows[0]?.present;
-    const hnswIndexPresent = !!indexRows[0]?.present;
-    const totalEmbeddingsRaw = embeddingCountRows[0]?.count ?? 0;
-    const totalEmbeddings = typeof totalEmbeddingsRaw === "bigint"
-        ? Number(totalEmbeddingsRaw)
-        : Number(totalEmbeddingsRaw);
+        const extensionInstalled = !!extensionRows[0]?.installed;
+        const embeddingTablePresent = !!tableRows[0]?.present;
 
-    return {
-        extensionInstalled,
-        embeddingTablePresent,
-        hnswIndexPresent,
-        totalEmbeddings: Number.isFinite(totalEmbeddings) ? totalEmbeddings : 0,
-        model: EMBEDDING_MODEL,
-        healthy: extensionInstalled && embeddingTablePresent && hnswIndexPresent,
-    };
+        let hnswIndexPresent = false;
+        let totalEmbeddings = 0;
+
+        if (embeddingTablePresent) {
+            const indexRows = await prisma.$queryRaw<Array<{ present: boolean }>>`
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM pg_indexes
+                    WHERE schemaname = 'public'
+                      AND tablename = 'MemoryEmbedding'
+                      AND indexname = 'MemoryEmbedding_embedding_hnsw_idx'
+                ) AS present
+            `;
+            hnswIndexPresent = !!indexRows[0]?.present;
+
+            const embeddingCountRows = await prisma.$queryRaw<Array<{ count: bigint | number }>>`
+                SELECT COUNT(*)::bigint AS count FROM "MemoryEmbedding"
+            `;
+            const totalEmbeddingsRaw = embeddingCountRows[0]?.count ?? 0;
+            const parsed = typeof totalEmbeddingsRaw === "bigint"
+                ? Number(totalEmbeddingsRaw)
+                : Number(totalEmbeddingsRaw);
+            totalEmbeddings = Number.isFinite(parsed) ? parsed : 0;
+        }
+
+        return {
+            extensionInstalled,
+            embeddingTablePresent,
+            hnswIndexPresent,
+            totalEmbeddings,
+            model: EMBEDDING_MODEL,
+            healthy: extensionInstalled && embeddingTablePresent && hnswIndexPresent,
+        };
+    } catch (error) {
+        console.error("[memory] semantic rollout validation failed", error);
+        return {
+            extensionInstalled: false,
+            embeddingTablePresent: false,
+            hnswIndexPresent: false,
+            totalEmbeddings: 0,
+            model: EMBEDDING_MODEL,
+            healthy: false,
+        };
+    }
 }

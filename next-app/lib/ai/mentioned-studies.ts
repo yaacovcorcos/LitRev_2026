@@ -16,7 +16,7 @@ const LINK_RE = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/gi;
 const DOI_RE = /\b10\.\d{4,9}\/[\w.()\-;:\/]+\b/gi;
 const PMID_RE = /\bPMID\s*[:#-]?\s*(\d{6,9})\b/gi;
 const PUBMED_URL_RE = /https?:\/\/pubmed\.ncbi\.nlm\.nih\.gov\/(\d{6,9})\/?/gi;
-const QUOTED_TITLE_YEAR_RE = /["“]([^"”\n]{8,200})["”]\s*\((19\d{2}|20\d{2})\)/g;
+const QUOTED_TITLE_YEAR_RE = /["“]([^"”\n]{8,500})["”]\s*\((19\d{2}|20\d{2})\)/g;
 
 const COMMENT_RE = /<!--\s*MENTIONED_STUDIES:\s*([\s\S]*?)\s*-->/i;
 const XML_RE = /<mentioned_studies>\s*([\s\S]*?)\s*<\/mentioned_studies>/i;
@@ -52,7 +52,7 @@ function cleanTitle(value: string | undefined): string | undefined {
         .replace(/[\u201c\u201d]/g, '"')
         .trim();
     if (!cleaned) return undefined;
-    return cleaned.length > 240 ? cleaned.slice(0, 240).trim() : cleaned;
+    return cleaned.length > 500 ? cleaned.slice(0, 500).trim() : cleaned;
 }
 
 function extractYear(value: string | undefined): number | undefined {
