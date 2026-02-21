@@ -5,6 +5,7 @@
 
 - **Copilot Base (`lib/ai/prompts/copilot-prompts.ts`):** Foundation identity for all modes. Enforces markdown and strict verifiable hyperlinking to studies (via DOI/PMID).
 - **Copilot Modes:** 7 variants (Protocol, Scoping, Search, Screening, Drafting, QA, General) that prepend Base + append mode-specific behavior.
+- **Structured Mention Contract:** Base prompt now supports optional hidden `MENTIONED_STUDIES` JSON comments so UI can render actionable study chips when present, with parser fallback when omitted.
 - **Context Assembly (`lib/server/ai/ai-service.ts` + `lib/ai/prompts/copilot-prompts.ts`):** Prompt assembly follows a stable-to-variable sequence for caching and grounding: Mode Prompt -> Scope -> Project -> Protocol -> Autonomy -> Ledger -> Location -> Study -> Memory -> Additional.
 - **PDF Extraction Pipeline:** 
   - Quick Extract (grok-4-1-fast, temp 0.2): Regex fallback + strict JSON for DOI/PMID/year/authors.
@@ -17,7 +18,6 @@
 
 ### P1 — Copilot Prompt Hardening
 - [ ] Search Mode: Strengthen explicit Boolean-query and MeSH suggestion guidance for evidence-retrieval requests.
-- [ ] Add optional structured "mentioned studies" response contract for assistant turns (machine-readable IDs/metadata for chat chip rendering), with graceful fallback when omitted.
 
 ### P2 — Context & Extraction Hardening
 - [ ] Memory Extraction: Raise temp slightly or add examples of implicit vs explicit decisions to fix under-extraction.
@@ -28,6 +28,7 @@
 ## Recently Completed
 *Finished work that might still be fragile or require monitoring. Prune oldest first.*
 
+- [x] Added optional hidden `MENTIONED_STUDIES` response contract to the base prompt for machine-readable study metadata, while keeping graceful UI parser fallback behavior.
 - [x] Initial Prompts Map analysis completed (2026-02-07).
 - [x] Prompt assembly order stabilized for caching and grounding (Mode/Scope/Project/Protocol/Autonomy before variable context blocks).
 - [x] Base prompt includes explicit tool-awareness guidance for action-oriented requests.

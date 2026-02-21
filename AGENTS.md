@@ -44,6 +44,17 @@ All run from `next-app/` except deploy:
 - `components/` — Reusable client components
 - `app/project/[id]/` — Route-level pages and co-located components
 
+## UI Delivery Contract (Strict)
+
+- **Shell embedding is mandatory:** Pages under `app/project/[id]/...` must respect `isEmbeddedInProjectShell`. Embedded pages render content-only (no nested `AppShell`, no duplicate copilot shell).
+- **No visible no-op controls:** Any visible button or action must have working behavior. If behavior is unavailable, hide it or disable with explicit text.
+- **Suggestion buttons must work:** Any rendered suggestion chip/button must either send immediately or prefill via `prefill` + `onPrefillConsumed`.
+- **Use shared primitives first:** Prefer shared UI primitives in `components/ui/` (for selectors/menus/popovers) before building one-off interaction logic in feature components.
+- **Token-first styling:** Use `styles/tokens.css` variables for colors/radius/surfaces. Avoid hardcoded palette values unless intentionally local and reviewed.
+- **A11y baseline is required:** icon-only buttons need `aria-label`; maintain keyboard navigation; never suppress focus styles without an accessible replacement.
+- **Responsive behavior is part of done:** Validate both desktop and mobile after UI changes.
+- **UI test gate for meaningful UI changes:** run `npx tsc --noEmit` and `npx vitest run` from `next-app/`, and add/adjust tests for changed UI behavior.
+
 ## Open-Source Code Adaptation
 
 The agentic architecture references several open-source codebases to steal patterns from (documented in the archived `planC` and current agentic plans). When working with any of them:

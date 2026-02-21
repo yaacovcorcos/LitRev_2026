@@ -11,42 +11,30 @@
 - **Self-Healing JSON (P7):** Failed Zod validations on tool payloads are fed back to the LLM for correction before failing the run.
 - **Observability (P9):** Runs and tool calls are traced via Langfuse (1 run = 1 trace, tool = span, LLM = generation).
 - **Autonomy Levels:** Tools have defined safety ranges (1=suggest, 4=autonomous). `executeTool` strictly enforces these caps based on user/project config.
+- **Protocol Criteria Editing:** `update_criteria` is registered and mode-allowed for protocol work, enabling atomic add/remove edits for inclusion/exclusion criteria with protocol-memory sync.
+- **Ledger Deletion Action:** `delete_study` is implemented and mode-allowed in screening for explicit hard-delete requests from the ledger.
+- **Evidence Table Apply Path:** Accepted `evidence_table` artifacts now persist to an "Evidence Table" note (update existing note if present, create if missing).
+- **Mentioned Studies Flow (P10):** Assistant turns now support deterministic mention extraction (structured contract + DOI/PMID/title-year fallback), inline chat chips, and direct user-initiated add-to-ledger with duplicate-safe idempotent writes and chat provenance metadata.
+- **P10 Rollout Flags:** Mention flow and scoping decision-card behavior are feature-flagged (`NEXT_PUBLIC_CHAT_STUDY_MENTIONS_V1`, `NEXT_PUBLIC_SCOPING_DECISION_CARD_V2`).
 - **Scoping Mode (P10):** Dedicated pre-protocol routing and prompt behavior is live with low-autonomy batch search-pack planning and deterministic protocol handoff (`update_protocol` proposal-only).
 
 ## Active Tasks
 *Work that is entirely unimplemented or currently broken.*
-
-- [ ] Wire `update-criteria.ts` into `AVAILABLE_TOOLS` (or remove orphan tool if intentionally deprecated).
-- [ ] Implement `delete_study` tool (removes study from ledger).
-- [ ] Implement apply function for remaining artifact type (`evidence_table`).
-
-### P10 — Mentioned Studies Action Flow (Chat-Native)
-- [ ] Build study-mention extraction pipeline from assistant turns:
-  - Structured extraction when present (IDs + metadata).
-  - Fallback parser for DOI/PMID/title-year patterns.
-  - Deterministic normalization/dedupe (DOI/PMID/S2, then title+year fallback).
-- [ ] Add user-initiated chat action path to add a mentioned study directly to ledger (no separate AI turn), with idempotent server enforcement.
-- [ ] Add provenance tagging for chat-click additions (e.g., `source = "chat_mention"` in stored study details/metadata).
-- [ ] Add rollout flags:
-  - `SCOPING_DECISION_CARD_V2`
-  - `CHAT_STUDY_MENTIONS_V1`
-- [ ] Add integration tests:
-  - Scoping runs emit `scoping_report` artifacts in stream pipeline.
-  - Mention extraction + dedupe + add-to-ledger idempotency.
+- [ ] No open agent-orchestration implementation tasks in this phase.
 
 ## Recently Completed
 *Finished work that might still be fragile or require monitoring. Prune oldest first.*
 
-- [x] P6: Prompt caching sequence optimized.
-- [x] P7: Self-Healing JSON parsing loop.
-- [x] P8: Semantic Scholar Search plugin added along with Recommendations.
-- [x] P9: Langfuse integration for tracing.
+- [x] P10 mentioned-studies flow shipped: extraction pipeline (structured + fallback), chat chips, one-click add-to-ledger, idempotent duplicate protection, and chat provenance tagging.
+- [x] Added rollout flags for mention/scoping UX controls: `NEXT_PUBLIC_CHAT_STUDY_MENTIONS_V1` and `NEXT_PUBLIC_SCOPING_DECISION_CARD_V2`.
+- [x] Added validation coverage for P10: mention parser tests, add-to-ledger idempotency tests, timeline metadata stripping + mention-action UI tests, and scoping finalization tests.
+- [x] Implemented apply function for `evidence_table` artifacts (persists accepted table to project Notes).
+- [x] Implemented `delete_study` tool and registered it in `AVAILABLE_TOOLS` and screening mode.
+- [x] Wired `update_criteria` into tool registry and protocol-mode tool filtering.
 - [x] P10: Scoping mode architecture shipped (routing, tool filtering, batch plan behavior, contract parsing, deterministic handoff).
 - [x] `exclude_study` tool implemented and registered in `AVAILABLE_TOOLS`.
 - [x] `bulk_screening` tool implemented and registered in `AVAILABLE_TOOLS`.
 - [x] `extract_pdf` tool implemented and registered in `AVAILABLE_TOOLS`.
-- [x] Draft editing flow consolidated on `update_note` tool producing `draft_diff` artifacts.
-- [x] Apply functions implemented for `study_proposal`, `draft_diff`, and `screening_batch`.
 
 ## Deferred / Parking Lot
 *Ideas acknowledged but explicitly not active right now.*

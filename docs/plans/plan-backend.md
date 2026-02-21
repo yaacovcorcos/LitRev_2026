@@ -7,7 +7,7 @@
 - **Database:** Supabase PostgreSQL accessed via Prisma. Pooled connection string (`DATABASE_URL`) with SSL + pgbouncer. Direct string (`DIRECT_URL`) for migrations.
 - **Data Persistence:** Replaced initial LocalStorage architecture with full database persistence for Projects, Protocols, Studies (Ledger), Drafts, and Copilot states.
 - **File Assets:** Supabase Storage bucket `study-assets` is public. File deletes automatically purge orphaned blobs.
-- **Schema:** Multi-tenant setup. Models include `User`, `Workspace`, `Project`, `Protocol`, `Draft`, `Study`, `FileAsset`, `AgentRun`, `RunEvent`, `Artifact`, `TimelineItem`.
+- **Schema:** Multi-tenant setup. Core models include `User`, `Workspace`, `WorkspaceMember`, `Project`, `Protocol`, `Draft`, `Study`, `FileAsset`, `AIConversation`, `AIMessage`, `AIUsage`, `UserMemory`, `ProjectMemory`, `StudyMemory`, `ConversationSummary`, `MemoryRetrieval`, `MemoryEmbedding`, `AgentRun`, `RunEvent`, `Artifact`, `AutonomyConfig`, and `Note`.
 
 ## Active Tasks
 *Work that is entirely unimplemented or currently broken.*
