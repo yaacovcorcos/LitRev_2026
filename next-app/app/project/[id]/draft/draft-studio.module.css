@@ -389,6 +389,10 @@
     overflow: hidden;
 }
 
+.demoGuide {
+    margin: 0 24px 12px 24px;
+}
+
 .resizeHandle {
     cursor: col-resize;
     position: relative;

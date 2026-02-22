@@ -17,6 +17,7 @@ import {
     searchNotesAction,
 } from "@/app/actions/notes";
 import type { NoteContent } from "@/lib/server/notes";
+import { DemoGuideCard } from "@/components/project/DemoGuideCard";
 import styles from "./notes.module.css";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -308,6 +309,12 @@ export default function NotesPage() {
             </div>
 
             {/* Body */}
+            <DemoGuideCard
+                projectId={projectId}
+                guideId="notes-trail"
+                text="Capture why decisions were made while screening and drafting. Notes become your reproducible audit trail and can be promoted into copilot context."
+            />
+
             <div className={styles.body}>
                 {/* Sidebar — note list */}
                 <div className={styles.sidebar}>

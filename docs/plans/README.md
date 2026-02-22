@@ -12,7 +12,6 @@ This directory contains the canonical, active plans for LitRev.
 ## External References
 - [**PRD**](../../PRD.md): Product vision and high-level behavioral constraints.
 - [**Quality Report**](../../QUALITY_REPORT.md): Audit findings and concrete technical debt.
-- [**Old Plans (Archive)**](../old_plans/): Previously retired architectural logs (`planB`, `planC`) preserved for context.
 
 ---
 

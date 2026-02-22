@@ -25,6 +25,94 @@
     padding-right: 0 !important;
 }
 
+.initializingShell {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background:
+        radial-gradient(circle at 20% 20%, rgba(217, 116, 89, 0.12), transparent 38%),
+        radial-gradient(circle at 80% 75%, rgba(118, 140, 123, 0.14), transparent 42%),
+        var(--bg-body);
+}
+
+.initializingText {
+    color: var(--text-secondary);
+    font-size: 15px;
+    letter-spacing: 0.01em;
+}
+
+.zeroShell {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background:
+        radial-gradient(circle at 16% 14%, rgba(217, 116, 89, 0.14), transparent 38%),
+        radial-gradient(circle at 84% 78%, rgba(118, 140, 123, 0.18), transparent 42%),
+        var(--bg-body);
+}
+
+.zeroCard {
+    width: min(640px, 100%);
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: 20px;
+    backdrop-filter: blur(18px);
+    box-shadow: 0 16px 48px rgba(17, 24, 39, 0.08);
+    padding: 40px 36px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.zeroEyebrow {
+    display: inline-flex;
+    width: fit-content;
+    padding: 6px 10px;
+    border-radius: 999px;
+    background: rgba(217, 116, 89, 0.12);
+    color: var(--accent-primary);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.zeroTitle {
+    margin: 0;
+    color: var(--text-primary);
+    font-size: clamp(30px, 4vw, 44px);
+    line-height: 1.08;
+    letter-spacing: -0.02em;
+}
+
+.zeroSubtitle {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 17px;
+    line-height: 1.55;
+    max-width: 54ch;
+}
+
+.zeroActions {
+    display: flex;
+    gap: 12px;
+    margin-top: 14px;
+    flex-wrap: wrap;
+}
+
+.zeroPrimaryBtn,
+.zeroSecondaryBtn {
+    width: auto;
+    min-width: 180px;
+    padding-left: 18px;
+    padding-right: 18px;
+    margin-top: 0;
+}
+
 @media (max-width: 900px) {
     .headerArea {
         padding: 0 16px;
@@ -32,5 +120,18 @@
 
     .scrollArea {
         padding: 20px 16px calc(20px + var(--mobile-nav-offset));
+    }
+
+    .zeroCard {
+        padding: 28px 20px;
+    }
+
+    .zeroActions {
+        flex-direction: column;
+    }
+
+    .zeroPrimaryBtn,
+    .zeroSecondaryBtn {
+        width: 100%;
     }
 }

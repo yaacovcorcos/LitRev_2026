@@ -37,6 +37,7 @@ import { listProjectFilesAction, createFileAssetAction, deleteFileAssetAction } 
 import dynamic from "next/dynamic";
 const ExportModal = dynamic(() => import("@/components/ExportModal").then(m => m.ExportModal), { ssr: false });
 import type { FileAsset } from "@/types/files";
+import { DemoGuideCard } from "@/components/project/DemoGuideCard";
 import styles from "./draft-studio.module.css";
 
 import { Editor, EditorContent, useEditor } from "@tiptap/react";
@@ -1349,6 +1350,7 @@ function DraftContent() {
   }
 
   const copilotMessages = draft.copilotBySection[draft.activeSection] ?? [];
+  const showResultsGuide = draft.activeSection === "results" && !docHasContent(draft.contentBySection.results);
 
   const pageContent = (
     <>
@@ -1507,6 +1509,21 @@ function DraftContent() {
             </div>
           </div>
         </div>
+
+        <DemoGuideCard
+          projectId={project.id}
+          guideId="draft-evidence-chain"
+          text="Citations in this draft should map directly to included studies in the Ledger. Ask the copilot to find evidence for any claim you highlight."
+          className={styles.demoGuide}
+        />
+        {showResultsGuide ? (
+          <DemoGuideCard
+            projectId={project.id}
+            guideId="draft-results-empty"
+            text="This Results section is intentionally empty. Ask the copilot to draft a results summary from your included studies."
+            className={styles.demoGuide}
+          />
+        ) : null}
 
         <div className={styles.body} style={layoutVars}>
           {!draft.panels.ledgerCollapsed ? (

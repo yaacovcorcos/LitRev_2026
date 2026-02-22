@@ -17,9 +17,9 @@ import { EditableTextArea } from "@/components/EditableTextArea";
 import { EditableList } from "@/components/EditableList";
 import { EditableChips } from "@/components/EditableChips";
 import { ProtocolSection } from "@/types/protocol";
-import { getMockProtocolData } from "@/data/mockProtocols";
 import { usePopupChat } from "@/contexts/PopupChatContext";
 import { calculatePRISMACounts } from "@/lib/criteriaMatching";
+import { DemoGuideCard } from "@/components/project/DemoGuideCard";
 
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 
@@ -532,6 +532,12 @@ function ProtocolPageContent() {
                                 </div>
                             )}
 
+                            <DemoGuideCard
+                                projectId={project.id}
+                                guideId="protocol-overview"
+                                text="This protocol defines the rules your review follows. The copilot uses these criteria to screen studies and flag inconsistencies."
+                            />
+
                             <div className={styles.content}>
                                 {/* Research Question Section */}
                                 <section
@@ -659,6 +665,12 @@ function ProtocolPageContent() {
                                         </button>
                                     </div>
                                     <div className={styles.criteriaLists}>
+                                        <DemoGuideCard
+                                            projectId={project.id}
+                                            guideId="protocol-criteria"
+                                            text="Inclusion and exclusion criteria are the highest-leverage fields here. Exclusion decisions in the Ledger should map to a specific criterion."
+                                            className={styles.criteriaGuide}
+                                        />
                                         <div className={styles.criteriaGroup}>
                                             <h3 className={styles.criteriaHeading}>Inclusion</h3>
                                             <EditableList
@@ -887,11 +899,8 @@ function ProtocolPageContent() {
 export default function ProtocolPage() {
     const { id } = useParams<{ id: string }>();
 
-    // Get mock data for demo projects
-    const initialData = id ? getMockProtocolData(id) ?? undefined : undefined;
-
     return (
-        <ProtocolProvider projectId={id ?? ""} initialData={initialData}>
+        <ProtocolProvider projectId={id ?? ""}>
             <ProtocolPageContent />
         </ProtocolProvider>
     );

@@ -7,25 +7,26 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 
 type ProjectsContextValue = {
   projects: Project[];
-  addProject: (project: Project) => void;
-  deleteProject: (id: string) => void;
+  isInitialized: boolean;
+  addProject: (project: Project) => Promise<Project | null>;
+  deleteProject: (id: string) => Promise<boolean>;
   getProjectById: (id: string) => Project | undefined;
-  refresh: () => void;
+  refresh: () => Promise<void>;
 };
 
 const ProjectsContext = createContext<ProjectsContextValue | undefined>(undefined);
 
 export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   const [projects, setProjects] = useState<Project[]>([]);
+  const [isInitialized, setIsInitialized] = useState(false);
 
-  const refresh = useCallback(() => {
-    listProjectsAction()
-      .then((loaded) => {
-        setProjects(loaded);
-      })
-      .catch((err) => {
-        console.error("Failed to load projects from backend", err);
-      });
+  const refresh = useCallback(async () => {
+    try {
+      const loaded = await listProjectsAction();
+      setProjects(loaded);
+    } catch (err) {
+      console.error("Failed to load projects from backend", err);
+    }
   }, []);
 
   useEffect(() => {
@@ -40,7 +41,8 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         console.error("Local storage migration failed", err);
       } finally {
         if (isMounted) {
-          refresh();
+          await refresh();
+          setIsInitialized(true);
         }
       }
     };
@@ -50,24 +52,26 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
     };
   }, [refresh]);
 
-  const addProject = useCallback((project: Project) => {
-    createProjectAction(project)
-      .then((created) => {
-        setProjects((prev) => [created, ...prev.filter((p) => p.id !== created.id)]);
-      })
-      .catch((err) => {
-        console.error("Failed to create project", err);
-      });
+  const addProject = useCallback(async (project: Project): Promise<Project | null> => {
+    try {
+      const created = await createProjectAction(project);
+      setProjects((prev) => [created, ...prev.filter((p) => p.id !== created.id)]);
+      return created;
+    } catch (err) {
+      console.error("Failed to create project", err);
+      return null;
+    }
   }, []);
 
-  const deleteProject = useCallback((id: string) => {
-    deleteProjectAction(id)
-      .then(() => {
-        setProjects((prev) => prev.filter((project) => project.id !== id));
-      })
-      .catch((err) => {
-        console.error("Failed to delete project", err);
-      });
+  const deleteProject = useCallback(async (id: string): Promise<boolean> => {
+    try {
+      await deleteProjectAction(id);
+      setProjects((prev) => prev.filter((project) => project.id !== id));
+      return true;
+    } catch (err) {
+      console.error("Failed to delete project", err);
+      return false;
+    }
   }, []);
 
   const getProjectById = useMemo(
@@ -78,12 +82,13 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo(
     () => ({
       projects,
+      isInitialized,
       addProject,
       deleteProject,
       getProjectById,
       refresh,
     }),
-    [projects, addProject, deleteProject, getProjectById, refresh]
+    [projects, isInitialized, addProject, deleteProject, getProjectById, refresh]
   );
 
   return <ProjectsContext.Provider value={value}>{children}</ProjectsContext.Provider>;

@@ -57,7 +57,7 @@ All run from `next-app/` except deploy:
 
 ## Open-Source Code Adaptation
 
-The agentic architecture references several open-source codebases to steal patterns from (documented in the archived `planC` and current agentic plans). When working with any of them:
+The agentic architecture references several open-source codebases to steal patterns from (documented in the active plans under `docs/plans/`, especially `plan-agentic.md`). When working with any of them:
 - **Never copy-paste verbatim.** Rewrite every snippet to match our stack, naming, and file layout.
 - **Strip foreign abstractions.** Extract the idea, not their framework-specific implementation.
 - **Respect our design system.** All UI must use our CSS tokens (`tokens.css`), not imported styles.
@@ -81,7 +81,7 @@ When you complete a task in any `plan-*.md` file, you MUST NOT append a log or w
 `docs/plans/plan-memory.md` is the SINGLE source of truth for all memory implementation routing and tasks. No other plan file should contain memory tracking tasks.
 
 **Legacy Plans:**
-Files in `docs/old_plans/` (like `planB`, `planC`) are ARCHIVED. Do not read them for active tasks or write to them under any circumstances.
+Legacy planning artifacts are not part of the active planning system. Use only the canonical plans in `docs/plans/`.
 
 **PRD vs. Domain Plans Policy (The "What vs. How" Rule)**
 - **Change `PRD.md` ONLY IF:** A decision changes **WHAT** the product does, **WHO** it is for, or **WHY** we are building it (e.g., changes to user-visible behavior, product scope, trust/safety rules, or success metrics).

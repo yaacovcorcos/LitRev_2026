@@ -2,6 +2,7 @@ import { Project } from "@/types/project";
 import Link from "next/link";
 import styles from "@/components/ProjectGrid.module.css";
 import { useLedger } from "@/contexts/LedgerContext";
+import { isDemoProjectId } from "@/lib/demo/constants";
 
 type ProjectGridProps = {
   projects: Project[];
@@ -42,7 +43,10 @@ export function ProjectGrid({ projects, viewMode, onNewProject }: ProjectGridPro
       {projects.map((p) => {
         const isHarvesting = p.status === "harvesting";
         const isList = viewMode === "list";
-        const cardClass = `${styles.card} ${viewMode === "list" ? styles.listViewCard : ""}`;
+        const isSample = isDemoProjectId(p.id);
+        const cardClass = `${styles.card} ${viewMode === "list" ? styles.listViewCard : ""} ${
+          isSample ? styles.sampleCard : ""
+        }`;
         const titleClass = `${styles.projectTitle} ${viewMode === "list" ? styles.listViewCardTitle : ""}`;
         const statusClass = `${styles.cardStatus} ${isHarvesting ? styles.statusHarvesting : styles.statusReady} ${viewMode === "list" ? styles.listViewStatus : ""
           }`;
@@ -61,6 +65,7 @@ export function ProjectGrid({ projects, viewMode, onNewProject }: ProjectGridPro
             data-id={p.id}
             aria-label={`Open project ${p.name}`}
           >
+            {isSample ? <span className={styles.sampleBadge}>Sample</span> : null}
             <div className={statusClass}>
               {p.statusText}
             </div>

@@ -30,6 +30,7 @@ import {
   runMemoryMaintenanceAction,
 } from "@/app/actions/memory";
 import type { PRISMAStats } from "@/lib/server/memory/prisma-stats";
+import { DemoGuideCard } from "@/components/project/DemoGuideCard";
 import styles from "./memory.module.css";
 
 // ── Types for tab data ───────────────────────────────────────────────────────
@@ -357,6 +358,12 @@ function MemoryPageContent() {
             </button>
           )}
         </header>
+
+        <DemoGuideCard
+          projectId={project.id}
+          guideId="memory-context"
+          text="Memory stores durable decisions and definitions that shape copilot behavior across your workflow. Update entries when your protocol or standards change."
+        />
 
         {/* Tab Bar */}
         <div className={styles.tabBar}>

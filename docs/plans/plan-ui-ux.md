@@ -13,6 +13,9 @@
 - **Animations:** Staggered chip animations (`@keyframes fadeInUp`), streaming cursor (dots/cursor), smooth scroll-to-bottom. Accessible defaults (`prefers-reduced-motion`).
 - **Scoping UX:** `scoping_report` renders as a decision-first card with one-click actions and collapsible full analysis on both project conversation and `/ai`.
 - **Mentioned Studies UX:** Assistant messages render lightweight mentioned-study chips (title/year/link + add state), with direct add-to-ledger actions and hidden metadata stripping before markdown render.
+- **Home + Onboarding UX:** `/` now has a real first-run zero state (no sidebar) plus on-demand sample project entry, and quick project creation now routes into `/project/[id]/onboarding` guided setup with explicit skip-to-conversation.
+- **Demo Guidance UX:** The sample project is visually distinct (badge + in-project banner) and demo-only inline guide cards are dismissible per card via localStorage.
+- **Onboarding Defaults UX (Interim):** Guided setup default can be toggled from onboarding (settings-ready plumbing), while final Settings placement and per-project override UI are still pending.
 
 ## Active Tasks
 *Work that is entirely unimplemented or currently broken.*
@@ -23,6 +26,9 @@
 ### P1 — Consistency & Primitives
 - [ ] Continue standardizing overlays on shared primitives (replace remaining hand-rolled modal/dropdown patterns).
 - [ ] Fix Copilot scrolling isolation across all pages (copilot panel should pin/scroll independently from main content like Draft page does).
+- [ ] Add final onboarding controls to Settings + project surfaces:
+  - Move global default toggle for guided setup on new projects into Settings.
+  - Add per-project override UI so users can opt in/out after creation.
 
 ### P2 — Features & Polish
 - [ ] Tool receipt blocks per assistant turn (e.g., `Used: PubMed search · 47 results · 2.1s`).
@@ -39,16 +45,16 @@
 ## Recently Completed
 *Finished work that might still be fragile or require monitoring. Prune oldest first.*
 
+- [x] Completed phase-6 polish/validation pass: refreshed demo guide copy, added a Results-section guide note, tokenized remaining onboarding/demo-guide rgba values, and revalidated with `npx tsc --noEmit` + `npx vitest run`.
+- [x] Added phase-5 onboarding persistence UX wiring: guided setup default toggle (interim location), backend-driven create routing, and skip/save completion tracking.
+- [x] Implemented the sample Yoga-for-Anxiety project flow with real seeded data plus reset/delete lifecycle controls.
+- [x] Added demo-specific guidance surfaces (sample badge/banner and dismissible inline guide cards across overview, protocol, ledger, draft, notes, and memory).
+- [x] Completed home IA + onboarding phase: zero-project first-run state, nav rename to Home, and quick-create -> guided `/project/[id]/onboarding` routing with skip path.
 - [x] Expanded component-level `axe()` coverage beyond the initial picker scan (artifact cards now covered).
 - [x] Removed canvas/noise warnings from UI a11y test output to keep failures signal-heavy.
 - [x] Added chat UI coverage for metadata stripping, scoping decision-card action prompts, and mentioned-study add/duplicate state transitions.
 - [x] Added explicit project-ID passthrough in `TimelineRenderer` for `/ai` route support where `useParams()` has no project id.
 - [x] Migrated conversation selector UI to shared `ConversationPicker` (Radix Popover + `cmdk`) and removed hand-rolled keyboard listbox logic.
-- [x] Fixed dead side-panel empty-state suggestions by wiring click -> `prefill` in `ProjectCopilot`.
-- [x] Removed visible no-op artifact actions (unsupported actions now hidden unless behavior is wired).
-- [x] Added first component-level `axe()` scan (`ConversationPicker`) and jsdom polyfills needed by modern UI primitives.
-- [x] Replaced brittle mobile copilot hide selector (`nth-child`) with an explicit shell class (`copilotPane`).
-- [x] Project shell embedding guard prevents double-render sidebars on `memory` and `ledger` pages.
 
 ## Deferred / Parking Lot
 *Ideas acknowledged but explicitly not active right now.*

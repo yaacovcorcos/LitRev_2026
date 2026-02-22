@@ -17,6 +17,12 @@
     overflow: hidden;
 }
 
+.onboardingBody {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+}
+
 /* View mode: workspace content + copilot side panel */
 .viewBody {
     flex: 1;

@@ -13,6 +13,8 @@ import { PopupChat } from "@/components/PopupChat";
 import { PopupChatProvider } from "@/contexts/PopupChatContext";
 import { getStudyAction } from "@/app/actions/ledger";
 import type { CopilotPage } from "@/types/ai";
+import { DemoBanner } from "@/components/project/DemoBanner";
+import { isDemoProjectId } from "@/lib/demo/constants";
 import styles from "./project-shell.module.css";
 
 const RAIL_WIDTH = 44;
@@ -104,17 +106,14 @@ function ProjectShellInner({ projectId, children }: ProjectShellInnerProps) {
         returnToConversation();
     }, [returnToConversation]);
 
-    // Panel vars for view mode
-    const computePanelVars = (): CSSProperties => {
+    const panelVars = useMemo(() => {
         const copilot = isCollapsed ? RAIL_WIDTH : clamp(panelWidth, 300, 560);
-        const gridCols = isCollapsed
-            ? `1fr 0px ${RAIL_WIDTH}px`
-            : `1fr 1px ${copilot}px`;
+        const gridCols = isCollapsed ? `1fr 0px ${RAIL_WIDTH}px` : `1fr 1px ${copilot}px`;
         return {
             "--copilot-width": `${copilot}px`,
             gridTemplateColumns: gridCols,
         } as CSSProperties;
-    };
+    }, [isCollapsed, panelWidth]);
 
     // Resize handle for copilot in view mode
     const startResize = useCallback((startX: number) => {
@@ -164,6 +163,8 @@ function ProjectShellInner({ projectId, children }: ProjectShellInnerProps) {
         : activeTab
             ? `${activeTab.charAt(0).toUpperCase() + activeTab.slice(1)}`
             : "Project";
+    const isOnboardingRoute = pathname.endsWith("/onboarding");
+    const showDemoBanner = isDemoProjectId(projectId) && !isOnboardingRoute;
 
     // Centralized scope ownership — driven by pathname, no cleanup return
     useEffect(() => {
@@ -173,50 +174,57 @@ function ProjectShellInner({ projectId, children }: ProjectShellInnerProps) {
     return (
         <ProjectShellProvider value={shellValue}>
             <AppShell activeNav="projects" mainClassName={styles.shellMain} noMainPadding initiallyCollapsed>
-                <ProjectTabBar
-                    focusMode={focusMode}
-                    activeTab={activeTab}
-                    onTabClick={handleTabClick}
-                    onConversationClick={handleConversationClick}
-                />
-
-                {focusMode === "conversation" ? (
-                    <div className={styles.conversationBody}>
-                        <ConversationMainView projectId={projectId} />
-                    </div>
+                {isOnboardingRoute ? (
+                    <div className={styles.onboardingBody}>{children}</div>
                 ) : (
-                    <div className={styles.viewBody} style={computePanelVars()}>
-                        <div className={styles.viewContent}>{children}</div>
-
-                        <div
-                            className={`${styles.resizeHandle} ${isCollapsed ? styles.resizeHandleHidden : ""}`}
-                            role="separator"
-                            aria-label="Resize copilot panel"
-                            aria-hidden={isCollapsed}
-                            onMouseDown={(e) => {
-                                if (isCollapsed) return;
-                                startResize(e.clientX);
-                            }}
+                    <>
+                        <ProjectTabBar
+                            focusMode={focusMode}
+                            activeTab={activeTab}
+                            onTabClick={handleTabClick}
+                            onConversationClick={handleConversationClick}
                         />
-                        <div className={styles.copilotPane}>
-                            <ProjectCopilot
-                                page={copilotPage as CopilotPage}
-                                studyId={copilotStudyId}
-                                contextDisplay={copilotContextDisplay}
-                                emptyState={{
-                                    icon: "smart_toy",
-                                    title: "AI Copilot",
-                                    description: "Ask questions about your project or get help with your current task.",
-                                    suggestions: [
-                                        { label: "Help", prompt: "What can you help me with?" },
-                                        { label: "Summarize", prompt: "Summarize my project progress" },
-                                    ],
-                                }}
-                                inputPlaceholder={`Ask about ${copilotContextDisplay.toLowerCase()}...`}
-                                panelId="shell-copilot-panel"
-                            />
-                        </div>
-                    </div>
+                        {showDemoBanner ? <DemoBanner projectId={projectId} /> : null}
+
+                        {focusMode === "conversation" ? (
+                            <div className={styles.conversationBody}>
+                                <ConversationMainView projectId={projectId} />
+                            </div>
+                        ) : (
+                            <div className={styles.viewBody} style={panelVars}>
+                                <div className={styles.viewContent}>{children}</div>
+
+                                <div
+                                    className={`${styles.resizeHandle} ${isCollapsed ? styles.resizeHandleHidden : ""}`}
+                                    role="separator"
+                                    aria-label="Resize copilot panel"
+                                    aria-hidden={isCollapsed}
+                                    onMouseDown={(e) => {
+                                        if (isCollapsed) return;
+                                        startResize(e.clientX);
+                                    }}
+                                />
+                                <div className={styles.copilotPane}>
+                                    <ProjectCopilot
+                                        page={copilotPage as CopilotPage}
+                                        studyId={copilotStudyId}
+                                        contextDisplay={copilotContextDisplay}
+                                        emptyState={{
+                                            icon: "smart_toy",
+                                            title: "AI Copilot",
+                                            description: "Ask questions about your project or get help with your current task.",
+                                            suggestions: [
+                                                { label: "Help", prompt: "What can you help me with?" },
+                                                { label: "Summarize", prompt: "Summarize my project progress" },
+                                            ],
+                                        }}
+                                        inputPlaceholder={`Ask about ${copilotContextDisplay.toLowerCase()}...`}
+                                        panelId="shell-copilot-panel"
+                                    />
+                                </div>
+                            </div>
+                        )}
+                    </>
                 )}
             </AppShell>
         </ProjectShellProvider>

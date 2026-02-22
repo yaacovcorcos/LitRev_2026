@@ -382,6 +382,17 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
 
                 if (!isActive) return;
                 setConversations(mapped);
+                if (!currentConversationIdRef.current && mapped.length > 0) {
+                    const scopeKey = studyFilterRef.current
+                        ? `${projectId}:study:${studyFilterRef.current}`
+                        : `${projectId}:project`;
+                    const saved = scopeConversationMapRef.current.get(scopeKey);
+                    const targetConversationId = saved && mapped.some((c) => c.id === saved)
+                        ? saved
+                        : mapped[0].id;
+                    scopeConversationMapRef.current.set(scopeKey, targetConversationId);
+                    await selectConversationRef.current(targetConversationId);
+                }
             } catch (err) {
                 console.error("Failed to load conversations:", err);
             } finally {

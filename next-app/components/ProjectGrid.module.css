@@ -25,6 +25,34 @@
     color: inherit;
 }
 
+.sampleCard {
+    border-style: dashed;
+    border-color: var(--color-info-border);
+    background: linear-gradient(180deg, rgba(107, 124, 138, 0.08), rgba(255, 255, 255, 0.55));
+}
+
+.card.sampleCard:hover {
+    border-color: var(--color-info);
+    box-shadow: 0 12px 34px rgba(107, 124, 138, 0.18);
+}
+
+.sampleBadge {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    z-index: 2;
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 8px;
+    border-radius: 999px;
+    background: var(--color-info-bg-solid);
+    color: var(--color-info-text);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-weight: 700;
+}
+
 .card:focus-visible {
     outline: 2px solid var(--accent-primary);
     outline-offset: 2px;

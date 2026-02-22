@@ -15,6 +15,7 @@ export function Sidebar({ mainLinks, bottomLinks, activeNav = "projects", collap
   const bottomNavId = "sidebar-bottom-nav";
   const asideClass = collapsed ? `${styles.sidebar} ${styles.collapsed}` : styles.sidebar;
   const toggleLabel = collapsed ? "Expand Sidebar" : "Collapse Sidebar";
+  const actionableBottomLinks = bottomLinks.filter((link) => !link.href.startsWith("#"));
 
   return (
     <aside className={asideClass} aria-label="Primary">
@@ -52,16 +53,18 @@ export function Sidebar({ mainLinks, bottomLinks, activeNav = "projects", collap
         ))}
       </nav>
 
-      <div className={styles.bottomNav} id={bottomNavId} aria-label="Secondary">
-        {bottomLinks.map((link) => (
-          <Link key={link.navKey} href={link.href} className={styles.navItem} aria-label={link.label}>
-            <span className={`material-icons-round ${styles.navIcon}`}>{link.icon}</span>
-            <span className={styles.navLabel} aria-hidden={collapsed}>
-              {link.label}
-            </span>
-          </Link>
-        ))}
-      </div>
+      {actionableBottomLinks.length > 0 ? (
+        <div className={styles.bottomNav} id={bottomNavId} aria-label="Secondary">
+          {actionableBottomLinks.map((link) => (
+            <Link key={link.navKey} href={link.href} className={styles.navItem} aria-label={link.label}>
+              <span className={`material-icons-round ${styles.navIcon}`}>{link.icon}</span>
+              <span className={styles.navLabel} aria-hidden={collapsed}>
+                {link.label}
+              </span>
+            </Link>
+          ))}
+        </div>
+      ) : null}
     </aside>
   );
 }

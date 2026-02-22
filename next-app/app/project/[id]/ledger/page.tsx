@@ -22,6 +22,7 @@ import type { Study, StudyDetails, TriageDecision } from "@/types/ledger";
 import { validateStudyFile } from "@/lib/fileValidation";
 import { ConfirmDialog, AlertDialog } from "@/components/ConfirmDialog";
 import { usePopupChat } from "@/contexts/PopupChatContext";
+import { DemoGuideCard } from "@/components/project/DemoGuideCard";
 
 type CriteriaFilter = "all" | "meets-criteria" | "fails-criteria" | "in-date-range" | "matching-design";
 
@@ -708,6 +709,11 @@ export default function LedgerPage() {
                                     </button>
                                 </div>
                             </header>
+                            <DemoGuideCard
+                                projectId={project.id}
+                                guideId="ledger-screening"
+                                text="These are real studies from the Cramer et al. (2018) evidence base. Try changing triage on one study and the copilot will ask for your rationale."
+                            />
                             <input
                                 ref={importInputRef}
                                 type="file"
@@ -725,7 +731,7 @@ export default function LedgerPage() {
                                     <span className="material-icons-round">check_circle</span>
                                     <span>{triageCounts.keep} kept</span>
                                 </div>
-                                <div className={styles.statChip} style={{ color: "#c0392b" }}>
+                                <div className={styles.statChip} style={{ color: "var(--color-danger)" }}>
                                     <span className="material-icons-round">cancel</span>
                                     <span>{triageCounts.exclude} excluded</span>
                                 </div>
@@ -801,6 +807,11 @@ export default function LedgerPage() {
                                 </div>
                             )}
 
+                            <DemoGuideCard
+                                projectId={project.id}
+                                guideId="ledger-maybe"
+                                text="Use Maybe for borderline studies that need team review or protocol refinement before a final inclusion decision."
+                            />
                             <div className={styles.tableWrapper}>
                                 <table className={styles.ledgerTable}>
                                     <thead>

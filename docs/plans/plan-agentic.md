@@ -47,7 +47,7 @@
 - [ ] Risk of bias assessment tools (RoB 2 / ROBINS-I).
 - [ ] GRADE evidence profile artifacts.
 - [ ] Table/Figure extraction via Marker or Nougat.
-- [ ] Global Command Palette / Search overlay UI (`planC` Phase 8).
+- [ ] Global Command Palette / Search overlay UI.
 - [ ] MCP Server abstraction for tools.
 - [ ] Inngest integration for long loops.
 - [ ] LlamaIndex.TS ADW pattern (per-paper agents).

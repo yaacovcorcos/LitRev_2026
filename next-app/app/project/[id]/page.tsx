@@ -9,6 +9,7 @@ import { useProjects } from "@/contexts/ProjectsContext";
 import { useProjectShell } from "@/contexts/ProjectShellContext";
 import Link from "next/link";
 import { RecentActivityPanel } from "@/components/project/RecentActivityPanel";
+import { DemoGuideCard } from "@/components/project/DemoGuideCard";
 import styles from "./project-workspace.module.css";
 import { Project } from "@/types/project";
 
@@ -136,10 +137,6 @@ export default function ProjectDetail() {
           subtitle={project.description || "No description provided."}
           actions={
             <>
-              <button className="header-btn" type="button">
-                <span className="material-icons-round">share</span>
-                Share
-              </button>
               <button
                 className="header-btn header-btn-danger"
                 type="button"
@@ -152,6 +149,12 @@ export default function ProjectDetail() {
               </button>
             </>
           }
+        />
+
+        <DemoGuideCard
+          projectId={project.id}
+          guideId="overview-hub"
+          text="This overview is your command center. Follow the workstation order: Protocol → Ledger → Draft to keep evidence traceable."
         />
 
         {/* Vital Signs Row */}

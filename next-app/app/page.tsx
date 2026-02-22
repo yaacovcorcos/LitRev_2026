@@ -11,17 +11,39 @@ import { AppShell } from "@/components/AppShell";
 import { Modal } from "@/components/Modal";
 import { useProjects } from "@/contexts/ProjectsContext";
 import { useRouter, useSearchParams } from "next/navigation";
+import { openOrCreateDemoProjectAction } from "@/app/actions/demo";
+import { shouldLaunchGuidedSetupForProjectAction } from "@/app/actions/onboarding";
+import { shouldLaunchGuidedSetup } from "@/lib/demo/onboarding";
 import layoutStyles from "./home.module.css";
 
 const VALID_SORTS: SortMode[] = ["name", "created", "modified"];
 const VALID_VIEWS: ViewMode[] = ["grid", "list"];
 
+function buildProject(
+  name: string,
+  description: string,
+  options?: { id?: string; statusText?: string; papers?: number }
+): Project {
+  const now = new Date().toISOString();
+  return {
+    id: options?.id ?? `p${Date.now()}`,
+    name,
+    description,
+    status: "ready",
+    statusText: options?.statusText ?? "Status: Review Ready",
+    papers: options?.papers ?? 0,
+    modified: now,
+    created: now,
+  };
+}
+
 function HomeContent() {
-  const { projects, addProject, refresh } = useProjects();
+  const { projects, addProject, isInitialized, refresh } = useProjects();
   const router = useRouter();
   const searchParams = useSearchParams();
   const [sortMode, setSortMode] = useState<SortMode>("modified");
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
+  const [isOpeningSample, setIsOpeningSample] = useState(false);
 
   // Sync from localStorage after hydration to avoid SSR mismatch
   useEffect(() => {
@@ -74,56 +96,111 @@ function HomeContent() {
     }
   }, []);
 
-  const handleCreateProject = (name: string, description: string) => {
-    const newProject: Project = {
-      id: "p" + Date.now(),
-      name,
-      description,
-      status: "ready",
-      statusText: "Status: Review Ready",
-      papers: 0,
-      modified: new Date().toISOString(),
-      created: new Date().toISOString(),
-    };
-    addProject(newProject);
+  const handleCreateProject = async (name: string, description: string) => {
+    const created = await addProject(buildProject(name, description));
     closeModal();
+    if (!created) return;
+    let shouldGuide = false;
+    try {
+      shouldGuide = await shouldLaunchGuidedSetupForProjectAction(created.id);
+    } catch (err) {
+      console.error("Failed to load backend guided setup preference, using local fallback", err);
+      shouldGuide = shouldLaunchGuidedSetup(created.id);
+    }
+    if (shouldGuide) {
+      router.push(`/project/${created.id}/onboarding`);
+      return;
+    }
+    router.push(`/project/${created.id}`);
   };
 
-  useEffect(() => {
-    // Refresh projects from storage on mount to ensure context has latest
-    refresh();
-  }, [refresh]);
-
+  const handleOpenSampleProject = useCallback(async () => {
+    setIsOpeningSample(true);
+    try {
+      const sampleProject = await openOrCreateDemoProjectAction();
+      await refresh();
+      router.push(`/project/${sampleProject.id}`);
+    } catch (err) {
+      console.error("Failed to open sample project", err);
+    } finally {
+      setIsOpeningSample(false);
+    }
+  }, [refresh, router]);
 
   useEffect(() => {
     if (!shouldOpenFromQuery) return;
     router.replace("/", { scroll: false });
   }, [shouldOpenFromQuery, router]);
 
+  const mainContent = !isInitialized ? (
+    <div className={layoutStyles.initializingShell}>
+      <p className={layoutStyles.initializingText}>Loading workspace...</p>
+    </div>
+  ) : projects.length === 0 ? (
+    <div className={layoutStyles.zeroShell}>
+      <div className={layoutStyles.zeroCard}>
+        <p className={layoutStyles.zeroEyebrow}>LitRev</p>
+        <h1 className={layoutStyles.zeroTitle}>Build your first literature review.</h1>
+        <p className={layoutStyles.zeroSubtitle}>
+          Start from scratch or open an editable sample review to learn the full workflow.
+        </p>
+        <div className={layoutStyles.zeroActions}>
+          <button type="button" className={`btn btn-primary ${layoutStyles.zeroPrimaryBtn}`} onClick={openModal}>
+            Start first review
+          </button>
+          <button
+            type="button"
+            className={`btn btn-outline ${layoutStyles.zeroSecondaryBtn}`}
+            onClick={() => {
+              void handleOpenSampleProject();
+            }}
+            disabled={isOpeningSample}
+          >
+            {isOpeningSample ? "Opening sample..." : "Open sample review"}
+          </button>
+        </div>
+      </div>
+    </div>
+  ) : (
+    <AppShell activeNav="projects" onNewProject={openModal} mainClassName={layoutStyles.noSidePadding}>
+      <div className={layoutStyles.page}>
+        <div className={layoutStyles.headerArea}>
+          <TopBar
+            title="Your Projects"
+            subtitle="Keep your literature reviews organized"
+            actions={
+              <button
+                type="button"
+                className="header-btn"
+                onClick={() => {
+                  void handleOpenSampleProject();
+                }}
+                disabled={isOpeningSample}
+              >
+                <span className="material-icons-round">science</span>
+                {isOpeningSample ? "Opening sample..." : "Open sample"}
+              </button>
+            }
+          />
+
+          <ControlsBar
+            sortMode={sortMode}
+            viewMode={viewMode}
+            onSortChange={handleSortChange}
+            onViewChange={handleViewChange}
+          />
+        </div>
+
+        <div className={layoutStyles.scrollArea}>
+          <ProjectGrid projects={sortedProjects} viewMode={viewMode} onNewProject={openModal} />
+        </div>
+      </div>
+    </AppShell>
+  );
 
   return (
     <>
-      <AppShell activeNav="projects" onNewProject={openModal} mainClassName={layoutStyles.noSidePadding}>
-        <div className={layoutStyles.page}>
-          <div className={layoutStyles.headerArea}>
-            <TopBar
-              title="Your Projects"
-              subtitle="Keep your literature reviews organized"
-            />
-
-            <ControlsBar
-              sortMode={sortMode}
-              viewMode={viewMode}
-              onSortChange={handleSortChange}
-              onViewChange={handleViewChange}
-            />
-          </div>
-
-          <div className={layoutStyles.scrollArea}>
-            <ProjectGrid projects={sortedProjects} viewMode={viewMode} onNewProject={openModal} />
-          </div>
-        </div>
-      </AppShell>
+      {mainContent}
 
       <Modal isOpen={isModalOpen} onClose={closeModal} ariaLabelledBy="createProjectTitle">
         <div className="modal-header">
@@ -134,13 +211,13 @@ function HomeContent() {
         </div>
         <form
           ref={formRef}
-          onSubmit={(e) => {
+          onSubmit={async (e) => {
             e.preventDefault();
             const formData = new FormData(e.currentTarget);
             const name = (formData.get("projectName") as string).trim();
             const desc = (formData.get("projectDesc") as string).trim();
             if (!name) return;
-            handleCreateProject(name, desc);
+            await handleCreateProject(name, desc);
             e.currentTarget.reset();
           }}
         >
