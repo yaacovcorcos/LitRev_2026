@@ -13,6 +13,7 @@ import { useProjects } from "@/contexts/ProjectsContext";
 import { useRouter, useSearchParams } from "next/navigation";
 import { openOrCreateDemoProjectAction } from "@/app/actions/demo";
 import { shouldLaunchGuidedSetupForProjectAction } from "@/app/actions/onboarding";
+import { DEMO_PROJECT_ID } from "@/lib/demo/constants";
 import { shouldLaunchGuidedSetup } from "@/lib/demo/onboarding";
 import layoutStyles from "./home.module.css";
 
@@ -44,6 +45,7 @@ function HomeContent() {
   const [sortMode, setSortMode] = useState<SortMode>("modified");
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
   const [isOpeningSample, setIsOpeningSample] = useState(false);
+  const [sampleError, setSampleError] = useState<string | null>(null);
 
   // Sync from localStorage after hydration to avoid SSR mismatch
   useEffect(() => {
@@ -116,16 +118,24 @@ function HomeContent() {
 
   const handleOpenSampleProject = useCallback(async () => {
     setIsOpeningSample(true);
+    setSampleError(null);
     try {
       const sampleProject = await openOrCreateDemoProjectAction();
       await refresh();
       router.push(`/project/${sampleProject.id}`);
     } catch (err) {
       console.error("Failed to open sample project", err);
+      const existingSample = projects.find((project) => project.id === DEMO_PROJECT_ID);
+      if (existingSample) {
+        router.push(`/project/${existingSample.id}`);
+        return;
+      }
+      const details = err instanceof Error ? err.message : "Unknown error";
+      setSampleError(`Unable to open sample review. ${details}`);
     } finally {
       setIsOpeningSample(false);
     }
-  }, [refresh, router]);
+  }, [projects, refresh, router]);
 
   useEffect(() => {
     if (!shouldOpenFromQuery) return;
@@ -159,6 +169,7 @@ function HomeContent() {
             {isOpeningSample ? "Opening sample..." : "Open sample review"}
           </button>
         </div>
+        {sampleError ? <p className={layoutStyles.sampleError} role="alert">{sampleError}</p> : null}
       </div>
     </div>
   ) : (
@@ -189,6 +200,7 @@ function HomeContent() {
             onSortChange={handleSortChange}
             onViewChange={handleViewChange}
           />
+          {sampleError ? <p className={layoutStyles.sampleError} role="alert">{sampleError}</p> : null}
         </div>
 
         <div className={layoutStyles.scrollArea}>

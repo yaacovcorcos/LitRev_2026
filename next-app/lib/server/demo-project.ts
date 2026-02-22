@@ -572,36 +572,120 @@ function demoWelcomeMessage(): string {
   ].join("\n");
 }
 
-function isMissingTableError(error: unknown): boolean {
-  if (!error || typeof error !== "object") return false;
-  return "code" in error && error.code === "P2021";
+async function tableExists(tx: Prisma.TransactionClient, tableName: string): Promise<boolean> {
+  const rows = await tx.$queryRaw<Array<{ exists: boolean }>>(
+    Prisma.sql`SELECT to_regclass(${`public."${tableName}"`}) IS NOT NULL AS "exists"`
+  );
+  return rows[0]?.exists === true;
 }
 
-async function deleteIfTableExists(label: string, fn: () => Promise<unknown>): Promise<void> {
-  try {
-    await fn();
-  } catch (error) {
-    if (isMissingTableError(error)) {
-      console.warn(`[demo-project] Skipping ${label} cleanup because table is missing.`);
-      return;
+type TableColumnMeta = {
+  name: string;
+  nullable: boolean;
+  hasDefault: boolean;
+};
+
+async function getTableColumnMeta(
+  tx: Prisma.TransactionClient,
+  tableName: string
+): Promise<Map<string, TableColumnMeta>> {
+  const rows = await tx.$queryRaw<
+    Array<{ column_name: string; is_nullable: "YES" | "NO"; column_default: string | null }>
+  >(
+    Prisma.sql`
+      SELECT column_name, is_nullable, column_default
+      FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = ${tableName}
+    `
+  );
+  return new Map(
+    rows.map((row) => [
+      row.column_name,
+      {
+        name: row.column_name,
+        nullable: row.is_nullable === "YES",
+        hasDefault: row.column_default !== null,
+      },
+    ])
+  );
+}
+
+type ProjectMemoryInsertRow = {
+  id: string;
+  projectId: string;
+  type: string;
+  category: string | null;
+  statement: string;
+  rationale: string | null;
+  importance: string;
+  tags: string[];
+  status: string;
+  source: string;
+};
+
+async function seedProjectMemoryCompat(
+  tx: Prisma.TransactionClient,
+  columns: Map<string, TableColumnMeta>
+): Promise<void> {
+  const rows: ProjectMemoryInsertRow[] = DEMO_PROJECT_MEMORIES.map((memory) => ({
+    id: memory.id,
+    projectId: DEMO_PROJECT_ID,
+    type: memory.type,
+    category: memory.category,
+    statement: memory.statement,
+    rationale: memory.rationale,
+    importance: memory.importance,
+    tags: [...memory.tags],
+    status: "active",
+    source: "decision",
+  }));
+
+  const now = new Date();
+  for (const row of rows) {
+    const compatibleRow: Record<string, unknown> = {
+      ...row,
+      updatedAt: now,
+      createdAt: now,
+      context: null,
+      archivedAt: null,
+      supersededBy: null,
+    };
+    const entries = Object.entries(compatibleRow).filter(([key]) => columns.has(key));
+    if (entries.length === 0) continue;
+    const present = new Set(entries.map(([key]) => key));
+    const missingRequired = [...columns.values()]
+      .filter((column) => !column.nullable && !column.hasDefault && !present.has(column.name))
+      .map((column) => column.name);
+    if (missingRequired.length > 0) {
+      throw new Error(
+        `[demo-project] ProjectMemory compatibility insert missing required columns: ${missingRequired.join(", ")}`
+      );
     }
-    throw error;
+    const colSql = Prisma.join(entries.map(([key]) => Prisma.raw(`"${key}"`)));
+    const valSql = Prisma.join(entries.map(([, value]) => value));
+    await tx.$executeRaw(Prisma.sql`INSERT INTO "ProjectMemory" (${colSql}) VALUES (${valSql})`);
   }
 }
 
 async function deleteDemoProjectSideData(tx: Prisma.TransactionClient): Promise<void> {
-  await deleteIfTableExists("AIConversation", () => tx.aIConversation.deleteMany({ where: { projectId: DEMO_PROJECT_ID } }));
-  await deleteIfTableExists("AIUsage", () => tx.aIUsage.deleteMany({ where: { projectId: DEMO_PROJECT_ID } }));
-  await deleteIfTableExists("AgentRun", () => tx.agentRun.deleteMany({ where: { projectId: DEMO_PROJECT_ID } }));
-  await deleteIfTableExists("MemoryRetrieval", () =>
-    tx.memoryRetrieval.deleteMany({ where: { projectId: DEMO_PROJECT_ID } })
-  );
-  await deleteIfTableExists("MemoryEmbedding", () =>
-    tx.memoryEmbedding.deleteMany({ where: { projectId: DEMO_PROJECT_ID } })
-  );
-  await deleteIfTableExists("AutonomyConfig", () =>
-    tx.autonomyConfig.deleteMany({ where: { projectId: DEMO_PROJECT_ID } })
-  );
+  if (await tableExists(tx, "AIConversation")) {
+    await tx.aIConversation.deleteMany({ where: { projectId: DEMO_PROJECT_ID } });
+  }
+  if (await tableExists(tx, "AIUsage")) {
+    await tx.aIUsage.deleteMany({ where: { projectId: DEMO_PROJECT_ID } });
+  }
+  if (await tableExists(tx, "AgentRun")) {
+    await tx.agentRun.deleteMany({ where: { projectId: DEMO_PROJECT_ID } });
+  }
+  if (await tableExists(tx, "MemoryRetrieval")) {
+    await tx.memoryRetrieval.deleteMany({ where: { projectId: DEMO_PROJECT_ID } });
+  }
+  if (await tableExists(tx, "MemoryEmbedding")) {
+    await tx.memoryEmbedding.deleteMany({ where: { projectId: DEMO_PROJECT_ID } });
+  }
+  if (await tableExists(tx, "AutonomyConfig")) {
+    await tx.autonomyConfig.deleteMany({ where: { projectId: DEMO_PROJECT_ID } });
+  }
 }
 
 async function seedDemoProject(scope: ServiceScope, reset: boolean): Promise<void> {
@@ -693,18 +777,26 @@ async function seedDemoProject(scope: ServiceScope, reset: boolean): Promise<voi
       })),
     });
 
-    await tx.projectMemory.createMany({
-      data: DEMO_PROJECT_MEMORIES.map((memory) => ({
-        id: memory.id,
-        projectId: DEMO_PROJECT_ID,
-        type: memory.type,
-        category: memory.category,
-        statement: memory.statement,
-        rationale: memory.rationale,
-        importance: memory.importance,
-        tags: [...memory.tags],
-      })),
-    });
+    const projectMemoryColumns = await getTableColumnMeta(tx, "ProjectMemory");
+    if (projectMemoryColumns.size === 0) {
+      console.warn("[demo-project] Skipping ProjectMemory seed because table is missing.");
+    } else if (projectMemoryColumns.has("source")) {
+      await tx.projectMemory.createMany({
+        data: DEMO_PROJECT_MEMORIES.map((memory) => ({
+          id: memory.id,
+          projectId: DEMO_PROJECT_ID,
+          type: memory.type,
+          category: memory.category,
+          statement: memory.statement,
+          rationale: memory.rationale,
+          importance: memory.importance,
+          tags: [...memory.tags],
+        })),
+      });
+    } else {
+      console.warn("[demo-project] ProjectMemory.source missing; using compatibility seed insert.");
+      await seedProjectMemoryCompat(tx, projectMemoryColumns);
+    }
 
     await tx.aIConversation.create({
       data: {

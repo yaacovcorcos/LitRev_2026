@@ -4,6 +4,7 @@ import { prisma } from "@/lib/server/prisma";
 import { assertProjectAccess } from "@/lib/server/access";
 import type { ServiceScope } from "@/lib/server/scope";
 import { requireScope } from "@/lib/server/scope";
+import { Prisma } from "@prisma/client";
 
 const GUIDED_SETUP_USER_KEY = "guided_setup_new_projects";
 const DEFAULT_GUIDED_SETUP = true;
@@ -67,6 +68,13 @@ function mergeProjectOnboarding(
   };
 }
 
+function isSchemaDriftColumnError(error: unknown): boolean {
+  return (
+    error instanceof Prisma.PrismaClientKnownRequestError &&
+    (error.code === "P2021" || error.code === "P2022")
+  );
+}
+
 export async function getGuidedSetupDefault(
   scopeInput: Partial<ServiceScope> | null | undefined
 ): Promise<boolean> {
@@ -88,30 +96,56 @@ export async function setGuidedSetupDefault(
   enabled: boolean
 ): Promise<boolean> {
   const scope = requireScope(scopeInput ?? undefined);
-  await prisma.userMemory.upsert({
-    where: {
-      userId_key: {
-        userId: scope.ownerId,
-        key: GUIDED_SETUP_USER_KEY,
+  try {
+    await prisma.userMemory.upsert({
+      where: {
+        userId_key: {
+          userId: scope.ownerId,
+          key: GUIDED_SETUP_USER_KEY,
+        },
       },
-    },
-    create: {
-      userId: scope.ownerId,
-      type: "preference",
-      key: GUIDED_SETUP_USER_KEY,
-      value: enabled ? "1" : "0",
-      rationale: "Controls whether new projects launch guided onboarding by default.",
-      tags: ["onboarding", "settings"],
-    },
-    update: {
-      type: "preference",
-      value: enabled ? "1" : "0",
-      rationale: "Controls whether new projects launch guided onboarding by default.",
-      tags: ["onboarding", "settings"],
-      status: "active",
-      updatedAt: new Date(),
-    },
-  });
+      create: {
+        userId: scope.ownerId,
+        type: "preference",
+        key: GUIDED_SETUP_USER_KEY,
+        value: enabled ? "1" : "0",
+        rationale: "Controls whether new projects launch guided onboarding by default.",
+        tags: ["onboarding", "settings"],
+      },
+      update: {
+        type: "preference",
+        value: enabled ? "1" : "0",
+        rationale: "Controls whether new projects launch guided onboarding by default.",
+        tags: ["onboarding", "settings"],
+        status: "active",
+        updatedAt: new Date(),
+      },
+    });
+  } catch (error) {
+    if (!isSchemaDriftColumnError(error)) {
+      throw error;
+    }
+
+    // Compatibility fallback for DBs that are missing newer lifecycle columns.
+    await prisma.userMemory.upsert({
+      where: {
+        userId_key: {
+          userId: scope.ownerId,
+          key: GUIDED_SETUP_USER_KEY,
+        },
+      },
+      create: {
+        userId: scope.ownerId,
+        type: "preference",
+        key: GUIDED_SETUP_USER_KEY,
+        value: enabled ? "1" : "0",
+      },
+      update: {
+        type: "preference",
+        value: enabled ? "1" : "0",
+      },
+    });
+  }
   return enabled;
 }
 
