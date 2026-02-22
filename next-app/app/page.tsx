@@ -46,6 +46,7 @@ function HomeContent() {
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
   const [isOpeningSample, setIsOpeningSample] = useState(false);
   const [sampleError, setSampleError] = useState<string | null>(null);
+  const [createError, setCreateError] = useState<string | null>(null);
 
   // Sync from localStorage after hydration to avoid SSR mismatch
   useEffect(() => {
@@ -89,7 +90,10 @@ function HomeContent() {
     saveViewPreference(mode);
   };
 
-  const openModal = useCallback(() => setModalOpen(true), []);
+  const openModal = useCallback(() => {
+    setCreateError(null);
+    setModalOpen(true);
+  }, []);
 
   const closeModal = useCallback(() => {
     setModalOpen(false);
@@ -99,9 +103,13 @@ function HomeContent() {
   }, []);
 
   const handleCreateProject = async (name: string, description: string) => {
+    setCreateError(null);
     const created = await addProject(buildProject(name, description));
+    if (!created) {
+      setCreateError("Failed to create the project. Please try again.");
+      return;
+    }
     closeModal();
-    if (!created) return;
     let shouldGuide = false;
     try {
       shouldGuide = await shouldLaunchGuidedSetupForProjectAction(created.id);
@@ -241,6 +249,7 @@ function HomeContent() {
             <label htmlFor="projectDesc">Description (Optional)</label>
             <textarea id="projectDesc" name="projectDesc" placeholder="Brief description of the research goal..." rows={3} />
           </div>
+          {createError ? <p style={{ color: "var(--color-danger)", fontSize: 13, margin: "0 0 8px" }} role="alert">{createError}</p> : null}
           <div className="modal-actions">
             <button type="button" className="btn btn-outline cancel-btn" onClick={closeModal}>
               Cancel

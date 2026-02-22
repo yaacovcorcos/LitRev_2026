@@ -44,15 +44,14 @@ export function ProjectGrid({ projects, viewMode, onNewProject }: ProjectGridPro
         const isHarvesting = p.status === "harvesting";
         const isList = viewMode === "list";
         const isSample = isDemoProjectId(p.id);
-        const cardClass = `${styles.card} ${viewMode === "list" ? styles.listViewCard : ""} ${
-          isSample ? styles.sampleCard : ""
-        }`;
+        const cardClass = `${styles.card} ${viewMode === "list" ? styles.listViewCard : ""}`;
         const titleClass = `${styles.projectTitle} ${viewMode === "list" ? styles.listViewCardTitle : ""}`;
         const statusClass = `${styles.cardStatus} ${isHarvesting ? styles.statusHarvesting : styles.statusReady} ${viewMode === "list" ? styles.listViewStatus : ""
           }`;
         const buttonClass = `${styles.viewProjectBtn} ${viewMode === "list" ? styles.listViewButton : ""}`;
         const paperCount = getPaperCount(p.id);
         const paperCountInline = !isList && isHarvesting;
+        const statusText = isSample ? "Sample" : p.statusText;
 
         return (
           <Link
@@ -67,7 +66,7 @@ export function ProjectGrid({ projects, viewMode, onNewProject }: ProjectGridPro
           >
             {isSample ? <span className={styles.sampleBadge}>Sample</span> : null}
             <div className={statusClass}>
-              {p.statusText}
+              {statusText}
             </div>
             <h3 className={titleClass}>{p.name}</h3>
             {isHarvesting ? (

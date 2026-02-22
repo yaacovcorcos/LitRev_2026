@@ -17,6 +17,7 @@ export function DemoBanner({ projectId }: DemoBannerProps) {
   const { deleteProject, refresh } = useProjects();
   const [isResetting, setIsResetting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [resetError, setResetError] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [confirmReset, setConfirmReset] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -55,6 +56,7 @@ export function DemoBanner({ projectId }: DemoBannerProps) {
           </button>
         </div>
       </div>
+      {resetError ? <p className={styles.errorText}>{resetError}</p> : null}
       {deleteError ? <p className={styles.errorText}>{deleteError}</p> : null}
 
       <ConfirmDialog
@@ -66,11 +68,16 @@ export function DemoBanner({ projectId }: DemoBannerProps) {
         onCancel={() => setConfirmReset(false)}
         onConfirm={() => {
           setConfirmReset(false);
+          setResetError(null);
           setIsResetting(true);
           resetDemoProjectAction(DEMO_PROJECT_ID)
             .then(async () => {
               await refresh();
               window.location.assign(`/project/${DEMO_PROJECT_ID}`);
+            })
+            .catch((err) => {
+              console.error("Reset sample project failed", err);
+              setResetError("Failed to reset the sample project. Please try again.");
             })
             .finally(() => setIsResetting(false));
         }}

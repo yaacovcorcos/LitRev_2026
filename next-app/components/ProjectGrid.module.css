@@ -25,17 +25,6 @@
     color: inherit;
 }
 
-.sampleCard {
-    border-style: dashed;
-    border-color: var(--color-info-border);
-    background: linear-gradient(180deg, rgba(107, 124, 138, 0.08), rgba(255, 255, 255, 0.55));
-}
-
-.card.sampleCard:hover {
-    border-color: var(--color-info);
-    box-shadow: 0 12px 34px rgba(107, 124, 138, 0.18);
-}
-
 .sampleBadge {
     position: absolute;
     top: 12px;
