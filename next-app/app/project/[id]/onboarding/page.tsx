@@ -11,7 +11,7 @@ import {
 } from "@/app/actions/onboarding";
 import { useProjects } from "@/contexts/ProjectsContext";
 import { createDefaultProtocolData, type ProtocolData } from "@/types/protocol";
-import { markGuidedSetupCompleted } from "@/lib/demo/onboarding";
+import { mirrorGuidedSetupCompleted } from "@/lib/demo/onboarding";
 import styles from "./onboarding.module.css";
 
 const STEPS = ["Question", "Criteria", "Next"] as const;
@@ -105,7 +105,7 @@ export default function ProjectOnboardingPage() {
       try {
         await saveProtocolAction(id, hydratedProtocol);
         await markProjectOnboardingCompletedAction(id, { skipped: false });
-        markGuidedSetupCompleted(id); // fallback compatibility during transition
+        mirrorGuidedSetupCompleted(id);
         router.push(nextRoute);
       } catch (err) {
         console.error("Failed to save onboarding protocol", err);
@@ -165,7 +165,7 @@ export default function ProjectOnboardingPage() {
             if (!saved) return;
             try {
               await markProjectOnboardingCompletedAction(id, { skipped: true });
-              markGuidedSetupCompleted(id); // fallback compatibility during transition
+              mirrorGuidedSetupCompleted(id);
               router.push(`/project/${id}`);
             } catch (err) {
               console.error("Failed to mark onboarding as skipped", err);

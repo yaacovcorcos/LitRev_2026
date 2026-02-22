@@ -1,7 +1,7 @@
 import "server-only";
 
 import { prisma } from "@/lib/server/prisma";
-import { requireScope, type ServiceScope } from "@/lib/server/scope";
+import { requireScope, type ServiceScope, type ScopeInput } from "@/lib/server/scope";
 import type { ProjectActivityItem, ProjectActivityKind } from "@/types/activity";
 
 const MIN_LIMIT = 1;
@@ -130,7 +130,7 @@ function toActivityItem(event: CoalescedActivity): ProjectActivityItem {
 }
 
 export async function getProjectRecentActivity(
-    scopeInput: Partial<ServiceScope> | null | undefined,
+    scopeInput: ScopeInput,
     projectId: string,
     limit?: number,
 ): Promise<ProjectActivityItem[]> {

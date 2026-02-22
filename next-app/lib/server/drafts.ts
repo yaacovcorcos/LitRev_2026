@@ -3,10 +3,10 @@ import "server-only";
 import { prisma } from "@/lib/server/prisma";
 import { assertProjectAccess } from "@/lib/server/access";
 import type { DraftState } from "@/lib/draftStorage";
-import type { ServiceScope } from "@/lib/server/scope";
+import type { ServiceScope, ScopeInput } from "@/lib/server/scope";
 
 export async function getDraft(
-  scopeInput: Partial<ServiceScope> | null | undefined,
+  scopeInput: ScopeInput,
   projectId: string
 ): Promise<DraftState | null> {
   await assertProjectAccess(scopeInput, projectId);
@@ -15,7 +15,7 @@ export async function getDraft(
 }
 
 export async function saveDraft(
-  scopeInput: Partial<ServiceScope> | null | undefined,
+  scopeInput: ScopeInput,
   projectId: string,
   state: DraftState
 ): Promise<DraftState> {

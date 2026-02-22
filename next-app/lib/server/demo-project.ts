@@ -5,13 +5,18 @@ import { createDefaultDraftState } from "@/lib/draftStorage";
 import { ensureSingleUserSeed } from "@/lib/server/bootstrap";
 import { prisma } from "@/lib/server/prisma";
 import { getProject } from "@/lib/server/projects";
-import { requireScope, type ServiceScope } from "@/lib/server/scope";
+import { requireScope, type ServiceScope, type ScopeInput } from "@/lib/server/scope";
 import { DEMO_PROJECT_DESCRIPTION, DEMO_PROJECT_ID, DEMO_PROJECT_NAME, DEMO_PROJECT_PAPERS, DEMO_PROJECT_STATUS_TEXT } from "@/lib/demo/constants";
 import type { Project } from "@/types/project";
 import type { ProtocolData } from "@/types/protocol";
 import type { Study, StudyDetails } from "@/types/ledger";
 import type { JSONContent } from "@tiptap/core";
 import { Prisma } from "@prisma/client";
+
+/** Type-safe cast for app types → Prisma Json fields. */
+function toJsonValue<T>(value: T): Prisma.InputJsonValue {
+  return value as unknown as Prisma.InputJsonValue;
+}
 
 type DemoStudySeed = {
   id: string;
@@ -572,120 +577,13 @@ function demoWelcomeMessage(): string {
   ].join("\n");
 }
 
-async function tableExists(tx: Prisma.TransactionClient, tableName: string): Promise<boolean> {
-  const rows = await tx.$queryRaw<Array<{ exists: boolean }>>(
-    Prisma.sql`SELECT to_regclass(${`public."${tableName}"`}) IS NOT NULL AS "exists"`
-  );
-  return rows[0]?.exists === true;
-}
-
-type TableColumnMeta = {
-  name: string;
-  nullable: boolean;
-  hasDefault: boolean;
-};
-
-async function getTableColumnMeta(
-  tx: Prisma.TransactionClient,
-  tableName: string
-): Promise<Map<string, TableColumnMeta>> {
-  const rows = await tx.$queryRaw<
-    Array<{ column_name: string; is_nullable: "YES" | "NO"; column_default: string | null }>
-  >(
-    Prisma.sql`
-      SELECT column_name, is_nullable, column_default
-      FROM information_schema.columns
-      WHERE table_schema = 'public' AND table_name = ${tableName}
-    `
-  );
-  return new Map(
-    rows.map((row) => [
-      row.column_name,
-      {
-        name: row.column_name,
-        nullable: row.is_nullable === "YES",
-        hasDefault: row.column_default !== null,
-      },
-    ])
-  );
-}
-
-type ProjectMemoryInsertRow = {
-  id: string;
-  projectId: string;
-  type: string;
-  category: string | null;
-  statement: string;
-  rationale: string | null;
-  importance: string;
-  tags: string[];
-  status: string;
-  source: string;
-};
-
-async function seedProjectMemoryCompat(
-  tx: Prisma.TransactionClient,
-  columns: Map<string, TableColumnMeta>
-): Promise<void> {
-  const rows: ProjectMemoryInsertRow[] = DEMO_PROJECT_MEMORIES.map((memory) => ({
-    id: memory.id,
-    projectId: DEMO_PROJECT_ID,
-    type: memory.type,
-    category: memory.category,
-    statement: memory.statement,
-    rationale: memory.rationale,
-    importance: memory.importance,
-    tags: [...memory.tags],
-    status: "active",
-    source: "decision",
-  }));
-
-  const now = new Date();
-  for (const row of rows) {
-    const compatibleRow: Record<string, unknown> = {
-      ...row,
-      updatedAt: now,
-      createdAt: now,
-      context: null,
-      archivedAt: null,
-      supersededBy: null,
-    };
-    const entries = Object.entries(compatibleRow).filter(([key]) => columns.has(key));
-    if (entries.length === 0) continue;
-    const present = new Set(entries.map(([key]) => key));
-    const missingRequired = [...columns.values()]
-      .filter((column) => !column.nullable && !column.hasDefault && !present.has(column.name))
-      .map((column) => column.name);
-    if (missingRequired.length > 0) {
-      throw new Error(
-        `[demo-project] ProjectMemory compatibility insert missing required columns: ${missingRequired.join(", ")}`
-      );
-    }
-    const colSql = Prisma.join(entries.map(([key]) => Prisma.raw(`"${key}"`)));
-    const valSql = Prisma.join(entries.map(([, value]) => value));
-    await tx.$executeRaw(Prisma.sql`INSERT INTO "ProjectMemory" (${colSql}) VALUES (${valSql})`);
-  }
-}
-
 async function deleteDemoProjectSideData(tx: Prisma.TransactionClient): Promise<void> {
-  if (await tableExists(tx, "AIConversation")) {
-    await tx.aIConversation.deleteMany({ where: { projectId: DEMO_PROJECT_ID } });
-  }
-  if (await tableExists(tx, "AIUsage")) {
-    await tx.aIUsage.deleteMany({ where: { projectId: DEMO_PROJECT_ID } });
-  }
-  if (await tableExists(tx, "AgentRun")) {
-    await tx.agentRun.deleteMany({ where: { projectId: DEMO_PROJECT_ID } });
-  }
-  if (await tableExists(tx, "MemoryRetrieval")) {
-    await tx.memoryRetrieval.deleteMany({ where: { projectId: DEMO_PROJECT_ID } });
-  }
-  if (await tableExists(tx, "MemoryEmbedding")) {
-    await tx.memoryEmbedding.deleteMany({ where: { projectId: DEMO_PROJECT_ID } });
-  }
-  if (await tableExists(tx, "AutonomyConfig")) {
-    await tx.autonomyConfig.deleteMany({ where: { projectId: DEMO_PROJECT_ID } });
-  }
+  await tx.aIConversation.deleteMany({ where: { projectId: DEMO_PROJECT_ID } });
+  await tx.aIUsage.deleteMany({ where: { projectId: DEMO_PROJECT_ID } });
+  await tx.agentRun.deleteMany({ where: { projectId: DEMO_PROJECT_ID } });
+  await tx.memoryRetrieval.deleteMany({ where: { projectId: DEMO_PROJECT_ID } });
+  await tx.memoryEmbedding.deleteMany({ where: { projectId: DEMO_PROJECT_ID } });
+  await tx.autonomyConfig.deleteMany({ where: { projectId: DEMO_PROJECT_ID } });
 }
 
 async function seedDemoProject(scope: ServiceScope, reset: boolean): Promise<void> {
@@ -725,14 +623,14 @@ async function seedDemoProject(scope: ServiceScope, reset: boolean): Promise<voi
     await tx.protocol.create({
       data: {
         projectId: DEMO_PROJECT_ID,
-        data: DEMO_PROTOCOL as any,
+        data: toJsonValue(DEMO_PROTOCOL),
       },
     });
 
     await tx.draft.create({
       data: {
         projectId: DEMO_PROJECT_ID,
-        state: DEMO_DRAFT_STATE as any,
+        state: toJsonValue(DEMO_DRAFT_STATE),
       },
     });
 
@@ -746,7 +644,7 @@ async function seedDemoProject(scope: ServiceScope, reset: boolean): Promise<voi
         year: study.year,
         status: study.status,
         quality: study.quality,
-        details: study.details as any,
+        details: toJsonValue(study.details),
       })),
     });
 
@@ -771,32 +669,24 @@ async function seedDemoProject(scope: ServiceScope, reset: boolean): Promise<voi
         id: note.id,
         projectId: DEMO_PROJECT_ID,
         title: note.title,
-        content: note.content as any,
+        content: toJsonValue(note.content),
         tags: note.tags,
         source: note.source,
       })),
     });
 
-    const projectMemoryColumns = await getTableColumnMeta(tx, "ProjectMemory");
-    if (projectMemoryColumns.size === 0) {
-      console.warn("[demo-project] Skipping ProjectMemory seed because table is missing.");
-    } else if (projectMemoryColumns.has("source")) {
-      await tx.projectMemory.createMany({
-        data: DEMO_PROJECT_MEMORIES.map((memory) => ({
-          id: memory.id,
-          projectId: DEMO_PROJECT_ID,
-          type: memory.type,
-          category: memory.category,
-          statement: memory.statement,
-          rationale: memory.rationale,
-          importance: memory.importance,
-          tags: [...memory.tags],
-        })),
-      });
-    } else {
-      console.warn("[demo-project] ProjectMemory.source missing; using compatibility seed insert.");
-      await seedProjectMemoryCompat(tx, projectMemoryColumns);
-    }
+    await tx.projectMemory.createMany({
+      data: DEMO_PROJECT_MEMORIES.map((memory) => ({
+        id: memory.id,
+        projectId: DEMO_PROJECT_ID,
+        type: memory.type,
+        category: memory.category,
+        statement: memory.statement,
+        rationale: memory.rationale,
+        importance: memory.importance,
+        tags: [...memory.tags],
+      })),
+    });
 
     await tx.aIConversation.create({
       data: {
@@ -821,7 +711,7 @@ async function seedDemoProject(scope: ServiceScope, reset: boolean): Promise<voi
 }
 
 export async function openOrCreateDemoProject(
-  scopeInput: Partial<ServiceScope> | null | undefined
+  scopeInput: ScopeInput
 ): Promise<Project> {
   const scoped = await ensureSingleUserSeed(scopeInput);
   const scope = requireScope(scoped);
@@ -834,7 +724,7 @@ export async function openOrCreateDemoProject(
 }
 
 export async function resetDemoProject(
-  scopeInput: Partial<ServiceScope> | null | undefined,
+  scopeInput: ScopeInput,
   projectId: string
 ): Promise<Project> {
   if (projectId.trim() !== DEMO_PROJECT_ID) {

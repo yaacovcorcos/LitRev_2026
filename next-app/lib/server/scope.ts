@@ -5,12 +5,14 @@ export type ServiceScope = {
   workspaceId: string;
 };
 
+export type ScopeInput = Partial<ServiceScope> | null | undefined;
+
 export const SINGLE_USER_SCOPE: ServiceScope = {
   ownerId: "local-user",
   workspaceId: "local-workspace",
 };
 
-export function requireScope(scope?: Partial<ServiceScope> | null): ServiceScope {
+export function requireScope(scope?: ScopeInput): ServiceScope {
   const ownerId = scope?.ownerId?.trim();
   const workspaceId = scope?.workspaceId?.trim();
   if (!ownerId || !workspaceId) {

@@ -1,9 +1,9 @@
 import "server-only";
 
 import { prisma } from "@/lib/server/prisma";
-import { requireScope, type ServiceScope } from "@/lib/server/scope";
+import { requireScope, type ServiceScope, type ScopeInput } from "@/lib/server/scope";
 
-export async function ensureSingleUserSeed(scopeInput?: Partial<ServiceScope> | null): Promise<ServiceScope> {
+export async function ensureSingleUserSeed(scopeInput?: ScopeInput): Promise<ServiceScope> {
   const scope = requireScope(scopeInput ?? undefined);
 
   await prisma.user.upsert({

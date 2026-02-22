@@ -3,10 +3,10 @@ import "server-only";
 import { prisma } from "@/lib/server/prisma";
 import { assertProjectAccess } from "@/lib/server/access";
 import type { ProjectCopilotState } from "@/lib/projectCopilotStorage";
-import type { ServiceScope } from "@/lib/server/scope";
+import type { ServiceScope, ScopeInput } from "@/lib/server/scope";
 
 export async function getProjectCopilotState(
-  scopeInput: Partial<ServiceScope> | null | undefined,
+  scopeInput: ScopeInput,
   projectId: string
 ): Promise<ProjectCopilotState | null> {
   await assertProjectAccess(scopeInput, projectId);
@@ -18,7 +18,7 @@ export async function getProjectCopilotState(
 }
 
 export async function saveProjectCopilotState(
-  scopeInput: Partial<ServiceScope> | null | undefined,
+  scopeInput: ScopeInput,
   projectId: string,
   state: ProjectCopilotState
 ): Promise<ProjectCopilotState> {

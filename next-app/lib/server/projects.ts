@@ -1,7 +1,8 @@
 import "server-only";
 
 import { prisma } from "@/lib/server/prisma";
-import { requireScope, type ServiceScope } from "@/lib/server/scope";
+import { requireScope, type ServiceScope, type ScopeInput } from "@/lib/server/scope";
+import type { Prisma } from "@prisma/client";
 import type { Project, ProjectProgress, ProjectStatus } from "@/types/project";
 
 const PROJECT_STATUS_VALUES = new Set<ProjectStatus>(["harvesting", "ready"]);
@@ -22,9 +23,9 @@ function toDate(value?: string | Date): Date | undefined {
   return Number.isNaN(parsed.getTime()) ? undefined : parsed;
 }
 
-function toJsonObject(value?: ProjectProgress): any | undefined {
+function toJsonObject(value?: ProjectProgress): Prisma.InputJsonValue | undefined {
   if (!value) return undefined;
-  return JSON.parse(JSON.stringify(value)) as any;
+  return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 }
 
 function normalizeProjectInput(input: ProjectInput): ProjectInput {
@@ -97,7 +98,7 @@ function toProject(record: {
   };
 }
 
-export async function listProjects(scopeInput: Partial<ServiceScope> | null | undefined): Promise<Project[]> {
+export async function listProjects(scopeInput: ScopeInput): Promise<Project[]> {
   const scope = requireScope(scopeInput ?? undefined);
   const projects = await prisma.project.findMany({
     where: { workspaceId: scope.workspaceId, ownerId: scope.ownerId },
@@ -107,7 +108,7 @@ export async function listProjects(scopeInput: Partial<ServiceScope> | null | un
 }
 
 export async function getProject(
-  scopeInput: Partial<ServiceScope> | null | undefined,
+  scopeInput: ScopeInput,
   projectId: string
 ): Promise<Project | null> {
   const scope = requireScope(scopeInput ?? undefined);
@@ -118,7 +119,7 @@ export async function getProject(
 }
 
 export async function createProject(
-  scopeInput: Partial<ServiceScope> | null | undefined,
+  scopeInput: ScopeInput,
   input: ProjectInput
 ): Promise<Project> {
   const scope = requireScope(scopeInput ?? undefined);
@@ -144,7 +145,7 @@ export async function createProject(
 }
 
 export async function updateProject(
-  scopeInput: Partial<ServiceScope> | null | undefined,
+  scopeInput: ScopeInput,
   projectId: string,
   updates: Partial<ProjectInput>
 ): Promise<Project> {
@@ -174,7 +175,7 @@ export async function updateProject(
 }
 
 export async function deleteProject(
-  scopeInput: Partial<ServiceScope> | null | undefined,
+  scopeInput: ScopeInput,
   projectId: string
 ): Promise<void> {
   const scope = requireScope(scopeInput ?? undefined);

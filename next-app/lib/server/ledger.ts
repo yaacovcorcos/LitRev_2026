@@ -5,7 +5,7 @@ import { prisma } from "@/lib/server/prisma";
 import { assertProjectAccess } from "@/lib/server/access";
 import { mergeDetails } from "@/lib/utils/merge";
 import { normalizeStudy, type StudyInput } from "@/lib/utils/normalize";
-import type { ServiceScope } from "@/lib/server/scope";
+import type { ServiceScope, ScopeInput } from "@/lib/server/scope";
 import type { Study, StudyDetails } from "@/types/ledger";
 
 export type { StudyInput };
@@ -91,7 +91,7 @@ function stableMentionStudyId(projectId: string, input: {
 }
 
 export async function listStudies(
-  scopeInput: Partial<ServiceScope> | null | undefined,
+  scopeInput: ScopeInput,
   projectId: string
 ): Promise<Study[]> {
   await assertProjectAccess(scopeInput, projectId);
@@ -103,7 +103,7 @@ export async function listStudies(
 }
 
 export async function upsertStudy(
-  scopeInput: Partial<ServiceScope> | null | undefined,
+  scopeInput: ScopeInput,
   projectId: string,
   study: StudyInput
 ): Promise<Study> {
@@ -142,7 +142,7 @@ export async function upsertStudy(
 }
 
 export async function replaceStudies(
-  scopeInput: Partial<ServiceScope> | null | undefined,
+  scopeInput: ScopeInput,
   projectId: string,
   studies: StudyInput[]
 ): Promise<Study[]> {
@@ -210,7 +210,7 @@ export async function replaceStudies(
 }
 
 export async function deleteStudy(
-  scopeInput: Partial<ServiceScope> | null | undefined,
+  scopeInput: ScopeInput,
   projectId: string,
   studyId: string
 ): Promise<void> {
@@ -219,7 +219,7 @@ export async function deleteStudy(
 }
 
 export async function deleteStudies(
-  scopeInput: Partial<ServiceScope> | null | undefined,
+  scopeInput: ScopeInput,
   projectId: string,
   studyIds: string[]
 ): Promise<void> {
@@ -232,7 +232,7 @@ export async function deleteStudies(
  * Get a single study by ID.
  */
 export async function getStudy(
-  scopeInput: Partial<ServiceScope> | null | undefined,
+  scopeInput: ScopeInput,
   projectId: string,
   studyId: string
 ): Promise<Study | null> {
@@ -247,7 +247,7 @@ export async function getStudy(
  * Partial update for a study. Preserves existing details by merging.
  */
 export async function updateStudy(
-  scopeInput: Partial<ServiceScope> | null | undefined,
+  scopeInput: ScopeInput,
   projectId: string,
   studyId: string,
   updates: Partial<StudyInput>
@@ -283,7 +283,7 @@ export async function updateStudy(
 }
 
 export async function addMentionedStudy(
-  scopeInput: Partial<ServiceScope> | null | undefined,
+  scopeInput: ScopeInput,
   projectId: string,
   mention: MentionedStudyInput
 ): Promise<MentionedStudyUpsertResult> {

@@ -14,7 +14,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { openOrCreateDemoProjectAction } from "@/app/actions/demo";
 import { shouldLaunchGuidedSetupForProjectAction } from "@/app/actions/onboarding";
 import { DEMO_PROJECT_ID } from "@/lib/demo/constants";
-import { shouldLaunchGuidedSetup } from "@/lib/demo/onboarding";
+import { shouldLaunchGuidedSetupFallback } from "@/lib/demo/onboarding";
 import layoutStyles from "./home.module.css";
 
 const VALID_SORTS: SortMode[] = ["name", "created", "modified"];
@@ -115,7 +115,7 @@ function HomeContent() {
       shouldGuide = await shouldLaunchGuidedSetupForProjectAction(created.id);
     } catch (err) {
       console.error("Failed to load backend guided setup preference, using local fallback", err);
-      shouldGuide = shouldLaunchGuidedSetup(created.id);
+      shouldGuide = shouldLaunchGuidedSetupFallback(created.id);
     }
     if (shouldGuide) {
       router.push(`/project/${created.id}/onboarding`);
@@ -249,7 +249,7 @@ function HomeContent() {
             <label htmlFor="projectDesc">Description (Optional)</label>
             <textarea id="projectDesc" name="projectDesc" placeholder="Brief description of the research goal..." rows={3} />
           </div>
-          {createError ? <p style={{ color: "var(--color-danger)", fontSize: 13, margin: "0 0 8px" }} role="alert">{createError}</p> : null}
+          {createError ? <p className={layoutStyles.createError} role="alert">{createError}</p> : null}
           <div className="modal-actions">
             <button type="button" className="btn btn-outline cancel-btn" onClick={closeModal}>
               Cancel

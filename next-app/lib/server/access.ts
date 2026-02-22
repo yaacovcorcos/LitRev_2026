@@ -1,10 +1,10 @@
 import "server-only";
 
 import { prisma } from "@/lib/server/prisma";
-import { requireScope, type ServiceScope } from "@/lib/server/scope";
+import { requireScope, type ServiceScope, type ScopeInput } from "@/lib/server/scope";
 
 export async function assertProjectAccess(
-  scopeInput: Partial<ServiceScope> | null | undefined,
+  scopeInput: ScopeInput,
   projectId: string
 ): Promise<ServiceScope> {
   const id = projectId?.trim();

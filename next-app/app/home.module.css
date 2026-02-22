@@ -113,6 +113,12 @@
     margin-top: 0;
 }
 
+.createError {
+    color: var(--color-danger);
+    font-size: 13px;
+    margin: 0 0 8px;
+}
+
 .sampleError {
     margin: 8px 0 0;
     padding: 10px 12px;

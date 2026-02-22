@@ -2,7 +2,7 @@ import "server-only";
 
 import { prisma } from "@/lib/server/prisma";
 import { assertProjectAccess } from "@/lib/server/access";
-import type { ServiceScope } from "@/lib/server/scope";
+import type { ServiceScope, ScopeInput } from "@/lib/server/scope";
 import type { FileAsset } from "@/types/files";
 import type { Study } from "@/types/ledger";
 import { randomUUID } from "crypto";
@@ -66,7 +66,7 @@ function toFileAsset(record: {
 }
 
 export async function listProjectFiles(
-  scopeInput: Partial<ServiceScope> | null | undefined,
+  scopeInput: ScopeInput,
   projectId: string
 ): Promise<FileAsset[]> {
   await assertProjectAccess(scopeInput, projectId);
@@ -78,7 +78,7 @@ export async function listProjectFiles(
 }
 
 export async function listStudyFiles(
-  scopeInput: Partial<ServiceScope> | null | undefined,
+  scopeInput: ScopeInput,
   projectId: string,
   studyId: string
 ): Promise<FileAsset[]> {
@@ -91,7 +91,7 @@ export async function listStudyFiles(
 }
 
 export async function getFileAssetById(
-  scopeInput: Partial<ServiceScope> | null | undefined,
+  scopeInput: ScopeInput,
   projectId: string,
   fileId: string
 ): Promise<FileAsset | null> {
@@ -103,7 +103,7 @@ export async function getFileAssetById(
 }
 
 export async function createFileAsset(
-  scopeInput: Partial<ServiceScope> | null | undefined,
+  scopeInput: ScopeInput,
   projectId: string,
   input: FileAssetInput
 ): Promise<FileAsset> {
@@ -208,7 +208,7 @@ async function deleteFromSupabaseStorage(storagePath: string): Promise<void> {
 }
 
 export async function uploadStudyFile(
-  scopeInput: Partial<ServiceScope> | null | undefined,
+  scopeInput: ScopeInput,
   projectId: string,
   studyId: string,
   file: File
@@ -237,7 +237,7 @@ export async function uploadStudyFile(
 }
 
 export async function deleteFileAsset(
-  scopeInput: Partial<ServiceScope> | null | undefined,
+  scopeInput: ScopeInput,
   projectId: string,
   fileId: string
 ): Promise<void> {
@@ -260,7 +260,7 @@ export async function deleteFileAsset(
  * and extracts text for AI injection.
  */
 export async function uploadChatAttachment(
-  scopeInput: Partial<ServiceScope> | null | undefined,
+  scopeInput: ScopeInput,
   projectId: string,
   file: File
 ): Promise<{ fileAsset: FileAsset; extractedText: string }> {
@@ -307,7 +307,7 @@ export async function uploadChatAttachment(
  * Extract text from an existing FileAsset's PDF (for referencing study PDFs in chat).
  */
 export async function extractTextFromExistingFile(
-  scopeInput: Partial<ServiceScope> | null | undefined,
+  scopeInput: ScopeInput,
   projectId: string,
   fileAssetId: string
 ): Promise<{ fileAsset: FileAsset; extractedText: string }> {
@@ -346,7 +346,7 @@ function validateFileServer(file: File): void {
  * cleaned up (best-effort).
  */
 export async function importStudyWithPdf(
-  scopeInput: Partial<ServiceScope> | null | undefined,
+  scopeInput: ScopeInput,
   projectId: string,
   file: File
 ): Promise<{ study: Study; fileAsset: FileAsset }> {

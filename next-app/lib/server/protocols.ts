@@ -3,10 +3,10 @@ import "server-only";
 import { prisma } from "@/lib/server/prisma";
 import { assertProjectAccess } from "@/lib/server/access";
 import type { ProtocolData } from "@/types/protocol";
-import type { ServiceScope } from "@/lib/server/scope";
+import type { ServiceScope, ScopeInput } from "@/lib/server/scope";
 
 export async function getProtocol(
-  scopeInput: Partial<ServiceScope> | null | undefined,
+  scopeInput: ScopeInput,
   projectId: string
 ): Promise<ProtocolData | null> {
   await assertProjectAccess(scopeInput, projectId);
@@ -15,7 +15,7 @@ export async function getProtocol(
 }
 
 export async function saveProtocol(
-  scopeInput: Partial<ServiceScope> | null | undefined,
+  scopeInput: ScopeInput,
   projectId: string,
   data: ProtocolData
 ): Promise<ProtocolData> {
