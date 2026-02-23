@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import * as Popover from "@radix-ui/react-popover";
 import { Command } from "cmdk";
 import styles from "./ConversationPicker.module.css";
@@ -21,6 +22,9 @@ export type ConversationPickerProps = {
   currentTitle: string;
   conversations: ConversationPickerItem[];
   onSelect: (conversationId: string) => void | Promise<void>;
+  onDelete?: (conversationId: string) => void | Promise<void>;
+  onDuplicate?: (conversationId: string) => void | Promise<void>;
+  onRename?: (conversationId: string, title: string) => void | Promise<void>;
   searchPlaceholder?: string;
   emptyLabel?: string;
   renderMeta?: (conversation: ConversationPickerItem) => string | null | undefined;
@@ -36,6 +40,9 @@ export function ConversationPicker({
   currentTitle,
   conversations,
   onSelect,
+  onDelete,
+  onDuplicate,
+  onRename,
   searchPlaceholder = "Search sessions...",
   emptyLabel = "No conversations found",
   renderMeta,
@@ -86,9 +93,37 @@ export function ConversationPicker({
     }));
   }, [filtered, groupBy, groupOrder]);
 
+  // ── Context menu (right-click on conversation item) ──────────────────────
+  const hasContextMenu = !!(onDelete || onDuplicate || onRename);
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; conversationId: string } | null>(null);
+
+  const handleItemContextMenu = useCallback((e: React.MouseEvent, conversationId: string) => {
+    if (!hasContextMenu) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setCtxMenu({ x: e.clientX, y: e.clientY, conversationId });
+  }, [hasContextMenu]);
+
+  const dismissCtxMenu = useCallback(() => setCtxMenu(null), []);
+
+  useEffect(() => {
+    if (!ctxMenu) return;
+    const dismiss = () => setCtxMenu(null);
+    document.addEventListener("click", dismiss);
+    document.addEventListener("scroll", dismiss, true);
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") dismiss(); };
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("click", dismiss);
+      document.removeEventListener("scroll", dismiss, true);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [ctxMenu]);
+
   const triggerClassName = `${styles.trigger} ${variant === "panel" ? styles.triggerPanel : styles.triggerPage}`;
 
   return (
+    <>
     <Popover.Root open={open} onOpenChange={onOpenChange}>
       <Popover.Trigger asChild>
         <button
@@ -137,9 +172,20 @@ export function ConversationPicker({
                           void onSelect(conversation.id);
                           onOpenChange(false);
                         }}
+                        onContextMenu={(e) => handleItemContextMenu(e, conversation.id)}
                       >
                         <span className={styles.itemTitle}>{conversation.title || "New conversation"}</span>
                         {meta ? <span className={styles.itemMeta}>{meta}</span> : null}
+                        {hasContextMenu && (
+                          <button
+                            type="button"
+                            className={styles.itemMoreBtn}
+                            onClick={(e) => handleItemContextMenu(e, conversation.id)}
+                            aria-label="More options"
+                          >
+                            <span className="material-icons-round">more_vert</span>
+                          </button>
+                        )}
                       </Command.Item>
                     );
                   })}
@@ -150,5 +196,51 @@ export function ConversationPicker({
         </Popover.Content>
       </Popover.Portal>
     </Popover.Root>
+
+    {ctxMenu && createPortal(
+      <div
+        className={styles.contextMenu}
+        style={{ top: ctxMenu.y, left: ctxMenu.x }}
+        onClick={dismissCtxMenu}
+      >
+        {onRename && (
+          <button
+            type="button"
+            className={styles.contextMenuItem}
+            onClick={() => {
+              const conv = conversations.find((c) => c.id === ctxMenu.conversationId);
+              const name = window.prompt("Rename conversation", conv?.title ?? "");
+              if (name?.trim()) { void onRename(ctxMenu.conversationId, name.trim()); }
+              onOpenChange(false);
+            }}
+          >
+            <span className="material-icons-round">edit</span>
+            Rename
+          </button>
+        )}
+        {onDuplicate && (
+          <button
+            type="button"
+            className={styles.contextMenuItem}
+            onClick={() => { void onDuplicate(ctxMenu.conversationId); onOpenChange(false); }}
+          >
+            <span className="material-icons-round">content_copy</span>
+            Duplicate
+          </button>
+        )}
+        {onDelete && (
+          <button
+            type="button"
+            className={`${styles.contextMenuItem} ${styles.contextMenuItemDanger}`}
+            onClick={() => { void onDelete(ctxMenu.conversationId); onOpenChange(false); }}
+          >
+            <span className="material-icons-round">delete_outline</span>
+            Delete
+          </button>
+        )}
+      </div>,
+      document.body,
+    )}
+    </>
   );
 }

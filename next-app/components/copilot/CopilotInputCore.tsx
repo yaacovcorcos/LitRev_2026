@@ -66,6 +66,10 @@ export type CopilotInputCoreProps = {
     showAutonomyPreset?: boolean;
     showAttachments?: boolean;
     showVoice?: boolean;
+
+    onCompress?: () => void | Promise<void>;
+    canCompress?: boolean;
+    isCompressing?: boolean;
 };
 
 export function CopilotInputCore({
@@ -94,6 +98,9 @@ export function CopilotInputCore({
     showAutonomyPreset,
     showAttachments,
     showVoice = true,
+    onCompress,
+    canCompress = false,
+    isCompressing = false,
 }: CopilotInputCoreProps) {
     const [hasMounted, setHasMounted] = useState(false);
     const [input, setInput] = useState("");
@@ -447,6 +454,34 @@ export function CopilotInputCore({
                             </button>
                         )}
 
+                        {showVoice && (
+                            <>
+                                <span
+                                    className="sr-only"
+                                    aria-live="polite"
+                                    aria-atomic="true"
+                                >
+                                    {voiceState === "recording"
+                                        ? "Recording in progress"
+                                        : voiceState === "transcribing"
+                                        ? "Transcribing..."
+                                        : ""}
+                                </span>
+                                <button
+                                    type="button"
+                                    className={`${styles.actionBtn} ${voiceState === "recording" ? styles.actionBtnRecording : ""}`}
+                                    onClick={toggleRecording}
+                                    disabled={voiceState === "transcribing"}
+                                    aria-label={voiceState === "recording" ? "Stop recording" : voiceState === "transcribing" ? "Transcribing..." : "Voice input"}
+                                    title={voiceState === "recording" ? "Stop recording" : voiceState === "transcribing" ? "Transcribing..." : "Voice input"}
+                                >
+                                    <span className="material-icons-round">
+                                        {voiceState === "recording" ? "stop_circle" : voiceState === "transcribing" ? "hourglass_top" : "mic"}
+                                    </span>
+                                </button>
+                            </>
+                        )}
+
                         {canShowAutonomy && (hasMounted ? (
                             <DropdownMenu.Root>
                                 <DropdownMenu.Trigger asChild>
@@ -557,13 +592,13 @@ export function CopilotInputCore({
                                 <Popover.Trigger asChild>
                                     <button
                                         type="button"
-                                        className={styles.actionBtn}
+                                        className={`${styles.actionBtn} ${styles.attachBtn}`}
                                         aria-label="Attach file"
                                         title="Attach file"
                                         disabled={isAttaching}
                                     >
                                         <span className="material-icons-round">
-                                            {isAttaching ? "hourglass_top" : "add"}
+                                            {isAttaching ? "hourglass_top" : "attach_file"}
                                         </span>
                                     </button>
                                 </Popover.Trigger>
@@ -633,45 +668,31 @@ export function CopilotInputCore({
                         ) : (
                             <button
                                 type="button"
-                                className={styles.actionBtn}
+                                className={`${styles.actionBtn} ${styles.attachBtn}`}
                                 aria-label="Attach file"
                                 title="Attach file"
                                 disabled={isAttaching}
                                 onClick={handleUploadNew}
                             >
                                 <span className="material-icons-round">
-                                    {isAttaching ? "hourglass_top" : "add"}
+                                    {isAttaching ? "hourglass_top" : "attach_file"}
                                 </span>
                             </button>
                         ))}
 
-                        {showVoice && (
-                            <>
-                                {/* Screen-reader live region for voice state (V8 / A11y) */}
-                                <span
-                                    className="sr-only"
-                                    aria-live="polite"
-                                    aria-atomic="true"
-                                >
-                                    {voiceState === "recording"
-                                        ? "Recording in progress"
-                                        : voiceState === "transcribing"
-                                        ? "Transcribing..."
-                                        : ""}
+                        {onCompress && (
+                            <button
+                                type="button"
+                                className={styles.compressBtn}
+                                onClick={() => { void onCompress(); }}
+                                disabled={!canCompress || isCompressing}
+                                aria-label="Compress history"
+                                title={canCompress ? "Compress" : "Compress (available after longer chats)"}
+                            >
+                                <span className="material-icons-round">
+                                    {isCompressing ? "hourglass_top" : "compress"}
                                 </span>
-                                <button
-                                    type="button"
-                                    className={`${styles.actionBtn} ${voiceState === "recording" ? styles.actionBtnRecording : ""}`}
-                                    onClick={toggleRecording}
-                                    disabled={voiceState === "transcribing"}
-                                    aria-label={voiceState === "recording" ? "Stop recording" : voiceState === "transcribing" ? "Transcribing..." : "Voice input"}
-                                    title={voiceState === "recording" ? "Stop recording" : voiceState === "transcribing" ? "Transcribing..." : "Voice input"}
-                                >
-                                    <span className="material-icons-round">
-                                        {voiceState === "recording" ? "stop_circle" : voiceState === "transcribing" ? "hourglass_top" : "mic"}
-                                    </span>
-                                </button>
-                            </>
+                            </button>
                         )}
                     </div>
 

@@ -35,6 +35,9 @@ export function CopilotInput({ page, section, studyId, inputPlaceholder, prefill
         setShowAutonomySettings,
         pendingChoices,
         clearChoices,
+        summarizeAndRefresh,
+        shouldOfferSummary,
+        isSummarizing,
     } = useProjectCopilot();
     const projectSnapshot = useProjectState(projectId);
 
@@ -65,6 +68,9 @@ export function CopilotInput({ page, section, studyId, inputPlaceholder, prefill
             showAutonomyPreset
             showAttachments
             showVoice
+            onCompress={summarizeAndRefresh}
+            canCompress={shouldOfferSummary}
+            isCompressing={isSummarizing}
         />
     );
 }

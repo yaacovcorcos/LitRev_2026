@@ -1022,7 +1022,7 @@
     color: var(--text-primary);
     line-height: 1.2;
     letter-spacing: -0.3px;
-    font-family: 'Outfit', sans-serif;
+    font-family: 'Lexend', sans-serif;
 }
 
 .manuscriptSubtitle {
@@ -1066,7 +1066,7 @@
     color: var(--text-primary);
     text-transform: uppercase;
     letter-spacing: 0.5px;
-    font-family: 'Outfit', sans-serif;
+    font-family: 'Lexend', sans-serif;
 }
 
 .manuscriptStatusPill {

@@ -20,7 +20,8 @@ function makeCtx(overrides: Partial<CommandContext> = {}): CommandContext {
 }
 
 const globalCtx = makeCtx();
-const projectCtx = makeCtx({ isInProject: true, projectId: "p1", activeTab: "overview" });
+const projectCtxConversation = makeCtx({ isInProject: true, projectId: "p1", activeTab: "overview", focusMode: "conversation" });
+const projectCtxView = makeCtx({ isInProject: true, projectId: "p1", activeTab: "overview", focusMode: "view" });
 
 // ── Tests ────────────────────────────────────────────────────────────────────
 
@@ -54,18 +55,26 @@ describe("Command Registry", () => {
             expect(cmds.find((c) => c.id === "agent-search")).toBeUndefined();
         });
 
-        it("project context shows all command types", () => {
-            const cmds = getAvailableCommands(projectCtx);
+        it("project context in view mode shows all command types", () => {
+            const cmds = getAvailableCommands(projectCtxView);
             expect(cmds.find((c) => c.id === "nav-overview")).toBeTruthy();
             expect(cmds.find((c) => c.id === "agent-search")).toBeTruthy();
             expect(cmds.find((c) => c.id === "mode-toggle-copilot")).toBeTruthy();
-            expect(cmds.find((c) => c.id === "nav-conversation")).toBeTruthy();
+            // In view mode, should offer switch to conversation
+            expect(cmds.find((c) => c.id === "mode-conversation")).toBeTruthy();
+            expect(cmds.find((c) => c.id === "mode-workspace")).toBeUndefined();
+        });
+
+        it("project context in conversation mode shows switch to workspace", () => {
+            const cmds = getAvailableCommands(projectCtxConversation);
+            expect(cmds.find((c) => c.id === "mode-workspace")).toBeTruthy();
+            expect(cmds.find((c) => c.id === "mode-conversation")).toBeUndefined();
         });
     });
 
     describe("getGroupedCommands", () => {
         it("returns commands grouped by section", () => {
-            const groups = getGroupedCommands(projectCtx);
+            const groups = getGroupedCommands(projectCtxView);
             expect(groups.navigation.length).toBeGreaterThan(0);
             expect(groups.agent.length).toBeGreaterThan(0);
             expect(groups.mode.length).toBeGreaterThan(0);
@@ -88,3 +97,4 @@ describe("Command Registry", () => {
         });
     });
 });
+

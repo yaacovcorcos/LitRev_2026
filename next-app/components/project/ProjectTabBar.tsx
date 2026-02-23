@@ -34,17 +34,29 @@ export function ProjectTabBar({
 }: ProjectTabBarProps) {
     return (
         <nav className={styles.tabBar} aria-label="Project navigation">
-            {/* Conversation button — visible in view mode */}
-            {focusMode === "view" && (
+            {/* Mode switch — always visible */}
+            <div className={styles.modeSwitch} role="radiogroup" aria-label="Project mode">
                 <button
                     type="button"
-                    className={styles.conversationBtn}
+                    role="radio"
+                    aria-checked={focusMode === "conversation"}
+                    className={`${styles.modeBtn} ${focusMode === "conversation" ? styles.modeBtnActive : ""}`}
                     onClick={onConversationClick}
                 >
                     <span className="material-icons-round">chat</span>
                     <span className={styles.btnLabel}>Conversation</span>
                 </button>
-            )}
+                <button
+                    type="button"
+                    role="radio"
+                    aria-checked={focusMode === "view"}
+                    className={`${styles.modeBtn} ${focusMode === "view" ? styles.modeBtnActive : ""}`}
+                    onClick={() => onTabClick(activeTab ?? "overview")}
+                >
+                    <span className="material-icons-round">workspaces</span>
+                    <span className={styles.btnLabel}>Workspace</span>
+                </button>
+            </div>
 
             <div className={styles.tabs} role="tablist">
                 {TABS.map((tab) => (

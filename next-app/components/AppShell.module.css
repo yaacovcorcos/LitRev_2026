@@ -3,7 +3,7 @@
     min-height: 100vh;
     background: var(--bg-body);
     color: var(--text-primary);
-    padding-left: var(--shell-sidebar-width, 260px);
+    padding-left: var(--shell-sidebar-width, 220px);
     --mobile-nav-offset: 0px;
 }
 

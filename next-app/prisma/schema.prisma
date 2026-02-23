@@ -69,6 +69,7 @@ model Project {
   studyMemories  StudyMemory[]
   artifacts      Artifact[]
   notes          Note[]
+  draftVersions  DraftVersion[]
 
   @@index([workspaceId])
   @@index([ownerId])
@@ -92,6 +93,25 @@ model Draft {
   updatedAt DateTime @updatedAt
 
   project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model DraftVersion {
+  id              String   @id @default(cuid())
+  projectId       String
+  section         String
+  content         Json
+  contentText     String?
+  wordCount       Int      @default(0)
+  artifactId      String?
+  conversationId  String?
+  version         Int
+  createdAt       DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, section, version])
+  @@index([projectId, section])
+  @@index([projectId, createdAt])
 }
 
 // Multi-user ready: workspaceId for explicit scoping (also derived via project)

@@ -28,6 +28,8 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
         selectConversation,
         newConversation,
         branchConversation,
+        deleteConversation,
+        renameConversation,
         sendMessage,
         handleReviewArtifact,
         executePlan,
@@ -97,6 +99,9 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
                             searchPlaceholder="Search sessions..."
                             renderMeta={(conversation) => `${conversation.messageCount} msgs`}
                             onSelect={selectConversation}
+                            onDelete={deleteConversation}
+                            onDuplicate={(id) => branchConversation(id)}
+                            onRename={renameConversation}
                         />
                     </div>
 
@@ -136,18 +141,6 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
                                 {isBranching ? "hourglass_top" : "call_split"}
                             </span>
                         </button>
-                        <button
-                            type="button"
-                            className={styles.newBtn}
-                            onClick={() => { void summarizeAndRefresh(); }}
-                            disabled={!currentConversationId || !shouldOfferSummary || isSummarizing}
-                            aria-label="Compress history"
-                            title={shouldOfferSummary ? "Compress history" : "Compress history (available after longer chats)"}
-                        >
-                            <span className="material-icons-round" style={{ fontSize: 16 }}>
-                                {isSummarizing ? "hourglass_top" : "compress"}
-                            </span>
-                        </button>
                     </div>
                 </div>
 
@@ -183,12 +176,14 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
                     )}
 
                     {/* Input */}
-                    <CopilotInput
-                        page={"overview" as CopilotPage}
-                        inputPlaceholder="Ask about your project..."
-                        prefill={prefill}
-                        onPrefillConsumed={handlePrefillConsumed}
-                    />
+                    <div className={styles.inputWrapper}>
+                        <CopilotInput
+                            page={"overview" as CopilotPage}
+                            inputPlaceholder="Ask about your project..."
+                            prefill={prefill}
+                            onPrefillConsumed={handlePrefillConsumed}
+                        />
+                    </div>
                 </div>
             </div>
             <AutonomySettings />

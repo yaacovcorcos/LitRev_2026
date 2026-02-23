@@ -7,7 +7,8 @@
 - **Database:** Supabase PostgreSQL accessed via Prisma. Pooled connection string (`DATABASE_URL`) with SSL + pgbouncer. Direct string (`DIRECT_URL`) for migrations.
 - **Data Persistence:** Replaced initial LocalStorage architecture with full database persistence for Projects, Protocols, Studies (Ledger), Drafts, and Copilot states.
 - **File Assets:** Supabase Storage bucket `study-assets` is public. File deletes automatically purge orphaned blobs.
-- **Schema:** Multi-tenant setup. Core models include `User`, `Workspace`, `WorkspaceMember`, `Project`, `Protocol`, `Draft`, `Study`, `FileAsset`, `AIConversation`, `AIMessage`, `AIUsage`, `UserMemory`, `ProjectMemory`, `StudyMemory`, `ConversationSummary`, `MemoryRetrieval`, `MemoryEmbedding`, `AgentRun`, `RunEvent`, `Artifact`, `AutonomyConfig`, and `Note`.
+- **Schema:** Multi-tenant setup. Core models include `User`, `Workspace`, `WorkspaceMember`, `Project`, `Protocol`, `Draft`, `DraftVersion`, `Study`, `FileAsset`, `AIConversation`, `AIMessage`, `AIUsage`, `UserMemory`, `ProjectMemory`, `StudyMemory`, `ConversationSummary`, `MemoryRetrieval`, `MemoryEmbedding`, `AgentRun`, `RunEvent`, `Artifact`, `AutonomyConfig`, and `Note`.
+- **Draft Versioning:** `DraftVersion` stores immutable per-section snapshots for auditing/recovery. The `draft_diff` artifact apply flow writes to `DraftVersion` (provenance) + `Draft` (display). Notes table is no longer used for draft backup.
 - **Single-User Compatibility Layer:** Most app data paths already enforce `ownerId` + `workspaceId` scoping via `SINGLE_USER_SCOPE` placeholders. Conversation actions still use separate placeholder constants and must be normalized before auth cutover.
 - **Demo Seed Lifecycle:** Sample-project creation/reset is now server-seeded from a single transactional service (`lib/server/demo-project.ts`) that repopulates project, protocol, ledger, draft, notes, memory, and scoped seed conversation rows.
 - **Onboarding State Persistence:** Guided-setup defaults now persist in `UserMemory` (`guided_setup_new_projects`) and per-project onboarding state persists in `Project.progress.onboarding` (`enabledOverride`, `completedAt`, `skippedAt`) so create-flow routing is backend-driven and auth-ready.
@@ -23,10 +24,6 @@
   - Normalize conversation placeholder IDs to the same scope contract used by the rest of the service layer before session wiring.
   - Add a first-login claim/migration path that attaches existing local single-user data to the authenticated account/workspace.
   - Update API routes (`/api/ai/stream`, `/api/ai/transcribe`) with auth checks.
-- [ ] Execute **Phase 12: DraftVersion Hidden Backup History**:
-  - Add `DraftVersion` schema (immutable versions for auditing/recovery) to preserve single latest `Draft` row for fast loads.
-  - Modify draft save path to append version on content change.
-  - Remove `Note` rows as draft backup storage in `draft_diff` apply flow.
 - [ ] Execute **Phase 13: Inline Numbered Citations & Bibliography** (Design pending):
   - Schema: citation-to-study mapping, order tracking.
   - TipTap editor custom node for citations `[1]`.
@@ -35,6 +32,7 @@
 ## Recently Completed
 *Finished work that might still be fragile or require monitoring. Prune oldest first.*
 
+- [x] Phase 12: Added `DraftVersion` table for immutable per-section draft history. `draft_diff` artifact now writes to `DraftVersion` instead of `Note`. Fixed `update_note` tool `append` action to read from Draft table.
 - [x] Hardened demo-seed integrity by typing transaction clients, scoping seeded conversation ownership to the active service scope, and aligning draft seed citations with linked evidence sections.
 - [x] Added backend-guided onboarding persistence: user-level default preference plus per-project onboarding state and completion markers used by create-flow routing.
 - [x] Added transactional demo project seed/reset actions for the on-demand sample onboarding workspace.

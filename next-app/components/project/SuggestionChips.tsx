@@ -39,7 +39,7 @@ export function SuggestionChips({ projectId, onSend, chips }: SuggestionChipsPro
 
     return (
         <div className={styles.grid}>
-            <div className={styles.gridHeader}>
+            <div className={styles.gridInner}>
                 <button
                     type="button"
                     className={styles.dismissBtn}
@@ -48,21 +48,23 @@ export function SuggestionChips({ projectId, onSend, chips }: SuggestionChipsPro
                 >
                     <span className="material-icons-round">close</span>
                 </button>
-            </div>
-            <div className={styles.gridCards}>
-                {displayChips.map((chip, index) => (
-                    <button
-                        key={chip.prompt}
-                        type="button"
-                        className={styles.card}
-                        style={{ animationDelay: `${index * 60}ms` }}
-                        onClick={() => onSend(chip.prompt)}
-                    >
-                        <span className={`material-icons-round ${styles.cardIcon}`} aria-hidden="true">{chip.icon}</span>
-                        <span className={styles.cardLabel}>{chip.label}</span>
-                        <span className={styles.cardDesc}>{chip.description}</span>
-                    </button>
-                ))}
+                <div className={styles.gridCards}>
+                    {displayChips.map((chip, index) => (
+                        <button
+                            key={chip.prompt}
+                            type="button"
+                            className={styles.card}
+                            style={{ animationDelay: `${index * 60}ms` }}
+                            onClick={() => onSend(chip.prompt)}
+                        >
+                            <span className={`material-icons-round ${styles.cardIcon}`} aria-hidden="true">{chip.icon}</span>
+                            <span className={styles.cardBody}>
+                                <span className={styles.cardLabel}>{chip.label}</span>
+                                <span className={styles.cardDesc}>{chip.description}</span>
+                            </span>
+                        </button>
+                    ))}
+                </div>
             </div>
         </div>
     );

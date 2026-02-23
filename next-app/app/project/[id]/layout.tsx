@@ -46,12 +46,8 @@ function ProjectShellInner({ projectId, children }: ProjectShellInnerProps) {
         return () => registerCopilotToggle(null);
     }, [registerCopilotToggle, toggleCollapsed]);
 
-    // Focus mode and tab state
-    const [focusMode, setFocusMode] = useState<FocusMode>(() => {
-        // If navigating directly to a sub-page, start in view mode
-        const tab = tabFromPathname(pathname);
-        return tab ? "view" : "conversation";
-    });
+    // Focus mode and tab state — always default to workspace (view) on entry
+    const [focusMode, setFocusMode] = useState<FocusMode>("view");
 
     const [activeTab, setActiveTabState] = useState<ViewTab | null>(() => {
         return tabFromPathname(pathname) ?? "overview";
@@ -94,13 +90,27 @@ function ProjectShellInner({ projectId, children }: ProjectShellInnerProps) {
 
     const returnToConversation = useCallback(() => {
         setFocusMode("conversation");
-        // Navigate to project root for conversation mode
-        router.push(`/project/${projectId}`);
-    }, [projectId, router]);
+    }, []);
 
     const handleTabClick = useCallback((tab: ViewTab) => {
         setActiveTab(tab);
     }, [setActiveTab]);
+
+    // Keyboard shortcut: Cmd+. (or Ctrl+.) toggles between modes
+    useEffect(() => {
+        const handler = (e: KeyboardEvent) => {
+            if ((e.metaKey || e.ctrlKey) && e.key === ".") {
+                e.preventDefault();
+                if (focusMode === "conversation") {
+                    setActiveTab(activeTab ?? "overview");
+                } else {
+                    returnToConversation();
+                }
+            }
+        };
+        window.addEventListener("keydown", handler);
+        return () => window.removeEventListener("keydown", handler);
+    }, [focusMode, activeTab, setActiveTab, returnToConversation]);
 
     const handleConversationClick = useCallback(() => {
         returnToConversation();

@@ -102,6 +102,7 @@ function getJumpToProps(artifactType: string, projectId: string): { jumpToLink?:
 
 type UserMessageRowProps = {
     item: Extract<TimelineItem, { type: "user_message" }>;
+    onCopy: (text: string) => void;
     onBranchFromMessage?: (messageId: string, createdAt: string) => void | Promise<void>;
 };
 
@@ -126,7 +127,7 @@ function stripAssistantMarkupForDisplay(content: string): string {
         .trimEnd();
 }
 
-const UserMessageRow = memo(function UserMessageRow({ item, onBranchFromMessage }: UserMessageRowProps) {
+const UserMessageRow = memo(function UserMessageRow({ item, onCopy, onBranchFromMessage }: UserMessageRowProps) {
     return (
         <div className={`${styles.chatMsg} ${styles.chatMsgUser}`} role="article" aria-label="You">
             <div className={styles.chatStack}>
@@ -157,8 +158,16 @@ const UserMessageRow = memo(function UserMessageRow({ item, onBranchFromMessage 
                         </ReactMarkdown>
                     </div>
                 </div>
-                {onBranchFromMessage && (
-                    <div className={styles.chatActions}>
+                <div className={styles.chatActions}>
+                    <button
+                        type="button"
+                        className={styles.chatActionBtn}
+                        onClick={() => onCopy(item.content)}
+                        title="Copy to clipboard"
+                    >
+                        <span className="material-icons-round">content_copy</span>
+                    </button>
+                    {onBranchFromMessage && (
                         <button
                             type="button"
                             className={styles.chatActionBtn}
@@ -167,8 +176,8 @@ const UserMessageRow = memo(function UserMessageRow({ item, onBranchFromMessage 
                         >
                             <span className="material-icons-round">call_split</span>
                         </button>
-                    </div>
-                )}
+                    )}
+                </div>
             </div>
         </div>
     );
@@ -800,7 +809,7 @@ export function TimelineRenderer({
     const renderTimelineItem = (item: TimelineItem, index: number) => {
         switch (item.type) {
             case "user_message":
-                return <UserMessageRow key={item.id} item={item} onBranchFromMessage={onBranchFromMessage} />;
+                return <UserMessageRow key={item.id} item={item} onCopy={handleCopy} onBranchFromMessage={onBranchFromMessage} />;
 
             case "assistant_message":
                 return (

@@ -132,136 +132,137 @@ export default function ProjectDetail() {
 
   const contentJSX = (
     <div className={styles.overviewLayout} style={isEmbeddedInProjectShell ? { padding: "24px" } : undefined}>
-        <TopBar
-          title={project.name}
-          subtitle={project.description || "No description provided."}
-          actions={
-            <>
-              <button
-                className="header-btn header-btn-danger"
-                type="button"
-                onClick={() => {
-                  setIsDeleteOpen(true);
-                }}
-              >
-                <span className="material-icons-round">delete</span>
-                Delete
-              </button>
-            </>
+      <TopBar
+        title={project.name}
+        subtitle={project.description || "No description provided."}
+        actions={
+          <>
+            <button
+              className={styles.deleteBtn}
+              type="button"
+              title="Delete project"
+              aria-label="Delete project"
+              onClick={() => {
+                setIsDeleteOpen(true);
+              }}
+            >
+              <span className="material-icons-round">delete_outline</span>
+            </button>
+          </>
+        }
+      />
+
+      <DemoGuideCard
+        projectId={project.id}
+        guideId="overview-hub"
+        text="This overview is your command center. Follow the workstation order: Protocol → Ledger → Draft to keep evidence traceable."
+      />
+
+      {/* Vital Signs Row */}
+      <section className={styles.vitalSignsRow}>
+        {vitalSigns.map((stat) => (
+          <StatCard key={stat.label} label={stat.label} value={stat.value} icon={stat.icon} href={stat.href} />
+        ))}
+      </section>
+
+      {/* Workstations Grid */}
+      <section className={styles.workstationsGrid}>
+        <WorkstationCard
+          title="Draft Workspace"
+          subtitle="The Manuscript"
+          description="Write your article with AI and linked evidence."
+          icon="edit_note"
+          href={`/project/${project.id}/draft`}
+          preview={
+            <div className={styles.previewStepper}>
+              <span className={styles.stepDone}>Abstract ✓</span>
+              <span className={styles.stepActive}>Intro ◐</span>
+              <span className={styles.stepPending}>Methods ○</span>
+            </div>
           }
         />
-
-        <DemoGuideCard
-          projectId={project.id}
-          guideId="overview-hub"
-          text="This overview is your command center. Follow the workstation order: Protocol → Ledger → Draft to keep evidence traceable."
+        <WorkstationCard
+          title="Study Protocol"
+          subtitle="The Blueprint"
+          description="Define PICO, eligibility criteria, and search strategy."
+          icon="assignment"
+          href={`/project/${project.id}/protocol`}
+          preview={
+            <div className={styles.previewItem}>
+              <span className="material-icons-round">edit</span>
+              <span>Last: Added 3 eligibility criteria</span>
+            </div>
+          }
         />
-
-        {/* Vital Signs Row */}
-        <section className={styles.vitalSignsRow}>
-          {vitalSigns.map((stat) => (
-            <StatCard key={stat.label} label={stat.label} value={stat.value} icon={stat.icon} href={stat.href} />
-          ))}
-        </section>
-
-        {/* Workstations Grid */}
-        <section className={styles.workstationsGrid}>
-          <WorkstationCard
-            title="Draft Workspace"
-            subtitle="The Manuscript"
-            description="Write your article with AI and linked evidence."
-            icon="edit_note"
-            href={`/project/${project.id}/draft`}
-            preview={
-              <div className={styles.previewStepper}>
-                <span className={styles.stepDone}>Abstract ✓</span>
-                <span className={styles.stepActive}>Intro ◐</span>
-                <span className={styles.stepPending}>Methods ○</span>
+        <WorkstationCard
+          title="Evidence Ledger"
+          subtitle="The Dataset"
+          description="Manage studies, data extraction, and quality scores."
+          icon="table_chart"
+          href={`/project/${project.id}/ledger`}
+          preview={
+            <div className={styles.previewProgress}>
+              <div className={styles.previewProgressBar}>
+                <div className={styles.previewProgressFill} style={{ width: "32%" }} />
               </div>
-            }
-          />
-          <WorkstationCard
-            title="Study Protocol"
-            subtitle="The Blueprint"
-            description="Define PICO, eligibility criteria, and search strategy."
-            icon="assignment"
-            href={`/project/${project.id}/protocol`}
-            preview={
-              <div className={styles.previewItem}>
-                <span className="material-icons-round">edit</span>
-                <span>Last: Added 3 eligibility criteria</span>
-              </div>
-            }
-          />
-          <WorkstationCard
-            title="Evidence Ledger"
-            subtitle="The Dataset"
-            description="Manage studies, data extraction, and quality scores."
-            icon="table_chart"
-            href={`/project/${project.id}/ledger`}
-            preview={
-              <div className={styles.previewProgress}>
-                <div className={styles.previewProgressBar}>
-                  <div className={styles.previewProgressFill} style={{ width: "32%" }} />
-                </div>
-                <span>45 / 142 extracted</span>
-              </div>
-            }
-          />
-        </section>
-
-        {/* Quick Info Panels */}
-        <section className={styles.infoPanelsRow}>
-          <div className={styles.infoPanel}>
-            <h4 className={styles.infoPanelTitle}>Recent Activity</h4>
-            <RecentActivityPanel projectId={project.id} />
-          </div>
-          <div className={styles.infoPanel}>
-            <h4 className={styles.infoPanelTitle}>Project Details</h4>
-            <div className={styles.detailRow}>
-              <span>Created</span>
-              <span>{formatDate(project.created)}</span>
+              <span>45 / 142 extracted</span>
             </div>
-            <div className={styles.detailRow}>
-              <span>Type</span>
-              <span>Systematic Review</span>
-            </div>
+          }
+        />
+      </section>
+
+      {/* Quick Info Panels */}
+      <section className={styles.infoPanelsRow}>
+        <div className={styles.infoPanel}>
+          <h4 className={styles.infoPanelTitle}>Recent Activity</h4>
+          <RecentActivityPanel projectId={project.id} />
+        </div>
+        <div className={styles.infoPanel}>
+          <h4 className={styles.infoPanelTitle}>Project Details</h4>
+          <div className={styles.detailRow}>
+            <span>Created</span>
+            <span>{formatDate(project.created)}</span>
           </div>
-        </section>
-      </div>
+          <div className={styles.detailRow}>
+            <span>Type</span>
+            <span>Systematic Review</span>
+          </div>
+        </div>
+      </section>
+    </div>
   );
 
   const deleteModal = (
-      <Modal isOpen={isDeleteOpen} onClose={closeDeleteModal} ariaLabelledBy="deleteProjectTitle">
-        <div className="modal-header">
-          <h2 id="deleteProjectTitle">Delete project</h2>
-          <button className="close-modal-btn" aria-label="Close dialog" onClick={closeDeleteModal}>
-            <span className="material-icons-round">close</span>
-          </button>
-        </div>
-        <div className="modal-body">
-          <p>
-            This will permanently delete <strong>{project.name}</strong> and all related data. This action cannot be
-            undone.
-          </p>
-        </div>
-        <div className="modal-actions">
-          <button type="button" className="btn btn-outline cancel-btn" onClick={closeDeleteModal}>
-            Cancel
-          </button>
-          <button
-            type="button"
-            className="btn btn-danger"
-            onClick={() => {
-              closeDeleteModal();
-              deleteProject(project.id);
-              router.push("/");
-            }}
-          >
-            Delete project
-          </button>
-        </div>
-      </Modal>
+    <Modal isOpen={isDeleteOpen} onClose={closeDeleteModal} ariaLabelledBy="deleteProjectTitle">
+      <div className="modal-header">
+        <h2 id="deleteProjectTitle">Delete project</h2>
+        <button className="close-modal-btn" aria-label="Close dialog" onClick={closeDeleteModal}>
+          <span className="material-icons-round">close</span>
+        </button>
+      </div>
+      <div className="modal-body">
+        <p>
+          This will permanently delete <strong>{project.name}</strong> and all related data. This action cannot be
+          undone.
+        </p>
+      </div>
+      <div className="modal-actions">
+        <button type="button" className="btn btn-outline cancel-btn" onClick={closeDeleteModal}>
+          Cancel
+        </button>
+        <button
+          type="button"
+          className="btn btn-danger"
+          onClick={() => {
+            closeDeleteModal();
+            deleteProject(project.id);
+            router.push("/");
+          }}
+        >
+          Delete project
+        </button>
+      </div>
+    </Modal>
   );
 
   if (isEmbeddedInProjectShell) {

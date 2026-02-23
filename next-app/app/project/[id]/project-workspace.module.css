@@ -334,3 +334,27 @@
         grid-template-columns: 1fr;
     }
 }
+
+/* Delete button — subtle icon-only */
+.deleteBtn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.deleteBtn:hover {
+    background: rgba(192, 57, 43, 0.08);
+    color: var(--color-danger);
+}
+
+.deleteBtn .material-icons-round {
+    font-size: 20px;
+}

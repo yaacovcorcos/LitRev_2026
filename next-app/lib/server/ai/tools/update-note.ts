@@ -1,6 +1,9 @@
 import { z } from "zod";
 import type { AITool, ToolExecutionContext } from "./base";
-import { listNotes, extractTextFromContent, type NoteContent } from "@/lib/server/notes";
+import { extractTextFromContent, type NoteContent } from "@/lib/server/notes";
+import { getDraft } from "@/lib/server/drafts";
+import { SINGLE_USER_SCOPE } from "@/lib/server/scope";
+import { DRAFT_SECTIONS } from "@/types/draft";
 
 const inputSchema = z.object({
     section: z.string().min(1, "section is required"),
@@ -64,19 +67,20 @@ export const updateNoteTool: AITool = {
         const action = args.action as "replace" | "append" | "revise";
 
         try {
-            // For append, read existing note to produce the combined text
+            // For append, read existing draft content to produce the combined text
             let finalContent = content;
             if (action === "append") {
-                const existing = await listNotes(projectId, { linkedStudyId: undefined });
-                const sectionNote = existing.find(
-                    (n) => n.linkedSection?.toLowerCase() === section.toLowerCase()
-                );
-                if (sectionNote) {
-                    const existingText = extractTextFromContent(
-                        sectionNote.content as NoteContent
-                    );
-                    if (existingText) {
-                        finalContent = `${existingText}\n\n${content}`;
+                const draft = await getDraft(SINGLE_USER_SCOPE, projectId);
+                if (draft) {
+                    const sectionKey = DRAFT_SECTIONS.find(
+                        (s) => s.key === section.toLowerCase() || s.label.toLowerCase() === section.toLowerCase()
+                    )?.key ?? section.toLowerCase();
+                    const existing = draft.contentBySection[sectionKey];
+                    if (existing) {
+                        const existingText = extractTextFromContent(existing as unknown as NoteContent);
+                        if (existingText) {
+                            finalContent = `${existingText}\n\n${content}`;
+                        }
                     }
                 }
             }

@@ -142,7 +142,7 @@ const docHasContent = (doc: JSONContent | null | undefined): boolean => {
 
 const FONT_FAMILY_OPTIONS = [
   { label: "Default (Manuscript)", value: "Georgia, 'Times New Roman', serif" },
-  { label: "Sans (Outfit)", value: "Outfit, sans-serif" },
+  { label: "Sans (Lexend)", value: "Lexend, sans-serif" },
   { label: "Sans (Arial)", value: "Arial, Helvetica, sans-serif" },
   { label: "Mono (Courier)", value: "'Courier New', Courier, monospace" },
 ];

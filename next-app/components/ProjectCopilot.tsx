@@ -64,6 +64,8 @@ export function ProjectCopilot({
         selectConversation,
         newConversation,
         branchConversation,
+        deleteConversation,
+        renameConversation,
         sendMessage,
         handleReviewArtifact,
         executePlan,
@@ -188,6 +190,9 @@ export function ProjectCopilot({
                             groupOrder={["Today", "Yesterday", "Older"]}
                             renderMeta={(conversation) => formatRelativeTime(conversation.updatedAt)}
                             onSelect={selectConversation}
+                            onDelete={deleteConversation}
+                            onDuplicate={(id) => branchConversation(id)}
+                            onRename={renameConversation}
                         />
                     </div>
 
@@ -226,18 +231,6 @@ export function ProjectCopilot({
                         >
                             <span className="material-icons-round" style={{ fontSize: 16 }}>
                                 {isBranching ? "hourglass_top" : "call_split"}
-                            </span>
-                        </button>
-                        <button
-                            type="button"
-                            className={styles.headerIconBtn}
-                            onClick={() => { void summarizeAndRefresh(); }}
-                            disabled={!currentConversationId || !shouldOfferSummary || isSummarizing}
-                            aria-label="Compress history"
-                            title={shouldOfferSummary ? "Compress history" : "Compress history (available after longer chats)"}
-                        >
-                            <span className="material-icons-round" style={{ fontSize: 16 }}>
-                                {isSummarizing ? "hourglass_top" : "compress"}
                             </span>
                         </button>
                         <button

@@ -29,6 +29,10 @@
 - [ ] Add final onboarding controls to Settings + project surfaces:
   - Move global default toggle for guided setup on new projects into Settings.
   - Add per-project override UI so users can opt in/out after creation.
+- [ ] Upgrade Draft editor citations to support inline clickable citation markers that jump to the matching reference entry and deep-link to the study (ledger row or study page).
+- [ ] Support citation display modes that hide raw links in prose: numbered citations and named/year citations (e.g., `[Smith 2024]`), both rendered with distinct styling and mapped to references.
+- [ ] Auto-build/update the References section as draft content is written, with source URLs hidden behind the citation markers/reference entries (not shown inline in manuscript sentences).
+- [ ] Upgrade Draft typography and heading/section styling so manuscript output looks publication-grade (not raw markdown-like).
 
 ### P2 — Features & Polish
 - [ ] Tool receipt blocks per assistant turn (e.g., `Used: PubMed search · 47 results · 2.1s`).
@@ -59,7 +63,6 @@
 ## Deferred / Parking Lot
 *Ideas acknowledged but explicitly not active right now.*
 
-- [ ] Inline citation chips `[Smith 2024]` linking to sources panel.
 - [ ] Global toast system migration (Sonner).
 - [ ] Unify `/ai` chat UI with project conversation (reduce code duplication).
 - [ ] Entrance animation on newest message only.

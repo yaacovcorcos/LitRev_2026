@@ -5,12 +5,14 @@ import { TimelineRenderer } from "@/components/copilot/TimelineRenderer";
 import { CopilotInputCoreClient } from "@/components/copilot/CopilotInputCoreClient";
 import { useProjects } from "@/contexts/ProjectsContext";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   listConversations,
   createConversation,
   getConversation,
   archiveConversation,
   branchConversation,
+  updateConversationTitle,
 } from "@/app/actions/conversations";
 import { reviewArtifactAction } from "@/app/actions/agent";
 import { getGlobalWorkspaceContextAction } from "@/app/actions/ai-assistant";
@@ -322,6 +324,9 @@ export default function AIView() {
   const [isCompressing, setIsCompressing] = useState(false);
   const [branchingConversationId, setBranchingConversationId] = useState<string | null>(null);
   const [branchingMessageId, setBranchingMessageId] = useState<string | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; conversationId: string } | null>(null);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
   const [pendingChoices, setPendingChoices] = useState<ChoiceOption[]>([]);
   const [prefill, setPrefill] = useState("");
 
@@ -624,6 +629,55 @@ export default function AIView() {
     sortConversationsByUpdatedAt,
     updateConversationTimeline,
   ]);
+
+  // ── Context menu on conversation items ──────────────────────────────────────
+  const handleConversationContextMenu = useCallback((e: React.MouseEvent, conversationId: string) => {
+    e.preventDefault();
+    setContextMenu({ x: e.clientX, y: e.clientY, conversationId });
+  }, []);
+
+  const dismissContextMenu = useCallback(() => setContextMenu(null), []);
+
+  const handleStartRename = useCallback((conversationId: string) => {
+    const conv = conversations.find((c) => c.id === conversationId);
+    setRenameValue(conv?.title ?? "");
+    setRenamingId(conversationId);
+    setContextMenu(null);
+  }, [conversations]);
+
+  const handleCommitRename = useCallback(async () => {
+    if (!renamingId) return;
+    const trimmed = renameValue.trim();
+    if (trimmed) {
+      try {
+        await updateConversationTitle(renamingId, trimmed);
+        setConversations((prev) => prev.map((c) => c.id === renamingId ? { ...c, title: trimmed } : c));
+      } catch (err) {
+        console.error("Failed to rename conversation", err);
+      }
+    }
+    setRenamingId(null);
+    setRenameValue("");
+  }, [renamingId, renameValue]);
+
+  const handleCancelRename = useCallback(() => {
+    setRenamingId(null);
+    setRenameValue("");
+  }, []);
+
+  useEffect(() => {
+    if (!contextMenu) return;
+    const dismiss = () => setContextMenu(null);
+    document.addEventListener("click", dismiss);
+    document.addEventListener("scroll", dismiss, true);
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") dismiss(); };
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("click", dismiss);
+      document.removeEventListener("scroll", dismiss, true);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [contextMenu]);
 
   const handleCompressHistory = useCallback(async () => {
     const sourceId = activeConversationId;
@@ -1456,6 +1510,7 @@ export default function AIView() {
   }, [activeTimeline, activeConversation]);
 
   return (
+    <>
     <AppShell activeNav="ai" noMainPadding initiallyCollapsed>
       <div className={styles.layout} data-history-collapsed={isHistoryCollapsed}>
         <aside className={historyClass} aria-label="Chat history">
@@ -1491,35 +1546,37 @@ export default function AIView() {
                     <div
                       key={conv.id}
                       className={`${styles.historyItem} ${activeConversationId === conv.id ? styles.activeHistory : ""}`}
+                      onContextMenu={(e) => handleConversationContextMenu(e, conv.id)}
                     >
+                      {renamingId === conv.id ? (
+                        <input
+                          className={styles.renameInput}
+                          value={renameValue}
+                          onChange={(e) => setRenameValue(e.target.value)}
+                          onBlur={handleCommitRename}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") handleCommitRename();
+                            if (e.key === "Escape") handleCancelRename();
+                          }}
+                          autoFocus
+                        />
+                      ) : (
+                        <button
+                          type="button"
+                          className={styles.historySelectBtn}
+                          onClick={() => handleSelectConversation(conv.id)}
+                          aria-current={activeConversationId === conv.id ? "true" : undefined}
+                        >
+                          <span className={styles.historyTitle}>{conv.title ?? "New conversation"}</span>
+                        </button>
+                      )}
                       <button
                         type="button"
-                        className={styles.historySelectBtn}
-                        onClick={() => handleSelectConversation(conv.id)}
-                        aria-current={activeConversationId === conv.id ? "true" : undefined}
+                        className={styles.moreBtn}
+                        onClick={(e) => handleConversationContextMenu(e, conv.id)}
+                        aria-label="More options"
                       >
-                        <span className="material-icons-round">chat_bubble_outline</span>
-                        <span className={styles.historyTitle}>{conv.title ?? "New conversation"}</span>
-                      </button>
-                      <button
-                        type="button"
-                        className={styles.branchBtn}
-                        onClick={(e) => handleBranchConversation(conv.id, e)}
-                        aria-label="Branch conversation"
-                        title="Branch conversation"
-                        disabled={!!branchingConversationId}
-                      >
-                        <span className="material-icons-round">
-                          {branchingConversationId === conv.id ? "hourglass_top" : "call_split"}
-                        </span>
-                      </button>
-                      <button
-                        type="button"
-                        className={styles.deleteBtn}
-                        onClick={(e) => handleDeleteConversation(conv.id, e)}
-                        aria-label="Delete conversation"
-                      >
-                        <span className="material-icons-round">close</span>
+                        <span className="material-icons-round">more_vert</span>
                       </button>
                     </div>
                   ))}
@@ -1589,18 +1646,6 @@ export default function AIView() {
               <button
                 type="button"
                 className={styles.exportBtn}
-                onClick={handleCompressHistory}
-                disabled={activeTimeline.length < 20 || isCompressing}
-                title={activeTimeline.length < 20 ? "Compress history (available after longer chats)" : "Compress history"}
-              >
-                <span className="material-icons-round">
-                  {isCompressing ? "hourglass_top" : "compress"}
-                </span>
-                Compress
-              </button>
-              <button
-                type="button"
-                className={styles.exportBtn}
                 onClick={handleExportPdf}
                 disabled={activeTimeline.length === 0}
               >
@@ -1649,12 +1694,51 @@ export default function AIView() {
                 showAutonomyPreset={false}
                 showAttachments={false}
                 showVoice
+                onCompress={handleCompressHistory}
+                canCompress={activeTimeline.length >= 20}
+                isCompressing={isCompressing}
               />
               <p className={styles.disclaimer}>AI can make mistakes. Please verify important information.</p>
             </div>
           </div>
         </section>
       </div>
+
     </AppShell>
+
+    {contextMenu && createPortal(
+      <div
+        className={styles.contextMenu}
+        style={{ top: contextMenu.y, left: contextMenu.x }}
+        onClick={dismissContextMenu}
+      >
+        <button
+          type="button"
+          className={styles.contextMenuItem}
+          onClick={() => handleStartRename(contextMenu.conversationId)}
+        >
+          <span className="material-icons-round">edit</span>
+          Rename
+        </button>
+        <button
+          type="button"
+          className={styles.contextMenuItem}
+          onClick={(e) => handleBranchConversation(contextMenu.conversationId, e)}
+        >
+          <span className="material-icons-round">content_copy</span>
+          Duplicate
+        </button>
+        <button
+          type="button"
+          className={`${styles.contextMenuItem} ${styles.contextMenuItemDanger}`}
+          onClick={(e) => handleDeleteConversation(contextMenu.conversationId, e)}
+        >
+          <span className="material-icons-round">delete_outline</span>
+          Delete
+        </button>
+      </div>,
+      document.body,
+    )}
+    </>
   );
 }

@@ -242,7 +242,7 @@
     min-height: 0;
     overflow-y: auto;
     overflow-x: hidden;
-    padding: 16px;
+    padding: 12px;
     display: flex;
     flex-direction: column;
     gap: 12px;
@@ -258,9 +258,6 @@
 .emptyPanel {
     margin: auto 0;
     padding: 24px 20px;
-    border-radius: 16px;
-    border: 1px dashed rgba(0, 0, 0, 0.1);
-    background: rgba(255, 255, 255, 0.7);
     text-align: center;
     display: flex;
     flex-direction: column;
@@ -332,7 +329,7 @@
 .chatBubble {
     max-width: 100%;
     min-width: 0;
-    padding: 12px;
+    padding: 10px;
     border-radius: 16px;
     border: 1px solid var(--glass-border);
     background: rgba(255, 255, 255, 0.75);
@@ -349,7 +346,7 @@
     margin: 0;
     white-space: pre-wrap;
     font-family: inherit;
-    font-size: 13px;
+    font-size: 14px;
     line-height: 1.6;
     color: var(--text-primary);
     overflow-wrap: break-word;
@@ -450,7 +447,7 @@
     display: flex;
     justify-content: flex-end;
     align-items: center;
-    margin-top: 2px;
+    margin-top: 1px;
     gap: 2px;
     opacity: 0;
     transition: opacity 0.15s ease;
@@ -494,8 +491,10 @@
     color: var(--text-primary);
 }
 
-.chatActionBtn .material-icons-round {
-    font-size: 14px;
+.chatActionBtn :global(.material-icons-round) {
+    font-size: 18px;
+    transform: scale(0.83);
+    opacity: 0.6;
 }
 
 /* ========================================
@@ -503,7 +502,7 @@
    ======================================== */
 
 .inputBox {
-    margin: 0 12px 16px;
+    margin: 0 clamp(16px, 4vw, 64px) 24px;
     background: rgba(255, 255, 255, 0.65);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
@@ -513,6 +512,8 @@
     transition: border-color 0.2s ease, box-shadow 0.2s ease;
     position: relative;
     flex-shrink: 0;
+    container-type: inline-size;
+    container-name: inputBox;
 }
 
 .inputBox:focus-within {
@@ -559,12 +560,17 @@
     align-items: center;
     justify-content: space-between;
     padding: 4px 12px 8px;
+    overflow: hidden;
+    min-width: 0;
 }
 
 .inputBarLeft {
     display: flex;
     align-items: center;
     gap: 2px;
+    overflow: hidden;
+    min-width: 0;
+    flex: 1;
 }
 
 /* Model Selector */
@@ -648,7 +654,10 @@
 }
 
 .modelItemIcon {
-    font-size: 16px;
+    font-size: 18px;
+    transform: scale(0.78);
+    transform-origin: center;
+    margin: 0 -2px;
     color: var(--text-muted);
     flex-shrink: 0;
 }
@@ -671,6 +680,15 @@
     flex-shrink: 0;
 }
 
+/* Kill global orange focus outline on all input-bar buttons */
+.modelBtn:focus-visible,
+.presetBtn:focus-visible,
+.actionBtn:focus-visible,
+.compressBtn:focus-visible,
+.sendBtn:focus-visible {
+    outline: none;
+}
+
 /* Action buttons */
 .actionBtn {
     display: flex;
@@ -684,6 +702,7 @@
     cursor: pointer;
     color: var(--text-muted);
     transition: background 0.15s ease, color 0.15s ease;
+    flex-shrink: 0;
 }
 
 .actionBtn:hover {
@@ -691,8 +710,38 @@
     color: var(--text-secondary);
 }
 
-.actionBtn .material-icons-round {
-    font-size: 20px;
+.actionBtn :global(.material-icons-round) {
+    font-size: 18px;
+}
+
+/* Compress button – small, minimalist */
+.compressBtn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    background: transparent;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    color: var(--text-muted);
+    opacity: 0.7;
+    transition: background 0.15s ease, opacity 0.15s ease;
+}
+
+.compressBtn:hover:not(:disabled) {
+    background: rgba(0, 0, 0, 0.04);
+    opacity: 1;
+}
+
+.compressBtn:disabled {
+    opacity: 0.25;
+    cursor: default;
+}
+
+.compressBtn :global(.material-icons-round) {
+    font-size: 18px;
 }
 
 /* Voice recording active state */
@@ -752,6 +801,7 @@
     cursor: not-allowed;
     color: var(--text-muted);
     transition: all 0.15s ease;
+    flex-shrink: 0;
 }
 
 .sendBtn .material-icons-round {
@@ -1299,7 +1349,10 @@
 }
 
 .presetItemIcon {
-    font-size: 16px;
+    font-size: 18px;
+    transform: scale(0.78);
+    transform-origin: center;
+    margin: 0 -2px;
     color: var(--text-muted);
     flex-shrink: 0;
 }
@@ -1623,12 +1676,17 @@
    Full-width messages, no bubbles.
    ======================================== */
 
+.copilotBody.pageLayout {
+    padding-left: clamp(16px, 4vw, 64px);
+    padding-right: clamp(16px, 4vw, 64px);
+}
+
 .pageLayout .chatList {
     gap: 4px;
 }
 
 .pageLayout .chatMsg {
-    justify-content: flex-start;
+    justify-content: center;
     /* Suppress entry animation for all messages to avoid batch-load spam (V2 fix) */
     animation: none;
 }
@@ -1643,13 +1701,13 @@
     border: none;
     border-radius: 0;
     background: transparent;
-    padding: 12px 0;
+    padding: 10px 0;
 }
 
 /* User messages: left accent bar + subtle tint */
 .pageLayout .chatMsgUser .chatBubble {
     border-inline-start: 3px solid rgba(217, 116, 89, 0.35);
-    padding-block: 12px;
+    padding-block: 10px;
     padding-inline-start: 14px;
     padding-inline-end: 18px;
     background: rgba(217, 116, 89, 0.04);
@@ -1658,14 +1716,15 @@
     max-width: min(100%, 78ch);
 }
 
-/* AI messages: full-width stack in page mode */
+/* Messages: shrink-wrap to content in page mode */
 .pageLayout .chatStack {
-    max-width: 100%;
+    max-width: min(100%, 78ch);
+    width: fit-content;
 }
 
 /* AI messages: no decoration, full-width content */
 .pageLayout .chatMsgAi .chatBubble {
-    padding: 12px 0;
+    padding: 10px 0 2px;
 }
 
 /* Hover actions: left-align in page mode */
@@ -1826,5 +1885,29 @@
     .collapsedRail {
         background: rgba(255, 255, 255, 0.97);
         backdrop-filter: none;
+    }
+}
+
+/* ========================================
+   INPUT BAR — responsive container queries
+   Hide less-important buttons when the input
+   box is too narrow (e.g. copilot panel resized)
+   ======================================== */
+
+/* Empty class used to target the attach button separately from voice */
+.attachBtn {}
+
+@container inputBox (max-width: 360px) {
+    .presetBtn {
+        display: none;
+    }
+}
+
+@container inputBox (max-width: 280px) {
+    .attachBtn {
+        display: none;
+    }
+    .compressBtn {
+        display: none;
     }
 }

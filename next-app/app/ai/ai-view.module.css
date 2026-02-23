@@ -28,7 +28,7 @@
     overflow: hidden;
     position: fixed;
     top: var(--header-height, 44px);
-    left: var(--shell-sidebar-width, 260px);
+    left: var(--shell-sidebar-width, 220px);
     height: calc(100vh - var(--header-height, 44px));
     z-index: 905;
 }
@@ -137,11 +137,7 @@
     color: var(--text-primary);
 }
 
-.historyItem:hover .deleteBtn {
-    opacity: 1;
-}
-
-.historyItem:hover .branchBtn {
+.historyItem:hover .moreBtn {
     opacity: 1;
 }
 
@@ -169,55 +165,47 @@
     text-overflow: ellipsis;
 }
 
-.deleteBtn {
+.moreBtn {
     opacity: 0;
+    flex-shrink: 0;
     background: transparent;
     border: none;
     color: var(--text-muted);
     cursor: pointer;
-    padding: 2px;
-    border-radius: 4px;
+    padding: 4px;
+    border-radius: 6px;
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: all 0.2s;
+    transition: opacity 0.15s, background 0.15s;
 }
 
-.deleteBtn:hover {
-    color: var(--color-danger);
-    background: rgba(239, 68, 68, 0.1);
+.moreBtn:hover {
+    background: rgba(0, 0, 0, 0.06);
+    color: var(--text-primary);
 }
 
-.deleteBtn .material-icons-round {
-    font-size: 16px;
+.moreBtn .material-icons-round {
+    font-size: 18px;
 }
 
-.branchBtn {
-    opacity: 0;
+.renameInput {
+    flex: 1;
+    min-width: 0;
+    padding: 8px 12px;
     background: transparent;
-    border: none;
-    color: var(--text-muted);
-    cursor: pointer;
-    padding: 2px;
-    border-radius: 4px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: all 0.2s;
+    border: 1px solid rgba(0, 0, 0, 0.12);
+    border-radius: 6px;
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 13px;
+    outline: none;
 }
 
-.branchBtn:hover:not(:disabled) {
-    color: var(--accent-primary);
-    background: rgba(217, 116, 89, 0.1);
-}
-
-.branchBtn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-}
-
-.branchBtn .material-icons-round {
-    font-size: 16px;
+.renameInput:focus,
+.renameInput:focus-visible {
+    outline: none;
+    border-color: rgba(0, 0, 0, 0.25);
 }
 
 .activeHistory {
@@ -388,7 +376,7 @@
 }
 
 .chatInputContainer {
-    padding: 0 32px 24px;
+    padding: 0 clamp(16px, 4vw, 64px) 0;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -399,7 +387,7 @@
 /* CopilotInputCore's .inputBox needs full width on the /ai page */
 .chatInputContainer form {
     width: 100%;
-    max-width: 800px;
+    max-width: 720px;
     margin-left: 0;
     margin-right: 0;
 }
@@ -460,4 +448,57 @@
         background: rgba(255, 255, 255, 0.98);
         backdrop-filter: none;
     }
+}
+
+/* ---- Context menu (right-click on conversation) ---- */
+
+.contextMenu {
+    position: fixed;
+    z-index: 9999;
+    min-width: 105px;
+    padding: 4px;
+    background: #fff;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12), 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+.contextMenuItem {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 8px 6px 8px 3px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-primary);
+    font-size: 13px;
+    opacity: 0.6;
+    cursor: pointer;
+}
+
+.contextMenuItem :global(.material-icons-round) {
+    font-size: 18px;
+    transform: scale(0.83);
+    opacity: 0.6;
+}
+
+.contextMenuItem + .contextMenuItem {
+    border-top: 1px solid transparent;
+    border-image: linear-gradient(to right, transparent, rgba(0, 0, 0, 0.08), transparent) 1;
+}
+
+.contextMenuItem:hover {
+    background: rgba(0, 0, 0, 0.07);
+    color: var(--text-primary);
+}
+
+.contextMenuItemDanger {
+    color: var(--color-danger);
+}
+
+.contextMenuItemDanger:hover {
+    background: rgba(220, 38, 38, 0.1);
+    color: var(--color-danger);
 }

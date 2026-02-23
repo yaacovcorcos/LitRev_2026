@@ -649,32 +649,21 @@ registerApplyFunction("study_update", async (artifact) => {
     });
 });
 
-// draft_diff: write content to the Draft table (displayed by draft page) and Note table (provenance)
+// draft_diff: write content to the Draft table (displayed by draft page) and DraftVersion (provenance)
 registerApplyFunction("draft_diff", async (artifact) => {
     const payload = artifact.payload as DraftDiffPayload;
     const tipTapContent = textToTipTapDoc(payload.content);
 
-    // 1. Write to Note table (provenance/backup)
-    const existing = await listNotes(artifact.projectId);
-    const sectionNote = existing.find(
-        (n) => n.linkedSection?.toLowerCase() === payload.section.toLowerCase()
-    );
-
-    if (sectionNote) {
-        await updateNote(sectionNote.id, {
-            content: tipTapContent,
-        });
-    } else {
-        await createNote({
-            projectId: artifact.projectId,
-            title: payload.section,
-            content: tipTapContent,
-            linkedSection: payload.section,
-            source: "conversation",
-            sourceConversationId: artifact.conversationId ?? undefined,
-            tags: ["draft", payload.section.toLowerCase()],
-        });
-    }
+    // 1. Write immutable DraftVersion (replaces the old Note backup)
+    const { createDraftVersion } = await import("@/lib/server/draft-versions");
+    await createDraftVersion(SINGLE_USER_SCOPE, {
+        projectId: artifact.projectId,
+        section: payload.section,
+        content: tipTapContent as object,
+        wordCount: payload.wordCount,
+        artifactId: artifact.id,
+        conversationId: artifact.conversationId ?? undefined,
+    });
 
     // 2. Write to Draft table so the draft page displays it
     const { getDraft, saveDraft } = await import("@/lib/server/drafts");

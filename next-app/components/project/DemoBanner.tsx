@@ -28,31 +28,33 @@ export function DemoBanner({ projectId }: DemoBannerProps) {
     <>
       <div className={styles.banner}>
         <p className={styles.text}>
-          Sample review, based on Cramer et al. (2018): Yoga for Anxiety.
+          <span className={styles.sampleLabel}>Sample</span>
+          Based on Cramer et al. (2018)
         </p>
         <div className={styles.actions}>
           <button
             type="button"
-            className="btn btn-primary"
+            className={styles.linkBtn}
             onClick={() => router.push("/?create=new")}
           >
-            Create Your Own Review
+            New review
           </button>
+          <span className={styles.divider} aria-hidden="true" />
           <button
             type="button"
             className={styles.linkBtn}
             disabled={isResetting}
             onClick={() => setConfirmReset(true)}
           >
-            {isResetting ? "Resetting..." : "Reset Demo"}
+            {isResetting ? "Resetting…" : "Reset"}
           </button>
           <button
             type="button"
-            className={styles.linkBtn}
+            className={`${styles.linkBtn} ${styles.linkBtnDanger}`}
             disabled={isDeleting}
             onClick={() => setConfirmDelete(true)}
           >
-            {isDeleting ? "Deleting..." : "Delete"}
+            {isDeleting ? "Deleting…" : "Delete"}
           </button>
         </div>
       </div>
