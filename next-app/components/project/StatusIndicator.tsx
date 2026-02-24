@@ -24,7 +24,7 @@ export function StatusIndicator() {
         let cancelled = false;
         const fetchUsage = () => {
             getTokenUsageTodayAction(projectId).then((res) => {
-                if (!cancelled) setTotalTokens(res.totalTokens);
+                if (!cancelled && res.success) setTotalTokens(res.data.totalTokens);
             }).catch(() => {});
         };
 

@@ -578,12 +578,10 @@ function demoWelcomeMessage(): string {
 }
 
 async function deleteDemoProjectSideData(tx: Prisma.TransactionClient): Promise<void> {
-  await tx.aIConversation.deleteMany({ where: { projectId: DEMO_PROJECT_ID } });
+  // AIConversation, AgentRun, MemoryRetrieval, MemoryEmbedding, AutonomyConfig
+  // are now FK-cascaded from Project — no manual cleanup needed.
+  // AIUsage uses SET NULL (preserves analytics), so delete explicitly for clean demo reset.
   await tx.aIUsage.deleteMany({ where: { projectId: DEMO_PROJECT_ID } });
-  await tx.agentRun.deleteMany({ where: { projectId: DEMO_PROJECT_ID } });
-  await tx.memoryRetrieval.deleteMany({ where: { projectId: DEMO_PROJECT_ID } });
-  await tx.memoryEmbedding.deleteMany({ where: { projectId: DEMO_PROJECT_ID } });
-  await tx.autonomyConfig.deleteMany({ where: { projectId: DEMO_PROJECT_ID } });
 }
 
 async function seedDemoProject(scope: ServiceScope, reset: boolean): Promise<void> {

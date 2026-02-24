@@ -10,6 +10,7 @@ import { revalidatePath } from "next/cache";
 import { reviewArtifact, undoArtifact, getArtifact } from "@/lib/server/agent/artifacts";
 import { getRunTimeline } from "@/lib/server/agent/events";
 import { getAutonomyConfig, updateAutonomyConfig } from "@/lib/server/agent/autonomy";
+import { sanitizeErrorMessage } from "@/lib/server/action-utils";
 import type { ArtifactStatus } from "@/types/artifacts";
 import type { AutonomyPreset, AutonomyLevel } from "@/types/agent";
 
@@ -38,7 +39,7 @@ export async function reviewArtifactAction(
     } catch (error) {
         return {
             success: false,
-            error: error instanceof Error ? error.message : "Failed to review artifact",
+            error: sanitizeErrorMessage(error, "Failed to review artifact", { allowRawMessage: true }),
         };
     }
 }
@@ -53,7 +54,7 @@ export async function undoArtifactAction(artifactId: string) {
     } catch (error) {
         return {
             success: false,
-            error: error instanceof Error ? error.message : "Failed to undo artifact",
+            error: sanitizeErrorMessage(error, "Failed to undo artifact", { allowRawMessage: true }),
         };
     }
 }
@@ -69,7 +70,7 @@ export async function getArtifactAction(artifactId: string) {
     } catch (error) {
         return {
             success: false,
-            error: error instanceof Error ? error.message : "Failed to get artifact",
+            error: sanitizeErrorMessage(error, "Failed to get artifact", { allowRawMessage: true }),
         };
     }
 }
@@ -84,7 +85,7 @@ export async function getRunTimelineAction(runId: string) {
     } catch (error) {
         return {
             success: false,
-            error: error instanceof Error ? error.message : "Failed to get run timeline",
+            error: sanitizeErrorMessage(error, "Failed to get run timeline", { allowRawMessage: true }),
         };
     }
 }
@@ -99,7 +100,7 @@ export async function getAutonomyConfigAction(projectId?: string, userId?: strin
     } catch (error) {
         return {
             success: false as const,
-            error: error instanceof Error ? error.message : "Failed to get autonomy config",
+            error: sanitizeErrorMessage(error, "Failed to get autonomy config", { allowRawMessage: true }),
         };
     }
 }
@@ -119,7 +120,7 @@ export async function updateAutonomyAction(
     } catch (error) {
         return {
             success: false as const,
-            error: error instanceof Error ? error.message : "Failed to update autonomy config",
+            error: sanitizeErrorMessage(error, "Failed to update autonomy config", { allowRawMessage: true }),
         };
     }
 }

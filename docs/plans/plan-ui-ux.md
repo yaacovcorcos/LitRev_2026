@@ -22,6 +22,10 @@
 
 ### P0 — Trust & Correctness
 - [ ] Keep expanding real `axe()` coverage for newly introduced UI flows so CI remains a reliable accessibility gate.
+- [ ] Execute **Onboarding V2 UX Redesign** across home zero-state, sample entry, and guided new-project setup so first-time users see product value quickly.
+- [ ] Onboarding V2: Add per-step `Skip for now` / `Do later` actions (every step), with clear visual state and resumable progression.
+- [ ] Onboarding V2: Add contextual `Explain this` entrypoint on every guided step (modal or dedicated explainer surface) with concise, non-blocking guidance.
+- [ ] Onboarding V2: Replace manual-only guided input with AI-assisted actions (suggest/refine/generate) while keeping all fields editable and auditable.
 
 ### P1 — Consistency & Primitives
 - [ ] Continue standardizing overlays on shared primitives (replace remaining hand-rolled modal/dropdown patterns).
@@ -45,6 +49,7 @@
 - [ ] Manual UX sign-off checklist (both surfaces):
   - Project conversation mode.
   - `/ai` page mode.
+- [ ] Execute **Performance Program (UX surface)**: improve perceived speed with loading-state polish (skeletons, progressive rendering, reduced blocking spinners), faster route transitions, and interaction-latency-focused UI refinements.
 
 ## Recently Completed
 *Finished work that might still be fragile or require monitoring. Prune oldest first.*

@@ -328,8 +328,8 @@ export default function LedgerPage() {
         if (!id) return;
         let active = true;
         getProtocolAction(id)
-            .then((data) => {
-                if (active && data) setProtocol(data);
+            .then((result) => {
+                if (active && result.success && result.data) setProtocol(result.data);
             })
             .catch((err) => {
                 console.error("Failed to load protocol", err);
@@ -420,8 +420,9 @@ export default function LedgerPage() {
         if (!id) return;
         setIsLoadingFiles(true);
         try {
-            const files = await listStudyFilesAction(id, studyId);
-            setStudyFiles(files);
+            const result = await listStudyFilesAction(id, studyId);
+            if (!result.success) { console.error("Failed to load files:", result.error); setStudyFiles([]); return; }
+            setStudyFiles(result.data);
         } catch (err) {
             console.error("Failed to load study files", err);
             setStudyFiles([]);
@@ -444,13 +445,15 @@ export default function LedgerPage() {
         if (!id || !selectedStudy) return;
         const formData = new FormData();
         formData.append("file", file);
-        await uploadStudyFileAction(id, selectedStudy.id, formData);
+        const uploadResult = await uploadStudyFileAction(id, selectedStudy.id, formData);
+        if (!uploadResult.success) { console.error("Upload failed:", uploadResult.error); return; }
         await loadStudyFiles(selectedStudy.id);
     }, [id, selectedStudy, loadStudyFiles]);
 
     const handleDeleteFile = useCallback(async (fileId: string) => {
         if (!id || !selectedStudy) return;
-        await deleteFileAssetAction(id, fileId);
+        const delResult = await deleteFileAssetAction(id, fileId);
+        if (!delResult.success) { console.error("Delete failed:", delResult.error); return; }
         await loadStudyFiles(selectedStudy.id);
     }, [id, selectedStudy, loadStudyFiles]);
 
@@ -472,7 +475,9 @@ export default function LedgerPage() {
         try {
             const formData = new FormData();
             formData.append("file", file);
-            const { study, fileAsset } = await importStudyWithPdfAction(id, formData);
+            const importResult = await importStudyWithPdfAction(id, formData);
+            if (!importResult.success) throw new Error(importResult.error);
+            const { study, fileAsset } = importResult.data;
             addStudy(id, study);
 
             // Fire Stage 1 extraction in the background (non-blocking)

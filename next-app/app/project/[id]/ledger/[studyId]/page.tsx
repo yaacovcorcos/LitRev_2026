@@ -107,8 +107,9 @@ export default function StudyDetailPage() {
     const loadFiles = useCallback(async () => {
         if (!id || !studyId) return;
         try {
-            const files = await listStudyFilesAction(id, studyId);
-            setStudyFiles(files);
+            const result = await listStudyFilesAction(id, studyId);
+            if (!result.success) { setAlertMsg("Failed to load study files."); return; }
+            setStudyFiles(result.data);
         } catch (err) {
             console.error("Failed to load files", err);
             setAlertMsg("Failed to load study files.");
@@ -129,7 +130,8 @@ export default function StudyDetailPage() {
                 // Try to get draft from backend first, fallback to localStorage
                 let draft: DraftState | null = null;
                 try {
-                    draft = await getDraftAction(id);
+                    const draftResult = await getDraftAction(id);
+                    draft = draftResult.success ? draftResult.data : null;
                 } catch {
                     draft = loadDraftState(id);
                 }
@@ -198,13 +200,15 @@ export default function StudyDetailPage() {
         if (!id || !studyId) return;
         const formData = new FormData();
         formData.append("file", file);
-        await uploadStudyFileAction(id, studyId, formData);
+        const uploadResult = await uploadStudyFileAction(id, studyId, formData);
+        if (!uploadResult.success) { console.error("Upload failed:", uploadResult.error); return; }
         await loadFiles();
     }, [id, studyId, loadFiles]);
 
     const handleDeleteFile = useCallback(async (fileId: string) => {
         if (!id) return;
-        await deleteFileAssetAction(id, fileId);
+        const delResult = await deleteFileAssetAction(id, fileId);
+        if (!delResult.success) { console.error("Delete failed:", delResult.error); return; }
         await loadFiles();
     }, [id, loadFiles]);
 

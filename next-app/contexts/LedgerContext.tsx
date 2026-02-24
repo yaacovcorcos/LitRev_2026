@@ -38,13 +38,8 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
       }
       const entries = await Promise.all(
         projects.map(async (project) => {
-          try {
-            const studies = await listStudiesAction(project.id);
-            return [project.id, studies] as const;
-          } catch (err) {
-            console.error("Failed to load studies for project", project.id, err);
-            return [project.id, []] as const;
-          }
+          const result = await listStudiesAction(project.id);
+          return [project.id, result.success ? result.data : []] as const;
         })
       );
 
@@ -68,7 +63,9 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
       const projectId = (e as CustomEvent).detail?.projectId as string | undefined;
       if (!projectId) return;
       listStudiesAction(projectId)
-        .then((studies) => setLedgerMap((prev) => ({ ...prev, [projectId]: studies })))
+        .then((result) => {
+          if (result.success) setLedgerMap((prev) => ({ ...prev, [projectId]: result.data }));
+        })
         .catch(console.error);
     };
     window.addEventListener("litrev:ledger-changed", handler);
@@ -116,10 +113,11 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
     }));
 
     try {
-      await deleteStudiesAction(projectId, studyIds);
+      const delResult = await deleteStudiesAction(projectId, studyIds);
+      if (!delResult.success) throw new Error(delResult.error);
       // Refresh from server to ensure consistency
-      const refreshed = await listStudiesAction(projectId);
-      setLedgerMap((prev) => ({ ...prev, [projectId]: refreshed }));
+      const refreshResult = await listStudiesAction(projectId);
+      setLedgerMap((prev) => ({ ...prev, [projectId]: refreshResult.success ? refreshResult.data : snapshot }));
     } catch {
       // Rollback on failure
       setLedgerMap((prev) => ({ ...prev, [projectId]: snapshot }));
@@ -129,12 +127,13 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
 
   /** Create a single new study via upsert (does NOT use replaceStudies). */
   const upsertNewStudy = useCallback(async (projectId: string, study: Study) => {
-    const saved = await upsertStudyAction(projectId, study);
+    const result = await upsertStudyAction(projectId, study);
+    if (!result.success) throw new Error(result.error);
     setLedgerMap((prev) => ({
       ...prev,
-      [projectId]: [...(prev[projectId] ?? []), saved],
+      [projectId]: [...(prev[projectId] ?? []), result.data],
     }));
-    return saved;
+    return result.data;
   }, []);
 
   const getPaperCount = useCallback(
@@ -150,24 +149,26 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
       const cached = ledgerMap[projectId]?.find((s) => s.id === studyId);
       if (cached) return cached;
       // Fallback to server
-      return getStudyAction(projectId, studyId);
+      const result = await getStudyAction(projectId, studyId);
+      return result.success ? result.data : null;
     },
     [ledgerMap]
   );
 
   const updateSingleStudy = useCallback(
     async (projectId: string, studyId: string, updates: Partial<StudyInput>): Promise<Study> => {
-      const updated = await updateStudyAction(projectId, studyId, updates);
+      const result = await updateStudyAction(projectId, studyId, updates);
+      if (!result.success) throw new Error(result.error);
       // Update local cache
       setLedgerMap((prev) => {
         const existing = prev[projectId] ?? [];
         const idx = existing.findIndex((s) => s.id === studyId);
         if (idx === -1) return prev;
         const next = [...existing];
-        next[idx] = updated;
+        next[idx] = result.data;
         return { ...prev, [projectId]: next };
       });
-      return updated;
+      return result.data;
     },
     []
   );

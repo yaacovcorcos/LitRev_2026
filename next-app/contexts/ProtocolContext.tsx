@@ -113,9 +113,9 @@ export function ProtocolProvider({ projectId, initialData, children }: ProtocolP
                 return;
             }
             try {
-                const remote = await getProtocolAction(projectId);
-                if (isActive && remote) {
-                    setProtocol(remote);
+                const result = await getProtocolAction(projectId);
+                if (isActive && result.success && result.data) {
+                    setProtocol(result.data);
                 }
             } catch (err) {
                 console.error("Failed to load protocol from backend", err);
@@ -136,10 +136,11 @@ export function ProtocolProvider({ projectId, initialData, children }: ProtocolP
             if (saveTimerRef.current) {
                 clearTimeout(saveTimerRef.current);
             }
-            saveTimerRef.current = setTimeout(() => {
-                saveProtocolAction(projectId, data).catch((err) => {
-                    console.error("Failed to save protocol to backend", err);
-                });
+            saveTimerRef.current = setTimeout(async () => {
+                const result = await saveProtocolAction(projectId, data);
+                if (!result.success) {
+                    console.error("Failed to save protocol to backend:", result.error);
+                }
             }, 500);
         },
         [projectId]
@@ -403,8 +404,8 @@ export function ProtocolProvider({ projectId, initialData, children }: ProtocolP
         setProtocol(defaults);
         setIsDirty(false);
         if (projectId) {
-            saveProtocolAction(projectId, defaults).catch((err) => {
-                console.error("Failed to reset protocol in backend", err);
+            saveProtocolAction(projectId, defaults).then((result) => {
+                if (!result.success) console.error("Failed to reset protocol in backend:", result.error);
             });
         }
     }, [projectId]);

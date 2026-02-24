@@ -12,6 +12,7 @@ import {
     type UpdateNoteInput,
     type ListNotesOptions,
 } from "@/lib/server/notes";
+import { withAction, type ActionResult } from "@/lib/server/action-utils";
 
 /**
  * Create a note from plain text (backwards-compatible with save-from-conversation).
@@ -22,40 +23,42 @@ export async function createNoteAction(
     source: "manual" | "conversation" = "conversation",
     sourceConversationId?: string,
     sourceMessageId?: string,
-) {
-    const note = await createNote({
-        projectId,
-        content: textToTipTapDoc(content),
-        source,
-        sourceConversationId,
-        sourceMessageId,
+): Promise<ActionResult<{ noteId: string }>> {
+    return withAction(async () => {
+        const note = await createNote({
+            projectId,
+            content: textToTipTapDoc(content),
+            source,
+            sourceConversationId,
+            sourceMessageId,
+        });
+        return { noteId: note.id };
     });
-    return { success: true as const, noteId: note.id };
 }
 
 /**
  * Create a note with full input (TipTap JSON content, tags, etc.).
  */
 export async function createNoteFullAction(input: CreateNoteInput) {
-    return createNote(input);
+    return withAction(() => createNote(input));
 }
 
 export async function getNoteAction(id: string) {
-    return getNote(id);
+    return withAction(() => getNote(id));
 }
 
 export async function listNotesAction(projectId: string, options?: ListNotesOptions) {
-    return listNotes(projectId, options);
+    return withAction(() => listNotes(projectId, options));
 }
 
 export async function updateNoteAction(id: string, input: UpdateNoteInput) {
-    return updateNote(id, input);
+    return withAction(() => updateNote(id, input));
 }
 
 export async function deleteNoteAction(id: string) {
-    return deleteNote(id);
+    return withAction(() => deleteNote(id));
 }
 
 export async function searchNotesAction(projectId: string, query: string) {
-    return searchNotes(projectId, query);
+    return withAction(() => searchNotes(projectId, query));
 }

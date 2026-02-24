@@ -161,7 +161,7 @@ function ProjectShellInner({ projectId, children }: ProjectShellInnerProps) {
     useEffect(() => {
         if (copilotStudyId && projectId) {
             getStudyAction(projectId, copilotStudyId)
-                .then((study) => setStudyTitle(study?.title ?? null))
+                .then((result) => setStudyTitle(result.success && result.data ? result.data.title : null))
                 .catch(() => setStudyTitle(null));
         } else {
             setStudyTitle(null);

@@ -18,6 +18,7 @@ import {
 } from "@/app/actions/notes";
 import type { NoteContent } from "@/lib/server/notes";
 import { DemoGuideCard } from "@/components/project/DemoGuideCard";
+import { addProjectDataChangedListener } from "@/lib/project-data-events";
 import styles from "./notes.module.css";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -54,7 +55,7 @@ export default function NotesPage() {
     const [notes, setNotes] = useState<Note[]>([]);
     const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState("");
-    const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "idle">("idle");
+    const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "idle" | "error">("idle");
     const [tagInput, setTagInput] = useState("");
     const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(true);
@@ -101,13 +102,21 @@ export default function NotesPage() {
         if (!projectId) return;
         setIsLoading(true);
         const result = await listNotesAction(projectId);
-        setNotes(result as Note[]);
+        if (result.success) setNotes(result.data as Note[]);
         setIsLoading(false);
     }, [projectId]);
 
     useEffect(() => {
         loadNotes();
     }, [loadNotes]);
+
+    useEffect(() => {
+        return addProjectDataChangedListener((detail) => {
+            if (detail.projectId !== projectId) return;
+            if (!detail.domains.includes("notes")) return;
+            loadNotes();
+        });
+    }, [projectId, loadNotes]);
 
     // ── Search ───────────────────────────────────────────────────────────────
 
@@ -119,10 +128,10 @@ export default function NotesPage() {
                 if (!projectId) return;
                 if (value.trim()) {
                     const results = await searchNotesAction(projectId, value);
-                    setNotes(results as Note[]);
+                    if (results.success) setNotes(results.data as Note[]);
                 } else {
                     const results = await listNotesAction(projectId);
-                    setNotes(results as Note[]);
+                    if (results.success) setNotes(results.data as Note[]);
                 }
             }, 300);
         },
@@ -138,7 +147,11 @@ export default function NotesPage() {
             if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
             saveTimerRef.current = setTimeout(async () => {
                 pendingSaveRef.current = null;
-                await updateNoteAction(noteId, { content: content as NoteContent });
+                const result = await updateNoteAction(noteId, { content: content as NoteContent });
+                if (!result.success) {
+                    setSaveStatus("error");
+                    return;
+                }
                 setSaveStatus("saved");
                 // Update local state
                 setNotes((prev) =>
@@ -163,8 +176,9 @@ export default function NotesPage() {
             if (titleTimerRef.current) clearTimeout(titleTimerRef.current);
             titleTimerRef.current = setTimeout(async () => {
                 pendingTitleRef.current = null;
-                await updateNoteAction(selectedNoteId, { title: value });
-                setSaveStatus("saved");
+                const result = await updateNoteAction(selectedNoteId, { title: value });
+                if (result.success) setSaveStatus("saved");
+                else setSaveStatus("error");
             }, 500);
         },
         [selectedNoteId],
@@ -198,8 +212,9 @@ export default function NotesPage() {
             setSaveStatus("idle");
 
             // Fetch fresh note data
-            const note = await getNoteAction(noteId);
-            if (note) {
+            const noteResult = await getNoteAction(noteId);
+            if (noteResult.success && noteResult.data) {
+                const note = noteResult.data;
                 setNotes((prev) =>
                     prev.map((n) => (n.id === noteId ? (note as Note) : n)),
                 );
@@ -212,12 +227,13 @@ export default function NotesPage() {
 
     const handleCreateNote = useCallback(async () => {
         if (!projectId) return;
-        const note = await createNoteFullAction({
+        const result = await createNoteFullAction({
             projectId,
             content: emptyDoc as NoteContent,
             source: "manual",
         });
-        const created = note as Note;
+        if (!result.success) return;
+        const created = result.data as Note;
         setNotes((prev) => [created, ...prev]);
         setSelectedNoteId(created.id);
         setSaveStatus("idle");
@@ -227,7 +243,8 @@ export default function NotesPage() {
 
     const handleDeleteNote = useCallback(
         async (noteId: string) => {
-            await deleteNoteAction(noteId);
+            const result = await deleteNoteAction(noteId);
+            if (!result.success) return;
             setNotes((prev) => prev.filter((n) => n.id !== noteId));
             if (selectedNoteId === noteId) {
                 setSelectedNoteId(null);
@@ -245,7 +262,8 @@ export default function NotesPage() {
             const trimmed = tag.trim().toLowerCase();
             if (selectedNote.tags.includes(trimmed)) return;
             const newTags = [...selectedNote.tags, trimmed];
-            await updateNoteAction(selectedNote.id, { tags: newTags });
+            const result = await updateNoteAction(selectedNote.id, { tags: newTags });
+            if (!result.success) return;
             setNotes((prev) =>
                 prev.map((n) => (n.id === selectedNote.id ? { ...n, tags: newTags } : n)),
             );
@@ -258,7 +276,8 @@ export default function NotesPage() {
         async (tag: string) => {
             if (!selectedNote) return;
             const newTags = selectedNote.tags.filter((t) => t !== tag);
-            await updateNoteAction(selectedNote.id, { tags: newTags });
+            const result = await updateNoteAction(selectedNote.id, { tags: newTags });
+            if (!result.success) return;
             setNotes((prev) =>
                 prev.map((n) => (n.id === selectedNote.id ? { ...n, tags: newTags } : n)),
             );

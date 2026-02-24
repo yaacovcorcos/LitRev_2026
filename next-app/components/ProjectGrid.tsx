@@ -3,6 +3,7 @@ import Link from "next/link";
 import styles from "@/components/ProjectGrid.module.css";
 import { useLedger } from "@/contexts/LedgerContext";
 import { isDemoProjectId } from "@/lib/demo/constants";
+import { SampleReviewCard } from "@/components/project/SampleReviewCard";
 
 type ProjectGridProps = {
   projects: Project[];
@@ -90,6 +91,7 @@ export function ProjectGrid({ projects, viewMode, onNewProject }: ProjectGridPro
           </Link>
         );
       })}
+      <SampleReviewCard viewMode={viewMode} />
     </div>
   );
 }

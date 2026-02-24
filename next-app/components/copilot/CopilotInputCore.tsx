@@ -236,6 +236,7 @@ export function CopilotInputCore({
         sendMessage(text, page, section, selectedModel, effectiveMode, studyId);
         setInput("");
         setModeOverride(null);
+        requestAnimationFrame(() => textareaRef.current?.focus());
     }, [input, page, section, studyId, sendMessage, selectedModel, pendingAttachment, effectiveMode]);
 
     const handleStop = useCallback(() => {
@@ -403,6 +404,7 @@ export function CopilotInputCore({
                     onKeyDown={(e) => {
                         if (e.key === "Enter" && !e.shiftKey) {
                             e.preventDefault();
+                            e.stopPropagation();
                             handleSend();
                         }
                     }}
@@ -577,8 +579,9 @@ export function CopilotInputCore({
                                         } else if (!loadingProjectFiles) {
                                             setLoadingProjectFiles(true);
                                             listProjectFilesAction(projectId)
-                                                .then((files) => {
-                                                    const pdfs = files.filter((f) => f.format === "pdf" || f.mimeType.includes("pdf"));
+                                                .then((result) => {
+                                                    if (!result.success) { console.error(result.error); return; }
+                                                    const pdfs = result.data.filter((f) => f.format === "pdf" || f.mimeType.includes("pdf"));
                                                     fileListCacheRef.current = { files: pdfs, fetchedAt: Date.now() };
                                                     setProjectFiles(pdfs);
                                                 })

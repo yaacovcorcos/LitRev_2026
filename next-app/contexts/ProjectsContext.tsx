@@ -22,8 +22,12 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
 
   const refresh = useCallback(async () => {
     try {
-      const loaded = await listProjectsAction();
-      setProjects(loaded);
+      const result = await listProjectsAction();
+      if (result.success) {
+        setProjects(result.data);
+      } else {
+        console.error("Failed to load projects from backend:", result.error);
+      }
     } catch (err) {
       console.error("Failed to load projects from backend", err);
     }
@@ -54,9 +58,13 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
 
   const addProject = useCallback(async (project: Project): Promise<Project | null> => {
     try {
-      const created = await createProjectAction(project);
-      setProjects((prev) => [created, ...prev.filter((p) => p.id !== created.id)]);
-      return created;
+      const result = await createProjectAction(project);
+      if (!result.success) {
+        console.error("Failed to create project:", result.error);
+        return null;
+      }
+      setProjects((prev) => [result.data, ...prev.filter((p) => p.id !== result.data.id)]);
+      return result.data;
     } catch (err) {
       console.error("Failed to create project", err);
       return null;
@@ -65,7 +73,11 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
 
   const deleteProject = useCallback(async (id: string): Promise<boolean> => {
     try {
-      await deleteProjectAction(id);
+      const result = await deleteProjectAction(id);
+      if (!result.success) {
+        console.error("Failed to delete project:", result.error);
+        return false;
+      }
       setProjects((prev) => prev.filter((project) => project.id !== id));
       return true;
     } catch (err) {

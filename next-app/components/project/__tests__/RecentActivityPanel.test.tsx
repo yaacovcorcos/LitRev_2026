@@ -17,7 +17,7 @@ describe("RecentActivityPanel", () => {
     });
 
     it("renders loading then activity rows", async () => {
-        mockGetRecentActivityAction.mockResolvedValue([
+        mockGetRecentActivityAction.mockResolvedValue({ success: true, data: [
             {
                 id: "a1",
                 kind: "artifact_applied",
@@ -26,7 +26,7 @@ describe("RecentActivityPanel", () => {
                 icon: "auto_awesome",
                 href: "/project/project-1/protocol",
             },
-        ]);
+        ] });
 
         render(<RecentActivityPanel projectId="project-1" />);
 
@@ -38,7 +38,7 @@ describe("RecentActivityPanel", () => {
     });
 
     it("renders empty state when no activity exists", async () => {
-        mockGetRecentActivityAction.mockResolvedValue([]);
+        mockGetRecentActivityAction.mockResolvedValue({ success: true, data: [] });
 
         render(<RecentActivityPanel projectId="project-1" />);
 

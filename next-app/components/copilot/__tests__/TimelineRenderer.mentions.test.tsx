@@ -52,10 +52,10 @@ describe("TimelineRenderer mention and metadata behavior", () => {
   });
 
   it("renders mentioned-study chips and supports one-click add", async () => {
-    addMentionedStudyAction.mockResolvedValue({
+    addMentionedStudyAction.mockResolvedValue({ success: true, data: {
       created: true,
       study: { id: "study-1", title: "Turner et al. 2016" },
-    });
+    } });
 
     const items: TimelineItem[] = [
       {
@@ -90,11 +90,11 @@ describe("TimelineRenderer mention and metadata behavior", () => {
   });
 
   it("shows already-in-ledger state when server reports duplicate", async () => {
-    addMentionedStudyAction.mockResolvedValue({
+    addMentionedStudyAction.mockResolvedValue({ success: true, data: {
       created: false,
       matchedBy: "doi",
       study: { id: "study-1", title: "Turner et al. 2016" },
-    });
+    } });
 
     const items: TimelineItem[] = [
       {

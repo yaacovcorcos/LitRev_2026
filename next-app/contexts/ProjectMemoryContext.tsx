@@ -30,6 +30,7 @@ import {
   type CreateProjectMemoryInput,
   type UpdateProjectMemoryInput,
 } from "@/app/actions/memory";
+import { addProjectDataChangedListener } from "@/lib/project-data-events";
 
 type ProjectMemoryContextValue = {
   memories: ProjectMemory[];
@@ -77,8 +78,9 @@ export function ProjectMemoryProvider({ projectId, children }: ProjectMemoryProv
     try {
       setIsLoading(true);
       setError(null);
-      const data = await getProjectMemoriesAction(projectId, { status: "active" });
-      setMemories(data as ProjectMemory[]);
+      const result = await getProjectMemoriesAction(projectId, { status: "active" });
+      if (!result.success) throw new Error(result.error);
+      setMemories(result.data as ProjectMemory[]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load memories");
     } finally {
@@ -89,6 +91,14 @@ export function ProjectMemoryProvider({ projectId, children }: ProjectMemoryProv
   useEffect(() => {
     loadMemories();
   }, [loadMemories]);
+
+  useEffect(() => {
+    return addProjectDataChangedListener((detail) => {
+      if (detail.projectId !== projectId) return;
+      if (!detail.domains.includes("memory")) return;
+      void loadMemories();
+    });
+  }, [projectId, loadMemories]);
 
   // Filtered memories
   const filteredMemories = useMemo(() => {
@@ -120,36 +130,41 @@ export function ProjectMemoryProvider({ projectId, children }: ProjectMemoryProv
   // CRUD operations
   const createMemory = useCallback(
     async (input: Omit<CreateProjectMemoryInput, "projectId">) => {
-      const created = await createProjectMemoryAction({ ...input, projectId });
-      setMemories((prev) => [created as ProjectMemory, ...prev]);
-      return created as ProjectMemory;
+      const result = await createProjectMemoryAction({ ...input, projectId });
+      if (!result.success) throw new Error(result.error);
+      setMemories((prev) => [result.data as ProjectMemory, ...prev]);
+      return result.data as ProjectMemory;
     },
     [projectId]
   );
 
   const updateMemory = useCallback(async (id: string, input: UpdateProjectMemoryInput) => {
-    const updated = await updateProjectMemoryAction(id, input);
+    const result = await updateProjectMemoryAction(id, input);
+    if (!result.success) throw new Error(result.error);
+    const updated = result.data as ProjectMemory;
     setMemories((prev) => {
       // If version changed, it's a new memory (old one marked as revised)
       const existingIdx = prev.findIndex((m) => m.id === id);
-      if (existingIdx >= 0 && (updated as ProjectMemory).id !== id) {
+      if (existingIdx >= 0 && updated.id !== id) {
         // New version created, remove old, add new
         const next = prev.filter((m) => m.id !== id);
-        return [updated as ProjectMemory, ...next];
+        return [updated, ...next];
       }
       // In-place update
-      return prev.map((m) => (m.id === id ? (updated as ProjectMemory) : m));
+      return prev.map((m) => (m.id === id ? updated : m));
     });
-    return updated as ProjectMemory;
+    return updated;
   }, []);
 
   const archiveMemory = useCallback(async (id: string) => {
-    await archiveProjectMemoryAction(id);
+    const result = await archiveProjectMemoryAction(id);
+    if (!result.success) throw new Error(result.error);
     setMemories((prev) => prev.filter((m) => m.id !== id));
   }, []);
 
   const deleteMemory = useCallback(async (id: string) => {
-    await deleteProjectMemoryAction(id);
+    const result = await deleteProjectMemoryAction(id);
+    if (!result.success) throw new Error(result.error);
     setMemories((prev) => prev.filter((m) => m.id !== id));
   }, []);
 

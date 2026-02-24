@@ -60,18 +60,23 @@ import {
     validateSemanticRolloutStatus,
     type MemoryContext,
     type RetrievedMemory,
+
+    // PRISMA Stats
+    getPRISMAStats,
+    type PRISMAStats,
 } from "@/lib/server/memory";
+import { withAction, type ActionResult } from "@/lib/server/action-utils";
 
 // ============================================================================
 // USER MEMORY ACTIONS
 // ============================================================================
 
 export async function setUserMemoryAction(input: CreateUserMemoryInput) {
-    return setUserMemory(input);
+    return withAction(() => setUserMemory(input));
 }
 
 export async function getUserMemoryAction(userId: string, key: string) {
-    return getUserMemory(userId, key);
+    return withAction(() => getUserMemory(userId, key));
 }
 
 export async function getUserMemoriesAction(
@@ -82,26 +87,26 @@ export async function getUserMemoriesAction(
         tags?: string[];
     }
 ) {
-    return getUserMemories(userId, options);
+    return withAction(() => getUserMemories(userId, options));
 }
 
 export async function updateUserMemoryAction(
     id: string,
     input: UpdateUserMemoryInput
 ) {
-    return updateUserMemory(id, input);
+    return withAction(() => updateUserMemory(id, input));
 }
 
 export async function archiveUserMemoryAction(id: string) {
-    return archiveUserMemory(id);
+    return withAction(() => archiveUserMemory(id));
 }
 
 export async function deleteUserMemoryAction(id: string) {
-    return deleteUserMemory(id);
+    return withAction(() => deleteUserMemory(id));
 }
 
 export async function searchUserMemoriesAction(userId: string, query: string) {
-    return searchUserMemories(userId, query);
+    return withAction(() => searchUserMemories(userId, query));
 }
 
 // ============================================================================
@@ -109,11 +114,11 @@ export async function searchUserMemoriesAction(userId: string, query: string) {
 // ============================================================================
 
 export async function createProjectMemoryAction(input: CreateProjectMemoryInput) {
-    return createProjectMemory(input);
+    return withAction(() => createProjectMemory(input));
 }
 
 export async function getProjectMemoryAction(id: string) {
-    return getProjectMemory(id);
+    return withAction(() => getProjectMemory(id));
 }
 
 export async function getProjectMemoriesAction(
@@ -126,33 +131,33 @@ export async function getProjectMemoriesAction(
         tags?: string[];
     }
 ) {
-    return getProjectMemories(projectId, options);
+    return withAction(() => getProjectMemories(projectId, options));
 }
 
 export async function updateProjectMemoryAction(
     id: string,
     input: UpdateProjectMemoryInput
 ) {
-    return updateProjectMemory(id, input);
+    return withAction(() => updateProjectMemory(id, input));
 }
 
 export async function archiveProjectMemoryAction(id: string) {
-    return archiveProjectMemory(id);
+    return withAction(() => archiveProjectMemory(id));
 }
 
 export async function deleteProjectMemoryAction(id: string) {
-    return deleteProjectMemory(id);
+    return withAction(() => deleteProjectMemory(id));
 }
 
 export async function searchProjectMemoriesAction(
     projectId: string,
     query: string
 ) {
-    return searchProjectMemories(projectId, query);
+    return withAction(() => searchProjectMemories(projectId, query));
 }
 
 export async function getProjectMemoryHistoryAction(id: string) {
-    return getProjectMemoryHistory(id);
+    return withAction(() => getProjectMemoryHistory(id));
 }
 
 // ============================================================================
@@ -160,11 +165,11 @@ export async function getProjectMemoryHistoryAction(id: string) {
 // ============================================================================
 
 export async function createStudyMemoryAction(input: CreateStudyMemoryInput) {
-    return createStudyMemory(input);
+    return withAction(() => createStudyMemory(input));
 }
 
 export async function getStudyMemoryAction(id: string) {
-    return getStudyMemory(id);
+    return withAction(() => getStudyMemory(id));
 }
 
 export async function getStudyMemoriesAction(
@@ -177,7 +182,7 @@ export async function getStudyMemoriesAction(
         tags?: string[];
     }
 ) {
-    return getStudyMemories(studyId, options);
+    return withAction(() => getStudyMemories(studyId, options));
 }
 
 export async function getProjectStudyMemoriesAction(
@@ -189,18 +194,18 @@ export async function getProjectStudyMemoriesAction(
         tags?: string[];
     }
 ) {
-    return getProjectStudyMemories(projectId, options);
+    return withAction(() => getProjectStudyMemories(projectId, options));
 }
 
 export async function updateStudyMemoryAction(
     id: string,
     input: UpdateStudyMemoryInput
 ) {
-    return updateStudyMemory(id, input);
+    return withAction(() => updateStudyMemory(id, input));
 }
 
 export async function deleteStudyMemoryAction(id: string) {
-    return deleteStudyMemory(id);
+    return withAction(() => deleteStudyMemory(id));
 }
 
 export async function searchStudyMemoriesAction(
@@ -208,17 +213,17 @@ export async function searchStudyMemoriesAction(
     query: string,
     options?: { studyId?: string }
 ) {
-    return searchStudyMemories(projectId, query, options);
+    return withAction(() => searchStudyMemories(projectId, query, options));
 }
 
 export async function batchCreateStudyMemoriesAction(
     memories: CreateStudyMemoryInput[]
 ) {
-    return batchCreateStudyMemories(memories);
+    return withAction(() => batchCreateStudyMemories(memories));
 }
 
 export async function getStudyMemorySummaryAction(studyId: string) {
-    return getStudyMemorySummary(studyId);
+    return withAction(() => getStudyMemorySummary(studyId));
 }
 
 // ============================================================================
@@ -234,8 +239,8 @@ export async function retrieveMemoriesAction(
         includeProject?: boolean;
         includeStudy?: boolean;
     }
-): Promise<RetrievedMemory[]> {
-    return retrieveMemories(context, options);
+): Promise<ActionResult<RetrievedMemory[]>> {
+    return withAction(() => retrieveMemories(context, options));
 }
 
 export async function retrieveAndFormatMemoriesAction(
@@ -244,41 +249,39 @@ export async function retrieveAndFormatMemoriesAction(
         maxMemories?: number;
         minRelevance?: number;
     }
-): Promise<string> {
-    return retrieveAndFormatMemories(context, options);
+): Promise<ActionResult<string>> {
+    return withAction(() => retrieveAndFormatMemories(context, options));
 }
 
 export async function getMemoryRetrievalStatsAction(projectId: string) {
-    return getMemoryRetrievalStats(projectId);
+    return withAction(() => getMemoryRetrievalStats(projectId));
 }
 
 export async function getMemoryQualityMetricsAction(projectId: string, userId: string = "single-user") {
-    return getMemoryQualityMetrics(projectId, userId);
+    return withAction(() => getMemoryQualityMetrics(projectId, userId));
 }
 
 export async function runMemoryMaintenanceAction(
     projectId: string,
     options?: { userId?: string; dryRun?: boolean },
 ) {
-    return runMemoryMaintenance({
+    return withAction(() => runMemoryMaintenance({
         projectId,
         userId: options?.userId ?? "single-user",
         dryRun: options?.dryRun ?? false,
-    });
+    }));
 }
 
 export async function getSemanticRolloutStatusAction() {
-    return validateSemanticRolloutStatus();
+    return withAction(() => validateSemanticRolloutStatus());
 }
 
 // ============================================================================
 // PRISMA STATS ACTIONS
 // ============================================================================
 
-import { getPRISMAStats, type PRISMAStats } from "@/lib/server/memory";
-
-export async function getPRISMAStatsAction(projectId: string): Promise<PRISMAStats> {
-    return getPRISMAStats(projectId);
+export async function getPRISMAStatsAction(projectId: string): Promise<ActionResult<PRISMAStats>> {
+    return withAction(() => getPRISMAStats(projectId));
 }
 
 // ============================================================================

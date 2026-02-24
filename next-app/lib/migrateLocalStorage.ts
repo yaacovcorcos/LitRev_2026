@@ -66,9 +66,19 @@ export async function migrateLocalStorageToBackend(): Promise<MigrationResult> {
 
   for (const project of projects) {
     try {
-      const existing = await getProjectAction(project.id);
-      if (!existing) {
-        await createProjectAction(project);
+      const existingResult = await getProjectAction(project.id);
+      if (!existingResult.success) {
+        hadError = true;
+        lastError = existingResult.error;
+        continue;
+      }
+      if (!existingResult.data) {
+        const createResult = await createProjectAction(project);
+        if (!createResult.success) {
+          hadError = true;
+          lastError = createResult.error;
+          continue;
+        }
         migratedProjects += 1;
       }
     } catch (err) {
@@ -81,10 +91,10 @@ export async function migrateLocalStorageToBackend(): Promise<MigrationResult> {
     if (hasProtocolData(project.id)) {
       try {
         const protocol = loadProtocolData(project.id);
-        const existingProtocol = await getProtocolAction(project.id);
-        if (!existingProtocol) {
-          await saveProtocolAction(project.id, protocol);
-          migratedProtocols += 1;
+        const protocolResult = await getProtocolAction(project.id);
+        if (!protocolResult.success || !protocolResult.data) {
+          const saveResult = await saveProtocolAction(project.id, protocol);
+          if (saveResult.success) migratedProtocols += 1;
         }
       } catch (err) {
         console.error("Failed to migrate protocol", project.id, err);
@@ -95,10 +105,11 @@ export async function migrateLocalStorageToBackend(): Promise<MigrationResult> {
     try {
       const localStudies = loadLedger(project.id, []);
       if (!localStudies.length) continue;
-      const existingStudies = await listStudiesAction(project.id);
+      const existingResult = await listStudiesAction(project.id);
+      const existingStudies = existingResult.success ? existingResult.data : [];
       if (!existingStudies.length) {
-        const saved = await replaceStudiesAction(project.id, localStudies);
-        migratedStudies += saved.length;
+        const saveResult = await replaceStudiesAction(project.id, localStudies);
+        migratedStudies += saveResult.success ? saveResult.data.length : 0;
       }
     } catch (err) {
       console.error("Failed to migrate studies", project.id, err);
@@ -110,10 +121,10 @@ export async function migrateLocalStorageToBackend(): Promise<MigrationResult> {
       const draftRaw = window.localStorage.getItem(draftKey);
       if (!draftRaw) continue;
       const localDraft = loadDraftState(project.id);
-      const existingDraft = await getDraftAction(project.id);
-      if (!existingDraft) {
-        await saveDraftAction(project.id, localDraft);
-        migratedDrafts += 1;
+      const draftResult = await getDraftAction(project.id);
+      if (!draftResult.success || !draftResult.data) {
+        const saveDraftResult = await saveDraftAction(project.id, localDraft);
+        if (saveDraftResult.success) migratedDrafts += 1;
       }
     } catch (err) {
       console.error("Failed to migrate draft", project.id, err);
@@ -124,11 +135,11 @@ export async function migrateLocalStorageToBackend(): Promise<MigrationResult> {
       const copilotKey = `${PROJECT_COPILOT_PREFIX}:${project.id}`;
       const copilotRaw = window.localStorage.getItem(copilotKey);
       if (!copilotRaw) continue;
-      const existingCopilot = await getProjectCopilotAction(project.id);
-      if (!existingCopilot) {
+      const copilotResult = await getProjectCopilotAction(project.id);
+      if (!copilotResult.success || !copilotResult.data) {
         const parsed = JSON.parse(copilotRaw);
-        await saveProjectCopilotAction(project.id, parsed);
-        migratedProjectCopilots += 1;
+        const saveCopilotResult = await saveProjectCopilotAction(project.id, parsed);
+        if (saveCopilotResult.success) migratedProjectCopilots += 1;
       }
     } catch (err) {
       console.error("Failed to migrate project copilot", project.id, err);

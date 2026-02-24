@@ -76,9 +76,9 @@ export function RecentActivityPanel({ projectId, limit = 8 }: RecentActivityPane
         setHasError(false);
 
         getRecentActivityAction(projectId, limit)
-            .then((next) => {
+            .then((result) => {
                 if (!isActive) return;
-                setItems(next);
+                if (result.success) setItems(result.data);
             })
             .catch(() => {
                 if (!isActive) return;

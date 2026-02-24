@@ -188,7 +188,7 @@ function MemoryPageContent() {
     if (activeTab === "study" && studyMemories === null) {
       setTabLoading(true);
       getProjectStudyMemoriesAction(id)
-        .then((data) => setStudyMemories(data as unknown as StudyMemoryItem[]))
+        .then((result) => setStudyMemories(result.success ? result.data as unknown as StudyMemoryItem[] : []))
         .catch(() => setStudyMemories([]))
         .finally(() => setTabLoading(false));
     }
@@ -196,7 +196,7 @@ function MemoryPageContent() {
     if (activeTab === "preferences" && userPreferences === null) {
       setTabLoading(true);
       getUserMemoriesAction(SINGLE_USER_ID, { status: "active" })
-        .then((data) => setUserPreferences(data as unknown as UserPref[]))
+        .then((result) => setUserPreferences(result.success ? result.data as unknown as UserPref[] : []))
         .catch(() => setUserPreferences([]))
         .finally(() => setTabLoading(false));
     }
@@ -204,7 +204,7 @@ function MemoryPageContent() {
     if (activeTab === "prisma" && prismaStats === null) {
       setTabLoading(true);
       getPRISMAStatsAction(id)
-        .then((data) => setPrismaStats(data))
+        .then((result) => setPrismaStats(result.success ? result.data : null))
         .catch(() => setPrismaStats(null))
         .finally(() => setTabLoading(false));
     }
@@ -217,9 +217,9 @@ function MemoryPageContent() {
         getSemanticRolloutStatusAction(),
       ])
         .then(([retrieval, quality, rollout]) => {
-          setRetrievalStats(retrieval as RetrievalStats);
-          setQualityMetrics(quality as MemoryQualityMetrics);
-          setRolloutStatus(rollout as SemanticRolloutStatus);
+          setRetrievalStats(retrieval.success ? retrieval.data as RetrievalStats : null);
+          setQualityMetrics(quality.success ? quality.data as MemoryQualityMetrics : null);
+          setRolloutStatus(rollout.success ? rollout.data as SemanticRolloutStatus : null);
         })
         .catch(() => {
           setRetrievalStats(null);
@@ -277,8 +277,10 @@ function MemoryPageContent() {
     setMaintenanceResult(null);
     try {
       const result = await runMemoryMaintenanceAction(id, { userId: SINGLE_USER_ID, dryRun });
-      const archived = `${result.archived.user + result.archived.project + result.archived.study}`;
-      const candidates = `${result.candidates.user + result.candidates.project + result.candidates.study}`;
+      if (!result.success) throw new Error(result.error);
+      const data = result.data;
+      const archived = `${data.archived.user + data.archived.project + data.archived.study}`;
+      const candidates = `${data.candidates.user + data.candidates.project + data.candidates.study}`;
       setMaintenanceResult(
         dryRun
           ? `Dry run complete: ${candidates} low-utility memories flagged.`
@@ -288,8 +290,8 @@ function MemoryPageContent() {
         getMemoryRetrievalStatsAction(id),
         getMemoryQualityMetricsAction(id, SINGLE_USER_ID),
       ]);
-      setRetrievalStats(retrieval as RetrievalStats);
-      setQualityMetrics(quality as MemoryQualityMetrics);
+      setRetrievalStats(retrieval.success ? retrieval.data as RetrievalStats : null);
+      setQualityMetrics(quality.success ? quality.data as MemoryQualityMetrics : null);
     } catch {
       setMaintenanceResult("Maintenance failed. Please retry.");
     } finally {

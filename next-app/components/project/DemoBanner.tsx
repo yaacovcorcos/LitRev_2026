@@ -73,7 +73,11 @@ export function DemoBanner({ projectId }: DemoBannerProps) {
           setResetError(null);
           setIsResetting(true);
           resetDemoProjectAction(DEMO_PROJECT_ID)
-            .then(async () => {
+            .then(async (result) => {
+              if (!result.success) {
+                setResetError(result.error);
+                return;
+              }
               await refresh();
               window.location.assign(`/project/${DEMO_PROJECT_ID}`);
             })

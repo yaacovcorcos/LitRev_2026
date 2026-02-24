@@ -18,6 +18,8 @@
 
 ### P1 — Copilot Prompt Hardening
 - [ ] Search Mode: Strengthen explicit Boolean-query and MeSH suggestion guidance for evidence-retrieval requests.
+- [ ] Onboarding V2: Define step-specific prompt pack for guided setup AI assists (`suggest`, `refine`, `generate`) with strict output schemas and deterministic fallback behavior.
+- [ ] Onboarding V2: Add explainer-mode prompt contract for `Explain this` surfaces (plain-language, concise, and grounded to current project context).
 
 ### P2 — Context & Extraction Hardening
 - [ ] Memory Extraction: Raise temp slightly or add examples of implicit vs explicit decisions to fix under-extraction.

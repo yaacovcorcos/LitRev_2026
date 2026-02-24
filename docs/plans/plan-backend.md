@@ -28,6 +28,14 @@
   - Schema: citation-to-study mapping, order tracking.
   - TipTap editor custom node for citations `[1]`.
   - Ledger sync for automatic renumbering.
+- [ ] Execute **Onboarding V2 Backend Enablement**:
+  - Add server-action/service support for AI-assisted guided-setup steps (`suggest`, `refine`, `generate`) with typed result contracts.
+  - Persist per-step onboarding status (`todo` / `skipped` / `later` / `completed`) so progress is resumable and queryable.
+  - Add backend support for contextual guided-step explainers (`Explain this`) tied to current project/protocol state.
+- [ ] Execute **Performance Program (Backend + Data Path)**:
+  - Define and track baseline latency metrics (home load, project route switch, first guided-step action, sample-open action).
+  - Add cache strategy for hot read paths and reduce redundant queries/action round-trips.
+  - Optimize slow server actions in onboarding/sample/project bootstrap flows with measurable before/after timings.
 
 ## Recently Completed
 *Finished work that might still be fragile or require monitoring. Prune oldest first.*

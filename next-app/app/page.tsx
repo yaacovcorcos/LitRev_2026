@@ -12,9 +12,7 @@ import { Modal } from "@/components/Modal";
 import { useProjects } from "@/contexts/ProjectsContext";
 import { useRouter, useSearchParams } from "next/navigation";
 import { openOrCreateDemoProjectAction } from "@/app/actions/demo";
-import { shouldLaunchGuidedSetupForProjectAction } from "@/app/actions/onboarding";
 import { DEMO_PROJECT_ID } from "@/lib/demo/constants";
-import { shouldLaunchGuidedSetupFallback } from "@/lib/demo/onboarding";
 import layoutStyles from "./home.module.css";
 
 const VALID_SORTS: SortMode[] = ["name", "created", "modified"];
@@ -102,7 +100,7 @@ function HomeContent() {
     }
   }, []);
 
-  const handleCreateProject = async (name: string, description: string) => {
+  const handleCreateProject = async (name: string, description: string, guided: boolean) => {
     setCreateError(null);
     const created = await addProject(buildProject(name, description));
     if (!created) {
@@ -110,14 +108,7 @@ function HomeContent() {
       return;
     }
     closeModal();
-    let shouldGuide = false;
-    try {
-      shouldGuide = await shouldLaunchGuidedSetupForProjectAction(created.id);
-    } catch (err) {
-      console.error("Failed to load backend guided setup preference, using local fallback", err);
-      shouldGuide = shouldLaunchGuidedSetupFallback(created.id);
-    }
-    if (shouldGuide) {
+    if (guided) {
       router.push(`/project/${created.id}/onboarding`);
       return;
     }
@@ -128,9 +119,18 @@ function HomeContent() {
     setIsOpeningSample(true);
     setSampleError(null);
     try {
-      const sampleProject = await openOrCreateDemoProjectAction();
+      const result = await openOrCreateDemoProjectAction();
+      if (!result.success) {
+        const existingSample = projects.find((project) => project.id === DEMO_PROJECT_ID);
+        if (existingSample) {
+          router.push(`/project/${existingSample.id}`);
+          return;
+        }
+        setSampleError(`Unable to open sample review. ${result.error}`);
+        return;
+      }
       await refresh();
-      router.push(`/project/${sampleProject.id}`);
+      router.push(`/project/${result.data.id}`);
     } catch (err) {
       console.error("Failed to open sample project", err);
       const existingSample = projects.find((project) => project.id === DEMO_PROJECT_ID);
@@ -138,8 +138,7 @@ function HomeContent() {
         router.push(`/project/${existingSample.id}`);
         return;
       }
-      const details = err instanceof Error ? err.message : "Unknown error";
-      setSampleError(`Unable to open sample review. ${details}`);
+      setSampleError("Unable to open sample review. Please try again.");
     } finally {
       setIsOpeningSample(false);
     }
@@ -184,23 +183,7 @@ function HomeContent() {
     <AppShell activeNav="projects" onNewProject={openModal} mainClassName={layoutStyles.noSidePadding}>
       <div className={layoutStyles.page}>
         <div className={layoutStyles.headerArea}>
-          <TopBar
-            title="Your Projects"
-            subtitle="Keep your literature reviews organized"
-            actions={
-              <button
-                type="button"
-                className="header-btn"
-                onClick={() => {
-                  void handleOpenSampleProject();
-                }}
-                disabled={isOpeningSample}
-              >
-                <span className="material-icons-round">science</span>
-                {isOpeningSample ? "Opening sample..." : "Open sample"}
-              </button>
-            }
-          />
+          <TopBar title="Your Projects" subtitle="Keep your literature reviews organized" />
 
           <ControlsBar
             sortMode={sortMode}
@@ -208,7 +191,6 @@ function HomeContent() {
             onSortChange={handleSortChange}
             onViewChange={handleViewChange}
           />
-          {sampleError ? <p className={layoutStyles.sampleError} role="alert">{sampleError}</p> : null}
         </div>
 
         <div className={layoutStyles.scrollArea}>
@@ -237,7 +219,9 @@ function HomeContent() {
             const name = (formData.get("projectName") as string).trim();
             const desc = (formData.get("projectDesc") as string).trim();
             if (!name) return;
-            await handleCreateProject(name, desc);
+            const submitter = (e.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null;
+            const intent = submitter?.value === "guided" ? "guided" : "blank";
+            await handleCreateProject(name, desc, intent === "guided");
             e.currentTarget.reset();
           }}
         >
@@ -254,8 +238,11 @@ function HomeContent() {
             <button type="button" className="btn btn-outline cancel-btn" onClick={closeModal}>
               Cancel
             </button>
-            <button type="submit" className="btn btn-primary create-btn">
-              Create Project
+            <button type="submit" name="intent" value="blank" className="btn btn-outline create-btn">
+              Create Blank Project
+            </button>
+            <button type="submit" name="intent" value="guided" className="btn btn-primary create-btn">
+              Create with Guided Setup
             </button>
           </div>
         </form>

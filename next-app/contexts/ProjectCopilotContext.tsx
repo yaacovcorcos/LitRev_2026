@@ -19,6 +19,7 @@ import {
     createDefaultProjectCopilotState,
 } from "@/lib/projectCopilotStorage";
 import { processAIStream } from "@/lib/ai/stream-processor";
+import { dispatchProjectDataChanged, getChangedDomainsForAcceptedArtifact } from "@/lib/project-data-events";
 import {
     listConversations,
     getConversation,
@@ -293,11 +294,15 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
         if (!projectId) return;
         setIsLoadingConversations(true);
         try {
-            const convos = await listConversations({
+            const result = await listConversations({
                 projectId,
                 studyId: studyFilterRef.current,
             });
-            const mapped = convos.map((c) => ({
+            if (!result.success) {
+                console.error("Failed to load conversations:", result.error);
+                return;
+            }
+            const mapped = result.data.map((c) => ({
                 id: c.id,
                 title: c.title,
                 messageCount: c.messageCount,
@@ -369,11 +374,15 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
 
             setIsLoadingConversations(true);
             try {
-                const convos = await listConversations({
+                const result = await listConversations({
                     projectId,
                     studyId: studyFilterRef.current,
                 });
-                const mapped = convos.map((c) => ({
+                if (!result.success) {
+                    console.error("Failed to load conversations:", result.error);
+                    return;
+                }
+                const mapped = result.data.map((c) => ({
                     id: c.id,
                     title: c.title,
                     messageCount: c.messageCount,
@@ -498,9 +507,10 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             setPendingChoices([]);
             if (!projectId) return;
             setIsConversationLoading(true);
-            const convo = await getConversation(conversationId, { expectedProjectId: projectId });
+            const convoResult = await getConversation(conversationId, { expectedProjectId: projectId });
             // Bail if a newer selectConversation call has already taken over.
             if (gen !== selectGenRef.current) return;
+            const convo = convoResult.success ? convoResult.data : null;
             if (convo) {
                 setCurrentConversationId(convo.id);
                 // Convert conversation messages to CopilotMessages
@@ -601,12 +611,17 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
         setCurrentRunId(null);
         setPendingChoices([]);
         try {
-            const { id } = await createConversation({
+            const convResult = await createConversation({
                 projectId,
                 studyId,
                 page,
                 context: studyId ? "study" : "project",
             });
+            if (!convResult.success) {
+                console.error("Failed to create conversation:", convResult.error);
+                return;
+            }
+            const { id } = convResult.data;
             // Set the new conversation and clear messages
             setCurrentConversationId(id);
             setState((prev) => ({
@@ -622,7 +637,11 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
 
     const renameConversation = useCallback(async (conversationId: string, title: string) => {
         try {
-            await updateConversationTitle(conversationId, title);
+            const result = await updateConversationTitle(conversationId, title);
+            if (!result.success) {
+                console.error("Failed to rename conversation:", result.error);
+                return;
+            }
             setConversations((prev) =>
                 prev.map((c) =>
                     c.id === conversationId ? { ...c, title } : c
@@ -635,7 +654,11 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
 
     const deleteConversationHandler = useCallback(async (conversationId: string) => {
         try {
-            await archiveConversation(conversationId);
+            const result = await archiveConversation(conversationId);
+            if (!result.success) {
+                console.error("Failed to delete conversation:", result.error);
+                return;
+            }
             setConversations((prev) => prev.filter((c) => c.id !== conversationId));
             if (currentConversationId === conversationId) {
                 setCurrentConversationId(null);
@@ -666,9 +689,13 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             setCurrentRunId(null);
             setPendingChoices([]);
 
-            const branched = await branchConversationAction({ conversationId, upToMessageId, upToCreatedAt });
+            const branchResult = await branchConversationAction({ conversationId, upToMessageId, upToCreatedAt });
+            if (!branchResult.success) {
+                console.error("Failed to branch conversation:", branchResult.error);
+                return;
+            }
             await loadConversations();
-            await selectConversation(branched.id);
+            await selectConversation(branchResult.data.id);
         } catch (err) {
             console.error("Failed to branch conversation:", err);
         }
@@ -681,12 +708,16 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             const formData = new FormData();
             formData.append("file", file);
             const result = await uploadChatAttachmentAction(projectId, formData);
+            if (!result.success) {
+                console.error("Failed to upload attachment:", result.error);
+                return;
+            }
             setPendingAttachment({
-                fileAssetId: result.fileAssetId,
-                filename: result.filename,
-                size: result.size,
-                mimeType: result.mimeType,
-                extractedText: result.extractedText,
+                fileAssetId: result.data.fileAssetId,
+                filename: result.data.filename,
+                size: result.data.size,
+                mimeType: result.data.mimeType,
+                extractedText: result.data.extractedText,
                 isExisting: false,
             });
         } catch (err) {
@@ -701,12 +732,16 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
         setIsAttaching(true);
         try {
             const result = await extractTextFromExistingFileAction(projectId, fileAssetId);
+            if (!result.success) {
+                console.error("Failed to attach existing file:", result.error);
+                return;
+            }
             setPendingAttachment({
-                fileAssetId: result.fileAssetId,
-                filename: result.filename,
-                size: result.size,
-                mimeType: result.mimeType,
-                extractedText: result.extractedText,
+                fileAssetId: result.data.fileAssetId,
+                filename: result.data.filename,
+                size: result.data.size,
+                mimeType: result.data.mimeType,
+                extractedText: result.data.extractedText,
                 isExisting: true,
             });
         } catch (err) {
@@ -1041,14 +1076,18 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             let convId = currentConversationId;
             if (!convId) {
                 try {
-                    const { id } = await createConversation({
+                    const convResult = await createConversation({
                         projectId,
                         studyId,
                         page,
                         context: conversationContext,
                     });
-                    convId = id;
-                    setCurrentConversationId(id);
+                    if (convResult.success) {
+                        convId = convResult.data.id;
+                        setCurrentConversationId(convResult.data.id);
+                    } else {
+                        console.error("Failed to create conversation:", convResult.error);
+                    }
                 } catch (err) {
                     console.error("Failed to create conversation:", err);
                 }
@@ -1230,8 +1269,6 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
         note?: string,
         editedPayload?: Record<string, unknown>,
     ) => {
-        const artifactType = artifacts.get(artifactId)?.type;
-
         // Optimistic update — artifacts map
         setArtifacts((prev) => {
             const next = new Map(prev);
@@ -1276,11 +1313,15 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             return;
         }
 
-        if (
-            status === "accepted" &&
-            (artifactType === "study_update" || artifactType === "study_proposal")
-        ) {
-            window.dispatchEvent(new CustomEvent("litrev:ledger-changed", { detail: { projectId } }));
+        if (status === "accepted" && result.artifact) {
+            const domains = getChangedDomainsForAcceptedArtifact(result.artifact.type, result.artifact.payload);
+            if (domains.length > 0) {
+                dispatchProjectDataChanged({
+                    projectId,
+                    domains,
+                    source: "artifact_review",
+                });
+            }
         }
     }, [artifacts, projectId, updateState]);
 
@@ -1289,8 +1330,9 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
         setIsSummarizing(true);
         try {
             const result = await summarizeConversationAction(currentConversationId);
+            if (!result.success) throw new Error(result.error);
             // Switch to the new conversation
-            await selectConversation(result.newConversationId);
+            await selectConversation(result.data.newConversationId);
             await loadConversations();
         } catch (err) {
             console.error("Failed to summarize conversation:", err);

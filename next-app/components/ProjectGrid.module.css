@@ -64,6 +64,11 @@
     cursor: pointer;
 }
 
+.sampleCard {
+    border-style: dashed;
+    border-color: color-mix(in srgb, var(--accent-primary) 38%, transparent);
+}
+
 .newProjectContent {
     display: flex;
     flex-direction: column;
@@ -331,6 +336,38 @@
     display: none;
 }
 
+.sampleCardDismissBtn {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    z-index: 3;
+    width: 28px;
+    height: 28px;
+    border-radius: 999px;
+    border: 1px solid var(--glass-border);
+    background: color-mix(in srgb, var(--bg-body) 75%, white 25%);
+    color: var(--text-secondary);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+}
+
+.sampleCardDismissBtn:hover {
+    color: var(--text-primary);
+}
+
+.sampleCardDismissBtn:focus-visible {
+    outline: 2px solid var(--accent-primary);
+    outline-offset: 2px;
+}
+
+.sampleCardError {
+    margin-top: 8px;
+    color: var(--color-danger);
+    font-size: 12px;
+    line-height: 1.35;
+}
 
 @media (max-width: 1200px) {
     .projectGrid {
@@ -352,5 +389,10 @@
         font-size: 18px;
         -webkit-line-clamp: 3;
         line-clamp: 3;
+    }
+
+    .sampleCardDismissBtn {
+        top: 8px;
+        right: 8px;
     }
 }

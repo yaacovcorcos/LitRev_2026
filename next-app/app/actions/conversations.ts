@@ -1,6 +1,7 @@
 "use server";
 
 import { prisma } from "@/lib/server/prisma";
+import { withAction, type ActionResult } from "@/lib/server/action-utils";
 import type { CopilotPage } from "@/types/ai";
 
 // =============================================================================
@@ -81,38 +82,40 @@ export async function listConversations(params: {
     studyId?: string;
     page?: CopilotPage;
     limit?: number;
-}): Promise<ConversationSummary[]> {
-    const { userId, workspaceId, projectId, studyId, page, limit = 50 } = params;
+}): Promise<ActionResult<ConversationSummary[]>> {
+    return withAction(async () => {
+        const { userId, workspaceId, projectId, studyId, page, limit = 50 } = params;
 
-    const conversations = await prisma.aIConversation.findMany({
-        where: {
-            userId: userId || undefined,
-            workspaceId: workspaceId || undefined,
-            projectId: projectId || undefined,
-            studyId: studyId || undefined,
-            page: page || undefined,
-            archived: false,
-        },
-        include: {
-            _count: {
-                select: { messages: true },
+        const conversations = await prisma.aIConversation.findMany({
+            where: {
+                userId: userId || undefined,
+                workspaceId: workspaceId || undefined,
+                projectId: projectId || undefined,
+                studyId: studyId || undefined,
+                page: page || undefined,
+                archived: false,
             },
-        },
-        orderBy: { updatedAt: "desc" },
-        take: limit,
-    });
+            include: {
+                _count: {
+                    select: { messages: true },
+                },
+            },
+            orderBy: { updatedAt: "desc" },
+            take: limit,
+        });
 
-    return conversations.map((conv) => ({
-        id: conv.id,
-        title: conv.title,
-        context: conv.context,
-        page: conv.page,
-        projectId: conv.projectId,
-        studyId: conv.studyId,
-        messageCount: conv._count.messages,
-        createdAt: conv.createdAt.toISOString(),
-        updatedAt: conv.updatedAt.toISOString(),
-    }));
+        return conversations.map((conv) => ({
+            id: conv.id,
+            title: conv.title,
+            context: conv.context,
+            page: conv.page,
+            projectId: conv.projectId,
+            studyId: conv.studyId,
+            messageCount: conv._count.messages,
+            createdAt: conv.createdAt.toISOString(),
+            updatedAt: conv.updatedAt.toISOString(),
+        }));
+    });
 }
 
 /**
@@ -126,76 +129,78 @@ export async function getConversation(
         expectedProjectId?: string;
         includeArchived?: boolean;
     }
-): Promise<ConversationWithMessages | null> {
-    const userContext = getCurrentUserContext();
-    const userId = params?.userId || userContext.userId;
-    const workspaceId = params?.workspaceId || userContext.workspaceId;
-    const expectedProjectId = params?.expectedProjectId;
-    const includeArchived = params?.includeArchived === true;
+): Promise<ActionResult<ConversationWithMessages | null>> {
+    return withAction(async () => {
+        const userContext = getCurrentUserContext();
+        const userId = params?.userId || userContext.userId;
+        const workspaceId = params?.workspaceId || userContext.workspaceId;
+        const expectedProjectId = params?.expectedProjectId;
+        const includeArchived = params?.includeArchived === true;
 
-    const conversation = await prisma.aIConversation.findFirst({
-        where: {
-            id: conversationId,
-            userId: userId || undefined,
-            workspaceId: workspaceId || undefined,
-            projectId: expectedProjectId || undefined,
-            archived: includeArchived ? undefined : false,
-        },
-        include: {
-            messages: {
-                orderBy: { createdAt: "asc" },
+        const conversation = await prisma.aIConversation.findFirst({
+            where: {
+                id: conversationId,
+                userId: userId || undefined,
+                workspaceId: workspaceId || undefined,
+                projectId: expectedProjectId || undefined,
+                archived: includeArchived ? undefined : false,
             },
-            _count: {
-                select: { messages: true },
+            include: {
+                messages: {
+                    orderBy: { createdAt: "asc" },
+                },
+                _count: {
+                    select: { messages: true },
+                },
             },
-        },
+        });
+
+        if (!conversation) return null;
+
+        const artifacts = await prisma.artifact.findMany({
+            where: { conversationId: conversation.id },
+            orderBy: { createdAt: "asc" },
+            select: {
+                id: true,
+                type: true,
+                status: true,
+                title: true,
+                payload: true,
+                version: true,
+                createdAt: true,
+            },
+        });
+
+        return {
+            id: conversation.id,
+            title: conversation.title,
+            context: conversation.context,
+            page: conversation.page,
+            projectId: conversation.projectId,
+            studyId: conversation.studyId,
+            messageCount: conversation._count.messages,
+            createdAt: conversation.createdAt.toISOString(),
+            updatedAt: conversation.updatedAt.toISOString(),
+            messages: conversation.messages.map((msg) => ({
+                id: msg.id,
+                role: msg.role as "user" | "assistant" | "system",
+                content: msg.content,
+                attachments: msg.attachments
+                    ? (msg.attachments as unknown as MessageAttachment[])
+                    : undefined,
+                createdAt: msg.createdAt.toISOString(),
+            })),
+            artifacts: artifacts.map((artifact) => ({
+                id: artifact.id,
+                type: artifact.type,
+                status: artifact.status,
+                title: artifact.title,
+                payload: artifact.payload,
+                version: artifact.version,
+                createdAt: artifact.createdAt.toISOString(),
+            })),
+        };
     });
-
-    if (!conversation) return null;
-
-    const artifacts = await prisma.artifact.findMany({
-        where: { conversationId: conversation.id },
-        orderBy: { createdAt: "asc" },
-        select: {
-            id: true,
-            type: true,
-            status: true,
-            title: true,
-            payload: true,
-            version: true,
-            createdAt: true,
-        },
-    });
-
-    return {
-        id: conversation.id,
-        title: conversation.title,
-        context: conversation.context,
-        page: conversation.page,
-        projectId: conversation.projectId,
-        studyId: conversation.studyId,
-        messageCount: conversation._count.messages,
-        createdAt: conversation.createdAt.toISOString(),
-        updatedAt: conversation.updatedAt.toISOString(),
-        messages: conversation.messages.map((msg) => ({
-            id: msg.id,
-            role: msg.role as "user" | "assistant" | "system",
-            content: msg.content,
-            attachments: msg.attachments
-                ? (msg.attachments as unknown as MessageAttachment[])
-                : undefined,
-            createdAt: msg.createdAt.toISOString(),
-        })),
-        artifacts: artifacts.map((artifact) => ({
-            id: artifact.id,
-            type: artifact.type,
-            status: artifact.status,
-            title: artifact.title,
-            payload: artifact.payload,
-            version: artifact.version,
-            createdAt: artifact.createdAt.toISOString(),
-        })),
-    };
 }
 
 /**
@@ -210,27 +215,29 @@ export async function createConversation(params: {
     page?: CopilotPage;
     context?: string;
     title?: string;
-}): Promise<{ id: string }> {
-    const { context = "project", title } = params;
+}): Promise<ActionResult<{ id: string }>> {
+    return withAction(async () => {
+        const { context = "project", title } = params;
 
-    // Use provided IDs or fall back to placeholder for single-user mode
-    const userContext = getCurrentUserContext();
-    const userId = params.userId || userContext.userId;
-    const workspaceId = params.workspaceId || userContext.workspaceId;
-    const { projectId, studyId } = params;
+        // Use provided IDs or fall back to placeholder for single-user mode
+        const userContext = getCurrentUserContext();
+        const userId = params.userId || userContext.userId;
+        const workspaceId = params.workspaceId || userContext.workspaceId;
+        const { projectId, studyId } = params;
 
-    const conversation = await prisma.aIConversation.create({
-        data: {
-            userId,
-            workspaceId,
-            projectId,
-            studyId,
-            page: params.page,
-            context,
-            title: title || null,
-        },
+        const conversation = await prisma.aIConversation.create({
+            data: {
+                userId,
+                workspaceId,
+                projectId,
+                studyId,
+                page: params.page,
+                context,
+                title: title || null,
+            },
+        });
+        return { id: conversation.id };
     });
-    return { id: conversation.id };
 }
 
 /**
@@ -241,39 +248,41 @@ export async function addMessage(params: {
     role: "user" | "assistant" | "system";
     content: string;
     attachments?: MessageAttachment[];
-}): Promise<{ id: string }> {
-    const { conversationId, role, content, attachments } = params;
+}): Promise<ActionResult<{ id: string }>> {
+    return withAction(async () => {
+        const { conversationId, role, content, attachments } = params;
 
-    // Add the message
-    const message = await prisma.aIMessage.create({
-        data: {
-            conversationId,
-            role,
-            content,
-            attachments: attachments && attachments.length > 0
-                ? (attachments as unknown as any)
-                : undefined,
-        },
-    });
-
-    // Auto-generate title from first user message if no title exists.
-    // Uses updateMany with a null-title filter so concurrent first messages
-    // don't race — only the first writer wins; subsequent writes are no-ops.
-    if (role === "user") {
-        const autoTitle = content.length > 50 ? content.slice(0, 47) + "..." : content;
-        await prisma.aIConversation.updateMany({
-            where: { id: conversationId, title: null },
-            data: { title: autoTitle },
+        // Add the message
+        const message = await prisma.aIMessage.create({
+            data: {
+                conversationId,
+                role,
+                content,
+                attachments: attachments && attachments.length > 0
+                    ? (attachments as unknown as any)
+                    : undefined,
+            },
         });
-    }
 
-    // Update conversation's updatedAt
-    await prisma.aIConversation.update({
-        where: { id: conversationId },
-        data: { updatedAt: new Date() },
+        // Auto-generate title from first user message if no title exists.
+        // Uses updateMany with a null-title filter so concurrent first messages
+        // don't race — only the first writer wins; subsequent writes are no-ops.
+        if (role === "user") {
+            const autoTitle = content.length > 50 ? content.slice(0, 47) + "..." : content;
+            await prisma.aIConversation.updateMany({
+                where: { id: conversationId, title: null },
+                data: { title: autoTitle },
+            });
+        }
+
+        // Update conversation's updatedAt
+        await prisma.aIConversation.update({
+            where: { id: conversationId },
+            data: { updatedAt: new Date() },
+        });
+
+        return { id: message.id };
     });
-
-    return { id: message.id };
 }
 
 /**
@@ -282,29 +291,35 @@ export async function addMessage(params: {
 export async function updateConversationTitle(
     conversationId: string,
     title: string
-): Promise<void> {
-    await prisma.aIConversation.update({
-        where: { id: conversationId },
-        data: { title },
+): Promise<ActionResult<void>> {
+    return withAction(async () => {
+        await prisma.aIConversation.update({
+            where: { id: conversationId },
+            data: { title },
+        });
     });
 }
 
 /**
  * Archive a conversation (soft delete)
  */
-export async function archiveConversation(conversationId: string): Promise<void> {
-    await prisma.aIConversation.update({
-        where: { id: conversationId },
-        data: { archived: true },
+export async function archiveConversation(conversationId: string): Promise<ActionResult<void>> {
+    return withAction(async () => {
+        await prisma.aIConversation.update({
+            where: { id: conversationId },
+            data: { archived: true },
+        });
     });
 }
 
 /**
  * Delete a conversation permanently
  */
-export async function deleteConversation(conversationId: string): Promise<void> {
-    await prisma.aIConversation.delete({
-        where: { id: conversationId },
+export async function deleteConversation(conversationId: string): Promise<ActionResult<void>> {
+    return withAction(async () => {
+        await prisma.aIConversation.delete({
+            where: { id: conversationId },
+        });
     });
 }
 
@@ -317,121 +332,123 @@ export async function branchConversation(params: {
     upToMessageId?: string;
     upToCreatedAt?: string;
     title?: string;
-}): Promise<BranchedConversationResult> {
-    const { conversationId, upToMessageId, upToCreatedAt, title } = params;
-    const userContext = getCurrentUserContext();
+}): Promise<ActionResult<BranchedConversationResult>> {
+    return withAction(async () => {
+        const { conversationId, upToMessageId, upToCreatedAt, title } = params;
+        const userContext = getCurrentUserContext();
 
-    const source = await prisma.aIConversation.findFirst({
-        where: {
-            id: conversationId,
-            userId: userContext.userId,
-            workspaceId: userContext.workspaceId,
-            archived: false,
-        },
-        include: {
-            messages: {
-                orderBy: { createdAt: "asc" },
+        const source = await prisma.aIConversation.findFirst({
+            where: {
+                id: conversationId,
+                userId: userContext.userId,
+                workspaceId: userContext.workspaceId,
+                archived: false,
             },
-            summary: true,
-            _count: {
-                select: { messages: true },
-            },
-        },
-    });
-
-    if (!source) {
-        throw new Error("Conversation not found");
-    }
-
-    let sourceMessages = source.messages;
-    if (upToMessageId || upToCreatedAt) {
-        let cutoffIndex = -1;
-
-        if (upToMessageId) {
-            cutoffIndex = sourceMessages.findIndex((m) => m.id === upToMessageId);
-        }
-
-        // Fallback for optimistic client-only IDs: resolve by timestamp boundary.
-        if (cutoffIndex < 0 && upToCreatedAt) {
-            const cutoffMs = new Date(upToCreatedAt).getTime();
-            if (!Number.isNaN(cutoffMs)) {
-                for (let i = sourceMessages.length - 1; i >= 0; i--) {
-                    const msgMs = new Date(sourceMessages[i].createdAt).getTime();
-                    if (msgMs <= cutoffMs) {
-                        cutoffIndex = i;
-                        break;
-                    }
-                }
-            }
-        }
-
-        if (cutoffIndex < 0) {
-            throw new Error("Branch cutoff message not found");
-        }
-
-        sourceMessages = sourceMessages.slice(0, cutoffIndex + 1);
-    }
-
-    const branchTitle = title
-        ?? (source.title ? `${source.title} (branch)` : "Branched conversation");
-
-    const created = await prisma.$transaction(async (tx) => {
-        const conversation = await tx.aIConversation.create({
-            data: {
-                userId: source.userId,
-                workspaceId: source.workspaceId,
-                title: branchTitle,
-                context: source.context,
-                page: source.page,
-                projectId: source.projectId,
-                studyId: source.studyId,
+            include: {
+                messages: {
+                    orderBy: { createdAt: "asc" },
+                },
+                summary: true,
+                _count: {
+                    select: { messages: true },
+                },
             },
         });
 
-        if (sourceMessages.length > 0) {
-            await tx.aIMessage.createMany({
-                data: sourceMessages.map((m) => ({
-                    conversationId: conversation.id,
-                    role: m.role,
-                    content: m.content,
-                    toolCalls: m.toolCalls as any,
-                    toolResultId: m.toolResultId,
-                    attachments: m.attachments as any,
-                    createdAt: m.createdAt,
-                })),
-            });
+        if (!source) {
+            throw new Error("Conversation not found");
         }
 
-        // When branching from the entire conversation, carry over compaction summary.
-        if (!upToMessageId && !upToCreatedAt && source.summary) {
-            await tx.conversationSummary.create({
+        let sourceMessages = source.messages;
+        if (upToMessageId || upToCreatedAt) {
+            let cutoffIndex = -1;
+
+            if (upToMessageId) {
+                cutoffIndex = sourceMessages.findIndex((m) => m.id === upToMessageId);
+            }
+
+            // Fallback for optimistic client-only IDs: resolve by timestamp boundary.
+            if (cutoffIndex < 0 && upToCreatedAt) {
+                const cutoffMs = new Date(upToCreatedAt).getTime();
+                if (!Number.isNaN(cutoffMs)) {
+                    for (let i = sourceMessages.length - 1; i >= 0; i--) {
+                        const msgMs = new Date(sourceMessages[i].createdAt).getTime();
+                        if (msgMs <= cutoffMs) {
+                            cutoffIndex = i;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (cutoffIndex < 0) {
+                throw new Error("Branch cutoff message not found");
+            }
+
+            sourceMessages = sourceMessages.slice(0, cutoffIndex + 1);
+        }
+
+        const branchTitle = title
+            ?? (source.title ? `${source.title} (branch)` : "Branched conversation");
+
+        const created = await prisma.$transaction(async (tx) => {
+            const conversation = await tx.aIConversation.create({
                 data: {
-                    conversationId: conversation.id,
-                    summary: source.summary.summary,
-                    keyPoints: source.summary.keyPoints,
-                    decisions: source.summary.decisions,
-                    followUpNeeded: source.summary.followUpNeeded,
-                    messageCount: source.summary.messageCount,
-                    lastSummarizedAt: source.summary.lastSummarizedAt,
+                    userId: source.userId,
+                    workspaceId: source.workspaceId,
+                    title: branchTitle,
+                    context: source.context,
+                    page: source.page,
+                    projectId: source.projectId,
+                    studyId: source.studyId,
                 },
             });
-        }
 
-        return conversation;
+            if (sourceMessages.length > 0) {
+                await tx.aIMessage.createMany({
+                    data: sourceMessages.map((m) => ({
+                        conversationId: conversation.id,
+                        role: m.role,
+                        content: m.content,
+                        toolCalls: m.toolCalls as any,
+                        toolResultId: m.toolResultId,
+                        attachments: m.attachments as any,
+                        createdAt: m.createdAt,
+                    })),
+                });
+            }
+
+            // When branching from the entire conversation, carry over compaction summary.
+            if (!upToMessageId && !upToCreatedAt && source.summary) {
+                await tx.conversationSummary.create({
+                    data: {
+                        conversationId: conversation.id,
+                        summary: source.summary.summary,
+                        keyPoints: source.summary.keyPoints,
+                        decisions: source.summary.decisions,
+                        followUpNeeded: source.summary.followUpNeeded,
+                        messageCount: source.summary.messageCount,
+                        lastSummarizedAt: source.summary.lastSummarizedAt,
+                    },
+                });
+            }
+
+            return conversation;
+        });
+
+        return {
+            id: created.id,
+            title: created.title,
+            context: created.context,
+            page: created.page,
+            projectId: created.projectId,
+            studyId: created.studyId,
+            messageCount: sourceMessages.length,
+            createdAt: created.createdAt.toISOString(),
+            updatedAt: created.updatedAt.toISOString(),
+            sourceConversationId: source.id,
+        };
     });
-
-    return {
-        id: created.id,
-        title: created.title,
-        context: created.context,
-        page: created.page,
-        projectId: created.projectId,
-        studyId: created.studyId,
-        messageCount: sourceMessages.length,
-        createdAt: created.createdAt.toISOString(),
-        updatedAt: created.updatedAt.toISOString(),
-        sourceConversationId: source.id,
-    };
 }
 
 /**
@@ -445,82 +462,84 @@ export async function getOrCreateConversation(params: {
     projectId?: string;
     studyId?: string;
     page?: CopilotPage;
-}): Promise<ConversationWithMessages> {
-    const { projectId, studyId, page } = params;
+}): Promise<ActionResult<ConversationWithMessages>> {
+    return withAction(async () => {
+        const { projectId, studyId, page } = params;
 
-    // Use provided IDs or fall back to placeholder for single-user mode
-    const userContext = getCurrentUserContext();
-    const userId = params.userId || userContext.userId;
-    const workspaceId = params.workspaceId || userContext.workspaceId;
+        // Use provided IDs or fall back to placeholder for single-user mode
+        const userContext = getCurrentUserContext();
+        const userId = params.userId || userContext.userId;
+        const workspaceId = params.workspaceId || userContext.workspaceId;
 
-    // Try to find an existing recent conversation
-    const existing = await prisma.aIConversation.findFirst({
-        where: {
-            userId: userId || undefined,
-            workspaceId: workspaceId || undefined,
-            projectId: projectId || undefined,
-            studyId: studyId || undefined,
-            page: page || undefined,
-            archived: false,
-        },
-        include: {
-            messages: {
-                orderBy: { createdAt: "asc" },
+        // Try to find an existing recent conversation
+        const existing = await prisma.aIConversation.findFirst({
+            where: {
+                userId: userId || undefined,
+                workspaceId: workspaceId || undefined,
+                projectId: projectId || undefined,
+                studyId: studyId || undefined,
+                page: page || undefined,
+                archived: false,
             },
-            _count: {
-                select: { messages: true },
+            include: {
+                messages: {
+                    orderBy: { createdAt: "asc" },
+                },
+                _count: {
+                    select: { messages: true },
+                },
             },
-        },
-        orderBy: { updatedAt: "desc" },
-    });
+            orderBy: { updatedAt: "desc" },
+        });
 
-    if (existing) {
+        if (existing) {
+            return {
+                id: existing.id,
+                title: existing.title,
+                context: existing.context,
+                page: existing.page,
+                projectId: existing.projectId,
+                studyId: existing.studyId,
+                messageCount: existing._count.messages,
+                createdAt: existing.createdAt.toISOString(),
+                updatedAt: existing.updatedAt.toISOString(),
+                messages: existing.messages.map((msg) => ({
+                    id: msg.id,
+                    role: msg.role as "user" | "assistant" | "system",
+                    content: msg.content,
+                    attachments: msg.attachments
+                        ? (msg.attachments as unknown as MessageAttachment[])
+                        : undefined,
+                    createdAt: msg.createdAt.toISOString(),
+                })),
+                artifacts: [],
+            };
+        }
+
+        // Create new conversation with ownership scoping
+        const newConv = await prisma.aIConversation.create({
+            data: {
+                userId,
+                workspaceId,
+                projectId,
+                studyId,
+                page,
+                context: studyId ? "study" : projectId ? "project" : "global",
+            },
+        });
+
         return {
-            id: existing.id,
-            title: existing.title,
-            context: existing.context,
-            page: existing.page,
-            projectId: existing.projectId,
-            studyId: existing.studyId,
-            messageCount: existing._count.messages,
-            createdAt: existing.createdAt.toISOString(),
-            updatedAt: existing.updatedAt.toISOString(),
-            messages: existing.messages.map((msg) => ({
-                id: msg.id,
-                role: msg.role as "user" | "assistant" | "system",
-                content: msg.content,
-                attachments: msg.attachments
-                    ? (msg.attachments as unknown as MessageAttachment[])
-                    : undefined,
-                createdAt: msg.createdAt.toISOString(),
-            })),
+            id: newConv.id,
+            title: null,
+            context: newConv.context,
+            page: newConv.page,
+            projectId: newConv.projectId,
+            studyId: newConv.studyId,
+            messageCount: 0,
+            createdAt: newConv.createdAt.toISOString(),
+            updatedAt: newConv.updatedAt.toISOString(),
+            messages: [],
             artifacts: [],
         };
-    }
-
-    // Create new conversation with ownership scoping
-    const newConv = await prisma.aIConversation.create({
-        data: {
-            userId,
-            workspaceId,
-            projectId,
-            studyId,
-            page,
-            context: studyId ? "study" : projectId ? "project" : "global",
-        },
     });
-
-    return {
-        id: newConv.id,
-        title: null,
-        context: newConv.context,
-        page: newConv.page,
-        projectId: newConv.projectId,
-        studyId: newConv.studyId,
-        messageCount: 0,
-        createdAt: newConv.createdAt.toISOString(),
-        updatedAt: newConv.updatedAt.toISOString(),
-        messages: [],
-        artifacts: [],
-    };
 }

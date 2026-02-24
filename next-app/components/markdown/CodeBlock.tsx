@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, type ReactNode, isValidElement, Children } from "react";
+import type { Components } from "react-markdown";
 import styles from "@/styles/markdown.module.css";
 
 /** Map lowercase language tags to display names */
@@ -46,6 +47,18 @@ function childrenToString(children: unknown): string {
     return String(children ?? "");
 }
 
+function getCitationLabel(href?: string): "DOI" | "PubMed" | null {
+    if (!href) return null;
+    try {
+        const host = new URL(href).hostname.toLowerCase();
+        if (host === "doi.org" || host === "dx.doi.org") return "DOI";
+        if (host === "pubmed.ncbi.nlm.nih.gov") return "PubMed";
+        return null;
+    } catch {
+        return null;
+    }
+}
+
 function CodeBlock({ language, code }: { language: string | null; code: string }) {
     const [copied, setCopied] = useState(false);
 
@@ -84,7 +97,7 @@ function CodeBlock({ language, code }: { language: string | null; code: string }
 }
 
 /** Shared ReactMarkdown `components` override — use in both TimelineRenderer and AI page */
-export const markdownComponents = {
+export const markdownComponents: Components = {
     pre: ({ children }: { children?: ReactNode }) => {
         // ReactMarkdown renders fenced blocks as <pre><code class="language-xxx">...</code></pre>
         const codeChild = Children.toArray(children).find(
@@ -102,5 +115,13 @@ export const markdownComponents = {
 
         // Fallback: plain pre without code child
         return <pre>{children}</pre>;
+    },
+    a: ({ href, children, ...props }) => {
+        const displayText = getCitationLabel(href) ?? children;
+        return (
+            <a href={href} target="_blank" rel="noopener noreferrer" {...props}>
+                {displayText}
+            </a>
+        );
     },
 };

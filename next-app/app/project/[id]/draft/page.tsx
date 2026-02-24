@@ -347,9 +347,9 @@ function DraftContent() {
     const loadRemote = async () => {
       if (!id) return;
       try {
-        const remote = await getDraftAction(id);
-        if (remote && isActive) {
-          setDraft(applyDraftFromQuery(remote));
+        const result = await getDraftAction(id);
+        if (result.success && result.data && isActive) {
+          setDraft(applyDraftFromQuery(result.data));
         }
       } catch (err) {
         console.error("Failed to load draft from backend", err);
@@ -484,13 +484,15 @@ function DraftContent() {
         clearTimeout(saveTimerRef.current);
       }
       setSaveStatus("saving");
-      saveTimerRef.current = setTimeout(() => {
+      saveTimerRef.current = setTimeout(async () => {
         if (id) {
           saveDraftState(id, next);
-          saveDraftAction(id, next).catch((err) => {
-            console.error("Failed to save draft to backend", err);
+          const result = await saveDraftAction(id, next);
+          if (!result.success) {
+            console.error("Failed to save draft to backend:", result.error);
             setSaveStatus("error");
-          });
+            return;
+          }
         }
         setSaveStatus("saved");
       }, 400);
@@ -987,8 +989,9 @@ function DraftContent() {
     if (!id) return;
     const loadExports = async () => {
       try {
-        const files = await listProjectFilesAction(id);
-        const exports = files
+        const result = await listProjectFilesAction(id);
+        if (!result.success) { console.error("Failed to load exports:", result.error); return; }
+        const exports = result.data
           .filter((f) => f.kind === "export" && f.format === "docx")
           .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
         setExportHistory(exports);
@@ -1059,7 +1062,7 @@ function DraftContent() {
     // Simulate export delay
     await new Promise((r) => setTimeout(r, 1500));
     
-    const newExport = await createFileAssetAction(id, {
+    const createResult = await createFileAssetAction(id, {
       kind: "export",
       format: "docx",
       filename,
@@ -1070,18 +1073,21 @@ function DraftContent() {
       version: nextVersion,
       metadata: { sections: orderedSections.length },
     });
+    if (!createResult.success) throw new Error(createResult.error);
+    const newExport = createResult.data;
 
     // Update local state
     setExportHistory((prev) => [newExport, ...prev]);
     setLatestExport(newExport);
-    
+
     return newExport;
   }, [project, id, flushContentCommit, orderedSections, draft.contentBySection, draft.ledgerBySection, jsonToText, latestExport, studies]);
 
   // Delete export
   const handleDeleteExport = useCallback(async (fileId: string) => {
     if (!id) return;
-    await deleteFileAssetAction(id, fileId);
+    const delResult = await deleteFileAssetAction(id, fileId);
+    if (!delResult.success) { console.error("Failed to delete export:", delResult.error); return; }
     setExportHistory((prev) => prev.filter((f) => f.id !== fileId));
     if (latestExport?.id === fileId) {
       const remaining = exportHistory.filter((f) => f.id !== fileId);

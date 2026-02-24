@@ -19,7 +19,7 @@ export function useProjectState(projectId: string): ProjectStateSnapshot {
 
     useEffect(() => {
         if (!projectId) return;
-        getProtocolAction(projectId).then(setProtocol).catch(() => {});
+        getProtocolAction(projectId).then((r) => { if (r.success) setProtocol(r.data); }).catch(() => {});
     }, [projectId]);
 
     return useMemo(() => {

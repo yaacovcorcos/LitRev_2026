@@ -5,9 +5,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { getProtocolAction, saveProtocolAction } from "@/app/actions/protocols";
 import {
-  getGuidedSetupDefaultAction,
   markProjectOnboardingCompletedAction,
-  setGuidedSetupDefaultAction,
 } from "@/app/actions/onboarding";
 import { useProjects } from "@/contexts/ProjectsContext";
 import { createDefaultProtocolData, type ProtocolData } from "@/types/protocol";
@@ -39,8 +37,6 @@ export default function ProjectOnboardingPage() {
   const [protocol, setProtocol] = useState<ProtocolData>(createDefaultProtocolData);
   const [inclusionText, setInclusionText] = useState("");
   const [exclusionText, setExclusionText] = useState("");
-  const [guidedDefaultEnabled, setGuidedDefaultEnabled] = useState(true);
-  const [isUpdatingDefault, setIsUpdatingDefault] = useState(false);
 
   useEffect(() => {
     let isActive = true;
@@ -49,12 +45,12 @@ export default function ProjectOnboardingPage() {
     const load = async () => {
       setIsLoading(true);
       try {
-        const existing = await getProtocolAction(id);
+        const result = await getProtocolAction(id);
         if (!isActive) return;
-        if (existing) {
-          setProtocol(existing);
-          setInclusionText(listToLines(existing.eligibility.inclusion));
-          setExclusionText(listToLines(existing.eligibility.exclusion));
+        if (result.success && result.data) {
+          setProtocol(result.data);
+          setInclusionText(listToLines(result.data.eligibility.inclusion));
+          setExclusionText(listToLines(result.data.eligibility.exclusion));
         } else {
           const defaults = createDefaultProtocolData();
           setProtocol(defaults);
@@ -74,20 +70,6 @@ export default function ProjectOnboardingPage() {
     };
   }, [id]);
 
-  useEffect(() => {
-    let isActive = true;
-    getGuidedSetupDefaultAction()
-      .then((enabled) => {
-        if (isActive) setGuidedDefaultEnabled(enabled);
-      })
-      .catch((err) => {
-        console.error("Failed to load guided setup default", err);
-      });
-    return () => {
-      isActive = false;
-    };
-  }, []);
-
   const hydratedProtocol = useMemo(() => {
     return {
       ...protocol,
@@ -103,8 +85,10 @@ export default function ProjectOnboardingPage() {
       if (!id) return;
       setIsSaving(true);
       try {
-        await saveProtocolAction(id, hydratedProtocol);
-        await markProjectOnboardingCompletedAction(id, { skipped: false });
+        const saveResult = await saveProtocolAction(id, hydratedProtocol);
+        if (!saveResult.success) throw new Error(saveResult.error);
+        const markResult = await markProjectOnboardingCompletedAction(id, { skipped: false });
+        if (!markResult.success) throw new Error(markResult.error);
         mirrorGuidedSetupCompleted(id);
         router.push(nextRoute);
       } catch (err) {
@@ -120,7 +104,8 @@ export default function ProjectOnboardingPage() {
     if (!id) return false;
     setIsSaving(true);
     try {
-      await saveProtocolAction(id, hydratedProtocol);
+      const result = await saveProtocolAction(id, hydratedProtocol);
+      if (!result.success) throw new Error(result.error);
       return true;
     } catch (err) {
       console.error("Failed to save onboarding progress", err);
@@ -158,13 +143,14 @@ export default function ProjectOnboardingPage() {
         <button
           type="button"
           className="btn btn-outline"
-          disabled={isSaving || isUpdatingDefault}
+          disabled={isSaving}
           onClick={async () => {
             if (!id) return;
             const saved = await persistProgress();
             if (!saved) return;
             try {
-              await markProjectOnboardingCompletedAction(id, { skipped: true });
+              const skipResult = await markProjectOnboardingCompletedAction(id, { skipped: true });
+              if (!skipResult.success) throw new Error(skipResult.error);
               mirrorGuidedSetupCompleted(id);
               router.push(`/project/${id}`);
             } catch (err) {
@@ -175,30 +161,6 @@ export default function ProjectOnboardingPage() {
           Skip to conversation
         </button>
       </header>
-
-      <div className={styles.defaultToggleRow}>
-        <label className={styles.defaultToggleLabel}>
-          <input
-            type="checkbox"
-            checked={guidedDefaultEnabled}
-            disabled={isUpdatingDefault || isSaving}
-            onChange={async (event) => {
-              const nextValue = event.target.checked;
-              setGuidedDefaultEnabled(nextValue);
-              setIsUpdatingDefault(true);
-              try {
-                await setGuidedSetupDefaultAction(nextValue);
-              } catch (err) {
-                console.error("Failed to update guided setup default", err);
-                setGuidedDefaultEnabled(!nextValue);
-              } finally {
-                setIsUpdatingDefault(false);
-              }
-            }}
-          />
-          <span>Use guided setup by default for new projects</span>
-        </label>
-      </div>
 
       <ol className={styles.stepper} aria-label="Onboarding steps">
         {STEPS.map((step, index) => (

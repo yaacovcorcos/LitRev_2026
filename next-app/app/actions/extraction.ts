@@ -13,6 +13,7 @@ import {
 } from "@/lib/server/pdf-extraction";
 import type { Study, StudyDetails } from "@/types/ledger";
 import { createMemoriesFromDeepAnalysis } from "@/lib/server/memory/study-memory";
+import { sanitizeErrorMessage } from "@/lib/server/action-utils";
 
 export type ExtractionActionResult = {
     success: boolean;
@@ -143,7 +144,7 @@ export async function extractStudyFromPdfAction(
         console.error("Extraction action error:", err);
         return {
             success: false,
-            error: err instanceof Error ? err.message : "Unknown error during extraction",
+            error: sanitizeErrorMessage(err, "Unknown error during extraction", { allowRawMessage: true }),
         };
     } finally {
         // Always release lock
@@ -236,7 +237,7 @@ export async function deepAnalyzeStudyAction(
         console.error("Deep analysis action error:", err);
         return {
             success: false,
-            error: err instanceof Error ? err.message : "Unknown error during deep analysis",
+            error: sanitizeErrorMessage(err, "Unknown error during deep analysis", { allowRawMessage: true }),
         };
     } finally {
         EXTRACTION_LOCKS.delete(lockKey);

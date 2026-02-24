@@ -3,7 +3,6 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   isGuidedSetupCompletedLocally,
   mirrorGuidedSetupCompleted,
-  shouldLaunchGuidedSetupFallback,
 } from "@/lib/demo/onboarding";
 
 describe("demo onboarding localStorage mirror", () => {
@@ -13,21 +12,15 @@ describe("demo onboarding localStorage mirror", () => {
     window.localStorage.clear();
   });
 
-  it("defaults to launching guided setup when no completion flag exists", () => {
-    expect(shouldLaunchGuidedSetupFallback(projectId)).toBe(true);
-  });
-
-  it("mirrors completion and prevents re-launch", () => {
+  it("mirrors completion for a project", () => {
     expect(isGuidedSetupCompletedLocally(projectId)).toBe(false);
     mirrorGuidedSetupCompleted(projectId);
     expect(isGuidedSetupCompletedLocally(projectId)).toBe(true);
-    expect(shouldLaunchGuidedSetupFallback(projectId)).toBe(false);
   });
 
   it("tracks completion independently per project", () => {
     mirrorGuidedSetupCompleted("proj-a");
     expect(isGuidedSetupCompletedLocally("proj-a")).toBe(true);
     expect(isGuidedSetupCompletedLocally("proj-b")).toBe(false);
-    expect(shouldLaunchGuidedSetupFallback("proj-b")).toBe(true);
   });
 });

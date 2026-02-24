@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
 import { Modal } from "@/components/Modal";
@@ -10,6 +10,11 @@ import { useProjectShell } from "@/contexts/ProjectShellContext";
 import Link from "next/link";
 import { RecentActivityPanel } from "@/components/project/RecentActivityPanel";
 import { DemoGuideCard } from "@/components/project/DemoGuideCard";
+import {
+  getDraftStatsAction, type DraftStats,
+  getProtocolStatsAction, type ProtocolStats,
+  getLedgerStatsAction, type LedgerStats,
+} from "@/app/actions/stats";
 import styles from "./project-workspace.module.css";
 import { Project } from "@/types/project";
 
@@ -67,7 +72,7 @@ type WorkstationCardProps = {
   preview?: React.ReactNode;
 };
 
-function WorkstationCard({ title, subtitle, description, icon, href }: WorkstationCardProps) {
+function WorkstationCard({ title, subtitle, description, icon, href, preview }: WorkstationCardProps) {
   return (
     <Link
       href={href}
@@ -81,10 +86,65 @@ function WorkstationCard({ title, subtitle, description, icon, href }: Workstati
         <h3 className={styles.workstationTitle}>{title}</h3>
         <p className={styles.workstationDesc}>{description}</p>
       </div>
+      {preview && <div className={styles.workstationPreview}>{preview}</div>}
       <span className={styles.workstationAction}>
         Enter
       </span>
     </Link>
+  );
+}
+
+function PreviewSkeleton() {
+  return <div className={styles.previewSkeleton} />;
+}
+
+function DraftPreview({ stats }: { stats: DraftStats }) {
+  const shown = stats.sections.slice(0, 4);
+  return (
+    <div className={styles.previewStepper}>
+      {shown.map((s) => (
+        <span
+          key={s.key}
+          className={s.hasContent ? styles.stepDone : styles.stepPending}
+        >
+          {s.label} {s.hasContent ? "\u2713" : "\u25CB"}
+        </span>
+      ))}
+      {stats.totalCount > 4 && (
+        <span className={styles.stepPending}>+{stats.totalCount - 4}</span>
+      )}
+    </div>
+  );
+}
+
+function ProtocolPreview({ stats }: { stats: ProtocolStats }) {
+  if (stats.criteriaCount === 0 && !stats.hasResearchQuestion) {
+    return (
+      <div className={styles.previewItem}>
+        <span className="material-icons-round">info_outline</span>
+        <span>Not started yet</span>
+      </div>
+    );
+  }
+  return (
+    <div className={styles.previewItem}>
+      <span className="material-icons-round">checklist</span>
+      <span>{stats.criteriaCount} eligibility criteria defined</span>
+    </div>
+  );
+}
+
+function LedgerPreview({ stats }: { stats: LedgerStats }) {
+  const pct = stats.totalStudies > 0
+    ? Math.round((stats.extractedCount / stats.totalStudies) * 100)
+    : 0;
+  return (
+    <div className={styles.previewProgress}>
+      <div className={styles.previewProgressBar}>
+        <div className={styles.previewProgressFill} style={{ width: `${pct}%` }} />
+      </div>
+      <span>{stats.extractedCount} / {stats.totalStudies} extracted</span>
+    </div>
   );
 }
 
@@ -96,6 +156,43 @@ export default function ProjectDetail() {
   const project = id ? getProjectById(id) : undefined;
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const closeDeleteModal = useCallback(() => setIsDeleteOpen(false), []);
+
+  const [draftStats, setDraftStats] = useState<DraftStats | null>(null);
+  const [protocolStats, setProtocolStats] = useState<ProtocolStats | null>(null);
+  const [ledgerStats, setLedgerStats] = useState<LedgerStats | null>(null);
+  const [statsLoading, setStatsLoading] = useState(true);
+
+  useEffect(() => {
+    if (!project) return;
+    const projectId = project.id;
+    let cancelled = false;
+
+    // Reset to loading state so stale data from a previous project is never shown
+    setDraftStats(null);
+    setProtocolStats(null);
+    setLedgerStats(null);
+    setStatsLoading(true);
+
+    async function load() {
+      const [draftRes, protocolRes, ledgerRes] = await Promise.all([
+        getDraftStatsAction(projectId),
+        getProtocolStatsAction(projectId),
+        getLedgerStatsAction(projectId),
+      ]);
+
+      if (cancelled) return;
+      setDraftStats(draftRes.success ? draftRes.data : null);
+      setProtocolStats(protocolRes.success ? protocolRes.data : null);
+      setLedgerStats(ledgerRes.success ? ledgerRes.data : null);
+      setStatsLoading(false);
+    }
+
+    load().catch(() => {
+      if (!cancelled) setStatsLoading(false);
+    });
+
+    return () => { cancelled = true; };
+  }, [project?.id]);
 
   const vitalSigns = useMemo(() => {
     if (!project) return [];
@@ -129,6 +226,24 @@ export default function ProjectDetail() {
       </AppShell>
     );
   }
+
+  const draftPreview = statsLoading
+    ? <PreviewSkeleton />
+    : draftStats
+      ? <DraftPreview stats={draftStats} />
+      : null;
+
+  const protocolPreview = statsLoading
+    ? <PreviewSkeleton />
+    : protocolStats
+      ? <ProtocolPreview stats={protocolStats} />
+      : null;
+
+  const ledgerPreview = statsLoading
+    ? <PreviewSkeleton />
+    : ledgerStats
+      ? <LedgerPreview stats={ledgerStats} />
+      : null;
 
   const contentJSX = (
     <div className={styles.overviewLayout} style={isEmbeddedInProjectShell ? { padding: "24px" } : undefined}>
@@ -173,13 +288,7 @@ export default function ProjectDetail() {
           description="Write your article with AI and linked evidence."
           icon="edit_note"
           href={`/project/${project.id}/draft`}
-          preview={
-            <div className={styles.previewStepper}>
-              <span className={styles.stepDone}>Abstract ✓</span>
-              <span className={styles.stepActive}>Intro ◐</span>
-              <span className={styles.stepPending}>Methods ○</span>
-            </div>
-          }
+          preview={draftPreview}
         />
         <WorkstationCard
           title="Study Protocol"
@@ -187,12 +296,7 @@ export default function ProjectDetail() {
           description="Define PICO, eligibility criteria, and search strategy."
           icon="assignment"
           href={`/project/${project.id}/protocol`}
-          preview={
-            <div className={styles.previewItem}>
-              <span className="material-icons-round">edit</span>
-              <span>Last: Added 3 eligibility criteria</span>
-            </div>
-          }
+          preview={protocolPreview}
         />
         <WorkstationCard
           title="Evidence Ledger"
@@ -200,14 +304,7 @@ export default function ProjectDetail() {
           description="Manage studies, data extraction, and quality scores."
           icon="table_chart"
           href={`/project/${project.id}/ledger`}
-          preview={
-            <div className={styles.previewProgress}>
-              <div className={styles.previewProgressBar}>
-                <div className={styles.previewProgressFill} style={{ width: "32%" }} />
-              </div>
-              <span>45 / 142 extracted</span>
-            </div>
-          }
+          preview={ledgerPreview}
         />
       </section>
 

@@ -23,6 +23,7 @@ import type { ArtifactStatus, ArtifactType } from "@/types/artifacts";
 import type { TimelineItem } from "@/types/timeline";
 import { processAIStream } from "@/lib/ai/stream-processor";
 import { routeToAgent } from "@/lib/agent/router";
+import { dispatchProjectDataChanged, getChangedDomainsForAcceptedArtifact } from "@/lib/project-data-events";
 import styles from "./ai-view.module.css";
 
 const quickActions = [
@@ -360,8 +361,10 @@ export default function AIView() {
     getGlobalWorkspaceContextAction()
       .then((result) => {
         if (!active) return;
-        setWorkspaceContextText(result.contextText);
-        setWorkspaceProjectCount(result.projectCount);
+        if (result.success) {
+          setWorkspaceContextText(result.data.contextText);
+          setWorkspaceProjectCount(result.data.projectCount);
+        }
       })
       .catch((err) => {
         console.error("Failed to load global workspace context", err);
@@ -395,12 +398,16 @@ export default function AIView() {
   useEffect(() => {
     let isActive = true;
     const load = async () => {
-      const summaries = await listConversations({
+      const listResult = await listConversations({
         projectId: selectedProjectId ?? undefined,
         page: "ai",
       });
       if (!isActive) return;
-      const mapped: ChatConversation[] = summaries.map((s) => ({
+      if (!listResult.success) {
+        console.error("Failed to load AI conversations:", listResult.error);
+        return;
+      }
+      const mapped: ChatConversation[] = listResult.data.map((s) => ({
         id: s.id,
         title: s.title ?? null,
         projectId: s.projectId ?? undefined,
@@ -474,11 +481,13 @@ export default function AIView() {
   const ensureConversation = useCallback(async (context: ConversationContext): Promise<string> => {
     if (activeConversationId) return activeConversationId;
 
-    const { id } = await createConversation({
+    const convResult = await createConversation({
       context,
       projectId: selectedProjectId ?? undefined,
       page: "ai",
     });
+    if (!convResult.success) throw new Error(convResult.error);
+    const { id } = convResult.data;
 
     const now = new Date().toISOString();
     const newConv: ChatConversation = {
@@ -502,7 +511,8 @@ export default function AIView() {
     const alreadyCached = !!timelineByConversation[id];
     if (!alreadyCached) setIsConversationLoading(true);
     try {
-      const full = await getConversation(id);
+      const convResult = await getConversation(id);
+      const full = convResult.success ? convResult.data : null;
       if (!full) return;
       const mappedItems = mapDbMessagesToTimeline(full.messages, full.artifacts);
       updateConversationTimeline(id, () => mappedItems);
@@ -520,11 +530,19 @@ export default function AIView() {
 
   const handleDeleteConversation = useCallback(async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
+    let archived = false;
     try {
-      await archiveConversation(id);
+      const result = await archiveConversation(id);
+      if (!result.success) {
+        console.error("Failed to archive conversation:", result.error);
+        return;
+      }
+      archived = true;
     } catch (err) {
       console.error("Failed to archive conversation", err);
     }
+
+    if (!archived) return;
 
     // Derive nextId from the updater's `prev` argument (always fresh state, avoids stale closure)
     let nextId: string | null = null;
@@ -560,8 +578,10 @@ export default function AIView() {
     if (isTyping) cancelStream();
     setBranchingConversationId(id);
     try {
-      const branched = await branchConversation({ conversationId: id });
-      const full = await getConversation(branched.id);
+      const branchResult = await branchConversation({ conversationId: id });
+      if (!branchResult.success) { console.error("Failed to branch:", branchResult.error); return; }
+      const fullResult = await getConversation(branchResult.data.id);
+      const full = fullResult.success ? fullResult.data : null;
       if (!full) return;
 
       const mappedItems = mapDbMessagesToTimeline(full.messages, full.artifacts);
@@ -592,12 +612,14 @@ export default function AIView() {
     if (isTyping) cancelStream();
     setBranchingMessageId(messageId);
     try {
-      const branched = await branchConversation({
+      const branchResult = await branchConversation({
         conversationId: sourceConversationId,
         upToMessageId: messageId,
         upToCreatedAt: createdAt,
       });
-      const full = await getConversation(branched.id);
+      if (!branchResult.success) { console.error("Failed to branch from message:", branchResult.error); return; }
+      const fullResult = await getConversation(branchResult.data.id);
+      const full = fullResult.success ? fullResult.data : null;
       if (!full) return;
 
       const mappedItems = mapDbMessagesToTimeline(full.messages, full.artifacts);
@@ -650,8 +672,12 @@ export default function AIView() {
     const trimmed = renameValue.trim();
     if (trimmed) {
       try {
-        await updateConversationTitle(renamingId, trimmed);
-        setConversations((prev) => prev.map((c) => c.id === renamingId ? { ...c, title: trimmed } : c));
+        const result = await updateConversationTitle(renamingId, trimmed);
+        if (result.success) {
+          setConversations((prev) => prev.map((c) => c.id === renamingId ? { ...c, title: trimmed } : c));
+        } else {
+          console.error("Failed to rename conversation:", result.error);
+        }
       } catch (err) {
         console.error("Failed to rename conversation", err);
       }
@@ -686,6 +712,7 @@ export default function AIView() {
     setIsCompressing(true);
     try {
       const result = await summarizeConversationAction(sourceId);
+      if (!result.success) throw new Error(result.error);
 
       // Remove the archived source conversation from the sidebar regardless of
       // whether we can load the new one — avoids leaving a dead (archived) entry.
@@ -699,7 +726,8 @@ export default function AIView() {
       });
       timelineLruRef.current = timelineLruRef.current.filter((lruId) => lruId !== sourceId);
 
-      const full = await getConversation(result.newConversationId);
+      const fullResult = await getConversation(result.data.newConversationId);
+      const full = fullResult.success ? fullResult.data : null;
       if (!full) {
         setActiveConversationId(null);
         return;
@@ -732,11 +760,13 @@ export default function AIView() {
 
   const handleNewChat = useCallback(async () => {
     const context: ConversationContext = selectedProjectId ? "project" : "global";
-    const { id } = await createConversation({
+    const convResult = await createConversation({
       context,
       projectId: selectedProjectId ?? undefined,
       page: "ai",
     });
+    if (!convResult.success) { console.error("Failed to create chat:", convResult.error); return; }
+    const { id } = convResult.data;
 
     const now = new Date().toISOString();
     const newConv: ChatConversation = {
@@ -1146,11 +1176,15 @@ export default function AIView() {
       })
     );
 
-    if (
-      status === "accepted" &&
-      (result.artifact.type === "study_update" || result.artifact.type === "study_proposal")
-    ) {
-      window.dispatchEvent(new CustomEvent("litrev:ledger-changed", { detail: { projectId: result.artifact.projectId } }));
+    if (status === "accepted" && result.artifact.projectId) {
+      const domains = getChangedDomainsForAcceptedArtifact(result.artifact.type, result.artifact.payload);
+      if (domains.length > 0) {
+        dispatchProjectDataChanged({
+          projectId: result.artifact.projectId,
+          domains,
+          source: "artifact_review",
+        });
+      }
     }
   }, [activeConversationId, updateConversationTimeline]);
 

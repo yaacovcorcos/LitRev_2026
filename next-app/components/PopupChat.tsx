@@ -11,6 +11,7 @@ import { createNoteAction } from "@/app/actions/notes";
 import { createConversation, addMessage } from "@/app/actions/conversations";
 import { AGENT_MODE_PROMPTS, buildStudyContext, sanitizeContext } from "@/lib/ai/prompts/copilot-prompts";
 import { parseNDJSONStream } from "@/lib/ai/stream-parser";
+import { markdownComponents } from "@/components/markdown/CodeBlock";
 import type { PopupChatContext, PopupMessage } from "@/types/popup-chat";
 import type { CopilotPage } from "@/types/ai";
 import styles from "./PopupChat.module.css";
@@ -414,7 +415,7 @@ export function PopupChat({ projectId }: PopupChatProps) {
                                     <div className={styles.msgBubble}>
                                         {msg.role === "assistant" ? (
                                             <div className={styles.msgText}>
-                                                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                                <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
                                                     {msg.content}
                                                 </ReactMarkdown>
                                                 {isStreaming && i === messages.length - 1 && (

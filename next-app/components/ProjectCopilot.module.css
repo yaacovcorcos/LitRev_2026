@@ -340,7 +340,7 @@
     margin: 0;
     white-space: pre-wrap;
     font-family: inherit;
-    font-size: 14px;
+    font-size: 14.5px;
     line-height: 1.6;
     color: var(--text-primary);
     overflow-wrap: break-word;
@@ -1698,15 +1698,21 @@
     padding: 10px 0;
 }
 
+.pageLayout .chatMsgUser {
+    justify-content: flex-end;
+}
+
 .pageLayout .chatMsgUser .chatBubble {
-    border-inline-start: 3px solid rgba(217, 116, 89, 0.35);
-    padding-block: 10px;
-    padding-inline-start: 14px;
-    padding-inline-end: 18px;
-    background: rgba(217, 116, 89, 0.04);
-    border-radius: 0 8px 8px 0;
+    padding: 10px 16px;
+    background: rgba(217, 116, 89, 0.08);
+    border: 1px solid rgba(217, 116, 89, 0.2);
+    border-radius: 14px;
     width: fit-content;
     max-width: min(100%, 78ch);
+}
+
+.pageLayout .chatMsgUser .chatActions {
+    justify-content: flex-end;
 }
 
 /* Messages: shrink-wrap to content in page mode */

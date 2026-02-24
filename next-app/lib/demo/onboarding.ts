@@ -8,7 +8,6 @@
  */
 
 const GUIDED_SETUP_DONE_PREFIX = "litrev:guided-setup-done:v1:";
-const DEFAULT_GUIDED_SETUP = true;
 
 function canUseStorage(): boolean {
   return typeof window !== "undefined";
@@ -28,10 +27,4 @@ export function mirrorGuidedSetupCompleted(projectId: string): void {
 export function isGuidedSetupCompletedLocally(projectId: string): boolean {
   if (!canUseStorage()) return false;
   return window.localStorage.getItem(projectDoneKey(projectId)) === "1";
-}
-
-/** Synchronous fallback for when the server decision endpoint is unreachable. */
-export function shouldLaunchGuidedSetupFallback(projectId: string): boolean {
-  if (isGuidedSetupCompletedLocally(projectId)) return false;
-  return DEFAULT_GUIDED_SETUP;
 }
