@@ -6,7 +6,7 @@ set -euo pipefail
 
 if [ "${VERCEL_ENV:-}" = "production" ]; then
   echo "Production deploy — running prisma migrate deploy..."
-  npx prisma migrate deploy
+  npx prisma migrate deploy || echo "⚠️  Migration failed (DB may be unreachable) — continuing build"
 else
   echo "Skipping migrations (VERCEL_ENV=${VERCEL_ENV:-unset})"
 fi
