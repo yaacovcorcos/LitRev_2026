@@ -31,6 +31,7 @@ import { appendScopingReportComment, buildFallbackScopingReport, detectScopingHa
 import { prisma } from "@/lib/server/prisma";
 import type { ProtocolData } from "@/types/protocol";
 import type { PlanPayload, ScopingReportPayload } from "@/types/artifacts";
+import { ensureConversationRunAvailability } from "@/lib/server/chat-runtime/conversation-run-lock";
 
 class AIService {
     private providers = new Map<string, BaseAIProvider>();
@@ -553,6 +554,10 @@ class AIService {
             conversation = await getConversationWithSummary(context, projectId, studyId);
         }
         const budget = getContextBudget(options?.model);
+
+        // Coarse conversation-level lock: block overlapping fresh runs and
+        // auto-cancel stale "running" rows left behind by interrupted sessions.
+        await ensureConversationRunAvailability(conversation.id);
 
         // Start an agent run
         const run = await startRun({

@@ -38,6 +38,8 @@ import { summarizeConversationAction } from "@/app/actions/summarize-conversatio
 import type { ArtifactData, ArtifactStatus, ArtifactType } from "@/types/artifacts";
 import type { AgentMode, AutonomyPreset, AutonomyLevel } from "@/types/agent";
 import type { ChoiceOption, CopilotPage } from "@/types/ai";
+import { handleProjectCopilotStreamChunk } from "@/contexts/project-copilot-stream-events";
+import type { ArtifactActionContract } from "@/lib/artifacts/action-contract";
 
 export type PendingAttachment = {
     fileAssetId: string;
@@ -917,188 +919,79 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
                 throw new Error("No response body");
             }
 
+            const updateMessages = (updater: (messages: CopilotMessage[]) => CopilotMessage[]) => {
+                updateState((prev) => ({
+                    ...prev,
+                    messages: updater(prev.messages),
+                }));
+            };
+
+            const upsertConversationTitle = (targetId: string, title: string) => {
+                setConversations((prev) => {
+                    const existing = prev.find((c) => c.id === targetId);
+                    if (!existing) {
+                        return [{
+                            id: targetId,
+                            title,
+                            messageCount: 0,
+                            updatedAt: new Date().toISOString(),
+                        }, ...prev];
+                    }
+                    return prev.map((c) => (c.id === targetId ? { ...c, title } : c));
+                });
+            };
+
+            const upsertArtifact = (artifactData: ArtifactData) => {
+                setArtifacts((prev) => {
+                    const next = new Map(prev);
+                    next.set(artifactData.id, artifactData);
+                    return next;
+                });
+            };
+
             const summary = await processAIStream({
                 reader,
                 signal: controller.signal,
                 shouldContinue: () => streamGenRef.current === myGen,
                 throwOnErrorChunk: true,
                 onChunk: (data) => {
-                    if (data.type === "content" && data.content) {
-                        fullContent += data.content;
-
-                        if (!aiMessageCreated) {
-                            aiMessageCreated = true;
-                            const aiMessage: CopilotMessage = {
-                                id: aiMessageId,
-                                sender: "ai",
-                                text: fullContent,
-                                createdAt: new Date().toISOString(),
-                                context: { page, section },
-                            };
-                            updateState((prev) => ({
-                                ...prev,
-                                messages: [...prev.messages, aiMessage],
-                            }));
-                        } else {
-                            updateState((prev) => ({
-                                ...prev,
-                                messages: prev.messages.map((msg) =>
-                                    msg.id === aiMessageId
-                                        ? { ...msg, text: fullContent }
-                                        : msg
-                                ),
-                            }));
-                        }
-                    } else if (data.type === "tool_call" && data.toolCall) {
-                        const toolName = data.toolCall.name;
-                        const statusText = toolName === "search_pubmed"
-                            ? "Searching PubMed..."
-                            : toolName === "add_to_ledger"
-                                ? "Adding studies to ledger..."
-                                : `Running ${toolName}...`;
-                        if (!aiMessageCreated) {
-                            aiMessageCreated = true;
-                            const aiMessage: CopilotMessage = {
-                                id: aiMessageId,
-                                sender: "ai",
-                                text: `*${statusText}*`,
-                                createdAt: new Date().toISOString(),
-                                context: { page, section },
-                            };
-                            updateState((prev) => ({
-                                ...prev,
-                                messages: [...prev.messages, aiMessage],
-                            }));
-                        } else {
-                            updateState((prev) => ({
-                                ...prev,
-                                messages: prev.messages.map((msg) =>
-                                    msg.id === aiMessageId
-                                        ? { ...msg, text: fullContent || `*${statusText}*` }
-                                        : msg
-                                ),
-                            }));
-                        }
-                    } else if (data.type === "tool_result") {
-                        if (data.toolName === "add_to_ledger" || data.toolName === "exclude_study") {
-                            window.dispatchEvent(new CustomEvent("litrev:ledger-changed", { detail: { projectId } }));
-                        }
-                        if (aiMessageCreated && !fullContent) {
-                            updateState((prev) => ({
-                                ...prev,
-                                messages: prev.messages.map((msg) =>
-                                    msg.id === aiMessageId
-                                        ? { ...msg, text: "*Processing results...*" }
-                                        : msg
-                                ),
-                            }));
-                        }
-                    } else if (data.type === "run_start") {
-                        localRunId = data.runId ?? "";
-                        setCurrentRunId(data.runId ?? null);
-                        if (data.conversationId && effectiveConvId !== data.conversationId) {
-                            effectiveConvId = data.conversationId;
-                            if (currentConversationIdRef.current !== data.conversationId) {
-                                setCurrentConversationId(data.conversationId);
-                            }
-                        }
-                    } else if (data.type === "run_end") {
-                        setCurrentRunId(null);
-                    } else if (data.type === "conversation_title") {
-                        const targetId = data.conversationId || effectiveConvId;
-                        const nextTitle = data.conversationTitle?.trim();
-                        if (targetId && nextTitle) {
-                            setConversations((prev) => {
-                                const existing = prev.find((c) => c.id === targetId);
-                                if (!existing) {
-                                    return [{
-                                        id: targetId,
-                                        title: nextTitle,
-                                        messageCount: 0,
-                                        updatedAt: new Date().toISOString(),
-                                    }, ...prev];
-                                }
-                                return prev.map((c) => (c.id === targetId ? { ...c, title: nextTitle } : c));
-                            });
-                        }
-                    } else if (data.type === "artifact") {
-                        const artType = (data.artifactType ?? "plan") as ArtifactType;
-                        const artStatus = (data.artifactStatus ?? "proposed") as ArtifactStatus;
-                        const artTitle = data.artifactTitle ?? "Artifact";
-                        const artifactData: ArtifactData = {
-                            id: data.artifactId ?? `art-${Date.now()}`,
-                            runId: localRunId,
+                    const nextState = handleProjectCopilotStreamChunk(
+                        data,
+                        {
+                            aiMessageCreated,
+                            fullContent,
+                            localRunId,
+                            effectiveConvId,
+                        },
+                        {
+                            aiMessageId,
+                            page,
+                            section,
                             projectId,
-                            conversationId: effectiveConvId ?? null,
-                            type: artType,
-                            status: artStatus,
-                            title: artTitle,
-                            payload: data.artifactPayload ?? {},
-                            version: data.artifactVersion ?? 1,
-                            sourceEventId: null,
-                            appliedAt: null,
-                            reviewedAt: null,
-                            reviewNote: null,
-                            createdAt: new Date().toISOString(),
-                        };
-                        setArtifacts((prev) => {
-                            const next = new Map(prev);
-                            next.set(artifactData.id, artifactData);
-                            return next;
-                        });
-                        const artifactMessage: CopilotMessage = {
-                            id: `artifact-${artifactData.id}`,
-                            sender: "ai",
-                            text: `[${artType}] ${artTitle}`,
-                            createdAt: new Date().toISOString(),
-                            context: { page },
-                            artifact: {
-                                id: artifactData.id,
-                                type: artType,
-                                status: artStatus,
-                                title: artTitle,
-                                payload: (data.artifactPayload ?? {}) as Record<string, unknown>,
-                                version: data.artifactVersion ?? 1,
+                            myGen,
+                            getCurrentGen: () => streamGenRef.current,
+                            setCurrentRunId,
+                            syncConversationId: (conversationId) => {
+                                if (currentConversationIdRef.current !== conversationId) {
+                                    setCurrentConversationId(conversationId);
+                                }
                             },
-                        };
-                        updateState((prev) => ({
-                            ...prev,
-                            messages: [...prev.messages, artifactMessage],
-                        }));
-                    } else if (data.type === "progress") {
-                        const progressText = data.progressMessage ?? "Working...";
-                        if (!aiMessageCreated) {
-                            aiMessageCreated = true;
-                            const aiMessage: CopilotMessage = {
-                                id: aiMessageId,
-                                sender: "ai",
-                                text: `*${progressText}*`,
-                                createdAt: new Date().toISOString(),
-                                context: { page, section },
-                            };
-                            updateState((prev) => ({
-                                ...prev,
-                                messages: [...prev.messages, aiMessage],
-                            }));
-                        } else if (!fullContent) {
-                            updateState((prev) => ({
-                                ...prev,
-                                messages: prev.messages.map((msg) =>
-                                    msg.id === aiMessageId
-                                        ? { ...msg, text: `*${progressText}*` }
-                                        : msg
-                                ),
-                            }));
+                            upsertConversationTitle,
+                            upsertArtifact,
+                            updateMessages,
+                            emitLedgerChanged: () => {
+                                window.dispatchEvent(
+                                    new CustomEvent("litrev:ledger-changed", { detail: { projectId } })
+                                );
+                            },
+                            setPendingChoices,
+                            onPlanStepUpdate,
                         }
-                    } else if (data.type === "choices" && data.choices) {
-                        if (streamGenRef.current === myGen) {
-                            setPendingChoices(data.choices);
-                        }
-                    } else if (data.type === "plan_step_update") {
-                        if (data.planId && data.stepIndex !== undefined && data.stepStatus) {
-                            onPlanStepUpdate?.(data.planId, data.stepIndex, data.stepStatus);
-                        }
-                    }
+                    );
+                    aiMessageCreated = nextState.aiMessageCreated;
+                    fullContent = nextState.fullContent;
+                    localRunId = nextState.localRunId;
+                    effectiveConvId = nextState.effectiveConvId;
                 },
             });
             runStatus = summary.runStatus;
@@ -1255,7 +1148,7 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
         [updateState, projectId, cancelStream, currentConversationId, pendingAttachment, runStream]
     );
 
-    const executePlan = useCallback(async (artifactId: string, selectedIndexes: number[]) => {
+    const executePlanAction = useCallback(async (artifactId: string, selectedIndexes: number[]) => {
         if (isLoadingRef.current) cancelStream();
         setPendingChoices([]);
 
@@ -1364,7 +1257,7 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
         }
     }, [cancelStream, currentConversationId, projectId, runStream, updateState]);
 
-    const handleReviewArtifact = useCallback(async (
+    const reviewArtifactActionLocal = useCallback(async (
         artifactId: string,
         status: "accepted" | "rejected",
         note?: string,
@@ -1424,7 +1317,45 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
                 });
             }
         }
-    }, [artifacts, projectId, updateState]);
+    }, [projectId, updateState]);
+
+    const dispatchArtifactAction = useCallback(async (action: ArtifactActionContract): Promise<void> => {
+        if (action.type === "artifact.execute_plan") {
+            await executePlanAction(action.artifactId, action.selectedIndexes);
+            return;
+        }
+        if (action.type === "artifact.review") {
+            await reviewArtifactActionLocal(
+                action.artifactId,
+                action.status,
+                action.note,
+                action.editedPayload,
+            );
+        }
+    }, [executePlanAction, reviewArtifactActionLocal]);
+
+    const executePlan = useCallback(async (artifactId: string, selectedIndexes: number[]): Promise<void> => {
+        await dispatchArtifactAction({
+            type: "artifact.execute_plan",
+            artifactId,
+            selectedIndexes,
+        });
+    }, [dispatchArtifactAction]);
+
+    const handleReviewArtifact = useCallback(async (
+        artifactId: string,
+        status: "accepted" | "rejected",
+        note?: string,
+        editedPayload?: Record<string, unknown>,
+    ): Promise<void> => {
+        await dispatchArtifactAction({
+            type: "artifact.review",
+            artifactId,
+            status,
+            note,
+            editedPayload,
+        });
+    }, [dispatchArtifactAction]);
 
     const summarizeAndRefresh = useCallback(async () => {
         if (!currentConversationId || isSummarizing) return;
