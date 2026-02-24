@@ -1666,6 +1666,43 @@
 }
 
 /* ========================================
+   LOAD OLDER MESSAGES
+   ======================================== */
+
+.loadOlderRow {
+    display: flex;
+    justify-content: center;
+    padding: 12px 0 8px;
+    flex-shrink: 0;
+}
+
+.loadOlderBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 16px;
+    border: 1px solid var(--glass-border);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.85);
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.loadOlderBtn:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.95);
+    color: var(--text-primary);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.loadOlderBtn:disabled {
+    cursor: wait;
+    opacity: 0.65;
+}
+
+/* ========================================
    PAGE LAYOUT VARIANT (conversation mode)
    Full-width messages, no bubbles.
    ======================================== */
@@ -1677,10 +1714,12 @@
 
 .pageLayout .chatList {
     gap: 4px;
+    width: min(100%, 78ch);
+    margin-inline: auto;
 }
 
 .pageLayout .chatMsg {
-    justify-content: center;
+    justify-content: flex-start;
     /* Suppress entry animation for all messages to avoid batch-load spam (V2 fix) */
     animation: none;
 }
@@ -1717,13 +1756,20 @@
 
 /* Messages: shrink-wrap to content in page mode */
 .pageLayout .chatStack {
-    max-width: min(100%, 78ch);
-    width: fit-content;
+    max-width: 100%;
+    width: 100%;
 }
 
 /* AI messages: no decoration, full-width content */
 .pageLayout .chatMsgAi .chatBubble {
     padding: 10px 0 2px;
+}
+
+/* Keep user bubbles compact and right-aligned in page mode */
+.pageLayout .chatMsgUser .chatStack {
+    width: fit-content;
+    max-width: 100%;
+    margin-left: auto;
 }
 
 /* Hover actions: left-align in page mode */

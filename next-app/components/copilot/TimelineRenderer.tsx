@@ -401,6 +401,12 @@ export type TimelineRendererProps = {
     conversationId?: string;
     /** Optional explicit project ID override (used in /ai route where useParams has no project id). */
     projectId?: string;
+    /** Whether older messages are available to load */
+    hasMore?: boolean;
+    /** Whether older messages are currently loading */
+    isLoadingOlder?: boolean;
+    /** Callback to load older messages */
+    onLoadOlder?: () => Promise<void>;
 };
 
 export function TimelineRenderer({
@@ -420,6 +426,9 @@ export function TimelineRenderer({
     isConversationLoading = false,
     conversationId,
     projectId: projectIdProp,
+    hasMore,
+    isLoadingOlder,
+    onLoadOlder,
 }: TimelineRendererProps) {
     const params = useParams();
     const routeProjectId = params && typeof params === "object" && "id" in params
@@ -433,6 +442,7 @@ export function TimelineRenderer({
     const {
         containerRef, bottomRef, onScroll, isPinned, scrollToBottom,
         notifyStreamStart, notifyConversationChanged, notifyContentChanged,
+        capturePrependAnchor, restorePrependAnchor,
     } = useStableChatScroll();
 
     // Resolve timeline: prefer items, fall back to legacy messages.
@@ -457,6 +467,41 @@ export function TimelineRenderer({
 
     // ── Content change — schedule scroll if pinned ──────────────────────────
     useLayoutEffect(() => { notifyContentChanged(); }, [timeline, notifyContentChanged]);
+
+    // ── Prepend anchor for "load older messages" ─────────────────────────
+    const firstItemRef = useRef<HTMLDivElement | null>(null);
+    const pendingPrependRef = useRef<{ firstIdBeforeLoad: string | null } | null>(null);
+    const firstTimelineId = timeline[0]?.id ?? null;
+    const latestFirstTimelineIdRef = useRef<string | null>(firstTimelineId);
+    useLayoutEffect(() => {
+        latestFirstTimelineIdRef.current = firstTimelineId;
+    }, [firstTimelineId]);
+
+    const handleLoadOlder = useCallback(async () => {
+        if (!onLoadOlder) return;
+        const firstIdBeforeLoad = firstTimelineId;
+        capturePrependAnchor(firstItemRef.current);
+        pendingPrependRef.current = { firstIdBeforeLoad };
+        await onLoadOlder();
+        // If no prepend occurred, clear pending marker to avoid stale restore later.
+        if (
+            pendingPrependRef.current?.firstIdBeforeLoad === firstIdBeforeLoad
+            && latestFirstTimelineIdRef.current === firstIdBeforeLoad
+        ) {
+            pendingPrependRef.current = null;
+        }
+    }, [onLoadOlder, capturePrependAnchor, firstTimelineId]);
+
+    // Restore viewport after prepend
+    useLayoutEffect(() => {
+        const pending = pendingPrependRef.current;
+        if (!pending) return;
+        // Restore only once a prepend has actually changed the first visible item.
+        if (firstTimelineId !== pending.firstIdBeforeLoad) {
+            restorePrependAnchor();
+            pendingPrependRef.current = null;
+        }
+    }, [firstTimelineId, restorePrependAnchor]);
 
     const handleCopy = useCallback((text: string) => {
         navigator.clipboard.writeText(text).catch(console.error);
@@ -830,7 +875,33 @@ export function TimelineRenderer({
     return (
         <div className={`${styles.copilotBody} ${variant === "page" ? styles.pageLayout : ""}`} ref={containerRef} onScroll={onScroll}>
             <div className={styles.chatList}>
-                {timeline.map((item, index) => renderTimelineItem(item, index))}
+                {hasMore && (
+                    <div className={styles.loadOlderRow}>
+                        <button
+                            type="button"
+                            className={styles.loadOlderBtn}
+                            onClick={handleLoadOlder}
+                            disabled={isLoadingOlder}
+                            aria-label="Load older messages"
+                        >
+                            <span className="material-icons-round" style={{ fontSize: 16 }}>
+                                {isLoadingOlder ? "sync" : "expand_less"}
+                            </span>
+                            {isLoadingOlder ? "Loading..." : "Load older messages"}
+                        </button>
+                    </div>
+                )}
+                {timeline.map((item, index) => {
+                    const rendered = renderTimelineItem(item, index);
+                    if (index === 0) {
+                        return (
+                            <div key={item.id} ref={(el) => { firstItemRef.current = el; }}>
+                                {rendered}
+                            </div>
+                        );
+                    }
+                    return rendered;
+                })}
                 {isLoading && timeline.length > 0 && timeline[timeline.length - 1].type === "user_message" && (
                     <div className={styles.loadingIndicator}>
                         <div className={styles.loadingDots}>

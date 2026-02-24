@@ -114,11 +114,12 @@ export function useStableChatScroll() {
     }, [scheduleScroll, bindResizeObserver]);
 
     // ── Prepend-preserve: capture anchor before prepending ──────────────
-    const capturePrependAnchor = useCallback(() => {
+    const capturePrependAnchor = useCallback((anchor?: Element | null) => {
         const el = containerElRef.current;
-        if (!el || !el.firstElementChild) { prependAnchorRef.current = null; return; }
-        const anchor = el.firstElementChild;
-        prependAnchorRef.current = { el: anchor, top: anchor.getBoundingClientRect().top };
+        if (!el) { prependAnchorRef.current = null; return; }
+        const target = anchor ?? el.firstElementChild;
+        if (!target) { prependAnchorRef.current = null; return; }
+        prependAnchorRef.current = { el: target, top: target.getBoundingClientRect().top };
     }, []);
 
     // ── Prepend-preserve: restore viewport after prepending ─────────────

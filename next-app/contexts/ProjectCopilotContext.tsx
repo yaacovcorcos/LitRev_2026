@@ -23,6 +23,7 @@ import { dispatchProjectDataChanged, getChangedDomainsForAcceptedArtifact } from
 import {
     listConversations,
     getConversation,
+    getConversationMessages,
     createConversation,
     archiveConversation,
     branchConversation as branchConversationAction,
@@ -159,6 +160,14 @@ type ProjectCopilotContextValue = {
     pendingChoices: ChoiceOption[];
     /** Clear pending choices */
     clearChoices: () => void;
+
+    // Message pagination
+    /** Whether there are older messages available to load */
+    hasMore: boolean;
+    /** Whether older messages are currently being fetched */
+    isLoadingOlder: boolean;
+    /** Load the next page of older messages */
+    loadOlderMessages: () => Promise<void>;
 };
 
 
@@ -184,6 +193,8 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
     const [isLoadingConversations, setIsLoadingConversations] = useState(false);
     const [showConversationList, setShowConversationList] = useState(false);
     const [isConversationLoading, setIsConversationLoading] = useState(false);
+    const [hasMore, setHasMore] = useState(false);
+    const [isLoadingOlder, setIsLoadingOlder] = useState(false);
     // Generation counter for selectConversation — last-wins guard against rapid switches
     const selectGenRef = useRef(0);
 
@@ -513,6 +524,7 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             const convo = convoResult.success ? convoResult.data : null;
             if (convo) {
                 setCurrentConversationId(convo.id);
+                setHasMore(convo.hasMore);
                 // Convert conversation messages to CopilotMessages
                 const persistedMessages: CopilotMessage[] = convo.messages
                     .filter((m) => m.role !== "system")
@@ -530,21 +542,27 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
                             isExisting: a.isExisting,
                         })),
                     }));
-                const artifactMessages: CopilotMessage[] = (convo.artifacts ?? []).map((artifact) => ({
-                    id: `artifact-${artifact.id}`,
-                    sender: "ai",
-                    text: `[${artifact.type}] ${artifact.title}`,
-                    createdAt: artifact.createdAt,
-                    context: { page: convo.page as CopilotPage },
-                    artifact: {
-                        id: artifact.id,
-                        type: artifact.type,
-                        status: artifact.status,
-                        title: artifact.title,
-                        payload: (artifact.payload ?? {}) as Record<string, unknown>,
-                        version: artifact.version,
-                    },
-                }));
+                // Filter artifacts to only those within the loaded message time range
+                const oldestMessageTime = persistedMessages.length > 0
+                    ? new Date(persistedMessages[0].createdAt).getTime()
+                    : 0;
+                const artifactMessages: CopilotMessage[] = (convo.artifacts ?? [])
+                    .filter((a) => new Date(a.createdAt).getTime() >= oldestMessageTime)
+                    .map((artifact) => ({
+                        id: `artifact-${artifact.id}`,
+                        sender: "ai",
+                        text: `[${artifact.type}] ${artifact.title}`,
+                        createdAt: artifact.createdAt,
+                        context: { page: convo.page as CopilotPage },
+                        artifact: {
+                            id: artifact.id,
+                            type: artifact.type,
+                            status: artifact.status,
+                            title: artifact.title,
+                            payload: (artifact.payload ?? {}) as Record<string, unknown>,
+                            version: artifact.version,
+                        },
+                    }));
                 const copilotMessages: CopilotMessage[] = [...persistedMessages, ...artifactMessages].sort(
                     (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
                 );
@@ -576,6 +594,7 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
                 }));
             } else {
                 setCurrentConversationId(null);
+                setHasMore(false);
                 setArtifacts(new Map());
                 updateState((prev) => ({
                     ...prev,
@@ -595,6 +614,87 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
 
     // Keep ref in sync so setStudyFilter (declared earlier) can call it
     selectConversationRef.current = selectConversation;
+
+    const loadOlderMessages = useCallback(async () => {
+        if (!currentConversationId || isLoadingOlder || !hasMore) return;
+        const currentMessages = stateRef.current.messages;
+        const conversationPage = (
+            currentMessages.find((m) => !m.artifact)?.context?.page
+            ?? "overview"
+        ) as CopilotPage;
+        // Find oldest non-artifact message for cursor
+        const oldestMsg = currentMessages.find((m) => !m.artifact);
+        if (!oldestMsg) return;
+        setIsLoadingOlder(true);
+        try {
+            const result = await getConversationMessages({
+                conversationId: currentConversationId,
+                cursor: { createdAt: oldestMsg.createdAt, id: oldestMsg.id },
+                expectedProjectId: projectId,
+            });
+            if (!result.success) return;
+            setHasMore(result.data.hasMore);
+
+            const olderCopilotMessages: CopilotMessage[] = result.data.messages
+                .filter((m) => m.role !== "system")
+                .map((m) => ({
+                    id: m.id,
+                    sender: m.role === "user" ? "user" : "ai" as const,
+                    text: m.content,
+                    createdAt: m.createdAt,
+                    context: { page: conversationPage },
+                    attachments: m.attachments?.map((a) => ({
+                        fileAssetId: a.fileAssetId,
+                        filename: a.filename,
+                        size: a.size,
+                        mimeType: a.mimeType,
+                        isExisting: a.isExisting,
+                    })),
+                }));
+
+            // Include any artifacts that are now within the expanded time range
+            const oldestNewTime = olderCopilotMessages.length > 0
+                ? new Date(olderCopilotMessages[0].createdAt).getTime()
+                : Infinity;
+            const existingMessageIds = new Set(currentMessages.map((m) => m.id));
+            const allArtifacts = Array.from(artifacts.values());
+            const newlyVisibleArtifactMessages: CopilotMessage[] = allArtifacts
+                .filter((a) => {
+                    const aTime = new Date(a.createdAt).getTime();
+                    return aTime >= oldestNewTime && !existingMessageIds.has(`artifact-${a.id}`);
+                })
+                .map((a) => ({
+                    id: `artifact-${a.id}`,
+                    sender: "ai" as const,
+                    text: `[${a.type}] ${a.title}`,
+                    createdAt: a.createdAt,
+                    context: { page: conversationPage },
+                    artifact: {
+                        id: a.id,
+                        type: a.type,
+                        status: a.status,
+                        title: a.title,
+                        payload: (a.payload ?? {}) as Record<string, unknown>,
+                        version: a.version,
+                    },
+                }));
+
+            // Sort newly revealed items (older messages + newly visible artifacts)
+            const combined = [...olderCopilotMessages, ...newlyVisibleArtifactMessages].sort(
+                (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+            );
+
+            // Direct prepend — older batch guaranteed strictly before current oldest
+            updateState((prev) => ({
+                ...prev,
+                messages: [...combined, ...prev.messages],
+            }));
+        } catch (err) {
+            console.error("Failed to load older messages:", err);
+        } finally {
+            setIsLoadingOlder(false);
+        }
+    }, [currentConversationId, isLoadingOlder, hasMore, updateState, artifacts, projectId]);
 
     const newConversation = useCallback(async (page: CopilotPage, studyId?: string) => {
         if (!projectId) {
@@ -624,6 +724,7 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             const { id } = convResult.data;
             // Set the new conversation and clear messages
             setCurrentConversationId(id);
+            setHasMore(false);
             setState((prev) => ({
                 ...prev,
                 messages: [],
@@ -1406,6 +1507,10 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             // AI-generated clickable choices
             pendingChoices,
             clearChoices,
+            // Message pagination
+            hasMore,
+            isLoadingOlder,
+            loadOlderMessages,
         }),
         [
             state,
@@ -1449,6 +1554,9 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             resetToPreset,
             pendingChoices,
             clearChoices,
+            hasMore,
+            isLoadingOlder,
+            loadOlderMessages,
         ]
     );
 

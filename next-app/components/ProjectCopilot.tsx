@@ -74,6 +74,10 @@ export function ProjectCopilot({
         isSummarizing,
         // Autonomy settings (Phase 7)
         setShowAutonomySettings,
+        // Message pagination
+        hasMore,
+        isLoadingOlder,
+        loadOlderMessages,
     } = useProjectCopilot();
 
     // Defer Radix-heavy UI until after hydration to avoid ID mismatch warnings
@@ -267,6 +271,9 @@ export function ProjectCopilot({
                     onExecutePlan={executePlan}
                     onSaveToNotes={handleSaveToNotes}
                     onBranchFromMessage={handleBranchFromMessage}
+                    hasMore={hasMore}
+                    isLoadingOlder={isLoadingOlder}
+                    onLoadOlder={loadOlderMessages}
                 />
 
                 {/* Input area */}
