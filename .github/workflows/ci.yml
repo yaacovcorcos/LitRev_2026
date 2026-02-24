@@ -40,15 +40,11 @@ jobs:
       - name: Apply migrations
         run: cd next-app && npx prisma migrate deploy
 
-      - name: Create shadow database for drift check
-        run: PGPASSWORD=test psql -h localhost -U test -d litrev_test -c "CREATE DATABASE litrev_shadow"
-
       - name: Check for schema drift
         run: |
           cd next-app && npx prisma migrate diff \
             --from-migrations prisma/migrations \
             --to-schema prisma/schema.prisma \
-            --shadow-database-url postgresql://test:test@localhost:5432/litrev_shadow \
             --exit-code
 
       - name: Type check
