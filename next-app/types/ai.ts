@@ -74,6 +74,10 @@ export type ChatOptions = {
     model?: string;
     temperature?: number;
     maxTokens?: number;
+    /** Request provider-native reasoning/thinking parts when supported. */
+    includeReasoning?: boolean;
+    /** Optional provider reasoning budget (tokens), when supported. */
+    reasoningBudgetTokens?: number;
     tone?: AITone;
     additionalContext?: string;
     systemPrompt?: string;
@@ -102,6 +106,7 @@ export type AIResponse = {
 // Streaming chunk
 export type AIStreamChunk = {
     type: "content" | "tool_call" | "tool_result" | "done" | "error"
+        | "reasoning_start" | "reasoning_delta" | "reasoning_end"
         | "artifact" | "progress" | "checkpoint"
         | "run_start" | "run_end"
         | "conversation_title"
@@ -113,6 +118,9 @@ export type AIStreamChunk = {
     toolCall?: ToolCall;
     toolResult?: ToolResult;
     toolName?: string;
+    // Reasoning chunk fields
+    reasoningId?: string;
+    reasoningText?: string;
     // Artifact chunk fields (Phase 1)
     artifactId?: string;
     artifactType?: string;

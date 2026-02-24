@@ -278,6 +278,12 @@ class AIService {
                 if (chunk.type === "tool_call" && chunk.toolCall) {
                     collectedToolCalls.push(chunk.toolCall);
                     yield chunk;
+                } else if (
+                    chunk.type === "reasoning_start"
+                    || chunk.type === "reasoning_delta"
+                    || chunk.type === "reasoning_end"
+                ) {
+                    yield chunk;
                 } else if (chunk.type === "content") {
                     contentSoFar += chunk.content || "";
                     yield chunk;
@@ -924,6 +930,12 @@ class AIService {
                         if (!(effectiveHandoffSelection && !protocolHandoffExecuted)) {
                             yield { ...chunk, conversationId: conversation.id };
                         }
+                    } else if (
+                        chunk.type === "reasoning_start"
+                        || chunk.type === "reasoning_delta"
+                        || chunk.type === "reasoning_end"
+                    ) {
+                        yield { ...chunk, conversationId: conversation.id };
                     } else if (chunk.type === "content") {
                         contentSoFar += chunk.content || "";
                         fullContent += chunk.content || "";

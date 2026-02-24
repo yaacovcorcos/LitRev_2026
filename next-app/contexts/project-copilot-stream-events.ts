@@ -5,9 +5,15 @@ import type { AIStreamChunk, ChoiceOption, CopilotPage } from "@/types/ai";
 export type StreamMutableState = {
   aiMessageCreated: boolean;
   fullContent: string;
+  reasoningContent: string;
+  reasoningState: "streaming" | "done";
+  reasoningTruncated: boolean;
+  activeReasoningId: string | null;
   localRunId: string;
   effectiveConvId: string | null;
 };
+
+const MAX_REASONING_CHARS = 8000;
 
 type StreamChunkDeps = {
   aiMessageId: string;
@@ -36,6 +42,13 @@ function appendAssistantMessage(
       id: deps.aiMessageId,
       sender: "ai",
       text,
+      reasoning: state.reasoningContent
+        ? {
+            text: state.reasoningContent,
+            state: state.reasoningState,
+            truncated: state.reasoningTruncated || undefined,
+          }
+        : undefined,
       createdAt: new Date().toISOString(),
       context: { page: deps.page, section: deps.section },
     };
@@ -44,7 +57,62 @@ function appendAssistantMessage(
   }
 
   deps.updateMessages((messages) =>
-    messages.map((msg) => (msg.id === deps.aiMessageId ? { ...msg, text } : msg))
+    messages.map((msg) => {
+      if (msg.id !== deps.aiMessageId) return msg;
+      const nextReasoning = state.reasoningContent
+        ? {
+            text: state.reasoningContent,
+            state: state.reasoningState,
+            truncated: state.reasoningTruncated || undefined,
+          }
+        : msg.reasoning;
+      return {
+        ...msg,
+        text,
+        reasoning: nextReasoning,
+      };
+    })
+  );
+  return state;
+}
+
+function upsertAssistantReasoning(
+  deps: StreamChunkDeps,
+  state: StreamMutableState
+): StreamMutableState {
+  if (!state.aiMessageCreated) {
+    const aiMessage: CopilotMessage = {
+      id: deps.aiMessageId,
+      sender: "ai",
+      text: state.fullContent,
+      reasoning: state.reasoningContent
+        ? {
+            text: state.reasoningContent,
+            state: state.reasoningState,
+            truncated: state.reasoningTruncated || undefined,
+          }
+        : undefined,
+      createdAt: new Date().toISOString(),
+      context: { page: deps.page, section: deps.section },
+    };
+    deps.updateMessages((messages) => [...messages, aiMessage]);
+    return { ...state, aiMessageCreated: true };
+  }
+
+  deps.updateMessages((messages) =>
+    messages.map((msg) =>
+      msg.id === deps.aiMessageId
+        ? {
+            ...msg,
+            text: state.fullContent,
+            reasoning: {
+              text: state.reasoningContent,
+              state: state.reasoningState,
+              truncated: state.reasoningTruncated || undefined,
+            },
+          }
+        : msg
+    )
   );
   return state;
 }
@@ -65,6 +133,51 @@ const chunkHandlers: Partial<Record<AIStreamChunk["type"], ChunkHandler>> = {
     const nextContent = `${state.fullContent}${data.content ?? ""}`;
     const nextState = { ...state, fullContent: nextContent };
     return appendAssistantMessage(deps, nextState, nextContent);
+  },
+  reasoning_start: (data, state, deps) => {
+    const activeReasoningId = data.reasoningId ?? `reasoning-${Date.now()}`;
+    const nextReasoning =
+      state.reasoningContent.trim().length > 0 ? `${state.reasoningContent}\n\n` : state.reasoningContent;
+    const nextState: StreamMutableState = {
+      ...state,
+      reasoningContent: nextReasoning,
+      reasoningState: "streaming",
+      activeReasoningId,
+    };
+    return upsertAssistantReasoning(deps, nextState);
+  },
+  reasoning_delta: (data, state, deps) => {
+    // Ignore stale/foreign reasoning chunks when an active reasoning block is set.
+    if (state.activeReasoningId && data.reasoningId && data.reasoningId !== state.activeReasoningId) {
+      return state;
+    }
+    if (state.reasoningTruncated) return state;
+    const delta = data.reasoningText ?? "";
+    if (!delta) return state;
+    const combined = `${state.reasoningContent}${delta}`;
+    const shouldTruncate = combined.length > MAX_REASONING_CHARS;
+    const cappedContent = shouldTruncate
+      ? `${combined.slice(0, MAX_REASONING_CHARS)}\n\n[Thinking output truncated]`
+      : combined;
+    const nextState: StreamMutableState = {
+      ...state,
+      reasoningContent: cappedContent,
+      reasoningState: "streaming",
+      reasoningTruncated: state.reasoningTruncated || shouldTruncate,
+      activeReasoningId: data.reasoningId ?? state.activeReasoningId,
+    };
+    return upsertAssistantReasoning(deps, nextState);
+  },
+  reasoning_end: (data, state, deps) => {
+    if (state.activeReasoningId && data.reasoningId && data.reasoningId !== state.activeReasoningId) {
+      return state;
+    }
+    const nextState: StreamMutableState = {
+      ...state,
+      reasoningState: "done",
+      activeReasoningId: null,
+    };
+    return upsertAssistantReasoning(deps, nextState);
   },
   tool_call: (data, state, deps) => {
     const toolName = data.toolCall?.name ?? "";
@@ -184,4 +297,3 @@ export function handleProjectCopilotStreamChunk(
   if (!handler) return state;
   return handler(data, state, deps);
 }
-

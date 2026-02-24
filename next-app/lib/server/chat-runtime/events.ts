@@ -6,6 +6,9 @@ type SharedFields = {
 
 export type RuntimeStreamEvent =
   | ({ type: "content"; content: string } & SharedFields)
+  | ({ type: "reasoning_start"; reasoningId: string } & SharedFields)
+  | ({ type: "reasoning_delta"; reasoningId: string; reasoningText: string } & SharedFields)
+  | ({ type: "reasoning_end"; reasoningId: string } & SharedFields)
   | ({ type: "tool_call"; toolCall: ToolCall } & SharedFields)
   | ({ type: "tool_result"; toolResult: ToolResult; toolName?: string } & SharedFields)
   | ({ type: "done"; usage?: AIStreamChunk["usage"] } & SharedFields)
@@ -55,6 +58,20 @@ export function normalizeStreamChunk(chunk: AIStreamChunk): RuntimeStreamEvent |
   switch (chunk.type) {
     case "content":
       return { type: "content", content: chunk.content ?? "", conversationId };
+    case "reasoning_start":
+      if (!chunk.reasoningId) return null;
+      return { type: "reasoning_start", reasoningId: chunk.reasoningId, conversationId };
+    case "reasoning_delta":
+      if (!chunk.reasoningId) return null;
+      return {
+        type: "reasoning_delta",
+        reasoningId: chunk.reasoningId,
+        reasoningText: chunk.reasoningText ?? "",
+        conversationId,
+      };
+    case "reasoning_end":
+      if (!chunk.reasoningId) return null;
+      return { type: "reasoning_end", reasoningId: chunk.reasoningId, conversationId };
     case "tool_call":
       if (!chunk.toolCall) return null;
       return { type: "tool_call", toolCall: chunk.toolCall, conversationId };
@@ -138,6 +155,25 @@ export function toWireChunk(event: RuntimeStreamEvent): AIStreamChunk {
   switch (event.type) {
     case "content":
       return { type: "content", content: event.content, conversationId: event.conversationId };
+    case "reasoning_start":
+      return {
+        type: "reasoning_start",
+        reasoningId: event.reasoningId,
+        conversationId: event.conversationId,
+      };
+    case "reasoning_delta":
+      return {
+        type: "reasoning_delta",
+        reasoningId: event.reasoningId,
+        reasoningText: event.reasoningText,
+        conversationId: event.conversationId,
+      };
+    case "reasoning_end":
+      return {
+        type: "reasoning_end",
+        reasoningId: event.reasoningId,
+        conversationId: event.conversationId,
+      };
     case "tool_call":
       return { type: "tool_call", toolCall: event.toolCall, conversationId: event.conversationId };
     case "tool_result":
@@ -208,4 +244,3 @@ export function toWireChunk(event: RuntimeStreamEvent): AIStreamChunk {
       };
   }
 }
-

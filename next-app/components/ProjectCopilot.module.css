@@ -347,6 +347,52 @@
     word-break: break-word;
 }
 
+.reasoningWrap {
+    margin-bottom: 8px;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    border-radius: 10px;
+    background: rgba(0, 0, 0, 0.025);
+}
+
+.reasoningToggle {
+    width: 100%;
+    border: none;
+    background: transparent;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 8px;
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    text-align: left;
+}
+
+.reasoningToggle :global(.material-icons-round) {
+    font-size: 16px;
+}
+
+.reasoningPanel {
+    border-top: 1px solid rgba(0, 0, 0, 0.08);
+    padding: 8px;
+    color: var(--text-secondary);
+    font-size: 13px;
+    line-height: 1.45;
+    white-space: pre-wrap;
+}
+
+.reasoningTruncatedNote {
+    margin-top: 6px;
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.reasoningPlaceholder {
+    font-size: 13px;
+    color: var(--text-muted);
+}
+
 .mentionedStudiesRow {
     margin-top: 8px;
     display: flex;

@@ -8,6 +8,10 @@ describe("project copilot stream event handlers", () => {
     return {
       aiMessageCreated: false,
       fullContent: "",
+      reasoningContent: "",
+      reasoningState: "done",
+      reasoningTruncated: false,
+      activeReasoningId: null,
       localRunId: "",
       effectiveConvId: null,
     };
@@ -119,5 +123,56 @@ describe("project copilot stream event handlers", () => {
 
     expect(setPendingChoices).not.toHaveBeenCalled();
   });
-});
 
+  it("accumulates reasoning chunks on the assistant message", () => {
+    const messages: CopilotMessage[] = [];
+
+    const deps = {
+      aiMessageId: "m-1",
+      page: "overview" as const,
+      section: undefined,
+      projectId: "p-1",
+      myGen: 1,
+      getCurrentGen: () => 1,
+      setCurrentRunId: vi.fn(),
+      syncConversationId: vi.fn(),
+      upsertConversationTitle: vi.fn(),
+      upsertArtifact: vi.fn(),
+      updateMessages: (updater: (messages: CopilotMessage[]) => CopilotMessage[]) => {
+        const next = updater(messages);
+        messages.splice(0, messages.length, ...next);
+      },
+      emitLedgerChanged: vi.fn(),
+      setPendingChoices: vi.fn(),
+      onPlanStepUpdate: vi.fn(),
+    };
+
+    let nextState = handleProjectCopilotStreamChunk(
+      { type: "reasoning_start", reasoningId: "r-1" },
+      baseState(),
+      deps
+    );
+    nextState = handleProjectCopilotStreamChunk(
+      { type: "reasoning_delta", reasoningId: "r-1", reasoningText: "Inspecting the request..." },
+      nextState,
+      deps
+    );
+    nextState = handleProjectCopilotStreamChunk(
+      { type: "reasoning_end", reasoningId: "r-1" },
+      nextState,
+      deps
+    );
+    nextState = handleProjectCopilotStreamChunk(
+      { type: "content", content: "Final answer." },
+      nextState,
+      deps
+    );
+
+    expect(messages).toHaveLength(1);
+    expect(messages[0]?.text).toBe("Final answer.");
+    expect(messages[0]?.reasoning?.text).toBe("Inspecting the request...");
+    expect(messages[0]?.reasoning?.state).toBe("done");
+    expect(nextState.reasoningContent).toBe("Inspecting the request...");
+    expect(nextState.activeReasoningId).toBeNull();
+  });
+});

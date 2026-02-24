@@ -7,7 +7,7 @@
 
 "use client";
 
-import { Component, memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Component, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useStableChatScroll } from "@/hooks/useStableChatScroll";
 import type { ErrorInfo, ReactNode } from "react";
 import { useParams } from "next/navigation";
@@ -230,11 +230,21 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
     onBranchFromMessage,
 }: AssistantMessageRowProps) {
     const displayContent = stripAssistantMarkupForDisplay(item.content);
+    const reasoningText = item.reasoning?.text?.trim() ?? "";
+    const hasReasoning = reasoningText.length > 0;
+    const isReasoningStreaming = item.reasoning?.state === "streaming";
     const mentions = useMemo(
         () => (CHAT_STUDY_MENTIONS_ENABLED ? extractMentionedStudies(item.content) : []),
         [item.content]
     );
     const [mentionStates, setMentionStates] = useState<Record<string, MentionAddState>>({});
+    const [showReasoning, setShowReasoning] = useState(isReasoningStreaming);
+
+    useEffect(() => {
+        if (isReasoningStreaming) {
+            setShowReasoning(true);
+        }
+    }, [isReasoningStreaming]);
 
     const addMentionedStudy = useCallback(async (study: MentionedStudy) => {
         if (!projectId) return;
@@ -266,10 +276,43 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
         <div className={`${styles.chatMsg} ${styles.chatMsgAi}`} role="article" aria-label="Assistant">
             <div className={styles.chatStack}>
                 <div className={styles.chatBubble}>
+                    {hasReasoning && (
+                        <div className={styles.reasoningWrap}>
+                            <button
+                                type="button"
+                                className={styles.reasoningToggle}
+                                onClick={() => setShowReasoning((prev) => !prev)}
+                                aria-expanded={showReasoning}
+                            >
+                                <span className="material-icons-round" aria-hidden="true">
+                                    {showReasoning ? "expand_more" : "chevron_right"}
+                                </span>
+                                <span>{isReasoningStreaming ? "Thinking" : "Reasoning"}</span>
+                            </button>
+                            {showReasoning && (
+                                <div className={styles.reasoningPanel}>
+                                    <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                                        {reasoningText}
+                                    </ReactMarkdown>
+                                    {item.reasoning?.truncated && (
+                                        <div className={styles.reasoningTruncatedNote}>
+                                            Thinking output truncated for safety.
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    )}
                     <div className={markdownStyles.markdownContent}>
-                        <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-                            {displayContent}
-                        </ReactMarkdown>
+                        {displayContent ? (
+                            <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                                {displayContent}
+                            </ReactMarkdown>
+                        ) : (
+                            isReasoningStreaming && (
+                                <span className={styles.reasoningPlaceholder}>Thinking...</span>
+                            )
+                        )}
                         {isStreaming && (
                             <span className={styles.streamingCursor} aria-hidden="true">◎</span>
                         )}

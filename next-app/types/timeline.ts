@@ -38,6 +38,11 @@ export interface TimelineAssistantMessage {
     type: "assistant_message";
     id: string;
     content: string;
+    reasoning?: {
+        text: string;
+        state?: "streaming" | "done";
+        truncated?: boolean;
+    };
     createdAt: string;
 }
 

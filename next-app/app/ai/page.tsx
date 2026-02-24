@@ -843,6 +843,10 @@ export default function AIView() {
     const aiMessageId = `m-${Date.now() + 1}`;
     let aiMessageCreated = false;
     let fullContent = "";
+    let reasoningContent = "";
+    let reasoningState: "streaming" | "done" = "done";
+    let reasoningTruncated = false;
+    let activeReasoningId: string | null = null;
     let progressItemId: string | null = null;
 
     const upsertAssistant = (content: string) => {
@@ -855,6 +859,13 @@ export default function AIView() {
               type: "assistant_message",
               id: aiMessageId,
               content,
+              reasoning: reasoningContent
+                ? {
+                    text: reasoningContent,
+                    state: reasoningState,
+                    truncated: reasoningTruncated || undefined,
+                  }
+                : undefined,
               createdAt: new Date().toISOString(),
             },
           ];
@@ -862,7 +873,17 @@ export default function AIView() {
 
         const next = [...items];
         const current = next[idx] as Extract<TimelineItem, { type: "assistant_message" }>;
-        next[idx] = { ...current, content };
+        next[idx] = {
+          ...current,
+          content,
+          reasoning: reasoningContent
+            ? {
+                text: reasoningContent,
+                state: reasoningState,
+                truncated: reasoningTruncated || undefined,
+              }
+            : current.reasoning,
+        };
         return next;
       });
       aiMessageCreated = true;
@@ -952,6 +973,8 @@ export default function AIView() {
             conversationId: convId,
             projectId: selectedProjectId ?? undefined,
             model,
+            includeReasoning: true,
+            reasoningBudgetTokens: 4096,
             agentMode: effectiveAgentMode,
             page: currentPage,
 
@@ -1013,6 +1036,42 @@ export default function AIView() {
           if (data.type === "content" && data.content) {
             clearProgress();
             fullContent += data.content;
+            upsertAssistant(fullContent);
+            return;
+          }
+
+          if (data.type === "reasoning_start") {
+            if (reasoningContent.trim().length > 0) {
+              reasoningContent += "\n\n";
+            }
+            reasoningState = "streaming";
+            activeReasoningId = data.reasoningId ?? activeReasoningId;
+            upsertAssistant(fullContent);
+            return;
+          }
+
+          if (data.type === "reasoning_delta") {
+            if (reasoningTruncated) return;
+            if (activeReasoningId && data.reasoningId && data.reasoningId !== activeReasoningId) return;
+            const delta = data.reasoningText ?? "";
+            if (!delta) return;
+            const next = `${reasoningContent}${delta}`;
+            if (next.length > 8000) {
+              reasoningContent = `${next.slice(0, 8000)}\n\n[Thinking output truncated]`;
+              reasoningTruncated = true;
+            } else {
+              reasoningContent = next;
+            }
+            reasoningState = "streaming";
+            activeReasoningId = data.reasoningId ?? activeReasoningId;
+            upsertAssistant(fullContent);
+            return;
+          }
+
+          if (data.type === "reasoning_end") {
+            if (activeReasoningId && data.reasoningId && data.reasoningId !== activeReasoningId) return;
+            reasoningState = "done";
+            activeReasoningId = null;
             upsertAssistant(fullContent);
             return;
           }
@@ -1232,6 +1291,10 @@ export default function AIView() {
     const aiMessageId = `m-${Date.now() + 1}`;
     let aiMessageCreated = false;
     let fullContent = "";
+    let reasoningContent = "";
+    let reasoningState: "streaming" | "done" = "done";
+    let reasoningTruncated = false;
+    let activeReasoningId: string | null = null;
     let progressItemId: string | null = null;
     let runStatus: string | null = null;
     let stopReason: string | null = null;
@@ -1241,11 +1304,36 @@ export default function AIView() {
       updateConversationTimeline(convId, (items) => {
         const idx = items.findIndex((it) => it.type === "assistant_message" && it.id === aiMessageId);
         if (idx === -1) {
-          return [...items, { type: "assistant_message", id: aiMessageId, content, createdAt: new Date().toISOString() }];
+          return [
+            ...items,
+            {
+              type: "assistant_message",
+              id: aiMessageId,
+              content,
+              reasoning: reasoningContent
+                ? {
+                    text: reasoningContent,
+                    state: reasoningState,
+                    truncated: reasoningTruncated || undefined,
+                  }
+                : undefined,
+              createdAt: new Date().toISOString(),
+            },
+          ];
         }
         const next = [...items];
         const current = next[idx] as Extract<TimelineItem, { type: "assistant_message" }>;
-        next[idx] = { ...current, content };
+        next[idx] = {
+          ...current,
+          content,
+          reasoning: reasoningContent
+            ? {
+                text: reasoningContent,
+                state: reasoningState,
+                truncated: reasoningTruncated || undefined,
+              }
+            : current.reasoning,
+        };
         return next;
       });
       aiMessageCreated = true;
@@ -1287,6 +1375,8 @@ export default function AIView() {
           options: {
             conversationId: convId,
             projectId: selectedProjectId ?? undefined,
+            includeReasoning: true,
+            reasoningBudgetTokens: 4096,
             agentMode: "general",
             page: "ai",
             additionalContext: selectedProjectId ? undefined : (workspaceContextText || undefined),
@@ -1342,6 +1432,37 @@ export default function AIView() {
           if (data.type === "content" && data.content) {
             clearProgress();
             fullContent += data.content;
+            upsertAssistant(fullContent);
+            return;
+          }
+          if (data.type === "reasoning_start") {
+            if (reasoningContent.trim().length > 0) reasoningContent += "\n\n";
+            reasoningState = "streaming";
+            activeReasoningId = data.reasoningId ?? activeReasoningId;
+            upsertAssistant(fullContent);
+            return;
+          }
+          if (data.type === "reasoning_delta") {
+            if (reasoningTruncated) return;
+            if (activeReasoningId && data.reasoningId && data.reasoningId !== activeReasoningId) return;
+            const delta = data.reasoningText ?? "";
+            if (!delta) return;
+            const next = `${reasoningContent}${delta}`;
+            if (next.length > 8000) {
+              reasoningContent = `${next.slice(0, 8000)}\n\n[Thinking output truncated]`;
+              reasoningTruncated = true;
+            } else {
+              reasoningContent = next;
+            }
+            reasoningState = "streaming";
+            activeReasoningId = data.reasoningId ?? activeReasoningId;
+            upsertAssistant(fullContent);
+            return;
+          }
+          if (data.type === "reasoning_end") {
+            if (activeReasoningId && data.reasoningId && data.reasoningId !== activeReasoningId) return;
+            reasoningState = "done";
+            activeReasoningId = null;
             upsertAssistant(fullContent);
             return;
           }

@@ -890,6 +890,10 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
         const aiMessageId = `m-${Date.now() + 1}`;
         let aiMessageCreated = false;
         let fullContent = "";
+        let reasoningContent = "";
+        let reasoningState: "streaming" | "done" = "done";
+        let reasoningTruncated = false;
+        let activeReasoningId: string | null = null;
         let localRunId = "";
         let runStatus: string | null = null;
         let stopReason: string | null = null;
@@ -960,6 +964,10 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
                         {
                             aiMessageCreated,
                             fullContent,
+                            reasoningContent,
+                            reasoningState,
+                            reasoningTruncated,
+                            activeReasoningId,
                             localRunId,
                             effectiveConvId,
                         },
@@ -990,6 +998,10 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
                     );
                     aiMessageCreated = nextState.aiMessageCreated;
                     fullContent = nextState.fullContent;
+                    reasoningContent = nextState.reasoningContent;
+                    reasoningState = nextState.reasoningState;
+                    reasoningTruncated = nextState.reasoningTruncated;
+                    activeReasoningId = nextState.activeReasoningId;
                     localRunId = nextState.localRunId;
                     effectiveConvId = nextState.effectiveConvId;
                 },
@@ -1133,6 +1145,8 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
                         projectId,
                         studyId,
                         model,
+                        includeReasoning: true,
+                        reasoningBudgetTokens: 4096,
                         agentMode: agentMode || "general",
                         page,
                         section,
@@ -1184,6 +1198,8 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
                 options: {
                     conversationId: convId ?? undefined,
                     projectId,
+                    includeReasoning: true,
+                    reasoningBudgetTokens: 4096,
                     agentMode: "general",
                 },
             },

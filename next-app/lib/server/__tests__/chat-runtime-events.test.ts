@@ -31,5 +31,30 @@ describe("chat runtime events", () => {
       conversationId: "conv_1",
     });
   });
-});
 
+  it("normalizes and round-trips reasoning events", () => {
+    const normalized = normalizeStreamChunk({
+      type: "reasoning_delta",
+      reasoningId: "r-1",
+      reasoningText: "Thinking...",
+      conversationId: "conv_1",
+    });
+    expect(normalized).toEqual({
+      type: "reasoning_delta",
+      reasoningId: "r-1",
+      reasoningText: "Thinking...",
+      conversationId: "conv_1",
+    });
+
+    const wire = toWireChunk({
+      type: "reasoning_end",
+      reasoningId: "r-1",
+      conversationId: "conv_1",
+    });
+    expect(wire).toEqual({
+      type: "reasoning_end",
+      reasoningId: "r-1",
+      conversationId: "conv_1",
+    });
+  });
+});

@@ -17,6 +17,9 @@ export const runtime = "nodejs";
 
 const STREAM_EVENT_TYPES: RuntimeStreamEvent["type"][] = [
     "content",
+    "reasoning_start",
+    "reasoning_delta",
+    "reasoning_end",
     "tool_call",
     "tool_result",
     "done",

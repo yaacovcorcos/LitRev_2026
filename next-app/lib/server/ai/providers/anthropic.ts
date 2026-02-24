@@ -130,15 +130,28 @@ export class AnthropicProvider extends BaseAIProvider {
             }));
         }
 
+        // Anthropic extended thinking is opt-in.
+        // Keep budget bounded to prevent runaway token spend.
+        if (options?.includeReasoning) {
+            params.thinking = {
+                type: "enabled",
+                budget_tokens: Math.max(512, Math.min(options.reasoningBudgetTokens ?? 4096, 32768)),
+            } as Anthropic.ThinkingConfigParam;
+        }
+
         let totalContent = "";
         let inputTokens = 0;
         let outputTokens = 0;
 
-        // Track tool use blocks being assembled
-        let currentToolId = "";
-        let currentToolName = "";
-        let currentToolArgs = "";
-        let hasToolCalls = false;
+        const activeBlocks = new Map<number, {
+            kind: "tool";
+            id: string;
+            name: string;
+            args: string;
+        } | {
+            kind: "reasoning";
+            reasoningId: string;
+        }>();
 
         try {
             // Pass AbortSignal through so callers can cancel in-flight streaming requests.
@@ -154,16 +167,34 @@ export class AnthropicProvider extends BaseAIProvider {
                     }
 
                     case "content_block_start": {
+                        const idx = typeof event.index === "number" ? event.index : -1;
                         if (event.content_block.type === "tool_use") {
-                            currentToolId = event.content_block.id;
-                            currentToolName = event.content_block.name;
-                            currentToolArgs = "";
-                            hasToolCalls = true;
+                            activeBlocks.set(idx, {
+                                kind: "tool",
+                                id: event.content_block.id,
+                                name: event.content_block.name,
+                                args: "",
+                            });
+                        } else if (event.content_block.type === "thinking") {
+                            const reasoningId = `reasoning-${idx >= 0 ? idx : Date.now()}`;
+                            activeBlocks.set(idx, { kind: "reasoning", reasoningId });
+                            yield { type: "reasoning_start", reasoningId };
+                        } else if ((event.content_block as { type?: string }).type === "redacted_thinking") {
+                            const reasoningId = `reasoning-${idx >= 0 ? idx : Date.now()}`;
+                            activeBlocks.set(idx, { kind: "reasoning", reasoningId });
+                            yield { type: "reasoning_start", reasoningId };
+                            yield {
+                                type: "reasoning_delta",
+                                reasoningId,
+                                reasoningText: "[Reasoning hidden by provider]",
+                            };
                         }
                         break;
                     }
 
                     case "content_block_delta": {
+                        const idx = typeof event.index === "number" ? event.index : -1;
+                        const activeBlock = activeBlocks.get(idx);
                         if (event.delta.type === "text_delta") {
                             totalContent += event.delta.text;
                             yield {
@@ -171,24 +202,41 @@ export class AnthropicProvider extends BaseAIProvider {
                                 content: event.delta.text,
                             };
                         } else if (event.delta.type === "input_json_delta") {
-                            currentToolArgs += event.delta.partial_json;
+                            if (activeBlock?.kind === "tool") {
+                                activeBlock.args += event.delta.partial_json;
+                            }
+                        } else if ((event.delta as { type?: string }).type === "thinking_delta") {
+                            const thinkingText = (event.delta as { thinking?: string }).thinking ?? "";
+                            if (activeBlock?.kind === "reasoning" && thinkingText) {
+                                yield {
+                                    type: "reasoning_delta",
+                                    reasoningId: activeBlock.reasoningId,
+                                    reasoningText: thinkingText,
+                                };
+                            }
                         }
                         break;
                     }
 
                     case "content_block_stop": {
-                        // If we were assembling a tool call, yield it now
-                        if (currentToolId) {
+                        const idx = typeof event.index === "number" ? event.index : -1;
+                        const activeBlock = activeBlocks.get(idx);
+                        if (!activeBlock) break;
+
+                        if (activeBlock.kind === "tool") {
                             const toolCall: ToolCall = {
-                                id: currentToolId,
-                                name: currentToolName,
-                                arguments: parseToolArgs(currentToolArgs, currentToolName, "anthropic:stream"),
+                                id: activeBlock.id,
+                                name: activeBlock.name,
+                                arguments: parseToolArgs(activeBlock.args, activeBlock.name, "anthropic:stream"),
                             };
                             yield { type: "tool_call", toolCall };
-                            currentToolId = "";
-                            currentToolName = "";
-                            currentToolArgs = "";
+                        } else if (activeBlock.kind === "reasoning") {
+                            yield {
+                                type: "reasoning_end",
+                                reasoningId: activeBlock.reasoningId,
+                            };
                         }
+                        activeBlocks.delete(idx);
                         break;
                     }
 
