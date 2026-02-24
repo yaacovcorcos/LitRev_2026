@@ -249,12 +249,6 @@
     overscroll-behavior: contain;
 }
 
-/* Empty body: don't take all space, let parent center */
-.copilotBodyEmpty {
-    flex: 0 1 auto;
-    overflow-y: auto;
-}
-
 .emptyPanel {
     margin: auto 0;
     padding: 24px 20px;
@@ -1704,7 +1698,6 @@
     padding: 10px 0;
 }
 
-/* User messages: left accent bar + subtle tint */
 .pageLayout .chatMsgUser .chatBubble {
     border-inline-start: 3px solid rgba(217, 116, 89, 0.35);
     padding-block: 10px;

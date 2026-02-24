@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useStableChatScroll } from "@/hooks/useStableChatScroll";
 import * as Dialog from "@radix-ui/react-dialog";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -111,7 +112,6 @@ export function PopupChat({ projectId }: PopupChatProps) {
     const [turnHintDismissed, setTurnHintDismissed] = useState(false);
 
     const abortRef = useRef<AbortController | null>(null);
-    const messagesEndRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const cardRef = useRef<HTMLDivElement>(null);
 
@@ -149,10 +149,15 @@ export function PopupChat({ projectId }: PopupChatProps) {
         }
     }, [userTurnCount, turnHintDismissed]);
 
-    // Auto-scroll to bottom
-    useEffect(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    }, [messages]);
+    // Shared scroll hook for auto-scroll
+    const {
+        containerRef: messagesContainerRef,
+        bottomRef: messagesBottomRef,
+        onScroll: onMessagesScroll,
+        notifyContentChanged,
+    } = useStableChatScroll();
+
+    useLayoutEffect(() => { notifyContentChanged(); }, [messages, notifyContentChanged]);
 
     // Focus textarea when popup opens
     useEffect(() => {
@@ -318,12 +323,14 @@ export function PopupChat({ projectId }: PopupChatProps) {
             const page = contextToPage(context);
             const studyId = context.type === "study" ? context.studyId : undefined;
 
-            const { id: convId } = await createConversation({
+            const convResult = await createConversation({
                 projectId,
                 studyId,
                 page,
                 context: studyId ? "study" : "project",
             });
+            if (!convResult.success) return;
+            const convId = convResult.data.id;
 
             // Insert messages sequentially
             for (const msg of messages) {
@@ -395,7 +402,7 @@ export function PopupChat({ projectId }: PopupChatProps) {
                     </div>
 
                     {/* Messages */}
-                    <div className={styles.messages}>
+                    <div className={styles.messages} ref={messagesContainerRef} onScroll={onMessagesScroll}>
                         {messages.length === 0 ? (
                             <div className={styles.emptyMessages}>{getPlaceholder(context)}</div>
                         ) : (
@@ -421,7 +428,7 @@ export function PopupChat({ projectId }: PopupChatProps) {
                                 </div>
                             ))
                         )}
-                        <div ref={messagesEndRef} />
+                        <div ref={messagesBottomRef} style={{ height: 1 }} aria-hidden="true" />
                     </div>
 
                     {/* Turn hint banner */}

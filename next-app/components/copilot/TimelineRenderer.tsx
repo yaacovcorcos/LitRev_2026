@@ -8,6 +8,7 @@
 "use client";
 
 import { Component, memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useStableChatScroll } from "@/hooks/useStableChatScroll";
 import type { ErrorInfo, ReactNode } from "react";
 import { useParams } from "next/navigation";
 import ReactMarkdown from "react-markdown";
@@ -249,9 +250,10 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
                 s2PaperId: study.s2PaperId,
                 sourceUrl: study.sourceUrl,
             });
+            if (!result.success) throw new Error(result.error);
             setMentionStates((prev) => ({
                 ...prev,
-                [study.key]: result.created ? "added" : "exists",
+                [study.key]: result.data.created ? "added" : "exists",
             }));
             window.dispatchEvent(new CustomEvent("litrev:ledger-changed", { detail: { projectId } }));
         } catch (error) {
@@ -424,13 +426,14 @@ export function TimelineRenderer({
         ? String((params as Record<string, unknown>).id)
         : undefined;
     const projectId = projectIdProp ?? routeProjectId;
-    const listRef = useRef<HTMLDivElement | null>(null);
-    const followRef = useRef(true);      // strict follow-mode: only toggled by explicit user intent
-    const rafRef = useRef<number | null>(null);
-    const programmaticScrollRef = useRef(false);
-    const [isAtBottom, setIsAtBottom] = useState(true);
     const [savedNoteId, setSavedNoteId] = useState<string | null>(null);
     const [savingNoteId, setSavingNoteId] = useState<string | null>(null);
+
+    // ── Shared scroll hook ──────────────────────────────────────────────────
+    const {
+        containerRef, bottomRef, onScroll, isPinned, scrollToBottom,
+        notifyStreamStart, notifyConversationChanged, notifyContentChanged,
+    } = useStableChatScroll();
 
     // Resolve timeline: prefer items, fall back to legacy messages.
     // Memoized so useLayoutEffect([timeline]) only fires on real content changes,
@@ -440,72 +443,20 @@ export function TimelineRenderer({
         [items, messages]
     );
 
-    // ── Conversation-switch reset ───────────────────────────────────────────
-    // Runs synchronously before paint whenever the active conversation changes.
-    // Resets scroll-control refs so the auto-scroll effect starts clean.
-    // We do NOT force scrollTop here — the auto-scroll effect below handles
-    // positioning once the new timeline arrives, avoiding a visible jump.
+    // ── Conversation change — ID-only, Strict Mode safe ─────────────────────
     useLayoutEffect(() => {
-        if (conversationId === undefined) return;
-        // Historical conversation switch: start with follow OFF so users can scroll/read.
-        // While a conversation is actively loading, keep follow ON for the initial paint.
-        followRef.current = isConversationLoading;
-        programmaticScrollRef.current = false;
-        setIsAtBottom(isConversationLoading);
-        if (rafRef.current) {
-            cancelAnimationFrame(rafRef.current);
-            rafRef.current = null;
-        }
-    }, [conversationId, isConversationLoading]);
+        if (conversationId) notifyConversationChanged(conversationId);
+    }, [conversationId, notifyConversationChanged]);
 
-    // When a new stream starts, re-enable follow mode so fresh responses stay in view.
-    // This preserves "read old history" behavior on switch while restoring "live follow"
-    // for newly sent messages.
+    // ── Stream start — fires once on false→true transition only ─────────────
+    const prevLoadingRef = useRef(false);
     useLayoutEffect(() => {
-        if (!isLoading) return;
-        followRef.current = true;
-        setIsAtBottom(true);
-    }, [isLoading]);
+        if (isLoading && !prevLoadingRef.current) notifyStreamStart();
+        prevLoadingRef.current = isLoading;
+    }, [isLoading, notifyStreamStart]);
 
-    // ── Follow-mode auto-scroll (rAF-coalesced) ────────────────────────────
-    // Runs when timeline identity changes (new message OR token append).
-    // Only scrolls when follow-mode is ON; batches to one scroll per frame.
-    useLayoutEffect(() => {
-        if (!listRef.current || !followRef.current) return;
-        if (rafRef.current) cancelAnimationFrame(rafRef.current);
-        rafRef.current = requestAnimationFrame(() => {
-            if (listRef.current && followRef.current) {
-                programmaticScrollRef.current = true;
-                listRef.current.scrollTop = listRef.current.scrollHeight;
-                // Clear on next frame so user-driven scrolls can immediately disable follow-mode.
-                requestAnimationFrame(() => { programmaticScrollRef.current = false; });
-            }
-        });
-        return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
-    }, [timeline]);
-
-    // ── Scroll handler — distinguishes user scroll from programmatic scroll ─
-    const BOTTOM_THRESHOLD = 20;
-
-    const handleScroll = useCallback(() => {
-        if (!listRef.current) return;
-        if (programmaticScrollRef.current) return;
-
-        const { scrollTop, clientHeight, scrollHeight } = listRef.current;
-        const atBottom = scrollTop + clientHeight >= scrollHeight - BOTTOM_THRESHOLD;
-        if (atBottom && !followRef.current) followRef.current = true;
-        if (!atBottom && followRef.current) followRef.current = false;
-        setIsAtBottom(atBottom);
-    }, []);
-
-    const scrollToBottom = useCallback(() => {
-        if (!listRef.current) return;
-        followRef.current = true;
-        setIsAtBottom(true);
-        programmaticScrollRef.current = true;
-        listRef.current.scrollTo({ top: listRef.current.scrollHeight, behavior: "auto" });
-        requestAnimationFrame(() => { programmaticScrollRef.current = false; });
-    }, []);
+    // ── Content change — schedule scroll if pinned ──────────────────────────
+    useLayoutEffect(() => { notifyContentChanged(); }, [timeline, notifyContentChanged]);
 
     const handleCopy = useCallback((text: string) => {
         navigator.clipboard.writeText(text).catch(console.error);
@@ -529,7 +480,7 @@ export function TimelineRenderer({
     // Skeleton while a conversation is being fetched from the server
     if (isConversationLoading && timeline.length === 0) {
         return (
-            <div className={`${styles.copilotBody} ${variant === "page" ? styles.copilotBodyEmpty : ""}`} ref={listRef}>
+            <div className={`${styles.copilotBody} ${variant === "page" ? styles.pageLayout : ""}`} ref={containerRef} onScroll={onScroll}>
                 <div className={styles.skeletonList} aria-busy="true" aria-label="Loading conversation">
                     <div className={styles.skeletonRow}>
                         <div className={`${styles.skeletonBubble} ${styles.skeletonBubbleUser}`} />
@@ -547,6 +498,7 @@ export function TimelineRenderer({
                         <div className={`${styles.skeletonBubble} ${styles.skeletonBubbleShort}`} />
                     </div>
                 </div>
+                <div ref={bottomRef} style={{ height: 1, flexShrink: 0 }} aria-hidden="true" />
             </div>
         );
     }
@@ -554,7 +506,7 @@ export function TimelineRenderer({
     // Empty state
     if (timeline.length === 0) {
         return (
-            <div className={`${styles.copilotBody} ${variant === "page" ? styles.copilotBodyEmpty : ""}`} ref={listRef}>
+            <div className={`${styles.copilotBody} ${variant === "page" ? styles.pageLayout : ""}`} ref={containerRef} onScroll={onScroll}>
                 <div className={styles.emptyPanel}>
                     <div className={styles.emptyIcon}>
                         <span className="material-icons-round">{emptyState.icon}</span>
@@ -574,6 +526,7 @@ export function TimelineRenderer({
                         ))}
                     </div>
                 </div>
+                <div ref={bottomRef} style={{ height: 1, flexShrink: 0 }} aria-hidden="true" />
             </div>
         );
     }
@@ -875,7 +828,7 @@ export function TimelineRenderer({
     };
 
     return (
-        <div className={`${styles.copilotBody} ${variant === "page" ? styles.pageLayout : ""}`} ref={listRef} onScroll={handleScroll}>
+        <div className={`${styles.copilotBody} ${variant === "page" ? styles.pageLayout : ""}`} ref={containerRef} onScroll={onScroll}>
             <div className={styles.chatList}>
                 {timeline.map((item, index) => renderTimelineItem(item, index))}
                 {isLoading && timeline.length > 0 && timeline[timeline.length - 1].type === "user_message" && (
@@ -887,15 +840,15 @@ export function TimelineRenderer({
                         </div>
                     </div>
                 )}
-                {/* Bottom sentinel — scroll anchor and screen-reader suppression */}
-                <div style={{ height: 1, flexShrink: 0 }} aria-hidden="true" />
+                {/* Bottom sentinel — scroll anchor */}
+                <div ref={bottomRef} style={{ height: 1, flexShrink: 0 }} aria-hidden="true" />
             </div>
             <button
                 type="button"
-                className={`${styles.scrollFab} ${isAtBottom ? styles.scrollFabHidden : ""}`}
+                className={`${styles.scrollFab} ${isPinned ? styles.scrollFabHidden : ""}`}
                 onClick={scrollToBottom}
                 aria-label="Scroll to bottom"
-                tabIndex={isAtBottom ? -1 : 0}
+                tabIndex={isPinned ? -1 : 0}
             >
                 <span className="material-icons-round">keyboard_arrow_down</span>
             </button>
