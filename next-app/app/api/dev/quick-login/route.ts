@@ -13,6 +13,7 @@ import {
   isDevQuickLoginAllowed,
   normalizeCallbackUrl,
 } from "@/lib/server/auth/dev-quick-login";
+import { getBetterAuthSecret } from "@/lib/server/auth/auth-secret";
 
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 30;
 
@@ -44,13 +45,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid origin" }, { status: 403 });
   }
 
-  const authSecret = process.env.BETTER_AUTH_SECRET;
-  if (!authSecret) {
-    return NextResponse.json(
-      { error: "BETTER_AUTH_SECRET is required for quick login" },
-      { status: 500 },
-    );
-  }
+  const authSecret = getBetterAuthSecret();
 
   const body = (await request.json().catch(() => ({}))) as {
     callbackUrl?: string | null;

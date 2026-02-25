@@ -6,6 +6,7 @@ import { nextCookies } from "better-auth/next-js";
 import { magicLink } from "better-auth/plugins/magic-link";
 import { Resend } from "resend";
 import { prisma } from "@/lib/server/prisma";
+import { getBetterAuthSecret } from "@/lib/server/auth/auth-secret";
 
 const baseURL =
   process.env.BETTER_AUTH_URL ||
@@ -31,10 +32,7 @@ const hasGoogleProvider = Boolean(
   process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET,
 );
 
-const authSecret = process.env.BETTER_AUTH_SECRET;
-if (!authSecret && process.env.NODE_ENV === "production") {
-  throw new Error("BETTER_AUTH_SECRET is required in production.");
-}
+const authSecret = getBetterAuthSecret();
 
 export const auth = betterAuth({
   baseURL,
