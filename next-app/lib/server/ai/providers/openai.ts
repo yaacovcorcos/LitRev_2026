@@ -10,6 +10,7 @@ import { BaseAIProvider } from "./base";
 import { AI_CONFIG, AVAILABLE_MODELS } from "@/lib/ai/config";
 import { parseToolArgs } from "../json-repair";
 import { extractProviderErrorMetadata } from "./error-metadata";
+import { normalizeProviderMessages } from "./message-normalization";
 
 export class OpenAIProvider extends BaseAIProvider {
     readonly id = "openai";
@@ -196,6 +197,7 @@ export class OpenAIProvider extends BaseAIProvider {
         systemPrompt?: string
     ): OpenAI.Chat.ChatCompletionMessageParam[] {
         const result: OpenAI.Chat.ChatCompletionMessageParam[] = [];
+        const normalizedMessages = normalizeProviderMessages(messages).messages;
 
         // Add system prompt if provided
         if (systemPrompt) {
@@ -203,7 +205,7 @@ export class OpenAIProvider extends BaseAIProvider {
         }
 
         // Convert messages
-        for (const msg of messages) {
+        for (const msg of normalizedMessages) {
             if (msg.role === "system") {
                 result.push({ role: "system", content: msg.content });
             } else if (msg.role === "user") {

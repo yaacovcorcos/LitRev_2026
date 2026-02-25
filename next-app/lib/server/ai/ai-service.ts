@@ -295,6 +295,8 @@ class AIService {
             currentMessages.push(...repaired.messages);
 
             // Pre-call budget check: compact if over budget before sending to model
+            // `estimateMessagesTokensWithSafetyMargin` applies the 20% margin before we decide to compact.
+            // `compactLoopMessages` itself remains raw-budget; this caller-side guard is the intended safety check.
             if (estimateMessagesTokensWithSafetyMargin(currentMessages) > budget) {
                 const compacted = compactLoopMessages(currentMessages, budget);
                 currentMessages.length = 0;
@@ -338,12 +340,7 @@ class AIService {
                                 yield chunk;
                             }
                         } else if (chunk.type === "error") {
-                            const classified = classifyAIError({
-                                message: chunk.error,
-                                errorStatus: chunk.errorStatus,
-                                errorCode: chunk.errorCode,
-                                errorHeaders: chunk.errorHeaders,
-                            });
+                            const classified = classifyAIError(chunk);
                             const message = classified.message || chunk.error || "Unknown streaming error";
                             if (!hadVisibleOutput && classified.reason === "context_overflow" && overflowRecoveryCount < MAX_OVERFLOW_RECOVERY_ATTEMPTS) {
                                 shouldRecoverOverflow = true;
@@ -1013,6 +1010,8 @@ class AIService {
                 currentMessages.push(...repaired.messages);
 
                 // Pre-call budget check: compact if over budget before sending to model
+                // `estimateMessagesTokensWithSafetyMargin` applies the 20% margin before we decide to compact.
+                // `compactLoopMessages` itself remains raw-budget; this caller-side guard is the intended safety check.
                 if (estimateMessagesTokensWithSafetyMargin(currentMessages) > budget) {
                     const compacted = compactLoopMessages(currentMessages, budget);
                     currentMessages.length = 0;
@@ -1073,12 +1072,7 @@ class AIService {
                                     genSpan.update({ usageDetails: { input: chunk.usage.inputTokens, output: chunk.usage.outputTokens } });
                                 }
                             } else if (chunk.type === "error") {
-                                const classified = classifyAIError({
-                                    message: chunk.error,
-                                    errorStatus: chunk.errorStatus,
-                                    errorCode: chunk.errorCode,
-                                    errorHeaders: chunk.errorHeaders,
-                                });
+                                const classified = classifyAIError(chunk);
                                 if (!hadVisibleOutput && classified.reason === "context_overflow" && overflowRecoveryCount < MAX_OVERFLOW_RECOVERY_ATTEMPTS) {
                                     shouldRecoverOverflow = true;
                                     break;

@@ -1,4 +1,5 @@
 import type { AIStreamChunk } from "@/types/ai";
+import { normalizeHeaderRecord } from "@/lib/server/utils/header-record";
 
 type StreamErrorMetadata = Pick<AIStreamChunk, "errorStatus" | "errorCode" | "errorHeaders">;
 
@@ -14,28 +15,6 @@ function asString(value: unknown): string | undefined {
     return trimmed || undefined;
 }
 
-function normalizeHeaders(input: unknown): Record<string, string> | undefined {
-    if (!input || typeof input !== "object") return undefined;
-
-    if (typeof Headers !== "undefined" && input instanceof Headers) {
-        const out: Record<string, string> = {};
-        for (const [key, value] of input.entries()) {
-            out[key.toLowerCase()] = value;
-        }
-        return Object.keys(out).length > 0 ? out : undefined;
-    }
-
-    const out: Record<string, string> = {};
-    for (const [key, value] of Object.entries(input as Record<string, unknown>)) {
-        if (typeof value === "string") {
-            out[key.toLowerCase()] = value;
-        } else if (typeof value === "number" && Number.isFinite(value)) {
-            out[key.toLowerCase()] = String(value);
-        }
-    }
-    return Object.keys(out).length > 0 ? out : undefined;
-}
-
 export function extractProviderErrorMetadata(error: unknown): StreamErrorMetadata {
     if (!error || typeof error !== "object") return {};
     const maybeError = error as {
@@ -49,7 +28,7 @@ export function extractProviderErrorMetadata(error: unknown): StreamErrorMetadat
     const errorStatus = asNumber(maybeError.statusCode) ?? asNumber(maybeError.status);
     const errorCode = asString(maybeError.code);
     const errorHeaders =
-        normalizeHeaders(maybeError.responseHeaders) ?? normalizeHeaders(maybeError.headers);
+        normalizeHeaderRecord(maybeError.responseHeaders) ?? normalizeHeaderRecord(maybeError.headers);
 
     return {
         ...(errorStatus !== undefined ? { errorStatus } : {}),

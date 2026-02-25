@@ -1,4 +1,5 @@
 import { parseRetryAfterHeaderMs } from "@/lib/server/utils/retry";
+import { normalizeHeaderRecord } from "@/lib/server/utils/header-record";
 
 export type AIErrorReason =
     | "rate_limit"
@@ -49,6 +50,7 @@ const OVERFLOW_PATTERNS = [
     /request.?too.?large/i,
     /token.*limit.*exceed/i,
     /input.*too.*long/i,
+    // Observed in OpenCode provider adapters for Cerebras/Mistral style 400/413 empty-body failures.
     /^4(00|13)\s*(status code)?\s*\(no body\)/i,
     /请求.*超出.*上下文/i,
 ];
@@ -88,34 +90,12 @@ function extractCode(error: unknown): string | undefined {
     return trimmed || undefined;
 }
 
-function normalizeHeaders(input: unknown): Record<string, string> | undefined {
-    if (!input || typeof input !== "object") return undefined;
-
-    if (typeof Headers !== "undefined" && input instanceof Headers) {
-        const out: Record<string, string> = {};
-        for (const [k, v] of input.entries()) {
-            out[k.toLowerCase()] = v;
-        }
-        return Object.keys(out).length > 0 ? out : undefined;
-    }
-
-    const out: Record<string, string> = {};
-    for (const [k, v] of Object.entries(input as Record<string, unknown>)) {
-        if (typeof v === "string") {
-            out[k.toLowerCase()] = v;
-        } else if (typeof v === "number" && Number.isFinite(v)) {
-            out[k.toLowerCase()] = String(v);
-        }
-    }
-    return Object.keys(out).length > 0 ? out : undefined;
-}
-
 function extractHeaders(error: unknown): Record<string, string> | undefined {
     if (!error || typeof error !== "object") return undefined;
     const maybe = error as ErrorLike;
-    return normalizeHeaders(maybe.errorHeaders)
-        ?? normalizeHeaders(maybe.responseHeaders)
-        ?? normalizeHeaders(maybe.headers);
+    return normalizeHeaderRecord(maybe.errorHeaders)
+        ?? normalizeHeaderRecord(maybe.responseHeaders)
+        ?? normalizeHeaderRecord(maybe.headers);
 }
 
 export function isContextOverflowMessage(message: string): boolean {

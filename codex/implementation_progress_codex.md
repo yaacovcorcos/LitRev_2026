@@ -241,3 +241,42 @@ Capture these before final Wave 3 sign-off (manual run is acceptable):
 
 1. Start Wave 2 (compaction/truncation quality layer) on this Wave 1-stabilized branch.
 2. Keep reasoning mode-control + OpenAI-parity tasks tracked for Wave 3 ship criteria.
+
+## Wave 1 Review Follow-up (Claude Feedback Resolution)
+
+1. Provider normalization (Tier 1 item 1.5) is now explicitly shipped as a provider preflight:
+   - `next-app/lib/server/ai/providers/message-normalization.ts` (new)
+   - wired into:
+     - `next-app/lib/server/ai/providers/openai.ts`
+     - `next-app/lib/server/ai/providers/anthropic.ts`
+     - `next-app/lib/server/ai/providers/google.ts`
+     - `next-app/lib/server/ai/providers/xai.ts`
+   - scope covered:
+     - tool-call ID sanitization/consistency
+     - tool-call name validation/malformed-call dropping
+     - role/order guardrails for tool-call/tool-result pairing
+     - orphan/duplicate tool-result dropping
+     - synthetic tool-result insertion when required to keep valid sequence
+
+2. Header normalization deduplicated into shared utility:
+   - `next-app/lib/server/utils/header-record.ts` (new)
+   - adopted by:
+     - `next-app/lib/server/utils/retry.ts`
+     - `next-app/lib/server/ai/error-classification.ts`
+     - `next-app/lib/server/ai/providers/error-metadata.ts`
+
+3. Stream-chunk error classification now classifies the full chunk directly (no reconstructed object):
+   - updated `next-app/lib/server/ai/ai-service.ts`.
+
+4. Added origin note for the 400/413 `"(no body)"` overflow pattern:
+   - documented in `next-app/lib/server/ai/error-classification.ts`.
+
+5. Added explicit comment clarifying safety-margin intent at pre-call budget checks:
+   - documented in `next-app/lib/server/ai/ai-service.ts`.
+
+6. Added normalization tests:
+   - `next-app/lib/server/__tests__/provider-message-normalization.test.ts` (new)
+
+7. Post-follow-up gates:
+   - `npx tsc --noEmit` -> PASS
+   - `npx vitest run` -> PASS (`71` files passed; `657` tests passed, `11` skipped DB smoke tests)

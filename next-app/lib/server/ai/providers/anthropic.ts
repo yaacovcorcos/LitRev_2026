@@ -17,6 +17,7 @@ import { BaseAIProvider } from "./base";
 import { AI_CONFIG, AVAILABLE_MODELS } from "@/lib/ai/config";
 import { parseToolArgs } from "../json-repair";
 import { extractProviderErrorMetadata } from "./error-metadata";
+import { normalizeProviderMessages } from "./message-normalization";
 
 export class AnthropicProvider extends BaseAIProvider {
     readonly id = "anthropic";
@@ -280,12 +281,13 @@ export class AnthropicProvider extends BaseAIProvider {
     ): { system: string | undefined; messages: Anthropic.MessageParam[] } {
         const systemParts: string[] = [];
         const result: Anthropic.MessageParam[] = [];
+        const normalizedMessages = normalizeProviderMessages(messages).messages;
 
         if (systemPrompt) {
             systemParts.push(systemPrompt);
         }
 
-        for (const msg of messages) {
+        for (const msg of normalizedMessages) {
             if (msg.role === "system") {
                 systemParts.push(msg.content);
             } else if (msg.role === "user") {
