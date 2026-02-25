@@ -2,6 +2,7 @@
 
 import { createProjectAction, deleteProjectAction, listProjectsAction } from "@/app/actions/projects";
 import { migrateLocalStorageToBackend } from "@/lib/migrateLocalStorage";
+import { authClient } from "@/lib/auth-client";
 import { Project } from "@/types/project";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 
@@ -19,8 +20,15 @@ const ProjectsContext = createContext<ProjectsContextValue | undefined>(undefine
 export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [isInitialized, setIsInitialized] = useState(false);
+  const { data: session, isPending: isSessionPending } = authClient.useSession();
 
   const refresh = useCallback(async () => {
+    if (isSessionPending) return;
+    if (!session) {
+      setProjects([]);
+      return;
+    }
+
     try {
       const result = await listProjectsAction();
       if (result.success) {
@@ -31,11 +39,20 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
     } catch (err) {
       console.error("Failed to load projects from backend", err);
     }
-  }, []);
+  }, [isSessionPending, session]);
 
   useEffect(() => {
     let isMounted = true;
     const run = async () => {
+      if (isSessionPending) return;
+      if (!session) {
+        if (isMounted) {
+          setProjects([]);
+          setIsInitialized(true);
+        }
+        return;
+      }
+
       try {
         const result = await migrateLocalStorageToBackend();
         if (result.error) {
@@ -54,7 +71,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
     return () => {
       isMounted = false;
     };
-  }, [refresh]);
+  }, [refresh, session, isSessionPending]);
 
   const addProject = useCallback(async (project: Project): Promise<Project | null> => {
     try {

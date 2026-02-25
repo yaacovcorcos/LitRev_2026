@@ -45,6 +45,7 @@ function LoginContent() {
   const [busyMagicLink, setBusyMagicLink] = useState(false);
   const [busyQuickAccess, setBusyQuickAccess] = useState(false);
 
+  const isDevRuntime = process.env.NODE_ENV !== "production";
   const devQuickLoginEnabled = process.env.NEXT_PUBLIC_ENABLE_DEV_QUICK_LOGIN === "1";
 
   useEffect(() => {
@@ -190,6 +191,19 @@ function LoginContent() {
         ) : null}
         {status ? (
           <p className={styles.success} role="status">{status}</p>
+        ) : null}
+        {isDevRuntime && !devQuickLoginEnabled ? (
+          <p className={styles.helper}>
+            Quick access is disabled. Set
+            {" "}
+            <code>NEXT_PUBLIC_ENABLE_DEV_QUICK_LOGIN=1</code>
+            {" "}
+            and
+            {" "}
+            <code>ENABLE_DEV_QUICK_LOGIN=1</code>
+            {" "}
+            in <code>next-app/.env.local</code>.
+          </p>
         ) : null}
 
         <p className={styles.helper}>

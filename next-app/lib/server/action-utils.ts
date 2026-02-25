@@ -68,6 +68,7 @@ export function sanitizeErrorMessage(
  */
 export function classifyError(msg: string): string | undefined {
   const lower = msg.toLowerCase();
+  if (lower.includes("unauthorized")) return "ACCESS_DENIED";
   if (lower.includes("not found") || lower.includes("no rows")) return "NOT_FOUND";
   if (lower.includes("access denied") || lower.includes("permission")) return "ACCESS_DENIED";
   if (lower.includes("unique constraint") || lower.includes("already exists")) return "CONFLICT";
