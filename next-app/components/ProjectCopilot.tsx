@@ -1,15 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { useParams } from "next/navigation";
 import { useProjectCopilot } from "@/contexts/ProjectCopilotContext";
-import type { CopilotPage } from "@/types/ai";
+import type { CopilotPage, ReasoningMode } from "@/types/ai";
 import type { AgentMode } from "@/types/agent";
 import { createNoteAction } from "@/app/actions/notes";
 import { TimelineRenderer } from "./copilot/TimelineRenderer";
 import { CopilotInput } from "./copilot/CopilotInput";
 import { AutonomySettings } from "./copilot/AutonomySettings";
 import { ConversationPicker } from "./ui/ConversationPicker";
+import { REASONING_MODE_OPTIONS } from "@/lib/ai/reasoning-visibility";
 import styles from "./ProjectCopilot.module.css";
 
 export type SuggestionConfig = {
@@ -56,6 +58,8 @@ export function ProjectCopilot({
         messages,
         isCollapsed,
         isLoading,
+        reasoningMode,
+        setReasoningMode,
         setCollapsed,
         // Conversation management
         conversations,
@@ -217,6 +221,54 @@ export function ProjectCopilot({
                                 <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
                             </svg>
                         </button>
+                        <DropdownMenu.Root>
+                            <DropdownMenu.Trigger asChild>
+                                <button
+                                    type="button"
+                                    className={`${styles.headerIconBtn} ${styles.reasoningModeBtn}`}
+                                    data-state={reasoningMode}
+                                    aria-label={`Reasoning visibility: ${reasoningMode}`}
+                                    title={`Reasoning visibility: ${reasoningMode}`}
+                                >
+                                    <span className="material-icons-round" style={{ fontSize: 16 }}>
+                                        psychology
+                                    </span>
+                                </button>
+                            </DropdownMenu.Trigger>
+                            <DropdownMenu.Portal>
+                                <DropdownMenu.Content
+                                    className={styles.reasoningDropdown}
+                                    side="bottom"
+                                    align="end"
+                                    sideOffset={6}
+                                >
+                                    <div className={styles.reasoningDropdownLabel}>Reasoning visibility</div>
+                                    <DropdownMenu.RadioGroup
+                                        value={reasoningMode}
+                                        onValueChange={(value) => setReasoningMode(value as ReasoningMode)}
+                                    >
+                                        {REASONING_MODE_OPTIONS.map((option) => (
+                                            <DropdownMenu.RadioItem
+                                                key={option.value}
+                                                value={option.value}
+                                                className={styles.reasoningDropdownItem}
+                                                data-active={reasoningMode === option.value}
+                                            >
+                                                <span className={styles.reasoningDropdownItemName}>
+                                                    <span className={styles.reasoningDropdownItemDot}>
+                                                        {reasoningMode === option.value ? "●" : "○"}
+                                                    </span>
+                                                    {option.label}
+                                                </span>
+                                                <span className={styles.reasoningDropdownItemDesc}>
+                                                    {option.description}
+                                                </span>
+                                            </DropdownMenu.RadioItem>
+                                        ))}
+                                    </DropdownMenu.RadioGroup>
+                                </DropdownMenu.Content>
+                            </DropdownMenu.Portal>
+                        </DropdownMenu.Root>
                         <button
                             type="button"
                             className={styles.headerIconBtn}
@@ -271,6 +323,7 @@ export function ProjectCopilot({
                     onExecutePlan={executePlan}
                     onSaveToNotes={handleSaveToNotes}
                     onBranchFromMessage={handleBranchFromMessage}
+                    reasoningMode={reasoningMode}
                     hasMore={hasMore}
                     isLoadingOlder={isLoadingOlder}
                     onLoadOlder={loadOlderMessages}

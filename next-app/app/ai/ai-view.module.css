@@ -269,6 +269,105 @@
     gap: 8px;
 }
 
+.reasoningModeBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 10px;
+    border: 1px solid var(--glass-border);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.6);
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.reasoningModeBtn:hover {
+    background: rgba(255, 255, 255, 0.85);
+    color: var(--text-primary);
+}
+
+.reasoningModeBtn[data-state="off"] {
+    color: var(--text-muted);
+}
+
+.reasoningModeBtn[data-state="off"] .reasoningModeLabel {
+    opacity: 0.75;
+}
+
+.reasoningModeBtn[data-state="full"] :global(.material-icons-round:first-child) {
+    color: var(--accent-primary);
+}
+
+.reasoningModeBtn :global(.material-icons-round) {
+    font-size: 16px;
+}
+
+.reasoningModeLabel {
+    min-width: 54px;
+    text-align: left;
+}
+
+.reasoningDropdown {
+    min-width: 220px;
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(20px);
+    border: 1px solid var(--glass-border);
+    border-radius: 12px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.12);
+    padding: 6px 0;
+    z-index: 110;
+}
+
+.reasoningDropdownLabel {
+    padding: 4px 12px 8px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.reasoningDropdownItem {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 8px 12px;
+    cursor: pointer;
+}
+
+.reasoningDropdownItem:hover {
+    background: rgba(0, 0, 0, 0.04);
+}
+
+.reasoningDropdownItem[data-active="true"] {
+    background: rgba(217, 116, 89, 0.1);
+}
+
+.reasoningDropdownItemName {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-primary);
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.reasoningDropdownItemDot {
+    width: 10px;
+    display: inline-flex;
+    justify-content: center;
+    color: var(--accent-primary);
+}
+
+.reasoningDropdownItemDesc {
+    font-size: 11px;
+    color: var(--text-muted);
+    padding-left: 18px;
+}
+
 .projectSelector {
     position: relative;
 }

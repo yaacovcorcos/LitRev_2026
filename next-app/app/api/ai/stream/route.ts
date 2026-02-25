@@ -11,6 +11,7 @@ import type { AgentMode } from "@/types/agent";
 import { normalizeStreamChunk, toWireChunk, type RuntimeStreamEvent } from "@/lib/server/chat-runtime/events";
 import { ChatRuntime } from "@/lib/server/chat-runtime/runtime";
 import { RuntimeThreadContext } from "@/lib/server/chat-runtime/thread";
+import { StreamCoalescer } from "@/lib/server/ai/stream-coalescer";
 
 // Force Node runtime for Prisma compatibility
 export const runtime = "nodejs";
@@ -57,6 +58,11 @@ export async function POST(request: NextRequest) {
                     const data = JSON.stringify(toWireChunk(event)) + "\n";
                     controller.enqueue(encoder.encode(data));
                 });
+                const coalescer = new StreamCoalescer({
+                    onEmit: async (event) => {
+                        await runtimeRouter.dispatch(event, thread);
+                    },
+                });
                 runtimeRouter.use(async ({ event, thread: runtimeThread }, next) => {
                     if (event.conversationId) runtimeThread.bindConversation(event.conversationId);
                     if (event.type === "run_start" && event.runId) runtimeThread.bindRun(event.runId);
@@ -78,7 +84,7 @@ export async function POST(request: NextRequest) {
                         )) {
                             const normalized = normalizeStreamChunk(chunk);
                             if (!normalized) continue;
-                            await runtimeRouter.dispatch(normalized, thread);
+                            await coalescer.push(normalized);
                         }
                     }
                     // Direct message streaming
@@ -86,15 +92,17 @@ export async function POST(request: NextRequest) {
                         for await (const chunk of service.streamChat(messages, { ...options, signal: request.signal })) {
                             const normalized = normalizeStreamChunk(chunk);
                             if (!normalized) continue;
-                            await runtimeRouter.dispatch(normalized, thread);
+                            await coalescer.push(normalized);
                         }
                     } else {
-                        await runtimeRouter.dispatch({ type: "error", error: "No messages provided" }, thread);
+                        await coalescer.push({ type: "error", error: "No messages provided" });
                     }
                 } catch (error) {
                     const errorMessage = error instanceof Error ? error.message : "Unknown error";
-                    await runtimeRouter.dispatch({ type: "error", error: errorMessage }, thread);
+                    await coalescer.push({ type: "error", error: errorMessage });
                 } finally {
+                    await coalescer.flushAll();
+                    coalescer.stop();
                     controller.close();
                 }
             },

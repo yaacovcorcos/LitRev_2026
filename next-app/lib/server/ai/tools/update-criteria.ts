@@ -3,6 +3,7 @@ import type { AITool, ToolExecutionContext } from "./base";
 import { prisma } from "@/lib/server/prisma";
 import { syncProtocolToMemory } from "@/lib/server/memory/protocol-sync";
 import type { ProtocolData } from "@/types/protocol";
+import { findBestFuzzyListMatch } from "@/lib/agent/fuzzy-match";
 
 const inputSchema = z.object({
     action: z.enum(["add", "remove"]),
@@ -88,9 +89,13 @@ export const updateCriteriaTool: AITool = {
                 list.push(criterion.trim());
             } else {
                 // Remove by case-insensitive match
-                const idx = list.findIndex(
+                let idx = list.findIndex(
                     (c) => c.toLowerCase().trim() === criterion.toLowerCase().trim()
                 );
+                if (idx === -1) {
+                    const fuzzy = findBestFuzzyListMatch(list, criterion);
+                    if (fuzzy) idx = fuzzy.index;
+                }
                 if (idx === -1) {
                     return {
                         callId: "",

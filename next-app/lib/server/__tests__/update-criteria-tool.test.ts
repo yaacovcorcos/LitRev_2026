@@ -109,6 +109,31 @@ describe("updateCriteriaTool", () => {
     expect(mockUpdateProtocol).toHaveBeenCalledTimes(1);
   });
 
+  it("removes criteria using fuzzy unicode/whitespace matching fallback", async () => {
+    mockFindProtocol.mockResolvedValueOnce(
+      makeProtocol({
+        eligibility: {
+          inclusion: ["Adults\u00A0over\u00A018\u2014years"],
+          exclusion: [],
+        },
+      }) as never
+    );
+
+    const result = await updateCriteriaTool.execute(
+      { action: "remove", type: "inclusion", criterion: "Adults over 18-years" },
+      { projectId: "proj-1" }
+    );
+
+    expect(result.error).toBeUndefined();
+    expect(result.result).toEqual({
+      success: true,
+      action: "remove",
+      type: "inclusion",
+      criteria: [],
+    });
+    expect(mockUpdateProtocol).toHaveBeenCalledTimes(1);
+  });
+
   it("returns error when removing a missing criterion", async () => {
     const result = await updateCriteriaTool.execute(
       { action: "remove", type: "inclusion", criterion: "Children" },

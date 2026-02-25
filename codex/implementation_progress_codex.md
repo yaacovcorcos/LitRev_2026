@@ -12,7 +12,7 @@ Upstream reference basis: cloned repos at `cloned_repos/openclaw_repo/` and `clo
 | Wave 0 (Spike Review Gate) | Complete | Scenario A confirmed, branch aligned to runtime/reasoning baseline, reasoning visibility reviewed, quality gates passed (`tsc` + `vitest`) |
 | Wave 1 | Complete | Retry/error taxonomy, overflow recovery, doom-loop threshold, transcript repair + safety-margin checks, provider error metadata |
 | Wave 2 | Complete | Adaptive compaction, mode-aware truncation (head/tail/both), fence-safe truncation, structured summary prompt upgrades |
-| Wave 3 | Not started | Stream robustness + reasoning ship criteria |
+| Wave 3 | Complete | Stream coalescing + fence-safe chunk flushing, reasoning visibility mode controls (`off`/`summary`/`full`), provider-aware reasoning policy, fuzzy text-match hardening |
 | Wave 4 | Not started | Retrieval/middleware/cache metrics + conditional contracts |
 | Wave 5 | Not started | Autonomy expansion planning |
 
@@ -60,10 +60,10 @@ Upstream reference basis: cloned repos at `cloned_repos/openclaw_repo/` and `clo
 | Validate spike behavior in UX/regression tests | Done | `tsc` pass; `vitest` pass after ENOSPC cleanup |
 | Confirm locked path Scenario A | Done (plan-level) | Locked in `codex/overall_stealing_process_codex.md` |
 | Verify start/delta/end reasoning events across surfaces | Done | Present in route/runtime/context/UI files on current branch after cherry-pick |
-| Validate explicit user control (`off/summary/full`) | Not done | No explicit mode control found yet |
-| Provider handling (Anthropic + OpenAI explicit path) | Partial | Anthropic reasoning path present; OpenAI parity/toggle behavior still needs explicit implementation/review |
+| Validate explicit user control (`off/summary/full`) | Done | Implemented in Wave 3 across project copilot + `/ai` page |
+| Provider handling (Anthropic + OpenAI explicit path) | Done | Anthropic reasoning enabled for `summary/full`; OpenAI/xAI/Google explicit safe no-op parity path |
 | Truncation/safety UX for reasoning | Done (source review) | Truncation handling and note present in reasoning flow |
-| Storage/replay non-regression | Partial | Type/storage fields present; full UX replay acceptance still pending manual product review |
+| Storage/replay non-regression | Partial (manual sign-off pending) | Engineering path is implemented; final manual replay acceptance still required |
 
 ## Wave 3 Reasoning Acceptance Criteria (Concrete)
 
@@ -182,9 +182,8 @@ Capture these before final Wave 3 sign-off (manual run is acceptable):
 ## Blockers / Risks
 
 1. No blocking technical failures after Wave 0.
-2. Remaining product acceptance items are intentional scope for later wave completion criteria:
-   - explicit reasoning mode control (`off` / `summary` / `full`)
-   - OpenAI parity behavior for reasoning visibility controls
+2. Remaining risk is product-acceptance only:
+   - manual replay/UX validation pass for reasoning modes on mobile/desktop before final product sign-off.
 
 ## Wave 1 Actions Completed
 
@@ -237,10 +236,81 @@ Capture these before final Wave 3 sign-off (manual run is acceptable):
    - `npx tsc --noEmit` -> PASS
    - `npx vitest run` -> PASS (`70` files passed; `654` tests passed, `11` skipped DB smoke tests)
 
+## Wave 3 Actions Completed
+
+1. Added stream coalescing primitive for runtime events:
+   - `next-app/lib/server/ai/stream-coalescer.ts` (new)
+   - coalesces `content` + `reasoning_delta` with min/max/idle flush thresholds.
+   - includes fence/code-span safe split behavior with hard-cap fallback.
+
+2. Integrated coalescer into API streaming route:
+   - `next-app/app/api/ai/stream/route.ts`
+   - normalized runtime events now route through coalescer before dispatch.
+   - explicit flush on finalize/error path.
+
+3. Added fuzzy matching primitives and integrated into text-edit tool path:
+   - `next-app/lib/agent/fuzzy-match.ts` (new)
+   - updated `next-app/lib/server/ai/tools/update-criteria.ts`
+   - remove flow now retries with fuzzy matching if strict match fails (unicode and whitespace resilient).
+
+4. Added reasoning-visibility mode contract and persistence helpers:
+   - `next-app/lib/ai/reasoning-visibility.ts` (new)
+   - updated `next-app/types/ai.ts` to include `ReasoningMode` + `ChatOptions.reasoningMode`.
+   - supports `off` / `summary` / `full` UI policy + storage helpers.
+
+5. Added provider-aware reasoning policy in AI service:
+   - `next-app/lib/server/ai/ai-service.ts`
+   - Anthropic requests provider-native reasoning for `summary`/`full`.
+   - OpenAI/xAI/Google paths explicitly no-op for provider reasoning request (safe parity behavior).
+
+6. Wired reasoning mode controls across both UI surfaces:
+   - project copilot:
+     - `next-app/components/ProjectCopilot.tsx`
+     - `next-app/components/ProjectCopilot.module.css`
+     - `next-app/contexts/ProjectCopilotContext.tsx`
+   - `/ai` page:
+     - `next-app/app/ai/page.tsx`
+     - `next-app/app/ai/ai-view.module.css`
+   - timeline rendering:
+     - `next-app/components/copilot/TimelineRenderer.tsx`
+     - mode semantics:
+       - `off`: no reasoning panel
+       - `summary`: condensed preview with local expand/collapse
+       - `full`: full reasoning panel behavior
+
+7. Preserved reasoning stream-state correctness:
+   - updated `next-app/contexts/project-copilot-stream-events.ts`
+   - keeps full reasoning accumulation with cap helper; rendering mode controls visibility, not core stream integrity.
+
+## Wave 3 Tests and Gates
+
+1. Added/updated tests:
+   - `next-app/lib/server/__tests__/stream-coalescer.test.ts` (new)
+   - `next-app/lib/agent/__tests__/fuzzy-match.test.ts` (new)
+   - `next-app/lib/server/__tests__/reasoning-visibility.test.ts` (new)
+   - `next-app/components/copilot/__tests__/TimelineRenderer.reasoning-mode.test.tsx` (new)
+   - updated `next-app/lib/server/__tests__/update-criteria-tool.test.ts`
+   - updated `next-app/components/__tests__/ProjectCopilot.test.tsx`
+
+2. Post-Wave-3 gate results:
+   - `npx tsc --noEmit` -> PASS
+   - `npx vitest run` -> PASS (`76` files passed; `695` tests passed, `11` skipped DB smoke tests)
+
+## Wave 3 Acceptance/Documentation Notes
+
+1. Closure status:
+   - Engineering implementation + automated gates are complete for Wave 3.
+   - Reasoning controls are now explicit (`off` / `summary` / `full`) and cross-surface.
+
+2. Manual product sign-off items (still required for final UX acceptance):
+   - one replay pass on project copilot and `/ai` page for all three reasoning modes.
+   - confirm mobile/desktop layout, scroll stability, and no runtime console errors.
+   - capture reviewer notes/screenshots referenced by the Wave 0 acceptance checklist.
+
 ## Recommended Next Step
 
-1. Start Wave 3 (stream robustness + reasoning ship-criteria closure).
-2. Keep reasoning mode-control + OpenAI-parity tasks tracked for Wave 3 ship criteria.
+1. Start Wave 4 (retrieval reranking upgrades, internal middleware hooks, cache efficiency metrics).
+2. After Wave 4 stabilizes, execute Wave 5 autonomy-expansion planning (subagents + richer policy layers) as a dedicated follow-on plan.
 
 ## Wave 1 Review Follow-up (Claude Feedback Resolution)
 

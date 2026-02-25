@@ -66,6 +66,8 @@ describe("ProjectCopilot suggestion wiring", () => {
       messages: [],
       isCollapsed: false,
       isLoading: false,
+      reasoningMode: "full",
+      setReasoningMode: vi.fn(),
       setCollapsed: vi.fn(),
       conversations: [],
       currentConversationId: null,

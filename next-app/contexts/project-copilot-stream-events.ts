@@ -1,6 +1,7 @@
 import type { CopilotMessage } from "@/lib/projectCopilotStorage";
 import type { ArtifactData, ArtifactStatus, ArtifactType } from "@/types/artifacts";
 import type { AIStreamChunk, ChoiceOption, CopilotPage } from "@/types/ai";
+import { appendReasoningRaw } from "@/lib/ai/reasoning-visibility";
 
 export type StreamMutableState = {
   aiMessageCreated: boolean;
@@ -12,8 +13,6 @@ export type StreamMutableState = {
   localRunId: string;
   effectiveConvId: string | null;
 };
-
-const MAX_REASONING_CHARS = 8000;
 
 type StreamChunkDeps = {
   aiMessageId: string;
@@ -154,16 +153,12 @@ const chunkHandlers: Partial<Record<AIStreamChunk["type"], ChunkHandler>> = {
     if (state.reasoningTruncated) return state;
     const delta = data.reasoningText ?? "";
     if (!delta) return state;
-    const combined = `${state.reasoningContent}${delta}`;
-    const shouldTruncate = combined.length > MAX_REASONING_CHARS;
-    const cappedContent = shouldTruncate
-      ? `${combined.slice(0, MAX_REASONING_CHARS)}\n\n[Thinking output truncated]`
-      : combined;
+    const nextReasoning = appendReasoningRaw(state.reasoningContent, delta);
     const nextState: StreamMutableState = {
       ...state,
-      reasoningContent: cappedContent,
+      reasoningContent: nextReasoning.raw,
       reasoningState: "streaming",
-      reasoningTruncated: state.reasoningTruncated || shouldTruncate,
+      reasoningTruncated: state.reasoningTruncated || nextReasoning.truncated,
       activeReasoningId: data.reasoningId ?? state.activeReasoningId,
     };
     return upsertAssistantReasoning(deps, nextState);

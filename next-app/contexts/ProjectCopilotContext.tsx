@@ -37,9 +37,15 @@ import { reviewArtifactAction, getAutonomyConfigAction, updateAutonomyAction } f
 import { summarizeConversationAction } from "@/app/actions/summarize-conversation";
 import type { ArtifactData, ArtifactStatus, ArtifactType } from "@/types/artifacts";
 import type { AgentMode, AutonomyPreset, AutonomyLevel } from "@/types/agent";
-import type { ChoiceOption, CopilotPage } from "@/types/ai";
+import type { ChoiceOption, CopilotPage, ReasoningMode } from "@/types/ai";
 import { handleProjectCopilotStreamChunk } from "@/contexts/project-copilot-stream-events";
 import type { ArtifactActionContract } from "@/lib/artifacts/action-contract";
+import {
+    DEFAULT_REASONING_MODE,
+    getReasoningModePreference,
+    setReasoningModePreference,
+    shouldRequestReasoning,
+} from "@/lib/ai/reasoning-visibility";
 
 export type PendingAttachment = {
     fileAssetId: string;
@@ -68,6 +74,8 @@ type ProjectCopilotContextValue = {
     panelWidth: number;
     /** Whether AI is loading */
     isLoading: boolean;
+    /** Reasoning visibility mode (off/summary/full) */
+    reasoningMode: ReasoningMode;
     /** Toggle the panel collapsed state */
     toggleCollapsed: () => void;
     /** Set the panel collapsed state */
@@ -76,6 +84,8 @@ type ProjectCopilotContextValue = {
     setPanelWidth: (width: number) => void;
     /** Send a message to the copilot */
     sendMessage: (text: string, page: CopilotPage, section?: string, model?: string, agentMode?: AgentMode, studyId?: string) => void;
+    /** Update global reasoning visibility mode */
+    setReasoningMode: (mode: ReasoningMode) => void;
     /** Cancel the current stream */
     cancelStream: () => void;
     /** Clear all messages */
@@ -184,6 +194,7 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
     const [state, setState] = useState<ProjectCopilotState>(createDefaultProjectCopilotState());
     const stateRef = useRef<ProjectCopilotState>(createDefaultProjectCopilotState());
     const [isLoading, setIsLoading] = useState(false);
+    const [reasoningMode, setReasoningModeState] = useState<ReasoningMode>(DEFAULT_REASONING_MODE);
     const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const abortControllerRef = useRef<AbortController | null>(null);
     const streamGenRef = useRef(0);
@@ -243,6 +254,16 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             }));
         }
     }, [projectId]);
+
+    // Shared reasoning preference across copilot surfaces.
+    useEffect(() => {
+        setReasoningModeState(getReasoningModePreference());
+    }, []);
+
+    const setReasoningMode = useCallback((mode: ReasoningMode) => {
+        setReasoningModeState(mode);
+        setReasoningModePreference(mode);
+    }, []);
 
     // Project switch guard: clear scope-cached conversation IDs and active conversation state.
     // Prevents restoring/selecting a conversation from a previous project.
@@ -1145,8 +1166,9 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
                         projectId,
                         studyId,
                         model,
-                        includeReasoning: true,
-                        reasoningBudgetTokens: 4096,
+                        reasoningMode,
+                        includeReasoning: shouldRequestReasoning(reasoningMode),
+                        reasoningBudgetTokens: shouldRequestReasoning(reasoningMode) ? 4096 : undefined,
                         agentMode: agentMode || "general",
                         page,
                         section,
@@ -1159,7 +1181,7 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
                 convId,
             });
         },
-        [updateState, projectId, cancelStream, currentConversationId, pendingAttachment, runStream]
+        [updateState, projectId, cancelStream, currentConversationId, pendingAttachment, reasoningMode, runStream]
     );
 
     const executePlanAction = useCallback(async (artifactId: string, selectedIndexes: number[]) => {
@@ -1198,8 +1220,9 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
                 options: {
                     conversationId: convId ?? undefined,
                     projectId,
-                    includeReasoning: true,
-                    reasoningBudgetTokens: 4096,
+                    reasoningMode,
+                    includeReasoning: shouldRequestReasoning(reasoningMode),
+                    reasoningBudgetTokens: shouldRequestReasoning(reasoningMode) ? 4096 : undefined,
                     agentMode: "general",
                 },
             },
@@ -1271,7 +1294,7 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
                 messages: [...prev.messages, feedback],
             }));
         }
-    }, [cancelStream, currentConversationId, projectId, runStream, updateState]);
+    }, [cancelStream, currentConversationId, projectId, reasoningMode, runStream, updateState]);
 
     const reviewArtifactActionLocal = useCallback(async (
         artifactId: string,
@@ -1407,10 +1430,12 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             isCollapsed: state.panel.collapsed,
             panelWidth: state.panel.width,
             isLoading,
+            reasoningMode,
             toggleCollapsed,
             setCollapsed,
             setPanelWidth,
             sendMessage,
+            setReasoningMode,
             cancelStream,
             clearMessages,
             // Conversation management
@@ -1462,10 +1487,12 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
         [
             state,
             isLoading,
+            reasoningMode,
             toggleCollapsed,
             setCollapsed,
             setPanelWidth,
             sendMessage,
+            setReasoningMode,
             cancelStream,
             clearMessages,
             conversations,

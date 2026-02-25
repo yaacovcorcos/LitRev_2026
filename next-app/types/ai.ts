@@ -68,12 +68,15 @@ export type ConversationMessageAttachment = {
 };
 
 export type AITone = "standard" | "deep";
+export type ReasoningMode = "off" | "summary" | "full";
 
 // Chat options
 export type ChatOptions = {
     model?: string;
     temperature?: number;
     maxTokens?: number;
+    /** User-facing reasoning visibility mode. */
+    reasoningMode?: ReasoningMode;
     /** Request provider-native reasoning/thinking parts when supported. */
     includeReasoning?: boolean;
     /** Optional provider reasoning budget (tokens), when supported. */

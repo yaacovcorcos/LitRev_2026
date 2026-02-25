@@ -41,6 +41,7 @@ import type { PlanPayload, ScopingReportPayload } from "@/types/artifacts";
 import { ensureConversationRunAvailability } from "@/lib/server/chat-runtime/conversation-run-lock";
 import { classifyAIError } from "./error-classification";
 import { retryAsync, sleep } from "@/lib/server/utils/retry";
+import { resolveReasoningMode } from "@/lib/ai/reasoning-visibility";
 
 const MAX_STREAM_RETRY_ATTEMPTS = 3;
 const MAX_OVERFLOW_RECOVERY_ATTEMPTS = 3;
@@ -117,6 +118,30 @@ class AIService {
             }
         }
         return this.getActiveProvider();
+    }
+
+    /**
+     * Reasoning behavior is provider-aware:
+     * - Anthropic: supports streamed thinking blocks (full + summary modes both request parts).
+     * - OpenAI/xAI/Google (current adapters): reasoning stream parts are not emitted, so we
+     *   explicitly disable provider reasoning requests while keeping the user mode for UI logic.
+     */
+    private withProviderReasoningPolicy(
+        options: ChatOptions | undefined,
+        provider: BaseAIProvider
+    ): ChatOptions {
+        const hasExplicitReasoningPreference =
+            options?.reasoningMode !== undefined || options?.includeReasoning !== undefined;
+        const mode = hasExplicitReasoningPreference
+            ? resolveReasoningMode(options?.reasoningMode, options?.includeReasoning)
+            : "off";
+        const includeReasoning = mode !== "off" && provider.id === "anthropic";
+        return {
+            ...(options ?? {}),
+            reasoningMode: mode,
+            includeReasoning,
+            reasoningBudgetTokens: includeReasoning ? options?.reasoningBudgetTokens : undefined,
+        };
     }
 
     private async maybeGenerateConversationTitle(params: {
@@ -198,14 +223,15 @@ class AIService {
         await validateRateLimits(projectId);
 
         const provider = this.resolveProvider(options?.model);
+        const effectiveOptions = this.withProviderReasoningPolicy(options, provider);
         const response = await retryAsync(
-            () => provider.chat(messages, options),
+            () => provider.chat(messages, effectiveOptions),
             {
                 attempts: MAX_STREAM_RETRY_ATTEMPTS,
                 minDelayMs: RETRY_MIN_DELAY_MS,
                 maxDelayMs: RETRY_MAX_DELAY_MS,
                 jitter: RETRY_JITTER,
-                signal: options?.signal,
+                signal: effectiveOptions?.signal,
                 shouldRetry: (error) => classifyAIError(error).retryable,
                 retryAfterMs: (error) => classifyAIError(error).retryAfterMs,
             }
@@ -235,11 +261,12 @@ class AIService {
         await validateRateLimits(projectId);
 
         const provider = this.resolveProvider(options?.model);
+        const effectiveOptions = this.withProviderReasoningPolicy(options, provider);
 
         let totalInputTokens = 0;
         let totalOutputTokens = 0;
 
-        for await (const chunk of provider.streamChat(messages, options)) {
+        for await (const chunk of provider.streamChat(messages, effectiveOptions)) {
             if (chunk.type === "done" && chunk.usage) {
                 totalInputTokens = chunk.usage.inputTokens;
                 totalOutputTokens = chunk.usage.outputTokens;
@@ -250,7 +277,7 @@ class AIService {
         // Record usage after streaming completes
         await recordUsage(
             projectId,
-            options?.model || AI_CONFIG.defaultModel,
+            effectiveOptions?.model || AI_CONFIG.defaultModel,
             totalInputTokens,
             totalOutputTokens
         );

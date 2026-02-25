@@ -5,6 +5,7 @@ import { TimelineRenderer } from "@/components/copilot/TimelineRenderer";
 import { CopilotInputCoreClient } from "@/components/copilot/CopilotInputCoreClient";
 import { useProjects } from "@/contexts/ProjectsContext";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { createPortal } from "react-dom";
 import {
   listConversations,
@@ -18,12 +19,19 @@ import { reviewArtifactAction } from "@/app/actions/agent";
 import { getGlobalWorkspaceContextAction } from "@/app/actions/ai-assistant";
 import { summarizeConversationAction } from "@/app/actions/summarize-conversation";
 import type { AgentMode } from "@/types/agent";
-import type { CopilotPage, ConversationContext, ChoiceOption } from "@/types/ai";
+import type { CopilotPage, ConversationContext, ChoiceOption, ReasoningMode } from "@/types/ai";
 import type { ArtifactStatus, ArtifactType } from "@/types/artifacts";
 import type { TimelineItem } from "@/types/timeline";
 import { processAIStream } from "@/lib/ai/stream-processor";
 import { routeToAgent } from "@/lib/agent/router";
 import { dispatchProjectDataChanged, getChangedDomainsForAcceptedArtifact } from "@/lib/project-data-events";
+import {
+  DEFAULT_REASONING_MODE,
+  REASONING_MODE_OPTIONS,
+  getReasoningModePreference,
+  setReasoningModePreference,
+  shouldRequestReasoning,
+} from "@/lib/ai/reasoning-visibility";
 import styles from "./ai-view.module.css";
 
 const quickActions = [
@@ -330,6 +338,7 @@ export default function AIView() {
   const [renameValue, setRenameValue] = useState("");
   const [pendingChoices, setPendingChoices] = useState<ChoiceOption[]>([]);
   const [prefill, setPrefill] = useState("");
+  const [reasoningMode, setReasoningMode] = useState<ReasoningMode>(DEFAULT_REASONING_MODE);
 
   const [timelineByConversation, setTimelineByConversation] = useState<Record<string, TimelineItem[]>>({});
   const [isConversationLoading, setIsConversationLoading] = useState(false);
@@ -345,6 +354,15 @@ export default function AIView() {
   useEffect(() => {
     if (!isTyping) sendLockRef.current = false;
   }, [isTyping]);
+
+  useEffect(() => {
+    setReasoningMode(getReasoningModePreference());
+  }, []);
+
+  const updateReasoningMode = useCallback((mode: ReasoningMode) => {
+    setReasoningMode(mode);
+    setReasoningModePreference(mode);
+  }, []);
 
 
   useEffect(() => {
@@ -973,8 +991,9 @@ export default function AIView() {
             conversationId: convId,
             projectId: selectedProjectId ?? undefined,
             model,
-            includeReasoning: true,
-            reasoningBudgetTokens: 4096,
+            reasoningMode,
+            includeReasoning: shouldRequestReasoning(reasoningMode),
+            reasoningBudgetTokens: shouldRequestReasoning(reasoningMode) ? 4096 : undefined,
             agentMode: effectiveAgentMode,
             page: currentPage,
 
@@ -1178,6 +1197,7 @@ export default function AIView() {
     isTyping,
     cancelStream,
     selectedProjectId,
+    reasoningMode,
 
     workspaceContextText,
     ensureConversation,
@@ -1375,8 +1395,9 @@ export default function AIView() {
           options: {
             conversationId: convId,
             projectId: selectedProjectId ?? undefined,
-            includeReasoning: true,
-            reasoningBudgetTokens: 4096,
+            reasoningMode,
+            includeReasoning: shouldRequestReasoning(reasoningMode),
+            reasoningBudgetTokens: shouldRequestReasoning(reasoningMode) ? 4096 : undefined,
             agentMode: "general",
             page: "ai",
             additionalContext: selectedProjectId ? undefined : (workspaceContextText || undefined),
@@ -1556,6 +1577,7 @@ export default function AIView() {
     isTyping,
     cancelStream,
     selectedProjectId,
+    reasoningMode,
     workspaceContextText,
     sortConversationsByUpdatedAt,
     updateConversationTimeline,
@@ -1789,6 +1811,56 @@ export default function AIView() {
             </div>
 
             <div className={styles.headerActions}>
+              <DropdownMenu.Root>
+                <DropdownMenu.Trigger asChild>
+                  <button
+                    type="button"
+                    className={styles.reasoningModeBtn}
+                    data-state={reasoningMode}
+                    aria-label={`Reasoning visibility: ${reasoningMode}`}
+                    title={`Reasoning visibility: ${reasoningMode}`}
+                  >
+                    <span className="material-icons-round">psychology</span>
+                    <span className={styles.reasoningModeLabel}>
+                      {reasoningMode === "off" ? "Off" : reasoningMode === "summary" ? "Summary" : "Full"}
+                    </span>
+                    <span className="material-icons-round">expand_more</span>
+                  </button>
+                </DropdownMenu.Trigger>
+                <DropdownMenu.Portal>
+                  <DropdownMenu.Content
+                    className={styles.reasoningDropdown}
+                    side="bottom"
+                    align="end"
+                    sideOffset={6}
+                  >
+                    <div className={styles.reasoningDropdownLabel}>Reasoning visibility</div>
+                    <DropdownMenu.RadioGroup
+                      value={reasoningMode}
+                      onValueChange={(value) => updateReasoningMode(value as ReasoningMode)}
+                    >
+                      {REASONING_MODE_OPTIONS.map((option) => (
+                        <DropdownMenu.RadioItem
+                          key={option.value}
+                          value={option.value}
+                          className={styles.reasoningDropdownItem}
+                          data-active={reasoningMode === option.value}
+                        >
+                          <span className={styles.reasoningDropdownItemName}>
+                            <span className={styles.reasoningDropdownItemDot}>
+                              {reasoningMode === option.value ? "●" : "○"}
+                            </span>
+                            {option.label}
+                          </span>
+                          <span className={styles.reasoningDropdownItemDesc}>
+                            {option.description}
+                          </span>
+                        </DropdownMenu.RadioItem>
+                      ))}
+                    </DropdownMenu.RadioGroup>
+                  </DropdownMenu.Content>
+                </DropdownMenu.Portal>
+              </DropdownMenu.Root>
               <button
                 type="button"
                 className={styles.exportBtn}
@@ -1815,6 +1887,7 @@ export default function AIView() {
               variant="page"
               projectId={selectedProjectId ?? undefined}
               items={activeTimeline}
+              reasoningMode={reasoningMode}
               isLoading={isTyping}
               isConversationLoading={isConversationLoading}
               emptyState={{

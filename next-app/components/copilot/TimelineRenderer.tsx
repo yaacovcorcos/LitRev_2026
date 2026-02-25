@@ -16,6 +16,7 @@ import remarkGfm from "remark-gfm";
 import { markdownComponents } from "../markdown/CodeBlock";
 import type { CopilotMessage } from "@/lib/projectCopilotStorage";
 import type { TimelineItem, TimelineArtifact } from "@/types/timeline";
+import type { ReasoningMode } from "@/types/ai";
 import type { AgentMode } from "@/types/agent";
 import type {
     PlanPayload,
@@ -45,6 +46,7 @@ import { StreamingProgress } from "./StreamingProgress";
 import { addMentionedStudyAction } from "@/app/actions/ledger";
 import { extractMentionedStudies, stripMentionedStudiesMarkup, type MentionedStudy } from "@/lib/ai/mentioned-studies";
 import { isChatStudyMentionsEnabled } from "@/lib/agent/feature-flags";
+import { getReasoningSummaryPreview } from "@/lib/ai/reasoning-visibility";
 import styles from "../ProjectCopilot.module.css";
 import artifactStyles from "@/styles/artifacts.module.css";
 import markdownStyles from "@/styles/markdown.module.css";
@@ -187,6 +189,7 @@ const UserMessageRow = memo(function UserMessageRow({ item, onCopy, onBranchFrom
 type AssistantMessageRowProps = {
     item: Extract<TimelineItem, { type: "assistant_message" }>;
     projectId?: string;
+    reasoningMode: ReasoningMode;
     /** True only when this specific message is actively receiving streaming tokens */
     isStreaming: boolean;
     /** True when this message was just saved to Notes (shows confirmation) */
@@ -221,6 +224,7 @@ function mentionButtonText(state: MentionAddState, hasProject: boolean): string 
 const AssistantMessageRow = memo(function AssistantMessageRow({
     item,
     projectId,
+    reasoningMode,
     isStreaming,
     isSaved,
     isSaving,
@@ -230,21 +234,34 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
     onBranchFromMessage,
 }: AssistantMessageRowProps) {
     const displayContent = stripAssistantMarkupForDisplay(item.content);
-    const reasoningText = item.reasoning?.text?.trim() ?? "";
-    const hasReasoning = reasoningText.length > 0;
+    const rawReasoningText = item.reasoning?.text?.trim() ?? "";
+    const hasReasoning = rawReasoningText.length > 0;
+    const showReasoningArea = hasReasoning && reasoningMode !== "off";
+    const isSummaryMode = reasoningMode === "summary";
+    const summaryPreview = getReasoningSummaryPreview(rawReasoningText);
+    const [showFullSummary, setShowFullSummary] = useState(false);
+    const reasoningText = isSummaryMode && !showFullSummary
+        ? summaryPreview.text
+        : rawReasoningText;
     const isReasoningStreaming = item.reasoning?.state === "streaming";
     const mentions = useMemo(
         () => (CHAT_STUDY_MENTIONS_ENABLED ? extractMentionedStudies(item.content) : []),
         [item.content]
     );
     const [mentionStates, setMentionStates] = useState<Record<string, MentionAddState>>({});
-    const [showReasoning, setShowReasoning] = useState(isReasoningStreaming);
+    const [showReasoning, setShowReasoning] = useState(reasoningMode === "full" && isReasoningStreaming);
 
     useEffect(() => {
-        if (isReasoningStreaming) {
+        if (reasoningMode === "full" && isReasoningStreaming) {
             setShowReasoning(true);
         }
-    }, [isReasoningStreaming]);
+    }, [isReasoningStreaming, reasoningMode]);
+
+    useEffect(() => {
+        if (reasoningMode !== "summary") {
+            setShowFullSummary(false);
+        }
+    }, [reasoningMode]);
 
     const addMentionedStudy = useCallback(async (study: MentionedStudy) => {
         if (!projectId) return;
@@ -276,7 +293,7 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
         <div className={`${styles.chatMsg} ${styles.chatMsgAi}`} role="article" aria-label="Assistant">
             <div className={styles.chatStack}>
                 <div className={styles.chatBubble}>
-                    {hasReasoning && (
+                    {showReasoningArea && (
                         <div className={styles.reasoningWrap}>
                             <button
                                 type="button"
@@ -287,7 +304,13 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
                                 <span className="material-icons-round" aria-hidden="true">
                                     {showReasoning ? "expand_more" : "chevron_right"}
                                 </span>
-                                <span>{isReasoningStreaming ? "Thinking" : "Reasoning"}</span>
+                                <span>
+                                    {isReasoningStreaming
+                                        ? "Thinking"
+                                        : isSummaryMode
+                                            ? "Reasoning (summary)"
+                                            : "Reasoning"}
+                                </span>
                             </button>
                             {showReasoning && (
                                 <div className={styles.reasoningPanel}>
@@ -298,6 +321,15 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
                                         <div className={styles.reasoningTruncatedNote}>
                                             Thinking output truncated for safety.
                                         </div>
+                                    )}
+                                    {isSummaryMode && summaryPreview.truncated && (
+                                        <button
+                                            type="button"
+                                            className={styles.reasoningExpandBtn}
+                                            onClick={() => setShowFullSummary((prev) => !prev)}
+                                        >
+                                            {showFullSummary ? "Show less" : "Show full"}
+                                        </button>
                                     )}
                                 </div>
                             )}
@@ -438,6 +470,8 @@ export type TimelineRendererProps = {
     onBranchFromMessage?: (messageId: string, createdAt: string) => void | Promise<void>;
     /** Layout variant: "panel" for copilot sidebar (bubbles), "page" for conversation mode (full-width) */
     variant?: "panel" | "page";
+    /** Global reasoning visibility mode */
+    reasoningMode?: ReasoningMode;
     /** When true (conversation being fetched), show a shimmer skeleton instead of the empty state */
     isConversationLoading?: boolean;
     /** Stable ID of the active conversation — used to reset scroll state on switch */
@@ -466,6 +500,7 @@ export function TimelineRenderer({
     onRetryLastMessage,
     onBranchFromMessage,
     variant = "panel",
+    reasoningMode = "full",
     isConversationLoading = false,
     conversationId,
     projectId: projectIdProp,
@@ -858,6 +893,7 @@ export function TimelineRenderer({
                         key={item.id}
                         item={item}
                         projectId={projectId}
+                        reasoningMode={reasoningMode}
                         isStreaming={isStreaming && index === lastAssistantIndex}
                         isSaved={savedNoteId === item.id}
                         isSaving={savingNoteId === item.id}
