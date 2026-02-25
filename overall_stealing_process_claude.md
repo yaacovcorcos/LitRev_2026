@@ -856,6 +856,309 @@ Tests to write:
    - Complete storage/replay UX acceptance (manual product review)
    All 6 Wave 0 checklist items must be green before Wave 4.
 
+---
+
+### Wave 3 — Reasoning Toggle UI Specification (Claude)
+
+> **Purpose:** Concrete UI/UX recommendations for implementing the `Off / Summary / Full` reasoning toggle. Based on deep review of the existing codebase: component structure, design tokens, interaction patterns, and the current reasoning rendering pipeline. Codex should follow these as the implementation spec.
+
+#### Current State (What Exists)
+
+The reasoning pipeline is fully wired end-to-end but has **no global user control**:
+
+- **Provider → Stream:** `reasoning_start/delta/end` chunks emitted by Anthropic provider, accumulated in `project-copilot-stream-events.ts` with an 8,000-char hard cap (`MAX_REASONING_CHARS`).
+- **Reducer → State:** `StreamReducer.ts` maintains `reasoning: { text, state, truncated }` per `TimelineAssistantMessage`.
+- **Rendering:** `TimelineRenderer.tsx` renders a collapsible panel inside each assistant message bubble (`.reasoningWrap` → `.reasoningToggle` → `.reasoningPanel`). Panel auto-opens while streaming, user can collapse after.
+- **Scope:** Same `TimelineRenderer` used in both the copilot sidebar (`ProjectCopilot.tsx`) and the full-page conversation view (`ConversationMainView.tsx` → `/ai` page). Any global toggle must apply to both surfaces.
+- **Storage:** Reasoning data persisted in `CopilotMessage.reasoning` (local state + `projectCopilotStorage.ts`). **No global preference is stored anywhere.**
+
+#### Design Decision: Three-State Toggle
+
+| Mode | Behavior | Provider Request | Rendering |
+|------|----------|-----------------|-----------|
+| **Off** | No reasoning requested or displayed | Anthropic: omit `thinking` parameter. OpenAI: no change (reasoning not supported). | Hide `.reasoningWrap` entirely. Do not render toggle or panel. |
+| **Summary** | Request reasoning but display condensed | Anthropic: request `thinking` as normal. Truncate display to first ~500 chars + "Show full reasoning" expand link. OpenAI: graceful no-op (show nothing, no error). | Render `.reasoningWrap` with truncated preview. No auto-expand on stream. |
+| **Full** | Request and display full reasoning | Anthropic: request `thinking` as normal. Display full text. OpenAI: graceful no-op. | Render `.reasoningWrap` with full panel. Auto-expand while streaming (current behavior). |
+
+**Default mode: `Full`** — matches current behavior, no surprise regression on deploy.
+
+#### Architecture: Where the Toggle Lives
+
+**1. State: `ProjectCopilotContext`**
+
+Add alongside existing autonomy state:
+
+```typescript
+// New state in ProjectCopilotContext
+reasoningMode: "off" | "summary" | "full";
+setReasoningMode: (mode: "off" | "summary" | "full") => void;
+```
+
+**Why context, not local state:** The mode must be consistent across both UI surfaces (copilot sidebar + `/ai` page) and must affect both rendering (TimelineRenderer) and the provider request (whether to include `thinking` parameter). Context is the only shared layer that reaches both.
+
+**2. Persistence: `localStorage`**
+
+Store the preference in `projectCopilotStorage.ts` using the same pattern as panel width/collapsed state. **Not a database field** — this is a display preference, not a project-level setting. Per-browser, immediate, no server round-trip.
+
+```typescript
+// In projectCopilotStorage.ts
+const REASONING_MODE_KEY = "litrev-reasoning-mode";
+
+export function getReasoningMode(): "off" | "summary" | "full" {
+    const stored = localStorage.getItem(REASONING_MODE_KEY);
+    if (stored === "off" || stored === "summary" || stored === "full") return stored;
+    return "full"; // default
+}
+
+export function setReasoningMode(mode: "off" | "summary" | "full"): void {
+    localStorage.setItem(REASONING_MODE_KEY, mode);
+}
+```
+
+**3. Provider Integration: Conditional `thinking` Parameter**
+
+In the Anthropic provider (`providers/anthropic.ts`), check the reasoning mode before including the `thinking` parameter in the API request:
+
+- `off` → Omit `thinking` from the request entirely. Saves tokens and latency.
+- `summary` / `full` → Include `thinking` as currently done. The difference is UI-only.
+
+For OpenAI/Google/xAI providers: no change. These providers don't support reasoning. The toggle has no provider-side effect — just suppress any UI rendering.
+
+#### UI Placement: Header Icon with Dropdown
+
+**Location:** In `.headerIcons` container in `ProjectCopilot.tsx` (line ~243) and the equivalent in `ConversationMainView.tsx`. Place **immediately before** the autonomy settings gear icon — reasoning is a more frequently toggled setting.
+
+**Component: Segmented icon button with dropdown**
+
+```
+┌──────────────────────────────────────────────────┐
+│  [Conversations ▾]          [✏️] [⑂] [🧠▾] [⚙️] │
+│                                     ↑              │
+│                              reasoning toggle      │
+└──────────────────────────────────────────────────┘
+```
+
+Use Material Icons `psychology` (brain icon) as the trigger. The icon should reflect current state:
+
+| State | Icon Treatment |
+|-------|---------------|
+| Off | `psychology` in `var(--text-muted)` (grayed out) |
+| Summary | `psychology` in `var(--text-secondary)` (normal) |
+| Full | `psychology` in `var(--accent-primary)` (terracotta highlight) |
+
+**Dropdown (Radix `DropdownMenu`):**
+
+```
+┌─────────────────────────────┐
+│  Reasoning Visibility       │  ← section label, 11px, --text-muted
+│                             │
+│  ○  Off                     │  ← no reasoning requested
+│     Don't request thinking  │     11px description, --text-muted
+│                             │
+│  ○  Summary                 │  ← truncated preview
+│     Show condensed preview  │
+│                             │
+│  ●  Full (default)          │  ← current behavior
+│     Show complete reasoning │
+└─────────────────────────────┘
+```
+
+Use the **exact same Radix DropdownMenu pattern** as the mode selector in `CopilotInputCore.tsx` (lines 292-346). Reuse `glass-bg`, `glass-border`, and the `modeItem` / `modeItemActive` CSS class structure. The radio-style indicator (○/●) uses `var(--accent-primary)` for the active state.
+
+**CSS (add to `ProjectCopilot.module.css`):**
+
+```css
+.reasoningModeBtn {
+    /* Reuse .headerIconBtn base styles (32x32, transparent, icon) */
+    composes: headerIconBtn;
+    position: relative;
+}
+
+.reasoningModeBtn[data-state="off"] .material-icons-round {
+    color: var(--text-muted);
+    opacity: 0.5;
+}
+
+.reasoningModeBtn[data-state="summary"] .material-icons-round {
+    color: var(--text-secondary);
+}
+
+.reasoningModeBtn[data-state="full"] .material-icons-round {
+    color: var(--accent-primary);
+}
+
+.reasoningDropdown {
+    min-width: 220px;
+    padding: 8px 0;
+    background: var(--glass-bg);
+    backdrop-filter: blur(20px);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+    z-index: 50;
+}
+
+.reasoningDropdownLabel {
+    padding: 4px 12px 8px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.reasoningDropdownItem {
+    display: flex;
+    flex-direction: column;
+    padding: 8px 12px;
+    cursor: pointer;
+    border-radius: 0;
+    transition: background 0.1s;
+}
+
+.reasoningDropdownItem:hover {
+    background: rgba(0, 0, 0, 0.04);
+}
+
+.reasoningDropdownItem[data-active="true"] {
+    background: rgba(217, 116, 89, 0.06);
+}
+
+.reasoningDropdownItemName {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.reasoningDropdownItemDesc {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 1px;
+}
+```
+
+#### Rendering Changes: TimelineRenderer
+
+**File:** `components/copilot/TimelineRenderer.tsx`
+
+The `AssistantMessageRow` component (around line 233) currently renders reasoning unconditionally when `hasReasoning` is true. Add the context-based guard:
+
+```typescript
+// Inside AssistantMessageRow
+const { reasoningMode } = useProjectCopilot(); // from context
+
+const shouldRenderReasoning = hasReasoning && reasoningMode !== "off";
+const isSummaryMode = reasoningMode === "summary";
+```
+
+**Mode-specific rendering behavior:**
+
+- **`off`:** Skip the entire `.reasoningWrap` block. Don't render the toggle, panel, or any reasoning UI. The `reasoning` data stays in the message object (for replay/export) but is not displayed.
+
+- **`summary`:** Render `.reasoningWrap` but with modifications:
+  - **Do not auto-expand** while streaming (override the `useState(isReasoningStreaming)` initializer to `false`).
+  - Truncate displayed text to **first 500 characters** + ellipsis.
+  - Change toggle label from "Reasoning" to "Reasoning (summary)".
+  - Add a "Show full" link at the bottom of the truncated panel that **locally** expands to full text for that single message (ephemeral, does not change global mode).
+
+- **`full`:** Current behavior, no changes. Auto-expand while streaming, full text in panel, user can collapse.
+
+**Critical: Per-message override must still work.** Even in `summary` mode, clicking "Show full" on a specific message should expand it. This is local component state layered on top of the global mode — not a mode change.
+
+#### Stream Event Changes
+
+**File:** `contexts/project-copilot-stream-events.ts`
+
+When `reasoningMode === "off"`:
+- **Still accumulate reasoning chunks** into the message state. Do not discard them.
+- The provider-side change (omitting `thinking` parameter) prevents reasoning from being generated. But if reasoning chunks arrive anyway (e.g., mode changed mid-stream, or provider sends them regardless), store them silently. The UI just won't display them.
+- This ensures no data loss and clean replay behavior.
+
+When `reasoningMode === "summary"`:
+- **Still accumulate full reasoning text.** The truncation to 500 chars happens at render time, not at accumulation time. The 8,000-char `MAX_REASONING_CHARS` safety cap still applies.
+
+#### OpenAI Provider Parity
+
+**File:** `providers/openai.ts` (and `google.ts`, `xai.ts`)
+
+These providers don't emit `reasoning_start/delta/end` events. No code changes needed in the providers. The toggle's effect is:
+
+- `off`: No reasoning UI shown (nothing to show anyway). No visual change.
+- `summary` / `full`: No reasoning UI shown (nothing to show). **No error, no empty panel, no "Reasoning unavailable" message.** The `hasReasoning` check (`reasoningText.length > 0`) already handles this — if there's no reasoning data, the `.reasoningWrap` block never renders.
+
+**One exception:** If OpenAI adds reasoning support in the future (e.g., o1/o3 models), the toggle should be wired to their equivalent parameter. For now, document this as a future extension point with a code comment:
+
+```typescript
+// TODO: When OpenAI reasoning (o-series) is supported, check reasoningMode here
+// and conditionally include the reasoning parameter in the API request.
+```
+
+#### Accessibility
+
+- Dropdown trigger: `aria-label="Reasoning visibility"`, `aria-haspopup="menu"`
+- Dropdown items: `role="menuitemradio"`, `aria-checked` for active state
+- Icon state change: `aria-label` updates to reflect current mode ("Reasoning: off", "Reasoning: summary", "Reasoning: full")
+- Focus management: Radix handles this automatically
+- Keyboard: Arrow keys navigate, Enter/Space select, Escape closes
+
+#### Scroll Stability
+
+The existing `useStableChatScroll` hook uses a ResizeObserver that fires when reasoning panels expand/collapse. This already works correctly:
+
+- **Expanding a panel** (via toggle or mode change from `off` → `full`): If scroll is pinned to bottom, auto-scroll maintains position. If user has scrolled up, position is preserved.
+- **Collapsing a panel** (via toggle or mode change from `full` → `off`): Height reduction is handled by the ResizeObserver — no jump.
+- **Batch mode change** (e.g., switching from `off` to `full` renders all existing reasoning panels): This could cause a large layout shift. **Recommendation:** Animate the global mode change with a brief fade-in (150ms CSS transition on `.reasoningWrap` opacity/height) so the layout shift is gradual, not jarring. The ResizeObserver will coalesce these via rAF.
+
+```css
+.reasoningWrap {
+    /* Add to existing styles */
+    transition: opacity 0.15s ease, max-height 0.2s ease;
+    overflow: hidden;
+}
+```
+
+#### Mobile Considerations
+
+The dropdown works on mobile via Radix's touch handling (no special code needed). The reasoning panel already adapts to container width. Two things to verify:
+
+1. **Dropdown positioning:** On narrow viewports (< 400px), the dropdown should align to the right edge of the header, not overflow the screen. Radix `DropdownMenu.Content` supports `align="end"` and `sideOffset` for this.
+2. **Touch targets:** The header icon button is 32×32px, which meets the 44px minimum touch target recommendation when accounting for padding. Verify the hit area is comfortable on real devices.
+
+#### Testing Requirements
+
+1. **Unit tests:**
+   - `getReasoningMode()` returns `"full"` when localStorage is empty
+   - `getReasoningMode()` returns stored value when valid
+   - `getReasoningMode()` returns `"full"` for invalid stored values
+   - `setReasoningMode()` persists correctly
+
+2. **Component tests (if test infra supports React rendering):**
+   - AssistantMessageRow renders no reasoning UI when mode is `off` and reasoning data exists
+   - AssistantMessageRow renders truncated reasoning when mode is `summary`
+   - AssistantMessageRow renders full reasoning when mode is `full`
+   - Per-message "Show full" override works independently of global mode
+
+3. **Integration verification (manual):**
+   - Toggle persists across page reload (localStorage)
+   - Toggle applies to both copilot sidebar and `/ai` page
+   - Switching modes mid-stream doesn't crash or lose data
+   - Anthropic provider omits `thinking` when mode is `off`
+   - OpenAI conversations show no reasoning UI regardless of mode (no empty panels)
+   - Scroll stability during batch mode change (off → full with 5+ messages containing reasoning)
+
+#### Files to Modify (Summary)
+
+| File | Change |
+|------|--------|
+| `contexts/ProjectCopilotContext.tsx` | Add `reasoningMode` state + setter, initialize from localStorage |
+| `lib/projectCopilotStorage.ts` | Add `getReasoningMode()` / `setReasoningMode()` |
+| `components/ProjectCopilot.tsx` | Add reasoning toggle button + dropdown in `.headerIcons` |
+| `components/project/ConversationMainView.tsx` | Add same reasoning toggle in its header |
+| `components/copilot/TimelineRenderer.tsx` | Guard reasoning rendering with `reasoningMode` |
+| `components/ProjectCopilot.module.css` | Add dropdown + icon state styles |
+| `lib/server/ai/providers/anthropic.ts` | Conditionally omit `thinking` when mode is `off` |
+| `contexts/project-copilot-stream-events.ts` | No functional change (keep accumulating regardless of mode) |
+
 ### Wave 4 (Tier 3: Polish & Instrumentation)
 Tests to write:
 1. Cache hit tracking — verify metric recording when provider returns cached_tokens
