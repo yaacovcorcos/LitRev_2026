@@ -56,6 +56,7 @@ export type ConversationSummary = {
 
 export type ConversationWithMessages = ConversationSummary & {
     messages: ConversationMessage[];
+    hasMore: boolean;
     artifacts: {
         id: string;
         type: string;
@@ -65,6 +66,11 @@ export type ConversationWithMessages = ConversationSummary & {
         version: number;
         createdAt: string;
     }[];
+};
+
+export type PaginatedMessages = {
+    messages: ConversationMessage[];
+    hasMore: boolean;
 };
 
 export type BranchedConversationResult = ConversationSummary & {
@@ -118,8 +124,11 @@ export async function listConversations(params: {
     });
 }
 
+const DEFAULT_MESSAGE_LIMIT = 50;
+
 /**
- * Get a single conversation with all messages
+ * Get a single conversation with the latest page of messages.
+ * Returns `hasMore: true` if older messages exist beyond the loaded page.
  */
 export async function getConversation(
     conversationId: string,
@@ -128,6 +137,7 @@ export async function getConversation(
         workspaceId?: string;
         expectedProjectId?: string;
         includeArchived?: boolean;
+        messageLimit?: number;
     }
 ): Promise<ActionResult<ConversationWithMessages | null>> {
     return withAction(async () => {
@@ -136,6 +146,7 @@ export async function getConversation(
         const workspaceId = params?.workspaceId || userContext.workspaceId;
         const expectedProjectId = params?.expectedProjectId;
         const includeArchived = params?.includeArchived === true;
+        const messageLimit = params?.messageLimit ?? DEFAULT_MESSAGE_LIMIT;
 
         const conversation = await prisma.aIConversation.findFirst({
             where: {
@@ -146,9 +157,6 @@ export async function getConversation(
                 archived: includeArchived ? undefined : false,
             },
             include: {
-                messages: {
-                    orderBy: { createdAt: "asc" },
-                },
                 _count: {
                     select: { messages: true },
                 },
@@ -157,6 +165,17 @@ export async function getConversation(
 
         if (!conversation) return null;
 
+        // Paginated message load: latest N messages (desc + reverse)
+        const rawMessages = await prisma.aIMessage.findMany({
+            where: { conversationId: conversation.id },
+            orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+            take: messageLimit + 1,
+        });
+        const hasMore = rawMessages.length > messageLimit;
+        const pageMessages = hasMore ? rawMessages.slice(0, messageLimit) : rawMessages;
+        pageMessages.reverse(); // back to ascending chronological order
+
+        // Artifacts always loaded fully (few per conversation)
         const artifacts = await prisma.artifact.findMany({
             where: { conversationId: conversation.id },
             orderBy: { createdAt: "asc" },
@@ -181,7 +200,8 @@ export async function getConversation(
             messageCount: conversation._count.messages,
             createdAt: conversation.createdAt.toISOString(),
             updatedAt: conversation.updatedAt.toISOString(),
-            messages: conversation.messages.map((msg) => ({
+            hasMore,
+            messages: pageMessages.map((msg) => ({
                 id: msg.id,
                 role: msg.role as "user" | "assistant" | "system",
                 content: msg.content,
@@ -199,6 +219,81 @@ export async function getConversation(
                 version: artifact.version,
                 createdAt: artifact.createdAt.toISOString(),
             })),
+        };
+    });
+}
+
+/**
+ * Fetch a page of older messages for a conversation using cursor-based pagination.
+ * Returns messages in ascending chronological order.
+ */
+export async function getConversationMessages(params: {
+    conversationId: string;
+    limit?: number;
+    cursor: { createdAt: string | Date; id: string };
+    userId?: string;
+    workspaceId?: string;
+    expectedProjectId?: string;
+    includeArchived?: boolean;
+}): Promise<ActionResult<PaginatedMessages>> {
+    return withAction(async () => {
+        const { conversationId, limit = DEFAULT_MESSAGE_LIMIT, cursor } = params;
+        const userContext = getCurrentUserContext();
+        const userId = params.userId || userContext.userId;
+        const workspaceId = params.workspaceId || userContext.workspaceId;
+        const expectedProjectId = params.expectedProjectId;
+        const includeArchived = params.includeArchived === true;
+
+        const conversation = await prisma.aIConversation.findFirst({
+            where: {
+                id: conversationId,
+                userId: userId || undefined,
+                workspaceId: workspaceId || undefined,
+                projectId: expectedProjectId || undefined,
+                archived: includeArchived ? undefined : false,
+            },
+            select: { id: true },
+        });
+        if (!conversation) {
+            return { messages: [], hasMore: false };
+        }
+
+        const cursorDate =
+            cursor.createdAt instanceof Date ? cursor.createdAt : new Date(cursor.createdAt);
+        if (Number.isNaN(cursorDate.getTime())) {
+            throw new Error("Invalid cursor date");
+        }
+
+        const messages = await prisma.aIMessage.findMany({
+            where: {
+                conversationId: conversation.id,
+                OR: [
+                    { createdAt: { lt: cursorDate } },
+                    {
+                        createdAt: { equals: cursorDate },
+                        id: { lt: cursor.id },
+                    },
+                ],
+            },
+            orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+            take: limit + 1,
+        });
+
+        const hasMore = messages.length > limit;
+        const page = hasMore ? messages.slice(0, limit) : messages;
+        page.reverse(); // ascending chronological order
+
+        return {
+            messages: page.map((msg) => ({
+                id: msg.id,
+                role: msg.role as "user" | "assistant" | "system",
+                content: msg.content,
+                attachments: msg.attachments
+                    ? (msg.attachments as unknown as MessageAttachment[])
+                    : undefined,
+                createdAt: msg.createdAt.toISOString(),
+            })),
+            hasMore,
         };
     });
 }
@@ -482,9 +577,6 @@ export async function getOrCreateConversation(params: {
                 archived: false,
             },
             include: {
-                messages: {
-                    orderBy: { createdAt: "asc" },
-                },
                 _count: {
                     select: { messages: true },
                 },
@@ -493,6 +585,16 @@ export async function getOrCreateConversation(params: {
         });
 
         if (existing) {
+            // Paginated message load (latest page)
+            const rawMessages = await prisma.aIMessage.findMany({
+                where: { conversationId: existing.id },
+                orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+                take: DEFAULT_MESSAGE_LIMIT + 1,
+            });
+            const hasMore = rawMessages.length > DEFAULT_MESSAGE_LIMIT;
+            const pageMessages = hasMore ? rawMessages.slice(0, DEFAULT_MESSAGE_LIMIT) : rawMessages;
+            pageMessages.reverse();
+
             return {
                 id: existing.id,
                 title: existing.title,
@@ -503,7 +605,8 @@ export async function getOrCreateConversation(params: {
                 messageCount: existing._count.messages,
                 createdAt: existing.createdAt.toISOString(),
                 updatedAt: existing.updatedAt.toISOString(),
-                messages: existing.messages.map((msg) => ({
+                hasMore,
+                messages: pageMessages.map((msg) => ({
                     id: msg.id,
                     role: msg.role as "user" | "assistant" | "system",
                     content: msg.content,
@@ -538,6 +641,7 @@ export async function getOrCreateConversation(params: {
             messageCount: 0,
             createdAt: newConv.createdAt.toISOString(),
             updatedAt: newConv.updatedAt.toISOString(),
+            hasMore: false,
             messages: [],
             artifacts: [],
         };

@@ -2,7 +2,7 @@ import "server-only";
 
 import { prisma } from "@/lib/server/prisma";
 import { assertProjectAccess } from "@/lib/server/access";
-import type { ProtocolData } from "@/types/protocol";
+import { createDefaultProtocolData, type ProtocolData } from "@/types/protocol";
 import type { ServiceScope, ScopeInput } from "@/lib/server/scope";
 
 export async function getProtocol(
@@ -26,4 +26,22 @@ export async function saveProtocol(
     update: { data: data as any },
   });
   return saved.data as unknown as ProtocolData;
+}
+
+/**
+ * Idempotent: returns existing protocol data or creates an empty default.
+ * Internal server helper — no scope check (callers are already auth-gated).
+ * Uses upsert to handle the race where another request creates the row
+ * between findUnique and write.
+ */
+export async function ensureProtocol(projectId: string): Promise<ProtocolData> {
+  const row = await prisma.protocol.findUnique({ where: { projectId } });
+  if (row) return row.data as unknown as ProtocolData;
+  const defaults = createDefaultProtocolData();
+  const created = await prisma.protocol.upsert({
+    where: { projectId },
+    create: { projectId, data: defaults as any },
+    update: {},
+  });
+  return created.data as unknown as ProtocolData;
 }

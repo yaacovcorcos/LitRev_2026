@@ -23,6 +23,7 @@ import { dispatchProjectDataChanged, getChangedDomainsForAcceptedArtifact } from
 import {
     listConversations,
     getConversation,
+    getConversationMessages,
     createConversation,
     archiveConversation,
     branchConversation as branchConversationAction,
@@ -36,7 +37,15 @@ import { reviewArtifactAction, getAutonomyConfigAction, updateAutonomyAction } f
 import { summarizeConversationAction } from "@/app/actions/summarize-conversation";
 import type { ArtifactData, ArtifactStatus, ArtifactType } from "@/types/artifacts";
 import type { AgentMode, AutonomyPreset, AutonomyLevel } from "@/types/agent";
-import type { ChoiceOption, CopilotPage } from "@/types/ai";
+import type { ChoiceOption, CopilotPage, ReasoningMode } from "@/types/ai";
+import { useRouter } from "next/navigation";
+import { handleProjectCopilotStreamChunk } from "@/contexts/project-copilot-stream-events";
+import type { ArtifactActionContract } from "@/lib/artifacts/action-contract";
+import {
+    getReasoningModePreference,
+    setReasoningModePreference,
+    shouldRequestReasoning,
+} from "@/lib/ai/reasoning-visibility";
 
 export type PendingAttachment = {
     fileAssetId: string;
@@ -54,6 +63,12 @@ type ConversationListItem = {
     updatedAt: string;
 };
 
+type ApproveArtifactsBatchResult = {
+    approvedCount: number;
+    failedArtifactIds: string[];
+    stopped: boolean;
+};
+
 type ProjectCopilotContextValue = {
     /** Current copilot state */
     state: ProjectCopilotState;
@@ -65,6 +80,8 @@ type ProjectCopilotContextValue = {
     panelWidth: number;
     /** Whether AI is loading */
     isLoading: boolean;
+    /** Reasoning visibility mode (off/summary/full) */
+    reasoningMode: ReasoningMode;
     /** Toggle the panel collapsed state */
     toggleCollapsed: () => void;
     /** Set the panel collapsed state */
@@ -73,6 +90,8 @@ type ProjectCopilotContextValue = {
     setPanelWidth: (width: number) => void;
     /** Send a message to the copilot */
     sendMessage: (text: string, page: CopilotPage, section?: string, model?: string, agentMode?: AgentMode, studyId?: string) => void;
+    /** Update global reasoning visibility mode */
+    setReasoningMode: (mode: ReasoningMode) => void;
     /** Cancel the current stream */
     cancelStream: () => void;
     /** Clear all messages */
@@ -125,6 +144,15 @@ type ProjectCopilotContextValue = {
     artifacts: Map<string, ArtifactData>;
     /** Review an artifact (accept/reject) */
     handleReviewArtifact: (artifactId: string, status: "accepted" | "rejected", note?: string, editedPayload?: Record<string, unknown>) => Promise<void>;
+    /** Batch-approve proposed artifacts with progress/cancel hooks for timeline UI */
+    approveArtifactsBatch: (
+        artifactIds: string[],
+        options?: {
+            shouldStop?: () => boolean;
+            onProgress?: (completed: number, total: number) => void;
+            conversationId?: string;
+        },
+    ) => Promise<ApproveArtifactsBatchResult>;
     /** Execute a plan artifact (run selected steps) */
     executePlan: (artifactId: string, selectedIndexes: number[]) => void;
 
@@ -159,6 +187,14 @@ type ProjectCopilotContextValue = {
     pendingChoices: ChoiceOption[];
     /** Clear pending choices */
     clearChoices: () => void;
+
+    // Message pagination
+    /** Whether there are older messages available to load */
+    hasMore: boolean;
+    /** Whether older messages are currently being fetched */
+    isLoadingOlder: boolean;
+    /** Load the next page of older messages */
+    loadOlderMessages: () => Promise<void>;
 };
 
 
@@ -170,9 +206,11 @@ type ProjectCopilotProviderProps = {
 };
 
 export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotProviderProps) {
+    const router = useRouter();
     const [state, setState] = useState<ProjectCopilotState>(createDefaultProjectCopilotState());
     const stateRef = useRef<ProjectCopilotState>(createDefaultProjectCopilotState());
     const [isLoading, setIsLoading] = useState(false);
+    const [reasoningMode, setReasoningModeState] = useState<ReasoningMode>(() => getReasoningModePreference());
     const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const abortControllerRef = useRef<AbortController | null>(null);
     const streamGenRef = useRef(0);
@@ -184,6 +222,8 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
     const [isLoadingConversations, setIsLoadingConversations] = useState(false);
     const [showConversationList, setShowConversationList] = useState(false);
     const [isConversationLoading, setIsConversationLoading] = useState(false);
+    const [hasMore, setHasMore] = useState(false);
+    const [isLoadingOlder, setIsLoadingOlder] = useState(false);
     // Generation counter for selectConversation — last-wins guard against rapid switches
     const selectGenRef = useRef(0);
 
@@ -230,6 +270,11 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             }));
         }
     }, [projectId]);
+
+    const setReasoningMode = useCallback((mode: ReasoningMode) => {
+        setReasoningModeState(mode);
+        setReasoningModePreference(mode);
+    }, []);
 
     // Project switch guard: clear scope-cached conversation IDs and active conversation state.
     // Prevents restoring/selecting a conversation from a previous project.
@@ -513,6 +558,7 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             const convo = convoResult.success ? convoResult.data : null;
             if (convo) {
                 setCurrentConversationId(convo.id);
+                setHasMore(convo.hasMore);
                 // Convert conversation messages to CopilotMessages
                 const persistedMessages: CopilotMessage[] = convo.messages
                     .filter((m) => m.role !== "system")
@@ -530,21 +576,27 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
                             isExisting: a.isExisting,
                         })),
                     }));
-                const artifactMessages: CopilotMessage[] = (convo.artifacts ?? []).map((artifact) => ({
-                    id: `artifact-${artifact.id}`,
-                    sender: "ai",
-                    text: `[${artifact.type}] ${artifact.title}`,
-                    createdAt: artifact.createdAt,
-                    context: { page: convo.page as CopilotPage },
-                    artifact: {
-                        id: artifact.id,
-                        type: artifact.type,
-                        status: artifact.status,
-                        title: artifact.title,
-                        payload: (artifact.payload ?? {}) as Record<string, unknown>,
-                        version: artifact.version,
-                    },
-                }));
+                // Filter artifacts to only those within the loaded message time range
+                const oldestMessageTime = persistedMessages.length > 0
+                    ? new Date(persistedMessages[0].createdAt).getTime()
+                    : 0;
+                const artifactMessages: CopilotMessage[] = (convo.artifacts ?? [])
+                    .filter((a) => new Date(a.createdAt).getTime() >= oldestMessageTime)
+                    .map((artifact) => ({
+                        id: `artifact-${artifact.id}`,
+                        sender: "ai",
+                        text: `[${artifact.type}] ${artifact.title}`,
+                        createdAt: artifact.createdAt,
+                        context: { page: convo.page as CopilotPage },
+                        artifact: {
+                            id: artifact.id,
+                            type: artifact.type,
+                            status: artifact.status,
+                            title: artifact.title,
+                            payload: (artifact.payload ?? {}) as Record<string, unknown>,
+                            version: artifact.version,
+                        },
+                    }));
                 const copilotMessages: CopilotMessage[] = [...persistedMessages, ...artifactMessages].sort(
                     (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
                 );
@@ -576,6 +628,7 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
                 }));
             } else {
                 setCurrentConversationId(null);
+                setHasMore(false);
                 setArtifacts(new Map());
                 updateState((prev) => ({
                     ...prev,
@@ -595,6 +648,87 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
 
     // Keep ref in sync so setStudyFilter (declared earlier) can call it
     selectConversationRef.current = selectConversation;
+
+    const loadOlderMessages = useCallback(async () => {
+        if (!currentConversationId || isLoadingOlder || !hasMore) return;
+        const currentMessages = stateRef.current.messages;
+        const conversationPage = (
+            currentMessages.find((m) => !m.artifact)?.context?.page
+            ?? "overview"
+        ) as CopilotPage;
+        // Find oldest non-artifact message for cursor
+        const oldestMsg = currentMessages.find((m) => !m.artifact);
+        if (!oldestMsg) return;
+        setIsLoadingOlder(true);
+        try {
+            const result = await getConversationMessages({
+                conversationId: currentConversationId,
+                cursor: { createdAt: oldestMsg.createdAt, id: oldestMsg.id },
+                expectedProjectId: projectId,
+            });
+            if (!result.success) return;
+            setHasMore(result.data.hasMore);
+
+            const olderCopilotMessages: CopilotMessage[] = result.data.messages
+                .filter((m) => m.role !== "system")
+                .map((m) => ({
+                    id: m.id,
+                    sender: m.role === "user" ? "user" : "ai" as const,
+                    text: m.content,
+                    createdAt: m.createdAt,
+                    context: { page: conversationPage },
+                    attachments: m.attachments?.map((a) => ({
+                        fileAssetId: a.fileAssetId,
+                        filename: a.filename,
+                        size: a.size,
+                        mimeType: a.mimeType,
+                        isExisting: a.isExisting,
+                    })),
+                }));
+
+            // Include any artifacts that are now within the expanded time range
+            const oldestNewTime = olderCopilotMessages.length > 0
+                ? new Date(olderCopilotMessages[0].createdAt).getTime()
+                : Infinity;
+            const existingMessageIds = new Set(currentMessages.map((m) => m.id));
+            const allArtifacts = Array.from(artifacts.values());
+            const newlyVisibleArtifactMessages: CopilotMessage[] = allArtifacts
+                .filter((a) => {
+                    const aTime = new Date(a.createdAt).getTime();
+                    return aTime >= oldestNewTime && !existingMessageIds.has(`artifact-${a.id}`);
+                })
+                .map((a) => ({
+                    id: `artifact-${a.id}`,
+                    sender: "ai" as const,
+                    text: `[${a.type}] ${a.title}`,
+                    createdAt: a.createdAt,
+                    context: { page: conversationPage },
+                    artifact: {
+                        id: a.id,
+                        type: a.type,
+                        status: a.status,
+                        title: a.title,
+                        payload: (a.payload ?? {}) as Record<string, unknown>,
+                        version: a.version,
+                    },
+                }));
+
+            // Sort newly revealed items (older messages + newly visible artifacts)
+            const combined = [...olderCopilotMessages, ...newlyVisibleArtifactMessages].sort(
+                (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+            );
+
+            // Direct prepend — older batch guaranteed strictly before current oldest
+            updateState((prev) => ({
+                ...prev,
+                messages: [...combined, ...prev.messages],
+            }));
+        } catch (err) {
+            console.error("Failed to load older messages:", err);
+        } finally {
+            setIsLoadingOlder(false);
+        }
+    }, [currentConversationId, isLoadingOlder, hasMore, updateState, artifacts, projectId]);
 
     const newConversation = useCallback(async (page: CopilotPage, studyId?: string) => {
         if (!projectId) {
@@ -624,6 +758,7 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             const { id } = convResult.data;
             // Set the new conversation and clear messages
             setCurrentConversationId(id);
+            setHasMore(false);
             setState((prev) => ({
                 ...prev,
                 messages: [],
@@ -787,6 +922,10 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
         const aiMessageId = `m-${Date.now() + 1}`;
         let aiMessageCreated = false;
         let fullContent = "";
+        let reasoningContent = "";
+        let reasoningState: "streaming" | "done" = "done";
+        let reasoningTruncated = false;
+        let activeReasoningId: string | null = null;
         let localRunId = "";
         let runStatus: string | null = null;
         let stopReason: string | null = null;
@@ -816,188 +955,88 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
                 throw new Error("No response body");
             }
 
+            const updateMessages = (updater: (messages: CopilotMessage[]) => CopilotMessage[]) => {
+                updateState((prev) => ({
+                    ...prev,
+                    messages: updater(prev.messages),
+                }));
+            };
+
+            const upsertConversationTitle = (targetId: string, title: string) => {
+                setConversations((prev) => {
+                    const existing = prev.find((c) => c.id === targetId);
+                    if (!existing) {
+                        return [{
+                            id: targetId,
+                            title,
+                            messageCount: 0,
+                            updatedAt: new Date().toISOString(),
+                        }, ...prev];
+                    }
+                    return prev.map((c) => (c.id === targetId ? { ...c, title } : c));
+                });
+            };
+
+            const upsertArtifact = (artifactData: ArtifactData) => {
+                setArtifacts((prev) => {
+                    const next = new Map(prev);
+                    next.set(artifactData.id, artifactData);
+                    return next;
+                });
+            };
+
             const summary = await processAIStream({
                 reader,
                 signal: controller.signal,
                 shouldContinue: () => streamGenRef.current === myGen,
                 throwOnErrorChunk: true,
                 onChunk: (data) => {
-                    if (data.type === "content" && data.content) {
-                        fullContent += data.content;
-
-                        if (!aiMessageCreated) {
-                            aiMessageCreated = true;
-                            const aiMessage: CopilotMessage = {
-                                id: aiMessageId,
-                                sender: "ai",
-                                text: fullContent,
-                                createdAt: new Date().toISOString(),
-                                context: { page, section },
-                            };
-                            updateState((prev) => ({
-                                ...prev,
-                                messages: [...prev.messages, aiMessage],
-                            }));
-                        } else {
-                            updateState((prev) => ({
-                                ...prev,
-                                messages: prev.messages.map((msg) =>
-                                    msg.id === aiMessageId
-                                        ? { ...msg, text: fullContent }
-                                        : msg
-                                ),
-                            }));
-                        }
-                    } else if (data.type === "tool_call" && data.toolCall) {
-                        const toolName = data.toolCall.name;
-                        const statusText = toolName === "search_pubmed"
-                            ? "Searching PubMed..."
-                            : toolName === "add_to_ledger"
-                                ? "Adding studies to ledger..."
-                                : `Running ${toolName}...`;
-                        if (!aiMessageCreated) {
-                            aiMessageCreated = true;
-                            const aiMessage: CopilotMessage = {
-                                id: aiMessageId,
-                                sender: "ai",
-                                text: `*${statusText}*`,
-                                createdAt: new Date().toISOString(),
-                                context: { page, section },
-                            };
-                            updateState((prev) => ({
-                                ...prev,
-                                messages: [...prev.messages, aiMessage],
-                            }));
-                        } else {
-                            updateState((prev) => ({
-                                ...prev,
-                                messages: prev.messages.map((msg) =>
-                                    msg.id === aiMessageId
-                                        ? { ...msg, text: fullContent || `*${statusText}*` }
-                                        : msg
-                                ),
-                            }));
-                        }
-                    } else if (data.type === "tool_result") {
-                        if (data.toolName === "add_to_ledger" || data.toolName === "exclude_study") {
-                            window.dispatchEvent(new CustomEvent("litrev:ledger-changed", { detail: { projectId } }));
-                        }
-                        if (aiMessageCreated && !fullContent) {
-                            updateState((prev) => ({
-                                ...prev,
-                                messages: prev.messages.map((msg) =>
-                                    msg.id === aiMessageId
-                                        ? { ...msg, text: "*Processing results...*" }
-                                        : msg
-                                ),
-                            }));
-                        }
-                    } else if (data.type === "run_start") {
-                        localRunId = data.runId ?? "";
-                        setCurrentRunId(data.runId ?? null);
-                        if (data.conversationId && effectiveConvId !== data.conversationId) {
-                            effectiveConvId = data.conversationId;
-                            if (currentConversationIdRef.current !== data.conversationId) {
-                                setCurrentConversationId(data.conversationId);
-                            }
-                        }
-                    } else if (data.type === "run_end") {
-                        setCurrentRunId(null);
-                    } else if (data.type === "conversation_title") {
-                        const targetId = data.conversationId || effectiveConvId;
-                        const nextTitle = data.conversationTitle?.trim();
-                        if (targetId && nextTitle) {
-                            setConversations((prev) => {
-                                const existing = prev.find((c) => c.id === targetId);
-                                if (!existing) {
-                                    return [{
-                                        id: targetId,
-                                        title: nextTitle,
-                                        messageCount: 0,
-                                        updatedAt: new Date().toISOString(),
-                                    }, ...prev];
-                                }
-                                return prev.map((c) => (c.id === targetId ? { ...c, title: nextTitle } : c));
-                            });
-                        }
-                    } else if (data.type === "artifact") {
-                        const artType = (data.artifactType ?? "plan") as ArtifactType;
-                        const artStatus = (data.artifactStatus ?? "proposed") as ArtifactStatus;
-                        const artTitle = data.artifactTitle ?? "Artifact";
-                        const artifactData: ArtifactData = {
-                            id: data.artifactId ?? `art-${Date.now()}`,
-                            runId: localRunId,
+                    const nextState = handleProjectCopilotStreamChunk(
+                        data,
+                        {
+                            aiMessageCreated,
+                            fullContent,
+                            reasoningContent,
+                            reasoningState,
+                            reasoningTruncated,
+                            activeReasoningId,
+                            localRunId,
+                            effectiveConvId,
+                        },
+                        {
+                            aiMessageId,
+                            page,
+                            section,
                             projectId,
-                            conversationId: effectiveConvId ?? null,
-                            type: artType,
-                            status: artStatus,
-                            title: artTitle,
-                            payload: data.artifactPayload ?? {},
-                            version: data.artifactVersion ?? 1,
-                            sourceEventId: null,
-                            appliedAt: null,
-                            reviewedAt: null,
-                            reviewNote: null,
-                            createdAt: new Date().toISOString(),
-                        };
-                        setArtifacts((prev) => {
-                            const next = new Map(prev);
-                            next.set(artifactData.id, artifactData);
-                            return next;
-                        });
-                        const artifactMessage: CopilotMessage = {
-                            id: `artifact-${artifactData.id}`,
-                            sender: "ai",
-                            text: `[${artType}] ${artTitle}`,
-                            createdAt: new Date().toISOString(),
-                            context: { page },
-                            artifact: {
-                                id: artifactData.id,
-                                type: artType,
-                                status: artStatus,
-                                title: artTitle,
-                                payload: (data.artifactPayload ?? {}) as Record<string, unknown>,
-                                version: data.artifactVersion ?? 1,
+                            myGen,
+                            getCurrentGen: () => streamGenRef.current,
+                            setCurrentRunId,
+                            syncConversationId: (conversationId) => {
+                                if (currentConversationIdRef.current !== conversationId) {
+                                    setCurrentConversationId(conversationId);
+                                }
                             },
-                        };
-                        updateState((prev) => ({
-                            ...prev,
-                            messages: [...prev.messages, artifactMessage],
-                        }));
-                    } else if (data.type === "progress") {
-                        const progressText = data.progressMessage ?? "Working...";
-                        if (!aiMessageCreated) {
-                            aiMessageCreated = true;
-                            const aiMessage: CopilotMessage = {
-                                id: aiMessageId,
-                                sender: "ai",
-                                text: `*${progressText}*`,
-                                createdAt: new Date().toISOString(),
-                                context: { page, section },
-                            };
-                            updateState((prev) => ({
-                                ...prev,
-                                messages: [...prev.messages, aiMessage],
-                            }));
-                        } else if (!fullContent) {
-                            updateState((prev) => ({
-                                ...prev,
-                                messages: prev.messages.map((msg) =>
-                                    msg.id === aiMessageId
-                                        ? { ...msg, text: `*${progressText}*` }
-                                        : msg
-                                ),
-                            }));
+                            upsertConversationTitle,
+                            upsertArtifact,
+                            updateMessages,
+                            emitLedgerChanged: () => {
+                                window.dispatchEvent(
+                                    new CustomEvent("litrev:ledger-changed", { detail: { projectId } })
+                                );
+                            },
+                            setPendingChoices,
+                            onPlanStepUpdate,
+                            onNavigate: (url) => router.push(url),
                         }
-                    } else if (data.type === "choices" && data.choices) {
-                        if (streamGenRef.current === myGen) {
-                            setPendingChoices(data.choices);
-                        }
-                    } else if (data.type === "plan_step_update") {
-                        if (data.planId && data.stepIndex !== undefined && data.stepStatus) {
-                            onPlanStepUpdate?.(data.planId, data.stepIndex, data.stepStatus);
-                        }
-                    }
+                    );
+                    aiMessageCreated = nextState.aiMessageCreated;
+                    fullContent = nextState.fullContent;
+                    reasoningContent = nextState.reasoningContent;
+                    reasoningState = nextState.reasoningState;
+                    reasoningTruncated = nextState.reasoningTruncated;
+                    activeReasoningId = nextState.activeReasoningId;
+                    localRunId = nextState.localRunId;
+                    effectiveConvId = nextState.effectiveConvId;
                 },
             });
             runStatus = summary.runStatus;
@@ -1139,6 +1178,9 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
                         projectId,
                         studyId,
                         model,
+                        reasoningMode,
+                        includeReasoning: shouldRequestReasoning(reasoningMode),
+                        reasoningBudgetTokens: shouldRequestReasoning(reasoningMode) ? 4096 : undefined,
                         agentMode: agentMode || "general",
                         page,
                         section,
@@ -1151,10 +1193,10 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
                 convId,
             });
         },
-        [updateState, projectId, cancelStream, currentConversationId, pendingAttachment, runStream]
+        [updateState, projectId, cancelStream, currentConversationId, pendingAttachment, reasoningMode, runStream]
     );
 
-    const executePlan = useCallback(async (artifactId: string, selectedIndexes: number[]) => {
+    const executePlanAction = useCallback(async (artifactId: string, selectedIndexes: number[]) => {
         if (isLoadingRef.current) cancelStream();
         setPendingChoices([]);
 
@@ -1190,6 +1232,9 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
                 options: {
                     conversationId: convId ?? undefined,
                     projectId,
+                    reasoningMode,
+                    includeReasoning: shouldRequestReasoning(reasoningMode),
+                    reasoningBudgetTokens: shouldRequestReasoning(reasoningMode) ? 4096 : undefined,
                     agentMode: "general",
                 },
             },
@@ -1261,14 +1306,14 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
                 messages: [...prev.messages, feedback],
             }));
         }
-    }, [cancelStream, currentConversationId, projectId, runStream, updateState]);
+    }, [cancelStream, currentConversationId, projectId, reasoningMode, runStream, updateState]);
 
-    const handleReviewArtifact = useCallback(async (
+    const reviewArtifactActionLocal = useCallback(async (
         artifactId: string,
         status: "accepted" | "rejected",
         note?: string,
         editedPayload?: Record<string, unknown>,
-    ) => {
+    ): Promise<boolean> => {
         // Optimistic update — artifacts map
         setArtifacts((prev) => {
             const next = new Map(prev);
@@ -1310,7 +1355,7 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
                         : msg
                 ),
             }));
-            return;
+            return false;
         }
 
         if (status === "accepted" && result.artifact) {
@@ -1323,7 +1368,79 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
                 });
             }
         }
-    }, [artifacts, projectId, updateState]);
+        return true;
+    }, [projectId, updateState]);
+
+    const dispatchArtifactAction = useCallback(async (action: ArtifactActionContract): Promise<void> => {
+        if (action.type === "artifact.execute_plan") {
+            await executePlanAction(action.artifactId, action.selectedIndexes);
+            return;
+        }
+        if (action.type === "artifact.review") {
+            await reviewArtifactActionLocal(
+                action.artifactId,
+                action.status,
+                action.note,
+                action.editedPayload,
+            );
+        }
+    }, [executePlanAction, reviewArtifactActionLocal]);
+
+    const executePlan = useCallback(async (artifactId: string, selectedIndexes: number[]): Promise<void> => {
+        await dispatchArtifactAction({
+            type: "artifact.execute_plan",
+            artifactId,
+            selectedIndexes,
+        });
+    }, [dispatchArtifactAction]);
+
+    const handleReviewArtifact = useCallback(async (
+        artifactId: string,
+        status: "accepted" | "rejected",
+        note?: string,
+        editedPayload?: Record<string, unknown>,
+    ): Promise<void> => {
+        await dispatchArtifactAction({
+            type: "artifact.review",
+            artifactId,
+            status,
+            note,
+            editedPayload,
+        });
+    }, [dispatchArtifactAction]);
+
+    const approveArtifactsBatch = useCallback(async (
+        artifactIds: string[],
+        options?: {
+            shouldStop?: () => boolean;
+            onProgress?: (completed: number, total: number) => void;
+            conversationId?: string;
+        },
+    ): Promise<ApproveArtifactsBatchResult> => {
+        const uniqueArtifactIds = [...new Set(artifactIds.filter(Boolean))];
+        const total = uniqueArtifactIds.length;
+        const startConversationId = options?.conversationId ?? currentConversationIdRef.current ?? null;
+        let completed = 0;
+        let approvedCount = 0;
+        const failedArtifactIds: string[] = [];
+
+        for (const artifactId of uniqueArtifactIds) {
+            if (options?.shouldStop?.()) {
+                return { approvedCount, failedArtifactIds, stopped: true };
+            }
+            if ((currentConversationIdRef.current ?? null) !== startConversationId) {
+                return { approvedCount, failedArtifactIds, stopped: true };
+            }
+
+            const success = await reviewArtifactActionLocal(artifactId, "accepted");
+            completed += 1;
+            options?.onProgress?.(completed, total);
+            if (success) approvedCount += 1;
+            else failedArtifactIds.push(artifactId);
+        }
+
+        return { approvedCount, failedArtifactIds, stopped: false };
+    }, [reviewArtifactActionLocal]);
 
     const summarizeAndRefresh = useCallback(async () => {
         if (!currentConversationId || isSummarizing) return;
@@ -1359,10 +1476,12 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             isCollapsed: state.panel.collapsed,
             panelWidth: state.panel.width,
             isLoading,
+            reasoningMode,
             toggleCollapsed,
             setCollapsed,
             setPanelWidth,
             sendMessage,
+            setReasoningMode,
             cancelStream,
             clearMessages,
             // Conversation management
@@ -1389,6 +1508,7 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             currentRunId,
             artifacts,
             handleReviewArtifact,
+            approveArtifactsBatch,
             executePlan,
             // Summarize & fresh
             shouldOfferSummary,
@@ -1406,14 +1526,20 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             // AI-generated clickable choices
             pendingChoices,
             clearChoices,
+            // Message pagination
+            hasMore,
+            isLoadingOlder,
+            loadOlderMessages,
         }),
         [
             state,
             isLoading,
+            reasoningMode,
             toggleCollapsed,
             setCollapsed,
             setPanelWidth,
             sendMessage,
+            setReasoningMode,
             cancelStream,
             clearMessages,
             conversations,
@@ -1436,6 +1562,7 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             currentRunId,
             artifacts,
             handleReviewArtifact,
+            approveArtifactsBatch,
             executePlan,
             shouldOfferSummary,
             summarizeAndRefresh,
@@ -1449,6 +1576,9 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             resetToPreset,
             pendingChoices,
             clearChoices,
+            hasMore,
+            isLoadingOlder,
+            loadOlderMessages,
         ]
     );
 

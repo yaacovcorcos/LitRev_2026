@@ -56,6 +56,7 @@ export interface SemanticRetrievedMemory {
     memoryType: string;
     content: string;
     relevance: number;
+    updatedAt?: string;
     source?: string;
     tags?: string[];
 }
@@ -458,6 +459,7 @@ async function hydrateSemanticRows(
                 memoryType: memory.type,
                 content: `${memory.key}: ${memory.value}${memory.rationale ? ` (${memory.rationale})` : ""}`,
                 relevance,
+                updatedAt: memory.updatedAt.toISOString(),
                 tags: memory.tags,
             });
         }
@@ -480,6 +482,7 @@ async function hydrateSemanticRows(
                 memoryType: memory.type,
                 content: `[${memory.type}${memory.category ? ` - ${memory.category}` : ""}] ${memory.statement}${memory.rationale ? ` | Rationale: ${memory.rationale}` : ""}`,
                 relevance,
+                updatedAt: memory.updatedAt.toISOString(),
                 tags: memory.tags,
             });
         }
@@ -503,6 +506,7 @@ async function hydrateSemanticRows(
                 memoryType: memory.type,
                 content: `[${memory.type}${memory.category ? ` - ${memory.category}` : ""}] ${memory.content}`,
                 relevance: clampRelevance(relevance * (memory.confidence ?? 1)),
+                updatedAt: memory.updatedAt.toISOString(),
                 source: memory.source || undefined,
                 tags: memory.tags,
             });

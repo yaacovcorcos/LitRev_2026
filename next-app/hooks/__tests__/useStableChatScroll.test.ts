@@ -253,7 +253,7 @@ describe("useStableChatScroll", () => {
         }
     });
 
-    it("prepend-preserve: capturePrependAnchor + restorePrependAnchor maintains viewport offset", () => {
+    it("prepend-preserve: capturePrependAnchor (no arg) uses firstElementChild as anchor", () => {
         const { result } = renderHook(() => useStableChatScroll());
 
         const el = document.createElement("div");
@@ -284,6 +284,64 @@ describe("useStableChatScroll", () => {
 
         // scrollTop should have been adjusted by the delta (250 - 50 = 200)
         expect(currentScrollTop).toBe(300); // 100 + 200
+    });
+
+    it("prepend-preserve: capturePrependAnchor with explicit element uses that element as anchor", () => {
+        const { result } = renderHook(() => useStableChatScroll());
+
+        const container = document.createElement("div");
+        const chatListWrapper = document.createElement("div"); // firstElementChild (the wrapper)
+        const firstMessageRow = document.createElement("div"); // actual first message inside wrapper
+        chatListWrapper.appendChild(firstMessageRow);
+        container.appendChild(chatListWrapper);
+
+        let currentScrollTop = 200;
+        Object.defineProperty(container, "scrollTop", {
+            get: () => currentScrollTop,
+            set: (v: number) => { currentScrollTop = v; },
+            configurable: true,
+        });
+
+        act(() => { result.current.containerRef(container); });
+
+        // Capture with explicit element (the first message row, not the wrapper)
+        firstMessageRow.getBoundingClientRect = () => ({ top: 80, left: 0, right: 0, bottom: 0, width: 0, height: 0, x: 0, y: 0, toJSON: () => ({}) });
+        act(() => { result.current.capturePrependAnchor(firstMessageRow); });
+
+        // After prepend, the first message row shifted down by 150px
+        firstMessageRow.getBoundingClientRect = () => ({ top: 230, left: 0, right: 0, bottom: 0, width: 0, height: 0, x: 0, y: 0, toJSON: () => ({}) });
+        act(() => { result.current.restorePrependAnchor(); });
+
+        // scrollTop adjusted by delta: 230 - 80 = 150
+        expect(currentScrollTop).toBe(350); // 200 + 150
+    });
+
+    it("prepend-preserve: capturePrependAnchor(null) gracefully clears the anchor ref", () => {
+        const { result } = renderHook(() => useStableChatScroll());
+
+        const container = document.createElement("div");
+        const child = document.createElement("div");
+        container.appendChild(child);
+
+        let currentScrollTop = 100;
+        Object.defineProperty(container, "scrollTop", {
+            get: () => currentScrollTop,
+            set: (v: number) => { currentScrollTop = v; },
+            configurable: true,
+        });
+
+        act(() => { result.current.containerRef(container); });
+
+        // First capture a valid anchor
+        child.getBoundingClientRect = () => ({ top: 50, left: 0, right: 0, bottom: 0, width: 0, height: 0, x: 0, y: 0, toJSON: () => ({}) });
+        act(() => { result.current.capturePrependAnchor(child); });
+
+        // Now capture with null — should clear
+        act(() => { result.current.capturePrependAnchor(null); });
+
+        // restorePrependAnchor should be a no-op (anchor was cleared)
+        act(() => { result.current.restorePrependAnchor(); });
+        expect(currentScrollTop).toBe(100); // unchanged
     });
 
     it("cleanup: rAF cancelled on unmount", () => {

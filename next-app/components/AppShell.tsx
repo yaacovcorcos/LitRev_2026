@@ -42,7 +42,7 @@ export function AppShell({
   const cssVars = useMemo(() => {
     return {
       "--shell-gutter": collapsed ? "32px" : "50px",
-      "--shell-sidebar-width": collapsed ? "88px" : "220px",
+      "--shell-sidebar-width": collapsed ? "68px" : "200px",
     } as CSSProperties;
   }, [collapsed]);
 

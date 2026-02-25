@@ -30,8 +30,34 @@ export interface RetrievedMemory {
     memoryType: string;
     content: string;
     relevance: number;
+    updatedAt?: string;
     source?: string;
     tags?: string[];
+}
+
+const HYBRID_VECTOR_WEIGHT = 0.7;
+const HYBRID_TEXT_WEIGHT = 0.3;
+const MMR_LAMBDA = 0.7;
+const TEMPORAL_DECAY_HALF_LIFE_DAYS = 30;
+const ADVANCED_RETRIEVAL_CANDIDATE_MULTIPLIER = 3;
+
+function readBooleanFlag(value: string | undefined): boolean {
+    if (!value) return false;
+    const normalized = value.trim().toLowerCase();
+    return normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on";
+}
+
+function isAdvancedRetrievalRerankEnabled(): boolean {
+    return readBooleanFlag(process.env.ENABLE_MEMORY_ADVANCED_RERANKING);
+}
+
+function toIsoDate(value: unknown): string | undefined {
+    if (value instanceof Date) return value.toISOString();
+    if (typeof value === "string") {
+        const parsed = new Date(value);
+        if (!Number.isNaN(parsed.getTime())) return parsed.toISOString();
+    }
+    return undefined;
 }
 
 const SIGNAL_STOPWORDS = new Set([
@@ -138,11 +164,93 @@ function utilityMultiplier(memory: RetrievedMemory): number {
     return multiplier;
 }
 
+export function hybridFuseScore(lexicalScore: number, semanticScore: number): number {
+    return (lexicalScore * HYBRID_TEXT_WEIGHT) + (semanticScore * HYBRID_VECTOR_WEIGHT);
+}
+
+export function temporalDecayMultiplier(
+    updatedAt: string | undefined,
+    nowMs = Date.now(),
+    halfLifeDays = TEMPORAL_DECAY_HALF_LIFE_DAYS
+): number {
+    if (!updatedAt || halfLifeDays <= 0) return 1;
+    const updatedAtMs = Date.parse(updatedAt);
+    if (!Number.isFinite(updatedAtMs)) return 1;
+    if (updatedAtMs >= nowMs) return 1;
+    const ageDays = Math.max(0, (nowMs - updatedAtMs) / (1000 * 60 * 60 * 24));
+    return Math.exp((-Math.log(2) * ageDays) / halfLifeDays);
+}
+
+export function applyTemporalDecayScore(
+    score: number,
+    updatedAt: string | undefined,
+    nowMs = Date.now(),
+    halfLifeDays = TEMPORAL_DECAY_HALF_LIFE_DAYS
+): number {
+    return Math.min(Math.max(score * temporalDecayMultiplier(updatedAt, nowMs, halfLifeDays), 0), 1);
+}
+
+function memoryTextSimilarity(a: RetrievedMemory, b: RetrievedMemory): number {
+    const termsA = new Set(normalizedTerms(a.content));
+    const termsB = new Set(normalizedTerms(b.content));
+    if (termsA.size === 0 || termsB.size === 0) return 0;
+
+    let intersection = 0;
+    for (const term of termsA) {
+        if (termsB.has(term)) intersection += 1;
+    }
+    const union = new Set([...termsA, ...termsB]).size;
+    if (union === 0) return 0;
+    return intersection / union;
+}
+
+export function rerankWithMMR(
+    candidates: RetrievedMemory[],
+    limit: number,
+    lambda = MMR_LAMBDA
+): RetrievedMemory[] {
+    if (limit <= 0 || candidates.length === 0) return [];
+    const boundedLambda = Math.max(0, Math.min(1, lambda));
+    const selected: RetrievedMemory[] = [];
+    const remaining = [...candidates];
+
+    while (selected.length < limit && remaining.length > 0) {
+        let bestIndex = 0;
+        let bestScore = Number.NEGATIVE_INFINITY;
+
+        for (let i = 0; i < remaining.length; i += 1) {
+            const candidate = remaining[i];
+            const relevance = candidate.relevance;
+            const maxSimilarity = selected.length === 0
+                ? 0
+                : Math.max(...selected.map((picked) => memoryTextSimilarity(candidate, picked)));
+            const mmrScore = (boundedLambda * relevance) - ((1 - boundedLambda) * maxSimilarity);
+            if (mmrScore > bestScore) {
+                bestScore = mmrScore;
+                bestIndex = i;
+            }
+        }
+
+        selected.push(remaining.splice(bestIndex, 1)[0]);
+    }
+
+    return selected;
+}
+
 function fuseMemoryLayers(
     deterministic: RetrievedMemory[],
     keyword: RetrievedMemory[],
     semantic: RetrievedMemory[],
+    options?: {
+        advancedRerank?: boolean;
+        maxMemories?: number;
+    },
 ): RetrievedMemory[] {
+    const useAdvancedRerank = options?.advancedRerank ?? false;
+    const maxMemories = options?.maxMemories;
+    const postDeterministicLimit = typeof maxMemories === "number"
+        ? Math.max(0, maxMemories - deterministic.length)
+        : Number.POSITIVE_INFINITY;
     const deterministicIds = new Set(deterministic.map((m) => m.id));
     const fused = new Map<string, {
         memory: RetrievedMemory;
@@ -189,18 +297,30 @@ function fuseMemoryLayers(
     const ranked = [...fused.values()]
         .map((entry) => {
             // Weighted fusion:
-            // - lexical dominates exact matching
-            // - semantic boosts paraphrase recall when available
-            const fusedScore = (entry.lexical * 0.7) + (entry.semantic * 0.3);
-            const weightedScore = Math.min(fusedScore * utilityMultiplier(entry.memory), 1.0);
+            // - semantic leads paraphrase recall (70%)
+            // - lexical anchors exact/keyword overlap (30%)
+            const fusedScore = hybridFuseScore(entry.lexical, entry.semantic);
+            const utilityWeighted = Math.min(fusedScore * utilityMultiplier(entry.memory), 1.0);
+            const finalScore = useAdvancedRerank
+                ? applyTemporalDecayScore(utilityWeighted, entry.memory.updatedAt)
+                : utilityWeighted;
             return {
                 ...entry.memory,
-                relevance: weightedScore,
+                relevance: finalScore,
             };
         })
         .sort((a, b) => b.relevance - a.relevance);
 
-    return [...deterministic, ...ranked];
+    if (!Number.isFinite(postDeterministicLimit) || postDeterministicLimit <= 0) {
+        return [...deterministic, ...ranked];
+    }
+
+    if (!useAdvancedRerank) {
+        return [...deterministic, ...ranked.slice(0, postDeterministicLimit)];
+    }
+
+    const reranked = rerankWithMMR(ranked, postDeterministicLimit, MMR_LAMBDA);
+    return [...deterministic, ...reranked];
 }
 
 // ── Phase 1: Deterministic scope rules ──────────────────────────────────────
@@ -231,6 +351,7 @@ async function gatherDeterministicMemories(
                 memoryType: m.type,
                 content: `[${m.type}${m.category ? ` - ${m.category}` : ""}] ${m.statement}${m.rationale ? ` | Rationale: ${m.rationale}` : ""}`,
                 relevance: 1.5,
+                updatedAt: toIsoDate((m as { updatedAt?: unknown }).updatedAt),
                 tags: m.tags,
             });
         }
@@ -249,6 +370,7 @@ async function gatherDeterministicMemories(
                 memoryType: m.type,
                 content: `[${m.type}${m.category ? ` - ${m.category}` : ""}] ${m.statement}${m.rationale ? ` | Rationale: ${m.rationale}` : ""}`,
                 relevance: 1.3,
+                updatedAt: toIsoDate((m as { updatedAt?: unknown }).updatedAt),
                 tags: m.tags,
             });
         }
@@ -266,6 +388,7 @@ async function gatherDeterministicMemories(
                     memoryType: m.type,
                     content: `[${m.type}${m.category ? ` - ${m.category}` : ""}] ${m.content}`,
                     relevance: 1.2,
+                    updatedAt: toIsoDate((m as { updatedAt?: unknown }).updatedAt),
                     source: m.source || undefined,
                     tags: m.tags,
                 });
@@ -287,6 +410,7 @@ async function gatherDeterministicMemories(
                 memoryType: m.type,
                 content: `[${m.type} - ${m.category}] ${m.statement}${m.rationale ? ` | Rationale: ${m.rationale}` : ""}`,
                 relevance: 1.2,
+                updatedAt: toIsoDate((m as { updatedAt?: unknown }).updatedAt),
                 tags: m.tags,
             });
         }
@@ -301,6 +425,7 @@ async function gatherDeterministicMemories(
             memoryType: m.type,
             content: `${m.key}: ${m.value}${m.rationale ? ` (${m.rationale})` : ""}`,
             relevance: 1.0,
+            updatedAt: toIsoDate((m as { updatedAt?: unknown }).updatedAt),
             tags: m.tags,
         });
     }
@@ -330,7 +455,15 @@ async function gatherKeywordMemories(
             const content = `${m.key}: ${m.value}${m.rationale ? ` (${m.rationale})` : ""}`;
             const relevance = calculateRelevance(query, content, m.tags);
             if (relevance >= opts.minRelevance) {
-                results.push({ id: m.id, type: "user", memoryType: m.type, content, relevance, tags: m.tags });
+                results.push({
+                    id: m.id,
+                    type: "user",
+                    memoryType: m.type,
+                    content,
+                    relevance,
+                    updatedAt: toIsoDate((m as { updatedAt?: unknown }).updatedAt),
+                    tags: m.tags,
+                });
             }
         }
     }
@@ -345,7 +478,15 @@ async function gatherKeywordMemories(
             const relevance = calculateRelevance(query, content, m.tags)
                 * (m.importance === "critical" ? 1.5 : m.importance === "important" ? 1.2 : 1.0);
             if (relevance >= opts.minRelevance) {
-                results.push({ id: m.id, type: "project", memoryType: m.type, content, relevance, tags: m.tags });
+                results.push({
+                    id: m.id,
+                    type: "project",
+                    memoryType: m.type,
+                    content,
+                    relevance,
+                    updatedAt: toIsoDate((m as { updatedAt?: unknown }).updatedAt),
+                    tags: m.tags,
+                });
             }
         }
     }
@@ -360,6 +501,7 @@ async function gatherKeywordMemories(
             if (relevance >= opts.minRelevance) {
                 results.push({
                     id: m.id, type: "study", memoryType: m.type, content, relevance,
+                    updatedAt: toIsoDate((m as { updatedAt?: unknown }).updatedAt),
                     source: m.source || undefined, tags: m.tags,
                 });
             }
@@ -382,6 +524,7 @@ async function gatherKeywordMemories(
                     memoryType: m.type,
                     content,
                     relevance,
+                    updatedAt: toIsoDate((m as { updatedAt?: unknown }).updatedAt),
                     source: m.source || undefined,
                     tags: m.tags,
                 });
@@ -447,8 +590,19 @@ export async function retrieveMemories(
         new Set([...deterministicIds, ...keyword.map((k) => k.id)]),
     );
 
+    const useAdvancedRerank = isAdvancedRetrievalRerankEnabled();
+    const baseCandidatePool = Math.max(maxMemories, 1);
+    const candidatePoolSize = useAdvancedRerank
+        ? baseCandidatePool * ADVANCED_RETRIEVAL_CANDIDATE_MULTIPLIER
+        : baseCandidatePool;
+    const keywordCandidates = keyword.slice(0, candidatePoolSize);
+    const semanticCandidates = semantic.slice(0, candidatePoolSize);
+
     // Phase 4: Fuse lexical + semantic layers, then trim by count and token budget
-    const fused = fuseMemoryLayers(deterministic, keyword, semantic);
+    const fused = fuseMemoryLayers(deterministic, keywordCandidates, semanticCandidates, {
+        advancedRerank: useAdvancedRerank,
+        maxMemories,
+    });
     const merged = fused.slice(0, maxMemories);
     const trimmed = trimToTokenBudget(merged, memoryBudgetTokens);
 

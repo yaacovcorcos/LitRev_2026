@@ -9,6 +9,8 @@ import type { AIMessage, AIModel, AIResponse, ChatOptions, AIStreamChunk, ToolCa
 import { BaseAIProvider } from "./base";
 import { AI_CONFIG, AVAILABLE_MODELS } from "@/lib/ai/config";
 import { parseToolArgs } from "../json-repair";
+import { extractProviderErrorMetadata } from "./error-metadata";
+import { normalizeProviderMessages } from "./message-normalization";
 
 export class OpenAIProvider extends BaseAIProvider {
     readonly id = "openai";
@@ -73,6 +75,8 @@ export class OpenAIProvider extends BaseAIProvider {
                 inputTokens: response.usage?.prompt_tokens || 0,
                 outputTokens: response.usage?.completion_tokens || 0,
                 totalTokens: response.usage?.total_tokens || 0,
+                cachedInputTokens: (response.usage as { prompt_tokens_details?: { cached_tokens?: number } } | undefined)
+                    ?.prompt_tokens_details?.cached_tokens,
             },
         };
     }
@@ -159,6 +163,8 @@ export class OpenAIProvider extends BaseAIProvider {
                                 inputTokens: chunk.usage.prompt_tokens,
                                 outputTokens: chunk.usage.completion_tokens,
                                 totalTokens: chunk.usage.total_tokens,
+                                cachedInputTokens: (chunk.usage as { prompt_tokens_details?: { cached_tokens?: number } })
+                                    .prompt_tokens_details?.cached_tokens,
                             };
                         }
                     }
@@ -170,6 +176,8 @@ export class OpenAIProvider extends BaseAIProvider {
                         inputTokens: chunk.usage.prompt_tokens,
                         outputTokens: chunk.usage.completion_tokens,
                         totalTokens: chunk.usage.total_tokens,
+                        cachedInputTokens: (chunk.usage as { prompt_tokens_details?: { cached_tokens?: number } })
+                            .prompt_tokens_details?.cached_tokens,
                     };
                 }
             }
@@ -181,9 +189,11 @@ export class OpenAIProvider extends BaseAIProvider {
                 usage,
             };
         } catch (error) {
+            const metadata = extractProviderErrorMetadata(error);
             yield {
                 type: "error",
                 error: error instanceof Error ? error.message : "Unknown streaming error",
+                ...metadata,
             };
         }
     }
@@ -193,6 +203,7 @@ export class OpenAIProvider extends BaseAIProvider {
         systemPrompt?: string
     ): OpenAI.Chat.ChatCompletionMessageParam[] {
         const result: OpenAI.Chat.ChatCompletionMessageParam[] = [];
+        const normalizedMessages = normalizeProviderMessages(messages).messages;
 
         // Add system prompt if provided
         if (systemPrompt) {
@@ -200,7 +211,7 @@ export class OpenAIProvider extends BaseAIProvider {
         }
 
         // Convert messages
-        for (const msg of messages) {
+        for (const msg of normalizedMessages) {
             if (msg.role === "system") {
                 result.push({ role: "system", content: msg.content });
             } else if (msg.role === "user") {

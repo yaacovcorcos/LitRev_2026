@@ -6,3 +6,6 @@ secrets.local.md
 .vercel
 node_modules/
 ~$*
+cloned_repos/
+next-app/.tmp-*/
+next-app/.tmp*

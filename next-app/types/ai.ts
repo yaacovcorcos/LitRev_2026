@@ -68,12 +68,19 @@ export type ConversationMessageAttachment = {
 };
 
 export type AITone = "standard" | "deep";
+export type ReasoningMode = "off" | "summary" | "full";
 
 // Chat options
 export type ChatOptions = {
     model?: string;
     temperature?: number;
     maxTokens?: number;
+    /** User-facing reasoning visibility mode. */
+    reasoningMode?: ReasoningMode;
+    /** Request provider-native reasoning/thinking parts when supported. */
+    includeReasoning?: boolean;
+    /** Optional provider reasoning budget (tokens), when supported. */
+    reasoningBudgetTokens?: number;
     tone?: AITone;
     additionalContext?: string;
     systemPrompt?: string;
@@ -96,23 +103,32 @@ export type AIResponse = {
         inputTokens: number;
         outputTokens: number;
         totalTokens: number;
+        cachedInputTokens?: number;
     };
 };
 
 // Streaming chunk
 export type AIStreamChunk = {
     type: "content" | "tool_call" | "tool_result" | "done" | "error"
+        | "reasoning_start" | "reasoning_delta" | "reasoning_end"
         | "artifact" | "progress" | "checkpoint"
         | "run_start" | "run_end"
         | "conversation_title"
         | "choices"
-        | "plan_step_update";
+        | "plan_step_update"
+        | "navigate";
     content?: string;
     error?: string;
+    errorStatus?: number;
+    errorCode?: string;
+    errorHeaders?: Record<string, string>;
     usage?: AIResponse["usage"];
     toolCall?: ToolCall;
     toolResult?: ToolResult;
     toolName?: string;
+    // Reasoning chunk fields
+    reasoningId?: string;
+    reasoningText?: string;
     // Artifact chunk fields (Phase 1)
     artifactId?: string;
     artifactType?: string;
@@ -141,6 +157,9 @@ export type AIStreamChunk = {
     planId?: string;
     stepIndex?: number;
     stepStatus?: string;
+    // Navigation fields (project management tools)
+    navigateUrl?: string;
+    navigateProjectId?: string;
     // Conversation identity (server-side source of truth)
     conversationId?: string;
     conversationTitle?: string;

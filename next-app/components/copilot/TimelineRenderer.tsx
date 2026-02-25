@@ -7,7 +7,7 @@
 
 "use client";
 
-import { Component, memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Component, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useStableChatScroll } from "@/hooks/useStableChatScroll";
 import type { ErrorInfo, ReactNode } from "react";
 import { useParams } from "next/navigation";
@@ -16,8 +16,10 @@ import remarkGfm from "remark-gfm";
 import { markdownComponents } from "../markdown/CodeBlock";
 import type { CopilotMessage } from "@/lib/projectCopilotStorage";
 import type { TimelineItem, TimelineArtifact } from "@/types/timeline";
+import type { ReasoningMode } from "@/types/ai";
 import type { AgentMode } from "@/types/agent";
 import type {
+    ArtifactType,
     PlanPayload,
     StudyProposalPayload,
     StudyUpdatePayload,
@@ -45,6 +47,7 @@ import { StreamingProgress } from "./StreamingProgress";
 import { addMentionedStudyAction } from "@/app/actions/ledger";
 import { extractMentionedStudies, stripMentionedStudiesMarkup, type MentionedStudy } from "@/lib/ai/mentioned-studies";
 import { isChatStudyMentionsEnabled } from "@/lib/agent/feature-flags";
+import { getReasoningSummaryPreview } from "@/lib/ai/reasoning-visibility";
 import styles from "../ProjectCopilot.module.css";
 import artifactStyles from "@/styles/artifacts.module.css";
 import markdownStyles from "@/styles/markdown.module.css";
@@ -87,6 +90,17 @@ const ARTIFACT_JUMP_MAP: Record<string, { tab: string; label: string }> = {
     draft_diff: { tab: "draft", label: "View in Draft" },
     memory_forget_proposal: { tab: "memory", label: "View in Memory" },
 };
+
+const BATCH_APPROVABLE_TYPES: ReadonlySet<ArtifactType> = new Set<ArtifactType>([
+    "study_proposal",
+    "study_update",
+    "screening_batch",
+    "protocol_suggestion",
+    "criteria_card",
+    "draft_diff",
+    "memory_proposal",
+    "memory_forget_proposal",
+]);
 
 function getJumpToProps(artifactType: string, projectId: string): { jumpToLink?: string; jumpToLabel?: string } {
     const mapping = ARTIFACT_JUMP_MAP[artifactType];
@@ -187,6 +201,7 @@ const UserMessageRow = memo(function UserMessageRow({ item, onCopy, onBranchFrom
 type AssistantMessageRowProps = {
     item: Extract<TimelineItem, { type: "assistant_message" }>;
     projectId?: string;
+    reasoningMode: ReasoningMode;
     /** True only when this specific message is actively receiving streaming tokens */
     isStreaming: boolean;
     /** True when this message was just saved to Notes (shows confirmation) */
@@ -221,6 +236,7 @@ function mentionButtonText(state: MentionAddState, hasProject: boolean): string 
 const AssistantMessageRow = memo(function AssistantMessageRow({
     item,
     projectId,
+    reasoningMode,
     isStreaming,
     isSaved,
     isSaving,
@@ -230,11 +246,34 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
     onBranchFromMessage,
 }: AssistantMessageRowProps) {
     const displayContent = stripAssistantMarkupForDisplay(item.content);
+    const rawReasoningText = item.reasoning?.text?.trim() ?? "";
+    const hasReasoning = rawReasoningText.length > 0;
+    const showReasoningArea = hasReasoning && reasoningMode !== "off";
+    const isSummaryMode = reasoningMode === "summary";
+    const summaryPreview = getReasoningSummaryPreview(rawReasoningText);
+    const [showFullSummary, setShowFullSummary] = useState(false);
+    const reasoningText = isSummaryMode && !showFullSummary
+        ? summaryPreview.text
+        : rawReasoningText;
+    const isReasoningStreaming = item.reasoning?.state === "streaming";
     const mentions = useMemo(
         () => (CHAT_STUDY_MENTIONS_ENABLED ? extractMentionedStudies(item.content) : []),
         [item.content]
     );
     const [mentionStates, setMentionStates] = useState<Record<string, MentionAddState>>({});
+    const [showReasoning, setShowReasoning] = useState(reasoningMode === "full" && isReasoningStreaming);
+
+    useEffect(() => {
+        if (reasoningMode === "full" && isReasoningStreaming) {
+            setShowReasoning(true);
+        }
+    }, [isReasoningStreaming, reasoningMode]);
+
+    useEffect(() => {
+        if (reasoningMode !== "summary") {
+            setShowFullSummary(false);
+        }
+    }, [reasoningMode]);
 
     const addMentionedStudy = useCallback(async (study: MentionedStudy) => {
         if (!projectId) return;
@@ -266,10 +305,58 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
         <div className={`${styles.chatMsg} ${styles.chatMsgAi}`} role="article" aria-label="Assistant">
             <div className={styles.chatStack}>
                 <div className={styles.chatBubble}>
+                    {showReasoningArea && (
+                        <div className={styles.reasoningWrap}>
+                            <button
+                                type="button"
+                                className={styles.reasoningToggle}
+                                onClick={() => setShowReasoning((prev) => !prev)}
+                                aria-expanded={showReasoning}
+                            >
+                                <span className="material-icons-round" aria-hidden="true">
+                                    {showReasoning ? "expand_more" : "chevron_right"}
+                                </span>
+                                <span>
+                                    {isReasoningStreaming
+                                        ? "Thinking"
+                                        : isSummaryMode
+                                            ? "Reasoning (summary)"
+                                            : "Reasoning"}
+                                </span>
+                            </button>
+                            {showReasoning && (
+                                <div className={styles.reasoningPanel}>
+                                    <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                                        {reasoningText}
+                                    </ReactMarkdown>
+                                    {item.reasoning?.truncated && (
+                                        <div className={styles.reasoningTruncatedNote}>
+                                            Thinking output truncated for safety.
+                                        </div>
+                                    )}
+                                    {isSummaryMode && summaryPreview.truncated && (
+                                        <button
+                                            type="button"
+                                            className={styles.reasoningExpandBtn}
+                                            onClick={() => setShowFullSummary((prev) => !prev)}
+                                        >
+                                            {showFullSummary ? "Show less" : "Show full"}
+                                        </button>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    )}
                     <div className={markdownStyles.markdownContent}>
-                        <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-                            {displayContent}
-                        </ReactMarkdown>
+                        {displayContent ? (
+                            <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                                {displayContent}
+                            </ReactMarkdown>
+                        ) : (
+                            isReasoningStreaming && (
+                                <span className={styles.reasoningPlaceholder}>Thinking...</span>
+                            )
+                        )}
                         {isStreaming && (
                             <span className={styles.streamingCursor} aria-hidden="true">◎</span>
                         )}
@@ -385,6 +472,19 @@ export type TimelineRendererProps = {
     onActionPrompt?: (prompt: string, mode?: AgentMode) => void;
     /** Callback when user reviews an artifact (accept/reject). editedPayload is set when user edits before accepting. */
     onReviewArtifact?: (artifactId: string, status: "accepted" | "rejected", note?: string, editedPayload?: Record<string, unknown>) => void;
+    /** Optional batch-approve callback with progress and cancellation hooks. */
+    onApproveArtifactsBatch?: (
+        artifactIds: string[],
+        options?: {
+            shouldStop?: () => boolean;
+            onProgress?: (completed: number, total: number) => void;
+            conversationId?: string;
+        },
+    ) => Promise<{
+        approvedCount: number;
+        failedArtifactIds: string[];
+        stopped: boolean;
+    }>;
     /** Callback when user clicks Run on a plan artifact with selected step indexes. */
     onExecutePlan?: (artifactId: string, selectedIndexes: number[]) => void;
     /** Callback to save a message to notes */
@@ -395,12 +495,20 @@ export type TimelineRendererProps = {
     onBranchFromMessage?: (messageId: string, createdAt: string) => void | Promise<void>;
     /** Layout variant: "panel" for copilot sidebar (bubbles), "page" for conversation mode (full-width) */
     variant?: "panel" | "page";
+    /** Global reasoning visibility mode */
+    reasoningMode?: ReasoningMode;
     /** When true (conversation being fetched), show a shimmer skeleton instead of the empty state */
     isConversationLoading?: boolean;
     /** Stable ID of the active conversation — used to reset scroll state on switch */
     conversationId?: string;
     /** Optional explicit project ID override (used in /ai route where useParams has no project id). */
     projectId?: string;
+    /** Whether older messages are available to load */
+    hasMore?: boolean;
+    /** Whether older messages are currently loading */
+    isLoadingOlder?: boolean;
+    /** Callback to load older messages */
+    onLoadOlder?: () => Promise<void>;
 };
 
 export function TimelineRenderer({
@@ -412,14 +520,19 @@ export function TimelineRenderer({
     onSuggestionClick,
     onActionPrompt,
     onReviewArtifact,
+    onApproveArtifactsBatch,
     onExecutePlan,
     onSaveToNotes,
     onRetryLastMessage,
     onBranchFromMessage,
     variant = "panel",
+    reasoningMode = "full",
     isConversationLoading = false,
     conversationId,
     projectId: projectIdProp,
+    hasMore,
+    isLoadingOlder,
+    onLoadOlder,
 }: TimelineRendererProps) {
     const params = useParams();
     const routeProjectId = params && typeof params === "object" && "id" in params
@@ -428,11 +541,18 @@ export function TimelineRenderer({
     const projectId = projectIdProp ?? routeProjectId;
     const [savedNoteId, setSavedNoteId] = useState<string | null>(null);
     const [savingNoteId, setSavingNoteId] = useState<string | null>(null);
+    const [approveAllState, setApproveAllState] = useState<"idle" | "approving" | "finished">("idle");
+    const [approveAllProgress, setApproveAllProgress] = useState<{ completed: number; total: number }>({ completed: 0, total: 0 });
+    const [approveAllSummary, setApproveAllSummary] = useState<{ approvedCount: number; failedArtifactIds: string[]; stopped: boolean } | null>(null);
+    const approveAllAbortRef = useRef(false);
+    const approveAllDismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const prevConversationIdRef = useRef<string | undefined>(conversationId);
 
     // ── Shared scroll hook ──────────────────────────────────────────────────
     const {
         containerRef, bottomRef, onScroll, isPinned, scrollToBottom,
         notifyStreamStart, notifyConversationChanged, notifyContentChanged,
+        capturePrependAnchor, restorePrependAnchor,
     } = useStableChatScroll();
 
     // Resolve timeline: prefer items, fall back to legacy messages.
@@ -442,6 +562,33 @@ export function TimelineRenderer({
         () => items ?? messagesToTimeline(messages),
         [items, messages]
     );
+    const canBatchApprove = !!(onApproveArtifactsBatch || onReviewArtifact);
+    const pendingApprovable = useMemo(() => {
+        if (!canBatchApprove) return [];
+        const latestArtifactById = new Map<string, TimelineArtifact>();
+        for (const item of timeline) {
+            if (item.type === "artifact") {
+                latestArtifactById.set(item.artifactId, item);
+            }
+        }
+        return [...latestArtifactById.values()].filter(
+            (item) => item.status === "proposed" && BATCH_APPROVABLE_TYPES.has(item.artifactType),
+        );
+    }, [canBatchApprove, timeline]);
+    const showApproveAllBar = approveAllState !== "idle" || pendingApprovable.length >= 2;
+    const approveAllResultText = useMemo(() => {
+        if (!approveAllSummary) return "Batch finished.";
+        const processedCount = approveAllSummary.approvedCount + approveAllSummary.failedArtifactIds.length;
+        const total = approveAllProgress.total || processedCount;
+        const failedCount = approveAllSummary.failedArtifactIds.length;
+        if (!approveAllSummary.stopped && failedCount === 0) {
+            return "All approved.";
+        }
+        if (approveAllSummary.stopped) {
+            return `Stopped. Approved ${approveAllSummary.approvedCount}/${total}.`;
+        }
+        return `Approved ${approveAllSummary.approvedCount}/${total}. ${failedCount} remaining.`;
+    }, [approveAllProgress.total, approveAllSummary]);
 
     // ── Conversation change — ID-only, Strict Mode safe ─────────────────────
     useLayoutEffect(() => {
@@ -457,6 +604,67 @@ export function TimelineRenderer({
 
     // ── Content change — schedule scroll if pinned ──────────────────────────
     useLayoutEffect(() => { notifyContentChanged(); }, [timeline, notifyContentChanged]);
+    useEffect(() => {
+        return () => {
+            if (approveAllDismissTimerRef.current) {
+                clearTimeout(approveAllDismissTimerRef.current);
+            }
+        };
+    }, []);
+    useEffect(() => {
+        if (prevConversationIdRef.current !== conversationId && approveAllState === "approving") {
+            approveAllAbortRef.current = true;
+        }
+        prevConversationIdRef.current = conversationId;
+    }, [conversationId, approveAllState]);
+    useEffect(() => {
+        if (approveAllState !== "finished") return;
+        approveAllDismissTimerRef.current = setTimeout(() => {
+            setApproveAllState("idle");
+            setApproveAllProgress({ completed: 0, total: 0 });
+            setApproveAllSummary(null);
+        }, 1500);
+        return () => {
+            if (approveAllDismissTimerRef.current) {
+                clearTimeout(approveAllDismissTimerRef.current);
+            }
+        };
+    }, [approveAllState]);
+
+    // ── Prepend anchor for "load older messages" ─────────────────────────
+    const firstItemRef = useRef<HTMLDivElement | null>(null);
+    const pendingPrependRef = useRef<{ firstIdBeforeLoad: string | null } | null>(null);
+    const firstTimelineId = timeline[0]?.id ?? null;
+    const latestFirstTimelineIdRef = useRef<string | null>(firstTimelineId);
+    useLayoutEffect(() => {
+        latestFirstTimelineIdRef.current = firstTimelineId;
+    }, [firstTimelineId]);
+
+    const handleLoadOlder = useCallback(async () => {
+        if (!onLoadOlder) return;
+        const firstIdBeforeLoad = firstTimelineId;
+        capturePrependAnchor(firstItemRef.current);
+        pendingPrependRef.current = { firstIdBeforeLoad };
+        await onLoadOlder();
+        // If no prepend occurred, clear pending marker to avoid stale restore later.
+        if (
+            pendingPrependRef.current?.firstIdBeforeLoad === firstIdBeforeLoad
+            && latestFirstTimelineIdRef.current === firstIdBeforeLoad
+        ) {
+            pendingPrependRef.current = null;
+        }
+    }, [onLoadOlder, capturePrependAnchor, firstTimelineId]);
+
+    // Restore viewport after prepend
+    useLayoutEffect(() => {
+        const pending = pendingPrependRef.current;
+        if (!pending) return;
+        // Restore only once a prepend has actually changed the first visible item.
+        if (firstTimelineId !== pending.firstIdBeforeLoad) {
+            restorePrependAnchor();
+            pendingPrependRef.current = null;
+        }
+    }, [firstTimelineId, restorePrependAnchor]);
 
     const handleCopy = useCallback((text: string) => {
         navigator.clipboard.writeText(text).catch(console.error);
@@ -476,6 +684,68 @@ export function TimelineRenderer({
             }
         }
     }, [onSaveToNotes]);
+
+    const handleStopApproveAll = useCallback(() => {
+        approveAllAbortRef.current = true;
+    }, []);
+
+    const handleApproveAll = useCallback(async () => {
+        if (approveAllState === "approving") return;
+        const artifactIds = pendingApprovable.map((item) => item.artifactId);
+        if (artifactIds.length < 2) return;
+
+        if (approveAllDismissTimerRef.current) {
+            clearTimeout(approveAllDismissTimerRef.current);
+        }
+        approveAllAbortRef.current = false;
+        setApproveAllSummary(null);
+        setApproveAllState("approving");
+        setApproveAllProgress({ completed: 0, total: artifactIds.length });
+
+        let processedCount = 0;
+        const updateProgress = (completed: number, total: number) => {
+            processedCount = completed;
+            setApproveAllProgress({ completed, total });
+        };
+
+        try {
+            if (onApproveArtifactsBatch) {
+                const result = await onApproveArtifactsBatch(artifactIds, {
+                    shouldStop: () => approveAllAbortRef.current,
+                    onProgress: updateProgress,
+                    conversationId,
+                });
+                setApproveAllSummary(result);
+            } else if (onReviewArtifact) {
+                let approvedCount = 0;
+                const failedArtifactIds: string[] = [];
+                for (let i = 0; i < artifactIds.length; i += 1) {
+                    if (approveAllAbortRef.current) break;
+                    try {
+                        await onReviewArtifact(artifactIds[i], "accepted");
+                        approvedCount += 1;
+                    } catch {
+                        failedArtifactIds.push(artifactIds[i]);
+                    }
+                    updateProgress(i + 1, artifactIds.length);
+                }
+                setApproveAllSummary({
+                    approvedCount,
+                    failedArtifactIds,
+                    stopped: approveAllAbortRef.current,
+                });
+            }
+        } catch (error) {
+            console.error("[ApproveAll] batch failed", error);
+            setApproveAllSummary({
+                approvedCount: processedCount,
+                failedArtifactIds: artifactIds.slice(processedCount),
+                stopped: true,
+            });
+        } finally {
+            setApproveAllState("finished");
+        }
+    }, [approveAllState, conversationId, onApproveArtifactsBatch, onReviewArtifact, pendingApprovable]);
 
     // Skeleton while a conversation is being fetched from the server
     if (isConversationLoading && timeline.length === 0) {
@@ -770,6 +1040,7 @@ export function TimelineRenderer({
                         key={item.id}
                         item={item}
                         projectId={projectId}
+                        reasoningMode={reasoningMode}
                         isStreaming={isStreaming && index === lastAssistantIndex}
                         isSaved={savedNoteId === item.id}
                         isSaving={savingNoteId === item.id}
@@ -830,7 +1101,33 @@ export function TimelineRenderer({
     return (
         <div className={`${styles.copilotBody} ${variant === "page" ? styles.pageLayout : ""}`} ref={containerRef} onScroll={onScroll}>
             <div className={styles.chatList}>
-                {timeline.map((item, index) => renderTimelineItem(item, index))}
+                {hasMore && (
+                    <div className={styles.loadOlderRow}>
+                        <button
+                            type="button"
+                            className={styles.loadOlderBtn}
+                            onClick={handleLoadOlder}
+                            disabled={isLoadingOlder}
+                            aria-label="Load older messages"
+                        >
+                            <span className="material-icons-round" style={{ fontSize: 16 }}>
+                                {isLoadingOlder ? "sync" : "expand_less"}
+                            </span>
+                            {isLoadingOlder ? "Loading..." : "Load older messages"}
+                        </button>
+                    </div>
+                )}
+                {timeline.map((item, index) => {
+                    const rendered = renderTimelineItem(item, index);
+                    if (index === 0) {
+                        return (
+                            <div key={item.id} ref={(el) => { firstItemRef.current = el; }}>
+                                {rendered}
+                            </div>
+                        );
+                    }
+                    return rendered;
+                })}
                 {isLoading && timeline.length > 0 && timeline[timeline.length - 1].type === "user_message" && (
                     <div className={styles.loadingIndicator}>
                         <div className={styles.loadingDots}>
@@ -843,6 +1140,52 @@ export function TimelineRenderer({
                 {/* Bottom sentinel — scroll anchor */}
                 <div ref={bottomRef} style={{ height: 1, flexShrink: 0 }} aria-hidden="true" />
             </div>
+            {showApproveAllBar && (
+                <div className={styles.approveAllBar}>
+                    {approveAllState === "idle" && (
+                        <>
+                            <div className={styles.approveAllMeta}>
+                                <span className="material-icons-round" aria-hidden="true">done_all</span>
+                                <span>{pendingApprovable.length} pending proposals</span>
+                            </div>
+                            <button
+                                type="button"
+                                className={styles.approveAllBtn}
+                                onClick={handleApproveAll}
+                                aria-label="Approve all pending proposals"
+                            >
+                                Approve All
+                            </button>
+                        </>
+                    )}
+                    {approveAllState === "approving" && (
+                        <>
+                            <div className={styles.approveAllMeta}>
+                                <span className={`material-icons-round ${styles.approveAllSpinner}`} aria-hidden="true">sync</span>
+                                <span>Approving {approveAllProgress.completed}/{approveAllProgress.total}...</span>
+                            </div>
+                            <button
+                                type="button"
+                                className={styles.approveAllStopBtn}
+                                onClick={handleStopApproveAll}
+                                aria-label="Stop approving remaining proposals"
+                            >
+                                Stop
+                            </button>
+                        </>
+                    )}
+                    {approveAllState === "finished" && (
+                        <div className={styles.approveAllMeta} aria-live="polite">
+                            <span className="material-icons-round" aria-hidden="true">
+                                {approveAllSummary && approveAllSummary.failedArtifactIds.length === 0 && !approveAllSummary.stopped
+                                    ? "check_circle"
+                                    : "info"}
+                            </span>
+                            <span>{approveAllResultText}</span>
+                        </div>
+                    )}
+                </div>
+            )}
             <button
                 type="button"
                 className={`${styles.scrollFab} ${isPinned ? styles.scrollFabHidden : ""}`}

@@ -33,6 +33,7 @@
 ## Deferred / Parking Lot
 *Ideas acknowledged but explicitly not active right now.*
 
+- [ ] Conversation-native structured memory lane: capture decision-grade structured memories continuously during a live conversation (separate from summary compaction) so critical decisions/facts are preserved and retrievable for future cross-conversation retrieval.
 - [ ] File-system based canonical memory (`MEMORY.md`).
 - [ ] SQLite session layer.
 - [ ] Graph memory infrastructure.

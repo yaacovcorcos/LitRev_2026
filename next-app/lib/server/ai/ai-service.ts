@@ -12,7 +12,14 @@ import { getOrCreateConversation, addMessageToConversation, getConversationWithS
 import { validateRateLimits, recordUsage } from "./rate-limiter";
 import { retrieveMemories, formatMemoriesForContext, markMemoriesUsedInAnswer, type RetrievedMemory } from "@/lib/server/memory";
 import { AI_CONFIG, getProviderForModel, getContextBudget } from "@/lib/ai/config";
-import { compactToolResult, compactLoopMessages, buildCompactedHistory, estimateMessagesTokens, formatSummaryAsMessage } from "@/lib/agent/compaction";
+import {
+    compactToolResult,
+    compactLoopMessages,
+    buildCompactedHistory,
+    estimateMessagesTokensWithSafetyMargin,
+    formatSummaryAsMessage,
+    repairConversationHistory,
+} from "@/lib/agent/compaction";
 import { AVAILABLE_TOOLS, getToolDefinitions, executeTool, getTool, resolveAutonomyLevel, isToolAllowedInScope } from "./tools";
 import { startRun, endRun } from "@/lib/server/agent/run";
 import { emitEvent } from "@/lib/server/agent/events";
@@ -29,14 +36,27 @@ import { withChoicesExtraction } from "./choices-extractor";
 import { sanitizeGeneratedConversationTitle, buildFallbackConversationTitle } from "./title-generator";
 import { appendScopingReportComment, buildFallbackScopingReport, detectScopingHandoffSelection, extractLatestScopingReport, extractScopingReportFromText, stripScopingReportMarkup } from "./scoping";
 import { prisma } from "@/lib/server/prisma";
-import type { ProtocolData } from "@/types/protocol";
+import { isProtocolPopulated, type ProtocolData } from "@/types/protocol";
 import type { PlanPayload, ScopingReportPayload } from "@/types/artifacts";
+import { ensureConversationRunAvailability } from "@/lib/server/chat-runtime/conversation-run-lock";
+import { classifyAIError } from "./error-classification";
+import { retryAsync, sleep } from "@/lib/server/utils/retry";
+import { resolveReasoningMode } from "@/lib/ai/reasoning-visibility";
+import { executeWithToolMiddleware, type ToolExecutionRequest, type ToolMiddleware } from "./tool-middleware";
+
+const MAX_STREAM_RETRY_ATTEMPTS = 3;
+const MAX_OVERFLOW_RECOVERY_ATTEMPTS = 3;
+const RETRY_MIN_DELAY_MS = 500;
+const RETRY_MAX_DELAY_MS = 15_000;
+const RETRY_JITTER = 0.15;
 
 class AIService {
     private providers = new Map<string, BaseAIProvider>();
     private activeProviderId: string = AI_CONFIG.defaultProvider;
+    private readonly toolMiddlewares: ToolMiddleware[];
 
-    constructor() {
+    constructor(config?: { toolMiddlewares?: ToolMiddleware[] }) {
+        this.toolMiddlewares = [...(config?.toolMiddlewares ?? [])];
         // Register all configured providers
         const openai = getOpenAIProvider();
         if (openai.isConfigured()) this.registerProvider(openai);
@@ -49,6 +69,27 @@ class AIService {
 
         const google = getGoogleProvider();
         if (google.isConfigured()) this.registerProvider(google);
+    }
+
+    registerToolMiddleware(middleware: ToolMiddleware): void {
+        this.toolMiddlewares.push(middleware);
+    }
+
+    clearToolMiddlewares(): void {
+        this.toolMiddlewares.length = 0;
+    }
+
+    private async executeToolWithMiddleware(request: ToolExecutionRequest): Promise<ToolResult> {
+        return executeWithToolMiddleware(
+            request,
+            this.toolMiddlewares,
+            async (resolvedRequest) => executeTool(
+                resolvedRequest.name,
+                resolvedRequest.args,
+                resolvedRequest.callId,
+                resolvedRequest.context
+            ),
+        );
     }
 
     /**
@@ -101,6 +142,30 @@ class AIService {
             }
         }
         return this.getActiveProvider();
+    }
+
+    /**
+     * Reasoning behavior is provider-aware:
+     * - Anthropic: supports streamed thinking blocks (full + summary modes both request parts).
+     * - OpenAI/xAI/Google (current adapters): reasoning stream parts are not emitted, so we
+     *   explicitly disable provider reasoning requests while keeping the user mode for UI logic.
+     */
+    private withProviderReasoningPolicy(
+        options: ChatOptions | undefined,
+        provider: BaseAIProvider
+    ): ChatOptions {
+        const hasExplicitReasoningPreference =
+            options?.reasoningMode !== undefined || options?.includeReasoning !== undefined;
+        const mode = hasExplicitReasoningPreference
+            ? resolveReasoningMode(options?.reasoningMode, options?.includeReasoning)
+            : "off";
+        const includeReasoning = mode !== "off" && provider.id === "anthropic";
+        return {
+            ...(options ?? {}),
+            reasoningMode: mode,
+            includeReasoning,
+            reasoningBudgetTokens: includeReasoning ? options?.reasoningBudgetTokens : undefined,
+        };
     }
 
     private async maybeGenerateConversationTitle(params: {
@@ -176,20 +241,33 @@ class AIService {
         messages: AIMessage[],
         options?: ChatOptions
     ): Promise<AIResponse> {
-        const projectId = options?.projectId || "global";
+        const projectId = options?.projectId ?? null;
 
         // Validate rate limits
         await validateRateLimits(projectId);
 
         const provider = this.resolveProvider(options?.model);
-        const response = await provider.chat(messages, options);
+        const effectiveOptions = this.withProviderReasoningPolicy(options, provider);
+        const response = await retryAsync(
+            () => provider.chat(messages, effectiveOptions),
+            {
+                attempts: MAX_STREAM_RETRY_ATTEMPTS,
+                minDelayMs: RETRY_MIN_DELAY_MS,
+                maxDelayMs: RETRY_MAX_DELAY_MS,
+                jitter: RETRY_JITTER,
+                signal: effectiveOptions?.signal,
+                shouldRetry: (error) => classifyAIError(error).retryable,
+                retryAfterMs: (error) => classifyAIError(error).retryAfterMs,
+            }
+        );
 
         // Record usage
         await recordUsage(
             projectId,
             response.model,
             response.usage.inputTokens,
-            response.usage.outputTokens
+            response.usage.outputTokens,
+            { cachedInputTokens: response.usage.cachedInputTokens },
         );
 
         return response;
@@ -202,20 +280,23 @@ class AIService {
         messages: AIMessage[],
         options?: ChatOptions
     ): AsyncIterable<AIStreamChunk> {
-        const projectId = options?.projectId || "global";
+        const projectId = options?.projectId ?? null;
 
         // Validate rate limits
         await validateRateLimits(projectId);
 
         const provider = this.resolveProvider(options?.model);
+        const effectiveOptions = this.withProviderReasoningPolicy(options, provider);
 
         let totalInputTokens = 0;
         let totalOutputTokens = 0;
+        let totalCachedInputTokens = 0;
 
-        for await (const chunk of provider.streamChat(messages, options)) {
+        for await (const chunk of provider.streamChat(messages, effectiveOptions)) {
             if (chunk.type === "done" && chunk.usage) {
                 totalInputTokens = chunk.usage.inputTokens;
                 totalOutputTokens = chunk.usage.outputTokens;
+                totalCachedInputTokens = chunk.usage.cachedInputTokens ?? 0;
             }
             yield chunk;
         }
@@ -223,9 +304,10 @@ class AIService {
         // Record usage after streaming completes
         await recordUsage(
             projectId,
-            options?.model || AI_CONFIG.defaultModel,
+            effectiveOptions?.model || AI_CONFIG.defaultModel,
             totalInputTokens,
-            totalOutputTokens
+            totalOutputTokens,
+            { cachedInputTokens: totalCachedInputTokens },
         );
     }
 
@@ -239,7 +321,7 @@ class AIService {
         messages: AIMessage[],
         options?: ChatOptions
     ): AsyncIterable<AIStreamChunk> {
-        const hasProjectScope = !!(options?.projectId && options.projectId !== "global");
+        const hasProjectScope = !!(options?.projectId && options.projectId !== null);
         const scope = hasProjectScope ? "project" as const : "global" as const;
         const toolDefs = getToolDefinitions(undefined, scope);
         if (toolDefs.length === 0) {
@@ -263,33 +345,114 @@ class AIService {
                 return;
             }
 
+            const repaired = repairConversationHistory(currentMessages, { stopReason: "completed" });
+            currentMessages.length = 0;
+            currentMessages.push(...repaired.messages);
+
             // Pre-call budget check: compact if over budget before sending to model
-            if (estimateMessagesTokens(currentMessages) > budget) {
+            // `estimateMessagesTokensWithSafetyMargin` applies the 20% margin before we decide to compact.
+            // `compactLoopMessages` itself remains raw-budget; this caller-side guard is the intended safety check.
+            if (estimateMessagesTokensWithSafetyMargin(currentMessages) > budget) {
                 const compacted = compactLoopMessages(currentMessages, budget);
                 currentMessages.length = 0;
                 currentMessages.push(...compacted.messages);
             }
 
-            const collectedToolCalls: ToolCall[] = [];
+            let collectedToolCalls: ToolCall[] = [];
             let contentSoFar = "";
+            let retryCount = 0;
+            let overflowRecoveryCount = 0;
 
-            for await (const chunk of this.streamChat(currentMessages, optionsWithTools)) {
-                if (chunk.type === "tool_call" && chunk.toolCall) {
-                    collectedToolCalls.push(chunk.toolCall);
-                    yield chunk;
-                } else if (chunk.type === "content") {
-                    contentSoFar += chunk.content || "";
-                    yield chunk;
-                } else if (chunk.type === "done") {
-                    if (collectedToolCalls.length === 0) {
-                        loop.markStopped("natural");
-                        yield chunk;
+            while (true) {
+                collectedToolCalls = [];
+                contentSoFar = "";
+                let hadVisibleOutput = false;
+                let retryAfterMs: number | undefined;
+                let shouldRetry = false;
+                let shouldRecoverOverflow = false;
+                let terminalError: string | null = null;
+
+                try {
+                    for await (const chunk of this.streamChat(currentMessages, optionsWithTools)) {
+                        if (chunk.type === "tool_call" && chunk.toolCall) {
+                            hadVisibleOutput = true;
+                            collectedToolCalls.push(chunk.toolCall);
+                            yield chunk;
+                        } else if (
+                            chunk.type === "reasoning_start"
+                            || chunk.type === "reasoning_delta"
+                            || chunk.type === "reasoning_end"
+                        ) {
+                            hadVisibleOutput = true;
+                            yield chunk;
+                        } else if (chunk.type === "content") {
+                            hadVisibleOutput = true;
+                            contentSoFar += chunk.content || "";
+                            yield chunk;
+                        } else if (chunk.type === "done") {
+                            if (collectedToolCalls.length === 0) {
+                                loop.markStopped("natural");
+                                yield chunk;
+                            }
+                        } else if (chunk.type === "error") {
+                            const classified = classifyAIError(chunk);
+                            const message = classified.message || chunk.error || "Unknown streaming error";
+                            if (!hadVisibleOutput && classified.reason === "context_overflow" && overflowRecoveryCount < MAX_OVERFLOW_RECOVERY_ATTEMPTS) {
+                                shouldRecoverOverflow = true;
+                                break;
+                            }
+                            if (!hadVisibleOutput && classified.retryable && retryCount < MAX_STREAM_RETRY_ATTEMPTS) {
+                                shouldRetry = true;
+                                retryAfterMs = classified.retryAfterMs;
+                                break;
+                            }
+                            terminalError = message;
+                            break;
+                        }
                     }
-                } else if (chunk.type === "error") {
+                } catch (error) {
+                    const classified = classifyAIError(error);
+                    if (!hadVisibleOutput && classified.reason === "context_overflow" && overflowRecoveryCount < MAX_OVERFLOW_RECOVERY_ATTEMPTS) {
+                        shouldRecoverOverflow = true;
+                    } else if (!hadVisibleOutput && classified.retryable && retryCount < MAX_STREAM_RETRY_ATTEMPTS) {
+                        shouldRetry = true;
+                        retryAfterMs = classified.retryAfterMs;
+                    } else {
+                        terminalError = classified.message || "Unknown streaming error";
+                    }
+                }
+
+                if (shouldRecoverOverflow) {
+                    overflowRecoveryCount += 1;
+                    const compactedMessages = compactMessagesForOverflowRetry(currentMessages, budget);
+                    currentMessages.length = 0;
+                    currentMessages.push(...compactedMessages);
+                    continue;
+                }
+
+                if (shouldRetry) {
+                    retryCount += 1;
+                    const delayMs = computeRetryDelayMs(retryCount, retryAfterMs);
+                    await sleep(delayMs, options?.signal).catch(() => {});
+                    if (options?.signal?.aborted) {
+                        loop.markStopped("cancelled");
+                        yield {
+                            type: "done",
+                            content: stopReasonMessage("cancelled"),
+                            stopReason: "cancelled",
+                        };
+                        return;
+                    }
+                    continue;
+                }
+
+                if (terminalError) {
                     loop.markStopped("error");
-                    yield chunk;
+                    yield { type: "error", error: terminalError };
                     return;
                 }
+
+                break;
             }
 
             if (collectedToolCalls.length === 0) {
@@ -316,7 +479,11 @@ class AIService {
             currentMessages.push(assistantMsg);
 
             for (const tc of collectedToolCalls) {
-                const result = await executeTool(tc.name, tc.arguments, tc.id);
+                const result = await this.executeToolWithMiddleware({
+                    name: tc.name,
+                    args: tc.arguments,
+                    callId: tc.id,
+                });
                 yield { type: "tool_result", toolName: tc.name, toolResult: result };
 
                 const toolMsg: AIMessage = {
@@ -348,7 +515,7 @@ class AIService {
         cachedAutonomyConfig?: Awaited<ReturnType<typeof getAutonomyConfig>>
     ): AsyncGenerator<AIStreamChunk, ToolResult> {
         // Defense-in-depth: reject tool calls not allowed in the current mode
-        const scope = projectId && projectId !== "global" ? "project" as const : "global" as const;
+        const scope = projectId && projectId !== null ? "project" as const : "global" as const;
         if (!isToolAllowedInScope(toolCall.name, scope)) {
             const result: ToolResult = {
                 callId: toolCall.id,
@@ -414,12 +581,17 @@ class AIService {
         // Level >= 2: execute the tool
         const toolSpan = startToolSpan(traceSpan ?? NOOP_SPAN, toolCall.name, toolCall.arguments);
         const startTime = Date.now();
-        const result = await executeTool(toolCall.name, toolCall.arguments, toolCall.id, {
-            projectId,
-            studyId,
-            userId,
-            runId,
-            autonomyLevel: level,
+        const result = await this.executeToolWithMiddleware({
+            name: toolCall.name,
+            args: toolCall.arguments,
+            callId: toolCall.id,
+            context: {
+                projectId,
+                studyId,
+                userId,
+                runId,
+                autonomyLevel: level,
+            },
         });
         const durationMs = Date.now() - startTime;
         toolSpan.update({ output: { success: !result.error, durationMs } }).end();
@@ -554,9 +726,13 @@ class AIService {
         }
         const budget = getContextBudget(options?.model);
 
+        // Coarse conversation-level lock: block overlapping fresh runs and
+        // auto-cancel stale "running" rows left behind by interrupted sessions.
+        await ensureConversationRunAvailability(conversation.id);
+
         // Start an agent run
         const run = await startRun({
-            projectId: projectId || "global",
+            projectId: projectId || null,
             conversationId: conversation.id,
             userId,
             trigger: "user_message",
@@ -566,7 +742,7 @@ class AIService {
 
         // Start Langfuse trace for this run
         const trace = startRunTrace(run.id, {
-            projectId: projectId || "global",
+            projectId: projectId ?? "global",
             agentMode,
             model: options?.model,
             userId,
@@ -616,7 +792,9 @@ class AIService {
             const memoriesContext = formatMemoriesForContext(retrievedMemories);
             ctxSpan.update({ output: {
                 hasMemories: !!memoriesContext,
-                hasProtocol: !!protocolRow,
+                hasProtocol: protocolRow?.data
+                    ? isProtocolPopulated(protocolRow.data as unknown as ProtocolData)
+                    : false,
                 hasStudy: !!studyRow,
                 studyLedger: studyLedger?.counts,
                 hasProject: !!projectRow,
@@ -633,7 +811,7 @@ class AIService {
                 ? buildLedgerContext(studyLedger.counts, studyLedger.list, studyLedger.truncated)
                 : "";
             const autonomyContext = buildAutonomyContext(autonomyConfig.preset);
-            const isGlobalAssistantScope = (!projectId || projectId === "global") && options?.page === "ai";
+            const isGlobalAssistantScope = !projectId && options?.page === "ai";
             const scopeInstruction = isGlobalAssistantScope
                 ? `\n\n[SCOPE]\nYou are operating in global AI command-center mode. You may compare and synthesize across projects when [ADDITIONAL_CONTEXT] includes multi-project data. If project-level details are missing, state what is unknown and suggest the next best step.`
                 : "";
@@ -750,7 +928,7 @@ class AIService {
                 ...compactedHistory,
             ];
 
-            const toolScope = projectId && projectId !== "global" ? "project" as const : "global" as const;
+            const toolScope = projectId && projectId !== null ? "project" as const : "global" as const;
             const modeToolDefs = getContextualToolDefinitions({
                 agentMode,
                 scope: toolScope,
@@ -781,7 +959,7 @@ class AIService {
                 });
                 const artifact = await createArtifact({
                     runId: run.id,
-                    projectId: projectId || "global",
+                    projectId: projectId || null,
                     conversationId: conversation.id,
                     userId,
                     type: "plan",
@@ -812,16 +990,18 @@ class AIService {
                     yield { type: "progress", progressMessage: "Creating a plan...", conversationId: conversation.id };
 
                     const planPayload = await generatePlan(userMessage, {
-                        projectId: projectId || "global",
-                        hasProtocol: false, // TODO: check project state
-                        studyCount: 0,
+                        projectId: projectId ?? "global",
+                        hasProtocol: protocolRow?.data
+                            ? isProtocolPopulated(protocolRow.data as unknown as ProtocolData)
+                            : false,
+                        studyCount: studyLedger?.counts?.total ?? 0,
                     }, modeToolNames);
 
                     // If plan validation failed, skip plan artifact and continue normal chat
                     if (planPayload) {
                         const artifact = await createArtifact({
                             runId: run.id,
-                            projectId: projectId || "global",
+                            projectId: projectId || null,
                             conversationId: conversation.id,
                             userId,
                             type: "plan",
@@ -853,7 +1033,10 @@ class AIService {
                 const { startPlanExecution } = await import("@/lib/server/agent/plan-execution");
                 yield { type: "progress", progressMessage: "Starting plan execution...", conversationId: conversation.id };
 
-                planData = await startPlanExecution(options.planId, options.selectedSteps, projectId || "global");
+                if (!projectId) {
+                    throw new Error("Plan execution requires project context.");
+                }
+                planData = await startPlanExecution(options.planId, options.selectedSteps, projectId);
 
                 // Build execution instruction
                 const stepList = planData.selectedSteps
@@ -880,7 +1063,7 @@ class AIService {
             const toolDefs = modeToolDefs;
             const chatOptions: ChatOptions = {
                 ...options,
-                projectId: projectId || "global",
+                projectId: projectId ?? undefined,
                 ...(toolDefs.length > 0 ? { tools: toolDefs } : {}),
             };
 
@@ -893,8 +1076,14 @@ class AIService {
                 const check = loop.shouldContinue(options?.signal);
                 if (!check.continue) break;
 
+                const repaired = repairConversationHistory(currentMessages, { stopReason: "completed" });
+                currentMessages.length = 0;
+                currentMessages.push(...repaired.messages);
+
                 // Pre-call budget check: compact if over budget before sending to model
-                if (estimateMessagesTokens(currentMessages) > budget) {
+                // `estimateMessagesTokensWithSafetyMargin` applies the 20% margin before we decide to compact.
+                // `compactLoopMessages` itself remains raw-budget; this caller-side guard is the intended safety check.
+                if (estimateMessagesTokensWithSafetyMargin(currentMessages) > budget) {
                     const compacted = compactLoopMessages(currentMessages, budget);
                     currentMessages.length = 0;
                     currentMessages.push(...compacted.messages);
@@ -905,42 +1094,116 @@ class AIService {
 
                 let collectedToolCalls: ToolCall[] = [];
                 let contentSoFar = "";
+                let retryCount = 0;
+                let overflowRecoveryCount = 0;
 
-                const genSpan = startLLMGeneration(trace, `llm-call-${loop.iterations}`, {
-                    model: chatOptions.model,
-                    inputMessageCount: currentMessages.length,
-                    toolCount: toolDefs.length,
-                });
+                while (true) {
+                    collectedToolCalls = [];
+                    contentSoFar = "";
+                    let hadVisibleOutput = false;
+                    let retryAfterMs: number | undefined;
+                    let shouldRetry = false;
+                    let shouldRecoverOverflow = false;
+                    let terminalError: string | null = null;
 
-                const rawStream = this.streamChat(currentMessages, chatOptions);
-                for await (const chunk of withChoicesExtraction(rawStream)) {
-                    if (chunk.type === "tool_call" && chunk.toolCall) {
-                        collectedToolCalls.push(chunk.toolCall);
-                        if (!(effectiveHandoffSelection && !protocolHandoffExecuted)) {
-                            yield { ...chunk, conversationId: conversation.id };
+                    const genSpan = startLLMGeneration(trace, `llm-call-${loop.iterations}-attempt-${retryCount + 1}`, {
+                        model: chatOptions.model,
+                        inputMessageCount: currentMessages.length,
+                        toolCount: toolDefs.length,
+                    });
+
+                    const rawStream = this.streamChat(currentMessages, chatOptions);
+                    try {
+                        for await (const chunk of withChoicesExtraction(rawStream)) {
+                            if (chunk.type === "tool_call" && chunk.toolCall) {
+                                hadVisibleOutput = true;
+                                collectedToolCalls.push(chunk.toolCall);
+                                if (!(effectiveHandoffSelection && !protocolHandoffExecuted)) {
+                                    yield { ...chunk, conversationId: conversation.id };
+                                }
+                            } else if (
+                                chunk.type === "reasoning_start"
+                                || chunk.type === "reasoning_delta"
+                                || chunk.type === "reasoning_end"
+                            ) {
+                                hadVisibleOutput = true;
+                                yield { ...chunk, conversationId: conversation.id };
+                            } else if (chunk.type === "content") {
+                                hadVisibleOutput = true;
+                                contentSoFar += chunk.content || "";
+                                fullContent += chunk.content || "";
+                                yield { ...chunk, conversationId: conversation.id };
+                            } else if (chunk.type === "choices" && chunk.choices) {
+                                hadVisibleOutput = true;
+                                yield { type: "choices", choices: chunk.choices, conversationId: conversation.id };
+                            } else if (chunk.type === "done") {
+                                if (chunk.usage) {
+                                    totalTokensIn += chunk.usage.inputTokens;
+                                    totalTokensOut += chunk.usage.outputTokens;
+                                    genSpan.update({ usageDetails: { input: chunk.usage.inputTokens, output: chunk.usage.outputTokens } });
+                                }
+                            } else if (chunk.type === "error") {
+                                const classified = classifyAIError(chunk);
+                                if (!hadVisibleOutput && classified.reason === "context_overflow" && overflowRecoveryCount < MAX_OVERFLOW_RECOVERY_ATTEMPTS) {
+                                    shouldRecoverOverflow = true;
+                                    break;
+                                }
+                                if (!hadVisibleOutput && classified.retryable && retryCount < MAX_STREAM_RETRY_ATTEMPTS) {
+                                    shouldRetry = true;
+                                    retryAfterMs = classified.retryAfterMs;
+                                    break;
+                                }
+                                terminalError = classified.message || chunk.error || "Unknown streaming error";
+                                break;
+                            }
                         }
-                    } else if (chunk.type === "content") {
-                        contentSoFar += chunk.content || "";
-                        fullContent += chunk.content || "";
-                        yield { ...chunk, conversationId: conversation.id };
-                    } else if (chunk.type === "choices" && chunk.choices) {
-                        yield { type: "choices", choices: chunk.choices, conversationId: conversation.id };
-                    } else if (chunk.type === "done") {
-                        if (chunk.usage) {
-                            totalTokensIn += chunk.usage.inputTokens;
-                            totalTokensOut += chunk.usage.outputTokens;
-                            genSpan.update({ usageDetails: { input: chunk.usage.inputTokens, output: chunk.usage.outputTokens } });
+                    } catch (error) {
+                        const classified = classifyAIError(error);
+                        if (!hadVisibleOutput && classified.reason === "context_overflow" && overflowRecoveryCount < MAX_OVERFLOW_RECOVERY_ATTEMPTS) {
+                            shouldRecoverOverflow = true;
+                        } else if (!hadVisibleOutput && classified.retryable && retryCount < MAX_STREAM_RETRY_ATTEMPTS) {
+                            shouldRetry = true;
+                            retryAfterMs = classified.retryAfterMs;
+                        } else {
+                            terminalError = classified.message || "Unknown streaming error";
                         }
-                    } else if (chunk.type === "error") {
-                        genSpan.end();
+                    }
+                    genSpan.end();
+
+                    if (shouldRecoverOverflow) {
+                        overflowRecoveryCount += 1;
+                        const compactedMessages = compactMessagesForOverflowRetry(currentMessages, budget);
+                        currentMessages.length = 0;
+                        currentMessages.push(...compactedMessages);
+                        yield {
+                            type: "checkpoint",
+                            checkpointLabel: `Recovered context overflow (attempt ${overflowRecoveryCount})`,
+                            conversationId: conversation.id,
+                        };
+                        continue;
+                    }
+
+                    if (shouldRetry) {
+                        retryCount += 1;
+                        const delayMs = computeRetryDelayMs(retryCount, retryAfterMs);
+                        await sleep(delayMs, options?.signal).catch(() => {});
+                        if (options?.signal?.aborted) {
+                            loop.markStopped("cancelled");
+                            break;
+                        }
+                        continue;
+                    }
+
+                    if (terminalError) {
                         loop.markStopped("error");
-                        yield { ...chunk, conversationId: conversation.id };
+                        yield { type: "error", error: terminalError, conversationId: conversation.id };
                         await endRun(run.id, "failed");
                         yield { type: "run_end", runId: run.id, runStatus: "failed", stopReason: "error", conversationId: conversation.id };
                         return;
                     }
+
+                    break;
                 }
-                genSpan.end();
 
                 if (effectiveHandoffSelection && !protocolHandoffExecuted) {
                     const updateProtocolCall = collectedToolCalls.find((tc) => tc.name === "update_protocol");
@@ -1011,6 +1274,13 @@ class AIService {
                     }
 
                     yield { type: "tool_result", toolName: tc.name, toolResult, conversationId: conversation.id };
+
+                    // Emit navigate event when tool result includes a navigation URL
+                    const navigateUrl = (toolResult.result as Record<string, unknown> | null)?.navigate;
+                    if (typeof navigateUrl === "string" && navigateUrl) {
+                        const navigateProjectId = (toolResult.result as Record<string, unknown>)?.projectId as string | undefined;
+                        yield { type: "navigate", navigateUrl, navigateProjectId, conversationId: conversation.id };
+                    }
 
                     const toolMsg: AIMessage = {
                         id: `tool-result-${tc.id}`,
@@ -1116,7 +1386,7 @@ class AIService {
                 const title = topic ? `Scoping: ${topic}`.slice(0, 120) : "Scoping Report";
                 const artifact = await createArtifact({
                     runId: run.id,
-                    projectId: projectId || "global",
+                    projectId: projectId || null,
                     conversationId: conversation.id,
                     userId,
                     type: "scoping_report",
@@ -1148,7 +1418,7 @@ class AIService {
             // Trigger auto-summarization if conversation is growing large.
             // Awaited so the function can block when near budget (Vercel cuts fire-and-forget).
             const totalMsgs = conversation.messages.length + 2; // +user +assistant
-            const currentTokens = estimateMessagesTokens(conversation.messages);
+            const currentTokens = estimateMessagesTokensWithSafetyMargin(conversation.messages);
             await autoSummarizeIfNeeded(
                 conversation.id, totalMsgs,
                 conversation.summaryData?.messageCount ?? 0,
@@ -1281,7 +1551,7 @@ class AIService {
         // Get AI response
         const response = await this.chat(historyMessages, {
             ...options,
-            projectId: projectId || "global",
+            projectId: projectId ?? undefined,
         });
 
         // Save AI response to memory
@@ -1348,7 +1618,7 @@ class AIService {
         // Use tool loop when tools are available, otherwise fall through to normal streaming
         const chatOptions = {
             ...options,
-            projectId: projectId || "global",
+            projectId: projectId ?? undefined,
         };
 
         const streamSource = AVAILABLE_TOOLS.length > 0
@@ -1603,6 +1873,27 @@ export function finalizeScopingResponse(params: {
     const report = extractedReport ?? buildFallbackScopingReport(userMessage);
     const content = appendScopingReportComment(stripScopingReportMarkup(fullContent), report);
     return { content, report };
+}
+
+function computeRetryDelayMs(retryCount: number, retryAfterMs?: number): number {
+    const exponentialDelay = RETRY_MIN_DELAY_MS * 2 ** Math.max(0, retryCount - 1);
+    const baseDelay = typeof retryAfterMs === "number" && Number.isFinite(retryAfterMs)
+        ? Math.max(retryAfterMs, RETRY_MIN_DELAY_MS)
+        : exponentialDelay;
+    const jitterOffset = (Math.random() * 2 - 1) * RETRY_JITTER;
+    const jittered = Math.round(baseDelay * (1 + jitterOffset));
+    return Math.min(Math.max(jittered, RETRY_MIN_DELAY_MS), RETRY_MAX_DELAY_MS);
+}
+
+function compactMessagesForOverflowRetry(messages: AIMessage[], budget: number): AIMessage[] {
+    const compacted = compactLoopMessages(messages, budget);
+    const trimmed = buildCompactedHistory(
+        compacted.messages,
+        null,
+        0,
+        Math.max(Math.floor(budget * 0.85), 2_000)
+    );
+    return repairConversationHistory(trimmed, { stopReason: "completed" }).messages;
 }
 
 // ── Loop stop reason messages ────────────────────────────────────────────────

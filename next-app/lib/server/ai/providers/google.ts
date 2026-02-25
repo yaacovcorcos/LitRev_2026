@@ -8,6 +8,8 @@ import type { AIMessage, AIModel, AIResponse, ChatOptions, AIStreamChunk, ToolCa
 import { BaseAIProvider } from "./base";
 import { AI_CONFIG, AVAILABLE_MODELS } from "@/lib/ai/config";
 import { parseToolArgs } from "../json-repair";
+import { extractProviderErrorMetadata } from "./error-metadata";
+import { normalizeProviderMessages } from "./message-normalization";
 
 export class GoogleProvider extends BaseAIProvider {
     readonly id = "google";
@@ -172,9 +174,11 @@ export class GoogleProvider extends BaseAIProvider {
                 usage,
             };
         } catch (error) {
+            const metadata = extractProviderErrorMetadata(error);
             yield {
                 type: "error",
                 error: error instanceof Error ? error.message : "Unknown streaming error",
+                ...metadata,
             };
         }
     }
@@ -184,12 +188,13 @@ export class GoogleProvider extends BaseAIProvider {
         systemPrompt?: string
     ): OpenAI.Chat.ChatCompletionMessageParam[] {
         const result: OpenAI.Chat.ChatCompletionMessageParam[] = [];
+        const normalizedMessages = normalizeProviderMessages(messages).messages;
 
         if (systemPrompt) {
             result.push({ role: "system", content: systemPrompt });
         }
 
-        for (const msg of messages) {
+        for (const msg of normalizedMessages) {
             if (msg.role === "system") {
                 result.push({ role: "system", content: msg.content });
             } else if (msg.role === "user") {

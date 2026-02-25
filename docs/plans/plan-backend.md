@@ -12,6 +12,7 @@
 - **Single-User Compatibility Layer:** Most app data paths already enforce `ownerId` + `workspaceId` scoping via `SINGLE_USER_SCOPE` placeholders. Conversation actions still use separate placeholder constants and must be normalized before auth cutover.
 - **Demo Seed Lifecycle:** Sample-project creation/reset is now server-seeded from a single transactional service (`lib/server/demo-project.ts`) that repopulates project, protocol, ledger, draft, notes, memory, and scoped seed conversation rows.
 - **Onboarding State Persistence:** Guided-setup defaults now persist in `UserMemory` (`guided_setup_new_projects`) and per-project onboarding state persists in `Project.progress.onboarding` (`enabledOverride`, `completedAt`, `skippedAt`) so create-flow routing is backend-driven and auth-ready.
+- **AI Cache Metrics (Current):** Cache-efficiency counters are currently process-local instrumentation in `lib/server/ai/rate-limiter.ts` (no DB persistence yet), so metrics reset on instance restart and are not queryable across deploys.
 
 ## Active Tasks
 *Work that is entirely unimplemented or currently broken.*
@@ -36,6 +37,11 @@
   - Define and track baseline latency metrics (home load, project route switch, first guided-step action, sample-open action).
   - Add cache strategy for hot read paths and reduce redundant queries/action round-trips.
   - Optimize slow server actions in onboarding/sample/project bootstrap flows with measurable before/after timings.
+- [ ] Execute **AI Cache Metrics Persistence (Plan + Implementation)**:
+  - Design and approve persistent schema for provider cache metrics (project/workspace scoping, model, time bucket, cached vs total input tokens, request counts).
+  - Implement Prisma migration(s) and server write-path integration from `recordUsage`/provider usage metadata (`cached_tokens` when available).
+  - Add read/query surface for monitoring (aggregate stats per project/workspace and date range).
+  - Add tests covering migration-safe writes, aggregation correctness, and fallback behavior when providers omit cache fields.
 
 ## Recently Completed
 *Finished work that might still be fragile or require monitoring. Prune oldest first.*

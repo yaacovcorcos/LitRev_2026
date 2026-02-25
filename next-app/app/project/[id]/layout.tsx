@@ -46,8 +46,8 @@ function ProjectShellInner({ projectId, children }: ProjectShellInnerProps) {
         return () => registerCopilotToggle(null);
     }, [registerCopilotToggle, toggleCollapsed]);
 
-    // Focus mode and tab state — always default to workspace (view) on entry
-    const [focusMode, setFocusMode] = useState<FocusMode>("view");
+    // Focus mode and tab state — default to conversation on entry
+    const [focusMode, setFocusMode] = useState<FocusMode>("conversation");
 
     const [activeTab, setActiveTabState] = useState<ViewTab | null>(() => {
         return tabFromPathname(pathname) ?? "overview";

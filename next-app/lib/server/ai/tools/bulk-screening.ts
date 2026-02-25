@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { AITool, ToolExecutionContext } from "./base";
 import { prisma } from "@/lib/server/prisma";
+import { ensureProtocol } from "@/lib/server/protocols";
 import type { ProtocolData } from "@/types/protocol";
 
 const MAX_BATCH_SIZE = 20;
@@ -76,16 +77,8 @@ export const bulkScreeningTool: AITool = {
         const studyIds = args.studyIds as string[] | undefined;
 
         try {
-            // Fetch protocol for criteria
-            const protocol = await prisma.protocol.findUnique({
-                where: { projectId },
-            });
-
-            if (!protocol) {
-                return { callId: "", result: null, error: "No protocol found. Define inclusion/exclusion criteria first." };
-            }
-
-            const protocolData = protocol.data as unknown as ProtocolData;
+            // Self-heal: ensure protocol row exists (creates empty default for legacy projects)
+            const protocolData = await ensureProtocol(projectId);
             const { inclusion, exclusion } = protocolData.eligibility;
 
             if (inclusion.length === 0 && exclusion.length === 0) {

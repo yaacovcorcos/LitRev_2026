@@ -2,12 +2,12 @@
     display: flex;
     width: 100%;
     height: 100%;
-    padding-left: var(--shell-sidebar-width, 220px);
+    padding-left: var(--shell-sidebar-width, 200px);
     transition: padding-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 [data-sidebar-collapsed="true"] .project-layout {
-    padding-left: 88px;
+    padding-left: 68px;
 }
 
 .project-sidebar {

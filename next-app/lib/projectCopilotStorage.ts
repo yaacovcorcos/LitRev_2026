@@ -22,6 +22,11 @@ export type CopilotMessage = {
   id: string;
   sender: CopilotSender;
   text: string;
+  reasoning?: {
+    text: string;
+    state?: "streaming" | "done";
+    truncated?: boolean;
+  };
   createdAt: string;
   /** Optional context about where this message was sent from */
   context?: {
@@ -108,7 +113,14 @@ export function loadProjectCopilotState(projectId: string): ProjectCopilotState 
         const text = typeof msg.text === "string" ? msg.text : "";
         const createdAt = typeof msg.createdAt === "string" ? msg.createdAt : new Date().toISOString();
         if (text.trim().length > 0) {
-          messages.push({ id, sender, text, createdAt, context: msg.context });
+          messages.push({
+            id,
+            sender,
+            text,
+            createdAt,
+            context: msg.context,
+            reasoning: msg.reasoning,
+          });
         }
       }
     }

@@ -9,6 +9,7 @@ import { createNoteAction } from "@/app/actions/notes";
 import { TimelineRenderer } from "./copilot/TimelineRenderer";
 import { CopilotInput } from "./copilot/CopilotInput";
 import { AutonomySettings } from "./copilot/AutonomySettings";
+import { ReasoningModeDropdown } from "./copilot/ReasoningModeDropdown";
 import { ConversationPicker } from "./ui/ConversationPicker";
 import styles from "./ProjectCopilot.module.css";
 
@@ -56,6 +57,8 @@ export function ProjectCopilot({
         messages,
         isCollapsed,
         isLoading,
+        reasoningMode,
+        setReasoningMode,
         setCollapsed,
         // Conversation management
         conversations,
@@ -68,12 +71,17 @@ export function ProjectCopilot({
         renameConversation,
         sendMessage,
         handleReviewArtifact,
+        approveArtifactsBatch,
         executePlan,
         shouldOfferSummary,
         summarizeAndRefresh,
         isSummarizing,
         // Autonomy settings (Phase 7)
         setShowAutonomySettings,
+        // Message pagination
+        hasMore,
+        isLoadingOlder,
+        loadOlderMessages,
     } = useProjectCopilot();
 
     // Defer Radix-heavy UI until after hydration to avoid ID mismatch warnings
@@ -213,6 +221,22 @@ export function ProjectCopilot({
                                 <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
                             </svg>
                         </button>
+                        <ReasoningModeDropdown
+                            reasoningMode={reasoningMode}
+                            onReasoningModeChange={setReasoningMode}
+                        >
+                            <button
+                                type="button"
+                                className={`${styles.headerIconBtn} ${styles.reasoningModeBtn}`}
+                                data-state={reasoningMode}
+                                aria-label={`Reasoning visibility: ${reasoningMode}`}
+                                title={`Reasoning visibility: ${reasoningMode}`}
+                            >
+                                <span className="material-icons-round" style={{ fontSize: 16 }}>
+                                    psychology
+                                </span>
+                            </button>
+                        </ReasoningModeDropdown>
                         <button
                             type="button"
                             className={styles.headerIconBtn}
@@ -264,9 +288,14 @@ export function ProjectCopilot({
                     onSuggestionClick={handleSuggestionClick}
                     onActionPrompt={handleActionPrompt}
                     onReviewArtifact={handleReviewArtifact}
+                    onApproveArtifactsBatch={approveArtifactsBatch}
                     onExecutePlan={executePlan}
                     onSaveToNotes={handleSaveToNotes}
                     onBranchFromMessage={handleBranchFromMessage}
+                    reasoningMode={reasoningMode}
+                    hasMore={hasMore}
+                    isLoadingOlder={isLoadingOlder}
+                    onLoadOlder={loadOlderMessages}
                 />
 
                 {/* Input area */}

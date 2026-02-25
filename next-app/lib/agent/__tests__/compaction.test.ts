@@ -6,9 +6,17 @@ import {
     compactToolResult,
     compactLoopMessages,
     buildCompactedHistory,
+    repairConversationHistory,
+    computeAdaptiveChunkRatio,
+    isOversizedForSummary,
+    BASE_CHUNK_RATIO,
+    MIN_CHUNK_RATIO,
+    PRUNE_MINIMUM,
     formatSummaryAsMessage,
     TOOL_RESULT_MAX_CHARS,
     COMPACTION_SUMMARY_PROMPT,
+    estimateMessagesTokensWithSafetyMargin,
+    TOKEN_ESTIMATE_SAFETY_MARGIN,
 } from "../compaction";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -66,6 +74,43 @@ describe("estimateMessagesTokens", () => {
 
     it("returns 0 for empty array", () => {
         expect(estimateMessagesTokens([])).toBe(0);
+    });
+});
+
+describe("estimateMessagesTokensWithSafetyMargin", () => {
+    it("applies the configured safety multiplier", () => {
+        const messages = [msg("user", "abcd"), msg("assistant", "hello")]; // 23 raw
+        expect(estimateMessagesTokensWithSafetyMargin(messages))
+            .toBe(Math.ceil(23 * TOKEN_ESTIMATE_SAFETY_MARGIN));
+    });
+});
+
+describe("computeAdaptiveChunkRatio", () => {
+    it("returns base ratio for small average messages", () => {
+        const messages = [msg("user", "short"), msg("assistant", "tiny")];
+        expect(computeAdaptiveChunkRatio(messages, 100_000)).toBe(BASE_CHUNK_RATIO);
+    });
+
+    it("shrinks ratio for large messages", () => {
+        const messages = [
+            msg("user", "x".repeat(20_000)),
+            msg("assistant", "y".repeat(20_000)),
+        ];
+        const ratio = computeAdaptiveChunkRatio(messages, 40_000);
+        expect(ratio).toBeLessThan(BASE_CHUNK_RATIO);
+        expect(ratio).toBeGreaterThanOrEqual(MIN_CHUNK_RATIO);
+    });
+});
+
+describe("isOversizedForSummary", () => {
+    it("detects oversized messages relative to context window", () => {
+        const large = msg("assistant", "x".repeat(60_000));
+        expect(isOversizedForSummary(large, 20_000)).toBe(true);
+    });
+
+    it("does not flag normal-size messages", () => {
+        const normal = msg("assistant", "x".repeat(400));
+        expect(isOversizedForSummary(normal, 20_000)).toBe(false);
     });
 });
 
@@ -320,6 +365,33 @@ describe("compactLoopMessages", () => {
         expect(result.messages.some(m => m.content === "follow up")).toBe(true);
         expect(result.messages.some(m => m.content === "text response")).toBe(true);
     });
+
+    it("uses adaptive keep count (keeps more than 2 iterations for small messages)", () => {
+        const messages: AIMessage[] = [
+            msg("system", "sys"),
+            msg("user", "start"),
+        ];
+
+        for (let i = 1; i <= 10; i += 1) {
+            const callId = `c${i}`;
+            messages.push(
+                assistantWithTools(`iter${i}`, [{ id: callId, name: "search_pubmed", arguments: { query: `q${i}` } }]),
+                toolResult(callId, `result-${i}`)
+            );
+        }
+
+        const result = compactLoopMessages(messages, 100000);
+        const replacedCount = result.messages.filter(
+            (m) => m.role === "assistant" && m.content.startsWith("[Prior tool use:")
+        ).length;
+
+        // With ratio=0.4 and 10 iterations, keepCount=4 so 6 are replaced.
+        expect(replacedCount).toBe(6);
+        expect(result.messages.some((m) => m.content === "iter7")).toBe(true);
+        expect(result.messages.some((m) => m.content === "iter8")).toBe(true);
+        expect(result.messages.some((m) => m.content === "iter9")).toBe(true);
+        expect(result.messages.some((m) => m.content === "iter10")).toBe(true);
+    });
 });
 
 // ── buildCompactedHistory ────────────────────────────────────────────────────
@@ -336,6 +408,14 @@ describe("buildCompactedHistory", () => {
         ];
         const result = buildCompactedHistory(messages, null, 0, 100000);
         expect(result).toHaveLength(2);
+    });
+
+    it("does not compact below prune minimum threshold", () => {
+        const messages = Array.from({ length: 50 }, (_, i) =>
+            msg(i % 2 === 0 ? "user" : "assistant", "x".repeat(80))
+        );
+        const result = buildCompactedHistory(messages, null, 0, PRUNE_MINIMUM + 10_000);
+        expect(result.length).toBe(messages.length);
     });
 
     it("uses summary + recent messages when summary is valid", () => {
@@ -383,6 +463,15 @@ describe("buildCompactedHistory", () => {
         expect(result[result.length - 1]).toEqual(messages[messages.length - 1]);
     });
 
+    it("adds oversized placeholder when a single message dominates context", () => {
+        const messages = [
+            msg("user", "x".repeat(120_000)),
+            msg("assistant", "small"),
+        ];
+        const result = buildCompactedHistory(messages, null, 0, 20_000);
+        expect(result[0].content).toContain("summarized for compaction");
+    });
+
     it("keeps system message first when trimming", () => {
         const messages = [
             msg("system", "system prompt"),
@@ -393,6 +482,68 @@ describe("buildCompactedHistory", () => {
         const result = buildCompactedHistory(messages, null, 0, 300);
         expect(result[0].role).toBe("system");
         expect(result[0].content).toBe("system prompt");
+    });
+});
+
+describe("repairConversationHistory", () => {
+    it("drops orphan tool results", () => {
+        const messages = [
+            msg("user", "hello"),
+            toolResult("missing-call", "orphan"),
+            msg("assistant", "ok"),
+        ];
+        const repaired = repairConversationHistory(messages);
+        expect(repaired.messages.some((m) => m.role === "tool")).toBe(false);
+        expect(repaired.droppedOrphanToolResults).toBe(1);
+    });
+
+    it("drops invalid tool calls and keeps assistant content", () => {
+        const messages = [
+            assistantWithTools("I will call tools", [
+                { id: "c1", name: "bad tool name", arguments: {} },
+                { id: "c2", name: "search_pubmed", arguments: { query: "abc" } },
+            ]),
+            toolResult("c2", '{"results": []}'),
+        ];
+        const repaired = repairConversationHistory(messages);
+        const assistant = repaired.messages.find((m) => m.role === "assistant");
+        expect(assistant?.toolCalls).toHaveLength(1);
+        expect(assistant?.toolCalls?.[0].name).toBe("search_pubmed");
+        expect(repaired.droppedInvalidToolCalls).toBe(1);
+    });
+
+    it("inserts synthetic missing tool results for completed runs", () => {
+        const messages = [
+            assistantWithTools("run tool", [{ id: "c1", name: "search_pubmed", arguments: { query: "x" } }]),
+        ];
+        const repaired = repairConversationHistory(messages, { stopReason: "completed" });
+        const toolMessage = repaired.messages.find((m) => m.role === "tool");
+        expect(toolMessage).toBeDefined();
+        expect(toolMessage?.toolResultId).toBe("c1");
+        expect(repaired.insertedSyntheticToolResults).toBe(1);
+    });
+
+    it("does not insert synthetic tool results for aborted or errored runs", () => {
+        const messages = [
+            assistantWithTools("run tool", [{ id: "c1", name: "search_pubmed", arguments: { query: "x" } }]),
+        ];
+        const aborted = repairConversationHistory(messages, { stopReason: "aborted" });
+        const errored = repairConversationHistory(messages, { stopReason: "error" });
+        expect(aborted.messages.some((m) => m.role === "tool")).toBe(false);
+        expect(errored.messages.some((m) => m.role === "tool")).toBe(false);
+    });
+
+    it("deduplicates repeated tool results in the same assistant span", () => {
+        const messages = [
+            assistantWithTools("run tool", [{ id: "c1", name: "search_pubmed", arguments: { query: "x" } }]),
+            toolResult("c1", "first"),
+            toolResult("c1", "duplicate"),
+        ];
+        const repaired = repairConversationHistory(messages);
+        const toolMessages = repaired.messages.filter((m) => m.role === "tool");
+        expect(toolMessages).toHaveLength(1);
+        expect(toolMessages[0].content).toBe("first");
+        expect(repaired.droppedDuplicateToolResults).toBe(1);
     });
 });
 
@@ -441,5 +592,11 @@ describe("COMPACTION_SUMMARY_PROMPT", () => {
     it("requests JSON output", () => {
         expect(COMPACTION_SUMMARY_PROMPT).toContain('"summary"');
         expect(COMPACTION_SUMMARY_PROMPT).toContain('"keyPoints"');
+    });
+
+    it("requests structured section headings", () => {
+        expect(COMPACTION_SUMMARY_PROMPT).toContain("Goal");
+        expect(COMPACTION_SUMMARY_PROMPT).toContain("Protocol State");
+        expect(COMPACTION_SUMMARY_PROMPT).toContain("Active Context");
     });
 });

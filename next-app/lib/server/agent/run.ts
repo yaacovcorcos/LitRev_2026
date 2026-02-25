@@ -9,7 +9,7 @@ import type { AgentMode, RunStatus, RunTrigger } from "@/types/agent";
 import { extractMemoriesFromConversation } from "@/lib/server/memory/conversation-extractor";
 
 export interface StartRunInput {
-    projectId: string;
+    projectId?: string | null;
     conversationId?: string;
     userId?: string;
     trigger: RunTrigger;
@@ -23,13 +23,15 @@ export interface StartRunInput {
 export async function startRun(input: StartRunInput) {
     return prisma.agentRun.create({
         data: {
-            projectId: input.projectId,
-            conversationId: input.conversationId ?? null,
-            userId: input.userId ?? null,
+            conversationId: input.conversationId ?? undefined,
+            userId: input.userId ?? undefined,
             trigger: input.trigger,
             agentMode: input.agentMode,
             status: "running",
-            model: input.model ?? null,
+            model: input.model ?? undefined,
+            ...(input.projectId
+                ? { project: { connect: { id: input.projectId } } }
+                : {}),
         },
     });
 }

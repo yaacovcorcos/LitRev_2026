@@ -32,10 +32,14 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
         renameConversation,
         sendMessage,
         handleReviewArtifact,
+        approveArtifactsBatch,
         executePlan,
         shouldOfferSummary,
         summarizeAndRefresh,
         isSummarizing,
+        hasMore,
+        isLoadingOlder,
+        loadOlderMessages,
     } = useProjectCopilot();
 
     const [showDropdown, setShowDropdown] = useState(false);
@@ -161,9 +165,13 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
                         onSuggestionClick={handleSuggestionClick}
                         onActionPrompt={handleActionPrompt}
                         onReviewArtifact={handleReviewArtifact}
+                        onApproveArtifactsBatch={approveArtifactsBatch}
                         onExecutePlan={executePlan}
                         onSaveToNotes={handleSaveToNotes}
                         onBranchFromMessage={handleBranchFromMessage}
+                        hasMore={hasMore}
+                        isLoadingOlder={isLoadingOlder}
+                        onLoadOlder={loadOlderMessages}
                     />
 
                     {/* Suggestion chips (shown when no messages) */}

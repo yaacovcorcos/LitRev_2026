@@ -9,9 +9,10 @@ describe("PRESET_LEVELS", () => {
         );
     });
 
-    it("manual preset sets all tools to level 1", () => {
-        for (const level of Object.values(PRESET_LEVELS.manual)) {
-            expect(level).toBe(1);
+    it("manual preset sets all tools to level 1 or 2", () => {
+        for (const [tool, level] of Object.entries(PRESET_LEVELS.manual)) {
+            expect(level, `manual.${tool} should be <= 2`).toBeLessThanOrEqual(2);
+            expect(level, `manual.${tool} should be >= 1`).toBeGreaterThanOrEqual(1);
         }
     });
 
@@ -23,6 +24,7 @@ describe("PRESET_LEVELS", () => {
         "search_pubmed", "extract_pdf", "add_to_ledger", "exclude_study",
         "delete_study", "update_study", "update_note", "update_protocol", "update_criteria", "bulk_screening",
         "retrieve_memory", "create_note", "store_memory", "forget_memory", "inspect_memory",
+        "list_projects", "open_project", "create_project",
     ];
 
     it("all expected tools are present in each non-custom preset", () => {

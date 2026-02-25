@@ -3,6 +3,7 @@
 import { AppShell } from "@/components/AppShell";
 import { TimelineRenderer } from "@/components/copilot/TimelineRenderer";
 import { CopilotInputCoreClient } from "@/components/copilot/CopilotInputCoreClient";
+import { ReasoningModeDropdown } from "@/components/copilot/ReasoningModeDropdown";
 import { useProjects } from "@/contexts/ProjectsContext";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -18,12 +19,19 @@ import { reviewArtifactAction } from "@/app/actions/agent";
 import { getGlobalWorkspaceContextAction } from "@/app/actions/ai-assistant";
 import { summarizeConversationAction } from "@/app/actions/summarize-conversation";
 import type { AgentMode } from "@/types/agent";
-import type { CopilotPage, ConversationContext, ChoiceOption } from "@/types/ai";
+import type { CopilotPage, ConversationContext, ChoiceOption, ReasoningMode } from "@/types/ai";
 import type { ArtifactStatus, ArtifactType } from "@/types/artifacts";
 import type { TimelineItem } from "@/types/timeline";
 import { processAIStream } from "@/lib/ai/stream-processor";
 import { routeToAgent } from "@/lib/agent/router";
 import { dispatchProjectDataChanged, getChangedDomainsForAcceptedArtifact } from "@/lib/project-data-events";
+import { isNavigationSafe } from "@/lib/ai/navigation-safety";
+import {
+  getReasoningModePreference,
+  setReasoningModePreference,
+  shouldRequestReasoning,
+} from "@/lib/ai/reasoning-visibility";
+import { useRouter } from "next/navigation";
 import styles from "./ai-view.module.css";
 
 const quickActions = [
@@ -311,6 +319,7 @@ function buildTimelinePrintHtml(items: TimelineItem[], title: string): string {
 }
 
 export default function AIView() {
+  const router = useRouter();
   const { projects } = useProjects();
   const [isHistoryCollapsed, setHistoryCollapsed] = useState(false);
 
@@ -330,6 +339,7 @@ export default function AIView() {
   const [renameValue, setRenameValue] = useState("");
   const [pendingChoices, setPendingChoices] = useState<ChoiceOption[]>([]);
   const [prefill, setPrefill] = useState("");
+  const [reasoningMode, setReasoningMode] = useState<ReasoningMode>(() => getReasoningModePreference());
 
   const [timelineByConversation, setTimelineByConversation] = useState<Record<string, TimelineItem[]>>({});
   const [isConversationLoading, setIsConversationLoading] = useState(false);
@@ -341,10 +351,24 @@ export default function AIView() {
   const abortControllerRef = useRef<AbortController | null>(null);
   const streamGenRef = useRef(0);
   const sendLockRef = useRef(false);
+  const activeConversationIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!isTyping) sendLockRef.current = false;
   }, [isTyping]);
+  useEffect(() => {
+    activeConversationIdRef.current = activeConversationId;
+  }, [activeConversationId]);
+
+  const updateReasoningMode = useCallback((mode: ReasoningMode) => {
+    setReasoningMode(mode);
+    setReasoningModePreference(mode);
+  }, []);
+
+  const handleNavigate = useCallback((url?: string) => {
+    if (!url || !isNavigationSafe(url)) return;
+    router.push(url);
+  }, [router]);
 
 
   useEffect(() => {
@@ -843,6 +867,10 @@ export default function AIView() {
     const aiMessageId = `m-${Date.now() + 1}`;
     let aiMessageCreated = false;
     let fullContent = "";
+    let reasoningContent = "";
+    let reasoningState: "streaming" | "done" = "done";
+    let reasoningTruncated = false;
+    let activeReasoningId: string | null = null;
     let progressItemId: string | null = null;
 
     const upsertAssistant = (content: string) => {
@@ -855,6 +883,13 @@ export default function AIView() {
               type: "assistant_message",
               id: aiMessageId,
               content,
+              reasoning: reasoningContent
+                ? {
+                    text: reasoningContent,
+                    state: reasoningState,
+                    truncated: reasoningTruncated || undefined,
+                  }
+                : undefined,
               createdAt: new Date().toISOString(),
             },
           ];
@@ -862,7 +897,17 @@ export default function AIView() {
 
         const next = [...items];
         const current = next[idx] as Extract<TimelineItem, { type: "assistant_message" }>;
-        next[idx] = { ...current, content };
+        next[idx] = {
+          ...current,
+          content,
+          reasoning: reasoningContent
+            ? {
+                text: reasoningContent,
+                state: reasoningState,
+                truncated: reasoningTruncated || undefined,
+              }
+            : current.reasoning,
+        };
         return next;
       });
       aiMessageCreated = true;
@@ -952,6 +997,9 @@ export default function AIView() {
             conversationId: convId,
             projectId: selectedProjectId ?? undefined,
             model,
+            reasoningMode,
+            includeReasoning: shouldRequestReasoning(reasoningMode),
+            reasoningBudgetTokens: shouldRequestReasoning(reasoningMode) ? 4096 : undefined,
             agentMode: effectiveAgentMode,
             page: currentPage,
 
@@ -1010,9 +1058,50 @@ export default function AIView() {
             return;
           }
 
+          if (data.type === "navigate") {
+            handleNavigate(data.navigateUrl);
+            return;
+          }
+
           if (data.type === "content" && data.content) {
             clearProgress();
             fullContent += data.content;
+            upsertAssistant(fullContent);
+            return;
+          }
+
+          if (data.type === "reasoning_start") {
+            if (reasoningContent.trim().length > 0) {
+              reasoningContent += "\n\n";
+            }
+            reasoningState = "streaming";
+            activeReasoningId = data.reasoningId ?? activeReasoningId;
+            upsertAssistant(fullContent);
+            return;
+          }
+
+          if (data.type === "reasoning_delta") {
+            if (reasoningTruncated) return;
+            if (activeReasoningId && data.reasoningId && data.reasoningId !== activeReasoningId) return;
+            const delta = data.reasoningText ?? "";
+            if (!delta) return;
+            const next = `${reasoningContent}${delta}`;
+            if (next.length > 8000) {
+              reasoningContent = `${next.slice(0, 8000)}\n\n[Thinking output truncated]`;
+              reasoningTruncated = true;
+            } else {
+              reasoningContent = next;
+            }
+            reasoningState = "streaming";
+            activeReasoningId = data.reasoningId ?? activeReasoningId;
+            upsertAssistant(fullContent);
+            return;
+          }
+
+          if (data.type === "reasoning_end") {
+            if (activeReasoningId && data.reasoningId && data.reasoningId !== activeReasoningId) return;
+            reasoningState = "done";
+            activeReasoningId = null;
             upsertAssistant(fullContent);
             return;
           }
@@ -1119,6 +1208,8 @@ export default function AIView() {
     isTyping,
     cancelStream,
     selectedProjectId,
+    reasoningMode,
+    handleNavigate,
 
     workspaceContextText,
     ensureConversation,
@@ -1126,14 +1217,14 @@ export default function AIView() {
     sortConversationsByUpdatedAt,
   ]);
 
-  const handleReviewArtifact = useCallback(async (
+  const reviewArtifactLocal = useCallback(async (
     artifactId: string,
     status: "accepted" | "rejected",
     note?: string,
     editedPayload?: Record<string, unknown>,
-  ) => {
+  ): Promise<boolean> => {
     const convId = activeConversationId;
-    if (!convId) return;
+    if (!convId) return false;
 
     // Optimistic update
     updateConversationTimeline(convId, (items) =>
@@ -1162,7 +1253,7 @@ export default function AIView() {
           createdAt: new Date().toISOString(),
         },
       ]));
-      return;
+      return false;
     }
 
     updateConversationTimeline(convId, (items) =>
@@ -1186,7 +1277,50 @@ export default function AIView() {
         });
       }
     }
+    return true;
   }, [activeConversationId, updateConversationTimeline]);
+
+  const handleReviewArtifact = useCallback(async (
+    artifactId: string,
+    status: "accepted" | "rejected",
+    note?: string,
+    editedPayload?: Record<string, unknown>,
+  ) => {
+    await reviewArtifactLocal(artifactId, status, note, editedPayload);
+  }, [reviewArtifactLocal]);
+
+  const handleApproveArtifactsBatch = useCallback(async (
+    artifactIds: string[],
+    options?: {
+      shouldStop?: () => boolean;
+      onProgress?: (completed: number, total: number) => void;
+      conversationId?: string;
+    },
+  ): Promise<{ approvedCount: number; failedArtifactIds: string[]; stopped: boolean }> => {
+    const uniqueArtifactIds = [...new Set(artifactIds.filter(Boolean))];
+    const total = uniqueArtifactIds.length;
+    const startConversationId = options?.conversationId ?? activeConversationIdRef.current;
+    let completed = 0;
+    let approvedCount = 0;
+    const failedArtifactIds: string[] = [];
+
+    for (const artifactId of uniqueArtifactIds) {
+      if (options?.shouldStop?.()) {
+        return { approvedCount, failedArtifactIds, stopped: true };
+      }
+      if (activeConversationIdRef.current !== startConversationId) {
+        return { approvedCount, failedArtifactIds, stopped: true };
+      }
+
+      const success = await reviewArtifactLocal(artifactId, "accepted");
+      completed += 1;
+      options?.onProgress?.(completed, total);
+      if (success) approvedCount += 1;
+      else failedArtifactIds.push(artifactId);
+    }
+
+    return { approvedCount, failedArtifactIds, stopped: false };
+  }, [reviewArtifactLocal]);
 
   const handleExecutePlan = useCallback(async (artifactId: string, selectedIndexes: number[]) => {
     if (selectedIndexes.length === 0 || isConversationLoading) return;
@@ -1232,6 +1366,10 @@ export default function AIView() {
     const aiMessageId = `m-${Date.now() + 1}`;
     let aiMessageCreated = false;
     let fullContent = "";
+    let reasoningContent = "";
+    let reasoningState: "streaming" | "done" = "done";
+    let reasoningTruncated = false;
+    let activeReasoningId: string | null = null;
     let progressItemId: string | null = null;
     let runStatus: string | null = null;
     let stopReason: string | null = null;
@@ -1241,11 +1379,36 @@ export default function AIView() {
       updateConversationTimeline(convId, (items) => {
         const idx = items.findIndex((it) => it.type === "assistant_message" && it.id === aiMessageId);
         if (idx === -1) {
-          return [...items, { type: "assistant_message", id: aiMessageId, content, createdAt: new Date().toISOString() }];
+          return [
+            ...items,
+            {
+              type: "assistant_message",
+              id: aiMessageId,
+              content,
+              reasoning: reasoningContent
+                ? {
+                    text: reasoningContent,
+                    state: reasoningState,
+                    truncated: reasoningTruncated || undefined,
+                  }
+                : undefined,
+              createdAt: new Date().toISOString(),
+            },
+          ];
         }
         const next = [...items];
         const current = next[idx] as Extract<TimelineItem, { type: "assistant_message" }>;
-        next[idx] = { ...current, content };
+        next[idx] = {
+          ...current,
+          content,
+          reasoning: reasoningContent
+            ? {
+                text: reasoningContent,
+                state: reasoningState,
+                truncated: reasoningTruncated || undefined,
+              }
+            : current.reasoning,
+        };
         return next;
       });
       aiMessageCreated = true;
@@ -1287,6 +1450,9 @@ export default function AIView() {
           options: {
             conversationId: convId,
             projectId: selectedProjectId ?? undefined,
+            reasoningMode,
+            includeReasoning: shouldRequestReasoning(reasoningMode),
+            reasoningBudgetTokens: shouldRequestReasoning(reasoningMode) ? 4096 : undefined,
             agentMode: "general",
             page: "ai",
             additionalContext: selectedProjectId ? undefined : (workspaceContextText || undefined),
@@ -1339,9 +1505,44 @@ export default function AIView() {
             }
             return;
           }
+          if (data.type === "navigate") {
+            handleNavigate(data.navigateUrl);
+            return;
+          }
           if (data.type === "content" && data.content) {
             clearProgress();
             fullContent += data.content;
+            upsertAssistant(fullContent);
+            return;
+          }
+          if (data.type === "reasoning_start") {
+            if (reasoningContent.trim().length > 0) reasoningContent += "\n\n";
+            reasoningState = "streaming";
+            activeReasoningId = data.reasoningId ?? activeReasoningId;
+            upsertAssistant(fullContent);
+            return;
+          }
+          if (data.type === "reasoning_delta") {
+            if (reasoningTruncated) return;
+            if (activeReasoningId && data.reasoningId && data.reasoningId !== activeReasoningId) return;
+            const delta = data.reasoningText ?? "";
+            if (!delta) return;
+            const next = `${reasoningContent}${delta}`;
+            if (next.length > 8000) {
+              reasoningContent = `${next.slice(0, 8000)}\n\n[Thinking output truncated]`;
+              reasoningTruncated = true;
+            } else {
+              reasoningContent = next;
+            }
+            reasoningState = "streaming";
+            activeReasoningId = data.reasoningId ?? activeReasoningId;
+            upsertAssistant(fullContent);
+            return;
+          }
+          if (data.type === "reasoning_end") {
+            if (activeReasoningId && data.reasoningId && data.reasoningId !== activeReasoningId) return;
+            reasoningState = "done";
+            activeReasoningId = null;
             upsertAssistant(fullContent);
             return;
           }
@@ -1435,6 +1636,8 @@ export default function AIView() {
     isTyping,
     cancelStream,
     selectedProjectId,
+    reasoningMode,
+    handleNavigate,
     workspaceContextText,
     sortConversationsByUpdatedAt,
     updateConversationTimeline,
@@ -1668,6 +1871,24 @@ export default function AIView() {
             </div>
 
             <div className={styles.headerActions}>
+              <ReasoningModeDropdown
+                reasoningMode={reasoningMode}
+                onReasoningModeChange={updateReasoningMode}
+              >
+                <button
+                  type="button"
+                  className={styles.reasoningModeBtn}
+                  data-state={reasoningMode}
+                  aria-label={`Reasoning visibility: ${reasoningMode}`}
+                  title={`Reasoning visibility: ${reasoningMode}`}
+                >
+                  <span className="material-icons-round">psychology</span>
+                  <span className={styles.reasoningModeLabel}>
+                    {reasoningMode === "off" ? "Off" : reasoningMode === "summary" ? "Summary" : "Full"}
+                  </span>
+                  <span className="material-icons-round">expand_more</span>
+                </button>
+              </ReasoningModeDropdown>
               <button
                 type="button"
                 className={styles.exportBtn}
@@ -1694,8 +1915,10 @@ export default function AIView() {
               variant="page"
               projectId={selectedProjectId ?? undefined}
               items={activeTimeline}
+              reasoningMode={reasoningMode}
               isLoading={isTyping}
               isConversationLoading={isConversationLoading}
+              conversationId={activeConversationId ?? undefined}
               emptyState={{
                 icon: "auto_awesome",
                 title: "How can I help with your research?",
@@ -1710,6 +1933,7 @@ export default function AIView() {
               onRetryLastMessage={handleRetryLastMessage}
               onBranchFromMessage={handleBranchFromMessage}
               onReviewArtifact={handleReviewArtifact}
+              onApproveArtifactsBatch={handleApproveArtifactsBatch}
               onExecutePlan={handleExecutePlan}
             />
 

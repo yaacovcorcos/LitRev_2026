@@ -48,6 +48,7 @@ export function messagesToTimeline(messages: CopilotMessage[]): TimelineItem[] {
             type: "assistant_message" as const,
             id: msg.id,
             content: msg.text,
+            reasoning: msg.reasoning,
             createdAt: msg.createdAt,
         };
     });
@@ -82,6 +83,78 @@ export function reduceStreamChunk(
                     createdAt: new Date().toISOString(),
                 },
             ];
+        }
+
+        case "reasoning_start": {
+            const last = timeline[timeline.length - 1];
+            if (last && last.type === "assistant_message" && last.id === currentAssistantId) {
+                return [
+                    ...timeline.slice(0, -1),
+                    {
+                        ...last,
+                        reasoning: {
+                            text: last.reasoning?.text ?? "",
+                            state: "streaming",
+                            truncated: last.reasoning?.truncated,
+                        },
+                    },
+                ];
+            }
+            return [
+                ...timeline,
+                {
+                    type: "assistant_message",
+                    id: currentAssistantId,
+                    content: "",
+                    reasoning: { text: "", state: "streaming" },
+                    createdAt: new Date().toISOString(),
+                },
+            ];
+        }
+
+        case "reasoning_delta": {
+            const last = timeline[timeline.length - 1];
+            if (last && last.type === "assistant_message" && last.id === currentAssistantId) {
+                return [
+                    ...timeline.slice(0, -1),
+                    {
+                        ...last,
+                        reasoning: {
+                            text: `${last.reasoning?.text ?? ""}${chunk.reasoningText ?? ""}`,
+                            state: "streaming",
+                            truncated: last.reasoning?.truncated,
+                        },
+                    },
+                ];
+            }
+            return [
+                ...timeline,
+                {
+                    type: "assistant_message",
+                    id: currentAssistantId,
+                    content: "",
+                    reasoning: { text: chunk.reasoningText ?? "", state: "streaming" },
+                    createdAt: new Date().toISOString(),
+                },
+            ];
+        }
+
+        case "reasoning_end": {
+            const last = timeline[timeline.length - 1];
+            if (last && last.type === "assistant_message" && last.id === currentAssistantId) {
+                return [
+                    ...timeline.slice(0, -1),
+                    {
+                        ...last,
+                        reasoning: {
+                            text: last.reasoning?.text ?? "",
+                            state: "done",
+                            truncated: last.reasoning?.truncated,
+                        },
+                    },
+                ];
+            }
+            return timeline;
         }
 
         case "artifact": {

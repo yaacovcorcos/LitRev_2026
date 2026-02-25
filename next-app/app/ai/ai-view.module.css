@@ -28,7 +28,7 @@
     overflow: hidden;
     position: fixed;
     top: var(--header-height, 44px);
-    left: var(--shell-sidebar-width, 220px);
+    left: var(--shell-sidebar-width, 200px);
     height: calc(100vh - var(--header-height, 44px));
     z-index: 905;
 }
@@ -267,6 +267,47 @@
     display: inline-flex;
     align-items: center;
     gap: 8px;
+}
+
+.reasoningModeBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 10px;
+    border: 1px solid var(--glass-border);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.6);
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.reasoningModeBtn:hover {
+    background: rgba(255, 255, 255, 0.85);
+    color: var(--text-primary);
+}
+
+.reasoningModeBtn[data-state="off"] {
+    color: var(--text-muted);
+}
+
+.reasoningModeBtn[data-state="off"] .reasoningModeLabel {
+    opacity: 0.75;
+}
+
+.reasoningModeBtn[data-state="full"] :global(.material-icons-round:first-child) {
+    color: var(--accent-primary);
+}
+
+.reasoningModeBtn :global(.material-icons-round) {
+    font-size: 16px;
+}
+
+.reasoningModeLabel {
+    min-width: 54px;
+    text-align: left;
 }
 
 .projectSelector {

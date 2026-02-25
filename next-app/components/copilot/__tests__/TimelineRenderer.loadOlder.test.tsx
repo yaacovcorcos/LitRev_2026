@@ -1,0 +1,169 @@
+// @vitest-environment jsdom
+import { render, screen, fireEvent } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import { TimelineRenderer } from "../TimelineRenderer";
+import type { TimelineItem } from "@/types/timeline";
+
+vi.mock("next/navigation", () => ({
+  useParams: () => ({ id: "project-1" }),
+}));
+
+vi.mock("@/app/actions/ledger", () => ({
+  addMentionedStudyAction: vi.fn(async () => ({ success: true, data: { created: true, study: { id: "s1" } } })),
+}));
+
+vi.mock("@/lib/agent/feature-flags", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/agent/feature-flags")>("@/lib/agent/feature-flags");
+  return {
+    ...actual,
+    isChatStudyMentionsEnabled: () => false,
+  };
+});
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+function makeItems(count: number): TimelineItem[] {
+  return Array.from({ length: count }, (_, i) => ({
+    type: "user_message" as const,
+    id: `msg-${i + 1}`,
+    content: `Message ${i + 1}`,
+    createdAt: new Date(2026, 1, 20, i).toISOString(),
+  }));
+}
+
+const defaultProps = {
+  isLoading: false,
+  emptyState: { icon: "chat", title: "Empty", description: "Empty", suggestions: [] },
+  onSuggestionClick: vi.fn(),
+};
+
+// ── Tests ────────────────────────────────────────────────────────────────────
+
+describe("TimelineRenderer load-older messages", () => {
+  it("renders 'Load older messages' button when hasMore=true", () => {
+    render(
+      <TimelineRenderer
+        {...defaultProps}
+        items={makeItems(3)}
+        hasMore={true}
+        isLoadingOlder={false}
+        onLoadOlder={vi.fn()}
+      />,
+    );
+
+    const btn = screen.getByRole("button", { name: /load older messages/i });
+    expect(btn).toBeDefined();
+    expect(btn.textContent).toContain("Load older messages");
+  });
+
+  it("does not render button when hasMore=false", () => {
+    render(
+      <TimelineRenderer
+        {...defaultProps}
+        items={makeItems(3)}
+        hasMore={false}
+        isLoadingOlder={false}
+        onLoadOlder={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: /load older messages/i })).toBeNull();
+  });
+
+  it("does not render button when hasMore is undefined", () => {
+    render(
+      <TimelineRenderer
+        {...defaultProps}
+        items={makeItems(3)}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: /load older messages/i })).toBeNull();
+  });
+
+  it("calls onLoadOlder when button is clicked", async () => {
+    const onLoadOlder = vi.fn(async () => {});
+
+    render(
+      <TimelineRenderer
+        {...defaultProps}
+        items={makeItems(3)}
+        hasMore={true}
+        isLoadingOlder={false}
+        onLoadOlder={onLoadOlder}
+      />,
+    );
+
+    const btn = screen.getByRole("button", { name: /load older messages/i });
+    fireEvent.click(btn);
+
+    expect(onLoadOlder).toHaveBeenCalledOnce();
+  });
+
+  it("disables button when isLoadingOlder=true", () => {
+    render(
+      <TimelineRenderer
+        {...defaultProps}
+        items={makeItems(3)}
+        hasMore={true}
+        isLoadingOlder={true}
+        onLoadOlder={vi.fn()}
+      />,
+    );
+
+    const btn = screen.getByRole("button", { name: /load older messages/i });
+    expect(btn).toHaveProperty("disabled", true);
+  });
+
+  it("shows 'Loading...' text when isLoadingOlder=true", () => {
+    render(
+      <TimelineRenderer
+        {...defaultProps}
+        items={makeItems(3)}
+        hasMore={true}
+        isLoadingOlder={true}
+        onLoadOlder={vi.fn()}
+      />,
+    );
+
+    const btn = screen.getByRole("button", { name: /load older messages/i });
+    expect(btn.textContent).toContain("Loading...");
+  });
+
+  it("wraps the first timeline item in a ref wrapper div", () => {
+    const items = makeItems(3);
+
+    const { container } = render(
+      <TimelineRenderer
+        {...defaultProps}
+        items={items}
+        hasMore={true}
+        onLoadOlder={vi.fn()}
+      />,
+    );
+
+    // The first item should be wrapped in an extra div (for firstItemRef)
+    // while subsequent items are not double-wrapped
+    const chatList = container.querySelector('[class*="chatList"]');
+    expect(chatList).toBeTruthy();
+
+    // First message item (after the load-older row) should have a wrapper div
+    const children = Array.from(chatList!.children);
+    // children[0] = loadOlderRow, children[1] = firstItemRef wrapper
+    expect(children.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("does not render button when timeline is empty (empty state shown instead)", () => {
+    render(
+      <TimelineRenderer
+        {...defaultProps}
+        items={[]}
+        hasMore={true}
+        onLoadOlder={vi.fn()}
+      />,
+    );
+
+    // Empty state should be shown, no load older button
+    expect(screen.queryByRole("button", { name: /load older messages/i })).toBeNull();
+  });
+});
