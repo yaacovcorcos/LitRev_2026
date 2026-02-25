@@ -1,0 +1,144 @@
+# Implementation Progress Log (Codex)
+
+Date: 2026-02-25  
+Branch: `spike-vercel-chat-sdk-adaptation`  
+Plan refs: `codex/overall_stealing_process_codex.md`, `overall_stealing_process_claude.md`
+Upstream reference basis: cloned repos at `cloned_repos/openclaw_repo/` and `cloned_repos/opencode_repo/` (via the source-file mappings captured in the two plan docs above).
+
+## Phase Tracker
+
+| Wave | Status | Summary |
+|---|---|---|
+| Wave 0 (Spike Review Gate) | Complete | Scenario A confirmed, branch aligned to runtime/reasoning baseline, reasoning visibility reviewed, quality gates passed (`tsc` + `vitest`) |
+| Wave 1 | Not started | Reliability + loop guardrails |
+| Wave 2 | Not started | Compaction + truncation |
+| Wave 3 | Not started | Stream robustness + reasoning ship criteria |
+| Wave 4 | Not started | Retrieval/middleware/cache metrics + conditional contracts |
+| Wave 5 | Not started | Autonomy expansion planning |
+
+## Wave 0 Actions Completed
+
+1. Confirmed current git context and branch divergence:
+   - Current branch: `spike-vercel-chat-sdk-adaptation`
+   - Companion branch with runtime/reasoning work: `spike-vercel-chat-sdk-adaptation-clean`
+   - Divergence count (`current...clean`): `1` commit on current, `3` commits on clean.
+
+2. Ran required gate commands from `next-app/`:
+   - `npx tsc --noEmit` -> PASS
+   - `npx vitest run` -> PASS (after clearing temp-space pressure)
+
+3. Resolved environment blocker encountered during Wave 0:
+   - Initial `vitest` failure was `ENOSPC` from macOS temp dir.
+   - Cleared user-writable temp content under `/var/folders/.../T`, increasing free disk from ~`222Mi` to ~`5.0Gi`.
+   - Re-ran `vitest`: all suites passed.
+
+4. Performed reasoning-visibility review against scenario-A baseline (`spike-vercel-chat-sdk-adaptation-clean`):
+   - `reasoning_start`/`reasoning_delta`/`reasoning_end` events: present in API route, runtime events, provider emission, context reducers, and `/ai` page stream handling.
+   - Cross-surface support: present in project copilot and `/ai` page stream paths.
+   - UI rendering/truncation note: present (collapsible reasoning panel + truncation handling).
+   - Storage/replay shape: reasoning fields present in timeline/storage types.
+
+5. Aligned current branch to locked Scenario A baseline:
+   - Cherry-picked clean-branch commits:
+     - `67472ba` `refactor(chat-runtime): add runtime primitives and unit coverage`
+     - `c71897e` `feat(chat-runtime): route streams via runtime handlers and add conversation run guard`
+     - `53f1e29` `feat(copilot): add streamed reasoning visibility with provider/runtime wiring`
+   - Result: `next-app/lib/server/chat-runtime/` and reasoning stream plumbing now exist on current branch.
+
+## Wave 0 Checklist Status
+
+| Checklist Item | Status | Evidence |
+|---|---|---|
+| Validate spike behavior in UX/regression tests | Done | `tsc` pass; `vitest` pass after ENOSPC cleanup |
+| Confirm locked path Scenario A | Done (plan-level) | Locked in `codex/overall_stealing_process_codex.md` |
+| Verify start/delta/end reasoning events across surfaces | Done | Present in route/runtime/context/UI files on current branch after cherry-pick |
+| Validate explicit user control (`off/summary/full`) | Not done | No explicit mode control found yet |
+| Provider handling (Anthropic + OpenAI explicit path) | Partial | Anthropic reasoning path present; OpenAI parity/toggle behavior still needs explicit implementation/review |
+| Truncation/safety UX for reasoning | Done (source review) | Truncation handling and note present in reasoning flow |
+| Storage/replay non-regression | Partial | Type/storage fields present; full UX replay acceptance still pending manual product review |
+
+## Files Touched In This Wave (by Codex)
+
+1. `codex/overall_stealing_process_codex.md`
+   - Locked Scenario A for this implementation.
+   - Added reasoning visibility as in-scope with Wave 0 checklist and Wave 3 completion criteria.
+2. `codex/implementation_progress_codex.md` (this file)
+   - Added phase-by-phase execution log for reviewer handoff.
+3. Scenario A branch-alignment commits applied to current branch:
+   - `67472ba`
+   - `c71897e`
+   - `53f1e29`
+
+## Scenario A Commits + File Scope (for Claude review)
+
+### `67472ba` runtime primitives + unit coverage
+1. `next-app/lib/server/chat-runtime/events.ts`
+2. `next-app/lib/server/chat-runtime/index.ts`
+3. `next-app/lib/server/chat-runtime/locks.ts`
+4. `next-app/lib/server/chat-runtime/runtime.ts`
+5. `next-app/lib/server/chat-runtime/state-adapter.ts`
+6. `next-app/lib/server/chat-runtime/thread.ts`
+7. `next-app/lib/server/__tests__/chat-runtime-events.test.ts`
+8. `next-app/lib/server/__tests__/chat-runtime-locks.test.ts`
+9. `next-app/lib/server/__tests__/chat-runtime-runtime.test.ts`
+10. `next-app/lib/server/__tests__/chat-runtime-state.test.ts`
+
+### `c71897e` runtime stream routing + run guard
+1. `next-app/app/api/ai/stream/route.ts`
+2. `next-app/contexts/ProjectCopilotContext.tsx`
+3. `next-app/contexts/project-copilot-stream-events.ts`
+4. `next-app/contexts/__tests__/project-copilot-stream-events.test.ts`
+5. `next-app/lib/artifacts/action-contract.ts`
+6. `next-app/lib/server/ai/ai-service.ts`
+7. `next-app/lib/server/chat-runtime/conversation-run-lock.ts`
+8. `next-app/lib/server/__tests__/conversation-run-lock.test.ts`
+
+### `53f1e29` reasoning visibility wiring
+1. `next-app/app/ai/page.tsx`
+2. `next-app/app/api/ai/stream/route.ts`
+3. `next-app/components/ProjectCopilot.module.css`
+4. `next-app/components/copilot/StreamReducer.ts`
+5. `next-app/components/copilot/TimelineRenderer.tsx`
+6. `next-app/contexts/ProjectCopilotContext.tsx`
+7. `next-app/contexts/project-copilot-stream-events.ts`
+8. `next-app/contexts/__tests__/project-copilot-stream-events.test.ts`
+9. `next-app/lib/projectCopilotStorage.ts`
+10. `next-app/lib/server/ai/ai-service.ts`
+11. `next-app/lib/server/ai/providers/anthropic.ts`
+12. `next-app/lib/server/chat-runtime/events.ts`
+13. `next-app/lib/server/__tests__/chat-runtime-events.test.ts`
+14. `next-app/types/ai.ts`
+15. `next-app/types/timeline.ts`
+
+## High-Signal Files Reviewed During Wave 0
+
+### Plan files reviewed
+1. `codex/overall_stealing_process_codex.md`
+2. `overall_stealing_process_claude.md`
+
+### Scenario-A reasoning/runtime files reviewed (clean branch)
+1. `next-app/app/api/ai/stream/route.ts`
+2. `next-app/lib/server/chat-runtime/events.ts`
+3. `next-app/lib/server/chat-runtime/runtime.ts`
+4. `next-app/lib/server/ai/providers/anthropic.ts`
+5. `next-app/lib/server/ai/ai-service.ts`
+6. `next-app/contexts/project-copilot-stream-events.ts`
+7. `next-app/contexts/ProjectCopilotContext.tsx`
+8. `next-app/components/copilot/StreamReducer.ts`
+9. `next-app/components/copilot/TimelineRenderer.tsx`
+10. `next-app/app/ai/page.tsx`
+11. `next-app/lib/projectCopilotStorage.ts`
+12. `next-app/types/ai.ts`
+13. `next-app/types/timeline.ts`
+
+## Blockers / Risks
+
+1. No blocking technical failures after Wave 0.
+2. Remaining product acceptance items are intentional scope for later wave completion criteria:
+   - explicit reasoning mode control (`off` / `summary` / `full`)
+   - OpenAI parity behavior for reasoning visibility controls
+
+## Recommended Next Step Before Wave 1
+
+1. Begin Wave 1 implementation on this now-aligned branch.
+2. Keep reasoning mode-control + OpenAI-parity tasks tracked for Wave 3 ship criteria.
