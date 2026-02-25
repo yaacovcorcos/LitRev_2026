@@ -114,6 +114,9 @@ export type AIStreamChunk = {
         | "plan_step_update";
     content?: string;
     error?: string;
+    errorStatus?: number;
+    errorCode?: string;
+    errorHeaders?: Record<string, string>;
     usage?: AIResponse["usage"];
     toolCall?: ToolCall;
     toolResult?: ToolResult;

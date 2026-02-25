@@ -12,7 +12,14 @@ import { getOrCreateConversation, addMessageToConversation, getConversationWithS
 import { validateRateLimits, recordUsage } from "./rate-limiter";
 import { retrieveMemories, formatMemoriesForContext, markMemoriesUsedInAnswer, type RetrievedMemory } from "@/lib/server/memory";
 import { AI_CONFIG, getProviderForModel, getContextBudget } from "@/lib/ai/config";
-import { compactToolResult, compactLoopMessages, buildCompactedHistory, estimateMessagesTokens, formatSummaryAsMessage } from "@/lib/agent/compaction";
+import {
+    compactToolResult,
+    compactLoopMessages,
+    buildCompactedHistory,
+    estimateMessagesTokensWithSafetyMargin,
+    formatSummaryAsMessage,
+    repairConversationHistory,
+} from "@/lib/agent/compaction";
 import { AVAILABLE_TOOLS, getToolDefinitions, executeTool, getTool, resolveAutonomyLevel, isToolAllowedInScope } from "./tools";
 import { startRun, endRun } from "@/lib/server/agent/run";
 import { emitEvent } from "@/lib/server/agent/events";
@@ -32,6 +39,14 @@ import { prisma } from "@/lib/server/prisma";
 import type { ProtocolData } from "@/types/protocol";
 import type { PlanPayload, ScopingReportPayload } from "@/types/artifacts";
 import { ensureConversationRunAvailability } from "@/lib/server/chat-runtime/conversation-run-lock";
+import { classifyAIError } from "./error-classification";
+import { retryAsync, sleep } from "@/lib/server/utils/retry";
+
+const MAX_STREAM_RETRY_ATTEMPTS = 3;
+const MAX_OVERFLOW_RECOVERY_ATTEMPTS = 3;
+const RETRY_MIN_DELAY_MS = 500;
+const RETRY_MAX_DELAY_MS = 15_000;
+const RETRY_JITTER = 0.15;
 
 class AIService {
     private providers = new Map<string, BaseAIProvider>();
@@ -183,7 +198,18 @@ class AIService {
         await validateRateLimits(projectId);
 
         const provider = this.resolveProvider(options?.model);
-        const response = await provider.chat(messages, options);
+        const response = await retryAsync(
+            () => provider.chat(messages, options),
+            {
+                attempts: MAX_STREAM_RETRY_ATTEMPTS,
+                minDelayMs: RETRY_MIN_DELAY_MS,
+                maxDelayMs: RETRY_MAX_DELAY_MS,
+                jitter: RETRY_JITTER,
+                signal: options?.signal,
+                shouldRetry: (error) => classifyAIError(error).retryable,
+                retryAfterMs: (error) => classifyAIError(error).retryAfterMs,
+            }
+        );
 
         // Record usage
         await recordUsage(
@@ -264,39 +290,117 @@ class AIService {
                 return;
             }
 
+            const repaired = repairConversationHistory(currentMessages, { stopReason: "completed" });
+            currentMessages.length = 0;
+            currentMessages.push(...repaired.messages);
+
             // Pre-call budget check: compact if over budget before sending to model
-            if (estimateMessagesTokens(currentMessages) > budget) {
+            if (estimateMessagesTokensWithSafetyMargin(currentMessages) > budget) {
                 const compacted = compactLoopMessages(currentMessages, budget);
                 currentMessages.length = 0;
                 currentMessages.push(...compacted.messages);
             }
 
-            const collectedToolCalls: ToolCall[] = [];
+            let collectedToolCalls: ToolCall[] = [];
             let contentSoFar = "";
+            let retryCount = 0;
+            let overflowRecoveryCount = 0;
 
-            for await (const chunk of this.streamChat(currentMessages, optionsWithTools)) {
-                if (chunk.type === "tool_call" && chunk.toolCall) {
-                    collectedToolCalls.push(chunk.toolCall);
-                    yield chunk;
-                } else if (
-                    chunk.type === "reasoning_start"
-                    || chunk.type === "reasoning_delta"
-                    || chunk.type === "reasoning_end"
-                ) {
-                    yield chunk;
-                } else if (chunk.type === "content") {
-                    contentSoFar += chunk.content || "";
-                    yield chunk;
-                } else if (chunk.type === "done") {
-                    if (collectedToolCalls.length === 0) {
-                        loop.markStopped("natural");
-                        yield chunk;
+            while (true) {
+                collectedToolCalls = [];
+                contentSoFar = "";
+                let hadVisibleOutput = false;
+                let retryAfterMs: number | undefined;
+                let shouldRetry = false;
+                let shouldRecoverOverflow = false;
+                let terminalError: string | null = null;
+
+                try {
+                    for await (const chunk of this.streamChat(currentMessages, optionsWithTools)) {
+                        if (chunk.type === "tool_call" && chunk.toolCall) {
+                            hadVisibleOutput = true;
+                            collectedToolCalls.push(chunk.toolCall);
+                            yield chunk;
+                        } else if (
+                            chunk.type === "reasoning_start"
+                            || chunk.type === "reasoning_delta"
+                            || chunk.type === "reasoning_end"
+                        ) {
+                            hadVisibleOutput = true;
+                            yield chunk;
+                        } else if (chunk.type === "content") {
+                            hadVisibleOutput = true;
+                            contentSoFar += chunk.content || "";
+                            yield chunk;
+                        } else if (chunk.type === "done") {
+                            if (collectedToolCalls.length === 0) {
+                                loop.markStopped("natural");
+                                yield chunk;
+                            }
+                        } else if (chunk.type === "error") {
+                            const classified = classifyAIError({
+                                message: chunk.error,
+                                errorStatus: chunk.errorStatus,
+                                errorCode: chunk.errorCode,
+                                errorHeaders: chunk.errorHeaders,
+                            });
+                            const message = classified.message || chunk.error || "Unknown streaming error";
+                            if (!hadVisibleOutput && classified.reason === "context_overflow" && overflowRecoveryCount < MAX_OVERFLOW_RECOVERY_ATTEMPTS) {
+                                shouldRecoverOverflow = true;
+                                break;
+                            }
+                            if (!hadVisibleOutput && classified.retryable && retryCount < MAX_STREAM_RETRY_ATTEMPTS) {
+                                shouldRetry = true;
+                                retryAfterMs = classified.retryAfterMs;
+                                break;
+                            }
+                            terminalError = message;
+                            break;
+                        }
                     }
-                } else if (chunk.type === "error") {
+                } catch (error) {
+                    const classified = classifyAIError(error);
+                    if (!hadVisibleOutput && classified.reason === "context_overflow" && overflowRecoveryCount < MAX_OVERFLOW_RECOVERY_ATTEMPTS) {
+                        shouldRecoverOverflow = true;
+                    } else if (!hadVisibleOutput && classified.retryable && retryCount < MAX_STREAM_RETRY_ATTEMPTS) {
+                        shouldRetry = true;
+                        retryAfterMs = classified.retryAfterMs;
+                    } else {
+                        terminalError = classified.message || "Unknown streaming error";
+                    }
+                }
+
+                if (shouldRecoverOverflow) {
+                    overflowRecoveryCount += 1;
+                    const compactedMessages = compactMessagesForOverflowRetry(currentMessages, budget);
+                    currentMessages.length = 0;
+                    currentMessages.push(...compactedMessages);
+                    continue;
+                }
+
+                if (shouldRetry) {
+                    retryCount += 1;
+                    const delayMs = computeRetryDelayMs(retryCount, retryAfterMs);
+                    await sleep(delayMs, options?.signal).catch(() => {});
+                    if (options?.signal?.aborted) {
+                        loop.markStopped("cancelled");
+                        yield {
+                            type: "done",
+                            content: stopReasonMessage("cancelled"),
+                            stopReason: "cancelled",
+                        };
+                        return;
+                    }
+                    continue;
+                }
+
+                if (terminalError) {
                     loop.markStopped("error");
-                    yield chunk;
+                    yield { type: "error", error: terminalError };
                     return;
                 }
+
+                break;
             }
 
             if (collectedToolCalls.length === 0) {
@@ -904,8 +1008,12 @@ class AIService {
                 const check = loop.shouldContinue(options?.signal);
                 if (!check.continue) break;
 
+                const repaired = repairConversationHistory(currentMessages, { stopReason: "completed" });
+                currentMessages.length = 0;
+                currentMessages.push(...repaired.messages);
+
                 // Pre-call budget check: compact if over budget before sending to model
-                if (estimateMessagesTokens(currentMessages) > budget) {
+                if (estimateMessagesTokensWithSafetyMargin(currentMessages) > budget) {
                     const compacted = compactLoopMessages(currentMessages, budget);
                     currentMessages.length = 0;
                     currentMessages.push(...compacted.messages);
@@ -916,48 +1024,121 @@ class AIService {
 
                 let collectedToolCalls: ToolCall[] = [];
                 let contentSoFar = "";
+                let retryCount = 0;
+                let overflowRecoveryCount = 0;
 
-                const genSpan = startLLMGeneration(trace, `llm-call-${loop.iterations}`, {
-                    model: chatOptions.model,
-                    inputMessageCount: currentMessages.length,
-                    toolCount: toolDefs.length,
-                });
+                while (true) {
+                    collectedToolCalls = [];
+                    contentSoFar = "";
+                    let hadVisibleOutput = false;
+                    let retryAfterMs: number | undefined;
+                    let shouldRetry = false;
+                    let shouldRecoverOverflow = false;
+                    let terminalError: string | null = null;
 
-                const rawStream = this.streamChat(currentMessages, chatOptions);
-                for await (const chunk of withChoicesExtraction(rawStream)) {
-                    if (chunk.type === "tool_call" && chunk.toolCall) {
-                        collectedToolCalls.push(chunk.toolCall);
-                        if (!(effectiveHandoffSelection && !protocolHandoffExecuted)) {
-                            yield { ...chunk, conversationId: conversation.id };
+                    const genSpan = startLLMGeneration(trace, `llm-call-${loop.iterations}-attempt-${retryCount + 1}`, {
+                        model: chatOptions.model,
+                        inputMessageCount: currentMessages.length,
+                        toolCount: toolDefs.length,
+                    });
+
+                    const rawStream = this.streamChat(currentMessages, chatOptions);
+                    try {
+                        for await (const chunk of withChoicesExtraction(rawStream)) {
+                            if (chunk.type === "tool_call" && chunk.toolCall) {
+                                hadVisibleOutput = true;
+                                collectedToolCalls.push(chunk.toolCall);
+                                if (!(effectiveHandoffSelection && !protocolHandoffExecuted)) {
+                                    yield { ...chunk, conversationId: conversation.id };
+                                }
+                            } else if (
+                                chunk.type === "reasoning_start"
+                                || chunk.type === "reasoning_delta"
+                                || chunk.type === "reasoning_end"
+                            ) {
+                                hadVisibleOutput = true;
+                                yield { ...chunk, conversationId: conversation.id };
+                            } else if (chunk.type === "content") {
+                                hadVisibleOutput = true;
+                                contentSoFar += chunk.content || "";
+                                fullContent += chunk.content || "";
+                                yield { ...chunk, conversationId: conversation.id };
+                            } else if (chunk.type === "choices" && chunk.choices) {
+                                hadVisibleOutput = true;
+                                yield { type: "choices", choices: chunk.choices, conversationId: conversation.id };
+                            } else if (chunk.type === "done") {
+                                if (chunk.usage) {
+                                    totalTokensIn += chunk.usage.inputTokens;
+                                    totalTokensOut += chunk.usage.outputTokens;
+                                    genSpan.update({ usageDetails: { input: chunk.usage.inputTokens, output: chunk.usage.outputTokens } });
+                                }
+                            } else if (chunk.type === "error") {
+                                const classified = classifyAIError({
+                                    message: chunk.error,
+                                    errorStatus: chunk.errorStatus,
+                                    errorCode: chunk.errorCode,
+                                    errorHeaders: chunk.errorHeaders,
+                                });
+                                if (!hadVisibleOutput && classified.reason === "context_overflow" && overflowRecoveryCount < MAX_OVERFLOW_RECOVERY_ATTEMPTS) {
+                                    shouldRecoverOverflow = true;
+                                    break;
+                                }
+                                if (!hadVisibleOutput && classified.retryable && retryCount < MAX_STREAM_RETRY_ATTEMPTS) {
+                                    shouldRetry = true;
+                                    retryAfterMs = classified.retryAfterMs;
+                                    break;
+                                }
+                                terminalError = classified.message || chunk.error || "Unknown streaming error";
+                                break;
+                            }
                         }
-                    } else if (
-                        chunk.type === "reasoning_start"
-                        || chunk.type === "reasoning_delta"
-                        || chunk.type === "reasoning_end"
-                    ) {
-                        yield { ...chunk, conversationId: conversation.id };
-                    } else if (chunk.type === "content") {
-                        contentSoFar += chunk.content || "";
-                        fullContent += chunk.content || "";
-                        yield { ...chunk, conversationId: conversation.id };
-                    } else if (chunk.type === "choices" && chunk.choices) {
-                        yield { type: "choices", choices: chunk.choices, conversationId: conversation.id };
-                    } else if (chunk.type === "done") {
-                        if (chunk.usage) {
-                            totalTokensIn += chunk.usage.inputTokens;
-                            totalTokensOut += chunk.usage.outputTokens;
-                            genSpan.update({ usageDetails: { input: chunk.usage.inputTokens, output: chunk.usage.outputTokens } });
+                    } catch (error) {
+                        const classified = classifyAIError(error);
+                        if (!hadVisibleOutput && classified.reason === "context_overflow" && overflowRecoveryCount < MAX_OVERFLOW_RECOVERY_ATTEMPTS) {
+                            shouldRecoverOverflow = true;
+                        } else if (!hadVisibleOutput && classified.retryable && retryCount < MAX_STREAM_RETRY_ATTEMPTS) {
+                            shouldRetry = true;
+                            retryAfterMs = classified.retryAfterMs;
+                        } else {
+                            terminalError = classified.message || "Unknown streaming error";
                         }
-                    } else if (chunk.type === "error") {
-                        genSpan.end();
+                    }
+                    genSpan.end();
+
+                    if (shouldRecoverOverflow) {
+                        overflowRecoveryCount += 1;
+                        const compactedMessages = compactMessagesForOverflowRetry(currentMessages, budget);
+                        currentMessages.length = 0;
+                        currentMessages.push(...compactedMessages);
+                        yield {
+                            type: "checkpoint",
+                            checkpointLabel: `Recovered context overflow (attempt ${overflowRecoveryCount})`,
+                            conversationId: conversation.id,
+                        };
+                        continue;
+                    }
+
+                    if (shouldRetry) {
+                        retryCount += 1;
+                        const delayMs = computeRetryDelayMs(retryCount, retryAfterMs);
+                        await sleep(delayMs, options?.signal).catch(() => {});
+                        if (options?.signal?.aborted) {
+                            loop.markStopped("cancelled");
+                            break;
+                        }
+                        continue;
+                    }
+
+                    if (terminalError) {
                         loop.markStopped("error");
-                        yield { ...chunk, conversationId: conversation.id };
+                        yield { type: "error", error: terminalError, conversationId: conversation.id };
                         await endRun(run.id, "failed");
                         yield { type: "run_end", runId: run.id, runStatus: "failed", stopReason: "error", conversationId: conversation.id };
                         return;
                     }
+
+                    break;
                 }
-                genSpan.end();
 
                 if (effectiveHandoffSelection && !protocolHandoffExecuted) {
                     const updateProtocolCall = collectedToolCalls.find((tc) => tc.name === "update_protocol");
@@ -1165,7 +1346,7 @@ class AIService {
             // Trigger auto-summarization if conversation is growing large.
             // Awaited so the function can block when near budget (Vercel cuts fire-and-forget).
             const totalMsgs = conversation.messages.length + 2; // +user +assistant
-            const currentTokens = estimateMessagesTokens(conversation.messages);
+            const currentTokens = estimateMessagesTokensWithSafetyMargin(conversation.messages);
             await autoSummarizeIfNeeded(
                 conversation.id, totalMsgs,
                 conversation.summaryData?.messageCount ?? 0,
@@ -1620,6 +1801,27 @@ export function finalizeScopingResponse(params: {
     const report = extractedReport ?? buildFallbackScopingReport(userMessage);
     const content = appendScopingReportComment(stripScopingReportMarkup(fullContent), report);
     return { content, report };
+}
+
+function computeRetryDelayMs(retryCount: number, retryAfterMs?: number): number {
+    const exponentialDelay = RETRY_MIN_DELAY_MS * 2 ** Math.max(0, retryCount - 1);
+    const baseDelay = typeof retryAfterMs === "number" && Number.isFinite(retryAfterMs)
+        ? Math.max(retryAfterMs, RETRY_MIN_DELAY_MS)
+        : exponentialDelay;
+    const jitterOffset = (Math.random() * 2 - 1) * RETRY_JITTER;
+    const jittered = Math.round(baseDelay * (1 + jitterOffset));
+    return Math.min(Math.max(jittered, RETRY_MIN_DELAY_MS), RETRY_MAX_DELAY_MS);
+}
+
+function compactMessagesForOverflowRetry(messages: AIMessage[], budget: number): AIMessage[] {
+    const compacted = compactLoopMessages(messages, budget);
+    const trimmed = buildCompactedHistory(
+        compacted.messages,
+        null,
+        0,
+        Math.max(Math.floor(budget * 0.85), 2_000)
+    );
+    return repairConversationHistory(trimmed, { stopReason: "completed" }).messages;
 }
 
 // ── Loop stop reason messages ────────────────────────────────────────────────

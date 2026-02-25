@@ -16,6 +16,7 @@ import type { AIMessage, AIModel, AIResponse, ChatOptions, AIStreamChunk, ToolCa
 import { BaseAIProvider } from "./base";
 import { AI_CONFIG, AVAILABLE_MODELS } from "@/lib/ai/config";
 import { parseToolArgs } from "../json-repair";
+import { extractProviderErrorMetadata } from "./error-metadata";
 
 export class AnthropicProvider extends BaseAIProvider {
     readonly id = "anthropic";
@@ -264,9 +265,11 @@ export class AnthropicProvider extends BaseAIProvider {
                 usage,
             };
         } catch (error) {
+            const metadata = extractProviderErrorMetadata(error);
             yield {
                 type: "error",
                 error: error instanceof Error ? error.message : "Unknown streaming error",
+                ...metadata,
             };
         }
     }

@@ -6,9 +6,12 @@ import {
     compactToolResult,
     compactLoopMessages,
     buildCompactedHistory,
+    repairConversationHistory,
     formatSummaryAsMessage,
     TOOL_RESULT_MAX_CHARS,
     COMPACTION_SUMMARY_PROMPT,
+    estimateMessagesTokensWithSafetyMargin,
+    TOKEN_ESTIMATE_SAFETY_MARGIN,
 } from "../compaction";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -66,6 +69,14 @@ describe("estimateMessagesTokens", () => {
 
     it("returns 0 for empty array", () => {
         expect(estimateMessagesTokens([])).toBe(0);
+    });
+});
+
+describe("estimateMessagesTokensWithSafetyMargin", () => {
+    it("applies the configured safety multiplier", () => {
+        const messages = [msg("user", "abcd"), msg("assistant", "hello")]; // 23 raw
+        expect(estimateMessagesTokensWithSafetyMargin(messages))
+            .toBe(Math.ceil(23 * TOKEN_ESTIMATE_SAFETY_MARGIN));
     });
 });
 
@@ -393,6 +404,68 @@ describe("buildCompactedHistory", () => {
         const result = buildCompactedHistory(messages, null, 0, 300);
         expect(result[0].role).toBe("system");
         expect(result[0].content).toBe("system prompt");
+    });
+});
+
+describe("repairConversationHistory", () => {
+    it("drops orphan tool results", () => {
+        const messages = [
+            msg("user", "hello"),
+            toolResult("missing-call", "orphan"),
+            msg("assistant", "ok"),
+        ];
+        const repaired = repairConversationHistory(messages);
+        expect(repaired.messages.some((m) => m.role === "tool")).toBe(false);
+        expect(repaired.droppedOrphanToolResults).toBe(1);
+    });
+
+    it("drops invalid tool calls and keeps assistant content", () => {
+        const messages = [
+            assistantWithTools("I will call tools", [
+                { id: "c1", name: "bad tool name", arguments: {} },
+                { id: "c2", name: "search_pubmed", arguments: { query: "abc" } },
+            ]),
+            toolResult("c2", '{"results": []}'),
+        ];
+        const repaired = repairConversationHistory(messages);
+        const assistant = repaired.messages.find((m) => m.role === "assistant");
+        expect(assistant?.toolCalls).toHaveLength(1);
+        expect(assistant?.toolCalls?.[0].name).toBe("search_pubmed");
+        expect(repaired.droppedInvalidToolCalls).toBe(1);
+    });
+
+    it("inserts synthetic missing tool results for completed runs", () => {
+        const messages = [
+            assistantWithTools("run tool", [{ id: "c1", name: "search_pubmed", arguments: { query: "x" } }]),
+        ];
+        const repaired = repairConversationHistory(messages, { stopReason: "completed" });
+        const toolMessage = repaired.messages.find((m) => m.role === "tool");
+        expect(toolMessage).toBeDefined();
+        expect(toolMessage?.toolResultId).toBe("c1");
+        expect(repaired.insertedSyntheticToolResults).toBe(1);
+    });
+
+    it("does not insert synthetic tool results for aborted or errored runs", () => {
+        const messages = [
+            assistantWithTools("run tool", [{ id: "c1", name: "search_pubmed", arguments: { query: "x" } }]),
+        ];
+        const aborted = repairConversationHistory(messages, { stopReason: "aborted" });
+        const errored = repairConversationHistory(messages, { stopReason: "error" });
+        expect(aborted.messages.some((m) => m.role === "tool")).toBe(false);
+        expect(errored.messages.some((m) => m.role === "tool")).toBe(false);
+    });
+
+    it("deduplicates repeated tool results in the same assistant span", () => {
+        const messages = [
+            assistantWithTools("run tool", [{ id: "c1", name: "search_pubmed", arguments: { query: "x" } }]),
+            toolResult("c1", "first"),
+            toolResult("c1", "duplicate"),
+        ];
+        const repaired = repairConversationHistory(messages);
+        const toolMessages = repaired.messages.filter((m) => m.role === "tool");
+        expect(toolMessages).toHaveLength(1);
+        expect(toolMessages[0].content).toBe("first");
+        expect(repaired.droppedDuplicateToolResults).toBe(1);
     });
 });
 

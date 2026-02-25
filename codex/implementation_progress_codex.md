@@ -10,7 +10,7 @@ Upstream reference basis: cloned repos at `cloned_repos/openclaw_repo/` and `clo
 | Wave | Status | Summary |
 |---|---|---|
 | Wave 0 (Spike Review Gate) | Complete | Scenario A confirmed, branch aligned to runtime/reasoning baseline, reasoning visibility reviewed, quality gates passed (`tsc` + `vitest`) |
-| Wave 1 | Not started | Reliability + loop guardrails |
+| Wave 1 | Complete | Retry/error taxonomy, overflow recovery, doom-loop threshold, transcript repair + safety-margin checks, provider error metadata |
 | Wave 2 | Not started | Compaction + truncation |
 | Wave 3 | Not started | Stream robustness + reasoning ship criteria |
 | Wave 4 | Not started | Retrieval/middleware/cache metrics + conditional contracts |
@@ -186,7 +186,58 @@ Capture these before final Wave 3 sign-off (manual run is acceptable):
    - explicit reasoning mode control (`off` / `summary` / `full`)
    - OpenAI parity behavior for reasoning visibility controls
 
-## Recommended Next Step Before Wave 1
+## Wave 1 Actions Completed
 
-1. Begin Wave 1 implementation on this now-aligned branch.
+1. Added reusable retry utility and Retry-After parsing:
+   - `next-app/lib/server/utils/retry.ts` (new)
+   - includes `retryAsync`, `sleep`, header/date parsing, jitter/backoff controls.
+
+2. Added typed AI error classification and overflow detection:
+   - `next-app/lib/server/ai/error-classification.ts` (new)
+   - reason taxonomy: `rate_limit`, `auth`, `billing`, `timeout`, `context_overflow`, `format`, `model_not_found`, `unknown`.
+
+3. Added provider error metadata extraction and propagated metadata through stream error chunks:
+   - `next-app/lib/server/ai/providers/error-metadata.ts` (new)
+   - updated providers:
+     - `next-app/lib/server/ai/providers/openai.ts`
+     - `next-app/lib/server/ai/providers/anthropic.ts`
+     - `next-app/lib/server/ai/providers/google.ts`
+     - `next-app/lib/server/ai/providers/xai.ts`
+   - updated stream chunk type:
+     - `next-app/types/ai.ts` (`errorStatus`, `errorCode`, `errorHeaders`)
+
+4. Upgraded loop guardrails to true doom-loop detection semantics:
+   - `next-app/lib/agent/loop-controller.ts`
+   - changed from “any historical repeat” to “consecutive identical call threshold” (`DOOM_LOOP_THRESHOLD=3`).
+
+5. Added transcript repair + safety-margin compaction helpers:
+   - `next-app/lib/agent/compaction.ts`
+   - new `repairConversationHistory(...)` pass for tool-call/tool-result sanity.
+   - added token estimation safety margin helpers and applied them in budget checks.
+
+6. Wired Wave 1 reliability behavior into AI runtime loops:
+   - `next-app/lib/server/ai/ai-service.ts`
+   - added:
+     - retry-backed non-stream `chat(...)`
+     - pre-submission transcript repair in tool loops
+     - context-overflow recovery path (compact + retry)
+     - transient retry path (rate limit/timeout with backoff + Retry-After)
+     - stronger cancellation handling inside retry loops
+
+## Wave 1 Tests and Gates
+
+1. Added tests:
+   - `next-app/lib/server/__tests__/retry.test.ts` (new)
+   - `next-app/lib/server/__tests__/error-classification.test.ts` (new)
+   - updated:
+     - `next-app/lib/agent/__tests__/loop-controller.test.ts`
+     - `next-app/lib/agent/__tests__/compaction.test.ts`
+
+2. Post-implementation quality gate results (after Wave 1 code landed):
+   - `npx tsc --noEmit` -> PASS
+   - `npx vitest run` -> PASS (`70` files passed; `654` tests passed, `11` skipped DB smoke tests)
+
+## Recommended Next Step
+
+1. Start Wave 2 (compaction/truncation quality layer) on this Wave 1-stabilized branch.
 2. Keep reasoning mode-control + OpenAI-parity tasks tracked for Wave 3 ship criteria.

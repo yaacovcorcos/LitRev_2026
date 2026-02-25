@@ -27,6 +27,8 @@ export const DEFAULT_LOOP_BUDGET: LoopBudget = {
     maxWallTimeMs: 120_000,
 };
 
+export const DOOM_LOOP_THRESHOLD = 3;
+
 // ── Tool Call Hashing ────────────────────────────────────────────────────────
 
 /** Deterministic hash of a tool call for repeat detection. */
@@ -53,7 +55,8 @@ export class LoopState {
     private startedAt: number;
     private _iterations = 0;
     private _totalToolCalls = 0;
-    private _seenHashes = new Set<string>();
+    private _lastToolHash: string | null = null;
+    private _consecutiveSameToolCallCount = 0;
     private _repeatDetected = false;
     private _stopReason: StopReason | null = null;
 
@@ -69,17 +72,23 @@ export class LoopState {
 
     /**
      * Record tool calls from one iteration.
-     * Returns true if a repeat was detected.
+     * Returns true when the same tool call repeats consecutively enough times
+     * to trigger doom-loop protection.
      */
     recordToolCalls(calls: { name: string; arguments: Record<string, unknown> }[]): boolean {
         this._totalToolCalls += calls.length;
         for (const call of calls) {
             const hash = hashToolCall(call.name, call.arguments);
-            if (this._seenHashes.has(hash)) {
+            if (hash === this._lastToolHash) {
+                this._consecutiveSameToolCallCount += 1;
+            } else {
+                this._lastToolHash = hash;
+                this._consecutiveSameToolCallCount = 1;
+            }
+            if (this._consecutiveSameToolCallCount >= DOOM_LOOP_THRESHOLD) {
                 this._repeatDetected = true;
                 return true;
             }
-            this._seenHashes.add(hash);
         }
         return false;
     }

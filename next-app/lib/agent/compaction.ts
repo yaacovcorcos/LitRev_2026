@@ -18,6 +18,9 @@ import type { AIMessage } from "@/types/ai";
 export const TOOL_RESULT_MAX_CHARS = 16_000; // ~4K tokens
 export const DEFAULT_HISTORY_BUDGET = 80_000; // fallback — callers should use getContextBudget()
 export const COMPACTION_THRESHOLD_MESSAGES = 30;
+export const TOKEN_ESTIMATE_SAFETY_MARGIN = 1.2;
+const TOOL_CALL_NAME_MAX_CHARS = 64;
+const TOOL_CALL_NAME_RE = /^[A-Za-z0-9_-]+$/;
 
 // ── Token estimation ─────────────────────────────────────────────────────────
 
@@ -32,6 +35,10 @@ export function estimateMessagesTokens(messages: AIMessage[]): number {
         total += estimateTokens(m.content) + 10; // 10 tokens overhead per message (role, etc.)
     }
     return total;
+}
+
+export function estimateMessagesTokensWithSafetyMargin(messages: AIMessage[]): number {
+    return Math.ceil(estimateMessagesTokens(messages) * TOKEN_ESTIMATE_SAFETY_MARGIN);
 }
 
 // ── Layer 1: Tool result compaction ──────────────────────────────────────────
@@ -311,6 +318,164 @@ function summarizeToolContent(content: string, maxLen: number): string {
     return content.slice(0, maxLen).replace(/\n/g, " ") + (content.length > maxLen ? "..." : "");
 }
 
+// ── Transcript repair (tool-call/tool-result sanity) ───────────────────────
+
+export type TranscriptRepairStopReason = "natural" | "completed" | "error" | "aborted";
+
+export type TranscriptRepairReport = {
+    messages: AIMessage[];
+    droppedInvalidToolCalls: number;
+    droppedOrphanToolResults: number;
+    droppedDuplicateToolResults: number;
+    insertedSyntheticToolResults: number;
+};
+
+type TranscriptRepairOptions = {
+    stopReason?: TranscriptRepairStopReason;
+};
+
+function sanitizeToolCallId(
+    value: string | undefined,
+    assistantIndex: number,
+    callIndex: number
+): string {
+    const trimmed = (value ?? "").trim();
+    if (trimmed.length > 0) return trimmed;
+    return `repaired-call-${assistantIndex}-${callIndex}`;
+}
+
+function sanitizeToolCallName(value: string | undefined): string | null {
+    if (!value) return null;
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    if (trimmed.length > TOOL_CALL_NAME_MAX_CHARS) return null;
+    if (!TOOL_CALL_NAME_RE.test(trimmed)) return null;
+    return trimmed;
+}
+
+function normalizeArguments(value: unknown): Record<string, unknown> {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+    return value as Record<string, unknown>;
+}
+
+function shouldInsertSyntheticToolResults(stopReason?: TranscriptRepairStopReason): boolean {
+    return stopReason !== "error" && stopReason !== "aborted";
+}
+
+export function repairConversationHistory(
+    messages: AIMessage[],
+    options?: TranscriptRepairOptions
+): TranscriptRepairReport {
+    const repaired: AIMessage[] = [];
+    let droppedInvalidToolCalls = 0;
+    let droppedOrphanToolResults = 0;
+    let droppedDuplicateToolResults = 0;
+    let insertedSyntheticToolResults = 0;
+
+    for (let i = 0; i < messages.length; i += 1) {
+        const current = messages[i];
+
+        if (current.role !== "assistant" || !current.toolCalls?.length) {
+            if (current.role === "tool") {
+                droppedOrphanToolResults += 1;
+                continue;
+            }
+            repaired.push(current);
+            continue;
+        }
+
+        const usedIds = new Set<string>();
+        const validToolCalls = current.toolCalls.flatMap((toolCall, toolIdx) => {
+            const name = sanitizeToolCallName(toolCall.name);
+            if (!name) {
+                droppedInvalidToolCalls += 1;
+                return [];
+            }
+            let id = sanitizeToolCallId(toolCall.id, i, toolIdx);
+            while (usedIds.has(id)) {
+                id = `${id}_dup`;
+            }
+            usedIds.add(id);
+            return [{
+                id,
+                name,
+                arguments: normalizeArguments(toolCall.arguments),
+            }];
+        });
+
+        const repairedAssistant: AIMessage = validToolCalls.length > 0
+            ? { ...current, toolCalls: validToolCalls }
+            : { ...current, toolCalls: undefined };
+        repaired.push(repairedAssistant);
+
+        if (validToolCalls.length === 0) {
+            if (!repairedAssistant.content.trim()) {
+                repaired.pop();
+            }
+            continue;
+        }
+
+        const validIds = new Set(validToolCalls.map((call) => call.id));
+        const spanResultsById = new Map<string, AIMessage>();
+        const remainder: AIMessage[] = [];
+
+        let j = i + 1;
+        for (; j < messages.length; j += 1) {
+            const next = messages[j];
+            if (next.role === "assistant") break;
+
+            if (next.role === "tool") {
+                const resultId = (next.toolResultId ?? "").trim();
+                if (!resultId || !validIds.has(resultId)) {
+                    droppedOrphanToolResults += 1;
+                    continue;
+                }
+                if (spanResultsById.has(resultId)) {
+                    droppedDuplicateToolResults += 1;
+                    continue;
+                }
+                spanResultsById.set(resultId, {
+                    ...next,
+                    toolResultId: resultId,
+                });
+                continue;
+            }
+
+            remainder.push(next);
+        }
+
+        for (const call of validToolCalls) {
+            const existing = spanResultsById.get(call.id);
+            if (existing) {
+                repaired.push(existing);
+                continue;
+            }
+            if (!shouldInsertSyntheticToolResults(options?.stopReason)) {
+                continue;
+            }
+            insertedSyntheticToolResults += 1;
+            repaired.push({
+                id: `repaired-tool-${call.id}`,
+                role: "tool",
+                toolResultId: call.id,
+                content: "Tool execution was interrupted. No result is available for this call.",
+                createdAt: current.createdAt,
+            });
+        }
+
+        repaired.push(...remainder);
+        i = j - 1;
+    }
+
+    return {
+        messages: repaired,
+        droppedInvalidToolCalls,
+        droppedOrphanToolResults,
+        droppedDuplicateToolResults,
+        insertedSyntheticToolResults,
+    };
+}
+
 // ── Layer 3: Cross-turn history compaction ────────────────────────────────────
 
 /**
@@ -339,14 +504,14 @@ export function buildCompactedHistory(
         const result = [summaryMsg, ...recentMessages];
 
         // If still over budget, trim the recent messages
-        if (estimateMessagesTokens(result) > budget) {
+        if (estimateMessagesTokensWithSafetyMargin(result) > budget) {
             return trimTobudget(result, budget);
         }
         return result;
     }
 
     // No summary — trim to budget
-    if (estimateMessagesTokens(allMessages) <= budget) {
+    if (estimateMessagesTokensWithSafetyMargin(allMessages) <= budget) {
         return [...allMessages];
     }
     return trimTobudget(allMessages, budget);
@@ -359,13 +524,13 @@ function trimTobudget(messages: AIMessage[], budget: number): AIMessage[] {
     const hasSystemFirst = first?.role === "system";
 
     if (hasSystemFirst) {
-        const systemTokens = estimateTokens(first.content) + 10;
+        const systemTokens = Math.ceil((estimateTokens(first.content) + 10) * TOKEN_ESTIMATE_SAFETY_MARGIN);
         let remaining = budget - systemTokens;
         const kept: AIMessage[] = [];
 
         // Walk backwards from the end, adding messages until budget is exceeded
         for (let i = messages.length - 1; i >= 1; i--) {
-            const msgTokens = estimateTokens(messages[i].content) + 10;
+            const msgTokens = Math.ceil((estimateTokens(messages[i].content) + 10) * TOKEN_ESTIMATE_SAFETY_MARGIN);
             if (remaining - msgTokens < 0 && kept.length > 0) break;
             remaining -= msgTokens;
             kept.unshift(messages[i]);
@@ -377,7 +542,7 @@ function trimTobudget(messages: AIMessage[], budget: number): AIMessage[] {
     let remaining = budget;
     const kept: AIMessage[] = [];
     for (let i = messages.length - 1; i >= 0; i--) {
-        const msgTokens = estimateTokens(messages[i].content) + 10;
+        const msgTokens = Math.ceil((estimateTokens(messages[i].content) + 10) * TOKEN_ESTIMATE_SAFETY_MARGIN);
         if (remaining - msgTokens < 0 && kept.length > 0) break;
         remaining -= msgTokens;
         kept.unshift(messages[i]);

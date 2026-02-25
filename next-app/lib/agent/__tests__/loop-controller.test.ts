@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { LoopState, hashToolCall, DEFAULT_LOOP_BUDGET } from "../loop-controller";
+import { LoopState, hashToolCall, DEFAULT_LOOP_BUDGET, DOOM_LOOP_THRESHOLD } from "../loop-controller";
 
 describe("hashToolCall", () => {
     it("produces the same hash for identical calls", () => {
@@ -70,7 +70,7 @@ describe("LoopState", () => {
         expect(state.shouldContinue()).toEqual({ continue: false, stopReason: "max_tool_calls" });
     });
 
-    it("detects repeated tool calls", () => {
+    it("detects doom loop after threshold consecutive identical calls", () => {
         const state = new LoopState();
         state.shouldContinue(); // iteration 1
         const repeated1 = state.recordToolCalls([
@@ -82,19 +82,37 @@ describe("LoopState", () => {
         const repeated2 = state.recordToolCalls([
             { name: "search_pubmed", arguments: { query: "RCTs" } },
         ]);
-        expect(repeated2).toBe(true);
+        expect(repeated2).toBe(false);
+
+        for (let i = 3; i <= DOOM_LOOP_THRESHOLD; i += 1) {
+            state.shouldContinue();
+            const repeated = state.recordToolCalls([
+                { name: "search_pubmed", arguments: { query: "RCTs" } },
+            ]);
+            if (i < DOOM_LOOP_THRESHOLD) {
+                expect(repeated).toBe(false);
+            } else {
+                expect(repeated).toBe(true);
+            }
+        }
 
         // Next shouldContinue should stop with repeat_detected
         expect(state.shouldContinue()).toEqual({ continue: false, stopReason: "repeat_detected" });
     });
 
-    it("allows different tool calls without triggering repeat", () => {
+    it("resets consecutive counter when tool call changes", () => {
         const state = new LoopState();
         state.shouldContinue();
         state.recordToolCalls([{ name: "search_pubmed", arguments: { query: "RCTs" } }]);
         state.shouldContinue();
         state.recordToolCalls([{ name: "search_pubmed", arguments: { query: "cohort studies" } }]);
-        // Different args → no repeat
+
+        for (let i = 0; i < DOOM_LOOP_THRESHOLD - 1; i += 1) {
+            state.shouldContinue();
+            const repeated = state.recordToolCalls([{ name: "search_pubmed", arguments: { query: "RCTs" } }]);
+            expect(repeated).toBe(false);
+        }
+
         expect(state.shouldContinue()).toEqual({ continue: true });
     });
 
