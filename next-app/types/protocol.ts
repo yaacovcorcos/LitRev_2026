@@ -103,6 +103,20 @@ export function getProtocolSectionLabel(section: ProtocolSection): string {
     return PROTOCOL_SECTION_LABELS[section] ?? "Protocol";
 }
 
+/** Returns true if any protocol field has real (non-whitespace) content. */
+export function isProtocolPopulated(data: ProtocolData): boolean {
+    if (data.researchQuestion.trim()) return true;
+    const { pico, eligibility, searchStrategy, methodology } = data;
+    if (pico.population.trim() || pico.intervention.trim() ||
+        pico.comparison.trim() || pico.outcome.trim()) return true;
+    if (eligibility.inclusion.length > 0 || eligibility.exclusion.length > 0) return true;
+    if (searchStrategy.query.trim() || searchStrategy.databases.length > 0) return true;
+    if (methodology.studyDesigns.length > 0) return true;
+    if (methodology.timeFrameStart.trim() || methodology.timeFrameEnd.trim()) return true;
+    if (methodology.qualityAssessmentTool.trim() || methodology.qualityAssessmentNotes.trim()) return true;
+    return false;
+}
+
 /** Default/empty protocol data */
 export function createDefaultProtocolData(): ProtocolData {
     return {
