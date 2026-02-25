@@ -23,7 +23,10 @@ vi.mock('@/lib/ai/config', () => ({
 import {
   checkRateLimit,
   checkDailyTokenLimit,
+  getCacheMetricSummary,
   recordUsage,
+  recordCacheMetric,
+  resetCacheMetricsForTests,
   getUsageStats,
   validateRateLimits,
 } from '../ai/rate-limiter'
@@ -37,6 +40,7 @@ const mockFindFirst = prisma.aIUsage.findFirst as ReturnType<typeof vi.fn>
 describe('Rate Limiter', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    resetCacheMetricsForTests()
   })
 
   // -------------------------------------------------------------------------
@@ -88,6 +92,17 @@ describe('Rate Limiter', () => {
       const gteTime = callArgs.where.createdAt.gte.getTime()
       expect(gteTime).toBeGreaterThanOrEqual(before - 60_000 - 50)
       expect(gteTime).toBeLessThanOrEqual(after - 60_000 + 50)
+    })
+
+    it('supports null projectId for global scope', async () => {
+      mockCount.mockResolvedValue(0)
+      const allowed = await checkRateLimit(null)
+      expect(allowed).toBe(true)
+      expect(mockCount).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ projectId: null }),
+        }),
+      )
     })
   })
 
@@ -150,6 +165,19 @@ describe('Rate Limiter', () => {
       const allowed = await checkDailyTokenLimit('project-1')
       expect(allowed).toBe(true) // 50000 < 100000
     })
+
+    it('supports null projectId for global scope', async () => {
+      mockAggregate.mockResolvedValue({
+        _sum: { inputTokens: 0, outputTokens: 0 },
+      })
+      const allowed = await checkDailyTokenLimit(null)
+      expect(allowed).toBe(true)
+      expect(mockAggregate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ projectId: null }),
+        }),
+      )
+    })
   })
 
   // -------------------------------------------------------------------------
@@ -183,6 +211,62 @@ describe('Rate Limiter', () => {
           outputTokens: 0,
         },
       })
+    })
+
+    it('tracks cache efficiency when cached tokens are provided', async () => {
+      mockCreate.mockResolvedValue({})
+
+      await recordUsage('project-1', 'gpt-5.2', 1000, 300, { cachedInputTokens: 250 })
+      const summary = getCacheMetricSummary('project-1')
+
+      expect(summary).toMatchObject({
+        requestCount: 1,
+        cacheHitRequests: 1,
+        totalInputTokens: 1000,
+        totalCachedInputTokens: 250,
+      })
+      expect(summary?.cacheHitRate).toBe(1)
+      expect(summary?.cachedTokenRate).toBe(0.25)
+    })
+
+    it('records null projectId and skips project cache summary', async () => {
+      mockCreate.mockResolvedValue({})
+
+      await recordUsage(null, 'gpt-5.2', 100, 20, { cachedInputTokens: 50 })
+
+      expect(mockCreate).toHaveBeenCalledWith({
+        data: {
+          projectId: null,
+          model: 'gpt-5.2',
+          inputTokens: 100,
+          outputTokens: 20,
+        },
+      })
+      expect(getCacheMetricSummary('global')).toBeNull()
+    })
+  })
+
+  // -------------------------------------------------------------------------
+  // cache metrics
+  // -------------------------------------------------------------------------
+
+  describe('cache metrics', () => {
+    it('accumulates cache hit and token ratios', () => {
+      const first = recordCacheMetric('project-1', 'gpt-5.2', 1000, 100)
+      const second = recordCacheMetric('project-1', 'gpt-5.2', 500, 0)
+
+      expect(first.requestCount).toBe(1)
+      expect(second.requestCount).toBe(2)
+      expect(second.cacheHitRequests).toBe(1)
+      expect(second.totalInputTokens).toBe(1500)
+      expect(second.totalCachedInputTokens).toBe(100)
+      expect(second.cacheHitRate).toBe(0.5)
+      expect(second.cachedTokenRate).toBeCloseTo(100 / 1500, 6)
+    })
+
+    it('clamps cached tokens to input token count', () => {
+      const summary = recordCacheMetric('project-1', 'gpt-5.2', 200, 1000)
+      expect(summary.totalCachedInputTokens).toBe(200)
     })
   })
 
@@ -298,6 +382,15 @@ describe('Rate Limiter', () => {
       await expect(validateRateLimits('project-1')).rejects.toThrow(
         'Maximum 20 requests per minute'
       )
+    })
+
+    it('accepts null projectId for global scope', async () => {
+      mockCount.mockResolvedValue(5)
+      mockAggregate.mockResolvedValue({
+        _sum: { inputTokens: 1000, outputTokens: 500 },
+      })
+
+      await expect(validateRateLimits(null)).resolves.toBeUndefined()
     })
   })
 })

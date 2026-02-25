@@ -426,7 +426,7 @@ model MemoryEmbedding {
 
 model AgentRun {
   id              String    @id @default(cuid())
-  projectId       String
+  projectId       String?
   conversationId  String?
   userId          String?
   trigger         String    // "user_message" | "proactive" | "event"
@@ -438,7 +438,7 @@ model AgentRun {
   startedAt       DateTime  @default(now())
   completedAt     DateTime?
 
-  project   Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project   Project?   @relation(fields: [projectId], references: [id], onDelete: Cascade)
   events    RunEvent[]
   artifacts Artifact[]
 
@@ -474,7 +474,7 @@ model RunEvent {
 model Artifact {
   id              String    @id @default(cuid())
   runId           String
-  projectId       String
+  projectId       String?
   conversationId  String?
   userId          String?
   type            String    // "study_proposal" | "draft_diff" | "screening_batch" |
@@ -495,7 +495,7 @@ model Artifact {
   createdAt       DateTime  @default(now())
 
   run     AgentRun @relation(fields: [runId], references: [id], onDelete: Cascade)
-  project Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([runId])
   @@index([projectId, status])

@@ -241,7 +241,7 @@ class AIService {
         messages: AIMessage[],
         options?: ChatOptions
     ): Promise<AIResponse> {
-        const projectId = options?.projectId || "global";
+        const projectId = options?.projectId ?? null;
 
         // Validate rate limits
         await validateRateLimits(projectId);
@@ -280,7 +280,7 @@ class AIService {
         messages: AIMessage[],
         options?: ChatOptions
     ): AsyncIterable<AIStreamChunk> {
-        const projectId = options?.projectId || "global";
+        const projectId = options?.projectId ?? null;
 
         // Validate rate limits
         await validateRateLimits(projectId);
