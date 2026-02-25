@@ -4,7 +4,7 @@
  * Usage:
  *   npx tsx scripts/warmup-memory-embeddings.ts
  *   npx tsx scripts/warmup-memory-embeddings.ts --projectId=<projectId>
- *   npx tsx scripts/warmup-memory-embeddings.ts --projectId=<projectId> --userId=<userId>
+ *   npx tsx scripts/warmup-memory-embeddings.ts --projectId=<projectId> --userId=<overrideUserId>
  */
 
 import { config } from "dotenv";
@@ -22,15 +22,15 @@ function parseArg(name: string): string | undefined {
 
 async function main() {
     const projectId = parseArg("projectId");
-    const userId = parseArg("userId") || "single-user";
+    const overrideUserId = parseArg("userId")?.trim() || undefined;
 
     const projects = projectId
         ? await prisma.project.findMany({
             where: { id: projectId },
-            select: { id: true },
+            select: { id: true, ownerId: true },
         })
         : await prisma.project.findMany({
-            select: { id: true },
+            select: { id: true, ownerId: true },
             orderBy: { created: "asc" },
         });
 
@@ -44,6 +44,7 @@ async function main() {
     let model = "";
 
     for (const project of projects) {
+        const userId = overrideUserId || project.ownerId;
         const result = await warmupSemanticEmbeddings(
             {
                 userId,
@@ -59,7 +60,7 @@ async function main() {
         totalScanned += result.scanned;
         totalIndexed += result.indexed;
         model = result.model;
-        console.log(`project=${project.id} scanned=${result.scanned} indexed=${result.indexed} model=${result.model}`);
+        console.log(`project=${project.id} userId=${userId} scanned=${result.scanned} indexed=${result.indexed} model=${result.model}`);
     }
 
     console.log(`Warmup complete: projects=${projects.length} scanned=${totalScanned} indexed=${totalIndexed} model=${model}`);

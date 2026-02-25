@@ -17,6 +17,19 @@ export type LegacyClaimResult = {
   backfilledFiles: number;
 };
 
+type LegacyClaimDebug = {
+  movedRunsByProject: number;
+  movedArtifactsByProject: number;
+  movedNotesByProject: number;
+  movedRetrievalsByProject: number;
+  movedEmbeddingsByProject: number;
+  movedAutonomyByProject: number;
+};
+
+type LegacyClaimInternalResult = LegacyClaimResult & {
+  debug: LegacyClaimDebug;
+};
+
 function uniqueStrings(values: Array<string | null | undefined>): string[] {
   return Array.from(
     new Set(values.filter((value): value is string => Boolean(value && value.trim()))),
@@ -45,7 +58,7 @@ export async function claimLegacySingleUserData(params: {
     };
   }
 
-  const result = await prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction<LegacyClaimInternalResult>(async (tx) => {
     // Serialize claim attempts across concurrent requests/processes.
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(7311, 2026)`;
 
@@ -398,8 +411,8 @@ export async function claimLegacySingleUserData(params: {
       movedUserMemories,
       backfilledStudies,
       backfilledFiles,
-      // Internal counters retained for debugging in logs if needed.
-      _debug: {
+      // Internal counters retained for structured claim logs.
+      debug: {
         movedRunsByProject,
         movedArtifactsByProject,
         movedNotesByProject,
@@ -410,15 +423,22 @@ export async function claimLegacySingleUserData(params: {
     };
   });
 
+  if (result.claimed) {
+    console.info("[auth-claim] migrated legacy placeholder data", {
+      userId,
+      workspaceId,
+      movedProjects: result.movedProjects,
+      movedConversations: result.movedConversations,
+      movedUsageRows: result.movedUsageRows,
+      movedUserMemories: result.movedUserMemories,
+      backfilledStudies: result.backfilledStudies,
+      backfilledFiles: result.backfilledFiles,
+      ...(result.debug ? { debug: result.debug } : {}),
+    });
+  }
+
   claimedUsers.add(userId);
 
-  return {
-    claimed: result.claimed,
-    movedProjects: result.movedProjects,
-    movedConversations: result.movedConversations,
-    movedUsageRows: result.movedUsageRows,
-    movedUserMemories: result.movedUserMemories,
-    backfilledStudies: result.backfilledStudies,
-    backfilledFiles: result.backfilledFiles,
-  };
+  const { debug: _debug, ...publicResult } = result;
+  return publicResult;
 }

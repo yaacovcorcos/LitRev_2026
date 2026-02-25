@@ -43,37 +43,13 @@ import { classifyAIError } from "./error-classification";
 import { retryAsync, sleep } from "@/lib/server/utils/retry";
 import { resolveReasoningMode } from "@/lib/ai/reasoning-visibility";
 import { executeWithToolMiddleware, type ToolExecutionRequest, type ToolMiddleware } from "./tool-middleware";
-import { getActorContext } from "@/lib/server/actor";
+import { resolveAuthenticatedIdentity } from "@/lib/server/auth/identity";
 
 const MAX_STREAM_RETRY_ATTEMPTS = 3;
 const MAX_OVERFLOW_RECOVERY_ATTEMPTS = 3;
 const RETRY_MIN_DELAY_MS = 500;
 const RETRY_MAX_DELAY_MS = 15_000;
 const RETRY_JITTER = 0.15;
-
-function resolveAuthenticatedUserId(userId?: string): string {
-    const explicit = userId?.trim();
-    if (explicit) return explicit;
-
-    const actor = getActorContext();
-    if (actor?.userId) return actor.userId;
-
-    if (process.env.NODE_ENV === "test") {
-        return "local-user";
-    }
-
-    throw new Error("Missing authenticated user context for AI service call.");
-}
-
-function resolveAuthenticatedIdentity(options?: {
-    userId?: string;
-    workspaceId?: string;
-}): { userId: string; workspaceId?: string } {
-    const actor = getActorContext();
-    const userId = resolveAuthenticatedUserId(options?.userId);
-    const workspaceId = options?.workspaceId?.trim() || actor?.workspaceId;
-    return { userId, workspaceId };
-}
 
 class AIService {
     private providers = new Map<string, BaseAIProvider>();

@@ -45,6 +45,14 @@ describe("claimLegacySingleUserData", () => {
       movedUserMemories: 4,
       backfilledStudies: 7,
       backfilledFiles: 8,
+      debug: {
+        movedRunsByProject: 1,
+        movedArtifactsByProject: 1,
+        movedNotesByProject: 1,
+        movedRetrievalsByProject: 1,
+        movedEmbeddingsByProject: 1,
+        movedAutonomyByProject: 1,
+      },
     });
 
     const first = await claimLegacySingleUserData({

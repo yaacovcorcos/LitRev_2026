@@ -1,6 +1,6 @@
 import "server-only";
 
-import { getActorContext } from "@/lib/server/actor";
+import { resolveAuthenticatedUserId } from "@/lib/server/auth/identity";
 import { prisma } from "@/lib/server/prisma";
 
 export interface SourceAcceptanceMetric {
@@ -25,20 +25,6 @@ export interface MemoryQualityMetrics {
         rejectedCount: number;
         contradictionCount: number;
     };
-}
-
-function resolveMetricsUserId(userId?: string): string {
-    const explicit = userId?.trim();
-    if (explicit) return explicit;
-
-    const actor = getActorContext();
-    if (actor?.userId) return actor.userId;
-
-    if (process.env.NODE_ENV === "test") {
-        return "local-user";
-    }
-
-    throw new Error("User ID is required for memory quality metrics.");
 }
 
 function safeDiv(numerator: number, denominator: number): number {
@@ -114,7 +100,9 @@ async function computeStaleUsageRate(retrievals: RetrievalRow[]): Promise<{ tota
 }
 
 export async function getMemoryQualityMetrics(projectId: string, userId?: string): Promise<MemoryQualityMetrics> {
-    const resolvedUserId = resolveMetricsUserId(userId);
+    const resolvedUserId = resolveAuthenticatedUserId(userId, {
+        errorMessage: "User ID is required for memory quality metrics.",
+    });
     const [retrievals, projectAgg, studyAgg, userAgg, projectSources, userSources] = await Promise.all([
         prisma.memoryRetrieval.findMany({
             where: { projectId },
