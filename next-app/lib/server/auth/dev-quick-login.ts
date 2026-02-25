@@ -11,9 +11,10 @@ export const DEV_QUICK_LOGIN_EMAIL = "preview-dev-user@local.invalid";
 export const DEV_QUICK_LOGIN_NAME = "Preview Dev User";
 
 export function isDevQuickLoginAllowed(env: EnvLike = process.env): boolean {
-  if (env.ENABLE_DEV_QUICK_LOGIN !== "1") return false;
+  // Always allow in local/dev runtime for fast iteration.
   if (env.NODE_ENV !== "production") return true;
-  return env.VERCEL_ENV === "preview";
+  // In production runtime, allow only on preview deployments with explicit flag.
+  return env.VERCEL_ENV === "preview" && env.ENABLE_DEV_QUICK_LOGIN === "1";
 }
 
 export function normalizeCallbackUrl(input: string | null | undefined): string {

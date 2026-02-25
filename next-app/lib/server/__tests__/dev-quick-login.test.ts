@@ -29,15 +29,15 @@ describe("dev quick login guard", () => {
     expect(
       isDevQuickLoginAllowed({
         NODE_ENV: "development",
-        ENABLE_DEV_QUICK_LOGIN: "1",
       }),
     ).toBe(true);
   });
 
-  it("blocks quick login when feature flag is not enabled", () => {
+  it("blocks quick login on preview/production runtime when feature flag is not enabled", () => {
     expect(
       isDevQuickLoginAllowed({
-        NODE_ENV: "development",
+        NODE_ENV: "production",
+        VERCEL_ENV: "preview",
       }),
     ).toBe(false);
   });

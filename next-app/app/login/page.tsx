@@ -46,7 +46,8 @@ function LoginContent() {
   const [busyQuickAccess, setBusyQuickAccess] = useState(false);
 
   const isDevRuntime = process.env.NODE_ENV !== "production";
-  const devQuickLoginEnabled = process.env.NEXT_PUBLIC_ENABLE_DEV_QUICK_LOGIN === "1";
+  const devQuickLoginEnabled =
+    isDevRuntime || process.env.NEXT_PUBLIC_ENABLE_DEV_QUICK_LOGIN === "1";
 
   useEffect(() => {
     if (!isPending && session) {
@@ -192,7 +193,7 @@ function LoginContent() {
         {status ? (
           <p className={styles.success} role="status">{status}</p>
         ) : null}
-        {isDevRuntime && !devQuickLoginEnabled ? (
+        {!isDevRuntime && !devQuickLoginEnabled ? (
           <p className={styles.helper}>
             Quick access is disabled. Set
             {" "}
