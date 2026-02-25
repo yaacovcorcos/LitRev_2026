@@ -43,6 +43,9 @@ function LoginContent() {
   const [error, setError] = useState<string | null>(null);
   const [busyGoogle, setBusyGoogle] = useState(false);
   const [busyMagicLink, setBusyMagicLink] = useState(false);
+  const [busyQuickAccess, setBusyQuickAccess] = useState(false);
+
+  const devQuickLoginEnabled = process.env.NEXT_PUBLIC_ENABLE_DEV_QUICK_LOGIN === "1";
 
   useEffect(() => {
     if (!isPending && session) {
@@ -95,6 +98,35 @@ function LoginContent() {
     }
   };
 
+  const onQuickAccess = async () => {
+    setBusyQuickAccess(true);
+    setError(null);
+    setStatus(null);
+
+    try {
+      const response = await fetch("/api/dev/quick-login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ callbackUrl }),
+      });
+      const payload = (await response.json().catch(() => null)) as
+        | { ok?: boolean; redirectTo?: string; error?: string }
+        | null;
+
+      if (!response.ok || !payload?.ok || !payload.redirectTo) {
+        setError(payload?.error || "Quick access sign-in failed.");
+        return;
+      }
+
+      router.replace(payload.redirectTo);
+      router.refresh();
+    } catch {
+      setError("Quick access sign-in failed.");
+    } finally {
+      setBusyQuickAccess(false);
+    }
+  };
+
   return (
     <main className={styles.shell}>
       <section className={styles.card} aria-label="Sign in">
@@ -110,10 +142,23 @@ function LoginContent() {
           onClick={() => {
             void onGoogleSignIn();
           }}
-          disabled={busyGoogle || busyMagicLink}
+          disabled={busyGoogle || busyMagicLink || busyQuickAccess}
         >
           {busyGoogle ? "Redirecting..." : "Continue with Google"}
         </button>
+
+        {devQuickLoginEnabled ? (
+          <button
+            type="button"
+            className={`${styles.devQuickButton} btn btn-outline`}
+            onClick={() => {
+              void onQuickAccess();
+            }}
+            disabled={busyGoogle || busyMagicLink || busyQuickAccess}
+          >
+            {busyQuickAccess ? "Signing in..." : "Continue as Dev User (Preview)"}
+          </button>
+        ) : null}
 
         <div className={styles.orRow}>or</div>
 
@@ -134,7 +179,7 @@ function LoginContent() {
           <button
             type="submit"
             className="btn btn-outline"
-            disabled={busyGoogle || busyMagicLink}
+            disabled={busyGoogle || busyMagicLink || busyQuickAccess}
           >
             {busyMagicLink ? "Sending..." : "Send magic link"}
           </button>
