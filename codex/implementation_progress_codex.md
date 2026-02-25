@@ -257,6 +257,9 @@ Capture these before final Wave 3 sign-off (manual run is acceptable):
      - role/order guardrails for tool-call/tool-result pairing
      - orphan/duplicate tool-result dropping
      - synthetic tool-result insertion when required to keep valid sequence
+   - clarification:
+     - this closes Tier 1.5 ("OpenAI-today minimal guards"): ID consistency, sequence sanity, malformed-request prevention.
+     - provider-specific content normalization (for example empty-content filtering/unsupported-modality fallbacks for non-OpenAI providers) remains intentionally deferred to the multi-provider phase.
 
 2. Header normalization deduplicated into shared utility:
    - `next-app/lib/server/utils/header-record.ts` (new)
