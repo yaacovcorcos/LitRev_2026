@@ -99,6 +99,39 @@ describe("StreamCoalescer", () => {
     expect(emitted[1]?.type).toBe("done");
   });
 
+  it("flushes buffered content before switching to reasoning_delta buffer", async () => {
+    const coalescer = new StreamCoalescer({
+      minChars: 4,
+      maxChars: 50,
+      idleMs: 1000,
+      onEmit: (event) => {
+        emitted.push(event);
+      },
+    });
+
+    await coalescer.push({ type: "content", content: "assistant text " });
+    await coalescer.push({
+      type: "reasoning_delta",
+      reasoningId: "r1",
+      reasoningText: "thinking...",
+      conversationId: "conv-1",
+    });
+    await coalescer.flushAll();
+
+    expect(emitted).toHaveLength(2);
+    expect(emitted[0]).toEqual({
+      type: "content",
+      content: "assistant text ",
+      conversationId: undefined,
+    });
+    expect(emitted[1]).toEqual({
+      type: "reasoning_delta",
+      reasoningId: "r1",
+      reasoningText: "thinking...",
+      conversationId: "conv-1",
+    });
+  });
+
   it("waits for a safe markdown fence boundary when possible", async () => {
     const coalescer = new StreamCoalescer({
       minChars: 1,

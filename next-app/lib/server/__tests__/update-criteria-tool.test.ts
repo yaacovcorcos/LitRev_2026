@@ -143,4 +143,29 @@ describe("updateCriteriaTool", () => {
     expect(result.error).toContain("Criterion not found");
     expect(mockUpdateProtocol).not.toHaveBeenCalled();
   });
+
+  it("removes criterion with case-insensitive fuzzy fallback", async () => {
+    mockFindProtocol.mockResolvedValueOnce(
+      makeProtocol({
+        eligibility: {
+          inclusion: ["Adults Over 18 Years"],
+          exclusion: [],
+        },
+      }) as never
+    );
+
+    const result = await updateCriteriaTool.execute(
+      { action: "remove", type: "inclusion", criterion: "ADULTS OVER 18 YEARS" },
+      { projectId: "proj-1" }
+    );
+
+    expect(result.error).toBeUndefined();
+    expect(result.result).toEqual({
+      success: true,
+      action: "remove",
+      type: "inclusion",
+      criteria: [],
+    });
+    expect(mockUpdateProtocol).toHaveBeenCalledTimes(1);
+  });
 });

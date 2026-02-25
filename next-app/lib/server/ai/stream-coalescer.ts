@@ -208,8 +208,9 @@ export class StreamCoalescer {
     });
   }
 
-  stop(): void {
+  stop(): Promise<void> {
     this.clearIdleTimer();
+    return this.queue;
   }
 
   private enqueue(task: () => Promise<void> | void): Promise<void> {

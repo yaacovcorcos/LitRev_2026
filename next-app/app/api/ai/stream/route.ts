@@ -102,7 +102,7 @@ export async function POST(request: NextRequest) {
                     await coalescer.push({ type: "error", error: errorMessage });
                 } finally {
                     await coalescer.flushAll();
-                    coalescer.stop();
+                    await coalescer.stop();
                     controller.close();
                 }
             },

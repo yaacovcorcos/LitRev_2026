@@ -312,6 +312,45 @@ Capture these before final Wave 3 sign-off (manual run is acceptable):
    - confirm mobile/desktop layout, scroll stability, and no runtime console errors.
    - capture reviewer notes/screenshots referenced by the Wave 0 acceptance checklist.
 
+## Wave 3 Review Follow-up (Claude Feedback)
+
+1. Stream coalescer stop correctness tightened:
+   - updated `next-app/lib/server/ai/stream-coalescer.ts`:
+     - `stop()` is now async and awaits internal queue drain.
+   - updated `next-app/app/api/ai/stream/route.ts`:
+     - finalize path now `await coalescer.stop()` before `controller.close()`.
+
+2. Stream coalescer coverage expanded for type-switch flush behavior:
+   - updated `next-app/lib/server/__tests__/stream-coalescer.test.ts`
+   - added explicit test proving buffered `content` flushes before buffering `reasoning_delta` when kind changes.
+
+3. Fuzzy remove-path case asymmetry fixed:
+   - updated `next-app/lib/server/ai/tools/update-criteria.ts`
+   - fuzzy fallback now compares lowercased candidates and lowercased needle.
+   - updated `next-app/lib/server/__tests__/update-criteria-tool.test.ts`
+   - added case-insensitive fuzzy remove regression test.
+
+4. Hydration-flash mitigation for reasoning mode preference:
+   - updated:
+     - `next-app/contexts/ProjectCopilotContext.tsx`
+     - `next-app/app/ai/page.tsx`
+   - reasoning mode now lazily initializes from `getReasoningModePreference()` in `useState`, removing mount-time default-to-full flash before localStorage preference loads.
+
+5. Shared reasoning dropdown extracted (duplication reduction):
+   - added:
+     - `next-app/components/copilot/ReasoningModeDropdown.tsx`
+     - `next-app/components/copilot/ReasoningModeDropdown.module.css`
+   - updated usage:
+     - `next-app/components/ProjectCopilot.tsx`
+     - `next-app/app/ai/page.tsx`
+   - removed duplicated dropdown menu CSS blocks from:
+     - `next-app/components/ProjectCopilot.module.css`
+     - `next-app/app/ai/ai-view.module.css`
+
+6. Post-follow-up gate results:
+   - `npx tsc --noEmit` -> PASS
+   - `TMPDIR=/Users/yaacovcorcos/LitRev_2026/next-app/.tmp-vitest npx vitest run` -> PASS (`76` files passed; `697` tests passed, `11` skipped DB smoke tests)
+
 ## Recommended Next Step
 
 1. Start Wave 4 (retrieval reranking upgrades, internal middleware hooks, cache efficiency metrics).

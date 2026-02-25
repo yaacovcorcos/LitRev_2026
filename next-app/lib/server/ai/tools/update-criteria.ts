@@ -93,7 +93,10 @@ export const updateCriteriaTool: AITool = {
                     (c) => c.toLowerCase().trim() === criterion.toLowerCase().trim()
                 );
                 if (idx === -1) {
-                    const fuzzy = findBestFuzzyListMatch(list, criterion);
+                    const fuzzy = findBestFuzzyListMatch(
+                        list.map((c) => c.toLowerCase()),
+                        criterion.toLowerCase()
+                    );
                     if (fuzzy) idx = fuzzy.index;
                 }
                 if (idx === -1) {

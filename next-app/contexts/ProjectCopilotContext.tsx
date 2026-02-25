@@ -41,7 +41,6 @@ import type { ChoiceOption, CopilotPage, ReasoningMode } from "@/types/ai";
 import { handleProjectCopilotStreamChunk } from "@/contexts/project-copilot-stream-events";
 import type { ArtifactActionContract } from "@/lib/artifacts/action-contract";
 import {
-    DEFAULT_REASONING_MODE,
     getReasoningModePreference,
     setReasoningModePreference,
     shouldRequestReasoning,
@@ -194,7 +193,7 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
     const [state, setState] = useState<ProjectCopilotState>(createDefaultProjectCopilotState());
     const stateRef = useRef<ProjectCopilotState>(createDefaultProjectCopilotState());
     const [isLoading, setIsLoading] = useState(false);
-    const [reasoningMode, setReasoningModeState] = useState<ReasoningMode>(DEFAULT_REASONING_MODE);
+    const [reasoningMode, setReasoningModeState] = useState<ReasoningMode>(() => getReasoningModePreference());
     const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const abortControllerRef = useRef<AbortController | null>(null);
     const streamGenRef = useRef(0);
@@ -254,11 +253,6 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             }));
         }
     }, [projectId]);
-
-    // Shared reasoning preference across copilot surfaces.
-    useEffect(() => {
-        setReasoningModeState(getReasoningModePreference());
-    }, []);
 
     const setReasoningMode = useCallback((mode: ReasoningMode) => {
         setReasoningModeState(mode);
