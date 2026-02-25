@@ -1,5 +1,5 @@
 .sidebar {
-    width: 220px;
+    width: 200px;
     padding: 32px 16px;
     display: flex;
     flex-direction: column;
@@ -18,7 +18,7 @@
 }
 
 .collapsed {
-    width: 88px;
+    width: 68px;
     padding: 32px 16px;
 }
 

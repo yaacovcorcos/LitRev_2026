@@ -28,7 +28,7 @@
     overflow: hidden;
     position: fixed;
     top: var(--header-height, 44px);
-    left: var(--shell-sidebar-width, 220px);
+    left: var(--shell-sidebar-width, 200px);
     height: calc(100vh - var(--header-height, 44px));
     z-index: 905;
 }
