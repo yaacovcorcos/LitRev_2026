@@ -11,7 +11,7 @@ Upstream reference basis: cloned repos at `cloned_repos/openclaw_repo/` and `clo
 |---|---|---|
 | Wave 0 (Spike Review Gate) | Complete | Scenario A confirmed, branch aligned to runtime/reasoning baseline, reasoning visibility reviewed, quality gates passed (`tsc` + `vitest`) |
 | Wave 1 | Complete | Retry/error taxonomy, overflow recovery, doom-loop threshold, transcript repair + safety-margin checks, provider error metadata |
-| Wave 2 | Not started | Compaction + truncation |
+| Wave 2 | Complete | Adaptive compaction, mode-aware truncation (head/tail/both), fence-safe truncation, structured summary prompt upgrades |
 | Wave 3 | Not started | Stream robustness + reasoning ship criteria |
 | Wave 4 | Not started | Retrieval/middleware/cache metrics + conditional contracts |
 | Wave 5 | Not started | Autonomy expansion planning |
@@ -239,7 +239,7 @@ Capture these before final Wave 3 sign-off (manual run is acceptable):
 
 ## Recommended Next Step
 
-1. Start Wave 2 (compaction/truncation quality layer) on this Wave 1-stabilized branch.
+1. Start Wave 3 (stream robustness + reasoning ship-criteria closure).
 2. Keep reasoning mode-control + OpenAI-parity tasks tracked for Wave 3 ship criteria.
 
 ## Wave 1 Review Follow-up (Claude Feedback Resolution)
@@ -283,3 +283,60 @@ Capture these before final Wave 3 sign-off (manual run is acceptable):
 7. Post-follow-up gates:
    - `npx tsc --noEmit` -> PASS
    - `npx vitest run` -> PASS (`71` files passed; `657` tests passed, `11` skipped DB smoke tests)
+
+## Wave 2 Actions Completed
+
+1. Added dedicated truncation primitives:
+   - `next-app/lib/agent/truncation.ts` (new)
+   - includes:
+     - mode-aware truncation (`head` / `tail` / `both`)
+     - tool-mode mapping (`TOOL_TRUNCATION_MODES`)
+     - line/byte-aware limits
+     - markdown fence-safe truncation behavior
+
+2. Integrated mode-aware truncation into tool-result compaction:
+   - updated `next-app/lib/agent/compaction.ts`:
+     - `compactToolResult(...)` fallback now uses `truncateToolOutput(...)`
+     - replaced fixed head-only fallback with per-tool behavior
+
+3. Added adaptive compaction behavior:
+   - updated `next-app/lib/agent/compaction.ts`:
+     - `computeAdaptiveChunkRatio(...)`
+     - `isOversizedForSummary(...)`
+     - dynamic keep-count in `compactLoopMessages(...)` based on adaptive ratio
+     - oversized-message normalization for cross-turn compaction
+     - prune thresholds/constants (`PRUNE_MINIMUM`, `PRUNE_PROTECT`)
+     - protected-tail budget trim behavior
+
+4. Upgraded compaction summary instructions:
+   - updated `COMPACTION_SUMMARY_PROMPT` in `next-app/lib/agent/compaction.ts`
+   - now enforces structured sections:
+     - Goal
+     - Protocol State
+     - Key Findings
+     - Completed Actions
+     - Active Context
+   - while preserving JSON output contract used by `autoSummarizeIfNeeded`.
+
+## Wave 2 Tests and Gates
+
+1. Added truncation tests:
+   - `next-app/lib/agent/__tests__/truncation.test.ts` (new)
+   - coverage:
+     - `head`/`tail`/`both`
+     - line-budget behavior
+     - tool-mode mapping behavior
+     - fence close/reopen safeguards
+
+2. Expanded compaction tests:
+   - updated `next-app/lib/agent/__tests__/compaction.test.ts`
+   - coverage:
+     - adaptive ratio shrink behavior
+     - oversized detection behavior
+     - prune-threshold behavior
+     - oversized-message placeholder behavior
+     - structured prompt section presence
+
+3. Post-Wave-2 gate results:
+   - `npx tsc --noEmit` -> PASS
+   - `npx vitest run` -> PASS (`72` files passed; `672` tests passed, `11` skipped DB smoke tests)
