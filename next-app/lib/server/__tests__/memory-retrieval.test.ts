@@ -1,5 +1,11 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { retrieveMemories } from "../memory/memory-retrieval";
+import { describe, it, expect, vi, beforeEach, afterAll } from "vitest";
+import {
+    retrieveMemories,
+    hybridFuseScore,
+    temporalDecayMultiplier,
+    applyTemporalDecayScore,
+    rerankWithMMR,
+} from "../memory/memory-retrieval";
 
 vi.mock("@/lib/server/prisma", () => ({
     prisma: {
@@ -46,6 +52,7 @@ const mockSearchSemanticMemories = vi.mocked(searchSemanticMemories);
 const mockEmitEvent = vi.mocked(emitEvent);
 const mockMemoryRetrievalCreate = vi.mocked(prisma.memoryRetrieval.create);
 const mockExecuteRaw = vi.mocked(prisma.$executeRaw);
+const originalAdvancedRerankFlag = process.env.ENABLE_MEMORY_ADVANCED_RERANKING;
 
 beforeEach(() => {
     vi.clearAllMocks();
@@ -56,6 +63,15 @@ beforeEach(() => {
     mockSearchStudyMemories.mockResolvedValue([]);
     mockSearchSemanticMemories.mockResolvedValue([]);
     mockExecuteRaw.mockResolvedValue(1 as any);
+    delete process.env.ENABLE_MEMORY_ADVANCED_RERANKING;
+});
+
+afterAll(() => {
+    if (originalAdvancedRerankFlag !== undefined) {
+        process.env.ENABLE_MEMORY_ADVANCED_RERANKING = originalAdvancedRerankFlag;
+    } else {
+        delete process.env.ENABLE_MEMORY_ADVANCED_RERANKING;
+    }
 });
 
 describe("retrieveMemories — deterministic scope rules", () => {
@@ -458,5 +474,137 @@ describe("retrieveMemories — deterministic scope rules", () => {
             expect.any(Set),
         );
         expect(result.some((memory) => memory.id === "pm-semantic")).toBe(true);
+    });
+});
+
+describe("memory retrieval reranking primitives", () => {
+    it("computes hybrid fusion using weighted lexical + semantic scores", () => {
+        const score = hybridFuseScore(0.2, 0.8);
+        expect(score).toBeCloseTo((0.2 * 0.3) + (0.8 * 0.7), 6);
+    });
+
+    it("applies temporal decay with half-life behavior", () => {
+        const now = Date.UTC(2026, 1, 25); // 2026-02-25
+        const thirtyDaysAgo = new Date(now - (30 * 24 * 60 * 60 * 1000)).toISOString();
+        const multiplier = temporalDecayMultiplier(thirtyDaysAgo, now, 30);
+        expect(multiplier).toBeCloseTo(0.5, 2);
+    });
+
+    it("keeps score unchanged when updatedAt is missing", () => {
+        expect(applyTemporalDecayScore(0.72, undefined, Date.now(), 30)).toBeCloseTo(0.72, 6);
+    });
+
+    it("MMR reranking favors diversity after selecting top relevance", () => {
+        const ranked = rerankWithMMR(
+            [
+                {
+                    id: "a",
+                    type: "project",
+                    memoryType: "decision",
+                    content: "blood pressure trial adults antihypertensive treatment",
+                    relevance: 0.95,
+                },
+                {
+                    id: "b",
+                    type: "project",
+                    memoryType: "decision",
+                    content: "blood pressure trial adults antihypertensive dosing response",
+                    relevance: 0.92,
+                },
+                {
+                    id: "c",
+                    type: "project",
+                    memoryType: "definition",
+                    content: "risk of bias assessment and evidence quality grading",
+                    relevance: 0.82,
+                },
+            ],
+            2,
+            0.7,
+        );
+
+        expect(ranked.map((memory) => memory.id)).toEqual(["a", "c"]);
+    });
+
+    it("flag off keeps default rank ordering with narrow candidate pool", async () => {
+        process.env.ENABLE_MEMORY_ADVANCED_RERANKING = "0";
+        mockSearchSemanticMemories.mockResolvedValue([
+            {
+                id: "sem-1",
+                type: "project",
+                memoryType: "definition",
+                content: "alpha blood pressure antihypertensive adults",
+                relevance: 0.95,
+                updatedAt: new Date("2026-02-20T00:00:00.000Z").toISOString(),
+            },
+            {
+                id: "sem-2",
+                type: "project",
+                memoryType: "definition",
+                content: "alpha blood pressure antihypertensive dosage",
+                relevance: 0.94,
+                updatedAt: new Date("2026-02-20T00:00:00.000Z").toISOString(),
+            },
+            {
+                id: "sem-3",
+                type: "project",
+                memoryType: "definition",
+                content: "gamma risk of bias and certainty grading",
+                relevance: 0.80,
+                updatedAt: new Date("2026-02-20T00:00:00.000Z").toISOString(),
+            },
+        ] as any);
+
+        const result = await retrieveMemories(
+            {
+                userId: "u1",
+                projectId: "p1",
+                query: "blood pressure",
+            },
+            { includeUser: false, includeProject: true, includeStudy: false, maxMemories: 2 },
+        );
+
+        expect(result.map((memory) => memory.id)).toEqual(["sem-1", "sem-2"]);
+    });
+
+    it("flag on applies expanded candidate pool + reranking", async () => {
+        process.env.ENABLE_MEMORY_ADVANCED_RERANKING = "1";
+        mockSearchSemanticMemories.mockResolvedValue([
+            {
+                id: "sem-1",
+                type: "project",
+                memoryType: "definition",
+                content: "alpha blood pressure antihypertensive adults",
+                relevance: 0.95,
+                updatedAt: new Date("2026-02-20T00:00:00.000Z").toISOString(),
+            },
+            {
+                id: "sem-2",
+                type: "project",
+                memoryType: "definition",
+                content: "alpha blood pressure antihypertensive dosage",
+                relevance: 0.94,
+                updatedAt: new Date("2026-02-20T00:00:00.000Z").toISOString(),
+            },
+            {
+                id: "sem-3",
+                type: "project",
+                memoryType: "definition",
+                content: "gamma risk of bias and certainty grading",
+                relevance: 0.80,
+                updatedAt: new Date("2026-02-20T00:00:00.000Z").toISOString(),
+            },
+        ] as any);
+
+        const result = await retrieveMemories(
+            {
+                userId: "u1",
+                projectId: "p1",
+                query: "blood pressure",
+            },
+            { includeUser: false, includeProject: true, includeStudy: false, maxMemories: 2 },
+        );
+
+        expect(result.map((memory) => memory.id)).toEqual(["sem-1", "sem-3"]);
     });
 });

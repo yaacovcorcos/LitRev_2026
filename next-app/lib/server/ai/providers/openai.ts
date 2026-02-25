@@ -75,6 +75,8 @@ export class OpenAIProvider extends BaseAIProvider {
                 inputTokens: response.usage?.prompt_tokens || 0,
                 outputTokens: response.usage?.completion_tokens || 0,
                 totalTokens: response.usage?.total_tokens || 0,
+                cachedInputTokens: (response.usage as { prompt_tokens_details?: { cached_tokens?: number } } | undefined)
+                    ?.prompt_tokens_details?.cached_tokens,
             },
         };
     }
@@ -161,6 +163,8 @@ export class OpenAIProvider extends BaseAIProvider {
                                 inputTokens: chunk.usage.prompt_tokens,
                                 outputTokens: chunk.usage.completion_tokens,
                                 totalTokens: chunk.usage.total_tokens,
+                                cachedInputTokens: (chunk.usage as { prompt_tokens_details?: { cached_tokens?: number } })
+                                    .prompt_tokens_details?.cached_tokens,
                             };
                         }
                     }
@@ -172,6 +176,8 @@ export class OpenAIProvider extends BaseAIProvider {
                         inputTokens: chunk.usage.prompt_tokens,
                         outputTokens: chunk.usage.completion_tokens,
                         totalTokens: chunk.usage.total_tokens,
+                        cachedInputTokens: (chunk.usage as { prompt_tokens_details?: { cached_tokens?: number } })
+                            .prompt_tokens_details?.cached_tokens,
                     };
                 }
             }
