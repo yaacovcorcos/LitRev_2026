@@ -295,6 +295,11 @@ Capture these before final Wave 3 sign-off (manual run is acceptable):
 2. Post-Wave-3 gate results:
    - `npx tsc --noEmit` -> PASS
    - `npx vitest run` -> PASS (`76` files passed; `695` tests passed, `11` skipped DB smoke tests)
+   - post-commit reproducibility note:
+     - on this machine, default macOS `TMPDIR` intermittently hit `ENOSPC` during vitest temp bundling.
+     - verified clean pass using:
+       - `TMPDIR=/Users/yaacovcorcos/LitRev_2026/next-app/.tmp-vitest npx vitest run`
+     - result remained PASS (`76` files, `695` passed, `11` skipped), confirming no code-level regression.
 
 ## Wave 3 Acceptance/Documentation Notes
 
