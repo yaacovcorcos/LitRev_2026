@@ -4,6 +4,7 @@ import { prisma } from "@/lib/server/prisma";
 import { requireScope, type ServiceScope, type ScopeInput } from "@/lib/server/scope";
 import type { Prisma } from "@prisma/client";
 import type { Project, ProjectProgress, ProjectStatus } from "@/types/project";
+import { createDefaultProtocolData } from "@/types/protocol";
 
 const PROJECT_STATUS_VALUES = new Set<ProjectStatus>(["harvesting", "ready"]);
 
@@ -139,6 +140,9 @@ export async function createProject(
       progress: toJsonObject(normalized.progress),
       created,
       modified,
+      protocol: {
+        create: { data: createDefaultProtocolData() as unknown as Prisma.InputJsonValue },
+      },
     },
   });
   return toProject(createdProject);

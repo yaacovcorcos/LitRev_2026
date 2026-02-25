@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { AITool, ToolExecutionContext } from "./base";
-import { prisma } from "@/lib/server/prisma";
+import { ensureProtocol } from "@/lib/server/protocols";
 import type { ProtocolData } from "@/types/protocol";
 import { isValidFieldPath, validateFieldValue, getFieldLabel, PROTOCOL_FIELD_META } from "@/lib/protocol-fields";
 
@@ -92,15 +92,7 @@ export const updateProtocolTool: AITool = {
         const value = validation.value;
 
         try {
-            const protocol = await prisma.protocol.findUnique({
-                where: { projectId },
-            });
-
-            if (!protocol) {
-                return { callId: "", result: null, error: "No protocol found for this project" };
-            }
-
-            const data = protocol.data as unknown as ProtocolData;
+            const data = await ensureProtocol(projectId);
             const oldValue = getNestedValue(data as unknown as Record<string, unknown>, field);
 
             // Return proposal payload — does NOT persist.

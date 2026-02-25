@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { AITool, ToolExecutionContext } from "./base";
 import { prisma } from "@/lib/server/prisma";
+import { ensureProtocol } from "@/lib/server/protocols";
 import { syncProtocolToMemory } from "@/lib/server/memory/protocol-sync";
 import type { ProtocolData } from "@/types/protocol";
 import { findBestFuzzyListMatch } from "@/lib/agent/fuzzy-match";
@@ -64,15 +65,7 @@ export const updateCriteriaTool: AITool = {
         const criterion = args.criterion as string;
 
         try {
-            const protocol = await prisma.protocol.findUnique({
-                where: { projectId },
-            });
-
-            if (!protocol) {
-                return { callId: "", result: null, error: "No protocol found for this project" };
-            }
-
-            const data = protocol.data as unknown as ProtocolData;
+            const data = await ensureProtocol(projectId);
             const list = data.eligibility[type];
 
             if (action === "add") {

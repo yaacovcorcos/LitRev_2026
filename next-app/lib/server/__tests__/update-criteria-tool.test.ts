@@ -2,42 +2,41 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { updateCriteriaTool } from "@/lib/server/ai/tools/update-criteria";
 
 const mockSyncProtocolToMemory = vi.fn();
+const mockEnsureProtocol = vi.fn();
 
 vi.mock("@/lib/server/memory/protocol-sync", () => ({
   syncProtocolToMemory: (...args: unknown[]) => mockSyncProtocolToMemory(...args),
 }));
 
+vi.mock("@/lib/server/protocols", () => ({
+  ensureProtocol: (...args: unknown[]) => mockEnsureProtocol(...args),
+}));
+
 vi.mock("@/lib/server/prisma", () => ({
   prisma: {
     protocol: {
-      findUnique: vi.fn(),
       update: vi.fn(),
     },
   },
 }));
 
 const { prisma } = await import("@/lib/server/prisma");
-const mockFindProtocol = vi.mocked(prisma.protocol.findUnique);
 const mockUpdateProtocol = vi.mocked(prisma.protocol.update);
 
-function makeProtocol(data: Record<string, unknown>) {
-  return {
-    id: "protocol-1",
-    projectId: "proj-1",
-    data,
-  };
+function makeProtocolData(data: Record<string, unknown>) {
+  return data;
 }
 
 describe("updateCriteriaTool", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockFindProtocol.mockResolvedValue(
-      makeProtocol({
+    mockEnsureProtocol.mockResolvedValue(
+      makeProtocolData({
         eligibility: {
           inclusion: ["Adults over 18"],
           exclusion: ["Case reports"],
         },
-      }) as never
+      })
     );
     mockUpdateProtocol.mockResolvedValue({} as never);
     mockSyncProtocolToMemory.mockResolvedValue(undefined);
@@ -48,13 +47,22 @@ describe("updateCriteriaTool", () => {
     expect(result.error).toContain("No project context available");
   });
 
-  it("returns error when protocol is missing", async () => {
-    mockFindProtocol.mockResolvedValueOnce(null as never);
+  it("self-heals when protocol is missing (ensureProtocol creates default)", async () => {
+    mockEnsureProtocol.mockResolvedValueOnce({
+      eligibility: { inclusion: [], exclusion: [] },
+    });
     const result = await updateCriteriaTool.execute(
       { action: "add", type: "inclusion", criterion: "RCT" },
       { projectId: "proj-1" }
     );
-    expect(result.error).toContain("No protocol found");
+    expect(result.error).toBeUndefined();
+    expect(result.result).toEqual({
+      success: true,
+      action: "add",
+      type: "inclusion",
+      criteria: ["RCT"],
+    });
+    expect(mockEnsureProtocol).toHaveBeenCalledWith("proj-1");
   });
 
   it("adds a new criterion and persists protocol", async () => {
@@ -110,13 +118,13 @@ describe("updateCriteriaTool", () => {
   });
 
   it("removes criteria using fuzzy unicode/whitespace matching fallback", async () => {
-    mockFindProtocol.mockResolvedValueOnce(
-      makeProtocol({
+    mockEnsureProtocol.mockResolvedValueOnce(
+      makeProtocolData({
         eligibility: {
           inclusion: ["Adults\u00A0over\u00A018\u2014years"],
           exclusion: [],
         },
-      }) as never
+      })
     );
 
     const result = await updateCriteriaTool.execute(
@@ -145,13 +153,13 @@ describe("updateCriteriaTool", () => {
   });
 
   it("removes criterion with case-insensitive fuzzy fallback", async () => {
-    mockFindProtocol.mockResolvedValueOnce(
-      makeProtocol({
+    mockEnsureProtocol.mockResolvedValueOnce(
+      makeProtocolData({
         eligibility: {
           inclusion: ["Adults Over 18 Years"],
           exclusion: [],
         },
-      }) as never
+      })
     );
 
     const result = await updateCriteriaTool.execute(

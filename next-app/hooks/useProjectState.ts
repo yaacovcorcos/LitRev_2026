@@ -10,7 +10,7 @@
 import { useMemo, useState, useEffect } from "react";
 import { useLedger } from "@/contexts/LedgerContext";
 import { getProtocolAction } from "@/app/actions/protocols";
-import type { ProtocolData } from "@/types/protocol";
+import { isProtocolPopulated, type ProtocolData } from "@/types/protocol";
 import type { ProjectStateSnapshot } from "@/lib/agent/suggestions";
 
 export function useProjectState(projectId: string): ProjectStateSnapshot {
@@ -24,10 +24,7 @@ export function useProjectState(projectId: string): ProjectStateSnapshot {
 
     return useMemo(() => {
         const studies = getStudiesByProject(projectId);
-        const pico = protocol?.pico;
-        const hasProtocol = !!(
-            pico?.population || pico?.intervention || pico?.comparison || pico?.outcome
-        );
+        const hasProtocol = protocol ? isProtocolPopulated(protocol) : false;
 
         let unscreened = 0;
         let included = 0;
