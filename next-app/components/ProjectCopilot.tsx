@@ -71,6 +71,7 @@ export function ProjectCopilot({
         renameConversation,
         sendMessage,
         handleReviewArtifact,
+        approveArtifactsBatch,
         executePlan,
         shouldOfferSummary,
         summarizeAndRefresh,
@@ -287,6 +288,7 @@ export function ProjectCopilot({
                     onSuggestionClick={handleSuggestionClick}
                     onActionPrompt={handleActionPrompt}
                     onReviewArtifact={handleReviewArtifact}
+                    onApproveArtifactsBatch={approveArtifactsBatch}
                     onExecutePlan={executePlan}
                     onSaveToNotes={handleSaveToNotes}
                     onBranchFromMessage={handleBranchFromMessage}

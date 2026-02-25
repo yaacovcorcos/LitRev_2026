@@ -32,6 +32,7 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
         renameConversation,
         sendMessage,
         handleReviewArtifact,
+        approveArtifactsBatch,
         executePlan,
         shouldOfferSummary,
         summarizeAndRefresh,
@@ -164,6 +165,7 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
                         onSuggestionClick={handleSuggestionClick}
                         onActionPrompt={handleActionPrompt}
                         onReviewArtifact={handleReviewArtifact}
+                        onApproveArtifactsBatch={approveArtifactsBatch}
                         onExecutePlan={executePlan}
                         onSaveToNotes={handleSaveToNotes}
                         onBranchFromMessage={handleBranchFromMessage}

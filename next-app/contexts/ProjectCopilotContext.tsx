@@ -63,6 +63,12 @@ type ConversationListItem = {
     updatedAt: string;
 };
 
+type ApproveArtifactsBatchResult = {
+    approvedCount: number;
+    failedArtifactIds: string[];
+    stopped: boolean;
+};
+
 type ProjectCopilotContextValue = {
     /** Current copilot state */
     state: ProjectCopilotState;
@@ -138,6 +144,15 @@ type ProjectCopilotContextValue = {
     artifacts: Map<string, ArtifactData>;
     /** Review an artifact (accept/reject) */
     handleReviewArtifact: (artifactId: string, status: "accepted" | "rejected", note?: string, editedPayload?: Record<string, unknown>) => Promise<void>;
+    /** Batch-approve proposed artifacts with progress/cancel hooks for timeline UI */
+    approveArtifactsBatch: (
+        artifactIds: string[],
+        options?: {
+            shouldStop?: () => boolean;
+            onProgress?: (completed: number, total: number) => void;
+            conversationId?: string;
+        },
+    ) => Promise<ApproveArtifactsBatchResult>;
     /** Execute a plan artifact (run selected steps) */
     executePlan: (artifactId: string, selectedIndexes: number[]) => void;
 
@@ -1298,7 +1313,7 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
         status: "accepted" | "rejected",
         note?: string,
         editedPayload?: Record<string, unknown>,
-    ) => {
+    ): Promise<boolean> => {
         // Optimistic update — artifacts map
         setArtifacts((prev) => {
             const next = new Map(prev);
@@ -1340,7 +1355,7 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
                         : msg
                 ),
             }));
-            return;
+            return false;
         }
 
         if (status === "accepted" && result.artifact) {
@@ -1353,6 +1368,7 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
                 });
             }
         }
+        return true;
     }, [projectId, updateState]);
 
     const dispatchArtifactAction = useCallback(async (action: ArtifactActionContract): Promise<void> => {
@@ -1392,6 +1408,39 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             editedPayload,
         });
     }, [dispatchArtifactAction]);
+
+    const approveArtifactsBatch = useCallback(async (
+        artifactIds: string[],
+        options?: {
+            shouldStop?: () => boolean;
+            onProgress?: (completed: number, total: number) => void;
+            conversationId?: string;
+        },
+    ): Promise<ApproveArtifactsBatchResult> => {
+        const uniqueArtifactIds = [...new Set(artifactIds.filter(Boolean))];
+        const total = uniqueArtifactIds.length;
+        const startConversationId = options?.conversationId ?? currentConversationIdRef.current ?? null;
+        let completed = 0;
+        let approvedCount = 0;
+        const failedArtifactIds: string[] = [];
+
+        for (const artifactId of uniqueArtifactIds) {
+            if (options?.shouldStop?.()) {
+                return { approvedCount, failedArtifactIds, stopped: true };
+            }
+            if ((currentConversationIdRef.current ?? null) !== startConversationId) {
+                return { approvedCount, failedArtifactIds, stopped: true };
+            }
+
+            const success = await reviewArtifactActionLocal(artifactId, "accepted");
+            completed += 1;
+            options?.onProgress?.(completed, total);
+            if (success) approvedCount += 1;
+            else failedArtifactIds.push(artifactId);
+        }
+
+        return { approvedCount, failedArtifactIds, stopped: false };
+    }, [reviewArtifactActionLocal]);
 
     const summarizeAndRefresh = useCallback(async () => {
         if (!currentConversationId || isSummarizing) return;
@@ -1459,6 +1508,7 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             currentRunId,
             artifacts,
             handleReviewArtifact,
+            approveArtifactsBatch,
             executePlan,
             // Summarize & fresh
             shouldOfferSummary,
@@ -1512,6 +1562,7 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             currentRunId,
             artifacts,
             handleReviewArtifact,
+            approveArtifactsBatch,
             executePlan,
             shouldOfferSummary,
             summarizeAndRefresh,

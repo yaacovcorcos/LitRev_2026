@@ -351,10 +351,14 @@ export default function AIView() {
   const abortControllerRef = useRef<AbortController | null>(null);
   const streamGenRef = useRef(0);
   const sendLockRef = useRef(false);
+  const activeConversationIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!isTyping) sendLockRef.current = false;
   }, [isTyping]);
+  useEffect(() => {
+    activeConversationIdRef.current = activeConversationId;
+  }, [activeConversationId]);
 
   const updateReasoningMode = useCallback((mode: ReasoningMode) => {
     setReasoningMode(mode);
@@ -1213,14 +1217,14 @@ export default function AIView() {
     sortConversationsByUpdatedAt,
   ]);
 
-  const handleReviewArtifact = useCallback(async (
+  const reviewArtifactLocal = useCallback(async (
     artifactId: string,
     status: "accepted" | "rejected",
     note?: string,
     editedPayload?: Record<string, unknown>,
-  ) => {
+  ): Promise<boolean> => {
     const convId = activeConversationId;
-    if (!convId) return;
+    if (!convId) return false;
 
     // Optimistic update
     updateConversationTimeline(convId, (items) =>
@@ -1249,7 +1253,7 @@ export default function AIView() {
           createdAt: new Date().toISOString(),
         },
       ]));
-      return;
+      return false;
     }
 
     updateConversationTimeline(convId, (items) =>
@@ -1273,7 +1277,50 @@ export default function AIView() {
         });
       }
     }
+    return true;
   }, [activeConversationId, updateConversationTimeline]);
+
+  const handleReviewArtifact = useCallback(async (
+    artifactId: string,
+    status: "accepted" | "rejected",
+    note?: string,
+    editedPayload?: Record<string, unknown>,
+  ) => {
+    await reviewArtifactLocal(artifactId, status, note, editedPayload);
+  }, [reviewArtifactLocal]);
+
+  const handleApproveArtifactsBatch = useCallback(async (
+    artifactIds: string[],
+    options?: {
+      shouldStop?: () => boolean;
+      onProgress?: (completed: number, total: number) => void;
+      conversationId?: string;
+    },
+  ): Promise<{ approvedCount: number; failedArtifactIds: string[]; stopped: boolean }> => {
+    const uniqueArtifactIds = [...new Set(artifactIds.filter(Boolean))];
+    const total = uniqueArtifactIds.length;
+    const startConversationId = options?.conversationId ?? activeConversationIdRef.current;
+    let completed = 0;
+    let approvedCount = 0;
+    const failedArtifactIds: string[] = [];
+
+    for (const artifactId of uniqueArtifactIds) {
+      if (options?.shouldStop?.()) {
+        return { approvedCount, failedArtifactIds, stopped: true };
+      }
+      if (activeConversationIdRef.current !== startConversationId) {
+        return { approvedCount, failedArtifactIds, stopped: true };
+      }
+
+      const success = await reviewArtifactLocal(artifactId, "accepted");
+      completed += 1;
+      options?.onProgress?.(completed, total);
+      if (success) approvedCount += 1;
+      else failedArtifactIds.push(artifactId);
+    }
+
+    return { approvedCount, failedArtifactIds, stopped: false };
+  }, [reviewArtifactLocal]);
 
   const handleExecutePlan = useCallback(async (artifactId: string, selectedIndexes: number[]) => {
     if (selectedIndexes.length === 0 || isConversationLoading) return;
@@ -1871,6 +1918,7 @@ export default function AIView() {
               reasoningMode={reasoningMode}
               isLoading={isTyping}
               isConversationLoading={isConversationLoading}
+              conversationId={activeConversationId ?? undefined}
               emptyState={{
                 icon: "auto_awesome",
                 title: "How can I help with your research?",
@@ -1885,6 +1933,7 @@ export default function AIView() {
               onRetryLastMessage={handleRetryLastMessage}
               onBranchFromMessage={handleBranchFromMessage}
               onReviewArtifact={handleReviewArtifact}
+              onApproveArtifactsBatch={handleApproveArtifactsBatch}
               onExecutePlan={handleExecutePlan}
             />
 
