@@ -204,6 +204,18 @@
     flex-direction: column;
     align-items: center;
     flex-shrink: 0;
+    position: relative;
+}
+
+.inputWrapper::before {
+    content: '';
+    position: absolute;
+    bottom: 100%;
+    left: 0;
+    right: 0;
+    height: 48px;
+    background: linear-gradient(to bottom, transparent, rgba(255, 255, 255, 0.25));
+    pointer-events: none;
 }
 
 .inputWrapper > * {
