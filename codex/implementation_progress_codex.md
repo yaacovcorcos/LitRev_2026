@@ -340,3 +340,29 @@ Capture these before final Wave 3 sign-off (manual run is acceptable):
 3. Post-Wave-2 gate results:
    - `npx tsc --noEmit` -> PASS
    - `npx vitest run` -> PASS (`72` files passed; `672` tests passed, `11` skipped DB smoke tests)
+
+## Wave 2 Review Follow-up (Claude Feedback Resolution)
+
+1. Added adaptive keep-count coverage for `compactLoopMessages(...)`:
+   - updated `next-app/lib/agent/__tests__/compaction.test.ts`
+   - verifies dynamic keep-count (> old fixed 2) with many small tool iterations.
+
+2. Added fence/both-mode truncation coverage:
+   - updated `next-app/lib/agent/__tests__/truncation.test.ts`
+   - verifies complex both-mode fence handling path.
+
+3. Added multibyte byte-budget coverage:
+   - updated `next-app/lib/agent/__tests__/truncation.test.ts`
+   - verifies byte-aware truncation behaves correctly with non-ASCII content.
+
+4. Clarified small-budget compaction threshold intent:
+   - updated comment in `next-app/lib/agent/compaction.ts` for
+     `compactionThreshold = Math.min(budget, PRUNE_MINIMUM)`.
+
+5. Improved fence reopening fidelity:
+   - updated `next-app/lib/agent/truncation.ts`
+   - reopening fences now preserve opening fence info string (for example language tags like `python`).
+
+6. Post-follow-up gates:
+   - `npx tsc --noEmit` -> PASS
+   - `npx vitest run` -> PASS (`72` files passed; `675` tests passed, `11` skipped DB smoke tests)

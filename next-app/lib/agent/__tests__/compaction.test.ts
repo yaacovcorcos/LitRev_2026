@@ -365,6 +365,33 @@ describe("compactLoopMessages", () => {
         expect(result.messages.some(m => m.content === "follow up")).toBe(true);
         expect(result.messages.some(m => m.content === "text response")).toBe(true);
     });
+
+    it("uses adaptive keep count (keeps more than 2 iterations for small messages)", () => {
+        const messages: AIMessage[] = [
+            msg("system", "sys"),
+            msg("user", "start"),
+        ];
+
+        for (let i = 1; i <= 10; i += 1) {
+            const callId = `c${i}`;
+            messages.push(
+                assistantWithTools(`iter${i}`, [{ id: callId, name: "search_pubmed", arguments: { query: `q${i}` } }]),
+                toolResult(callId, `result-${i}`)
+            );
+        }
+
+        const result = compactLoopMessages(messages, 100000);
+        const replacedCount = result.messages.filter(
+            (m) => m.role === "assistant" && m.content.startsWith("[Prior tool use:")
+        ).length;
+
+        // With ratio=0.4 and 10 iterations, keepCount=4 so 6 are replaced.
+        expect(replacedCount).toBe(6);
+        expect(result.messages.some((m) => m.content === "iter7")).toBe(true);
+        expect(result.messages.some((m) => m.content === "iter8")).toBe(true);
+        expect(result.messages.some((m) => m.content === "iter9")).toBe(true);
+        expect(result.messages.some((m) => m.content === "iter10")).toBe(true);
+    });
 });
 
 // ── buildCompactedHistory ────────────────────────────────────────────────────

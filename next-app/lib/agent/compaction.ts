@@ -522,6 +522,8 @@ export function buildCompactedHistory(
 ): AIMessage[] {
     if (allMessages.length === 0) return [];
     const normalizedMessages = normalizeOversizedMessages(allMessages, budget);
+    // For small-context models (budget < PRUNE_MINIMUM), we intentionally compact earlier
+    // to avoid overflow instead of waiting for the global threshold.
     const compactionThreshold = Math.min(budget, PRUNE_MINIMUM);
     const totalTokens = estimateMessagesTokensWithSafetyMargin(normalizedMessages);
 

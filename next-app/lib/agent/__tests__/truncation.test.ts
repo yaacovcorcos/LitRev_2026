@@ -105,5 +105,44 @@ describe("truncateToolOutput", () => {
         });
         expect(out).toContain("[...truncated");
         expect(out).toContain("```");
+        expect(out).toContain("```python");
+    });
+
+    it("handles both-mode truncation inside markdown fences", () => {
+        const content = [
+            "Before",
+            "```javascript",
+            "const alpha = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';",
+            "const beta = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';",
+            "const gamma = 'cccccccccccccccccccccccccccccccccccc';",
+            "```",
+            "After",
+        ].join("\n");
+
+        const out = truncateToolOutput("extract_pdf", content, {
+            mode: "both",
+            maxChars: 70,
+            preserveMarkdownFences: true,
+        });
+
+        expect(out).toContain("[...truncated");
+        expect(out).toContain("```javascript");
+        expect((out.match(/```/g) ?? []).length).toBeGreaterThanOrEqual(2);
+    });
+
+    it("respects byte budget for multibyte content", () => {
+        const content = "🙂".repeat(120);
+        const out = truncateToolOutput("search_pubmed", content, {
+            mode: "head",
+            maxChars: 1000,
+            maxBytes: 80,
+            maxLines: 1000,
+            preserveMarkdownFences: false,
+        });
+        const markerIndex = out.indexOf("[...truncated");
+        const kept = markerIndex >= 0 ? out.slice(0, markerIndex).trimEnd() : out;
+
+        expect(out).toContain("[...truncated");
+        expect(Buffer.byteLength(kept, "utf-8")).toBeLessThanOrEqual(80);
     });
 });

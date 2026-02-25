@@ -27,6 +27,7 @@ type FenceSpan = {
     end: number;
     marker: string;
     indent: string;
+    info: string;
 };
 
 type TruncationEnvelope = {
@@ -46,7 +47,7 @@ function resolveMode(toolName: string, requested?: TruncationMode): TruncationMo
 function parseFenceSpans(text: string): FenceSpan[] {
     const spans: FenceSpan[] = [];
     let open:
-        | { start: number; markerChar: string; markerLen: number; marker: string; indent: string }
+        | { start: number; markerChar: string; markerLen: number; marker: string; indent: string; info: string }
         | undefined;
 
     let offset = 0;
@@ -59,17 +60,19 @@ function parseFenceSpans(text: string): FenceSpan[] {
         if (match) {
             const indent = match[1];
             const marker = match[2];
+            const info = match[3] ?? "";
             const markerChar = marker[0];
             const markerLen = marker.length;
 
             if (!open) {
-                open = { start: offset, markerChar, markerLen, marker, indent };
+                open = { start: offset, markerChar, markerLen, marker, indent, info };
             } else if (open.markerChar === markerChar && markerLen >= open.markerLen) {
                 spans.push({
                     start: open.start,
                     end: lineEnd,
                     marker: open.marker,
                     indent: open.indent,
+                    info: open.info,
                 });
                 open = undefined;
             }
@@ -85,6 +88,7 @@ function parseFenceSpans(text: string): FenceSpan[] {
             end: text.length,
             marker: open.marker,
             indent: open.indent,
+            info: open.info,
         });
     }
 
@@ -93,6 +97,10 @@ function parseFenceSpans(text: string): FenceSpan[] {
 
 function findFenceAt(spans: FenceSpan[], index: number): FenceSpan | undefined {
     return spans.find((span) => index > span.start && index < span.end);
+}
+
+function buildFenceOpening(span: FenceSpan): string {
+    return `${span.indent}${span.marker}${span.info}`;
 }
 
 function byteToCharBudget(content: string, maxBytes: number): number {
@@ -155,7 +163,7 @@ function applyFenceSafeTruncation(
     if (mode === "tail") {
         const startIndex = Math.max(0, original.length - kept.length);
         const activeFence = findFenceAt(spans, startIndex);
-        const openFence = activeFence ? `${activeFence.indent}${activeFence.marker}\n` : "";
+        const openFence = activeFence ? `${buildFenceOpening(activeFence)}\n` : "";
         return `${marker}\n\n${openFence}${kept}`;
     }
 
@@ -167,7 +175,7 @@ function applyFenceSafeTruncation(
     const headFence = findFenceAt(spans, headCutIndex);
     const tailFence = findFenceAt(spans, tailStartIndex);
     const closeFence = headFence ? `\n${headFence.indent}${headFence.marker}` : "";
-    const openFence = tailFence ? `${tailFence.indent}${tailFence.marker}\n` : "";
+    const openFence = tailFence ? `${buildFenceOpening(tailFence)}\n` : "";
 
     return `${head}${closeFence}\n\n${marker}\n\n${openFence}${tail}`;
 }
