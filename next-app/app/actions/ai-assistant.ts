@@ -2,9 +2,7 @@
 
 import { prisma } from "@/lib/server/prisma";
 import { withAction, type ActionResult } from "@/lib/server/action-utils";
-
-const PLACEHOLDER_USER_ID = "single-user";
-const PLACEHOLDER_WORKSPACE_ID = "single-workspace";
+import { withAuth } from "@/lib/server/auth/session";
 
 type ProjectProtocolData = {
     researchQuestion?: string;
@@ -106,50 +104,52 @@ export async function getGlobalWorkspaceContextAction(): Promise<ActionResult<{
     projectCount: number;
 }>> {
     return withAction(async () => {
-        const projects = await prisma.project.findMany({
-            where: {
-                ownerId: PLACEHOLDER_USER_ID,
-                workspaceId: PLACEHOLDER_WORKSPACE_ID,
-            },
-            select: {
-                id: true,
-                name: true,
-                statusText: true,
-                modified: true,
-            },
-            orderBy: { modified: "desc" },
-            take: 8,
+        return withAuth(async ({ userId, workspaceId }) => {
+            const projects = await prisma.project.findMany({
+                where: {
+                    ownerId: userId,
+                    workspaceId,
+                },
+                select: {
+                    id: true,
+                    name: true,
+                    statusText: true,
+                    modified: true,
+                },
+                orderBy: { modified: "desc" },
+                take: 8,
+            });
+
+            if (projects.length === 0) {
+                return { contextText: "", projectCount: 0 };
+            }
+
+            const projectIds = projects.map((project) => project.id);
+            const [protocols, studies] = await Promise.all([
+                prisma.protocol.findMany({
+                    where: { projectId: { in: projectIds } },
+                    select: { projectId: true, data: true },
+                }),
+                prisma.study.findMany({
+                    where: { projectId: { in: projectIds } },
+                    select: { projectId: true, status: true },
+                }),
+            ]);
+
+            const protocolsByProject = new Map<string, ProjectProtocolData>(
+                protocols.map((protocol) => [protocol.projectId, (protocol.data ?? {}) as ProjectProtocolData])
+            );
+            const countsByProject = buildStudyCounts(studies);
+            const contextText = buildWorkspaceContextText({
+                projects,
+                protocolsByProject,
+                countsByProject,
+            });
+
+            return {
+                contextText,
+                projectCount: projects.length,
+            };
         });
-
-        if (projects.length === 0) {
-            return { contextText: "", projectCount: 0 };
-        }
-
-        const projectIds = projects.map((project) => project.id);
-        const [protocols, studies] = await Promise.all([
-            prisma.protocol.findMany({
-                where: { projectId: { in: projectIds } },
-                select: { projectId: true, data: true },
-            }),
-            prisma.study.findMany({
-                where: { projectId: { in: projectIds } },
-                select: { projectId: true, status: true },
-            }),
-        ]);
-
-        const protocolsByProject = new Map<string, ProjectProtocolData>(
-            protocols.map((protocol) => [protocol.projectId, (protocol.data ?? {}) as ProjectProtocolData])
-        );
-        const countsByProject = buildStudyCounts(studies);
-        const contextText = buildWorkspaceContextText({
-            projects,
-            protocolsByProject,
-            countsByProject,
-        });
-
-        return {
-            contextText,
-            projectCount: projects.length,
-        };
     });
 }

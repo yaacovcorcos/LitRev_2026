@@ -4,6 +4,7 @@ import { prisma } from "@/lib/server/prisma";
 import { getAIService } from "@/lib/server/ai";
 import type { AIMessage } from "@/types/ai";
 import { withAction, type ActionResult } from "@/lib/server/action-utils";
+import { withAuth } from "@/lib/server/auth/session";
 
 const SUMMARIZE_PROMPT = `You are summarizing a conversation between a researcher and an AI assistant working on a systematic literature review.
 
@@ -34,10 +35,16 @@ type SummarizeResult = {
 export async function summarizeConversationAction(
     conversationId: string
 ): Promise<ActionResult<SummarizeResult>> {
-    return withAction(async () => {
+    return withAction(() =>
+      withAuth(async ({ userId, workspaceId }) => {
         // 1. Fetch conversation with messages
-        const conversation = await prisma.aIConversation.findUnique({
-            where: { id: conversationId },
+        const conversation = await prisma.aIConversation.findFirst({
+            where: {
+                id: conversationId,
+                userId,
+                workspaceId,
+                archived: false,
+            },
             include: {
                 messages: { orderBy: { createdAt: "asc" } },
             },
@@ -122,8 +129,12 @@ export async function summarizeConversationAction(
         });
 
         // 5. Archive old conversation
-        await prisma.aIConversation.update({
-            where: { id: conversationId },
+        await prisma.aIConversation.updateMany({
+            where: {
+                id: conversationId,
+                userId,
+                workspaceId,
+            },
             data: { archived: true },
         });
 
@@ -144,6 +155,8 @@ export async function summarizeConversationAction(
 
         const newConversation = await prisma.aIConversation.create({
             data: {
+                userId,
+                workspaceId,
                 projectId: conversation.projectId,
                 studyId: conversation.studyId,
                 context: conversation.context,
@@ -170,5 +183,6 @@ export async function summarizeConversationAction(
             decisions: parsed.decisions,
             followUpNeeded: parsed.followUpNeeded,
         };
-    });
+      }),
+    );
 }

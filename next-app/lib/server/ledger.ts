@@ -107,7 +107,7 @@ export async function upsertStudy(
   projectId: string,
   study: StudyInput
 ): Promise<Study> {
-  await assertProjectAccess(scopeInput, projectId);
+  const scope = await assertProjectAccess(scopeInput, projectId);
   const normalized = normalizeStudy(study);
   if (normalized.id) {
     const existing = await prisma.study.findFirst({ where: { id: normalized.id, projectId } });
@@ -115,6 +115,7 @@ export async function upsertStudy(
       const updated = await prisma.study.update({
         where: { id: normalized.id },
         data: {
+          workspaceId: scope.workspaceId,
           title: normalized.title,
           authors: normalized.authors,
           year: normalized.year,
@@ -130,6 +131,7 @@ export async function upsertStudy(
     data: {
       id: normalized.id ?? undefined,
       projectId,
+      workspaceId: scope.workspaceId,
       title: normalized.title,
       authors: normalized.authors,
       year: normalized.year,
@@ -146,7 +148,7 @@ export async function replaceStudies(
   projectId: string,
   studies: StudyInput[]
 ): Promise<Study[]> {
-  await assertProjectAccess(scopeInput, projectId);
+  const scope = await assertProjectAccess(scopeInput, projectId);
   const normalized = studies.map(normalizeStudy);
   return prisma.$transaction(async (tx: any) => {
     const incomingIds = normalized
@@ -176,6 +178,7 @@ export async function replaceStudies(
           await tx.study.update({
             where: { id: study.id },
             data: {
+              workspaceId: scope.workspaceId,
               title: study.title,
               authors: study.authors,
               year: study.year,
@@ -192,6 +195,7 @@ export async function replaceStudies(
         data: {
           id: study.id ?? undefined,
           projectId,
+          workspaceId: scope.workspaceId,
           title: study.title,
           authors: study.authors,
           year: study.year,
@@ -252,7 +256,7 @@ export async function updateStudy(
   studyId: string,
   updates: Partial<StudyInput>
 ): Promise<Study> {
-  await assertProjectAccess(scopeInput, projectId);
+  const scope = await assertProjectAccess(scopeInput, projectId);
 
   const existing = await prisma.study.findFirst({
     where: { id: studyId, projectId },
@@ -267,6 +271,7 @@ export async function updateStudy(
   const mergedDetails = mergeDetails(existingDetails, incomingDetails);
 
   const data: Record<string, unknown> = {};
+  data.workspaceId = scope.workspaceId;
   if (typeof updates.title !== "undefined") data.title = updates.title.trim() || existing.title;
   if (typeof updates.authors !== "undefined") data.authors = updates.authors.trim() || existing.authors;
   if (typeof updates.year !== "undefined") data.year = updates.year;

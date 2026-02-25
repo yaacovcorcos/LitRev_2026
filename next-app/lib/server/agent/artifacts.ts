@@ -15,11 +15,11 @@ import { onStudyAccepted, onStudyExcluded, onDraftAccepted, onArtifactEdited } f
 import { syncProtocolToMemory } from "@/lib/server/memory/protocol-sync";
 import { ensureProtocol } from "@/lib/server/protocols";
 import { validateFieldValue, isValidFieldPath } from "@/lib/protocol-fields";
+import { requireActorContext } from "@/lib/server/actor";
 import { setUserMemory, createProjectMemory, getProjectMemories, getUserMemories } from "@/lib/server/memory";
 import { normalizedMemoryKey, normalizedMemoryValue } from "@/lib/server/memory/conflict-policy";
 import { createNote, updateNote, textToTipTapDoc, listNotes, type NoteContent, extractTextFromContent } from "@/lib/server/notes";
 import { upsertStudy, updateStudy } from "@/lib/server/ledger";
-import { SINGLE_USER_SCOPE } from "@/lib/server/scope";
 
 // ── Apply function registry ──────────────────────────────────────────────────
 
@@ -434,7 +434,7 @@ registerApplyFunction("protocol_suggestion", async (artifact) => {
 registerApplyFunction("memory_proposal", async (artifact) => {
     const payload = artifact.payload as MemoryProposalPayload;
     if (payload.memoryType === "user") {
-        const userId = artifact.userId || "single-user";
+        const userId = artifact.userId || requireActorContext().userId;
         const key = normalizedMemoryKey(payload.key || `auto_${Date.now()}`);
         const keyTag = `memory-key:${key}`;
         const incomingValue = normalizedMemoryValue(payload.value);
@@ -553,7 +553,7 @@ registerApplyFunction("memory_forget_proposal", async (artifact) => {
     if (matchIds.length === 0) return;
 
     if (payload.memoryType === "user") {
-        const userId = artifact.userId || "single-user";
+        const userId = artifact.userId || requireActorContext().userId;
         await prisma.userMemory.updateMany({
             where: {
                 id: { in: matchIds },
@@ -596,7 +596,7 @@ registerApplyFunction("memory_forget_proposal", async (artifact) => {
 // study_proposal: upsert the study with triage decision
 registerApplyFunction("study_proposal", async (artifact) => {
     const payload = artifact.payload as StudyProposalPayload;
-    await upsertStudy(SINGLE_USER_SCOPE, artifact.projectId, {
+    await upsertStudy(undefined, artifact.projectId, {
         title: payload.title,
         authors: payload.authors,
         year: payload.year,
@@ -646,7 +646,7 @@ registerApplyFunction("study_update", async (artifact) => {
         );
     }
 
-    await updateStudy(SINGLE_USER_SCOPE, artifact.projectId, payload.studyId, {
+    await updateStudy(undefined, artifact.projectId, payload.studyId, {
         ...(payload.patch.top ?? {}),
         ...(payload.patch.details ? { details: payload.patch.details as Partial<StudyDetails> } : {}),
     });
@@ -659,7 +659,7 @@ registerApplyFunction("draft_diff", async (artifact) => {
 
     // 1. Write immutable DraftVersion (replaces the old Note backup)
     const { createDraftVersion } = await import("@/lib/server/draft-versions");
-    await createDraftVersion(SINGLE_USER_SCOPE, {
+    await createDraftVersion(undefined, {
         projectId: artifact.projectId,
         section: payload.section,
         content: tipTapContent as object,
@@ -678,12 +678,12 @@ registerApplyFunction("draft_diff", async (artifact) => {
         (s) => s.key === payload.section.toLowerCase() || s.label.toLowerCase() === payload.section.toLowerCase()
     )?.key ?? payload.section.toLowerCase();
 
-    const currentDraft = await getDraft(SINGLE_USER_SCOPE, artifact.projectId);
+    const currentDraft = await getDraft(undefined, artifact.projectId);
     const draftState = currentDraft ?? createDefaultDraftState();
 
     draftState.contentBySection[sectionKey] = tipTapContent as typeof draftState.contentBySection[string];
 
-    await saveDraft(SINGLE_USER_SCOPE, artifact.projectId, draftState);
+    await saveDraft(undefined, artifact.projectId, draftState);
 });
 
 // evidence_table: persist the accepted table as a project note for downstream drafting/export

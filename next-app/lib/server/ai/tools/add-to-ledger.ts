@@ -4,7 +4,6 @@ import type { SearchResult } from "@/types/search";
 import { searchResultToStudyInput } from "@/lib/server/search/to-study";
 import { findDuplicates } from "@/lib/server/search/dedup";
 import { listStudies, upsertStudy } from "@/lib/server/ledger";
-import { SINGLE_USER_SCOPE } from "@/lib/server/scope";
 
 const inputSchema = z.object({
     results: z.array(z.object({
@@ -83,14 +82,14 @@ export const addToLedgerTool: AITool = {
 
         try {
             // Load existing studies for dedup
-            const existingStudies = await listStudies(SINGLE_USER_SCOPE, projectId);
+            const existingStudies = await listStudies(undefined, projectId);
             const { unique, duplicates } = findDuplicates(existingStudies, results);
 
             // Upsert unique studies
             const addedTitles: string[] = [];
             for (const result of unique) {
                 const studyInput = searchResultToStudyInput(result);
-                await upsertStudy(SINGLE_USER_SCOPE, projectId, studyInput);
+                await upsertStudy(undefined, projectId, studyInput);
                 addedTitles.push(result.title);
             }
 

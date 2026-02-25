@@ -7,10 +7,6 @@ vi.mock("@/lib/server/projects", () => ({
     createProject: (...args: unknown[]) => mockCreateProject(...args),
 }));
 
-vi.mock("@/lib/server/scope", () => ({
-    SINGLE_USER_SCOPE: { ownerId: "local-user", workspaceId: "local-workspace" },
-}));
-
 describe("createProjectTool", () => {
     beforeEach(() => {
         vi.clearAllMocks();
@@ -41,7 +37,7 @@ describe("createProjectTool", () => {
             navigate: "/project/new-123",
         });
         expect(mockCreateProject).toHaveBeenCalledWith(
-            expect.anything(),
+            undefined,
             expect.objectContaining({
                 name: "Diabetes Review",
                 description: "Systematic review of diabetes treatments",

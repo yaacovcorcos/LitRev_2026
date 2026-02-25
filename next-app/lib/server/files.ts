@@ -107,11 +107,12 @@ export async function createFileAsset(
   projectId: string,
   input: FileAssetInput
 ): Promise<FileAsset> {
-  await assertProjectAccess(scopeInput, projectId);
+  const scope = await assertProjectAccess(scopeInput, projectId);
   const created = await prisma.fileAsset.create({
     data: {
       id: input.id ?? undefined,
       projectId,
+      workspaceId: scope.workspaceId,
       studyId: input.studyId ?? undefined,
       kind: input.kind,
       format: input.format ?? undefined,
@@ -213,7 +214,7 @@ export async function uploadStudyFile(
   studyId: string,
   file: File
 ): Promise<FileAsset> {
-  await assertProjectAccess(scopeInput, projectId);
+  const scope = await assertProjectAccess(scopeInput, projectId);
   const ext = file.name.toLowerCase().slice(file.name.lastIndexOf(".") + 1);
   const safeName = sanitizeFilename(file.name);
   const objectPath = `projects/${projectId}/studies/${studyId}/${randomUUID()}-${safeName}`;
@@ -222,6 +223,7 @@ export async function uploadStudyFile(
   const created = await prisma.fileAsset.create({
     data: {
       projectId,
+      workspaceId: scope.workspaceId,
       studyId,
       kind: "source",
       format: ext || undefined,
@@ -264,7 +266,7 @@ export async function uploadChatAttachment(
   projectId: string,
   file: File
 ): Promise<{ fileAsset: FileAsset; extractedText: string }> {
-  await assertProjectAccess(scopeInput, projectId);
+  const scope = await assertProjectAccess(scopeInput, projectId);
   validateFileServer(file);
 
   const ext = file.name.toLowerCase().slice(file.name.lastIndexOf(".") + 1);
@@ -289,6 +291,7 @@ export async function uploadChatAttachment(
   const created = await prisma.fileAsset.create({
     data: {
       projectId,
+      workspaceId: scope.workspaceId,
       kind: "attachment",
       format: ext,
       filename: file.name,
@@ -350,7 +353,7 @@ export async function importStudyWithPdf(
   projectId: string,
   file: File
 ): Promise<{ study: Study; fileAsset: FileAsset }> {
-  await assertProjectAccess(scopeInput, projectId);
+  const scope = await assertProjectAccess(scopeInput, projectId);
   validateFileServer(file);
 
   const studyId = randomUUID();
@@ -368,6 +371,7 @@ export async function importStudyWithPdf(
         data: {
           id: studyId,
           projectId,
+          workspaceId: scope.workspaceId,
           title: file.name.replace(/\.[^/.]+$/, "") || "Untitled Study",
           authors: "Unknown",
           year: new Date().getFullYear(),
@@ -379,6 +383,7 @@ export async function importStudyWithPdf(
       const f = await tx.fileAsset.create({
         data: {
           projectId,
+          workspaceId: scope.workspaceId,
           studyId,
           kind: "source",
           format: ext || undefined,

@@ -9,10 +9,6 @@ vi.mock("@/lib/server/projects", () => ({
     listProjects: (...args: unknown[]) => mockListProjects(...args),
 }));
 
-vi.mock("@/lib/server/scope", () => ({
-    SINGLE_USER_SCOPE: { ownerId: "local-user", workspaceId: "local-workspace" },
-}));
-
 function makeProject(id: string, name: string) {
     return { id, name, status: "harvesting", modified: "2025-01-01T00:00:00.000Z" };
 }

@@ -18,13 +18,15 @@
 *Work that is entirely unimplemented or currently broken.*
 
 - [ ] Execute **Phase 10: Authentication & Multi-User Enablement**:
-  - Implement Auth.js v5 + `@auth/prisma-adapter`.
-  - Database sessions (not JWT). Login via Google OAuth + Resend Magic Links.
-  - Auto-provision single Workspace per user on signup.
-  - Migrate all Server Actions from `SINGLE_USER_SCOPE` placeholder to real session validation.
-  - Normalize conversation placeholder IDs to the same scope contract used by the rest of the service layer before session wiring.
-  - Add a first-login claim/migration path that attaches existing local single-user data to the authenticated account/workspace.
-  - Update API routes (`/api/ai/stream`, `/api/ai/transcribe`) with auth checks.
+  - Implement Better Auth + Prisma adapter (database sessions, not JWT) with Google OAuth + Resend magic links.
+  - Add Actor request context (`AsyncLocalStorage`) so server identity is derived once and consumed across actions/services without client-supplied `userId`/`workspaceId`.
+  - Auto-provision default Workspace + WorkspaceMember on signup.
+  - Migrate all Server Actions from placeholder scope (`SINGLE_USER_SCOPE` / conversation placeholders) to session-derived identity.
+  - Protect API routes (`/api/ai/stream`, `/api/ai/transcribe`) with server-side session checks; never rely on middleware alone as the security boundary.
+  - Add a transactional, idempotent first-login claim path that reassigns placeholder-owned data to the authenticated user/workspace and removes legacy bootstrap paths.
+  - Backfill and enforce denormalized `workspaceId` writes for `Study` and `FileAsset`.
+  - Replace production `sslmode=no-verify` DB behavior with proper TLS verification.
+  - Add release gate for auth rollout: run production `prisma migrate deploy/status` and verify critical indexes/objects before app deploy.
 - [ ] Execute **Phase 13: Inline Numbered Citations & Bibliography** (Design pending):
   - Schema: citation-to-study mapping, order tracking.
   - TipTap editor custom node for citations `[1]`.

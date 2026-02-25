@@ -66,47 +66,160 @@ import {
     type PRISMAStats,
 } from "@/lib/server/memory";
 import { withAction, type ActionResult } from "@/lib/server/action-utils";
+import { withAuth } from "@/lib/server/auth/session";
+import { prisma } from "@/lib/server/prisma";
+
+async function assertProjectAccess(userId: string, workspaceId: string, projectId: string): Promise<void> {
+    const project = await prisma.project.findFirst({
+        where: { id: projectId, ownerId: userId, workspaceId },
+        select: { id: true },
+    });
+    if (!project) {
+        throw new Error("Project not found or access denied");
+    }
+}
+
+async function assertStudyAccess(
+    userId: string,
+    workspaceId: string,
+    studyId: string,
+    expectedProjectId?: string,
+): Promise<{ projectId: string }> {
+    const study = await prisma.study.findFirst({
+        where: {
+            id: studyId,
+            ...(expectedProjectId ? { projectId: expectedProjectId } : {}),
+            project: { ownerId: userId, workspaceId },
+        },
+        select: { projectId: true },
+    });
+    if (!study) {
+        throw new Error("Study not found or access denied");
+    }
+    return { projectId: study.projectId };
+}
+
+async function assertUserMemoryAccess(userId: string, id: string): Promise<void> {
+    const memory = await prisma.userMemory.findFirst({
+        where: { id, userId },
+        select: { id: true },
+    });
+    if (!memory) {
+        throw new Error("User memory not found or access denied");
+    }
+}
+
+async function assertProjectMemoryAccess(
+    userId: string,
+    workspaceId: string,
+    id: string,
+): Promise<{ projectId: string }> {
+    const memory = await prisma.projectMemory.findFirst({
+        where: {
+            id,
+            project: { ownerId: userId, workspaceId },
+        },
+        select: { projectId: true },
+    });
+    if (!memory) {
+        throw new Error("Project memory not found or access denied");
+    }
+    return { projectId: memory.projectId };
+}
+
+async function assertStudyMemoryAccess(
+    userId: string,
+    workspaceId: string,
+    id: string,
+): Promise<{ projectId: string; studyId: string }> {
+    const memory = await prisma.studyMemory.findFirst({
+        where: {
+            id,
+            project: { ownerId: userId, workspaceId },
+        },
+        select: { projectId: true, studyId: true },
+    });
+    if (!memory) {
+        throw new Error("Study memory not found or access denied");
+    }
+    return { projectId: memory.projectId, studyId: memory.studyId };
+}
+
+async function assertRetrievalContextAccess(
+    userId: string,
+    workspaceId: string,
+    context: MemoryContext,
+): Promise<void> {
+    if (context.projectId) {
+        await assertProjectAccess(userId, workspaceId, context.projectId);
+    }
+    if (context.studyId) {
+        await assertStudyAccess(userId, workspaceId, context.studyId, context.projectId);
+    }
+}
 
 // ============================================================================
 // USER MEMORY ACTIONS
 // ============================================================================
 
 export async function setUserMemoryAction(input: CreateUserMemoryInput) {
-    return withAction(() => setUserMemory(input));
+    return withAction(() =>
+        withAuth(({ userId }) => setUserMemory({ ...input, userId })),
+    );
 }
 
-export async function getUserMemoryAction(userId: string, key: string) {
-    return withAction(() => getUserMemory(userId, key));
+export async function getUserMemoryAction(key: string) {
+    return withAction(() =>
+        withAuth(({ userId }) => getUserMemory(userId, key)),
+    );
 }
 
 export async function getUserMemoriesAction(
-    userId: string,
     options?: {
         type?: UserMemoryType;
         status?: UserMemoryStatus;
         tags?: string[];
     }
 ) {
-    return withAction(() => getUserMemories(userId, options));
+    return withAction(() =>
+        withAuth(({ userId }) => getUserMemories(userId, options)),
+    );
 }
 
 export async function updateUserMemoryAction(
     id: string,
     input: UpdateUserMemoryInput
 ) {
-    return withAction(() => updateUserMemory(id, input));
+    return withAction(() =>
+        withAuth(async ({ userId }) => {
+            await assertUserMemoryAccess(userId, id);
+            return updateUserMemory(id, input);
+        }),
+    );
 }
 
 export async function archiveUserMemoryAction(id: string) {
-    return withAction(() => archiveUserMemory(id));
+    return withAction(() =>
+        withAuth(async ({ userId }) => {
+            await assertUserMemoryAccess(userId, id);
+            return archiveUserMemory(id);
+        }),
+    );
 }
 
 export async function deleteUserMemoryAction(id: string) {
-    return withAction(() => deleteUserMemory(id));
+    return withAction(() =>
+        withAuth(async ({ userId }) => {
+            await assertUserMemoryAccess(userId, id);
+            return deleteUserMemory(id);
+        }),
+    );
 }
 
-export async function searchUserMemoriesAction(userId: string, query: string) {
-    return withAction(() => searchUserMemories(userId, query));
+export async function searchUserMemoriesAction(query: string) {
+    return withAction(() =>
+        withAuth(({ userId }) => searchUserMemories(userId, query)),
+    );
 }
 
 // ============================================================================
@@ -114,11 +227,21 @@ export async function searchUserMemoriesAction(userId: string, query: string) {
 // ============================================================================
 
 export async function createProjectMemoryAction(input: CreateProjectMemoryInput) {
-    return withAction(() => createProjectMemory(input));
+    return withAction(() =>
+        withAuth(async ({ userId, workspaceId }) => {
+            await assertProjectAccess(userId, workspaceId, input.projectId);
+            return createProjectMemory(input);
+        }),
+    );
 }
 
 export async function getProjectMemoryAction(id: string) {
-    return withAction(() => getProjectMemory(id));
+    return withAction(() =>
+        withAuth(async ({ userId, workspaceId }) => {
+            await assertProjectMemoryAccess(userId, workspaceId, id);
+            return getProjectMemory(id);
+        }),
+    );
 }
 
 export async function getProjectMemoriesAction(
@@ -131,33 +254,63 @@ export async function getProjectMemoriesAction(
         tags?: string[];
     }
 ) {
-    return withAction(() => getProjectMemories(projectId, options));
+    return withAction(() =>
+        withAuth(async ({ userId, workspaceId }) => {
+            await assertProjectAccess(userId, workspaceId, projectId);
+            return getProjectMemories(projectId, options);
+        }),
+    );
 }
 
 export async function updateProjectMemoryAction(
     id: string,
     input: UpdateProjectMemoryInput
 ) {
-    return withAction(() => updateProjectMemory(id, input));
+    return withAction(() =>
+        withAuth(async ({ userId, workspaceId }) => {
+            await assertProjectMemoryAccess(userId, workspaceId, id);
+            return updateProjectMemory(id, input);
+        }),
+    );
 }
 
 export async function archiveProjectMemoryAction(id: string) {
-    return withAction(() => archiveProjectMemory(id));
+    return withAction(() =>
+        withAuth(async ({ userId, workspaceId }) => {
+            await assertProjectMemoryAccess(userId, workspaceId, id);
+            return archiveProjectMemory(id);
+        }),
+    );
 }
 
 export async function deleteProjectMemoryAction(id: string) {
-    return withAction(() => deleteProjectMemory(id));
+    return withAction(() =>
+        withAuth(async ({ userId, workspaceId }) => {
+            await assertProjectMemoryAccess(userId, workspaceId, id);
+            return deleteProjectMemory(id);
+        }),
+    );
 }
 
 export async function searchProjectMemoriesAction(
     projectId: string,
     query: string
 ) {
-    return withAction(() => searchProjectMemories(projectId, query));
+    return withAction(() =>
+        withAuth(async ({ userId, workspaceId }) => {
+            await assertProjectAccess(userId, workspaceId, projectId);
+            return searchProjectMemories(projectId, query);
+        }),
+    );
 }
 
 export async function getProjectMemoryHistoryAction(id: string) {
-    return withAction(() => getProjectMemoryHistory(id));
+    return withAction(() =>
+        withAuth(async ({ userId, workspaceId }) => {
+            await assertProjectMemoryAccess(userId, workspaceId, id);
+            return getProjectMemoryHistory(id);
+        }),
+    );
 }
 
 // ============================================================================
@@ -165,11 +318,22 @@ export async function getProjectMemoryHistoryAction(id: string) {
 // ============================================================================
 
 export async function createStudyMemoryAction(input: CreateStudyMemoryInput) {
-    return withAction(() => createStudyMemory(input));
+    return withAction(() =>
+        withAuth(async ({ userId, workspaceId }) => {
+            await assertProjectAccess(userId, workspaceId, input.projectId);
+            await assertStudyAccess(userId, workspaceId, input.studyId, input.projectId);
+            return createStudyMemory(input);
+        }),
+    );
 }
 
 export async function getStudyMemoryAction(id: string) {
-    return withAction(() => getStudyMemory(id));
+    return withAction(() =>
+        withAuth(async ({ userId, workspaceId }) => {
+            await assertStudyMemoryAccess(userId, workspaceId, id);
+            return getStudyMemory(id);
+        }),
+    );
 }
 
 export async function getStudyMemoriesAction(
@@ -182,7 +346,12 @@ export async function getStudyMemoriesAction(
         tags?: string[];
     }
 ) {
-    return withAction(() => getStudyMemories(studyId, options));
+    return withAction(() =>
+        withAuth(async ({ userId, workspaceId }) => {
+            await assertStudyAccess(userId, workspaceId, studyId);
+            return getStudyMemories(studyId, options);
+        }),
+    );
 }
 
 export async function getProjectStudyMemoriesAction(
@@ -194,18 +363,33 @@ export async function getProjectStudyMemoriesAction(
         tags?: string[];
     }
 ) {
-    return withAction(() => getProjectStudyMemories(projectId, options));
+    return withAction(() =>
+        withAuth(async ({ userId, workspaceId }) => {
+            await assertProjectAccess(userId, workspaceId, projectId);
+            return getProjectStudyMemories(projectId, options);
+        }),
+    );
 }
 
 export async function updateStudyMemoryAction(
     id: string,
     input: UpdateStudyMemoryInput
 ) {
-    return withAction(() => updateStudyMemory(id, input));
+    return withAction(() =>
+        withAuth(async ({ userId, workspaceId }) => {
+            await assertStudyMemoryAccess(userId, workspaceId, id);
+            return updateStudyMemory(id, input);
+        }),
+    );
 }
 
 export async function deleteStudyMemoryAction(id: string) {
-    return withAction(() => deleteStudyMemory(id));
+    return withAction(() =>
+        withAuth(async ({ userId, workspaceId }) => {
+            await assertStudyMemoryAccess(userId, workspaceId, id);
+            return deleteStudyMemory(id);
+        }),
+    );
 }
 
 export async function searchStudyMemoriesAction(
@@ -213,17 +397,38 @@ export async function searchStudyMemoriesAction(
     query: string,
     options?: { studyId?: string }
 ) {
-    return withAction(() => searchStudyMemories(projectId, query, options));
+    return withAction(() =>
+        withAuth(async ({ userId, workspaceId }) => {
+            await assertProjectAccess(userId, workspaceId, projectId);
+            if (options?.studyId) {
+                await assertStudyAccess(userId, workspaceId, options.studyId, projectId);
+            }
+            return searchStudyMemories(projectId, query, options);
+        }),
+    );
 }
 
 export async function batchCreateStudyMemoriesAction(
     memories: CreateStudyMemoryInput[]
 ) {
-    return withAction(() => batchCreateStudyMemories(memories));
+    return withAction(() =>
+        withAuth(async ({ userId, workspaceId }) => {
+            for (const memory of memories) {
+                await assertProjectAccess(userId, workspaceId, memory.projectId);
+                await assertStudyAccess(userId, workspaceId, memory.studyId, memory.projectId);
+            }
+            return batchCreateStudyMemories(memories);
+        }),
+    );
 }
 
 export async function getStudyMemorySummaryAction(studyId: string) {
-    return withAction(() => getStudyMemorySummary(studyId));
+    return withAction(() =>
+        withAuth(async ({ userId, workspaceId }) => {
+            await assertStudyAccess(userId, workspaceId, studyId);
+            return getStudyMemorySummary(studyId);
+        }),
+    );
 }
 
 // ============================================================================
@@ -240,7 +445,12 @@ export async function retrieveMemoriesAction(
         includeStudy?: boolean;
     }
 ): Promise<ActionResult<RetrievedMemory[]>> {
-    return withAction(() => retrieveMemories(context, options));
+    return withAction(() =>
+        withAuth(async ({ userId, workspaceId }) => {
+            await assertRetrievalContextAccess(userId, workspaceId, context);
+            return retrieveMemories({ ...context, userId }, options);
+        }),
+    );
 }
 
 export async function retrieveAndFormatMemoriesAction(
@@ -250,30 +460,52 @@ export async function retrieveAndFormatMemoriesAction(
         minRelevance?: number;
     }
 ): Promise<ActionResult<string>> {
-    return withAction(() => retrieveAndFormatMemories(context, options));
+    return withAction(() =>
+        withAuth(async ({ userId, workspaceId }) => {
+            await assertRetrievalContextAccess(userId, workspaceId, context);
+            return retrieveAndFormatMemories({ ...context, userId }, options);
+        }),
+    );
 }
 
 export async function getMemoryRetrievalStatsAction(projectId: string) {
-    return withAction(() => getMemoryRetrievalStats(projectId));
+    return withAction(() =>
+        withAuth(async ({ userId, workspaceId }) => {
+            await assertProjectAccess(userId, workspaceId, projectId);
+            return getMemoryRetrievalStats(projectId);
+        }),
+    );
 }
 
-export async function getMemoryQualityMetricsAction(projectId: string, userId: string = "single-user") {
-    return withAction(() => getMemoryQualityMetrics(projectId, userId));
+export async function getMemoryQualityMetricsAction(projectId: string) {
+    return withAction(() =>
+        withAuth(async ({ userId, workspaceId }) => {
+            await assertProjectAccess(userId, workspaceId, projectId);
+            return getMemoryQualityMetrics(projectId, userId);
+        }),
+    );
 }
 
 export async function runMemoryMaintenanceAction(
     projectId: string,
-    options?: { userId?: string; dryRun?: boolean },
+    options?: { dryRun?: boolean },
 ) {
-    return withAction(() => runMemoryMaintenance({
-        projectId,
-        userId: options?.userId ?? "single-user",
-        dryRun: options?.dryRun ?? false,
-    }));
+    return withAction(() =>
+        withAuth(async ({ userId, workspaceId }) => {
+            await assertProjectAccess(userId, workspaceId, projectId);
+            return runMemoryMaintenance({
+                projectId,
+                userId,
+                dryRun: options?.dryRun ?? false,
+            });
+        }),
+    );
 }
 
 export async function getSemanticRolloutStatusAction() {
-    return withAction(() => validateSemanticRolloutStatus());
+    return withAction(() =>
+        withAuth(async () => validateSemanticRolloutStatus()),
+    );
 }
 
 // ============================================================================
@@ -281,7 +513,12 @@ export async function getSemanticRolloutStatusAction() {
 // ============================================================================
 
 export async function getPRISMAStatsAction(projectId: string): Promise<ActionResult<PRISMAStats>> {
-    return withAction(() => getPRISMAStats(projectId));
+    return withAction(() =>
+        withAuth(async ({ userId, workspaceId }) => {
+            await assertProjectAccess(userId, workspaceId, projectId);
+            return getPRISMAStats(projectId);
+        }),
+    );
 }
 
 // ============================================================================

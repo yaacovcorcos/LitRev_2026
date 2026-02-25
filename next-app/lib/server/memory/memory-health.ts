@@ -1,5 +1,6 @@
 import "server-only";
 
+import { getActorContext } from "@/lib/server/actor";
 import { prisma } from "@/lib/server/prisma";
 
 export interface SourceAcceptanceMetric {
@@ -24,6 +25,20 @@ export interface MemoryQualityMetrics {
         rejectedCount: number;
         contradictionCount: number;
     };
+}
+
+function resolveMetricsUserId(userId?: string): string {
+    const explicit = userId?.trim();
+    if (explicit) return explicit;
+
+    const actor = getActorContext();
+    if (actor?.userId) return actor.userId;
+
+    if (process.env.NODE_ENV === "test") {
+        return "local-user";
+    }
+
+    throw new Error("User ID is required for memory quality metrics.");
 }
 
 function safeDiv(numerator: number, denominator: number): number {
@@ -98,7 +113,8 @@ async function computeStaleUsageRate(retrievals: RetrievalRow[]): Promise<{ tota
     return { totalMentions, staleMentions };
 }
 
-export async function getMemoryQualityMetrics(projectId: string, userId: string = "single-user"): Promise<MemoryQualityMetrics> {
+export async function getMemoryQualityMetrics(projectId: string, userId?: string): Promise<MemoryQualityMetrics> {
+    const resolvedUserId = resolveMetricsUserId(userId);
     const [retrievals, projectAgg, studyAgg, userAgg, projectSources, userSources] = await Promise.all([
         prisma.memoryRetrieval.findMany({
             where: { projectId },
@@ -130,7 +146,7 @@ export async function getMemoryQualityMetrics(projectId: string, userId: string 
             },
         }),
         prisma.userMemory.aggregate({
-            where: { userId },
+            where: { userId: resolvedUserId },
             _sum: {
                 retrievalCount: true,
                 usedInAnswerCount: true,
@@ -146,7 +162,7 @@ export async function getMemoryQualityMetrics(projectId: string, userId: string 
         }),
         prisma.userMemory.groupBy({
             by: ["source"],
-            where: { userId },
+            where: { userId: resolvedUserId },
             _sum: { acceptedCount: true, rejectedCount: true },
         }),
     ]);
@@ -216,4 +232,3 @@ export async function getMemoryQualityMetrics(projectId: string, userId: string 
         },
     };
 }
-

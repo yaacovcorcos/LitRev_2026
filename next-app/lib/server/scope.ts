@@ -1,5 +1,7 @@
 import "server-only";
 
+import { getActorServiceScope } from "@/lib/server/actor";
+
 export type ServiceScope = {
   ownerId: string;
   workspaceId: string;
@@ -15,8 +17,14 @@ export const SINGLE_USER_SCOPE: ServiceScope = {
 export function requireScope(scope?: ScopeInput): ServiceScope {
   const ownerId = scope?.ownerId?.trim();
   const workspaceId = scope?.workspaceId?.trim();
-  if (!ownerId || !workspaceId) {
-    throw new Error("Service scope requires ownerId and workspaceId.");
+  if (ownerId && workspaceId) {
+    return { ownerId, workspaceId };
   }
-  return { ownerId, workspaceId };
+
+  const actorScope = getActorServiceScope();
+  if (actorScope) {
+    return actorScope;
+  }
+
+  throw new Error("Service scope requires ownerId and workspaceId.");
 }

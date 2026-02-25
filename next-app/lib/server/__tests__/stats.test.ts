@@ -2,15 +2,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/server/prisma", () => ({
   prisma: {
-    draft: { findUnique: vi.fn() },
-    protocol: { findUnique: vi.fn() },
+    draft: { findFirst: vi.fn() },
+    protocol: { findFirst: vi.fn() },
     study: { findMany: vi.fn() },
   },
 }));
 
 const { prisma } = await import("@/lib/server/prisma");
-const mockDraftFindUnique = vi.mocked(prisma.draft.findUnique);
-const mockProtocolFindUnique = vi.mocked(prisma.protocol.findUnique);
+const mockDraftFindFirst = vi.mocked(prisma.draft.findFirst);
+const mockProtocolFindFirst = vi.mocked(prisma.protocol.findFirst);
 const mockStudyFindMany = vi.mocked(prisma.study.findMany);
 
 const { getDraftStatsAction, getProtocolStatsAction, getLedgerStatsAction } =
@@ -20,13 +20,13 @@ describe("getDraftStatsAction", () => {
   beforeEach(() => vi.clearAllMocks());
 
   it("returns null when no draft exists", async () => {
-    mockDraftFindUnique.mockResolvedValue(null as never);
+    mockDraftFindFirst.mockResolvedValue(null as never);
     const result = await getDraftStatsAction("p1");
     expect(result).toEqual({ success: true, data: null });
   });
 
   it("counts sections with content as completed", async () => {
-    mockDraftFindUnique.mockResolvedValue({
+    mockDraftFindFirst.mockResolvedValue({
       id: "d1",
       projectId: "p1",
       state: {
@@ -55,7 +55,7 @@ describe("getDraftStatsAction", () => {
   });
 
   it("treats whitespace-only text as empty", async () => {
-    mockDraftFindUnique.mockResolvedValue({
+    mockDraftFindFirst.mockResolvedValue({
       id: "d1",
       projectId: "p1",
       state: {
@@ -78,7 +78,7 @@ describe("getDraftStatsAction", () => {
   });
 
   it("resolves labels for custom sections", async () => {
-    mockDraftFindUnique.mockResolvedValue({
+    mockDraftFindFirst.mockResolvedValue({
       id: "d1",
       projectId: "p1",
       state: {
@@ -102,13 +102,13 @@ describe("getProtocolStatsAction", () => {
   beforeEach(() => vi.clearAllMocks());
 
   it("returns null when no protocol exists", async () => {
-    mockProtocolFindUnique.mockResolvedValue(null as never);
+    mockProtocolFindFirst.mockResolvedValue(null as never);
     const result = await getProtocolStatsAction("p1");
     expect(result).toEqual({ success: true, data: null });
   });
 
   it("counts non-empty eligibility criteria", async () => {
-    mockProtocolFindUnique.mockResolvedValue({
+    mockProtocolFindFirst.mockResolvedValue({
       data: {
         researchQuestion: "What is X?",
         eligibility: {
@@ -128,7 +128,7 @@ describe("getProtocolStatsAction", () => {
   });
 
   it("filters blank criteria and whitespace-only entries", async () => {
-    mockProtocolFindUnique.mockResolvedValue({
+    mockProtocolFindFirst.mockResolvedValue({
       data: {
         researchQuestion: "",
         eligibility: {

@@ -11,8 +11,42 @@ import { reviewArtifact, undoArtifact, getArtifact } from "@/lib/server/agent/ar
 import { getRunTimeline } from "@/lib/server/agent/events";
 import { getAutonomyConfig, updateAutonomyConfig } from "@/lib/server/agent/autonomy";
 import { sanitizeErrorMessage } from "@/lib/server/action-utils";
+import { withAuth } from "@/lib/server/auth/session";
+import { prisma } from "@/lib/server/prisma";
 import type { ArtifactStatus } from "@/types/artifacts";
 import type { AutonomyPreset, AutonomyLevel } from "@/types/agent";
+
+async function assertArtifactAccess(artifactId: string, userId: string, workspaceId: string): Promise<void> {
+    const artifact = await prisma.artifact.findFirst({
+        where: {
+            id: artifactId,
+            OR: [
+                { userId },
+                { project: { ownerId: userId, workspaceId } },
+            ],
+        },
+        select: { id: true },
+    });
+    if (!artifact) {
+        throw new Error("Artifact not found or access denied");
+    }
+}
+
+async function assertRunAccess(runId: string, userId: string, workspaceId: string): Promise<void> {
+    const run = await prisma.agentRun.findFirst({
+        where: {
+            id: runId,
+            OR: [
+                { userId },
+                { project: { ownerId: userId, workspaceId } },
+            ],
+        },
+        select: { id: true },
+    });
+    if (!run) {
+        throw new Error("Run not found or access denied");
+    }
+}
 
 /**
  * Review an artifact (accept/reject/edit).
@@ -25,7 +59,10 @@ export async function reviewArtifactAction(
     editedPayload?: Record<string, unknown>,
 ) {
     try {
-        const result = await reviewArtifact(artifactId, status, reviewNote, editedPayload);
+        const result = await withAuth(async ({ userId, workspaceId }) => {
+            await assertArtifactAccess(artifactId, userId, workspaceId);
+            return reviewArtifact(artifactId, status, reviewNote, editedPayload);
+        });
 
         if (status === "accepted" && result.type === "study_update") {
             const payload = (result.payload ?? {}) as { studyId?: string };
@@ -49,7 +86,10 @@ export async function reviewArtifactAction(
  */
 export async function undoArtifactAction(artifactId: string) {
     try {
-        const result = await undoArtifact(artifactId);
+        const result = await withAuth(async ({ userId, workspaceId }) => {
+            await assertArtifactAccess(artifactId, userId, workspaceId);
+            return undoArtifact(artifactId);
+        });
         return { success: true, artifact: result };
     } catch (error) {
         return {
@@ -64,7 +104,10 @@ export async function undoArtifactAction(artifactId: string) {
  */
 export async function getArtifactAction(artifactId: string) {
     try {
-        const artifact = await getArtifact(artifactId);
+        const artifact = await withAuth(async ({ userId, workspaceId }) => {
+            await assertArtifactAccess(artifactId, userId, workspaceId);
+            return getArtifact(artifactId);
+        });
         if (!artifact) return { success: false, error: "Artifact not found" };
         return { success: true, artifact };
     } catch (error) {
@@ -80,7 +123,10 @@ export async function getArtifactAction(artifactId: string) {
  */
 export async function getRunTimelineAction(runId: string) {
     try {
-        const timeline = await getRunTimeline(runId);
+        const timeline = await withAuth(async ({ userId, workspaceId }) => {
+            await assertRunAccess(runId, userId, workspaceId);
+            return getRunTimeline(runId);
+        });
         return { success: true, timeline };
     } catch (error) {
         return {
@@ -93,9 +139,11 @@ export async function getRunTimelineAction(runId: string) {
 /**
  * Get current autonomy config
  */
-export async function getAutonomyConfigAction(projectId?: string, userId?: string) {
+export async function getAutonomyConfigAction(projectId?: string) {
     try {
-        const config = await getAutonomyConfig(userId || "single-user", projectId);
+        const config = await withAuth(({ userId }) =>
+            getAutonomyConfig(userId, projectId),
+        );
         return { success: true as const, config };
     } catch (error) {
         return {
@@ -112,10 +160,11 @@ export async function updateAutonomyAction(
     preset: AutonomyPreset,
     toolOverrides?: Record<string, AutonomyLevel>,
     projectId?: string,
-    userId?: string,
 ) {
     try {
-        const config = await updateAutonomyConfig(userId || "single-user", preset, toolOverrides, projectId);
+        const config = await withAuth(({ userId }) =>
+            updateAutonomyConfig(userId, preset, toolOverrides, projectId),
+        );
         return { success: true as const, config };
     } catch (error) {
         return {

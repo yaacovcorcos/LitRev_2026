@@ -1,7 +1,6 @@
 import { z } from "zod";
 import type { AITool, ToolExecutionContext } from "./base";
 import { createProject } from "@/lib/server/projects";
-import { SINGLE_USER_SCOPE } from "@/lib/server/scope";
 
 const inputSchema = z.object({
     name: z.string().min(1, "name is required").max(200, "name must be 200 characters or less"),
@@ -77,7 +76,7 @@ export const createProjectTool: AITool = {
         }
 
         try {
-            const project = await createProject(SINGLE_USER_SCOPE, {
+            const project = await createProject(undefined, {
                 name,
                 description,
                 status: "harvesting",

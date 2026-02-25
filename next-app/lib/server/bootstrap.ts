@@ -8,10 +8,16 @@ export async function ensureSingleUserSeed(scopeInput?: ScopeInput): Promise<Ser
 
   await prisma.user.upsert({
     where: { id: scope.ownerId },
-    update: {},
+    update: {
+      email: `${scope.ownerId}@local.invalid`,
+      name: "Local User",
+      emailVerified: false,
+    },
     create: {
       id: scope.ownerId,
+      email: `${scope.ownerId}@local.invalid`,
       name: "Local User",
+      emailVerified: false,
     },
   });
 

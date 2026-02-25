@@ -2,7 +2,6 @@ import { z } from "zod";
 import type { AITool, ToolExecutionContext } from "./base";
 import { extractTextFromContent, type NoteContent } from "@/lib/server/notes";
 import { getDraft } from "@/lib/server/drafts";
-import { SINGLE_USER_SCOPE } from "@/lib/server/scope";
 import { DRAFT_SECTIONS } from "@/types/draft";
 
 const inputSchema = z.object({
@@ -70,7 +69,7 @@ export const updateNoteTool: AITool = {
             // For append, read existing draft content to produce the combined text
             let finalContent = content;
             if (action === "append") {
-                const draft = await getDraft(SINGLE_USER_SCOPE, projectId);
+                const draft = await getDraft(undefined, projectId);
                 if (draft) {
                     const sectionKey = DRAFT_SECTIONS.find(
                         (s) => s.key === section.toLowerCase() || s.label.toLowerCase() === section.toLowerCase()

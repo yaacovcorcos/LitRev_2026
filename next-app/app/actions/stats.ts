@@ -2,6 +2,7 @@
 
 import { prisma } from "@/lib/server/prisma";
 import { withAction, type ActionResult } from "@/lib/server/action-utils";
+import { withAuth } from "@/lib/server/auth/session";
 import type { DraftState } from "@/lib/draftStorage";
 import type { ProtocolData } from "@/types/protocol";
 import { DRAFT_SECTIONS } from "@/types/draft";
@@ -30,35 +31,42 @@ function hasText(doc: unknown): boolean {
 export async function getDraftStatsAction(
   projectId: string,
 ): Promise<ActionResult<DraftStats | null>> {
-  return withAction(async () => {
-    const draft = await prisma.draft.findUnique({ where: { projectId } });
-    if (!draft) return null;
+  return withAction(() =>
+    withAuth(async ({ userId, workspaceId }) => {
+      const draft = await prisma.draft.findFirst({
+        where: {
+          projectId,
+          project: { ownerId: userId, workspaceId },
+        },
+      });
+      if (!draft) return null;
 
-    const state = draft.state as DraftState;
-    const sectionOrder = state.sectionOrder ?? [];
-    const contentBySection = state.contentBySection ?? {};
+      const state = draft.state as DraftState;
+      const sectionOrder = state.sectionOrder ?? [];
+      const contentBySection = state.contentBySection ?? {};
 
-    const sectionLabelMap = new Map<string, string>(
-      DRAFT_SECTIONS.map((s) => [s.key, s.label]),
-    );
+      const sectionLabelMap = new Map<string, string>(
+        DRAFT_SECTIONS.map((s) => [s.key, s.label]),
+      );
 
-    const sections = sectionOrder.map((key) => {
-      const label =
-        sectionLabelMap.get(key) ??
-        state.customSections?.[key]?.label ??
-        key;
-      const content = contentBySection[key];
-      return { key, label, hasContent: hasText(content) };
-    });
+      const sections = sectionOrder.map((key) => {
+        const label =
+          sectionLabelMap.get(key) ??
+          state.customSections?.[key]?.label ??
+          key;
+        const content = contentBySection[key];
+        return { key, label, hasContent: hasText(content) };
+      });
 
-    const completedCount = sections.filter((s) => s.hasContent).length;
+      const completedCount = sections.filter((s) => s.hasContent).length;
 
-    return {
-      sections,
-      completedCount,
-      totalCount: sections.length,
-    };
-  });
+      return {
+        sections,
+        completedCount,
+        totalCount: sections.length,
+      };
+    }),
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -74,23 +82,28 @@ export type ProtocolStats = {
 export async function getProtocolStatsAction(
   projectId: string,
 ): Promise<ActionResult<ProtocolStats | null>> {
-  return withAction(async () => {
-    const protocol = await prisma.protocol.findUnique({
-      where: { projectId },
-      select: { data: true, updatedAt: true },
-    });
-    if (!protocol) return null;
+  return withAction(() =>
+    withAuth(async ({ userId, workspaceId }) => {
+      const protocol = await prisma.protocol.findFirst({
+        where: {
+          projectId,
+          project: { ownerId: userId, workspaceId },
+        },
+        select: { data: true, updatedAt: true },
+      });
+      if (!protocol) return null;
 
-    const data = protocol.data as unknown as ProtocolData;
-    const inclusionCount = data.eligibility?.inclusion?.filter((s) => s.trim().length > 0).length ?? 0;
-    const exclusionCount = data.eligibility?.exclusion?.filter((s) => s.trim().length > 0).length ?? 0;
+      const data = protocol.data as unknown as ProtocolData;
+      const inclusionCount = data.eligibility?.inclusion?.filter((s) => s.trim().length > 0).length ?? 0;
+      const exclusionCount = data.eligibility?.exclusion?.filter((s) => s.trim().length > 0).length ?? 0;
 
-    return {
-      criteriaCount: inclusionCount + exclusionCount,
-      hasResearchQuestion: (data.researchQuestion ?? "").trim().length > 0,
-      updatedAt: protocol.updatedAt.toISOString(),
-    };
-  });
+      return {
+        criteriaCount: inclusionCount + exclusionCount,
+        hasResearchQuestion: (data.researchQuestion ?? "").trim().length > 0,
+        updatedAt: protocol.updatedAt.toISOString(),
+      };
+    }),
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -107,38 +120,43 @@ export type LedgerStats = {
 export async function getLedgerStatsAction(
   projectId: string,
 ): Promise<ActionResult<LedgerStats | null>> {
-  return withAction(async () => {
-    const studies = await prisma.study.findMany({
-      where: { projectId },
-      select: { status: true },
-    });
+  return withAction(() =>
+    withAuth(async ({ userId, workspaceId }) => {
+      const studies = await prisma.study.findMany({
+        where: {
+          projectId,
+          project: { ownerId: userId, workspaceId },
+        },
+        select: { status: true },
+      });
 
-    if (studies.length === 0) return null;
+      if (studies.length === 0) return null;
 
-    let extractedCount = 0;
-    let screenedCount = 0;
-    let pendingCount = 0;
+      let extractedCount = 0;
+      let screenedCount = 0;
+      let pendingCount = 0;
 
-    for (const study of studies) {
-      switch (study.status) {
-        case "extracted":
-          extractedCount++;
-          break;
-        case "excluded":
-        case "active":
-          screenedCount++;
-          break;
-        default:
-          pendingCount++;
-          break;
+      for (const study of studies) {
+        switch (study.status) {
+          case "extracted":
+            extractedCount++;
+            break;
+          case "excluded":
+          case "active":
+            screenedCount++;
+            break;
+          default:
+            pendingCount++;
+            break;
+        }
       }
-    }
 
-    return {
-      totalStudies: studies.length,
-      extractedCount,
-      screenedCount,
-      pendingCount,
-    };
-  });
+      return {
+        totalStudies: studies.length,
+        extractedCount,
+        screenedCount,
+        pendingCount,
+      };
+    }),
+  );
 }

@@ -48,7 +48,7 @@ describe.skipIf(!shouldRunDbTests)('Database Smoke Test', () => {
     expect(result).toBeDefined()
   })
 
-  it('creates single-user seed successfully', async () => {
+  it('creates local-user seed successfully', async () => {
     const scope = await ensureSingleUserSeed(SINGLE_USER_SCOPE)
 
     expect(scope).toEqual({
@@ -57,7 +57,7 @@ describe.skipIf(!shouldRunDbTests)('Database Smoke Test', () => {
     })
   })
 
-  it('single-user seed is idempotent (can be called multiple times)', async () => {
+  it('local-user seed is idempotent (can be called multiple times)', async () => {
     // Call twice - should not throw
     const scope1 = await ensureSingleUserSeed(SINGLE_USER_SCOPE)
     const scope2 = await ensureSingleUserSeed(SINGLE_USER_SCOPE)

@@ -29,6 +29,7 @@
     "@tiptap/extension-underline": "^3.17.1",
     "@tiptap/react": "^3.17.1",
     "@tiptap/starter-kit": "^3.17.1",
+    "better-auth": "^1.4.19",
     "cmdk": "^1.1.1",
     "dotenv": "^17.2.3",
     "fast-xml-parser": "^5.3.4",
@@ -40,7 +41,8 @@
     "react": "19.2.0",
     "react-dom": "19.2.0",
     "react-markdown": "^10.1.0",
-    "remark-gfm": "^4.0.1"
+    "remark-gfm": "^4.0.1",
+    "resend": "^6.9.2"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.9.1",

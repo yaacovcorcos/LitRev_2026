@@ -112,7 +112,6 @@ function getProvenance(tags: string[]): { label: string; icon: string } {
 
 // ── SINGLE USER ID (matches existing pattern) ───────────────────────────────
 
-const SINGLE_USER_ID = "single-user";
 
 // ── Tabs definition ──────────────────────────────────────────────────────────
 
@@ -195,7 +194,7 @@ function MemoryPageContent() {
 
     if (activeTab === "preferences" && userPreferences === null) {
       setTabLoading(true);
-      getUserMemoriesAction(SINGLE_USER_ID, { status: "active" })
+      getUserMemoriesAction({ status: "active" })
         .then((result) => setUserPreferences(result.success ? result.data as unknown as UserPref[] : []))
         .catch(() => setUserPreferences([]))
         .finally(() => setTabLoading(false));
@@ -213,7 +212,7 @@ function MemoryPageContent() {
       setTabLoading(true);
       Promise.all([
         getMemoryRetrievalStatsAction(id),
-        getMemoryQualityMetricsAction(id, SINGLE_USER_ID),
+        getMemoryQualityMetricsAction(id),
         getSemanticRolloutStatusAction(),
       ])
         .then(([retrieval, quality, rollout]) => {
@@ -276,7 +275,7 @@ function MemoryPageContent() {
     setMaintenanceRunning(true);
     setMaintenanceResult(null);
     try {
-      const result = await runMemoryMaintenanceAction(id, { userId: SINGLE_USER_ID, dryRun });
+      const result = await runMemoryMaintenanceAction(id, { dryRun });
       if (!result.success) throw new Error(result.error);
       const data = result.data;
       const archived = `${data.archived.user + data.archived.project + data.archived.study}`;
@@ -288,7 +287,7 @@ function MemoryPageContent() {
       );
       const [retrieval, quality] = await Promise.all([
         getMemoryRetrievalStatsAction(id),
-        getMemoryQualityMetricsAction(id, SINGLE_USER_ID),
+        getMemoryQualityMetricsAction(id),
       ]);
       setRetrievalStats(retrieval.success ? retrieval.data as RetrievalStats : null);
       setQualityMetrics(quality.success ? quality.data as MemoryQualityMetrics : null);

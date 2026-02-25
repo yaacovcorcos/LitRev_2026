@@ -1,7 +1,6 @@
 import { z } from "zod";
 import type { AITool, ToolExecutionContext } from "./base";
 import { listProjects, getProject } from "@/lib/server/projects";
-import { SINGLE_USER_SCOPE } from "@/lib/server/scope";
 
 const VALID_PAGES = ["overview", "protocol", "ledger", "draft"] as const;
 
@@ -65,7 +64,7 @@ export const openProjectTool: AITool = {
         try {
             // Lookup by projectId
             if (projectId) {
-                const project = await getProject(SINGLE_USER_SCOPE, projectId);
+                const project = await getProject(undefined, projectId);
                 if (!project) {
                     return { callId: "", result: null, error: `Project not found: ${projectId}` };
                 }
@@ -81,7 +80,7 @@ export const openProjectTool: AITool = {
             }
 
             // Lookup by name
-            const projects = await listProjects(SINGLE_USER_SCOPE);
+            const projects = await listProjects(undefined);
             const nameLower = name!.toLowerCase();
 
             // Try exact match first

@@ -1,7 +1,6 @@
 import { z } from "zod";
 import type { AITool, ToolExecutionContext } from "./base";
 import { listProjects } from "@/lib/server/projects";
-import { SINGLE_USER_SCOPE } from "@/lib/server/scope";
 import { prisma } from "@/lib/server/prisma";
 
 const MAX_RESULTS = 50;
@@ -49,7 +48,7 @@ export const listProjectsTool: AITool = {
         const query = (args.query as string | undefined)?.trim().toLowerCase();
 
         try {
-            let projects = await listProjects(SINGLE_USER_SCOPE);
+            let projects = await listProjects(undefined);
 
             if (query) {
                 projects = projects.filter((p) =>

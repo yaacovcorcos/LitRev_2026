@@ -2,13 +2,21 @@
 
 import type { DraftState } from "@/lib/draftStorage";
 import { getDraft, saveDraft } from "@/lib/server/drafts";
-import { SINGLE_USER_SCOPE } from "@/lib/server/scope";
 import { withAction, type ActionResult } from "@/lib/server/action-utils";
+import { withAuth } from "@/lib/server/auth/session";
 
 export async function getDraftAction(projectId: string): Promise<ActionResult<DraftState | null>> {
-  return withAction(() => getDraft(SINGLE_USER_SCOPE, projectId));
+  return withAction(() =>
+    withAuth(({ userId, workspaceId }) =>
+      getDraft({ ownerId: userId, workspaceId }, projectId),
+    ),
+  );
 }
 
 export async function saveDraftAction(projectId: string, state: DraftState): Promise<ActionResult<DraftState>> {
-  return withAction(() => saveDraft(SINGLE_USER_SCOPE, projectId, state));
+  return withAction(() =>
+    withAuth(({ userId, workspaceId }) =>
+      saveDraft({ ownerId: userId, workspaceId }, projectId, state),
+    ),
+  );
 }

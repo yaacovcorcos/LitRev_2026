@@ -43,12 +43,27 @@ import { classifyAIError } from "./error-classification";
 import { retryAsync, sleep } from "@/lib/server/utils/retry";
 import { resolveReasoningMode } from "@/lib/ai/reasoning-visibility";
 import { executeWithToolMiddleware, type ToolExecutionRequest, type ToolMiddleware } from "./tool-middleware";
+import { getActorContext } from "@/lib/server/actor";
 
 const MAX_STREAM_RETRY_ATTEMPTS = 3;
 const MAX_OVERFLOW_RECOVERY_ATTEMPTS = 3;
 const RETRY_MIN_DELAY_MS = 500;
 const RETRY_MAX_DELAY_MS = 15_000;
 const RETRY_JITTER = 0.15;
+
+function resolveAuthenticatedUserId(userId?: string): string {
+    const explicit = userId?.trim();
+    if (explicit) return explicit;
+
+    const actor = getActorContext();
+    if (actor?.userId) return actor.userId;
+
+    if (process.env.NODE_ENV === "test") {
+        return "local-user";
+    }
+
+    throw new Error("Missing authenticated user context for AI service call.");
+}
 
 class AIService {
     private providers = new Map<string, BaseAIProvider>();
@@ -702,7 +717,7 @@ class AIService {
     ): AsyncIterable<AIStreamChunk & { conversationId?: string }> {
         let projectId = options?.projectId;
         let studyId = options?.studyId;
-        const userId = options?.userId || "single-user";
+        const userId = resolveAuthenticatedUserId(options?.userId);
         const requestedMode: AgentMode = (options?.agentMode as AgentMode) || "general";
         const agentMode: AgentMode = normalizeAgentMode(requestedMode);
         const executionMode = !!(options?.planId && options?.selectedSteps?.length);
@@ -1514,7 +1529,7 @@ class AIService {
     ): Promise<{ response: AIResponse; conversationId: string }> {
         const projectId = options?.projectId;
         const studyId = options?.studyId;
-        const userId = options?.userId || "single-user"; // TODO: Replace with auth session lookup
+        const userId = resolveAuthenticatedUserId(options?.userId);
 
         // Get or create conversation
         const conversation = await getOrCreateConversation(context, projectId, studyId);
@@ -1579,7 +1594,7 @@ class AIService {
     ): AsyncIterable<AIStreamChunk & { conversationId?: string }> {
         const projectId = options?.projectId;
         const studyId = options?.studyId;
-        const userId = options?.userId || "single-user"; // TODO: Replace with auth session lookup
+        const userId = resolveAuthenticatedUserId(options?.userId);
 
         // Get or create conversation
         const conversation = await getOrCreateConversation(context, projectId, studyId);

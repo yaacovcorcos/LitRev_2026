@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/server/access", () => ({
-    assertProjectAccess: vi.fn(async () => undefined),
+    assertProjectAccess: vi.fn(async (scope: unknown) => scope),
 }));
 
 vi.mock("@/lib/server/prisma", () => ({

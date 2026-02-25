@@ -16,10 +16,6 @@ vi.mock("@/lib/server/prisma", () => ({
     },
 }));
 
-vi.mock("@/lib/server/scope", () => ({
-    SINGLE_USER_SCOPE: { ownerId: "local-user", workspaceId: "local-workspace" },
-}));
-
 function makeProject(id: string, name: string, status = "harvesting") {
     return { id, name, status, modified: "2025-01-01T00:00:00.000Z" };
 }

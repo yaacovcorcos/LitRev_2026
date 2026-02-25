@@ -12,6 +12,8 @@ import { normalizeStreamChunk, toWireChunk, type RuntimeStreamEvent } from "@/li
 import { ChatRuntime } from "@/lib/server/chat-runtime/runtime";
 import { RuntimeThreadContext } from "@/lib/server/chat-runtime/thread";
 import { StreamCoalescer } from "@/lib/server/ai/stream-coalescer";
+import { runWithActorContext } from "@/lib/server/actor";
+import { requireApiSession } from "@/lib/server/auth/session";
 
 // Force Node runtime for Prisma compatibility
 export const runtime = "nodejs";
@@ -38,74 +40,80 @@ const STREAM_EVENT_TYPES: RuntimeStreamEvent["type"][] = [
 
 export async function POST(request: NextRequest) {
     try {
+        const authResult = await requireApiSession(request);
+        if (!authResult.ok) return authResult.response;
+
         const body = await request.json();
         const { messages, userMessage, context, options, planId, selectedSteps } = body as {
             messages?: AIMessage[];
             userMessage?: string;
             context?: ConversationContext;
-            options?: ChatOptions & { projectId?: string; studyId?: string; userId?: string; agentMode?: AgentMode; page?: string; section?: string; planId?: string };
+            options?: ChatOptions & { projectId?: string; studyId?: string; agentMode?: AgentMode; page?: string; section?: string; planId?: string };
             planId?: string;
             selectedSteps?: number[];
         };
 
         const service = getAIService();
+        const scopedOptions = { ...options, userId: authResult.context.userId };
 
         // Create a readable stream
         const encoder = new TextEncoder();
         const stream = new ReadableStream({
             async start(controller) {
-                const runtimeRouter = new ChatRuntime();
-                const thread = new RuntimeThreadContext((event) => {
-                    const data = JSON.stringify(toWireChunk(event)) + "\n";
-                    controller.enqueue(encoder.encode(data));
-                });
-                const coalescer = new StreamCoalescer({
-                    onEmit: async (event) => {
-                        await runtimeRouter.dispatch(event, thread);
-                    },
-                });
-                runtimeRouter.use(async ({ event, thread: runtimeThread }, next) => {
-                    if (event.conversationId) runtimeThread.bindConversation(event.conversationId);
-                    if (event.type === "run_start" && event.runId) runtimeThread.bindRun(event.runId);
-                    if (event.type === "run_end") runtimeThread.bindRun(undefined);
-                    await next();
-                });
-                for (const eventType of STREAM_EVENT_TYPES) {
-                    runtimeRouter.on(eventType, async ({ event, thread: runtimeThread }) => {
-                        await runtimeThread.emit(event);
+                await runWithActorContext(authResult.context, async () => {
+                    const runtimeRouter = new ChatRuntime();
+                    const thread = new RuntimeThreadContext((event) => {
+                        const data = JSON.stringify(toWireChunk(event)) + "\n";
+                        controller.enqueue(encoder.encode(data));
                     });
-                }
+                    const coalescer = new StreamCoalescer({
+                        onEmit: async (event) => {
+                            await runtimeRouter.dispatch(event, thread);
+                        },
+                    });
+                    runtimeRouter.use(async ({ event, thread: runtimeThread }, next) => {
+                        if (event.conversationId) runtimeThread.bindConversation(event.conversationId);
+                        if (event.type === "run_start" && event.runId) runtimeThread.bindRun(event.runId);
+                        if (event.type === "run_end") runtimeThread.bindRun(undefined);
+                        await next();
+                    });
+                    for (const eventType of STREAM_EVENT_TYPES) {
+                        runtimeRouter.on(eventType, async ({ event, thread: runtimeThread }) => {
+                            await runtimeThread.emit(event);
+                        });
+                    }
 
-                try {
-                    // If using conversation memory — use artifact-aware streaming
-                    if ((userMessage || planId) && context) {
-                        const mergedPlanId = planId ?? options?.planId;
-                        for await (const chunk of service.streamChatWithArtifacts(
-                            userMessage || "", context, { ...options, planId: mergedPlanId, selectedSteps, signal: request.signal }
-                        )) {
-                            const normalized = normalizeStreamChunk(chunk);
-                            if (!normalized) continue;
-                            await coalescer.push(normalized);
+                    try {
+                        // If using conversation memory — use artifact-aware streaming
+                        if ((userMessage || planId) && context) {
+                            const mergedPlanId = planId ?? options?.planId;
+                            for await (const chunk of service.streamChatWithArtifacts(
+                                userMessage || "", context, { ...scopedOptions, planId: mergedPlanId, selectedSteps, signal: request.signal }
+                            )) {
+                                const normalized = normalizeStreamChunk(chunk);
+                                if (!normalized) continue;
+                                await coalescer.push(normalized);
+                            }
                         }
-                    }
-                    // Direct message streaming
-                    else if (messages && messages.length > 0) {
-                        for await (const chunk of service.streamChat(messages, { ...options, signal: request.signal })) {
-                            const normalized = normalizeStreamChunk(chunk);
-                            if (!normalized) continue;
-                            await coalescer.push(normalized);
+                        // Direct message streaming
+                        else if (messages && messages.length > 0) {
+                            for await (const chunk of service.streamChat(messages, { ...scopedOptions, signal: request.signal })) {
+                                const normalized = normalizeStreamChunk(chunk);
+                                if (!normalized) continue;
+                                await coalescer.push(normalized);
+                            }
+                        } else {
+                            await coalescer.push({ type: "error", error: "No messages provided" });
                         }
-                    } else {
-                        await coalescer.push({ type: "error", error: "No messages provided" });
+                    } catch (error) {
+                        const errorMessage = error instanceof Error ? error.message : "Unknown error";
+                        await coalescer.push({ type: "error", error: errorMessage });
+                    } finally {
+                        await coalescer.flushAll();
+                        await coalescer.stop();
+                        controller.close();
                     }
-                } catch (error) {
-                    const errorMessage = error instanceof Error ? error.message : "Unknown error";
-                    await coalescer.push({ type: "error", error: errorMessage });
-                } finally {
-                    await coalescer.flushAll();
-                    await coalescer.stop();
-                    controller.close();
-                }
+                });
             },
         });
 

@@ -1,6 +1,5 @@
 "use server";
 
-import { SINGLE_USER_SCOPE } from "@/lib/server/scope";
 import { assertProjectAccess } from "@/lib/server/access";
 import { getFileAssetById } from "@/lib/server/files";
 import { getStudy, updateStudy } from "@/lib/server/ledger";
@@ -14,6 +13,7 @@ import {
 import type { Study, StudyDetails } from "@/types/ledger";
 import { createMemoriesFromDeepAnalysis } from "@/lib/server/memory/study-memory";
 import { sanitizeErrorMessage } from "@/lib/server/action-utils";
+import { withAuth } from "@/lib/server/auth/session";
 
 export type ExtractionActionResult = {
     success: boolean;
@@ -57,89 +57,92 @@ export async function extractStudyFromPdfAction(
     try {
         // Acquire lock
         EXTRACTION_LOCKS.add(lockKey);
+        return await withAuth(async ({ userId, workspaceId }) => {
+            const scope = { ownerId: userId, workspaceId };
 
-        // Verify project access
-        await assertProjectAccess(SINGLE_USER_SCOPE, projectId);
+            // Verify project access
+            await assertProjectAccess(scope, projectId);
 
-        // Get the file asset
-        const file = await getFileAssetById(SINGLE_USER_SCOPE, projectId, fileAssetId);
-        if (!file) {
-            return {
-                success: false,
-                error: "File not found",
-                errorCode: "FILE_NOT_FOUND",
+            // Get the file asset
+            const file = await getFileAssetById(scope, projectId, fileAssetId);
+            if (!file) {
+                return {
+                    success: false,
+                    error: "File not found",
+                    errorCode: "FILE_NOT_FOUND",
+                };
+            }
+
+            // Validate it's a PDF
+            if (file.mimeType !== "application/pdf" && file.format !== "pdf") {
+                return {
+                    success: false,
+                    error: "File is not a PDF",
+                    errorCode: "NOT_PDF",
+                };
+            }
+
+            // Get existing study
+            const existingStudy = await getStudy(scope, projectId, studyId);
+            if (!existingStudy) {
+                return {
+                    success: false,
+                    error: "Study not found",
+                    errorCode: "STUDY_NOT_FOUND",
+                };
+            }
+
+            // Perform extraction
+            const extractionResult = await extractStudyFromPdf(file.storagePath, projectId);
+
+            if (!extractionResult.success) {
+                return {
+                    success: false,
+                    extractionResult,
+                    error: extractionResult.error || "Extraction failed",
+                    errorCode: extractionResult.errorCode,
+                };
+            }
+
+            // Prepare updates - always prefer AI-extracted data over filename defaults
+            const updates: {
+                title?: string;
+                authors?: string;
+                year?: number;
+                status?: Study["status"];
+                details?: Partial<StudyDetails>;
+            } = {
+                status: "extracted",
+                details: {
+                    ...extractionResult.details,
+                    source: "pdf-import",
+                },
             };
-        }
 
-        // Validate it's a PDF
-        if (file.mimeType !== "application/pdf" && file.format !== "pdf") {
+            if (extractionResult.title) {
+                updates.title = extractionResult.title;
+            }
+            if (extractionResult.authors) {
+                updates.authors = extractionResult.authors;
+            }
+            if (extractionResult.year) {
+                updates.year = extractionResult.year;
+            }
+
+            // Update the study (updateStudy merges details automatically)
+            const updatedStudy = await updateStudy(
+                scope,
+                projectId,
+                studyId,
+                updates
+            );
+
             return {
-                success: false,
-                error: "File is not a PDF",
-                errorCode: "NOT_PDF",
-            };
-        }
-
-        // Get existing study
-        const existingStudy = await getStudy(SINGLE_USER_SCOPE, projectId, studyId);
-        if (!existingStudy) {
-            return {
-                success: false,
-                error: "Study not found",
-                errorCode: "STUDY_NOT_FOUND",
-            };
-        }
-
-        // Perform extraction
-        const extractionResult = await extractStudyFromPdf(file.storagePath, projectId);
-
-        if (!extractionResult.success) {
-            return {
-                success: false,
+                success: true,
+                study: updatedStudy,
                 extractionResult,
-                error: extractionResult.error || "Extraction failed",
-                errorCode: extractionResult.errorCode,
             };
-        }
-
-        // Prepare updates - always prefer AI-extracted data over filename defaults
-        const updates: {
-            title?: string;
-            authors?: string;
-            year?: number;
-            status?: Study["status"];
-            details?: Partial<StudyDetails>;
-        } = {
-            status: "extracted",
-            details: {
-                ...extractionResult.details,
-                source: "pdf-import",
-            },
-        };
-
-        if (extractionResult.title) {
-            updates.title = extractionResult.title;
-        }
-        if (extractionResult.authors) {
-            updates.authors = extractionResult.authors;
-        }
-        if (extractionResult.year) {
-            updates.year = extractionResult.year;
-        }
-
-        // Update the study (updateStudy merges details automatically)
-        const updatedStudy = await updateStudy(
-            SINGLE_USER_SCOPE,
-            projectId,
-            studyId,
-            updates
-        );
-
-        return {
-            success: true,
-            study: updatedStudy,
-            extractionResult,
-        };
+        });
     } catch (err) {
         console.error("Extraction action error:", err);
         return {
@@ -173,66 +176,68 @@ export async function deepAnalyzeStudyAction(
 
     try {
         EXTRACTION_LOCKS.add(lockKey);
+        return await withAuth(async ({ userId, workspaceId }) => {
+            const scope = { ownerId: userId, workspaceId };
+            await assertProjectAccess(scope, projectId);
 
-        await assertProjectAccess(SINGLE_USER_SCOPE, projectId);
+            const file = await getFileAssetById(scope, projectId, fileAssetId);
+            if (!file) {
+                return { success: false, error: "File not found", errorCode: "FILE_NOT_FOUND" };
+            }
 
-        const file = await getFileAssetById(SINGLE_USER_SCOPE, projectId, fileAssetId);
-        if (!file) {
-            return { success: false, error: "File not found", errorCode: "FILE_NOT_FOUND" };
-        }
+            if (file.mimeType !== "application/pdf" && file.format !== "pdf") {
+                return { success: false, error: "File is not a PDF", errorCode: "NOT_PDF" };
+            }
 
-        if (file.mimeType !== "application/pdf" && file.format !== "pdf") {
-            return { success: false, error: "File is not a PDF", errorCode: "NOT_PDF" };
-        }
+            const existingStudy = await getStudy(scope, projectId, studyId);
+            if (!existingStudy) {
+                return { success: false, error: "Study not found", errorCode: "STUDY_NOT_FOUND" };
+            }
 
-        const existingStudy = await getStudy(SINGLE_USER_SCOPE, projectId, studyId);
-        if (!existingStudy) {
-            return { success: false, error: "Study not found", errorCode: "STUDY_NOT_FOUND" };
-        }
+            const result = await deepAnalyzeStudyFromPdf(
+                file.storagePath,
+                {
+                    title: existingStudy.title,
+                    authors: existingStudy.authors,
+                    details: existingStudy.details,
+                },
+                projectId
+            );
 
-        const result = await deepAnalyzeStudyFromPdf(
-            file.storagePath,
-            {
-                title: existingStudy.title,
-                authors: existingStudy.authors,
-                details: existingStudy.details,
-            },
-            projectId
-        );
+            if (!result.success) {
+                return {
+                    success: false,
+                    error: result.error || "Deep analysis failed",
+                    errorCode: result.errorCode,
+                };
+            }
 
-        if (!result.success) {
-            return {
-                success: false,
-                error: result.error || "Deep analysis failed",
-                errorCode: result.errorCode,
+            // Build updates from deep analysis result
+            const updates: { quality?: Study["quality"]; details?: Partial<StudyDetails> } = {
+                details: {
+                    ...result.details,
+                    deepAnalysisComplete: true,
+                },
             };
-        }
 
-        // Build updates from deep analysis result
-        const updates: { quality?: Study["quality"]; details?: Partial<StudyDetails> } = {
-            details: {
-                ...result.details,
-                deepAnalysisComplete: true,
-            },
-        };
+            if (result.quality) {
+                updates.quality = result.quality;
+            }
 
-        if (result.quality) {
-            updates.quality = result.quality;
-        }
+            const updatedStudy = await updateStudy(scope, projectId, studyId, updates);
 
-        const updatedStudy = await updateStudy(SINGLE_USER_SCOPE, projectId, studyId, updates);
+            // Create StudyMemory records from deep analysis
+            await createMemoriesFromDeepAnalysis(
+                studyId,
+                projectId,
+                { ...result.details, deepAnalysisComplete: true } as Record<string, unknown>,
+                result.quality
+            ).catch((err) => {
+                console.error("Failed to create study memories from deep analysis:", err);
+            });
 
-        // Create StudyMemory records from deep analysis
-        await createMemoriesFromDeepAnalysis(
-            studyId,
-            projectId,
-            { ...result.details, deepAnalysisComplete: true } as Record<string, unknown>,
-            result.quality
-        ).catch((err) => {
-            console.error("Failed to create study memories from deep analysis:", err);
+            return { success: true, study: updatedStudy };
         });
-
-        return { success: true, study: updatedStudy };
     } catch (err) {
         console.error("Deep analysis action error:", err);
         return {
