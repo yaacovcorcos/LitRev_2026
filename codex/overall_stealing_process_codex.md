@@ -363,6 +363,10 @@ Reasoning-visibility review checklist:
 4. Validate truncation/safety UX (clear truncation note, no broken message layout).
 5. Verify storage/replay behavior does not regress conversation load/perf.
 6. Run test gate (`npx tsc --noEmit`, `npx vitest run`) and capture any reasoning-specific regressions.
+7. Record closure evidence for Wave 3 sign-off:
+   - toggle screenshots/notes for `off` / `summary` / `full`
+   - provider-path notes (Anthropic and OpenAI behavior)
+   - basic timing notes (first assistant token, first reasoning token, replay load time)
 
 ### Wave 1: Reliability and Loop Guardrails
 

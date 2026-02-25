@@ -45,6 +45,14 @@ Upstream reference basis: cloned repos at `cloned_repos/openclaw_repo/` and `clo
      - `53f1e29` `feat(copilot): add streamed reasoning visibility with provider/runtime wiring`
    - Result: `next-app/lib/server/chat-runtime/` and reasoning stream plumbing now exist on current branch.
 
+6. Re-ran quality gates on the post-cherry-pick branch state:
+   - `npx tsc --noEmit` -> PASS
+   - `npx vitest run` -> PASS (`68` files passed; `636` tests passed, `11` skipped DB smoke tests)
+
+7. Cherry-pick conflict status:
+   - No manual conflict resolution was required.
+   - Cherry-picks applied cleanly with git auto-merge in touched overlap files (no `CONFLICT` markers, no abort/continue cycle).
+
 ## Wave 0 Checklist Status
 
 | Checklist Item | Status | Evidence |
@@ -56,6 +64,46 @@ Upstream reference basis: cloned repos at `cloned_repos/openclaw_repo/` and `clo
 | Provider handling (Anthropic + OpenAI explicit path) | Partial | Anthropic reasoning path present; OpenAI parity/toggle behavior still needs explicit implementation/review |
 | Truncation/safety UX for reasoning | Done (source review) | Truncation handling and note present in reasoning flow |
 | Storage/replay non-regression | Partial | Type/storage fields present; full UX replay acceptance still pending manual product review |
+
+## Wave 3 Reasoning Acceptance Criteria (Concrete)
+
+Owner for final manual acceptance: project owner/reviewer (Claude + user), with Codex implementation support.
+
+All items below must be green to close reasoning shipping criteria:
+
+1. Toggle behavior:
+   - `off`: no reasoning text rendered; assistant answer still streams normally.
+   - `summary`: condensed reasoning shown; no raw full chain text leak.
+   - `full`: full reasoning panel visible with collapse/expand behavior.
+2. Cross-surface parity:
+   - Same semantics on project copilot and `/ai` page.
+3. Provider behavior:
+   - Anthropic path emits and renders `reasoning_start/delta/end` correctly.
+   - OpenAI path is explicit and safe (supported summary mode or graceful no-op with no UI breakage).
+4. Layout/scroll stability:
+   - No message bubble overflow/regression on mobile/desktop.
+   - No broken markdown or panel collapse glitches.
+5. Replay/storage:
+   - Loading existing conversations with reasoning data renders without exceptions.
+   - Reasoning truncation indicator remains visible when previously truncated.
+6. Regression gate:
+   - `npx tsc --noEmit` and `npx vitest run` pass on final Wave 3 commit.
+
+## Baseline Capture Requirements For Wave 3 Closure
+
+Capture these before final Wave 3 sign-off (manual run is acceptable):
+
+1. One representative conversation replay on project copilot and `/ai` page, with screenshots/notes for:
+   - reasoning hidden
+   - reasoning summary
+   - reasoning full
+2. Basic UX timings (recorded in notes):
+   - time to first assistant token
+   - time to first reasoning token (when enabled)
+   - conversation load/replay time for a thread containing reasoning blocks
+3. Regression evidence:
+   - no console/runtime errors during replay
+   - no failed tests in gate commands
 
 ## Files Touched In This Wave (by Codex)
 
