@@ -39,6 +39,12 @@ describe("openProjectTool", () => {
         expect((result.result as { navigate: string }).navigate).toBe("/project/p1/protocol");
     });
 
+    it("maps overview page to the base project URL", async () => {
+        mockGetProject.mockResolvedValue(makeProject("p1", "Diabetes"));
+        const result = await openProjectTool.execute({ projectId: "p1", page: "overview" });
+        expect((result.result as { navigate: string }).navigate).toBe("/project/p1");
+    });
+
     it("returns error for unknown projectId", async () => {
         mockGetProject.mockResolvedValue(null);
         const result = await openProjectTool.execute({ projectId: "p-nonexistent" });

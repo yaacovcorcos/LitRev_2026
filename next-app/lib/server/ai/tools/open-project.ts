@@ -141,6 +141,9 @@ export const openProjectTool: AITool = {
 
 function buildProjectUrl(projectId: string, page?: string): string {
     const base = `/project/${projectId}`;
+    if (page === "overview") {
+        return base;
+    }
     if (page && VALID_PAGES.includes(page as typeof VALID_PAGES[number])) {
         return `${base}/${page}`;
     }
