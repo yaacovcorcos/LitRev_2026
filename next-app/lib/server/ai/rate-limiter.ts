@@ -29,6 +29,52 @@ export interface CacheMetricSummary {
 
 const cacheMetricsByProject = new Map<string, CacheMetricAccumulator>();
 
+export type UsageScopeInput =
+    | string
+    | null
+    | {
+        projectId?: string | null;
+        userId?: string | null;
+        workspaceId?: string | null;
+    };
+
+type UsageScope = {
+    projectId: string | null;
+    userId: string | null;
+    workspaceId: string | null;
+};
+
+function normalizeScope(input: UsageScopeInput): UsageScope {
+    if (typeof input === "string" || input === null) {
+        return {
+            projectId: input,
+            userId: null,
+            workspaceId: null,
+        };
+    }
+
+    return {
+        projectId: input.projectId ?? null,
+        userId: input.userId ?? null,
+        workspaceId: input.workspaceId ?? null,
+    };
+}
+
+function usageWhere(scope: UsageScope, createdAtGte: Date) {
+    if (scope.userId) {
+        return {
+            userId: scope.userId,
+            workspaceId: scope.workspaceId ?? undefined,
+            createdAt: { gte: createdAtGte },
+        };
+    }
+
+    return {
+        projectId: scope.projectId,
+        createdAt: { gte: createdAtGte },
+    };
+}
+
 function clampCachedTokens(inputTokens: number, cachedInputTokens: number): number {
     if (!Number.isFinite(cachedInputTokens) || cachedInputTokens <= 0) return 0;
     const safeInput = Math.max(0, inputTokens);
@@ -88,14 +134,12 @@ export function resetCacheMetricsForTests(): void {
  * Check if a project has exceeded the rate limit
  * Returns true if the request should be allowed
  */
-export async function checkRateLimit(projectId: string | null): Promise<boolean> {
+export async function checkRateLimit(scopeInput: UsageScopeInput): Promise<boolean> {
+    const scope = normalizeScope(scopeInput);
     const oneMinuteAgo = new Date(Date.now() - 60 * 1000);
 
     const recentRequests = await prisma.aIUsage.count({
-        where: {
-            projectId,
-            createdAt: { gte: oneMinuteAgo },
-        },
+        where: usageWhere(scope, oneMinuteAgo),
     });
 
     return recentRequests < AI_CONFIG.maxRequestsPerMinute;
@@ -105,15 +149,13 @@ export async function checkRateLimit(projectId: string | null): Promise<boolean>
  * Check if a project has exceeded the daily token limit
  * Returns true if the request should be allowed
  */
-export async function checkDailyTokenLimit(projectId: string | null): Promise<boolean> {
+export async function checkDailyTokenLimit(scopeInput: UsageScopeInput): Promise<boolean> {
+    const scope = normalizeScope(scopeInput);
     const startOfDay = new Date();
     startOfDay.setHours(0, 0, 0, 0);
 
     const todayUsage = await prisma.aIUsage.aggregate({
-        where: {
-            projectId,
-            createdAt: { gte: startOfDay },
-        },
+        where: usageWhere(scope, startOfDay),
         _sum: {
             inputTokens: true,
             outputTokens: true,
@@ -132,11 +174,23 @@ export async function recordUsage(
     model: string,
     inputTokens: number,
     outputTokens: number,
-    options?: { cachedInputTokens?: number }
+    options?: {
+        cachedInputTokens?: number;
+        userId?: string | null;
+        workspaceId?: string | null;
+    },
 ): Promise<void> {
+    const scope = normalizeScope({
+        projectId,
+        userId: options?.userId ?? null,
+        workspaceId: options?.workspaceId ?? null,
+    });
+
     await prisma.aIUsage.create({
         data: {
-            projectId,
+            projectId: scope.projectId,
+            userId: scope.userId,
+            workspaceId: scope.workspaceId,
             model,
             inputTokens,
             outputTokens,
@@ -190,10 +244,11 @@ export async function getUsageStats(projectId: string): Promise<UsageStats> {
  * Validate rate limits before a request
  * Throws an error if limits are exceeded
  */
-export async function validateRateLimits(projectId: string | null): Promise<void> {
+export async function validateRateLimits(scopeInput: UsageScopeInput): Promise<void> {
+    const scope = normalizeScope(scopeInput);
     const [rateOk, tokensOk] = await Promise.all([
-        checkRateLimit(projectId),
-        checkDailyTokenLimit(projectId),
+        checkRateLimit(scope),
+        checkDailyTokenLimit(scope),
     ]);
 
     if (!rateOk) {

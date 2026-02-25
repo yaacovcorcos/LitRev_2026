@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { SINGLE_USER_SCOPE } from "@/lib/server/scope";
 import { getProjectRecentActivity } from "@/lib/server/activity";
+
+const LOCAL_SCOPE = { ownerId: "local-user", workspaceId: "local-workspace" } as const;
 
 vi.mock("@/lib/server/prisma", () => ({
     prisma: {
@@ -64,7 +65,7 @@ describe("getProjectRecentActivity", () => {
             },
         ] as never);
 
-        const activity = await getProjectRecentActivity(SINGLE_USER_SCOPE, "project-1", 8);
+        const activity = await getProjectRecentActivity(LOCAL_SCOPE, "project-1", 8);
 
         expect(activity).toHaveLength(3);
         expect(activity.map((item) => item.kind)).toEqual([
@@ -96,7 +97,7 @@ describe("getProjectRecentActivity", () => {
             },
         ] as never);
 
-        const activity = await getProjectRecentActivity(SINGLE_USER_SCOPE, "project-1", 8);
+        const activity = await getProjectRecentActivity(LOCAL_SCOPE, "project-1", 8);
 
         expect(activity).toHaveLength(2);
         expect(activity[0]?.coalescedCount).toBe(2);
@@ -106,7 +107,7 @@ describe("getProjectRecentActivity", () => {
     it("throws when project is outside the scoped workspace/user", async () => {
         mockProjectFindFirst.mockResolvedValue(null as never);
 
-        await expect(getProjectRecentActivity(SINGLE_USER_SCOPE, "project-1", 8)).rejects.toThrow(
+        await expect(getProjectRecentActivity(LOCAL_SCOPE, "project-1", 8)).rejects.toThrow(
             "Project not found or access denied.",
         );
     });

@@ -9,24 +9,20 @@
 - **File Assets:** Supabase Storage bucket `study-assets` is public. File deletes automatically purge orphaned blobs.
 - **Schema:** Multi-tenant setup. Core models include `User`, `Workspace`, `WorkspaceMember`, `Project`, `Protocol`, `Draft`, `DraftVersion`, `Study`, `FileAsset`, `AIConversation`, `AIMessage`, `AIUsage`, `UserMemory`, `ProjectMemory`, `StudyMemory`, `ConversationSummary`, `MemoryRetrieval`, `MemoryEmbedding`, `AgentRun`, `RunEvent`, `Artifact`, `AutonomyConfig`, and `Note`.
 - **Draft Versioning:** `DraftVersion` stores immutable per-section snapshots for auditing/recovery. The `draft_diff` artifact apply flow writes to `DraftVersion` (provenance) + `Draft` (display). Notes table is no longer used for draft backup.
-- **Single-User Compatibility Layer:** Most app data paths already enforce `ownerId` + `workspaceId` scoping via `SINGLE_USER_SCOPE` placeholders. Conversation actions still use separate placeholder constants and must be normalized before auth cutover.
+- **Auth & Identity Boundary:** Better Auth (Prisma adapter, DB sessions) is live with Google + magic link support, server-side `withAuth()`/`requireApiSession()` boundaries, and request-scoped actor context (`AsyncLocalStorage`) that feeds service scope resolution.
+- **Legacy Claim Path:** First authenticated session runs an idempotent transactional claim that reassigns `local-user`/`local-workspace` ownership, backfills denormalized workspace IDs, and removes obsolete placeholder principal rows.
 - **Demo Seed Lifecycle:** Sample-project creation/reset is now server-seeded from a single transactional service (`lib/server/demo-project.ts`) that repopulates project, protocol, ledger, draft, notes, memory, and scoped seed conversation rows.
 - **Onboarding State Persistence:** Guided-setup defaults now persist in `UserMemory` (`guided_setup_new_projects`) and per-project onboarding state persists in `Project.progress.onboarding` (`enabledOverride`, `completedAt`, `skippedAt`) so create-flow routing is backend-driven and auth-ready.
-- **AI Cache Metrics (Current):** Cache-efficiency counters are currently process-local instrumentation in `lib/server/ai/rate-limiter.ts` (no DB persistence yet), so metrics reset on instance restart and are not queryable across deploys.
+- **AI Rate Limiting (Current):** Limit checks and usage writes now support authenticated user/workspace scope (with legacy project fallback), while cache-efficiency counters remain process-local instrumentation in `lib/server/ai/rate-limiter.ts`.
 
 ## Active Tasks
 *Work that is entirely unimplemented or currently broken.*
 
-- [ ] Execute **Phase 10: Authentication & Multi-User Enablement**:
-  - Implement Better Auth + Prisma adapter (database sessions, not JWT) with Google OAuth + Resend magic links.
-  - Add Actor request context (`AsyncLocalStorage`) so server identity is derived once and consumed across actions/services without client-supplied `userId`/`workspaceId`.
-  - Auto-provision default Workspace + WorkspaceMember on signup.
-  - Migrate all Server Actions from placeholder scope (`SINGLE_USER_SCOPE` / conversation placeholders) to session-derived identity.
-  - Protect API routes (`/api/ai/stream`, `/api/ai/transcribe`) with server-side session checks; never rely on middleware alone as the security boundary.
-  - Add a transactional, idempotent first-login claim path that reassigns placeholder-owned data to the authenticated user/workspace and removes legacy bootstrap paths.
-  - Backfill and enforce denormalized `workspaceId` writes for `Study` and `FileAsset`.
-  - Replace production `sslmode=no-verify` DB behavior with proper TLS verification.
-  - Add release gate for auth rollout: run production `prisma migrate deploy/status` and verify critical indexes/objects before app deploy.
+- [ ] Complete **Phase 10 rollout gate and production stabilization**:
+  - Run production `prisma migrate deploy` and `prisma migrate status` against the production direct connection.
+  - Verify critical DB objects/indexes in production before deploy (`AIMessage_conversationId_createdAt_id_idx`, memory pinned indexes, `MemoryEmbedding_embedding_hnsw_idx`).
+  - Execute auth cutover smoke checks (login, protected route denial, AI stream auth path, first-login claim visibility).
+  - Monitor 24-48h post-cutover for auth failures, AI route error/latency regression, and claim anomalies.
 - [ ] Execute **Phase 13: Inline Numbered Citations & Bibliography** (Design pending):
   - Schema: citation-to-study mapping, order tracking.
   - TipTap editor custom node for citations `[1]`.
@@ -48,6 +44,7 @@
 ## Recently Completed
 *Finished work that might still be fragile or require monitoring. Prune oldest first.*
 
+- [x] Phase 10 (build phases 1-4): landed Better Auth foundation + actor-context identity propagation, protected server actions/routes, replaced runtime placeholder scope usage, added transactional first-login claim, moved AI usage limiting toward user/workspace scope, and added auth hardening tests.
 - [x] Phase 12: Added `DraftVersion` table for immutable per-section draft history. `draft_diff` artifact now writes to `DraftVersion` instead of `Note`. Fixed `update_note` tool `append` action to read from Draft table.
 - [x] Hardened demo-seed integrity by typing transaction clients, scoping seeded conversation ownership to the active service scope, and aligning draft seed citations with linked evidence sections.
 - [x] Added backend-guided onboarding persistence: user-level default preference plus per-project onboarding state and completion markers used by create-flow routing.
@@ -55,7 +52,6 @@
 - [x] Phase 0-3: Core infra setup (Supabase, Prisma, basic schema, service layer).
 - [x] Phase 4-5: Projects/Protocol backend wired + LocalStorage migrated to DB.
 - [x] Phase 6-8: Ledger, Draft, and Copilot state persistence moved to DB.
-- [x] Phase 9: Blob storage for PDFs and export file generation mock.
 
 ## Deferred / Parking Lot
 *Ideas acknowledged but explicitly not active right now.*

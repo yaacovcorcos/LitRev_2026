@@ -54,7 +54,11 @@ export async function POST(request: NextRequest) {
         };
 
         const service = getAIService();
-        const scopedOptions = { ...options, userId: authResult.context.userId };
+        const scopedOptions = {
+            ...options,
+            userId: authResult.context.userId,
+            workspaceId: authResult.context.workspaceId,
+        };
 
         // Create a readable stream
         const encoder = new TextEncoder();

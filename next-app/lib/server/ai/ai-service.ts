@@ -65,6 +65,16 @@ function resolveAuthenticatedUserId(userId?: string): string {
     throw new Error("Missing authenticated user context for AI service call.");
 }
 
+function resolveAuthenticatedIdentity(options?: {
+    userId?: string;
+    workspaceId?: string;
+}): { userId: string; workspaceId?: string } {
+    const actor = getActorContext();
+    const userId = resolveAuthenticatedUserId(options?.userId);
+    const workspaceId = options?.workspaceId?.trim() || actor?.workspaceId;
+    return { userId, workspaceId };
+}
+
 class AIService {
     private providers = new Map<string, BaseAIProvider>();
     private activeProviderId: string = AI_CONFIG.defaultProvider;
@@ -256,10 +266,15 @@ class AIService {
         messages: AIMessage[],
         options?: ChatOptions
     ): Promise<AIResponse> {
+        const identity = resolveAuthenticatedIdentity(options);
         const projectId = options?.projectId ?? null;
 
         // Validate rate limits
-        await validateRateLimits(projectId);
+        await validateRateLimits({
+            projectId,
+            userId: identity.userId,
+            workspaceId: identity.workspaceId ?? null,
+        });
 
         const provider = this.resolveProvider(options?.model);
         const effectiveOptions = this.withProviderReasoningPolicy(options, provider);
@@ -282,7 +297,11 @@ class AIService {
             response.model,
             response.usage.inputTokens,
             response.usage.outputTokens,
-            { cachedInputTokens: response.usage.cachedInputTokens },
+            {
+                cachedInputTokens: response.usage.cachedInputTokens,
+                userId: identity.userId,
+                workspaceId: identity.workspaceId ?? null,
+            },
         );
 
         return response;
@@ -295,10 +314,15 @@ class AIService {
         messages: AIMessage[],
         options?: ChatOptions
     ): AsyncIterable<AIStreamChunk> {
+        const identity = resolveAuthenticatedIdentity(options);
         const projectId = options?.projectId ?? null;
 
         // Validate rate limits
-        await validateRateLimits(projectId);
+        await validateRateLimits({
+            projectId,
+            userId: identity.userId,
+            workspaceId: identity.workspaceId ?? null,
+        });
 
         const provider = this.resolveProvider(options?.model);
         const effectiveOptions = this.withProviderReasoningPolicy(options, provider);
@@ -322,7 +346,11 @@ class AIService {
             effectiveOptions?.model || AI_CONFIG.defaultModel,
             totalInputTokens,
             totalOutputTokens,
-            { cachedInputTokens: totalCachedInputTokens },
+            {
+                cachedInputTokens: totalCachedInputTokens,
+                userId: identity.userId,
+                workspaceId: identity.workspaceId ?? null,
+            },
         );
     }
 
@@ -717,7 +745,12 @@ class AIService {
     ): AsyncIterable<AIStreamChunk & { conversationId?: string }> {
         let projectId = options?.projectId;
         let studyId = options?.studyId;
-        const userId = resolveAuthenticatedUserId(options?.userId);
+        const identity = resolveAuthenticatedIdentity({
+            userId: options?.userId,
+            workspaceId: options?.workspaceId,
+        });
+        const userId = identity.userId;
+        const workspaceId = identity.workspaceId;
         const requestedMode: AgentMode = (options?.agentMode as AgentMode) || "general";
         const agentMode: AgentMode = normalizeAgentMode(requestedMode);
         const executionMode = !!(options?.planId && options?.selectedSteps?.length);
@@ -727,7 +760,11 @@ class AIService {
         // This prevents cross-conversation writes when client scope drifts from the actual thread.
         let conversation;
         if (options?.conversationId) {
-            const byId = await getConversationWithSummaryById(options.conversationId, userId);
+            const byId = await getConversationWithSummaryById(
+                options.conversationId,
+                userId,
+                workspaceId,
+            );
             if (byId) {
                 conversation = byId;
                 // Canonical ownership: conversation's stored scope is source of truth
@@ -737,7 +774,12 @@ class AIService {
                 throw new Error(`Invalid, archived, or inaccessible conversationId: ${options.conversationId}`);
             }
         } else {
-            conversation = await getConversationWithSummary(context, projectId, studyId);
+            conversation = await getConversationWithSummary(
+                context,
+                projectId,
+                studyId,
+                workspaceId ? { userId, workspaceId } : undefined,
+            );
         }
         const budget = getContextBudget(options?.model);
 
@@ -1529,10 +1571,20 @@ class AIService {
     ): Promise<{ response: AIResponse; conversationId: string }> {
         const projectId = options?.projectId;
         const studyId = options?.studyId;
-        const userId = resolveAuthenticatedUserId(options?.userId);
+        const identity = resolveAuthenticatedIdentity({
+            userId: options?.userId,
+            workspaceId: options?.workspaceId,
+        });
+        const userId = identity.userId;
+        const workspaceId = identity.workspaceId;
 
         // Get or create conversation
-        const conversation = await getOrCreateConversation(context, projectId, studyId);
+        const conversation = await getOrCreateConversation(
+            context,
+            projectId,
+            studyId,
+            workspaceId ? { userId, workspaceId } : undefined,
+        );
 
         // Retrieve relevant memories
         const memories = await retrieveMemories({
@@ -1594,10 +1646,20 @@ class AIService {
     ): AsyncIterable<AIStreamChunk & { conversationId?: string }> {
         const projectId = options?.projectId;
         const studyId = options?.studyId;
-        const userId = resolveAuthenticatedUserId(options?.userId);
+        const identity = resolveAuthenticatedIdentity({
+            userId: options?.userId,
+            workspaceId: options?.workspaceId,
+        });
+        const userId = identity.userId;
+        const workspaceId = identity.workspaceId;
 
         // Get or create conversation
-        const conversation = await getOrCreateConversation(context, projectId, studyId);
+        const conversation = await getOrCreateConversation(
+            context,
+            projectId,
+            studyId,
+            workspaceId ? { userId, workspaceId } : undefined,
+        );
 
         // Retrieve relevant memories
         const memories = await retrieveMemories({

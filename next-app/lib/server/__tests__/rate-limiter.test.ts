@@ -104,6 +104,18 @@ describe('Rate Limiter', () => {
         }),
       )
     })
+
+    it('uses user/workspace scope when userId is provided', async () => {
+      mockCount.mockResolvedValue(0)
+      await checkRateLimit({ projectId: 'project-xyz', userId: 'user-1', workspaceId: 'workspace-1' })
+
+      const callArgs = mockCount.mock.calls[0][0]
+      expect(callArgs.where).toMatchObject({
+        userId: 'user-1',
+        workspaceId: 'workspace-1',
+      })
+      expect(callArgs.where.projectId).toBeUndefined()
+    })
   })
 
   // -------------------------------------------------------------------------
@@ -178,6 +190,22 @@ describe('Rate Limiter', () => {
         }),
       )
     })
+
+    it('aggregates by user/workspace scope when userId is provided', async () => {
+      mockAggregate.mockResolvedValue({
+        _sum: { inputTokens: 1200, outputTokens: 800 },
+      })
+
+      const allowed = await checkDailyTokenLimit({ userId: 'user-2', workspaceId: 'workspace-2' })
+      expect(allowed).toBe(true)
+
+      const callArgs = mockAggregate.mock.calls[0][0]
+      expect(callArgs.where).toMatchObject({
+        userId: 'user-2',
+        workspaceId: 'workspace-2',
+      })
+      expect(callArgs.where.projectId).toBeUndefined()
+    })
   })
 
   // -------------------------------------------------------------------------
@@ -192,6 +220,8 @@ describe('Rate Limiter', () => {
       expect(mockCreate).toHaveBeenCalledWith({
         data: {
           projectId: 'project-1',
+          userId: null,
+          workspaceId: null,
           model: 'gpt-5.2',
           inputTokens: 500,
           outputTokens: 200,
@@ -206,6 +236,8 @@ describe('Rate Limiter', () => {
       expect(mockCreate).toHaveBeenCalledWith({
         data: {
           projectId: 'project-1',
+          userId: null,
+          workspaceId: null,
           model: 'gpt-5.2-mini',
           inputTokens: 0,
           outputTokens: 0,
@@ -237,12 +269,33 @@ describe('Rate Limiter', () => {
       expect(mockCreate).toHaveBeenCalledWith({
         data: {
           projectId: null,
+          userId: null,
+          workspaceId: null,
           model: 'gpt-5.2',
           inputTokens: 100,
           outputTokens: 20,
         },
       })
       expect(getCacheMetricSummary('global')).toBeNull()
+    })
+
+    it('records user/workspace scoped usage when identity is provided', async () => {
+      mockCreate.mockResolvedValue({})
+      await recordUsage('project-2', 'gpt-5.2', 250, 125, {
+        userId: 'user-3',
+        workspaceId: 'workspace-3',
+      })
+
+      expect(mockCreate).toHaveBeenCalledWith({
+        data: {
+          projectId: 'project-2',
+          userId: 'user-3',
+          workspaceId: 'workspace-3',
+          model: 'gpt-5.2',
+          inputTokens: 250,
+          outputTokens: 125,
+        },
+      })
     })
   })
 

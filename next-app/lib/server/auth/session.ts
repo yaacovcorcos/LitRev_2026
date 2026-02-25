@@ -3,6 +3,12 @@ import "server-only";
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
 import { runWithActorContext } from "@/lib/server/actor";
+import {
+  clearAuthFailures,
+  extractClientIp,
+  registerAuthFailure,
+} from "@/lib/server/auth/auth-rate-limit";
+import { claimLegacySingleUserData } from "@/lib/server/auth/claim";
 import { prisma } from "@/lib/server/prisma";
 
 const TEST_FALLBACK_CONTEXT = {
@@ -60,6 +66,27 @@ async function ensureDefaultWorkspaceMembership(userId: string, displayName?: st
   });
 }
 
+async function buildAuthContextFromSession(sessionUser: {
+  id: string;
+  name?: string | null;
+}): Promise<AuthContext> {
+  const membership = await ensureDefaultWorkspaceMembership(
+    sessionUser.id,
+    sessionUser.name,
+  );
+
+  await claimLegacySingleUserData({
+    userId: sessionUser.id,
+    workspaceId: membership.workspaceId,
+  });
+
+  return {
+    userId: sessionUser.id,
+    workspaceId: membership.workspaceId,
+    role: membership.role,
+  };
+}
+
 export async function getAuthContext(): Promise<AuthContext> {
   if (isTestEnv) {
     return { ...TEST_FALLBACK_CONTEXT };
@@ -72,16 +99,10 @@ export async function getAuthContext(): Promise<AuthContext> {
     throw new Error("Unauthorized");
   }
 
-  const membership = await ensureDefaultWorkspaceMembership(
-    session.user.id,
-    session.user.name,
-  );
-
-  return {
-    userId: session.user.id,
-    workspaceId: membership.workspaceId,
-    role: membership.role,
-  };
+  return buildAuthContextFromSession({
+    id: session.user.id,
+    name: session.user.name,
+  });
 }
 
 export async function withAuth<T>(fn: (context: AuthContext) => Promise<T>): Promise<T> {
@@ -97,8 +118,24 @@ export async function requireApiSession(
   }
 
   const session = await auth.api.getSession({ headers: request.headers });
+  const clientIp = extractClientIp(request.headers);
 
   if (!session) {
+    const limit = registerAuthFailure(clientIp);
+    if (!limit.allowed) {
+      return {
+        ok: false,
+        response: new Response(JSON.stringify({ error: "Too many authentication attempts" }), {
+          status: 429,
+          headers: {
+            "Content-Type": "application/json",
+            ...(limit.retryAfterSeconds
+              ? { "Retry-After": String(limit.retryAfterSeconds) }
+              : {}),
+          },
+        }),
+      };
+    }
     return {
       ok: false,
       response: new Response(JSON.stringify({ error: "Unauthorized" }), {
@@ -108,17 +145,14 @@ export async function requireApiSession(
     };
   }
 
-  const membership = await ensureDefaultWorkspaceMembership(
-    session.user.id,
-    session.user.name,
-  );
+  const context = await buildAuthContextFromSession({
+    id: session.user.id,
+    name: session.user.name,
+  });
+  clearAuthFailures(clientIp);
 
   return {
     ok: true,
-    context: {
-      userId: session.user.id,
-      workspaceId: membership.workspaceId,
-      role: membership.role,
-    },
+    context,
   };
 }

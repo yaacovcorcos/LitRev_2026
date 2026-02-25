@@ -23,6 +23,18 @@ export type SummaryData = {
 };
 
 export type AIConversationWithSummary = AIConversation & { summaryData?: SummaryData };
+export type ConversationOwnerScope = {
+    userId: string;
+    workspaceId: string;
+};
+
+function ownerWhere(owner?: ConversationOwnerScope) {
+    if (!owner) return {};
+    return {
+        userId: owner.userId,
+        workspaceId: owner.workspaceId,
+    };
+}
 
 function parseToolCalls(value: unknown): AIMessage["toolCalls"] {
     if (!Array.isArray(value)) return undefined;
@@ -40,11 +52,13 @@ function parseToolCalls(value: unknown): AIMessage["toolCalls"] {
 export async function getOrCreateConversation(
     context: ConversationContext,
     projectId?: string,
-    studyId?: string
+    studyId?: string,
+    owner?: ConversationOwnerScope,
 ): Promise<AIConversation> {
     // Try to find existing conversation
     const existing = await prisma.aIConversation.findFirst({
         where: {
+            ...ownerWhere(owner),
             context,
             projectId: projectId || null,
             studyId: studyId || null,
@@ -79,6 +93,10 @@ export async function getOrCreateConversation(
     // Create new conversation
     const created = await prisma.aIConversation.create({
         data: {
+            ...(owner ? {
+                userId: owner.userId,
+                workspaceId: owner.workspaceId,
+            } : {}),
             context,
             projectId: projectId || null,
             studyId: studyId || null,
@@ -105,10 +123,15 @@ export async function getOrCreateConversation(
 export async function createConversation(
     context: ConversationContext,
     projectId?: string,
-    studyId?: string
+    studyId?: string,
+    owner?: ConversationOwnerScope,
 ): Promise<AIConversation> {
     const created = await prisma.aIConversation.create({
         data: {
+            ...(owner ? {
+                userId: owner.userId,
+                workspaceId: owner.workspaceId,
+            } : {}),
             context,
             projectId: projectId || null,
             studyId: studyId || null,
@@ -133,10 +156,12 @@ export async function createConversation(
 export async function listConversations(
     context: ConversationContext,
     projectId?: string,
-    studyId?: string
+    studyId?: string,
+    owner?: ConversationOwnerScope,
 ): Promise<AIConversation[]> {
     const conversations = await prisma.aIConversation.findMany({
         where: {
+            ...ownerWhere(owner),
             context,
             projectId: projectId || null,
             studyId: studyId || null,
@@ -250,10 +275,12 @@ export async function deleteConversation(conversationId: string): Promise<void> 
 export async function getConversationWithSummary(
     context: ConversationContext,
     projectId?: string,
-    studyId?: string
+    studyId?: string,
+    owner?: ConversationOwnerScope,
 ): Promise<AIConversationWithSummary> {
     const existing = await prisma.aIConversation.findFirst({
         where: {
+            ...ownerWhere(owner),
             context,
             projectId: projectId || null,
             studyId: studyId || null,
@@ -299,6 +326,10 @@ export async function getConversationWithSummary(
     // Create new conversation
     const created = await prisma.aIConversation.create({
         data: {
+            ...(owner ? {
+                userId: owner.userId,
+                workspaceId: owner.workspaceId,
+            } : {}),
             context,
             projectId: projectId || null,
             studyId: studyId || null,
@@ -323,7 +354,8 @@ export async function getConversationWithSummary(
  */
 export async function getConversationWithSummaryById(
     conversationId: string,
-    expectedUserId?: string
+    expectedUserId?: string,
+    expectedWorkspaceId?: string,
 ): Promise<AIConversationWithSummary | null> {
     const existing = await prisma.aIConversation.findUnique({
         where: { id: conversationId },
@@ -339,6 +371,7 @@ export async function getConversationWithSummaryById(
     // Ownership guard when user scope is available.
     // Legacy rows may have null userId; allow those for backward compatibility.
     if (expectedUserId && existing.userId && existing.userId !== expectedUserId) return null;
+    if (expectedWorkspaceId && existing.workspaceId && existing.workspaceId !== expectedWorkspaceId) return null;
 
     const result: AIConversationWithSummary = {
         id: existing.id,

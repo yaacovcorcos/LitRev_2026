@@ -2,7 +2,6 @@ import "server-only";
 
 import type { DraftState } from "@/lib/draftStorage";
 import { createDefaultDraftState } from "@/lib/draftStorage";
-import { ensureSingleUserSeed } from "@/lib/server/bootstrap";
 import { prisma } from "@/lib/server/prisma";
 import { getProject } from "@/lib/server/projects";
 import { requireScope, type ServiceScope, type ScopeInput } from "@/lib/server/scope";
@@ -711,8 +710,7 @@ async function seedDemoProject(scope: ServiceScope, reset: boolean): Promise<voi
 export async function openOrCreateDemoProject(
   scopeInput: ScopeInput
 ): Promise<Project> {
-  const scoped = await ensureSingleUserSeed(scopeInput);
-  const scope = requireScope(scoped);
+  const scope = requireScope(scopeInput);
   await seedDemoProject(scope, false);
   const project = await getProject(scope, DEMO_PROJECT_ID);
   if (!project) {
@@ -728,8 +726,7 @@ export async function resetDemoProject(
   if (projectId.trim() !== DEMO_PROJECT_ID) {
     throw new Error("Only the sample project can be reset via this action.");
   }
-  const scoped = await ensureSingleUserSeed(scopeInput);
-  const scope = requireScope(scoped);
+  const scope = requireScope(scopeInput);
   await seedDemoProject(scope, true);
   const project = await getProject(scope, DEMO_PROJECT_ID);
   if (!project) {

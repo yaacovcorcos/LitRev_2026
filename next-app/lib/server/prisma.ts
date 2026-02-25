@@ -8,9 +8,7 @@ const DATABASE_URL = process.env.DATABASE_URL || "";
 const isLocalDb = DATABASE_URL.includes("localhost") || DATABASE_URL.includes("127.0.0.1");
 
 const pool = new Pool({
-  connectionString: isLocalDb
-    ? DATABASE_URL
-    : DATABASE_URL.replace('&sslmode=require', '&sslmode=no-verify'),
+  connectionString: DATABASE_URL,
   connectionTimeoutMillis: isLocalDb ? 5000 : 30000,
   idleTimeoutMillis: isLocalDb ? 10000 : 30000,
   max: 10,

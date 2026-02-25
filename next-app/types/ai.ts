@@ -88,6 +88,11 @@ export type ChatOptions = {
     conversationId?: string;
     projectId?: string;
     studyId?: string;
+    /**
+     * Server-derived identity fields. API handlers overwrite these from session context.
+     */
+    userId?: string;
+    workspaceId?: string;
     userMessageAttachments?: ConversationMessageAttachment[];
     stream?: boolean;
     signal?: AbortSignal;

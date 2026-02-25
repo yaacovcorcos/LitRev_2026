@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createProject } from "@/lib/server/projects";
-import { SINGLE_USER_SCOPE } from "@/lib/server/scope";
 import { createDefaultProtocolData } from "@/types/protocol";
+
+const LOCAL_SCOPE = { ownerId: "local-user", workspaceId: "local-workspace" } as const;
 
 vi.mock("@/lib/server/prisma", () => ({
   prisma: {
@@ -33,7 +34,7 @@ describe("createProject", () => {
       modified: createdAt,
     } as never);
 
-    await createProject(SINGLE_USER_SCOPE, {
+    await createProject(LOCAL_SCOPE, {
       id: "proj-1",
       name: "Test project",
       description: "",

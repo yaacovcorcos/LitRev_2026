@@ -17,22 +17,59 @@ const shouldRunDbTests = process.env.RUN_DB_TESTS === '1'
 
 // Conditionally import to avoid connection errors when not running DB tests
 let prisma: typeof import('@/lib/server/prisma').prisma
-let ensureSingleUserSeed: typeof import('@/lib/server/bootstrap').ensureSingleUserSeed
-let SINGLE_USER_SCOPE: typeof import('@/lib/server/scope').SINGLE_USER_SCOPE
 let openOrCreateDemoProject: typeof import('@/lib/server/demo-project').openOrCreateDemoProject
 let resetDemoProject: typeof import('@/lib/server/demo-project').resetDemoProject
 let DEMO_PROJECT_ID: typeof import('@/lib/demo/constants').DEMO_PROJECT_ID
+const LOCAL_SCOPE = { ownerId: 'local-user', workspaceId: 'local-workspace' } as const
+
+async function ensureLocalScopePrincipal() {
+  await prisma.user.upsert({
+    where: { id: LOCAL_SCOPE.ownerId },
+    update: {
+      email: `${LOCAL_SCOPE.ownerId}@local.invalid`,
+      name: 'Local User',
+      emailVerified: false,
+    },
+    create: {
+      id: LOCAL_SCOPE.ownerId,
+      email: `${LOCAL_SCOPE.ownerId}@local.invalid`,
+      name: 'Local User',
+      emailVerified: false,
+    },
+  })
+
+  await prisma.workspace.upsert({
+    where: { id: LOCAL_SCOPE.workspaceId },
+    update: { name: 'Local Workspace' },
+    create: {
+      id: LOCAL_SCOPE.workspaceId,
+      name: 'Local Workspace',
+    },
+  })
+
+  await prisma.workspaceMember.upsert({
+    where: {
+      workspaceId_userId: {
+        workspaceId: LOCAL_SCOPE.workspaceId,
+        userId: LOCAL_SCOPE.ownerId,
+      },
+    },
+    update: { role: 'owner' },
+    create: {
+      workspaceId: LOCAL_SCOPE.workspaceId,
+      userId: LOCAL_SCOPE.ownerId,
+      role: 'owner',
+    },
+  })
+
+  return LOCAL_SCOPE
+}
 
 describe.skipIf(!shouldRunDbTests)('Database Smoke Test', () => {
   beforeAll(async () => {
     // Dynamic imports to prevent connection attempts when tests are skipped
     const prismaModule = await import('@/lib/server/prisma')
-    const bootstrapModule = await import('@/lib/server/bootstrap')
-    const scopeModule = await import('@/lib/server/scope')
-
     prisma = prismaModule.prisma
-    ensureSingleUserSeed = bootstrapModule.ensureSingleUserSeed
-    SINGLE_USER_SCOPE = scopeModule.SINGLE_USER_SCOPE
   })
 
   afterAll(async () => {
@@ -49,7 +86,7 @@ describe.skipIf(!shouldRunDbTests)('Database Smoke Test', () => {
   })
 
   it('creates local-user seed successfully', async () => {
-    const scope = await ensureSingleUserSeed(SINGLE_USER_SCOPE)
+    const scope = await ensureLocalScopePrincipal()
 
     expect(scope).toEqual({
       ownerId: 'local-user',
@@ -59,8 +96,8 @@ describe.skipIf(!shouldRunDbTests)('Database Smoke Test', () => {
 
   it('local-user seed is idempotent (can be called multiple times)', async () => {
     // Call twice - should not throw
-    const scope1 = await ensureSingleUserSeed(SINGLE_USER_SCOPE)
-    const scope2 = await ensureSingleUserSeed(SINGLE_USER_SCOPE)
+    const scope1 = await ensureLocalScopePrincipal()
+    const scope2 = await ensureLocalScopePrincipal()
 
     expect(scope1).toEqual(scope2)
   })
@@ -103,20 +140,16 @@ describe.skipIf(!shouldRunDbTests)('Database Smoke Test', () => {
 describe.skipIf(!shouldRunDbTests)('Demo Project Integration', () => {
   beforeAll(async () => {
     const prismaModule = await import('@/lib/server/prisma')
-    const bootstrapModule = await import('@/lib/server/bootstrap')
-    const scopeModule = await import('@/lib/server/scope')
     const demoModule = await import('@/lib/server/demo-project')
     const constants = await import('@/lib/demo/constants')
 
     prisma = prismaModule.prisma
-    ensureSingleUserSeed = bootstrapModule.ensureSingleUserSeed
-    SINGLE_USER_SCOPE = scopeModule.SINGLE_USER_SCOPE
     openOrCreateDemoProject = demoModule.openOrCreateDemoProject
     resetDemoProject = demoModule.resetDemoProject
     DEMO_PROJECT_ID = constants.DEMO_PROJECT_ID
 
     // Ensure seed user exists before demo tests
-    await ensureSingleUserSeed(SINGLE_USER_SCOPE)
+    await ensureLocalScopePrincipal()
   })
 
   afterAll(async () => {
@@ -134,7 +167,7 @@ describe.skipIf(!shouldRunDbTests)('Demo Project Integration', () => {
   })
 
   it('openOrCreateDemoProject seeds the full demo project', async () => {
-    const project = await openOrCreateDemoProject(SINGLE_USER_SCOPE)
+    const project = await openOrCreateDemoProject(LOCAL_SCOPE)
 
     expect(project).toBeDefined()
     expect(project.id).toBe(DEMO_PROJECT_ID)
@@ -165,8 +198,8 @@ describe.skipIf(!shouldRunDbTests)('Demo Project Integration', () => {
   })
 
   it('openOrCreateDemoProject is idempotent', async () => {
-    const project1 = await openOrCreateDemoProject(SINGLE_USER_SCOPE)
-    const project2 = await openOrCreateDemoProject(SINGLE_USER_SCOPE)
+    const project1 = await openOrCreateDemoProject(LOCAL_SCOPE)
+    const project2 = await openOrCreateDemoProject(LOCAL_SCOPE)
 
     expect(project1.id).toBe(project2.id)
 
@@ -181,7 +214,7 @@ describe.skipIf(!shouldRunDbTests)('Demo Project Integration', () => {
     const beforeReset = await prisma.study.findMany({ where: { projectId: DEMO_PROJECT_ID } })
     expect(beforeReset.length).toBe(11)
 
-    const project = await resetDemoProject(SINGLE_USER_SCOPE, DEMO_PROJECT_ID)
+    const project = await resetDemoProject(LOCAL_SCOPE, DEMO_PROJECT_ID)
     expect(project).toBeDefined()
     expect(project.id).toBe(DEMO_PROJECT_ID)
 
@@ -196,13 +229,13 @@ describe.skipIf(!shouldRunDbTests)('Demo Project Integration', () => {
 
   it('resetDemoProject rejects non-demo project IDs', async () => {
     await expect(
-      resetDemoProject(SINGLE_USER_SCOPE, 'some-other-project')
+      resetDemoProject(LOCAL_SCOPE, 'some-other-project')
     ).rejects.toThrow('Only the sample project can be reset')
   })
 
   it('project deletion cascades to all FK-linked models', async () => {
     // Ensure demo project exists with all seeded data
-    await openOrCreateDemoProject(SINGLE_USER_SCOPE)
+    await openOrCreateDemoProject(LOCAL_SCOPE)
 
     // Seed rows for models not covered by the demo seed
     await prisma.agentRun.create({
