@@ -13,7 +13,7 @@ Upstream reference basis: cloned repos at `cloned_repos/openclaw_repo/` and `clo
 | Wave 1 | Complete | Retry/error taxonomy, overflow recovery, doom-loop threshold, transcript repair + safety-margin checks, provider error metadata |
 | Wave 2 | Complete | Adaptive compaction, mode-aware truncation (head/tail/both), fence-safe truncation, structured summary prompt upgrades |
 | Wave 3 | Complete | Stream coalescing + fence-safe chunk flushing, reasoning visibility mode controls (`off`/`summary`/`full`), provider-aware reasoning policy, fuzzy text-match hardening |
-| Wave 4 | Not started | Retrieval/middleware/cache metrics + conditional contracts |
+| Wave 4 | Complete | Advanced retrieval reranking primitives (hybrid + temporal decay + MMR, flag-gated), internal tool middleware pipeline, cache-efficiency metrics instrumentation |
 | Wave 5 | Not started | Autonomy expansion planning |
 
 ## Wave 0 Actions Completed
@@ -351,10 +351,89 @@ Capture these before final Wave 3 sign-off (manual run is acceptable):
    - `npx tsc --noEmit` -> PASS
    - `TMPDIR=/Users/yaacovcorcos/LitRev_2026/next-app/.tmp-vitest npx vitest run` -> PASS (`76` files passed; `697` tests passed, `11` skipped DB smoke tests)
 
+## Wave 4 Actions Completed
+
+1. Added internal tool-execution middleware pipeline (before/after hooks, block/transform support):
+   - `next-app/lib/server/ai/tool-middleware.ts` (new)
+   - wired into `next-app/lib/server/ai/ai-service.ts` for both:
+     - direct tool loop execution (`streamChatWithTools`)
+     - autonomy-aware tool execution (`executeToolWithAutonomy`)
+   - supports:
+     - `before` hook request transforms
+     - `before` hook blocking via `null` return
+     - `after` hook result transforms
+     - fail-open behavior for `after` hook exceptions (logged, result preserved)
+
+2. Added cache-efficiency instrumentation in usage path:
+   - `next-app/lib/server/ai/rate-limiter.ts`
+   - added:
+     - `recordCacheMetric(...)`
+     - `getCacheMetricSummary(...)`
+     - `resetCacheMetricsForTests(...)`
+   - `recordUsage(...)` now records cache metrics from optional `cachedInputTokens`.
+   - cache metrics are process-local instrumentation (no schema migration required), tracking:
+     - request count
+     - cache-hit request count
+     - total input tokens
+     - total cached input tokens
+     - hit-rate and cached-token-rate
+
+3. Added provider usage plumbing for cached token metadata:
+   - `next-app/types/ai.ts`:
+     - `usage.cachedInputTokens?: number`
+   - `next-app/lib/server/ai/providers/openai.ts`:
+     - parses `prompt_tokens_details.cached_tokens` for both non-stream and stream final usage chunks
+   - `next-app/lib/server/ai/ai-service.ts`:
+     - passes cached-token metadata into `recordUsage(...)` for `chat(...)` and `streamChat(...)`.
+
+4. Added retrieval quality upgrades (flag-gated) in memory retrieval:
+   - `next-app/lib/server/memory/memory-retrieval.ts`
+   - new primitives:
+     - `hybridFuseScore(...)` (0.7 semantic / 0.3 lexical)
+     - `temporalDecayMultiplier(...)` with 30-day half-life
+     - `applyTemporalDecayScore(...)`
+     - `rerankWithMMR(...)` with `lambda=0.7`
+   - retrieval integration:
+     - advanced reranking behind server flag: `ENABLE_MEMORY_ADVANCED_RERANKING`
+     - expanded candidate pool when enabled (`3x` max memories before final rerank)
+     - deterministic memories preserved first
+     - fused keyword/semantic candidates reranked with temporal decay + MMR when enabled
+   - metadata support:
+     - `RetrievedMemory.updatedAt?: string` propagated through lexical/semantic gathering.
+
+5. Added semantic retrieval timestamp propagation:
+   - `next-app/lib/server/memory/semantic-memory.ts`
+   - semantic hydrated results now include `updatedAt` to support temporal decay in shared retrieval pipeline.
+
+6. Structured-output contracts status in Wave 4:
+   - intentionally deferred (conditional trigger not met).
+   - no schema/tool-contract migration was introduced in this wave.
+
+## Wave 4 Tests and Gates
+
+1. Added tests:
+   - `next-app/lib/server/__tests__/tool-middleware.test.ts` (new)
+     - before transform
+     - before block
+     - after transform
+     - after fail-open on throw
+   - updated `next-app/lib/server/__tests__/rate-limiter.test.ts`
+     - cache metric accumulation
+     - cached-token clamp behavior
+     - recordUsage cache metric integration
+   - updated `next-app/lib/server/__tests__/memory-retrieval.test.ts`
+     - hybrid fusion score formula
+     - temporal decay half-life behavior
+     - MMR diversity reranking behavior
+
+2. Post-Wave-4 gate results:
+   - `npx tsc --noEmit` -> PASS
+   - `TMPDIR=/Users/yaacovcorcos/LitRev_2026/next-app/.tmp-vitest npx vitest run` -> PASS (`77` files passed; `708` tests passed, `11` skipped DB smoke tests)
+
 ## Recommended Next Step
 
-1. Start Wave 4 (retrieval reranking upgrades, internal middleware hooks, cache efficiency metrics).
-2. After Wave 4 stabilizes, execute Wave 5 autonomy-expansion planning (subagents + richer policy layers) as a dedicated follow-on plan.
+1. Start Wave 5: create the dedicated autonomy-expansion planning task (subagents, richer policy layers, rollout guards, entry criteria) now that Waves 1-4 are complete.
+2. Run manual product sign-off for reasoning replay/layout acceptance items still listed under Wave 3 acceptance notes.
 
 ## Wave 1 Review Follow-up (Claude Feedback Resolution)
 
@@ -480,3 +559,36 @@ Capture these before final Wave 3 sign-off (manual run is acceptable):
 6. Post-follow-up gates:
    - `npx tsc --noEmit` -> PASS
    - `npx vitest run` -> PASS (`72` files passed; `675` tests passed, `11` skipped DB smoke tests)
+
+## Wave 2 Navigation/Approval Follow-up (Post-Review)
+
+1. Fixed dropped navigation stream events in API route:
+   - updated `next-app/app/api/ai/stream/route.ts`
+   - added `"navigate"` to `STREAM_EVENT_TYPES` so emitted navigate chunks are actually routed to runtime handlers.
+
+2. Added `/ai` page navigation chunk handling (safe client-side routing):
+   - updated `next-app/app/ai/page.tsx`
+   - wired `navigate` chunk handling in both stream paths (`handleSend` + plan execution stream).
+   - added `isNavigationSafe(...)` + `router.push(...)` guard, matching project-copilot safety behavior.
+
+3. Hardened `create_project` approval flow to enforce explicit confirmation:
+   - updated `next-app/lib/server/ai/tools/create-project.ts`
+   - tool now returns a structured approval-needed response unless called with `approved=true`.
+   - preserves hard cap at autonomy level 2.
+
+4. Added/updated tests for these follow-ups:
+   - updated `next-app/lib/server/__tests__/create-project-tool.test.ts`
+   - updated `next-app/lib/server/__tests__/chat-runtime-events.test.ts`
+   - approval gate and navigate event round-trip now covered.
+
+5. Nullability/type consistency cleanup required by regenerated Prisma client:
+   - updated `next-app/lib/server/ai/ai-service.ts`
+   - updated `next-app/lib/server/ai/rate-limiter.ts`
+   - updated `next-app/lib/server/agent/artifacts.ts`
+   - updated `next-app/lib/server/agent/run.ts`
+   - normalized `projectId` handling (`null` vs `undefined` vs required-string call sites), added defensive guards for project-less artifact apply paths.
+
+6. Gates after follow-up:
+   - `npx prisma generate` -> PASS
+   - `npx tsc --noEmit` -> PASS
+   - `TMPDIR=/Users/yaacovcorcos/LitRev_2026/next-app/.tmp-vitest npx vitest run` -> PASS (`84` files passed; `763` tests passed, `11` skipped DB smoke tests)

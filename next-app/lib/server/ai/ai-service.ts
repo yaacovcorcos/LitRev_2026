@@ -36,12 +36,13 @@ import { withChoicesExtraction } from "./choices-extractor";
 import { sanitizeGeneratedConversationTitle, buildFallbackConversationTitle } from "./title-generator";
 import { appendScopingReportComment, buildFallbackScopingReport, detectScopingHandoffSelection, extractLatestScopingReport, extractScopingReportFromText, stripScopingReportMarkup } from "./scoping";
 import { prisma } from "@/lib/server/prisma";
-import type { ProtocolData } from "@/types/protocol";
+import { isProtocolPopulated, type ProtocolData } from "@/types/protocol";
 import type { PlanPayload, ScopingReportPayload } from "@/types/artifacts";
 import { ensureConversationRunAvailability } from "@/lib/server/chat-runtime/conversation-run-lock";
 import { classifyAIError } from "./error-classification";
 import { retryAsync, sleep } from "@/lib/server/utils/retry";
 import { resolveReasoningMode } from "@/lib/ai/reasoning-visibility";
+import { executeWithToolMiddleware, type ToolExecutionRequest, type ToolMiddleware } from "./tool-middleware";
 
 const MAX_STREAM_RETRY_ATTEMPTS = 3;
 const MAX_OVERFLOW_RECOVERY_ATTEMPTS = 3;
@@ -52,8 +53,10 @@ const RETRY_JITTER = 0.15;
 class AIService {
     private providers = new Map<string, BaseAIProvider>();
     private activeProviderId: string = AI_CONFIG.defaultProvider;
+    private readonly toolMiddlewares: ToolMiddleware[];
 
-    constructor() {
+    constructor(config?: { toolMiddlewares?: ToolMiddleware[] }) {
+        this.toolMiddlewares = [...(config?.toolMiddlewares ?? [])];
         // Register all configured providers
         const openai = getOpenAIProvider();
         if (openai.isConfigured()) this.registerProvider(openai);
@@ -66,6 +69,27 @@ class AIService {
 
         const google = getGoogleProvider();
         if (google.isConfigured()) this.registerProvider(google);
+    }
+
+    registerToolMiddleware(middleware: ToolMiddleware): void {
+        this.toolMiddlewares.push(middleware);
+    }
+
+    clearToolMiddlewares(): void {
+        this.toolMiddlewares.length = 0;
+    }
+
+    private async executeToolWithMiddleware(request: ToolExecutionRequest): Promise<ToolResult> {
+        return executeWithToolMiddleware(
+            request,
+            this.toolMiddlewares,
+            async (resolvedRequest) => executeTool(
+                resolvedRequest.name,
+                resolvedRequest.args,
+                resolvedRequest.callId,
+                resolvedRequest.context
+            ),
+        );
     }
 
     /**
@@ -242,7 +266,8 @@ class AIService {
             projectId,
             response.model,
             response.usage.inputTokens,
-            response.usage.outputTokens
+            response.usage.outputTokens,
+            { cachedInputTokens: response.usage.cachedInputTokens },
         );
 
         return response;
@@ -265,11 +290,13 @@ class AIService {
 
         let totalInputTokens = 0;
         let totalOutputTokens = 0;
+        let totalCachedInputTokens = 0;
 
         for await (const chunk of provider.streamChat(messages, effectiveOptions)) {
             if (chunk.type === "done" && chunk.usage) {
                 totalInputTokens = chunk.usage.inputTokens;
                 totalOutputTokens = chunk.usage.outputTokens;
+                totalCachedInputTokens = chunk.usage.cachedInputTokens ?? 0;
             }
             yield chunk;
         }
@@ -279,7 +306,8 @@ class AIService {
             projectId,
             effectiveOptions?.model || AI_CONFIG.defaultModel,
             totalInputTokens,
-            totalOutputTokens
+            totalOutputTokens,
+            { cachedInputTokens: totalCachedInputTokens },
         );
     }
 
@@ -293,7 +321,7 @@ class AIService {
         messages: AIMessage[],
         options?: ChatOptions
     ): AsyncIterable<AIStreamChunk> {
-        const hasProjectScope = !!(options?.projectId && options.projectId !== "global");
+        const hasProjectScope = !!(options?.projectId && options.projectId !== null);
         const scope = hasProjectScope ? "project" as const : "global" as const;
         const toolDefs = getToolDefinitions(undefined, scope);
         if (toolDefs.length === 0) {
@@ -451,7 +479,11 @@ class AIService {
             currentMessages.push(assistantMsg);
 
             for (const tc of collectedToolCalls) {
-                const result = await executeTool(tc.name, tc.arguments, tc.id);
+                const result = await this.executeToolWithMiddleware({
+                    name: tc.name,
+                    args: tc.arguments,
+                    callId: tc.id,
+                });
                 yield { type: "tool_result", toolName: tc.name, toolResult: result };
 
                 const toolMsg: AIMessage = {
@@ -483,7 +515,7 @@ class AIService {
         cachedAutonomyConfig?: Awaited<ReturnType<typeof getAutonomyConfig>>
     ): AsyncGenerator<AIStreamChunk, ToolResult> {
         // Defense-in-depth: reject tool calls not allowed in the current mode
-        const scope = projectId && projectId !== "global" ? "project" as const : "global" as const;
+        const scope = projectId && projectId !== null ? "project" as const : "global" as const;
         if (!isToolAllowedInScope(toolCall.name, scope)) {
             const result: ToolResult = {
                 callId: toolCall.id,
@@ -549,12 +581,17 @@ class AIService {
         // Level >= 2: execute the tool
         const toolSpan = startToolSpan(traceSpan ?? NOOP_SPAN, toolCall.name, toolCall.arguments);
         const startTime = Date.now();
-        const result = await executeTool(toolCall.name, toolCall.arguments, toolCall.id, {
-            projectId,
-            studyId,
-            userId,
-            runId,
-            autonomyLevel: level,
+        const result = await this.executeToolWithMiddleware({
+            name: toolCall.name,
+            args: toolCall.arguments,
+            callId: toolCall.id,
+            context: {
+                projectId,
+                studyId,
+                userId,
+                runId,
+                autonomyLevel: level,
+            },
         });
         const durationMs = Date.now() - startTime;
         toolSpan.update({ output: { success: !result.error, durationMs } }).end();
@@ -695,7 +732,7 @@ class AIService {
 
         // Start an agent run
         const run = await startRun({
-            projectId: projectId || "global",
+            projectId: projectId || null,
             conversationId: conversation.id,
             userId,
             trigger: "user_message",
@@ -705,7 +742,7 @@ class AIService {
 
         // Start Langfuse trace for this run
         const trace = startRunTrace(run.id, {
-            projectId: projectId || "global",
+            projectId: projectId ?? "global",
             agentMode,
             model: options?.model,
             userId,
@@ -755,7 +792,9 @@ class AIService {
             const memoriesContext = formatMemoriesForContext(retrievedMemories);
             ctxSpan.update({ output: {
                 hasMemories: !!memoriesContext,
-                hasProtocol: !!protocolRow,
+                hasProtocol: protocolRow?.data
+                    ? isProtocolPopulated(protocolRow.data as unknown as ProtocolData)
+                    : false,
                 hasStudy: !!studyRow,
                 studyLedger: studyLedger?.counts,
                 hasProject: !!projectRow,
@@ -772,7 +811,7 @@ class AIService {
                 ? buildLedgerContext(studyLedger.counts, studyLedger.list, studyLedger.truncated)
                 : "";
             const autonomyContext = buildAutonomyContext(autonomyConfig.preset);
-            const isGlobalAssistantScope = (!projectId || projectId === "global") && options?.page === "ai";
+            const isGlobalAssistantScope = !projectId && options?.page === "ai";
             const scopeInstruction = isGlobalAssistantScope
                 ? `\n\n[SCOPE]\nYou are operating in global AI command-center mode. You may compare and synthesize across projects when [ADDITIONAL_CONTEXT] includes multi-project data. If project-level details are missing, state what is unknown and suggest the next best step.`
                 : "";
@@ -889,7 +928,7 @@ class AIService {
                 ...compactedHistory,
             ];
 
-            const toolScope = projectId && projectId !== "global" ? "project" as const : "global" as const;
+            const toolScope = projectId && projectId !== null ? "project" as const : "global" as const;
             const modeToolDefs = getContextualToolDefinitions({
                 agentMode,
                 scope: toolScope,
@@ -920,7 +959,7 @@ class AIService {
                 });
                 const artifact = await createArtifact({
                     runId: run.id,
-                    projectId: projectId || "global",
+                    projectId: projectId || null,
                     conversationId: conversation.id,
                     userId,
                     type: "plan",
@@ -951,16 +990,18 @@ class AIService {
                     yield { type: "progress", progressMessage: "Creating a plan...", conversationId: conversation.id };
 
                     const planPayload = await generatePlan(userMessage, {
-                        projectId: projectId || "global",
-                        hasProtocol: false, // TODO: check project state
-                        studyCount: 0,
+                        projectId: projectId ?? "global",
+                        hasProtocol: protocolRow?.data
+                            ? isProtocolPopulated(protocolRow.data as unknown as ProtocolData)
+                            : false,
+                        studyCount: studyLedger?.counts?.total ?? 0,
                     }, modeToolNames);
 
                     // If plan validation failed, skip plan artifact and continue normal chat
                     if (planPayload) {
                         const artifact = await createArtifact({
                             runId: run.id,
-                            projectId: projectId || "global",
+                            projectId: projectId || null,
                             conversationId: conversation.id,
                             userId,
                             type: "plan",
@@ -992,7 +1033,10 @@ class AIService {
                 const { startPlanExecution } = await import("@/lib/server/agent/plan-execution");
                 yield { type: "progress", progressMessage: "Starting plan execution...", conversationId: conversation.id };
 
-                planData = await startPlanExecution(options.planId, options.selectedSteps, projectId || "global");
+                if (!projectId) {
+                    throw new Error("Plan execution requires project context.");
+                }
+                planData = await startPlanExecution(options.planId, options.selectedSteps, projectId);
 
                 // Build execution instruction
                 const stepList = planData.selectedSteps
@@ -1019,7 +1063,7 @@ class AIService {
             const toolDefs = modeToolDefs;
             const chatOptions: ChatOptions = {
                 ...options,
-                projectId: projectId || "global",
+                projectId: projectId ?? undefined,
                 ...(toolDefs.length > 0 ? { tools: toolDefs } : {}),
             };
 
@@ -1231,6 +1275,13 @@ class AIService {
 
                     yield { type: "tool_result", toolName: tc.name, toolResult, conversationId: conversation.id };
 
+                    // Emit navigate event when tool result includes a navigation URL
+                    const navigateUrl = (toolResult.result as Record<string, unknown> | null)?.navigate;
+                    if (typeof navigateUrl === "string" && navigateUrl) {
+                        const navigateProjectId = (toolResult.result as Record<string, unknown>)?.projectId as string | undefined;
+                        yield { type: "navigate", navigateUrl, navigateProjectId, conversationId: conversation.id };
+                    }
+
                     const toolMsg: AIMessage = {
                         id: `tool-result-${tc.id}`,
                         role: "tool",
@@ -1335,7 +1386,7 @@ class AIService {
                 const title = topic ? `Scoping: ${topic}`.slice(0, 120) : "Scoping Report";
                 const artifact = await createArtifact({
                     runId: run.id,
-                    projectId: projectId || "global",
+                    projectId: projectId || null,
                     conversationId: conversation.id,
                     userId,
                     type: "scoping_report",
@@ -1500,7 +1551,7 @@ class AIService {
         // Get AI response
         const response = await this.chat(historyMessages, {
             ...options,
-            projectId: projectId || "global",
+            projectId: projectId ?? undefined,
         });
 
         // Save AI response to memory
@@ -1567,7 +1618,7 @@ class AIService {
         // Use tool loop when tools are available, otherwise fall through to normal streaming
         const chatOptions = {
             ...options,
-            projectId: projectId || "global",
+            projectId: projectId ?? undefined,
         };
 
         const streamSource = AVAILABLE_TOOLS.length > 0

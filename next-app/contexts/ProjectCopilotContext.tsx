@@ -38,6 +38,7 @@ import { summarizeConversationAction } from "@/app/actions/summarize-conversatio
 import type { ArtifactData, ArtifactStatus, ArtifactType } from "@/types/artifacts";
 import type { AgentMode, AutonomyPreset, AutonomyLevel } from "@/types/agent";
 import type { ChoiceOption, CopilotPage, ReasoningMode } from "@/types/ai";
+import { useRouter } from "next/navigation";
 import { handleProjectCopilotStreamChunk } from "@/contexts/project-copilot-stream-events";
 import type { ArtifactActionContract } from "@/lib/artifacts/action-contract";
 import {
@@ -190,6 +191,7 @@ type ProjectCopilotProviderProps = {
 };
 
 export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotProviderProps) {
+    const router = useRouter();
     const [state, setState] = useState<ProjectCopilotState>(createDefaultProjectCopilotState());
     const stateRef = useRef<ProjectCopilotState>(createDefaultProjectCopilotState());
     const [isLoading, setIsLoading] = useState(false);
@@ -1009,6 +1011,7 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
                             },
                             setPendingChoices,
                             onPlanStepUpdate,
+                            onNavigate: (url) => router.push(url),
                         }
                     );
                     aiMessageCreated = nextState.aiMessageCreated;

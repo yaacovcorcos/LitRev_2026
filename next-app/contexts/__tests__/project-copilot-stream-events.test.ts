@@ -124,6 +124,53 @@ describe("project copilot stream event handlers", () => {
     expect(setPendingChoices).not.toHaveBeenCalled();
   });
 
+  it("calls onNavigate for safe URLs and ignores unsafe ones", () => {
+    const onNavigate = vi.fn();
+    const deps = {
+      aiMessageId: "m-1",
+      page: "overview" as const,
+      section: undefined,
+      projectId: "p-1",
+      myGen: 1,
+      getCurrentGen: () => 1,
+      setCurrentRunId: vi.fn(),
+      syncConversationId: vi.fn(),
+      upsertConversationTitle: vi.fn(),
+      upsertArtifact: vi.fn(),
+      updateMessages: vi.fn(),
+      emitLedgerChanged: vi.fn(),
+      setPendingChoices: vi.fn(),
+      onPlanStepUpdate: vi.fn(),
+      onNavigate,
+    };
+
+    // Safe URL → calls onNavigate
+    handleProjectCopilotStreamChunk(
+      { type: "navigate", navigateUrl: "/project/abc-123" },
+      baseState(),
+      deps
+    );
+    expect(onNavigate).toHaveBeenCalledWith("/project/abc-123");
+
+    onNavigate.mockClear();
+
+    // Unsafe URL → does NOT call onNavigate
+    handleProjectCopilotStreamChunk(
+      { type: "navigate", navigateUrl: "https://evil.com" },
+      baseState(),
+      deps
+    );
+    expect(onNavigate).not.toHaveBeenCalled();
+
+    // Empty URL → does NOT call onNavigate
+    handleProjectCopilotStreamChunk(
+      { type: "navigate", navigateUrl: "" },
+      baseState(),
+      deps
+    );
+    expect(onNavigate).not.toHaveBeenCalled();
+  });
+
   it("accumulates reasoning chunks on the assistant message", () => {
     const messages: CopilotMessage[] = [];
 

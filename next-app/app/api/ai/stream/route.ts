@@ -33,6 +33,7 @@ const STREAM_EVENT_TYPES: RuntimeStreamEvent["type"][] = [
     "conversation_title",
     "choices",
     "plan_step_update",
+    "navigate",
 ];
 
 export async function POST(request: NextRequest) {

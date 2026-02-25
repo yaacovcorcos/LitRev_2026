@@ -51,7 +51,8 @@ export type RuntimeStreamEvent =
       planId: string;
       stepIndex: number;
       stepStatus: string;
-    } & SharedFields);
+    } & SharedFields)
+  | ({ type: "navigate"; navigateUrl: string; navigateProjectId?: string } & SharedFields);
 
 export function normalizeStreamChunk(chunk: AIStreamChunk): RuntimeStreamEvent | null {
   const conversationId = chunk.conversationId;
@@ -144,6 +145,14 @@ export function normalizeStreamChunk(chunk: AIStreamChunk): RuntimeStreamEvent |
         planId: chunk.planId,
         stepIndex: chunk.stepIndex,
         stepStatus: chunk.stepStatus,
+        conversationId,
+      };
+    case "navigate":
+      if (!chunk.navigateUrl) return null;
+      return {
+        type: "navigate",
+        navigateUrl: chunk.navigateUrl,
+        navigateProjectId: chunk.navigateProjectId,
         conversationId,
       };
     default:
@@ -240,6 +249,13 @@ export function toWireChunk(event: RuntimeStreamEvent): AIStreamChunk {
         planId: event.planId,
         stepIndex: event.stepIndex,
         stepStatus: event.stepStatus,
+        conversationId: event.conversationId,
+      };
+    case "navigate":
+      return {
+        type: "navigate",
+        navigateUrl: event.navigateUrl,
+        navigateProjectId: event.navigateProjectId,
         conversationId: event.conversationId,
       };
   }

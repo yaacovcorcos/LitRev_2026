@@ -103,6 +103,7 @@ export type AIResponse = {
         inputTokens: number;
         outputTokens: number;
         totalTokens: number;
+        cachedInputTokens?: number;
     };
 };
 
@@ -114,7 +115,8 @@ export type AIStreamChunk = {
         | "run_start" | "run_end"
         | "conversation_title"
         | "choices"
-        | "plan_step_update";
+        | "plan_step_update"
+        | "navigate";
     content?: string;
     error?: string;
     errorStatus?: number;
@@ -155,6 +157,9 @@ export type AIStreamChunk = {
     planId?: string;
     stepIndex?: number;
     stepStatus?: string;
+    // Navigation fields (project management tools)
+    navigateUrl?: string;
+    navigateProjectId?: string;
     // Conversation identity (server-side source of truth)
     conversationId?: string;
     conversationTitle?: string;

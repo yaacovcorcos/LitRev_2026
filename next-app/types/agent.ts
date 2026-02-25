@@ -119,4 +119,5 @@ export const HARD_CAPS: Record<string, AutonomyLevel> = {
     delete_study: 2,
     store_memory: 2,
     forget_memory: 2,
+    create_project: 2,
 };

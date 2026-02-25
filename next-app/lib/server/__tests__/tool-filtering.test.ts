@@ -14,7 +14,7 @@ describe("getToolDefinitions", () => {
     it("returns only global-safe tools in global scope", () => {
         const defs = getToolDefinitions(undefined, "global");
         const names = defs.map((d) => d.name).sort();
-        expect(names).toEqual(["forget_memory", "inspect_memory", "search_pubmed", "search_semantic_scholar", "store_memory"]);
+        expect(names).toEqual(["create_project", "forget_memory", "inspect_memory", "list_projects", "open_project", "search_pubmed", "search_semantic_scholar", "store_memory"]);
     });
 
     it("returns all tools for general mode (empty allowedTools)", () => {
@@ -43,7 +43,7 @@ describe("getToolDefinitions", () => {
     it("filters tools for scoping mode", () => {
         const defs = getToolDefinitions("scoping");
         const names = defs.map((d) => d.name).sort();
-        expect(names).toEqual(["forget_memory", "inspect_memory", "recommend_studies", "search_pubmed", "search_semantic_scholar", "store_memory"]);
+        expect(names).toEqual(["forget_memory", "inspect_memory", "list_projects", "open_project", "recommend_studies", "search_pubmed", "search_semantic_scholar", "store_memory"]);
     });
 
     it("filters tools for screening mode", () => {

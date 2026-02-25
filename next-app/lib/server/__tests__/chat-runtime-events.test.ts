@@ -57,4 +57,32 @@ describe("chat runtime events", () => {
       conversationId: "conv_1",
     });
   });
+
+  it("normalizes and round-trips navigate events", () => {
+    const normalized = normalizeStreamChunk({
+      type: "navigate",
+      navigateUrl: "/project/p-1/protocol",
+      navigateProjectId: "p-1",
+      conversationId: "conv_1",
+    });
+    expect(normalized).toEqual({
+      type: "navigate",
+      navigateUrl: "/project/p-1/protocol",
+      navigateProjectId: "p-1",
+      conversationId: "conv_1",
+    });
+
+    const wire = toWireChunk({
+      type: "navigate",
+      navigateUrl: "/project/p-1",
+      navigateProjectId: "p-1",
+      conversationId: "conv_1",
+    });
+    expect(wire).toEqual({
+      type: "navigate",
+      navigateUrl: "/project/p-1",
+      navigateProjectId: "p-1",
+      conversationId: "conv_1",
+    });
+  });
 });

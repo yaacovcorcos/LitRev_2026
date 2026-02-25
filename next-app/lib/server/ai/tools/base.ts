@@ -25,6 +25,9 @@ import { storeMemoryTool } from "./store-memory";
 import { updateStudyTool } from "./update-study";
 import { forgetMemoryTool } from "./forget-memory";
 import { inspectMemoryTool } from "./inspect-memory";
+import { listProjectsTool } from "./list-projects";
+import { openProjectTool } from "./open-project";
+import { createProjectTool } from "./create-project";
 
 /**
  * Interface for AI tools that can be called by the AI
@@ -75,6 +78,9 @@ export const AVAILABLE_TOOLS: AITool[] = [
     forgetMemoryTool,
     inspectMemoryTool,
     updateStudyTool,
+    listProjectsTool,
+    openProjectTool,
+    createProjectTool,
 ];
 
 export type ToolScope = "global" | "project";
@@ -85,6 +91,9 @@ const GLOBAL_SCOPE_TOOL_ALLOWLIST = new Set<string>([
     "store_memory",
     "forget_memory",
     "inspect_memory",
+    "list_projects",
+    "open_project",
+    "create_project",
 ]);
 
 export function isToolAllowedInScope(toolName: string, scope: ToolScope): boolean {

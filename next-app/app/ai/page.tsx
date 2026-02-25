@@ -25,11 +25,13 @@ import type { TimelineItem } from "@/types/timeline";
 import { processAIStream } from "@/lib/ai/stream-processor";
 import { routeToAgent } from "@/lib/agent/router";
 import { dispatchProjectDataChanged, getChangedDomainsForAcceptedArtifact } from "@/lib/project-data-events";
+import { isNavigationSafe } from "@/lib/ai/navigation-safety";
 import {
   getReasoningModePreference,
   setReasoningModePreference,
   shouldRequestReasoning,
 } from "@/lib/ai/reasoning-visibility";
+import { useRouter } from "next/navigation";
 import styles from "./ai-view.module.css";
 
 const quickActions = [
@@ -317,6 +319,7 @@ function buildTimelinePrintHtml(items: TimelineItem[], title: string): string {
 }
 
 export default function AIView() {
+  const router = useRouter();
   const { projects } = useProjects();
   const [isHistoryCollapsed, setHistoryCollapsed] = useState(false);
 
@@ -357,6 +360,11 @@ export default function AIView() {
     setReasoningMode(mode);
     setReasoningModePreference(mode);
   }, []);
+
+  const handleNavigate = useCallback((url?: string) => {
+    if (!url || !isNavigationSafe(url)) return;
+    router.push(url);
+  }, [router]);
 
 
   useEffect(() => {
@@ -1046,6 +1054,11 @@ export default function AIView() {
             return;
           }
 
+          if (data.type === "navigate") {
+            handleNavigate(data.navigateUrl);
+            return;
+          }
+
           if (data.type === "content" && data.content) {
             clearProgress();
             fullContent += data.content;
@@ -1192,6 +1205,7 @@ export default function AIView() {
     cancelStream,
     selectedProjectId,
     reasoningMode,
+    handleNavigate,
 
     workspaceContextText,
     ensureConversation,
@@ -1444,6 +1458,10 @@ export default function AIView() {
             }
             return;
           }
+          if (data.type === "navigate") {
+            handleNavigate(data.navigateUrl);
+            return;
+          }
           if (data.type === "content" && data.content) {
             clearProgress();
             fullContent += data.content;
@@ -1572,6 +1590,7 @@ export default function AIView() {
     cancelStream,
     selectedProjectId,
     reasoningMode,
+    handleNavigate,
     workspaceContextText,
     sortConversationsByUpdatedAt,
     updateConversationTimeline,

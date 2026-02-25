@@ -2,6 +2,7 @@ import type { CopilotMessage } from "@/lib/projectCopilotStorage";
 import type { ArtifactData, ArtifactStatus, ArtifactType } from "@/types/artifacts";
 import type { AIStreamChunk, ChoiceOption, CopilotPage } from "@/types/ai";
 import { appendReasoningRaw } from "@/lib/ai/reasoning-visibility";
+import { isNavigationSafe } from "@/lib/ai/navigation-safety";
 
 export type StreamMutableState = {
   aiMessageCreated: boolean;
@@ -29,6 +30,7 @@ type StreamChunkDeps = {
   emitLedgerChanged: () => void;
   setPendingChoices: (choices: ChoiceOption[]) => void;
   onPlanStepUpdate?: (planId: string, stepIndex: number, stepStatus: string) => void;
+  onNavigate?: (url: string) => void;
 };
 
 function appendAssistantMessage(
@@ -278,6 +280,13 @@ const chunkHandlers: Partial<Record<AIStreamChunk["type"], ChunkHandler>> = {
   plan_step_update: (data, state, deps) => {
     if (data.planId && data.stepIndex !== undefined && data.stepStatus) {
       deps.onPlanStepUpdate?.(data.planId, data.stepIndex, data.stepStatus);
+    }
+    return state;
+  },
+  navigate: (data, state, deps) => {
+    const url = data.navigateUrl ?? "";
+    if (url && isNavigationSafe(url)) {
+      deps.onNavigate?.(url);
     }
     return state;
   },

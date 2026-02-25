@@ -13,6 +13,7 @@ import type { ProtocolData } from "@/types/protocol";
 import { emitEvent } from "./events";
 import { onStudyAccepted, onStudyExcluded, onDraftAccepted, onArtifactEdited } from "@/lib/server/memory/decision-extractor";
 import { syncProtocolToMemory } from "@/lib/server/memory/protocol-sync";
+import { ensureProtocol } from "@/lib/server/protocols";
 import { validateFieldValue, isValidFieldPath } from "@/lib/protocol-fields";
 import { setUserMemory, createProjectMemory, getProjectMemories, getUserMemories } from "@/lib/server/memory";
 import { normalizedMemoryKey, normalizedMemoryValue } from "@/lib/server/memory/conflict-policy";
@@ -40,7 +41,7 @@ export function registerApplyFunction(type: ArtifactType, fn: ApplyFunction) {
 
 export interface CreateArtifactInput {
     runId: string;
-    projectId: string;
+    projectId?: string | null;
     conversationId?: string;
     userId?: string;
     type: ArtifactType;
@@ -69,7 +70,7 @@ export async function createArtifact(input: CreateArtifactInput) {
     return prisma.artifact.create({
         data: {
             runId: input.runId,
-            projectId: input.projectId,
+            projectId: input.projectId || null,
             conversationId: input.conversationId ?? null,
             userId: input.userId ?? null,
             type: input.type,
@@ -172,6 +173,9 @@ export async function applyArtifact(
     }
 
     // Run apply function
+    if (!artifact.projectId) {
+        throw new Error("Cannot apply artifact without a project context");
+    }
     await applyFn({
         id: artifact.id,
         projectId: artifact.projectId,
@@ -270,10 +274,13 @@ export async function getArtifact(artifactId: string) {
 // ── Decision memory extraction helper ────────────────────────────────────────
 
 async function extractDecisionMemory(
-    artifact: { type: string; projectId: string; runId: string | null; conversationId: string | null; userId: string | null; payload: unknown; snapshot: unknown },
+    artifact: { type: string; projectId: string | null; runId: string | null; conversationId: string | null; userId: string | null; payload: unknown; snapshot: unknown },
     status: string,
     reviewNote?: string,
 ): Promise<void> {
+    const projectId = artifact.projectId;
+    if (!projectId) return;
+
     const payload = artifact.payload as Record<string, unknown>;
 
     if (artifact.type === "study_proposal") {
@@ -281,22 +288,22 @@ async function extractDecisionMemory(
         if (status === "accepted" && sp.recommendation === "keep") {
             // Look up study by title to get studyId
             const study = await prisma.study.findFirst({
-                where: { projectId: artifact.projectId, title: sp.title },
+                where: { projectId, title: sp.title },
                 select: { id: true },
             });
             if (study) {
-                await onStudyAccepted(artifact.projectId, study.id, sp);
+                await onStudyAccepted(projectId, study.id, sp);
             }
         } else if (status === "rejected" || sp.recommendation === "exclude") {
-            await onStudyExcluded(artifact.projectId, sp, reviewNote);
+            await onStudyExcluded(projectId, sp, reviewNote);
         }
     } else if (artifact.type === "draft_diff" && status === "accepted") {
         const dp = payload as unknown as import("@/types/artifacts").DraftDiffPayload;
-        await onDraftAccepted(artifact.projectId, dp);
+        await onDraftAccepted(projectId, dp);
     } else if (status === "edited" && artifact.snapshot && artifact.runId) {
         await onArtifactEdited(
             artifact.runId,
-            artifact.projectId,
+            projectId,
             artifact.conversationId,
             artifact.userId ?? undefined,
             artifact.snapshot,
@@ -349,7 +356,7 @@ export function buildEvidenceTableMarkdown(payload: EvidenceTablePayload): strin
 }
 
 async function trackMemoryProposalReview(
-    artifact: { projectId: string; userId: string | null; payload: unknown; type: string },
+    artifact: { projectId: string | null; userId: string | null; payload: unknown; type: string },
     status: Extract<ArtifactStatus, "accepted" | "rejected" | "edited">,
 ) {
     if (artifact.type !== "memory_proposal" || status !== "rejected") return;
@@ -365,7 +372,7 @@ async function trackMemoryProposalReview(
         `;
     }
 
-    if (payload.memoryType === "project") {
+    if (payload.memoryType === "project" && artifact.projectId) {
         const normalizedKey = payload.key ? normalizedMemoryKey(payload.key) : "";
         const keyTag = normalizedKey ? `memory-key:${normalizedKey}` : null;
         if (keyTag) {
@@ -391,9 +398,7 @@ async function trackMemoryProposalReview(
 // criteria_card: update protocol eligibility, then sync to memory
 registerApplyFunction("criteria_card", async (artifact) => {
     const payload = artifact.payload as CriteriaCardPayload;
-    const protocol = await prisma.protocol.findUnique({ where: { projectId: artifact.projectId } });
-    if (!protocol) return;
-    const data = protocol.data as unknown as ProtocolData;
+    const data = await ensureProtocol(artifact.projectId);
     data.eligibility.inclusion = payload.inclusion;
     data.eligibility.exclusion = payload.exclusion;
     await prisma.protocol.update({
@@ -416,9 +421,7 @@ registerApplyFunction("protocol_suggestion", async (artifact) => {
         throw new Error(`Cannot apply protocol_suggestion: ${fieldCheck.error}`);
     }
 
-    const protocol = await prisma.protocol.findUnique({ where: { projectId: artifact.projectId } });
-    if (!protocol) return;
-    const data = protocol.data as unknown as ProtocolData;
+    const data = await ensureProtocol(artifact.projectId);
     setNestedValue(data as unknown as Record<string, unknown>, payload.field, fieldCheck.value);
     await prisma.protocol.update({
         where: { projectId: artifact.projectId },
