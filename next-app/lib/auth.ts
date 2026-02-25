@@ -11,6 +11,7 @@ import { getBetterAuthSecret } from "@/lib/server/auth/auth-secret";
 const baseURL =
   process.env.BETTER_AUTH_URL ||
   process.env.NEXT_PUBLIC_BETTER_AUTH_URL ||
+  (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : undefined) ||
   "http://localhost:3000";
 
 const trustedOrigins = Array.from(
