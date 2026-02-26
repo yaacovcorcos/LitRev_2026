@@ -154,16 +154,20 @@
 .modal-actions {
     display: flex;
     align-items: center;
-    gap: 10px;
 }
 
 /* Override global .btn defaults inside modal actions */
 .modal-actions .btn {
     width: auto;
     margin-top: 0;
-    padding: 12px 20px;
+    padding: 12px 14px;
     border-radius: 10px;
     font-size: 13px;
+}
+
+.modal-actions .btn-outline.create-btn,
+.modal-actions .btn-primary.create-btn {
+    margin-left: 10px;
 }
 
 .modal-actions .cancel-btn {
@@ -194,7 +198,7 @@
 }
 
 .modal-actions .btn-primary.create-btn {
-    padding: 12px 22px;
+    padding: 12px 12px;
     background: color-mix(in srgb, var(--accent-primary) 14%, white);
     border: 1px solid color-mix(in srgb, var(--accent-primary) 25%, transparent);
     color: #a0513d;
