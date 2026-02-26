@@ -10,6 +10,8 @@
     "lint": "eslint",
     "test": "vitest",
     "test:run": "vitest run",
+    "db:doctor": "bash scripts/db-doctor.sh",
+    "db:release-gate": "bash scripts/release-gate-prod.sh",
     "memory:warmup": "tsx scripts/warmup-memory-embeddings.ts",
     "memory:validate": "tsx scripts/validate-memory-rollout.ts"
   },

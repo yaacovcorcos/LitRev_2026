@@ -30,6 +30,11 @@ node -e "require('dotenv').config({path:'.env.local'}); const u=process.env.DIRE
 3. If output indicates localhost, stop and fix env wiring before proceeding.
 
 ## 2) Pre-Migration Diagnostics (Read-only)
+0. Optional helper (recommended):
+```bash
+npm run db:doctor
+```
+
 1. Check migration state:
 ```bash
 npx prisma migrate status
@@ -82,6 +87,11 @@ ORDER BY table_name;
 ```bash
 npx prisma migrate deploy
 npx prisma migrate status
+```
+
+Alternative (single gate command):
+```bash
+npm run db:release-gate
 ```
 
 2. Re-run SQL checks from section 2.
