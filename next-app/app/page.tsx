@@ -13,6 +13,7 @@ import { useProjects } from "@/contexts/ProjectsContext";
 import { useRouter, useSearchParams } from "next/navigation";
 import { openOrCreateDemoProjectAction } from "@/app/actions/demo";
 import { DEMO_PROJECT_ID } from "@/lib/demo/constants";
+import { authClient } from "@/lib/auth-client";
 import layoutStyles from "./home.module.css";
 
 const VALID_SORTS: SortMode[] = ["name", "created", "modified"];
@@ -38,6 +39,7 @@ function buildProject(
 
 function HomeContent() {
   const { projects, addProject, isInitialized, refresh } = useProjects();
+  const { data: session } = authClient.useSession();
   const router = useRouter();
   const searchParams = useSearchParams();
   const [sortMode, setSortMode] = useState<SortMode>("modified");
@@ -149,34 +151,78 @@ function HomeContent() {
     router.replace("/", { scroll: false });
   }, [shouldOpenFromQuery, router]);
 
+  const firstName = session?.user?.name?.split(/\s+/)[0] ?? null;
+
   const mainContent = !isInitialized ? (
     <div className={layoutStyles.initializingShell}>
       <p className={layoutStyles.initializingText}>Loading workspace...</p>
     </div>
   ) : projects.length === 0 ? (
     <div className={layoutStyles.zeroShell}>
-      <div className={layoutStyles.zeroCard}>
-        <p className={layoutStyles.zeroEyebrow}>LitRev</p>
-        <h1 className={layoutStyles.zeroTitle}>Build your first literature review.</h1>
-        <p className={layoutStyles.zeroSubtitle}>
-          Start from scratch or open an editable sample review to learn the full workflow.
-        </p>
-        <div className={layoutStyles.zeroActions}>
-          <button type="button" className={`btn btn-primary ${layoutStyles.zeroPrimaryBtn}`} onClick={openModal}>
-            Start first review
-          </button>
+      <div className={layoutStyles.zeroContent}>
+        <header className={layoutStyles.zeroHeader}>
+          <h1 className={layoutStyles.zeroTitle}>
+            {firstName ? `Welcome, ${firstName}` : "Welcome to LitRev"}
+          </h1>
+          <p className={layoutStyles.zeroSubtitle}>
+            What would you like to review today?
+          </p>
+        </header>
+
+        <div className={layoutStyles.zeroCards}>
           <button
             type="button"
-            className={`btn btn-outline ${layoutStyles.zeroSecondaryBtn}`}
-            onClick={() => {
-              void handleOpenSampleProject();
-            }}
-            disabled={isOpeningSample}
+            className={layoutStyles.heroCard}
+            onClick={openModal}
           >
-            {isOpeningSample ? "Opening sample..." : "Open sample review"}
+            <div className={layoutStyles.heroCardBody}>
+              <span className={layoutStyles.heroCardTitle}>Start a new review</span>
+              <span className={layoutStyles.heroCardDesc}>
+                Create a fresh literature review from scratch
+              </span>
+            </div>
+            <span className={`material-icons-round ${layoutStyles.heroCardIcon}`} aria-hidden="true">
+              arrow_forward
+            </span>
           </button>
+
+          <div className={layoutStyles.secondaryRow}>
+            <button
+              type="button"
+              className={layoutStyles.secondaryCard}
+              onClick={() => {
+                void handleOpenSampleProject();
+              }}
+              disabled={isOpeningSample}
+            >
+              <span className={`material-icons-round ${layoutStyles.secondaryCardIcon}`} aria-hidden="true">
+                science
+              </span>
+              <span className={layoutStyles.secondaryCardTitle}>
+                {isOpeningSample ? "Opening..." : "Explore sample"}
+              </span>
+              <span className={layoutStyles.secondaryCardDesc}>
+                See a full workflow with real papers
+              </span>
+            </button>
+
+            <button
+              type="button"
+              className={layoutStyles.secondaryCard}
+              onClick={openModal}
+            >
+              <span className={`material-icons-round ${layoutStyles.secondaryCardIcon}`} aria-hidden="true">
+                upload_file
+              </span>
+              <span className={layoutStyles.secondaryCardTitle}>Import papers</span>
+              <span className={layoutStyles.secondaryCardDesc}>
+                Upload PDFs or import from Zotero
+              </span>
+            </button>
+          </div>
+
+          {sampleError ? <p className={layoutStyles.sampleError} role="alert">{sampleError}</p> : null}
         </div>
-        {sampleError ? <p className={layoutStyles.sampleError} role="alert">{sampleError}</p> : null}
       </div>
     </div>
   ) : (
