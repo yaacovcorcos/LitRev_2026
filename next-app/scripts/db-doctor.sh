@@ -8,14 +8,18 @@ echo "== LitRev DB Doctor =="
 echo "cwd: $ROOT_DIR"
 echo
 
-if [ -f ".env.local" ]; then
+if [ -z "${DATABASE_URL:-}" ] || [ -z "${DIRECT_URL:-}" ]; then
+  if [ -f ".env.local" ]; then
   echo "Loading env from .env.local"
   set -a
   # shellcheck source=/dev/null
   source .env.local
   set +a
+  else
+    echo "No .env.local found in next-app/. Continuing with current shell env."
+  fi
 else
-  echo "No .env.local found in next-app/. Continuing with current shell env."
+  echo "Using DATABASE_URL/DIRECT_URL from current shell environment."
 fi
 
 if [ -z "${DATABASE_URL:-}" ] || [ -z "${DIRECT_URL:-}" ]; then

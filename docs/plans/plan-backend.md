@@ -32,9 +32,18 @@
   - Persist per-step onboarding status (`todo` / `skipped` / `later` / `completed`) so progress is resumable and queryable.
   - Add backend support for contextual guided-step explainers (`Explain this`) tied to current project/protocol state.
 - [ ] Execute **Performance Program (Backend + Data Path)**:
-  - Define and track baseline latency metrics (home load, project route switch, first guided-step action, sample-open action).
-  - Add cache strategy for hot read paths and reduce redundant queries/action round-trips.
-  - Optimize slow server actions in onboarding/sample/project bootstrap flows with measurable before/after timings.
+  - Define strict speed budgets and track baseline + regression metrics (home load, project route switch, first guided-step action, sample-open action, first AI response token).
+  - Implement serious cache management for hot reads:
+    - cache layers (request, process, edge where appropriate),
+    - explicit cache keys and TTL policy,
+    - explicit invalidation rules tied to writes.
+  - Implement preloading strategy for critical flows:
+    - preload next-route/project essentials,
+    - warm high-probability data (recent projects, active conversation metadata, protocol/draft headers),
+    - prevent over-prefetching with guardrails.
+  - Remove redundant queries and action round-trips; consolidate N+1 patterns into batched reads where possible.
+  - Add query/index performance review for top slow paths and lock in DB-level fixes with migration-backed indexes.
+  - Ship performance work in measured phases with before/after benchmarks and hard go/no-go criteria.
 - [ ] Execute **AI Cache Metrics Persistence (Plan + Implementation)**:
   - Design and approve persistent schema for provider cache metrics (project/workspace scoping, model, time bucket, cached vs total input tokens, request counts).
   - Implement Prisma migration(s) and server write-path integration from `recordUsage`/provider usage metadata (`cached_tokens` when available).

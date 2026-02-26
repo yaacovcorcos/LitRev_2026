@@ -7,11 +7,13 @@ cd "$ROOT_DIR"
 echo "== LitRev Production Release Gate =="
 echo "cwd: $ROOT_DIR"
 
-if [ -f ".env.local" ]; then
-  set -a
-  # shellcheck source=/dev/null
-  source .env.local
-  set +a
+if [ -z "${DATABASE_URL:-}" ] || [ -z "${DIRECT_URL:-}" ]; then
+  if [ -f ".env.local" ]; then
+    set -a
+    # shellcheck source=/dev/null
+    source .env.local
+    set +a
+  fi
 fi
 
 if [ -z "${DATABASE_URL:-}" ] || [ -z "${DIRECT_URL:-}" ]; then
