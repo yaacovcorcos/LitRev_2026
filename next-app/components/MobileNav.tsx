@@ -6,9 +6,19 @@ type MobileNavProps = {
   links: NavLink[];
   activeNav?: string;
   onNewProject?: () => void;
+  onSignOut?: () => void;
+  signOutBusy?: boolean;
+  signOutError?: string | null;
 };
 
-export function MobileNav({ links, activeNav = "projects", onNewProject }: MobileNavProps) {
+export function MobileNav({
+  links,
+  activeNav = "projects",
+  onNewProject,
+  onSignOut,
+  signOutBusy = false,
+  signOutError = null,
+}: MobileNavProps) {
   return (
     <nav className={styles.mobileNav} aria-label="Mobile">
       {links.map((link) =>
@@ -37,6 +47,23 @@ export function MobileNav({ links, activeNav = "projects", onNewProject }: Mobil
           </Link>
         )
       )}
+      {onSignOut ? (
+        <button
+          type="button"
+          className={styles.item}
+          onClick={onSignOut}
+          aria-label="Sign out"
+          disabled={signOutBusy}
+        >
+          <span className={`material-icons-round ${styles.itemIcon}`}>logout</span>
+          <span>{signOutBusy ? "Signing out..." : "Sign out"}</span>
+        </button>
+      ) : null}
+      {signOutError ? (
+        <p className={styles.error} role="alert">
+          {signOutError}
+        </p>
+      ) : null}
     </nav>
   );
 }

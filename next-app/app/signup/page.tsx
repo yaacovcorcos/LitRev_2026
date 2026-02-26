@@ -2,15 +2,15 @@
 
 import { Suspense } from "react";
 import { AuthScreen } from "@/app/auth/AuthScreen";
-import styles from "./login.module.css";
+import styles from "@/app/login/login.module.css";
 
-export default function LoginPage() {
+export default function SignupPage() {
   return (
     <Suspense
       fallback={
         <main className={styles.shell}>
           <div className={styles.grainOverlay} />
-          <section className={styles.content} aria-label="Sign in loading">
+          <section className={styles.content} aria-label="Create account loading">
             <header className={styles.logoBlock}>
               <div className={styles.logoMark} aria-hidden="true">
                 <svg viewBox="0 0 48 48" className={styles.logoSvg} fill="none">
@@ -25,13 +25,13 @@ export default function LoginPage() {
             </header>
             <div className={styles.card}>
               <div className={styles.cardAccent} />
-              <p className={styles.subtitle}>Loading sign-in options...</p>
+              <p className={styles.subtitle}>Loading account creation options...</p>
             </div>
           </section>
         </main>
       }
     >
-      <AuthScreen mode="signin" />
+      <AuthScreen mode="signup" />
     </Suspense>
   );
 }

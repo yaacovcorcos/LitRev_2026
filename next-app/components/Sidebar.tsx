@@ -1,6 +1,7 @@
 import { NavLink } from "@/types/nav";
 import Link from "next/link";
 import styles from "@/components/Sidebar.module.css";
+import { UserMenu } from "@/components/UserMenu";
 
 type SidebarProps = {
   mainLinks: NavLink[];
@@ -65,6 +66,8 @@ export function Sidebar({ mainLinks, bottomLinks, activeNav = "projects", collap
           ))}
         </div>
       ) : null}
+
+      <UserMenu collapsed={collapsed} />
     </aside>
   );
 }

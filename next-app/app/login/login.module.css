@@ -66,6 +66,10 @@
   animation: fadeUp 0.8s ease-out both;
 }
 
+.content[data-auth-mode="signup"] {
+  width: min(440px, 100%);
+}
+
 .logoBlock {
   margin-bottom: 48px;
   text-align: center;
@@ -89,10 +93,11 @@
 
 .brandName {
   color: var(--login-text-primary);
-  font-family: "Cormorant Garamond", Georgia, "Times New Roman", serif;
+  font-family: inherit;
   font-size: 28px;
   line-height: 1;
-  letter-spacing: 0.02em;
+  font-weight: 600;
+  letter-spacing: -0.02em;
   animation: fadeUp 0.8s ease-out 0.2s both;
 }
 
@@ -119,6 +124,10 @@
   animation: fadeUp 0.8s ease-out 0.4s both;
   display: grid;
   gap: 0;
+}
+
+.content[data-auth-mode="signup"] .card {
+  padding: 28px 22px;
 }
 
 .cardAccent {
@@ -166,6 +175,13 @@
   cursor: pointer;
 }
 
+.content[data-auth-mode="signup"] .socialGoogle,
+.content[data-auth-mode="signup"] .socialDev {
+  min-height: 62px;
+  padding: 10px 12px;
+  align-items: center;
+}
+
 .socialGoogle {
   background: #fff;
   color: #3c4043;
@@ -195,6 +211,19 @@
   flex-shrink: 0;
 }
 
+.socialLabelWrap {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  line-height: 1.1;
+}
+
+.socialHint {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--login-text-muted);
+}
+
 .socialGoogle:disabled,
 .socialDev:disabled,
 .submitButton:disabled {
@@ -212,6 +241,10 @@
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+}
+
+.content[data-auth-mode="signup"] .orRow {
+  margin: 22px 0;
 }
 
 .orRow > span:first-child,
@@ -235,6 +268,11 @@
   text-transform: uppercase;
 }
 
+.content[data-auth-mode="signup"] .fieldLabel {
+  font-size: 13px;
+  letter-spacing: 0.08em;
+}
+
 .input {
   width: 100%;
   min-height: 56px;
@@ -246,6 +284,11 @@
   color: var(--login-text-primary);
   transition: all 0.25s ease;
   margin-bottom: 22px;
+}
+
+.content[data-auth-mode="signup"] .input {
+  min-height: 58px;
+  margin-bottom: 14px;
 }
 
 .input::placeholder {
@@ -276,6 +319,39 @@
   letter-spacing: 0.01em;
   transition: all 0.25s ease;
   cursor: pointer;
+}
+
+.content[data-auth-mode="signup"] .submitButton {
+  min-height: 58px;
+}
+
+.buttonTextStack {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1.05;
+  gap: 1px;
+}
+
+.buttonHint {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--login-text-muted);
+}
+
+.buttonMain {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.content[data-auth-mode="signup"] .buttonMain {
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.content[data-auth-mode="signup"] .socialLabelWrap span:last-child {
+  font-size: 15px;
+  font-weight: 500;
 }
 
 .submitButton:hover:not(:disabled) {
@@ -309,18 +385,20 @@
   text-align: center;
 }
 
-.footerCreateOne {
-  border: 0;
-  padding: 0;
-  background: transparent;
-  color: var(--login-accent-dark);
-  font: inherit;
-  font-weight: 500;
-  cursor: not-allowed;
+.content[data-auth-mode="signup"] .footer {
+  margin-top: 30px;
 }
 
-.footerCreateOne:disabled {
-  opacity: 1;
+.footerCreateOne {
+  text-decoration: none;
+  color: var(--login-accent-dark);
+  font-weight: 500;
+  transition: color 0.2s ease;
+}
+
+.footerCreateOne:hover {
+  color: var(--login-accent);
+  text-decoration: underline;
 }
 
 @keyframes drift {

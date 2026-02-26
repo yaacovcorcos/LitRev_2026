@@ -8,6 +8,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { CSSProperties, ReactNode, useEffect, useMemo, useState } from "react";
 import { SlimHeader } from "@/components/SlimHeader";
 import { useCommandPalette } from "@/contexts/CommandPaletteContext";
+import { authClient } from "@/lib/auth-client";
 
 type AppShellProps = {
   activeNav: string;
@@ -31,6 +32,8 @@ export function AppShell({
   const pathname = usePathname();
   const shouldDefaultCollapse = pathname !== "/";
   const [collapsed, setCollapsed] = useState(initiallyCollapsed ?? shouldDefaultCollapse);
+  const [mobileSigningOut, setMobileSigningOut] = useState(false);
+  const [mobileSignOutError, setMobileSignOutError] = useState<string | null>(null);
   const router = useRouter();
   const { registerSidebarToggle } = useCommandPalette();
 
@@ -52,6 +55,27 @@ export function AppShell({
       return;
     }
     router.push("/?create=new");
+  };
+
+  const handleMobileSignOut = async () => {
+    if (mobileSigningOut) return;
+    setMobileSigningOut(true);
+    setMobileSignOutError(null);
+
+    try {
+      const result = await authClient.signOut();
+      if (result.error) {
+        setMobileSignOutError(result.error.message || "Sign out failed. Try again.");
+        return;
+      }
+
+      router.replace("/login");
+      router.refresh();
+    } catch {
+      setMobileSignOutError("Sign out failed. Try again.");
+    } finally {
+      setMobileSigningOut(false);
+    }
   };
 
   return (
@@ -76,7 +100,14 @@ export function AppShell({
           {children}
         </main>
         {showMobileNav ? (
-          <MobileNav links={mobileNavLinks} activeNav={activeNav} onNewProject={handleNewProject} />
+          <MobileNav
+            links={mobileNavLinks}
+            activeNav={activeNav}
+            onNewProject={handleNewProject}
+            onSignOut={handleMobileSignOut}
+            signOutBusy={mobileSigningOut}
+            signOutError={mobileSignOutError}
+          />
         ) : null}
       </div>
     </>
