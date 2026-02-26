@@ -1,14 +1,21 @@
 "use client";
 
 import { createProjectAction, deleteProjectAction, listProjectsAction } from "@/app/actions/projects";
-import { migrateLocalStorageToBackend } from "@/lib/migrateLocalStorage";
+import {
+  getLocalStorageMigrationStatus,
+  migrateLocalStorageToBackend,
+  type MigrationStatus,
+} from "@/lib/migrateLocalStorage";
 import { authClient } from "@/lib/auth-client";
 import { Project } from "@/types/project";
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 
 type ProjectsContextValue = {
   projects: Project[];
   isInitialized: boolean;
+  migrationStatus: MigrationStatus;
+  migrationError: string | null;
+  retryMigration: () => Promise<void>;
   addProject: (project: Project) => Promise<Project | null>;
   deleteProject: (id: string) => Promise<boolean>;
   getProjectById: (id: string) => Project | undefined;
@@ -20,6 +27,9 @@ const ProjectsContext = createContext<ProjectsContextValue | undefined>(undefine
 export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [isInitialized, setIsInitialized] = useState(false);
+  const [migrationStatus, setMigrationStatus] = useState<MigrationStatus>("pending");
+  const [migrationError, setMigrationError] = useState<string | null>(null);
+  const migrationInFlightRef = useRef(false);
   const { data: session, isPending: isSessionPending } = authClient.useSession();
 
   const refresh = useCallback(async () => {
@@ -41,37 +51,72 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
     }
   }, [isSessionPending, session]);
 
-  useEffect(() => {
-    let isMounted = true;
-    const run = async () => {
-      if (isSessionPending) return;
-      if (!session) {
-        if (isMounted) {
-          setProjects([]);
-          setIsInitialized(true);
-        }
-        return;
-      }
+  const runMigration = useCallback(
+    async (force = false) => {
+      if (migrationInFlightRef.current) return;
+      if (isSessionPending || !session) return;
+
+      migrationInFlightRef.current = true;
+      setMigrationError(null);
+      const startedAt = Date.now();
 
       try {
-        const result = await migrateLocalStorageToBackend();
+        const result = await migrateLocalStorageToBackend({ force, timeoutMs: 10000 });
+        setMigrationStatus(result.status);
+
+        const durationMs = Date.now() - startedAt;
         if (result.error) {
-          console.error("Migration completed with errors:", result.error);
+          setMigrationError(result.error);
+          console.error(`[migration] status=${result.status} durationMs=${durationMs} error=${result.error}`);
+        } else {
+          console.info(`[migration] status=${result.status} durationMs=${durationMs}`);
+        }
+
+        if (result.migrated || force) {
+          await refresh();
         }
       } catch (err) {
-        console.error("Local storage migration failed", err);
+        const message = err instanceof Error ? err.message : "Migration failed unexpectedly";
+        setMigrationStatus("failed");
+        setMigrationError(message);
+        console.error(`[migration] status=failed durationMs=${Date.now() - startedAt} error=${message}`);
       } finally {
-        if (isMounted) {
-          await refresh();
-          setIsInitialized(true);
-        }
+        migrationInFlightRef.current = false;
       }
-    };
-    run();
-    return () => {
-      isMounted = false;
-    };
-  }, [refresh, session, isSessionPending]);
+    },
+    [isSessionPending, refresh, session]
+  );
+
+  const retryMigration = useCallback(async () => {
+    await runMigration(true);
+  }, [runMigration]);
+
+  useEffect(() => {
+    if (isSessionPending) {
+      // Never block app entry on a long/pending session lookup.
+      setIsInitialized(true);
+      return;
+    }
+
+    if (!session) {
+      setProjects([]);
+      setMigrationStatus("pending");
+      setMigrationError(null);
+      setIsInitialized(true);
+      return;
+    }
+
+    // Fast startup: render app immediately; migration runs in background.
+    setIsInitialized(true);
+    void refresh();
+
+    const status = getLocalStorageMigrationStatus();
+    setMigrationStatus(status);
+    if (status === "failed" || status === "done") {
+      return;
+    }
+    void runMigration(false);
+  }, [isSessionPending, refresh, runMigration, session]);
 
   const addProject = useCallback(async (project: Project): Promise<Project | null> => {
     try {
@@ -112,12 +157,25 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
     () => ({
       projects,
       isInitialized,
+      migrationStatus,
+      migrationError,
+      retryMigration,
       addProject,
       deleteProject,
       getProjectById,
       refresh,
     }),
-    [projects, isInitialized, addProject, deleteProject, getProjectById, refresh]
+    [
+      projects,
+      isInitialized,
+      migrationStatus,
+      migrationError,
+      retryMigration,
+      addProject,
+      deleteProject,
+      getProjectById,
+      refresh,
+    ]
   );
 
   return <ProjectsContext.Provider value={value}>{children}</ProjectsContext.Provider>;

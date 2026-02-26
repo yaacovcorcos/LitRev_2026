@@ -37,10 +37,81 @@
         var(--bg-body);
 }
 
+.initializingContent {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+    animation: initFadeIn 0.6s ease-out both;
+}
+
+.initializingLogo {
+    width: 56px;
+    height: 56px;
+    margin-bottom: 20px;
+}
+
+.initializingLogoSvg {
+    width: 100%;
+    height: 100%;
+    stroke: var(--accent-primary);
+    stroke-width: 2;
+    stroke-dasharray: 200;
+    stroke-dashoffset: 200;
+    animation: logoDraw 1.8s ease-out forwards;
+}
+
+.initializingGreeting {
+    margin: 0;
+    color: var(--text-primary);
+    font-size: 20px;
+    font-weight: 400;
+    letter-spacing: -0.01em;
+    margin-bottom: 8px;
+}
+
 .initializingText {
-    color: var(--text-secondary);
-    font-size: 15px;
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 14px;
     letter-spacing: 0.01em;
+    animation: initCopyFade 0.4s ease-out both;
+}
+
+.initializingSlow {
+    margin-top: 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    animation: initFadeIn 0.4s ease-out both;
+}
+
+.initializingSlow p {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 13px;
+}
+
+.initializingRetry {
+    border: 1px solid color-mix(in srgb, var(--accent-primary) 30%, transparent);
+    background: color-mix(in srgb, var(--accent-primary) 8%, white);
+    color: var(--text-primary);
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 8px 16px;
+    cursor: pointer;
+    transition: background 0.2s ease;
+}
+
+.initializingRetry:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+}
+
+.initializingRetry:hover {
+    background: color-mix(in srgb, var(--accent-primary) 14%, white);
 }
 
 /* ── Zero-state welcome ─────────────────────────────────────── */
@@ -244,7 +315,51 @@
     line-height: 1.4;
 }
 
+.migrationAlert {
+    margin: 12px 0 0;
+    padding: 10px 12px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--color-warning-border, #f2d19d);
+    background: var(--color-warning-bg, #fff6e7);
+    color: var(--color-warning-text, #7a4a00);
+    font-size: 13px;
+    line-height: 1.4;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.migrationRetry {
+    border: 1px solid color-mix(in srgb, var(--accent-primary) 30%, transparent);
+    background: color-mix(in srgb, var(--accent-primary) 8%, white);
+    color: var(--text-primary);
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 6px 10px;
+    cursor: pointer;
+}
+
+.migrationRetry:hover {
+    background: color-mix(in srgb, var(--accent-primary) 14%, white);
+}
+
 /* ── Animations ─────────────────────────────────────────────── */
+
+@keyframes initFadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes initCopyFade {
+    from { opacity: 0; transform: translateY(4px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes logoDraw {
+    to { stroke-dashoffset: 0; }
+}
 
 @keyframes zeroFadeUp {
     from {
@@ -254,6 +369,15 @@
     to {
         opacity: 1;
         transform: translateY(0);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .initializingContent,
+    .initializingLogoSvg,
+    .initializingText,
+    .initializingSlow {
+        animation: none !important;
     }
 }
 

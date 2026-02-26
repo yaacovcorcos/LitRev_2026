@@ -164,7 +164,6 @@ export function AuthScreen({ mode }: AuthScreenProps) {
               type="submit"
               className={styles.submitButton}
               disabled={busyGoogle || busyMagicLink || busyQuickAccess}
-              data-tooltip="Magic link isn't so magic and is still in implementation stage — please log in with Google"
             >
               {isCreateMode && !busyMagicLink ? (
                 <span className={styles.buttonTextStack}>
