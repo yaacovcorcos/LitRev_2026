@@ -164,6 +164,7 @@ export function AuthScreen({ mode }: AuthScreenProps) {
               type="submit"
               className={styles.submitButton}
               disabled={busyGoogle || busyMagicLink || busyQuickAccess}
+              data-tooltip="Magic link isn't so magic and is still in implementation stage — please log in with Google"
             >
               {isCreateMode && !busyMagicLink ? (
                 <span className={styles.buttonTextStack}>
@@ -231,33 +232,30 @@ export function AuthScreen({ mode }: AuthScreenProps) {
               </span>
             </button>
 
-            {devQuickLoginEnabled ? (
-              <button
-                type="button"
-                className={styles.socialDev}
-                onClick={() => {
-                  void onQuickAccess();
-                }}
-                disabled={busyGoogle || busyMagicLink || busyQuickAccess}
+            <button
+              type="button"
+              className={styles.socialDev}
+              onClick={devQuickLoginEnabled ? () => { void onQuickAccess(); } : undefined}
+              disabled={!devQuickLoginEnabled || busyGoogle || busyMagicLink || busyQuickAccess}
+              data-tooltip={devQuickLoginEnabled ? undefined : "Don\u2019t even think about it"}
+            >
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={1.5}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className={styles.socialIcon}
+                aria-hidden="true"
               >
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth={1.5}
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  className={styles.socialIcon}
-                  aria-hidden="true"
-                >
-                  <polyline points="16 18 22 12 16 6" />
-                  <polyline points="8 6 2 12 8 18" />
-                </svg>
-                <span className={styles.socialLabelWrap}>
-                  <span>{busyQuickAccess ? "Signing in..." : "Dev mode"}</span>
-                </span>
-              </button>
-            ) : null}
+                <polyline points="16 18 22 12 16 6" />
+                <polyline points="8 6 2 12 8 18" />
+              </svg>
+              <span className={styles.socialLabelWrap}>
+                <span>{busyQuickAccess ? "Signing in..." : "Dev mode"}</span>
+              </span>
+            </button>
           </div>
 
           {error ? (

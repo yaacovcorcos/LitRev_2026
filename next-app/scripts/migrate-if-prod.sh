@@ -5,8 +5,12 @@
 set -euo pipefail
 
 if [ "${VERCEL_ENV:-}" = "production" ]; then
-  echo "Production deploy — running prisma migrate deploy..."
-  npx prisma migrate deploy
+  if [ "${RUN_PRISMA_MIGRATE_IN_BUILD:-0}" = "1" ]; then
+    echo "Production deploy — running prisma migrate deploy..."
+    npx prisma migrate deploy
+  else
+    echo "Production deploy — skipping prisma migrate deploy (RUN_PRISMA_MIGRATE_IN_BUILD != 1)"
+  fi
 else
   echo "Skipping migrations (VERCEL_ENV=${VERCEL_ENV:-unset})"
 fi

@@ -161,6 +161,7 @@
 
 .socialGoogle,
 .socialDev {
+  position: relative;
   width: 100%;
   min-height: 48px;
   border-radius: 10px;
@@ -229,6 +230,33 @@
 .submitButton:disabled {
   opacity: 0.7;
   cursor: not-allowed;
+}
+
+.socialDev[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: 220px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: var(--login-text-primary);
+  color: var(--login-bg-card);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.45;
+  text-align: center;
+  white-space: normal;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  z-index: 10;
+}
+
+.socialDev[data-tooltip]:hover::after {
+  opacity: 1;
 }
 
 .orRow {
@@ -304,6 +332,7 @@
 }
 
 .submitButton {
+  position: relative;
   width: 100%;
   min-height: 56px;
   border-radius: 10px;
@@ -319,6 +348,34 @@
   letter-spacing: 0.01em;
   transition: all 0.25s ease;
   cursor: pointer;
+}
+
+.submitButton[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: 280px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: var(--login-text-primary);
+  color: var(--login-bg-card);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.45;
+  letter-spacing: 0;
+  text-align: center;
+  white-space: normal;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  z-index: 10;
+}
+
+.submitButton[data-tooltip]:hover::after {
+  opacity: 1;
 }
 
 .content[data-auth-mode="signup"] .submitButton {
