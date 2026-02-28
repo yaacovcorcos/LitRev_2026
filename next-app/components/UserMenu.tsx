@@ -17,10 +17,8 @@ export function UserMenu({ collapsed = false }: UserMenuProps) {
   const router = useRouter();
 
   const user = session?.user;
-  if (!user) return null;
-
-  const initials = getInitials(user.name ?? user.email);
-  const displayName = user.name || user.email;
+  const initials = user ? getInitials(user.name ?? user.email) : "?";
+  const displayName = user?.name || user?.email || "Account";
   const wrapperClass = collapsed
     ? `${styles.menuWrapper} ${styles.collapsed}`
     : styles.menuWrapper;
@@ -58,7 +56,7 @@ export function UserMenu({ collapsed = false }: UserMenuProps) {
         aria-label={`Account menu for ${displayName}`}
       >
         <span className={styles.avatar} aria-hidden="true">
-          {user.image ? (
+          {user?.image ? (
             <img
               src={user.image}
               alt=""
@@ -71,8 +69,8 @@ export function UserMenu({ collapsed = false }: UserMenuProps) {
         </span>
         {collapsed ? null : (
           <span className={styles.pillText}>
-            <span className={styles.pillName}>{user.name ?? "Account"}</span>
-            <span className={styles.pillEmail}>{user.email}</span>
+            <span className={styles.pillName}>{user?.name ?? "Account"}</span>
+            {user?.email ? <span className={styles.pillEmail}>{user.email}</span> : null}
           </span>
         )}
       </button>
@@ -85,10 +83,12 @@ export function UserMenu({ collapsed = false }: UserMenuProps) {
             aria-hidden="true"
           />
           <div className={styles.dropdown} role="menu">
-            <div className={styles.menuIdentity}>
-              <p className={styles.menuName}>{user.name ?? "Account"}</p>
-              <p className={styles.menuEmail}>{user.email}</p>
-            </div>
+            {user ? (
+              <div className={styles.menuIdentity}>
+                <p className={styles.menuName}>{user.name ?? "Account"}</p>
+                <p className={styles.menuEmail}>{user.email}</p>
+              </div>
+            ) : null}
             {error ? (
               <p className={styles.menuError} role="alert">
                 {error}
