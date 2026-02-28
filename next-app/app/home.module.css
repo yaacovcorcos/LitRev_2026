@@ -90,10 +90,21 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    display: block;
+    font-size: 12px;
+    letter-spacing: 0.008em;
+    line-height: 1;
+}
+
+.resumeControlLead {
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.resumeControlProjectName {
     font-size: 12px;
     font-weight: 600;
-    letter-spacing: 0.01em;
-    line-height: 1;
+    color: var(--color-info-text);
 }
 
 .resumeControlArrow {
@@ -509,7 +520,11 @@
         justify-content: center;
     }
 
-    .resumeControlText {
+    .resumeControlLead {
+        font-size: 14px;
+    }
+
+    .resumeControlProjectName {
         font-size: 13px;
     }
 

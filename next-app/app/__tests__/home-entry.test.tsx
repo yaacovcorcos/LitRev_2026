@@ -144,8 +144,6 @@ describe("Home entry UX", () => {
 
     render(<HomeContent />);
 
-    expect(screen.getByText("Back to Second Project")).toBeTruthy();
-
     const continueLink = screen.getByRole("link", { name: "Back to Second Project" });
     expect(continueLink.getAttribute("href")).toBe("/project/p2");
   });

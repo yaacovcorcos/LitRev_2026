@@ -379,7 +379,10 @@ export function HomeContent() {
                   className={layoutStyles.resumeControl}
                   aria-label={`Back to ${continueProject.name}`}
                 >
-                  <span className={layoutStyles.resumeControlText}>Back to {continueProject.name}</span>
+                  <span className={layoutStyles.resumeControlText}>
+                    <span className={layoutStyles.resumeControlLead}>Back to</span>{" "}
+                    <span className={layoutStyles.resumeControlProjectName}>{continueProject.name}</span>
+                  </span>
                   <span className={`material-icons-round ${layoutStyles.resumeControlArrow}`} aria-hidden="true">
                     arrow_forward
                   </span>
