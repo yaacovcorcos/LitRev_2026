@@ -20,8 +20,14 @@ It consolidates all open UI/UX work into one prioritized sequence so implementat
 - `ConversationPicker` now uses Radix `ContextMenu` for right-click interactions and keeps a separate Radix `DropdownMenu` trigger for explicit "more" actions.
 - Conversation rename no longer depends on blocking browser APIs; it now uses an app-native dialog flow with optimistic title updates and rollback on failure.
 - `SampleReviewCard` now follows a semantic non-nested interactive pattern (primary open button + sibling dismiss button), preserving click-anywhere behavior without invalid nested controls.
+- `ResizableSplitter` is now a shared primitive for copilot panel resizing with pointer + keyboard support and ARIA-valued separator semantics, used by both standalone `ProjectPageLayout` and embedded project shell layout.
+- Notes sidebar rows now use native button semantics, and Notes delete confirmation now uses shared `ConfirmDialog` instead of a hand-rolled overlay.
 
 ## Recently Completed
+- `CUX-012` Continued overlay standardization by replacing Notes’ custom delete overlay with shared `ConfirmDialog` (Radix AlertDialog wrapper).
+- `CUX-011` Expanded accessibility coverage with splitter keyboard/semantics behavior tests and `axe` scan (`ResizableSplitter`).
+- `CUX-009` Replaced Notes list `div role="button"` rows with semantic `button` controls and proper pressed/focus behavior.
+- `CUX-008` Introduced reusable `ResizableSplitter` (pointer + keyboard + ARIA-valued separator) and migrated copilot resize handles in project shell layouts.
 - `CUX-010` Reworked `SampleReviewCard` to remove nested interactive controls by using separate primary surface action and sibling dismiss action, with coverage tests.
 - `CUX-004` Replaced custom conversation context menu with accessible Radix `ContextMenu` primitive and preserved separate "more" button trigger flow.
 - `CUX-003` Replaced `window.prompt` rename with app-native controlled rename UX (dialog) including optimistic update and failure rollback.
@@ -168,10 +174,7 @@ Use this section as implementation policy. Each item describes the durable solut
 - [ ] `CUX-007` Add visible, recoverable tool failure UX (`Retry last step` / `Resume run`).
 
 ## Phase 1 — Accessibility & Interaction Baseline
-- [ ] `CUX-008` Upgrade copilot resize handle to pointer + keyboard resize with bounded values.
-- [ ] `CUX-009` Fix Notes row semantics (`button`-first approach or complete keyboard parity).
-- [ ] `CUX-011` Expand `axe()` coverage for all newly touched UI flows and keep CI gate green.
-- [ ] `CUX-012` Continue overlay standardization on shared primitives (replace hand-rolled overlays/dropdowns).
+- [ ] No open phase-1 baseline tasks.
 
 ## Phase 2 — Feedback, State, and UI System Consistency
 - [ ] `CUX-013` Implement standardized async feedback (toast/notification pattern) for copy/save/delete/export/review actions.
