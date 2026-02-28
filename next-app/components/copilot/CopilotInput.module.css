@@ -730,3 +730,15 @@
         display: none;
     }
 }
+
+/* ========================================
+   GLASS-MORPHISM FALLBACK (A11y)
+   ======================================== */
+
+@supports not (backdrop-filter: blur(1px)) {
+    .inputBox {
+        background: linear-gradient(to bottom, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.97));
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+    }
+}
