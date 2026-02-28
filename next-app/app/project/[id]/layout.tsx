@@ -46,6 +46,11 @@ function ProjectShellInner({ projectId, children }: ProjectShellInnerProps) {
         return () => registerCopilotToggle(null);
     }, [registerCopilotToggle, toggleCollapsed]);
 
+    useEffect(() => {
+        if (!projectId || typeof window === "undefined") return;
+        window.localStorage.setItem("litrev:lastProjectId", projectId);
+    }, [projectId]);
+
     // Focus mode and tab state — default to conversation on entry
     const [focusMode, setFocusMode] = useState<FocusMode>("conversation");
 
