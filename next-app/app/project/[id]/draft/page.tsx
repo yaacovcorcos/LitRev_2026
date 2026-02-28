@@ -21,11 +21,11 @@ import { ProjectCopilot } from "@/components/ProjectCopilot";
 import { useProjectCopilot } from "@/contexts/ProjectCopilotContext";
 import { useProjectShell } from "@/contexts/ProjectShellContext";
 import type { Study } from "@/types/ledger";
-import { DRAFT_SECTIONS, OPTIONAL_SECTION_KEYS, DraftMode, DraftSectionId, DraftSectionKey } from "@/types/draft";
+import { OPTIONAL_SECTION_KEYS, type DraftMode, DraftSectionId } from "@/types/draft";
 import {
   CopilotMessage,
   DEFAULT_SECTION_FORMAT,
-  DraftSectionFormat,
+  type DraftSectionFormat,
   DraftState,
   emptyDoc,
   loadDraftState,
@@ -47,254 +47,26 @@ import Underline from "@tiptap/extension-underline";
 import type { JSONContent } from "@tiptap/core";
 import { Citation, ParagraphDirection, EditorToolbar, FullSectionEditor } from "./DraftEditors";
 import { usePopupChat } from "@/contexts/PopupChatContext";
-
-const EMPTY_IDS: string[] = [];
-
-/**
- * Format authors string for citation display.
- * "John Smith, Jane Doe, Bob Johnson" → "Smith et al."
- * "John Smith, Jane Doe" → "Smith & Doe"
- * "John Smith" → "Smith"
- */
-const formatAuthorsShort = (authors: string): string => {
-  if (!authors) return "Unknown";
-  // Split by comma or "and"
-  const parts = authors.split(/,|(?:\s+and\s+)/i).map((p) => p.trim()).filter(Boolean);
-  if (parts.length === 0) return "Unknown";
-  // Extract last name from first author (assumes "First Last" format)
-  const firstAuthor = parts[0];
-  const nameParts = firstAuthor.split(/\s+/);
-  const lastName = nameParts[nameParts.length - 1];
-  if (parts.length === 1) return lastName;
-  if (parts.length === 2) {
-    const secondNameParts = parts[1].split(/\s+/);
-    const secondLastName = secondNameParts[secondNameParts.length - 1];
-    return `${lastName} & ${secondLastName}`;
-  }
-  return `${lastName} et al.`;
-};
-
-const studyLabel = (study: Study) => `${formatAuthorsShort(study.authors)}, ${study.year}`;
-
-const isBaseSectionKey = (value: string | null): value is DraftSectionKey => {
-  if (!value) return false;
-  return DRAFT_SECTIONS.some((s) => s.key === value);
-};
-
-const isDraftMode = (value: string | null): value is DraftMode => value === "section" || value === "full";
-
-const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
-
-type SectionMeta = {
-  id: DraftSectionId;
-  label: string;
-  placeholder?: string;
-  isCustom?: boolean;
-};
-
-const BASE_SECTION_META: SectionMeta[] = DRAFT_SECTIONS.map((section) => ({
-  id: section.key,
-  label: section.label,
-  placeholder: section.placeholder,
-  isCustom: false,
-}));
-
-const BASE_SECTION_MAP = new Map<DraftSectionId, SectionMeta>(
-  BASE_SECTION_META.map((section) => [section.id, section])
-);
-
-const slugify = (value: string) =>
-  value
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)+/g, "");
-
-const createCustomSectionId = (label: string) => {
-  const slug = slugify(label);
-  return `custom-${slug || "section"}-${Date.now().toString(36)}`;
-};
-
-const customSectionPlaceholder = (label: string) => `Draft the ${label} section.`;
-
-const docHasContent = (doc: JSONContent | null | undefined): boolean => {
-  if (!doc || typeof doc !== "object") return false;
-  const stack: JSONContent[] = [doc];
-  while (stack.length) {
-    const node = stack.pop();
-    if (!node) continue;
-    if (node.type === "text" && typeof node.text === "string" && node.text.trim().length > 0) {
-      return true;
-    }
-    if (node.type === "citation" || node.type === "hardBreak") {
-      return true;
-    }
-    if (Array.isArray(node.content)) {
-      for (const child of node.content) {
-        if (child && typeof child === "object") {
-          stack.push(child);
-        }
-      }
-    }
-  }
-  return false;
-};
-
-const FONT_FAMILY_OPTIONS = [
-  { label: "Default (Manuscript)", value: "Georgia, 'Times New Roman', serif" },
-  { label: "Sans (Lexend)", value: "Lexend, sans-serif" },
-  { label: "Sans (Arial)", value: "Arial, Helvetica, sans-serif" },
-  { label: "Mono (Courier)", value: "'Courier New', Courier, monospace" },
-];
-
-const FONT_SIZE_OPTIONS = [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 24, 26, 28, 30, 32, 36, 40, 48, 60, 72];
-const LINE_HEIGHT_OPTIONS = [0.8, 0.9, 0.95, 1.0, 1.1, 1.15, 1.2, 1.3, 1.4, 1.5, 1.6, 1.75, 1.85, 2, 2.5, 3];
-const PARAGRAPH_SPACING_OPTIONS = [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 24, 28, 32, 40, 48, 64];
-
-const formatToVars = (format: DraftSectionFormat): CSSProperties =>
-  ({
-    "--editor-font-size": `${format.fontSize}px`,
-    "--editor-line-height": `${format.lineHeight}`,
-    "--editor-paragraph-spacing": `${format.paragraphSpacing}px`,
-    "--editor-font-family": format.fontFamily,
-  }) as CSSProperties;
-
-type AddEvidenceModalProps = {
-  isOpen: boolean;
-  onClose: () => void;
-  studies: Study[];
-  usedEvidenceIds: string[];
-  onAddEvidence: (refId: string) => void;
-  projectId: string;
-};
-
-function AddEvidenceModal({ isOpen, onClose, studies, usedEvidenceIds, onAddEvidence, projectId }: AddEvidenceModalProps) {
-  const [evidenceQuery, setEvidenceQuery] = useState("");
-  const overlayRef = useRef<HTMLDivElement | null>(null);
-  const lastFocusRef = useRef<HTMLElement | null>(null);
-
-  const filteredEvidence = useMemo(() => {
-    const q = evidenceQuery.trim().toLowerCase();
-    if (!q) return studies;
-    return studies.filter(
-      (s) =>
-        s.title.toLowerCase().includes(q) ||
-        s.authors.toLowerCase().includes(q) ||
-        studyLabel(s).toLowerCase().includes(q) ||
-        s.details?.journal?.toLowerCase().includes(q)
-    );
-  }, [studies, evidenceQuery]);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    setEvidenceQuery("");
-  }, [isOpen]);
-
-  useEffect(() => {
-    if (!isOpen || !overlayRef.current) return;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    lastFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-
-    const focusable = overlayRef.current.querySelectorAll<HTMLElement>(
-      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-    );
-    const first = focusable[0];
-    const last = focusable[focusable.length - 1];
-    first?.focus();
-
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        onClose();
-        return;
-      }
-      if (event.key !== "Tab") return;
-      if (event.shiftKey) {
-        if (document.activeElement === first) {
-          event.preventDefault();
-          last?.focus();
-        }
-      } else if (document.activeElement === last) {
-        event.preventDefault();
-        first?.focus();
-      }
-    };
-
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      document.removeEventListener("keydown", onKeyDown);
-      lastFocusRef.current?.focus();
-    };
-  }, [isOpen, onClose]);
-
-  return (
-    <div
-      className="modal-overlay"
-      data-state={isOpen ? "open" : "closed"}
-      aria-hidden={!isOpen}
-      ref={overlayRef}
-      onClick={(event) => {
-        if (event.target === event.currentTarget) onClose();
-      }}
-    >
-      <div className="modal-glass" data-state={isOpen ? "open" : "closed"} role="dialog" aria-modal="true" aria-labelledby="addEvidenceTitle">
-        <div className="modal-header">
-          <h2 id="addEvidenceTitle">Add Evidence</h2>
-          <button className="close-modal-btn" aria-label="Close" onClick={onClose}>
-            <span className="material-icons-round">close</span>
-          </button>
-        </div>
-
-        <div className={styles.modalBody}>
-          <div className={styles.modalSearch}>
-            <span className={`material-icons-round ${styles.modalSearchIcon}`}>search</span>
-            <input
-              type="text"
-              value={evidenceQuery}
-              onChange={(e) => setEvidenceQuery(e.target.value)}
-              placeholder="Search references…"
-              aria-label="Search references"
-            />
-          </div>
-
-          <div className={styles.modalList}>
-            {filteredEvidence.length === 0 ? (
-              <div className={styles.emptyModal}>
-                <p>{studies.length === 0 ? "No studies in your Evidence Ledger yet." : "No matching studies found."}</p>
-                {studies.length === 0 && (
-                  <Link href={`/project/${projectId}/ledger`} className="header-btn header-btn-primary">
-                    Go to Evidence Ledger
-                  </Link>
-                )}
-              </div>
-            ) : (
-              filteredEvidence.map((study) => {
-                const isAdded = usedEvidenceIds.includes(study.id);
-                return (
-                  <div key={study.id} className={styles.modalItem}>
-                    <div className={styles.modalItemMeta}>
-                      <div className={styles.ledgerLabel}>{studyLabel(study)}</div>
-                      <div className={styles.ledgerTitle}>{study.title}</div>
-                    </div>
-                    <button
-                      type="button"
-                      className={isAdded ? styles.smallBtnDisabled : styles.smallBtn}
-                      disabled={isAdded}
-                      onClick={() => onAddEvidence(study.id)}
-                    >
-                      {isAdded ? "Added" : "Add"}
-                    </button>
-                  </div>
-                );
-              })
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
+import { AddEvidenceModal } from "./AddEvidenceModal";
+import {
+  EMPTY_IDS,
+  studyLabel,
+  isBaseSectionKey,
+  isDraftMode,
+  clamp,
+  createCustomSectionId,
+  customSectionPlaceholder,
+  docHasContent,
+  formatToVars,
+  jsonToText,
+  FONT_FAMILY_OPTIONS,
+  FONT_SIZE_OPTIONS,
+  LINE_HEIGHT_OPTIONS,
+  PARAGRAPH_SPACING_OPTIONS,
+  BASE_SECTION_MAP,
+  BASE_SECTION_META,
+  type SectionMeta,
+} from "./draft-helpers";
 
 function DraftContent() {
   const { id } = useParams<{ id: string }>();
@@ -930,55 +702,6 @@ function DraftContent() {
     editor.chain().focus().insertContent(text).run();
   };
 
-  // Helper to convert TipTap JSON to plain text/markdown
-  const jsonToText = useCallback((doc: JSONContent | null | undefined): string => {
-    if (!doc) return "";
-
-    const extractText = (node: JSONContent): string => {
-      if (node.type === "text") {
-        let text = node.text || "";
-        // Apply marks for markdown
-        if (node.marks) {
-          for (const mark of node.marks) {
-            if (mark.type === "bold") text = `**${text}**`;
-            if (mark.type === "italic") text = `*${text}*`;
-          }
-        }
-        return text;
-      }
-      if (node.type === "citation") {
-        return node.attrs?.label ? `(${node.attrs.label})` : "(Citation)";
-      }
-      if (node.type === "hardBreak") {
-        return "\n";
-      }
-      if (!node.content) return "";
-
-      const children = node.content.map(extractText).join("");
-
-      // Add formatting based on node type
-      switch (node.type) {
-        case "paragraph":
-          return children + "\n\n";
-        case "heading":
-          const level = node.attrs?.level || 1;
-          return "#".repeat(level) + " " + children + "\n\n";
-        case "bulletList":
-          return children;
-        case "orderedList":
-          return children;
-        case "listItem":
-          return "- " + children.trim() + "\n";
-        case "blockquote":
-          return "> " + children.split("\n").filter(Boolean).join("\n> ") + "\n\n";
-        default:
-          return children;
-      }
-    };
-
-    return extractText(doc).trim();
-  }, []);
-
   // Check if draft has content to export
   const hasDraftContent = useMemo(() => {
     return orderedSections.some((section) => docHasContent(draft.contentBySection[section.id]));
@@ -1081,7 +804,7 @@ function DraftContent() {
     setLatestExport(newExport);
 
     return newExport;
-  }, [project, id, flushContentCommit, orderedSections, draft.contentBySection, draft.ledgerBySection, jsonToText, latestExport, studies]);
+  }, [project, id, flushContentCommit, orderedSections, draft.contentBySection, draft.ledgerBySection, latestExport, studies]);
 
   // Delete export
   const handleDeleteExport = useCallback(async (fileId: string) => {
@@ -1131,7 +854,7 @@ function DraftContent() {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-  }, [project, draft.contentBySection, orderedSections, jsonToText, flushContentCommit]);
+  }, [project, draft.contentBySection, orderedSections, flushContentCommit]);
 
   const handleFocusSection = useCallback(
     (key: DraftSectionId, editor: Editor) => {

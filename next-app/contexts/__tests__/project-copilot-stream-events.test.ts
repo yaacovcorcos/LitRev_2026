@@ -47,6 +47,7 @@ describe("project copilot stream event handlers", () => {
         pendingChoices = choices;
       },
       onPlanStepUpdate: vi.fn(),
+      setPendingUserInput: vi.fn(),
     };
 
     let nextState = handleProjectCopilotStreamChunk(
@@ -89,6 +90,7 @@ describe("project copilot stream event handlers", () => {
         emitLedgerChanged: vi.fn(),
         setPendingChoices: vi.fn(),
         onPlanStepUpdate: vi.fn(),
+        setPendingUserInput: vi.fn(),
       }
     );
 
@@ -118,6 +120,7 @@ describe("project copilot stream event handlers", () => {
         emitLedgerChanged: vi.fn(),
         setPendingChoices,
         onPlanStepUpdate: vi.fn(),
+        setPendingUserInput: vi.fn(),
       }
     );
 
@@ -142,6 +145,7 @@ describe("project copilot stream event handlers", () => {
       setPendingChoices: vi.fn(),
       onPlanStepUpdate: vi.fn(),
       onNavigate,
+      setPendingUserInput: vi.fn(),
     };
 
     // Safe URL → calls onNavigate
@@ -192,6 +196,7 @@ describe("project copilot stream event handlers", () => {
       emitLedgerChanged: vi.fn(),
       setPendingChoices: vi.fn(),
       onPlanStepUpdate: vi.fn(),
+      setPendingUserInput: vi.fn(),
     };
 
     let nextState = handleProjectCopilotStreamChunk(

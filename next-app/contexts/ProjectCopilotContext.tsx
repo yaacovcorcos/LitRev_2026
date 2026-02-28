@@ -25,7 +25,7 @@ import { useCopilotConversations } from "@/hooks/useCopilotConversations";
 import { useCopilotStreamActions } from "@/hooks/useCopilotStreamActions";
 import type { ArtifactData } from "@/types/artifacts";
 import type { AutonomyPreset, AutonomyLevel } from "@/types/agent";
-import type { ChoiceOption, ReasoningMode, StreamPhase } from "@/types/ai";
+import type { ChoiceOption, CopilotPage, ReasoningMode, StreamPhase, UserInputRequest } from "@/types/ai";
 import { useRouter } from "next/navigation";
 import {
     getReasoningModePreference,
@@ -70,6 +70,9 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
 
     // AI-generated clickable choices
     const [pendingChoices, setPendingChoices] = useState<ChoiceOption[]>([]);
+
+    // Structured ask_user question pending user response
+    const [pendingUserInput, setPendingUserInput] = useState<UserInputRequest | null>(null);
 
     // Autonomy configuration state (Phase 7)
     const [autonomyPreset, setAutonomyPreset] = useState<AutonomyPreset>("assisted");
@@ -213,6 +216,7 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
         setIsLoading,
         setCurrentRunId,
         setPendingChoices,
+        setPendingUserInput,
     });
 
     // Stream + artifact actions (extracted hook)
@@ -227,6 +231,7 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
         setStreamPhase,
         setCurrentRunId,
         setPendingChoices,
+        setPendingUserInput,
         setArtifacts,
         pendingAttachment,
         setPendingAttachment,
@@ -300,6 +305,12 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
 
     const clearChoices = useCallback(() => setPendingChoices([]), []);
 
+    const answerUserInput = useCallback((callId: string, answer: string) => {
+        setPendingUserInput(null);
+        // Send the answer as the next user message so the AI can continue
+        stream.sendMessage(answer, "ai" as CopilotPage);
+    }, [stream]);
+
     const value = useMemo(
         () => ({
             state,
@@ -359,6 +370,9 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             // AI-generated clickable choices
             pendingChoices,
             clearChoices,
+            // Structured ask_user input
+            pendingUserInput,
+            answerUserInput,
             // Message pagination
             hasMore: convo.hasMore,
             isLoadingOlder: convo.isLoadingOlder,
@@ -392,6 +406,8 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             resetToPreset,
             pendingChoices,
             clearChoices,
+            pendingUserInput,
+            answerUserInput,
         ]
     );
 
