@@ -271,4 +271,38 @@ describe("tool middleware pipeline", () => {
 
     expect(executor).toHaveBeenCalledTimes(2);
   });
+
+  it("does not replay protected mutation calls across different runs", async () => {
+    const executor = vi.fn(async (request: ToolExecutionRequest) => ({
+      callId: request.callId,
+      result: { added: 1 },
+    }));
+    const middleware = createIdempotencyMiddleware({
+      ttlMs: 60_000,
+      toolNames: ["add_to_ledger"],
+    });
+
+    await executeWithToolMiddleware(
+      {
+        name: "add_to_ledger",
+        args: { results: [{ title: "Study A", authors: "A", year: 2024 }] },
+        callId: "c1",
+        context: { projectId: "p1", userId: "u1", runId: "r1" },
+      },
+      [middleware],
+      executor
+    );
+    await executeWithToolMiddleware(
+      {
+        name: "add_to_ledger",
+        args: { results: [{ title: "Study A", authors: "A", year: 2024 }] },
+        callId: "c2",
+        context: { projectId: "p1", userId: "u1", runId: "r2" },
+      },
+      [middleware],
+      executor
+    );
+
+    expect(executor).toHaveBeenCalledTimes(2);
+  });
 });

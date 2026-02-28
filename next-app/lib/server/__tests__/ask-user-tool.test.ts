@@ -23,7 +23,7 @@ describe("askUserTool", () => {
         });
 
         expect(result.requiresUserInput).toBe(true);
-        expect(result.callId).toMatch(/^ask_user_\d+$/);
+        expect(result.callId).toMatch(/^ask_user_[0-9a-f-]{36}$/);
         expect(result.result).toEqual({
             status: "waiting_for_user_input",
             callId: result.callId,
@@ -125,8 +125,6 @@ describe("askUserTool", () => {
             question: "Q1?",
             questionType: "yes_no",
         });
-        // Small delay to ensure different timestamp
-        await new Promise(r => setTimeout(r, 2));
         const result2 = await askUserTool.execute({
             question: "Q2?",
             questionType: "yes_no",

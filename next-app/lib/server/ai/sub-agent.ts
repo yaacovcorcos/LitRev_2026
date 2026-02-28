@@ -10,6 +10,8 @@
  * - Reuses assembleSystemPrompt() for mode-specific system prompts
  * - Does NOT stream — returns a summary when done
  * - Skips autonomy checks (parent already authorized the delegation)
+ * - Auto-applies proposal-style tool outputs by creating + applying artifacts
+ *   on the parent run (when run/project context is available)
  * - Conservative budgets: 5 iterations, 10 tool calls, 60s wall time
  *
  * (Wave 2 — Improvement 2)
@@ -19,11 +21,13 @@ import "server-only";
 
 import type { AIMessage, ToolCall, ChatOptions } from "@/types/ai";
 import type { AgentMode } from "@/types/agent";
+import type { ArtifactType } from "@/types/artifacts";
 import { LoopState, type LoopBudget, type StopReason } from "@/lib/agent/loop-controller";
 import { getToolDefinitions, executeTool } from "./tools/base";
 import { compactToolResult } from "@/lib/agent/compaction";
 import { assembleSystemPrompt } from "@/lib/ai/prompts/copilot-prompts";
 import { getAIService } from "./ai-service";
+import { createArtifact, applyArtifact } from "@/lib/server/agent/artifacts";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -67,6 +71,64 @@ export interface SubAgentResult {
     toolLog: { name: string; resultPreview: string }[];
     /** Error message if execution failed */
     error?: string;
+}
+
+function mapToolToArtifactType(toolName: string): ArtifactType | null {
+    const mapping: Record<string, ArtifactType> = {
+        bulk_screening: "screening_batch",
+        update_protocol: "protocol_suggestion",
+        store_memory: "memory_proposal",
+        forget_memory: "memory_forget_proposal",
+        update_note: "draft_diff",
+        exclude_study: "study_proposal",
+        update_study: "study_update",
+    };
+    return mapping[toolName] ?? null;
+}
+
+function mapToolToArtifactTitle(toolName: string, args: Record<string, unknown>): string {
+    switch (toolName) {
+        case "bulk_screening":
+            return "Batch screening results";
+        case "update_protocol":
+            return `Protocol: ${args.field ?? "update"}`;
+        case "store_memory":
+            return `Remember: ${args.key ?? "preference"}`;
+        case "forget_memory":
+            return `Forget: ${args.key ?? "memory"}`;
+        case "update_note":
+            return `Draft: ${args.section ?? "section"}`;
+        case "exclude_study":
+            return `Exclude: ${args.reason ?? "study"}`;
+        case "update_study":
+            return "Study metadata update";
+        default:
+            return toolName;
+    }
+}
+
+async function maybeAutoApplyDelegatedArtifact(params: {
+    toolName: string;
+    toolArgs: Record<string, unknown>;
+    toolResult: unknown;
+    parentRunId?: string;
+    projectId?: string;
+    userId?: string;
+}): Promise<string | null> {
+    const artifactType = mapToolToArtifactType(params.toolName);
+    if (!artifactType) return null;
+    if (!params.parentRunId || !params.projectId || params.toolResult == null) return null;
+
+    const artifact = await createArtifact({
+        runId: params.parentRunId,
+        projectId: params.projectId,
+        userId: params.userId,
+        type: artifactType,
+        title: mapToolToArtifactTitle(params.toolName, params.toolArgs),
+        payload: params.toolResult,
+    });
+    await applyArtifact(artifact.id, "auto_applied");
+    return artifact.id;
 }
 
 // ── Default Budget ───────────────────────────────────────────────────────────
@@ -219,6 +281,37 @@ export async function executeSubAgent(params: SubAgentParams): Promise<SubAgentR
                     lastContent = "Sub-agent paused: a tool requested user input.";
                     loop.markStopped("paused_for_input");
                     break;
+                }
+
+                if (!result.error) {
+                    try {
+                        const artifactId = await maybeAutoApplyDelegatedArtifact({
+                            toolName: tc.name,
+                            toolArgs: tc.arguments,
+                            toolResult: result.result,
+                            parentRunId: params.parentRunId,
+                            projectId,
+                            userId,
+                        });
+                        if (artifactId) {
+                            toolLog.push({
+                                name: `${tc.name}:auto_applied`,
+                                resultPreview: `Applied delegated artifact ${artifactId}`,
+                            });
+                        }
+                    } catch (error) {
+                        const message = error instanceof Error
+                            ? error.message
+                            : "Failed to auto-apply delegated artifact";
+                        return {
+                            summary: lastContent || "Sub-agent failed during delegated artifact application.",
+                            stopReason: "error",
+                            iterations: loop.iterations,
+                            totalToolCalls: loop.totalToolCalls,
+                            toolLog,
+                            error: message,
+                        };
+                    }
                 }
 
                 const toolMsg: AIMessage = {

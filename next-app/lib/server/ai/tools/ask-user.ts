@@ -10,6 +10,7 @@
  */
 
 import { z } from "zod";
+import { randomUUID } from "node:crypto";
 import type { AITool } from "./base";
 import type { UserInputOption } from "@/types/ai";
 
@@ -111,7 +112,7 @@ export const askUserTool: AITool = {
             resolvedOptions = undefined;
         }
 
-        const callId = `ask_user_${Date.now()}`;
+        const callId = `ask_user_${randomUUID()}`;
 
         return {
             callId,

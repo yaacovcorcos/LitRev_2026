@@ -77,6 +77,9 @@ function requestFingerprint(request: ToolExecutionRequest): string {
     userId: request.context?.userId ?? null,
     projectId: request.context?.projectId ?? null,
     studyId: request.context?.studyId ?? null,
+    // Scope deduplication to the current run to prevent masking
+    // intentional repeated actions across separate user turns.
+    runId: request.context?.runId ?? null,
   };
   return createHash("sha256").update(stableSerialize(payload)).digest("hex");
 }
