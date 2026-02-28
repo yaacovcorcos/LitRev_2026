@@ -66,7 +66,71 @@
 
 .sampleCard {
     border-style: dashed;
-    border-color: color-mix(in srgb, var(--accent-primary) 38%, transparent);
+    border-color: color-mix(in srgb, var(--color-info-text) 35%, transparent);
+    background:
+        linear-gradient(
+            135deg,
+            color-mix(in srgb, var(--color-info-bg-solid) 18%, white 82%),
+            color-mix(in srgb, var(--color-info-bg-solid) 10%, white 90%)
+        );
+}
+
+.sampleCard:hover {
+    border-color: color-mix(in srgb, var(--color-info-text) 52%, transparent);
+    box-shadow: 0 12px 32px color-mix(in srgb, var(--color-info-text) 18%, transparent);
+}
+
+.sampleCardOpenBtn {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    border: none;
+    border-radius: inherit;
+    background: transparent;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    color: inherit;
+    font: inherit;
+    padding: 20px;
+    transition: background 0.24s ease;
+}
+
+.sampleCardOpenBtn:focus-visible {
+    outline: 2px solid var(--accent-primary);
+    outline-offset: 2px;
+}
+
+.sampleCardOpenBtn:hover {
+    background: color-mix(in srgb, var(--color-info-bg-solid) 16%, transparent);
+}
+
+.sampleCardOpenBtn .sampleBadge {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+}
+
+.sampleCard .iconCircle {
+    color: var(--color-info-text);
+    background: color-mix(in srgb, var(--color-info-bg-solid) 26%, white 74%);
+    border-color: color-mix(in srgb, var(--color-info-text) 16%, transparent);
+    box-shadow: 0 4px 14px color-mix(in srgb, var(--color-info-text) 12%, transparent);
+}
+
+.sampleCard .iconCircle:hover {
+    background: color-mix(in srgb, var(--color-info-bg-solid) 72%, white 28%);
+    color: var(--color-info-text);
+    border-color: color-mix(in srgb, var(--color-info-text) 22%, transparent);
+    box-shadow: 0 8px 24px color-mix(in srgb, var(--color-info-text) 20%, transparent);
+    transform: translateY(-1px) scale(1.06);
+}
+
+.sampleCard .newProjectTitle {
+    color: var(--color-info-text);
 }
 
 .newProjectContent {
@@ -105,11 +169,11 @@
 }
 
 .iconCircle:hover {
-    background: var(--accent-primary);
-    color: white;
-    border-color: transparent;
-    box-shadow: 0 8px 24px rgba(217, 116, 89, 0.3);
-    transform: scale(1.1);
+    background: color-mix(in srgb, var(--accent-primary) 28%, white 72%);
+    color: color-mix(in srgb, var(--accent-primary) 88%, black 12%);
+    border-color: color-mix(in srgb, var(--accent-primary) 28%, transparent);
+    box-shadow: 0 6px 16px color-mix(in srgb, var(--accent-primary) 20%, transparent);
+    transform: translateY(-1px) scale(1.06);
 }
 
 .plusIcon {
@@ -351,10 +415,17 @@
     align-items: center;
     justify-content: center;
     cursor: pointer;
+    transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+.sampleCardDismissBtn .material-icons-round {
+    font-size: 18px;
 }
 
 .sampleCardDismissBtn:hover {
-    color: var(--text-primary);
+    color: var(--color-info-text);
+    border-color: color-mix(in srgb, var(--color-info-text) 24%, transparent);
+    background: color-mix(in srgb, var(--color-info-bg-solid) 30%, white 70%);
 }
 
 .sampleCardDismissBtn:focus-visible {

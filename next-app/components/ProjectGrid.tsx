@@ -9,9 +9,10 @@ type ProjectGridProps = {
   projects: Project[];
   viewMode: "grid" | "list";
   onNewProject: () => void;
+  showSampleCard?: boolean;
 };
 
-export function ProjectGrid({ projects, viewMode, onNewProject }: ProjectGridProps) {
+export function ProjectGrid({ projects, viewMode, onNewProject, showSampleCard = true }: ProjectGridProps) {
   const { getPaperCount } = useLedger();
   const gridClass = viewMode === "list" ? `${styles.projectGrid} ${styles.listView}` : styles.projectGrid;
 
@@ -91,7 +92,7 @@ export function ProjectGrid({ projects, viewMode, onNewProject }: ProjectGridPro
           </Link>
         );
       })}
-      <SampleReviewCard viewMode={viewMode} />
+      {showSampleCard ? <SampleReviewCard viewMode={viewMode} /> : null}
     </div>
   );
 }

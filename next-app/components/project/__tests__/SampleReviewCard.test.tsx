@@ -1,0 +1,96 @@
+// @vitest-environment jsdom
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { SampleReviewCard } from "../SampleReviewCard";
+
+const {
+  mockPush,
+  mockRefresh,
+  mockOpenOrCreateDemoProjectAction,
+  mockUseProjects,
+  mockDismissSampleCard,
+  mockIsSampleCardDismissed,
+} = vi.hoisted(() => ({
+  mockPush: vi.fn(),
+  mockRefresh: vi.fn(async () => {}),
+  mockOpenOrCreateDemoProjectAction: vi.fn(),
+  mockUseProjects: vi.fn(),
+  mockDismissSampleCard: vi.fn(),
+  mockIsSampleCardDismissed: vi.fn(() => false),
+}));
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({
+    push: mockPush,
+  }),
+}));
+
+vi.mock("@/app/actions/demo", () => ({
+  openOrCreateDemoProjectAction: mockOpenOrCreateDemoProjectAction,
+}));
+
+vi.mock("@/contexts/ProjectsContext", () => ({
+  useProjects: mockUseProjects,
+}));
+
+vi.mock("@/lib/demo/sample-card", () => ({
+  dismissSampleCard: mockDismissSampleCard,
+  isSampleCardDismissed: mockIsSampleCardDismissed,
+}));
+
+describe("SampleReviewCard", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockIsSampleCardDismissed.mockReturnValue(false);
+    mockUseProjects.mockReturnValue({
+      projects: [],
+      refresh: mockRefresh,
+    });
+  });
+
+  it("uses separate open and dismiss buttons (no nested interactive controls)", async () => {
+    mockOpenOrCreateDemoProjectAction.mockResolvedValue({
+      success: true,
+      data: { id: "demo-project-id" },
+    });
+
+    render(<SampleReviewCard viewMode="grid" />);
+
+    const openButton = screen.getByRole("button", { name: "Open sample review" });
+    const dismissButton = screen.getByRole("button", { name: "Dismiss sample review card" });
+    expect(openButton.contains(dismissButton)).toBe(false);
+
+    fireEvent.click(openButton);
+
+    await waitFor(() => {
+      expect(mockOpenOrCreateDemoProjectAction).toHaveBeenCalledTimes(1);
+      expect(mockRefresh).toHaveBeenCalledTimes(1);
+    });
+    expect(mockPush).toHaveBeenCalledWith("/project/demo-project-id");
+  });
+
+  it("dismisses the card without triggering open behavior", () => {
+    render(<SampleReviewCard viewMode="grid" />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss sample review card" }));
+
+    expect(mockDismissSampleCard).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("button", { name: "Open sample review" })).toBeNull();
+    expect(mockOpenOrCreateDemoProjectAction).not.toHaveBeenCalled();
+  });
+
+  it("renders an inline error when sample opening fails", async () => {
+    mockOpenOrCreateDemoProjectAction.mockResolvedValue({
+      success: false,
+      error: "failure",
+    });
+
+    render(<SampleReviewCard viewMode="grid" />);
+    fireEvent.click(screen.getByRole("button", { name: "Open sample review" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert").textContent).toContain("Unable to open sample review. Please try again.");
+    });
+    expect(mockPush).not.toHaveBeenCalled();
+  });
+});
