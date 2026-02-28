@@ -37,7 +37,7 @@ import { reviewArtifactAction, getAutonomyConfigAction, updateAutonomyAction } f
 import { summarizeConversationAction } from "@/app/actions/summarize-conversation";
 import type { ArtifactData, ArtifactStatus, ArtifactType } from "@/types/artifacts";
 import type { AgentMode, AutonomyPreset, AutonomyLevel } from "@/types/agent";
-import type { ChoiceOption, CopilotPage, ReasoningMode } from "@/types/ai";
+import type { ChoiceOption, CopilotPage, ReasoningMode, StreamPhase } from "@/types/ai";
 import { useRouter } from "next/navigation";
 import { handleProjectCopilotStreamChunk } from "@/contexts/project-copilot-stream-events";
 import type { ArtifactActionContract } from "@/lib/artifacts/action-contract";
@@ -80,6 +80,10 @@ type ProjectCopilotContextValue = {
     panelWidth: number;
     /** Whether AI is loading */
     isLoading: boolean;
+    /** Current streaming phase for fine-grained UI control */
+    streamPhase: StreamPhase;
+    /** Whether the user can interact with artifact actions (false during streaming) */
+    canAct: boolean;
     /** Reasoning visibility mode (off/summary/full) */
     reasoningMode: ReasoningMode;
     /** Toggle the panel collapsed state */
@@ -210,6 +214,7 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
     const [state, setState] = useState<ProjectCopilotState>(createDefaultProjectCopilotState());
     const stateRef = useRef<ProjectCopilotState>(createDefaultProjectCopilotState());
     const [isLoading, setIsLoading] = useState(false);
+    const [streamPhase, setStreamPhase] = useState<StreamPhase>("idle");
     const [reasoningMode, setReasoningModeState] = useState<ReasoningMode>(() => getReasoningModePreference());
     const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const abortControllerRef = useRef<AbortController | null>(null);
@@ -916,6 +921,7 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
 
         // Stream lifecycle guards
         setIsLoading(true);
+        setStreamPhase("streaming");
         streamGenRef.current++;
         const myGen = streamGenRef.current;
 
@@ -1037,6 +1043,15 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
                     activeReasoningId = nextState.activeReasoningId;
                     localRunId = nextState.localRunId;
                     effectiveConvId = nextState.effectiveConvId;
+
+                    // Update stream phase based on chunk type
+                    if (data.type === "tool_call") {
+                        setStreamPhase("tool_running");
+                    } else if (data.type === "content" || data.type === "reasoning_start" || data.type === "reasoning_delta") {
+                        setStreamPhase("streaming");
+                    } else if (data.type === "run_end") {
+                        setStreamPhase("completing");
+                    }
                 },
             });
             runStatus = summary.runStatus;
@@ -1093,6 +1108,7 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
         } finally {
             if (streamGenRef.current === myGen) {
                 setIsLoading(false);
+                setStreamPhase("idle");
             }
             if (abortControllerRef.current === controller) {
                 abortControllerRef.current = null;
@@ -1476,6 +1492,8 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             isCollapsed: state.panel.collapsed,
             panelWidth: state.panel.width,
             isLoading,
+            streamPhase,
+            canAct: !isLoading,
             reasoningMode,
             toggleCollapsed,
             setCollapsed,
@@ -1534,6 +1552,7 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
         [
             state,
             isLoading,
+            streamPhase,
             reasoningMode,
             toggleCollapsed,
             setCollapsed,
@@ -1600,4 +1619,10 @@ export function useProjectCopilot() {
 /** Safe accessor — returns undefined outside ProjectCopilotProvider (no throw) */
 export function useProjectCopilotSafe() {
     return useContext(ProjectCopilotContext);
+}
+
+/** Streaming gate hook — returns whether the user can interact with artifact actions. */
+export function useStreamingGate() {
+    const { isLoading, streamPhase, canAct } = useProjectCopilot();
+    return { isStreaming: isLoading, streamPhase, canAct };
 }

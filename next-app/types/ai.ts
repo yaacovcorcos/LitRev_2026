@@ -69,6 +69,7 @@ export type ConversationMessageAttachment = {
 
 export type AITone = "standard" | "deep";
 export type ReasoningMode = "off" | "summary" | "full";
+export type StreamPhase = "idle" | "streaming" | "tool_running" | "completing";
 
 // Chat options
 export type ChatOptions = {
