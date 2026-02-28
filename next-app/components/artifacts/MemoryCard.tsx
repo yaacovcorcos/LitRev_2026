@@ -9,9 +9,10 @@ export type MemoryCardProps = {
     onAccept: () => void;
     onReject: () => void;
     onEditAndAccept?: (edited: MemoryProposalPayload) => void;
+    canAct?: boolean;
 };
 
-export function MemoryCard({ payload, onAccept, onReject, onEditAndAccept }: MemoryCardProps) {
+export function MemoryCard({ payload, onAccept, onReject, onEditAndAccept, canAct = true }: MemoryCardProps) {
     const [isEditing, setIsEditing] = useState(false);
     const [editValue, setEditValue] = useState(payload.value);
 
@@ -59,7 +60,7 @@ export function MemoryCard({ payload, onAccept, onReject, onEditAndAccept }: Mem
             )}
 
             <div className={styles.cardActions}>
-                <button type="button" className={styles.excludeBtn} onClick={onReject}>
+                <button type="button" className={styles.excludeBtn} onClick={onReject} disabled={!canAct}>
                     <span className="material-icons-round" style={{ fontSize: 14, marginRight: 4 }}>close</span>
                     Dismiss
                 </button>
@@ -80,7 +81,7 @@ export function MemoryCard({ payload, onAccept, onReject, onEditAndAccept }: Mem
                                 Edit
                             </button>
                         )}
-                        <button type="button" className={styles.keepBtn} onClick={onAccept}>
+                        <button type="button" className={styles.keepBtn} onClick={onAccept} disabled={!canAct}>
                             <span className="material-icons-round" style={{ fontSize: 14, marginRight: 4 }}>check</span>
                             Remember
                         </button>

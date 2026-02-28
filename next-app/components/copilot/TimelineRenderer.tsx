@@ -807,6 +807,7 @@ export function TimelineRenderer({
         };
 
         const jumpTo = projectId ? getJumpToProps(item.artifactType, projectId) : {};
+        const canAct = !isLoading && !isConversationLoading;
 
         const wrapperProps = {
             artifactId: item.artifactId,
@@ -820,7 +821,7 @@ export function TimelineRenderer({
 
         switch (item.artifactType) {
             case "plan": {
-                const canExecutePlan = !!onExecutePlan && !isLoading && !isConversationLoading;
+                const canExecutePlan = !!onExecutePlan && canAct;
                 return (
                     <ArtifactWrapper
                         {...wrapperProps}
@@ -849,6 +850,7 @@ export function TimelineRenderer({
                             payload={studyPayload}
                             onKeep={() => handleReview(isExclusion ? "rejected" : "accepted")}
                             onExclude={(reason) => handleReview(isExclusion ? "accepted" : "rejected", reason)}
+                            canAct={canAct}
                         />
                     </ArtifactWrapper>
                 );
@@ -866,6 +868,7 @@ export function TimelineRenderer({
                             payload={updatePayload}
                             onAccept={() => handleReview("accepted")}
                             onReject={() => handleReview("rejected")}
+                            canAct={canAct}
                         />
                     </ArtifactWrapper>
                 );
@@ -880,6 +883,7 @@ export function TimelineRenderer({
                         <ScreeningBatch
                             payload={item.payload as ScreeningBatchPayload}
                             onAcceptAll={() => handleReview("accepted")}
+                            canAct={canAct}
                         />
                     </ArtifactWrapper>
                 );
@@ -911,6 +915,7 @@ export function TimelineRenderer({
                                     handleReview("accepted");
                                 }
                             }}
+                            canAct={canAct}
                         />
                     </ArtifactWrapper>
                 );
@@ -933,6 +938,7 @@ export function TimelineRenderer({
                                 }
                                 onSuggestionClick(prompt);
                             }}
+                            canAct={canAct}
                         />
                     </ArtifactWrapper>
                 );
@@ -956,6 +962,7 @@ export function TimelineRenderer({
                                 onSuggestionClick(prompt);
                             }}
                             onSave={() => handleReview("accepted")}
+                            canAct={canAct}
                         />
                     </ArtifactWrapper>
                 );
@@ -969,6 +976,7 @@ export function TimelineRenderer({
                         <DraftBlock
                             payload={item.payload as DraftDiffPayload}
                             onAccept={() => handleReview("accepted")}
+                            canAct={canAct}
                         />
                     </ArtifactWrapper>
                 );
@@ -984,6 +992,7 @@ export function TimelineRenderer({
                             onAccept={() => handleReview("accepted")}
                             onReject={() => handleReview("rejected")}
                             onEditAndAccept={(edited) => handleReview("accepted", undefined, edited as unknown as Record<string, unknown>)}
+                            canAct={canAct}
                         />
                     </ArtifactWrapper>
                 );
@@ -998,6 +1007,7 @@ export function TimelineRenderer({
                             payload={item.payload as MemoryForgetProposalPayload}
                             onAccept={() => handleReview("accepted")}
                             onReject={() => handleReview("rejected")}
+                            canAct={canAct}
                         />
                     </ArtifactWrapper>
                 );
@@ -1152,6 +1162,7 @@ export function TimelineRenderer({
                                 type="button"
                                 className={styles.approveAllBtn}
                                 onClick={handleApproveAll}
+                                disabled={isLoading}
                                 aria-label="Approve all pending proposals"
                             >
                                 Approve All

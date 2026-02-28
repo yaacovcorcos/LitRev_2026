@@ -11,9 +11,10 @@ export type DraftBlockProps = {
     onAccept: () => void;
     onEdit?: () => void;
     onRedo?: () => void;
+    canAct?: boolean;
 };
 
-export function DraftBlock({ payload, onAccept, onEdit, onRedo }: DraftBlockProps) {
+export function DraftBlock({ payload, onAccept, onEdit, onRedo, canAct = true }: DraftBlockProps) {
     const sectionLabel = payload.subsection
         ? `${payload.section} § ${payload.subsection}`
         : payload.section;
@@ -36,16 +37,16 @@ export function DraftBlock({ payload, onAccept, onEdit, onRedo }: DraftBlockProp
             </div>
             <div className={styles.cardActions}>
                 {onRedo ? (
-                    <button type="button" className={styles.actionBtnGhost} onClick={onRedo}>
+                    <button type="button" className={styles.actionBtnGhost} onClick={onRedo} disabled={!canAct}>
                         Redo
                     </button>
                 ) : null}
                 {onEdit ? (
-                    <button type="button" className={styles.actionBtnGhost} onClick={onEdit}>
+                    <button type="button" className={styles.actionBtnGhost} onClick={onEdit} disabled={!canAct}>
                         Edit first
                     </button>
                 ) : null}
-                <button type="button" className={styles.actionBtn} onClick={onAccept}>
+                <button type="button" className={styles.actionBtn} onClick={onAccept} disabled={!canAct}>
                     Accept &amp; save to draft
                 </button>
             </div>

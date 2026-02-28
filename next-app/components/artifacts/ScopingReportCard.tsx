@@ -8,6 +8,7 @@ import styles from "@/styles/artifacts.module.css";
 type ScopingReportCardProps = {
     payload: ScopingReportPayload;
     onActionPrompt?: (prompt: string) => void;
+    canAct?: boolean;
 };
 
 const SCOPING_CARD_V2_ENABLED = isScopingDecisionCardV2Enabled();
@@ -22,10 +23,10 @@ function buildUseQuestionPrompt(question: string, index: number) {
     return `Use question ${index + 1}: "${question}". Propose updating my protocol research question for approval.`;
 }
 
-export function ScopingReportCard({ payload, onActionPrompt }: ScopingReportCardProps) {
+export function ScopingReportCard({ payload, onActionPrompt, canAct: canActProp = true }: ScopingReportCardProps) {
     const [showAnalysis, setShowAnalysis] = useState(false);
     const topQuestions = useMemo(() => payload.recommendedQuestions.slice(0, 3), [payload.recommendedQuestions]);
-    const canAct = typeof onActionPrompt === "function";
+    const canAct = typeof onActionPrompt === "function" && canActProp;
 
     if (!SCOPING_CARD_V2_ENABLED) {
         return (

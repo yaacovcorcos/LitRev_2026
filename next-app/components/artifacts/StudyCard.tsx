@@ -9,6 +9,7 @@ export type StudyCardProps = {
     onKeep: () => void;
     onExclude: (reason: string) => void;
     onMaybe?: () => void;
+    canAct?: boolean;
 };
 
 const EXCLUDE_REASONS = [
@@ -29,7 +30,7 @@ const CRITERIA_LABELS: Record<string, string> = {
     sampleSize: "N",
 };
 
-export function StudyCard({ payload, onKeep, onExclude, onMaybe }: StudyCardProps) {
+export function StudyCard({ payload, onKeep, onExclude, onMaybe, canAct = true }: StudyCardProps) {
     const [showAbstract, setShowAbstract] = useState(false);
     const [showExcludeMenu, setShowExcludeMenu] = useState(false);
     const excludeMenuRef = useRef<HTMLDivElement | null>(null);
@@ -120,7 +121,7 @@ export function StudyCard({ payload, onKeep, onExclude, onMaybe }: StudyCardProp
                 )}
 
                 {onMaybe && (
-                    <button type="button" className={styles.maybeBtn} onClick={onMaybe}>
+                    <button type="button" className={styles.maybeBtn} onClick={onMaybe} disabled={!canAct}>
                         Maybe
                     </button>
                 )}
@@ -130,6 +131,7 @@ export function StudyCard({ payload, onKeep, onExclude, onMaybe }: StudyCardProp
                         type="button"
                         className={styles.excludeBtn}
                         onClick={() => setShowExcludeMenu(!showExcludeMenu)}
+                        disabled={!canAct}
                     >
                         Exclude ▾
                     </button>
@@ -152,7 +154,7 @@ export function StudyCard({ payload, onKeep, onExclude, onMaybe }: StudyCardProp
                     )}
                 </div>
 
-                <button type="button" className={styles.keepBtn} onClick={onKeep}>
+                <button type="button" className={styles.keepBtn} onClick={onKeep} disabled={!canAct}>
                     Keep
                 </button>
             </div>

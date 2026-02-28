@@ -14,6 +14,7 @@ export type PICOCardProps = {
     payload: PICOValues;
     onAccept: () => void;
     onEdit: (field: keyof PICOValues, value: string) => void;
+    canAct?: boolean;
 };
 
 const PICO_LABELS: { key: keyof PICOValues; label: string }[] = [
@@ -23,7 +24,7 @@ const PICO_LABELS: { key: keyof PICOValues; label: string }[] = [
     { key: "outcome", label: "O — Outcome" },
 ];
 
-export function PICOCard({ payload, onAccept, onEdit }: PICOCardProps) {
+export function PICOCard({ payload, onAccept, onEdit, canAct = true }: PICOCardProps) {
     const [editingField, setEditingField] = useState<keyof PICOValues | null>(null);
     const [editValue, setEditValue] = useState("");
 
@@ -78,10 +79,10 @@ export function PICOCard({ payload, onAccept, onEdit }: PICOCardProps) {
                 ))}
             </div>
             <div className={styles.cardActions}>
-                <button type="button" className={styles.actionBtnGhost}>
+                <button type="button" className={styles.actionBtnGhost} disabled={!canAct}>
                     Discuss more
                 </button>
-                <button type="button" className={styles.actionBtn} onClick={onAccept}>
+                <button type="button" className={styles.actionBtn} onClick={onAccept} disabled={!canAct}>
                     Accept &amp; Save to Protocol
                 </button>
             </div>

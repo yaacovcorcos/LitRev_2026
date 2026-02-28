@@ -10,9 +10,10 @@ export type CriteriaCardProps = {
     onAdd?: (type: "inclusion" | "exclusion", criterion: string) => void;
     onRemove?: (type: "inclusion" | "exclusion", index: number) => void;
     onDiscuss?: () => void;
+    canAct?: boolean;
 };
 
-export function CriteriaCard({ payload, onSave, onAdd, onRemove, onDiscuss }: CriteriaCardProps) {
+export function CriteriaCard({ payload, onSave, onAdd, onRemove, onDiscuss, canAct = true }: CriteriaCardProps) {
     const [addingType, setAddingType] = useState<"inclusion" | "exclusion" | null>(null);
     const [addValue, setAddValue] = useState("");
 
@@ -87,11 +88,11 @@ export function CriteriaCard({ payload, onSave, onAdd, onRemove, onDiscuss }: Cr
             )}
             <div className={styles.cardActions}>
                 {onDiscuss ? (
-                    <button type="button" className={styles.actionBtnGhost} onClick={onDiscuss}>
+                    <button type="button" className={styles.actionBtnGhost} onClick={onDiscuss} disabled={!canAct}>
                         Discuss more
                     </button>
                 ) : null}
-                <button type="button" className={styles.actionBtn} onClick={onSave}>
+                <button type="button" className={styles.actionBtn} onClick={onSave} disabled={!canAct}>
                     Save to Protocol
                 </button>
             </div>

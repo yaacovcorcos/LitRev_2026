@@ -25,9 +25,10 @@ export type StudyUpdateCardProps = {
     payload: StudyUpdatePayload;
     onAccept: () => void;
     onReject: () => void;
+    canAct?: boolean;
 };
 
-export function StudyUpdateCard({ payload, onAccept, onReject }: StudyUpdateCardProps) {
+export function StudyUpdateCard({ payload, onAccept, onReject, canAct = true }: StudyUpdateCardProps) {
     const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
 
     const toggleRow = useCallback((key: string) => {
@@ -88,10 +89,10 @@ export function StudyUpdateCard({ payload, onAccept, onReject }: StudyUpdateCard
             </div>
 
             <div className={styles.cardActions}>
-                <button type="button" className={styles.actionBtnGhost} onClick={onReject}>
+                <button type="button" className={styles.actionBtnGhost} onClick={onReject} disabled={!canAct}>
                     Reject
                 </button>
-                <button type="button" className={styles.actionBtn} onClick={onAccept}>
+                <button type="button" className={styles.actionBtn} onClick={onAccept} disabled={!canAct}>
                     Apply changes
                 </button>
             </div>

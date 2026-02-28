@@ -8,9 +8,10 @@ export type ScreeningBatchProps = {
     onAcceptAll: () => void;
     onReviewEach?: () => void;
     onOverride?: (index: number, recommendation: "keep" | "exclude" | "maybe") => void;
+    canAct?: boolean;
 };
 
-export function ScreeningBatch({ payload, onAcceptAll, onReviewEach, onOverride }: ScreeningBatchProps) {
+export function ScreeningBatch({ payload, onAcceptAll, onReviewEach, onOverride, canAct = true }: ScreeningBatchProps) {
     const { summary, studies } = payload;
     const canOverride = typeof onOverride === "function";
 
@@ -73,11 +74,11 @@ export function ScreeningBatch({ payload, onAcceptAll, onReviewEach, onOverride 
 
             <div className={styles.cardActions}>
                 {onReviewEach ? (
-                    <button type="button" className={styles.actionBtnGhost} onClick={onReviewEach}>
+                    <button type="button" className={styles.actionBtnGhost} onClick={onReviewEach} disabled={!canAct}>
                         Review each
                     </button>
                 ) : null}
-                <button type="button" className={styles.actionBtn} onClick={onAcceptAll}>
+                <button type="button" className={styles.actionBtn} onClick={onAcceptAll} disabled={!canAct}>
                     Accept all recommendations
                 </button>
             </div>

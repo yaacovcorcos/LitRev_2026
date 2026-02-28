@@ -7,9 +7,10 @@ export type MemoryForgetCardProps = {
     payload: MemoryForgetProposalPayload;
     onAccept: () => void;
     onReject: () => void;
+    canAct?: boolean;
 };
 
-export function MemoryForgetCard({ payload, onAccept, onReject }: MemoryForgetCardProps) {
+export function MemoryForgetCard({ payload, onAccept, onReject, canAct = true }: MemoryForgetCardProps) {
     const label = payload.memoryType === "user" ? "User Memory" : "Project Memory";
     const icon = payload.memoryType === "user" ? "person_remove" : "folder_delete";
     return (
@@ -38,11 +39,11 @@ export function MemoryForgetCard({ payload, onAccept, onReject }: MemoryForgetCa
             )}
 
             <div className={styles.cardActions}>
-                <button type="button" className={styles.excludeBtn} onClick={onReject}>
+                <button type="button" className={styles.excludeBtn} onClick={onReject} disabled={!canAct}>
                     <span className="material-icons-round" style={{ fontSize: 14, marginRight: 4 }}>close</span>
                     Keep
                 </button>
-                <button type="button" className={styles.keepBtn} onClick={onAccept}>
+                <button type="button" className={styles.keepBtn} onClick={onAccept} disabled={!canAct}>
                     <span className="material-icons-round" style={{ fontSize: 14, marginRight: 4 }}>archive</span>
                     Archive Memory
                 </button>
