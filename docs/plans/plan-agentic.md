@@ -17,10 +17,15 @@
 - **Mentioned Studies Flow (P10):** Assistant turns now support deterministic mention extraction (structured contract + DOI/PMID/title-year fallback), inline chat chips, and direct user-initiated add-to-ledger with duplicate-safe idempotent writes and chat provenance metadata.
 - **P10 Rollout Flags:** Mention flow and scoping decision-card behavior are feature-flagged (`NEXT_PUBLIC_CHAT_STUDY_MENTIONS_V1`, `NEXT_PUBLIC_SCOPING_DECISION_CARD_V2`).
 - **Scoping Mode (P10):** Dedicated pre-protocol routing and prompt behavior is live with low-autonomy batch search-pack planning and deterministic protocol handoff (`update_protocol` proposal-only).
+- **Reasoning Stream Support (Current):** `reasoning_*` stream events are currently wired end-to-end for Anthropic responses. OpenAI/xAI models can run normally, but their provider adapters do not yet emit normalized reasoning stream parts in the same pipeline.
 
 ## Active Tasks
 *Work that is entirely unimplemented or currently broken.*
-- [ ] No open agent-orchestration implementation tasks in this phase.
+- [ ] Implement provider-native reasoning stream support for OpenAI and xAI:
+  - Add adapter-level mapping from provider reasoning/thinking outputs into normalized `reasoning_start` / `reasoning_delta` / `reasoning_end` chunks.
+  - Update provider reasoning policy so `includeReasoning` can be enabled safely for OpenAI/xAI when supported.
+  - Add fallback behavior when provider/model omits reasoning parts (no regressions for `off` / `summary` / `full` modes).
+  - Add integration tests for reasoning visibility parity across Anthropic/OpenAI/xAI streaming paths.
 
 ## Recently Completed
 *Finished work that might still be fragile or require monitoring. Prune oldest first.*
