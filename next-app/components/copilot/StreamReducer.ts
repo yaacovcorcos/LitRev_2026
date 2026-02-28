@@ -10,6 +10,23 @@ import type { CopilotMessage } from "@/lib/projectCopilotStorage";
 import type { AIStreamChunk } from "@/types/ai";
 import type { ArtifactType, ArtifactStatus } from "@/types/artifacts";
 
+const STREAM_ERROR_PREFIX = "Sorry, I encountered an error:";
+const PLAN_ERROR_PREFIX = "Plan execution failed:";
+
+function extractRecoveryErrorMessage(text: string): string | null {
+    const trimmed = text.trim();
+    if (trimmed.startsWith(STREAM_ERROR_PREFIX)) {
+        return trimmed
+            .slice(STREAM_ERROR_PREFIX.length)
+            .replace(/\.\s*Please try again\.?$/i, "")
+            .trim();
+    }
+    if (trimmed.startsWith(PLAN_ERROR_PREFIX)) {
+        return trimmed.slice(PLAN_ERROR_PREFIX.length).trim();
+    }
+    return null;
+}
+
 /**
  * Convert legacy CopilotMessage[] to TimelineItem[]
  * Bridge between old message format and new timeline format
@@ -41,6 +58,16 @@ export function messagesToTimeline(messages: CopilotMessage[]): TimelineItem[] {
                 title: msg.artifact.title,
                 payload: msg.artifact.payload ?? {},
                 version: msg.artifact.version ?? 1,
+                createdAt: msg.createdAt,
+            };
+        }
+        const recoveryErrorMessage = extractRecoveryErrorMessage(msg.text);
+        if (recoveryErrorMessage) {
+            return {
+                type: "error" as const,
+                id: `error-${msg.id}`,
+                message: recoveryErrorMessage,
+                retryable: true,
                 createdAt: msg.createdAt,
             };
         }

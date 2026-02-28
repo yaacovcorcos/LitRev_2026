@@ -27,8 +27,10 @@ It consolidates all open UI/UX work into one prioritized sequence so implementat
 - Copilot hydration placeholders no longer render disabled-looking controls before mount; pre-mount controls are now visual placeholders with stable layout and no perceived broken state.
 - The design system now includes first-class typography, shadow, z-index, and motion scales in `styles/tokens.css`, with `stylelint` warn-mode governance to surface raw value drift.
 - High-traffic UI modules (`ledger`, `study detail`, `memory`, `notes`, `protocol`, `login`) now consume shared token scales for typography/motion/layering and reduced hardcoded palette/shadow usage.
+- Timeline recovery UX now maps stream/plan failure messages into recoverable error cards with explicit `Retry` and `Resume` actions wired to resend the last user intent or continue unfinished plan steps.
 
 ## Recently Completed
+- `CUX-007` Added visible tool/run failure recovery UX by converting recoverable failures to timeline error cards and wiring `Retry`/`Resume` actions in both copilot surfaces.
 - `CUX-016` Completed token-system foundation: added typography/shadow/z-index/motion scales, enabled warn-mode `stylelint` governance, and migrated high-traffic CSS modules off many hardcoded values.
 - `CUX-A01` Added icon-button accessibility baseline by wiring explicit `aria-label` attributes for icon-only actions across timeline, files, exports, memory actions, ledger actions, and citation copy controls.
 - `CUX-A02` Added ARIA validation wiring on key forms (`AuthScreen` magic-link email, `ConversationPicker` rename dialog, `Memory` statement input) with `aria-invalid` and linked error/help text.
@@ -38,7 +40,6 @@ It consolidates all open UI/UX work into one prioritized sequence so implementat
 - `CUX-001` Derived initial `focusMode` from pathname in project shell layout to eliminate deep-link flicker.
 - Continued overlay standardization by replacing Notes’ custom delete overlay with shared `ConfirmDialog` (Radix AlertDialog wrapper).
 - `CUX-011` Expanded accessibility coverage with splitter keyboard/semantics behavior tests and `axe` scan (`ResizableSplitter`).
-- `CUX-009` Replaced Notes list `div role="button"` rows with semantic `button` controls and proper pressed/focus behavior.
 
 ## Collaboration Phase Alignment (Claude-Compatible)
 Use this map to parallelize execution between Claude and Codex without phase drift.
@@ -178,7 +179,6 @@ Use this section as implementation policy. Each item describes the durable solut
 - [ ] `CUX-002` Make Notes page shell-aware with explicit `useProjectShell` parity and embedded-content behavior.
 - [ ] `CUX-005` Prevent duplicate artifact action dispatches while run/stream is active.
 - [ ] `CUX-006` Harden suggestion prefill reliability (same-value click and mount timing behavior).
-- [ ] `CUX-007` Add visible, recoverable tool failure UX (`Retry last step` / `Resume run`).
 
 ## Phase 1 — Accessibility & Interaction Baseline
 - [ ] `CUX-012` Continue overlay standardization on shared primitives for remaining hand-rolled overlays/dropdowns.

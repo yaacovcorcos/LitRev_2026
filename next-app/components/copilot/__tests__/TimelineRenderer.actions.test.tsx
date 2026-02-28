@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { TimelineRenderer } from "../TimelineRenderer";
 import type { TimelineItem } from "@/types/timeline";
@@ -104,5 +104,36 @@ describe("TimelineRenderer action affordances", () => {
 
     // Override select must be absent when no override handler is wired.
     expect(screen.queryByRole("combobox")).toBeNull();
+  });
+
+  it("renders retry/resume actions for recoverable error cards", () => {
+    const onRetryLastMessage = vi.fn();
+    const onResumeRun = vi.fn();
+    const items: TimelineItem[] = [
+      {
+        type: "error",
+        id: "err-1",
+        message: "Tool call failed",
+        retryable: true,
+        createdAt: "2026-02-28T00:00:00.000Z",
+      },
+    ];
+
+    render(
+      <TimelineRenderer
+        items={items}
+        isLoading={false}
+        emptyState={{ icon: "chat", title: "Empty", description: "Empty", suggestions: [] }}
+        onSuggestionClick={vi.fn()}
+        onRetryLastMessage={onRetryLastMessage}
+        onResumeRun={onResumeRun}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /retry/i }));
+    fireEvent.click(screen.getByRole("button", { name: /resume/i }));
+
+    expect(onRetryLastMessage).toHaveBeenCalledTimes(1);
+    expect(onResumeRun).toHaveBeenCalledTimes(1);
   });
 });

@@ -85,6 +85,40 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
         }
     }, [currentConversationId, isBranching, isLoading, branchConversation]);
 
+    const retryLastMessage = useCallback(() => {
+        if (isLoading) return;
+        const lastUserMessage = [...messages]
+            .reverse()
+            .find((message) => message.sender === "user" && message.text.trim().length > 0);
+        if (!lastUserMessage) return;
+        sendMessage(
+            lastUserMessage.text,
+            lastUserMessage.context?.page ?? ("overview" as CopilotPage),
+            lastUserMessage.context?.section
+        );
+    }, [isLoading, messages, sendMessage]);
+
+    const resumeFailedPlan = useCallback(() => {
+        if (isLoading) return;
+        const planMessage = [...messages]
+            .reverse()
+            .find((message) => message.artifact?.type === "plan" && message.artifact?.payload);
+        if (!planMessage?.artifact) return;
+
+        const payload = planMessage.artifact.payload as {
+            steps?: Array<{ status?: "pending" | "running" | "completed" | "failed" | "skipped" }>;
+        };
+        if (!Array.isArray(payload.steps) || payload.steps.length === 0) return;
+
+        const selectedIndexes = payload.steps
+            .map((step, index) =>
+                step.status === "completed" || step.status === "skipped" ? null : index
+            )
+            .filter((value): value is number => value !== null);
+        if (selectedIndexes.length === 0) return;
+        executePlan(planMessage.artifact.id, selectedIndexes);
+    }, [executePlan, isLoading, messages]);
+
     const hasMessages = messages.length > 0;
 
     return (
@@ -168,6 +202,8 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
                         onApproveArtifactsBatch={approveArtifactsBatch}
                         onExecutePlan={executePlan}
                         onSaveToNotes={handleSaveToNotes}
+                        onRetryLastMessage={retryLastMessage}
+                        onResumeRun={resumeFailedPlan}
                         onBranchFromMessage={handleBranchFromMessage}
                         hasMore={hasMore}
                         isLoadingOlder={isLoadingOlder}

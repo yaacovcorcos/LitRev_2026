@@ -119,6 +119,43 @@ export function ProjectCopilot({
         }
     }, [currentConversationId, isBranching, isLoading, branchConversation]);
 
+    const retryLastMessage = useCallback(() => {
+        if (isLoading) return;
+        const lastUserMessage = [...messages]
+            .reverse()
+            .find((message) => message.sender === "user" && message.text.trim().length > 0);
+        if (!lastUserMessage) return;
+        sendMessage(
+            lastUserMessage.text,
+            lastUserMessage.context?.page ?? page,
+            lastUserMessage.context?.section,
+            undefined,
+            undefined,
+            studyId
+        );
+    }, [isLoading, messages, page, sendMessage, studyId]);
+
+    const resumeFailedPlan = useCallback(() => {
+        if (isLoading) return;
+        const planMessage = [...messages]
+            .reverse()
+            .find((message) => message.artifact?.type === "plan" && message.artifact?.payload);
+        if (!planMessage?.artifact) return;
+
+        const payload = planMessage.artifact.payload as {
+            steps?: Array<{ status?: "pending" | "running" | "completed" | "failed" | "skipped" }>;
+        };
+        if (!Array.isArray(payload.steps) || payload.steps.length === 0) return;
+
+        const selectedIndexes = payload.steps
+            .map((step, index) =>
+                step.status === "completed" || step.status === "skipped" ? null : index
+            )
+            .filter((value): value is number => value !== null);
+        if (selectedIndexes.length === 0) return;
+        executePlan(planMessage.artifact.id, selectedIndexes);
+    }, [executePlan, isLoading, messages]);
+
     const getConversationGroupLabel = useCallback((conversation: (typeof conversations)[number]) => {
         const date = new Date(conversation.updatedAt);
         const now = new Date();
@@ -291,6 +328,8 @@ export function ProjectCopilot({
                     onApproveArtifactsBatch={approveArtifactsBatch}
                     onExecutePlan={executePlan}
                     onSaveToNotes={handleSaveToNotes}
+                    onRetryLastMessage={retryLastMessage}
+                    onResumeRun={resumeFailedPlan}
                     onBranchFromMessage={handleBranchFromMessage}
                     reasoningMode={reasoningMode}
                     hasMore={hasMore}

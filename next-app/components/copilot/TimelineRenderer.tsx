@@ -497,6 +497,8 @@ export type TimelineRendererProps = {
     onSaveToNotes?: (content: string, messageId: string) => void | Promise<void>;
     /** Optional retry callback for retryable error cards */
     onRetryLastMessage?: () => void;
+    /** Optional resume callback for recoverable plan-run errors */
+    onResumeRun?: () => void;
     /** Optional callback to branch conversation history up to a specific message */
     onBranchFromMessage?: (messageId: string, createdAt: string) => void | Promise<void>;
     /** Layout variant: "panel" for copilot sidebar (bubbles), "page" for conversation mode (full-width) */
@@ -530,6 +532,7 @@ export function TimelineRenderer({
     onExecutePlan,
     onSaveToNotes,
     onRetryLastMessage,
+    onResumeRun,
     onBranchFromMessage,
     variant = "panel",
     reasoningMode = "full",
@@ -1105,6 +1108,11 @@ export function TimelineRenderer({
                         {item.retryable && onRetryLastMessage && (
                             <button type="button" className={artifactStyles.errorRetryBtn} onClick={onRetryLastMessage}>
                                 Retry
+                            </button>
+                        )}
+                        {item.retryable && onResumeRun && (
+                            <button type="button" className={artifactStyles.errorRetryBtn} onClick={onResumeRun}>
+                                Resume
                             </button>
                         )}
                     </div>
