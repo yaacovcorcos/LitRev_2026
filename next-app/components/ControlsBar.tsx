@@ -11,9 +11,10 @@ type ControlsBarProps = {
   viewMode: ViewMode;
   onSortChange: (mode: SortMode) => void;
   onViewChange: (mode: ViewMode) => void;
+  rightAction?: React.ReactNode;
 };
 
-export function ControlsBar({ sortMode, viewMode, onSortChange, onViewChange }: ControlsBarProps) {
+export function ControlsBar({ sortMode, viewMode, onSortChange, onViewChange, rightAction }: ControlsBarProps) {
   const [isSortOpen, setSortOpen] = useState(false);
   const [focusedIndex, setFocusedIndex] = useState(-1);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -179,6 +180,7 @@ export function ControlsBar({ sortMode, viewMode, onSortChange, onViewChange }: 
             <span className="material-icons-round">view_list</span>
           </button>
         </div>
+        {rightAction ? <div className={styles.inlineAction}>{rightAction}</div> : null}
       </div>
     </div>
   );

@@ -20,6 +20,102 @@
     padding: 32px 48px calc(48px + var(--mobile-nav-offset));
 }
 
+.resumeControl {
+    position: relative;
+    height: var(--control-height);
+    max-width: min(360px, 100%);
+    min-width: 0;
+    padding: 0 10px 0 14px;
+    border: 1px solid color-mix(in srgb, var(--glass-border) 70%, var(--accent-primary) 30%);
+    border-radius: 12px;
+    background:
+        linear-gradient(
+            135deg,
+            color-mix(in srgb, var(--accent-primary) 8%, white 92%),
+            color-mix(in srgb, var(--accent-primary) 3%, white 97%)
+        );
+    box-shadow: 0 6px 18px color-mix(in srgb, var(--accent-primary) 10%, transparent);
+    display: inline-flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    text-decoration: none;
+    color: var(--text-primary);
+    cursor: pointer;
+    overflow: hidden;
+    transition:
+        border-color 0.22s ease,
+        background 0.22s ease,
+        box-shadow 0.22s ease,
+        transform 0.22s ease;
+}
+
+.resumeControl::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    height: 1px;
+    background: linear-gradient(
+        to right,
+        transparent,
+        color-mix(in srgb, var(--accent-primary) 30%, transparent),
+        transparent
+    );
+}
+
+.resumeControl:hover {
+    border-color: color-mix(in srgb, var(--accent-primary) 48%, var(--glass-border) 52%);
+    background:
+        linear-gradient(
+            135deg,
+            color-mix(in srgb, var(--accent-primary) 12%, white 88%),
+            color-mix(in srgb, var(--accent-primary) 5%, white 95%)
+        );
+    box-shadow: 0 10px 24px color-mix(in srgb, var(--accent-primary) 14%, transparent);
+    transform: translateY(-1px);
+}
+
+.resumeControl:focus-visible {
+    outline: none;
+    border-color: color-mix(in srgb, var(--accent-primary) 52%, var(--glass-border) 48%);
+    box-shadow:
+        0 0 0 2px color-mix(in srgb, var(--accent-primary) 24%, transparent),
+        0 10px 24px color-mix(in srgb, var(--accent-primary) 14%, transparent);
+}
+
+.resumeControlText {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    line-height: 1;
+}
+
+.resumeControlArrow {
+    width: 22px;
+    height: 22px;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 17px;
+    flex-shrink: 0;
+    color: color-mix(in srgb, var(--accent-primary) 68%, var(--text-muted) 32%);
+    background: color-mix(in srgb, var(--accent-primary) 12%, white 88%);
+    transition: transform 0.2s ease, color 0.2s ease, background 0.2s ease;
+}
+
+.resumeControl:hover .resumeControlArrow {
+    transform: translateX(2px);
+    color: var(--accent-primary);
+    background: color-mix(in srgb, var(--accent-primary) 18%, white 82%);
+}
+
 .noSidePadding {
     padding-left: 0 !important;
     padding-right: 0 !important;
@@ -146,6 +242,21 @@
     display: flex;
     flex-direction: column;
     gap: 16px;
+}
+
+.zeroEnter {
+    align-self: center;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 13px;
+    font-weight: 600;
+    padding: 6px 4px;
+    cursor: pointer;
+}
+
+.zeroEnter:hover {
+    color: var(--text-primary);
 }
 
 .zeroTitle {
@@ -390,6 +501,16 @@
 
     .scrollArea {
         padding: 20px 16px calc(20px + var(--mobile-nav-offset));
+    }
+
+    .resumeControl {
+        width: 100%;
+        max-width: none;
+        justify-content: center;
+    }
+
+    .resumeControlText {
+        font-size: 13px;
     }
 
     .zeroContent {

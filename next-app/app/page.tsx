@@ -9,6 +9,7 @@ import { ControlsBar } from "@/components/ControlsBar";
 import { SortMode, ViewMode } from "@/types/view";
 import { AppShell } from "@/components/AppShell";
 import { Modal } from "@/components/Modal";
+import Link from "next/link";
 import { useProjects } from "@/contexts/ProjectsContext";
 import { useRouter, useSearchParams } from "next/navigation";
 import { openOrCreateDemoProjectAction } from "@/app/actions/demo";
@@ -18,6 +19,8 @@ import layoutStyles from "./home.module.css";
 
 const VALID_SORTS: SortMode[] = ["name", "created", "modified"];
 const VALID_VIEWS: ViewMode[] = ["grid", "list"];
+const LAST_PROJECT_STORAGE_KEY = "litrev:lastProjectId";
+const HOME_ENTERED_WORKSPACE_KEY = "litrev:enteredWorkspaceFromWelcome";
 
 function buildProject(
   name: string,
@@ -37,7 +40,7 @@ function buildProject(
   };
 }
 
-function HomeContent() {
+export function HomeContent() {
   const {
     projects,
     addProject,
@@ -55,6 +58,8 @@ function HomeContent() {
   const [isOpeningSample, setIsOpeningSample] = useState(false);
   const [sampleError, setSampleError] = useState<string | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [lastProjectId, setLastProjectId] = useState<string | null>(null);
+  const [hasEnteredWorkspace, setHasEnteredWorkspace] = useState(false);
 
   // Sync from localStorage after hydration to avoid SSR mismatch
   useEffect(() => {
@@ -159,8 +164,28 @@ function HomeContent() {
     router.replace("/", { scroll: false });
   }, [shouldOpenFromQuery, router]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const storedId = window.localStorage.getItem(LAST_PROJECT_STORAGE_KEY);
+    setLastProjectId(storedId && storedId.trim() ? storedId : null);
+    const entered = window.sessionStorage.getItem(HOME_ENTERED_WORKSPACE_KEY) === "1";
+    setHasEnteredWorkspace(entered);
+  }, []);
+
   const firstName = session?.user?.name?.split(/\s+/)[0] ?? null;
   const showMigrationAlert = migrationStatus === "failed" && Boolean(migrationError);
+  const isNewUser = projects.length === 0;
+  const continueProject = useMemo(
+    () => (lastProjectId ? sortedProjects.find((project) => project.id === lastProjectId) ?? null : null),
+    [lastProjectId, sortedProjects],
+  );
+
+  const handleEnterWorkspace = useCallback(() => {
+    setHasEnteredWorkspace(true);
+    if (typeof window !== "undefined") {
+      window.sessionStorage.setItem(HOME_ENTERED_WORKSPACE_KEY, "1");
+    }
+  }, []);
 
   // ── Loading-screen rotating copy ──
   const LOADING_STEPS = [
@@ -228,7 +253,7 @@ function HomeContent() {
         ) : null}
       </div>
     </div>
-  ) : projects.length === 0 ? (
+  ) : isNewUser && !hasEnteredWorkspace ? (
     <div className={layoutStyles.zeroShell}>
       <div className={layoutStyles.zeroContent}>
         <header className={layoutStyles.zeroHeader}>
@@ -306,6 +331,15 @@ function HomeContent() {
             </button>
           </div>
 
+          <button
+            type="button"
+            className={layoutStyles.zeroEnter}
+            onClick={handleEnterWorkspace}
+            aria-label="Enter workspace without creating a project"
+          >
+            Enter workspace
+          </button>
+
           {sampleError ? <p className={layoutStyles.sampleError} role="alert">{sampleError}</p> : null}
         </div>
       </div>
@@ -328,18 +362,39 @@ function HomeContent() {
               </button>
             </div>
           ) : null}
-          <TopBar title="Your Projects" subtitle="Keep your literature reviews organized" />
+          <TopBar
+            title="Your Projects"
+            subtitle="Keep your literature reviews organized"
+          />
 
           <ControlsBar
             sortMode={sortMode}
             viewMode={viewMode}
             onSortChange={handleSortChange}
             onViewChange={handleViewChange}
+            rightAction={
+              !isNewUser && continueProject ? (
+                <Link
+                  href={`/project/${continueProject.id}`}
+                  className={layoutStyles.resumeControl}
+                  aria-label={`Back to ${continueProject.name}`}
+                >
+                  <span className={layoutStyles.resumeControlText}>Back to {continueProject.name}</span>
+                  <span className={`material-icons-round ${layoutStyles.resumeControlArrow}`} aria-hidden="true">
+                    arrow_forward
+                  </span>
+                </Link>
+              ) : undefined
+            }
           />
         </div>
 
         <div className={layoutStyles.scrollArea}>
-          <ProjectGrid projects={sortedProjects} viewMode={viewMode} onNewProject={openModal} />
+          <ProjectGrid
+            projects={sortedProjects}
+            viewMode={viewMode}
+            onNewProject={openModal}
+          />
         </div>
       </div>
     </AppShell>
