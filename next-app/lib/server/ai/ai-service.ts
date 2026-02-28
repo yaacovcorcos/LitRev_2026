@@ -42,7 +42,7 @@ import { ensureConversationRunAvailability } from "@/lib/server/chat-runtime/con
 import { classifyAIError } from "./error-classification";
 import { retryAsync, sleep } from "@/lib/server/utils/retry";
 import { resolveReasoningMode } from "@/lib/ai/reasoning-visibility";
-import { executeWithToolMiddleware, type ToolExecutionRequest, type ToolMiddleware } from "./tool-middleware";
+import { createIdempotencyMiddleware, executeWithToolMiddleware, type ToolExecutionRequest, type ToolMiddleware } from "./tool-middleware";
 import { resolveAuthenticatedIdentity } from "@/lib/server/auth/identity";
 
 const MAX_STREAM_RETRY_ATTEMPTS = 3;
@@ -146,21 +146,19 @@ class AIService {
     }
 
     /**
-     * Reasoning behavior is provider-aware:
-     * - Anthropic: supports streamed thinking blocks (full + summary modes both request parts).
-     * - OpenAI/xAI/Google (current adapters): reasoning stream parts are not emitted, so we
-     *   explicitly disable provider reasoning requests while keeping the user mode for UI logic.
+     * Reasoning policy is provider-agnostic.
+     * Provider adapters are responsible for honoring includeReasoning when supported and
+     * safely no-oping when unsupported.
      */
     private withProviderReasoningPolicy(
-        options: ChatOptions | undefined,
-        provider: BaseAIProvider
+        options: ChatOptions | undefined
     ): ChatOptions {
         const hasExplicitReasoningPreference =
             options?.reasoningMode !== undefined || options?.includeReasoning !== undefined;
         const mode = hasExplicitReasoningPreference
             ? resolveReasoningMode(options?.reasoningMode, options?.includeReasoning)
             : "off";
-        const includeReasoning = mode !== "off" && provider.id === "anthropic";
+        const includeReasoning = mode !== "off";
         return {
             ...(options ?? {}),
             reasoningMode: mode,
@@ -253,7 +251,7 @@ class AIService {
         });
 
         const provider = this.resolveProvider(options?.model);
-        const effectiveOptions = this.withProviderReasoningPolicy(options, provider);
+        const effectiveOptions = this.withProviderReasoningPolicy(options);
         const response = await retryAsync(
             () => provider.chat(messages, effectiveOptions),
             {
@@ -301,7 +299,7 @@ class AIService {
         });
 
         const provider = this.resolveProvider(options?.model);
-        const effectiveOptions = this.withProviderReasoningPolicy(options, provider);
+        const effectiveOptions = this.withProviderReasoningPolicy(options);
 
         let totalInputTokens = 0;
         let totalOutputTokens = 0;
@@ -1986,7 +1984,9 @@ let aiServiceInstance: AIService | null = null;
 
 export function getAIService(): AIService {
     if (!aiServiceInstance) {
-        aiServiceInstance = new AIService();
+        aiServiceInstance = new AIService({
+            toolMiddlewares: [createIdempotencyMiddleware()],
+        });
     }
     return aiServiceInstance;
 }

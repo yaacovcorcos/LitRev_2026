@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  createIdempotencyMiddleware,
   executeWithToolMiddleware,
   type ToolExecutionRequest,
   type ToolMiddleware,
@@ -207,5 +208,67 @@ describe("tool middleware pipeline", () => {
       result: null,
       error: "Tool execution failed: executor boom",
     });
+  });
+
+  it("replays cached result for duplicate protected mutation calls", async () => {
+    const executor = vi.fn(async (request: ToolExecutionRequest) => ({
+      callId: request.callId,
+      result: { added: 1 },
+    }));
+    const middleware = createIdempotencyMiddleware({
+      ttlMs: 60_000,
+      toolNames: ["add_to_ledger"],
+    });
+
+    const first = await executeWithToolMiddleware(
+      {
+        name: "add_to_ledger",
+        args: { results: [{ title: "Study A", authors: "A", year: 2024 }] },
+        callId: "c1",
+        context: { projectId: "p1", userId: "u1", runId: "r1" },
+      },
+      [middleware],
+      executor
+    );
+    const second = await executeWithToolMiddleware(
+      {
+        name: "add_to_ledger",
+        args: { results: [{ title: "Study A", authors: "A", year: 2024 }] },
+        callId: "c2",
+        context: { projectId: "p1", userId: "u1", runId: "r1" },
+      },
+      [middleware],
+      executor
+    );
+
+    expect(first.error).toBeUndefined();
+    expect(second.error).toBeUndefined();
+    expect(executor).toHaveBeenCalledTimes(1);
+    expect(second.callId).toBe("c2");
+    expect(second.result).toEqual(first.result);
+  });
+
+  it("does not replay non-protected tools", async () => {
+    const executor = vi.fn(async (request: ToolExecutionRequest) => ({
+      callId: request.callId,
+      result: { query: request.args.query },
+    }));
+    const middleware = createIdempotencyMiddleware({
+      ttlMs: 60_000,
+      toolNames: ["add_to_ledger"],
+    });
+
+    await executeWithToolMiddleware(
+      { name: "inspect_memory", args: { query: "q1" }, callId: "c1", context: { userId: "u1", runId: "r1" } },
+      [middleware],
+      executor
+    );
+    await executeWithToolMiddleware(
+      { name: "inspect_memory", args: { query: "q1" }, callId: "c2", context: { userId: "u1", runId: "r1" } },
+      [middleware],
+      executor
+    );
+
+    expect(executor).toHaveBeenCalledTimes(2);
   });
 });
