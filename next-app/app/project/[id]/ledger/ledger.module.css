@@ -164,6 +164,30 @@
     color: var(--accent-primary);
 }
 
+.statChipKeep {
+    color: var(--status-ready-text);
+}
+
+.statChipKeep .material-icons-round {
+    color: var(--status-ready-text);
+}
+
+.statChipExclude {
+    color: var(--color-danger);
+}
+
+.statChipExclude .material-icons-round {
+    color: var(--color-danger);
+}
+
+.statChipMaybe {
+    color: var(--accent-tertiary);
+}
+
+.statChipMaybe .material-icons-round {
+    color: var(--accent-tertiary);
+}
+
 .tableWrapper {
     background: var(--glass-bg);
     border: 1px solid var(--glass-border);

@@ -1,0 +1,295 @@
+"use client";
+
+import { memo, type MouseEvent } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { usePopupChat } from "@/contexts/PopupChatContext";
+import { type CriteriaMatchResult } from "@/lib/criteriaMatching";
+import type { Study, StudyDetails, TriageDecision } from "@/types/ledger";
+import styles from "./ledger.module.css";
+
+export type StudyRowProps = {
+  study: Study;
+  projectId: string;
+  isExpanded: boolean;
+  isSelected: boolean;
+  isSelectMode: boolean;
+  hasProtocolCriteria: boolean;
+  criteriaMatch: CriteriaMatchResult | undefined;
+  onToggleExpand: (studyId: string) => void;
+  onToggleSelect: (studyId: string) => void;
+  onOpenFiles: (study: Study) => void;
+  onDeleteStudy: (studyId: string) => void;
+  onTriage: (studyId: string, decision: TriageDecision) => void;
+};
+
+export const StudyRow = memo(function StudyRow({
+  study,
+  projectId,
+  isExpanded,
+  isSelected,
+  isSelectMode,
+  hasProtocolCriteria,
+  criteriaMatch,
+  onToggleExpand,
+  onToggleSelect,
+  onOpenFiles,
+  onDeleteStudy,
+  onTriage,
+}: StudyRowProps) {
+  const router = useRouter();
+  const { openPopupChat } = usePopupChat();
+  const details: StudyDetails = study.details ?? {};
+
+  const summaryText =
+    details.aiSummary || details.abstract || "No summary available.";
+  const oneSentence = `${summaryText.split(/[.!?](?:\s|$)/)[0]}.`;
+  const displaySummary =
+    oneSentence.length > 200 ? `${oneSentence.slice(0, 200)}...` : oneSentence;
+
+  const authorParts = study.authors.split(/,\s*/);
+  const shortAuthors =
+    authorParts.length >= 3 ? `${authorParts[0]} et al.` : study.authors;
+  const metaParts = [shortAuthors, String(study.year)];
+  if (details.journal) metaParts.push(details.journal);
+  if (details.studyType) metaParts.push(details.studyType);
+  const citationLine = metaParts.join(" · ");
+
+  const rowClass = `${isSelected ? styles.rowSelected : ""} ${
+    isExpanded ? styles.rowExpanded : ""
+  } ${styles.clickableRow}`.trim();
+
+  const colSpan = isSelectMode
+    ? hasProtocolCriteria
+      ? 8
+      : 7
+    : hasProtocolCriteria
+      ? 7
+      : 6;
+
+  const handleRowClick = (event: MouseEvent) => {
+    const target = event.target as HTMLElement;
+    if (target.closest("button, input, a, [role='button']")) return;
+    router.push(`/project/${projectId}/ledger/${study.id}`);
+  };
+
+  return (
+    <>
+      <tr className={rowClass} onClick={handleRowClick}>
+        <td className={styles.expandCell}>
+          <button
+            className={`${styles.expandBtn} ${isExpanded ? styles.expanded : ""}`}
+            onClick={(event) => {
+              event.stopPropagation();
+              onToggleExpand(study.id);
+            }}
+            aria-label={isExpanded ? "Collapse" : "Expand"}
+            aria-expanded={isExpanded}
+          >
+            <span className="material-icons-round">expand_more</span>
+          </button>
+        </td>
+        {isSelectMode ? (
+          <td className={styles.selectCell}>
+            <input
+              className={styles.selectCheckbox}
+              type="checkbox"
+              checked={isSelected}
+              onChange={() => onToggleSelect(study.id)}
+              aria-label={`Select ${study.title}`}
+            />
+          </td>
+        ) : null}
+        <td className={styles.titleCell}>
+          <div className={styles.studyTitle}>{study.title}</div>
+          <div className={styles.studyCitation} title={study.authors}>
+            {citationLine}
+          </div>
+        </td>
+        <td>
+          <span
+            className={`${styles.statusPill} ${
+              study.status === "extracted"
+                ? styles.statusExtracted
+                : styles.statusPending
+            }`}
+          >
+            {study.status === "extracted" ? "Extracted" : "Pending"}
+          </span>
+        </td>
+        <td>
+          <span
+            className={`${styles.qualityBadge} ${
+              study.quality === "High"
+                ? styles.qualityHigh
+                : study.quality === "Medium"
+                  ? styles.qualityMedium
+                  : ""
+            }`}
+          >
+            {study.quality}
+          </span>
+        </td>
+        <td>
+          {details.triageDecision ? (
+            <span
+              className={`${styles.triageBadge} ${
+                details.triageDecision === "keep"
+                  ? styles.triageBadgeKeep
+                  : details.triageDecision === "exclude"
+                    ? styles.triageBadgeExclude
+                    : styles.triageBadgeMaybe
+              }`}
+            >
+              {details.triageDecision === "keep"
+                ? "Keep"
+                : details.triageDecision === "exclude"
+                  ? "Exclude"
+                  : "Maybe"}
+            </span>
+          ) : (
+            <span className={styles.triageBadge} style={{ opacity: 0.5 }}>
+              —
+            </span>
+          )}
+        </td>
+        {hasProtocolCriteria ? (
+          <td>
+            {criteriaMatch?.meetsAllCriteria ? (
+              <span
+                className={`${styles.criteriaBadge} ${styles.criteriaBadgeMeets}`}
+                title="Meets all protocol criteria"
+              >
+                <span className="material-icons-round">check_circle</span>
+              </span>
+            ) : criteriaMatch?.exclusionReasons?.length ? (
+              <span
+                className={`${styles.criteriaBadge} ${styles.criteriaBadgeFails}`}
+                title={criteriaMatch.exclusionReasons.join("; ")}
+              >
+                <span className="material-icons-round">error</span>
+              </span>
+            ) : (
+              <span className={styles.criteriaBadge} style={{ opacity: 0.5 }}>
+                —
+              </span>
+            )}
+          </td>
+        ) : null}
+        <td>
+          <button
+            className={styles.actionBtn}
+            aria-label={`Manage files for ${study.title}`}
+            title="Manage Files"
+            onClick={() => onOpenFiles(study)}
+          >
+            <span className="material-icons-round">attach_file</span>
+          </button>
+          <button
+            className={styles.actionBtn}
+            title="Delete Study"
+            aria-label={`Delete ${study.title}`}
+            onClick={() => onDeleteStudy(study.id)}
+          >
+            <span className="material-icons-round">delete</span>
+          </button>
+        </td>
+      </tr>
+      {isExpanded ? (
+        <tr className={styles.expandedRow}>
+          <td colSpan={colSpan}>
+            <div className={styles.expandedContent}>
+              <div className={styles.expandedSection}>
+                <p className={styles.abstractText}>{displaySummary}</p>
+              </div>
+
+              <div className={styles.triageActions}>
+                <button
+                  className={`${styles.triageBtn} ${styles.triageBtnKeep} ${
+                    details.triageDecision === "keep" ? styles.active : ""
+                  }`}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onTriage(study.id, "keep");
+                  }}
+                >
+                  Keep
+                </button>
+                <button
+                  className={`${styles.triageBtn} ${styles.triageBtnExclude} ${
+                    details.triageDecision === "exclude" ? styles.active : ""
+                  }`}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onTriage(study.id, "exclude");
+                  }}
+                >
+                  Exclude
+                </button>
+                <button
+                  className={`${styles.triageBtn} ${styles.triageBtnMaybe} ${
+                    details.triageDecision === "maybe" ? styles.active : ""
+                  }`}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onTriage(study.id, "maybe");
+                  }}
+                >
+                  Maybe
+                </button>
+                <button
+                  className={styles.triageBtn}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    openPopupChat({
+                      type: "study",
+                      studyId: study.id,
+                      title: study.title,
+                      abstract: displaySummary,
+                      authors: study.authors,
+                    });
+                  }}
+                >
+                  <span className="material-icons-round">smart_toy</span>
+                  Ask AI
+                </button>
+              </div>
+
+              <div className={styles.expandedMeta}>
+                {details.journal ? (
+                  <span className={styles.metaChip}>
+                    <span className="material-icons-round">menu_book</span>
+                    {details.journal}
+                  </span>
+                ) : null}
+                {details.studyType ? (
+                  <span className={styles.metaChip}>
+                    <span className="material-icons-round">category</span>
+                    {details.studyType}
+                  </span>
+                ) : null}
+                {details.doi ? (
+                  <a
+                    href={`https://doi.org/${details.doi}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={styles.metaChip}
+                  >
+                    <span className="material-icons-round">link</span>
+                    DOI
+                  </a>
+                ) : null}
+                <Link
+                  href={`/project/${projectId}/ledger/${study.id}`}
+                  className={styles.viewDetailsLink}
+                >
+                  View Full Details →
+                </Link>
+              </div>
+            </div>
+          </td>
+        </tr>
+      ) : null}
+    </>
+  );
+});
