@@ -121,7 +121,7 @@
     background: white;
     color: var(--text-primary);
     font-weight: 600;
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+    box-shadow: var(--shadow-xs);
 }
 
 .sectionTabDragging {
@@ -192,11 +192,11 @@
     border-radius: 14px;
     border: 1px solid var(--glass-border);
     background: rgba(255, 255, 255, 0.92);
-    box-shadow: 0 16px 30px rgba(0, 0, 0, 0.12);
+    box-shadow: var(--shadow-xl);
     display: flex;
     flex-direction: column;
     gap: 4px;
-    z-index: 30;
+    z-index: var(--z-overlay);
 }
 
 .sectionMenuItem {
@@ -242,7 +242,9 @@
 }
 
 .customSectionField:focus {
-    border-color: var(--accent-primary);
+    outline: none;
+    border-color: var(--focus-ring-color, var(--accent-primary));
+    box-shadow: var(--shadow-focus-ring);
 }
 
 .customSectionBtn {
@@ -296,7 +298,7 @@
 
 .modeOption {
     position: relative;
-    z-index: 2;
+    z-index: var(--z-content);
     background: transparent;
     border: none;
     padding: 7px 16px;
@@ -323,7 +325,7 @@
     width: calc(50% - 3px);
     background: white;
     border-radius: 6px;
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+    box-shadow: var(--shadow-xs);
     transition: transform 0.2s ease;
     z-index: 1;
 }
@@ -396,7 +398,7 @@
 .resizeHandle {
     cursor: col-resize;
     position: relative;
-    z-index: 5;
+    z-index: var(--z-resize-handle);
 }
 
 .resizeHandleHidden {
@@ -534,7 +536,7 @@
 .iconBtn:hover {
     background: rgba(255, 255, 255, 0.85);
     transform: translateY(-1px);
-    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.06);
+    box-shadow: var(--shadow-lg);
     color: var(--text-primary);
 }
 
@@ -656,12 +658,12 @@
     flex-direction: column;
     gap: 12px;
     transition: all 0.2s ease;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
+    box-shadow: var(--shadow-sm);
 }
 
 .ledgerItem:hover {
     border-color: rgba(217, 116, 89, 0.25);
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+    box-shadow: var(--shadow-md);
 }
 
 .ledgerMeta {
@@ -717,7 +719,7 @@
 .smallBtn:hover {
     background: var(--accent-primary-hover);
     transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(217, 116, 89, 0.3);
+    box-shadow: var(--shadow-lg);
 }
 
 .smallBtnGhost {
@@ -844,7 +846,7 @@
 .formatToggle:hover {
     background: rgba(255, 255, 255, 0.9);
     color: var(--text-primary);
-    box-shadow: 0 10px 18px rgba(0, 0, 0, 0.06);
+    box-shadow: var(--shadow-lg);
 }
 
 .formatToggle .material-icons-round {
@@ -860,11 +862,11 @@
     border-radius: 12px;
     border: 1px solid var(--glass-border);
     background: rgba(255, 255, 255, 0.96);
-    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.12);
+    box-shadow: var(--shadow-xl);
     display: flex;
     flex-direction: column;
     gap: 8px;
-    z-index: 30;
+    z-index: var(--z-overlay);
 }
 
 .formatGrid {
@@ -904,7 +906,7 @@
 .formatSelect:focus {
     outline: none;
     border-color: var(--accent-primary);
-    box-shadow: 0 0 0 2px rgba(217, 116, 89, 0.2);
+    box-shadow: var(--shadow-focus-ring);
 }
 
 .formatDivider {
@@ -1220,7 +1222,7 @@
 .copilotInputRow input:focus {
     outline: none;
     border-color: var(--accent-primary);
-    box-shadow: 0 0 0 2px rgba(217, 116, 89, 0.18);
+    box-shadow: var(--shadow-focus-ring);
 }
 
 .suggestRow {
@@ -1326,7 +1328,7 @@
 .modalSearch input:focus {
     outline: none;
     border-color: var(--accent-primary);
-    box-shadow: 0 0 0 2px rgba(217, 116, 89, 0.18);
+    box-shadow: var(--shadow-focus-ring);
 }
 
 .modalList {

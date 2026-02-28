@@ -7,10 +7,11 @@
     background: transparent;
     position: fixed;
     inset: 0;
-    z-index: 1999;
+    z-index: var(--z-modal-backdrop);
 }
 
 .popupChat {
+    --focus-ring-color: var(--focus-ring-color-muted, var(--color-info-text));
     position: fixed;
     top: 80px;
     right: 100px;
@@ -21,10 +22,11 @@
     -webkit-backdrop-filter: blur(20px);
     border: 1px solid var(--glass-border);
     border-radius: 16px;
+    /* stylelint-disable-next-line declaration-property-value-disallowed-list */
     box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15), 0 4px 12px rgba(0, 0, 0, 0.08);
     display: flex;
     flex-direction: column;
-    z-index: 2000;
+    z-index: var(--z-modal);
     animation: slideUp 0.2s ease-out;
     /* Override Radix centering — we position with bottom/right or top/left */
     transform: none !important;
@@ -303,12 +305,14 @@
     outline: none;
     line-height: 1.4;
     overflow-y: auto;
-    transition: border-color 0.15s ease;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .inputField:focus {
-    border-color: rgba(0, 0, 0, 0.12);
+    outline: none;
+    border-color: var(--focus-ring-color, rgba(0, 0, 0, 0.12));
     background: rgba(0, 0, 0, 0.02);
+    box-shadow: var(--shadow-focus-ring);
 }
 
 .inputField::placeholder {
@@ -341,7 +345,7 @@
 }
 
 .sendBtnActive:hover {
-    background: var(--color-interactive-dark, #333);
+    background: var(--color-interactive-dark, var(--text-primary));
 }
 
 .sendBtnStop {

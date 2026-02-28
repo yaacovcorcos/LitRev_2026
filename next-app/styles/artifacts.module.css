@@ -18,7 +18,7 @@
 }
 
 .artifactCard:hover {
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+    box-shadow: var(--shadow-sm);
 }
 
 .artifactCardAccepted {
@@ -26,7 +26,7 @@
 }
 
 .artifactCardRejected {
-    border-left-color: #c0392b;
+    border-left-color: var(--color-danger);
 }
 
 .artifactCardCollapsed {
@@ -85,22 +85,23 @@
 
 .statusBadgeAccepted {
     background: rgba(118, 140, 123, 0.15);
-    color: #556b5a;
+    color: var(--status-ready-text);
 }
 
 .statusBadgeRejected {
     background: rgba(192, 57, 43, 0.1);
-    color: #a93226;
+    color: var(--color-danger-hover);
 }
 
 .statusBadgeRunning {
     background: rgba(200, 160, 80, 0.15);
-    color: #8a6d3b;
+    /* stylelint-disable-next-line color-no-hex */
+    color: #8a6d3b; /* no matching token */
 }
 
 .statusBadgeAutoApplied {
     background: rgba(118, 140, 123, 0.15);
-    color: #556b5a;
+    color: var(--status-ready-text);
 }
 
 .collapseToggle {
@@ -177,6 +178,7 @@
 .actionBtn:hover {
     background: var(--accent-primary-hover);
     transform: translateY(-1px);
+    /* stylelint-disable-next-line declaration-property-value-disallowed-list -- decorative accent shadow */
     box-shadow: 0 4px 12px rgba(217, 116, 89, 0.3);
 }
 
@@ -217,16 +219,18 @@
 
 .keepBtn:hover {
     background: var(--accent-secondary-hover);
+    /* stylelint-disable-next-line declaration-property-value-disallowed-list -- decorative accent shadow */
     box-shadow: 0 4px 12px rgba(118, 140, 123, 0.3);
 }
 
 .excludeBtn {
     composes: actionBtn;
-    background: #c0392b;
+    background: var(--color-danger);
 }
 
 .excludeBtn:hover {
-    background: #a93226;
+    background: var(--color-danger-hover);
+    /* stylelint-disable-next-line declaration-property-value-disallowed-list -- decorative accent shadow */
     box-shadow: 0 4px 12px rgba(192, 57, 43, 0.3);
 }
 
@@ -238,6 +242,7 @@
 
 .maybeBtn:hover {
     background: var(--accent-tertiary-hover);
+    /* stylelint-disable-next-line declaration-property-value-disallowed-list -- decorative accent shadow */
     box-shadow: 0 4px 12px rgba(212, 163, 115, 0.3);
 }
 
@@ -343,12 +348,12 @@
 
 .criteriaChipMatch {
     background: rgba(118, 140, 123, 0.15);
-    color: #556b5a;
+    color: var(--status-ready-text);
 }
 
 .criteriaChipMiss {
     background: rgba(192, 57, 43, 0.08);
-    color: #a93226;
+    color: var(--color-danger-hover);
 }
 
 /* ── Confidence Badge ───────────────────────────────────────── */
@@ -363,17 +368,17 @@
 
 .confidenceHigh {
     background: rgba(118, 140, 123, 0.15);
-    color: #556b5a;
+    color: var(--status-ready-text);
 }
 
 .confidenceMedium {
     background: rgba(212, 163, 115, 0.15);
-    color: #9c724f;
+    color: var(--status-harvesting-text);
 }
 
 .confidenceLow {
     background: rgba(192, 57, 43, 0.08);
-    color: #a93226;
+    color: var(--color-danger-hover);
 }
 
 /* ── Recommendation Badge ───────────────────────────────────── */
@@ -386,15 +391,15 @@
 }
 
 .recommendKeep {
-    color: #556b5a;
+    color: var(--status-ready-text);
 }
 
 .recommendExclude {
-    color: #a93226;
+    color: var(--color-danger-hover);
 }
 
 .recommendMaybe {
-    color: #9c724f;
+    color: var(--status-harvesting-text);
 }
 
 /* ── Study Card Specifics ───────────────────────────────────── */
@@ -546,9 +551,9 @@
     background: white;
     border: 1px solid var(--glass-border);
     border-radius: 8px;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+    box-shadow: var(--shadow-xl);
     padding: 4px;
-    z-index: 50;
+    z-index: var(--z-overlay);
 }
 
 .excludeMenuItem {
@@ -605,12 +610,12 @@
 
 .planStepCompleted .planStepNumber {
     background: rgba(118, 140, 123, 0.15);
-    color: #556b5a;
+    color: var(--status-ready-text);
 }
 
 .planStepFailed .planStepNumber {
     background: rgba(192, 57, 43, 0.08);
-    color: #a93226;
+    color: var(--color-danger-hover);
 }
 
 .planStepLabel {
@@ -723,6 +728,7 @@
 /* ── Inline Edit ────────────────────────────────────────────── */
 
 .inlineEdit {
+    --focus-ring-color: var(--focus-ring-color-muted, var(--color-info-text));
     width: 100%;
     padding: 6px 8px;
     border: 1px solid rgba(0, 0, 0, 0.12);
@@ -732,12 +738,13 @@
     color: var(--text-primary);
     background: white;
     outline: none;
-    transition: border-color 0.15s ease;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .inlineEdit:focus {
-    border-color: var(--accent-primary);
-    box-shadow: 0 0 0 2px rgba(217, 116, 89, 0.15);
+    outline: none;
+    border-color: var(--focus-ring-color, var(--accent-primary));
+    box-shadow: var(--shadow-focus-ring);
 }
 
 /* ── Criteria Card Specifics ────────────────────────────────── */
@@ -809,7 +816,7 @@
 
 .criteriaRemoveBtn:hover {
     background: rgba(192, 57, 43, 0.08);
-    color: #c0392b;
+    color: var(--color-danger);
 }
 
 .criteriaRemoveBtn .material-icons-round {
@@ -1025,7 +1032,7 @@
     background: rgba(192, 57, 43, 0.06);
     border: 1px solid rgba(192, 57, 43, 0.12);
     font-size: 13px;
-    color: #a93226;
+    color: var(--color-danger-hover);
 }
 
 .errorCard .material-icons-round {
@@ -1169,7 +1176,7 @@
     font-size: 12px;
     font-weight: 600;
     background: rgba(192, 57, 43, 0.1);
-    color: #a93226;
+    color: var(--color-danger-hover);
     border: none;
     border-radius: 6px;
     cursor: pointer;

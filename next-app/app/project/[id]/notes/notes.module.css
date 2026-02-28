@@ -47,6 +47,7 @@
 }
 
 .searchInput {
+    --focus-ring-color: var(--focus-ring-color-muted, var(--color-info-text));
     width: 100%;
     padding: 8px 12px 8px 34px;
     border: 1px solid var(--glass-border);
@@ -54,11 +55,13 @@
     font-size: var(--text-base);
     background: rgba(0, 0, 0, 0.02);
     outline: none;
-    transition: border-color var(--duration-base) var(--ease-standard);
+    transition: border-color var(--duration-base) var(--ease-standard), box-shadow var(--duration-base) var(--ease-standard);
 }
 
 .searchInput:focus {
-    border-color: var(--accent-primary);
+    outline: none;
+    border-color: var(--focus-ring-color, var(--accent-primary));
+    box-shadow: var(--shadow-focus-ring);
 }
 
 .newNoteBtn {

@@ -48,6 +48,8 @@
     --color-info-bg-solid: rgba(107, 124, 138, 0.15);
     --color-info-border: rgba(107, 124, 138, 0.2);
     --color-info-text: #566874;
+    --focus-ring-color: var(--accent-primary);
+    --focus-ring-color-muted: var(--color-info-text);
 
     /* Semantic Status Colors — Success */
     --color-success: #5a8a62;
@@ -100,8 +102,8 @@
     --shadow-md: 0 4px 10px rgba(0, 0, 0, 0.04);
     --shadow-lg: 0 4px 12px rgba(0, 0, 0, 0.08);
     --shadow-xl: 0 8px 32px rgba(0, 0, 0, 0.12);
-    --shadow-focus-ring: 0 0 0 2px color-mix(in srgb, var(--accent-primary) 24%, transparent);
-    --shadow-focus-ring-strong: 0 0 0 3px color-mix(in srgb, var(--accent-primary) 16%, transparent);
+    --shadow-focus-ring: 0 0 0 2px color-mix(in srgb, var(--focus-ring-color) 24%, transparent);
+    --shadow-focus-ring-strong: 0 0 0 3px color-mix(in srgb, var(--focus-ring-color) 16%, transparent);
 
     /* Z-Index Scale */
     --z-base: 0;
