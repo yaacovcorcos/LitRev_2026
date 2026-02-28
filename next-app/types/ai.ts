@@ -46,10 +46,31 @@ export type ToolCall = {
     arguments: Record<string, unknown>;
 };
 
+export type UserInputQuestionType = "single_choice" | "yes_no" | "free_text" | "multi_select";
+
+export type UserInputOption = {
+    label: string;
+    description?: string;
+};
+
+export type UserInputRequest = {
+    callId: string;
+    question: string;
+    questionType: UserInputQuestionType;
+    options?: UserInputOption[];
+    /** Short category label displayed as a tag/chip (e.g., "Providers", "Scope"). Max ~12 chars. */
+    header?: string;
+    context?: string;
+};
+
 export type ToolResult = {
     callId: string;
     result: unknown;
     error?: string;
+    /** When true, the tool requires user input before the agent can continue. */
+    requiresUserInput?: boolean;
+    /** Structured request for user input (present when requiresUserInput is true). */
+    userInputRequest?: UserInputRequest;
 };
 
 // Clickable choice option (AI-generated quick replies)
@@ -122,7 +143,8 @@ export type AIStreamChunk = {
         | "conversation_title"
         | "choices"
         | "plan_step_update"
-        | "navigate";
+        | "navigate"
+        | "user_input_required";
     content?: string;
     error?: string;
     errorStatus?: number;
@@ -166,6 +188,8 @@ export type AIStreamChunk = {
     // Navigation fields (project management tools)
     navigateUrl?: string;
     navigateProjectId?: string;
+    // User input request fields (ask_user tool)
+    userInputRequest?: UserInputRequest;
     // Conversation identity (server-side source of truth)
     conversationId?: string;
     conversationTitle?: string;

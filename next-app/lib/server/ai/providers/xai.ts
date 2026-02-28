@@ -10,6 +10,7 @@ import { AI_CONFIG, AVAILABLE_MODELS } from "@/lib/ai/config";
 import { parseToolArgs } from "../json-repair";
 import { extractProviderErrorMetadata } from "./error-metadata";
 import { normalizeProviderMessages } from "./message-normalization";
+import { extractReasoningTextsFromDelta } from "./reasoning-delta";
 
 export class XAIProvider extends BaseAIProvider {
     readonly id = "xai";
@@ -108,14 +109,37 @@ export class XAIProvider extends BaseAIProvider {
         let totalContent = "";
         let usage: AIStreamChunk["usage"] | undefined;
         const pendingToolCalls = new Map<number, { id: string; name: string; arguments: string }>();
+        const includeReasoning = !!options?.includeReasoning;
+        let activeReasoningId: string | null = null;
+        let reasoningCounter = 0;
 
         try {
             for await (const chunk of stream) {
                 const choice = chunk.choices[0];
 
                 if (choice) {
+                    const deltaObj = choice.delta as unknown;
+
+                    // Accumulate provider-native reasoning deltas when enabled.
+                    if (includeReasoning) {
+                        const reasoningDeltas = extractReasoningTextsFromDelta(deltaObj);
+                        if (reasoningDeltas.length > 0) {
+                            if (!activeReasoningId) {
+                                activeReasoningId = `reasoning-xai-${Date.now()}-${reasoningCounter++}`;
+                                yield { type: "reasoning_start", reasoningId: activeReasoningId };
+                            }
+                            for (const reasoningText of reasoningDeltas) {
+                                yield {
+                                    type: "reasoning_delta",
+                                    reasoningId: activeReasoningId,
+                                    reasoningText,
+                                };
+                            }
+                        }
+                    }
+
                     const delta = choice.delta?.content;
-                    if (delta) {
+                    if (typeof delta === "string" && delta.length > 0) {
                         totalContent += delta;
                         yield {
                             type: "content",
@@ -138,6 +162,10 @@ export class XAIProvider extends BaseAIProvider {
                     }
 
                     if (choice.finish_reason === "tool_calls") {
+                        if (activeReasoningId) {
+                            yield { type: "reasoning_end", reasoningId: activeReasoningId };
+                            activeReasoningId = null;
+                        }
                         for (const [, tc] of pendingToolCalls) {
                             const toolCall: ToolCall = {
                                 id: tc.id,
@@ -148,6 +176,10 @@ export class XAIProvider extends BaseAIProvider {
                         }
                         pendingToolCalls.clear();
                     } else if (choice.finish_reason === "stop") {
+                        if (activeReasoningId) {
+                            yield { type: "reasoning_end", reasoningId: activeReasoningId };
+                            activeReasoningId = null;
+                        }
                         if (chunk.usage) {
                             usage = {
                                 inputTokens: chunk.usage.prompt_tokens,
@@ -165,6 +197,11 @@ export class XAIProvider extends BaseAIProvider {
                         totalTokens: chunk.usage.total_tokens,
                     };
                 }
+            }
+
+            if (activeReasoningId) {
+                yield { type: "reasoning_end", reasoningId: activeReasoningId };
+                activeReasoningId = null;
             }
 
             yield {

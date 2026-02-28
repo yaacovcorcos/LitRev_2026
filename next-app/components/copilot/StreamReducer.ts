@@ -254,6 +254,26 @@ export function reduceStreamChunk(
             ];
         }
 
+        case "user_input_required": {
+            if (!chunk.userInputRequest) return timeline;
+            const req = chunk.userInputRequest;
+            return [
+                ...timeline,
+                {
+                    type: "user_input_request" as const,
+                    id: `user-input-${req.callId}`,
+                    callId: req.callId,
+                    question: req.question,
+                    questionType: req.questionType,
+                    options: req.options,
+                    header: req.header,
+                    context: req.context,
+                    answered: false,
+                    createdAt: new Date().toISOString(),
+                },
+            ];
+        }
+
         // run_start, run_end — handled at context level, not in timeline
         case "run_start":
         case "run_end":

@@ -5,6 +5,7 @@
  */
 
 import type { ArtifactType, ArtifactStatus } from "./artifacts";
+import type { UserInputQuestionType, UserInputOption } from "./ai";
 
 // ── Attachment (carried on user messages) ────────────────────────────────────
 
@@ -24,7 +25,8 @@ export type TimelineItem =
     | TimelineArtifact
     | TimelineProgress
     | TimelineCheckpoint
-    | TimelineError;
+    | TimelineError
+    | TimelineUserInputRequest;
 
 export interface TimelineUserMessage {
     type: "user_message";
@@ -78,5 +80,19 @@ export interface TimelineError {
     id: string;
     message: string;
     retryable: boolean;
+    createdAt: string;
+}
+
+export interface TimelineUserInputRequest {
+    type: "user_input_request";
+    id: string;
+    callId: string;
+    question: string;
+    questionType: UserInputQuestionType;
+    options?: UserInputOption[];
+    header?: string;
+    context?: string;
+    answered: boolean;
+    answer?: string;
     createdAt: string;
 }

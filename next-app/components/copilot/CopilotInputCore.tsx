@@ -9,7 +9,7 @@
 import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import * as Popover from "@radix-ui/react-popover";
-import type { CopilotPage, ChoiceOption } from "@/types/ai";
+import type { CopilotPage, ChoiceOption, UserInputRequest } from "@/types/ai";
 import { USER_SELECTABLE_MODELS, type SelectableModelId } from "@/lib/ai/config";
 import { useVoiceInput } from "@/hooks/useVoiceInput";
 import { listProjectFilesAction } from "@/app/actions/files";
@@ -17,6 +17,7 @@ import { routeToAgent, type RouterPage } from "@/lib/agent/router";
 import { getUserSelectableAgentModes } from "@/lib/agent/feature-flags";
 import { AGENT_MODE_META, type AgentMode, type AutonomyPreset } from "@/types/agent";
 import type { FileAsset } from "@/types/files";
+import { UserInputCard } from "../artifacts/UserInputCard";
 import styles from "./CopilotInput.module.css";
 
 export type InputAttachment = {
@@ -70,6 +71,11 @@ export type CopilotInputCoreProps = {
     onCompress?: () => void | Promise<void>;
     canCompress?: boolean;
     isCompressing?: boolean;
+
+    /** Active ask_user question to render as overlay above the input */
+    pendingUserInput?: UserInputRequest | null;
+    /** Callback when user answers the pending ask_user question */
+    onAnswerUserInput?: (callId: string, answer: string, page?: CopilotPage) => void;
 };
 
 export function CopilotInputCore({
@@ -101,6 +107,8 @@ export function CopilotInputCore({
     onCompress,
     canCompress = false,
     isCompressing = false,
+    pendingUserInput = null,
+    onAnswerUserInput,
 }: CopilotInputCoreProps) {
     const [hasMounted, setHasMounted] = useState(false);
     const [input, setInput] = useState("");
@@ -365,6 +373,22 @@ export function CopilotInputCore({
                                 </button>
                             </>
                         ) : null}
+                    </div>
+                )}
+
+                {/* Structured ask_user overlay — appears above choices */}
+                {pendingUserInput && !isLoading && (
+                    <div className={styles.userInputOverlay}>
+                        <UserInputCard
+                            question={pendingUserInput.question}
+                            questionType={pendingUserInput.questionType}
+                            options={pendingUserInput.options}
+                            header={pendingUserInput.header}
+                            context={pendingUserInput.context}
+                            answered={false}
+                            onAnswer={(answer) => onAnswerUserInput?.(pendingUserInput.callId, answer, page)}
+                            onDismiss={() => onAnswerUserInput?.(pendingUserInput.callId, "Dismissed — please proceed without my input.", page)}
+                        />
                     </div>
                 )}
 

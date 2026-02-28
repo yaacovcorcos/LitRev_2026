@@ -1,4 +1,4 @@
-import type { AIStreamChunk, ChoiceOption, ToolCall, ToolResult } from "@/types/ai";
+import type { AIStreamChunk, ChoiceOption, ToolCall, ToolResult, UserInputRequest } from "@/types/ai";
 
 type SharedFields = {
   conversationId?: string;
@@ -52,7 +52,8 @@ export type RuntimeStreamEvent =
       stepIndex: number;
       stepStatus: string;
     } & SharedFields)
-  | ({ type: "navigate"; navigateUrl: string; navigateProjectId?: string } & SharedFields);
+  | ({ type: "navigate"; navigateUrl: string; navigateProjectId?: string } & SharedFields)
+  | ({ type: "user_input_required"; userInputRequest: UserInputRequest } & SharedFields);
 
 export function normalizeStreamChunk(chunk: AIStreamChunk): RuntimeStreamEvent | null {
   const conversationId = chunk.conversationId;
@@ -153,6 +154,13 @@ export function normalizeStreamChunk(chunk: AIStreamChunk): RuntimeStreamEvent |
         type: "navigate",
         navigateUrl: chunk.navigateUrl,
         navigateProjectId: chunk.navigateProjectId,
+        conversationId,
+      };
+    case "user_input_required":
+      if (!chunk.userInputRequest) return null;
+      return {
+        type: "user_input_required",
+        userInputRequest: chunk.userInputRequest,
         conversationId,
       };
     default:
@@ -256,6 +264,12 @@ export function toWireChunk(event: RuntimeStreamEvent): AIStreamChunk {
         type: "navigate",
         navigateUrl: event.navigateUrl,
         navigateProjectId: event.navigateProjectId,
+        conversationId: event.conversationId,
+      };
+    case "user_input_required":
+      return {
+        type: "user_input_required",
+        userInputRequest: event.userInputRequest,
         conversationId: event.conversationId,
       };
   }

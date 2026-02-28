@@ -11,6 +11,7 @@ import { AI_CONFIG, AVAILABLE_MODELS } from "@/lib/ai/config";
 import { parseToolArgs } from "../json-repair";
 import { extractProviderErrorMetadata } from "./error-metadata";
 import { normalizeProviderMessages } from "./message-normalization";
+import { extractReasoningTextsFromDelta } from "./reasoning-delta";
 
 export class OpenAIProvider extends BaseAIProvider {
     readonly id = "openai";
@@ -112,15 +113,38 @@ export class OpenAIProvider extends BaseAIProvider {
         let totalContent = "";
         let usage: AIStreamChunk["usage"] | undefined;
         const pendingToolCalls = new Map<number, { id: string; name: string; arguments: string }>();
+        const includeReasoning = !!options?.includeReasoning;
+        let activeReasoningId: string | null = null;
+        let reasoningCounter = 0;
 
         try {
             for await (const chunk of stream) {
                 const choice = chunk.choices[0];
 
                 if (choice) {
-                    // Accumulate content
+                    const deltaObj = choice.delta as unknown;
+
+                    // Accumulate provider-native reasoning deltas when enabled.
+                    if (includeReasoning) {
+                        const reasoningDeltas = extractReasoningTextsFromDelta(deltaObj);
+                        if (reasoningDeltas.length > 0) {
+                            if (!activeReasoningId) {
+                                activeReasoningId = `reasoning-openai-${Date.now()}-${reasoningCounter++}`;
+                                yield { type: "reasoning_start", reasoningId: activeReasoningId };
+                            }
+                            for (const reasoningText of reasoningDeltas) {
+                                yield {
+                                    type: "reasoning_delta",
+                                    reasoningId: activeReasoningId,
+                                    reasoningText,
+                                };
+                            }
+                        }
+                    }
+
+                    // Accumulate plain text content
                     const delta = choice.delta?.content;
-                    if (delta) {
+                    if (typeof delta === "string" && delta.length > 0) {
                         totalContent += delta;
                         yield {
                             type: "content",
@@ -145,6 +169,10 @@ export class OpenAIProvider extends BaseAIProvider {
 
                     // Check finish reason
                     if (choice.finish_reason === "tool_calls") {
+                        if (activeReasoningId) {
+                            yield { type: "reasoning_end", reasoningId: activeReasoningId };
+                            activeReasoningId = null;
+                        }
                         // Yield all assembled tool calls
                         for (const [, tc] of pendingToolCalls) {
                             const toolCall: ToolCall = {
@@ -157,6 +185,10 @@ export class OpenAIProvider extends BaseAIProvider {
                         pendingToolCalls.clear();
                         // Do NOT yield done — the tool loop needs to continue
                     } else if (choice.finish_reason === "stop") {
+                        if (activeReasoningId) {
+                            yield { type: "reasoning_end", reasoningId: activeReasoningId };
+                            activeReasoningId = null;
+                        }
                         // Capture usage before yielding done
                         if (chunk.usage) {
                             usage = {
@@ -180,6 +212,11 @@ export class OpenAIProvider extends BaseAIProvider {
                             .prompt_tokens_details?.cached_tokens,
                     };
                 }
+            }
+
+            if (activeReasoningId) {
+                yield { type: "reasoning_end", reasoningId: activeReasoningId };
+                activeReasoningId = null;
             }
 
             // Final chunk with actual usage from API

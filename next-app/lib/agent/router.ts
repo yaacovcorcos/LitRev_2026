@@ -22,12 +22,12 @@ export interface AgentModeConfig {
 }
 
 export const AGENT_MODE_CONFIG: Record<AgentMode, AgentModeConfig> = {
-    protocol: { systemPromptKey: "protocol", allowedTools: ["update_protocol", "update_criteria", "update_study", "search_pubmed", "search_semantic_scholar", "store_memory", "forget_memory", "inspect_memory"], memoryScope: "project", description: "Defining PICO and criteria" },
-    scoping: { systemPromptKey: "scoping", allowedTools: ["search_pubmed", "search_semantic_scholar", "recommend_studies", "store_memory", "forget_memory", "inspect_memory", "list_projects", "open_project"], memoryScope: "project", description: "Exploring the literature landscape" },
-    search: { systemPromptKey: "search", allowedTools: ["search_pubmed", "search_semantic_scholar", "add_to_ledger", "recommend_studies", "update_study", "store_memory", "forget_memory", "inspect_memory"], memoryScope: "project", description: "Finding studies" },
-    screening: { systemPromptKey: "screening", allowedTools: ["bulk_screening", "exclude_study", "delete_study", "extract_pdf", "read_study_content", "update_study", "store_memory", "forget_memory", "inspect_memory"], memoryScope: "study", description: "Evaluating studies" },
-    drafting: { systemPromptKey: "drafting", allowedTools: ["update_note", "read_study_content", "update_study", "store_memory", "forget_memory", "inspect_memory"], memoryScope: "project", description: "Writing sections" },
-    qa: { systemPromptKey: "qa", allowedTools: ["search_pubmed", "search_semantic_scholar", "read_study_content", "update_study", "store_memory", "forget_memory", "inspect_memory"], memoryScope: "project", description: "Checking citations" },
+    protocol: { systemPromptKey: "protocol", allowedTools: ["update_protocol", "update_criteria", "update_study", "search_pubmed", "search_semantic_scholar", "store_memory", "forget_memory", "inspect_memory", "ask_user"], memoryScope: "project", description: "Defining PICO and criteria" },
+    scoping: { systemPromptKey: "scoping", allowedTools: ["search_pubmed", "search_semantic_scholar", "recommend_studies", "store_memory", "forget_memory", "inspect_memory", "list_projects", "open_project", "ask_user"], memoryScope: "project", description: "Exploring the literature landscape" },
+    search: { systemPromptKey: "search", allowedTools: ["search_pubmed", "search_semantic_scholar", "add_to_ledger", "recommend_studies", "update_study", "store_memory", "forget_memory", "inspect_memory", "ask_user"], memoryScope: "project", description: "Finding studies" },
+    screening: { systemPromptKey: "screening", allowedTools: ["bulk_screening", "exclude_study", "delete_study", "extract_pdf", "read_study_content", "update_study", "store_memory", "forget_memory", "inspect_memory", "ask_user"], memoryScope: "study", description: "Evaluating studies" },
+    drafting: { systemPromptKey: "drafting", allowedTools: ["update_note", "read_study_content", "update_study", "store_memory", "forget_memory", "inspect_memory", "ask_user"], memoryScope: "project", description: "Writing sections" },
+    qa: { systemPromptKey: "qa", allowedTools: ["search_pubmed", "search_semantic_scholar", "read_study_content", "update_study", "store_memory", "forget_memory", "inspect_memory", "ask_user"], memoryScope: "project", description: "Checking citations" },
     general: { systemPromptKey: "general", allowedTools: [], memoryScope: "project", description: "General conversation" },
 };
 

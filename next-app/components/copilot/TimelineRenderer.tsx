@@ -15,7 +15,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { markdownComponents } from "../markdown/CodeBlock";
 import type { CopilotMessage } from "@/lib/projectCopilotStorage";
-import type { TimelineItem, TimelineArtifact } from "@/types/timeline";
+import type { TimelineItem, TimelineArtifact, TimelineUserInputRequest } from "@/types/timeline";
 import type { ReasoningMode } from "@/types/ai";
 import type { AgentMode } from "@/types/agent";
 import type {
@@ -43,6 +43,7 @@ import { DraftBlock } from "../artifacts/DraftBlock";
 import { MemoryCard } from "../artifacts/MemoryCard";
 import { MemoryForgetCard } from "../artifacts/MemoryForgetCard";
 import { ScopingReportCard } from "../artifacts/ScopingReportCard";
+import { UserInputCard } from "../artifacts/UserInputCard";
 import { StreamingProgress } from "./StreamingProgress";
 import { addMentionedStudyAction } from "@/app/actions/ledger";
 import { extractMentionedStudies, stripMentionedStudiesMarkup, type MentionedStudy } from "@/lib/ai/mentioned-studies";
@@ -511,6 +512,8 @@ export type TimelineRendererProps = {
     conversationId?: string;
     /** Optional explicit project ID override (used in /ai route where useParams has no project id). */
     projectId?: string;
+    /** Callback when user answers a structured ask_user question */
+    onAnswerUserInput?: (callId: string, answer: string) => void;
     /** Whether older messages are available to load */
     hasMore?: boolean;
     /** Whether older messages are currently loading */
@@ -539,6 +542,7 @@ export function TimelineRenderer({
     isConversationLoading = false,
     conversationId,
     projectId: projectIdProp,
+    onAnswerUserInput,
     hasMore,
     isLoadingOlder,
     onLoadOlder,
@@ -1116,6 +1120,21 @@ export function TimelineRenderer({
                             </button>
                         )}
                     </div>
+                );
+
+            case "user_input_request":
+                return (
+                    <UserInputCard
+                        key={item.id}
+                        question={item.question}
+                        questionType={item.questionType}
+                        options={item.options}
+                        header={item.header}
+                        context={item.context}
+                        answered={item.answered}
+                        answer={item.answer}
+                        onAnswer={(answer) => onAnswerUserInput?.(item.callId, answer)}
+                    />
                 );
 
             default:

@@ -41,7 +41,7 @@ export async function startRun(input: StartRunInput) {
  */
 export async function endRun(
     runId: string,
-    status: Extract<RunStatus, "completed" | "failed" | "cancelled">,
+    status: Extract<RunStatus, "completed" | "failed" | "cancelled" | "paused">,
     costTokensIn?: number,
     costTokensOut?: number
 ) {

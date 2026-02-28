@@ -15,7 +15,7 @@ import { createConversation } from "@/app/actions/conversations";
 import { reviewArtifactAction } from "@/app/actions/agent";
 import type { ArtifactData, ArtifactStatus } from "@/types/artifacts";
 import type { AgentMode, AutonomyPreset, AutonomyLevel } from "@/types/agent";
-import type { ChoiceOption, CopilotPage, ReasoningMode, StreamPhase } from "@/types/ai";
+import type { ChoiceOption, CopilotPage, ReasoningMode, StreamPhase, UserInputRequest } from "@/types/ai";
 import { handleProjectCopilotStreamChunk } from "@/contexts/project-copilot-stream-events";
 import type { ArtifactActionContract } from "@/lib/artifacts/action-contract";
 import { shouldRequestReasoning } from "@/lib/ai/reasoning-visibility";
@@ -34,6 +34,7 @@ export type CopilotStreamActionsDeps = {
     setStreamPhase: React.Dispatch<React.SetStateAction<StreamPhase>>;
     setCurrentRunId: React.Dispatch<React.SetStateAction<string | null>>;
     setPendingChoices: React.Dispatch<React.SetStateAction<ChoiceOption[]>>;
+    setPendingUserInput: React.Dispatch<React.SetStateAction<UserInputRequest | null>>;
     setArtifacts: React.Dispatch<React.SetStateAction<Map<string, ArtifactData>>>;
     pendingAttachment: PendingAttachment | null;
     setPendingAttachment: React.Dispatch<React.SetStateAction<PendingAttachment | null>>;
@@ -54,6 +55,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
         setStreamPhase,
         setCurrentRunId,
         setPendingChoices,
+        setPendingUserInput,
         setArtifacts,
         pendingAttachment,
         setPendingAttachment,
@@ -199,6 +201,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                                 );
                             },
                             setPendingChoices,
+                            setPendingUserInput,
                             onPlanStepUpdate,
                             onNavigate,
                         }
@@ -242,6 +245,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
 
             console.error("AI chat error:", error);
             setPendingChoices([]);
+            setPendingUserInput(null);
             const errorText = `Sorry, I encountered an error: ${error instanceof Error ? error.message : "Unknown error"}. Please try again.`;
 
             if (!aiMessageCreated) {
@@ -292,6 +296,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
             if (!trimmed && !attachment) return;
             if (isLoadingRef.current) cancelStream();
             setPendingChoices([]);
+            setPendingUserInput(null);
 
             // Determine conversation context based on page
             const conversationContext = studyId ? "study" : "project";

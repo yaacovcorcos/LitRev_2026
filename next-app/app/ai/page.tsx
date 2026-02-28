@@ -19,7 +19,7 @@ import { reviewArtifactAction } from "@/app/actions/agent";
 import { getGlobalWorkspaceContextAction } from "@/app/actions/ai-assistant";
 import { summarizeConversationAction } from "@/app/actions/summarize-conversation";
 import type { AgentMode } from "@/types/agent";
-import type { CopilotPage, ConversationContext, ChoiceOption, ReasoningMode } from "@/types/ai";
+import type { CopilotPage, ConversationContext, ChoiceOption, ReasoningMode, UserInputRequest } from "@/types/ai";
 import type { ArtifactStatus, ArtifactType } from "@/types/artifacts";
 import type { TimelineItem } from "@/types/timeline";
 import { processAIStream } from "@/lib/ai/stream-processor";
@@ -338,6 +338,7 @@ export default function AIView() {
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [pendingChoices, setPendingChoices] = useState<ChoiceOption[]>([]);
+  const [pendingUserInput, setPendingUserInput] = useState<UserInputRequest | null>(null);
   const [prefillCommand, setPrefillCommand] = useState<{ text: string; id: string } | null>(null);
   const [reasoningMode, setReasoningMode] = useState<ReasoningMode>(() => getReasoningModePreference());
 
@@ -443,6 +444,7 @@ export default function AIView() {
       setTimelineByConversation({});
       timelineLruRef.current = [];   // reset LRU so eviction doesn't drift across scopes
       setPendingChoices([]);
+      setPendingUserInput(null);
       setPrefillCommand(null);
     };
     load().catch((err) => {
@@ -500,6 +502,7 @@ export default function AIView() {
     }
     setIsTyping(false);
     setPendingChoices([]);
+    setPendingUserInput(null);
   }, []);
 
   const ensureConversation = useCallback(async (context: ConversationContext): Promise<string> => {
@@ -531,6 +534,7 @@ export default function AIView() {
   const handleSelectConversation = useCallback(async (id: string) => {
     setActiveConversationId(id);
     setPendingChoices([]);
+    setPendingUserInput(null);
     // Only show skeleton if we don't already have this conversation cached
     const alreadyCached = !!timelineByConversation[id];
     if (!alreadyCached) setIsConversationLoading(true);
@@ -585,6 +589,7 @@ export default function AIView() {
     // Keep LRU ref in sync with the evicted entry
     timelineLruRef.current = timelineLruRef.current.filter((lruId) => lruId !== id);
     setPendingChoices([]);
+    setPendingUserInput(null);
 
     if (activeConversationId === id) {
       if (nextId) {
@@ -622,6 +627,7 @@ export default function AIView() {
       updateConversationTimeline(full.id, () => mappedItems);
       setActiveConversationId(full.id);
       setPendingChoices([]);
+      setPendingUserInput(null);
       setPrefillCommand(null);
     } catch (err) {
       console.error("Failed to branch conversation", err);
@@ -660,6 +666,7 @@ export default function AIView() {
       updateConversationTimeline(full.id, () => mappedItems);
       setActiveConversationId(full.id);
       setPendingChoices([]);
+      setPendingUserInput(null);
       setPrefillCommand(null);
     } catch (err) {
       console.error("Failed to branch from message", err);
@@ -774,6 +781,7 @@ export default function AIView() {
       updateConversationTimeline(full.id, () => mappedItems);
       setActiveConversationId(full.id);
       setPendingChoices([]);
+      setPendingUserInput(null);
       setPrefillCommand(null);
     } catch (err) {
       console.error("Failed to compress conversation history", err);
@@ -805,6 +813,7 @@ export default function AIView() {
     setActiveConversationId(id);
     updateConversationTimeline(id, () => []);
     setPendingChoices([]);
+    setPendingUserInput(null);
     setPrefillCommand(null);
   }, [selectedProjectId, sortConversationsByUpdatedAt, updateConversationTimeline]);
 
@@ -821,6 +830,7 @@ export default function AIView() {
     if (isTyping) cancelStream();
     sendLockRef.current = true;
     setPendingChoices([]);
+    setPendingUserInput(null);
 
     const context: ConversationContext = selectedProjectId ? "project" : "global";
     const effectiveAgentMode = agentMode ?? routeToAgent(msgText, "overview");
@@ -1163,6 +1173,26 @@ export default function AIView() {
             return;
           }
 
+          if (data.type === "user_input_required" && data.userInputRequest) {
+            setPendingUserInput(data.userInputRequest);
+            updateConversationTimeline(convId, (items) => [
+              ...items,
+              {
+                type: "user_input_request" as const,
+                id: `user-input-${data.userInputRequest!.callId}`,
+                callId: data.userInputRequest!.callId,
+                question: data.userInputRequest!.question,
+                questionType: data.userInputRequest!.questionType,
+                options: data.userInputRequest!.options,
+                header: data.userInputRequest!.header,
+                context: data.userInputRequest!.context,
+                answered: false,
+                createdAt: new Date().toISOString(),
+              },
+            ]);
+            return;
+          }
+
           if (data.type === "plan_step_update" && data.planId && data.stepIndex !== undefined && data.stepStatus) {
             updatePlanStepStatus(data.planId, data.stepIndex, data.stepStatus);
           }
@@ -1216,6 +1246,22 @@ export default function AIView() {
     updateConversationTimeline,
     sortConversationsByUpdatedAt,
   ]);
+
+  const handleAnswerUserInput = useCallback((callId: string, answer: string) => {
+    // Mark the timeline card as answered
+    if (activeConversationId) {
+      updateConversationTimeline(activeConversationId, (items) =>
+        items.map((item) =>
+          item.type === "user_input_request" && item.callId === callId
+            ? { ...item, answered: true, answer }
+            : item,
+        ),
+      );
+    }
+    setPendingUserInput(null);
+    // Send the answer as a user message so the AI continues
+    void handleSend(answer, "ai");
+  }, [activeConversationId, updateConversationTimeline, handleSend]);
 
   const reviewArtifactLocal = useCallback(async (
     artifactId: string,
@@ -1328,6 +1374,7 @@ export default function AIView() {
     if (!convId) return;
     if (isTyping) cancelStream();
     setPendingChoices([]);
+    setPendingUserInput(null);
 
     const setPlanStatus = (nextStatus: ArtifactStatus) => {
       updateConversationTimeline(convId, (items) =>
@@ -1690,6 +1737,7 @@ export default function AIView() {
     });
 
     setPendingChoices([]);
+    setPendingUserInput(null);
     setPrefillCommand(null);
     void handleSend(retryText, "ai");
   }, [isTyping, activeConversationId, timelineByConversation, handleSend]);
@@ -1935,6 +1983,7 @@ export default function AIView() {
               onReviewArtifact={handleReviewArtifact}
               onApproveArtifactsBatch={handleApproveArtifactsBatch}
               onExecutePlan={handleExecutePlan}
+              onAnswerUserInput={handleAnswerUserInput}
             />
 
             <div className={styles.chatInputContainer}>
@@ -1947,7 +1996,9 @@ export default function AIView() {
                 sendMessage={handleSend}
                 cancelStream={cancelStream}
                 pendingChoices={pendingChoices}
-                clearChoices={() => setPendingChoices([])}
+                clearChoices={() => { setPendingChoices([]); setPendingUserInput(null); }}
+                pendingUserInput={pendingUserInput}
+                onAnswerUserInput={handleAnswerUserInput}
                 modelStorageKey="litrev_ai_model"
                 showAutonomyPreset={false}
                 showAttachments={false}

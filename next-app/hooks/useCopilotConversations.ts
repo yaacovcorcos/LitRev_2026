@@ -8,7 +8,7 @@ import type {
     ProjectCopilotState,
 } from "@/lib/projectCopilotStorage";
 import type { ArtifactData, ArtifactStatus, ArtifactType } from "@/types/artifacts";
-import type { ChoiceOption, CopilotPage } from "@/types/ai";
+import type { ChoiceOption, CopilotPage, UserInputRequest } from "@/types/ai";
 import type { ConversationListItem } from "@/types/copilot-context";
 import {
     listConversations,
@@ -34,6 +34,7 @@ export type CopilotConversationsDeps = {
     setIsLoading: React.Dispatch<React.SetStateAction<boolean>>;
     setCurrentRunId: React.Dispatch<React.SetStateAction<string | null>>;
     setPendingChoices: React.Dispatch<React.SetStateAction<ChoiceOption[]>>;
+    setPendingUserInput: React.Dispatch<React.SetStateAction<UserInputRequest | null>>;
 };
 
 export function useCopilotConversations(deps: CopilotConversationsDeps) {
@@ -49,6 +50,7 @@ export function useCopilotConversations(deps: CopilotConversationsDeps) {
         setIsLoading,
         setCurrentRunId,
         setPendingChoices,
+        setPendingUserInput,
     } = deps;
 
     // Conversation management state
@@ -89,6 +91,7 @@ export function useCopilotConversations(deps: CopilotConversationsDeps) {
         setIsLoading(false);
         setCurrentRunId(null);
         setPendingChoices([]);
+        setPendingUserInput(null);
         setConversations([]);
         setCurrentConversationId(null);
         currentConversationIdRef.current = null;
@@ -138,6 +141,7 @@ export function useCopilotConversations(deps: CopilotConversationsDeps) {
         setIsLoading(false);
         setCurrentRunId(null);
         setPendingChoices([]);
+        setPendingUserInput(null);
 
         const projectScope = projectId || "no-project";
         const toScopeKey = (v: string | undefined) => (
@@ -246,6 +250,7 @@ export function useCopilotConversations(deps: CopilotConversationsDeps) {
             setIsLoading(false);
             setCurrentRunId(null);
             setPendingChoices([]);
+            setPendingUserInput(null);
             if (!projectId) return;
             setIsConversationLoading(true);
             const convoResult = await getConversation(conversationId, { expectedProjectId: projectId });
@@ -441,6 +446,7 @@ export function useCopilotConversations(deps: CopilotConversationsDeps) {
         setIsLoading(false);
         setCurrentRunId(null);
         setPendingChoices([]);
+        setPendingUserInput(null);
         try {
             const convResult = await createConversation({
                 projectId,
@@ -521,6 +527,7 @@ export function useCopilotConversations(deps: CopilotConversationsDeps) {
             setIsLoading(false);
             setCurrentRunId(null);
             setPendingChoices([]);
+            setPendingUserInput(null);
 
             const branchResult = await branchConversationAction({ conversationId, upToMessageId, upToCreatedAt });
             if (!branchResult.success) {

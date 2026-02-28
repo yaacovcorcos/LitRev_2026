@@ -26,7 +26,7 @@ export const AGENT_MODE_META: Record<AgentMode, { label: string; icon: string; d
 
 // ── Run Status ───────────────────────────────────────────────────────────────
 
-export type RunStatus = "running" | "completed" | "failed" | "cancelled";
+export type RunStatus = "running" | "completed" | "failed" | "cancelled" | "paused";
 
 export type RunTrigger = "user_message" | "proactive" | "event";
 

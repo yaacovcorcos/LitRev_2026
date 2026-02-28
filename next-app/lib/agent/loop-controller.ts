@@ -13,7 +13,8 @@ export type StopReason =
     | "wall_time"
     | "repeat_detected"
     | "cancelled"
-    | "error";
+    | "error"
+    | "paused_for_input";
 
 export interface LoopBudget {
     maxIterations: number;

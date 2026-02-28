@@ -505,6 +505,13 @@ class AIService {
                 });
                 yield { type: "tool_result", toolName: tc.name, toolResult: result };
 
+                // ask_user sentinel: emit user_input_required and stop the loop
+                if (result.requiresUserInput && result.userInputRequest) {
+                    yield { type: "user_input_required", userInputRequest: result.userInputRequest };
+                    loop.markStopped("paused_for_input");
+                    return;
+                }
+
                 const toolMsg: AIMessage = {
                     id: `tool-result-${tc.id}`,
                     role: "tool",
@@ -1308,6 +1315,13 @@ class AIService {
 
                     yield { type: "tool_result", toolName: tc.name, toolResult, conversationId: conversation.id };
 
+                    // ask_user sentinel: emit user_input_required and stop the loop
+                    if (toolResult.requiresUserInput && toolResult.userInputRequest) {
+                        yield { type: "user_input_required", userInputRequest: toolResult.userInputRequest, conversationId: conversation.id };
+                        loop.markStopped("paused_for_input");
+                        break;
+                    }
+
                     // Emit navigate event when tool result includes a navigation URL
                     const navigateUrl = (toolResult.result as Record<string, unknown> | null)?.navigate;
                     if (typeof navigateUrl === "string" && navigateUrl) {
@@ -1333,8 +1347,10 @@ class AIService {
 
             // Determine final stop reason and run status
             let finalStopReason = loop.stopReason ?? "natural";
-            let runStatus: "completed" | "cancelled" | "failed" =
-                finalStopReason === "cancelled" ? "cancelled" : "completed";
+            let runStatus: "completed" | "cancelled" | "failed" | "paused" =
+                finalStopReason === "cancelled" ? "cancelled"
+                    : finalStopReason === "paused_for_input" ? "paused"
+                        : "completed";
 
             // ── Plan execution finalization ──
             if (executionMode && options?.planId && planData) {
@@ -1960,6 +1976,7 @@ function stopReasonMessage(reason: StopReason): string {
         repeat_detected: "I noticed I was about to repeat the same action. Let me summarize what I found so far.",
         cancelled: "The operation was cancelled.",
         error: "An error occurred during processing.",
+        paused_for_input: "I need your input before I can continue.",
     };
     return messages[reason];
 }

@@ -5,6 +5,8 @@ This directory contains the canonical, active plans for LitRev.
 ## Ownership Scopes
 - [**Architecture & Infrastructure**](plan-backend.md): DB schema changes, Auth, server-side actions, export generation logic.
 - [**Agentic Systems & AI Orchestration**](plan-agentic.md): The tool loop, context windows, model autonomy, planning algorithms.
+  - [**Claude agentic execution plan**](claude-agentic-plan.md): Claude-specific implementation plan for `ask_user`, delegation, and lazy context loading.
+  - [**Codex agentic execution plan**](codex-agentic-plan.md): Codex-specific consolidated roadmap for next-gen orchestration, retrieval, sub-agents, and eval operations.
 - [**Memory & Retrieval**](plan-memory.md): Memory extraction, lifecycle, pgvector embeddings, project state sync. (This is the **only** active memory tracker).
 - **UI, UX, components** — Two companion execution plans:
   - [**Claude UI plan**](claude-ui-ux-plan.md): Holistic, root-cause-driven stability sweep (CLU-001–008). Includes Current Architecture reference.

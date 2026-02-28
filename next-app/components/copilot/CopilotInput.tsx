@@ -35,6 +35,8 @@ export function CopilotInput({ page, section, studyId, inputPlaceholder, prefill
         setShowAutonomySettings,
         pendingChoices,
         clearChoices,
+        pendingUserInput,
+        answerUserInput,
         summarizeAndRefresh,
         shouldOfferSummary,
         isSummarizing,
@@ -64,6 +66,8 @@ export function CopilotInput({ page, section, studyId, inputPlaceholder, prefill
             setShowAutonomySettings={setShowAutonomySettings}
             pendingChoices={pendingChoices}
             clearChoices={clearChoices}
+            pendingUserInput={pendingUserInput}
+            onAnswerUserInput={answerUserInput}
             modelStorageKey="litrev_copilot_model"
             showAutonomyPreset
             showAttachments

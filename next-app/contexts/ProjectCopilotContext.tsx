@@ -305,10 +305,10 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
 
     const clearChoices = useCallback(() => setPendingChoices([]), []);
 
-    const answerUserInput = useCallback((callId: string, answer: string) => {
+    const answerUserInput = useCallback((callId: string, answer: string, page?: CopilotPage) => {
         setPendingUserInput(null);
         // Send the answer as the next user message so the AI can continue
-        stream.sendMessage(answer, "ai" as CopilotPage);
+        stream.sendMessage(answer, page ?? ("ai" as CopilotPage));
     }, [stream]);
 
     const value = useMemo(

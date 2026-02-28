@@ -6,7 +6,7 @@
 import type { CopilotMessage, ProjectCopilotState } from "@/lib/projectCopilotStorage";
 import type { ArtifactData } from "@/types/artifacts";
 import type { AgentMode, AutonomyPreset, AutonomyLevel } from "@/types/agent";
-import type { ChoiceOption, CopilotPage, ReasoningMode, StreamPhase } from "@/types/ai";
+import type { ChoiceOption, CopilotPage, ReasoningMode, StreamPhase, UserInputRequest } from "@/types/ai";
 
 export type PendingAttachment = {
     fileAssetId: string;
@@ -152,6 +152,12 @@ export type ProjectCopilotContextValue = {
     pendingChoices: ChoiceOption[];
     /** Clear pending choices */
     clearChoices: () => void;
+
+    // Structured ask_user input
+    /** Active ask_user question pending user response */
+    pendingUserInput: UserInputRequest | null;
+    /** Answer the pending ask_user question (clears it and sends answer as message) */
+    answerUserInput: (callId: string, answer: string, page?: CopilotPage) => void;
 
     // Message pagination
     /** Whether there are older messages available to load */

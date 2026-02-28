@@ -36,6 +36,7 @@ const STREAM_EVENT_TYPES: RuntimeStreamEvent["type"][] = [
     "choices",
     "plan_step_update",
     "navigate",
+    "user_input_required",
 ];
 
 export async function POST(request: NextRequest) {

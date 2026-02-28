@@ -1,6 +1,6 @@
 import type { CopilotMessage } from "@/lib/projectCopilotStorage";
 import type { ArtifactData, ArtifactStatus, ArtifactType } from "@/types/artifacts";
-import type { AIStreamChunk, ChoiceOption, CopilotPage } from "@/types/ai";
+import type { AIStreamChunk, ChoiceOption, CopilotPage, UserInputRequest } from "@/types/ai";
 import { appendReasoningRaw } from "@/lib/ai/reasoning-visibility";
 import { isNavigationSafe } from "@/lib/ai/navigation-safety";
 
@@ -29,6 +29,7 @@ type StreamChunkDeps = {
   updateMessages: (updater: (messages: CopilotMessage[]) => CopilotMessage[]) => void;
   emitLedgerChanged: () => void;
   setPendingChoices: (choices: ChoiceOption[]) => void;
+  setPendingUserInput: (request: UserInputRequest | null) => void;
   onPlanStepUpdate?: (planId: string, stepIndex: number, stepStatus: string) => void;
   onNavigate?: (url: string) => void;
 };
@@ -287,6 +288,12 @@ const chunkHandlers: Partial<Record<AIStreamChunk["type"], ChunkHandler>> = {
     const url = data.navigateUrl ?? "";
     if (url && isNavigationSafe(url)) {
       deps.onNavigate?.(url);
+    }
+    return state;
+  },
+  user_input_required: (data, state, deps) => {
+    if (data.userInputRequest && deps.getCurrentGen() === deps.myGen) {
+      deps.setPendingUserInput(data.userInputRequest);
     }
     return state;
   },

@@ -711,6 +711,12 @@
     outline-offset: 2px;
 }
 
+/* ---- ask_user Overlay ---- */
+
+.userInputOverlay {
+    padding: 8px 8px 0;
+}
+
 /* Empty class used to target the attach button separately from voice */
 .attachBtn {}
 
