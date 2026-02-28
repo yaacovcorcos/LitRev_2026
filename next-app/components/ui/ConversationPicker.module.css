@@ -196,6 +196,7 @@
     font-size: 13px;
     opacity: 0.6;
     cursor: pointer;
+    outline: none;
 }
 
 .contextMenuItem :global(.material-icons-round) {
@@ -214,6 +215,11 @@
     color: var(--text-primary);
 }
 
+.contextMenuItem[data-highlighted="true"] {
+    background: rgba(0, 0, 0, 0.07);
+    color: var(--text-primary);
+}
+
 .contextMenuItemDanger {
     color: var(--color-danger);
 }
@@ -221,6 +227,104 @@
 .contextMenuItemDanger:hover {
     background: rgba(220, 38, 38, 0.1);
     color: var(--color-danger);
+}
+
+.contextMenuItemDanger[data-highlighted="true"] {
+    background: rgba(220, 38, 38, 0.1);
+    color: var(--color-danger);
+}
+
+.renameOverlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.3);
+    z-index: 3000;
+}
+
+.renameDialog {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: min(92vw, 420px);
+    border-radius: var(--radius-md);
+    background: var(--bg-card, #fff);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--shadow-lg, 0 8px 24px rgba(0, 0, 0, 0.12));
+    padding: 16px;
+    z-index: 3010;
+    outline: none;
+}
+
+.renameTitle {
+    margin: 0;
+    color: var(--text-primary);
+    font-size: 15px;
+    font-weight: 600;
+}
+
+.renameLabel {
+    display: block;
+    margin-top: 12px;
+    margin-bottom: 6px;
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.renameInput {
+    width: 100%;
+    border: 1px solid rgba(0, 0, 0, 0.16);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-primary);
+    font-size: 14px;
+    padding: 8px 10px;
+    outline: none;
+}
+
+.renameInput:focus,
+.renameInput:focus-visible {
+    border-color: var(--accent-primary);
+}
+
+.renameError {
+    margin: 8px 0 0;
+    color: var(--color-danger);
+    font-size: 12px;
+}
+
+.renameActions {
+    margin-top: 14px;
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.renameCancel,
+.renameSave {
+    border-radius: var(--radius-sm);
+    border: 1px solid transparent;
+    font-size: 13px;
+    padding: 7px 12px;
+    cursor: pointer;
+}
+
+.renameCancel {
+    background: transparent;
+    color: var(--text-secondary);
+    border-color: rgba(0, 0, 0, 0.14);
+}
+
+.renameSave {
+    background: var(--accent-primary);
+    color: #fff;
+}
+
+.renameCancel:disabled,
+.renameSave:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
 }
 
 @media (max-width: 480px) {
