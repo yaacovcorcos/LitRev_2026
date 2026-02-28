@@ -1,0 +1,732 @@
+/* ========================================
+   COPILOT INPUT AREA
+   Extracted from ProjectCopilot.module.css
+   Used exclusively by CopilotInputCore.tsx
+   ======================================== */
+
+/* ---- Input Box ---- */
+
+.inputBox {
+    margin: 0 clamp(16px, 4vw, 64px) 24px;
+    background: linear-gradient(to bottom, rgba(255, 255, 255, 0.35), rgba(255, 255, 255, 0.75));
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(0, 0, 0, 0.06);
+    border-radius: 24px;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    position: relative;
+    flex-shrink: 0;
+    container-type: inline-size;
+    container-name: inputBox;
+}
+
+.inputBox::before {
+    content: '';
+    position: absolute;
+    bottom: 100%;
+    left: 0;
+    right: 0;
+    height: 48px;
+    background: linear-gradient(to bottom, transparent, rgba(255, 255, 255, 0.25));
+    pointer-events: none;
+    border-radius: 24px 24px 0 0;
+}
+
+.inputBox:focus-within {
+    border-color: rgba(0, 0, 0, 0.1);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+}
+
+/* ---- Textarea ---- */
+
+.inputTextarea {
+    display: block;
+    width: 100%;
+    min-height: 24px;
+    max-height: 200px;
+    padding: 12px 14px 4px;
+    border: none;
+    background: transparent;
+    font-size: 14px;
+    font-family: inherit;
+    color: var(--text-primary);
+    resize: none;
+    outline: none;
+    line-height: 1.5;
+    overflow-y: auto;
+}
+
+.inputTextarea:focus-visible {
+    outline: none;
+}
+
+.inputTextarea::placeholder {
+    color: var(--text-muted);
+}
+
+/* ---- Action Bar ---- */
+
+.inputBar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 12px 8px;
+    overflow: hidden;
+    min-width: 0;
+}
+
+.inputBarLeft {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    overflow: hidden;
+    min-width: 0;
+    flex: 1;
+}
+
+/* ---- Model Selector ---- */
+
+.modelBtn {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 10px;
+    background: transparent;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    color: var(--text-muted);
+    font-size: 12px;
+    font-weight: 500;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.modelBtn:hover {
+    background: rgba(0, 0, 0, 0.04);
+    color: var(--text-secondary);
+}
+
+.modelBtn .material-icons-round {
+    font-size: 16px;
+}
+
+.mountPlaceholder {
+    pointer-events: none;
+}
+
+.modelDropdown {
+    min-width: 260px;
+    background: white;
+    border: 1px solid var(--glass-border);
+    border-radius: 10px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
+    padding: 4px;
+    z-index: 100;
+}
+
+.modelGroupLabel {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    padding: 8px 12px 4px;
+}
+
+.modelGroupLabel:not(:first-child) {
+    border-top: 1px solid rgba(0, 0, 0, 0.06);
+    margin-top: 4px;
+    padding-top: 8px;
+}
+
+.modelItem {
+    width: 100%;
+    padding: 8px 12px;
+    background: transparent;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    text-align: left;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    transition: background 0.1s ease;
+}
+
+.modelItem:hover {
+    background: rgba(0, 0, 0, 0.04);
+}
+
+.modelItemActive {
+    background: rgba(217, 116, 89, 0.1);
+    color: var(--accent-primary);
+}
+
+.modelItemInner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+}
+
+.modelItemIcon {
+    font-size: 18px;
+    transform: scale(0.78);
+    transform-origin: center;
+    margin: 0 -2px;
+    color: var(--text-muted);
+    flex-shrink: 0;
+}
+
+.modelItemActive .modelItemIcon {
+    color: var(--accent-primary);
+}
+
+.modelItemName {
+    font-size: 13px;
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+.modelItemDesc {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-left: auto;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+/* Kill global orange focus outline on all input-bar buttons */
+.modelBtn:focus-visible,
+.presetBtn:focus-visible,
+.actionBtn:focus-visible,
+.compressBtn:focus-visible,
+.sendBtn:focus-visible {
+    outline: none;
+}
+
+/* ---- Action Buttons ---- */
+
+.actionBtn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    background: transparent;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    color: var(--text-muted);
+    transition: background 0.15s ease, color 0.15s ease;
+    flex-shrink: 0;
+}
+
+.actionBtn:hover {
+    background: rgba(0, 0, 0, 0.04);
+    color: var(--text-secondary);
+}
+
+.actionBtn :global(.material-icons-round) {
+    font-size: 18px;
+}
+
+/* Compress button – small, minimalist */
+.compressBtn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    background: transparent;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    color: var(--text-muted);
+    opacity: 0.7;
+    transition: background 0.15s ease, opacity 0.15s ease;
+}
+
+.compressBtn:hover:not(:disabled) {
+    background: rgba(0, 0, 0, 0.04);
+    opacity: 1;
+}
+
+.compressBtn:disabled {
+    opacity: 0.25;
+    cursor: default;
+}
+
+.compressBtn :global(.material-icons-round) {
+    font-size: 18px;
+}
+
+/* Voice recording active state */
+.actionBtnRecording {
+    color: var(--color-danger);
+    animation: recordingPulse 1.5s ease-in-out infinite;
+}
+
+.actionBtnRecording:hover {
+    color: var(--color-danger-hover);
+    background: rgba(229, 57, 53, 0.08);
+}
+
+@keyframes recordingPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+/* Voice error toast */
+.voiceError {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 6px 12px;
+    margin: -4px 8px 4px;
+    background: rgba(229, 57, 53, 0.08);
+    border-radius: 8px;
+    font-size: 12px;
+    color: var(--color-danger-hover);
+}
+
+.voiceError button {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--color-danger-hover);
+    padding: 2px;
+    display: flex;
+    align-items: center;
+}
+
+.voiceError button .material-icons-round {
+    font-size: 14px;
+}
+
+/* ---- Send Button ---- */
+
+.sendBtn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    background: rgba(0, 0, 0, 0.05);
+    border: none;
+    border-radius: 50%;
+    cursor: not-allowed;
+    color: var(--text-muted);
+    transition: all 0.15s ease;
+    flex-shrink: 0;
+}
+
+.sendBtn .material-icons-round {
+    font-size: 18px;
+}
+
+.sendBtnActive {
+    background: var(--text-primary);
+    color: white;
+    cursor: pointer;
+}
+
+.sendBtnActive:hover {
+    background: var(--color-interactive-dark);
+}
+
+.sendBtnStop {
+    background: var(--color-danger);
+    color: white;
+    cursor: pointer;
+}
+
+.sendBtnStop:hover {
+    background: var(--color-danger-hover);
+}
+
+/* ---- Pending Attachment ---- */
+
+.pendingAttachment {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    margin: 0 2px;
+    background: var(--color-info-bg);
+    border-radius: 8px 8px 0 0;
+    border-bottom: 1px solid var(--color-info-border);
+    color: var(--text-secondary);
+    font-size: 12px;
+}
+
+.pendingAttachment .material-icons-round {
+    color: var(--color-info);
+}
+
+.pendingAttachmentName {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 500;
+}
+
+.pendingAttachmentRemove {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border: none;
+    background: transparent;
+    border-radius: 4px;
+    cursor: pointer;
+    color: var(--text-muted);
+    padding: 0;
+}
+
+.pendingAttachmentRemove:hover {
+    background: rgba(0, 0, 0, 0.08);
+    color: var(--text-primary);
+}
+
+/* ---- Attachment Picker Popover ---- */
+
+.attachPicker {
+    width: 220px;
+    background: white;
+    border: 1px solid var(--glass-border);
+    border-radius: 10px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+    padding: 4px;
+    z-index: 100;
+}
+
+.attachPickerItem {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 8px 10px;
+    border: none;
+    background: transparent;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--text-primary);
+    text-align: left;
+}
+
+.attachPickerItem:hover {
+    background: rgba(0, 0, 0, 0.04);
+}
+
+.attachPickerItem .material-icons-round {
+    color: var(--text-muted);
+}
+
+.attachPickerDivider {
+    height: 1px;
+    background: var(--glass-border);
+    margin: 4px 0;
+}
+
+.attachPickerLabel {
+    padding: 4px 10px 2px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+}
+
+.attachPickerFileName {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.attachPickerLoading {
+    padding: 8px 10px;
+    font-size: 12px;
+    color: var(--text-muted);
+    text-align: center;
+}
+
+/* ---- Agent Mode Pill ---- */
+
+.modePill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 4px 3px 8px;
+    margin: 8px 14px 0;
+    border-radius: 12px;
+    background: rgba(217, 116, 89, 0.06);
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-weight: 500;
+}
+
+.modePillIcon {
+    font-size: 13px !important;
+    color: var(--accent-primary);
+}
+
+.modePillLabel {
+    white-space: nowrap;
+}
+
+.modePillChevron {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border: none;
+    background: transparent;
+    border-radius: 4px;
+    cursor: pointer;
+    color: var(--text-muted);
+    padding: 0;
+}
+
+.modePillChevron:hover {
+    background: rgba(0, 0, 0, 0.06);
+    color: var(--text-secondary);
+}
+
+.modePillChevron .material-icons-round {
+    font-size: 14px;
+}
+
+.modeDropdown {
+    min-width: 240px;
+    background: white;
+    border: 1px solid var(--glass-border);
+    border-radius: 10px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
+    padding: 4px;
+    z-index: 100;
+}
+
+.modeItem {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 8px 10px;
+    background: transparent;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    text-align: left;
+    transition: background 0.1s ease;
+}
+
+.modeItem:hover {
+    background: rgba(0, 0, 0, 0.04);
+}
+
+.modeItemActive {
+    background: rgba(217, 116, 89, 0.1);
+}
+
+.modeItemIcon {
+    font-size: 16px;
+    color: var(--text-muted);
+    flex-shrink: 0;
+}
+
+.modeItemActive .modeItemIcon {
+    color: var(--accent-primary);
+}
+
+.modeItemName {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-primary);
+    white-space: nowrap;
+}
+
+.modeItemDesc {
+    font-size: 11px;
+    color: var(--text-muted);
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+/* ---- Preset Selector ---- */
+
+.presetBtn {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 10px;
+    background: transparent;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    color: var(--text-muted);
+    font-size: 12px;
+    font-weight: 500;
+    transition: background 0.15s ease, color 0.15s ease;
+    white-space: nowrap;
+}
+
+.presetBtn:hover {
+    background: rgba(0, 0, 0, 0.04);
+    color: var(--text-secondary);
+}
+
+.presetDropdown {
+    min-width: 220px;
+    background: white;
+    border: 1px solid var(--glass-border);
+    border-radius: 10px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
+    padding: 4px;
+    z-index: 100;
+}
+
+.presetItem {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 8px 12px;
+    background: transparent;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    text-align: left;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    transition: background 0.1s ease;
+}
+
+.presetItem:hover {
+    background: rgba(0, 0, 0, 0.04);
+}
+
+.presetItemActive {
+    background: rgba(217, 116, 89, 0.1);
+    color: var(--accent-primary);
+}
+
+.presetItemIcon {
+    font-size: 18px;
+    transform: scale(0.78);
+    transform-origin: center;
+    margin: 0 -2px;
+    color: var(--text-muted);
+    flex-shrink: 0;
+}
+
+.presetItemActive .presetItemIcon {
+    color: var(--accent-primary);
+}
+
+.presetItemName {
+    font-size: 13px;
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+.presetItemDesc {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-left: auto;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.presetDivider {
+    height: 1px;
+    background: var(--glass-border);
+    margin: 4px 0;
+}
+
+/* ---- Choices / AI Suggestions ---- */
+
+.choicesSlot {
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows 0.2s ease;
+    overflow: hidden;
+}
+
+.choicesSlotOpen {
+    grid-template-rows: 1fr;
+}
+
+.choicesRow {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 0 12px;
+    min-height: 0;
+}
+
+.choicesSlotOpen .choicesRow {
+    padding-top: 8px;
+    padding-bottom: 8px;
+}
+
+.choicesSlot:not(.choicesSlotOpen) .choiceChip {
+    opacity: 0;
+}
+
+.choiceChip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 12px;
+    border: 1px solid var(--glass-border);
+    background: rgba(255, 255, 255, 0.8);
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease, opacity 0.12s ease;
+    white-space: nowrap;
+}
+
+.choiceChip:hover {
+    border-color: rgba(217, 116, 89, 0.35);
+    color: var(--accent-primary);
+    background: rgba(217, 116, 89, 0.06);
+}
+
+.choiceChip:focus-visible {
+    outline: 2px solid var(--accent-primary);
+    outline-offset: 2px;
+}
+
+/* Empty class used to target the attach button separately from voice */
+.attachBtn {}
+
+/* ---- Responsive Container Queries ---- */
+
+@container inputBox (max-width: 360px) {
+    .presetBtn {
+        display: none;
+    }
+}
+
+@container inputBox (max-width: 280px) {
+    .attachBtn {
+        display: none;
+    }
+    .compressBtn {
+        display: none;
+    }
+}
