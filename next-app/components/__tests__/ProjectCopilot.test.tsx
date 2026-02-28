@@ -41,14 +41,14 @@ vi.mock("../copilot/TimelineRenderer", () => ({
 
 vi.mock("../copilot/CopilotInput", () => ({
   CopilotInput: ({
-    prefill,
+    prefillCommand,
     onPrefillConsumed,
   }: {
-    prefill?: string;
+    prefillCommand?: { text: string; id: string } | null;
     onPrefillConsumed?: () => void;
   }) => (
     <div>
-      <div data-testid="copilot-prefill">{prefill ?? ""}</div>
+      <div data-testid="copilot-prefill">{prefillCommand?.text ?? ""}</div>
       <button type="button" data-testid="consume-prefill" onClick={() => onPrefillConsumed?.()}>
         Consume
       </button>

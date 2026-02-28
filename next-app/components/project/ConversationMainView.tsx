@@ -53,10 +53,10 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
     const snapshot = useProjectState(projectId);
     const chips = useMemo(() => getSuggestions(snapshot), [snapshot]);
 
-    const [prefill, setPrefill] = useState("");
+    const [prefillCommand, setPrefillCommand] = useState<{ text: string; id: string } | null>(null);
 
     const handleSuggestionClick = useCallback((prompt: string) => {
-        setPrefill(prompt);
+        setPrefillCommand({ text: prompt, id: crypto.randomUUID() });
     }, []);
 
     const handleActionPrompt = useCallback((prompt: string, mode?: AgentMode) => {
@@ -64,11 +64,11 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
     }, [sendMessage]);
 
     const handleChipSend = useCallback((prompt: string) => {
-        setPrefill(prompt);
+        setPrefillCommand({ text: prompt, id: crypto.randomUUID() });
     }, []);
 
     const handlePrefillConsumed = useCallback(() => {
-        setPrefill("");
+        setPrefillCommand(null);
     }, []);
 
     const handleSaveToNotes = useCallback(async (content: string, messageId: string) => {
@@ -188,7 +188,7 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
                         <CopilotInput
                             page={"overview" as CopilotPage}
                             inputPlaceholder="Ask about your project..."
-                            prefill={prefill}
+                            prefillCommand={prefillCommand}
                             onPrefillConsumed={handlePrefillConsumed}
                         />
                     </div>

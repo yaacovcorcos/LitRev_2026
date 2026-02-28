@@ -33,7 +33,7 @@ export type CopilotInputCoreProps = {
     section?: string;
     studyId?: string;
     inputPlaceholder: string;
-    prefill?: string;
+    prefillCommand?: { text: string; id: string } | null;
     onPrefillConsumed?: () => void;
 
     isLoading: boolean;
@@ -77,7 +77,7 @@ export function CopilotInputCore({
     section,
     studyId,
     inputPlaceholder,
-    prefill,
+    prefillCommand,
     onPrefillConsumed,
     isLoading,
     sendMessage,
@@ -191,13 +191,14 @@ export function CopilotInputCore({
         el.style.height = Math.min(el.scrollHeight, 200) + "px";
     }, [input]);
 
-    // Consume prefill from parent (suggestion chips).
+    // Consume prefill command from parent (suggestion chips).
+    // Triggers on command ID change, so clicking the same suggestion twice always works.
     // Guarded by sendLockRef to prevent a double-send when a chip click and
     // the prefill effect race within the same React batching cycle.
     useEffect(() => {
-        if (!prefill) return;
+        if (!prefillCommand) return;
         if (sendLockRef.current) return;
-        setInput(prefill);
+        setInput(prefillCommand.text);
         onPrefillConsumed?.();
         requestAnimationFrame(() => {
             const el = textareaRef.current;
@@ -206,7 +207,8 @@ export function CopilotInputCore({
                 el.selectionStart = el.selectionEnd = el.value.length;
             }
         });
-    }, [prefill, onPrefillConsumed]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- trigger on command ID, not text
+    }, [prefillCommand?.id]);
 
     // Prevent double-sends within the same event loop before isLoading flips true.
     useEffect(() => {

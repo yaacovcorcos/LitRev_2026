@@ -90,14 +90,14 @@ export function ProjectCopilot({
 
     const [showConversationDropdown, setShowConversationDropdown] = useState(false);
     const [isBranching, setIsBranching] = useState(false);
-    const [prefill, setPrefill] = useState("");
+    const [prefillCommand, setPrefillCommand] = useState<{ text: string; id: string } | null>(null);
 
     const handleSuggestionClick = useCallback((prompt: string) => {
-        setPrefill(prompt);
+        setPrefillCommand({ text: prompt, id: crypto.randomUUID() });
     }, []);
 
     const handlePrefillConsumed = useCallback(() => {
-        setPrefill("");
+        setPrefillCommand(null);
     }, []);
 
     const handleActionPrompt = useCallback((prompt: string, mode?: AgentMode) => {
@@ -304,7 +304,7 @@ export function ProjectCopilot({
                     section={section}
                     studyId={studyId}
                     inputPlaceholder={inputPlaceholder}
-                    prefill={prefill}
+                    prefillCommand={prefillCommand}
                     onPrefillConsumed={handlePrefillConsumed}
                 />
             </div>

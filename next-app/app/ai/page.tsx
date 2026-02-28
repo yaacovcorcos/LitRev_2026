@@ -338,7 +338,7 @@ export default function AIView() {
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [pendingChoices, setPendingChoices] = useState<ChoiceOption[]>([]);
-  const [prefill, setPrefill] = useState("");
+  const [prefillCommand, setPrefillCommand] = useState<{ text: string; id: string } | null>(null);
   const [reasoningMode, setReasoningMode] = useState<ReasoningMode>(() => getReasoningModePreference());
 
   const [timelineByConversation, setTimelineByConversation] = useState<Record<string, TimelineItem[]>>({});
@@ -443,7 +443,7 @@ export default function AIView() {
       setTimelineByConversation({});
       timelineLruRef.current = [];   // reset LRU so eviction doesn't drift across scopes
       setPendingChoices([]);
-      setPrefill("");
+      setPrefillCommand(null);
     };
     load().catch((err) => {
       console.error("Failed to load AI conversations", err);
@@ -622,7 +622,7 @@ export default function AIView() {
       updateConversationTimeline(full.id, () => mappedItems);
       setActiveConversationId(full.id);
       setPendingChoices([]);
-      setPrefill("");
+      setPrefillCommand(null);
     } catch (err) {
       console.error("Failed to branch conversation", err);
     } finally {
@@ -660,7 +660,7 @@ export default function AIView() {
       updateConversationTimeline(full.id, () => mappedItems);
       setActiveConversationId(full.id);
       setPendingChoices([]);
-      setPrefill("");
+      setPrefillCommand(null);
     } catch (err) {
       console.error("Failed to branch from message", err);
     } finally {
@@ -774,7 +774,7 @@ export default function AIView() {
       updateConversationTimeline(full.id, () => mappedItems);
       setActiveConversationId(full.id);
       setPendingChoices([]);
-      setPrefill("");
+      setPrefillCommand(null);
     } catch (err) {
       console.error("Failed to compress conversation history", err);
     } finally {
@@ -805,7 +805,7 @@ export default function AIView() {
     setActiveConversationId(id);
     updateConversationTimeline(id, () => []);
     setPendingChoices([]);
-    setPrefill("");
+    setPrefillCommand(null);
   }, [selectedProjectId, sortConversationsByUpdatedAt, updateConversationTimeline]);
 
   const handleSend = useCallback(async (
@@ -853,7 +853,7 @@ export default function AIView() {
       )
     );
 
-    setPrefill("");
+    setPrefillCommand(null);
     setIsTyping(true);
     streamGenRef.current++;
     const myGen = streamGenRef.current;
@@ -1644,7 +1644,7 @@ export default function AIView() {
   ]);
 
   const handleSuggestionClick = useCallback((prompt: string) => {
-    setPrefill(prompt);
+    setPrefillCommand({ text: prompt, id: crypto.randomUUID() });
   }, []);
 
   const handleActionPrompt = useCallback((prompt: string, mode?: AgentMode) => {
@@ -1690,12 +1690,12 @@ export default function AIView() {
     });
 
     setPendingChoices([]);
-    setPrefill("");
+    setPrefillCommand(null);
     void handleSend(retryText, "ai");
   }, [isTyping, activeConversationId, timelineByConversation, handleSend]);
 
   const handlePrefillConsumed = useCallback(() => {
-    setPrefill("");
+    setPrefillCommand(null);
   }, []);
 
   const activeConversation = useMemo(
@@ -1941,7 +1941,7 @@ export default function AIView() {
               <CopilotInputCoreClient
                 page="ai"
                 inputPlaceholder="Ask anything about your research..."
-                prefill={prefill}
+                prefillCommand={prefillCommand}
                 onPrefillConsumed={handlePrefillConsumed}
                 isLoading={isTyping}
                 sendMessage={handleSend}

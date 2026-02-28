@@ -15,11 +15,11 @@ export type CopilotInputProps = {
     section?: string;
     studyId?: string;
     inputPlaceholder: string;
-    prefill?: string;
+    prefillCommand?: { text: string; id: string } | null;
     onPrefillConsumed?: () => void;
 };
 
-export function CopilotInput({ page, section, studyId, inputPlaceholder, prefill, onPrefillConsumed }: CopilotInputProps) {
+export function CopilotInput({ page, section, studyId, inputPlaceholder, prefillCommand, onPrefillConsumed }: CopilotInputProps) {
     const {
         isLoading,
         sendMessage,
@@ -47,7 +47,7 @@ export function CopilotInput({ page, section, studyId, inputPlaceholder, prefill
             section={section}
             studyId={studyId}
             inputPlaceholder={inputPlaceholder}
-            prefill={prefill}
+            prefillCommand={prefillCommand}
             onPrefillConsumed={onPrefillConsumed}
             isLoading={isLoading}
             sendMessage={sendMessage}
