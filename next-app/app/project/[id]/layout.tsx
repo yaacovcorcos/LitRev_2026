@@ -167,7 +167,7 @@ function ProjectShellInner({ projectId, children }: ProjectShellInnerProps) {
             ? `${activeTab.charAt(0).toUpperCase() + activeTab.slice(1)}`
             : "Project";
     const isOnboardingRoute = pathname.endsWith("/onboarding");
-    const showDemoBanner = isDemoProjectId(projectId) && !isOnboardingRoute;
+    const showDemoBanner = isDemoProjectId(projectId) && !isOnboardingRoute && focusMode === "conversation";
 
     // Centralized scope ownership — driven by pathname, no cleanup return
     useEffect(() => {
