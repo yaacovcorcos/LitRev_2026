@@ -1,8 +1,9 @@
 "use client";
 
-import { CSSProperties, ReactNode, useCallback, useMemo } from "react";
+import { CSSProperties, ReactNode, useMemo } from "react";
 import { AppShell } from "@/components/AppShell";
 import { ProjectCopilot, type ProjectCopilotProps } from "@/components/ProjectCopilot";
+import { ResizableSplitter } from "@/components/ui/ResizableSplitter";
 import { useProjectShell } from "@/contexts/ProjectShellContext";
 import { useProjectCopilot } from "@/contexts/ProjectCopilotContext";
 import styles from "./ProjectPageLayout.module.css";
@@ -90,43 +91,28 @@ function StandaloneCopilotGrid({
     copilot: ProjectCopilotProps;
 }) {
     const { isCollapsed, panelWidth, setPanelWidth } = useProjectCopilot();
+    const boundedWidth = clamp(panelWidth, 300, 560);
 
     const panelVars = useMemo<CSSProperties>(() => {
-        const w = isCollapsed ? RAIL_WIDTH : clamp(panelWidth, 300, 560);
+        const w = isCollapsed ? RAIL_WIDTH : boundedWidth;
         const cols = isCollapsed ? `1fr 0px ${RAIL_WIDTH}px` : `1fr 1px ${w}px`;
         return { "--copilot-width": `${w}px`, gridTemplateColumns: cols } as CSSProperties;
-    }, [isCollapsed, panelWidth]);
-
-    const startResize = useCallback(
-        (startX: number) => {
-            const startWidth = clamp(panelWidth, 300, 560);
-            const handleMove = (e: MouseEvent) => {
-                const dx = startX - e.clientX;
-                setPanelWidth(clamp(startWidth + dx, 300, 560));
-            };
-            const handleEnd = () => {
-                window.removeEventListener("mousemove", handleMove);
-                window.removeEventListener("mouseup", handleEnd);
-            };
-            window.addEventListener("mousemove", handleMove);
-            window.addEventListener("mouseup", handleEnd);
-        },
-        [panelWidth, setPanelWidth],
-    );
+    }, [boundedWidth, isCollapsed]);
 
     return (
         <div className={styles.grid} style={panelVars}>
             <div className={styles.content}>{children}</div>
 
-            <div
+            <ResizableSplitter
                 className={`${styles.resizeHandle} ${isCollapsed ? styles.resizeHandleHidden : ""}`}
-                role="separator"
-                aria-label="Resize copilot panel"
-                aria-hidden={isCollapsed}
-                onMouseDown={(e) => {
-                    if (isCollapsed) return;
-                    startResize(e.clientX);
-                }}
+                ariaLabel="Resize copilot panel"
+                hidden={isCollapsed}
+                disabled={isCollapsed}
+                value={boundedWidth}
+                min={300}
+                max={560}
+                dragDirection="reverse"
+                onChange={setPanelWidth}
             />
 
             <div className={styles.copilotPane}>

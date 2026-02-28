@@ -19,6 +19,7 @@ import {
 import type { NoteContent } from "@/lib/server/notes";
 import { DemoGuideCard } from "@/components/project/DemoGuideCard";
 import { ProjectPageLayout } from "@/components/project/ProjectPageLayout";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { addProjectDataChangedListener } from "@/lib/project-data-events";
 import styles from "./notes.module.css";
 
@@ -347,18 +348,18 @@ export default function NotesPage() {
                         </div>
                     ) : (
                         notes.map((note) => (
-                            <div
+                            <button
                                 key={note.id}
+                                type="button"
                                 className={`${styles.noteItem} ${selectedNoteId === note.id ? styles.noteItemActive : ""}`}
                                 onClick={() => selectNote(note.id)}
-                                role="button"
-                                tabIndex={0}
-                                onKeyDown={(e) => { if (e.key === "Enter") selectNote(note.id); }}
+                                aria-pressed={selectedNoteId === note.id}
+                                aria-label={`Open note ${note.title || "Untitled"}`}
                             >
-                                <div className={styles.noteTitle}>
+                                <span className={styles.noteTitle}>
                                     {note.title || "Untitled"}
-                                </div>
-                                <div className={styles.noteMeta}>
+                                </span>
+                                <span className={styles.noteMeta}>
                                     <span>{formatDate(note.updatedAt)}</span>
                                     <span
                                         className={`${styles.sourceBadge} ${
@@ -372,9 +373,9 @@ export default function NotesPage() {
                                         </span>
                                         {note.source === "conversation" ? "Conversation" : "Manual"}
                                     </span>
-                                </div>
+                                </span>
                                 {note.tags.length > 0 && (
-                                    <div className={styles.noteTagPills}>
+                                    <span className={styles.noteTagPills}>
                                         {note.tags.slice(0, 3).map((tag) => (
                                             <span key={tag} className={styles.noteTagPill}>
                                                 {tag}
@@ -385,9 +386,9 @@ export default function NotesPage() {
                                                 +{note.tags.length - 3}
                                             </span>
                                         )}
-                                    </div>
+                                    </span>
                                 )}
-                            </div>
+                            </button>
                         ))
                     )}
                 </div>
@@ -499,29 +500,19 @@ export default function NotesPage() {
             </div>
 
             {/* Confirm delete dialog */}
-            {confirmDelete && (
-                <div className={styles.confirmOverlay} onClick={() => setConfirmDelete(null)}>
-                    <div className={styles.confirmDialog} onClick={(e) => e.stopPropagation()}>
-                        <p>Delete this note? This action cannot be undone.</p>
-                        <div className={styles.confirmActions}>
-                            <button
-                                type="button"
-                                className={styles.confirmCancel}
-                                onClick={() => setConfirmDelete(null)}
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                type="button"
-                                className={styles.confirmDelete}
-                                onClick={() => handleDeleteNote(confirmDelete)}
-                            >
-                                Delete
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
+            <ConfirmDialog
+                isOpen={confirmDelete !== null}
+                title="Delete note?"
+                message="This action cannot be undone."
+                confirmLabel="Delete"
+                cancelLabel="Cancel"
+                variant="danger"
+                onCancel={() => setConfirmDelete(null)}
+                onConfirm={() => {
+                    if (!confirmDelete) return;
+                    void handleDeleteNote(confirmDelete);
+                }}
+            />
         </div>
         </ProjectPageLayout>
     );

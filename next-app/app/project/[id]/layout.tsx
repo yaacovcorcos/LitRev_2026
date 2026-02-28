@@ -9,6 +9,7 @@ import { AppShell } from "@/components/AppShell";
 import { ProjectTabBar } from "@/components/project/ProjectTabBar";
 import { ConversationMainView } from "@/components/project/ConversationMainView";
 import { ProjectCopilot } from "@/components/ProjectCopilot";
+import { ResizableSplitter } from "@/components/ui/ResizableSplitter";
 import { PopupChat } from "@/components/PopupChat";
 import { PopupChatProvider } from "@/contexts/PopupChatContext";
 import { getStudyAction } from "@/app/actions/ledger";
@@ -129,22 +130,7 @@ function ProjectShellInner({ projectId, children }: ProjectShellInnerProps) {
             gridTemplateColumns: gridCols,
         } as CSSProperties;
     }, [isCollapsed, panelWidth]);
-
-    // Resize handle for copilot in view mode
-    const startResize = useCallback((startX: number) => {
-        const startWidth = clamp(panelWidth, 300, 560);
-        const handleMove = (e: MouseEvent) => {
-            const dx = startX - e.clientX;
-            const next = clamp(startWidth + dx, 300, 560);
-            setPanelWidth(next);
-        };
-        const handleEnd = () => {
-            window.removeEventListener("mousemove", handleMove);
-            window.removeEventListener("mouseup", handleEnd);
-        };
-        window.addEventListener("mousemove", handleMove);
-        window.addEventListener("mouseup", handleEnd);
-    }, [panelWidth, setPanelWidth]);
+    const boundedPanelWidth = clamp(panelWidth, 300, 560);
 
     // Context value for shell-aware child pages
     const shellValue = useMemo(() => ({
@@ -209,15 +195,16 @@ function ProjectShellInner({ projectId, children }: ProjectShellInnerProps) {
                             <div className={styles.viewBody} style={panelVars}>
                                 <div className={styles.viewContent}>{children}</div>
 
-                                <div
+                                <ResizableSplitter
                                     className={`${styles.resizeHandle} ${isCollapsed ? styles.resizeHandleHidden : ""}`}
-                                    role="separator"
-                                    aria-label="Resize copilot panel"
-                                    aria-hidden={isCollapsed}
-                                    onMouseDown={(e) => {
-                                        if (isCollapsed) return;
-                                        startResize(e.clientX);
-                                    }}
+                                    ariaLabel="Resize copilot panel"
+                                    hidden={isCollapsed}
+                                    disabled={isCollapsed}
+                                    value={boundedPanelWidth}
+                                    min={300}
+                                    max={560}
+                                    dragDirection="reverse"
+                                    onChange={setPanelWidth}
                                 />
                                 <div className={styles.copilotPane}>
                                     <ProjectCopilot
