@@ -678,6 +678,10 @@
     font-size: 16px;
 }
 
+.mountPlaceholder {
+    pointer-events: none;
+}
+
 .modelDropdown {
     min-width: 260px;
     background: white;

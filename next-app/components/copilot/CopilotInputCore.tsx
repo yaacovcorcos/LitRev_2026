@@ -337,9 +337,9 @@ export function CopilotInputCore({
                         ) : (
                             <button
                                 type="button"
-                                className={styles.modePillChevron}
-                                aria-label="Change agent mode"
-                                disabled
+                                className={`${styles.modePillChevron} ${styles.mountPlaceholder}`}
+                                aria-hidden="true"
+                                tabIndex={-1}
                             >
                                 <span className="material-icons-round">expand_more</span>
                             </button>
@@ -452,7 +452,12 @@ export function CopilotInputCore({
                                 </DropdownMenu.Portal>
                             </DropdownMenu.Root>
                         ) : (
-                            <button type="button" className={styles.modelBtn} disabled>
+                            <button
+                                type="button"
+                                className={`${styles.modelBtn} ${styles.mountPlaceholder}`}
+                                aria-hidden="true"
+                                tabIndex={-1}
+                            >
                                 {selectedModelInfo?.name || "GPT-5.2"}
                                 <span className="material-icons-round">expand_more</span>
                             </button>
@@ -548,9 +553,9 @@ export function CopilotInputCore({
                         ) : (
                             <button
                                 type="button"
-                                className={styles.presetBtn}
-                                title={`Autonomy: ${autonomyPreset}`}
-                                disabled
+                                className={`${styles.presetBtn} ${styles.mountPlaceholder}`}
+                                aria-hidden="true"
+                                tabIndex={-1}
                             >
                                 <span className="material-icons-round" style={{ fontSize: 14 }}>
                                     {autonomyPreset === "manual" ? "back_hand"
