@@ -10,7 +10,7 @@ import {
     type AutonomyLevel,
     type AutonomyPreset,
 } from "@/types/agent";
-import styles from "../ProjectCopilot.module.css";
+import styles from "./AutonomySettings.module.css";
 
 const TOOLS: { name: string; label: string; icon: string; desc: string }[] = [
     { name: "search_pubmed", label: "Search PubMed", icon: "search", desc: "Find studies" },
