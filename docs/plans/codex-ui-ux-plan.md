@@ -24,7 +24,7 @@ It consolidates all open UI/UX work into one prioritized sequence so implementat
 - Notes sidebar rows now use native button semantics, and Notes delete confirmation now uses shared `ConfirmDialog` instead of a hand-rolled overlay.
 
 ## Recently Completed
-- `CUX-012` Continued overlay standardization by replacing Notes’ custom delete overlay with shared `ConfirmDialog` (Radix AlertDialog wrapper).
+- Continued overlay standardization by replacing Notes’ custom delete overlay with shared `ConfirmDialog` (Radix AlertDialog wrapper).
 - `CUX-011` Expanded accessibility coverage with splitter keyboard/semantics behavior tests and `axe` scan (`ResizableSplitter`).
 - `CUX-009` Replaced Notes list `div role="button"` rows with semantic `button` controls and proper pressed/focus behavior.
 - `CUX-008` Introduced reusable `ResizableSplitter` (pointer + keyboard + ARIA-valued separator) and migrated copilot resize handles in project shell layouts.
@@ -174,7 +174,7 @@ Use this section as implementation policy. Each item describes the durable solut
 - [ ] `CUX-007` Add visible, recoverable tool failure UX (`Retry last step` / `Resume run`).
 
 ## Phase 1 — Accessibility & Interaction Baseline
-- [ ] No open phase-1 baseline tasks.
+- [ ] `CUX-012` Continue overlay standardization on shared primitives for remaining hand-rolled overlays/dropdowns.
 
 ## Phase 2 — Feedback, State, and UI System Consistency
 - [ ] `CUX-013` Implement standardized async feedback (toast/notification pattern) for copy/save/delete/export/review actions.
