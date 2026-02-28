@@ -6,7 +6,9 @@ This directory contains the canonical, active plans for LitRev.
 - [**Architecture & Infrastructure**](plan-backend.md): DB schema changes, Auth, server-side actions, export generation logic.
 - [**Agentic Systems & AI Orchestration**](plan-agentic.md): The tool loop, context windows, model autonomy, planning algorithms.
 - [**Memory & Retrieval**](plan-memory.md): Memory extraction, lifecycle, pgvector embeddings, project state sync. (This is the **only** active memory tracker).
-- [**UI, UX, components**](plan-ui-ux.md): React components, layouts, frontend interaction polish, design tokens.
+- **UI, UX, components** — Two companion execution plans:
+  - [**Claude UI plan**](claude-ui-ux-plan.md): Holistic, root-cause-driven stability sweep (CLU-001–008). Includes Current Architecture reference.
+  - [**Codex UI plan**](codex-ui-ux-plan.md): Full product roadmap — stability sweep (CUX-001–A03) + onboarding, citations, copilot features, performance, deferred items.
 - [**System Prompts & LLM Extraction**](plan-prompts.md): The text of prompts, JSON schemas, extraction rules, model parameters.
 
 ## External References
