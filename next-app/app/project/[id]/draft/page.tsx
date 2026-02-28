@@ -43,6 +43,7 @@ import { Citation, ParagraphDirection, EditorToolbar, FullSectionEditor } from "
 import type { Study } from "@/types/ledger";
 import { usePopupChat } from "@/contexts/PopupChatContext";
 import { AddEvidenceModal } from "./AddEvidenceModal";
+import { DraftTopBar, DraftFormattingPanel } from "./DraftToolbar";
 import {
   EMPTY_IDS,
   studyLabel,
@@ -52,11 +53,7 @@ import {
   docHasContent,
   formatToVars,
   FONT_FAMILY_OPTIONS,
-  FONT_SIZE_OPTIONS,
-  LINE_HEIGHT_OPTIONS,
-  PARAGRAPH_SPACING_OPTIONS,
   BASE_SECTION_MAP,
-  BASE_SECTION_META,
   type SectionMeta,
 } from "./draft-helpers";
 import { useDraftExport } from "./useDraftExport";
@@ -664,160 +661,36 @@ function DraftContent() {
   const pageContent = (
     <>
       <div className={styles.page}>
-        <div className={styles.top}>
-          <div className={styles.topLeft}>
-            <div className={styles.projectName} title={project.name}>
-              {project.name}
-            </div>
-          </div>
-
-          <div className={styles.topCenter}>
-            <div className={styles.sectionTabsWrap}>
-              <div className={styles.sectionTabs} role="tablist" aria-label="Draft sections" aria-orientation="horizontal">
-                {orderedSections.map((section, index) => {
-                  const isDragging = draggingKey === section.id;
-                  const isDragOver = dragOverKey === section.id && draggingKey && draggingKey !== section.id;
-                  const dropClass =
-                    isDragOver && dragOverPosition === "after"
-                      ? styles.sectionTabDropAfter
-                      : isDragOver && dragOverPosition === "before"
-                        ? styles.sectionTabDropBefore
-                        : "";
-                  const canRemove = orderedSections.length > 1;
-                  return (
-                    <button
-                      key={section.id}
-                      type="button"
-                      role="tab"
-                      draggable
-                      aria-grabbed={isDragging}
-                      aria-selected={draft.activeSection === section.id}
-                      aria-controls={draft.mode === "section" ? "draft-section-panel" : undefined}
-                      id={`draft-tab-${section.id}`}
-                      className={`${styles.sectionTab} ${draft.activeSection === section.id ? styles.sectionTabActive : ""} ${isDragging ? styles.sectionTabDragging : ""
-                        } ${dropClass}`}
-                      onClick={() => handleSelectSection(section.id)}
-                      onDoubleClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        if (canRemove) handleRemoveSection(section.id);
-                      }}
-                      onKeyDown={(event) => handleSectionKeyDown(event, index)}
-                      onDragStart={(event) => handleDragStart(event, section.id)}
-                      onDragOver={(event) => handleDragOver(event, section.id)}
-                      onDrop={(event) => handleDrop(event, section.id)}
-                      onDragEnd={handleDragEnd}
-                      tabIndex={draft.activeSection === section.id ? 0 : -1}
-                      title={canRemove ? "Double-click to remove" : ""}
-                      ref={(el) => {
-                        sectionTabRefs.current[section.id] = el;
-                      }}
-                    >
-                      {section.label}
-                    </button>
-                  );
-                })}
-              </div>
-              <div className={styles.addSection} ref={addSectionRef}>
-                <button
-                  type="button"
-                  className={styles.addSectionButton}
-                  onClick={() => setAddSectionOpen((prev) => !prev)}
-                  aria-haspopup="menu"
-                  aria-expanded={isAddSectionOpen}
-                  aria-label="Add section"
-                >
-                  <span className="material-icons-round">add</span>
-                  Add
-                </button>
-                {isAddSectionOpen ? (
-                  <div className={styles.sectionMenu} role="menu" aria-label="Add section">
-                    <div className={styles.customSectionInput}>
-                      <input
-                        ref={addSectionInputRef}
-                        type="text"
-                        placeholder="New section name..."
-                        value={customSectionName}
-                        onChange={(e) => setCustomSectionName(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            e.preventDefault();
-                            handleAddCustomSection();
-                          }
-                        }}
-                        className={styles.customSectionField}
-                      />
-                      <button
-                        type="button"
-                        className={styles.customSectionBtn}
-                        onClick={handleAddCustomSection}
-                        disabled={!customSectionName.trim()}
-                      >
-                        <span className="material-icons-round">add</span>
-                      </button>
-                    </div>
-                    {availableSections.length > 0 && (
-                      <div className={styles.sectionMenuDivider} />
-                    )}
-                    {availableSections.map((section) => (
-                      <button
-                        key={section.id}
-                        type="button"
-                        role="menuitem"
-                        className={styles.sectionMenuItem}
-                        onClick={() => handleAddSection(section.id)}
-                      >
-                        <span>{section.label}</span>
-                        <span className="material-icons-round">add</span>
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
-            </div>
-          </div>
-
-          <div className={styles.topRight}>
-            <div className={styles.modeToggle} role="group" aria-label="Draft mode">
-              <button
-                type="button"
-                className={`${styles.modeOption} ${draft.mode === "section" ? styles.modeActive : ""}`}
-                onClick={() => handleToggleMode("section")}
-                aria-pressed={draft.mode === "section"}
-              >
-                Section
-              </button>
-              <button
-                type="button"
-                className={`${styles.modeOption} ${draft.mode === "full" ? styles.modeActive : ""}`}
-                onClick={() => handleToggleMode("full")}
-                aria-pressed={draft.mode === "full"}
-              >
-                Full Draft
-              </button>
-              <div
-                className={`${styles.modeSlider} ${draft.mode === "full" ? styles.modeSliderRight : ""}`}
-                aria-hidden="true"
-              />
-            </div>
-
-            <button
-              type="button"
-              className={styles.exportBtn}
-              onClick={() => setExportModalOpen(true)}
-              disabled={!hasDraftContent}
-              title={hasDraftContent ? "Export draft" : "Add content to enable export"}
-            >
-              <span className="material-icons-round">download</span>
-              Export
-            </button>
-
-            <div className={styles.saveBadge} role="status" aria-live="polite" aria-atomic="true">
-              <span className="material-icons-round">{saveStatus === "saving" ? "sync" : saveStatus === "error" ? "error_outline" : "check_circle"}</span>
-              {saveStatus === "saving" ? "Saving" : saveStatus === "error" ? "Save failed" : "Saved"}
-            </div>
-          </div>
-        </div>
+        <DraftTopBar
+          projectName={project.name}
+          activeSection={draft.activeSection}
+          mode={draft.mode}
+          orderedSections={orderedSections}
+          availableSections={availableSections}
+          draggingKey={draggingKey}
+          dragOverKey={dragOverKey}
+          dragOverPosition={dragOverPosition}
+          sectionTabRefs={sectionTabRefs}
+          addSectionRef={addSectionRef}
+          addSectionInputRef={addSectionInputRef}
+          isAddSectionOpen={isAddSectionOpen}
+          setAddSectionOpen={setAddSectionOpen}
+          customSectionName={customSectionName}
+          setCustomSectionName={setCustomSectionName}
+          onSelectSection={handleSelectSection}
+          onSectionKeyDown={handleSectionKeyDown}
+          onToggleMode={handleToggleMode}
+          onAddSection={handleAddSection}
+          onAddCustomSection={handleAddCustomSection}
+          onRemoveSection={handleRemoveSection}
+          onDragStart={handleDragStart}
+          onDragOver={handleDragOver}
+          onDrop={handleDrop}
+          onDragEnd={handleDragEnd}
+          hasDraftContent={hasDraftContent}
+          onExportClick={() => setExportModalOpen(true)}
+          saveStatus={saveStatus}
+        />
 
         <DemoGuideCard
           projectId={project.id}
@@ -964,91 +837,15 @@ function DraftContent() {
                   });
                 }}
               />
-              <div className={styles.formattingControls} ref={formatRef}>
-                <button
-                  type="button"
-                  className={styles.formatToggle}
-                  aria-expanded={isFormatOpen}
-                  aria-label="Open formatting options"
-                  onClick={() => setFormatOpen((prev) => !prev)}
-                >
-                  <span className="material-icons-round">tune</span>
-                  Formatting
-                </button>
-                {isFormatOpen ? (
-                  <div className={styles.formatPanel} role="dialog" aria-label="Formatting options">
-                    <div className={styles.formatGrid}>
-                      <label className={styles.formatField}>
-                        <span className={styles.formatFieldLabel}>Font</span>
-                        <select
-                          className={styles.formatSelect}
-                          value={activeFontFamily}
-                          onChange={(event) =>
-                            updateSectionFormat(draft.activeSection, { fontFamily: event.target.value })
-                          }
-                        >
-                          {FONT_FAMILY_OPTIONS.map((option) => (
-                            <option key={option.value} value={option.value}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-
-                      <label className={styles.formatField}>
-                        <span className={styles.formatFieldLabel}>Font size</span>
-                        <select
-                          className={styles.formatSelect}
-                          value={activeFormat.fontSize}
-                          onChange={(event) =>
-                            updateSectionFormat(draft.activeSection, { fontSize: Number(event.target.value) })
-                          }
-                        >
-                          {FONT_SIZE_OPTIONS.map((size) => (
-                            <option key={size} value={size}>
-                              {size}px
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-
-                      <label className={styles.formatField}>
-                        <span className={styles.formatFieldLabel}>Line spacing</span>
-                        <select
-                          className={styles.formatSelect}
-                          value={activeFormat.lineHeight}
-                          onChange={(event) =>
-                            updateSectionFormat(draft.activeSection, { lineHeight: Number(event.target.value) })
-                          }
-                        >
-                          {LINE_HEIGHT_OPTIONS.map((height) => (
-                            <option key={height} value={height}>
-                              {height}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-
-                      <label className={styles.formatField}>
-                        <span className={styles.formatFieldLabel}>Paragraph spacing</span>
-                        <select
-                          className={styles.formatSelect}
-                          value={activeFormat.paragraphSpacing}
-                          onChange={(event) =>
-                            updateSectionFormat(draft.activeSection, { paragraphSpacing: Number(event.target.value) })
-                          }
-                        >
-                          {PARAGRAPH_SPACING_OPTIONS.map((space) => (
-                            <option key={space} value={space}>
-                              {space}px
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                    </div>
-                  </div>
-                ) : null}
-              </div>
+              <DraftFormattingPanel
+                isOpen={isFormatOpen}
+                setOpen={setFormatOpen}
+                formatRef={formatRef}
+                activeSection={draft.activeSection}
+                activeFormat={activeFormat}
+                activeFontFamily={activeFontFamily}
+                onUpdateFormat={updateSectionFormat}
+              />
             </div>
 
             {draft.mode === "section" ? (
