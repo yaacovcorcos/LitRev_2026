@@ -35,6 +35,7 @@ applied (see bottom of this file).
 - **Streaming:** Live stream handled by `contexts/project-copilot-stream-events.ts` (tool_call progress labels, tool_result status). `StreamReducer.ts` is only for history replay, not live streaming.
 - **Shell contract:** All project pages use `ProjectPageLayout` wrapper (in `components/project/ProjectPageLayout.tsx`) that handles embedded-vs-standalone shell pattern, back button, and optional copilot panel. No individual page re-implements the shell contract.
 - **Streaming gate:** `useStreamingGate()` hook (from `ProjectCopilotContext`) exposes `isStreaming`, `canAct`, and `streamPhase`. All artifact cards accept `canAct` and disable actions during streaming. Prefill uses a command-based pattern (`{ text, id }`) so repeated clicks always work.
+- **Async feedback architecture:** `useAsyncAction()` hook (`hooks/useAsyncAction.ts`) wraps any async operation with status management (`idle|loading|success|error|cancelled`), double-execution guard, and global notification dispatch via DOM events. `NotificationProvider` (`contexts/NotificationContext.tsx`) listens for events and renders `ToastContainer` (`components/ui/Toast.tsx`) with auto-dismiss, dedup, and `aria-live` region. ExportModal and AuthScreen migrated to the hook.
 
 ## Phase Ownership (Agreed with Codex)
 
@@ -512,13 +513,10 @@ These findings from the initial audit were corrected during cross-validation:
 ## Recently Completed
 *Finished work that might still be fragile or require monitoring. Prune oldest first.*
 
+- [x] **Phase 5 (CLU-005):** Built `useAsyncAction()` hook + `NotificationProvider` + `ToastContainer` with aria-live. Migrated ExportModal and AuthScreen. 19 new tests (11 hook + 8 context).
 - [x] **Phase 2 (CLU-002):** Added `useStreamingGate()` hook, threaded `canAct` to all 10 artifact cards, replaced prefill string with command-based pattern, disabled suggestion chips during streaming.
 - [x] **Phase 1 (CLU-001):** Created `ProjectPageLayout` wrapper, migrated all 6 project pages, removed ~200 lines of duplicated shell logic, fixed study detail back button bug.
 - [x] Completed phase-6 polish/validation pass: refreshed demo guide copy, added a Results-section guide note, tokenized remaining onboarding/demo-guide rgba values.
 - [x] Added phase-5 onboarding persistence UX wiring: guided setup default toggle (interim location), backend-driven create routing, and skip/save completion tracking.
 - [x] Implemented the sample Yoga-for-Anxiety project flow with real seeded data plus reset/delete lifecycle controls.
-- [x] Added demo-specific guidance surfaces (sample badge/banner and dismissible inline guide cards across overview, protocol, ledger, draft, notes, and memory).
 - [x] Completed home IA + onboarding phase: zero-project first-run state, nav rename to Home, and quick-create -> guided `/project/[id]/onboarding` routing with skip path.
-- [x] Expanded component-level `axe()` coverage beyond the initial picker scan (artifact cards now covered).
-- [x] Added chat UI coverage for metadata stripping, scoping decision-card action prompts, and mentioned-study add/duplicate state transitions.
-- [x] Migrated conversation selector UI to shared `ConversationPicker` (Radix Popover + `cmdk`) and removed hand-rolled keyboard listbox logic.

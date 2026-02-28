@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
+import { useAsyncAction } from "@/hooks/useAsyncAction";
 import styles from "@/app/login/login.module.css";
 
 type AuthMode = "signin" | "signup";
@@ -28,11 +29,6 @@ export function AuthScreen({ mode }: AuthScreenProps) {
 
   const { data: session, isPending } = authClient.useSession();
   const [email, setEmail] = useState("");
-  const [status, setStatus] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [busyGoogle, setBusyGoogle] = useState(false);
-  const [busyMagicLink, setBusyMagicLink] = useState(false);
-  const [busyQuickAccess, setBusyQuickAccess] = useState(false);
 
   const isCreateMode = mode === "signup";
   const modeVerb = isCreateMode ? "Create" : "Sign in";
@@ -47,57 +43,37 @@ export function AuthScreen({ mode }: AuthScreenProps) {
     }
   }, [callbackUrl, isPending, router, session]);
 
-  const onGoogleSignIn = async () => {
-    setBusyGoogle(true);
-    setError(null);
-    setStatus(null);
-
-    try {
+  const googleAction = useAsyncAction(
+    async () => {
       const result = await authClient.signIn.social({
         provider: "google",
         callbackURL: callbackUrl,
       });
-
       if (result.error) {
-        setError(result.error.message || "Google sign-in failed.");
+        throw new Error(result.error.message || "Google sign-in failed.");
       }
-    } catch {
-      setError("Google sign-in failed.");
-    } finally {
-      setBusyGoogle(false);
-    }
-  };
+    },
+    { errorMessage: "Google sign-in failed." },
+  );
 
-  const onMagicLinkSignIn = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setBusyMagicLink(true);
-    setError(null);
-    setStatus(null);
-
-    try {
+  const magicLinkAction = useAsyncAction(
+    async () => {
       const result = await authClient.signIn.magicLink({
         email,
         callbackURL: callbackUrl,
       });
-
       if (result.error) {
-        setError(result.error.message || "Unable to send magic link.");
-      } else {
-        setStatus("Magic link sent. Check your inbox.");
+        throw new Error(result.error.message || "Unable to send magic link.");
       }
-    } catch {
-      setError("Unable to send magic link.");
-    } finally {
-      setBusyMagicLink(false);
-    }
-  };
+    },
+    {
+      successMessage: "Magic link sent. Check your inbox.",
+      errorMessage: "Unable to send magic link.",
+    },
+  );
 
-  const onQuickAccess = async () => {
-    setBusyQuickAccess(true);
-    setError(null);
-    setStatus(null);
-
-    try {
+  const quickAccessAction = useAsyncAction(
+    async () => {
       const response = await fetch("/api/dev/quick-login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -108,17 +84,31 @@ export function AuthScreen({ mode }: AuthScreenProps) {
         | null;
 
       if (!response.ok || !payload?.ok || !payload.redirectTo) {
-        setError(payload?.error || "Quick access sign-in failed.");
-        return;
+        throw new Error(payload?.error || "Quick access sign-in failed.");
       }
 
       router.replace(payload.redirectTo);
       router.refresh();
-    } catch {
-      setError("Quick access sign-in failed.");
-    } finally {
-      setBusyQuickAccess(false);
-    }
+    },
+    { errorMessage: "Quick access sign-in failed." },
+  );
+
+  const anyBusy =
+    googleAction.status === "loading" ||
+    magicLinkAction.status === "loading" ||
+    quickAccessAction.status === "loading";
+
+  const error =
+    googleAction.error || magicLinkAction.error || quickAccessAction.error;
+
+  const successStatus =
+    magicLinkAction.status === "success"
+      ? "Magic link sent. Check your inbox."
+      : null;
+
+  const handleFormSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    void magicLinkAction.execute();
   };
 
   return (
@@ -141,12 +131,7 @@ export function AuthScreen({ mode }: AuthScreenProps) {
         <div className={styles.card}>
           <div className={styles.cardAccent} />
 
-          <form
-            className={styles.form}
-            onSubmit={(event) => {
-              void onMagicLinkSignIn(event);
-            }}
-          >
+          <form className={styles.form} onSubmit={handleFormSubmit}>
             <label htmlFor="magic-link-email" className={styles.fieldLabel}>
               Email address
             </label>
@@ -163,17 +148,21 @@ export function AuthScreen({ mode }: AuthScreenProps) {
             <button
               type="submit"
               className={styles.submitButton}
-              disabled={busyGoogle || busyMagicLink || busyQuickAccess}
+              disabled={anyBusy}
             >
-              {isCreateMode && !busyMagicLink ? (
+              {isCreateMode && magicLinkAction.status !== "loading" ? (
                 <span className={styles.buttonTextStack}>
                   <span className={styles.buttonHint}>Create with</span>
                   <span className={styles.buttonMain}>Magic link</span>
                 </span>
               ) : (
-                <span>{busyMagicLink ? "Sending..." : "Send magic link"}</span>
+                <span>
+                  {magicLinkAction.status === "loading"
+                    ? "Sending..."
+                    : "Send magic link"}
+                </span>
               )}
-              {busyMagicLink ? null : (
+              {magicLinkAction.status === "loading" ? null : (
                 <svg
                   width="16"
                   height="16"
@@ -202,10 +191,8 @@ export function AuthScreen({ mode }: AuthScreenProps) {
             <button
               type="button"
               className={styles.socialGoogle}
-              onClick={() => {
-                void onGoogleSignIn();
-              }}
-              disabled={busyGoogle || busyMagicLink || busyQuickAccess}
+              onClick={() => { void googleAction.execute(); }}
+              disabled={anyBusy}
             >
               <svg viewBox="0 0 24 24" className={styles.socialIcon} aria-hidden="true">
                 <path
@@ -234,8 +221,8 @@ export function AuthScreen({ mode }: AuthScreenProps) {
             <button
               type="button"
               className={styles.socialDev}
-              onClick={devQuickLoginEnabled ? () => { void onQuickAccess(); } : undefined}
-              disabled={!devQuickLoginEnabled || busyGoogle || busyMagicLink || busyQuickAccess}
+              onClick={devQuickLoginEnabled ? () => { void quickAccessAction.execute(); } : undefined}
+              disabled={!devQuickLoginEnabled || anyBusy}
               data-tooltip={devQuickLoginEnabled ? undefined : "Don\u2019t even think about it"}
             >
               <svg
@@ -252,7 +239,11 @@ export function AuthScreen({ mode }: AuthScreenProps) {
                 <polyline points="8 6 2 12 8 18" />
               </svg>
               <span className={styles.socialLabelWrap}>
-                <span>{busyQuickAccess ? "Signing in..." : "Dev mode"}</span>
+                <span>
+                  {quickAccessAction.status === "loading"
+                    ? "Signing in..."
+                    : "Dev mode"}
+                </span>
               </span>
             </button>
           </div>
@@ -262,9 +253,9 @@ export function AuthScreen({ mode }: AuthScreenProps) {
               {error}
             </p>
           ) : null}
-          {status ? (
+          {successStatus ? (
             <p className={styles.success} role="status">
-              {status}
+              {successStatus}
             </p>
           ) : null}
         </div>

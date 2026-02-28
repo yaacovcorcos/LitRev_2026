@@ -5,8 +5,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 import styles from "./ExportModal.module.css";
 import type { FileAsset } from "@/types/files";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
-
-type ExportStatus = "idle" | "exporting" | "success" | "error";
+import { useAsyncAction } from "@/hooks/useAsyncAction";
 
 type ExportModalProps = {
   isOpen: boolean;
@@ -41,40 +40,43 @@ export function ExportModal({
   exportHistory,
   onDeleteExport,
 }: ExportModalProps) {
-  const [status, setStatus] = useState<ExportStatus>("idle");
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [newExport, setNewExport] = useState<FileAsset | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [deleteExportId, setDeleteExportId] = useState<string | null>(null);
+  const [deleteErrorMsg, setDeleteErrorMsg] = useState<string | null>(null);
+
+  const exportAction = useAsyncAction(
+    async () => {
+      const result = await onExport();
+      setNewExport(result);
+      return result;
+    },
+    {
+      successMessage: "Export ready!",
+      errorMessage: "Export failed",
+      resetDelay: 0,
+    },
+  );
+
+  // Map hook status to the legacy names used in the template
+  const status = exportAction.status === "loading" ? "exporting" : exportAction.status;
+  const errorMsg = exportAction.error;
 
   const resetState = useCallback(() => {
-    setStatus("idle");
-    setErrorMsg(null);
+    exportAction.reset();
     setNewExport(null);
     setShowHistory(false);
     setCopiedId(null);
     setDeleteExportId(null);
-  }, []);
+    setDeleteErrorMsg(null);
+  }, [exportAction]);
 
   useEffect(() => {
     if (!isOpen) {
       resetState();
     }
   }, [isOpen, resetState]);
-
-  const handleExport = async () => {
-    setStatus("exporting");
-    setErrorMsg(null);
-    try {
-      const result = await onExport();
-      setNewExport(result);
-      setStatus("success");
-    } catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : "Export failed");
-      setStatus("error");
-    }
-  };
 
   const handleCopyLink = async (url: string, id: string) => {
     try {
@@ -98,10 +100,11 @@ export function ExportModal({
     if (!onDeleteExport || !deleteExportId) return;
     const id = deleteExportId;
     setDeleteExportId(null);
+    setDeleteErrorMsg(null);
     try {
       await onDeleteExport(id);
     } catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : "Delete failed");
+      setDeleteErrorMsg(err instanceof Error ? err.message : "Delete failed");
     }
   };
 
@@ -142,7 +145,7 @@ export function ExportModal({
                 <button
                   type="button"
                   className={styles.exportBtn}
-                  onClick={handleExport}
+                  onClick={() => { void exportAction.execute(); }}
                 >
                   <span className="material-icons-round">file_download</span>
                   Generate DOCX Export
@@ -167,7 +170,7 @@ export function ExportModal({
                 <button
                   type="button"
                   className={styles.retryBtn}
-                  onClick={handleExport}
+                  onClick={() => { void exportAction.execute(); }}
                 >
                   Try Again
                 </button>
@@ -295,6 +298,9 @@ export function ExportModal({
                 {showHistory && olderExports.length === 0 && (
                   <p className={styles.noHistory}>No previous versions available.</p>
                 )}
+                {deleteErrorMsg ? (
+                  <p className={styles.historyError} role="alert">{deleteErrorMsg}</p>
+                ) : null}
               </div>
             )}
           </div>
