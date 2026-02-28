@@ -25,9 +25,19 @@ import { startRun, endRun } from "@/lib/server/agent/run";
 import { emitEvent } from "@/lib/server/agent/events";
 import { createArtifact, applyArtifact } from "@/lib/server/agent/artifacts";
 import { getAutonomyConfig, getToolAutonomyLevel } from "@/lib/server/agent/autonomy";
-import { assembleSystemPrompt, buildProjectContext, buildProtocolContext, buildLedgerContext, buildAutonomyContext, buildLocationContext, buildStudyContext } from "@/lib/ai/prompts/copilot-prompts";
+import {
+    assembleSystemPrompt,
+    buildProjectContext,
+    buildProtocolContext,
+    buildProtocolPointerContext,
+    buildLedgerContext,
+    buildLedgerPointerContext,
+    buildAutonomyContext,
+    buildLocationContext,
+    buildStudyContext,
+} from "@/lib/ai/prompts/copilot-prompts";
 import type { StudyContextData } from "@/lib/ai/prompts/copilot-prompts";
-import { AGENT_MODE_CONFIG } from "@/lib/agent/router";
+import { getEffectiveAllowedTools } from "@/lib/agent/router";
 import { normalizeAgentMode } from "@/lib/agent/feature-flags";
 import { LoopState, type StopReason } from "@/lib/agent/loop-controller";
 import { startRunTrace, startLLMGeneration, startToolSpan, startContextSpan, flushTracing, NOOP_SPAN } from "./tracing";
@@ -44,12 +54,16 @@ import { retryAsync, sleep } from "@/lib/server/utils/retry";
 import { resolveReasoningMode } from "@/lib/ai/reasoning-visibility";
 import { createIdempotencyMiddleware, executeWithToolMiddleware, type ToolExecutionRequest, type ToolMiddleware } from "./tool-middleware";
 import { resolveAuthenticatedIdentity } from "@/lib/server/auth/identity";
+import { computeLedgerCounts, computeStudyLedger, type LedgerCounts, type StudyLedgerSnapshot } from "@/lib/server/ledger-utils";
 
 const MAX_STREAM_RETRY_ATTEMPTS = 3;
 const MAX_OVERFLOW_RECOVERY_ATTEMPTS = 3;
 const RETRY_MIN_DELAY_MS = 500;
 const RETRY_MAX_DELAY_MS = 15_000;
 const RETRY_JITTER = 0.15;
+
+const PUSH_PROTOCOL_CONTEXT_MODES = new Set<AgentMode>(["protocol", "screening", "drafting"]);
+const PUSH_LEDGER_CONTEXT_MODES = new Set<AgentMode>(["screening", "search"]);
 
 class AIService {
     private providers = new Map<string, BaseAIProvider>();
@@ -552,7 +566,7 @@ class AIService {
 
         // Defense-in-depth: reject tool calls not allowed in the current mode
         if (agentMode) {
-            const allowed = AGENT_MODE_CONFIG[agentMode]?.allowedTools;
+            const allowed = getEffectiveAllowedTools(agentMode);
             if (allowed && allowed.length > 0 && !allowed.includes(toolCall.name)) {
                 const result: ToolResult = {
                     callId: toolCall.id,
@@ -818,23 +832,35 @@ class AIService {
         try {
             // Retrieve memories + project context in parallel
             const ctxSpan = startContextSpan(trace, "context-assembly");
+            const shouldPushProtocolContext = !!projectId && PUSH_PROTOCOL_CONTEXT_MODES.has(agentMode);
+            const shouldPushLedgerContext = !!projectId && PUSH_LEDGER_CONTEXT_MODES.has(agentMode);
+            const needsLedgerSeedMetadata = agentMode === "scoping";
+            const needsFullLedgerSnapshot = shouldPushLedgerContext || needsLedgerSeedMetadata;
+
             const [retrievedMemories, protocolRow, studyLedger, autonomyConfig, studyRow, projectRow] = await Promise.all([
                 retrieveMemories({ userId, projectId, studyId, conversationId: conversation.id, query: userMessage, agentMode, runId: run.id }),
                 projectId ? prisma.protocol.findFirst({ where: { projectId }, select: { data: true } }) : null,
-                projectId ? computeStudyLedger(projectId) : null,
+                projectId
+                    ? (
+                        needsFullLedgerSnapshot
+                            ? computeStudyLedger(projectId)
+                            : computeLedgerCounts(projectId)
+                    )
+                    : null,
                 getAutonomyConfig(userId, projectId),
                 studyId ? prisma.study.findUnique({ where: { id: studyId }, select: { id: true, title: true, authors: true, year: true, quality: true, details: true } }) : null,
                 projectId ? prisma.project.findUnique({ where: { id: projectId }, select: { name: true } }) : null,
             ]);
             retrievedMemoriesForRun = retrievedMemories;
             const memoriesContext = formatMemoriesForContext(retrievedMemories);
+            const ledgerCounts = getLedgerCounts(studyLedger);
             ctxSpan.update({ output: {
                 hasMemories: !!memoriesContext,
                 hasProtocol: protocolRow?.data
                     ? isProtocolPopulated(protocolRow.data as unknown as ProtocolData)
                     : false,
                 hasStudy: !!studyRow,
-                studyLedger: studyLedger?.counts,
+                studyLedger: ledgerCounts,
                 hasProject: !!projectRow,
             }}).end();
 
@@ -842,11 +868,27 @@ class AIService {
             const projectContext = projectRow && projectId
                 ? buildProjectContext(projectRow.name, projectId)
                 : "";
-            const protocolContext = protocolRow?.data
-                ? buildProtocolContext(protocolRow.data as unknown as ProtocolData)
+            const protocolContext = projectId
+                ? (
+                    shouldPushProtocolContext
+                        ? (
+                            protocolRow?.data
+                                ? buildProtocolContext(protocolRow.data as unknown as ProtocolData)
+                                : ""
+                        )
+                        : buildProtocolPointerContext()
+                )
                 : "";
-            const ledgerContext = studyLedger
-                ? buildLedgerContext(studyLedger.counts, studyLedger.list, studyLedger.truncated)
+            const ledgerContext = projectId
+                ? (
+                    shouldPushLedgerContext
+                        ? (
+                            isStudyLedgerSnapshot(studyLedger)
+                                ? buildLedgerContext(studyLedger.counts, studyLedger.list, studyLedger.truncated)
+                                : buildLedgerContext(studyLedger ?? emptyLedgerCounts())
+                        )
+                        : buildLedgerPointerContext()
+                )
                 : "";
             const autonomyContext = buildAutonomyContext(autonomyConfig.preset);
             const isGlobalAssistantScope = !projectId && options?.page === "ai";
@@ -1032,7 +1074,7 @@ class AIService {
                         hasProtocol: protocolRow?.data
                             ? isProtocolPopulated(protocolRow.data as unknown as ProtocolData)
                             : false,
-                        studyCount: studyLedger?.counts?.total ?? 0,
+                        studyCount: getLedgerCounts(studyLedger)?.total ?? 0,
                     }, modeToolNames);
 
                     // If plan validation failed, skip plan artifact and continue normal chat
@@ -1770,72 +1812,49 @@ function mapToolToProgressMessage(toolName: string): string {
         retrieve_memory: "Retrieving memories...",
         create_note: "Creating note...",
         read_study_content: "Reading study PDF...",
+        read_protocol: "Reading protocol...",
+        read_ledger: "Reading ledger...",
         store_memory: "Saving to memory...",
         forget_memory: "Preparing forget proposal...",
         inspect_memory: "Inspecting memory...",
         search_semantic_scholar: "Searching Semantic Scholar...",
         recommend_studies: "Finding recommendations...",
+        delegate_search: "Delegating search workflow...",
+        delegate_screening: "Delegating screening workflow...",
+        delegate_protocol: "Delegating protocol workflow...",
     };
     return messages[toolName] ?? `Running ${toolName}...`;
 }
 
-// ── Study count helper for prompt context ────────────────────────────────────
+// ── Ledger helper functions for prompt context ───────────────────────────────
 
-const MAX_STUDY_LIST = 50;
+function isStudyLedgerSnapshot(
+    ledger: LedgerCounts | StudyLedgerSnapshot | null
+): ledger is StudyLedgerSnapshot {
+    return !!ledger && typeof ledger === "object" && "counts" in ledger;
+}
 
-async function computeStudyLedger(projectId: string) {
-    const studies = await prisma.study.findMany({
-        where: { projectId },
-        select: { id: true, title: true, authors: true, year: true, details: true },
-        orderBy: { createdAt: "asc" },
-    });
-    let included = 0, excluded = 0, maybe = 0, unscreened = 0;
-    let hasRecommendationSeeds = false;
-    const list: { id: string; title: string; authors: string; year: number; status: string; doi?: string; pmid?: string }[] = [];
-    for (const s of studies) {
-        const d = s.details as Record<string, unknown> | null;
-        const status = (d?.triageDecision as string) || "unscreened";
-        if (!hasRecommendationSeeds) {
-            const doi = typeof d?.doi === "string" ? d.doi : "";
-            const pmid = typeof d?.pmid === "string" ? d.pmid : "";
-            const s2PaperId = typeof d?.s2PaperId === "string" ? d.s2PaperId : "";
-            const hasDoi = doi.trim().length > 0;
-            const hasPmid = pmid.trim().length > 0;
-            const hasS2 = s2PaperId.trim().length > 0;
-            hasRecommendationSeeds = hasDoi || hasPmid || hasS2;
-        }
-        switch (status) {
-            case "keep": included++; break;
-            case "exclude": excluded++; break;
-            case "maybe": maybe++; break;
-            default: unscreened++; break;
-        }
-        // Only include per-study list when ledger is reasonably sized
-        if (list.length < MAX_STUDY_LIST && studies.length <= 200) {
-            list.push({
-                id: s.id, title: s.title, authors: s.authors, year: s.year, status,
-                doi: (d?.doi as string) || undefined,
-                pmid: (d?.pmid as string) || undefined,
-            });
-        }
-    }
-    return {
-        counts: { total: studies.length, included, excluded, maybe, unscreened },
-        list,
-        truncated: studies.length > MAX_STUDY_LIST,
-        hasRecommendationSeeds,
-    };
+function getLedgerCounts(
+    ledger: LedgerCounts | StudyLedgerSnapshot | null
+): LedgerCounts | null {
+    if (!ledger) return null;
+    return isStudyLedgerSnapshot(ledger) ? ledger.counts : ledger;
+}
+
+function emptyLedgerCounts(): LedgerCounts {
+    return { total: 0, included: 0, excluded: 0, maybe: 0, unscreened: 0 };
 }
 
 export function getContextualToolDefinitions(params: {
     agentMode: AgentMode;
     scope: "project" | "global";
-    studyLedger: Awaited<ReturnType<typeof computeStudyLedger>> | null;
+    studyLedger: (LedgerCounts | StudyLedgerSnapshot) | null;
 }): ToolDefinition[] {
     const { agentMode, scope, studyLedger } = params;
     const defs = getToolDefinitions(agentMode, scope);
     if (agentMode !== "scoping") return defs;
-    if (studyLedger?.hasRecommendationSeeds) return defs;
+    if (!isStudyLedgerSnapshot(studyLedger)) return defs;
+    if (studyLedger.hasRecommendationSeeds) return defs;
     return defs.filter((d) => d.name !== "recommend_studies");
 }
 

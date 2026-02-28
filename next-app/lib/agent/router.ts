@@ -6,7 +6,7 @@
  */
 
 import type { AgentMode } from "@/types/agent";
-import { isScopingModeEnabled } from "@/lib/agent/feature-flags";
+import { isScopingModeEnabled, isDelegationEnabled } from "@/lib/agent/feature-flags";
 
 export type RouterPage = "draft" | "protocol" | "ledger" | "study" | "overview" | "notes" | "memory";
 export type RouterProjectState = {
@@ -24,12 +24,43 @@ export interface AgentModeConfig {
 export const AGENT_MODE_CONFIG: Record<AgentMode, AgentModeConfig> = {
     protocol: { systemPromptKey: "protocol", allowedTools: ["update_protocol", "update_criteria", "update_study", "search_pubmed", "search_semantic_scholar", "store_memory", "forget_memory", "inspect_memory", "ask_user"], memoryScope: "project", description: "Defining PICO and criteria" },
     scoping: { systemPromptKey: "scoping", allowedTools: ["search_pubmed", "search_semantic_scholar", "recommend_studies", "store_memory", "forget_memory", "inspect_memory", "list_projects", "open_project", "ask_user"], memoryScope: "project", description: "Exploring the literature landscape" },
-    search: { systemPromptKey: "search", allowedTools: ["search_pubmed", "search_semantic_scholar", "add_to_ledger", "recommend_studies", "update_study", "store_memory", "forget_memory", "inspect_memory", "ask_user"], memoryScope: "project", description: "Finding studies" },
+    search: { systemPromptKey: "search", allowedTools: ["search_pubmed", "search_semantic_scholar", "add_to_ledger", "recommend_studies", "read_protocol", "update_study", "store_memory", "forget_memory", "inspect_memory", "ask_user"], memoryScope: "project", description: "Finding studies" },
     screening: { systemPromptKey: "screening", allowedTools: ["bulk_screening", "exclude_study", "delete_study", "extract_pdf", "read_study_content", "update_study", "store_memory", "forget_memory", "inspect_memory", "ask_user"], memoryScope: "study", description: "Evaluating studies" },
-    drafting: { systemPromptKey: "drafting", allowedTools: ["update_note", "read_study_content", "update_study", "store_memory", "forget_memory", "inspect_memory", "ask_user"], memoryScope: "project", description: "Writing sections" },
-    qa: { systemPromptKey: "qa", allowedTools: ["search_pubmed", "search_semantic_scholar", "read_study_content", "update_study", "store_memory", "forget_memory", "inspect_memory", "ask_user"], memoryScope: "project", description: "Checking citations" },
+    drafting: { systemPromptKey: "drafting", allowedTools: ["update_note", "read_study_content", "read_protocol", "read_ledger", "update_study", "store_memory", "forget_memory", "inspect_memory", "ask_user"], memoryScope: "project", description: "Writing sections" },
+    qa: { systemPromptKey: "qa", allowedTools: ["search_pubmed", "search_semantic_scholar", "read_study_content", "read_protocol", "read_ledger", "update_study", "store_memory", "forget_memory", "inspect_memory", "ask_user"], memoryScope: "project", description: "Checking citations" },
     general: { systemPromptKey: "general", allowedTools: [], memoryScope: "project", description: "General conversation" },
 };
+
+/** Scoped tool list for general mode when delegation is enabled. */
+const GENERAL_MODE_DELEGATION_TOOLS: string[] = [
+    "delegate_search",
+    "delegate_screening",
+    "delegate_protocol",
+    "read_protocol",
+    "read_ledger",
+    "read_study_content",
+    "update_note",
+    "update_study",
+    "inspect_memory",
+    "store_memory",
+    "forget_memory",
+    "list_projects",
+    "open_project",
+    "create_project",
+    "ask_user",
+];
+
+/**
+ * Get the effective allowed tools for a mode, respecting feature flags.
+ * General mode returns the delegation-scoped list when the flag is enabled,
+ * otherwise returns [] (all tools, legacy behavior).
+ */
+export function getEffectiveAllowedTools(mode: AgentMode): string[] {
+    if (mode === "general" && isDelegationEnabled()) {
+        return GENERAL_MODE_DELEGATION_TOOLS;
+    }
+    return AGENT_MODE_CONFIG[mode].allowedTools;
+}
 
 /**
  * Rule-based routing. Page takes priority for "protocol" only;

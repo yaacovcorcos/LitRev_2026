@@ -8,7 +8,7 @@ import { z } from "zod";
 import type { ToolDefinition, ToolResult } from "@/types/ai";
 import type { ToolAutonomyMeta, AutonomyLevel, AgentMode } from "@/types/agent";
 import { HARD_CAPS } from "@/types/agent";
-import { AGENT_MODE_CONFIG } from "@/lib/agent/router";
+import { getEffectiveAllowedTools } from "@/lib/agent/router";
 import { pubmedSearchTool } from "./pubmed-search";
 import { addToLedgerTool } from "./add-to-ledger";
 import { excludeStudyTool } from "./exclude-study";
@@ -29,6 +29,11 @@ import { listProjectsTool } from "./list-projects";
 import { openProjectTool } from "./open-project";
 import { createProjectTool } from "./create-project";
 import { askUserTool } from "./ask-user";
+import { delegateSearchTool } from "./delegate-search";
+import { delegateScreeningTool } from "./delegate-screening";
+import { delegateProtocolTool } from "./delegate-protocol";
+import { readProtocolTool } from "./read-protocol";
+import { readLedgerTool } from "./read-ledger";
 
 /**
  * Interface for AI tools that can be called by the AI
@@ -56,6 +61,8 @@ export interface ToolExecutionContext {
     studyId?: string;
     userId?: string;
     runId?: string;
+    /** Parent run ID when executing inside a sub-agent */
+    parentRunId?: string;
     autonomyLevel?: AutonomyLevel;
 }
 
@@ -83,6 +90,11 @@ export const AVAILABLE_TOOLS: AITool[] = [
     openProjectTool,
     createProjectTool,
     askUserTool,
+    readProtocolTool,
+    readLedgerTool,
+    delegateSearchTool,
+    delegateScreeningTool,
+    delegateProtocolTool,
 ];
 
 export type ToolScope = "global" | "project";
@@ -97,6 +109,9 @@ const GLOBAL_SCOPE_TOOL_ALLOWLIST = new Set<string>([
     "open_project",
     "create_project",
     "ask_user",
+    "delegate_search",
+    "delegate_screening",
+    "delegate_protocol",
 ]);
 
 export function isToolAllowedInScope(toolName: string, scope: ToolScope): boolean {
@@ -114,7 +129,7 @@ export function getToolDefinitions(agentMode?: AgentMode, scope: ToolScope = "pr
     let tools = AVAILABLE_TOOLS.filter((t) => isToolAllowedInScope(t.definition.name, scope));
 
     if (agentMode) {
-        const allowedInMode = AGENT_MODE_CONFIG[agentMode]?.allowedTools;
+        const allowedInMode = getEffectiveAllowedTools(agentMode);
         if (allowedInMode && allowedInMode.length > 0) {
             tools = tools.filter((t) => allowedInMode.includes(t.definition.name));
         }

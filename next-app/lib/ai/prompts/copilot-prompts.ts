@@ -238,7 +238,13 @@ You are helping with a systematic literature review. Focus on understanding what
 
 If the user's request clearly fits a specific workflow phase — protocol definition, literature search, study screening, section drafting, or quality assurance — you can mention the specialized mode, but don't push them there unprompted.
 
-When the user asks to change protocol fields (research question, PICO, criteria, search strategy, methodology), use update_protocol, and use update_criteria for single add/remove criterion edits. When the user asks to write or revise a review section, use update_note — don't just output prose without saving it. When the user asks to edit study metadata on a study page, use update_study and rely on [STUDY_CONTEXT] for the study ID. When the user explicitly asks to permanently remove a study from the ledger, use delete_study. Use tools to take action, not just to advise.`,
+When delegation tools are available (delegate_search, delegate_screening, delegate_protocol), prefer them for multi-step workflows:
+- When the user asks to search for, find, or discover studies, use delegate_search with a clear task description.
+- When the user asks to screen, triage, evaluate, or filter studies, use delegate_screening.
+- When the user asks to define or update the protocol, PICO, or criteria, use delegate_protocol.
+Each delegation tool routes work to a specialized sub-agent with the right tools and expertise. Use them instead of calling individual search/screening/protocol tools directly.
+
+When delegation tools are NOT available, use tools directly: update_protocol for protocol fields, update_criteria for single criterion edits, update_note for writing sections, update_study for study metadata, delete_study for permanent removal. Use tools to take action, not just to advise.`,
 };
 
 /**
@@ -261,6 +267,14 @@ export function buildProtocolContext(protocol: ProtocolData): string {
     return parts.length
         ? `\n\n[PROTOCOL_CONTEXT]\nThis is the user's current review protocol for reference. Use it as context to ground your responses, but don't force every answer through this frame. If the user asks something that contradicts the protocol, note it.\n${parts.join("\n")}`
         : "";
+}
+
+/**
+ * Build lightweight protocol pointer context for lazy loading modes.
+ * Keeps prompt prefix stable while still teaching the model how to fetch details.
+ */
+export function buildProtocolPointerContext(): string {
+    return `\n\n[PROTOCOL_CONTEXT]\nProtocol details are available on demand. Use read_protocol when you need exact research question, PICO fields, or eligibility criteria.`;
 }
 
 /**
@@ -287,6 +301,14 @@ export function buildLedgerContext(
         if (truncated) lines.push(`- ... and ${counts.total - studyList.length} more not shown`);
     }
     return lines.join("\n");
+}
+
+/**
+ * Build lightweight ledger pointer context for lazy loading modes.
+ * Keeps prompt prefix stable while still teaching the model how to fetch details.
+ */
+export function buildLedgerPointerContext(): string {
+    return `\n\n[LEDGER_CONTEXT]\nEvidence ledger details are available on demand. Use read_ledger when you need live counts or study IDs before acting.`;
 }
 
 /**
