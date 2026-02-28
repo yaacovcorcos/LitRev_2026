@@ -43,7 +43,7 @@
 .resizeHandle {
     cursor: col-resize;
     position: relative;
-    z-index: 5;
+    z-index: var(--z-resize-handle);
 }
 
 .resizeHandleHidden {
@@ -123,7 +123,7 @@
 }
 
 .eyebrow {
-    font-size: 11px;
+    font-size: var(--text-xs);
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.5px;
@@ -131,7 +131,7 @@
 }
 
 .headerText h1 {
-    font-size: 24px;
+    font-size: var(--text-5xl);
     font-weight: 600;
     margin: 0;
 }
@@ -154,13 +154,13 @@
     background: var(--glass-bg);
     border: 1px solid var(--glass-border);
     border-radius: 99px;
-    font-size: 13px;
+    font-size: var(--text-base);
     font-weight: 500;
     color: var(--text-secondary);
 }
 
 .statChip .material-icons-round {
-    font-size: 18px;
+    font-size: var(--text-2xl);
     color: var(--accent-primary);
 }
 
@@ -182,14 +182,14 @@
 .ledgerTable td {
     padding: 15px 19px;
     text-align: left;
-    font-size: 14px;
+    font-size: var(--text-md);
 }
 
 .ledgerTable th {
     background: rgba(0, 0, 0, 0.02);
     font-weight: 600;
     text-transform: uppercase;
-    font-size: 11px;
+    font-size: var(--text-xs);
     letter-spacing: 0.5px;
     color: var(--text-muted);
     border-bottom: 1px solid var(--glass-border);
@@ -226,14 +226,14 @@
     border-radius: 8px;
     border: 1px solid var(--glass-border);
     background: rgba(255, 255, 255, 0.85);
-    font-size: 13px;
+    font-size: var(--text-base);
     color: var(--text-primary);
 }
 
 .inputField:focus {
     outline: none;
     border-color: var(--accent-primary);
-    box-shadow: 0 0 0 2px rgba(217, 116, 89, 0.2);
+    box-shadow: var(--shadow-focus-ring);
 }
 
 .addRowMeta {
@@ -256,13 +256,13 @@
     border: none;
     border-radius: 8px;
     padding: 6px 12px;
-    font-size: 12px;
+    font-size: var(--text-sm);
     cursor: pointer;
 }
 
 .addBtn {
     background: var(--accent-primary);
-    color: #fff;
+    color: var(--color-white);
 }
 
 .cancelBtn {
@@ -281,7 +281,7 @@
 
 .studyCitation {
     margin-top: 2px;
-    font-size: 12px;
+    font-size: var(--text-sm);
     color: var(--text-muted);
     font-weight: 400;
     white-space: nowrap;
@@ -294,7 +294,7 @@
     display: inline-block;
     padding: 4px 10px;
     border-radius: 99px;
-    font-size: 11px;
+    font-size: var(--text-xs);
     font-weight: 600;
 }
 
@@ -310,7 +310,7 @@
 
 .qualityBadge {
     font-weight: 600;
-    font-size: 12px;
+    font-size: var(--text-sm);
 }
 
 .qualityHigh {
@@ -328,17 +328,17 @@
     cursor: pointer;
     padding: 6px;
     border-radius: 6px;
-    transition: all 0.2s ease;
+    transition: all var(--duration-base) var(--ease-standard);
 }
 
 .actionBtn:hover {
     background: rgba(255, 255, 255, 0.8);
     color: var(--accent-primary);
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.04);
+    box-shadow: var(--shadow-md);
 }
 
 .actionBtn .material-icons-round {
-    font-size: 18px;
+    font-size: var(--text-2xl);
 }
 
 .expandCell {
@@ -373,7 +373,7 @@
 .filesPopupBackdrop {
     position: fixed;
     inset: 0;
-    z-index: 100;
+    z-index: var(--z-overlay-backdrop);
     background: rgba(0, 0, 0, 0.15);
 }
 
@@ -385,11 +385,11 @@
     width: 420px;
     max-width: 90vw;
     max-height: 80vh;
-    z-index: 101;
+    z-index: var(--z-overlay);
     background: var(--glass-bg);
     border: 1px solid var(--glass-border);
     border-radius: var(--radius-lg);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+    box-shadow: var(--shadow-xl);
     animation: popIn 0.15s ease-out;
     overflow: hidden;
     display: flex;
@@ -416,7 +416,7 @@
     cursor: pointer;
     padding: 6px;
     border-radius: 6px;
-    transition: all 0.2s ease;
+    transition: all var(--duration-base) var(--ease-standard);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -430,8 +430,8 @@
 }
 
 .expandBtn .material-icons-round {
-    font-size: 20px;
-    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    font-size: var(--text-3xl);
+    transition: transform var(--duration-slow) var(--ease-standard);
 }
 
 .expandBtn.expanded .material-icons-round {
@@ -495,7 +495,7 @@
 
 .abstractText {
     margin: 0;
-    font-size: 14px;
+    font-size: var(--text-md);
     line-height: 1.5;
     color: var(--text-secondary);
     font-weight: 400;
@@ -516,14 +516,14 @@
     background: transparent;
     border: 1px solid var(--glass-border);
     border-radius: 6px;
-    font-size: 11px;
+    font-size: var(--text-xs);
     color: var(--text-muted);
     text-decoration: none;
-    transition: all 0.2s ease;
+    transition: all var(--duration-base) var(--ease-standard);
 }
 
 .metaChip .material-icons-round {
-    font-size: 14px;
+    font-size: var(--text-md);
     color: var(--text-muted);
 }
 
@@ -545,7 +545,7 @@ a.metaChip {
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    font-size: 12px;
+    font-size: var(--text-sm);
     font-weight: 600;
     color: var(--accent-primary);
     text-decoration: none;
@@ -569,10 +569,10 @@ a.metaChip {
     gap: 5px;
     padding: 4px 10px 4px 6px;
     border-radius: 6px;
-    font-size: 11px;
+    font-size: var(--text-xs);
     font-weight: 600;
     cursor: pointer;
-    transition: all 0.15s ease;
+    transition: all var(--duration-fast) var(--ease-standard);
     border: 1px solid var(--glass-border);
     background: rgba(255, 255, 255, 0.6);
     color: var(--text-secondary);
@@ -608,7 +608,7 @@ a.metaChip {
 
 /* Exclude — Red */
 .triageBtn.triageBtnExclude {
-    color: #c0392b;
+    color: var(--color-danger);
 }
 
 .triageBtn.triageBtnExclude:hover {
@@ -618,7 +618,7 @@ a.metaChip {
 
 .triageBtn.triageBtnExclude.active {
     background: rgba(192, 57, 43, 0.12);
-    border-color: #c0392b;
+    border-color: var(--color-danger);
 }
 
 /* Maybe — Warm Sand */
@@ -643,12 +643,12 @@ a.metaChip {
     gap: 4px;
     padding: 4px 10px;
     border-radius: 99px;
-    font-size: 11px;
+    font-size: var(--text-xs);
     font-weight: 600;
 }
 
 .triageBadge .material-icons-round {
-    font-size: 14px;
+    font-size: var(--text-md);
 }
 
 .triageBadgeKeep {
@@ -658,7 +658,7 @@ a.metaChip {
 
 .triageBadgeExclude {
     background: rgba(192, 57, 43, 0.12);
-    color: #c0392b;
+    color: var(--color-danger);
 }
 
 .triageBadgeMaybe {
@@ -682,14 +682,14 @@ a.metaChip {
     display: flex;
     align-items: center;
     gap: 6px;
-    font-size: 12px;
+    font-size: var(--text-sm);
     font-weight: 600;
     color: var(--text-secondary);
     margin-right: 4px;
 }
 
 .criteriaLabel .material-icons-round {
-    font-size: 16px;
+    font-size: var(--text-xl);
     color: var(--accent-secondary);
 }
 
@@ -699,17 +699,17 @@ a.metaChip {
     gap: 4px;
     padding: 6px 12px;
     border-radius: 99px;
-    font-size: 12px;
+    font-size: var(--text-sm);
     font-weight: 500;
     cursor: pointer;
-    transition: all 0.15s ease;
+    transition: all var(--duration-fast) var(--ease-standard);
     border: 1px solid var(--glass-border);
     background: rgba(255, 255, 255, 0.7);
     color: var(--text-secondary);
 }
 
 .criteriaChip .material-icons-round {
-    font-size: 14px;
+    font-size: var(--text-md);
 }
 
 .criteriaChip:hover {
@@ -739,18 +739,18 @@ a.metaChip {
 }
 
 .criteriaChipFails {
-    color: #c0392b;
+    color: var(--color-danger);
 }
 
 .criteriaChipFails.criteriaChipActive {
     background: rgba(192, 57, 43, 0.12);
     border-color: rgba(192, 57, 43, 0.5);
-    color: #c0392b;
+    color: var(--color-danger);
 }
 
 .criteriaLink {
     margin-left: auto;
-    font-size: 12px;
+    font-size: var(--text-sm);
     font-weight: 500;
     color: var(--accent-primary);
     text-decoration: none;
@@ -768,11 +768,11 @@ a.metaChip {
     width: 28px;
     height: 28px;
     border-radius: 50%;
-    transition: all 0.15s ease;
+    transition: all var(--duration-fast) var(--ease-standard);
 }
 
 .criteriaBadge .material-icons-round {
-    font-size: 18px;
+    font-size: var(--text-2xl);
 }
 
 .criteriaBadgeMeets {
@@ -784,7 +784,7 @@ a.metaChip {
 }
 
 .criteriaBadgeFails {
-    color: #c0392b;
+    color: var(--color-danger);
 }
 
 .criteriaBadgeFails:hover {

@@ -263,6 +263,7 @@ export function ExportModal({
                             href={file.publicUrl || file.storagePath}
                             download={file.filename}
                             className={styles.historyBtn}
+                            aria-label="Download export"
                             title="Download"
                           >
                             <span className="material-icons-round">download</span>
@@ -272,6 +273,7 @@ export function ExportModal({
                               type="button"
                               className={styles.historyBtn}
                               onClick={() => handleCopyLink(file.publicUrl!, file.id)}
+                              aria-label={copiedId === file.id ? "Copied export link" : "Copy export link"}
                               title={copiedId === file.id ? "Copied!" : "Copy link"}
                             >
                               <span className="material-icons-round">
@@ -284,6 +286,7 @@ export function ExportModal({
                               type="button"
                               className={`${styles.historyBtn} ${styles.historyDeleteBtn}`}
                               onClick={() => setDeleteExportId(file.id)}
+                              aria-label="Delete export"
                               title="Delete"
                             >
                               <span className="material-icons-round">delete</span>

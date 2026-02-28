@@ -13,6 +13,7 @@
     /* Warm Charcoal */
     --text-secondary: #635f59;
     --text-muted: #948f85;
+    --color-white: #ffffff;
 
     /* Accents (Earthy/Modern) */
     --accent-primary: #D97459;
@@ -51,6 +52,7 @@
     /* Semantic Status Colors — Success */
     --color-success: #5a8a62;
     --color-success-bg: rgba(90, 138, 98, 0.1);
+    --color-source-conversation: #2563eb;
 
     /* Accent Hover Variants */
     --accent-primary-hover: #c4634a;
@@ -71,6 +73,61 @@
     --header-height: 44px;
     --content-top-offset: 12px;
     --mobile-nav-height: 72px;
+
+    /* Typography Scale */
+    --text-2xs: 10px;
+    --text-xs: 11px;
+    --text-sm: 12px;
+    --text-base: 13px;
+    --text-md: 14px;
+    --text-lg: 15px;
+    --text-xl: 16px;
+    --text-2xl: 18px;
+    --text-3xl: 20px;
+    --text-4xl: 22px;
+    --text-5xl: 24px;
+    --text-6xl: 28px;
+    --text-7xl: 32px;
+    --text-8xl: 48px;
+    --font-weight-normal: 400;
+    --font-weight-medium: 500;
+    --font-weight-semibold: 600;
+    --font-weight-bold: 700;
+
+    /* Shadow Scale */
+    --shadow-xs: 0 1px 6px rgba(0, 0, 0, 0.08);
+    --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.04);
+    --shadow-md: 0 4px 10px rgba(0, 0, 0, 0.04);
+    --shadow-lg: 0 4px 12px rgba(0, 0, 0, 0.08);
+    --shadow-xl: 0 8px 32px rgba(0, 0, 0, 0.12);
+    --shadow-focus-ring: 0 0 0 2px color-mix(in srgb, var(--accent-primary) 24%, transparent);
+    --shadow-focus-ring-strong: 0 0 0 3px color-mix(in srgb, var(--accent-primary) 16%, transparent);
+
+    /* Z-Index Scale */
+    --z-base: 0;
+    --z-content: 1;
+    --z-resize-handle: 5;
+    --z-overlay-backdrop: 100;
+    --z-overlay: 101;
+    --z-tooltip: 110;
+    --z-sidebar: 910;
+    --z-user-menu: 920;
+    --z-mobile-nav: 1000;
+    --z-header: 1200;
+    --z-modal-backdrop: 1999;
+    --z-modal: 2000;
+    --z-command-palette: 2500;
+    --z-toast: 3000;
+    --z-top: 9999;
+
+    /* Motion */
+    --duration-fast: 150ms;
+    --duration-base: 200ms;
+    --duration-slow: 300ms;
+    --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+    --ease-emphasized: cubic-bezier(0.16, 1, 0.3, 1);
+    --ease-out: cubic-bezier(0, 0, 0.2, 1);
+    --ease-in: cubic-bezier(0.4, 0, 1, 1);
 
     /* Scrollbar */
     --scrollbar-size: 4px;

@@ -25,8 +25,13 @@ It consolidates all open UI/UX work into one prioritized sequence so implementat
 - Project route error boundaries now share a single `ErrorFallback` component with tokenized styling and consistent retry behavior across draft, protocol, ledger, and study-detail routes.
 - Demo guidance surfaces are now context-scoped: `DemoBanner` is limited to conversation mode while `DemoGuideCard` remains view-mode only, preventing duplicate stacked guidance.
 - Copilot hydration placeholders no longer render disabled-looking controls before mount; pre-mount controls are now visual placeholders with stable layout and no perceived broken state.
+- The design system now includes first-class typography, shadow, z-index, and motion scales in `styles/tokens.css`, with `stylelint` warn-mode governance to surface raw value drift.
+- High-traffic UI modules (`ledger`, `study detail`, `memory`, `notes`, `protocol`, `login`) now consume shared token scales for typography/motion/layering and reduced hardcoded palette/shadow usage.
 
 ## Recently Completed
+- `CUX-016` Completed token-system foundation: added typography/shadow/z-index/motion scales, enabled warn-mode `stylelint` governance, and migrated high-traffic CSS modules off many hardcoded values.
+- `CUX-A01` Added icon-button accessibility baseline by wiring explicit `aria-label` attributes for icon-only actions across timeline, files, exports, memory actions, ledger actions, and citation copy controls.
+- `CUX-A02` Added ARIA validation wiring on key forms (`AuthScreen` magic-link email, `ConversationPicker` rename dialog, `Memory` statement input) with `aria-invalid` and linked error/help text.
 - `CUX-037` Deduplicated sample guidance by rendering `DemoBanner` only in conversation mode and using in-page `DemoGuideCard` for view-mode contexts.
 - `CUX-036` Removed disabled-looking hydration placeholders from `CopilotInputCore` and replaced them with non-interactive visual placeholders.
 - `CUX-015` Added shared `ErrorFallback` component and migrated all project route `error.tsx` files to it.
@@ -34,9 +39,6 @@ It consolidates all open UI/UX work into one prioritized sequence so implementat
 - Continued overlay standardization by replacing Notes’ custom delete overlay with shared `ConfirmDialog` (Radix AlertDialog wrapper).
 - `CUX-011` Expanded accessibility coverage with splitter keyboard/semantics behavior tests and `axe` scan (`ResizableSplitter`).
 - `CUX-009` Replaced Notes list `div role="button"` rows with semantic `button` controls and proper pressed/focus behavior.
-- `CUX-008` Introduced reusable `ResizableSplitter` (pointer + keyboard + ARIA-valued separator) and migrated copilot resize handles in project shell layouts.
-- `CUX-010` Reworked `SampleReviewCard` to remove nested interactive controls by using separate primary surface action and sibling dismiss action, with coverage tests.
-- `CUX-004` Replaced custom conversation context menu with accessible Radix `ContextMenu` primitive and preserved separate "more" button trigger flow.
 
 ## Collaboration Phase Alignment (Claude-Compatible)
 Use this map to parallelize execution between Claude and Codex without phase drift.
@@ -184,7 +186,6 @@ Use this section as implementation policy. Each item describes the durable solut
 ## Phase 2 — Feedback, State, and UI System Consistency
 - [ ] `CUX-013` Implement standardized async feedback (toast/notification pattern) for copy/save/delete/export/review actions.
 - [ ] `CUX-014` Standardize loading/busy-state model across major UI surfaces.
-- [ ] `CUX-016` Introduce missing design-system tokens (typography, shadow, z-index, motion), then migrate high-traffic surfaces off hardcoded values.
 - [ ] `CUX-017` Fix Copilot scrolling isolation across all pages (panel scroll independent from content area).
 
 ## Phase 3 — Onboarding UX Program
@@ -225,8 +226,6 @@ Use this section as implementation policy. Each item describes the durable solut
 - [ ] `CUX-D07` Dark mode (explicitly deferred indefinitely).
 
 ## Additional Quality Tasks
-- [ ] `CUX-A01` Standardize icon-only button labeling (`aria-label` baseline, no reliance on `title`).
-- [ ] `CUX-A02` Add ARIA form validation wiring (`aria-invalid`, `aria-describedby`, linked error text) for key forms.
 - [ ] `CUX-A03` Expand `aria-live` announcements for async status changes beyond voice input (copy/save/export/review).
 
 ## Execution Notes

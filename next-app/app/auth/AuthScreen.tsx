@@ -100,6 +100,12 @@ export function AuthScreen({ mode }: AuthScreenProps) {
 
   const error =
     googleAction.error || magicLinkAction.error || quickAccessAction.error;
+  const emailFieldError = magicLinkAction.error;
+  const emailHelpId = "magic-link-email-help";
+  const emailErrorId = "magic-link-email-error";
+  const emailDescribedBy = emailFieldError
+    ? `${emailHelpId} ${emailErrorId}`
+    : emailHelpId;
 
   const successStatus =
     magicLinkAction.status === "success"
@@ -144,7 +150,18 @@ export function AuthScreen({ mode }: AuthScreenProps) {
               placeholder="you@example.com"
               autoComplete="email"
               required
+              aria-required="true"
+              aria-invalid={Boolean(emailFieldError)}
+              aria-describedby={emailDescribedBy}
             />
+            <p id={emailHelpId} className={styles.fieldHelp}>
+              We&apos;ll send a secure sign-in link to this email.
+            </p>
+            {emailFieldError ? (
+              <p id={emailErrorId} className={styles.fieldError} role="alert">
+                {emailFieldError}
+              </p>
+            ) : null}
             <button
               type="submit"
               className={styles.submitButton}

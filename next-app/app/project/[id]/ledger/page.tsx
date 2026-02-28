@@ -157,6 +157,7 @@ const StudyRow = memo(function StudyRow({
                 <td>
                     <button
                         className={styles.actionBtn}
+                        aria-label={`Manage files for ${study.title}`}
                         title="Manage Files"
                         onClick={() => onOpenFiles(study)}
                     >

@@ -26,7 +26,7 @@
 .resizeHandle {
     cursor: col-resize;
     position: relative;
-    z-index: 5;
+    z-index: var(--z-resize-handle);
 }
 
 .resizeHandleHidden {
@@ -93,7 +93,7 @@
 }
 
 .eyebrow {
-    font-size: 11px;
+    font-size: var(--text-xs);
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.5px;
@@ -101,14 +101,14 @@
 }
 
 .headerText h1 {
-    font-size: 24px;
+    font-size: var(--text-5xl);
     font-weight: 600;
     margin: 0;
     color: var(--text-primary);
 }
 
 .authors {
-    font-size: 14px;
+    font-size: var(--text-md);
     color: var(--text-secondary);
     margin: 0;
 }
@@ -120,13 +120,13 @@
     border-radius: 8px;
     border: 1px solid var(--glass-border);
     background: rgba(255, 255, 255, 0.85);
-    font-size: 18px;
+    font-size: var(--text-2xl);
     font-weight: 600;
     color: var(--text-primary);
 }
 
 .authorsInput {
-    font-size: 14px;
+    font-size: var(--text-md);
     font-weight: 400;
 }
 
@@ -134,7 +134,7 @@
 .authorsInput:focus {
     outline: none;
     border-color: var(--accent-primary);
-    box-shadow: 0 0 0 2px rgba(217, 116, 89, 0.2);
+    box-shadow: var(--shadow-focus-ring);
 }
 
 .headerActions {
@@ -153,7 +153,7 @@
     display: inline-block;
     padding: 6px 14px;
     border-radius: 99px;
-    font-size: 12px;
+    font-size: var(--text-sm);
     font-weight: 600;
 }
 
@@ -169,7 +169,7 @@
 
 .qualityBadge {
     font-weight: 600;
-    font-size: 13px;
+    font-size: var(--text-base);
     color: var(--text-secondary);
 }
 
@@ -193,14 +193,14 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    font-size: 14px;
+    font-size: var(--text-md);
     font-weight: 600;
     color: var(--text-primary);
     margin: 0 0 16px 0;
 }
 
 .sectionTitle .material-icons-round {
-    font-size: 18px;
+    font-size: var(--text-2xl);
     color: var(--accent-primary);
 }
 
@@ -215,9 +215,9 @@
 
 .collapseChevron {
     margin-left: auto;
-    font-size: 20px !important;
+    font-size: var(--text-3xl) !important;
     color: var(--text-muted) !important;
-    transition: transform 0.2s ease;
+    transition: transform var(--duration-base) var(--ease-standard);
     transform: rotate(-90deg);
 }
 
@@ -228,7 +228,7 @@
 .abstractText,
 .summaryText {
     margin: 0;
-    font-size: 14px;
+    font-size: var(--text-md);
     line-height: 1.7;
     color: var(--text-secondary);
 }
@@ -239,7 +239,7 @@
     border-radius: 8px;
     border: 1px solid var(--glass-border);
     background: rgba(255, 255, 255, 0.85);
-    font-size: 14px;
+    font-size: var(--text-md);
     line-height: 1.6;
     color: var(--text-primary);
     resize: vertical;
@@ -252,7 +252,7 @@
 
 .emptyText {
     margin: 0;
-    font-size: 14px;
+    font-size: var(--text-md);
     color: var(--text-muted);
     font-style: italic;
 }
@@ -269,18 +269,18 @@
 }
 
 .placeholder .material-icons-round {
-    font-size: 32px;
+    font-size: var(--text-7xl);
     opacity: 0.5;
 }
 
 .placeholder p {
     margin: 0;
-    font-size: 13px;
+    font-size: var(--text-base);
 }
 
 .placeholderLink {
     margin-top: 8px;
-    font-size: 13px;
+    font-size: var(--text-base);
     font-weight: 500;
     color: var(--accent-primary);
     text-decoration: none;
@@ -307,9 +307,9 @@
     border-radius: var(--radius-md);
     text-decoration: none;
     color: var(--text-primary);
-    font-size: 14px;
+    font-size: var(--text-md);
     font-weight: 500;
-    transition: all 0.15s ease;
+    transition: all var(--duration-fast) var(--ease-standard);
 }
 
 .backlinkItem:hover {
@@ -319,12 +319,12 @@
 }
 
 .backlinkItem .material-icons-round:first-child {
-    font-size: 18px;
+    font-size: var(--text-2xl);
     color: var(--accent-secondary);
 }
 
 .backlinkItem .material-icons-round:last-child {
-    font-size: 16px;
+    font-size: var(--text-xl);
     color: var(--text-muted);
     margin-left: auto;
 }
@@ -335,7 +335,7 @@
     border-radius: 8px;
     border: 1px solid var(--glass-border);
     background: rgba(255, 255, 255, 0.85);
-    font-size: 14px;
+    font-size: var(--text-md);
     color: var(--text-primary);
     cursor: pointer;
 }
@@ -353,7 +353,7 @@
 .qualityBadgeLarge {
     padding: 8px 16px;
     border-radius: 8px;
-    font-size: 14px;
+    font-size: var(--text-md);
     font-weight: 600;
     background: var(--glass-bg);
     border: 1px solid var(--glass-border);
@@ -361,7 +361,7 @@
 
 .qualityRationale {
     margin: 12px 0 0;
-    font-size: 13px;
+    font-size: var(--text-base);
     line-height: 1.6;
     color: var(--text-secondary);
 }
@@ -378,7 +378,7 @@
 }
 
 .analyzePrompt > .material-icons-round {
-    font-size: 22px;
+    font-size: var(--text-4xl);
     color: var(--accent-secondary);
 }
 
@@ -387,13 +387,13 @@
 }
 
 .analyzePromptText strong {
-    font-size: 14px;
+    font-size: var(--text-md);
     color: var(--text-primary);
 }
 
 .analyzePromptText p {
     margin: 2px 0 0;
-    font-size: 12px;
+    font-size: var(--text-sm);
     color: var(--text-muted);
 }
 
@@ -403,13 +403,13 @@
     gap: 6px;
     padding: 8px 16px;
     background: var(--accent-primary);
-    color: #fff;
+    color: var(--color-white);
     border: none;
     border-radius: 99px;
-    font-size: 13px;
+    font-size: var(--text-base);
     font-weight: 600;
     cursor: pointer;
-    transition: opacity 0.15s ease;
+    transition: opacity var(--duration-fast) var(--ease-standard);
     white-space: nowrap;
 }
 
@@ -418,7 +418,7 @@
 }
 
 .analyzePromptBtn .material-icons-round {
-    font-size: 16px;
+    font-size: var(--text-xl);
 }
 
 .pdfLink {
@@ -431,10 +431,10 @@
     border-radius: var(--radius-lg);
     color: var(--text-primary);
     text-decoration: none;
-    font-size: 13px;
+    font-size: var(--text-base);
     font-weight: 500;
     cursor: pointer;
-    transition: background 0.15s ease;
+    transition: background var(--duration-fast) var(--ease-standard);
 }
 
 .pdfLink:hover {
@@ -442,8 +442,8 @@
 }
 
 .pdfLink > .material-icons-round:first-child {
-    font-size: 20px;
-    color: #e74c3c;
+    font-size: var(--text-3xl);
+    color: var(--color-danger);
 }
 
 /* Extraction Banner */
@@ -464,18 +464,18 @@
 }
 
 .extractionBannerContent strong {
-    font-size: 14px;
+    font-size: var(--text-md);
     color: var(--text-primary);
 }
 
 .extractionBannerContent p {
     margin: 2px 0 0;
-    font-size: 12px;
+    font-size: var(--text-sm);
     color: var(--text-muted);
 }
 
 .extractionBannerIcon {
-    font-size: 22px;
+    font-size: var(--text-4xl);
     color: var(--accent-primary);
     animation: spin 2s linear infinite;
 }
@@ -523,12 +523,12 @@
     background: rgba(239, 68, 68, 0.08);
     border: 1px solid rgba(239, 68, 68, 0.2);
     border-radius: var(--radius-lg);
-    font-size: 13px;
+    font-size: var(--text-base);
     color: var(--color-danger);
 }
 
 .extractionError .material-icons-round:first-child {
-    font-size: 18px;
+    font-size: var(--text-2xl);
 }
 
 .extractionErrorDismiss {
@@ -549,7 +549,7 @@
 }
 
 .extractionErrorDismiss .material-icons-round {
-    font-size: 16px;
+    font-size: var(--text-xl);
 }
 
 /* Keywords */
@@ -566,7 +566,7 @@
     background: var(--glass-bg);
     border: 1px solid var(--glass-border);
     border-radius: 99px;
-    font-size: 13px;
+    font-size: var(--text-base);
     color: var(--text-secondary);
     font-weight: 500;
 }
@@ -575,7 +575,7 @@
 .filesPopupBackdrop {
     position: fixed;
     inset: 0;
-    z-index: 100;
+    z-index: var(--z-overlay-backdrop);
     background: rgba(0, 0, 0, 0.15);
 }
 
@@ -587,11 +587,11 @@
     width: 420px;
     max-width: 90vw;
     max-height: 80vh;
-    z-index: 101;
+    z-index: var(--z-overlay);
     background: var(--glass-bg);
     border: 1px solid var(--glass-border);
     border-radius: var(--radius-lg);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+    box-shadow: var(--shadow-xl);
     animation: popIn 0.15s ease-out;
     overflow: hidden;
     display: flex;

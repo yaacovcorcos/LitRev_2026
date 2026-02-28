@@ -380,12 +380,20 @@ export function ConversationPicker({
                 className={styles.renameInput}
                 value={renameValue}
                 autoFocus
+                required
+                aria-required="true"
+                aria-invalid={Boolean(renameError)}
+                aria-describedby={renameError ? "conversation-rename-error" : undefined}
                 onChange={(event) => {
                   setRenameValue(event.target.value);
                   if (renameError) setRenameError(null);
                 }}
               />
-              {renameError ? <p className={styles.renameError}>{renameError}</p> : null}
+              {renameError ? (
+                <p id="conversation-rename-error" className={styles.renameError}>
+                  {renameError}
+                </p>
+              ) : null}
               <div className={styles.renameActions}>
                 <button
                   type="button"

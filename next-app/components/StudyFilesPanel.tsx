@@ -189,6 +189,7 @@ export function StudyFilesPanel({
                     className={`${styles.actionBtn} ${styles.extractBtn}`}
                     onClick={() => onExtract(file.id)}
                     disabled={!!extractingFileId}
+                    aria-label={extractingFileId === file.id ? "Extracting file" : "Extract study data from PDF"}
                     title={extractingFileId === file.id ? "Extracting..." : "Extract study data from PDF"}
                   >
                     <span className={`material-icons-round ${extractingFileId === file.id ? styles.spinIcon : ""}`}>
@@ -202,6 +203,7 @@ export function StudyFilesPanel({
                     target="_blank"
                     rel="noopener noreferrer"
                     className={styles.actionBtn}
+                    aria-label="Open file"
                     title="Open file"
                   >
                     <span className="material-icons-round">open_in_new</span>
@@ -211,6 +213,7 @@ export function StudyFilesPanel({
                   href={file.publicUrl || file.storagePath}
                   download={file.filename}
                   className={styles.actionBtn}
+                  aria-label="Download file"
                   title="Download"
                 >
                   <span className="material-icons-round">download</span>
@@ -219,6 +222,7 @@ export function StudyFilesPanel({
                   type="button"
                   className={`${styles.actionBtn} ${styles.deleteBtn}`}
                   onClick={() => setDeleteFileId(file.id)}
+                  aria-label="Delete file"
                   title="Delete file"
                 >
                   <span className="material-icons-round">delete</span>

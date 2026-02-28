@@ -171,6 +171,7 @@ function MemoryPageContent() {
   const [formStatement, setFormStatement] = useState("");
   const [formRationale, setFormRationale] = useState("");
   const [formImportance, setFormImportance] = useState<ProjectMemoryImportance>("normal");
+  const [showStatementError, setShowStatementError] = useState(false);
 
   const resetForm = () => {
     setFormType("decision");
@@ -178,6 +179,7 @@ function MemoryPageContent() {
     setFormStatement("");
     setFormRationale("");
     setFormImportance("normal");
+    setShowStatementError(false);
   };
 
   // Fetch tab data on tab switch
@@ -230,7 +232,10 @@ function MemoryPageContent() {
   }, [activeTab, id, studyMemories, userPreferences, prismaStats, retrievalStats, qualityMetrics, rolloutStatus]);
 
   const handleCreate = async () => {
-    if (!formStatement.trim()) return;
+    if (!formStatement.trim()) {
+      setShowStatementError(true);
+      return;
+    }
     await createMemory({
       type: formType,
       category: formCategory || undefined,
@@ -252,7 +257,11 @@ function MemoryPageContent() {
   };
 
   const handleUpdate = async () => {
-    if (!editingId || !formStatement.trim()) return;
+    if (!editingId) return;
+    if (!formStatement.trim()) {
+      setShowStatementError(true);
+      return;
+    }
     await updateMemory(editingId, {
       statement: formStatement.trim(),
       rationale: formRationale.trim() || undefined,
@@ -337,6 +346,11 @@ function MemoryPageContent() {
         ),
       )
     : [];
+
+  const statementError = showStatementError && !formStatement.trim()
+    ? "Statement is required."
+    : null;
+  const statementErrorId = "memory-statement-error";
 
   return (
     <ProjectPageLayout>
@@ -503,6 +517,7 @@ function MemoryPageContent() {
                         <button
                           className={styles.actionBtn}
                           onClick={() => startEdit(memory)}
+                          aria-label="Edit memory"
                           title="Edit"
                         >
                           <span className="material-icons-round">edit</span>
@@ -510,6 +525,7 @@ function MemoryPageContent() {
                         <button
                           className={styles.actionBtn}
                           onClick={() => handleArchive(memory.id)}
+                          aria-label="Archive memory"
                           title="Archive"
                         >
                           <span className="material-icons-round">archive</span>
@@ -517,6 +533,7 @@ function MemoryPageContent() {
                         <button
                           className={`${styles.actionBtn} ${styles.deleteBtn}`}
                           onClick={() => handleDelete(memory.id)}
+                          aria-label="Delete memory"
                           title="Delete"
                         >
                           <span className="material-icons-round">delete</span>
@@ -848,10 +865,21 @@ function MemoryPageContent() {
                   <label>Statement *</label>
                   <textarea
                     value={formStatement}
-                    onChange={(e) => setFormStatement(e.target.value)}
+                    onChange={(e) => {
+                      setFormStatement(e.target.value);
+                      if (showStatementError) setShowStatementError(false);
+                    }}
                     placeholder="The core statement or decision..."
                     rows={3}
+                    aria-required="true"
+                    aria-invalid={Boolean(statementError)}
+                    aria-describedby={statementError ? statementErrorId : undefined}
                   />
+                  {statementError ? (
+                    <p id={statementErrorId} className={styles.formError} role="alert">
+                      {statementError}
+                    </p>
+                  ) : null}
                 </div>
                 <div className={styles.formRow}>
                   <label>Rationale (optional)</label>

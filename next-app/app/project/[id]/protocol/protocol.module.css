@@ -28,7 +28,7 @@
 .resizeHandle {
     cursor: col-resize;
     position: relative;
-    z-index: 5;
+    z-index: var(--z-resize-handle);
 }
 
 .resizeHandleHidden {
@@ -102,7 +102,7 @@
 }
 
 .eyebrow {
-    font-size: 11px;
+    font-size: var(--text-xs);
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.5px;
@@ -110,7 +110,7 @@
 }
 
 .headerText h1 {
-    font-size: 22px;
+    font-size: var(--text-4xl);
     font-weight: 600;
     margin: 0;
 }
@@ -130,10 +130,10 @@
     border: 1px solid var(--glass-border);
     border-radius: var(--radius-sm);
     color: var(--text-primary);
-    font-size: 13px;
+    font-size: var(--text-base);
     font-weight: 500;
     cursor: pointer;
-    transition: all 0.15s ease;
+    transition: all var(--duration-fast) var(--ease-standard);
 }
 
 .exportBtn:hover {
@@ -142,7 +142,7 @@
 }
 
 .exportBtn .material-icons-round {
-    font-size: 16px;
+    font-size: var(--text-xl);
 }
 
 /* Status Bar */
@@ -166,13 +166,13 @@
 }
 
 .completenessLabel {
-    font-size: 13px;
+    font-size: var(--text-base);
     font-weight: 600;
     color: var(--text-primary);
 }
 
 .completenessValue {
-    font-size: 13px;
+    font-size: var(--text-base);
     color: var(--text-muted);
 }
 
@@ -187,7 +187,7 @@
     height: 100%;
     background: var(--accent-primary);
     border-radius: 3px;
-    transition: width 0.3s ease;
+    transition: width var(--duration-slow) var(--ease-standard);
 }
 
 .progressComplete {
@@ -202,7 +202,7 @@
 }
 
 .incompleteLabel {
-    font-size: 12px;
+    font-size: var(--text-sm);
     color: var(--text-muted);
 }
 
@@ -211,12 +211,12 @@
     background: rgba(0, 0, 0, 0.06);
     color: var(--text-secondary);
     border-radius: 99px;
-    font-size: 11px;
+    font-size: var(--text-xs);
     font-weight: 500;
 }
 
 .incompleteMore {
-    font-size: 11px;
+    font-size: var(--text-xs);
     color: var(--text-muted);
 }
 
@@ -244,14 +244,14 @@
     display: flex;
     align-items: center;
     gap: 10px;
-    font-size: 16px;
+    font-size: var(--text-xl);
     font-weight: 600;
     margin: 0;
     color: var(--text-primary);
 }
 
 .sectionTitle .material-icons-round {
-    font-size: 20px;
+    font-size: var(--text-3xl);
     color: var(--text-muted);
 }
 
@@ -265,10 +265,10 @@
     border: 1px solid var(--glass-border);
     border-radius: var(--radius-md);
     color: var(--text-muted);
-    font-size: 12px;
+    font-size: var(--text-sm);
     font-weight: 500;
     cursor: pointer;
-    transition: all 0.15s ease;
+    transition: all var(--duration-fast) var(--ease-standard);
 }
 
 .askCopilotBtn:hover {
@@ -278,7 +278,7 @@
 }
 
 .askCopilotBtn .material-icons-round {
-    font-size: 16px;
+    font-size: var(--text-xl);
 }
 
 /* PICO Grid */
@@ -296,7 +296,7 @@
 }
 
 .picoLabel {
-    font-size: 11px;
+    font-size: var(--text-xs);
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.5px;
@@ -306,7 +306,7 @@
 }
 
 .picoValue {
-    font-size: 14px;
+    font-size: var(--text-md);
     color: var(--text-primary);
     margin: 0;
     line-height: 1.5;
@@ -319,7 +319,7 @@
 
 .section {
     position: relative;
-    transition: border-color 0.2s ease;
+    transition: border-color var(--duration-base) var(--ease-standard);
     border-left: 2px solid transparent;
 }
 
@@ -331,7 +331,7 @@
 }
 
 .databaseLabel {
-    font-size: 12px;
+    font-size: var(--text-sm);
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.5px;
@@ -357,7 +357,7 @@
 }
 
 .criteriaHeading {
-    font-size: 12px;
+    font-size: var(--text-sm);
     font-weight: 600;
     margin: 0 0 8px 0;
     color: var(--text-secondary);
@@ -368,7 +368,7 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
-    font-size: 14px;
+    font-size: var(--text-md);
     color: var(--text-secondary);
     padding: 0;
     margin: 0;
@@ -390,7 +390,7 @@
 
 .searchQuery {
     font-family: 'SF Mono', 'Consolas', monospace;
-    font-size: 13px;
+    font-size: var(--text-base);
     line-height: 1.6;
     color: var(--text-primary);
     white-space: pre-wrap;
@@ -408,7 +408,7 @@
     background: var(--status-ready-bg);
     color: var(--status-ready-text);
     border-radius: 99px;
-    font-size: 12px;
+    font-size: var(--text-sm);
     font-weight: 600;
 }
 
@@ -431,7 +431,7 @@
 }
 
 .methodologyLabel {
-    font-size: 11px;
+    font-size: var(--text-xs);
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.5px;
@@ -451,7 +451,7 @@
 }
 
 .timeFrameLabel {
-    font-size: 11px;
+    font-size: var(--text-xs);
     color: var(--text-muted);
     margin-bottom: 4px;
     display: block;
@@ -459,7 +459,7 @@
 
 .timeFrameSeparator {
     color: var(--text-muted);
-    font-size: 16px;
+    font-size: var(--text-xl);
     margin-top: 16px;
 }
 
@@ -470,7 +470,7 @@
 }
 
 .qualityNotesLabel {
-    font-size: 11px;
+    font-size: var(--text-xs);
     color: var(--text-muted);
     margin-bottom: 4px;
     display: block;
@@ -495,19 +495,19 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    font-size: 14px;
+    font-size: var(--text-md);
     font-weight: 600;
     color: var(--text-primary);
     margin: 0;
 }
 
 .prismaTitle .material-icons-round {
-    font-size: 18px;
+    font-size: var(--text-2xl);
     color: var(--accent-secondary);
 }
 
 .prismaLink {
-    font-size: 12px;
+    font-size: var(--text-sm);
     font-weight: 500;
     color: var(--accent-primary);
     text-decoration: none;
@@ -538,7 +538,7 @@
 }
 
 .prismaStageLabel {
-    font-size: 11px;
+    font-size: var(--text-xs);
     font-weight: 500;
     text-transform: uppercase;
     letter-spacing: 0.3px;
@@ -546,7 +546,7 @@
 }
 
 .prismaStageCount {
-    font-size: 20px;
+    font-size: var(--text-3xl);
     font-weight: 600;
     color: var(--text-primary);
 }
@@ -557,7 +557,7 @@
 }
 
 .prismaStageExcluded .prismaStageCount {
-    color: #c0392b;
+    color: var(--color-danger);
 }
 
 .prismaStageIncluded {
@@ -570,7 +570,7 @@
 }
 
 .prismaArrow {
-    font-size: 16px;
+    font-size: var(--text-xl);
     color: var(--text-muted);
 }
 
@@ -585,7 +585,7 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    font-size: 13px;
+    font-size: var(--text-base);
     color: var(--text-secondary);
 }
 
@@ -600,7 +600,7 @@
 }
 
 .prismaDotFails {
-    background: #c0392b;
+    background: var(--color-danger);
 }
 
 .prismaDotMaybe {

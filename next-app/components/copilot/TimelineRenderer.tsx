@@ -48,7 +48,7 @@ import { addMentionedStudyAction } from "@/app/actions/ledger";
 import { extractMentionedStudies, stripMentionedStudiesMarkup, type MentionedStudy } from "@/lib/ai/mentioned-studies";
 import { isChatStudyMentionsEnabled } from "@/lib/agent/feature-flags";
 import { getReasoningSummaryPreview } from "@/lib/ai/reasoning-visibility";
-import styles from "../ProjectCopilot.module.css";
+import styles from "./TimelineMessages.module.css";
 import artifactStyles from "@/styles/artifacts.module.css";
 import markdownStyles from "@/styles/markdown.module.css";
 
@@ -178,6 +178,7 @@ const UserMessageRow = memo(function UserMessageRow({ item, onCopy, onBranchFrom
                         type="button"
                         className={styles.chatActionBtn}
                         onClick={() => onCopy(item.content)}
+                        aria-label="Copy to clipboard"
                         title="Copy to clipboard"
                     >
                         <span className="material-icons-round">content_copy</span>
@@ -187,6 +188,7 @@ const UserMessageRow = memo(function UserMessageRow({ item, onCopy, onBranchFrom
                             type="button"
                             className={styles.chatActionBtn}
                             onClick={() => onBranchFromMessage(item.id, item.createdAt)}
+                            aria-label="Branch from this message"
                             title="Branch from this message"
                         >
                             <span className="material-icons-round">call_split</span>
@@ -404,6 +406,7 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
                         type="button"
                         className={styles.chatActionBtn}
                         onClick={() => onCopy(displayContent)}
+                        aria-label="Copy to clipboard"
                         title="Copy to clipboard"
                     >
                         <span className="material-icons-round">content_copy</span>
@@ -420,6 +423,7 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
                                 type="button"
                                 className={styles.chatActionBtn}
                                 onClick={() => onSaveToNotes(displayContent, item.id)}
+                                aria-label="Save to notes"
                                 title="Save to Notes"
                             >
                                 <span className="material-icons-round">bookmark_border</span>
@@ -431,6 +435,7 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
                             type="button"
                             className={styles.chatActionBtn}
                             onClick={() => onInsert(displayContent)}
+                            aria-label="Insert into draft"
                             title="Insert into draft"
                         >
                             <span className="material-icons-round">add_circle_outline</span>
@@ -441,6 +446,7 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
                             type="button"
                             className={styles.chatActionBtn}
                             onClick={() => onBranchFromMessage(item.id, item.createdAt)}
+                            aria-label="Branch from this message"
                             title="Branch from this message"
                         >
                             <span className="material-icons-round">call_split</span>

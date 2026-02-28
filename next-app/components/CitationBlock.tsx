@@ -44,7 +44,7 @@ export function CitationBlock({ study }: CitationBlockProps) {
             </div>
             <div className={styles.citationBox}>
                 <p className={styles.citationText}>{citation}</p>
-                <button className={styles.copyBtn} onClick={handleCopy} title="Copy citation">
+                <button className={styles.copyBtn} onClick={handleCopy} aria-label="Copy citation" title="Copy citation">
                     <span className="material-icons-round">{copied ? "check" : "content_copy"}</span>
                 </button>
             </div>
