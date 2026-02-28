@@ -47,10 +47,10 @@
 }
 
 .modeBtnActive {
-    background: var(--bg-card, #fff);
+    background: var(--bg-card, var(--color-white));
     color: var(--accent-primary);
     font-weight: 600;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+    box-shadow: var(--shadow-xs);
 }
 
 .modeBtnActive:hover {

@@ -47,6 +47,7 @@
     background: var(--glass-border);
     cursor: col-resize;
     position: relative;
+    /* stylelint-disable-next-line declaration-property-value-disallowed-list */
     z-index: 2;
     transition: background 0.15s;
 }

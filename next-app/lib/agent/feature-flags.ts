@@ -35,6 +35,16 @@ export function isChatStudyMentionsEnabled(): boolean {
     return DEFAULT_CHAT_STUDY_MENTIONS_ENABLED;
 }
 
+const DEFAULT_DELEGATION_ENABLED = false;
+
+export function isDelegationEnabled(): boolean {
+    const fromPublic = readFlag(process.env.NEXT_PUBLIC_ENABLE_DELEGATION);
+    if (fromPublic !== null) return fromPublic;
+    const fromServer = readFlag(process.env.ENABLE_DELEGATION);
+    if (fromServer !== null) return fromServer;
+    return DEFAULT_DELEGATION_ENABLED;
+}
+
 export function normalizeAgentMode(requested: AgentMode): AgentMode {
     if (requested !== "scoping") return requested;
     return isScopingModeEnabled() ? "scoping" : "search";

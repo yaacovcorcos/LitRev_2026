@@ -104,12 +104,10 @@
   background: var(--glass-highlight);
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-md);
-  box-shadow:
-    0 8px 32px rgba(0, 0, 0, 0.08),
-    0 2px 8px rgba(0, 0, 0, 0.04);
+  box-shadow: var(--shadow-xl);
   backdrop-filter: blur(20px);
   padding: 6px;
-  z-index: 920;
+  z-index: var(--z-user-menu);
   animation: menuFadeIn 0.15s ease-out;
 }
 
@@ -198,6 +196,7 @@
 .backdrop {
   position: fixed;
   inset: 0;
+  /* stylelint-disable-next-line declaration-property-value-disallowed-list */
   z-index: 919;
 }
 

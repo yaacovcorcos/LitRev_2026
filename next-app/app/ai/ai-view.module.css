@@ -30,7 +30,7 @@
     top: var(--header-height, 44px);
     left: var(--shell-sidebar-width, 200px);
     height: calc(100vh - var(--header-height, 44px));
-    z-index: 905;
+    z-index: var(--z-sidebar);
 }
 
 .collapsed {
@@ -95,7 +95,7 @@
 
 .newChatButton:hover {
     transform: translateY(-1px);
-    box-shadow: 0 6px 16px rgba(217, 116, 89, 0.35);
+    box-shadow: var(--shadow-lg);
 }
 
 .historyList {
@@ -212,7 +212,7 @@
     background: rgba(255, 255, 255, 0.7);
     color: var(--text-primary);
     font-weight: 500;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+    box-shadow: var(--shadow-sm);
 }
 
 .emptyHistory {
@@ -357,9 +357,9 @@
     backdrop-filter: blur(20px);
     border: 1px solid var(--glass-border);
     border-radius: 12px;
-    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.12);
+    box-shadow: var(--shadow-xl);
     padding: 6px;
-    z-index: 100;
+    z-index: var(--z-overlay);
 }
 
 .projectOption {
@@ -495,13 +495,13 @@
 
 .contextMenu {
     position: fixed;
-    z-index: 9999;
+    z-index: var(--z-top);
     min-width: 105px;
     padding: 4px;
-    background: #fff;
+    background: var(--color-white);
     border: 1px solid rgba(0, 0, 0, 0.08);
     border-radius: 8px;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12), 0 1px 3px rgba(0, 0, 0, 0.06);
+    box-shadow: var(--shadow-xl);
 }
 
 .contextMenuItem {

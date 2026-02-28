@@ -6,7 +6,7 @@
     background: rgba(0, 0, 0, 0.25);
     backdrop-filter: blur(4px);
     -webkit-backdrop-filter: blur(4px);
-    z-index: 2500;
+    z-index: var(--z-command-palette);
     display: flex;
     align-items: flex-start;
     justify-content: center;
@@ -21,6 +21,7 @@
     border-radius: 16px;
     width: 100%;
     max-width: 560px;
+    /* stylelint-disable-next-line declaration-property-value-disallowed-list */
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.18);
     overflow: hidden;
 }

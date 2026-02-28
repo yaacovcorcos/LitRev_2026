@@ -14,7 +14,7 @@
     left: 0;
     height: calc(100vh - var(--header-height, 44px));
     overflow-y: auto;
-    z-index: 910;
+    z-index: var(--z-sidebar);
 }
 
 .collapsed {

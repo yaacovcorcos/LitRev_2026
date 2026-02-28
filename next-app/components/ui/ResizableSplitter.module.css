@@ -9,5 +9,5 @@
 .splitter:focus-visible {
     width: 3px;
     margin-left: -1px;
-    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-primary) 24%, transparent);
+    box-shadow: var(--shadow-focus-ring);
 }

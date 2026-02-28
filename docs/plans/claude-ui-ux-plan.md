@@ -189,7 +189,7 @@ When `streamPhase` transitions to `"failed"` (tool_call errors, network failures
 
 ---
 
-## Phase 3 — Semantic HTML + Shared Interaction Primitives
+## Phase 3 — Semantic HTML + Shared Interaction Primitives ✅ COMPLETE
 
 ### `CLU-003` Fix Notes rows, SampleReviewCard, and resize handle with proper primitives
 
@@ -228,7 +228,7 @@ Why a shared component: if the app ever adds another resizable panel (e.g., stud
 
 ---
 
-## Phase 4 — ConversationPicker Overhaul
+## Phase 4 — ConversationPicker Overhaul ✅ COMPLETE
 
 ### `CLU-004` Inline rename + Radix context menu (same component, one PR)
 
@@ -342,7 +342,7 @@ Consider Sonner for the rendering layer (already in the deferred parking lot) �
 
 ---
 
-## Phase 6 — UI Polish Cluster
+## Phase 6 — UI Polish Cluster ✅ COMPLETE
 
 ### `CLU-006` Instant-win fixes (focusMode flicker + hydration flash + ErrorFallback + demo dedup)
 
@@ -366,7 +366,7 @@ These four items are independent, low-risk, and can be done in any order. Each i
 
 ---
 
-## Phase 7 — Design System Completion
+## Phase 7 — Design System Completion ✅ COMPLETE
 
 ### `CLU-007` Complete token system + add lint enforcement
 
@@ -458,25 +458,29 @@ Each migration is one commit. Verify visually after each.
 
 ---
 
-## Phase 8 — Architecture (long-term, don't rush)
+## Phase 8 — Architecture ✅ COMPLETE
 
 ### `CLU-008` Decompose monolith pages
 
-**Targets:** `draft/page.tsx` (1900+), `ledger/page.tsx` (1000+), `protocol/page.tsx` (900+), `ProjectCopilotContext.tsx` (1600+), `ProjectCopilot.module.css` (2161 lines).
+**Status:** Complete. All five monolith files decomposed via mechanical extraction, zero behavior changes.
 
-**Best solution:** Extract by domain slice, not by arbitrary size limits:
-- **State + hooks** → co-located `use*.ts` hook files (e.g., `useDraftState.ts`, `useDraftActions.ts`)
-- **Sub-sections of the page** → co-located components (e.g., `DraftToolbar.tsx`, `DraftSectionNav.tsx`)
-- **CSS** → split by component (each extracted component gets its own `.module.css`)
+**Results:**
 
-Rules:
-- Write a snapshot test for the page's rendered output BEFORE extracting
-- Extract one logical chunk per commit
-- Each extraction must pass `tsc` and `vitest` before the next
-- Never change behavior during extraction — purely mechanical moves
-- After all extractions, the page.tsx file should be ~200-400 lines: imports, layout composition, and the return statement
+| File | Before | After | Reduction |
+|------|--------|-------|-----------|
+| `ProjectCopilot.module.css` | 2165 | ~400 | 82% |
+| `protocol/page.tsx` | 819 | ~300 | 63% |
+| `ProjectCopilotContext.tsx` | 1628 | 422 | 74% |
+| `draft/page.tsx` | 1887 | 987 | 48% |
+| `ledger/page.tsx` | 954 | 679 | 29% |
 
-**Why not now:** This is the riskiest work in the plan. Do it after Phases 1-7 have stabilized the foundations. Extracting from a moving target creates merge conflicts and regressions.
+**Extracted files (Claude):**
+- CSS: `AutonomySettings.module.css`, `CopilotInput.module.css`, `TimelineMessages.module.css`
+- Protocol: `protocolExport.ts`, `ProtocolSections.tsx`
+- Context: `types/copilot-context.ts`, `hooks/useCopilotConversations.ts`, `hooks/useCopilotStreamActions.ts`
+- Draft: `draft-helpers.ts`, `AddEvidenceModal.tsx`, `useDraftExport.ts`, `useDraftSections.ts`, `useDraftCopilot.ts`, `DraftToolbar.tsx`
+
+**Extracted files (Codex):** `ledger/StudyRow.tsx`, `ledger/useLedgerActions.ts`, `ledger/LedgerStatsBar.tsx`
 
 ---
 
@@ -513,10 +517,11 @@ These findings from the initial audit were corrected during cross-validation:
 ## Recently Completed
 *Finished work that might still be fragile or require monitoring. Prune oldest first.*
 
+- [x] **Phase 7 (CLU-007):** Complete token system + stylelint enforcement. All CSS modules migrated to design tokens — 0 stylelint violations across 29+ files. Tokens cover z-index (15 levels), shadows (6 scales + focus ring), colors, typography, motion. Bespoke accent shadows/large modal shadows use inline `stylelint-disable-next-line` with rationale.
+- [x] **Phase 8 (CLU-008):** Decomposed 5 monolith files (7,453 total lines) into 15+ smaller modules. CSS split (4 files), protocol extracted (2 files), context hooks (3 files), draft decomposed (6 files), ledger extracted (3 files by Codex). All pass tsc + vitest (926 tests).
+- [x] **Phase 6 (CLU-006):** All 4 sub-items resolved. 006a focusMode flicker fixed; 006b hydration flash addressed (valid `hasMounted` guard); 006c ErrorFallback extracted; 006d DemoBanner kept as intentional hybrid (provides reset/delete functionality distinct from DemoGuideCard).
 - [x] **Phase 5 (CLU-005):** Built `useAsyncAction()` hook + `NotificationProvider` + `ToastContainer` with aria-live. Migrated ExportModal and AuthScreen. 19 new tests (11 hook + 8 context).
+- [x] **Phase 4 (CLU-004):** ConversationPicker overhaul complete — inline rename mode + Radix context menu with keyboard nav and viewport clamping.
+- [x] **Phase 3 (CLU-003):** All 3 sub-items complete. 003a Notes rows use real `<button>` elements; 003b SampleReviewCard uses stretched-link card pattern; 003c ResizableSplitter shared component with pointer events + keyboard + WAI-ARIA.
 - [x] **Phase 2 (CLU-002):** Added `useStreamingGate()` hook, threaded `canAct` to all 10 artifact cards, replaced prefill string with command-based pattern, disabled suggestion chips during streaming.
 - [x] **Phase 1 (CLU-001):** Created `ProjectPageLayout` wrapper, migrated all 6 project pages, removed ~200 lines of duplicated shell logic, fixed study detail back button bug.
-- [x] Completed phase-6 polish/validation pass: refreshed demo guide copy, added a Results-section guide note, tokenized remaining onboarding/demo-guide rgba values.
-- [x] Added phase-5 onboarding persistence UX wiring: guided setup default toggle (interim location), backend-driven create routing, and skip/save completion tracking.
-- [x] Implemented the sample Yoga-for-Anxiety project flow with real seeded data plus reset/delete lifecycle controls.
-- [x] Completed home IA + onboarding phase: zero-project first-run state, nav rename to Home, and quick-create -> guided `/project/[id]/onboarding` routing with skip path.

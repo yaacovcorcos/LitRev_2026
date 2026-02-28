@@ -29,7 +29,7 @@
     position: absolute;
     top: 12px;
     left: 12px;
-    z-index: 2;
+    z-index: var(--z-content);
     display: inline-flex;
     align-items: center;
     padding: 4px 8px;
@@ -50,13 +50,13 @@
 .card:hover {
     transform: translateY(-4px);
     border-color: rgba(129, 140, 248, 0.5);
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2);
+    box-shadow: var(--shadow-xl);
 }
 
 .newProjectCard {
     background: linear-gradient(135deg, rgba(255, 255, 255, 0.45), rgba(255, 255, 255, 0.15));
     border: 1px solid rgba(255, 255, 255, 0.7);
-    box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.05);
+    box-shadow: var(--shadow-md);
     backdrop-filter: blur(12px);
     justify-content: center;
     align-items: center;
@@ -77,7 +77,7 @@
 
 .sampleCard:hover {
     border-color: color-mix(in srgb, var(--color-info-text) 52%, transparent);
-    box-shadow: 0 12px 32px color-mix(in srgb, var(--color-info-text) 18%, transparent);
+    box-shadow: var(--shadow-xl);
 }
 
 .sampleCardOpenBtn {
@@ -118,14 +118,14 @@
     color: var(--color-info-text);
     background: color-mix(in srgb, var(--color-info-bg-solid) 26%, white 74%);
     border-color: color-mix(in srgb, var(--color-info-text) 16%, transparent);
-    box-shadow: 0 4px 14px color-mix(in srgb, var(--color-info-text) 12%, transparent);
+    box-shadow: var(--shadow-md);
 }
 
 .sampleCard .iconCircle:hover {
     background: color-mix(in srgb, var(--color-info-bg-solid) 72%, white 28%);
     color: var(--color-info-text);
     border-color: color-mix(in srgb, var(--color-info-text) 22%, transparent);
-    box-shadow: 0 8px 24px color-mix(in srgb, var(--color-info-text) 20%, transparent);
+    box-shadow: var(--shadow-xl);
     transform: translateY(-1px) scale(1.06);
 }
 
@@ -159,7 +159,7 @@
     border-radius: 50%;
     background: rgba(255, 255, 255, 0.9);
     border: 1px solid rgba(255, 255, 255, 0.8);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+    box-shadow: var(--shadow-sm);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -172,7 +172,7 @@
     background: color-mix(in srgb, var(--accent-primary) 28%, white 72%);
     color: color-mix(in srgb, var(--accent-primary) 88%, black 12%);
     border-color: color-mix(in srgb, var(--accent-primary) 28%, transparent);
-    box-shadow: 0 6px 16px color-mix(in srgb, var(--accent-primary) 20%, transparent);
+    box-shadow: var(--shadow-lg);
     transform: translateY(-1px) scale(1.06);
 }
 
@@ -197,7 +197,7 @@
     font-size: 11px;
     font-weight: 600;
     z-index: 1;
-    box-shadow: -2px 2px 4px rgba(0, 0, 0, 0.02);
+    box-shadow: var(--shadow-xs);
     margin-top: -20px;
     margin-right: -20px;
     margin-bottom: 20px;
@@ -286,7 +286,7 @@
 .paperCountInline {
     font-size: 12px;
     font-weight: 600;
-    color: #818CF8;
+    color: var(--accent-primary);
     white-space: nowrap;
 }
 
@@ -294,7 +294,7 @@
     margin-top: auto;
     margin-left: 20px;
     margin-bottom: 8px;
-    color: #818CF8;
+    color: var(--accent-primary);
     font-weight: 600;
     font-size: 13px;
     white-space: nowrap;
@@ -324,7 +324,7 @@
     color: var(--accent-primary);
     border-color: var(--accent-primary);
     transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(217, 116, 89, 0.15);
+    box-shadow: var(--shadow-md);
 }
 
 .viewProjectBtn:active {
@@ -404,7 +404,7 @@
     position: absolute;
     top: 10px;
     right: 10px;
-    z-index: 3;
+    z-index: var(--z-content);
     width: 28px;
     height: 28px;
     border-radius: 999px;

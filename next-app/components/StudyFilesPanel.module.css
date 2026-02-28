@@ -179,7 +179,7 @@
 
 .fileItem:hover {
   background: rgba(255, 255, 255, 0.8);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  box-shadow: var(--shadow-sm);
 }
 
 .fileIcon {

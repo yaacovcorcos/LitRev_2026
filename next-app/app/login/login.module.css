@@ -118,9 +118,7 @@
   border: 1px solid var(--login-border-subtle);
   background: var(--login-bg-card);
   padding: 36px 32px;
-  box-shadow:
-    0 4px 24px rgba(26, 22, 19, 0.04),
-    0 1px 3px rgba(26, 22, 19, 0.03);
+  box-shadow: var(--shadow-md);
   animation: fadeUp 0.8s ease-out 0.4s both;
   display: grid;
   gap: 0;

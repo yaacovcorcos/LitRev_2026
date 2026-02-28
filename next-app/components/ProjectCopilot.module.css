@@ -51,7 +51,7 @@
     gap: 4px;
     flex-shrink: 0;
     position: relative;
-    z-index: 101; /* Above dropdown */
+    z-index: var(--z-overlay); /* Above dropdown */
 }
 
 .headerIconBtn {

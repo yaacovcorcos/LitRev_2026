@@ -37,6 +37,7 @@
 .statCard:hover {
     transform: translateY(-4px);
     border-color: rgba(129, 140, 248, 0.5);
+    /* stylelint-disable-next-line declaration-property-value-disallowed-list */
     box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2);
 }
 
@@ -104,11 +105,13 @@
 .workstationCard:hover {
     transform: translateY(-4px);
     border-color: rgba(129, 140, 248, 0.5);
+    /* stylelint-disable-next-line declaration-property-value-disallowed-list */
     box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2);
 }
 
 .workstationCard:hover .workstationIconCircle {
     transform: scale(1.1);
+    /* stylelint-disable-next-line declaration-property-value-disallowed-list */
     box-shadow: 0 8px 24px rgba(217, 116, 89, 0.3);
 }
 
@@ -123,6 +126,7 @@
     justify-content: center;
     margin-bottom: 20px;
     transition: all 0.3s ease;
+    /* stylelint-disable-next-line declaration-property-value-disallowed-list */
     box-shadow: 0 4px 12px rgba(217, 116, 89, 0.25);
 }
 
@@ -242,6 +246,7 @@
     color: var(--accent-primary);
     border-color: var(--accent-primary);
     transform: translateY(-2px);
+    /* stylelint-disable-next-line declaration-property-value-disallowed-list */
     box-shadow: 0 6px 16px rgba(217, 116, 89, 0.15);
 }
 

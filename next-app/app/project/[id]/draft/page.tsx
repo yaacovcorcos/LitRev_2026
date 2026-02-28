@@ -68,7 +68,7 @@ function DraftContent() {
   const { getStudiesByProject } = useLedger();
   const project = getProjectById(id);
   const studies = useMemo(() => (id ? getStudiesByProject(id) : []), [id, getStudiesByProject]);
-  const { isCollapsed: copilotCollapsed, panelWidth: copilotPanelWidth, setPanelWidth: setCopilotPanelWidth, setCollapsed: setCopilotCollapsed } = useProjectCopilot();
+  const { isCollapsed: copilotCollapsed, panelWidth: copilotPanelWidth, setPanelWidth: setCopilotPanelWidth } = useProjectCopilot();
   const { isEmbeddedInProjectShell } = useProjectShell();
   const { openPopupChat } = usePopupChat();
 
@@ -188,8 +188,6 @@ function DraftContent() {
         .filter((section): section is SectionMeta => Boolean(section)),
     [availableSectionKeys, sectionMetaById]
   );
-  const hasAvailableSections = availableSections.length > 0;
-
   const activeSectionMeta = useMemo(
     () => sectionMetaById.get(draft.activeSection) ?? null,
     [draft.activeSection, sectionMetaById]
@@ -337,15 +335,14 @@ function DraftContent() {
   // Export state + callbacks (extracted hook)
   const {
     isExportModalOpen, setExportModalOpen, exportHistory, latestExport,
-    hasDraftContent, handleExportDocx, handleDeleteExport, handleExportDraft,
+    hasDraftContent, handleExportDocx, handleDeleteExport,
   } = useDraftExport({
     projectId: id, projectName: project?.name, draft, orderedSections, studies, flushContentCommit,
   });
 
   // Draft copilot chat (extracted hook)
   const {
-    copilotInput, setCopilotInput, copilotListRef, copilotAutoScrollRef,
-    handleCopilotSend, handleCopilotScroll, insertCopilotText,
+    insertCopilotText,
   } = useDraftCopilot({
     draft, activeSectionLabel, projectName: project?.name, updateDraft, activeEditorRef,
   });
@@ -579,12 +576,6 @@ function DraftContent() {
     };
   }, [formattingEditor]);
 
-  const setParagraphDirection = (dir: "ltr" | "rtl") => {
-    if (!formattingEditor) return;
-    formattingEditor.chain().focus().updateAttributes("paragraph", { dir }).run();
-    setParagraphDir(dir);
-  };
-
   const layoutVars = useMemo(() => {
     const rail = 48;
     const ledger = draft.panels.ledgerCollapsed ? rail : clamp(draft.panels.ledgerWidth, 260, 520);
@@ -655,7 +646,6 @@ function DraftContent() {
     );
   }
 
-  const copilotMessages = draft.copilotBySection[draft.activeSection] ?? [];
   const showResultsGuide = draft.activeSection === "results" && !docHasContent(draft.contentBySection.results);
 
   const pageContent = (

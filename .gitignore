@@ -4,6 +4,9 @@
 .env.*
 secrets.local.md
 .vercel
+.vercel-preview.env
+.vercel-prod.env
+.vercel*.env
 node_modules/
 ~$*
 cloned_repos/

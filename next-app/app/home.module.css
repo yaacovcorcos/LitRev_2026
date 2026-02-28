@@ -34,7 +34,7 @@
             color-mix(in srgb, var(--accent-primary) 8%, white 92%),
             color-mix(in srgb, var(--accent-primary) 3%, white 97%)
         );
-    box-shadow: 0 6px 18px color-mix(in srgb, var(--accent-primary) 10%, transparent);
+    box-shadow: var(--shadow-md);
     display: inline-flex;
     align-items: center;
     justify-content: space-between;
@@ -73,16 +73,14 @@
             color-mix(in srgb, var(--accent-primary) 12%, white 88%),
             color-mix(in srgb, var(--accent-primary) 5%, white 95%)
         );
-    box-shadow: 0 10px 24px color-mix(in srgb, var(--accent-primary) 14%, transparent);
+    box-shadow: var(--shadow-lg);
     transform: translateY(-1px);
 }
 
 .resumeControl:focus-visible {
     outline: none;
     border-color: color-mix(in srgb, var(--accent-primary) 52%, var(--glass-border) 48%);
-    box-shadow:
-        0 0 0 2px color-mix(in srgb, var(--accent-primary) 24%, transparent),
-        0 10px 24px color-mix(in srgb, var(--accent-primary) 14%, transparent);
+    box-shadow: var(--shadow-focus-ring-strong);
 }
 
 .resumeControlText {
@@ -327,7 +325,7 @@
     border-color: rgba(217, 116, 89, 0.32);
     background:
         linear-gradient(135deg, rgba(217, 116, 89, 0.10) 0%, rgba(212, 163, 115, 0.06) 100%);
-    box-shadow: 0 4px 24px rgba(217, 116, 89, 0.08);
+    box-shadow: var(--shadow-md);
     transform: translateY(-1px);
 }
 
@@ -390,7 +388,7 @@
 .secondaryCard:hover:not(:disabled) {
     border-color: color-mix(in srgb, var(--glass-border) 60%, var(--accent-secondary) 40%);
     background: var(--glass-highlight);
-    box-shadow: 0 2px 16px rgba(0, 0, 0, 0.04);
+    box-shadow: var(--shadow-sm);
     transform: translateY(-1px);
 }
 
@@ -441,8 +439,11 @@
     margin: 12px 0 0;
     padding: 10px 12px;
     border-radius: var(--radius-md);
+    /* stylelint-disable-next-line color-no-hex */
     border: 1px solid var(--color-warning-border, #f2d19d);
+    /* stylelint-disable-next-line color-no-hex */
     background: var(--color-warning-bg, #fff6e7);
+    /* stylelint-disable-next-line color-no-hex */
     color: var(--color-warning-text, #7a4a00);
     font-size: 13px;
     line-height: 1.4;
