@@ -3,7 +3,6 @@
 import {
   CSSProperties,
   Suspense,
-  type DragEvent as ReactDragEvent,
   type KeyboardEvent as ReactKeyboardEvent,
   useCallback,
   useEffect,
@@ -20,12 +19,9 @@ import { useLedger } from "@/contexts/LedgerContext";
 import { ProjectCopilot } from "@/components/ProjectCopilot";
 import { useProjectCopilot } from "@/contexts/ProjectCopilotContext";
 import { useProjectShell } from "@/contexts/ProjectShellContext";
-import type { Study } from "@/types/ledger";
 import { OPTIONAL_SECTION_KEYS, type DraftMode, DraftSectionId } from "@/types/draft";
 import {
-  CopilotMessage,
   DEFAULT_SECTION_FORMAT,
-  type DraftSectionFormat,
   DraftState,
   emptyDoc,
   loadDraftState,
@@ -33,10 +29,8 @@ import {
   createDefaultDraftState,
 } from "@/lib/draftStorage";
 import { getDraftAction, saveDraftAction } from "@/app/actions/drafts";
-import { listProjectFilesAction, createFileAssetAction, deleteFileAssetAction } from "@/app/actions/files";
 import dynamic from "next/dynamic";
 const ExportModal = dynamic(() => import("@/components/ExportModal").then(m => m.ExportModal), { ssr: false });
-import type { FileAsset } from "@/types/files";
 import { DemoGuideCard } from "@/components/project/DemoGuideCard";
 import styles from "./draft-studio.module.css";
 
@@ -46,6 +40,7 @@ import Placeholder from "@tiptap/extension-placeholder";
 import Underline from "@tiptap/extension-underline";
 import type { JSONContent } from "@tiptap/core";
 import { Citation, ParagraphDirection, EditorToolbar, FullSectionEditor } from "./DraftEditors";
+import type { Study } from "@/types/ledger";
 import { usePopupChat } from "@/contexts/PopupChatContext";
 import { AddEvidenceModal } from "./AddEvidenceModal";
 import {
@@ -54,11 +49,8 @@ import {
   isBaseSectionKey,
   isDraftMode,
   clamp,
-  createCustomSectionId,
-  customSectionPlaceholder,
   docHasContent,
   formatToVars,
-  jsonToText,
   FONT_FAMILY_OPTIONS,
   FONT_SIZE_OPTIONS,
   LINE_HEIGHT_OPTIONS,
@@ -67,6 +59,9 @@ import {
   BASE_SECTION_META,
   type SectionMeta,
 } from "./draft-helpers";
+import { useDraftExport } from "./useDraftExport";
+import { useDraftSections } from "./useDraftSections";
+import { useDraftCopilot } from "./useDraftCopilot";
 
 function DraftContent() {
   const { id } = useParams<{ id: string }>();
@@ -140,10 +135,6 @@ function DraftContent() {
   const [activeEditor, setActiveEditor] = useState<Editor | null>(null);
   const editorBySectionRef = useRef<Record<DraftSectionId, Editor | null>>({} as Record<DraftSectionId, Editor | null>);
   const sectionElRef = useRef<Record<DraftSectionId, HTMLElement | null>>({} as Record<DraftSectionId, HTMLElement | null>);
-  const sectionTabRefs = useRef<Record<DraftSectionId, HTMLButtonElement | null>>({} as Record<
-    DraftSectionId,
-    HTMLButtonElement | null
-  >);
 
   const activeSectionRef = useRef<DraftSectionId>(draft.activeSection);
   useEffect(() => {
@@ -156,27 +147,9 @@ function DraftContent() {
   const lastSyncedUrlRef = useRef<string>("");
 
   const [isAddEvidenceOpen, setAddEvidenceOpen] = useState(false);
-
-  const [isAddSectionOpen, setAddSectionOpen] = useState(false);
-  const addSectionRef = useRef<HTMLDivElement | null>(null);
-  const [customSectionName, setCustomSectionName] = useState("");
-  const addSectionInputRef = useRef<HTMLInputElement | null>(null);
-  const dragKeyRef = useRef<DraftSectionId | null>(null);
-  const [dragOverKey, setDragOverKey] = useState<DraftSectionId | null>(null);
-  const [dragOverPosition, setDragOverPosition] = useState<"before" | "after" | null>(null);
-  const [draggingKey, setDraggingKey] = useState<DraftSectionId | null>(null);
   const [isFormatOpen, setFormatOpen] = useState(false);
   const formatRef = useRef<HTMLDivElement | null>(null);
   const [paragraphDir, setParagraphDir] = useState<"ltr" | "rtl">("ltr");
-
-  const [copilotInput, setCopilotInput] = useState("");
-  const copilotListRef = useRef<HTMLDivElement | null>(null);
-  const copilotAutoScrollRef = useRef(true);
-
-  // Export modal state
-  const [isExportModalOpen, setExportModalOpen] = useState(false);
-  const [exportHistory, setExportHistory] = useState<FileAsset[]>([]);
-  const [latestExport, setLatestExport] = useState<FileAsset | null>(null);
 
   const sectionMetaById = useMemo(() => {
     const map = new Map<DraftSectionId, SectionMeta>(BASE_SECTION_MAP);
@@ -354,6 +327,32 @@ function DraftContent() {
     editor.chain().focus("end").run();
   }, []);
 
+  // Section management + drag-and-drop (extracted hook)
+  const {
+    isAddSectionOpen, setAddSectionOpen, addSectionRef, customSectionName, setCustomSectionName,
+    addSectionInputRef, sectionTabRefs, openSectionInSectionMode, handleAddSection,
+    handleAddCustomSection, handleRemoveSection, updateSectionFormat,
+    dragOverKey, dragOverPosition, draggingKey, handleDragStart, handleDragOver, handleDrop, handleDragEnd,
+  } = useDraftSections({
+    updateDraft, activeSectionRef, activeEditorRef, queueContentUpdate, flushContentCommit, focusEditorForSection,
+  });
+
+  // Export state + callbacks (extracted hook)
+  const {
+    isExportModalOpen, setExportModalOpen, exportHistory, latestExport,
+    hasDraftContent, handleExportDocx, handleDeleteExport, handleExportDraft,
+  } = useDraftExport({
+    projectId: id, projectName: project?.name, draft, orderedSections, studies, flushContentCommit,
+  });
+
+  // Draft copilot chat (extracted hook)
+  const {
+    copilotInput, setCopilotInput, copilotListRef, copilotAutoScrollRef,
+    handleCopilotSend, handleCopilotScroll, insertCopilotText,
+  } = useDraftCopilot({
+    draft, activeSectionLabel, projectName: project?.name, updateDraft, activeEditorRef,
+  });
+
   const handleSelectSection = (key: DraftSectionId) => {
     if (draft.mode === "full") {
       const el = sectionElRef.current[key];
@@ -411,177 +410,6 @@ function DraftContent() {
     }
   };
 
-  const openSectionInSectionMode = (key: DraftSectionId) => {
-    const editor = activeEditorRef.current;
-    if (editor) {
-      queueContentUpdate(activeSectionRef.current, editor.getJSON());
-    }
-    flushContentCommit();
-    updateDraft((prev) => {
-      const order = prev.sectionOrder.includes(key) ? prev.sectionOrder : [...prev.sectionOrder, key];
-      if (prev.mode === "section" && prev.activeSection === key && order === prev.sectionOrder) return prev;
-      return {
-        ...prev,
-        mode: "section",
-        activeSection: key,
-        sectionOrder: order,
-      };
-    });
-    setTimeout(() => {
-      activeEditorRef.current?.chain().focus("end").run();
-    }, 60);
-  };
-
-  const handleAddSection = (key: DraftSectionId) => {
-    updateDraft((prev) => {
-      if (prev.sectionOrder.includes(key)) return prev;
-      const next = [...prev.sectionOrder];
-      const activeIndex = next.indexOf(prev.activeSection);
-      const insertIndex = activeIndex >= 0 ? activeIndex + 1 : next.length;
-      next.splice(insertIndex, 0, key);
-      return {
-        ...prev,
-        sectionOrder: next,
-        activeSection: key,
-      };
-    });
-    setAddSectionOpen(false);
-    setTimeout(() => {
-      sectionTabRefs.current[key]?.focus();
-    }, 0);
-  };
-
-  const handleAddCustomSection = () => {
-    const name = customSectionName.trim();
-    if (!name) return;
-    const id = createCustomSectionId(name);
-    updateDraft((prev) => {
-      const next = [...prev.sectionOrder];
-      const activeIndex = next.indexOf(prev.activeSection);
-      const insertIndex = activeIndex >= 0 ? activeIndex + 1 : next.length;
-      next.splice(insertIndex, 0, id);
-      return {
-        ...prev,
-        sectionOrder: next,
-        activeSection: id,
-        customSections: {
-          ...prev.customSections,
-          [id]: { label: name, placeholder: customSectionPlaceholder(name) },
-        },
-        contentBySection: {
-          ...prev.contentBySection,
-          [id]: emptyDoc(),
-        },
-        ledgerBySection: {
-          ...prev.ledgerBySection,
-          [id]: [],
-        },
-        copilotBySection: {
-          ...prev.copilotBySection,
-          [id]: [],
-        },
-        formattingBySection: {
-          ...prev.formattingBySection,
-          [id]: { ...DEFAULT_SECTION_FORMAT },
-        },
-      };
-    });
-    setCustomSectionName("");
-    setAddSectionOpen(false);
-    setTimeout(() => {
-      sectionTabRefs.current[id]?.focus();
-    }, 0);
-  };
-
-  const handleRemoveSection = (key: DraftSectionId) => {
-    updateDraft((prev) => {
-      const idx = prev.sectionOrder.indexOf(key);
-      if (idx < 0) return prev;
-      const next = prev.sectionOrder.filter((k) => k !== key);
-      if (next.length === 0) return prev; // Don't remove last section
-      const newActive = next[Math.max(0, idx - 1)] ?? next[0];
-      const nextCustom = { ...prev.customSections };
-      if (key in nextCustom) delete nextCustom[key];
-      const nextFormatting = { ...prev.formattingBySection };
-      if (key in nextFormatting) delete nextFormatting[key];
-      return {
-        ...prev,
-        sectionOrder: next,
-        activeSection: newActive,
-        customSections: nextCustom,
-        formattingBySection: nextFormatting,
-      };
-    });
-  };
-
-  const updateSectionFormat = useCallback(
-    (sectionId: DraftSectionId, updates: Partial<DraftSectionFormat>) => {
-      updateDraft((prev) => {
-        const current = prev.formattingBySection[sectionId] ?? DEFAULT_SECTION_FORMAT;
-        return {
-          ...prev,
-          formattingBySection: {
-            ...prev.formattingBySection,
-            [sectionId]: {
-              ...current,
-              ...updates,
-            },
-          },
-        };
-      });
-    },
-    [updateDraft]
-  );
-
-  const handleDragStart = (event: ReactDragEvent<HTMLButtonElement>, key: DraftSectionId) => {
-    dragKeyRef.current = key;
-    setDraggingKey(key);
-    setDragOverKey(null);
-    setDragOverPosition(null);
-    event.dataTransfer.effectAllowed = "move";
-    event.dataTransfer.setData("text/plain", key);
-  };
-
-  const handleDragOver = (event: ReactDragEvent<HTMLButtonElement>, key: DraftSectionId) => {
-    const dragging = dragKeyRef.current;
-    if (!dragging || dragging === key) return;
-    event.preventDefault();
-    event.dataTransfer.dropEffect = "move";
-    const rect = event.currentTarget.getBoundingClientRect();
-    const offset = event.clientX - rect.left;
-    const position = offset > rect.width / 2 ? "after" : "before";
-    setDragOverKey(key);
-    setDragOverPosition(position);
-  };
-
-  const handleDrop = (event: ReactDragEvent<HTMLButtonElement>, targetKey: DraftSectionId) => {
-    event.preventDefault();
-    const dragging = dragKeyRef.current;
-    if (!dragging || dragging === targetKey) return;
-    const position = dragOverPosition ?? "before";
-    updateDraft((prev) => {
-      if (!prev.sectionOrder.includes(dragging)) return prev;
-      const next = prev.sectionOrder.filter((key) => key !== dragging);
-      const targetIndex = next.indexOf(targetKey);
-      if (targetIndex === -1) return prev;
-      const insertIndex = position === "after" ? targetIndex + 1 : targetIndex;
-      next.splice(insertIndex, 0, dragging);
-      return {
-        ...prev,
-        sectionOrder: next,
-      };
-    });
-    setDragOverKey(null);
-    setDragOverPosition(null);
-  };
-
-  const handleDragEnd = () => {
-    dragKeyRef.current = null;
-    setDraggingKey(null);
-    setDragOverKey(null);
-    setDragOverPosition(null);
-  };
-
   const usedEvidenceIds = draft.ledgerBySection[draft.activeSection] ?? EMPTY_IDS;
   const usedEvidence = useMemo(
     () => studies.filter((s) => usedEvidenceIds.includes(s.id)),
@@ -629,233 +457,6 @@ function DraftContent() {
     });
   };
 
-  const buildCopilotResponse = (text: string) => {
-    const lower = text.toLowerCase();
-    const section = activeSectionLabel;
-    const projectName = project?.name ?? "this project";
-
-    if (lower.includes("outline")) {
-      return `Here’s a concise outline for the ${section} section of ${projectName}:\n\n- Key point 1\n- Key point 2\n- Key point 3\n\nWant this tailored to a specific study type (RCT, cohort, systematic review)?`;
-    }
-    if (lower.includes("rewrite")) {
-      return `Paste the paragraph you want rewritten for ${section}. I can tighten clarity, improve flow, and keep it medically appropriate.`;
-    }
-    if (lower.includes("methods")) {
-      return `For ${section}, we can structure this as: design, data sources, eligibility, outcomes, statistical analysis, and ethics. Tell me your study design and population.`;
-    }
-    return `Got it — I’ll help with ${section}. Tell me what you want to achieve in this section (claim, comparison, or summary), and I’ll draft a clean version.`;
-  };
-
-  const handleCopilotSend = async () => {
-    const text = copilotInput.trim();
-    if (!text) return;
-    copilotAutoScrollRef.current = true;
-    const now = new Date().toISOString();
-    const userMsg: CopilotMessage = { id: `u-${Date.now()}`, sender: "user", text, createdAt: now };
-
-    updateDraft((prev) => {
-      const list = prev.copilotBySection[prev.activeSection] ?? [];
-      return {
-        ...prev,
-        copilotBySection: {
-          ...prev.copilotBySection,
-          [prev.activeSection]: [...list, userMsg],
-        },
-      };
-    });
-    setCopilotInput("");
-
-    const aiText = buildCopilotResponse(text);
-    await new Promise((resolve) => setTimeout(resolve, 700));
-    const aiMsg: CopilotMessage = { id: `a-${Date.now()}`, sender: "ai", text: aiText, createdAt: new Date().toISOString() };
-    updateDraft((prev) => {
-      const list = prev.copilotBySection[prev.activeSection] ?? [];
-      return {
-        ...prev,
-        copilotBySection: {
-          ...prev.copilotBySection,
-          [prev.activeSection]: [...list, aiMsg],
-        },
-      };
-    });
-  };
-
-  useEffect(() => {
-    copilotAutoScrollRef.current = true;
-  }, [draft.activeSection]);
-
-  useEffect(() => {
-    if (!copilotListRef.current) return;
-    if (!copilotAutoScrollRef.current) return;
-    copilotListRef.current.scrollTop = copilotListRef.current.scrollHeight;
-  }, [draft.activeSection, draft.copilotBySection]);
-
-  const handleCopilotScroll = () => {
-    if (!copilotListRef.current) return;
-    const { scrollTop, clientHeight, scrollHeight } = copilotListRef.current;
-    copilotAutoScrollRef.current = scrollTop + clientHeight >= scrollHeight - 80;
-  };
-
-  const insertCopilotText = (text: string) => {
-    const editor = activeEditorRef.current;
-    if (!editor) return;
-    editor.chain().focus().insertContent(text).run();
-  };
-
-  // Check if draft has content to export
-  const hasDraftContent = useMemo(() => {
-    return orderedSections.some((section) => docHasContent(draft.contentBySection[section.id]));
-  }, [draft.contentBySection, orderedSections]);
-
-  // Load export history on mount
-  useEffect(() => {
-    if (!id) return;
-    const loadExports = async () => {
-      try {
-        const result = await listProjectFilesAction(id);
-        if (!result.success) { console.error("Failed to load exports:", result.error); return; }
-        const exports = result.data
-          .filter((f) => f.kind === "export" && f.format === "docx")
-          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-        setExportHistory(exports);
-        setLatestExport(exports[0] || null);
-      } catch (err) {
-        console.error("Failed to load exports", err);
-      }
-    };
-    loadExports();
-  }, [id]);
-
-  // Export draft as DOCX (creates file asset)
-  const handleExportDocx = useCallback(async (): Promise<FileAsset> => {
-    if (!project || !id) throw new Error("Project not found");
-
-    // Flush any pending content
-    flushContentCommit();
-
-    // Build markdown content for export
-    const lines: string[] = [];
-    lines.push(`# ${project.name}`);
-    lines.push("");
-    lines.push(`*Draft exported on ${new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}*`);
-    lines.push("");
-
-    for (const section of orderedSections) {
-      const content = draft.contentBySection[section.id];
-      if (!docHasContent(content)) continue;
-      lines.push(`## ${section.label}`);
-      lines.push("");
-      lines.push(jsonToText(content));
-      lines.push("");
-    }
-
-    // Collect all cited studies across all sections
-    const allCitedIds = new Set<string>();
-    for (const sectionIds of Object.values(draft.ledgerBySection)) {
-      for (const studyId of sectionIds) {
-        allCitedIds.add(studyId);
-      }
-    }
-
-    // Add References section if there are citations
-    const citedStudies = studies.filter((s) => allCitedIds.has(s.id));
-    if (citedStudies.length > 0) {
-      lines.push(`## References`);
-      lines.push("");
-      citedStudies
-        .sort((a, b) => a.authors.localeCompare(b.authors))
-        .forEach((study, idx) => {
-          const journalInfo = study.details?.journal ? ` *${study.details.journal}*.` : "";
-          const doiInfo = study.details?.doi ? ` https://doi.org/${study.details.doi}` : "";
-          lines.push(`${idx + 1}. ${study.authors} (${study.year}). ${study.title}.${journalInfo}${doiInfo}`);
-        });
-      lines.push("");
-    }
-
-    const markdownContent = lines.join("\n");
-    
-    // Calculate version number
-    const nextVersion = (latestExport?.version ?? 0) + 1;
-    const filename = `${project.name.replace(/[^a-zA-Z0-9]/g, "-")}-v${nextVersion}.docx`;
-    
-    // In real implementation: send to server-side export endpoint
-    // For now, create a mock DOCX file asset
-    const storagePath = `/exports/${id}/${filename}`;
-    
-    // Simulate export delay
-    await new Promise((r) => setTimeout(r, 1500));
-    
-    const createResult = await createFileAssetAction(id, {
-      kind: "export",
-      format: "docx",
-      filename,
-      mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      size: markdownContent.length * 2, // Rough estimate
-      storagePath,
-      publicUrl: storagePath,
-      version: nextVersion,
-      metadata: { sections: orderedSections.length },
-    });
-    if (!createResult.success) throw new Error(createResult.error);
-    const newExport = createResult.data;
-
-    // Update local state
-    setExportHistory((prev) => [newExport, ...prev]);
-    setLatestExport(newExport);
-
-    return newExport;
-  }, [project, id, flushContentCommit, orderedSections, draft.contentBySection, draft.ledgerBySection, latestExport, studies]);
-
-  // Delete export
-  const handleDeleteExport = useCallback(async (fileId: string) => {
-    if (!id) return;
-    const delResult = await deleteFileAssetAction(id, fileId);
-    if (!delResult.success) { console.error("Failed to delete export:", delResult.error); return; }
-    setExportHistory((prev) => prev.filter((f) => f.id !== fileId));
-    if (latestExport?.id === fileId) {
-      const remaining = exportHistory.filter((f) => f.id !== fileId);
-      setLatestExport(remaining[0] || null);
-    }
-  }, [id, latestExport, exportHistory]);
-
-  // Export full draft as markdown (quick export)
-  const handleExportDraft = useCallback(() => {
-    if (!project) return;
-
-    // Flush any pending content
-    flushContentCommit();
-
-    const lines: string[] = [];
-    lines.push(`# ${project.name}`);
-    lines.push("");
-    lines.push(`*Draft exported on ${new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}*`);
-    lines.push("");
-    lines.push("---");
-    lines.push("");
-
-    // Export each section in order
-    for (const section of orderedSections) {
-      const content = draft.contentBySection[section.id];
-      if (!docHasContent(content)) continue;
-
-      lines.push(`## ${section.label}`);
-      lines.push("");
-      lines.push(jsonToText(content));
-      lines.push("");
-    }
-
-    const content = lines.join("\n");
-    const blob = new Blob([content], { type: "text/markdown" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `draft-${project.id}-${new Date().toISOString().split("T")[0]}.md`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  }, [project, draft.contentBySection, orderedSections, flushContentCommit]);
-
   const handleFocusSection = useCallback(
     (key: DraftSectionId, editor: Editor) => {
       activeEditorRef.current = editor;
@@ -897,27 +498,6 @@ function DraftContent() {
       sectionTabRefs.current[nextKey]?.focus();
     });
   };
-
-  useEffect(() => {
-    if (!isAddSectionOpen) return;
-    const onClick = (event: MouseEvent) => {
-      if (!addSectionRef.current) return;
-      if (event.target instanceof Node && !addSectionRef.current.contains(event.target)) {
-        setAddSectionOpen(false);
-      }
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setAddSectionOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", onClick);
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("mousedown", onClick);
-      document.removeEventListener("keydown", onKeyDown);
-    };
-  }, [isAddSectionOpen]);
 
   useEffect(() => {
     if (!isFormatOpen) return;
