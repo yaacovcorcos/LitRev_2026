@@ -790,6 +790,7 @@ export function TimelineRenderer({
                                 type="button"
                                 className={styles.suggestChip}
                                 onClick={() => onSuggestionClick(suggestion.prompt)}
+                                disabled={isLoading}
                             >
                                 {suggestion.label}
                             </button>
