@@ -22,15 +22,21 @@ It consolidates all open UI/UX work into one prioritized sequence so implementat
 - `SampleReviewCard` now follows a semantic non-nested interactive pattern (primary open button + sibling dismiss button), preserving click-anywhere behavior without invalid nested controls.
 - `ResizableSplitter` is now a shared primitive for copilot panel resizing with pointer + keyboard support and ARIA-valued separator semantics, used by both standalone `ProjectPageLayout` and embedded project shell layout.
 - Notes sidebar rows now use native button semantics, and Notes delete confirmation now uses shared `ConfirmDialog` instead of a hand-rolled overlay.
+- Project route error boundaries now share a single `ErrorFallback` component with tokenized styling and consistent retry behavior across draft, protocol, ledger, and study-detail routes.
+- Demo guidance surfaces are now context-scoped: `DemoBanner` is limited to conversation mode while `DemoGuideCard` remains view-mode only, preventing duplicate stacked guidance.
+- Copilot hydration placeholders no longer render disabled-looking controls before mount; pre-mount controls are now visual placeholders with stable layout and no perceived broken state.
 
 ## Recently Completed
+- `CUX-037` Deduplicated sample guidance by rendering `DemoBanner` only in conversation mode and using in-page `DemoGuideCard` for view-mode contexts.
+- `CUX-036` Removed disabled-looking hydration placeholders from `CopilotInputCore` and replaced them with non-interactive visual placeholders.
+- `CUX-015` Added shared `ErrorFallback` component and migrated all project route `error.tsx` files to it.
+- `CUX-001` Derived initial `focusMode` from pathname in project shell layout to eliminate deep-link flicker.
 - Continued overlay standardization by replacing Notes’ custom delete overlay with shared `ConfirmDialog` (Radix AlertDialog wrapper).
 - `CUX-011` Expanded accessibility coverage with splitter keyboard/semantics behavior tests and `axe` scan (`ResizableSplitter`).
 - `CUX-009` Replaced Notes list `div role="button"` rows with semantic `button` controls and proper pressed/focus behavior.
 - `CUX-008` Introduced reusable `ResizableSplitter` (pointer + keyboard + ARIA-valued separator) and migrated copilot resize handles in project shell layouts.
 - `CUX-010` Reworked `SampleReviewCard` to remove nested interactive controls by using separate primary surface action and sibling dismiss action, with coverage tests.
 - `CUX-004` Replaced custom conversation context menu with accessible Radix `ContextMenu` primitive and preserved separate "more" button trigger flow.
-- `CUX-003` Replaced `window.prompt` rename with app-native controlled rename UX (dialog) including optimistic update and failure rollback.
 
 ## Collaboration Phase Alignment (Claude-Compatible)
 Use this map to parallelize execution between Claude and Codex without phase drift.
@@ -167,7 +173,6 @@ Use this section as implementation policy. Each item describes the durable solut
 - `CUX-A03` Best solution: Centralize async status announcements in a shared live-region service integrated with notifications. Avoid: scattered per-component `aria-live` fragments.
 
 ## Phase 0 — Critical Stability & Correctness
-- [ ] `CUX-001` Fix project-shell deep-link mode flicker (`focusMode` route-derived on first render).
 - [ ] `CUX-002` Make Notes page shell-aware with explicit `useProjectShell` parity and embedded-content behavior.
 - [ ] `CUX-005` Prevent duplicate artifact action dispatches while run/stream is active.
 - [ ] `CUX-006` Harden suggestion prefill reliability (same-value click and mount timing behavior).
@@ -179,7 +184,6 @@ Use this section as implementation policy. Each item describes the durable solut
 ## Phase 2 — Feedback, State, and UI System Consistency
 - [ ] `CUX-013` Implement standardized async feedback (toast/notification pattern) for copy/save/delete/export/review actions.
 - [ ] `CUX-014` Standardize loading/busy-state model across major UI surfaces.
-- [ ] `CUX-015` Unify repeated route-level error boundaries behind a shared token-based fallback.
 - [ ] `CUX-016` Introduce missing design-system tokens (typography, shadow, z-index, motion), then migrate high-traffic surfaces off hardcoded values.
 - [ ] `CUX-017` Fix Copilot scrolling isolation across all pages (panel scroll independent from content area).
 
@@ -210,8 +214,6 @@ Use this section as implementation policy. Each item describes the durable solut
   - [ ] Project conversation mode
   - [ ] `/ai` page mode
 - [ ] `CUX-035` Decompose oversized UI modules into smaller components/hooks with behavior-preserving extraction.
-- [ ] `CUX-036` Remove copilot control hydration flash while preserving no-mismatch mount strategy.
-- [ ] `CUX-037` Remove demo guidance duplication (banner + guide overlap) with one-context rule.
 
 ## Phase 7 — Deferred / Parking Lot (Not Active)
 - [ ] `CUX-D01` Unify `/ai` chat UI with project conversation.
