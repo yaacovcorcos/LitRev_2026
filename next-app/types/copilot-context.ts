@@ -1,0 +1,163 @@
+/**
+ * Types for the ProjectCopilotContext.
+ * Extracted from contexts/ProjectCopilotContext.tsx for maintainability.
+ */
+
+import type { CopilotMessage, ProjectCopilotState } from "@/lib/projectCopilotStorage";
+import type { ArtifactData } from "@/types/artifacts";
+import type { AgentMode, AutonomyPreset, AutonomyLevel } from "@/types/agent";
+import type { ChoiceOption, CopilotPage, ReasoningMode, StreamPhase } from "@/types/ai";
+
+export type PendingAttachment = {
+    fileAssetId: string;
+    filename: string;
+    size: number;
+    mimeType: string;
+    extractedText: string;
+    isExisting: boolean;
+};
+
+export type ConversationListItem = {
+    id: string;
+    title: string | null;
+    messageCount: number;
+    updatedAt: string;
+};
+
+export type ApproveArtifactsBatchResult = {
+    approvedCount: number;
+    failedArtifactIds: string[];
+    stopped: boolean;
+};
+
+export type ProjectCopilotContextValue = {
+    /** Current copilot state */
+    state: ProjectCopilotState;
+    /** All messages in the copilot */
+    messages: CopilotMessage[];
+    /** Whether the panel is collapsed */
+    isCollapsed: boolean;
+    /** Current panel width */
+    panelWidth: number;
+    /** Whether AI is loading */
+    isLoading: boolean;
+    /** Current streaming phase for fine-grained UI control */
+    streamPhase: StreamPhase;
+    /** Whether the user can interact with artifact actions (false during streaming) */
+    canAct: boolean;
+    /** Reasoning visibility mode (off/summary/full) */
+    reasoningMode: ReasoningMode;
+    /** Toggle the panel collapsed state */
+    toggleCollapsed: () => void;
+    /** Set the panel collapsed state */
+    setCollapsed: (collapsed: boolean) => void;
+    /** Update the panel width */
+    setPanelWidth: (width: number) => void;
+    /** Send a message to the copilot */
+    sendMessage: (text: string, page: CopilotPage, section?: string, model?: string, agentMode?: AgentMode, studyId?: string) => void;
+    /** Update global reasoning visibility mode */
+    setReasoningMode: (mode: ReasoningMode) => void;
+    /** Cancel the current stream */
+    cancelStream: () => void;
+    /** Clear all messages */
+    clearMessages: () => void;
+
+    // Conversation management
+    /** List of available conversations */
+    conversations: ConversationListItem[];
+    /** Current active conversation ID */
+    currentConversationId: string | null;
+    /** Whether conversations are loading */
+    isLoadingConversations: boolean;
+    /** Whether conversation sidebar is shown */
+    showConversationList: boolean;
+    /** Toggle conversation sidebar */
+    toggleConversationList: () => void;
+    /** Select a conversation */
+    selectConversation: (conversationId: string) => Promise<void>;
+    /** Create a new conversation */
+    newConversation: (page: CopilotPage, studyId?: string) => Promise<void>;
+    /** Rename a conversation */
+    renameConversation: (conversationId: string, title: string) => Promise<void>;
+    /** Delete a conversation */
+    deleteConversation: (conversationId: string) => Promise<void>;
+    /** Branch a conversation into a new forked conversation */
+    branchConversation: (conversationId: string, upToMessageId?: string, upToCreatedAt?: string) => Promise<void>;
+    /** Refresh conversation list */
+    refreshConversations: () => Promise<void>;
+    /** Set study filter for conversation scoping (undefined = show all) */
+    setStudyFilter: (studyId: string | undefined) => void;
+
+    // Attachment support
+    /** Currently pending attachment (uploaded but not yet sent) */
+    pendingAttachment: PendingAttachment | null;
+    /** Whether an attachment is being uploaded/processed */
+    isAttaching: boolean;
+    /** Upload a new PDF and prepare it as an attachment */
+    attachFile: (file: File) => Promise<void>;
+    /** Attach an existing study PDF by its FileAsset ID */
+    attachExistingFile: (fileAssetId: string) => Promise<void>;
+    /** Remove the pending attachment */
+    clearAttachment: () => void;
+    /** Project ID for the current copilot */
+    projectId: string;
+
+    // Agent run state (planC Phase 2)
+    /** Current active run ID (null when no agent is running) */
+    currentRunId: string | null;
+    /** Artifacts map for quick lookup by ID */
+    artifacts: Map<string, ArtifactData>;
+    /** Review an artifact (accept/reject) */
+    handleReviewArtifact: (artifactId: string, status: "accepted" | "rejected", note?: string, editedPayload?: Record<string, unknown>) => Promise<void>;
+    /** Batch-approve proposed artifacts with progress/cancel hooks for timeline UI */
+    approveArtifactsBatch: (
+        artifactIds: string[],
+        options?: {
+            shouldStop?: () => boolean;
+            onProgress?: (completed: number, total: number) => void;
+            conversationId?: string;
+        },
+    ) => Promise<ApproveArtifactsBatchResult>;
+    /** Execute a plan artifact (run selected steps) */
+    executePlan: (artifactId: string, selectedIndexes: number[]) => void;
+
+    // Summarize & fresh
+    /** Whether the conversation is long enough to offer summarization */
+    shouldOfferSummary: boolean;
+    /** Summarize current conversation and start fresh */
+    summarizeAndRefresh: () => Promise<void>;
+    /** Whether summarization is in progress */
+    isSummarizing: boolean;
+    /** Whether a conversation is being fetched from the server (shows skeleton in TimelineRenderer) */
+    isConversationLoading: boolean;
+
+    // Autonomy configuration (Phase 7)
+    /** Current autonomy preset */
+    autonomyPreset: AutonomyPreset;
+    /** Current per-tool overrides */
+    autonomyToolOverrides: Record<string, AutonomyLevel>;
+    /** Whether autonomy settings modal is open */
+    showAutonomySettings: boolean;
+    /** Open/close autonomy settings modal */
+    setShowAutonomySettings: (show: boolean) => void;
+    /** Update the active preset (clears overrides) */
+    updateAutonomyPreset: (preset: AutonomyPreset) => Promise<void>;
+    /** Update per-tool overrides (switches to "custom" preset) */
+    updateAutonomyOverrides: (overrides: Record<string, AutonomyLevel>) => Promise<void>;
+    /** Reset to a named preset (clears overrides) */
+    resetToPreset: (preset: AutonomyPreset) => Promise<void>;
+
+    // AI-generated clickable choices
+    /** Current pending choices from AI (shown as pills above input) */
+    pendingChoices: ChoiceOption[];
+    /** Clear pending choices */
+    clearChoices: () => void;
+
+    // Message pagination
+    /** Whether there are older messages available to load */
+    hasMore: boolean;
+    /** Whether older messages are currently being fetched */
+    isLoadingOlder: boolean;
+    /** Load the next page of older messages */
+    loadOlderMessages: () => Promise<void>;
+};

@@ -20,21 +20,13 @@ import {
 } from "@/lib/projectCopilotStorage";
 import { processAIStream } from "@/lib/ai/stream-processor";
 import { dispatchProjectDataChanged, getChangedDomainsForAcceptedArtifact } from "@/lib/project-data-events";
-import {
-    listConversations,
-    getConversation,
-    getConversationMessages,
-    createConversation,
-    archiveConversation,
-    branchConversation as branchConversationAction,
-    updateConversationTitle,
-} from "@/app/actions/conversations";
+import { createConversation } from "@/app/actions/conversations";
 import {
     uploadChatAttachmentAction,
     extractTextFromExistingFileAction,
 } from "@/app/actions/files";
 import { reviewArtifactAction, getAutonomyConfigAction, updateAutonomyAction } from "@/app/actions/agent";
-import { summarizeConversationAction } from "@/app/actions/summarize-conversation";
+import { useCopilotConversations } from "@/hooks/useCopilotConversations";
 import type { ArtifactData, ArtifactStatus, ArtifactType } from "@/types/artifacts";
 import type { AgentMode, AutonomyPreset, AutonomyLevel } from "@/types/agent";
 import type { ChoiceOption, CopilotPage, ReasoningMode, StreamPhase } from "@/types/ai";
@@ -46,160 +38,13 @@ import {
     setReasoningModePreference,
     shouldRequestReasoning,
 } from "@/lib/ai/reasoning-visibility";
+import type {
+    PendingAttachment,
+    ApproveArtifactsBatchResult,
+    ProjectCopilotContextValue,
+} from "@/types/copilot-context";
 
-export type PendingAttachment = {
-    fileAssetId: string;
-    filename: string;
-    size: number;
-    mimeType: string;
-    extractedText: string;
-    isExisting: boolean;
-};
-
-type ConversationListItem = {
-    id: string;
-    title: string | null;
-    messageCount: number;
-    updatedAt: string;
-};
-
-type ApproveArtifactsBatchResult = {
-    approvedCount: number;
-    failedArtifactIds: string[];
-    stopped: boolean;
-};
-
-type ProjectCopilotContextValue = {
-    /** Current copilot state */
-    state: ProjectCopilotState;
-    /** All messages in the copilot */
-    messages: CopilotMessage[];
-    /** Whether the panel is collapsed */
-    isCollapsed: boolean;
-    /** Current panel width */
-    panelWidth: number;
-    /** Whether AI is loading */
-    isLoading: boolean;
-    /** Current streaming phase for fine-grained UI control */
-    streamPhase: StreamPhase;
-    /** Whether the user can interact with artifact actions (false during streaming) */
-    canAct: boolean;
-    /** Reasoning visibility mode (off/summary/full) */
-    reasoningMode: ReasoningMode;
-    /** Toggle the panel collapsed state */
-    toggleCollapsed: () => void;
-    /** Set the panel collapsed state */
-    setCollapsed: (collapsed: boolean) => void;
-    /** Update the panel width */
-    setPanelWidth: (width: number) => void;
-    /** Send a message to the copilot */
-    sendMessage: (text: string, page: CopilotPage, section?: string, model?: string, agentMode?: AgentMode, studyId?: string) => void;
-    /** Update global reasoning visibility mode */
-    setReasoningMode: (mode: ReasoningMode) => void;
-    /** Cancel the current stream */
-    cancelStream: () => void;
-    /** Clear all messages */
-    clearMessages: () => void;
-
-    // Conversation management
-    /** List of available conversations */
-    conversations: ConversationListItem[];
-    /** Current active conversation ID */
-    currentConversationId: string | null;
-    /** Whether conversations are loading */
-    isLoadingConversations: boolean;
-    /** Whether conversation sidebar is shown */
-    showConversationList: boolean;
-    /** Toggle conversation sidebar */
-    toggleConversationList: () => void;
-    /** Select a conversation */
-    selectConversation: (conversationId: string) => Promise<void>;
-    /** Create a new conversation */
-    newConversation: (page: CopilotPage, studyId?: string) => Promise<void>;
-    /** Rename a conversation */
-    renameConversation: (conversationId: string, title: string) => Promise<void>;
-    /** Delete a conversation */
-    deleteConversation: (conversationId: string) => Promise<void>;
-    /** Branch a conversation into a new forked conversation */
-    branchConversation: (conversationId: string, upToMessageId?: string, upToCreatedAt?: string) => Promise<void>;
-    /** Refresh conversation list */
-    refreshConversations: () => Promise<void>;
-    /** Set study filter for conversation scoping (undefined = show all) */
-    setStudyFilter: (studyId: string | undefined) => void;
-
-    // Attachment support
-    /** Currently pending attachment (uploaded but not yet sent) */
-    pendingAttachment: PendingAttachment | null;
-    /** Whether an attachment is being uploaded/processed */
-    isAttaching: boolean;
-    /** Upload a new PDF and prepare it as an attachment */
-    attachFile: (file: File) => Promise<void>;
-    /** Attach an existing study PDF by its FileAsset ID */
-    attachExistingFile: (fileAssetId: string) => Promise<void>;
-    /** Remove the pending attachment */
-    clearAttachment: () => void;
-    /** Project ID for the current copilot */
-    projectId: string;
-
-    // Agent run state (planC Phase 2)
-    /** Current active run ID (null when no agent is running) */
-    currentRunId: string | null;
-    /** Artifacts map for quick lookup by ID */
-    artifacts: Map<string, ArtifactData>;
-    /** Review an artifact (accept/reject) */
-    handleReviewArtifact: (artifactId: string, status: "accepted" | "rejected", note?: string, editedPayload?: Record<string, unknown>) => Promise<void>;
-    /** Batch-approve proposed artifacts with progress/cancel hooks for timeline UI */
-    approveArtifactsBatch: (
-        artifactIds: string[],
-        options?: {
-            shouldStop?: () => boolean;
-            onProgress?: (completed: number, total: number) => void;
-            conversationId?: string;
-        },
-    ) => Promise<ApproveArtifactsBatchResult>;
-    /** Execute a plan artifact (run selected steps) */
-    executePlan: (artifactId: string, selectedIndexes: number[]) => void;
-
-    // Summarize & fresh
-    /** Whether the conversation is long enough to offer summarization */
-    shouldOfferSummary: boolean;
-    /** Summarize current conversation and start fresh */
-    summarizeAndRefresh: () => Promise<void>;
-    /** Whether summarization is in progress */
-    isSummarizing: boolean;
-    /** Whether a conversation is being fetched from the server (shows skeleton in TimelineRenderer) */
-    isConversationLoading: boolean;
-
-    // Autonomy configuration (Phase 7)
-    /** Current autonomy preset */
-    autonomyPreset: AutonomyPreset;
-    /** Current per-tool overrides */
-    autonomyToolOverrides: Record<string, AutonomyLevel>;
-    /** Whether autonomy settings modal is open */
-    showAutonomySettings: boolean;
-    /** Open/close autonomy settings modal */
-    setShowAutonomySettings: (show: boolean) => void;
-    /** Update the active preset (clears overrides) */
-    updateAutonomyPreset: (preset: AutonomyPreset) => Promise<void>;
-    /** Update per-tool overrides (switches to "custom" preset) */
-    updateAutonomyOverrides: (overrides: Record<string, AutonomyLevel>) => Promise<void>;
-    /** Reset to a named preset (clears overrides) */
-    resetToPreset: (preset: AutonomyPreset) => Promise<void>;
-
-    // AI-generated clickable choices
-    /** Current pending choices from AI (shown as pills above input) */
-    pendingChoices: ChoiceOption[];
-    /** Clear pending choices */
-    clearChoices: () => void;
-
-    // Message pagination
-    /** Whether there are older messages available to load */
-    hasMore: boolean;
-    /** Whether older messages are currently being fetched */
-    isLoadingOlder: boolean;
-    /** Load the next page of older messages */
-    loadOlderMessages: () => Promise<void>;
-};
+export type { PendingAttachment } from "@/types/copilot-context";
 
 
 const ProjectCopilotContext = createContext<ProjectCopilotContextValue | undefined>(undefined);
@@ -221,27 +66,6 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
     const streamGenRef = useRef(0);
     const isLoadingRef = useRef(false);
 
-    // Conversation management state
-    const [conversations, setConversations] = useState<ConversationListItem[]>([]);
-    const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
-    const [isLoadingConversations, setIsLoadingConversations] = useState(false);
-    const [showConversationList, setShowConversationList] = useState(false);
-    const [isConversationLoading, setIsConversationLoading] = useState(false);
-    const [hasMore, setHasMore] = useState(false);
-    const [isLoadingOlder, setIsLoadingOlder] = useState(false);
-    // Generation counter for selectConversation — last-wins guard against rapid switches
-    const selectGenRef = useRef(0);
-
-    // Study filter for conversation scoping (ref to avoid re-render loops)
-    const studyFilterRef = useRef<string | undefined>(undefined);
-
-    // Per-scope conversation memory: scope key → conversation ID
-    const scopeConversationMapRef = useRef<Map<string, string>>(new Map());
-    // Mirror currentConversationId to ref so setStudyFilter can read without deps
-    const currentConversationIdRef = useRef<string | null>(null);
-    // Ref for selectConversation (defined later) to avoid forward-reference in setStudyFilter
-    const selectConversationRef = useRef<(id: string) => Promise<void>>(async () => {});
-
     // Attachment state
     const [pendingAttachment, setPendingAttachment] = useState<PendingAttachment | null>(null);
     const [isAttaching, setIsAttaching] = useState(false);
@@ -250,8 +74,6 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
     const [currentRunId, setCurrentRunId] = useState<string | null>(null);
     const [artifacts, setArtifacts] = useState<Map<string, ArtifactData>>(new Map());
 
-    // Summarize state
-    const [isSummarizing, setIsSummarizing] = useState(false);
     const shouldOfferSummary = state.messages.length > 20;
 
     // AI-generated clickable choices
@@ -281,25 +103,6 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
         setReasoningModePreference(mode);
     }, []);
 
-    // Project switch guard: clear scope-cached conversation IDs and active conversation state.
-    // Prevents restoring/selecting a conversation from a previous project.
-    useEffect(() => {
-        streamGenRef.current++;
-        if (abortControllerRef.current) {
-            abortControllerRef.current.abort();
-            abortControllerRef.current = null;
-        }
-        setIsLoading(false);
-        setCurrentRunId(null);
-        setPendingChoices([]);
-        setConversations([]);
-        setCurrentConversationId(null);
-        currentConversationIdRef.current = null;
-        studyFilterRef.current = undefined;
-        scopeConversationMapRef.current.clear();
-        setState((prev) => ({ ...prev, messages: [] }));
-    }, [projectId]);
-
     // Load autonomy config on mount (Phase 7)
     useEffect(() => {
         getAutonomyConfigAction(projectId)
@@ -318,9 +121,6 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
     useEffect(() => { isLoadingRef.current = isLoading; }, [isLoading]);
     useEffect(() => { stateRef.current = state; }, [state]);
 
-    // Mirror currentConversationId to ref for scope-switch reads
-    useEffect(() => { currentConversationIdRef.current = currentConversationId; }, [currentConversationId]);
-
     const updateAutonomyPreset = useCallback(async (preset: AutonomyPreset) => {
         setAutonomyPreset(preset);
         setAutonomyToolOverrides({});
@@ -337,135 +137,6 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
         setAutonomyPreset(preset);
         setAutonomyToolOverrides({});
         await updateAutonomyAction(preset, undefined, projectId).catch(console.error);
-    }, [projectId]);
-
-    // Load conversations list (uses studyFilterRef for scoping)
-    const loadConversations = useCallback(async (): Promise<void> => {
-        if (!projectId) return;
-        setIsLoadingConversations(true);
-        try {
-            const result = await listConversations({
-                projectId,
-                studyId: studyFilterRef.current,
-            });
-            if (!result.success) {
-                console.error("Failed to load conversations:", result.error);
-                return;
-            }
-            const mapped = result.data.map((c) => ({
-                id: c.id,
-                title: c.title,
-                messageCount: c.messageCount,
-                updatedAt: c.updatedAt,
-            }));
-            setConversations(mapped);
-        } catch (err) {
-            console.error("Failed to load conversations:", err);
-        } finally {
-            setIsLoadingConversations(false);
-        }
-    }, [projectId]);
-
-    // Set study filter for conversation scoping (scope-keyed save/restore)
-    const setStudyFilter = useCallback((id: string | undefined) => {
-        if (studyFilterRef.current === id) return;
-
-        // Scope switch must invalidate any in-flight stream to prevent cross-scope ghost updates.
-        streamGenRef.current++;
-        if (abortControllerRef.current) {
-            abortControllerRef.current.abort();
-            abortControllerRef.current = null;
-        }
-        setIsLoading(false);
-        setCurrentRunId(null);
-        setPendingChoices([]);
-
-        const projectScope = projectId || "no-project";
-        const toScopeKey = (v: string | undefined) => (
-            v ? `${projectScope}:study:${v}` : `${projectScope}:project`
-        );
-        const oldScope = toScopeKey(studyFilterRef.current);
-        const newScope = toScopeKey(id);
-
-        // Save current conversation ID for the old scope
-        const curId = currentConversationIdRef.current;
-        if (curId) {
-            scopeConversationMapRef.current.set(oldScope, curId);
-        }
-
-        // Update filter
-        studyFilterRef.current = id;
-
-        // Check if we have a saved conversation for the new scope
-        const savedId = scopeConversationMapRef.current.get(newScope);
-        if (savedId) {
-            // Restore from DB (source of truth) via ref
-            selectConversationRef.current(savedId).catch(() => {
-                // Conversation may have been deleted — clear stale entry
-                scopeConversationMapRef.current.delete(newScope);
-                setCurrentConversationId(null);
-                setState((prev) => ({ ...prev, messages: [] }));
-            });
-        } else {
-            // No saved conversation for this scope — clear
-            setCurrentConversationId(null);
-            setState((prev) => ({ ...prev, messages: [] }));
-        }
-
-        loadConversations();
-    }, [loadConversations, projectId]);
-
-    // Initial load: get conversations and auto-select the most recent one
-    useEffect(() => {
-        let isActive = true;
-
-        const initializeConversations = async () => {
-            if (!projectId) return;
-
-            setIsLoadingConversations(true);
-            try {
-                const result = await listConversations({
-                    projectId,
-                    studyId: studyFilterRef.current,
-                });
-                if (!result.success) {
-                    console.error("Failed to load conversations:", result.error);
-                    return;
-                }
-                const mapped = result.data.map((c) => ({
-                    id: c.id,
-                    title: c.title,
-                    messageCount: c.messageCount,
-                    updatedAt: c.updatedAt,
-                }));
-
-                if (!isActive) return;
-                setConversations(mapped);
-                if (!currentConversationIdRef.current && mapped.length > 0) {
-                    const scopeKey = studyFilterRef.current
-                        ? `${projectId}:study:${studyFilterRef.current}`
-                        : `${projectId}:project`;
-                    const saved = scopeConversationMapRef.current.get(scopeKey);
-                    const targetConversationId = saved && mapped.some((c) => c.id === saved)
-                        ? saved
-                        : mapped[0].id;
-                    scopeConversationMapRef.current.set(scopeKey, targetConversationId);
-                    await selectConversationRef.current(targetConversationId);
-                }
-            } catch (err) {
-                console.error("Failed to load conversations:", err);
-            } finally {
-                if (isActive) setIsLoadingConversations(false);
-            }
-        };
-
-        initializeConversations();
-
-        return () => {
-            isActive = false;
-        };
-    // Only run once on mount, not when currentConversationId changes
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [projectId]);
 
     // Save panel state with debounce (messages are saved via conversation system)
@@ -537,309 +208,20 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
         [updateState]
     );
 
-    const toggleConversationList = useCallback(() => {
-        setShowConversationList((prev) => !prev);
-    }, []);
-
-    const selectConversation = useCallback(async (conversationId: string) => {
-        // Each call claims a generation slot. State writes after the await are
-        // guarded so only the last caller (newest selection) applies results.
-        const gen = ++selectGenRef.current;
-        try {
-            // Switching conversations must invalidate any in-flight stream to prevent ghost updates.
-            streamGenRef.current++;
-            if (abortControllerRef.current) {
-                abortControllerRef.current.abort();
-                abortControllerRef.current = null;
-            }
-            setIsLoading(false);
-            setCurrentRunId(null);
-            setPendingChoices([]);
-            if (!projectId) return;
-            setIsConversationLoading(true);
-            const convoResult = await getConversation(conversationId, { expectedProjectId: projectId });
-            // Bail if a newer selectConversation call has already taken over.
-            if (gen !== selectGenRef.current) return;
-            const convo = convoResult.success ? convoResult.data : null;
-            if (convo) {
-                setCurrentConversationId(convo.id);
-                setHasMore(convo.hasMore);
-                // Convert conversation messages to CopilotMessages
-                const persistedMessages: CopilotMessage[] = convo.messages
-                    .filter((m) => m.role !== "system")
-                    .map((m) => ({
-                        id: m.id,
-                        sender: m.role === "user" ? "user" : "ai",
-                        text: m.content,
-                        createdAt: m.createdAt,
-                        context: { page: convo.page as CopilotPage },
-                        attachments: m.attachments?.map((a) => ({
-                            fileAssetId: a.fileAssetId,
-                            filename: a.filename,
-                            size: a.size,
-                            mimeType: a.mimeType,
-                            isExisting: a.isExisting,
-                        })),
-                    }));
-                // Filter artifacts to only those within the loaded message time range
-                const oldestMessageTime = persistedMessages.length > 0
-                    ? new Date(persistedMessages[0].createdAt).getTime()
-                    : 0;
-                const artifactMessages: CopilotMessage[] = (convo.artifacts ?? [])
-                    .filter((a) => new Date(a.createdAt).getTime() >= oldestMessageTime)
-                    .map((artifact) => ({
-                        id: `artifact-${artifact.id}`,
-                        sender: "ai",
-                        text: `[${artifact.type}] ${artifact.title}`,
-                        createdAt: artifact.createdAt,
-                        context: { page: convo.page as CopilotPage },
-                        artifact: {
-                            id: artifact.id,
-                            type: artifact.type,
-                            status: artifact.status,
-                            title: artifact.title,
-                            payload: (artifact.payload ?? {}) as Record<string, unknown>,
-                            version: artifact.version,
-                        },
-                    }));
-                const copilotMessages: CopilotMessage[] = [...persistedMessages, ...artifactMessages].sort(
-                    (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
-                );
-                setArtifacts(() => {
-                    const next = new Map<string, ArtifactData>();
-                    for (const artifact of convo.artifacts ?? []) {
-                        next.set(artifact.id, {
-                            id: artifact.id,
-                            runId: "",
-                            projectId: convo.projectId ?? projectId,
-                            conversationId: convo.id,
-                            type: artifact.type as ArtifactType,
-                            status: artifact.status as ArtifactStatus,
-                            title: artifact.title,
-                            payload: artifact.payload,
-                            version: artifact.version,
-                            sourceEventId: null,
-                            appliedAt: null,
-                            reviewedAt: null,
-                            reviewNote: null,
-                            createdAt: artifact.createdAt,
-                        });
-                    }
-                    return next;
-                });
-                updateState((prev) => ({
-                    ...prev,
-                    messages: copilotMessages,
-                }));
-            } else {
-                setCurrentConversationId(null);
-                setHasMore(false);
-                setArtifacts(new Map());
-                updateState((prev) => ({
-                    ...prev,
-                    messages: [],
-                }));
-            }
-        } catch (err) {
-            if (gen !== selectGenRef.current) return;
-            console.error("Failed to select conversation:", err);
-        } finally {
-            // Only the winning generation clears the loading flag.
-            if (gen === selectGenRef.current) {
-                setIsConversationLoading(false);
-            }
-        }
-    }, [updateState, projectId]);
-
-    // Keep ref in sync so setStudyFilter (declared earlier) can call it
-    selectConversationRef.current = selectConversation;
-
-    const loadOlderMessages = useCallback(async () => {
-        if (!currentConversationId || isLoadingOlder || !hasMore) return;
-        const currentMessages = stateRef.current.messages;
-        const conversationPage = (
-            currentMessages.find((m) => !m.artifact)?.context?.page
-            ?? "overview"
-        ) as CopilotPage;
-        // Find oldest non-artifact message for cursor
-        const oldestMsg = currentMessages.find((m) => !m.artifact);
-        if (!oldestMsg) return;
-        setIsLoadingOlder(true);
-        try {
-            const result = await getConversationMessages({
-                conversationId: currentConversationId,
-                cursor: { createdAt: oldestMsg.createdAt, id: oldestMsg.id },
-                expectedProjectId: projectId,
-            });
-            if (!result.success) return;
-            setHasMore(result.data.hasMore);
-
-            const olderCopilotMessages: CopilotMessage[] = result.data.messages
-                .filter((m) => m.role !== "system")
-                .map((m) => ({
-                    id: m.id,
-                    sender: m.role === "user" ? "user" : "ai" as const,
-                    text: m.content,
-                    createdAt: m.createdAt,
-                    context: { page: conversationPage },
-                    attachments: m.attachments?.map((a) => ({
-                        fileAssetId: a.fileAssetId,
-                        filename: a.filename,
-                        size: a.size,
-                        mimeType: a.mimeType,
-                        isExisting: a.isExisting,
-                    })),
-                }));
-
-            // Include any artifacts that are now within the expanded time range
-            const oldestNewTime = olderCopilotMessages.length > 0
-                ? new Date(olderCopilotMessages[0].createdAt).getTime()
-                : Infinity;
-            const existingMessageIds = new Set(currentMessages.map((m) => m.id));
-            const allArtifacts = Array.from(artifacts.values());
-            const newlyVisibleArtifactMessages: CopilotMessage[] = allArtifacts
-                .filter((a) => {
-                    const aTime = new Date(a.createdAt).getTime();
-                    return aTime >= oldestNewTime && !existingMessageIds.has(`artifact-${a.id}`);
-                })
-                .map((a) => ({
-                    id: `artifact-${a.id}`,
-                    sender: "ai" as const,
-                    text: `[${a.type}] ${a.title}`,
-                    createdAt: a.createdAt,
-                    context: { page: conversationPage },
-                    artifact: {
-                        id: a.id,
-                        type: a.type,
-                        status: a.status,
-                        title: a.title,
-                        payload: (a.payload ?? {}) as Record<string, unknown>,
-                        version: a.version,
-                    },
-                }));
-
-            // Sort newly revealed items (older messages + newly visible artifacts)
-            const combined = [...olderCopilotMessages, ...newlyVisibleArtifactMessages].sort(
-                (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
-            );
-
-            // Direct prepend — older batch guaranteed strictly before current oldest
-            updateState((prev) => ({
-                ...prev,
-                messages: [...combined, ...prev.messages],
-            }));
-        } catch (err) {
-            console.error("Failed to load older messages:", err);
-        } finally {
-            setIsLoadingOlder(false);
-        }
-    }, [currentConversationId, isLoadingOlder, hasMore, updateState, artifacts, projectId]);
-
-    const newConversation = useCallback(async (page: CopilotPage, studyId?: string) => {
-        if (!projectId) {
-            console.error("Cannot create conversation: no projectId");
-            return;
-        }
-        // Starting a new conversation must stop any active stream first.
-        streamGenRef.current++;
-        if (abortControllerRef.current) {
-            abortControllerRef.current.abort();
-            abortControllerRef.current = null;
-        }
-        setIsLoading(false);
-        setCurrentRunId(null);
-        setPendingChoices([]);
-        try {
-            const convResult = await createConversation({
-                projectId,
-                studyId,
-                page,
-                context: studyId ? "study" : "project",
-            });
-            if (!convResult.success) {
-                console.error("Failed to create conversation:", convResult.error);
-                return;
-            }
-            const { id } = convResult.data;
-            // Set the new conversation and clear messages
-            setCurrentConversationId(id);
-            setHasMore(false);
-            setState((prev) => ({
-                ...prev,
-                messages: [],
-            }));
-            // Refresh conversation list
-            await loadConversations();
-        } catch (err) {
-            console.error("Failed to create conversation:", err);
-        }
-    }, [projectId, loadConversations]);
-
-    const renameConversation = useCallback(async (conversationId: string, title: string) => {
-        try {
-            const result = await updateConversationTitle(conversationId, title);
-            if (!result.success) {
-                console.error("Failed to rename conversation:", result.error);
-                return;
-            }
-            setConversations((prev) =>
-                prev.map((c) =>
-                    c.id === conversationId ? { ...c, title } : c
-                )
-            );
-        } catch (err) {
-            console.error("Failed to rename conversation:", err);
-        }
-    }, []);
-
-    const deleteConversationHandler = useCallback(async (conversationId: string) => {
-        try {
-            const result = await archiveConversation(conversationId);
-            if (!result.success) {
-                console.error("Failed to delete conversation:", result.error);
-                return;
-            }
-            setConversations((prev) => prev.filter((c) => c.id !== conversationId));
-            if (currentConversationId === conversationId) {
-                setCurrentConversationId(null);
-                updateState((prev) => ({
-                    ...prev,
-                    messages: [],
-                }));
-            }
-        } catch (err) {
-            console.error("Failed to delete conversation:", err);
-        }
-    }, [currentConversationId, updateState]);
-
-    const branchConversationHandler = useCallback(async (
-        conversationId: string,
-        upToMessageId?: string,
-        upToCreatedAt?: string
-    ) => {
-        if (!projectId) return;
-        try {
-            // Branching is a context switch; stop active stream before switching.
-            streamGenRef.current++;
-            if (abortControllerRef.current) {
-                abortControllerRef.current.abort();
-                abortControllerRef.current = null;
-            }
-            setIsLoading(false);
-            setCurrentRunId(null);
-            setPendingChoices([]);
-
-            const branchResult = await branchConversationAction({ conversationId, upToMessageId, upToCreatedAt });
-            if (!branchResult.success) {
-                console.error("Failed to branch conversation:", branchResult.error);
-                return;
-            }
-            await loadConversations();
-            await selectConversation(branchResult.data.id);
-        } catch (err) {
-            console.error("Failed to branch conversation:", err);
-        }
-    }, [projectId, loadConversations, selectConversation]);
+    // Conversation management (extracted hook)
+    const convo = useCopilotConversations({
+        projectId,
+        updateState,
+        setState,
+        stateRef,
+        artifacts,
+        setArtifacts,
+        streamGenRef,
+        abortControllerRef,
+        setIsLoading,
+        setCurrentRunId,
+        setPendingChoices,
+    });
 
     const attachFile = useCallback(async (file: File) => {
         if (!projectId) return;
@@ -969,7 +351,7 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             };
 
             const upsertConversationTitle = (targetId: string, title: string) => {
-                setConversations((prev) => {
+                convo.setConversations((prev) => {
                     const existing = prev.find((c) => c.id === targetId);
                     if (!existing) {
                         return [{
@@ -1018,8 +400,8 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
                             getCurrentGen: () => streamGenRef.current,
                             setCurrentRunId,
                             syncConversationId: (conversationId) => {
-                                if (currentConversationIdRef.current !== conversationId) {
-                                    setCurrentConversationId(conversationId);
+                                if (convo.currentConversationIdRef.current !== conversationId) {
+                                    convo.setCurrentConversationId(conversationId);
                                 }
                             },
                             upsertConversationTitle,
@@ -1064,7 +446,7 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             }
 
             // Refresh conversation list to update titles/counts
-            loadConversations();
+            convo.loadConversations();
             return { success: true, aborted: false, runStatus, stopReason, errorMessage: streamErrorMessage };
         } catch (error) {
             // Silently ignore aborted requests
@@ -1114,7 +496,7 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
                 abortControllerRef.current = null;
             }
         }
-    }, [updateState, projectId, loadConversations]);
+    }, [updateState, projectId, convo]);
 
     const sendMessage = useCallback(
         async (text: string, page: CopilotPage, section?: string, model?: string, agentMode?: AgentMode, studyId?: string) => {
@@ -1128,7 +510,7 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             const conversationContext = studyId ? "study" : "project";
 
             // Create conversation if needed
-            let convId = currentConversationId;
+            let convId = convo.currentConversationId;
             if (!convId) {
                 try {
                     const convResult = await createConversation({
@@ -1139,7 +521,7 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
                     });
                     if (convResult.success) {
                         convId = convResult.data.id;
-                        setCurrentConversationId(convResult.data.id);
+                        convo.setCurrentConversationId(convResult.data.id);
                     } else {
                         console.error("Failed to create conversation:", convResult.error);
                     }
@@ -1209,7 +591,7 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
                 convId,
             });
         },
-        [updateState, projectId, cancelStream, currentConversationId, pendingAttachment, reasoningMode, runStream]
+        [updateState, projectId, cancelStream, convo, pendingAttachment, reasoningMode, runStream]
     );
 
     const executePlanAction = useCallback(async (artifactId: string, selectedIndexes: number[]) => {
@@ -1234,8 +616,8 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             ),
         }));
 
-        const conversationContext = studyFilterRef.current ? "study" : "project";
-        const convId = currentConversationId;
+        const conversationContext = convo.studyFilterRef.current ? "study" : "project";
+        const convId = convo.currentConversationId;
         const planMessage = stateRef.current.messages.find((msg) => msg.artifact?.id === artifactId);
         const executionPage = planMessage?.context?.page ?? "overview";
 
@@ -1322,7 +704,7 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
                 messages: [...prev.messages, feedback],
             }));
         }
-    }, [cancelStream, currentConversationId, projectId, reasoningMode, runStream, updateState]);
+    }, [cancelStream, convo, projectId, reasoningMode, runStream, updateState]);
 
     const reviewArtifactActionLocal = useCallback(async (
         artifactId: string,
@@ -1435,7 +817,7 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
     ): Promise<ApproveArtifactsBatchResult> => {
         const uniqueArtifactIds = [...new Set(artifactIds.filter(Boolean))];
         const total = uniqueArtifactIds.length;
-        const startConversationId = options?.conversationId ?? currentConversationIdRef.current ?? null;
+        const startConversationId = options?.conversationId ?? convo.currentConversationIdRef.current ?? null;
         let completed = 0;
         let approvedCount = 0;
         const failedArtifactIds: string[] = [];
@@ -1444,7 +826,7 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             if (options?.shouldStop?.()) {
                 return { approvedCount, failedArtifactIds, stopped: true };
             }
-            if ((currentConversationIdRef.current ?? null) !== startConversationId) {
+            if ((convo.currentConversationIdRef.current ?? null) !== startConversationId) {
                 return { approvedCount, failedArtifactIds, stopped: true };
             }
 
@@ -1458,30 +840,14 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
         return { approvedCount, failedArtifactIds, stopped: false };
     }, [reviewArtifactActionLocal]);
 
-    const summarizeAndRefresh = useCallback(async () => {
-        if (!currentConversationId || isSummarizing) return;
-        setIsSummarizing(true);
-        try {
-            const result = await summarizeConversationAction(currentConversationId);
-            if (!result.success) throw new Error(result.error);
-            // Switch to the new conversation
-            await selectConversation(result.data.newConversationId);
-            await loadConversations();
-        } catch (err) {
-            console.error("Failed to summarize conversation:", err);
-        } finally {
-            setIsSummarizing(false);
-        }
-    }, [currentConversationId, isSummarizing, selectConversation, loadConversations]);
-
     const clearMessages = useCallback(() => {
         updateState((prev) => ({
             ...prev,
             messages: [],
         }));
-        setCurrentConversationId(null);
+        convo.setCurrentConversationId(null);
         setPendingChoices([]);
-    }, [updateState]);
+    }, [updateState, convo]);
 
     const clearChoices = useCallback(() => setPendingChoices([]), []);
 
@@ -1502,19 +868,19 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             setReasoningMode,
             cancelStream,
             clearMessages,
-            // Conversation management
-            conversations,
-            currentConversationId,
-            isLoadingConversations,
-            showConversationList,
-            toggleConversationList,
-            selectConversation,
-            newConversation,
-            renameConversation,
-            deleteConversation: deleteConversationHandler,
-            branchConversation: branchConversationHandler,
-            refreshConversations: loadConversations,
-            setStudyFilter,
+            // Conversation management (from hook)
+            conversations: convo.conversations,
+            currentConversationId: convo.currentConversationId,
+            isLoadingConversations: convo.isLoadingConversations,
+            showConversationList: convo.showConversationList,
+            toggleConversationList: convo.toggleConversationList,
+            selectConversation: convo.selectConversation,
+            newConversation: convo.newConversation,
+            renameConversation: convo.renameConversation,
+            deleteConversation: convo.deleteConversation,
+            branchConversation: convo.branchConversation,
+            refreshConversations: convo.loadConversations,
+            setStudyFilter: convo.setStudyFilter,
             // Attachment support
             pendingAttachment,
             isAttaching,
@@ -1530,9 +896,9 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             executePlan,
             // Summarize & fresh
             shouldOfferSummary,
-            summarizeAndRefresh,
-            isSummarizing,
-            isConversationLoading,
+            summarizeAndRefresh: convo.summarizeAndRefresh,
+            isSummarizing: convo.isSummarizing,
+            isConversationLoading: convo.isConversationLoading,
             // Autonomy configuration (Phase 7)
             autonomyPreset,
             autonomyToolOverrides,
@@ -1545,9 +911,9 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             pendingChoices,
             clearChoices,
             // Message pagination
-            hasMore,
-            isLoadingOlder,
-            loadOlderMessages,
+            hasMore: convo.hasMore,
+            isLoadingOlder: convo.isLoadingOlder,
+            loadOlderMessages: convo.loadOlderMessages,
         }),
         [
             state,
@@ -1561,18 +927,7 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             setReasoningMode,
             cancelStream,
             clearMessages,
-            conversations,
-            currentConversationId,
-            isLoadingConversations,
-            showConversationList,
-            toggleConversationList,
-            selectConversation,
-            newConversation,
-            renameConversation,
-            deleteConversationHandler,
-            branchConversationHandler,
-            loadConversations,
-            setStudyFilter,
+            convo,
             pendingAttachment,
             isAttaching,
             attachFile,
@@ -1584,9 +939,6 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             approveArtifactsBatch,
             executePlan,
             shouldOfferSummary,
-            summarizeAndRefresh,
-            isSummarizing,
-            isConversationLoading,
             autonomyPreset,
             autonomyToolOverrides,
             showAutonomySettings,
@@ -1595,9 +947,6 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             resetToPreset,
             pendingChoices,
             clearChoices,
-            hasMore,
-            isLoadingOlder,
-            loadOlderMessages,
         ]
     );
 
