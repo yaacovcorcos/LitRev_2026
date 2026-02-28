@@ -18,6 +18,7 @@ import {
 } from "@/app/actions/notes";
 import type { NoteContent } from "@/lib/server/notes";
 import { DemoGuideCard } from "@/components/project/DemoGuideCard";
+import { ProjectPageLayout } from "@/components/project/ProjectPageLayout";
 import { addProjectDataChangedListener } from "@/lib/project-data-events";
 import styles from "./notes.module.css";
 
@@ -301,6 +302,7 @@ export default function NotesPage() {
     // ── Render ───────────────────────────────────────────────────────────────
 
     return (
+        <ProjectPageLayout>
         <div className={styles.page}>
             {/* Header */}
             <div className={styles.header}>
@@ -521,5 +523,6 @@ export default function NotesPage() {
                 </div>
             )}
         </div>
+        </ProjectPageLayout>
     );
 }

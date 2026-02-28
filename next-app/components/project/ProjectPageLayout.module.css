@@ -1,0 +1,64 @@
+.grid {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: 1fr 1px var(--copilot-width, 360px);
+    overflow: hidden;
+    height: 100%;
+}
+
+.content {
+    min-width: 0;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+.resizeHandle {
+    width: 1px;
+    cursor: col-resize;
+    position: relative;
+    z-index: 5;
+}
+
+.resizeHandle::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 100%;
+    background: var(--glass-border, rgba(0, 0, 0, 0.07));
+}
+
+.resizeHandle:hover::before {
+    background: rgba(217, 116, 89, 0.35);
+}
+
+.resizeHandleHidden {
+    cursor: default;
+    pointer-events: none;
+    width: 0;
+}
+
+.copilotPane {
+    min-width: 0;
+    height: 100%;
+    overflow: hidden;
+}
+
+@media (max-width: 900px) {
+    .grid {
+        grid-template-columns: 1fr !important;
+    }
+
+    .resizeHandle {
+        display: none;
+    }
+
+    .copilotPane {
+        display: none;
+    }
+}

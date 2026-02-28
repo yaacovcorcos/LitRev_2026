@@ -1,17 +1,15 @@
 "use client";
 
-import { CSSProperties, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { AppShell } from "@/components/AppShell";
 import { useProjects } from "@/contexts/ProjectsContext";
 import { useProjectShell } from "@/contexts/ProjectShellContext";
 import { BaseBackButton } from "@/components/BaseBackButton";
 import { StudyFilesPanel } from "@/components/StudyFilesPanel";
 import styles from "./ledger.module.css";
 import { useLedger } from "@/contexts/LedgerContext";
-import { ProjectCopilot } from "@/components/ProjectCopilot";
-import { useProjectCopilot } from "@/contexts/ProjectCopilotContext";
+import { ProjectPageLayout } from "@/components/project/ProjectPageLayout";
 import { listStudyFilesAction, deleteFileAssetAction, uploadStudyFileAction, importStudyWithPdfAction } from "@/app/actions/files";
 import { extractStudyFromPdfAction } from "@/app/actions/extraction";
 import { getProtocolAction } from "@/app/actions/protocols";
@@ -26,9 +24,6 @@ import { DemoGuideCard } from "@/components/project/DemoGuideCard";
 
 type CriteriaFilter = "all" | "meets-criteria" | "fails-criteria" | "in-date-range" | "matching-design";
 
-const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
-
-const RAIL_WIDTH = 44;
 
 type StudyRowProps = {
     study: Study;
@@ -266,7 +261,6 @@ export default function LedgerPage() {
     const { getProjectById } = useProjects();
     const { isEmbeddedInProjectShell } = useProjectShell();
     const { getStudiesByProject, addStudy, replaceStudyInCache, removeStudies, upsertNewStudy, updateSingleStudy } = useLedger();
-    const { isCollapsed, panelWidth, setPanelWidth } = useProjectCopilot();
 
     const project = id ? getProjectById(id) : undefined;
     const studies = useMemo(() => (id ? getStudiesByProject(id) : []), [id, getStudiesByProject]);
@@ -517,59 +511,6 @@ export default function LedgerPage() {
     }, [id, updateSingleStudy, studies]);
 
     // Calculate panel widths
-    const computePanelVars = (): CSSProperties => {
-        const copilot = isCollapsed ? RAIL_WIDTH : clamp(panelWidth, 300, 560);
-        // When collapsed, hide the resize handle column
-        const gridCols = isCollapsed
-            ? `1fr 0px ${RAIL_WIDTH}px`
-            : `1fr 1px ${copilot}px`;
-        return {
-            "--copilot-width": `${copilot}px`,
-            "gridTemplateColumns": gridCols,
-        } as CSSProperties;
-    };
-
-    // Resize state
-    type ResizeState = { side: "copilot"; startX: number; startWidth: number } | null;
-    const resizeRef = useRef<ResizeState>(null);
-    const handlersRef = useRef<{ move: (e: MouseEvent) => void; end: () => void } | null>(null);
-
-    const startResize = useCallback((side: "copilot", startX: number) => {
-        const startWidth = clamp(panelWidth, 300, 560);
-        resizeRef.current = { side, startX, startWidth };
-
-        const handleMove = (e: MouseEvent) => {
-            if (!resizeRef.current) return;
-            const { startX: sx, startWidth: sw } = resizeRef.current;
-            const dx = sx - e.clientX;
-            const next = clamp(sw + dx, 300, 560);
-            setPanelWidth(next);
-        };
-
-        const handleEnd = () => {
-            resizeRef.current = null;
-            if (handlersRef.current) {
-                window.removeEventListener("mousemove", handlersRef.current.move);
-                window.removeEventListener("mouseup", handlersRef.current.end);
-                handlersRef.current = null;
-            }
-        };
-
-        handlersRef.current = { move: handleMove, end: handleEnd };
-        window.addEventListener("mousemove", handleMove);
-        window.addEventListener("mouseup", handleEnd);
-    }, [panelWidth, setPanelWidth]);
-
-    // Cleanup on unmount
-    useEffect(() => {
-        return () => {
-            if (handlersRef.current) {
-                window.removeEventListener("mousemove", handlersRef.current.move);
-                window.removeEventListener("mouseup", handlersRef.current.end);
-            }
-        };
-    }, []);
-
     // Checkbox handlers
     useEffect(() => {
         if (!selectAllRef.current) return;
@@ -651,16 +592,16 @@ export default function LedgerPage() {
     };
 
     if (!project) {
-        const notFoundContent = (
-            <div className={styles.notFound}>
-                <h1>Project not found</h1>
-                <Link href="/" className="btn-minimal" style={{ width: "auto", padding: "12px 24px" }}>
-                    Back to Dashboard
-                </Link>
-            </div>
+        return (
+            <ProjectPageLayout mainClassName={styles.appMainOverride}>
+                <div className={styles.notFound}>
+                    <h1>Project not found</h1>
+                    <Link href="/" className="btn-minimal" style={{ width: "auto", padding: "12px 24px" }}>
+                        Back to Dashboard
+                    </Link>
+                </div>
+            </ProjectPageLayout>
         );
-        if (isEmbeddedInProjectShell) return notFoundContent;
-        return <AppShell activeNav="projects">{notFoundContent}</AppShell>;
     }
 
     const mainContent = (
@@ -981,8 +922,26 @@ export default function LedgerPage() {
         </>
     );
 
-    if (isEmbeddedInProjectShell) {
-        return (
+    return (
+        <ProjectPageLayout
+            mainClassName={styles.appMainOverride}
+            copilot={{
+                page: "ledger",
+                contextDisplay: `${studies.length} studies \u00b7 ${extractedCount} extracted`,
+                emptyState: {
+                    icon: "search",
+                    title: "Search your evidence",
+                    description: "Ask questions about your studies, find patterns, or get evidence summaries.",
+                    suggestions: [
+                        { label: "Summarize", prompt: "Summarize the key findings across all studies" },
+                        { label: "Find Themes", prompt: "What are the common themes in this evidence?" },
+                        { label: "Find Conflicts", prompt: "Which studies have conflicting findings?" },
+                    ],
+                },
+                inputPlaceholder: "Ask about your evidence\u2026",
+                panelId: "ledger-copilot-panel",
+            }}
+        >
             <div className={styles.page}>
                 <div className={styles.mainContent}>
                     {mainContent}
@@ -990,51 +949,6 @@ export default function LedgerPage() {
                 {filesPopup}
                 {dialogs}
             </div>
-        );
-    }
-
-    return (
-        <AppShell activeNav="projects" mainClassName={styles.appMainOverride}>
-            <div className={styles.page}>
-                <div className={styles.body} style={computePanelVars()}>
-                    <div className={styles.mainContent}>
-                        {mainContent}
-                    </div>
-
-                    {/* Resize Handle */}
-                    <div
-                        className={`${styles.resizeHandle} ${isCollapsed ? styles.resizeHandleHidden : ""}`}
-                        role="separator"
-                        aria-label="Resize copilot panel"
-                        aria-hidden={isCollapsed}
-                        onMouseDown={(e) => {
-                            if (isCollapsed) return;
-                            startResize("copilot", e.clientX);
-                        }}
-                    />
-
-                    {/* Copilot Panel */}
-                    <ProjectCopilot
-                        page="ledger"
-                        contextDisplay={`${studies.length} studies · ${extractedCount} extracted`}
-                        emptyState={{
-                            icon: "search",
-                            title: "Search your evidence",
-                            description: "Ask questions about your studies, find patterns, or get evidence summaries.",
-                            suggestions: [
-                                { label: "Summarize", prompt: "Summarize the key findings across all studies" },
-                                { label: "Find Themes", prompt: "What are the common themes in this evidence?" },
-                                { label: "Find Conflicts", prompt: "Which studies have conflicting findings?" },
-                            ],
-                        }}
-                        inputPlaceholder="Ask about your evidence…"
-                        panelId="ledger-copilot-panel"
-                    />
-                </div>
-
-                {filesPopup}
-                {dialogs}
-            </div>
-        </AppShell>
+        </ProjectPageLayout>
     );
 }

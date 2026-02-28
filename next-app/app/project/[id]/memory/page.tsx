@@ -3,10 +3,10 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { AppShell } from "@/components/AppShell";
 import { BaseBackButton } from "@/components/BaseBackButton";
 import { useProjects } from "@/contexts/ProjectsContext";
 import { useProjectShell } from "@/contexts/ProjectShellContext";
+import { ProjectPageLayout } from "@/components/project/ProjectPageLayout";
 import { ProjectMemoryProvider, useProjectMemory } from "@/contexts/ProjectMemoryContext";
 import type {
   ProjectMemory,
@@ -308,14 +308,14 @@ function MemoryPageContent() {
   };
 
   if (!project) {
-    const notFoundContent = (
-      <div className={styles.notFound}>
-        <h1>Project not found</h1>
-        <Link href="/" className="btn-minimal">Back to Dashboard</Link>
-      </div>
+    return (
+      <ProjectPageLayout>
+        <div className={styles.notFound}>
+          <h1>Project not found</h1>
+          <Link href="/" className="btn-minimal">Back to Dashboard</Link>
+        </div>
+      </ProjectPageLayout>
     );
-    if (isEmbeddedInProjectShell) return notFoundContent;
-    return <AppShell activeNav="projects">{notFoundContent}</AppShell>;
   }
 
   const typeOptions: ProjectMemoryType[] = ["decision", "definition", "criterion", "goal"];
@@ -338,7 +338,8 @@ function MemoryPageContent() {
       )
     : [];
 
-  const pageContent = (
+  return (
+    <ProjectPageLayout>
     <div className={styles.page}>
       {/* Header */}
       <header className={styles.header}>
@@ -902,10 +903,8 @@ function MemoryPageContent() {
           </>
         )}
     </div>
+    </ProjectPageLayout>
   );
-
-  if (isEmbeddedInProjectShell) return pageContent;
-  return <AppShell activeNav="projects">{pageContent}</AppShell>;
 }
 
 export default function MemoryPage() {

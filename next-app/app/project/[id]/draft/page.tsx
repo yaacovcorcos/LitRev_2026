@@ -14,7 +14,7 @@ import {
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { BaseBackButton } from "@/components/BaseBackButton";
-import { AppShell } from "@/components/AppShell";
+import { ProjectPageLayout } from "@/components/project/ProjectPageLayout";
 import { useProjects } from "@/contexts/ProjectsContext";
 import { useLedger } from "@/contexts/LedgerContext";
 import { ProjectCopilot } from "@/components/ProjectCopilot";
@@ -1343,16 +1343,16 @@ function DraftContent() {
   }, [updateDraft]);
 
   if (!project) {
-    const notFoundContent = (
-      <div className={styles.notFound}>
-        <h1>Project not found</h1>
-        <Link href="/" className="btn-minimal">
-          Back to Dashboard
-        </Link>
-      </div>
+    return (
+      <ProjectPageLayout noMainPadding initiallyCollapsed mainClassName={styles.appMainOverride}>
+        <div className={styles.notFound}>
+          <h1>Project not found</h1>
+          <Link href="/" className="btn-minimal">
+            Back to Dashboard
+          </Link>
+        </div>
+      </ProjectPageLayout>
     );
-    if (isEmbeddedInProjectShell) return notFoundContent;
-    return <AppShell activeNav="projects">{notFoundContent}</AppShell>;
   }
 
   const copilotMessages = draft.copilotBySection[draft.activeSection] ?? [];
@@ -1871,12 +1871,10 @@ function DraftContent() {
     </>
   );
 
-  if (isEmbeddedInProjectShell) return pageContent;
-
   return (
-    <AppShell activeNav="projects" noMainPadding initiallyCollapsed mainClassName={styles.appMainOverride}>
+    <ProjectPageLayout noMainPadding initiallyCollapsed mainClassName={styles.appMainOverride}>
       {pageContent}
-    </AppShell>
+    </ProjectPageLayout>
   );
 }
 

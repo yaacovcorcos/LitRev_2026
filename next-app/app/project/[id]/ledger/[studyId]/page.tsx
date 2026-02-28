@@ -1,15 +1,13 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo, useRef, CSSProperties } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { AppShell } from "@/components/AppShell";
 import { useProjects } from "@/contexts/ProjectsContext";
 import { useProjectShell } from "@/contexts/ProjectShellContext";
 import { useLedger } from "@/contexts/LedgerContext";
 import { BaseBackButton } from "@/components/BaseBackButton";
-import { ProjectCopilot } from "@/components/ProjectCopilot";
-import { useProjectCopilot } from "@/contexts/ProjectCopilotContext";
+import { ProjectPageLayout } from "@/components/project/ProjectPageLayout";
 import { CitationBlock } from "@/components/CitationBlock";
 import { StudyQuickInfo } from "@/components/StudyQuickInfo";
 import { StudyFilesPanel } from "@/components/StudyFilesPanel";
@@ -34,14 +32,10 @@ type DraftBacklink = {
     label: string;
 };
 
-const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
-const RAIL_WIDTH = 44;
-
 export default function StudyDetailPage() {
     const { id, studyId } = useParams<{ id: string; studyId: string }>();
     const { getProjectById } = useProjects();
     const { getStudyById, updateSingleStudy } = useLedger();
-    const { isCollapsed, panelWidth, setPanelWidth } = useProjectCopilot();
     const { isEmbeddedInProjectShell } = useProjectShell();
 
     const project = id ? getProjectById(id) : undefined;
@@ -255,77 +249,37 @@ export default function StudyDetailPage() {
         }));
     };
 
-    // Panel sizing
-    const computePanelVars = (): CSSProperties => {
-        const copilot = isCollapsed ? RAIL_WIDTH : clamp(panelWidth, 300, 560);
-        const gridCols = isCollapsed ? `1fr 0px ${RAIL_WIDTH}px` : `1fr 1px ${copilot}px`;
-        return { "--copilot-width": `${copilot}px`, gridTemplateColumns: gridCols } as CSSProperties;
-    };
-
-    // Resize
-    type ResizeState = { side: "copilot"; startX: number; startWidth: number } | null;
-    const resizeRef = useRef<ResizeState>(null);
-    const handlersRef = useRef<{ move: (e: MouseEvent) => void; end: () => void } | null>(null);
-
-    const startResize = useCallback((side: "copilot", startX: number) => {
-        const startWidth = clamp(panelWidth, 300, 560);
-        resizeRef.current = { side, startX, startWidth };
-        const handleMove = (e: MouseEvent) => {
-            if (!resizeRef.current) return;
-            const dx = resizeRef.current.startX - e.clientX;
-            setPanelWidth(clamp(resizeRef.current.startWidth + dx, 300, 560));
-        };
-        const handleEnd = () => {
-            resizeRef.current = null;
-            if (handlersRef.current) {
-                window.removeEventListener("mousemove", handlersRef.current.move);
-                window.removeEventListener("mouseup", handlersRef.current.end);
-                handlersRef.current = null;
-            }
-        };
-        handlersRef.current = { move: handleMove, end: handleEnd };
-        window.addEventListener("mousemove", handleMove);
-        window.addEventListener("mouseup", handleEnd);
-    }, [panelWidth, setPanelWidth]);
-
-    useEffect(() => {
-        return () => {
-            if (handlersRef.current) {
-                window.removeEventListener("mousemove", handlersRef.current.move);
-                window.removeEventListener("mouseup", handlersRef.current.end);
-            }
-        };
-    }, []);
-
     const d: StudyDetails = study?.details ?? {};
     const pdfFile = useMemo(() => studyFiles.find((f) => f.mimeType === "application/pdf"), [studyFiles]);
 
     if (!project) {
-        const notFoundContent = (
-            <div className={styles.notFound}>
-                <h1>Project not found</h1>
-                <Link href="/" className="btn-minimal">Back to Dashboard</Link>
-            </div>
+        return (
+            <ProjectPageLayout mainClassName={styles.appMainOverride}>
+                <div className={styles.notFound}>
+                    <h1>Project not found</h1>
+                    <Link href="/" className="btn-minimal">Back to Dashboard</Link>
+                </div>
+            </ProjectPageLayout>
         );
-        if (isEmbeddedInProjectShell) return notFoundContent;
-        return <AppShell activeNav="projects">{notFoundContent}</AppShell>;
     }
 
     if (isLoading) {
-        const loadingContent = <div className={styles.loading}>Loading study...</div>;
-        if (isEmbeddedInProjectShell) return loadingContent;
-        return <AppShell activeNav="projects" mainClassName={styles.appMainOverride}>{loadingContent}</AppShell>;
+        return (
+            <ProjectPageLayout mainClassName={styles.appMainOverride}>
+                <div className={styles.loading}>Loading study...</div>
+            </ProjectPageLayout>
+        );
     }
 
     if (!study) {
-        const studyNotFoundContent = (
-            <div className={styles.notFound}>
-                <h1>Study not found</h1>
-                <Link href={`/project/${id}/ledger`} className="btn-minimal">Back to Ledger</Link>
-            </div>
+        return (
+            <ProjectPageLayout mainClassName={styles.appMainOverride}>
+                <div className={styles.notFound}>
+                    <h1>Study not found</h1>
+                    <Link href={`/project/${id}/ledger`} className="btn-minimal">Back to Ledger</Link>
+                </div>
+            </ProjectPageLayout>
         );
-        if (isEmbeddedInProjectShell) return studyNotFoundContent;
-        return <AppShell activeNav="projects">{studyNotFoundContent}</AppShell>;
     }
 
     // Shared content: main pane with header, sections, files popup, alert
@@ -336,7 +290,7 @@ export default function StudyDetailPage() {
                 <header className={styles.header}>
                                 <div className={styles.headerText}>
                                     <div style={{ display: "flex", alignItems: "center" }}>
-                                        <BaseBackButton href={`/project/${id}/ledger`} label="Back to ledger" />
+                                        {!isEmbeddedInProjectShell && <BaseBackButton href={`/project/${id}/ledger`} label="Back to ledger" />}
                                         <span className={styles.eyebrow}>Study Details</span>
                                     </div>
                                     {isEditing ? (
@@ -674,59 +628,30 @@ export default function StudyDetailPage() {
         />
     );
 
-    // When embedded in the project shell, render content directly (no AppShell, grid, copilot, or resize handle)
-    if (isEmbeddedInProjectShell) {
-        return (
-            <>
-                {mainPane}
-                {filesPopup}
-                {alertDialog}
-            </>
-        );
-    }
-
     return (
-        <AppShell activeNav="projects" mainClassName={styles.appMainOverride}>
-            <div className={styles.page}>
-                <div className={styles.body} style={computePanelVars()}>
-                    {mainPane}
-
-                    {/* Resize Handle */}
-                    <div
-                        className={`${styles.resizeHandle} ${isCollapsed ? styles.resizeHandleHidden : ""}`}
-                        role="separator"
-                        aria-label="Resize copilot panel"
-                        aria-hidden={isCollapsed}
-                        onMouseDown={(e) => {
-                            if (isCollapsed) return;
-                            startResize("copilot", e.clientX);
-                        }}
-                    />
-
-                    {/* Copilot Panel */}
-                    <ProjectCopilot
-                        page="study"
-                        studyId={studyId}
-                        contextDisplay={study.title}
-                        emptyState={{
-                            icon: "psychology",
-                            title: "Ask about this study",
-                            description: "Get help understanding findings, methodology, or how this study relates to your review.",
-                            suggestions: [
-                                { label: "Summarize", prompt: "Summarize the key findings of this study" },
-                                { label: "Strengths", prompt: "What are the strengths and limitations?" },
-                                { label: "Compare", prompt: "How does this compare to other studies?" },
-                            ],
-                        }}
-                        inputPlaceholder="Ask about this study…"
-                        panelId="study-copilot-panel"
-                    />
-                </div>
-
-                {filesPopup}
-            </div>
-
+        <ProjectPageLayout
+            mainClassName={styles.appMainOverride}
+            copilot={{
+                page: "study",
+                studyId,
+                contextDisplay: study.title,
+                emptyState: {
+                    icon: "psychology",
+                    title: "Ask about this study",
+                    description: "Get help understanding findings, methodology, or how this study relates to your review.",
+                    suggestions: [
+                        { label: "Summarize", prompt: "Summarize the key findings of this study" },
+                        { label: "Strengths", prompt: "What are the strengths and limitations?" },
+                        { label: "Compare", prompt: "How does this compare to other studies?" },
+                    ],
+                },
+                inputPlaceholder: "Ask about this study\u2026",
+                panelId: "study-copilot-panel",
+            }}
+        >
+            {mainPane}
+            {filesPopup}
             {alertDialog}
-        </AppShell>
+        </ProjectPageLayout>
     );
 }

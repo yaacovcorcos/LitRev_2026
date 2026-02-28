@@ -1,16 +1,15 @@
 "use client";
 
-import { CSSProperties, useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { useParams } from "next/navigation";
-import { AppShell } from "@/components/AppShell";
 import { useProjects } from "@/contexts/ProjectsContext";
 import { useLedger } from "@/contexts/LedgerContext";
 import { useProjectShell } from "@/contexts/ProjectShellContext";
 import Link from "next/link";
 import { BaseBackButton } from "@/components/BaseBackButton";
 import styles from "./protocol.module.css";
-import { ProjectCopilot } from "@/components/ProjectCopilot";
 import { useProjectCopilot } from "@/contexts/ProjectCopilotContext";
+import { ProjectPageLayout } from "@/components/project/ProjectPageLayout";
 import { ProtocolProvider, useProtocol } from "@/contexts/ProtocolContext";
 import { EditableText } from "@/components/EditableText";
 import { EditableTextArea } from "@/components/EditableTextArea";
@@ -21,16 +20,13 @@ import { usePopupChat } from "@/contexts/PopupChatContext";
 import { calculatePRISMACounts } from "@/lib/criteriaMatching";
 import { DemoGuideCard } from "@/components/project/DemoGuideCard";
 
-const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
-
-const RAIL_WIDTH = 44;
 
 /** Inner component that uses the ProtocolContext */
 function ProtocolPageContent() {
     const { id } = useParams<{ id: string }>();
     const { getProjectById } = useProjects();
     const { isEmbeddedInProjectShell } = useProjectShell();
-    const { isCollapsed, panelWidth, setPanelWidth, sendMessage, setCollapsed } = useProjectCopilot();
+    const { sendMessage, setCollapsed } = useProjectCopilot();
     const { openPopupChat } = usePopupChat();
     const {
         protocol,
@@ -277,59 +273,6 @@ function ProtocolPageContent() {
         URL.revokeObjectURL(url);
     }, [project, protocol, completeness]);
 
-    // Calculate panel widths
-    const computePanelVars = (): CSSProperties => {
-        const copilot = isCollapsed ? RAIL_WIDTH : clamp(panelWidth, 300, 560);
-        const gridCols = isCollapsed
-            ? `1fr 0px ${RAIL_WIDTH}px`
-            : `1fr 1px ${copilot}px`;
-        return {
-            "--copilot-width": `${copilot}px`,
-            "gridTemplateColumns": gridCols,
-        } as CSSProperties;
-    };
-
-    // Resize state
-    type ResizeState = { side: "copilot"; startX: number; startWidth: number } | null;
-    const resizeRef = useRef<ResizeState>(null);
-    const handlersRef = useRef<{ move: (e: MouseEvent) => void; end: () => void } | null>(null);
-
-    const startResize = useCallback((side: "copilot", startX: number) => {
-        const startWidth = clamp(panelWidth, 300, 560);
-        resizeRef.current = { side, startX, startWidth };
-
-        const handleMove = (e: MouseEvent) => {
-            if (!resizeRef.current) return;
-            const { startX: sx, startWidth: sw } = resizeRef.current;
-            const dx = sx - e.clientX;
-            const next = clamp(sw + dx, 300, 560);
-            setPanelWidth(next);
-        };
-
-        const handleEnd = () => {
-            resizeRef.current = null;
-            if (handlersRef.current) {
-                window.removeEventListener("mousemove", handlersRef.current.move);
-                window.removeEventListener("mouseup", handlersRef.current.end);
-                handlersRef.current = null;
-            }
-        };
-
-        handlersRef.current = { move: handleMove, end: handleEnd };
-        window.addEventListener("mousemove", handleMove);
-        window.addEventListener("mouseup", handleEnd);
-    }, [panelWidth, setPanelWidth]);
-
-    // Cleanup on unmount
-    useEffect(() => {
-        return () => {
-            if (handlersRef.current) {
-                window.removeEventListener("mousemove", handlersRef.current.move);
-                window.removeEventListener("mouseup", handlersRef.current.end);
-            }
-        };
-    }, []);
-
     // Helper to create focus/blur handlers for sections
     const createSectionHandlers = (section: ProtocolSection) => ({
         onFocus: () => setActiveSection(section),
@@ -397,25 +340,15 @@ function ProtocolPageContent() {
     };
 
     if (!project) {
-        if (isEmbeddedInProjectShell) {
-            return (
-                <div className={styles.notFound}>
-                    <h1>Project not found</h1>
-                    <Link href="/" className="btn-minimal">
-                        Back to Dashboard
-                    </Link>
-                </div>
-            );
-        }
         return (
-            <AppShell activeNav="projects">
+            <ProjectPageLayout mainClassName={styles.appMainOverride}>
                 <div className={styles.notFound}>
                     <h1>Project not found</h1>
                     <Link href="/" className="btn-minimal">
                         Back to Dashboard
                     </Link>
                 </div>
-            </AppShell>
+            </ProjectPageLayout>
         );
     }
 
@@ -851,47 +784,26 @@ function ProtocolPageContent() {
                     </div>
     );
 
-    // Embedded in project shell: content only, no AppShell/copilot
-    if (isEmbeddedInProjectShell) {
-        return <div className={styles.page}>{mainContent}</div>;
-    }
-
     return (
-        <AppShell activeNav="projects" mainClassName={styles.appMainOverride}>
-            <div className={styles.page}>
-                <div className={styles.body} style={computePanelVars()}>
-                    {mainContent}
-
-                    {/* Resize Handle */}
-                    <div
-                        className={`${styles.resizeHandle} ${isCollapsed ? styles.resizeHandleHidden : ""}`}
-                        role="separator"
-                        aria-label="Resize copilot panel"
-                        aria-hidden={isCollapsed}
-                        onMouseDown={(e) => {
-                            if (isCollapsed) return;
-                            startResize("copilot", e.clientX);
-                        }}
-                    />
-
-                    {/* Copilot Panel */}
-                    <ProjectCopilot
-                        page="protocol"
-                        section={activeSectionLabel ?? undefined}
-                        contextDisplay={getContextDisplay()}
-                        emptyState={{
-                            icon: "assignment",
-                            title: "Refine your protocol",
-                            description: "Get help defining PICO criteria, search strategies, and eligibility rules.",
-                            suggestions: getSuggestions(),
-                        }}
-                        inputPlaceholder="Ask about your protocol…"
-                        panelId="protocol-copilot-panel"
-                        onInsert={activeSection ? handleInsert : undefined}
-                    />
-                </div>
-            </div>
-        </AppShell>
+        <ProjectPageLayout
+            mainClassName={styles.appMainOverride}
+            copilot={{
+                page: "protocol",
+                section: activeSectionLabel ?? undefined,
+                contextDisplay: getContextDisplay(),
+                emptyState: {
+                    icon: "assignment",
+                    title: "Refine your protocol",
+                    description: "Get help defining PICO criteria, search strategies, and eligibility rules.",
+                    suggestions: getSuggestions(),
+                },
+                inputPlaceholder: "Ask about your protocol\u2026",
+                panelId: "protocol-copilot-panel",
+                onInsert: activeSection ? handleInsert : undefined,
+            }}
+        >
+            <div className={styles.page}>{mainContent}</div>
+        </ProjectPageLayout>
     );
 }
 
