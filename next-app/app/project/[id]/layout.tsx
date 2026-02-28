@@ -52,8 +52,10 @@ function ProjectShellInner({ projectId, children }: ProjectShellInnerProps) {
         window.localStorage.setItem("litrev:lastProjectId", projectId);
     }, [projectId]);
 
-    // Focus mode and tab state — default to conversation on entry
-    const [focusMode, setFocusMode] = useState<FocusMode>("conversation");
+    // Derive initial mode from route to avoid deep-link flicker.
+    const [focusMode, setFocusMode] = useState<FocusMode>(() =>
+        tabFromPathname(pathname) ? "view" : "conversation"
+    );
 
     const [activeTab, setActiveTabState] = useState<ViewTab | null>(() => {
         return tabFromPathname(pathname) ?? "overview";
