@@ -201,6 +201,39 @@ Use this section as implementation policy. Each item describes the durable solut
 - [ ] `CUX-025` Auto-build and maintain references section from cited sources (hide raw links in prose).
 - [ ] `CUX-026` Upgrade draft typography/heading/section styling to publication-grade output.
 
+### Phase 4 — Platform Research Inputs (2026-03-01 Web Scan)
+Use this as implementation guidance for `CUX-023`..`CUX-026`.
+
+Open-source or source-available platforms (adapt implementation patterns):
+- **Overleaf Community Edition / ShareLaTeX lineage (open-source self-hosted variants):** Collaborative LaTeX authoring with references and template-driven output.  
+  Adapt: structured citation nodes + deterministic bibliography generation + collaborative conflict-safe editing patterns.
+- **Manubot (open-source):** Git-based scholarly writing with citation-by-identifier and auto-generated references.  
+  Adapt: citekey-first flow, bibliography as derived output, and strict provenance metadata.
+- **Zotero (open-source):** Reference manager with citation styles (CSL) and library organization.  
+  Adapt: citation-style adapter layer (`numeric` vs `author-year`) and robust bibliographic normalization/import contracts.
+- **Open Journal Systems (open-source):** Editorial/publishing workflow for scholarly journals.  
+  Adapt: explicit manuscript states, review checkpoints, and publish-ready metadata validation gates.
+- **Fidus Writer (open-source):** Academic collaborative editor with citation/document focus.  
+  Adapt: semantic document structure (sections/figures/references) and collaboration-safe rich-text operations.
+
+Closed-source platforms (product ideas only; no code copying):
+- **Overleaf cloud (commercial):** Polished realtime academic authoring UX around templates, references, and submission formats.  
+  Borrow: low-friction writing ergonomics, template onboarding, and preview/export confidence cues.
+- **Authorea (commercial):** Research writing and collaboration with publisher-oriented workflows.  
+  Borrow: research-object organization and manuscript-centric collaboration flows.
+- **SciSpace / Typeset (commercial) [dedupe of #5 and #9]:** AI-assisted reading/writing and formatting tools for scientific papers.  
+  Borrow: AI assist entrypoints near draft workflow, citation help at point-of-writing, and format-conversion affordances.
+- **Veeva + Synchrogenix + other regulatory document systems (commercial):** Regulated document lifecycle management, structured content, and traceable review/compliance.  
+  Borrow: immutable audit trails for edits/approvals, section-level ownership, and strict change-history visibility.
+- **Preprint platforms (mixed ecosystem; many are service platforms):** Public early manuscript dissemination and feedback loops.  
+  Borrow: pre-submission readiness checks, metadata completeness checks, and export profiles for target destinations.
+
+Implementation guardrails for Phase 4:
+- Treat citations/references as first-class structured data, never string post-processing.
+- Keep references fully derived from citation graph to prevent drift.
+- Keep style/rendering adapters isolated from editor storage format.
+- Preserve provenance and audit metadata on every citation insertion/edit/remove operation.
+
 ## Phase 5 — Copilot Product UX Features
 - [ ] `CUX-027` Tool receipt blocks per assistant turn (`Used: ...` summary).
 - [ ] `CUX-028` Inline approve/apply/undo artifact controls with confirmations.
