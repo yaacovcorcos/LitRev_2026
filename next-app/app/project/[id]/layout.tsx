@@ -5,6 +5,7 @@ import { useParams, useRouter, usePathname } from "next/navigation";
 import { ProjectCopilotProvider, useProjectCopilot } from "@/contexts/ProjectCopilotContext";
 import { ProjectShellProvider, type FocusMode, type ViewTab } from "@/contexts/ProjectShellContext";
 import { useCommandPalette } from "@/contexts/CommandPaletteContext";
+import { useProjects } from "@/contexts/ProjectsContext";
 import { AppShell } from "@/components/AppShell";
 import { ProjectTabBar } from "@/components/project/ProjectTabBar";
 import { ConversationMainView } from "@/components/project/ConversationMainView";
@@ -16,6 +17,7 @@ import { getStudyAction } from "@/app/actions/ledger";
 import type { CopilotPage } from "@/types/ai";
 import { DemoBanner } from "@/components/project/DemoBanner";
 import { isDemoProjectId } from "@/lib/demo/constants";
+import { shouldSkipPreload } from "@/lib/network-aware";
 import styles from "./project-shell.module.css";
 
 const RAIL_WIDTH = 44;
@@ -41,6 +43,14 @@ function ProjectShellInner({ projectId, children }: ProjectShellInnerProps) {
     const pathname = usePathname();
     const { isCollapsed, panelWidth, setPanelWidth, toggleCollapsed, setStudyFilter } = useProjectCopilot();
     const { registerCopilotToggle } = useCommandPalette();
+    const { getProjectById, deleteProject } = useProjects();
+    const project = projectId ? getProjectById(projectId) : undefined;
+
+    const handleDeleteProject = useCallback(() => {
+        if (!projectId) return;
+        deleteProject(projectId);
+        router.push("/");
+    }, [projectId, deleteProject, router]);
 
     useEffect(() => {
         registerCopilotToggle(toggleCollapsed);
@@ -51,6 +61,27 @@ function ProjectShellInner({ projectId, children }: ProjectShellInnerProps) {
         if (!projectId || typeof window === "undefined") return;
         window.localStorage.setItem("litrev:lastProjectId", projectId);
     }, [projectId]);
+
+    // Prefetch JS bundles for sibling project routes
+    useEffect(() => {
+        if (!projectId || shouldSkipPreload()) return;
+        const routes = [
+            `/project/${projectId}`,
+            `/project/${projectId}/protocol`,
+            `/project/${projectId}/ledger`,
+            `/project/${projectId}/draft`,
+            `/project/${projectId}/notes`,
+        ];
+        let i = 0;
+        const step = () => {
+            if (i < routes.length) {
+                router.prefetch(routes[i]);
+                i++;
+                requestAnimationFrame(step);
+            }
+        };
+        requestAnimationFrame(step);
+    }, [projectId, router]);
 
     // Keep root scrolling disabled while project shell is active so wheel/touch
     // events stay scoped to workspace panes (content/copilot/timeline).
@@ -210,6 +241,8 @@ function ProjectShellInner({ projectId, children }: ProjectShellInnerProps) {
                             activeTab={activeTab}
                             onTabClick={handleTabClick}
                             onConversationClick={handleConversationClick}
+                            projectName={project?.name}
+                            onDeleteProject={handleDeleteProject}
                         />
                         {showDemoBanner ? <DemoBanner projectId={projectId} /> : null}
 
