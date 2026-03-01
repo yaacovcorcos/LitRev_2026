@@ -28,7 +28,8 @@ import {
   saveDraftState,
   createDefaultDraftState,
 } from "@/lib/draftStorage";
-import { getDraftAction, saveDraftAction } from "@/app/actions/drafts";
+import { saveDraftAction } from "@/app/actions/drafts";
+import { useProjectData } from "@/hooks/useProjectData";
 import dynamic from "next/dynamic";
 const ExportModal = dynamic(() => import("@/components/ExportModal").then(m => m.ExportModal), { ssr: false });
 import { DemoGuideCard } from "@/components/project/DemoGuideCard";
@@ -103,28 +104,26 @@ function DraftContent() {
     [queryMode, querySection]
   );
 
+  const { draft: cachedDraft, warmDomain } = useProjectData();
+  const appliedCachedRef = useRef(false);
+
   useEffect(() => {
-    let isActive = true;
+    // Always paint from localStorage first (instant)
     const local = loadDraftState(id);
     setDraft(applyDraftFromQuery(local));
-
-    const loadRemote = async () => {
-      if (!id) return;
-      try {
-        const result = await getDraftAction(id);
-        if (result.success && result.data && isActive) {
-          setDraft(applyDraftFromQuery(result.data));
-        }
-      } catch (err) {
-        console.error("Failed to load draft from backend", err);
-      }
-    };
-
-    loadRemote();
-    return () => {
-      isActive = false;
-    };
+    appliedCachedRef.current = false;
   }, [id, applyDraftFromQuery]);
+
+  // Apply server data from preload cache when ready
+  useEffect(() => {
+    if (appliedCachedRef.current) return;
+    if (cachedDraft.state === "ready" && cachedDraft.data) {
+      setDraft(applyDraftFromQuery(cachedDraft.data));
+      appliedCachedRef.current = true;
+    } else if (cachedDraft.state === "idle") {
+      warmDomain("draft");
+    }
+  }, [cachedDraft, applyDraftFromQuery, warmDomain]);
   const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "error">("saved");
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 

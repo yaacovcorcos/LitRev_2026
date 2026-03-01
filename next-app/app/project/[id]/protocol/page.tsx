@@ -10,6 +10,7 @@ import { BaseBackButton } from "@/components/BaseBackButton";
 import styles from "./protocol.module.css";
 import { ProjectPageLayout } from "@/components/project/ProjectPageLayout";
 import { ProtocolProvider, useProtocol } from "@/contexts/ProtocolContext";
+import { useProjectData } from "@/hooks/useProjectData";
 import { calculatePRISMACounts } from "@/lib/criteriaMatching";
 import { DemoGuideCard } from "@/components/project/DemoGuideCard";
 import { buildProtocolMarkdown, getProtocolSuggestions } from "./protocolExport";
@@ -318,9 +319,13 @@ function ProtocolPageContent() {
 /** Protocol page wrapper with ProtocolProvider */
 export default function ProtocolPage() {
     const { id } = useParams<{ id: string }>();
+    const { protocol: cachedProtocol } = useProjectData();
 
     return (
-        <ProtocolProvider projectId={id ?? ""}>
+        <ProtocolProvider
+            projectId={id ?? ""}
+            initialData={cachedProtocol.state === "ready" && cachedProtocol.data ? cachedProtocol.data : undefined}
+        >
             <ProtocolPageContent />
         </ProtocolProvider>
     );

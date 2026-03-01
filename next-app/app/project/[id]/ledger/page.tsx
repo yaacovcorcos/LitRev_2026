@@ -24,7 +24,7 @@ import {
   importStudyWithPdfAction,
 } from "@/app/actions/files";
 import { extractStudyFromPdfAction } from "@/app/actions/extraction";
-import { getProtocolAction } from "@/app/actions/protocols";
+import { useProjectData } from "@/hooks/useProjectData";
 import {
   evaluateCriteria,
   type CriteriaMatchResult,
@@ -114,30 +114,22 @@ export default function LedgerPage() {
   });
 
   // Protocol & criteria filtering
+  const { protocol: cachedProtocol, warmDomain } = useProjectData();
   const [protocol, setProtocol] = useState<ProtocolData>(
     createDefaultProtocolData,
   );
   const [criteriaFilter, setCriteriaFilter] = useState<CriteriaFilter>("all");
 
-  // Load protocol data
+  // Load protocol data from preload cache
   useEffect(() => {
-    if (!id) return;
-    let active = true;
-    getProtocolAction(id)
-      .then((result) => {
-        if (active && result.success && result.data) setProtocol(result.data);
-      })
-      .catch((err) => {
-        console.error("Failed to load protocol", err);
-        if (active)
-          setAlertMsg(
-            "Failed to load protocol criteria. Filtering may be unavailable.",
-          );
-      });
-    return () => {
-      active = false;
-    };
-  }, [id]);
+    if (cachedProtocol.state === "ready" && cachedProtocol.data) {
+      setProtocol(cachedProtocol.data);
+    } else if (cachedProtocol.state === "error") {
+      setAlertMsg("Failed to load protocol criteria. Filtering may be unavailable.");
+    } else if (cachedProtocol.state === "idle") {
+      warmDomain("protocol");
+    }
+  }, [cachedProtocol, warmDomain]);
 
   // Compute criteria matches for all studies
   const studyCriteriaMap = useMemo(() => {
