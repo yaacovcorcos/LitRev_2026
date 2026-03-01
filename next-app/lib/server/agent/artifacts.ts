@@ -663,10 +663,10 @@ registerApplyFunction("study_proposal", async (artifact) => {
 
     const detailPatch: Partial<StudyDetails> = {
         triageDecision: payload.recommendation,
-        matchRationale: payload.matchRationale,
-        source: normalizedSource,
-        sourceUrl: payload.sourceUrl,
     };
+    if (payload.matchRationale) detailPatch.matchRationale = payload.matchRationale;
+    if (normalizedSource) detailPatch.source = normalizedSource;
+    if (payload.sourceUrl) detailPatch.sourceUrl = payload.sourceUrl;
     if (payload.doi) detailPatch.doi = payload.doi;
     if (payload.pmid) detailPatch.pmid = payload.pmid;
     if (payload.abstract) detailPatch.abstract = payload.abstract;
