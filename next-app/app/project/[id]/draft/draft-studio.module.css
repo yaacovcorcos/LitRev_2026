@@ -998,6 +998,40 @@
     padding: 0 6px;
 }
 
+.referencesReadOnly {
+    margin: 0;
+    white-space: pre-wrap;
+    color: var(--text-primary);
+    font-family: var(--editor-font-family, Georgia, 'Times New Roman', serif);
+    font-size: var(--editor-font-size, 16px);
+    line-height: var(--editor-line-height, 1.85);
+}
+
+.citationIssues {
+    margin: 12px 20px 0;
+    padding: 10px 12px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--color-warning-border);
+    background: var(--color-warning-bg);
+}
+
+.citationIssuesTitle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.citationIssuesList {
+    margin: 8px 0 0;
+    padding-left: 18px;
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1.5;
+}
+
 .fullDraftScroll {
     flex: 1;
     min-height: 0;

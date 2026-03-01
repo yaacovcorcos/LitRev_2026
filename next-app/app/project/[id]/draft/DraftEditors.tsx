@@ -10,11 +10,11 @@ import type { JSONContent } from "@tiptap/core";
 import type { DraftSectionId } from "@/types/draft";
 import styles from "./draft-studio.module.css";
 
-const formatCitationLabel = (label: string) => {
-  const trimmed = label.trim();
-  if (!trimmed) return "(Citation)";
-  if (trimmed.startsWith("(") && trimmed.endsWith(")")) return trimmed;
-  return `(${trimmed})`;
+const formatCitationLabel = (number: unknown) => {
+  if (typeof number === "number" && Number.isFinite(number) && number > 0) {
+    return `[${number}]`;
+  }
+  return "[?]";
 };
 
 export const Citation = TiptapNode.create({
@@ -26,8 +26,12 @@ export const Citation = TiptapNode.create({
 
   addAttributes() {
     return {
-      id: { default: null },
-      label: { default: "" },
+      studyId: { default: null },
+      uid: { default: null },
+      locator: { default: "" },
+      prefix: { default: "" },
+      suffix: { default: "" },
+      number: { default: null },
     };
   },
 
@@ -40,8 +44,10 @@ export const Citation = TiptapNode.create({
       "span",
       mergeAttributes(HTMLAttributes, {
         "data-citation": "true",
+        "data-study-id": node.attrs.studyId ?? "",
+        title: typeof node.attrs.studyId === "string" && node.attrs.studyId ? `Citation: ${node.attrs.studyId}` : "Citation",
       }),
-      formatCitationLabel(node.attrs.label ?? ""),
+      formatCitationLabel(node.attrs.number),
     ];
   },
 });
@@ -234,6 +240,13 @@ export function FullSectionEditor({
     registerEditor(sectionId, editor);
     return () => registerEditor(sectionId, null);
   }, [editor, registerEditor, sectionId]);
+
+  useEffect(() => {
+    if (!editor) return;
+    const current = editor.getJSON();
+    if (JSON.stringify(current) === JSON.stringify(content)) return;
+    editor.commands.setContent(content, { emitUpdate: false });
+  }, [content, editor]);
 
   return (
     <div className={surfaceClassName ?? styles.editorSurface} style={surfaceStyle}>
