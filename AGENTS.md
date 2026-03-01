@@ -65,6 +65,7 @@ If a task is still in progress, do not commit yet; finish, validate, then commit
   - runs `bash scripts/migrate-deploy-safe.sh` in production (pre-repair + deploy + one-shot recovery)
   - fails the build if migration state is still pending
 - `DIRECT_URL` is mandatory in production (migration path). `DATABASE_URL` is runtime only.
+- `DIRECT_URL` must be reachable from Vercel build containers; for Supabase, prefer a session-mode pooler host on `:5432` for migration traffic (not an IPv6-only direct host).
 - Before `vercel --prod`, agents must run from `next-app/`:
   - `bash scripts/release-gate-prod.sh` (preferred single-command production DB gate)
   - `bash scripts/migrate-deploy-safe.sh` if doing DB-only remediation outside full release gate

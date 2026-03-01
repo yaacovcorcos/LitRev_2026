@@ -33,7 +33,7 @@ vi.mock("@/lib/project-data-events", () => ({
 
 // Polyfill requestIdleCallback for jsdom
 if (typeof globalThis.requestIdleCallback === "undefined") {
-    globalThis.requestIdleCallback = ((cb: () => void) => setTimeout(cb, 0)) as typeof requestIdleCallback;
+    globalThis.requestIdleCallback = ((cb: () => void) => setTimeout(cb, 0)) as unknown as typeof requestIdleCallback;
 }
 
 const PROJECT_ID = "proj_123";

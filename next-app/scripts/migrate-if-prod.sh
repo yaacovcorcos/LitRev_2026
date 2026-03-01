@@ -17,6 +17,42 @@ if [ -z "${DIRECT_URL:-}" ]; then
   exit 1
 fi
 
+echo "Production deploy — checking DIRECT_URL reachability..."
+if ! node -e '
+const net = require("node:net");
+const { URL } = require("node:url");
+
+const timeoutMs = Number(process.env.DIRECT_URL_CONNECT_TIMEOUT_MS || 3000);
+const target = new URL(process.env.DIRECT_URL);
+const host = target.hostname;
+const port = Number(target.port || 5432);
+
+const socket = net.createConnection({ host, port });
+let settled = false;
+
+function fail(message) {
+  if (settled) return;
+  settled = true;
+  try { socket.destroy(); } catch {}
+  console.error(message);
+  process.exit(1);
+}
+
+socket.setTimeout(timeoutMs, () => fail(`TCP timeout to ${host}:${port} after ${timeoutMs}ms`));
+socket.on("error", (err) => fail(`TCP connect failed to ${host}:${port}: ${err.code || err.message}`));
+socket.on("connect", () => {
+  if (settled) return;
+  settled = true;
+  socket.end();
+  process.exit(0);
+});
+'; then
+  echo "ERROR: DIRECT_URL is not reachable from this build environment."
+  echo "Hint: Supabase direct DB hosts can be IPv6-only from Vercel builds."
+  echo "Use a reachable session-mode pooler host (:5432) for DIRECT_URL."
+  exit 1
+fi
+
 echo "Production deploy — running prisma migrate deploy..."
 bash scripts/migrate-deploy-safe.sh
 
