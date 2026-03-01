@@ -645,26 +645,57 @@ registerApplyFunction("memory_forget_proposal", async (artifact) => {
 // study_proposal: upsert the study with triage decision
 registerApplyFunction("study_proposal", async (artifact) => {
     const payload = artifact.payload as StudyProposalPayload;
+    const mappedStatus = payload.recommendation === "exclude"
+        ? "excluded"
+        : payload.recommendation === "keep"
+            ? "active"
+            : "pending";
+
+    const normalizedSource: StudySource | undefined = payload.source === "manual"
+        || payload.source === "pdf-import"
+        || payload.source === "pubmed"
+        || payload.source === "semantic-scholar"
+        || payload.source === "copilot"
+        ? payload.source
+        : payload.source
+            ? "copilot"
+            : undefined;
+
+    const detailPatch: Partial<StudyDetails> = {
+        triageDecision: payload.recommendation,
+        matchRationale: payload.matchRationale,
+        source: normalizedSource,
+        sourceUrl: payload.sourceUrl,
+    };
+    if (payload.doi) detailPatch.doi = payload.doi;
+    if (payload.pmid) detailPatch.pmid = payload.pmid;
+    if (payload.abstract) detailPatch.abstract = payload.abstract;
+    if (payload.journal) detailPatch.journal = payload.journal;
+    if (payload.studyType) detailPatch.studyType = payload.studyType as StudyType;
+    if (typeof payload.sampleSize === "number") detailPatch.sampleSize = payload.sampleSize;
+
+    if (payload.studyId) {
+        const existing = await prisma.study.findFirst({
+            where: { id: payload.studyId, projectId: artifact.projectId, deletedAt: null },
+            select: { id: true },
+        });
+        if (existing) {
+            await updateStudy(undefined, artifact.projectId, existing.id, {
+                status: mappedStatus,
+                details: detailPatch,
+            });
+            return;
+        }
+    }
+
     await upsertStudy(undefined, artifact.projectId, {
+        id: payload.studyId,
         title: payload.title,
         authors: payload.authors,
         year: payload.year,
-        status: payload.recommendation === "exclude" ? "excluded"
-              : payload.recommendation === "keep" ? "active"
-              : "pending",
+        status: mappedStatus,
         quality: "-",
-        details: {
-            doi: payload.doi,
-            pmid: payload.pmid,
-            abstract: payload.abstract,
-            journal: payload.journal,
-            studyType: payload.studyType as StudyType | undefined,
-            sampleSize: payload.sampleSize,
-            triageDecision: payload.recommendation,
-            matchRationale: payload.matchRationale,
-            source: payload.source as StudySource | undefined,
-            sourceUrl: payload.sourceUrl,
-        },
+        details: detailPatch,
     });
 });
 

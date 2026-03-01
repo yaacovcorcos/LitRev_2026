@@ -34,6 +34,7 @@ const { bulkScreeningTool } = await import("@/lib/server/ai/tools/bulk-screening
 type ScreeningBatchResult = {
     studies: Array<{
         studyId?: string;
+        year: number;
         recommendation: "keep" | "exclude" | "maybe";
         screeningTier?: "deterministic" | "ai" | "heuristic" | "default";
         confidence: number;
@@ -178,5 +179,19 @@ describe("bulkScreeningTool tiered routing", () => {
         const payload = result.result as ScreeningBatchResult;
         const ids = payload.studies.map((study) => study.studyId);
         expect(ids).toEqual(["s1", "s2", "s3", "s4"]);
+    });
+
+    it("preserves unknown study year sentinel (0) in artifact payload", async () => {
+        mocks.findMany.mockResolvedValue([
+            makeStudy({ id: "s-year", year: 0 }),
+        ]);
+        mocks.chat.mockResolvedValue({
+            content: '{"decision":"keep","reason":"Looks relevant","confidence":0.8}',
+        });
+
+        const result = await bulkScreeningTool.execute({}, { projectId: "proj-1" });
+        expect(result.error).toBeUndefined();
+        const payload = result.result as ScreeningBatchResult;
+        expect(payload.studies[0]?.year).toBe(0);
     });
 });

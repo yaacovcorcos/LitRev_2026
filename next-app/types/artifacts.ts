@@ -191,7 +191,8 @@ export const StudyProposalSchema = z.object({
     doi: z.string().optional(),
     title: z.string().min(1),
     authors: z.string().min(1),
-    year: z.number().int().min(1900).max(2100),
+    // `0` is allowed as "unknown year" to match ledger storage semantics.
+    year: z.number().int().min(0).max(2100),
     journal: z.string().optional(),
     abstract: z.string().optional(),
     studyType: z.string().optional(),

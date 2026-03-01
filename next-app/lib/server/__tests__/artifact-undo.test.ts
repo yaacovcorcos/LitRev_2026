@@ -130,6 +130,9 @@ vi.mock("@/lib/server/draft-versions", () => ({
 }));
 
 const { undoArtifact, applyArtifact } = await import("@/lib/server/agent/artifacts");
+const { upsertStudy, updateStudy } = await import("@/lib/server/ledger");
+const mockUpsertStudy = vi.mocked(upsertStudy);
+const mockUpdateStudy = vi.mocked(updateStudy);
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -330,6 +333,22 @@ describe("applyArtifact — snapshot capture", () => {
         vi.clearAllMocks();
         mocks.update.mockResolvedValue({ id: "art-1", status: "accepted", appliedAt: new Date() });
         mocks.emitEvent.mockResolvedValue({ id: "evt-1" });
+        mockUpsertStudy.mockResolvedValue({
+            id: "study-upserted",
+            title: "x",
+            authors: "y",
+            year: 2024,
+            status: "pending",
+            quality: "-",
+        } as never);
+        mockUpdateStudy.mockResolvedValue({
+            id: "study-updated",
+            title: "x",
+            authors: "y",
+            year: 2024,
+            status: "excluded",
+            quality: "-",
+        } as never);
     });
 
     it("captures protocol_suggestion snapshot before applying", async () => {
@@ -435,6 +454,49 @@ describe("applyArtifact — snapshot capture", () => {
         expect(snapshotCall).toBeDefined();
         // null maps to Prisma.DbNull
         expect((snapshotCall![0] as { data: { snapshot: unknown } }).data.snapshot).toBe("DbNull");
+    });
+
+    it("applies study_proposal by updating existing study when payload studyId is present", async () => {
+        const artifact = makeArtifact({
+            type: "study_proposal",
+            status: "proposed",
+            payload: {
+                studyId: "study-existing",
+                title: "Existing",
+                authors: "A",
+                year: 2024,
+                source: "bulk-screening",
+                recommendation: "exclude",
+                confidence: 0.9,
+                matchRationale: "Mismatch",
+            },
+        });
+        mocks.findUnique.mockResolvedValue(artifact);
+        mocks.findFirst.mockResolvedValue({
+            id: "study-existing",
+            title: "Existing",
+            authors: "A",
+            year: 2024,
+            status: "pending",
+            quality: "-",
+            details: {},
+        });
+
+        await applyArtifact("art-1");
+
+        expect(mockUpdateStudy).toHaveBeenCalledWith(
+            undefined,
+            "proj-1",
+            "study-existing",
+            expect.objectContaining({
+                status: "excluded",
+                details: expect.objectContaining({
+                    triageDecision: "exclude",
+                    source: "copilot",
+                }),
+            })
+        );
+        expect(mockUpsertStudy).not.toHaveBeenCalled();
     });
 });
 
