@@ -31,6 +31,7 @@ import {
 type ConversationContextScope = "project" | "study";
 
 type QueuedSend = {
+    localMessageId: string;
     userMessage: string;
     displayText: string;
     page: CopilotPage;
@@ -75,6 +76,7 @@ const SEND_QUEUE_MODE: SendQueueMode = resolveSendQueueMode(
 const MAX_QUEUED_MESSAGES = resolveMaxQueuedMessages(
     process.env.NEXT_PUBLIC_COPILOT_MAX_QUEUE,
 );
+const IDLE_WAIT_FALLBACK_MS = 60;
 
 export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
     const {
@@ -337,10 +339,14 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
     }, [updateState, projectId, convo, abortControllerRef, notifyIdle, setCurrentRunId, setPendingChoices, setPendingUserInput, setIsLoading, setStreamPhase, setArtifacts, streamGenRef, onNavigate]);
 
     const waitForIdle = useCallback(async () => {
-        if (!isLoadingRef.current) return;
-        await new Promise<void>((resolve) => {
-            idleResolversRef.current.push(resolve);
-        });
+        while (isLoadingRef.current) {
+            await Promise.race([
+                new Promise<void>((resolve) => {
+                    idleResolversRef.current.push(resolve);
+                }),
+                new Promise<void>((resolve) => setTimeout(resolve, IDLE_WAIT_FALLBACK_MS)),
+            ]);
+        }
     }, [isLoadingRef]);
 
     const appendLocalUserMessage = useCallback((payload: {
@@ -348,9 +354,10 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
         page: CopilotPage;
         section?: string;
         attachmentsMeta?: CopilotMessageAttachment[];
-    }) => {
+    }): string => {
+        const localMessageId = `m-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
         const userMessage: CopilotMessage = {
-            id: `m-${Date.now()}`,
+            id: localMessageId,
             sender: "user",
             text: payload.displayText,
             createdAt: new Date().toISOString(),
@@ -361,6 +368,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
             ...prev,
             messages: [...prev.messages, userMessage],
         }));
+        return localMessageId;
     }, [updateState]);
 
     const enqueueSend = useCallback((payload: QueuedSend, toFront = false) => {
@@ -369,9 +377,20 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
         setQueuedMessageCount(sendQueueRef.current.length);
     }, []);
 
-    const clearSendQueue = useCallback(() => {
+    const dropLocalMessages = useCallback((messageIds: string[]) => {
+        if (messageIds.length === 0) return;
+        const toDrop = new Set(messageIds);
+        updateState((prev) => ({
+            ...prev,
+            messages: prev.messages.filter((message) => !toDrop.has(message.id)),
+        }));
+    }, [updateState]);
+
+    const clearSendQueue = useCallback((): QueuedSend[] => {
+        const dropped = sendQueueRef.current;
         sendQueueRef.current = [];
         setQueuedMessageCount(0);
+        return dropped;
     }, []);
 
     const executeQueuedSend = useCallback(async (payload: QueuedSend) => {
@@ -417,12 +436,18 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                 const next = sendQueueRef.current.shift();
                 if (!next) continue;
                 setQueuedMessageCount(sendQueueRef.current.length);
+                const activeConversationId = convo.currentConversationIdRef.current;
+                if (next.convId && activeConversationId && next.convId !== activeConversationId) {
+                    // Conversation changed while waiting — drop stale queued send.
+                    dropLocalMessages([next.localMessageId]);
+                    continue;
+                }
                 await executeQueuedSend(next);
             }
         } finally {
             isDrainingSendQueueRef.current = false;
         }
-    }, [executeQueuedSend, waitForIdle]);
+    }, [convo, dropLocalMessages, executeQueuedSend, waitForIdle]);
 
     const sendMessage = useCallback(
         async (text: string, page: CopilotPage, section?: string, model?: string, agentMode?: AgentMode, studyId?: string) => {
@@ -473,7 +498,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
             }
 
             const displayText = trimmed || (attachment ? "I've attached a PDF. Please review it and summarize the key points." : "");
-            appendLocalUserMessage({
+            const localMessageId = appendLocalUserMessage({
                 displayText,
                 page,
                 section,
@@ -481,6 +506,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
             });
 
             const nextSend: QueuedSend = {
+                localMessageId,
                 userMessage: messageForAI,
                 displayText,
                 page,
@@ -505,12 +531,13 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                 const interruptedMessage = interrupted
                     ? buildInterruptedUserMessage({
                         newUserMessage: nextSend.userMessage,
-                        previousUserMessage: interrupted.userMessage,
+                        previousUserMessage: interrupted.displayText,
                         partialAssistantResponse: partialAssistant,
                     })
                     : nextSend.userMessage;
 
-                clearSendQueue();
+                const dropped = clearSendQueue();
+                dropLocalMessages(dropped.map((item) => item.localMessageId));
                 enqueueSend({ ...nextSend, userMessage: interruptedMessage }, true);
                 cancelStream();
                 void drainQueuedSends();
@@ -526,6 +553,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
             clearSendQueue,
             convo,
             drainQueuedSends,
+            dropLocalMessages,
             enqueueSend,
             isLoadingRef,
             pendingAttachment,
@@ -537,7 +565,8 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
     );
 
     const executePlanAction = useCallback(async (artifactId: string, selectedIndexes: number[]) => {
-        clearSendQueue();
+        const dropped = clearSendQueue();
+        dropLocalMessages(dropped.map((item) => item.localMessageId));
         if (isLoadingRef.current) cancelStream();
         setPendingChoices([]);
 
@@ -647,7 +676,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                 messages: [...prev.messages, feedback],
             }));
         }
-    }, [cancelStream, clearSendQueue, convo, projectId, reasoningMode, runStream, updateState, setArtifacts, setPendingChoices, isLoadingRef, stateRef]);
+    }, [cancelStream, clearSendQueue, convo, dropLocalMessages, projectId, reasoningMode, runStream, updateState, setArtifacts, setPendingChoices, isLoadingRef, stateRef]);
 
     const reviewArtifactActionLocal = useCallback(async (
         artifactId: string,
