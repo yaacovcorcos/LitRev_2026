@@ -1,7 +1,6 @@
 import { Project } from "@/types/project";
 import Link from "next/link";
 import styles from "@/components/ProjectGrid.module.css";
-import { useLedger } from "@/contexts/LedgerContext";
 import { isDemoProjectId } from "@/lib/demo/constants";
 import { SampleReviewCard } from "@/components/project/SampleReviewCard";
 
@@ -13,7 +12,6 @@ type ProjectGridProps = {
 };
 
 export function ProjectGrid({ projects, viewMode, onNewProject, showSampleCard = true }: ProjectGridProps) {
-  const { getPaperCount } = useLedger();
   const gridClass = viewMode === "list" ? `${styles.projectGrid} ${styles.listView}` : styles.projectGrid;
 
   return (
@@ -51,7 +49,7 @@ export function ProjectGrid({ projects, viewMode, onNewProject, showSampleCard =
         const statusClass = `${styles.cardStatus} ${isHarvesting ? styles.statusHarvesting : styles.statusReady} ${viewMode === "list" ? styles.listViewStatus : ""
           }`;
         const buttonClass = `${styles.viewProjectBtn} ${viewMode === "list" ? styles.listViewButton : ""}`;
-        const paperCount = getPaperCount(p.id);
+        const paperCount = p.papers ?? 0;
         const paperCountInline = !isList && isHarvesting;
         const statusText = isSample ? "Sample" : p.statusText;
 

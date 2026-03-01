@@ -30,6 +30,13 @@ vi.mock("@/lib/network-aware", () => ({
 vi.mock("@/lib/project-data-events", () => ({
     addProjectDataChangedListener: vi.fn(() => () => {}),
 }));
+const mockSeedProject = vi.fn();
+vi.mock("@/contexts/LedgerContext", () => ({
+    useLedger: () => ({
+        seedProject: mockSeedProject,
+        ensureProjectLoaded: vi.fn(),
+    }),
+}));
 
 // Polyfill requestIdleCallback for jsdom
 if (typeof globalThis.requestIdleCallback === "undefined") {

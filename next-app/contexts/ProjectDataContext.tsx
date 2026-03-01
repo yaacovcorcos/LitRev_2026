@@ -18,6 +18,7 @@ import {
     type ProjectDataDomain,
 } from "@/lib/project-data-events";
 import { shouldSkipPreload } from "@/lib/network-aware";
+import { useLedger } from "@/contexts/LedgerContext";
 import type { ProtocolData } from "@/types/protocol";
 import type { Study } from "@/types/ledger";
 import type { DraftState } from "@/lib/draftStorage";
@@ -73,6 +74,8 @@ export function ProjectDataProvider({
     const [draft, setDraft] = useState<DomainSlice<DraftState>>(INITIAL_SLICE);
     const [notesList, setNotesList] = useState<DomainSlice<NoteIndexItem[]>>(INITIAL_SLICE);
 
+    const { seedProject } = useLedger();
+
     // Track current projectId to discard stale in-flight results
     const projectIdRef = useRef(projectId);
     projectIdRef.current = projectId;
@@ -110,6 +113,7 @@ export function ProjectDataProvider({
             if (projectIdRef.current !== pid) return;
             if (result.success) {
                 setStudies({ data: result.data, state: "ready", error: null });
+                seedProject(pid, result.data);
             } else {
                 setStudies({ data: null, state: "error", error: result.error });
             }
@@ -117,7 +121,7 @@ export function ProjectDataProvider({
             if (projectIdRef.current !== pid) return;
             setStudies({ data: null, state: "error", error: (e as Error).message });
         }
-    }, []);
+    }, [seedProject]);
 
     const fetchDraft = useCallback(async (pid: string) => {
         setDraft({ data: null, state: "loading", error: null });
