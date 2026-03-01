@@ -108,6 +108,13 @@ export async function createFileAsset(
   input: FileAssetInput
 ): Promise<FileAsset> {
   const scope = await assertProjectAccess(scopeInput, projectId);
+
+  // Validate that storagePath is scoped to this project to prevent
+  // cross-tenant file access via arbitrary path injection.
+  if (!input.storagePath.includes(`/${projectId}/`)) {
+    throw new Error("Storage path must belong to the specified project.");
+  }
+
   const created = await prisma.fileAsset.create({
     data: {
       id: input.id ?? undefined,
