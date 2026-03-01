@@ -7,6 +7,7 @@ import type { CopilotMessage, ProjectCopilotState } from "@/lib/projectCopilotSt
 import type { ArtifactData } from "@/types/artifacts";
 import type { AgentMode, AutonomyPreset, AutonomyLevel } from "@/types/agent";
 import type { ChoiceOption, CopilotPage, ReasoningMode, StreamPhase, UserInputRequest } from "@/types/ai";
+import type { SelectableModelId, ReasoningSupportTier } from "@/lib/ai/config";
 
 export type PendingAttachment = {
     fileAssetId: string;
@@ -47,6 +48,12 @@ export type ProjectCopilotContextValue = {
     canAct: boolean;
     /** Reasoning visibility mode (off/summary/full) */
     reasoningMode: ReasoningMode;
+    /** Currently selected model ID */
+    selectedModel: SelectableModelId;
+    /** Reasoning support tier of the current model */
+    reasoningSupport: ReasoningSupportTier;
+    /** Update the selected model (persists to localStorage, may force reasoningMode off) */
+    setSelectedModel: (modelId: SelectableModelId) => void;
     /** Toggle the panel collapsed state */
     toggleCollapsed: () => void;
     /** Set the panel collapsed state */

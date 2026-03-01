@@ -18,7 +18,7 @@ export const deleteStudyTool: AITool = {
     definition: {
         name: "delete_study",
         description:
-            "Permanently delete a study from the project's ledger. Use only when the user explicitly asks to delete, remove, or purge a study from the ledger. Use the study ID from [STUDY_CONTEXT] or [LEDGER_CONTEXT] when available.",
+            "Remove a study from the project's active ledger (soft delete). Use only when the user explicitly asks to delete, remove, or purge a study from the ledger. Use the study ID from [STUDY_CONTEXT] or [LEDGER_CONTEXT] when available.",
         parameters: {
             type: "object",
             properties: {
@@ -58,7 +58,7 @@ export const deleteStudyTool: AITool = {
 
         try {
             const study = await prisma.study.findFirst({
-                where: { id: studyId, projectId },
+                where: { id: studyId, projectId, deletedAt: null },
                 select: { id: true, title: true },
             });
 
@@ -66,8 +66,9 @@ export const deleteStudyTool: AITool = {
                 return { callId: "", result: null, error: `Study not found: ${studyId}` };
             }
 
-            await prisma.study.deleteMany({
-                where: { id: studyId, projectId },
+            await prisma.study.updateMany({
+                where: { id: studyId, projectId, deletedAt: null },
+                data: { deletedAt: new Date() },
             });
 
             return {

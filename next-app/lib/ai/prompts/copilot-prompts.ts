@@ -273,7 +273,10 @@ export function buildProtocolContext(protocol: ProtocolData): string {
  * Build lightweight protocol pointer context for lazy loading modes.
  * Keeps prompt prefix stable while still teaching the model how to fetch details.
  */
-export function buildProtocolPointerContext(): string {
+export function buildProtocolPointerContext(options?: { readToolAvailable?: boolean }): string {
+    if (options?.readToolAvailable === false) {
+        return `\n\n[PROTOCOL_CONTEXT]\nProtocol details are available in the project protocol tab. If exact criteria are required, ask the user whether to switch to protocol mode before applying criteria-driven actions.`;
+    }
     return `\n\n[PROTOCOL_CONTEXT]\nProtocol details are available on demand. Use read_protocol when you need exact research question, PICO fields, or eligibility criteria.`;
 }
 
@@ -307,7 +310,10 @@ export function buildLedgerContext(
  * Build lightweight ledger pointer context for lazy loading modes.
  * Keeps prompt prefix stable while still teaching the model how to fetch details.
  */
-export function buildLedgerPointerContext(): string {
+export function buildLedgerPointerContext(options?: { readToolAvailable?: boolean }): string {
+    if (options?.readToolAvailable === false) {
+        return `\n\n[LEDGER_CONTEXT]\nEvidence ledger details are available in the ledger tab. Summarize at a high level unless the user asks to switch to a mode with ledger-read tools.`;
+    }
     return `\n\n[LEDGER_CONTEXT]\nEvidence ledger details are available on demand. Use read_ledger when you need live counts or study IDs before acting.`;
 }
 

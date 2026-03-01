@@ -1,12 +1,56 @@
 :root {
+    /* Primitive RGB Channel Tokens — raw channels for rgba() composition.
+       Usage: rgba(var(--rgb-ui-surface), 0.5)
+       Never use these directly as color values. */
+    --rgb-white: 255, 255, 255;
+    --rgb-black: 0, 0, 0;
+    --rgb-ui-surface: 255, 255, 255;          /* themed surface base for translucent fills */
+    --rgb-ui-contrast: 0, 0, 0;               /* themed contrast base for borders/hovers */
+    --rgb-ui-scrim: 0, 0, 0;                  /* themed scrim/shadow base */
+    --rgb-accent-primary: 217, 116, 89;       /* matches --accent-primary: #D97459 */
+    --rgb-accent-secondary: 118, 140, 123;    /* matches --accent-secondary: #768c7b */
+    --rgb-accent-tertiary: 212, 163, 115;     /* matches --accent-tertiary: #d4a373 */
+    --rgb-color-danger: 192, 57, 43;          /* matches --color-danger: #c0392b */
+    --rgb-color-info: 107, 124, 138;          /* matches --color-info: #6b7c8a */
+    --rgb-color-success: 90, 138, 98;         /* matches --color-success: #5a8a62 */
+    --rgb-indigo: 129, 140, 248;              /* AI/agent state accent */
+    --rgb-accent-primary-soft: 194, 120, 101; /* warm pink overlay variant */
+    --rgb-warm-brown: 109, 90, 58;            /* dark warm brown */
+    --rgb-shadow-warm: 26, 22, 19;            /* warm near-black for modal shadows */
+    --rgb-bg-body: 242, 240, 233;             /* matches --bg-body: #f2f0e9 */
+    --rgb-bg-sidebar: 235, 232, 225;          /* matches --bg-sidebar base */
+
+    /* Legacy RGB Tokens (exact aliases for zero-visual-change tokenization)
+       TODO: Consolidate these into semantic palette tokens in a dedicated pass. */
+    --rgb-legacy-red-bootstrap: 220, 53, 69;
+    --rgb-legacy-red-tailwind-600: 220, 38, 38;
+    --rgb-legacy-red-tailwind-500: 239, 68, 68;
+    --rgb-legacy-red-material: 229, 57, 53;
+    --rgb-legacy-green-bootstrap: 40, 167, 69;
+    --rgb-legacy-green-emerald: 39, 174, 96;
+    --rgb-legacy-green-material: 76, 175, 80;
+    --rgb-legacy-green-dark: 46, 125, 50;
+    --rgb-legacy-blue-info: 52, 152, 219;
+    --rgb-legacy-orange: 230, 126, 34;
+    --rgb-legacy-amber: 200, 160, 80;
+    --rgb-legacy-terracotta-variant: 194, 94, 69;
+    --rgb-legacy-warm-off-white: 255, 253, 251;
+
+    /* One-off semantic hex tokens (no RGB channel counterpart needed) */
+    --color-amber-text: #8a6d3b;              /* running-status badge text */
+    --color-accent-primary-dark: #a0513d;     /* dark CTA text on tinted button */
+
+    /* Solid surface backgrounds (cards, dropdowns, inputs) — flipped in dark mode */
+    --bg-surface: var(--color-white);
+
     /* Warm Beige / Middle Mode Palette */
     --bg-body: #f2f0e9;
     /* Soft Warm Beige */
-    --bg-sidebar: rgba(235, 232, 225, 0.8);
+    --bg-sidebar: rgba(var(--rgb-bg-sidebar), 0.8);
     /* Slightly darker beige */
-    --glass-bg: rgba(255, 255, 255, 0.5);
-    --glass-border: rgba(0, 0, 0, 0.06);
-    --glass-highlight: rgba(255, 255, 255, 0.8);
+    --glass-bg: rgba(var(--rgb-ui-surface), 0.5);
+    --glass-border: rgba(var(--rgb-ui-contrast), 0.06);
+    --glass-highlight: rgba(var(--rgb-ui-surface), 0.8);
 
     /* Text Colors (Dark for Light Theme) */
     --text-primary: #2d2a26;
@@ -25,36 +69,41 @@
     --accent-new-project: linear-gradient(135deg, #D97459 0%, #e6b8a2 100%);
 
     /* Status Colors */
-    --status-ready-bg: rgba(118, 140, 123, 0.15);
+    --status-ready-bg: rgba(var(--rgb-accent-secondary), 0.15);
     --status-ready-text: #556b5a;
-    --status-harvesting-bg: rgba(212, 163, 115, 0.15);
+    --status-harvesting-bg: rgba(var(--rgb-accent-tertiary), 0.15);
     --status-harvesting-text: #9c724f;
 
     /* Surface & Border Tokens */
-    --bg-secondary: rgba(0, 0, 0, 0.03);
-    --bg-tertiary: rgba(0, 0, 0, 0.06);
-    --border-default: rgba(0, 0, 0, 0.1);
+    --bg-secondary: rgba(var(--rgb-ui-contrast), 0.03);
+    --bg-tertiary: rgba(var(--rgb-ui-contrast), 0.06);
+    --border-default: rgba(var(--rgb-ui-contrast), 0.1);
 
     /* Semantic Status Colors — Danger */
     --color-danger: #c0392b;
     --color-danger-hover: #a93226;
-    --color-danger-bg: rgba(192, 57, 43, 0.08);
-    --color-danger-bg-hover: rgba(192, 57, 43, 0.16);
-    --color-danger-border: rgba(192, 57, 43, 0.3);
+    --color-danger-bg: rgba(var(--rgb-color-danger), 0.08);
+    --color-danger-bg-hover: rgba(var(--rgb-color-danger), 0.16);
+    --color-danger-border: rgba(var(--rgb-color-danger), 0.3);
 
     /* Semantic Status Colors — Info (warm muted slate) */
     --color-info: #6b7c8a;
-    --color-info-bg: rgba(107, 124, 138, 0.08);
-    --color-info-bg-solid: rgba(107, 124, 138, 0.15);
-    --color-info-border: rgba(107, 124, 138, 0.2);
+    --color-info-bg: rgba(var(--rgb-color-info), 0.08);
+    --color-info-bg-solid: rgba(var(--rgb-color-info), 0.15);
+    --color-info-border: rgba(var(--rgb-color-info), 0.2);
     --color-info-text: #566874;
     --focus-ring-color: var(--accent-primary);
     --focus-ring-color-muted: var(--color-info-text);
 
     /* Semantic Status Colors — Success */
     --color-success: #5a8a62;
-    --color-success-bg: rgba(90, 138, 98, 0.1);
+    --color-success-bg: rgba(var(--rgb-color-success), 0.1);
     --color-source-conversation: #2563eb;
+
+    /* Semantic Status Colors — Warning */
+    --color-warning-bg: #fff6e7;
+    --color-warning-border: #f2d19d;
+    --color-warning-text: #7a4a00;
 
     /* Accent Hover Variants */
     --accent-primary-hover: #c4634a;
@@ -97,11 +146,11 @@
     --font-weight-bold: 700;
 
     /* Shadow Scale */
-    --shadow-xs: 0 1px 6px rgba(0, 0, 0, 0.08);
-    --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.04);
-    --shadow-md: 0 4px 10px rgba(0, 0, 0, 0.04);
-    --shadow-lg: 0 4px 12px rgba(0, 0, 0, 0.08);
-    --shadow-xl: 0 8px 32px rgba(0, 0, 0, 0.12);
+    --shadow-xs: 0 1px 6px rgba(var(--rgb-ui-scrim), 0.08);
+    --shadow-sm: 0 2px 8px rgba(var(--rgb-ui-scrim), 0.04);
+    --shadow-md: 0 4px 10px rgba(var(--rgb-ui-scrim), 0.04);
+    --shadow-lg: 0 4px 12px rgba(var(--rgb-ui-scrim), 0.08);
+    --shadow-xl: 0 8px 32px rgba(var(--rgb-ui-scrim), 0.12);
     --shadow-focus-ring: 0 0 0 2px color-mix(in srgb, var(--focus-ring-color) 24%, transparent);
     --shadow-focus-ring-strong: 0 0 0 3px color-mix(in srgb, var(--focus-ring-color) 16%, transparent);
 
@@ -133,8 +182,91 @@
 
     /* Scrollbar */
     --scrollbar-size: 4px;
-    --scrollbar-thumb: rgba(0, 0, 0, 0.10);
-    --scrollbar-thumb-hover: rgba(0, 0, 0, 0.20);
+    --scrollbar-thumb: rgba(var(--rgb-ui-contrast), 0.10);
+    --scrollbar-thumb-hover: rgba(var(--rgb-ui-contrast), 0.20);
     --scrollbar-track: transparent;
     --scrollbar-radius: 3px;
+}
+
+/* ── Dark Theme ─────────────────────────────────────────────── */
+
+[data-theme="dark"] {
+    /* Semantic UI primitives — the core 2 that flip */
+    --rgb-ui-surface: 24, 22, 20;
+    --rgb-ui-contrast: 200, 195, 188;
+    /* --rgb-ui-scrim stays 0,0,0 — scrims/shadows are always dark */
+
+    /* Core surfaces */
+    --bg-body: #131110;
+    --rgb-bg-body: 19, 17, 16;
+    --bg-sidebar: rgba(16, 14, 12, 0.92);
+    --rgb-bg-sidebar: 16, 14, 12;
+    --bg-surface: #1e1c1a;
+
+    /* Glass — translucent white tints become translucent light tints */
+    --glass-bg: rgba(255, 255, 255, 0.06);
+    --glass-border: rgba(255, 255, 255, 0.08);
+    --glass-highlight: rgba(255, 255, 255, 0.04);
+
+    /* Text — light on dark */
+    --text-primary: #e8e4de;
+    --text-secondary: #b0a99f;
+    --text-muted: #7a7570;
+
+    /* Surfaces & borders */
+    --bg-secondary: rgba(255, 255, 255, 0.04);
+    --bg-tertiary: rgba(255, 255, 255, 0.07);
+    --border-default: rgba(255, 255, 255, 0.12);
+
+    /* Status text — lightened for dark-bg readability */
+    --status-ready-text: #7fad87;
+    --status-harvesting-text: #c4a47a;
+    --color-info-text: #8a9dab;
+    --color-amber-text: #c4a46f;
+    --color-accent-primary-dark: #d97459;
+    --color-interactive-dark: #e8e4de;
+
+    /* Warning */
+    --color-warning-bg: #332a1a;
+    --color-warning-border: #665230;
+    --color-warning-text: #e0c080;
+
+    /* Accent hovers — lighter instead of darker */
+    --accent-primary-hover: #e08a6f;
+    --accent-secondary-hover: #8aa391;
+    --accent-tertiary-hover: #deb88a;
+    --accent-new-project: linear-gradient(135deg, #e08a6f 0%, #c4634a 100%);
+
+    /* Danger — lightened for contrast */
+    --color-danger: #e05545;
+    --color-danger-hover: #c44a3d;
+    --color-danger-bg: rgba(224, 85, 69, 0.12);
+    --color-danger-bg-hover: rgba(224, 85, 69, 0.22);
+    --color-danger-border: rgba(224, 85, 69, 0.35);
+
+    /* Info — lightened */
+    --color-info: #8a9dab;
+    --color-info-bg: rgba(138, 157, 171, 0.1);
+    --color-info-bg-solid: rgba(138, 157, 171, 0.18);
+    --color-info-border: rgba(138, 157, 171, 0.25);
+
+    /* Success — lightened */
+    --color-success: #6fa87a;
+    --color-success-bg: rgba(111, 168, 122, 0.12);
+    --color-source-conversation: #5b8def;
+
+    /* Shadows — heavier for dark backgrounds */
+    --shadow-xs: 0 1px 6px rgba(var(--rgb-ui-scrim), 0.25);
+    --shadow-sm: 0 2px 8px rgba(var(--rgb-ui-scrim), 0.2);
+    --shadow-md: 0 4px 10px rgba(var(--rgb-ui-scrim), 0.2);
+    --shadow-lg: 0 4px 12px rgba(var(--rgb-ui-scrim), 0.3);
+    --shadow-xl: 0 8px 32px rgba(var(--rgb-ui-scrim), 0.4);
+
+    /* Focus rings — slightly adjusted for dark */
+    --shadow-focus-ring: 0 0 0 2px color-mix(in srgb, var(--focus-ring-color) 32%, transparent);
+    --shadow-focus-ring-strong: 0 0 0 3px color-mix(in srgb, var(--focus-ring-color) 22%, transparent);
+
+    /* Scrollbar */
+    --scrollbar-thumb: rgba(255, 255, 255, 0.15);
+    --scrollbar-thumb-hover: rgba(255, 255, 255, 0.25);
 }

@@ -21,7 +21,7 @@ describe("buildSearchPlan", () => {
         // First query should be PICO-structured
         const picoQuery = plan.pubmedQueries[0];
         expect(picoQuery.label).toBe("PICO-structured search");
-        expect(picoQuery.query).toContain("[MeSH]");
+        expect(picoQuery.query).not.toContain("[MeSH]");
         expect(picoQuery.query).toContain("[tiab]");
         expect(picoQuery.query).toContain("AND");
         expect(picoQuery.query).toContain("adults with heart failure");
@@ -159,18 +159,45 @@ describe("buildSearchPlan", () => {
         expect(inclusionNote).toContain("adults 18+");
     });
 
-    it("deduplicates extracted concepts", () => {
+    it("avoids false-positive RCT detection from substring matches", () => {
+        const intent: SearchIntent = {
+            rawTask: "find data extraction methods for adverse-event reporting",
+        };
+
+        const plan = buildSearchPlan(intent);
+
+        for (const q of plan.pubmedQueries) {
+            expect(q.query).not.toContain("Randomized Controlled Trial[pt]");
+        }
+    });
+
+    it("sanitizes quoted PICO values before building PubMed syntax", () => {
+        const intent: SearchIntent = {
+            rawTask: "find trials",
+            pico: {
+                population: "\"adults with heart failure\"",
+                intervention: "\"standard of care\"",
+                outcome: "\"mortality\"",
+            },
+        };
+
+        const plan = buildSearchPlan(intent);
+        const query = plan.pubmedQueries[0]?.query ?? "";
+        expect(query).not.toContain("\"\"");
+        expect(query).toContain("[tiab]");
+    });
+
+    it("does not duplicate concept groups for repeated terms", () => {
         const intent: SearchIntent = {
             rawTask: "diabetes diabetes diabetes treatment",
         };
 
         const plan = buildSearchPlan(intent);
 
-        // Should not produce duplicate concept groups
+        // Count occurrences of "diabetes[tiab]" in the first PubMed query
         const query = plan.pubmedQueries[0]?.query ?? "";
-        const meshMatches = query.match(/diabetes\[MeSH\]/g);
-        // At most 1 occurrence of "diabetes" as a standalone MeSH concept group
-        expect(meshMatches?.length ?? 0).toBeLessThanOrEqual(1);
+        const tiabMatches = query.match(/diabetes\[tiab\]/gi) ?? [];
+        expect(tiabMatches.length).toBeLessThanOrEqual(1);
     });
 
     it("handles empty task gracefully", () => {
@@ -217,8 +244,7 @@ describe("formatSearchPlanAsTask", () => {
         const plan = buildSearchPlan(intent);
         const formatted = formatSearchPlanAsTask(plan);
 
-        // Should contain the actual query with MeSH/tiab syntax
-        expect(formatted).toContain("[MeSH]");
+        // Should contain the actual query with field-tag syntax
         expect(formatted).toContain("[tiab]");
     });
 });

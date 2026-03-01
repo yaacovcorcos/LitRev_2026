@@ -10,8 +10,8 @@
     min-width: 0;
     --focus-ring-color: var(--focus-ring-color-muted, var(--color-info-text));
     border-radius: var(--radius-lg, 12px);
-    border: 1px solid var(--glass-border, rgba(0, 0, 0, 0.08));
-    background: rgba(255, 255, 255, 0.82);
+    border: 1px solid var(--glass-border, rgba(var(--rgb-ui-contrast), 0.08));
+    background: rgba(var(--rgb-ui-surface), 0.82);
     overflow: hidden;
 }
 
@@ -76,15 +76,15 @@
 }
 
 .optionRow:hover {
-    background: rgba(0, 0, 0, 0.03);
+    background: rgba(var(--rgb-ui-contrast), 0.03);
 }
 
 .optionRowSelected {
-    background: rgba(109, 90, 58, 0.06);
+    background: rgba(var(--rgb-warm-brown), 0.06);
 }
 
 .optionRowSelected:hover {
-    background: rgba(109, 90, 58, 0.08);
+    background: rgba(var(--rgb-warm-brown), 0.08);
 }
 
 /* Radio / checkbox circle */

@@ -171,4 +171,23 @@ describe("askUserTool", () => {
         });
         expect(result.success).toBe(false);
     });
+
+    it("validates input schema rejects header values longer than 20 chars", () => {
+        const result = askUserTool.inputSchema!.safeParse({
+            question: "Which one?",
+            questionType: "single_choice",
+            options: [{ label: "A" }, { label: "B" }],
+            header: "This header is definitely too long",
+        });
+        expect(result.success).toBe(false);
+    });
+
+    it("validates input schema rejects more than 10 options", () => {
+        const result = askUserTool.inputSchema!.safeParse({
+            question: "Pick one",
+            questionType: "single_choice",
+            options: Array.from({ length: 11 }, (_, i) => ({ label: `Option ${i + 1}` })),
+        });
+        expect(result.success).toBe(false);
+    });
 });

@@ -7,7 +7,7 @@ export const DEMO_PROJECT_DESCRIPTION =
 
 export const DEMO_PROJECT_STATUS_TEXT = "Sample";
 
-export const DEMO_PROJECT_PAPERS = 12;
+export const DEMO_PROJECT_PAPERS = 16;
 
 export function isDemoProjectId(projectId: string | null | undefined): boolean {
   return (projectId ?? "").trim() === DEMO_PROJECT_ID;

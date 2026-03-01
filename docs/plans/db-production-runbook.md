@@ -52,7 +52,10 @@ WHERE schemaname='public'
     'UserMemory_userId_pinned_idx',
     'ProjectMemory_projectId_pinned_idx',
     'StudyMemory_projectId_pinned_idx',
-    'MemoryEmbedding_embedding_hnsw_idx'
+    'MemoryEmbedding_embedding_hnsw_idx',
+    'AgentRun_parentRunId_startedAt_idx',
+    'AgentRun_rootRunId_startedAt_idx',
+    'AgentRun_conversationId_startedAt_idx'
   )
 ORDER BY indexname;
 ```
@@ -74,6 +77,24 @@ WHERE table_schema='public'
   AND ((table_name='AgentRun' AND column_name='projectId')
     OR (table_name='Artifact' AND column_name='projectId'))
 ORDER BY table_name;
+```
+
+Run-lineage schema checks:
+```sql
+SELECT column_name
+FROM information_schema.columns
+WHERE table_schema='public'
+  AND table_name='AgentRun'
+  AND column_name IN ('parentRunId', 'rootRunId')
+ORDER BY column_name;
+
+SELECT conname
+FROM pg_constraint
+WHERE conname IN (
+  'AgentRun_parentRunId_fkey',
+  'RunEvent_runId_sequence_key'
+)
+ORDER BY conname;
 ```
 
 ## 3) Drift / Failure Handling Rules
@@ -141,7 +162,9 @@ ANALYZE "Artifact";
 
 ## 7) Deploy Order
 1. Complete sections 1-6.
-2. Deploy app after DB checks pass.
+2. Confirm migration guard behavior:
+   - Production builds fail when pending migrations exist and `RUN_PRISMA_MIGRATE_IN_BUILD` is not set.
+3. Deploy app after DB checks pass.
 
 ## 8) Smoke Tests (Post-deploy)
 1. Start a chat stream and receive full response.

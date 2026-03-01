@@ -1,25 +1,32 @@
 "use server";
 
+import { z } from "zod";
 import type { ProtocolData } from "@/types/protocol";
 import { getProtocol, saveProtocol } from "@/lib/server/protocols";
 import { syncProtocolToMemory } from "@/lib/server/memory";
-import { withAction, type ActionResult } from "@/lib/server/action-utils";
+import { withValidatedAction, type ActionResult } from "@/lib/server/action-utils";
 import { withAuth } from "@/lib/server/auth/session";
+import { projectIdSchema } from "@/lib/schemas/ids";
+import { protocolDataSchema } from "@/lib/schemas/protocol";
 
 export async function getProtocolAction(projectId: string): Promise<ActionResult<ProtocolData | null>> {
-  return withAction(() =>
-    withAuth(({ userId, workspaceId }) =>
-      getProtocol({ ownerId: userId, workspaceId }, projectId),
+  return withValidatedAction(projectIdSchema, projectId,
+    (id) => withAuth(({ userId, workspaceId }) =>
+      getProtocol({ ownerId: userId, workspaceId }, id),
     ),
   );
 }
 
+const saveProtocolInput = z.object({
+  projectId: projectIdSchema,
+  data: protocolDataSchema,
+});
+
 export async function saveProtocolAction(projectId: string, data: ProtocolData): Promise<ActionResult<ProtocolData>> {
-  return withAction(() =>
-    withAuth(async ({ userId, workspaceId }) => {
-      const saved = await saveProtocol({ ownerId: userId, workspaceId }, projectId, data);
-      // Fire-and-forget: sync protocol fields to memory system
-      syncProtocolToMemory(projectId, data).catch((err) =>
+  return withValidatedAction(saveProtocolInput, { projectId, data },
+    (v) => withAuth(async ({ userId, workspaceId }) => {
+      const saved = await saveProtocol({ ownerId: userId, workspaceId }, v.projectId, v.data as ProtocolData);
+      syncProtocolToMemory(v.projectId, v.data as ProtocolData).catch((err) =>
         console.error("[protocol-sync] Failed:", err)
       );
       return saved;

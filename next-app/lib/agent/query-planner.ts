@@ -1,13 +1,20 @@
 /**
  * Query Planner (CAG-008)
  * Decomposes a natural language search intent into structured search queries
- * for PubMed (Boolean + MeSH) and Semantic Scholar (keywords + year range).
+ * for PubMed (Boolean + field tags) and Semantic Scholar (keywords + year range).
  *
  * Pure module — no server-only, no DB imports. Used by delegate_search
  * to produce a structured search plan before the sub-agent executes.
  *
  * The planner does NOT call any API — it produces a plan that the search
  * sub-agent interprets and executes via its available tools.
+ *
+ * Design note: PubMed queries use [tiab] (title/abstract) field tags exclusively.
+ * MeSH terms were removed in the Wave 2 refactor because:
+ * 1. Free-text PICO values from user protocols rarely map cleanly to MeSH headings.
+ * 2. Incorrect MeSH terms silently reduce recall (zero results instead of many).
+ * 3. [tiab] field-tag queries are more predictable and debuggable.
+ * If MeSH support is added back, it should use NLM's MeSH API for validation.
  */
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -64,10 +71,11 @@ export interface SearchPlan {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-/** Common MeSH-mappable study design terms */
+/** Common study-design filters mapped to PubMed publication/type fields */
 const STUDY_DESIGN_MESH: Record<string, string> = {
     rct: "Randomized Controlled Trial[pt]",
     "randomized controlled trial": "Randomized Controlled Trial[pt]",
+    "randomized controlled trials": "Randomized Controlled Trial[pt]",
     "systematic review": "Systematic Review[pt]",
     "meta-analysis": "Meta-Analysis[pt]",
     "cohort study": "Cohort Studies[MeSH]",
@@ -78,21 +86,20 @@ const STUDY_DESIGN_MESH: Record<string, string> = {
     "observational study": "Observational Study[pt]",
 };
 
+function normalizeConcept(concept: string): string {
+    return concept
+        .replace(/["`]+/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+}
+
 /** Wraps a concept in PubMed field tags for title/abstract search */
 function tiabTerm(concept: string): string {
-    const trimmed = concept.trim();
+    const trimmed = normalizeConcept(concept);
     if (!trimmed) return "";
     // Multi-word concepts get quotes
     if (trimmed.includes(" ")) return `"${trimmed}"[tiab]`;
     return `${trimmed}[tiab]`;
-}
-
-/** Wraps a concept as a MeSH term */
-function meshTerm(concept: string): string {
-    const trimmed = concept.trim();
-    if (!trimmed) return "";
-    if (trimmed.includes(" ")) return `"${trimmed}"[MeSH]`;
-    return `${trimmed}[MeSH]`;
 }
 
 /** Combines terms with OR for synonym expansion */
@@ -156,7 +163,9 @@ function detectStudyDesigns(text: string): string[] {
     const lower = text.toLowerCase();
     const detected: string[] = [];
     for (const [pattern, meshQuery] of Object.entries(STUDY_DESIGN_MESH)) {
-        if (lower.includes(pattern)) {
+        const escaped = pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const patternSource = pattern === "rct" ? "\\brcts?\\b" : `\\b${escaped}\\b`;
+        if (new RegExp(patternSource, "i").test(lower)) {
             detected.push(meshQuery);
         }
     }
@@ -177,7 +186,7 @@ function buildYearRange(range?: { start?: number; end?: number }): string | unde
 
 /**
  * Build a structured search plan from a search intent.
- * Returns PubMed queries (with Boolean/MeSH) and Semantic Scholar queries
+ * Returns PubMed queries (with Boolean/field tags) and Semantic Scholar queries
  * (with keywords and year filtering).
  */
 export function buildSearchPlan(intent: SearchIntent): SearchPlan {
@@ -198,28 +207,16 @@ export function buildSearchPlan(intent: SearchIntent): SearchPlan {
         const picoGroups: string[] = [];
 
         if (pico!.population) {
-            picoGroups.push(orGroup([
-                meshTerm(pico!.population),
-                tiabTerm(pico!.population),
-            ]));
+            picoGroups.push(tiabTerm(pico!.population));
         }
         if (pico!.intervention) {
-            picoGroups.push(orGroup([
-                meshTerm(pico!.intervention),
-                tiabTerm(pico!.intervention),
-            ]));
+            picoGroups.push(tiabTerm(pico!.intervention));
         }
         if (pico!.comparison) {
-            picoGroups.push(orGroup([
-                meshTerm(pico!.comparison),
-                tiabTerm(pico!.comparison),
-            ]));
+            picoGroups.push(tiabTerm(pico!.comparison));
         }
         if (pico!.outcome) {
-            picoGroups.push(orGroup([
-                meshTerm(pico!.outcome),
-                tiabTerm(pico!.outcome),
-            ]));
+            picoGroups.push(tiabTerm(pico!.outcome));
         }
 
         let picoQuery = andJoin(picoGroups);
@@ -242,14 +239,14 @@ export function buildSearchPlan(intent: SearchIntent): SearchPlan {
                 label: "PICO-structured search",
                 maxResults: 20,
             });
-            strategyNotes.push("Primary search uses PICO elements from protocol with MeSH + title/abstract expansion.");
+            strategyNotes.push("Primary search uses PICO elements from protocol with title/abstract field tags.");
         }
     }
 
     // ── Build concept-based PubMed query (from raw task) ─────────────────
 
     if (concepts.length > 0) {
-        const conceptGroups = concepts.map(c => orGroup([meshTerm(c), tiabTerm(c)]));
+        const conceptGroups = concepts.map((c) => tiabTerm(c));
         let conceptQuery = andJoin(conceptGroups);
 
         if (studyDesigns.length > 0) {

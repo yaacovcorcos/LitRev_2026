@@ -52,6 +52,30 @@ function ProjectShellInner({ projectId, children }: ProjectShellInnerProps) {
         window.localStorage.setItem("litrev:lastProjectId", projectId);
     }, [projectId]);
 
+    // Keep root scrolling disabled while project shell is active so wheel/touch
+    // events stay scoped to workspace panes (content/copilot/timeline).
+    useEffect(() => {
+        if (typeof document === "undefined") return;
+        const html = document.documentElement;
+        const body = document.body;
+        const prevHtmlOverflow = html.style.overflow;
+        const prevHtmlOverscroll = html.style.overscrollBehavior;
+        const prevBodyOverflow = body.style.overflow;
+        const prevBodyOverscroll = body.style.overscrollBehavior;
+
+        html.style.overflow = "hidden";
+        html.style.overscrollBehavior = "none";
+        body.style.overflow = "hidden";
+        body.style.overscrollBehavior = "none";
+
+        return () => {
+            html.style.overflow = prevHtmlOverflow;
+            html.style.overscrollBehavior = prevHtmlOverscroll;
+            body.style.overflow = prevBodyOverflow;
+            body.style.overscrollBehavior = prevBodyOverscroll;
+        };
+    }, []);
+
     // Derive initial mode from route to avoid deep-link flicker.
     const [focusMode, setFocusMode] = useState<FocusMode>(() =>
         tabFromPathname(pathname) ? "view" : "conversation"

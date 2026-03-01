@@ -183,6 +183,7 @@ model Study {
   status      String
   quality     String
   details     Json?
+  deletedAt   DateTime?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -191,6 +192,7 @@ model Study {
   memories  StudyMemory[]
 
   @@index([projectId])
+  @@index([projectId, deletedAt])
   @@index([workspaceId])
 }
 
@@ -481,6 +483,8 @@ model AgentRun {
   projectId       String?
   conversationId  String?
   userId          String?
+  parentRunId     String?
+  rootRunId       String?
   trigger         String    // "user_message" | "proactive" | "event"
   agentMode       String    // "protocol" | "search" | "screening" | "drafting" | "qa" | "general"
   status          String    // "running" | "completed" | "failed" | "cancelled"
@@ -491,12 +495,17 @@ model AgentRun {
   completedAt     DateTime?
 
   project   Project?   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  parent    AgentRun?  @relation("AgentRunLineage", fields: [parentRunId], references: [id], onDelete: SetNull)
+  children  AgentRun[] @relation("AgentRunLineage")
   events    RunEvent[]
   artifacts Artifact[]
 
   @@index([projectId, startedAt])
   @@index([conversationId])
+  @@index([conversationId, startedAt])
   @@index([userId])
+  @@index([parentRunId, startedAt])
+  @@index([rootRunId, startedAt])
 }
 
 model RunEvent {
@@ -519,6 +528,7 @@ model RunEvent {
   run AgentRun @relation(fields: [runId], references: [id], onDelete: Cascade)
 
   @@index([runId, sequence])
+  @@unique([runId, sequence])
   @@index([runId, type])
   @@index([artifactId])
 }
@@ -576,17 +586,20 @@ model Note {
   userId                 String?
   title                  String?
   content                Json
+  contentText            String?
   tags                   String[] @default([])
   linkedStudyId          String?
   linkedSection          String?
   source                 String   @default("manual") // "manual" | "conversation"
   sourceConversationId   String?
   sourceMessageId        String?
+  deletedAt              DateTime?
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([projectId])
+  @@index([projectId, deletedAt])
   @@index([projectId, source])
 }

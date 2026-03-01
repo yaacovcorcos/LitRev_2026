@@ -265,6 +265,7 @@ function buildTimelinePrintHtml(items: TimelineItem[], title: string): string {
     <meta charset="utf-8" />
     <title>${escapeHtml(title)}</title>
     <style>
+      /* Export HTML is intentionally light-only for consistent print/PDF output. */
       :root { color-scheme: light; }
       body {
         font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;

@@ -63,6 +63,11 @@ export type CopilotInputCoreProps = {
     pendingChoices?: ChoiceOption[];
     clearChoices?: () => void;
 
+    /** Selected model ID (controlled externally via context) */
+    selectedModel?: SelectableModelId;
+    /** Callback when user changes the model */
+    onModelChange?: (modelId: SelectableModelId) => void;
+    /** @deprecated Use selectedModel/onModelChange instead. Only used for fallback local state. */
     modelStorageKey?: string;
     showAutonomyPreset?: boolean;
     showAttachments?: boolean;
@@ -100,6 +105,8 @@ export function CopilotInputCore({
     setShowAutonomySettings,
     pendingChoices = [],
     clearChoices,
+    selectedModel: selectedModelProp,
+    onModelChange,
     modelStorageKey = "litrev_copilot_model",
     showAutonomyPreset,
     showAttachments,
@@ -113,6 +120,10 @@ export function CopilotInputCore({
     const [hasMounted, setHasMounted] = useState(false);
     const [input, setInput] = useState("");
     const [selectedModel, setSelectedModel] = useState<SelectableModelId>("gpt-5.2");
+    const [answeredUserInput, setAnsweredUserInput] = useState<{
+        request: UserInputRequest;
+        answer: string;
+    } | null>(null);
 
     // Radix generates runtime IDs; defer Radix-driven controls until after mount
     // so server markup always matches the first client render.
@@ -198,6 +209,25 @@ export function CopilotInputCore({
         el.style.height = "auto";
         el.style.height = Math.min(el.scrollHeight, 200) + "px";
     }, [input]);
+
+    // Drop stale answered snapshots when a different ask_user request arrives.
+    useEffect(() => {
+        if (!pendingUserInput) return;
+        if (!answeredUserInput) return;
+        if (pendingUserInput.callId !== answeredUserInput.request.callId) {
+            setAnsweredUserInput(null);
+        }
+    }, [pendingUserInput, answeredUserInput]);
+
+    // Keep the answered state visible briefly for confirmation, then clear.
+    const ANSWER_CONFIRMATION_MS = 1200;
+    useEffect(() => {
+        if (!answeredUserInput) return;
+        const timeout = window.setTimeout(() => {
+            setAnsweredUserInput(null);
+        }, ANSWER_CONFIRMATION_MS);
+        return () => window.clearTimeout(timeout);
+    }, [answeredUserInput]);
 
     // Consume prefill command from parent (suggestion chips).
     // Triggers on command ID change, so clicking the same suggestion twice always works.
@@ -377,21 +407,33 @@ export function CopilotInputCore({
                 )}
 
                 {/* Structured ask_user overlay — appears above choices */}
-                {pendingUserInput && !isLoading && (
+                {(() => {
+                    const activeRequest = pendingUserInput ?? answeredUserInput?.request;
+                    if (!activeRequest || isLoading) return null;
+                    const isAnswered = !pendingUserInput && !!answeredUserInput;
+                    return (
                     <div className={styles.userInputOverlay}>
                         <UserInputCard
-                            question={pendingUserInput.question}
-                            questionType={pendingUserInput.questionType}
-                            options={pendingUserInput.options}
-                            header={pendingUserInput.header}
-                            context={pendingUserInput.context}
-                            answered={false}
-                            onAnswer={(answer) => onAnswerUserInput?.(pendingUserInput.callId, answer, page)}
-                            onDismiss={() => onAnswerUserInput?.(pendingUserInput.callId, "Dismissed — please proceed without my input.", page)}
+                            question={activeRequest.question}
+                            questionType={activeRequest.questionType}
+                            options={activeRequest.options}
+                            header={activeRequest.header}
+                            context={activeRequest.context}
+                            answered={isAnswered}
+                            answer={isAnswered ? answeredUserInput?.answer : undefined}
+                            onAnswer={(answer) => {
+                                setAnsweredUserInput({ request: activeRequest, answer });
+                                onAnswerUserInput?.(activeRequest.callId, answer, page);
+                            }}
+                            onDismiss={() => {
+                                const dismissAnswer = "Dismissed — please proceed without my input.";
+                                setAnsweredUserInput({ request: activeRequest, answer: dismissAnswer });
+                                onAnswerUserInput?.(activeRequest.callId, dismissAnswer, page);
+                            }}
                         />
                     </div>
-                )}
-
+                    );
+                })()}
                 {/* AI-generated choice chips */}
                 <div
                     className={`${styles.choicesSlot} ${pendingChoices.length > 0 && !isLoading ? styles.choicesSlotOpen : ""}`}

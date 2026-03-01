@@ -1,7 +1,7 @@
 .shell {
   --login-bg-page: var(--bg-body);
-  --login-bg-card: var(--color-white);
-  --login-bg-input: color-mix(in srgb, var(--bg-body) 74%, white 26%);
+  --login-bg-card: var(--bg-surface);
+  --login-bg-input: color-mix(in srgb, var(--bg-body) 74%, var(--bg-surface) 26%);
   --login-border-subtle: color-mix(in srgb, var(--border-default) 75%, var(--bg-sidebar) 25%);
   --login-border-focus: color-mix(in srgb, var(--accent-primary) 74%, var(--accent-tertiary) 26%);
   --login-accent: color-mix(in srgb, var(--accent-primary) 72%, var(--accent-tertiary) 28%);
@@ -182,7 +182,7 @@
 }
 
 .socialGoogle {
-  background: var(--color-white);
+  background: var(--bg-surface);
   color: var(--text-primary);
 }
 

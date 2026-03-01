@@ -14,6 +14,7 @@ import { useProjects } from "@/contexts/ProjectsContext";
 import { useRouter, useSearchParams } from "next/navigation";
 import { openOrCreateDemoProjectAction } from "@/app/actions/demo";
 import { DEMO_PROJECT_ID } from "@/lib/demo/constants";
+import { isAuthError, redirectToLogin } from "@/lib/action-client";
 import { authClient } from "@/lib/auth-client";
 import layoutStyles from "./home.module.css";
 
@@ -136,6 +137,7 @@ export function HomeContent() {
     try {
       const result = await openOrCreateDemoProjectAction();
       if (!result.success) {
+        if (isAuthError(result)) { redirectToLogin(); return; }
         const existingSample = projects.find((project) => project.id === DEMO_PROJECT_ID);
         if (existingSample) {
           router.push(`/project/${existingSample.id}`);

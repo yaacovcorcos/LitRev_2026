@@ -3,8 +3,9 @@
 import { prisma } from "@/lib/server/prisma";
 import { getAIService } from "@/lib/server/ai";
 import type { AIMessage } from "@/types/ai";
-import { withAction, type ActionResult } from "@/lib/server/action-utils";
+import { withValidatedAction, type ActionResult } from "@/lib/server/action-utils";
 import { withAuth } from "@/lib/server/auth/session";
+import { cuidSchema } from "@/lib/schemas/ids";
 
 const SUMMARIZE_PROMPT = `You are summarizing a conversation between a researcher and an AI assistant working on a systematic literature review.
 
@@ -35,12 +36,12 @@ type SummarizeResult = {
 export async function summarizeConversationAction(
     conversationId: string
 ): Promise<ActionResult<SummarizeResult>> {
-    return withAction(() =>
-      withAuth(async ({ userId, workspaceId }) => {
+    return withValidatedAction(cuidSchema, conversationId,
+      (validatedId) => withAuth(async ({ userId, workspaceId }) => {
         // 1. Fetch conversation with messages
         const conversation = await prisma.aIConversation.findFirst({
             where: {
-                id: conversationId,
+                id: validatedId,
                 userId,
                 workspaceId,
                 archived: false,
@@ -108,9 +109,9 @@ export async function summarizeConversationAction(
 
         // 4. Create/update ConversationSummary record
         await prisma.conversationSummary.upsert({
-            where: { conversationId },
+            where: { conversationId: validatedId },
             create: {
-                conversationId,
+                conversationId: validatedId,
                 summary: parsed.summary,
                 keyPoints: parsed.keyPoints,
                 decisions: parsed.decisions,
@@ -131,7 +132,7 @@ export async function summarizeConversationAction(
         // 5. Archive old conversation
         await prisma.aIConversation.updateMany({
             where: {
-                id: conversationId,
+                id: validatedId,
                 userId,
                 workspaceId,
             },

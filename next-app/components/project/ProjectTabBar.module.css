@@ -47,7 +47,7 @@
 }
 
 .modeBtnActive {
-    background: var(--bg-card, var(--color-white));
+    background: var(--bg-surface);
     color: var(--accent-primary);
     font-weight: 600;
     box-shadow: var(--shadow-xs);
@@ -81,7 +81,7 @@
 }
 
 .tab:hover {
-    background: rgba(0, 0, 0, 0.04);
+    background: rgba(var(--rgb-ui-contrast), 0.04);
     color: var(--text-primary);
 }
 
@@ -90,13 +90,13 @@
 }
 
 .tabActive {
-    background: rgba(217, 116, 89, 0.1);
+    background: rgba(var(--rgb-accent-primary), 0.1);
     color: var(--accent-primary);
     font-weight: 600;
 }
 
 .tabActive:hover {
-    background: rgba(217, 116, 89, 0.15);
+    background: rgba(var(--rgb-accent-primary), 0.15);
     color: var(--accent-primary);
 }
 

@@ -175,7 +175,7 @@ describe.skipIf(!shouldRunDbTests)('Demo Project Integration', () => {
 
     // Verify related data was seeded
     const studies = await prisma.study.findMany({ where: { projectId: DEMO_PROJECT_ID } })
-    expect(studies.length).toBe(12)
+    expect(studies.length).toBe(16)
 
     const protocol = await prisma.protocol.findFirst({ where: { projectId: DEMO_PROJECT_ID } })
     expect(protocol).not.toBeNull()
@@ -184,10 +184,10 @@ describe.skipIf(!shouldRunDbTests)('Demo Project Integration', () => {
     expect(draft).not.toBeNull()
 
     const notes = await prisma.note.findMany({ where: { projectId: DEMO_PROJECT_ID } })
-    expect(notes.length).toBe(3)
+    expect(notes.length).toBe(8)
 
     const memories = await prisma.projectMemory.findMany({ where: { projectId: DEMO_PROJECT_ID } })
-    expect(memories.length).toBe(4)
+    expect(memories.length).toBe(8)
 
     const files = await prisma.fileAsset.findMany({ where: { projectId: DEMO_PROJECT_ID } })
     expect(files.length).toBe(2)
@@ -203,16 +203,16 @@ describe.skipIf(!shouldRunDbTests)('Demo Project Integration', () => {
 
     expect(project1.id).toBe(project2.id)
 
-    // Should still have exactly 12 studies (not duplicated)
+    // Should still have exactly 16 studies (not duplicated)
     const studies = await prisma.study.findMany({ where: { projectId: DEMO_PROJECT_ID } })
-    expect(studies.length).toBe(12)
+    expect(studies.length).toBe(16)
   })
 
   it('resetDemoProject re-seeds studies and related data', async () => {
     // Delete a study to verify reset restores it
     await prisma.study.delete({ where: { id: 'demo-study-broota-1994' } })
     const beforeReset = await prisma.study.findMany({ where: { projectId: DEMO_PROJECT_ID } })
-    expect(beforeReset.length).toBe(11)
+    expect(beforeReset.length).toBe(15)
 
     const project = await resetDemoProject(LOCAL_SCOPE, DEMO_PROJECT_ID)
     expect(project).toBeDefined()
@@ -220,11 +220,11 @@ describe.skipIf(!shouldRunDbTests)('Demo Project Integration', () => {
 
     // Studies restored to full count
     const afterReset = await prisma.study.findMany({ where: { projectId: DEMO_PROJECT_ID } })
-    expect(afterReset.length).toBe(12)
+    expect(afterReset.length).toBe(16)
 
     // Related data also restored
     const notes = await prisma.note.findMany({ where: { projectId: DEMO_PROJECT_ID } })
-    expect(notes.length).toBe(3)
+    expect(notes.length).toBe(8)
   })
 
   it('resetDemoProject rejects non-demo project IDs', async () => {

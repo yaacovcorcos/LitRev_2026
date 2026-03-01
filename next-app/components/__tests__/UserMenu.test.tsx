@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { ThemeProvider } from "@/contexts/ThemeContext";
 import { UserMenu } from "../UserMenu";
 
 const { mockUseSession, mockSignOut, mockRouterReplace, mockRouterRefresh } = vi.hoisted(
@@ -37,7 +38,7 @@ describe("UserMenu", () => {
   it("renders a fallback sign-out button when session has no user", () => {
     mockUseSession.mockReturnValue({ data: null, isPending: false });
 
-    render(<UserMenu />);
+    render(<ThemeProvider><UserMenu /></ThemeProvider>);
 
     const pill = screen.getByRole("button", { name: /account menu for account/i });
     expect(pill).toBeTruthy();
@@ -59,7 +60,7 @@ describe("UserMenu", () => {
     });
     mockSignOut.mockResolvedValue({ error: null });
 
-    render(<UserMenu />);
+    render(<ThemeProvider><UserMenu /></ThemeProvider>);
 
     fireEvent.click(screen.getByRole("button", { name: /account menu for/i }));
     fireEvent.click(screen.getByRole("menuitem", { name: /sign out/i }));
@@ -86,7 +87,7 @@ describe("UserMenu", () => {
       error: { message: "Sign out failed from API" },
     });
 
-    render(<UserMenu />);
+    render(<ThemeProvider><UserMenu /></ThemeProvider>);
 
     fireEvent.click(screen.getByRole("button", { name: /account menu for/i }));
     fireEvent.click(screen.getByRole("menuitem", { name: /sign out/i }));

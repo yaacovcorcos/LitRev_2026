@@ -5,7 +5,7 @@
  * add_to_ledger, recommend_studies, and the search mode system prompt.
  *
  * When PICO context is available, the query planner (CAG-008) generates
- * structured Boolean + MeSH queries for PubMed and keyword queries for
+ * structured Boolean + field-tag queries for PubMed and keyword queries for
  * Semantic Scholar. The sub-agent receives a structured plan instead of
  * raw natural language.
  *
@@ -17,6 +17,13 @@ import type { AITool, ToolExecutionContext } from "./base";
 import { executeSubAgent } from "../sub-agent";
 import { buildSearchPlan, formatSearchPlanAsTask } from "@/lib/agent/query-planner";
 import type { SearchIntent } from "@/lib/agent/query-planner";
+import { isDelegationEnabled } from "@/lib/agent/feature-flags";
+
+function parseOptionalYear(value: unknown): number | undefined {
+    if (typeof value !== "string" && typeof value !== "number") return undefined;
+    const parsed = Number.parseInt(String(value), 10);
+    return Number.isFinite(parsed) ? parsed : undefined;
+}
 
 const inputSchema = z.object({
     task: z.string().min(1).max(2000),
@@ -25,6 +32,10 @@ const inputSchema = z.object({
         intervention: z.string().optional(),
         comparison: z.string().optional(),
         outcome: z.string().optional(),
+    }).optional(),
+    criteria: z.object({
+        inclusion: z.array(z.string().min(1).max(500)).max(50).optional(),
+        exclusion: z.array(z.string().min(1).max(500)).max(50).optional(),
     }).optional(),
     yearStart: z.number().int().min(1900).max(2100).optional(),
     yearEnd: z.number().int().min(1900).max(2100).optional(),
@@ -46,7 +57,7 @@ export const delegateSearchTool: AITool = {
             "The search agent can query PubMed, Semantic Scholar, add studies to the ledger, " +
             "and find recommended studies. Use this when the user asks to find, search for, " +
             "or discover studies on a topic. Provide a clear task description. " +
-            "Optionally pass PICO elements to enable structured query planning with Boolean and MeSH terms.",
+            "Optionally pass PICO/criteria elements to enable structured query planning with PubMed field tags.",
         parameters: {
             type: "object",
             properties: {
@@ -65,6 +76,22 @@ export const delegateSearchTool: AITool = {
                         intervention: { type: "string", description: "Intervention or exposure (e.g., 'SGLT2 inhibitors')" },
                         comparison: { type: "string", description: "Comparator (e.g., 'placebo')" },
                         outcome: { type: "string", description: "Primary outcome (e.g., 'cardiovascular mortality')" },
+                    },
+                },
+                criteria: {
+                    type: "object",
+                    description: "Eligibility criteria to guide candidate selection after search retrieval.",
+                    properties: {
+                        inclusion: {
+                            type: "array",
+                            items: { type: "string" },
+                            description: "Inclusion criteria list.",
+                        },
+                        exclusion: {
+                            type: "array",
+                            items: { type: "string" },
+                            description: "Exclusion criteria list.",
+                        },
                     },
                 },
                 yearStart: {
@@ -86,15 +113,49 @@ export const delegateSearchTool: AITool = {
         allowedRange: [2, 4],
     },
     async execute(args: Record<string, unknown>, context?: ToolExecutionContext) {
+        if (!isDelegationEnabled()) {
+            return {
+                callId: "",
+                result: null,
+                error: "Delegation tools are disabled by feature flag.",
+            };
+        }
+
         const task = args.task as string;
-        const pico = args.pico as SearchIntent["pico"] | undefined;
-        const yearStart = args.yearStart as number | undefined;
-        const yearEnd = args.yearEnd as number | undefined;
+        const argPico = args.pico as SearchIntent["pico"] | undefined;
+        const argCriteria = args.criteria as SearchIntent["criteria"] | undefined;
+        const argYearStart = args.yearStart as number | undefined;
+        const argYearEnd = args.yearEnd as number | undefined;
+
+        const protocolData = context?.protocolData;
+        const protocolPico: SearchIntent["pico"] | undefined = protocolData
+            ? {
+                population: protocolData.pico.population || undefined,
+                intervention: protocolData.pico.intervention || undefined,
+                comparison: protocolData.pico.comparison || undefined,
+                outcome: protocolData.pico.outcome || undefined,
+            }
+            : undefined;
+        const protocolCriteria: SearchIntent["criteria"] | undefined = protocolData
+            ? {
+                inclusion: protocolData.eligibility.inclusion,
+                exclusion: protocolData.eligibility.exclusion,
+            }
+            : undefined;
+
+        const parsedStart = parseOptionalYear(protocolData?.methodology?.timeFrameStart);
+        const parsedEnd = parseOptionalYear(protocolData?.methodology?.timeFrameEnd);
+        const yearStart = argYearStart ?? (Number.isFinite(parsedStart) ? parsedStart : undefined);
+        const yearEnd = argYearEnd ?? (Number.isFinite(parsedEnd) ? parsedEnd : undefined);
+
+        const pico = argPico ?? protocolPico;
+        const criteria = argCriteria ?? protocolCriteria;
 
         // Build structured search plan when we have enough context
         const intent: SearchIntent = {
             rawTask: task,
             pico,
+            criteria,
             yearRange: (yearStart || yearEnd) ? { start: yearStart, end: yearEnd } : undefined,
         };
 
@@ -111,6 +172,8 @@ export const delegateSearchTool: AITool = {
             projectId: context?.projectId,
             userId: context?.userId,
             parentRunId: context?.runId,
+            systemContexts: context?.systemContexts,
+            signal: context?.signal,
         });
 
         return {

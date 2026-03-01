@@ -21,6 +21,17 @@ export interface CreateDraftVersionInput {
   conversationId?: string;
 }
 
+import { sanitizePaginationLimit } from "@/lib/server/pagination";
+import type { PaginationOptions } from "@/lib/server/pagination";
+
+const MAX_VERSION_RETRIES = 3;
+
+function isUniqueConstraintError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const maybeCode = (error as { code?: unknown }).code;
+  return maybeCode === "P2002";
+}
+
 // ── Service functions ────────────────────────────────────────────────────────
 
 /**
@@ -35,29 +46,37 @@ export async function createDraftVersion(
 
   const sectionLower = input.section.toLowerCase();
 
-  // Compute next version number
-  const latest = await prisma.draftVersion.findFirst({
-    where: { projectId: input.projectId, section: sectionLower },
-    orderBy: { version: "desc" },
-    select: { version: true },
-  });
-  const nextVersion = (latest?.version ?? 0) + 1;
-
   // Extract plain text for searchability
   const contentText = extractTextFromContent(input.content as NoteContent) || null;
+  for (let attempt = 0; attempt < MAX_VERSION_RETRIES; attempt += 1) {
+    const latest = await prisma.draftVersion.findFirst({
+      where: { projectId: input.projectId, section: sectionLower },
+      orderBy: { version: "desc" },
+      select: { version: true },
+    });
+    const nextVersion = (latest?.version ?? 0) + 1;
 
-  return prisma.draftVersion.create({
-    data: {
-      projectId: input.projectId,
-      section: sectionLower,
-      content: input.content,
-      contentText,
-      wordCount: input.wordCount ?? 0,
-      artifactId: input.artifactId ?? null,
-      conversationId: input.conversationId ?? null,
-      version: nextVersion,
-    },
-  });
+    try {
+      return await prisma.draftVersion.create({
+        data: {
+          projectId: input.projectId,
+          section: sectionLower,
+          content: input.content,
+          contentText,
+          wordCount: input.wordCount ?? 0,
+          artifactId: input.artifactId ?? null,
+          conversationId: input.conversationId ?? null,
+          version: nextVersion,
+        },
+      });
+    } catch (error) {
+      if (!isUniqueConstraintError(error) || attempt >= MAX_VERSION_RETRIES - 1) {
+        throw error;
+      }
+    }
+  }
+
+  throw new Error("createDraftVersion: version conflict after retries");
 }
 
 /**
@@ -73,6 +92,46 @@ export async function listDraftVersions(
     where: { projectId, section: section.toLowerCase() },
     orderBy: { version: "desc" },
   });
+}
+
+export async function listDraftVersionsPaginated(
+  scopeInput: ScopeInput,
+  projectId: string,
+  section: string,
+  options?: PaginationOptions,
+) {
+  await assertProjectAccess(scopeInput, projectId);
+
+  const sectionLower = section.toLowerCase();
+  const limit = sanitizePaginationLimit(options?.limit);
+  let where: Record<string, unknown> = { projectId, section: sectionLower };
+
+  if (options?.cursor) {
+    const cursorRow = await prisma.draftVersion.findFirst({
+      where: { id: options.cursor, projectId, section: sectionLower },
+      select: { id: true, version: true },
+    });
+    if (cursorRow) {
+      where = {
+        projectId,
+        section: sectionLower,
+        version: { lt: cursorRow.version },
+      };
+    }
+  }
+
+  const rows = await prisma.draftVersion.findMany({
+    where,
+    orderBy: { version: "desc" },
+    take: limit + 1,
+  });
+  const hasMore = rows.length > limit;
+  const page = hasMore ? rows.slice(0, limit) : rows;
+
+  return {
+    items: page,
+    nextCursor: hasMore ? page[page.length - 1]?.id ?? null : null,
+  };
 }
 
 /**

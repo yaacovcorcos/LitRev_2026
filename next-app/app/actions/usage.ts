@@ -2,17 +2,18 @@
 
 import "server-only";
 import { prisma } from "@/lib/server/prisma";
-import { withAction, type ActionResult } from "@/lib/server/action-utils";
+import { withValidatedAction, type ActionResult } from "@/lib/server/action-utils";
 import { withAuth } from "@/lib/server/auth/session";
+import { projectIdSchema } from "@/lib/schemas/ids";
 
 export async function getTokenUsageTodayAction(projectId: string): Promise<ActionResult<{ totalTokens: number }>> {
-    return withAction(() =>
-        withAuth(async ({ userId, workspaceId }) => {
+    return withValidatedAction(projectIdSchema, projectId,
+        (id) => withAuth(async ({ userId, workspaceId }) => {
             const today = new Date();
             today.setHours(0, 0, 0, 0);
             const result = await prisma.aIUsage.aggregate({
                 where: {
-                    projectId,
+                    projectId: id,
                     userId,
                     workspaceId,
                     createdAt: { gte: today },
@@ -25,3 +26,4 @@ export async function getTokenUsageTodayAction(projectId: string): Promise<Actio
         }),
     );
 }
+

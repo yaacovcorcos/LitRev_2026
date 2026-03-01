@@ -12,7 +12,7 @@
 }
 
 .trigger:hover {
-    background: rgba(0, 0, 0, 0.04);
+    background: rgba(var(--rgb-ui-contrast), 0.04);
 }
 
 .triggerPanel {
@@ -40,8 +40,8 @@
     --focus-ring-color: var(--focus-ring-color-muted, var(--color-info-text));
     min-width: 240px;
     max-width: 340px;
-    background: var(--color-white);
-    border: 1px solid rgba(0, 0, 0, 0.08);
+    background: var(--bg-surface);
+    border: 1px solid rgba(var(--rgb-ui-contrast), 0.08);
     border-radius: var(--radius-md);
     box-shadow: var(--shadow-xl);
     z-index: var(--z-tooltip);
@@ -59,12 +59,12 @@
 
 .searchWrapper {
     padding: 8px;
-    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+    border-bottom: 1px solid rgba(var(--rgb-ui-contrast), 0.06);
 }
 
 .searchInput {
     width: 100%;
-    border: 1px solid rgba(0, 0, 0, 0.1);
+    border: 1px solid rgba(var(--rgb-ui-contrast), 0.1);
     border-radius: var(--radius-sm);
     background: transparent;
     color: var(--text-primary);
@@ -78,7 +78,7 @@
 .searchInput:focus-visible {
     outline: none;
     outline-offset: 0;
-    border-color: rgba(0, 0, 0, 0.2);
+    border-color: rgba(var(--rgb-ui-contrast), 0.2);
 }
 
 .list {
@@ -108,16 +108,16 @@
 
 .item:hover,
 .item[data-selected="true"] {
-    background: rgba(0, 0, 0, 0.06);
+    background: rgba(var(--rgb-ui-contrast), 0.06);
 }
 
 .itemCurrent {
-    background: rgba(217, 116, 89, 0.1);
+    background: rgba(var(--rgb-accent-primary), 0.1);
 }
 
 .itemCurrent:hover,
 .itemCurrent[data-selected="true"] {
-    background: rgba(217, 116, 89, 0.15);
+    background: rgba(var(--rgb-accent-primary), 0.15);
 }
 
 .itemTitle {
@@ -160,7 +160,7 @@
 }
 
 .itemMoreBtn:hover {
-    background: rgba(0, 0, 0, 0.08);
+    background: rgba(var(--rgb-ui-contrast), 0.08);
     color: var(--text-primary);
 }
 
@@ -178,8 +178,8 @@
     z-index: var(--z-top);
     min-width: 105px;
     padding: 4px;
-    background: var(--color-white);
-    border: 1px solid rgba(0, 0, 0, 0.08);
+    background: var(--bg-surface);
+    border: 1px solid rgba(var(--rgb-ui-contrast), 0.08);
     border-radius: 8px;
     box-shadow: var(--shadow-xl);
 }
@@ -208,16 +208,16 @@
 
 .contextMenuItem + .contextMenuItem {
     border-top: 1px solid transparent;
-    border-image: linear-gradient(to right, transparent, rgba(0, 0, 0, 0.08), transparent) 1;
+    border-image: linear-gradient(to right, transparent, rgba(var(--rgb-ui-contrast), 0.08), transparent) 1;
 }
 
 .contextMenuItem:hover {
-    background: rgba(0, 0, 0, 0.07);
+    background: rgba(var(--rgb-ui-contrast), 0.07);
     color: var(--text-primary);
 }
 
 .contextMenuItem[data-highlighted="true"] {
-    background: rgba(0, 0, 0, 0.07);
+    background: rgba(var(--rgb-ui-contrast), 0.07);
     color: var(--text-primary);
 }
 
@@ -226,19 +226,19 @@
 }
 
 .contextMenuItemDanger:hover {
-    background: rgba(220, 38, 38, 0.1);
+    background: rgba(var(--rgb-legacy-red-tailwind-600), 0.1);
     color: var(--color-danger);
 }
 
 .contextMenuItemDanger[data-highlighted="true"] {
-    background: rgba(220, 38, 38, 0.1);
+    background: rgba(var(--rgb-legacy-red-tailwind-600), 0.1);
     color: var(--color-danger);
 }
 
 .renameOverlay {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.3);
+    background: rgba(var(--rgb-ui-scrim), 0.3);
     z-index: var(--z-toast);
 }
 
@@ -249,7 +249,7 @@
     transform: translate(-50%, -50%);
     width: min(92vw, 420px);
     border-radius: var(--radius-md);
-    background: var(--bg-card, var(--color-white));
+    background: var(--bg-surface);
     border: 1px solid var(--glass-border);
     box-shadow: var(--shadow-lg);
     padding: 16px;
@@ -275,7 +275,7 @@
 
 .renameInput {
     width: 100%;
-    border: 1px solid rgba(0, 0, 0, 0.16);
+    border: 1px solid rgba(var(--rgb-ui-contrast), 0.16);
     border-radius: var(--radius-sm);
     background: transparent;
     color: var(--text-primary);
@@ -317,7 +317,7 @@
 .renameCancel {
     background: transparent;
     color: var(--text-secondary);
-    border-color: rgba(0, 0, 0, 0.14);
+    border-color: rgba(var(--rgb-ui-contrast), 0.14);
 }
 
 .renameSave {

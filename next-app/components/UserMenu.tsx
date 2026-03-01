@@ -3,7 +3,20 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
+import { useTheme, type ThemePreference } from "@/contexts/ThemeContext";
 import styles from "@/components/UserMenu.module.css";
+
+const THEME_CYCLE: ThemePreference[] = ["light", "dark", "system"];
+const THEME_ICON: Record<ThemePreference, string> = {
+  light: "light_mode",
+  dark: "dark_mode",
+  system: "contrast",
+};
+const THEME_LABEL: Record<ThemePreference, string> = {
+  light: "Light",
+  dark: "Dark",
+  system: "System",
+};
 
 type UserMenuProps = {
   collapsed?: boolean;
@@ -11,10 +24,16 @@ type UserMenuProps = {
 
 export function UserMenu({ collapsed = false }: UserMenuProps) {
   const { data: session } = authClient.useSession();
+  const { theme, setTheme } = useTheme();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
+
+  const cycleTheme = () => {
+    const idx = THEME_CYCLE.indexOf(theme);
+    setTheme(THEME_CYCLE[(idx + 1) % THEME_CYCLE.length]);
+  };
 
   const user = session?.user;
   const initials = user ? getInitials(user.name ?? user.email) : "?";
@@ -94,6 +113,24 @@ export function UserMenu({ collapsed = false }: UserMenuProps) {
                 {error}
               </p>
             ) : null}
+            <button
+              type="button"
+              className={styles.menuItem}
+              role="menuitem"
+              onClick={cycleTheme}
+              aria-label={`Theme: ${THEME_LABEL[theme]}. Click to change.`}
+            >
+              <span
+                className={`material-icons-round ${styles.menuItemIcon}`}
+                aria-hidden="true"
+              >
+                {THEME_ICON[theme]}
+              </span>
+              {THEME_LABEL[theme]}
+              <span className={styles.themeBadge}>
+                {theme === "system" ? "auto" : ""}
+              </span>
+            </button>
             <button
               type="button"
               className={styles.menuItemDanger}

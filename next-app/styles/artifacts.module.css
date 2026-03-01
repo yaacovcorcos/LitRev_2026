@@ -11,7 +11,7 @@
     padding: 0;
     border-radius: var(--radius-lg);
     border: 1px solid var(--glass-border);
-    background: rgba(255, 255, 255, 0.75);
+    background: rgba(var(--rgb-ui-surface), 0.75);
     border-left: 3px solid var(--color-info);
     overflow: hidden;
     transition: border-color 0.2s ease, box-shadow 0.15s ease;
@@ -54,7 +54,7 @@
     align-items: center;
     gap: 8px;
     padding: 10px 12px;
-    border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+    border-bottom: 1px solid rgba(var(--rgb-ui-contrast), 0.04);
     min-width: 0;
 }
 
@@ -84,23 +84,22 @@
 }
 
 .statusBadgeAccepted {
-    background: rgba(118, 140, 123, 0.15);
+    background: rgba(var(--rgb-accent-secondary), 0.15);
     color: var(--status-ready-text);
 }
 
 .statusBadgeRejected {
-    background: rgba(192, 57, 43, 0.1);
+    background: rgba(var(--rgb-color-danger), 0.1);
     color: var(--color-danger-hover);
 }
 
 .statusBadgeRunning {
-    background: rgba(200, 160, 80, 0.15);
-    /* stylelint-disable-next-line color-no-hex */
-    color: #8a6d3b; /* no matching token */
+    background: rgba(var(--rgb-legacy-amber), 0.15);
+    color: var(--color-amber-text);
 }
 
 .statusBadgeAutoApplied {
-    background: rgba(118, 140, 123, 0.15);
+    background: rgba(var(--rgb-accent-secondary), 0.15);
     color: var(--status-ready-text);
 }
 
@@ -121,7 +120,7 @@
 }
 
 .collapseToggle:hover {
-    background: rgba(0, 0, 0, 0.05);
+    background: rgba(var(--rgb-ui-contrast), 0.05);
     color: var(--text-secondary);
 }
 
@@ -155,7 +154,7 @@
     justify-content: flex-end;
     gap: 8px;
     padding: 8px 12px;
-    border-top: 1px solid rgba(0, 0, 0, 0.04);
+    border-top: 1px solid rgba(var(--rgb-ui-contrast), 0.04);
 }
 
 /* Primary action button (terracotta) */
@@ -172,14 +171,14 @@
     align-items: center;
     gap: 4px;
     background: var(--accent-primary);
-    color: white;
+    color: var(--color-white);
 }
 
 .actionBtn:hover {
     background: var(--accent-primary-hover);
     transform: translateY(-1px);
     /* stylelint-disable-next-line declaration-property-value-disallowed-list -- decorative accent shadow */
-    box-shadow: 0 4px 12px rgba(217, 116, 89, 0.3);
+    box-shadow: 0 4px 12px rgba(var(--rgb-accent-primary), 0.3);
 }
 
 .actionBtn:disabled {
@@ -202,12 +201,12 @@
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    background: rgba(0, 0, 0, 0.05);
+    background: rgba(var(--rgb-ui-contrast), 0.05);
     color: var(--text-secondary);
 }
 
 .actionBtnGhost:hover {
-    background: rgba(0, 0, 0, 0.08);
+    background: rgba(var(--rgb-ui-contrast), 0.08);
     color: var(--text-primary);
 }
 
@@ -220,7 +219,7 @@
 .keepBtn:hover {
     background: var(--accent-secondary-hover);
     /* stylelint-disable-next-line declaration-property-value-disallowed-list -- decorative accent shadow */
-    box-shadow: 0 4px 12px rgba(118, 140, 123, 0.3);
+    box-shadow: 0 4px 12px rgba(var(--rgb-accent-secondary), 0.3);
 }
 
 .excludeBtn {
@@ -231,7 +230,7 @@
 .excludeBtn:hover {
     background: var(--color-danger-hover);
     /* stylelint-disable-next-line declaration-property-value-disallowed-list -- decorative accent shadow */
-    box-shadow: 0 4px 12px rgba(192, 57, 43, 0.3);
+    box-shadow: 0 4px 12px rgba(var(--rgb-color-danger), 0.3);
 }
 
 .maybeBtn {
@@ -243,7 +242,7 @@
 .maybeBtn:hover {
     background: var(--accent-tertiary-hover);
     /* stylelint-disable-next-line declaration-property-value-disallowed-list -- decorative accent shadow */
-    box-shadow: 0 4px 12px rgba(212, 163, 115, 0.3);
+    box-shadow: 0 4px 12px rgba(var(--rgb-accent-tertiary), 0.3);
 }
 
 /* ── Summary Line (accepted/collapsed) ──────────────────────── */
@@ -322,7 +321,7 @@
 .provenanceContent {
     margin-top: 6px;
     padding: 8px 10px;
-    background: rgba(0, 0, 0, 0.02);
+    background: rgba(var(--rgb-ui-contrast), 0.02);
     border-radius: 6px;
     font-size: 12px;
     line-height: 1.5;
@@ -347,12 +346,12 @@
 }
 
 .criteriaChipMatch {
-    background: rgba(118, 140, 123, 0.15);
+    background: rgba(var(--rgb-accent-secondary), 0.15);
     color: var(--status-ready-text);
 }
 
 .criteriaChipMiss {
-    background: rgba(192, 57, 43, 0.08);
+    background: rgba(var(--rgb-color-danger), 0.08);
     color: var(--color-danger-hover);
 }
 
@@ -367,17 +366,17 @@
 }
 
 .confidenceHigh {
-    background: rgba(118, 140, 123, 0.15);
+    background: rgba(var(--rgb-accent-secondary), 0.15);
     color: var(--status-ready-text);
 }
 
 .confidenceMedium {
-    background: rgba(212, 163, 115, 0.15);
+    background: rgba(var(--rgb-accent-tertiary), 0.15);
     color: var(--status-harvesting-text);
 }
 
 .confidenceLow {
-    background: rgba(192, 57, 43, 0.08);
+    background: rgba(var(--rgb-color-danger), 0.08);
     color: var(--color-danger-hover);
 }
 
@@ -439,7 +438,7 @@
 .abstractSection {
     margin-top: 8px;
     padding: 8px 10px;
-    background: rgba(0, 0, 0, 0.02);
+    background: rgba(var(--rgb-ui-contrast), 0.02);
     border-radius: 6px;
     font-size: 12px;
     line-height: 1.6;
@@ -475,7 +474,7 @@
 }
 
 .studyUpdateTableWrapper {
-    border: 1px solid rgba(0, 0, 0, 0.06);
+    border: 1px solid rgba(var(--rgb-ui-contrast), 0.06);
     border-radius: 8px;
     overflow: auto;
 }
@@ -487,7 +486,7 @@
 }
 
 .studyUpdateTable th {
-    background: rgba(242, 240, 233, 0.95);
+    background: rgba(var(--rgb-bg-body), 0.95);
     padding: 8px 10px;
     text-align: left;
     font-weight: 600;
@@ -495,13 +494,13 @@
     text-transform: uppercase;
     letter-spacing: 0.3px;
     color: var(--text-muted);
-    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+    border-bottom: 1px solid rgba(var(--rgb-ui-contrast), 0.08);
 }
 
 .studyUpdateTable td {
     padding: 8px 10px;
     color: var(--text-primary);
-    border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+    border-bottom: 1px solid rgba(var(--rgb-ui-contrast), 0.04);
     vertical-align: top;
 }
 
@@ -548,7 +547,7 @@
     bottom: calc(100% + 4px);
     left: 0;
     min-width: 200px;
-    background: white;
+    background: var(--bg-surface);
     border: 1px solid var(--glass-border);
     border-radius: 8px;
     box-shadow: var(--shadow-xl);
@@ -571,7 +570,7 @@
 }
 
 .excludeMenuItem:hover {
-    background: rgba(0, 0, 0, 0.04);
+    background: rgba(var(--rgb-ui-contrast), 0.04);
 }
 
 /* ── Plan Card Specifics ────────────────────────────────────── */
@@ -609,12 +608,12 @@
 }
 
 .planStepCompleted .planStepNumber {
-    background: rgba(118, 140, 123, 0.15);
+    background: rgba(var(--rgb-accent-secondary), 0.15);
     color: var(--status-ready-text);
 }
 
 .planStepFailed .planStepNumber {
-    background: rgba(192, 57, 43, 0.08);
+    background: rgba(var(--rgb-color-danger), 0.08);
     color: var(--color-danger-hover);
 }
 
@@ -717,7 +716,7 @@
 }
 
 .picoEditBtn:hover {
-    background: rgba(0, 0, 0, 0.05);
+    background: rgba(var(--rgb-ui-contrast), 0.05);
     color: var(--text-secondary);
 }
 
@@ -731,12 +730,12 @@
     --focus-ring-color: var(--focus-ring-color-muted, var(--color-info-text));
     width: 100%;
     padding: 6px 8px;
-    border: 1px solid rgba(0, 0, 0, 0.12);
+    border: 1px solid rgba(var(--rgb-ui-contrast), 0.12);
     border-radius: 6px;
     font-size: 13px;
     font-family: inherit;
     color: var(--text-primary);
-    background: white;
+    background: var(--bg-surface);
     outline: none;
     transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
@@ -815,7 +814,7 @@
 }
 
 .criteriaRemoveBtn:hover {
-    background: rgba(192, 57, 43, 0.08);
+    background: rgba(var(--rgb-color-danger), 0.08);
     color: var(--color-danger);
 }
 
@@ -891,7 +890,7 @@
 .batchTableWrapper {
     max-height: 400px;
     overflow-y: auto;
-    border: 1px solid rgba(0, 0, 0, 0.06);
+    border: 1px solid rgba(var(--rgb-ui-contrast), 0.06);
     border-radius: 8px;
 }
 
@@ -904,7 +903,7 @@
 .batchTable th {
     position: sticky;
     top: 0;
-    background: rgba(242, 240, 233, 0.95);
+    background: rgba(var(--rgb-bg-body), 0.95);
     padding: 8px 10px;
     text-align: left;
     font-weight: 600;
@@ -912,13 +911,13 @@
     text-transform: uppercase;
     letter-spacing: 0.3px;
     color: var(--text-muted);
-    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+    border-bottom: 1px solid rgba(var(--rgb-ui-contrast), 0.08);
 }
 
 .batchTable td {
     padding: 8px 10px;
     color: var(--text-primary);
-    border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+    border-bottom: 1px solid rgba(var(--rgb-ui-contrast), 0.04);
     vertical-align: middle;
 }
 
@@ -927,7 +926,7 @@
 }
 
 .batchTable tr:hover td {
-    background: rgba(0, 0, 0, 0.02);
+    background: rgba(var(--rgb-ui-contrast), 0.02);
 }
 
 .batchTitleCell {
@@ -941,9 +940,9 @@
 .batchOverrideSelect {
     padding: 4px 6px;
     font-size: 11px;
-    border: 1px solid rgba(0, 0, 0, 0.1);
+    border: 1px solid rgba(var(--rgb-ui-contrast), 0.1);
     border-radius: 4px;
-    background: white;
+    background: var(--bg-surface);
     cursor: pointer;
     color: var(--text-primary);
 }
@@ -1009,7 +1008,7 @@
 .checkpointLine {
     flex: 1;
     height: 1px;
-    background: rgba(0, 0, 0, 0.08);
+    background: rgba(var(--rgb-ui-contrast), 0.08);
 }
 
 .checkpointLabel {
@@ -1029,8 +1028,8 @@
     gap: 10px;
     padding: 10px 12px;
     border-radius: var(--radius-md);
-    background: rgba(192, 57, 43, 0.06);
-    border: 1px solid rgba(192, 57, 43, 0.12);
+    background: rgba(var(--rgb-color-danger), 0.06);
+    border: 1px solid rgba(var(--rgb-color-danger), 0.12);
     font-size: 13px;
     color: var(--color-danger-hover);
 }
@@ -1063,10 +1062,10 @@
 }
 
 .scopingSearchItem {
-    border: 1px solid rgba(0, 0, 0, 0.06);
+    border: 1px solid rgba(var(--rgb-ui-contrast), 0.06);
     border-radius: 8px;
     padding: 8px;
-    background: rgba(255, 255, 255, 0.6);
+    background: rgba(var(--rgb-ui-surface), 0.6);
 }
 
 .scopingSearchMeta {
@@ -1166,7 +1165,7 @@
     display: flex;
     flex-direction: column;
     gap: 10px;
-    border-top: 1px solid rgba(0, 0, 0, 0.06);
+    border-top: 1px solid rgba(var(--rgb-ui-contrast), 0.06);
     padding-top: 10px;
 }
 
@@ -1175,7 +1174,7 @@
     padding: 4px 10px;
     font-size: 12px;
     font-weight: 600;
-    background: rgba(192, 57, 43, 0.1);
+    background: rgba(var(--rgb-color-danger), 0.1);
     color: var(--color-danger-hover);
     border: none;
     border-radius: 6px;
@@ -1184,7 +1183,7 @@
 }
 
 .errorRetryBtn:hover {
-    background: rgba(192, 57, 43, 0.18);
+    background: rgba(var(--rgb-color-danger), 0.18);
 }
 
 /* ── Message Actions (Save to Notes / Copy) ─────────────────── */
@@ -1219,7 +1218,7 @@
 }
 
 .msgActionBtn:hover {
-    background: rgba(0, 0, 0, 0.05);
+    background: rgba(var(--rgb-ui-contrast), 0.05);
     color: var(--text-secondary);
 }
 
@@ -1271,6 +1270,6 @@
     color: var(--text-primary);
     line-height: 1.5;
     padding: 8px 10px;
-    background: rgba(0, 0, 0, 0.02);
+    background: rgba(var(--rgb-ui-contrast), 0.02);
     border-radius: 6px;
 }

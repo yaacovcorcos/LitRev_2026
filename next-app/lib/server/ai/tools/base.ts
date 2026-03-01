@@ -7,6 +7,7 @@
 import { z } from "zod";
 import type { ToolDefinition, ToolResult } from "@/types/ai";
 import type { ToolAutonomyMeta, AutonomyLevel, AgentMode } from "@/types/agent";
+import type { ProtocolData } from "@/types/protocol";
 import { HARD_CAPS } from "@/types/agent";
 import { getEffectiveAllowedTools } from "@/lib/agent/router";
 import { pubmedSearchTool } from "./pubmed-search";
@@ -63,6 +64,24 @@ export interface ToolExecutionContext {
     runId?: string;
     /** Parent run ID when executing inside a sub-agent */
     parentRunId?: string;
+    /**
+     * Assembled system-context blocks from the parent loop.
+     * Delegation tools pass these to sub-agents so they inherit grounded context.
+     */
+    systemContexts?: {
+        projectContext?: string;
+        protocolContext?: string;
+        ledgerContext?: string;
+        memoryContext?: string;
+        autonomyContext?: string;
+    };
+    /**
+     * Parsed protocol payload from DB for tools that need structured protocol fields
+     * (for example query-planning criteria/year extraction).
+     */
+    protocolData?: ProtocolData | null;
+    /** Parent stream cancellation signal (if available). */
+    signal?: AbortSignal;
     autonomyLevel?: AutonomyLevel;
 }
 

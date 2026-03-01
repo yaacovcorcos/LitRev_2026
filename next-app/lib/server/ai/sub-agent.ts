@@ -20,7 +20,7 @@
 import "server-only";
 
 import type { AIMessage, ToolCall, ChatOptions } from "@/types/ai";
-import type { AgentMode } from "@/types/agent";
+import type { AgentMode, RunStatus } from "@/types/agent";
 import type { ArtifactType } from "@/types/artifacts";
 import { LoopState, type LoopBudget, type StopReason } from "@/lib/agent/loop-controller";
 import { getToolDefinitions, executeTool } from "./tools/base";
@@ -28,6 +28,8 @@ import { compactToolResult } from "@/lib/agent/compaction";
 import { assembleSystemPrompt } from "@/lib/ai/prompts/copilot-prompts";
 import { getAIService } from "./ai-service";
 import { createArtifact, applyArtifact } from "@/lib/server/agent/artifacts";
+import { startRun, endRun } from "@/lib/server/agent/run";
+import { emitEvent } from "@/lib/server/agent/events";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -56,6 +58,8 @@ export interface SubAgentParams {
     budget?: Partial<LoopBudget>;
     /** AbortSignal for cancellation */
     signal?: AbortSignal;
+    /** Optional model ID used for run metadata. */
+    model?: string;
 }
 
 export interface SubAgentResult {
@@ -139,6 +143,18 @@ const SUB_AGENT_DEFAULT_BUDGET: LoopBudget = {
     maxWallTimeMs: 60_000,
 };
 
+function mapStopReasonToRunStatus(reason: StopReason | null): Extract<RunStatus, "completed" | "failed" | "cancelled" | "paused"> {
+    if (reason === "error") return "failed";
+    if (reason === "cancelled") return "cancelled";
+    if (reason === "paused_for_input") return "paused";
+    return "completed";
+}
+
+function logEventEmissionFailure(eventType: string, runId: string, error: unknown): void {
+    const reason = error instanceof Error ? error.message : "unknown error";
+    console.warn(`[sub-agent] Failed to emit ${eventType} event for run ${runId}: ${reason}`);
+}
+
 // ── Execution ────────────────────────────────────────────────────────────────
 
 export async function executeSubAgent(params: SubAgentParams): Promise<SubAgentResult> {
@@ -155,6 +171,8 @@ export async function executeSubAgent(params: SubAgentParams): Promise<SubAgentR
     const budget = { ...SUB_AGENT_DEFAULT_BUDGET, ...params.budget };
     const loop = new LoopState(budget);
     const toolLog: SubAgentResult["toolLog"] = [];
+    let childRunId: string | null = null;
+    let childRunStatus: Extract<RunStatus, "completed" | "failed" | "cancelled" | "paused"> = "completed";
 
     // 1. Build system prompt for this mode
     const systemPrompt = assembleSystemPrompt({
@@ -181,34 +199,56 @@ export async function executeSubAgent(params: SubAgentParams): Promise<SubAgentR
         };
     }
 
-    // 3. Initialize message history with system prompt + task
-    const currentMessages: AIMessage[] = [
-        {
-            id: "sub-agent-system",
-            role: "system",
-            content: systemPrompt,
-            createdAt: new Date().toISOString(),
-        },
-        {
-            id: "sub-agent-task",
-            role: "user",
-            content: task,
-            createdAt: new Date().toISOString(),
-        },
-    ];
-
-    const chatOptions: ChatOptions = {
-        tools: toolDefs,
-        projectId,
-        userId,
-        signal,
-    };
-
-    // 4. Run the tool-calling loop
-    const aiService = getAIService();
-    let lastContent = "";
+    try {
+        const childRun = await startRun({
+            projectId: projectId ?? null,
+            userId,
+            parentRunId: params.parentRunId,
+            trigger: "event",
+            agentMode: mode,
+            model: params.model,
+        });
+        childRunId = childRun.id;
+        await emitEvent(childRun.id, "message", { content: task }, { messageRole: "user" });
+    } catch (error) {
+        return {
+            summary: "Sub-agent failed to initialize run state.",
+            stopReason: "error",
+            iterations: 0,
+            totalToolCalls: 0,
+            toolLog: [],
+            error: error instanceof Error ? error.message : "Failed to initialize sub-agent run",
+        };
+    }
 
     try {
+        // 3. Initialize message history with system prompt + task
+        const currentMessages: AIMessage[] = [
+            {
+                id: "sub-agent-system",
+                role: "system",
+                content: systemPrompt,
+                createdAt: new Date().toISOString(),
+            },
+            {
+                id: "sub-agent-task",
+                role: "user",
+                content: task,
+                createdAt: new Date().toISOString(),
+            },
+        ];
+
+        const chatOptions: ChatOptions = {
+            tools: toolDefs,
+            projectId,
+            userId,
+            signal,
+        };
+
+        // 4. Run the tool-calling loop
+        const aiService = getAIService();
+        let lastContent = "";
+
         while (true) {
             const check = loop.shouldContinue(signal);
             if (!check.continue) {
@@ -225,6 +265,7 @@ export async function executeSubAgent(params: SubAgentParams): Promise<SubAgentR
                 } else if (chunk.type === "content") {
                     contentSoFar += chunk.content || "";
                 } else if (chunk.type === "error") {
+                    childRunStatus = "failed";
                     // Sub-agent doesn't retry — fail fast back to parent
                     return {
                         summary: contentSoFar || "Sub-agent encountered an error.",
@@ -259,14 +300,32 @@ export async function executeSubAgent(params: SubAgentParams): Promise<SubAgentR
                 createdAt: new Date().toISOString(),
             };
             currentMessages.push(assistantMsg);
+            if (childRunId && contentSoFar.trim().length > 0) {
+                try {
+                    await emitEvent(childRunId, "message", { content: contentSoFar }, { messageRole: "assistant" });
+                } catch (error) {
+                    // Event writes are best-effort: telemetry failures should not fail delegated work.
+                    logEventEmissionFailure("message", childRunId, error);
+                }
+            }
 
             // Execute each tool call
             for (const tc of collectedToolCalls) {
+                if (childRunId) {
+                    try {
+                        await emitEvent(childRunId, "tool_call", { arguments: tc.arguments }, { toolName: tc.name });
+                    } catch (error) {
+                        logEventEmissionFailure("tool_call", childRunId, error);
+                    }
+                }
                 const result = await executeTool(tc.name, tc.arguments, tc.id, {
                     projectId,
                     studyId,
                     userId,
-                    runId: params.parentRunId,
+                    runId: childRunId ?? params.parentRunId,
+                    parentRunId: params.parentRunId,
+                    signal,
+                    systemContexts,
                 });
 
                 const preview = compactToolResult(
@@ -275,11 +334,19 @@ export async function executeSubAgent(params: SubAgentParams): Promise<SubAgentR
                     500, // shorter preview for sub-agent log
                 );
                 toolLog.push({ name: tc.name, resultPreview: preview });
+                if (childRunId) {
+                    try {
+                        await emitEvent(childRunId, "tool_result", { success: !result.error, error: result.error ?? null }, { toolName: tc.name });
+                    } catch (error) {
+                        logEventEmissionFailure("tool_result", childRunId, error);
+                    }
+                }
 
                 // If a tool requires user input, sub-agent can't handle that — stop
                 if (result.requiresUserInput) {
                     lastContent = "Sub-agent paused: a tool requested user input.";
                     loop.markStopped("paused_for_input");
+                    childRunStatus = "paused";
                     break;
                 }
 
@@ -303,6 +370,7 @@ export async function executeSubAgent(params: SubAgentParams): Promise<SubAgentR
                         const message = error instanceof Error
                             ? error.message
                             : "Failed to auto-apply delegated artifact";
+                        childRunStatus = "failed";
                         return {
                             summary: lastContent || "Sub-agent failed during delegated artifact application.",
                             stopReason: "error",
@@ -322,6 +390,13 @@ export async function executeSubAgent(params: SubAgentParams): Promise<SubAgentR
                     createdAt: new Date().toISOString(),
                 };
                 currentMessages.push(toolMsg);
+
+                if (signal?.aborted) {
+                    lastContent = contentSoFar || "Sub-agent cancelled.";
+                    loop.markStopped("cancelled");
+                    childRunStatus = "cancelled";
+                    break;
+                }
             }
 
             // If loop was stopped by ask_user inside the tool execution
@@ -329,31 +404,43 @@ export async function executeSubAgent(params: SubAgentParams): Promise<SubAgentR
 
             lastContent = contentSoFar;
         }
-    } catch (error) {
+        // 5. Build summary
+        const toolSummary = toolLog.length > 0
+            ? toolLog.map(t => `- ${t.name}: ${t.resultPreview}`).join("\n")
+            : "No tools were called.";
+
+        const summary = lastContent
+            ? `${lastContent}\n\n---\nTool activity (${toolLog.length} calls):\n${toolSummary}`
+            : `Sub-agent completed with ${toolLog.length} tool calls.\n\nTool activity:\n${toolSummary}`;
+
         return {
-            summary: lastContent || "Sub-agent failed unexpectedly.",
+            summary,
+            stopReason: loop.stopReason ?? "natural",
+            iterations: loop.iterations,
+            totalToolCalls: loop.totalToolCalls,
+            toolLog,
+        };
+    } catch (error) {
+        childRunStatus = "failed";
+        return {
+            summary: "Sub-agent failed unexpectedly.",
             stopReason: "error",
             iterations: loop.iterations,
             totalToolCalls: loop.totalToolCalls,
             toolLog,
             error: error instanceof Error ? error.message : "Unknown error",
         };
+    } finally {
+        if (childRunId) {
+            try {
+                const stopReason = loop.stopReason;
+                const resolvedStatus = childRunStatus === "completed"
+                    ? mapStopReasonToRunStatus(stopReason)
+                    : childRunStatus;
+                await endRun(childRunId, resolvedStatus);
+            } catch (error) {
+                console.error("[sub-agent] Failed to finalize child run", error);
+            }
+        }
     }
-
-    // 5. Build summary
-    const toolSummary = toolLog.length > 0
-        ? toolLog.map(t => `- ${t.name}: ${t.resultPreview}`).join("\n")
-        : "No tools were called.";
-
-    const summary = lastContent
-        ? `${lastContent}\n\n---\nTool activity (${toolLog.length} calls):\n${toolSummary}`
-        : `Sub-agent completed with ${toolLog.length} tool calls.\n\nTool activity:\n${toolSummary}`;
-
-    return {
-        summary,
-        stopReason: loop.stopReason ?? "natural",
-        iterations: loop.iterations,
-        totalToolCalls: loop.totalToolCalls,
-        toolLog,
-    };
 }

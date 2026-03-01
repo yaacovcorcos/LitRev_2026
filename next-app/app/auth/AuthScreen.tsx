@@ -211,6 +211,7 @@ export function AuthScreen({ mode }: AuthScreenProps) {
               onClick={() => { void googleAction.execute(); }}
               disabled={anyBusy}
             >
+              {/* Google logo colors are brand-required and intentionally fixed. */}
               <svg viewBox="0 0 24 24" className={styles.socialIcon} aria-hidden="true">
                 <path
                   fill="#4285F4"

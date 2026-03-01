@@ -43,7 +43,7 @@
     width: 48px;
     height: 48px;
     border-radius: 14px;
-    background: linear-gradient(135deg, rgba(217, 116, 89, 0.15), rgba(217, 116, 89, 0.05));
+    background: linear-gradient(135deg, rgba(var(--rgb-accent-primary), 0.15), rgba(var(--rgb-accent-primary), 0.05));
     color: var(--accent-primary);
     display: flex;
     align-items: center;
@@ -92,14 +92,14 @@
     padding: 10px;
     border-radius: 16px;
     border: 1px solid var(--glass-border);
-    background: rgba(255, 255, 255, 0.75);
+    background: rgba(var(--rgb-ui-surface), 0.75);
     overflow-wrap: break-word;
     word-break: break-word;
 }
 
 .chatMsgUser .chatBubble {
-    background: rgba(217, 116, 89, 0.12);
-    border-color: rgba(217, 116, 89, 0.25);
+    background: rgba(var(--rgb-accent-primary), 0.12);
+    border-color: rgba(var(--rgb-accent-primary), 0.25);
 }
 
 .chatText {
@@ -115,9 +115,9 @@
 
 .reasoningWrap {
     margin-bottom: 8px;
-    border: 1px solid rgba(0, 0, 0, 0.08);
+    border: 1px solid rgba(var(--rgb-ui-contrast), 0.08);
     border-radius: 10px;
-    background: rgba(0, 0, 0, 0.025);
+    background: rgba(var(--rgb-ui-contrast), 0.025);
 }
 
 .reasoningToggle {
@@ -140,7 +140,7 @@
 }
 
 .reasoningPanel {
-    border-top: 1px solid rgba(0, 0, 0, 0.08);
+    border-top: 1px solid rgba(var(--rgb-ui-contrast), 0.08);
     padding: 8px;
     color: var(--text-secondary);
     font-size: 13px;
@@ -203,7 +203,7 @@
     padding: 4px 6px 4px 8px;
     border: 1px solid var(--glass-border);
     border-radius: 999px;
-    background: rgba(255, 255, 255, 0.8);
+    background: rgba(var(--rgb-ui-surface), 0.8);
 }
 
 .mentionedStudyTitle {
@@ -232,7 +232,7 @@
 }
 
 .mentionedStudyLink:hover {
-    background: rgba(0, 0, 0, 0.06);
+    background: rgba(var(--rgb-ui-contrast), 0.06);
     color: var(--text-primary);
 }
 
@@ -241,8 +241,8 @@
 }
 
 .mentionedStudyAddBtn {
-    border: 1px solid rgba(0, 0, 0, 0.12);
-    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid rgba(var(--rgb-ui-contrast), 0.12);
+    background: rgba(var(--rgb-ui-surface), 0.95);
     color: var(--text-secondary);
     border-radius: 999px;
     font-size: 11px;
@@ -254,9 +254,9 @@
 }
 
 .mentionedStudyAddBtn:hover:not(:disabled) {
-    border-color: rgba(217, 116, 89, 0.45);
+    border-color: rgba(var(--rgb-accent-primary), 0.45);
     color: var(--text-primary);
-    background: rgba(217, 116, 89, 0.1);
+    background: rgba(var(--rgb-accent-primary), 0.1);
 }
 
 .mentionedStudyAddBtn:disabled {
@@ -308,7 +308,7 @@
 }
 
 .chatActionBtn:hover {
-    background: rgba(0, 0, 0, 0.06);
+    background: rgba(var(--rgb-ui-contrast), 0.06);
     color: var(--text-primary);
 }
 
@@ -326,8 +326,8 @@
 }
 
 .suggestChip {
-    border: 1px solid rgba(0, 0, 0, 0.1);
-    background: rgba(255, 255, 255, 0.8);
+    border: 1px solid rgba(var(--rgb-ui-contrast), 0.1);
+    background: rgba(var(--rgb-ui-surface), 0.8);
     color: var(--text-secondary);
     border-radius: 999px;
     padding: 8px 12px;
@@ -343,7 +343,7 @@
 .suggestChip:nth-child(3) { animation-delay: 100ms; }
 
 .suggestChip:hover {
-    border-color: rgba(217, 116, 89, 0.35);
+    border-color: rgba(var(--rgb-accent-primary), 0.35);
     color: var(--accent-primary);
 }
 
@@ -491,7 +491,7 @@
 .skeletonBubble {
     height: 14px;
     border-radius: 8px;
-    background: linear-gradient(90deg, rgba(0,0,0,0.06) 25%, rgba(0,0,0,0.10) 50%, rgba(0,0,0,0.06) 75%);
+    background: linear-gradient(90deg, rgba(var(--rgb-ui-contrast),0.06) 25%, rgba(var(--rgb-ui-contrast),0.10) 50%, rgba(var(--rgb-ui-contrast),0.06) 75%);
     background-size: 200% 100%;
     animation: skeletonShimmer 1.4s ease-in-out infinite;
 }
@@ -549,7 +549,7 @@
     padding: 8px 10px;
     border-radius: 12px;
     border: 1px solid var(--glass-border);
-    background: rgba(255, 255, 255, 0.86);
+    background: rgba(var(--rgb-ui-surface), 0.86);
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
     box-shadow: var(--shadow-xl);
@@ -606,13 +606,13 @@
 }
 
 .approveAllStopBtn {
-    background: rgba(255, 255, 255, 0.78);
+    background: rgba(var(--rgb-ui-surface), 0.78);
     color: var(--text-secondary);
     border-color: var(--glass-border);
 }
 
 .approveAllStopBtn:hover {
-    background: rgba(255, 255, 255, 0.95);
+    background: rgba(var(--rgb-ui-surface), 0.95);
     color: var(--text-primary);
 }
 
@@ -655,7 +655,7 @@
     height: 36px;
     border-radius: 50%;
     border: 1px solid var(--glass-border);
-    background: rgba(255, 255, 255, 0.85);
+    background: rgba(var(--rgb-ui-surface), 0.85);
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
     box-shadow: var(--shadow-sm);
@@ -676,7 +676,7 @@
 }
 
 .scrollFab:hover {
-    background: rgba(255, 255, 255, 0.95);
+    background: rgba(var(--rgb-ui-surface), 0.95);
     color: var(--text-primary);
     box-shadow: var(--shadow-lg);
 }
@@ -703,7 +703,7 @@
     padding: 6px 16px;
     border: 1px solid var(--glass-border);
     border-radius: 999px;
-    background: rgba(255, 255, 255, 0.85);
+    background: rgba(var(--rgb-ui-surface), 0.85);
     color: var(--text-secondary);
     font-size: 12px;
     font-weight: 500;
@@ -712,7 +712,7 @@
 }
 
 .loadOlderBtn:hover:not(:disabled) {
-    background: rgba(255, 255, 255, 0.95);
+    background: rgba(var(--rgb-ui-surface), 0.95);
     color: var(--text-primary);
     box-shadow: var(--shadow-sm);
 }
@@ -763,8 +763,8 @@
 
 .pageLayout .chatMsgUser .chatBubble {
     padding: 10px 16px;
-    background: rgba(217, 116, 89, 0.08);
-    border: 1px solid rgba(217, 116, 89, 0.2);
+    background: rgba(var(--rgb-accent-primary), 0.08);
+    border: 1px solid rgba(var(--rgb-accent-primary), 0.2);
     border-radius: 14px;
     width: fit-content;
     max-width: min(100%, 78ch);
@@ -808,8 +808,8 @@
 }
 
 .pageLayout .suggestChip:hover {
-    border-color: rgba(217, 116, 89, 0.4);
-    background: rgba(217, 116, 89, 0.07);
+    border-color: rgba(var(--rgb-accent-primary), 0.4);
+    background: rgba(var(--rgb-accent-primary), 0.07);
     color: var(--accent-primary);
 }
 
@@ -830,7 +830,7 @@
 }
 
 .chatText :global(code) {
-    background: rgba(0, 0, 0, 0.07);
+    background: rgba(var(--rgb-ui-contrast), 0.07);
     padding: 1px 4px;
     border-radius: 3px;
     font-family: var(--font-mono, ui-monospace, monospace);
@@ -853,7 +853,7 @@
     .chatMsg          { animation: none; }
     .loadingDot       { animation: none; opacity: 0.5; }
     .streamingCursor  { animation: none; }
-    .skeletonBubble   { animation: none; background: rgba(0, 0, 0, 0.08); }
+    .skeletonBubble   { animation: none; background: rgba(var(--rgb-ui-contrast), 0.08); }
     .suggestChip      { animation: none; }
     .savingSpinner .material-icons-round { animation: none; }
     .approveAllSpinner { animation: none; }
@@ -865,13 +865,13 @@
 
 @supports not (backdrop-filter: blur(1px)) {
     .scrollFab {
-        background: rgba(255, 255, 255, 0.97);
+        background: rgba(var(--rgb-ui-surface), 0.97);
         backdrop-filter: none;
         -webkit-backdrop-filter: none;
     }
 
     .approveAllBar {
-        background: rgba(255, 255, 255, 0.97);
+        background: rgba(var(--rgb-ui-surface), 0.97);
         backdrop-filter: none;
         -webkit-backdrop-filter: none;
     }

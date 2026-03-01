@@ -1,5 +1,6 @@
 "use server";
 
+import { z } from "zod";
 import { assertProjectAccess } from "@/lib/server/access";
 import { getFileAssetById } from "@/lib/server/files";
 import { getStudy, updateStudy } from "@/lib/server/ledger";
@@ -14,6 +15,13 @@ import type { Study, StudyDetails } from "@/types/ledger";
 import { createMemoriesFromDeepAnalysis } from "@/lib/server/memory/study-memory";
 import { sanitizeErrorMessage } from "@/lib/server/action-utils";
 import { withAuth } from "@/lib/server/auth/session";
+import { projectIdSchema, studyIdSchema, resourceIdSchema } from "@/lib/schemas/ids";
+
+const extractionInputSchema = z.object({
+    projectId: projectIdSchema,
+    studyId: studyIdSchema,
+    fileAssetId: resourceIdSchema,
+});
 
 export type ExtractionActionResult = {
     success: boolean;
@@ -55,16 +63,17 @@ export async function extractStudyFromPdfAction(
     }
 
     try {
+        const v = extractionInputSchema.parse({ projectId, studyId, fileAssetId });
         // Acquire lock
         EXTRACTION_LOCKS.add(lockKey);
         return await withAuth(async ({ userId, workspaceId }) => {
             const scope = { ownerId: userId, workspaceId };
 
             // Verify project access
-            await assertProjectAccess(scope, projectId);
+            await assertProjectAccess(scope, v.projectId);
 
             // Get the file asset
-            const file = await getFileAssetById(scope, projectId, fileAssetId);
+            const file = await getFileAssetById(scope, v.projectId, v.fileAssetId);
             if (!file) {
                 return {
                     success: false,
@@ -83,7 +92,7 @@ export async function extractStudyFromPdfAction(
             }
 
             // Get existing study
-            const existingStudy = await getStudy(scope, projectId, studyId);
+            const existingStudy = await getStudy(scope, v.projectId, v.studyId);
             if (!existingStudy) {
                 return {
                     success: false,
@@ -93,7 +102,7 @@ export async function extractStudyFromPdfAction(
             }
 
             // Perform extraction
-            const extractionResult = await extractStudyFromPdf(file.storagePath, projectId);
+            const extractionResult = await extractStudyFromPdf(file.storagePath, v.projectId);
 
             if (!extractionResult.success) {
                 return {
@@ -132,8 +141,8 @@ export async function extractStudyFromPdfAction(
             // Update the study (updateStudy merges details automatically)
             const updatedStudy = await updateStudy(
                 scope,
-                projectId,
-                studyId,
+                v.projectId,
+                v.studyId,
                 updates
             );
 
@@ -175,12 +184,13 @@ export async function deepAnalyzeStudyAction(
     }
 
     try {
+        const v = extractionInputSchema.parse({ projectId, studyId, fileAssetId });
         EXTRACTION_LOCKS.add(lockKey);
         return await withAuth(async ({ userId, workspaceId }) => {
             const scope = { ownerId: userId, workspaceId };
-            await assertProjectAccess(scope, projectId);
+            await assertProjectAccess(scope, v.projectId);
 
-            const file = await getFileAssetById(scope, projectId, fileAssetId);
+            const file = await getFileAssetById(scope, v.projectId, v.fileAssetId);
             if (!file) {
                 return { success: false, error: "File not found", errorCode: "FILE_NOT_FOUND" };
             }
@@ -189,7 +199,7 @@ export async function deepAnalyzeStudyAction(
                 return { success: false, error: "File is not a PDF", errorCode: "NOT_PDF" };
             }
 
-            const existingStudy = await getStudy(scope, projectId, studyId);
+            const existingStudy = await getStudy(scope, v.projectId, v.studyId);
             if (!existingStudy) {
                 return { success: false, error: "Study not found", errorCode: "STUDY_NOT_FOUND" };
             }
@@ -201,7 +211,7 @@ export async function deepAnalyzeStudyAction(
                     authors: existingStudy.authors,
                     details: existingStudy.details,
                 },
-                projectId
+                v.projectId
             );
 
             if (!result.success) {
@@ -224,12 +234,12 @@ export async function deepAnalyzeStudyAction(
                 updates.quality = result.quality;
             }
 
-            const updatedStudy = await updateStudy(scope, projectId, studyId, updates);
+            const updatedStudy = await updateStudy(scope, v.projectId, v.studyId, updates);
 
             // Create StudyMemory records from deep analysis
             await createMemoriesFromDeepAnalysis(
-                studyId,
-                projectId,
+                v.studyId,
+                v.projectId,
                 { ...result.details, deepAnalysisComplete: true } as Record<string, unknown>,
                 result.quality
             ).catch((err) => {

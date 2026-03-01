@@ -1,20 +1,30 @@
 "use server";
 
+import { z } from "zod";
 import {
     createNote,
     getNote,
     listNotes,
+    listNotesPaginated,
     updateNote,
     deleteNote,
     searchNotes,
     textToTipTapDoc,
     type CreateNoteInput,
+    type PaginationOptions,
     type UpdateNoteInput,
     type ListNotesOptions,
 } from "@/lib/server/notes";
-import { withAction, type ActionResult } from "@/lib/server/action-utils";
+import { withValidatedAction, type ActionResult } from "@/lib/server/action-utils";
 import { withAuth } from "@/lib/server/auth/session";
 import { prisma } from "@/lib/server/prisma";
+import { cuidSchema, projectIdSchema, searchQuerySchema } from "@/lib/schemas/ids";
+import {
+    createNoteInputSchema,
+    updateNoteInputSchema,
+    listNotesOptionsSchema,
+} from "@/lib/schemas/notes";
+import { paginationOptionsSchema } from "@/lib/schemas/ledger";
 
 async function assertProjectAccess(projectId: string, userId: string, workspaceId: string): Promise<void> {
     const project = await prisma.project.findFirst({
@@ -34,6 +44,7 @@ async function getAuthorizedNoteProjectId(
     const note = await prisma.note.findFirst({
         where: {
             id: noteId,
+            deletedAt: null,
             project: { ownerId: userId, workspaceId },
         },
         select: { projectId: true },
@@ -43,6 +54,14 @@ async function getAuthorizedNoteProjectId(
     }
     return note.projectId;
 }
+
+const createNoteActionInput = z.object({
+    projectId: projectIdSchema,
+    content: z.string().min(1).max(200_000),
+    source: z.enum(["manual", "conversation"]).optional(),
+    sourceConversationId: cuidSchema.optional(),
+    sourceMessageId: cuidSchema.optional(),
+});
 
 /**
  * Create a note from plain text (backwards-compatible with save-from-conversation).
@@ -54,19 +73,22 @@ export async function createNoteAction(
     sourceConversationId?: string,
     sourceMessageId?: string,
 ): Promise<ActionResult<{ noteId: string }>> {
-    return withAction(() =>
-        withAuth(async ({ userId, workspaceId }) => {
-            await assertProjectAccess(projectId, userId, workspaceId);
-            const note = await createNote({
-                projectId,
-                userId,
-                content: textToTipTapDoc(content),
-                source,
-                sourceConversationId,
-                sourceMessageId,
-            });
-            return { noteId: note.id };
-        }),
+    return withValidatedAction(
+        createNoteActionInput,
+        { projectId, content, source, sourceConversationId, sourceMessageId },
+        (v) =>
+            withAuth(async ({ userId, workspaceId }) => {
+                await assertProjectAccess(v.projectId, userId, workspaceId);
+                const note = await createNote({
+                    projectId: v.projectId,
+                    userId,
+                    content: textToTipTapDoc(v.content),
+                    source: v.source,
+                    sourceConversationId: v.sourceConversationId,
+                    sourceMessageId: v.sourceMessageId,
+                });
+                return { noteId: note.id };
+            }),
     );
 }
 
@@ -74,55 +96,87 @@ export async function createNoteAction(
  * Create a note with full input (TipTap JSON content, tags, etc.).
  */
 export async function createNoteFullAction(input: CreateNoteInput) {
-    return withAction(() =>
+    return withValidatedAction(createNoteInputSchema, input, (v) =>
         withAuth(async ({ userId, workspaceId }) => {
-            await assertProjectAccess(input.projectId, userId, workspaceId);
-            return createNote({ ...input, userId });
+            await assertProjectAccess(v.projectId, userId, workspaceId);
+            return createNote({ ...(v as CreateNoteInput), userId });
         }),
     );
 }
 
 export async function getNoteAction(id: string) {
-    return withAction(() =>
+    return withValidatedAction(cuidSchema, id, (validId) =>
         withAuth(async ({ userId, workspaceId }) => {
-            await getAuthorizedNoteProjectId(id, userId, workspaceId);
-            return getNote(id);
+            await getAuthorizedNoteProjectId(validId, userId, workspaceId);
+            return getNote(validId);
         }),
     );
 }
+
+const listNotesActionInput = z.object({
+    projectId: projectIdSchema,
+    options: listNotesOptionsSchema.optional(),
+});
 
 export async function listNotesAction(projectId: string, options?: ListNotesOptions) {
-    return withAction(() =>
+    return withValidatedAction(listNotesActionInput, { projectId, options }, (v) =>
         withAuth(async ({ userId, workspaceId }) => {
-            await assertProjectAccess(projectId, userId, workspaceId);
-            return listNotes(projectId, options);
+            await assertProjectAccess(v.projectId, userId, workspaceId);
+            return listNotes(v.projectId, v.options as ListNotesOptions | undefined);
         }),
     );
 }
 
-export async function updateNoteAction(id: string, input: UpdateNoteInput) {
-    return withAction(() =>
+const listNotesPaginatedInput = z.object({
+    projectId: projectIdSchema,
+    options: listNotesOptionsSchema.merge(paginationOptionsSchema).optional(),
+});
+
+export async function listNotesPaginatedAction(
+    projectId: string,
+    options?: ListNotesOptions & PaginationOptions,
+) {
+    return withValidatedAction(listNotesPaginatedInput, { projectId, options }, (v) =>
         withAuth(async ({ userId, workspaceId }) => {
-            await getAuthorizedNoteProjectId(id, userId, workspaceId);
-            return updateNote(id, input);
+            await assertProjectAccess(v.projectId, userId, workspaceId);
+            return listNotesPaginated(v.projectId, v.options as (ListNotesOptions & PaginationOptions) | undefined);
+        }),
+    );
+}
+
+const updateNoteActionInput = z.object({
+    id: cuidSchema,
+    input: updateNoteInputSchema,
+});
+
+export async function updateNoteAction(id: string, input: UpdateNoteInput) {
+    return withValidatedAction(updateNoteActionInput, { id, input }, (v) =>
+        withAuth(async ({ userId, workspaceId }) => {
+            await getAuthorizedNoteProjectId(v.id, userId, workspaceId);
+            return updateNote(v.id, v.input as UpdateNoteInput);
         }),
     );
 }
 
 export async function deleteNoteAction(id: string) {
-    return withAction(() =>
+    return withValidatedAction(cuidSchema, id, (validId) =>
         withAuth(async ({ userId, workspaceId }) => {
-            await getAuthorizedNoteProjectId(id, userId, workspaceId);
-            return deleteNote(id);
+            await getAuthorizedNoteProjectId(validId, userId, workspaceId);
+            return deleteNote(validId);
         }),
     );
 }
 
+const searchNotesActionInput = z.object({
+    projectId: projectIdSchema,
+    query: searchQuerySchema,
+});
+
 export async function searchNotesAction(projectId: string, query: string) {
-    return withAction(() =>
+    return withValidatedAction(searchNotesActionInput, { projectId, query }, (v) =>
         withAuth(async ({ userId, workspaceId }) => {
-            await assertProjectAccess(projectId, userId, workspaceId);
-            return searchNotes(projectId, query);
+            await assertProjectAccess(v.projectId, userId, workspaceId);
+            return searchNotes(v.projectId, v.query);
         }),
     );
 }

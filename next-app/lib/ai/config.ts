@@ -27,6 +27,14 @@ export const AI_CONFIG = {
     streamTimeoutMs: 120000,
 } as const;
 
+/**
+ * Reasoning support tiers:
+ * - "explicit": Provider has dedicated reasoning API (e.g., Anthropic extended thinking)
+ * - "best_effort": Provider may return reasoning in some responses but not guaranteed
+ * - "none": Provider does not support reasoning output
+ */
+export type ReasoningSupportTier = "explicit" | "best_effort" | "none";
+
 // Available models for user selection
 export const USER_SELECTABLE_MODELS = [
     {
@@ -35,6 +43,7 @@ export const USER_SELECTABLE_MODELS = [
         description: "Most capable model for complex tasks",
         icon: "auto_awesome",
         provider: "openai",
+        reasoningSupport: "best_effort" as ReasoningSupportTier,
     },
     {
         id: "gpt-5-mini",
@@ -42,6 +51,7 @@ export const USER_SELECTABLE_MODELS = [
         description: "Fast and efficient for simpler tasks",
         icon: "bolt",
         provider: "openai",
+        reasoningSupport: "none" as ReasoningSupportTier,
     },
     {
         id: "claude-haiku-4-5",
@@ -49,6 +59,7 @@ export const USER_SELECTABLE_MODELS = [
         description: "Best writing quality per dollar",
         icon: "edit_note",
         provider: "anthropic",
+        reasoningSupport: "explicit" as ReasoningSupportTier,
     },
     {
         id: "grok-4-1-fast",
@@ -56,6 +67,7 @@ export const USER_SELECTABLE_MODELS = [
         description: "Fast tool calling, 2M context",
         icon: "rocket_launch",
         provider: "xai",
+        reasoningSupport: "best_effort" as ReasoningSupportTier,
     },
     {
         id: "gemini-3-flash-preview",
@@ -63,6 +75,7 @@ export const USER_SELECTABLE_MODELS = [
         description: "Fast and cheap, 1M context",
         icon: "flash_on",
         provider: "google",
+        reasoningSupport: "none" as ReasoningSupportTier,
     },
 ] as const;
 
@@ -110,4 +123,22 @@ export function getContextBudget(modelId?: string): number {
         if (found) return Math.floor(found.contextWindow * 0.6);
     }
     return DEFAULT_CONTEXT_BUDGET;
+}
+
+/**
+ * Get the reasoning support tier for a model.
+ * Returns "none" for unknown models (safe default).
+ */
+export function getReasoningSupportTier(modelId: string): ReasoningSupportTier {
+    const model = USER_SELECTABLE_MODELS.find((m) => m.id === modelId);
+    return model?.reasoningSupport ?? "none";
+}
+
+/**
+ * Check if a model supports reasoning output.
+ * Returns true for "explicit" and "best_effort" tiers.
+ */
+export function modelSupportsReasoning(modelId: string): boolean {
+    const tier = getReasoningSupportTier(modelId);
+    return tier !== "none";
 }

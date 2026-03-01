@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type WheelEvent as ReactWheelEvent } from "react";
 import { useParams } from "next/navigation";
 import { useProjectCopilot } from "@/contexts/ProjectCopilotContext";
 import type { CopilotPage } from "@/types/ai";
@@ -11,6 +11,7 @@ import { CopilotInput } from "./copilot/CopilotInput";
 import { AutonomySettings } from "./copilot/AutonomySettings";
 import { ReasoningModeDropdown } from "./copilot/ReasoningModeDropdown";
 import { ConversationPicker } from "./ui/ConversationPicker";
+import { decideCopilotWheelContainment } from "./copilot/scrollContainment";
 import styles from "./ProjectCopilot.module.css";
 
 export type SuggestionConfig = {
@@ -52,6 +53,8 @@ export function ProjectCopilot({
     onInsert,
     panelId = "project-copilot-panel",
 }: ProjectCopilotProps) {
+    const panelRef = useRef<HTMLElement | null>(null);
+    const timelineRef = useRef<HTMLDivElement | null>(null);
     const params = useParams<{ id: string }>();
     const {
         messages,
@@ -59,6 +62,7 @@ export function ProjectCopilot({
         isLoading,
         reasoningMode,
         setReasoningMode,
+        reasoningSupport,
         setCollapsed,
         // Conversation management
         conversations,
@@ -78,11 +82,16 @@ export function ProjectCopilot({
         isSummarizing,
         // Autonomy settings (Phase 7)
         setShowAutonomySettings,
+        // Structured ask_user input
+        answerUserInput,
         // Message pagination
         hasMore,
         isLoadingOlder,
         loadOlderMessages,
     } = useProjectCopilot();
+
+    // Hide reasoning controls when model doesn't support reasoning
+    const showReasoningControls = reasoningSupport !== "none";
 
     // Defer Radix-heavy UI until after hydration to avoid ID mismatch warnings
     const [hasMounted, setHasMounted] = useState(false);
@@ -98,6 +107,24 @@ export function ProjectCopilot({
 
     const handlePrefillConsumed = useCallback(() => {
         setPrefillCommand(null);
+    }, []);
+
+    const handleTimelineContainerElement = useCallback((node: HTMLDivElement | null) => {
+        timelineRef.current = node;
+    }, []);
+
+    const handleWheelCapture = useCallback((event: ReactWheelEvent<HTMLElement>) => {
+        const decision = decideCopilotWheelContainment({
+            target: event.target,
+            panelElement: panelRef.current,
+            timelineElement: timelineRef.current,
+            ctrlKey: event.ctrlKey,
+        });
+        if (!decision.shouldPreventDefault) return;
+        event.preventDefault();
+        if (decision.shouldRedirectToTimeline && timelineRef.current) {
+            timelineRef.current.scrollTop += event.deltaY;
+        }
     }, []);
 
     const handleActionPrompt = useCallback((prompt: string, mode?: AgentMode) => {
@@ -202,11 +229,11 @@ export function ProjectCopilot({
     const currentTitle = currentConversation?.title || "New conversation";
 
     if (!hasMounted) {
-        return <aside className={styles.copilot} aria-label="AI copilot" id={panelId} />;
+        return <aside ref={panelRef} className={styles.copilot} aria-label="AI copilot" id={panelId} onWheelCapture={handleWheelCapture} />;
     }
 
     return (
-        <aside className={styles.copilot} aria-label="AI copilot" id={panelId}>
+        <aside ref={panelRef} className={styles.copilot} aria-label="AI copilot" id={panelId} onWheelCapture={handleWheelCapture}>
             <div className={styles.chatArea}>
                 {/* Header */}
                 <div className={styles.panelHeader}>
@@ -258,22 +285,25 @@ export function ProjectCopilot({
                                 <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
                             </svg>
                         </button>
-                        <ReasoningModeDropdown
-                            reasoningMode={reasoningMode}
-                            onReasoningModeChange={setReasoningMode}
-                        >
-                            <button
-                                type="button"
-                                className={`${styles.headerIconBtn} ${styles.reasoningModeBtn}`}
-                                data-state={reasoningMode}
-                                aria-label={`Reasoning visibility: ${reasoningMode}`}
-                                title={`Reasoning visibility: ${reasoningMode}`}
+                        {showReasoningControls && (
+                            <ReasoningModeDropdown
+                                reasoningMode={reasoningMode}
+                                onReasoningModeChange={setReasoningMode}
+                                reasoningSupport={reasoningSupport}
                             >
-                                <span className="material-icons-round" style={{ fontSize: 16 }}>
-                                    psychology
-                                </span>
-                            </button>
-                        </ReasoningModeDropdown>
+                                <button
+                                    type="button"
+                                    className={`${styles.headerIconBtn} ${styles.reasoningModeBtn}`}
+                                    data-state={reasoningMode}
+                                    aria-label={`Reasoning visibility: ${reasoningMode}`}
+                                    title={`Reasoning visibility: ${reasoningMode}`}
+                                >
+                                    <span className="material-icons-round" style={{ fontSize: 16 }}>
+                                        psychology
+                                    </span>
+                                </button>
+                            </ReasoningModeDropdown>
+                        )}
                         <button
                             type="button"
                             className={styles.headerIconBtn}
@@ -331,10 +361,12 @@ export function ProjectCopilot({
                     onRetryLastMessage={retryLastMessage}
                     onResumeRun={resumeFailedPlan}
                     onBranchFromMessage={handleBranchFromMessage}
+                    onAnswerUserInput={answerUserInput}
                     reasoningMode={reasoningMode}
                     hasMore={hasMore}
                     isLoadingOlder={isLoadingOlder}
                     onLoadOlder={loadOlderMessages}
+                    onContainerElementChange={handleTimelineContainerElement}
                 />
 
                 {/* Input area */}

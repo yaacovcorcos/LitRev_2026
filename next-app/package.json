@@ -7,12 +7,16 @@
     "build": "./scripts/migrate-if-prod.sh && next build",
     "postinstall": "prisma generate",
     "start": "next start",
-    "lint": "eslint",
+    "lint": "eslint && npm run check:theme-primitives",
     "lint:styles": "stylelint \"**/*.css\" --cache --cache-location .stylelintcache",
+    "check:theme-primitives": "bash scripts/check-no-literal-rgb-primitives.sh",
     "test": "vitest",
     "test:run": "vitest run",
     "db:doctor": "bash scripts/db-doctor.sh",
+    "db:repair-run-events": "node scripts/repair-run-event-sequences.mjs",
+    "db:migrate:safe": "bash scripts/migrate-deploy-safe.sh",
     "db:release-gate": "bash scripts/release-gate-prod.sh",
+    "db:ops": "bash scripts/db-ops.sh",
     "memory:warmup": "tsx scripts/warmup-memory-embeddings.ts",
     "memory:validate": "tsx scripts/validate-memory-rollout.ts"
   },
@@ -46,7 +50,8 @@
     "react-dom": "19.2.0",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
-    "resend": "^6.9.2"
+    "resend": "^6.9.2",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.9.1",

@@ -23,6 +23,7 @@ vi.mock("@/lib/server/access", () => ({
 import {
     createDraftVersion,
     listDraftVersions,
+    listDraftVersionsPaginated,
     getLatestDraftVersion,
 } from "../draft-versions";
 
@@ -96,6 +97,61 @@ describe("createDraftVersion", () => {
                 version: 4,
             }),
         });
+    });
+
+    it("retries when it loses a version race (P2002)", async () => {
+        mockFindFirst
+            .mockResolvedValueOnce({ version: 3 })
+            .mockResolvedValueOnce({ version: 4 });
+        mockCreate
+            .mockRejectedValueOnce({ code: "P2002" })
+            .mockResolvedValueOnce({ ...sampleVersion, version: 5 });
+
+        const result = await createDraftVersion(SCOPE, {
+            projectId: PROJECT_ID,
+            section: "Introduction",
+            content: sampleContent,
+        });
+
+        expect(result.version).toBe(5);
+        expect(mockFindFirst).toHaveBeenCalledTimes(2);
+        expect(mockCreate).toHaveBeenCalledTimes(2);
+    });
+
+    it("throws after retry budget is exhausted", async () => {
+        mockFindFirst
+            .mockResolvedValueOnce({ version: 1 })
+            .mockResolvedValueOnce({ version: 2 })
+            .mockResolvedValueOnce({ version: 3 });
+        mockCreate
+            .mockRejectedValueOnce({ code: "P2002" })
+            .mockRejectedValueOnce({ code: "P2002" })
+            .mockRejectedValueOnce({ code: "P2002" });
+
+        await expect(
+            createDraftVersion(SCOPE, {
+                projectId: PROJECT_ID,
+                section: "Introduction",
+                content: sampleContent,
+            })
+        ).rejects.toEqual({ code: "P2002" });
+    });
+
+    it("propagates non-P2002 errors immediately", async () => {
+        const error = new Error("db unavailable");
+        mockFindFirst.mockResolvedValue({ version: 7 });
+        mockCreate.mockRejectedValue(error);
+
+        await expect(
+            createDraftVersion(SCOPE, {
+                projectId: PROJECT_ID,
+                section: "Introduction",
+                content: sampleContent,
+            })
+        ).rejects.toThrow("db unavailable");
+
+        expect(mockFindFirst).toHaveBeenCalledTimes(1);
+        expect(mockCreate).toHaveBeenCalledTimes(1);
     });
 
     it("lowercases the section name", async () => {
@@ -173,6 +229,46 @@ describe("listDraftVersions", () => {
             orderBy: { version: "desc" },
         });
         expect(result).toEqual(versions);
+    });
+});
+
+describe("listDraftVersionsPaginated", () => {
+    beforeEach(() => vi.clearAllMocks());
+
+    it("returns nextCursor when page has more records", async () => {
+        const versions = [
+            { ...sampleVersion, id: "dv-3", version: 3 },
+            { ...sampleVersion, id: "dv-2", version: 2 },
+            { ...sampleVersion, id: "dv-1", version: 1 },
+        ];
+        mockFindMany.mockResolvedValue(versions);
+
+        const result = await listDraftVersionsPaginated(SCOPE, PROJECT_ID, "Introduction", { limit: 2 });
+
+        expect(result.items).toHaveLength(2);
+        expect(result.nextCursor).toBe("dv-2");
+        expect(mockFindMany).toHaveBeenCalledWith({
+            where: { projectId: PROJECT_ID, section: "introduction" },
+            orderBy: { version: "desc" },
+            take: 3,
+        });
+    });
+
+    it("uses cursor row to continue keyset pagination", async () => {
+        mockFindFirst.mockResolvedValue({ id: "dv-2", version: 2 });
+        mockFindMany.mockResolvedValue([{ ...sampleVersion, id: "dv-1", version: 1 }]);
+
+        await listDraftVersionsPaginated(SCOPE, PROJECT_ID, "Introduction", { cursor: "dv-2", limit: 2 });
+
+        expect(mockFindFirst).toHaveBeenCalledWith({
+            where: { id: "dv-2", projectId: PROJECT_ID, section: "introduction" },
+            select: { id: true, version: true },
+        });
+        expect(mockFindMany).toHaveBeenCalledWith({
+            where: { projectId: PROJECT_ID, section: "introduction", version: { lt: 2 } },
+            orderBy: { version: "desc" },
+            take: 3,
+        });
     });
 });
 

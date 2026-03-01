@@ -5,7 +5,6 @@
  */
 
 import type { AIMessage, AIResponse, ChatOptions, AIStreamChunk, ConversationContext, ToolCall, ToolDefinition, ToolResult } from "@/types/ai";
-import type { ArtifactType } from "@/types/artifacts";
 import type { AutonomyLevel, AgentMode } from "@/types/agent";
 import { BaseAIProvider, getOpenAIProvider, getAnthropicProvider, getXAIProvider, getGoogleProvider } from "./providers";
 import { getOrCreateConversation, addMessageToConversation, getConversationWithSummary, getConversationWithSummaryById, autoSummarizeIfNeeded } from "./memory";
@@ -20,11 +19,11 @@ import {
     formatSummaryAsMessage,
     repairConversationHistory,
 } from "@/lib/agent/compaction";
-import { AVAILABLE_TOOLS, getToolDefinitions, executeTool, getTool, resolveAutonomyLevel, isToolAllowedInScope } from "./tools";
+import { AVAILABLE_TOOLS, getToolDefinitions, executeTool } from "./tools";
 import { startRun, endRun } from "@/lib/server/agent/run";
 import { emitEvent } from "@/lib/server/agent/events";
-import { createArtifact, applyArtifact } from "@/lib/server/agent/artifacts";
-import { getAutonomyConfig, getToolAutonomyLevel } from "@/lib/server/agent/autonomy";
+import { createArtifact } from "@/lib/server/agent/artifacts";
+import { getAutonomyConfig } from "@/lib/server/agent/autonomy";
 import {
     assembleSystemPrompt,
     buildProjectContext,
@@ -37,14 +36,12 @@ import {
     buildStudyContext,
 } from "@/lib/ai/prompts/copilot-prompts";
 import type { StudyContextData } from "@/lib/ai/prompts/copilot-prompts";
-import { getEffectiveAllowedTools } from "@/lib/agent/router";
 import { normalizeAgentMode } from "@/lib/agent/feature-flags";
 import { LoopState, type StopReason } from "@/lib/agent/loop-controller";
-import { startRunTrace, startLLMGeneration, startToolSpan, startContextSpan, flushTracing, NOOP_SPAN } from "./tracing";
-import type { TracingSpan } from "./tracing";
+import { startRunTrace, startLLMGeneration, startContextSpan, flushTracing } from "./tracing";
 import { withChoicesExtraction } from "./choices-extractor";
 import { sanitizeGeneratedConversationTitle, buildFallbackConversationTitle } from "./title-generator";
-import { appendScopingReportComment, buildFallbackScopingReport, detectScopingHandoffSelection, extractLatestScopingReport, extractScopingReportFromText, stripScopingReportMarkup } from "./scoping";
+import { detectScopingHandoffSelection, extractLatestScopingReport } from "./scoping";
 import { prisma } from "@/lib/server/prisma";
 import { isProtocolPopulated, type ProtocolData } from "@/types/protocol";
 import type { PlanPayload, ScopingReportPayload } from "@/types/artifacts";
@@ -55,6 +52,19 @@ import { resolveReasoningMode } from "@/lib/ai/reasoning-visibility";
 import { createIdempotencyMiddleware, executeWithToolMiddleware, type ToolExecutionRequest, type ToolMiddleware } from "./tool-middleware";
 import { resolveAuthenticatedIdentity } from "@/lib/server/auth/identity";
 import { computeLedgerCounts, computeStudyLedger, type LedgerCounts, type StudyLedgerSnapshot } from "@/lib/server/ledger-utils";
+import {
+    mapToolToProgressMessage,
+    isStudyLedgerSnapshot,
+    getLedgerCounts,
+    emptyLedgerCounts,
+    buildScopingHandoffToolCall,
+    getLazyContextPointerCapabilities,
+    getContextualToolDefinitions,
+    shouldUseScopingBatchPlan,
+    buildScopingSearchPackPlan,
+    finalizeScopingResponse,
+} from "./tool-helpers";
+import { executeToolWithAutonomy } from "./tool-autonomy";
 
 const MAX_STREAM_RETRY_ATTEMPTS = 3;
 const MAX_OVERFLOW_RECOVERY_ATTEMPTS = 3;
@@ -64,6 +74,18 @@ const RETRY_JITTER = 0.15;
 
 const PUSH_PROTOCOL_CONTEXT_MODES = new Set<AgentMode>(["protocol", "screening", "drafting"]);
 const PUSH_LEDGER_CONTEXT_MODES = new Set<AgentMode>(["screening", "search"]);
+
+export type ToolRuntimeContext = {
+    signal?: AbortSignal;
+    systemContexts?: {
+        projectContext?: string;
+        protocolContext?: string;
+        ledgerContext?: string;
+        memoryContext?: string;
+        autonomyContext?: string;
+    };
+    protocolData?: ProtocolData | null;
+};
 
 class AIService {
     private providers = new Map<string, BaseAIProvider>();
@@ -94,7 +116,7 @@ class AIService {
         this.toolMiddlewares.length = 0;
     }
 
-    private async executeToolWithMiddleware(request: ToolExecutionRequest): Promise<ToolResult> {
+    async executeToolWithMiddleware(request: ToolExecutionRequest): Promise<ToolResult> {
         return executeWithToolMiddleware(
             request,
             this.toolMiddlewares,
@@ -537,183 +559,6 @@ class AIService {
     }
 
     /**
-     * Execute a tool call with autonomy-aware behavior.
-     * Yields artifact chunks when autonomy level triggers artifact creation.
-     * Returns the tool result for the AI loop continuation.
-     */
-    async *executeToolWithAutonomy(
-        toolCall: ToolCall,
-        runId: string,
-        projectId: string | undefined,
-        conversationId: string,
-        userId?: string,
-        agentMode?: AgentMode,
-        traceSpan?: TracingSpan,
-        studyId?: string,
-        cachedAutonomyConfig?: Awaited<ReturnType<typeof getAutonomyConfig>>
-    ): AsyncGenerator<AIStreamChunk, ToolResult> {
-        // Defense-in-depth: reject tool calls not allowed in the current mode
-        const scope = projectId && projectId !== null ? "project" as const : "global" as const;
-        if (!isToolAllowedInScope(toolCall.name, scope)) {
-            const result: ToolResult = {
-                callId: toolCall.id,
-                result: null,
-                error: `Tool "${toolCall.name}" is not available in ${scope} scope.`,
-            };
-            await emitEvent(runId, "tool_result", { error: result.error }, { toolName: toolCall.name });
-            return result;
-        }
-
-        // Defense-in-depth: reject tool calls not allowed in the current mode
-        if (agentMode) {
-            const allowed = getEffectiveAllowedTools(agentMode);
-            if (allowed && allowed.length > 0 && !allowed.includes(toolCall.name)) {
-                const result: ToolResult = {
-                    callId: toolCall.id,
-                    result: null,
-                    error: `Tool "${toolCall.name}" is not available in ${agentMode} mode.`,
-                };
-                await emitEvent(runId, "tool_result", { error: result.error }, { toolName: toolCall.name });
-                return result;
-            }
-        }
-
-        const tool = getTool(toolCall.name);
-
-        // Resolve autonomy level — use cached config if provided to avoid a redundant DB round-trip per tool call
-        const autonomyConfig = cachedAutonomyConfig ?? await getAutonomyConfig(userId, projectId);
-        const configuredLevel = getToolAutonomyLevel(toolCall.name, {
-            preset: autonomyConfig.preset,
-            toolOverrides: (autonomyConfig.toolOverrides ?? {}) as Record<string, unknown>,
-        });
-        const level = resolveAutonomyLevel(toolCall.name, configuredLevel, tool?.autonomy);
-
-        // Emit tool_call event
-        await emitEvent(runId, "tool_call", {
-            toolName: toolCall.name,
-            arguments: toolCall.arguments,
-            autonomyLevel: level,
-        }, { toolName: toolCall.name });
-
-        // Level 0 (Disabled): don't execute
-        if (level === 0) {
-            const result: ToolResult = {
-                callId: toolCall.id,
-                result: null,
-                error: `Tool "${toolCall.name}" is disabled by autonomy configuration.`,
-            };
-            await emitEvent(runId, "tool_result", { error: result.error }, { toolName: toolCall.name });
-            return result;
-        }
-
-        // Level 1 (Suggest): don't execute, return suggestion
-        if (level === 1) {
-            const result: ToolResult = {
-                callId: toolCall.id,
-                result: `[Suggestion] I would call "${toolCall.name}" with: ${JSON.stringify(toolCall.arguments)}. Approve this action to proceed.`,
-            };
-            await emitEvent(runId, "tool_result", { suggestion: true }, { toolName: toolCall.name });
-            return result;
-        }
-
-        // Level >= 2: execute the tool
-        const toolSpan = startToolSpan(traceSpan ?? NOOP_SPAN, toolCall.name, toolCall.arguments);
-        const startTime = Date.now();
-        const result = await this.executeToolWithMiddleware({
-            name: toolCall.name,
-            args: toolCall.arguments,
-            callId: toolCall.id,
-            context: {
-                projectId,
-                studyId,
-                userId,
-                runId,
-                autonomyLevel: level,
-            },
-        });
-        const durationMs = Date.now() - startTime;
-        toolSpan.update({ output: { success: !result.error, durationMs } }).end();
-
-        // Emit tool_result event
-        await emitEvent(runId, "tool_result", {
-            success: !result.error,
-            error: result.error,
-        }, { toolName: toolCall.name, durationMs });
-
-        // If tool errored, just return the result
-        if (result.error) {
-            return result;
-        }
-
-        // Determine artifact type from tool name
-        const artifactType = mapToolToArtifactType(toolCall.name);
-
-        if (artifactType && result.result && projectId) {
-            if (level === 2) {
-                // Propose: create artifact with "proposed" status, yield to client
-                const artifact = await createArtifact({
-                    runId,
-                    projectId,
-                    conversationId,
-                    userId,
-                    type: artifactType,
-                    title: mapToolToArtifactTitle(toolCall.name, toolCall.arguments),
-                    payload: result.result,
-                });
-
-                yield {
-                    type: "artifact",
-                    artifactId: artifact.id,
-                    artifactType: artifact.type,
-                    artifactStatus: "proposed",
-                    artifactTitle: artifact.title,
-                    artifactPayload: artifact.payload,
-                    artifactVersion: 1,
-                };
-            } else if (level === 3) {
-                // Auto-notify: create artifact as auto_applied, apply it, yield to client
-                const artifact = await createArtifact({
-                    runId,
-                    projectId,
-                    conversationId,
-                    userId,
-                    type: artifactType,
-                    title: mapToolToArtifactTitle(toolCall.name, toolCall.arguments),
-                    payload: result.result,
-                });
-
-                await applyArtifact(artifact.id, "auto_applied");
-
-                yield {
-                    type: "artifact",
-                    artifactId: artifact.id,
-                    artifactType: artifact.type,
-                    artifactStatus: "auto_applied",
-                    artifactTitle: artifact.title,
-                    artifactPayload: artifact.payload,
-                    artifactVersion: 1,
-                };
-            }
-            // Level 4 (Auto-silent): execute + apply but don't yield artifact to client
-            else if (level === 4) {
-                const artifact = await createArtifact({
-                    runId,
-                    projectId,
-                    conversationId,
-                    userId,
-                    type: artifactType,
-                    title: mapToolToArtifactTitle(toolCall.name, toolCall.arguments),
-                    payload: result.result,
-                });
-
-                await applyArtifact(artifact.id, "auto_applied");
-            }
-        }
-
-        return result;
-    }
-
-    /**
      * Stream chat with artifacts and agent run lifecycle.
      * Wraps the tool execution loop with AgentRun creation, autonomy-aware
      * tool execution, and run lifecycle events.
@@ -868,6 +713,7 @@ class AIService {
             const projectContext = projectRow && projectId
                 ? buildProjectContext(projectRow.name, projectId)
                 : "";
+            const pointerCapabilities = getLazyContextPointerCapabilities(agentMode);
             const protocolContext = projectId
                 ? (
                     shouldPushProtocolContext
@@ -876,7 +722,7 @@ class AIService {
                                 ? buildProtocolContext(protocolRow.data as unknown as ProtocolData)
                                 : ""
                         )
-                        : buildProtocolPointerContext()
+                        : buildProtocolPointerContext({ readToolAvailable: pointerCapabilities.canReadProtocol })
                 )
                 : "";
             const ledgerContext = projectId
@@ -887,7 +733,7 @@ class AIService {
                                 ? buildLedgerContext(studyLedger.counts, studyLedger.list, studyLedger.truncated)
                                 : buildLedgerContext(studyLedger ?? emptyLedgerCounts())
                         )
-                        : buildLedgerPointerContext()
+                        : buildLedgerPointerContext({ readToolAvailable: pointerCapabilities.canReadLedger })
                 )
                 : "";
             const autonomyContext = buildAutonomyContext(autonomyConfig.preset);
@@ -1334,7 +1180,29 @@ class AIService {
                         conversationId: conversation.id,
                     };
 
-                    const gen = this.executeToolWithAutonomy(tc, run.id, projectId, conversation.id, userId, agentMode, trace, studyId, autonomyConfig);
+                    const gen = executeToolWithAutonomy(
+                        this,
+                        tc,
+                        run.id,
+                        projectId,
+                        conversation.id,
+                        userId,
+                        agentMode,
+                        trace,
+                        studyId,
+                        autonomyConfig,
+                        {
+                            signal: options?.signal,
+                            protocolData: (protocolRow?.data as ProtocolData | null) ?? null,
+                            systemContexts: {
+                                projectContext,
+                                protocolContext,
+                                ledgerContext,
+                                memoryContext: memoriesContext || undefined,
+                                autonomyContext,
+                            },
+                        },
+                    );
                     let genResult = await gen.next();
                     while (!genResult.done) {
                         yield { ...genResult.value, conversationId: conversation.id };
@@ -1752,214 +1620,14 @@ class AIService {
     }
 }
 
-// ── Helper functions for tool → artifact mapping ────────────────────────────
-
-/**
- * Map tool name → artifact type (null if tool doesn't produce artifacts).
- *
- * Only proposal tools belong here — tools whose execute() returns a payload
- * for user review WITHOUT persisting side effects. Action tools (search_pubmed,
- * add_to_ledger, extract_pdf, read_study_content) communicate results through
- * the AI's text response, not artifacts.
- */
-function mapToolToArtifactType(toolName: string): ArtifactType | null {
-    const mapping: Record<string, ArtifactType> = {
-        bulk_screening: "screening_batch",
-        update_protocol: "protocol_suggestion",
-        store_memory: "memory_proposal",
-        forget_memory: "memory_forget_proposal",
-        update_note: "draft_diff",
-        exclude_study: "study_proposal",
-        update_study: "study_update",
-    };
-    return mapping[toolName] ?? null;
-}
-
-/** Map tool name → human-readable artifact title */
-function mapToolToArtifactTitle(toolName: string, args: Record<string, unknown>): string {
-    switch (toolName) {
-        case "bulk_screening":
-            return "Batch screening results";
-        case "update_protocol":
-            return `Protocol: ${args.field ?? "update"}`;
-        case "store_memory":
-            return `Remember: ${args.key ?? "preference"}`;
-        case "forget_memory":
-            return `Forget: ${args.key ?? "memory"}`;
-        case "update_note":
-            return `Draft: ${args.section ?? "section"}`;
-        case "exclude_study":
-            return `Exclude: ${args.reason ?? "study"}`;
-        case "update_study":
-            return "Study metadata update";
-        default:
-            return toolName;
-    }
-}
-
-/** Map tool name → progress message for streaming indicator */
-function mapToolToProgressMessage(toolName: string): string {
-    const messages: Record<string, string> = {
-        search_pubmed: "Searching PubMed...",
-        add_to_ledger: "Adding study to ledger...",
-        exclude_study: "Excluding study...",
-        delete_study: "Deleting study from ledger...",
-        extract_pdf: "Extracting PDF data...",
-        bulk_screening: "Screening studies...",
-        update_protocol: "Updating protocol...",
-        update_note: "Writing draft...",
-        update_study: "Preparing study update...",
-        retrieve_memory: "Retrieving memories...",
-        create_note: "Creating note...",
-        read_study_content: "Reading study PDF...",
-        read_protocol: "Reading protocol...",
-        read_ledger: "Reading ledger...",
-        store_memory: "Saving to memory...",
-        forget_memory: "Preparing forget proposal...",
-        inspect_memory: "Inspecting memory...",
-        search_semantic_scholar: "Searching Semantic Scholar...",
-        recommend_studies: "Finding recommendations...",
-        delegate_search: "Delegating search workflow...",
-        delegate_screening: "Delegating screening workflow...",
-        delegate_protocol: "Delegating protocol workflow...",
-    };
-    return messages[toolName] ?? `Running ${toolName}...`;
-}
-
-// ── Ledger helper functions for prompt context ───────────────────────────────
-
-function isStudyLedgerSnapshot(
-    ledger: LedgerCounts | StudyLedgerSnapshot | null
-): ledger is StudyLedgerSnapshot {
-    return !!ledger && typeof ledger === "object" && "counts" in ledger;
-}
-
-function getLedgerCounts(
-    ledger: LedgerCounts | StudyLedgerSnapshot | null
-): LedgerCounts | null {
-    if (!ledger) return null;
-    return isStudyLedgerSnapshot(ledger) ? ledger.counts : ledger;
-}
-
-function emptyLedgerCounts(): LedgerCounts {
-    return { total: 0, included: 0, excluded: 0, maybe: 0, unscreened: 0 };
-}
-
-export function getContextualToolDefinitions(params: {
-    agentMode: AgentMode;
-    scope: "project" | "global";
-    studyLedger: (LedgerCounts | StudyLedgerSnapshot) | null;
-}): ToolDefinition[] {
-    const { agentMode, scope, studyLedger } = params;
-    const defs = getToolDefinitions(agentMode, scope);
-    if (agentMode !== "scoping") return defs;
-    if (!isStudyLedgerSnapshot(studyLedger)) return defs;
-    if (studyLedger.hasRecommendationSeeds) return defs;
-    return defs.filter((d) => d.name !== "recommend_studies");
-}
-
-function buildScopingHandoffToolCall(question: string): ToolCall {
-    return {
-        id: `scoping-handoff-${Date.now()}`,
-        name: "update_protocol",
-        arguments: {
-            field: "researchQuestion",
-            value: question,
-            rationale: "Selected by user during scoping handoff",
-        },
-    };
-}
-
-export function shouldUseScopingBatchPlan(params: {
-    agentMode: AgentMode;
-    userMessage: string;
-    autonomyConfig: { preset: string; toolOverrides: unknown };
-}): boolean {
-    const { agentMode, userMessage, autonomyConfig } = params;
-    if (agentMode !== "scoping") return false;
-
-    const trimmed = userMessage.trim();
-    if (!trimmed) return false;
-    if (/^(yes|yep|yeah|go ahead|proceed|ok|okay|question\s*#?\d+|option\s*#?\d+)$/i.test(trimmed)) {
-        return false;
-    }
-
-    const normalizedAutonomy = {
-        preset: autonomyConfig.preset,
-        toolOverrides: (autonomyConfig.toolOverrides ?? {}) as Record<string, unknown>,
-    };
-
-    const pubmedLevel = resolveAutonomyLevel(
-        "search_pubmed",
-        getToolAutonomyLevel("search_pubmed", normalizedAutonomy),
-        getTool("search_pubmed")?.autonomy
-    );
-    const semanticLevel = resolveAutonomyLevel(
-        "search_semantic_scholar",
-        getToolAutonomyLevel("search_semantic_scholar", normalizedAutonomy),
-        getTool("search_semantic_scholar")?.autonomy
-    );
-
-    return pubmedLevel <= 1 || semanticLevel <= 1;
-}
-
-export function buildScopingSearchPackPlan(params: { includeRecommendations: boolean }): PlanPayload {
-    const steps: PlanPayload["steps"] = [
-        {
-            label: "Run broad landscape search in PubMed",
-            toolName: "search_pubmed",
-            description: "High-recall query with topic synonyms and broad framing",
-            status: "pending",
-        },
-        {
-            label: "Run interdisciplinary landscape search",
-            toolName: "search_semantic_scholar",
-            description: "Cross-domain query to capture non-biomedical coverage",
-            status: "pending",
-        },
-        {
-            label: "Run method-focused search",
-            toolName: "search_pubmed",
-            description: "Target trial/review design patterns and methodology signals",
-            status: "pending",
-        },
-        {
-            label: "Run gap-focused follow-up search",
-            toolName: "search_semantic_scholar",
-            description: "Probe likely evidence gaps by population/outcome variants",
-            status: "pending",
-        },
-    ];
-    if (params.includeRecommendations) {
-        steps.push({
-            label: "Expand with recommendation seeding",
-            toolName: "recommend_studies",
-            description: "Use identifier-backed seeds from the current ledger",
-            status: "pending",
-        });
-    }
-    return {
-        steps,
-        estimatedActions: steps.length,
-    };
-}
-
-export function finalizeScopingResponse(params: {
-    agentMode: AgentMode;
-    fullContent: string;
-    userMessage: string;
-    hasHandoffSelection: boolean;
-}): { content: string; report: ScopingReportPayload | null } {
-    const { agentMode, fullContent, userMessage, hasHandoffSelection } = params;
-    if (agentMode !== "scoping" || !fullContent.trim() || hasHandoffSelection) {
-        return { content: fullContent, report: null };
-    }
-
-    const extractedReport = extractScopingReportFromText(fullContent);
-    const report = extractedReport ?? buildFallbackScopingReport(userMessage);
-    const content = appendScopingReportComment(stripScopingReportMarkup(fullContent), report);
-    return { content, report };
-}
+// ── Re-export pure helpers from tool-helpers.ts for backward compatibility ──
+export {
+    getLazyContextPointerCapabilities,
+    getContextualToolDefinitions,
+    shouldUseScopingBatchPlan,
+    buildScopingSearchPackPlan,
+    finalizeScopingResponse,
+} from "./tool-helpers";
 
 function computeRetryDelayMs(retryCount: number, retryAfterMs?: number): number {
     const exponentialDelay = RETRY_MIN_DELAY_MS * 2 ** Math.max(0, retryCount - 1);

@@ -3,6 +3,7 @@ import {
     buildScopingSearchPackPlan,
     finalizeScopingResponse,
     getContextualToolDefinitions,
+    getLazyContextPointerCapabilities,
     shouldUseScopingBatchPlan,
 } from "../ai/ai-service";
 
@@ -121,5 +122,21 @@ describe("scoping ai-service helpers", () => {
 
         expect(result.report).toBeNull();
         expect(result.content).toBe("Proceeding with selected question.");
+    });
+
+    it("does not advertise lazy-read tools in scoping mode where they are unavailable", () => {
+        const caps = getLazyContextPointerCapabilities("scoping");
+        expect(caps).toEqual({
+            canReadProtocol: false,
+            canReadLedger: false,
+        });
+    });
+
+    it("advertises lazy-read tools in search mode where protocol reads are allowed", () => {
+        const caps = getLazyContextPointerCapabilities("search");
+        expect(caps).toEqual({
+            canReadProtocol: true,
+            canReadLedger: false,
+        });
     });
 });

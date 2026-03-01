@@ -13,6 +13,7 @@
 import { z } from "zod";
 import type { AITool, ToolExecutionContext } from "./base";
 import { executeSubAgent } from "../sub-agent";
+import { isDelegationEnabled } from "@/lib/agent/feature-flags";
 
 const inputSchema = z.object({
     task: z.string().min(1).max(2000),
@@ -54,6 +55,14 @@ export const delegateProtocolTool: AITool = {
         allowedRange: [2, 4],
     },
     async execute(args: Record<string, unknown>, context?: ToolExecutionContext) {
+        if (!isDelegationEnabled()) {
+            return {
+                callId: "",
+                result: null,
+                error: "Delegation tools are disabled by feature flag.",
+            };
+        }
+
         const task = args.task as string;
 
         const result = await executeSubAgent({
@@ -62,6 +71,8 @@ export const delegateProtocolTool: AITool = {
             projectId: context?.projectId,
             userId: context?.userId,
             parentRunId: context?.runId,
+            systemContexts: context?.systemContexts,
+            signal: context?.signal,
         });
 
         return {

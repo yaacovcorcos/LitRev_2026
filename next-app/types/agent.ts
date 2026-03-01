@@ -52,6 +52,8 @@ export interface AgentRunData {
     projectId: string;
     conversationId: string | null;
     userId: string | null;
+    parentRunId?: string | null;
+    rootRunId?: string | null;
     trigger: RunTrigger;
     agentMode: AgentMode;
     status: RunStatus;
@@ -60,6 +62,12 @@ export interface AgentRunData {
     costTokensOut: number;
     startedAt: string;
     completedAt: string | null;
+}
+
+export interface RunLineageNodeData extends AgentRunData {
+    parentRunId: string | null;
+    rootRunId: string | null;
+    children: RunLineageNodeData[];
 }
 
 export interface RunEventData {

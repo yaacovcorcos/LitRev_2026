@@ -1,8 +1,19 @@
 "use server";
 
+import { z } from "zod";
 import { prisma } from "@/lib/server/prisma";
-import { withAction, type ActionResult } from "@/lib/server/action-utils";
+import { withValidatedAction, type ActionResult } from "@/lib/server/action-utils";
 import { withAuth } from "@/lib/server/auth/session";
+import { cuidSchema } from "@/lib/schemas/ids";
+import {
+    listConversationsParamsSchema,
+    getConversationParamsSchema,
+    getConversationMessagesParamsSchema,
+    createConversationParamsSchema,
+    addMessageParamsSchema,
+    branchConversationParamsSchema,
+    getOrCreateConversationParamsSchema,
+} from "@/lib/schemas/conversations";
 import type { CopilotPage } from "@/types/ai";
 
 export type MessageAttachment = {
@@ -66,9 +77,9 @@ export async function listConversations(params: {
     page?: CopilotPage;
     limit?: number;
 }): Promise<ActionResult<ConversationSummary[]>> {
-    return withAction(async () => {
-        return withAuth(async ({ userId, workspaceId }) => {
-            const { projectId, studyId, page, limit = 50 } = params;
+    return withValidatedAction(listConversationsParamsSchema, params, (v) =>
+        withAuth(async ({ userId, workspaceId }) => {
+            const { projectId, studyId, page, limit = 50 } = v;
 
             const conversations = await prisma.aIConversation.findMany({
                 where: {
@@ -99,11 +110,16 @@ export async function listConversations(params: {
                 createdAt: conv.createdAt.toISOString(),
                 updatedAt: conv.updatedAt.toISOString(),
             }));
-        });
-    });
+        }),
+    );
 }
 
 const DEFAULT_MESSAGE_LIMIT = 50;
+
+const getConversationInput = z.object({
+    conversationId: cuidSchema,
+    params: getConversationParamsSchema.optional(),
+});
 
 /**
  * Get a single conversation with the latest page of messages.
@@ -117,15 +133,15 @@ export async function getConversation(
         messageLimit?: number;
     }
 ): Promise<ActionResult<ConversationWithMessages | null>> {
-    return withAction(async () => {
-        return withAuth(async ({ userId, workspaceId }) => {
-            const expectedProjectId = params?.expectedProjectId;
-            const includeArchived = params?.includeArchived === true;
-            const messageLimit = params?.messageLimit ?? DEFAULT_MESSAGE_LIMIT;
+    return withValidatedAction(getConversationInput, { conversationId, params }, (v) =>
+        withAuth(async ({ userId, workspaceId }) => {
+            const expectedProjectId = v.params?.expectedProjectId;
+            const includeArchived = v.params?.includeArchived === true;
+            const messageLimit = v.params?.messageLimit ?? DEFAULT_MESSAGE_LIMIT;
 
             const conversation = await prisma.aIConversation.findFirst({
                 where: {
-                    id: conversationId,
+                    id: v.conversationId,
                     userId,
                     workspaceId,
                     projectId: expectedProjectId || undefined,
@@ -195,8 +211,8 @@ export async function getConversation(
                     createdAt: artifact.createdAt.toISOString(),
                 })),
             };
-        });
-    });
+        }),
+    );
 }
 
 /**
@@ -210,11 +226,11 @@ export async function getConversationMessages(params: {
     expectedProjectId?: string;
     includeArchived?: boolean;
 }): Promise<ActionResult<PaginatedMessages>> {
-    return withAction(async () => {
-        return withAuth(async ({ userId, workspaceId }) => {
-            const { conversationId, limit = DEFAULT_MESSAGE_LIMIT, cursor } = params;
-            const expectedProjectId = params.expectedProjectId;
-            const includeArchived = params.includeArchived === true;
+    return withValidatedAction(getConversationMessagesParamsSchema, params, (v) =>
+        withAuth(async ({ userId, workspaceId }) => {
+            const { conversationId, limit = DEFAULT_MESSAGE_LIMIT, cursor } = v;
+            const expectedProjectId = v.expectedProjectId;
+            const includeArchived = v.includeArchived === true;
 
             const conversation = await prisma.aIConversation.findFirst({
                 where: {
@@ -266,8 +282,8 @@ export async function getConversationMessages(params: {
                 })),
                 hasMore,
             };
-        });
-    });
+        }),
+    );
 }
 
 /**
@@ -281,10 +297,10 @@ export async function createConversation(params: {
     context?: string;
     title?: string;
 }): Promise<ActionResult<{ id: string }>> {
-    return withAction(async () => {
-        return withAuth(async ({ userId, workspaceId }) => {
-            const { context = "project", title } = params;
-            const { projectId, studyId } = params;
+    return withValidatedAction(createConversationParamsSchema, params, (v) =>
+        withAuth(async ({ userId, workspaceId }) => {
+            const { context = "project", title } = v;
+            const { projectId, studyId } = v;
 
             const conversation = await prisma.aIConversation.create({
                 data: {
@@ -292,14 +308,14 @@ export async function createConversation(params: {
                     workspaceId,
                     projectId,
                     studyId,
-                    page: params.page,
+                    page: v.page,
                     context,
                     title: title || null,
                 },
             });
             return { id: conversation.id };
-        });
-    });
+        }),
+    );
 }
 
 /**
@@ -311,9 +327,10 @@ export async function addMessage(params: {
     content: string;
     attachments?: MessageAttachment[];
 }): Promise<ActionResult<{ id: string }>> {
-    return withAction(async () => {
-        const { conversationId, role, content, attachments } = params;
-        return withAuth(async ({ userId, workspaceId }) => {
+    return withValidatedAction(addMessageParamsSchema, params, (v) =>
+        withAuth(async ({ userId, workspaceId }) => {
+            const { conversationId, role, content, attachments } = v;
+
             const conversation = await prisma.aIConversation.findFirst({
                 where: {
                     id: conversationId,
@@ -366,9 +383,14 @@ export async function addMessage(params: {
             });
 
             return { id: message.id };
-        });
-    });
+        }),
+    );
 }
+
+const updateConversationTitleInput = z.object({
+    conversationId: cuidSchema,
+    title: z.string().min(1).max(500),
+});
 
 /**
  * Update conversation title
@@ -377,33 +399,33 @@ export async function updateConversationTitle(
     conversationId: string,
     title: string
 ): Promise<ActionResult<void>> {
-    return withAction(async () => {
-        await withAuth(async ({ userId, workspaceId }) => {
+    return withValidatedAction(updateConversationTitleInput, { conversationId, title }, (v) =>
+        withAuth(async ({ userId, workspaceId }) => {
             const updated = await prisma.aIConversation.updateMany({
                 where: {
-                    id: conversationId,
+                    id: v.conversationId,
                     userId,
                     workspaceId,
                     archived: false,
                 },
-                data: { title },
+                data: { title: v.title },
             });
             if (updated.count === 0) {
                 throw new Error("Conversation not found");
             }
-        });
-    });
+        }),
+    );
 }
 
 /**
  * Archive a conversation (soft delete)
  */
 export async function archiveConversation(conversationId: string): Promise<ActionResult<void>> {
-    return withAction(async () => {
-        await withAuth(async ({ userId, workspaceId }) => {
+    return withValidatedAction(cuidSchema, conversationId, (validId) =>
+        withAuth(async ({ userId, workspaceId }) => {
             const updated = await prisma.aIConversation.updateMany({
                 where: {
-                    id: conversationId,
+                    id: validId,
                     userId,
                     workspaceId,
                     archived: false,
@@ -413,19 +435,19 @@ export async function archiveConversation(conversationId: string): Promise<Actio
             if (updated.count === 0) {
                 throw new Error("Conversation not found");
             }
-        });
-    });
+        }),
+    );
 }
 
 /**
  * Delete a conversation permanently
  */
 export async function deleteConversation(conversationId: string): Promise<ActionResult<void>> {
-    return withAction(async () => {
-        await withAuth(async ({ userId, workspaceId }) => {
+    return withValidatedAction(cuidSchema, conversationId, (validId) =>
+        withAuth(async ({ userId, workspaceId }) => {
             const deleted = await prisma.aIConversation.deleteMany({
                 where: {
-                    id: conversationId,
+                    id: validId,
                     userId,
                     workspaceId,
                 },
@@ -433,8 +455,8 @@ export async function deleteConversation(conversationId: string): Promise<Action
             if (deleted.count === 0) {
                 throw new Error("Conversation not found");
             }
-        });
-    });
+        }),
+    );
 }
 
 /**
@@ -447,9 +469,10 @@ export async function branchConversation(params: {
     upToCreatedAt?: string;
     title?: string;
 }): Promise<ActionResult<BranchedConversationResult>> {
-    return withAction(async () => {
-        const { conversationId, upToMessageId, upToCreatedAt, title } = params;
-        return withAuth(async ({ userId, workspaceId }) => {
+    return withValidatedAction(branchConversationParamsSchema, params, (v) =>
+        withAuth(async ({ userId, workspaceId }) => {
+            const { conversationId, upToMessageId, upToCreatedAt, title } = v;
+
             const source = await prisma.aIConversation.findFirst({
                 where: {
                     id: conversationId,
@@ -561,8 +584,8 @@ export async function branchConversation(params: {
                 updatedAt: created.updatedAt.toISOString(),
                 sourceConversationId: source.id,
             };
-        });
-    });
+        }),
+    );
 }
 
 /**
@@ -575,9 +598,9 @@ export async function getOrCreateConversation(params: {
     studyId?: string;
     page?: CopilotPage;
 }): Promise<ActionResult<ConversationWithMessages>> {
-    return withAction(async () => {
-        return withAuth(async ({ userId, workspaceId }) => {
-            const { projectId, studyId, page } = params;
+    return withValidatedAction(getOrCreateConversationParamsSchema, params, (v) =>
+        withAuth(async ({ userId, workspaceId }) => {
+            const { projectId, studyId, page } = v;
 
             // Try to find an existing recent conversation
             const existing = await prisma.aIConversation.findFirst({
@@ -658,6 +681,6 @@ export async function getOrCreateConversation(params: {
                 messages: [],
                 artifacts: [],
             };
-        });
-    });
+        }),
+    );
 }

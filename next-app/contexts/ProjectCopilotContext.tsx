@@ -31,10 +31,19 @@ import {
     getReasoningModePreference,
     setReasoningModePreference,
 } from "@/lib/ai/reasoning-visibility";
+import {
+    USER_SELECTABLE_MODELS,
+    getReasoningSupportTier,
+    type SelectableModelId,
+    type ReasoningSupportTier,
+} from "@/lib/ai/config";
 import type {
     PendingAttachment,
     ProjectCopilotContextValue,
 } from "@/types/copilot-context";
+
+const MODEL_STORAGE_KEY = "litrev_copilot_model";
+const DEFAULT_MODEL: SelectableModelId = "gpt-5.2";
 
 export type { PendingAttachment } from "@/types/copilot-context";
 
@@ -53,6 +62,7 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
     const [isLoading, setIsLoading] = useState(false);
     const [streamPhase, setStreamPhase] = useState<StreamPhase>("idle");
     const [reasoningMode, setReasoningModeState] = useState<ReasoningMode>(() => getReasoningModePreference());
+    const [selectedModel, setSelectedModelState] = useState<SelectableModelId>(DEFAULT_MODEL);
     const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const abortControllerRef = useRef<AbortController | null>(null);
     const streamGenRef = useRef(0);
@@ -96,6 +106,41 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
     const setReasoningMode = useCallback((mode: ReasoningMode) => {
         setReasoningModeState(mode);
         setReasoningModePreference(mode);
+    }, []);
+
+    // Load model preference from localStorage on mount
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        const stored = window.localStorage.getItem(MODEL_STORAGE_KEY);
+        const isValid = USER_SELECTABLE_MODELS.some((m) => m.id === stored);
+        if (isValid && stored !== selectedModel) {
+            setSelectedModelState(stored as SelectableModelId);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    // Compute reasoning support tier from current model
+    const reasoningSupport: ReasoningSupportTier = useMemo(
+        () => getReasoningSupportTier(selectedModel),
+        [selectedModel]
+    );
+
+    /**
+     * Set selected model with side effects:
+     * - Persist to localStorage
+     * - Force reasoning mode to "off" if new model has no reasoning support
+     */
+    const setSelectedModel = useCallback((modelId: SelectableModelId) => {
+        setSelectedModelState(modelId);
+        if (typeof window !== "undefined") {
+            window.localStorage.setItem(MODEL_STORAGE_KEY, modelId);
+        }
+        // State guard: force reasoning off when model doesn't support it
+        const newTier = getReasoningSupportTier(modelId);
+        if (newTier === "none") {
+            setReasoningModeState("off");
+            setReasoningModePreference("off");
+        }
     }, []);
 
     // Load autonomy config on mount (Phase 7)
@@ -321,6 +366,9 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             streamPhase,
             canAct: !isLoading,
             reasoningMode,
+            selectedModel,
+            reasoningSupport,
+            setSelectedModel,
             toggleCollapsed,
             setCollapsed,
             setPanelWidth,
@@ -383,6 +431,9 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             isLoading,
             streamPhase,
             reasoningMode,
+            selectedModel,
+            reasoningSupport,
+            setSelectedModel,
             toggleCollapsed,
             setCollapsed,
             setPanelWidth,

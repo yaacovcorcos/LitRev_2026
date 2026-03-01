@@ -1,5 +1,6 @@
 "use client";
 
+import { ThemeProvider } from "@/contexts/ThemeContext";
 import { ProjectsProvider } from "@/contexts/ProjectsContext";
 import { LedgerProvider } from "@/contexts/LedgerContext";
 import { CommandPaletteProvider } from "@/contexts/CommandPaletteContext";
@@ -9,16 +10,18 @@ import { ToastContainer } from "@/components/ui/Toast";
 
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
-    <NotificationProvider>
-      <CommandPaletteProvider>
-        <ProjectsProvider>
-          <LedgerProvider>
-            {children}
-            <CommandPalette />
-          </LedgerProvider>
-        </ProjectsProvider>
-      </CommandPaletteProvider>
-      <ToastContainer />
-    </NotificationProvider>
+    <ThemeProvider>
+      <NotificationProvider>
+        <CommandPaletteProvider>
+          <ProjectsProvider>
+            <LedgerProvider>
+              {children}
+              <CommandPalette />
+            </LedgerProvider>
+          </ProjectsProvider>
+        </CommandPaletteProvider>
+        <ToastContainer />
+      </NotificationProvider>
+    </ThemeProvider>
   );
 }

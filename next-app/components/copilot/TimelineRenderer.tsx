@@ -70,7 +70,7 @@ class ArtifactErrorBoundary extends Component<{ children: ReactNode }, { hasErro
     render() {
         if (this.state.hasError) {
             return (
-                <div style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid var(--glass-border)", background: "rgba(192,57,43,0.06)", color: "var(--color-danger, #c0392b)", fontSize: 13 }}>
+                <div style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid var(--glass-border)", background: "rgba(var(--rgb-color-danger), 0.06)", color: "var(--color-danger)", fontSize: 13 }}>
                     Failed to render this artifact.
                 </div>
             );
@@ -520,6 +520,8 @@ export type TimelineRendererProps = {
     isLoadingOlder?: boolean;
     /** Callback to load older messages */
     onLoadOlder?: () => Promise<void>;
+    /** Exposes the scroll container element to parent layout surfaces. */
+    onContainerElementChange?: (node: HTMLDivElement | null) => void;
 };
 
 export function TimelineRenderer({
@@ -546,6 +548,7 @@ export function TimelineRenderer({
     hasMore,
     isLoadingOlder,
     onLoadOlder,
+    onContainerElementChange,
 }: TimelineRendererProps) {
     const params = useParams();
     const routeProjectId = params && typeof params === "object" && "id" in params
@@ -567,6 +570,11 @@ export function TimelineRenderer({
         notifyStreamStart, notifyConversationChanged, notifyContentChanged,
         capturePrependAnchor, restorePrependAnchor,
     } = useStableChatScroll();
+
+    const setContainerRef = useCallback((node: HTMLDivElement | null) => {
+        containerRef(node);
+        onContainerElementChange?.(node);
+    }, [containerRef, onContainerElementChange]);
 
     // Resolve timeline: prefer items, fall back to legacy messages.
     // Memoized so useLayoutEffect([timeline]) only fires on real content changes,
@@ -763,7 +771,7 @@ export function TimelineRenderer({
     // Skeleton while a conversation is being fetched from the server
     if (isConversationLoading && timeline.length === 0) {
         return (
-            <div className={`${styles.copilotBody} ${variant === "page" ? styles.pageLayout : ""}`} ref={containerRef} onScroll={onScroll}>
+            <div className={`${styles.copilotBody} ${variant === "page" ? styles.pageLayout : ""}`} ref={setContainerRef} onScroll={onScroll}>
                 <div className={styles.skeletonList} aria-busy="true" aria-label="Loading conversation">
                     <div className={styles.skeletonRow}>
                         <div className={`${styles.skeletonBubble} ${styles.skeletonBubbleUser}`} />
@@ -789,7 +797,7 @@ export function TimelineRenderer({
     // Empty state
     if (timeline.length === 0) {
         return (
-            <div className={`${styles.copilotBody} ${variant === "page" ? styles.pageLayout : ""}`} ref={containerRef} onScroll={onScroll}>
+            <div className={`${styles.copilotBody} ${variant === "page" ? styles.pageLayout : ""}`} ref={setContainerRef} onScroll={onScroll}>
                 <div className={styles.emptyPanel}>
                     <div className={styles.emptyIcon}>
                         <span className="material-icons-round">{emptyState.icon}</span>
@@ -1143,7 +1151,7 @@ export function TimelineRenderer({
     };
 
     return (
-        <div className={`${styles.copilotBody} ${variant === "page" ? styles.pageLayout : ""}`} ref={containerRef} onScroll={onScroll}>
+        <div className={`${styles.copilotBody} ${variant === "page" ? styles.pageLayout : ""}`} ref={setContainerRef} onScroll={onScroll}>
             <div className={styles.chatList}>
                 {hasMore && (
                     <div className={styles.loadOlderRow}>

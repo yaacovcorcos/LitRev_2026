@@ -7,6 +7,7 @@ import { openOrCreateDemoProjectAction } from "@/app/actions/demo";
 import { useProjects } from "@/contexts/ProjectsContext";
 import { DEMO_PROJECT_ID, isDemoProjectId } from "@/lib/demo/constants";
 import { dismissSampleCard, isSampleCardDismissed } from "@/lib/demo/sample-card";
+import { isAuthError, redirectToLogin } from "@/lib/action-client";
 
 type SampleReviewCardProps = {
   viewMode: "grid" | "list";
@@ -25,6 +26,7 @@ export function SampleReviewCard({ viewMode }: SampleReviewCardProps) {
     try {
       const result = await openOrCreateDemoProjectAction();
       if (!result.success) {
+        if (isAuthError(result)) { redirectToLogin(); return; }
         const existingSample = projects.find((project) => project.id === DEMO_PROJECT_ID);
         if (existingSample) {
           router.push(`/project/${existingSample.id}`);

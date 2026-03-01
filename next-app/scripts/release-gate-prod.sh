@@ -32,7 +32,7 @@ bash scripts/db-doctor.sh
 
 echo
 echo "2) Apply migrations"
-npx prisma migrate deploy
+bash scripts/migrate-deploy-safe.sh
 
 echo
 echo "3) Verify migration state"
@@ -49,6 +49,9 @@ const requiredIndexes = new Set([
   "ProjectMemory_projectId_pinned_idx",
   "StudyMemory_projectId_pinned_idx",
   "MemoryEmbedding_embedding_hnsw_idx",
+  "AgentRun_parentRunId_startedAt_idx",
+  "AgentRun_rootRunId_startedAt_idx",
+  "AgentRun_conversationId_startedAt_idx",
 ]);
 
 (async () => {

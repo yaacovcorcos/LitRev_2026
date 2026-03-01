@@ -3,19 +3,19 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 // ── Mock Prisma ──────────────────────────────────────────────────────────────
 
 const mockCreate = vi.fn();
-const mockFindUnique = vi.fn();
+const mockFindFirst = vi.fn();
 const mockFindMany = vi.fn();
 const mockUpdate = vi.fn();
-const mockDelete = vi.fn();
+const mockQueryRaw = vi.fn();
 
 vi.mock("@/lib/server/prisma", () => ({
     prisma: {
+        $queryRaw: (...args: unknown[]) => mockQueryRaw(...args),
         note: {
             create: (...args: unknown[]) => mockCreate(...args),
-            findUnique: (...args: unknown[]) => mockFindUnique(...args),
+            findFirst: (...args: unknown[]) => mockFindFirst(...args),
             findMany: (...args: unknown[]) => mockFindMany(...args),
             update: (...args: unknown[]) => mockUpdate(...args),
-            delete: (...args: unknown[]) => mockDelete(...args),
         },
     },
 }));
@@ -24,6 +24,7 @@ import {
     createNote,
     getNote,
     listNotes,
+    listNotesPaginated,
     updateNote,
     deleteNote,
     searchNotes,
@@ -59,12 +60,14 @@ const sampleNote = {
     userId: null,
     title: "Hello world",
     content: sampleDoc,
+    contentText: "Hello world Second paragraph",
     tags: ["review"],
     linkedStudyId: null,
     linkedSection: null,
     source: "manual",
     sourceConversationId: null,
     sourceMessageId: null,
+    deletedAt: null,
     createdAt: new Date("2026-01-15"),
     updatedAt: new Date("2026-01-15"),
 };
@@ -138,6 +141,7 @@ describe("createNote", () => {
                 projectId: PROJECT_ID,
                 title: "My Note",
                 content: sampleDoc,
+                contentText: "Hello world Second paragraph",
                 tags: ["review"],
                 source: "manual",
             }),
@@ -203,14 +207,14 @@ describe("getNote", () => {
     beforeEach(() => vi.clearAllMocks());
 
     it("returns the note when found", async () => {
-        mockFindUnique.mockResolvedValue(sampleNote);
+        mockFindFirst.mockResolvedValue(sampleNote);
         const result = await getNote("note-1");
-        expect(mockFindUnique).toHaveBeenCalledWith({ where: { id: "note-1" } });
+        expect(mockFindFirst).toHaveBeenCalledWith({ where: { id: "note-1", deletedAt: null } });
         expect(result).toBe(sampleNote);
     });
 
     it("returns null for non-existent ID", async () => {
-        mockFindUnique.mockResolvedValue(null);
+        mockFindFirst.mockResolvedValue(null);
         const result = await getNote("nonexistent");
         expect(result).toBeNull();
     });
@@ -225,7 +229,7 @@ describe("listNotes", () => {
         const result = await listNotes(PROJECT_ID);
 
         expect(mockFindMany).toHaveBeenCalledWith({
-            where: { projectId: PROJECT_ID },
+            where: { projectId: PROJECT_ID, deletedAt: null },
             orderBy: { updatedAt: "desc" },
         });
         expect(result).toEqual([sampleNote]);
@@ -239,6 +243,7 @@ describe("listNotes", () => {
         expect(mockFindMany).toHaveBeenCalledWith({
             where: {
                 projectId: PROJECT_ID,
+                deletedAt: null,
                 tags: { hasSome: ["review", "important"] },
             },
             orderBy: { updatedAt: "desc" },
@@ -253,6 +258,7 @@ describe("listNotes", () => {
         expect(mockFindMany).toHaveBeenCalledWith({
             where: {
                 projectId: PROJECT_ID,
+                deletedAt: null,
                 source: "conversation",
             },
             orderBy: { updatedAt: "desc" },
@@ -267,6 +273,7 @@ describe("listNotes", () => {
         expect(mockFindMany).toHaveBeenCalledWith({
             where: {
                 projectId: PROJECT_ID,
+                deletedAt: null,
                 title: { contains: "hello", mode: "insensitive" },
             },
             orderBy: { updatedAt: "desc" },
@@ -281,9 +288,60 @@ describe("listNotes", () => {
         expect(mockFindMany).toHaveBeenCalledWith({
             where: {
                 projectId: PROJECT_ID,
+                deletedAt: null,
                 linkedStudyId: "study-1",
             },
             orderBy: { updatedAt: "desc" },
+        });
+    });
+});
+
+describe("listNotesPaginated", () => {
+    beforeEach(() => vi.clearAllMocks());
+
+    it("returns a nextCursor when there are more rows than limit", async () => {
+        const notes = [
+            { ...sampleNote, id: "note-3", updatedAt: new Date("2026-01-17") },
+            { ...sampleNote, id: "note-2", updatedAt: new Date("2026-01-16") },
+            { ...sampleNote, id: "note-1", updatedAt: new Date("2026-01-15") },
+        ];
+        mockFindMany.mockResolvedValue(notes);
+
+        const result = await listNotesPaginated(PROJECT_ID, { limit: 2 });
+
+        expect(result.items).toHaveLength(2);
+        expect(result.nextCursor).toBe("note-2");
+        expect(mockFindMany).toHaveBeenCalledWith({
+            where: { projectId: PROJECT_ID, deletedAt: null },
+            orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+            take: 3,
+        });
+    });
+
+    it("applies cursor filtering based on updatedAt and id", async () => {
+        mockFindFirst.mockResolvedValue({
+            id: "note-cursor",
+            updatedAt: new Date("2026-01-18"),
+        });
+        mockFindMany.mockResolvedValue([sampleNote]);
+
+        await listNotesPaginated(PROJECT_ID, { cursor: "note-cursor", limit: 2 });
+
+        expect(mockFindFirst).toHaveBeenCalledWith({
+            where: { id: "note-cursor", projectId: PROJECT_ID, deletedAt: null },
+            select: { id: true, updatedAt: true },
+        });
+        expect(mockFindMany).toHaveBeenCalledWith({
+            where: {
+                projectId: PROJECT_ID,
+                deletedAt: null,
+                OR: [
+                    { updatedAt: { lt: new Date("2026-01-18") } },
+                    { updatedAt: { equals: new Date("2026-01-18") }, id: { lt: "note-cursor" } },
+                ],
+            },
+            orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+            take: 3,
         });
     });
 });
@@ -292,10 +350,15 @@ describe("updateNote", () => {
     beforeEach(() => vi.clearAllMocks());
 
     it("updates only specified fields", async () => {
+        mockFindFirst.mockResolvedValue({ id: "note-1" });
         mockUpdate.mockResolvedValue({ ...sampleNote, title: "Updated" });
 
         await updateNote("note-1", { title: "Updated" });
 
+        expect(mockFindFirst).toHaveBeenCalledWith({
+            where: { id: "note-1", deletedAt: null },
+            select: { id: true },
+        });
         expect(mockUpdate).toHaveBeenCalledWith({
             where: { id: "note-1" },
             data: { title: "Updated" },
@@ -303,6 +366,7 @@ describe("updateNote", () => {
     });
 
     it("can set linkedStudyId to null", async () => {
+        mockFindFirst.mockResolvedValue({ id: "note-1" });
         mockUpdate.mockResolvedValue(sampleNote);
 
         await updateNote("note-1", { linkedStudyId: null });
@@ -312,57 +376,98 @@ describe("updateNote", () => {
             data: { linkedStudyId: null },
         });
     });
+
+    it("updates contentText when content changes", async () => {
+        mockFindFirst.mockResolvedValue({ id: "note-1" });
+        mockUpdate.mockResolvedValue(sampleNote);
+
+        await updateNote("note-1", { content: sampleDoc });
+
+        expect(mockUpdate).toHaveBeenCalledWith({
+            where: { id: "note-1" },
+            data: {
+                content: sampleDoc,
+                contentText: "Hello world Second paragraph",
+            },
+        });
+    });
+
+    it("throws when updating a deleted or missing note", async () => {
+        mockFindFirst.mockResolvedValue(null);
+
+        await expect(updateNote("note-1", { title: "Updated" })).rejects.toThrow("Note not found");
+        expect(mockUpdate).not.toHaveBeenCalled();
+    });
 });
 
 describe("deleteNote", () => {
     beforeEach(() => vi.clearAllMocks());
 
-    it("deletes the note by ID", async () => {
-        mockDelete.mockResolvedValue(sampleNote);
+    it("soft-deletes the note by setting deletedAt", async () => {
+        mockFindFirst.mockResolvedValue({ id: "note-1" });
+        mockUpdate.mockResolvedValue(sampleNote);
 
         await deleteNote("note-1");
 
-        expect(mockDelete).toHaveBeenCalledWith({ where: { id: "note-1" } });
+        expect(mockFindFirst).toHaveBeenCalledWith({
+            where: { id: "note-1", deletedAt: null },
+            select: { id: true },
+        });
+        expect(mockUpdate).toHaveBeenCalledWith({
+            where: { id: "note-1" },
+            data: { deletedAt: expect.any(Date) },
+        });
+    });
+
+    it("throws when deleting an already-deleted or missing note", async () => {
+        mockFindFirst.mockResolvedValue(null);
+
+        await expect(deleteNote("note-1")).rejects.toThrow("Note not found");
+        expect(mockUpdate).not.toHaveBeenCalled();
     });
 });
 
 describe("searchNotes", () => {
     beforeEach(() => vi.clearAllMocks());
 
-    it("matches on title", async () => {
+    it("uses FTS query + ranked hydration for non-empty queries", async () => {
+        mockQueryRaw.mockResolvedValue([{ id: "note-1" }]);
         mockFindMany.mockResolvedValue([sampleNote]);
 
-        const results = await searchNotes(PROJECT_ID, "Hello");
+        const results = await searchNotes(PROJECT_ID, "hello");
 
         expect(results).toEqual([sampleNote]);
+        expect(mockQueryRaw).toHaveBeenCalledTimes(1);
+        expect(mockFindMany).toHaveBeenCalledWith({
+            where: {
+                projectId: PROJECT_ID,
+                deletedAt: null,
+                id: { in: ["note-1"] },
+            },
+        });
     });
 
-    it("matches on content text", async () => {
-        const noteWithoutTitleMatch = {
-            ...sampleNote,
-            title: "Untitled",
-        };
-        mockFindMany.mockResolvedValue([noteWithoutTitleMatch]);
-
-        const results = await searchNotes(PROJECT_ID, "paragraph");
-
-        expect(results).toEqual([noteWithoutTitleMatch]);
-    });
-
-    it("is case-insensitive", async () => {
+    it("falls back to ILIKE scan when FTS query fails", async () => {
+        mockQueryRaw.mockRejectedValue(new Error("fts unavailable"));
         mockFindMany.mockResolvedValue([sampleNote]);
+        const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-        const results = await searchNotes(PROJECT_ID, "HELLO");
+        const results = await searchNotes(PROJECT_ID, "hello");
 
         expect(results).toEqual([sampleNote]);
-    });
-
-    it("returns empty array when no match", async () => {
-        mockFindMany.mockResolvedValue([sampleNote]);
-
-        const results = await searchNotes(PROJECT_ID, "nonexistent");
-
-        expect(results).toEqual([]);
+        expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("FTS query failed"));
+        expect(mockFindMany).toHaveBeenCalledWith({
+            where: {
+                projectId: PROJECT_ID,
+                deletedAt: null,
+                OR: [
+                    { title: { contains: "hello", mode: "insensitive" } },
+                    { contentText: { contains: "hello", mode: "insensitive" } },
+                ],
+            },
+            orderBy: { updatedAt: "desc" },
+        });
+        warnSpy.mockRestore();
     });
 
     it("falls back to listNotes when query is empty", async () => {
@@ -370,9 +475,10 @@ describe("searchNotes", () => {
 
         const results = await searchNotes(PROJECT_ID, "  ");
 
+        expect(mockQueryRaw).not.toHaveBeenCalled();
         // Should call findMany with just projectId (no post-filtering)
         expect(mockFindMany).toHaveBeenCalledWith({
-            where: { projectId: PROJECT_ID },
+            where: { projectId: PROJECT_ID, deletedAt: null },
             orderBy: { updatedAt: "desc" },
         });
         expect(results).toEqual([sampleNote]);

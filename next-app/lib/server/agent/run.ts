@@ -12,26 +12,64 @@ export interface StartRunInput {
     projectId?: string | null;
     conversationId?: string;
     userId?: string;
+    parentRunId?: string;
+    rootRunId?: string;
     trigger: RunTrigger;
     agentMode: AgentMode;
     model?: string;
+}
+
+export interface RunLineageNode {
+    id: string;
+    projectId: string | null;
+    conversationId: string | null;
+    userId: string | null;
+    parentRunId: string | null;
+    rootRunId: string | null;
+    trigger: RunTrigger;
+    agentMode: AgentMode;
+    status: RunStatus;
+    model: string | null;
+    costTokensIn: number;
+    costTokensOut: number;
+    startedAt: string;
+    completedAt: string | null;
+    children: RunLineageNode[];
 }
 
 /**
  * Start a new agent run
  */
 export async function startRun(input: StartRunInput) {
+    let lineageRootRunId = input.rootRunId ?? null;
+
+    if (input.parentRunId && !lineageRootRunId) {
+        const parentRun = await prisma.agentRun.findUnique({
+            where: { id: input.parentRunId },
+            select: { id: true, projectId: true, rootRunId: true },
+        });
+
+        if (!parentRun) {
+            throw new Error(`Parent run not found: ${input.parentRunId}`);
+        }
+        if (parentRun.projectId && input.projectId && parentRun.projectId !== input.projectId) {
+            throw new Error("Parent run project does not match child run project");
+        }
+
+        lineageRootRunId = parentRun.rootRunId ?? parentRun.id;
+    }
+
     return prisma.agentRun.create({
         data: {
+            projectId: input.projectId ?? undefined,
             conversationId: input.conversationId ?? undefined,
             userId: input.userId ?? undefined,
+            parentRunId: input.parentRunId ?? undefined,
+            rootRunId: lineageRootRunId ?? undefined,
             trigger: input.trigger,
             agentMode: input.agentMode,
             status: "running",
             model: input.model ?? undefined,
-            ...(input.projectId
-                ? { project: { connect: { id: input.projectId } } }
-                : {}),
         },
     });
 }
@@ -109,4 +147,72 @@ export async function getProjectRuns(
         orderBy: { startedAt: "desc" },
         take: options?.limit ?? 20,
     });
+}
+
+/**
+ * Get parent/child run lineage tree for a given run.
+ * Uses rootRunId when available and gracefully handles legacy runs
+ * where rootRunId is null.
+ */
+export async function getRunLineage(runId: string): Promise<RunLineageNode | null> {
+    const seed = await prisma.agentRun.findUnique({
+        where: { id: runId },
+        select: { id: true, rootRunId: true },
+    });
+    if (!seed) return null;
+
+    const rootId = seed.rootRunId ?? seed.id;
+    const runs = await prisma.agentRun.findMany({
+        where: {
+            OR: [
+                { id: rootId },
+                { rootRunId: rootId },
+            ],
+        },
+        orderBy: { startedAt: "asc" },
+    });
+    if (runs.length === 0) return null;
+
+    const byId = new Map<string, RunLineageNode>();
+    for (const run of runs) {
+        byId.set(run.id, {
+            id: run.id,
+            projectId: run.projectId,
+            conversationId: run.conversationId,
+            userId: run.userId,
+            parentRunId: run.parentRunId ?? null,
+            rootRunId: run.rootRunId ?? null,
+            trigger: run.trigger as RunTrigger,
+            agentMode: run.agentMode as AgentMode,
+            status: run.status as RunStatus,
+            model: run.model,
+            costTokensIn: run.costTokensIn,
+            costTokensOut: run.costTokensOut,
+            startedAt: run.startedAt.toISOString(),
+            completedAt: run.completedAt?.toISOString() ?? null,
+            children: [],
+        });
+    }
+
+    let root = byId.get(rootId) ?? null;
+    if (!root) {
+        return null;
+    }
+
+    for (const node of byId.values()) {
+        if (!node.parentRunId) continue;
+        const parent = byId.get(node.parentRunId);
+        if (!parent) continue;
+        parent.children.push(node);
+    }
+
+    const sortTree = (node: RunLineageNode): void => {
+        node.children.sort((a, b) => a.startedAt.localeCompare(b.startedAt));
+        for (const child of node.children) {
+            sortTree(child);
+        }
+    };
+    sortTree(root);
+
+    return root;
 }

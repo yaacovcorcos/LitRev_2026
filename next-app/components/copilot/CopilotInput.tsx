@@ -40,6 +40,8 @@ export function CopilotInput({ page, section, studyId, inputPlaceholder, prefill
         summarizeAndRefresh,
         shouldOfferSummary,
         isSummarizing,
+        selectedModel,
+        setSelectedModel,
     } = useProjectCopilot();
     const projectSnapshot = useProjectState(projectId);
 
@@ -68,7 +70,8 @@ export function CopilotInput({ page, section, studyId, inputPlaceholder, prefill
             clearChoices={clearChoices}
             pendingUserInput={pendingUserInput}
             onAnswerUserInput={answerUserInput}
-            modelStorageKey="litrev_copilot_model"
+            selectedModel={selectedModel}
+            onModelChange={setSelectedModel}
             showAutonomyPreset
             showAttachments
             showVoice

@@ -18,7 +18,7 @@
 .historySidebar {
     flex: 0 0 var(--history-width);
     width: var(--history-width);
-    background: rgba(255, 255, 255, 0.4);
+    background: rgba(var(--rgb-ui-surface), 0.4);
     backdrop-filter: blur(20px);
     border-right: 1px solid var(--glass-border);
     display: flex;
@@ -85,7 +85,7 @@
     padding: 10px 16px;
     background: var(--accent-primary);
     border: none;
-    color: white;
+    color: var(--color-white);
     font-weight: 600;
     font-size: 13px;
     border-radius: 12px;
@@ -133,7 +133,7 @@
 }
 
 .historyItem:hover {
-    background: rgba(0, 0, 0, 0.04);
+    background: rgba(var(--rgb-ui-contrast), 0.04);
     color: var(--text-primary);
 }
 
@@ -181,7 +181,7 @@
 }
 
 .moreBtn:hover {
-    background: rgba(0, 0, 0, 0.06);
+    background: rgba(var(--rgb-ui-contrast), 0.06);
     color: var(--text-primary);
 }
 
@@ -194,7 +194,7 @@
     min-width: 0;
     padding: 8px 12px;
     background: transparent;
-    border: 1px solid rgba(0, 0, 0, 0.12);
+    border: 1px solid rgba(var(--rgb-ui-contrast), 0.12);
     border-radius: 6px;
     color: var(--text-primary);
     font-family: inherit;
@@ -205,11 +205,11 @@
 .renameInput:focus,
 .renameInput:focus-visible {
     outline: none;
-    border-color: rgba(0, 0, 0, 0.25);
+    border-color: rgba(var(--rgb-ui-contrast), 0.25);
 }
 
 .activeHistory {
-    background: rgba(255, 255, 255, 0.7);
+    background: rgba(var(--rgb-ui-surface), 0.7);
     color: var(--text-primary);
     font-weight: 500;
     box-shadow: var(--shadow-sm);
@@ -244,7 +244,7 @@
     display: flex;
     flex-direction: column;
     position: relative;
-    background: rgba(255, 255, 255, 0.15);
+    background: rgba(var(--rgb-ui-surface), 0.15);
     min-height: 0;
 }
 
@@ -276,7 +276,7 @@
     padding: 8px 10px;
     border: 1px solid var(--glass-border);
     border-radius: 10px;
-    background: rgba(255, 255, 255, 0.6);
+    background: rgba(var(--rgb-ui-surface), 0.6);
     color: var(--text-secondary);
     font-size: 12px;
     font-weight: 600;
@@ -285,7 +285,7 @@
 }
 
 .reasoningModeBtn:hover {
-    background: rgba(255, 255, 255, 0.85);
+    background: rgba(var(--rgb-ui-surface), 0.85);
     color: var(--text-primary);
 }
 
@@ -319,7 +319,7 @@
     align-items: center;
     gap: 8px;
     padding: 8px 12px;
-    background: rgba(255, 255, 255, 0.6);
+    background: rgba(var(--rgb-ui-surface), 0.6);
     border: 1px solid var(--glass-border);
     border-radius: 10px;
     color: var(--text-secondary);
@@ -330,7 +330,7 @@
 }
 
 .projectButton:hover {
-    background: rgba(255, 255, 255, 0.85);
+    background: rgba(var(--rgb-ui-surface), 0.85);
     color: var(--text-primary);
 }
 
@@ -353,7 +353,7 @@
     max-width: min(360px, 75vw);
     max-height: min(360px, 60vh);
     overflow-y: auto;
-    background: rgba(255, 255, 255, 0.95);
+    background: rgba(var(--rgb-ui-surface), 0.95);
     backdrop-filter: blur(20px);
     border: 1px solid var(--glass-border);
     border-radius: 12px;
@@ -376,12 +376,12 @@
 }
 
 .projectOption:hover {
-    background: rgba(0, 0, 0, 0.04);
+    background: rgba(var(--rgb-ui-contrast), 0.04);
     color: var(--text-primary);
 }
 
 .projectOptionActive {
-    background: rgba(217, 116, 89, 0.1);
+    background: rgba(var(--rgb-accent-primary), 0.1);
     color: var(--accent-primary);
     font-weight: 500;
 }
@@ -394,7 +394,7 @@
     padding: 8px 10px;
     border: 1px solid var(--glass-border);
     border-radius: 10px;
-    background: rgba(255, 255, 255, 0.6);
+    background: rgba(var(--rgb-ui-surface), 0.6);
     color: var(--text-secondary);
     font-size: 12px;
     font-weight: 600;
@@ -407,7 +407,7 @@
 }
 
 .exportBtn:hover:not(:disabled) {
-    background: rgba(255, 255, 255, 0.85);
+    background: rgba(var(--rgb-ui-surface), 0.85);
     color: var(--text-primary);
 }
 
@@ -481,12 +481,12 @@
 
 @supports not (backdrop-filter: blur(1px)) {
     .historySidebar {
-        background: rgba(255, 255, 255, 0.97);
+        background: rgba(var(--rgb-ui-surface), 0.97);
         backdrop-filter: none;
     }
 
     .projectDropdown {
-        background: rgba(255, 255, 255, 0.98);
+        background: rgba(var(--rgb-ui-surface), 0.98);
         backdrop-filter: none;
     }
 }
@@ -498,8 +498,8 @@
     z-index: var(--z-top);
     min-width: 105px;
     padding: 4px;
-    background: var(--color-white);
-    border: 1px solid rgba(0, 0, 0, 0.08);
+    background: var(--bg-surface);
+    border: 1px solid rgba(var(--rgb-ui-contrast), 0.08);
     border-radius: 8px;
     box-shadow: var(--shadow-xl);
 }
@@ -527,11 +527,11 @@
 
 .contextMenuItem + .contextMenuItem {
     border-top: 1px solid transparent;
-    border-image: linear-gradient(to right, transparent, rgba(0, 0, 0, 0.08), transparent) 1;
+    border-image: linear-gradient(to right, transparent, rgba(var(--rgb-ui-contrast), 0.08), transparent) 1;
 }
 
 .contextMenuItem:hover {
-    background: rgba(0, 0, 0, 0.07);
+    background: rgba(var(--rgb-ui-contrast), 0.07);
     color: var(--text-primary);
 }
 
@@ -540,6 +540,6 @@
 }
 
 .contextMenuItemDanger:hover {
-    background: rgba(220, 38, 38, 0.1);
+    background: rgba(var(--rgb-legacy-red-tailwind-600), 0.1);
     color: var(--color-danger);
 }

@@ -29,6 +29,20 @@ type ApplyFunction = (
 
 const applyFunctions = new Map<ArtifactType, ApplyFunction>();
 
+// ── Snapshot reader registry (Wave 3A) ──────────────────────────────────────
+// Each reader captures "before" state so undoArtifact can restore it.
+
+type SnapshotReader = (projectId: string, payload: unknown) => Promise<unknown | null>;
+
+const snapshotReaders = new Map<ArtifactType, SnapshotReader>();
+
+// ── Restore function registry (Wave 3B) ─────────────────────────────────────
+// Each restore function uses the captured snapshot to revert the domain state.
+
+type RestoreFunction = (ctx: { projectId: string; payload: unknown; snapshot: unknown }) => Promise<void>;
+
+const restoreFunctions = new Map<ArtifactType, RestoreFunction>();
+
 /**
  * Register an apply function for an artifact type.
  * Called during module initialization by each domain service.
@@ -176,6 +190,23 @@ export async function applyArtifact(
     if (!artifact.projectId) {
         throw new Error("Cannot apply artifact without a project context");
     }
+
+    // Capture snapshot before applying (enables undo — Wave 3A)
+    const snapshotReader = snapshotReaders.get(artifact.type as ArtifactType);
+    if (snapshotReader) {
+        try {
+            const snapshot = await snapshotReader(artifact.projectId, artifact.payload);
+            // Write snapshot even if null — null means "entity didn't exist before"
+            await prisma.artifact.update({
+                where: { id: artifactId },
+                data: { snapshot: (snapshot ?? Prisma.DbNull) as Prisma.InputJsonValue },
+            });
+        } catch (err) {
+            // Snapshot capture failure should not block the apply
+            console.warn(`[artifacts] Snapshot capture failed for ${artifact.type}:`, err);
+        }
+    }
+
     await applyFn({
         id: artifact.id,
         projectId: artifact.projectId,
@@ -208,14 +239,13 @@ export async function applyArtifact(
 }
 
 /**
- * Undo an artifact — restore from snapshot.
- * Only allowed for append-only actions or within 5-minute window.
+ * Undo an artifact — restore domain state from snapshot, then mark rejected.
+ * Only allowed within a 5-minute window after apply.
  */
 export async function undoArtifact(artifactId: string) {
     const artifact = await prisma.artifact.findUnique({ where: { id: artifactId } });
     if (!artifact) throw new Error("Artifact not found");
     if (!artifact.appliedAt) throw new Error("Artifact has not been applied");
-    if (!artifact.snapshot) throw new Error("No snapshot available for undo");
 
     // Check 5-minute window
     const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
@@ -223,8 +253,17 @@ export async function undoArtifact(artifactId: string) {
         throw new Error("Undo window has expired (5 minutes)");
     }
 
-    // TODO: implement type-specific undo using snapshot
-    // For now, mark as rejected (undo = reverted)
+    // Run type-specific restore if available and snapshot was captured
+    const restoreFn = restoreFunctions.get(artifact.type as ArtifactType);
+    if (restoreFn && artifact.projectId) {
+        // snapshot may be null (meaning "entity didn't exist before apply")
+        await restoreFn({
+            projectId: artifact.projectId,
+            payload: artifact.payload,
+            snapshot: artifact.snapshot,
+        });
+    }
+
     return prisma.artifact.update({
         where: { id: artifactId },
         data: {
@@ -286,9 +325,9 @@ async function extractDecisionMemory(
     if (artifact.type === "study_proposal") {
         const sp = payload as unknown as import("@/types/artifacts").StudyProposalPayload;
         if (status === "accepted" && sp.recommendation === "keep") {
-            // Look up study by title to get studyId
+            // Look up study by title to get studyId (soft-delete aware)
             const study = await prisma.study.findFirst({
-                where: { projectId, title: sp.title },
+                where: { projectId, title: sp.title, deletedAt: null },
                 select: { id: true },
             });
             if (study) {
@@ -314,6 +353,16 @@ async function extractDecisionMemory(
 }
 
 // ── Apply function registrations ─────────────────────────────────────────────
+
+function getNestedValue(obj: Record<string, unknown>, path: string): unknown {
+    const keys = path.split(".");
+    let current: unknown = obj;
+    for (const key of keys) {
+        if (current == null || typeof current !== "object") return undefined;
+        current = (current as Record<string, unknown>)[key];
+    }
+    return current;
+}
 
 function setNestedValue(obj: Record<string, unknown>, path: string, value: unknown) {
     const keys = path.split(".");
@@ -631,7 +680,7 @@ registerApplyFunction("study_update", async (artifact) => {
     if (existingArtifact?.appliedAt) return;
 
     const currentStudy = await prisma.study.findFirst({
-        where: { id: payload.studyId, projectId: artifact.projectId },
+        where: { id: payload.studyId, projectId: artifact.projectId, deletedAt: null },
         select: { updatedAt: true },
     });
     if (!currentStudy) {
@@ -723,9 +772,9 @@ registerApplyFunction("evidence_table", async (artifact) => {
 registerApplyFunction("screening_batch", async (artifact) => {
     const payload = artifact.payload as ScreeningBatchPayload;
     for (const study of payload.studies) {
-        // Find the study in the ledger by title
+        // Find the study in the ledger by title (soft-delete aware)
         const existing = await prisma.study.findFirst({
-            where: { projectId: artifact.projectId, title: study.title },
+            where: { projectId: artifact.projectId, title: study.title, deletedAt: null },
             select: { id: true, details: true },
         });
         if (!existing) continue;
@@ -744,4 +793,154 @@ registerApplyFunction("screening_batch", async (artifact) => {
             },
         });
     }
+});
+
+// ── Snapshot readers (Wave 3A) ──────────────────────────────────────────────
+// Capture "before" state so undo can restore it.
+
+// study_update: capture the full study row before patching
+snapshotReaders.set("study_update", async (_projectId, payload) => {
+    const p = payload as StudyUpdatePayload;
+    const study = await prisma.study.findFirst({
+        where: { id: p.studyId, deletedAt: null },
+        select: { id: true, title: true, authors: true, year: true, status: true, quality: true, details: true },
+    });
+    return study ?? null;
+});
+
+// study_proposal: capture existing study if one matches (null = new study)
+snapshotReaders.set("study_proposal", async (projectId, payload) => {
+    const p = payload as StudyProposalPayload;
+    const study = await prisma.study.findFirst({
+        where: { projectId, title: p.title, deletedAt: null },
+        select: { id: true, title: true, authors: true, year: true, status: true, quality: true, details: true },
+    });
+    return study ?? null;
+});
+
+// protocol_suggestion: capture the current field value before overwrite
+snapshotReaders.set("protocol_suggestion", async (projectId, payload) => {
+    const p = payload as ProtocolSuggestionPayload;
+    const protocol = await prisma.protocol.findUnique({
+        where: { projectId },
+        select: { data: true },
+    });
+    if (!protocol) return null;
+    const previousValue = getNestedValue(protocol.data as Record<string, unknown>, p.field);
+    return { field: p.field, previousValue };
+});
+
+// criteria_card: capture current eligibility before overwrite
+snapshotReaders.set("criteria_card", async (projectId) => {
+    const protocol = await prisma.protocol.findUnique({
+        where: { projectId },
+        select: { data: true },
+    });
+    if (!protocol) return null;
+    const data = protocol.data as Record<string, unknown>;
+    return (data as { eligibility?: unknown }).eligibility ?? null;
+});
+
+// draft_diff: capture current draft section content before overwrite
+snapshotReaders.set("draft_diff", async (projectId, payload) => {
+    const p = payload as DraftDiffPayload;
+    const { getDraft } = await import("@/lib/server/drafts");
+    const { DRAFT_SECTIONS } = await import("@/types/draft");
+    const currentDraft = await getDraft(undefined, projectId);
+    if (!currentDraft) return null;
+    const sectionKey = DRAFT_SECTIONS.find(
+        (s) => s.key === p.section.toLowerCase() || s.label.toLowerCase() === p.section.toLowerCase()
+    )?.key ?? p.section.toLowerCase();
+    return currentDraft.contentBySection?.[sectionKey] ?? null;
+});
+
+// ── Restore functions (Wave 3B) ─────────────────────────────────────────────
+// Revert domain state using the captured snapshot.
+
+// study_update: restore previous study fields
+restoreFunctions.set("study_update", async ({ snapshot }) => {
+    const snap = snapshot as { id: string; title: string; authors: string; year: number; status: string; quality: string; details: unknown } | null;
+    if (!snap) return;
+    await prisma.study.update({
+        where: { id: snap.id },
+        data: {
+            title: snap.title,
+            authors: snap.authors,
+            year: snap.year,
+            status: snap.status,
+            quality: snap.quality,
+            details: (snap.details as object) ?? Prisma.DbNull,
+        },
+    });
+});
+
+// study_proposal: if snapshot null (new study), soft-delete it; else restore previous state
+restoreFunctions.set("study_proposal", async ({ projectId, payload, snapshot }) => {
+    const p = payload as StudyProposalPayload;
+    const study = await prisma.study.findFirst({
+        where: { projectId, title: p.title, deletedAt: null },
+        select: { id: true },
+    });
+    if (!study) return;
+
+    const snap = snapshot as { id: string; status: string; quality: string; details: unknown } | null;
+    if (!snap) {
+        // Study was newly created by this artifact — soft-delete it
+        await prisma.study.update({ where: { id: study.id }, data: { deletedAt: new Date() } });
+    } else {
+        // Restore previous state
+        await prisma.study.update({
+            where: { id: study.id },
+            data: { status: snap.status, quality: snap.quality, details: (snap.details as object) ?? Prisma.DbNull },
+        });
+    }
+});
+
+// protocol_suggestion: restore previous field value
+restoreFunctions.set("protocol_suggestion", async ({ projectId, snapshot }) => {
+    const snap = snapshot as { field: string; previousValue: unknown } | null;
+    if (!snap) return;
+    const data = await ensureProtocol(projectId);
+    setNestedValue(data as unknown as Record<string, unknown>, snap.field, snap.previousValue);
+    await prisma.protocol.update({
+        where: { projectId },
+        data: { data: data as unknown as object },
+    });
+});
+
+// criteria_card: restore previous eligibility
+restoreFunctions.set("criteria_card", async ({ projectId, snapshot }) => {
+    const previousEligibility = snapshot as { inclusion: string[]; exclusion: string[] } | null;
+    if (!previousEligibility) return;
+    const data = await ensureProtocol(projectId);
+    data.eligibility.inclusion = previousEligibility.inclusion;
+    data.eligibility.exclusion = previousEligibility.exclusion;
+    await prisma.protocol.update({
+        where: { projectId },
+        data: { data: data as unknown as object },
+    });
+});
+
+// draft_diff: restore previous draft section content
+restoreFunctions.set("draft_diff", async ({ projectId, payload, snapshot }) => {
+    const p = payload as DraftDiffPayload;
+    const { getDraft, saveDraft } = await import("@/lib/server/drafts");
+    const { createDefaultDraftState } = await import("@/lib/draftStorage");
+    const { DRAFT_SECTIONS } = await import("@/types/draft");
+
+    const sectionKey = DRAFT_SECTIONS.find(
+        (s) => s.key === p.section.toLowerCase() || s.label.toLowerCase() === p.section.toLowerCase()
+    )?.key ?? p.section.toLowerCase();
+
+    const currentDraft = await getDraft(undefined, projectId);
+    const draftState = currentDraft ?? createDefaultDraftState();
+
+    if (snapshot) {
+        draftState.contentBySection[sectionKey] = snapshot as typeof draftState.contentBySection[string];
+    } else {
+        // No previous content — remove the section
+        delete draftState.contentBySection[sectionKey];
+    }
+
+    await saveDraft(undefined, projectId, draftState);
 });

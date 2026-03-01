@@ -1,16 +1,33 @@
 #!/usr/bin/env bash
-# Run Prisma migrations only on production Vercel deploys.
-# Preview/development deploys skip migrations to avoid mutating the shared DB.
+# Production migration gate for Vercel builds.
+# Policy:
+# - Production deploys MUST run prisma migrate deploy before building app code.
+# - Production deploys MUST fail if migrations are still pending afterwards.
+# - Preview/development deploys skip DB mutations.
 
 set -euo pipefail
 
-if [ "${VERCEL_ENV:-}" = "production" ]; then
-  if [ "${RUN_PRISMA_MIGRATE_IN_BUILD:-0}" = "1" ]; then
-    echo "Production deploy — running prisma migrate deploy..."
-    npx prisma migrate deploy
-  else
-    echo "Production deploy — skipping prisma migrate deploy (RUN_PRISMA_MIGRATE_IN_BUILD != 1)"
-  fi
-else
+if [ "${VERCEL_ENV:-}" != "production" ]; then
   echo "Skipping migrations (VERCEL_ENV=${VERCEL_ENV:-unset})"
+  exit 0
 fi
+
+if [ -z "${DIRECT_URL:-}" ]; then
+  echo "ERROR: DIRECT_URL is required for production migrations and is not set."
+  exit 1
+fi
+
+echo "Production deploy — running prisma migrate deploy..."
+bash scripts/migrate-deploy-safe.sh
+
+echo "Production deploy — verifying migration state..."
+status_output="$(npx prisma migrate status 2>&1 || true)"
+echo "$status_output"
+
+if echo "$status_output" | grep -Eiq "have not yet been applied|following migration"; then
+  echo "ERROR: Pending migrations detected after prisma migrate deploy."
+  echo "Aborting build to prevent app/schema drift in production."
+  exit 1
+fi
+
+echo "Production migration gate passed."

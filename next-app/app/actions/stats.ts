@@ -1,8 +1,9 @@
 "use server";
 
 import { prisma } from "@/lib/server/prisma";
-import { withAction, type ActionResult } from "@/lib/server/action-utils";
+import { withValidatedAction, type ActionResult } from "@/lib/server/action-utils";
 import { withAuth } from "@/lib/server/auth/session";
+import { projectIdSchema } from "@/lib/schemas/ids";
 import type { DraftState } from "@/lib/draftStorage";
 import type { ProtocolData } from "@/types/protocol";
 import { DRAFT_SECTIONS } from "@/types/draft";
@@ -31,11 +32,11 @@ function hasText(doc: unknown): boolean {
 export async function getDraftStatsAction(
   projectId: string,
 ): Promise<ActionResult<DraftStats | null>> {
-  return withAction(() =>
-    withAuth(async ({ userId, workspaceId }) => {
+  return withValidatedAction(projectIdSchema, projectId,
+    (id) => withAuth(async ({ userId, workspaceId }) => {
       const draft = await prisma.draft.findFirst({
         where: {
-          projectId,
+          projectId: id,
           project: { ownerId: userId, workspaceId },
         },
       });
@@ -82,11 +83,11 @@ export type ProtocolStats = {
 export async function getProtocolStatsAction(
   projectId: string,
 ): Promise<ActionResult<ProtocolStats | null>> {
-  return withAction(() =>
-    withAuth(async ({ userId, workspaceId }) => {
+  return withValidatedAction(projectIdSchema, projectId,
+    (id) => withAuth(async ({ userId, workspaceId }) => {
       const protocol = await prisma.protocol.findFirst({
         where: {
-          projectId,
+          projectId: id,
           project: { ownerId: userId, workspaceId },
         },
         select: { data: true, updatedAt: true },
@@ -120,11 +121,11 @@ export type LedgerStats = {
 export async function getLedgerStatsAction(
   projectId: string,
 ): Promise<ActionResult<LedgerStats | null>> {
-  return withAction(() =>
-    withAuth(async ({ userId, workspaceId }) => {
+  return withValidatedAction(projectIdSchema, projectId,
+    (id) => withAuth(async ({ userId, workspaceId }) => {
       const studies = await prisma.study.findMany({
         where: {
-          projectId,
+          projectId: id,
           project: { ownerId: userId, workspaceId },
         },
         select: { status: true },

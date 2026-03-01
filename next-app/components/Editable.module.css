@@ -26,11 +26,11 @@
 }
 
 .editableTextDisplay:hover {
-    border-bottom-color: rgba(0, 0, 0, 0.15);
+    border-bottom-color: rgba(var(--rgb-ui-contrast), 0.15);
 }
 
 .editableTextDisplay.active {
-    border-bottom-color: rgba(0, 0, 0, 0.25);
+    border-bottom-color: rgba(var(--rgb-ui-contrast), 0.25);
 }
 
 .editableTextPlaceholder {
@@ -74,11 +74,11 @@
 }
 
 .editableTextAreaDisplay:hover {
-    border-bottom-color: rgba(0, 0, 0, 0.15);
+    border-bottom-color: rgba(var(--rgb-ui-contrast), 0.15);
 }
 
 .editableTextAreaDisplay.active {
-    border-bottom-color: rgba(0, 0, 0, 0.25);
+    border-bottom-color: rgba(var(--rgb-ui-contrast), 0.25);
 }
 
 .editableTextAreaInput {
@@ -157,7 +157,7 @@
 }
 
 .editableListText:hover {
-    border-bottom-color: rgba(0, 0, 0, 0.1);
+    border-bottom-color: rgba(var(--rgb-ui-contrast), 0.1);
 }
 
 .editableListText:empty::before {
@@ -241,7 +241,7 @@
     align-items: center;
     gap: 6px;
     padding: 5px 12px;
-    background: rgba(0, 0, 0, 0.05);
+    background: rgba(var(--rgb-ui-contrast), 0.05);
     color: var(--text-primary);
     border-radius: 99px;
     font-size: 13px;
@@ -250,7 +250,7 @@
 }
 
 .editableChip:hover {
-    background: rgba(0, 0, 0, 0.08);
+    background: rgba(var(--rgb-ui-contrast), 0.08);
 }
 
 .editableChipRemove {
@@ -279,7 +279,7 @@
     align-items: center;
     gap: 4px;
     padding: 5px 12px;
-    border: 1px dashed rgba(0, 0, 0, 0.2);
+    border: 1px dashed rgba(var(--rgb-ui-contrast), 0.2);
     border-radius: 99px;
     background: transparent;
     color: var(--text-muted);

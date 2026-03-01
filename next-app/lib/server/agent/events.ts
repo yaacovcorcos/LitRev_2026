@@ -17,6 +17,18 @@ export interface EmitEventExtras {
     durationMs?: number;
 }
 
+const MAX_SEQUENCE_RETRY_ATTEMPTS = 5;
+
+function isRunSequenceConflict(error: unknown): boolean {
+    if (!error || typeof error !== "object") return false;
+    const candidate = error as { code?: unknown; meta?: { target?: unknown } };
+    if (candidate.code !== "P2002") return false;
+    const target = candidate.meta?.target;
+    if (!Array.isArray(target)) return false;
+    const cols = target.map((value) => String(value));
+    return cols.includes("runId") && cols.includes("sequence");
+}
+
 /**
  * Emit a new event in a run.
  * Sequence is auto-assigned as max(sequence) + 1 within the run.
@@ -27,29 +39,39 @@ export async function emitEvent(
     payload: unknown,
     extras?: EmitEventExtras
 ) {
-    // Get next sequence number
-    const lastEvent = await prisma.runEvent.findFirst({
-        where: { runId },
-        orderBy: { sequence: "desc" },
-        select: { sequence: true },
-    });
-    const sequence = (lastEvent?.sequence ?? -1) + 1;
+    for (let attempt = 0; attempt < MAX_SEQUENCE_RETRY_ATTEMPTS; attempt++) {
+        const lastEvent = await prisma.runEvent.findFirst({
+            where: { runId },
+            orderBy: { sequence: "desc" },
+            select: { sequence: true },
+        });
+        const sequence = (lastEvent?.sequence ?? -1) + 1;
 
-    return prisma.runEvent.create({
-        data: {
-            runId,
-            sequence,
-            type,
-            payload: payload as object,
-            toolName: extras?.toolName ?? null,
-            artifactId: extras?.artifactId ?? null,
-            messageRole: extras?.messageRole ?? null,
-            tokensIn: extras?.tokensIn ?? null,
-            tokensOut: extras?.tokensOut ?? null,
-            errorCode: extras?.errorCode ?? null,
-            durationMs: extras?.durationMs ?? null,
-        },
-    });
+        try {
+            return await prisma.runEvent.create({
+                data: {
+                    runId,
+                    sequence,
+                    type,
+                    payload: payload as object,
+                    toolName: extras?.toolName ?? null,
+                    artifactId: extras?.artifactId ?? null,
+                    messageRole: extras?.messageRole ?? null,
+                    tokensIn: extras?.tokensIn ?? null,
+                    tokensOut: extras?.tokensOut ?? null,
+                    errorCode: extras?.errorCode ?? null,
+                    durationMs: extras?.durationMs ?? null,
+                },
+            });
+        } catch (error) {
+            if (isRunSequenceConflict(error) && attempt < MAX_SEQUENCE_RETRY_ATTEMPTS - 1) {
+                continue;
+            }
+            throw error;
+        }
+    }
+
+    throw new Error(`Failed to emit run event after ${MAX_SEQUENCE_RETRY_ATTEMPTS} attempts.`);
 }
 
 /**

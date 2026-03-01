@@ -26,6 +26,10 @@ export type MentionedStudyUpsertResult = {
   matchedBy?: "doi" | "pmid" | "s2PaperId" | "titleYear";
 };
 
+export type { PaginationOptions, PaginatedResult } from "@/lib/server/pagination";
+import { sanitizePaginationLimit } from "@/lib/server/pagination";
+import type { PaginationOptions, PaginatedResult } from "@/lib/server/pagination";
+
 function toStudy(record: {
   id: string;
   title: string;
@@ -96,10 +100,52 @@ export async function listStudies(
 ): Promise<Study[]> {
   await assertProjectAccess(scopeInput, projectId);
   const studies = await prisma.study.findMany({
-    where: { projectId },
+    where: { projectId, deletedAt: null },
     orderBy: { createdAt: "asc" },
   });
   return studies.map(toStudy);
+}
+
+export async function listStudiesPaginated(
+  scopeInput: ScopeInput,
+  projectId: string,
+  options?: PaginationOptions,
+): Promise<PaginatedResult<Study>> {
+  await assertProjectAccess(scopeInput, projectId);
+
+  const limit = sanitizePaginationLimit(options?.limit);
+  let where: Record<string, unknown> = { projectId, deletedAt: null };
+
+  if (options?.cursor) {
+    const cursorStudy = await prisma.study.findFirst({
+      where: { id: options.cursor, projectId, deletedAt: null },
+      select: { id: true, createdAt: true },
+    });
+    if (cursorStudy) {
+      where = {
+        projectId,
+        deletedAt: null,
+        OR: [
+          { createdAt: { gt: cursorStudy.createdAt } },
+          { createdAt: { equals: cursorStudy.createdAt }, id: { gt: cursorStudy.id } },
+        ],
+      };
+    }
+  }
+
+  const rows = await prisma.study.findMany({
+    where,
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    take: limit + 1,
+  });
+
+  const hasMore = rows.length > limit;
+  const page = hasMore ? rows.slice(0, limit) : rows;
+
+  return {
+    items: page.map(toStudy),
+    nextCursor: hasMore ? page[page.length - 1]?.id ?? null : null,
+  };
 }
 
 export async function upsertStudy(
@@ -122,6 +168,7 @@ export async function upsertStudy(
           status: normalized.status,
           quality: normalized.quality,
           details: normalized.details as any,
+          deletedAt: null,
         },
       });
       return toStudy(updated);
@@ -155,16 +202,21 @@ export async function replaceStudies(
       .map((s) => s.id)
       .filter((id): id is string => typeof id === "string" && id.length > 0);
 
-    // Sync semantics: delete only studies missing from the incoming list, then upsert the incoming rows.
-    // This avoids destructive "delete all + recreate" behavior which can cascade-delete attached FileAssets.
+    // Sync semantics: soft-delete studies missing from incoming list, then upsert incoming rows.
+    // This avoids destructive hard-delete behavior and preserves related records for recovery.
     if (incomingIds.length === 0) {
-      await tx.study.deleteMany({ where: { projectId } });
+      await tx.study.updateMany({
+        where: { projectId, deletedAt: null },
+        data: { deletedAt: new Date() },
+      });
     } else {
-      await tx.study.deleteMany({
+      await tx.study.updateMany({
         where: {
           projectId,
+          deletedAt: null,
           id: { notIn: incomingIds },
         },
+        data: { deletedAt: new Date() },
       });
     }
 
@@ -185,6 +237,7 @@ export async function replaceStudies(
               status: study.status,
               quality: study.quality,
               details: study.details as any,
+              deletedAt: null,
             },
           });
           continue;
@@ -206,7 +259,7 @@ export async function replaceStudies(
       });
     }
     const saved = await tx.study.findMany({
-      where: { projectId },
+      where: { projectId, deletedAt: null },
       orderBy: { createdAt: "asc" },
     });
     return saved.map(toStudy);
@@ -219,7 +272,10 @@ export async function deleteStudy(
   studyId: string
 ): Promise<void> {
   await assertProjectAccess(scopeInput, projectId);
-  await prisma.study.deleteMany({ where: { id: studyId, projectId } });
+  await prisma.study.updateMany({
+    where: { id: studyId, projectId, deletedAt: null },
+    data: { deletedAt: new Date() },
+  });
 }
 
 export async function deleteStudies(
@@ -229,7 +285,10 @@ export async function deleteStudies(
 ): Promise<void> {
   if (!studyIds.length) return;
   await assertProjectAccess(scopeInput, projectId);
-  await prisma.study.deleteMany({ where: { id: { in: studyIds }, projectId } });
+  await prisma.study.updateMany({
+    where: { id: { in: studyIds }, projectId, deletedAt: null },
+    data: { deletedAt: new Date() },
+  });
 }
 
 /**
@@ -242,7 +301,7 @@ export async function getStudy(
 ): Promise<Study | null> {
   await assertProjectAccess(scopeInput, projectId);
   const study = await prisma.study.findFirst({
-    where: { id: studyId, projectId },
+    where: { id: studyId, projectId, deletedAt: null },
   });
   return study ? toStudy(study) : null;
 }
@@ -259,7 +318,7 @@ export async function updateStudy(
   const scope = await assertProjectAccess(scopeInput, projectId);
 
   const existing = await prisma.study.findFirst({
-    where: { id: studyId, projectId },
+    where: { id: studyId, projectId, deletedAt: null },
   });
   if (!existing) {
     throw new Error("Study not found or access denied.");
@@ -303,7 +362,7 @@ export async function addMentionedStudy(
   const normalizedTitleForMatch = title.toLowerCase();
 
   const existingStudies = await prisma.study.findMany({
-    where: { projectId },
+    where: { projectId, deletedAt: null },
     select: {
       id: true,
       title: true,
@@ -361,7 +420,7 @@ export async function addMentionedStudy(
     // Concurrency-safe retry path: if another request won the race on deterministic ID,
     // treat this call as idempotent and return the persisted row.
     const raced = await prisma.study.findFirst({
-      where: { id, projectId },
+      where: { id, projectId, deletedAt: null },
       select: {
         id: true,
         title: true,

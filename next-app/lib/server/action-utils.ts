@@ -2,6 +2,8 @@
 // ActionResult – structured return type for all server actions
 // ---------------------------------------------------------------------------
 
+import type { ZodType } from "zod";
+
 export type ActionResult<T = void> =
   | { success: true; data: T }
   | { success: false; error: string; errorCode?: string };
@@ -41,6 +43,23 @@ export async function withAction<T>(
 }
 
 /**
+ * Wrap a server action with Zod input validation + error handling.
+ * Validation runs inside the error boundary so ZodError is automatically
+ * classified as VALIDATION and returned as ActionResult.
+ */
+export async function withValidatedAction<I, T>(
+  schema: ZodType<I>,
+  rawInput: unknown,
+  fn: (input: I) => Promise<T>,
+  fallbackMessage = "Something went wrong. Please try again.",
+): Promise<ActionResult<T>> {
+  return withAction(async () => {
+    const input = schema.parse(rawInput);
+    return fn(input);
+  }, fallbackMessage);
+}
+
+/**
  * Sanitizes an error before returning to clients.
  * - Converts known classes to safe product messages.
  * - Redacts Prisma/SQL/connection internals.
@@ -74,6 +93,7 @@ export function classifyError(msg: string): string | undefined {
   if (lower.includes("unique constraint") || lower.includes("already exists")) return "CONFLICT";
   if (lower.includes("foreign key constraint")) return "CONFLICT";
   if (lower.includes("invalid") || lower.includes("required")) return "VALIDATION";
+  if (lower.includes("expected") && lower.includes("received")) return "VALIDATION";
   return undefined;
 }
 

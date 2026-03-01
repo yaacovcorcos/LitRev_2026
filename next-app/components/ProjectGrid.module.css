@@ -49,13 +49,13 @@
 
 .card:hover {
     transform: translateY(-4px);
-    border-color: rgba(129, 140, 248, 0.5);
+    border-color: rgba(var(--rgb-indigo), 0.5);
     box-shadow: var(--shadow-xl);
 }
 
 .newProjectCard {
-    background: linear-gradient(135deg, rgba(255, 255, 255, 0.45), rgba(255, 255, 255, 0.15));
-    border: 1px solid rgba(255, 255, 255, 0.7);
+    background: linear-gradient(135deg, rgba(var(--rgb-ui-surface), 0.45), rgba(var(--rgb-ui-surface), 0.15));
+    border: 1px solid rgba(var(--rgb-ui-surface), 0.7);
     box-shadow: var(--shadow-md);
     backdrop-filter: blur(12px);
     justify-content: center;
@@ -157,8 +157,8 @@
     width: 60px;
     height: 60px;
     border-radius: 50%;
-    background: rgba(255, 255, 255, 0.9);
-    border: 1px solid rgba(255, 255, 255, 0.8);
+    background: rgba(var(--rgb-ui-surface), 0.9);
+    border: 1px solid rgba(var(--rgb-ui-surface), 0.8);
     box-shadow: var(--shadow-sm);
     display: flex;
     align-items: center;
@@ -271,7 +271,7 @@
 
 .progressBar {
     height: 4px;
-    background: rgba(0, 0, 0, 0.05);
+    background: rgba(var(--rgb-ui-contrast), 0.05);
     border-radius: 2px;
     overflow: hidden;
     flex: 1;
@@ -301,7 +301,7 @@
 }
 
 .viewProjectBtn {
-    background: rgba(255, 255, 255, 0.5);
+    background: rgba(var(--rgb-ui-surface), 0.5);
     border: 1px solid var(--glass-border);
     color: var(--accent-primary);
     padding: 8px 18px;
@@ -320,7 +320,7 @@
 }
 
 .viewProjectBtn:hover {
-    background: rgba(255, 255, 255, 0.9);
+    background: rgba(var(--rgb-ui-surface), 0.9);
     color: var(--accent-primary);
     border-color: var(--accent-primary);
     transform: translateY(-2px);

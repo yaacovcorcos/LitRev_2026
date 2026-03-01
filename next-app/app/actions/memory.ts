@@ -65,9 +65,27 @@ import {
     getPRISMAStats,
     type PRISMAStats,
 } from "@/lib/server/memory";
-import { withAction, type ActionResult } from "@/lib/server/action-utils";
+import { z } from "zod";
+import { withValidatedAction, type ActionResult } from "@/lib/server/action-utils";
 import { withAuth } from "@/lib/server/auth/session";
 import { prisma } from "@/lib/server/prisma";
+import { cuidSchema, projectIdSchema, searchQuerySchema } from "@/lib/schemas/ids";
+import {
+    createUserMemoryInputSchema,
+    updateUserMemoryInputSchema,
+    getUserMemoriesOptionsSchema,
+    createProjectMemoryInputSchema,
+    updateProjectMemoryInputSchema,
+    getProjectMemoriesOptionsSchema,
+    createStudyMemoryInputSchema,
+    updateStudyMemoryInputSchema,
+    getStudyMemoriesOptionsSchema,
+    getProjectStudyMemoriesOptionsSchema,
+    memoryContextSchema,
+    memoryRetrievalOptionsSchema,
+    searchStudyMemoriesOptionsSchema,
+    memoryMaintenanceOptionsSchema,
+} from "@/lib/schemas/memory";
 
 async function assertProjectAccess(userId: string, workspaceId: string, projectId: string): Promise<void> {
     const project = await prisma.project.findFirst({
@@ -163,14 +181,14 @@ async function assertRetrievalContextAccess(
 // ============================================================================
 
 export async function setUserMemoryAction(input: CreateUserMemoryInput) {
-    return withAction(() =>
-        withAuth(({ userId }) => setUserMemory({ ...input, userId })),
+    return withValidatedAction(createUserMemoryInputSchema, input,
+        (v) => withAuth(({ userId }) => setUserMemory({ ...v, userId } as CreateUserMemoryInput)),
     );
 }
 
 export async function getUserMemoryAction(key: string) {
-    return withAction(() =>
-        withAuth(({ userId }) => getUserMemory(userId, key)),
+    return withValidatedAction(z.string().min(1).max(500), key,
+        (k) => withAuth(({ userId }) => getUserMemory(userId, k)),
     );
 }
 
@@ -181,19 +199,24 @@ export async function getUserMemoriesAction(
         tags?: string[];
     }
 ) {
-    return withAction(() =>
-        withAuth(({ userId }) => getUserMemories(userId, options)),
+    return withValidatedAction(getUserMemoriesOptionsSchema.optional(), options,
+        (v) => withAuth(({ userId }) => getUserMemories(userId, v)),
     );
 }
+
+const updateUserMemoryActionInput = z.object({
+    id: cuidSchema,
+    input: updateUserMemoryInputSchema,
+});
 
 export async function updateUserMemoryAction(
     id: string,
     input: UpdateUserMemoryInput
 ) {
-    return withAction(() =>
-        withAuth(async ({ userId }) => {
-            await assertUserMemoryAccess(userId, id);
-            return updateUserMemory(id, input);
+    return withValidatedAction(updateUserMemoryActionInput, { id, input },
+        (v) => withAuth(async ({ userId }) => {
+            await assertUserMemoryAccess(userId, v.id);
+            return updateUserMemory(v.id, v.input as UpdateUserMemoryInput);
         }),
     );
 }

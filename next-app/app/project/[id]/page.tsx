@@ -78,15 +78,17 @@ function WorkstationCard({ title, subtitle, description, icon, href, preview }: 
       href={href}
       className={styles.workstationCard}
     >
-      <div className={styles.workstationIconCircle}>
-        <span className="material-icons-round">{icon}</span>
+      <div className={styles.workstationHeader}>
+        <div className={styles.workstationIconCircle}>
+          <span className="material-icons-round">{icon}</span>
+        </div>
+        {preview && <div className={styles.workstationBadge}>{preview}</div>}
       </div>
       <div className={styles.workstationText}>
         <span className={styles.workstationSubtitle}>{subtitle}</span>
         <h3 className={styles.workstationTitle}>{title}</h3>
         <p className={styles.workstationDesc}>{description}</p>
       </div>
-      {preview && <div className={styles.workstationPreview}>{preview}</div>}
       <span className={styles.workstationAction}>
         Enter
       </span>

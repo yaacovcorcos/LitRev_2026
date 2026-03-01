@@ -150,7 +150,7 @@
 }
 
 .active {
-    background: rgba(129, 140, 248, 0.15);
+    background: rgba(var(--rgb-indigo), 0.15);
     color: var(--accent-primary);
 }
 

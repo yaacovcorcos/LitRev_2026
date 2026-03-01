@@ -3,6 +3,7 @@
 import type { ReactElement } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import type { ReasoningMode } from "@/types/ai";
+import type { ReasoningSupportTier } from "@/lib/ai/config";
 import { REASONING_MODE_OPTIONS } from "@/lib/ai/reasoning-visibility";
 import styles from "./ReasoningModeDropdown.module.css";
 
@@ -13,6 +14,13 @@ type ReasoningModeDropdownProps = {
   side?: "top" | "right" | "bottom" | "left";
   align?: "start" | "center" | "end";
   sideOffset?: number;
+  /**
+   * Reasoning support tier of the current model.
+   * - "explicit": Full reasoning controls
+   * - "best_effort": Controls + warning note
+   * - "none": Dropdown is hidden (caller should not render)
+   */
+  reasoningSupport?: ReasoningSupportTier;
 };
 
 export function ReasoningModeDropdown({
@@ -22,7 +30,10 @@ export function ReasoningModeDropdown({
   side = "bottom",
   align = "end",
   sideOffset = 6,
+  reasoningSupport = "explicit",
 }: ReasoningModeDropdownProps) {
+  const showBestEffortNote = reasoningSupport === "best_effort";
+
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>
@@ -57,6 +68,12 @@ export function ReasoningModeDropdown({
               </DropdownMenu.RadioItem>
             ))}
           </DropdownMenu.RadioGroup>
+          {showBestEffortNote && (
+            <div className={styles.bestEffortNote}>
+              <span className="material-icons-round">info</span>
+              <span>This model may not always return reasoning.</span>
+            </div>
+          )}
         </DropdownMenu.Content>
       </DropdownMenu.Portal>
     </DropdownMenu.Root>

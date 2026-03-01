@@ -53,7 +53,7 @@
     border: 1px solid var(--glass-border);
     border-radius: 8px;
     font-size: var(--text-base);
-    background: rgba(0, 0, 0, 0.02);
+    background: rgba(var(--rgb-ui-contrast), 0.02);
     outline: none;
     transition: border-color var(--duration-base) var(--ease-standard), box-shadow var(--duration-base) var(--ease-standard);
 }
@@ -103,7 +103,7 @@
     min-width: 280px;
     border-right: 1px solid var(--glass-border);
     overflow-y: auto;
-    background: rgba(0, 0, 0, 0.01);
+    background: rgba(var(--rgb-ui-contrast), 0.01);
 }
 
 .noteItem {
@@ -122,7 +122,7 @@
 }
 
 .noteItem:hover {
-    background: rgba(0, 0, 0, 0.03);
+    background: rgba(var(--rgb-ui-contrast), 0.03);
 }
 
 .noteItem:focus-visible {
@@ -131,7 +131,7 @@
 }
 
 .noteItemActive {
-    background: rgba(217, 116, 89, 0.08);
+    background: rgba(var(--rgb-accent-primary), 0.08);
     border-left: 3px solid var(--accent-primary);
     padding-left: 13px;
 }
@@ -169,7 +169,7 @@
     padding: 1px 6px;
     border-radius: 8px;
     font-size: var(--text-xs);
-    background: rgba(0, 0, 0, 0.05);
+    background: rgba(var(--rgb-ui-contrast), 0.05);
     color: var(--text-secondary);
 }
 
@@ -238,7 +238,7 @@
     padding: 3px 8px;
     border-radius: 12px;
     font-size: var(--text-sm);
-    background: rgba(0, 0, 0, 0.06);
+    background: rgba(var(--rgb-ui-contrast), 0.06);
     color: var(--text-secondary);
 }
 
@@ -259,7 +259,7 @@
 }
 
 .tagChipRemove:hover {
-    background: rgba(0, 0, 0, 0.08);
+    background: rgba(var(--rgb-ui-contrast), 0.08);
     color: var(--text-primary);
 }
 
@@ -284,7 +284,7 @@
     padding: 3px 8px;
     border-radius: 12px;
     font-size: var(--text-sm);
-    background: rgba(76, 175, 80, 0.12);
+    background: rgba(var(--rgb-legacy-green-material), 0.12);
     color: var(--color-success);
 }
 
@@ -321,7 +321,7 @@
 .proseMirror blockquote {
     margin: 0 0 10px;
     padding-left: 14px;
-    border-left: 3px solid rgba(0, 0, 0, 0.12);
+    border-left: 3px solid rgba(var(--rgb-ui-contrast), 0.12);
     color: var(--text-secondary);
 }
 
@@ -398,7 +398,7 @@
     align-items: center;
     gap: 4px;
     padding: 6px 10px;
-    border: 1px solid rgba(192, 57, 43, 0.3);
+    border: 1px solid rgba(var(--rgb-color-danger), 0.3);
     border-radius: 6px;
     background: transparent;
     color: var(--color-danger);
@@ -408,7 +408,7 @@
 }
 
 .deleteBtn:hover {
-    background: rgba(192, 57, 43, 0.08);
+    background: rgba(var(--rgb-color-danger), 0.08);
 }
 
 .deleteBtn .material-icons-round {

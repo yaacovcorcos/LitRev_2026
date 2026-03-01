@@ -6,13 +6,17 @@
 
 "use server";
 
+import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { reviewArtifact, undoArtifact, getArtifact } from "@/lib/server/agent/artifacts";
 import { getRunTimeline } from "@/lib/server/agent/events";
+import { getRunLineage } from "@/lib/server/agent/run";
 import { getAutonomyConfig, updateAutonomyConfig } from "@/lib/server/agent/autonomy";
 import { sanitizeErrorMessage } from "@/lib/server/action-utils";
 import { withAuth } from "@/lib/server/auth/session";
 import { prisma } from "@/lib/server/prisma";
+import { cuidSchema, projectIdSchema } from "@/lib/schemas/ids";
+import { artifactReviewStatusSchema, autonomyPresetSchema, toolOverridesSchema } from "@/lib/schemas/agent";
 import type { ArtifactStatus } from "@/types/artifacts";
 import type { AutonomyPreset, AutonomyLevel } from "@/types/agent";
 
@@ -52,6 +56,13 @@ async function assertRunAccess(runId: string, userId: string, workspaceId: strin
  * Review an artifact (accept/reject/edit).
  * Pass `editedPayload` to update the artifact's payload before applying (edit-then-accept).
  */
+const reviewArtifactInput = z.object({
+    artifactId: cuidSchema,
+    status: artifactReviewStatusSchema,
+    reviewNote: z.string().max(10_000).optional(),
+    editedPayload: z.record(z.string(), z.unknown()).optional(),
+});
+
 export async function reviewArtifactAction(
     artifactId: string,
     status: Extract<ArtifactStatus, "accepted" | "rejected" | "edited">,
@@ -59,9 +70,10 @@ export async function reviewArtifactAction(
     editedPayload?: Record<string, unknown>,
 ) {
     try {
+        const v = reviewArtifactInput.parse({ artifactId, status, reviewNote, editedPayload });
         const result = await withAuth(async ({ userId, workspaceId }) => {
-            await assertArtifactAccess(artifactId, userId, workspaceId);
-            return reviewArtifact(artifactId, status, reviewNote, editedPayload);
+            await assertArtifactAccess(v.artifactId, userId, workspaceId);
+            return reviewArtifact(v.artifactId, v.status as Extract<ArtifactStatus, "accepted" | "rejected" | "edited">, v.reviewNote, v.editedPayload);
         });
 
         if (status === "accepted" && result.type === "study_update") {
@@ -86,9 +98,10 @@ export async function reviewArtifactAction(
  */
 export async function undoArtifactAction(artifactId: string) {
     try {
+        const id = cuidSchema.parse(artifactId);
         const result = await withAuth(async ({ userId, workspaceId }) => {
-            await assertArtifactAccess(artifactId, userId, workspaceId);
-            return undoArtifact(artifactId);
+            await assertArtifactAccess(id, userId, workspaceId);
+            return undoArtifact(id);
         });
         return { success: true, artifact: result };
     } catch (error) {
@@ -104,9 +117,10 @@ export async function undoArtifactAction(artifactId: string) {
  */
 export async function getArtifactAction(artifactId: string) {
     try {
+        const id = cuidSchema.parse(artifactId);
         const artifact = await withAuth(async ({ userId, workspaceId }) => {
-            await assertArtifactAccess(artifactId, userId, workspaceId);
-            return getArtifact(artifactId);
+            await assertArtifactAccess(id, userId, workspaceId);
+            return getArtifact(id);
         });
         if (!artifact) return { success: false, error: "Artifact not found" };
         return { success: true, artifact };
@@ -123,9 +137,10 @@ export async function getArtifactAction(artifactId: string) {
  */
 export async function getRunTimelineAction(runId: string) {
     try {
+        const id = cuidSchema.parse(runId);
         const timeline = await withAuth(async ({ userId, workspaceId }) => {
-            await assertRunAccess(runId, userId, workspaceId);
-            return getRunTimeline(runId);
+            await assertRunAccess(id, userId, workspaceId);
+            return getRunTimeline(id);
         });
         return { success: true, timeline };
     } catch (error) {
@@ -137,12 +152,35 @@ export async function getRunTimelineAction(runId: string) {
 }
 
 /**
+ * Get the run lineage tree (root run + delegated child runs) for a run.
+ */
+export async function getRunLineageAction(runId: string) {
+    try {
+        const id = cuidSchema.parse(runId);
+        const lineage = await withAuth(async ({ userId, workspaceId }) => {
+            await assertRunAccess(id, userId, workspaceId);
+            return getRunLineage(id);
+        });
+        if (!lineage) {
+            return { success: false as const, error: "Run not found" };
+        }
+        return { success: true as const, lineage };
+    } catch (error) {
+        return {
+            success: false as const,
+            error: sanitizeErrorMessage(error, "Failed to get run lineage", { allowRawMessage: true }),
+        };
+    }
+}
+
+/**
  * Get current autonomy config
  */
 export async function getAutonomyConfigAction(projectId?: string) {
     try {
+        const id = projectIdSchema.optional().parse(projectId);
         const config = await withAuth(({ userId }) =>
-            getAutonomyConfig(userId, projectId),
+            getAutonomyConfig(userId, id),
         );
         return { success: true as const, config };
     } catch (error) {
@@ -156,14 +194,21 @@ export async function getAutonomyConfigAction(projectId?: string) {
 /**
  * Update autonomy config
  */
+const updateAutonomyInput = z.object({
+    preset: autonomyPresetSchema,
+    toolOverrides: toolOverridesSchema.optional(),
+    projectId: projectIdSchema.optional(),
+});
+
 export async function updateAutonomyAction(
     preset: AutonomyPreset,
     toolOverrides?: Record<string, AutonomyLevel>,
     projectId?: string,
 ) {
     try {
+        const v = updateAutonomyInput.parse({ preset, toolOverrides, projectId });
         const config = await withAuth(({ userId }) =>
-            updateAutonomyConfig(userId, preset, toolOverrides, projectId),
+            updateAutonomyConfig(userId, v.preset as AutonomyPreset, v.toolOverrides as Record<string, AutonomyLevel> | undefined, v.projectId),
         );
         return { success: true as const, config };
     } catch (error) {

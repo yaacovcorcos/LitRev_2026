@@ -36,6 +36,28 @@ All run from `next-app/` except deploy:
   - `ENABLE_SCOPING_MODE` (server normalization fallback)
   - Current default when unset is enabled; set both to `0` to disable.
 
+### DB Deploy Contract (Non-Negotiable)
+
+- For DB incidents (migration errors, Prisma schema drift, runtime `column does not exist`), agents must consult `docs/runbooks/db-ops.md` and use `bash scripts/db-ops.sh <command>` before attempting ad-hoc fixes.
+- If a PR changes `prisma/schema.prisma`, it MUST include a migration folder under `next-app/prisma/migrations/`.
+- Never deploy production app code that references new Prisma columns before migrations are applied.
+- Production builds run `next-app/scripts/migrate-if-prod.sh`, which:
+  - runs `bash scripts/migrate-deploy-safe.sh` in production (pre-repair + deploy + one-shot recovery)
+  - fails the build if migration state is still pending
+- `DIRECT_URL` is mandatory in production (migration path). `DATABASE_URL` is runtime only.
+- Before `vercel --prod`, agents must run from `next-app/`:
+  - `bash scripts/release-gate-prod.sh` (preferred single-command production DB gate)
+  - `bash scripts/migrate-deploy-safe.sh` if doing DB-only remediation outside full release gate
+  - `npx prisma validate`
+  - `npx prisma migrate status`
+  - `npx tsc --noEmit`
+  - `npx vitest run`
+- If production errors include `column does not exist` or `Invalid prisma.* invocation`, treat it as schema drift first and verify migrations before debugging app code.
+- If `prisma migrate deploy` fails with `RunEvent_runId_sequence_key` duplicate errors, do NOT edit applied migrations. Run:
+  - `node scripts/repair-run-event-sequences.mjs`
+  - `npx prisma migrate resolve --rolled-back 20260228180000_add_agent_run_lineage`
+  - `npx prisma migrate deploy`
+
 ## Code Layout
 
 - `app/actions/` — Server actions (backend entry points called from client)

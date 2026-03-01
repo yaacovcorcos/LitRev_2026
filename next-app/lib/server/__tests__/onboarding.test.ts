@@ -111,6 +111,15 @@ describe("onboarding service", () => {
       enabledOverride: false,
       completedAt: "2026-02-20T12:00:00.000Z",
       skippedAt: "2026-02-20T12:00:00.000Z",
+      stepStatuses: {
+        topicQuestion: "pending",
+        pico: "pending",
+        criteria: "pending",
+        strategy: "pending",
+        workflow: "pending",
+        launch: "pending",
+      },
+      derivedProfile: null,
     });
     expect(mockAssertProjectAccess).toHaveBeenCalledWith(SCOPE, PROJECT_ID);
   });
@@ -143,6 +152,15 @@ describe("onboarding service", () => {
       enabledOverride: true,
       completedAt: null,
       skippedAt: null,
+      stepStatuses: {
+        topicQuestion: "pending",
+        pico: "pending",
+        criteria: "pending",
+        strategy: "pending",
+        workflow: "pending",
+        launch: "pending",
+      },
+      derivedProfile: null,
     });
     expect(mockProjectUpdate).toHaveBeenCalledWith({
       where: { id: PROJECT_ID },
@@ -153,6 +171,15 @@ describe("onboarding service", () => {
             enabledOverride: true,
             completedAt: null,
             skippedAt: null,
+            stepStatuses: {
+              topicQuestion: "pending",
+              pico: "pending",
+              criteria: "pending",
+              strategy: "pending",
+              workflow: "pending",
+              launch: "pending",
+            },
+            derivedProfile: null,
           },
         },
       },
@@ -192,5 +219,42 @@ describe("onboarding service", () => {
     const shouldLaunch = await shouldLaunchGuidedSetupForProject(SCOPE, PROJECT_ID);
 
     expect(shouldLaunch).toBe(false);
+  });
+
+  it("parses persisted step statuses and derived profile", async () => {
+    mockProjectFindUnique.mockResolvedValue({
+      progress: {
+        onboarding: {
+          enabledOverride: null,
+          completedAt: null,
+          skippedAt: null,
+          stepStatuses: {
+            topicQuestion: "completed",
+            pico: "completed",
+            criteria: "pending",
+            strategy: "skipped",
+            workflow: "pending",
+            launch: "pending",
+          },
+          derivedProfile: {
+            strictness: "moderate",
+            timelinePressure: "medium",
+            recallVsPrecision: "balanced",
+            evidenceDepth: "standard",
+          },
+        },
+      },
+    });
+
+    const state = await getProjectOnboardingState(SCOPE, PROJECT_ID);
+
+    expect(state.stepStatuses.topicQuestion).toBe("completed");
+    expect(state.stepStatuses.strategy).toBe("skipped");
+    expect(state.derivedProfile).toEqual({
+      strictness: "moderate",
+      timelinePressure: "medium",
+      recallVsPrecision: "balanced",
+      evidenceDepth: "standard",
+    });
   });
 });

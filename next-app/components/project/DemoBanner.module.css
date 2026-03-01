@@ -64,7 +64,7 @@
 
 .linkBtn:hover {
   color: var(--text-primary);
-  background: rgba(0, 0, 0, 0.04);
+  background: rgba(var(--rgb-ui-contrast), 0.04);
 }
 
 .linkBtnDanger:hover {

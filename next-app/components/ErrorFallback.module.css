@@ -37,7 +37,7 @@
   border: 1px solid var(--accent-border);
   border-radius: var(--radius-md);
   background: var(--accent-primary);
-  color: white;
+  color: var(--color-white);
   font-size: 13px;
   line-height: 1;
   font-weight: 600;

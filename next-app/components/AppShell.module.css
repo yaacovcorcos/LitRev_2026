@@ -13,8 +13,8 @@
     min-height: calc(100vh - var(--header-height, 44px));
     height: auto;
     overflow: hidden;
-    background: radial-gradient(circle at top right, rgba(194, 120, 101, 0.08), transparent 40%),
-        radial-gradient(circle at bottom left, rgba(118, 140, 123, 0.08), transparent 40%);
+    background: radial-gradient(circle at top right, rgba(var(--rgb-accent-primary-soft), 0.08), transparent 40%),
+        radial-gradient(circle at bottom left, rgba(var(--rgb-accent-secondary), 0.08), transparent 40%);
 }
 
 .mainContentNoPad {

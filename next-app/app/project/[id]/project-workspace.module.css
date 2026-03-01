@@ -36,9 +36,9 @@
 
 .statCard:hover {
     transform: translateY(-4px);
-    border-color: rgba(129, 140, 248, 0.5);
+    border-color: rgba(var(--rgb-indigo), 0.5);
     /* stylelint-disable-next-line declaration-property-value-disallowed-list */
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 12px 40px rgba(var(--rgb-ui-scrim), 0.2);
 }
 
 .statCardLink {
@@ -98,21 +98,28 @@
     text-decoration: none;
     color: inherit;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    height: 240px;
+    min-height: 240px;
     cursor: pointer;
 }
 
 .workstationCard:hover {
     transform: translateY(-4px);
-    border-color: rgba(129, 140, 248, 0.5);
+    border-color: rgba(var(--rgb-indigo), 0.5);
     /* stylelint-disable-next-line declaration-property-value-disallowed-list */
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 12px 40px rgba(var(--rgb-ui-scrim), 0.2);
 }
 
 .workstationCard:hover .workstationIconCircle {
     transform: scale(1.1);
     /* stylelint-disable-next-line declaration-property-value-disallowed-list */
-    box-shadow: 0 8px 24px rgba(217, 116, 89, 0.3);
+    box-shadow: 0 8px 24px rgba(var(--rgb-accent-primary), 0.3);
+}
+
+.workstationHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
 }
 
 .workstationIconCircle {
@@ -120,14 +127,14 @@
     height: 56px;
     border-radius: 16px;
     background: var(--accent-primary);
-    color: white;
+    color: var(--color-white);
     display: flex;
     align-items: center;
     justify-content: center;
-    margin-bottom: 20px;
+    flex-shrink: 0;
     transition: all 0.3s ease;
     /* stylelint-disable-next-line declaration-property-value-disallowed-list */
-    box-shadow: 0 4px 12px rgba(217, 116, 89, 0.25);
+    box-shadow: 0 4px 12px rgba(var(--rgb-accent-primary), 0.25);
 }
 
 .workstationIconCircle .material-icons-round {
@@ -162,13 +169,12 @@
     margin: 0;
 }
 
-.workstationPreview {
-    margin-top: 16px;
-    padding: 12px;
-    background: rgba(129, 140, 248, 0.08);
-    border: 1px solid rgba(129, 140, 248, 0.15);
-    border-radius: var(--radius-sm);
-    font-size: 13px;
+.workstationBadge {
+    padding: 4px 10px;
+    background: rgba(var(--rgb-indigo), 0.08);
+    border: 1px solid rgba(var(--rgb-indigo), 0.15);
+    border-radius: var(--radius-full, 999px);
+    font-size: 11px;
     color: var(--text-secondary);
 }
 
@@ -179,7 +185,7 @@
 }
 
 .previewItem .material-icons-round {
-    font-size: 16px;
+    font-size: 14px;
     color: var(--accent-secondary);
 }
 
@@ -192,7 +198,7 @@
 .previewProgressBar {
     flex: 1;
     height: 6px;
-    background: rgba(0, 0, 0, 0.08);
+    background: rgba(var(--rgb-ui-contrast), 0.08);
     border-radius: 3px;
     overflow: hidden;
 }
@@ -229,7 +235,7 @@
     gap: 6px;
     margin-top: auto;
     padding: 8px 16px;
-    background: rgba(255, 255, 255, 0.5);
+    background: rgba(var(--rgb-ui-surface), 0.5);
     border: 1px solid var(--glass-border);
     color: var(--accent-primary);
     border-radius: var(--radius-md);
@@ -242,12 +248,12 @@
 }
 
 .workstationAction:hover {
-    background: rgba(255, 255, 255, 0.9);
+    background: rgba(var(--rgb-ui-surface), 0.9);
     color: var(--accent-primary);
     border-color: var(--accent-primary);
     transform: translateY(-2px);
     /* stylelint-disable-next-line declaration-property-value-disallowed-list */
-    box-shadow: 0 6px 16px rgba(217, 116, 89, 0.15);
+    box-shadow: 0 6px 16px rgba(var(--rgb-accent-primary), 0.15);
 }
 
 /* Info Panels Row */
@@ -356,7 +362,7 @@
 }
 
 .deleteBtn:hover {
-    background: rgba(192, 57, 43, 0.08);
+    background: rgba(var(--rgb-color-danger), 0.08);
     color: var(--color-danger);
 }
 

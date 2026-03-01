@@ -7,6 +7,7 @@ import {
   type MigrationStatus,
 } from "@/lib/migrateLocalStorage";
 import { authClient } from "@/lib/auth-client";
+import { isAuthError, redirectToLogin } from "@/lib/action-client";
 import { Project } from "@/types/project";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 
@@ -43,6 +44,8 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       const result = await listProjectsAction();
       if (result.success) {
         setProjects(result.data);
+      } else if (isAuthError(result)) {
+        redirectToLogin();
       } else {
         console.error("Failed to load projects from backend:", result.error);
       }

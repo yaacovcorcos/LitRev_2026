@@ -62,7 +62,7 @@
 }
 
 .copyBtn:hover {
-  background: rgba(255, 255, 255, 0.8);
+  background: rgba(var(--rgb-ui-surface), 0.8);
   color: var(--accent-primary);
 }
 

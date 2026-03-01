@@ -64,7 +64,10 @@ const checks = [
           'UserMemory_userId_pinned_idx',
           'ProjectMemory_projectId_pinned_idx',
           'StudyMemory_projectId_pinned_idx',
-          'MemoryEmbedding_embedding_hnsw_idx'
+          'MemoryEmbedding_embedding_hnsw_idx',
+          'AgentRun_parentRunId_startedAt_idx',
+          'AgentRun_rootRunId_startedAt_idx',
+          'AgentRun_conversationId_startedAt_idx'
         )
       ORDER BY indexname;
     `,

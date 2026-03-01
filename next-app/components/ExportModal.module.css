@@ -1,7 +1,7 @@
 .overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(var(--rgb-ui-scrim), 0.5);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -27,7 +27,7 @@
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-lg);
   /* stylelint-disable-next-line declaration-property-value-disallowed-list */
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 20px 60px rgba(var(--rgb-ui-scrim), 0.3);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -77,7 +77,7 @@
 }
 
 .closeBtn:hover {
-  background: rgba(0, 0, 0, 0.05);
+  background: rgba(var(--rgb-ui-contrast), 0.05);
   color: var(--text-primary);
 }
 
@@ -101,7 +101,7 @@
   width: 100%;
   padding: 14px 20px;
   background: var(--accent-primary);
-  color: white;
+  color: var(--color-white);
   border: none;
   border-radius: var(--radius-md);
   font-size: 15px;
@@ -114,7 +114,7 @@
   background: var(--accent-primary-hover);
   transform: translateY(-1px);
   /* stylelint-disable-next-line declaration-property-value-disallowed-list */
-  box-shadow: 0 4px 12px rgba(217, 116, 89, 0.3);
+  box-shadow: 0 4px 12px rgba(var(--rgb-accent-primary), 0.3);
 }
 
 .statusBox {
@@ -156,7 +156,7 @@
   width: 100%;
   max-width: 200px;
   height: 4px;
-  background: rgba(0, 0, 0, 0.1);
+  background: rgba(var(--rgb-ui-contrast), 0.1);
   border-radius: 2px;
   overflow: hidden;
 }
@@ -184,7 +184,7 @@
 
 .retryBtn {
   padding: 10px 20px;
-  background: rgba(220, 53, 69, 0.1);
+  background: rgba(var(--rgb-legacy-red-bootstrap), 0.1);
   color: var(--color-danger);
   border: 1px solid var(--color-danger-border);
   border-radius: var(--radius-md);
@@ -195,7 +195,7 @@
 }
 
 .retryBtn:hover {
-  background: rgba(220, 53, 69, 0.2);
+  background: rgba(var(--rgb-legacy-red-bootstrap), 0.2);
 }
 
 .successBox {
@@ -211,7 +211,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(40, 167, 69, 0.1);
+  background: rgba(var(--rgb-legacy-green-bootstrap), 0.1);
   border-radius: 50%;
 }
 
@@ -232,7 +232,7 @@
   align-items: center;
   gap: 12px;
   padding: 16px;
-  background: rgba(255, 255, 255, 0.5);
+  background: rgba(var(--rgb-ui-surface), 0.5);
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-md);
 }
@@ -269,7 +269,7 @@
   gap: 6px;
   padding: 8px 16px;
   background: var(--accent-primary);
-  color: white;
+  color: var(--color-white);
   border: none;
   border-radius: var(--radius-sm);
   font-size: 13px;
@@ -315,7 +315,7 @@
   flex: 1;
   min-width: 0;
   padding: 10px 12px;
-  background: rgba(255, 255, 255, 0.5);
+  background: rgba(var(--rgb-ui-surface), 0.5);
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-sm);
   font-size: 13px;
@@ -327,7 +327,7 @@
   align-items: center;
   gap: 6px;
   padding: 10px 14px;
-  background: rgba(255, 255, 255, 0.5);
+  background: rgba(var(--rgb-ui-surface), 0.5);
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-sm);
   font-size: 13px;
@@ -339,7 +339,7 @@
 }
 
 .copyBtn:hover {
-  background: rgba(255, 255, 255, 0.8);
+  background: rgba(var(--rgb-ui-surface), 0.8);
   border-color: var(--accent-primary);
 }
 
@@ -393,7 +393,7 @@
   align-items: center;
   gap: 12px;
   padding: 12px;
-  background: rgba(255, 255, 255, 0.3);
+  background: rgba(var(--rgb-ui-surface), 0.3);
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-sm);
 }
@@ -441,7 +441,7 @@
 }
 
 .historyBtn:hover {
-  background: rgba(0, 0, 0, 0.05);
+  background: rgba(var(--rgb-ui-contrast), 0.05);
   color: var(--accent-primary);
 }
 
@@ -451,7 +451,7 @@
 
 .historyDeleteBtn:hover {
   color: var(--color-danger);
-  background: rgba(220, 53, 69, 0.1);
+  background: rgba(var(--rgb-legacy-red-bootstrap), 0.1);
 }
 
 .noHistory {
