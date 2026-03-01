@@ -51,6 +51,21 @@ Implement or extend LitRev user-facing workflows in the Next.js app using existi
    - Hide controls with unavailable behavior, or disable with explicit explanation text.
 5. If suggestion chips/buttons are rendered, they must either send immediately or prefill via `prefill` + `onPrefillConsumed`.
 6. Validate responsive behavior on desktop and mobile.
+7. Use semantic interactive elements:
+   - Use `<button>` for actions.
+   - Use `<a>`/`<Link>` for navigation (avoid clickable `div`/`span` patterns).
+8. Form UX baseline:
+   - Inputs need visible labels or `aria-label`.
+   - Use appropriate input types and autocomplete where relevant.
+   - Show inline validation errors and focus first invalid field on submit.
+9. Motion and focus quality:
+   - Honor `prefers-reduced-motion`.
+   - Avoid `transition: all`; scope transitions to explicit properties.
+   - Never remove outlines/focus styles without an accessible replacement.
+10. Safety and consistency checks:
+   - Destructive actions require confirmation or undo affordance.
+   - Use `Intl.DateTimeFormat`/`Intl.NumberFormat` for user-facing date/number formatting.
+   - For content images, include explicit dimensions; lazy-load non-critical images.
 
 ## Required artifacts
 
@@ -64,8 +79,9 @@ Implement or extend LitRev user-facing workflows in the Next.js app using existi
 2. Confirm existing server action/service contracts before changing UI wiring.
 3. Reuse existing primitives in `components/ui/` and token variables from `styles/tokens.css`.
 4. Implement UI updates with embedded-shell and suggestion-button constraints where relevant.
-5. Add or update tests for meaningful behavior changes.
-6. Run validation commands from `next-app/` (below).
+5. Run a final UI audit pass for semantic controls, form labeling, motion/focus, and destructive-action safeguards.
+6. Add or update tests for meaningful behavior changes.
+7. Run validation commands from `next-app/` (below).
 
 ## Verification
 
