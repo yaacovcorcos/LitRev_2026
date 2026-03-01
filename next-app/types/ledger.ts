@@ -12,6 +12,20 @@ export type StudyType =
 
 export type StudySource = "manual" | "pdf-import" | "pubmed" | "semantic-scholar" | "copilot";
 export type ScreeningTier = "deterministic" | "ai" | "heuristic" | "default";
+export type RelevanceBand = "high" | "moderate" | "low";
+
+export type StudyRelevance = {
+  score: number; // 0-100
+  band: RelevanceBand;
+  rationale: string;
+  components?: {
+    protocolFit?: number;
+    designFit?: number;
+    outcomeDirectness?: number;
+    applicability?: number;
+    completeness?: number;
+  };
+};
 
 /**
  * Triage decision for screening workflow.
@@ -56,6 +70,7 @@ export type StudyDetails = {
   // AI features
   aiSummary?: string;
   qualityRationale?: string;
+  relevance?: StudyRelevance;
   deepAnalysisComplete?: boolean;
 
   // Source tracking

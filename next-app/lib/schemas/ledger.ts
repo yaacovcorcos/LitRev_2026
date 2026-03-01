@@ -3,9 +3,28 @@ import { cuidSchema } from "./ids";
 
 export const studyStatusSchema = z.enum(["pending", "extracted", "active", "excluded"]);
 export const qualitySchema = z.enum(["High", "Medium", "Low", "-"]);
+export const relevanceBandSchema = z.enum(["high", "moderate", "low"]);
+export const studyRelevanceSchema = z.object({
+    score: z.number().min(0).max(100),
+    band: relevanceBandSchema,
+    rationale: z.string().min(1).max(5000),
+    components: z
+        .object({
+            protocolFit: z.number().min(0).max(100).optional(),
+            designFit: z.number().min(0).max(100).optional(),
+            outcomeDirectness: z.number().min(0).max(100).optional(),
+            applicability: z.number().min(0).max(100).optional(),
+            completeness: z.number().min(0).max(100).optional(),
+        })
+        .optional(),
+});
 
 /** StudyDetails is extensible with [key: string]: unknown */
-export const studyDetailsSchema = z.record(z.string(), z.unknown());
+export const studyDetailsSchema = z
+    .object({
+        relevance: studyRelevanceSchema.optional(),
+    })
+    .catchall(z.unknown());
 
 export const studySchema = z.object({
     id: cuidSchema,

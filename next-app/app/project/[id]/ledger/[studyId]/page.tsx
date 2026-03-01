@@ -17,7 +17,7 @@ import { extractStudyFromPdfAction, deepAnalyzeStudyAction } from "@/app/actions
 import { getDraftAction } from "@/app/actions/drafts";
 import { DRAFT_SECTIONS, DraftSectionId } from "@/types/draft";
 import { loadDraftState, DraftState } from "@/lib/draftStorage";
-import type { Study, StudyDetails } from "@/types/ledger";
+import type { Study, StudyDetails, StudyRelevance } from "@/types/ledger";
 import type { FileAsset } from "@/types/files";
 import { AlertDialog } from "@/components/ConfirmDialog";
 import { compileDraftCitations, getCitedSectionIdsByStudyId } from "@/lib/citation-compiler";
@@ -32,6 +32,14 @@ for (const section of DRAFT_SECTIONS) {
 type DraftBacklink = {
     sectionId: DraftSectionId;
     label: string;
+};
+
+const RELEVANCE_COMPONENT_LABELS: Record<keyof NonNullable<StudyRelevance["components"]>, string> = {
+    protocolFit: "Protocol Fit",
+    designFit: "Design Fit",
+    outcomeDirectness: "Outcome Directness",
+    applicability: "Applicability",
+    completeness: "Completeness",
 };
 
 export default function StudyDetailPage() {
@@ -260,6 +268,53 @@ export default function StudyDetailPage() {
     };
 
     const d: StudyDetails = study?.details ?? {};
+    const editRelevance = ((editForm.details as StudyDetails | undefined)?.relevance as StudyRelevance | undefined) ?? undefined;
+    const relevance = (d.relevance as StudyRelevance | undefined) ?? undefined;
+    const relevanceBandLabel = relevance ? relevance.band.charAt(0).toUpperCase() + relevance.band.slice(1) : "Not scored";
+    const updateEditRelevance = (patch: Partial<StudyRelevance>) => {
+        setEditForm((prev) => {
+            const details = (prev.details as StudyDetails) ?? {};
+            const base: StudyRelevance = (details.relevance as StudyRelevance | undefined) ?? {
+                score: 50,
+                band: "moderate",
+                rationale: "Needs assessment.",
+            };
+            return {
+                ...prev,
+                details: {
+                    ...details,
+                    relevance: {
+                        ...base,
+                        ...patch,
+                    },
+                },
+            };
+        });
+    };
+    const updateEditRelevanceComponent = (
+        key: keyof NonNullable<StudyRelevance["components"]>,
+        value: number | undefined
+    ) => {
+        setEditForm((prev) => {
+            const details = (prev.details as StudyDetails) ?? {};
+            const base: StudyRelevance = (details.relevance as StudyRelevance | undefined) ?? {
+                score: 50,
+                band: "moderate",
+                rationale: "Needs assessment.",
+            };
+            const components = { ...(base.components ?? {}), [key]: value };
+            return {
+                ...prev,
+                details: {
+                    ...details,
+                    relevance: {
+                        ...base,
+                        components,
+                    },
+                },
+            };
+        });
+    };
     const pdfFile = useMemo(() => studyFiles.find((f) => f.mimeType === "application/pdf"), [studyFiles]);
 
     if (isLoadingProjects) {
@@ -390,6 +445,9 @@ export default function StudyDetailPage() {
                                 </span>
                                 <span className={`${styles.qualityBadge} ${study.quality === "High" ? styles.qualityHigh : study.quality === "Medium" ? styles.qualityMedium : ""}`}>
                                     Quality: {study.quality}
+                                </span>
+                                <span className={`${styles.relevanceBadge} ${relevance?.band === "high" ? styles.relevanceHigh : relevance?.band === "moderate" ? styles.relevanceModerate : relevance?.band === "low" ? styles.relevanceLow : ""}`}>
+                                    Relevance: {relevance ? `${relevanceBandLabel}${typeof relevance.score === "number" ? ` (${relevance.score})` : ""}` : "Not scored"}
                                 </span>
                             </div>
 
@@ -605,6 +663,94 @@ export default function StudyDetailPage() {
                                 )}
                                 {d.qualityRationale && (
                                     <p className={styles.qualityRationale}>{d.qualityRationale}</p>
+                                )}
+                            </section>
+
+                            <section className={styles.section}>
+                                <h2 className={styles.sectionTitle}>
+                                    <span className="material-icons-round">insights</span>
+                                    Relevance Assessment
+                                </h2>
+                                {isEditing ? (
+                                    <div className={styles.relevanceEditor}>
+                                        <label className={styles.relevanceField}>
+                                            <span>Score (0-100)</span>
+                                            <input
+                                                type="number"
+                                                min={0}
+                                                max={100}
+                                                value={editRelevance?.score ?? ""}
+                                                onChange={(e) =>
+                                                    updateEditRelevance({
+                                                        score: Number.isFinite(e.target.valueAsNumber)
+                                                            ? Math.max(0, Math.min(100, e.target.valueAsNumber))
+                                                            : 0,
+                                                    })
+                                                }
+                                            />
+                                        </label>
+                                        <label className={styles.relevanceField}>
+                                            <span>Band</span>
+                                            <select
+                                                value={editRelevance?.band ?? "moderate"}
+                                                onChange={(e) => updateEditRelevance({ band: e.target.value as StudyRelevance["band"] })}
+                                            >
+                                                <option value="high">High</option>
+                                                <option value="moderate">Moderate</option>
+                                                <option value="low">Low</option>
+                                            </select>
+                                        </label>
+                                        <label className={styles.relevanceField}>
+                                            <span>Rationale</span>
+                                            <textarea
+                                                rows={4}
+                                                value={editRelevance?.rationale ?? ""}
+                                                onChange={(e) => updateEditRelevance({ rationale: e.target.value })}
+                                                placeholder="Short justification for relevance score"
+                                            />
+                                        </label>
+                                        <div className={styles.relevanceComponents}>
+                                            {Object.entries(RELEVANCE_COMPONENT_LABELS).map(([key, label]) => (
+                                                <label key={key} className={styles.relevanceField}>
+                                                    <span>{label}</span>
+                                                    <input
+                                                        type="number"
+                                                        min={0}
+                                                        max={100}
+                                                        value={editRelevance?.components?.[key as keyof NonNullable<StudyRelevance["components"]>] ?? ""}
+                                                        onChange={(e) =>
+                                                            updateEditRelevanceComponent(
+                                                                key as keyof NonNullable<StudyRelevance["components"]>,
+                                                                Number.isFinite(e.target.valueAsNumber)
+                                                                    ? Math.max(0, Math.min(100, e.target.valueAsNumber))
+                                                                    : undefined
+                                                            )
+                                                        }
+                                                    />
+                                                </label>
+                                            ))}
+                                        </div>
+                                    </div>
+                                ) : relevance ? (
+                                    <div className={styles.relevanceDisplay}>
+                                        <span className={`${styles.relevanceBadgeLarge} ${relevance.band === "high" ? styles.relevanceHigh : relevance.band === "moderate" ? styles.relevanceModerate : styles.relevanceLow}`}>
+                                            {relevanceBandLabel} {typeof relevance.score === "number" ? `(${relevance.score})` : ""}
+                                        </span>
+                                        <p className={styles.relevanceRationale}>{relevance.rationale}</p>
+                                        {relevance.components && (
+                                            <div className={styles.relevanceComponentsReadOnly}>
+                                                {Object.entries(relevance.components).map(([key, value]) =>
+                                                    typeof value === "number" ? (
+                                                        <span key={key} className={styles.relevanceComponentChip}>
+                                                            {RELEVANCE_COMPONENT_LABELS[key as keyof NonNullable<StudyRelevance["components"]>]}: {value}
+                                                        </span>
+                                                    ) : null
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <p className={styles.emptyText}>No relevance score available.</p>
                                 )}
                             </section>
 
