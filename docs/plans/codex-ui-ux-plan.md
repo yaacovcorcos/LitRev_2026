@@ -215,6 +215,8 @@ Open-source or source-available platforms (adapt implementation patterns):
   Adapt: explicit manuscript states, review checkpoints, and publish-ready metadata validation gates.
 - **Fidus Writer (open-source):** Academic collaborative editor with citation/document focus.  
   Adapt: semantic document structure (sections/figures/references) and collaboration-safe rich-text operations.
+- **Quarto (open-source):** Technical/scientific publishing system with native citations and multi-format rendering.  
+  Adapt: single-source document model + citation-aware export adapters (HTML/PDF/Word) with consistent output semantics.
 
 Closed-source platforms (product ideas only; no code copying):
 - **Overleaf cloud (commercial):** Polished realtime academic authoring UX around templates, references, and submission formats.  
