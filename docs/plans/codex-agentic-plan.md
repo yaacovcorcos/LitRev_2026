@@ -237,6 +237,29 @@ Where I will align with Claude:
 - [ ] `CAG-D04` Full command palette orchestration UI after run-board model is stable.
 - [ ] `CAG-D05` Cross-provider arbitration agent for disagreement handling.
 
+### External Benchmark Corpus (Validated 2026-03-01)
+Use this as a pattern bank for `CAG-006`..`CAG-012` and `CAG-021`.
+
+Open-source, high-fit benchmarks (add to active comparative evaluations first):
+- **prismAId** (`open-and-sustainable/prismaid`): End-to-end protocol/search/screening/review workflow with LLM utilities; closest open-source workflow analog to LitRev.
+- **ASReview** (`asreview/asreview`): Active-learning screening loop and ranking UX; strongest benchmark for `CAG-D01`.
+- **AiReview** (`ielab/ai-review`): LLM-assisted title/abstract screening pipeline patterns.
+- **ReviewAid** (`aurumz-rgb/ReviewAid`): Full-text screening and extraction-oriented workflow patterns.
+- **Colandr (front/back)** (`datakind/permanent-colandr-*`): Older but useful ML-assisted web workflow for screening and dedup process design.
+
+Open-source, adjacent enablers (not full product analogs):
+- **OpenAlex** (open API + CC0 data): Discovery/enrichment backbone for `CAG-007`.
+- **GROBID** (`kermitt2/grobid`): PDF scholarly parsing and reference extraction patterns for import quality.
+- **Hypothesis** (`hypothesis/h`): Annotation data model and collaboration semantics.
+
+Closed-source idea sources (product UX only, no code adaptation):
+- **SciSpace/Typeset**: Agentic review UX and extraction-oriented affordances.
+- **Elicit / ResearchRabbit / Litmaps / Connected Papers / Scite**: Discovery, citation-graph exploration, and evidence UX patterns.
+
+Validation notes:
+- `manuscripts-article-editor` is source-available but **CPAL-1.0** (not Apache), so treat as design reference only unless license review approves.
+- `pubpub/platform` is currently **GPL-2.0** in repo metadata; treat as GPL reference, not permissive-license implementation source.
+
 ## Execution Notes
 - Keep PRs narrow: one `CAG-*` item or a tightly coupled pair.
 - For any UI-visible behavior change under `app/project/[id]/...`, preserve shell embedding contract (`isEmbeddedInProjectShell`).
