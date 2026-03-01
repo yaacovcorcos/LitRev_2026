@@ -1,77 +1,87 @@
 ---
 name: frontend-ui-integration
-description: Implement or extend a user-facing workflow in a web application, integrating with existing backend APIs. Use when the feature is primarily a UI/UX change backed by existing APIs, affects only the web frontend, and requires following design system, routing, and testing conventions.
+description: Implement or extend LitRev frontend workflows in next-app/ using existing server actions/services while following project UI contracts, token-first styling, accessibility rules, and Vitest/typecheck gates.
 ---
-# Skill: Frontend UI integration
+# Skill: Frontend UI Integration (LitRev 2026)
 
 ## Purpose
 
-Implement or extend a user-facing workflow in our primary web application, integrating with **existing backend APIs** and following our **design system, routing, and testing conventions**.
+Implement or extend LitRev user-facing workflows in the Next.js app using existing backend contracts and project conventions.
 
 ## When to use this skill
 
-- The feature is primarily a **UI/UX change** backed by one or more existing APIs.
-- The backend contracts, auth model, and core business rules **already exist**.
-- The change affects **only** the web frontend (no schema or service ownership changes).
+- The change is primarily UI/UX in `next-app/`.
+- Existing server actions/services already support the feature, or only additive wiring is needed.
+- No Prisma schema or migration work is required.
 
 ## Inputs
 
-- **Feature description**: short narrative of the user flow and outcomes.
-- **Relevant APIs**: endpoints, request/response types, and links to source definitions.
-- **Target routes/components**: paths, component names, or feature modules.
-- **Design references**: Figma links or existing screens to mirror.
-- **Guardrails**: performance limits, accessibility requirements, and any security constraints.
+- Feature description and user flow.
+- Target route/component paths (for example `app/project/[id]/...`, `components/...`).
+- Related server entrypoints (`app/actions/...`) and service files (`lib/server/...`) if applicable.
+- Design references and behavior requirements.
 
 ## Out of scope
 
-- Creating new backend services or changing persistent data models.
-- Modifying authentication/authorization flows.
-- Introducing new frontend frameworks or design systems.
+- Prisma schema changes or migrations.
+- Deploy-only work.
+- Introducing a new UI framework, styling system, or component library.
 
-## Conventions
+## Repo conventions (required)
 
-- **Framework**: React with TypeScript.
-- **Routing**: use the existing router and route layout patterns.
-- **Styling**: use the in-house design system components (Buttons, Inputs, Modals, Toasts, etc.).
-- **State management**: prefer the existing state libraries (e.g., React Query, Redux, Zustand) and follow established patterns.
+- App root is `next-app/` (not repo root).
+- `@/` alias resolves to `next-app/`.
+- Prefer shared primitives in `next-app/components/ui/` before creating one-off controls.
+- Use token-first styling from `next-app/styles/tokens.css`; avoid hardcoded palette values unless intentionally local and reviewed.
+- Respect route-level architecture:
+  - `next-app/app/actions/` for server actions.
+  - `next-app/lib/server/` for backend service logic.
+  - `next-app/lib/` for shared pure logic.
+- For pages under `next-app/app/project/[id]/...`, respect `isEmbeddedInProjectShell` and avoid nested shell duplication.
 
 ## Required behavior
 
-1. Implement the UI changes with **strong typing** for all props and API responses.
-2. Handle loading, empty, error, and success states using existing primitives.
-3. Ensure the UI is **keyboard accessible** and screen-reader friendly.
-4. Respect feature flags and rollout mechanisms where applicable.
+1. Keep strong TypeScript typing for props, derived state, and server payloads.
+2. Handle loading, empty, error, and success states with existing UI patterns.
+3. Ensure accessibility baseline:
+   - Icon-only buttons include `aria-label`.
+   - Keyboard navigation remains intact.
+   - Focus styles are preserved (or replaced accessibly).
+4. No visible no-op controls:
+   - Hide controls with unavailable behavior, or disable with explicit explanation text.
+5. If suggestion chips/buttons are rendered, they must either send immediately or prefill via `prefill` + `onPrefillConsumed`.
+6. Validate responsive behavior on desktop and mobile.
 
 ## Required artifacts
 
-- Updated components and hooks in the appropriate feature module.
-- **Unit tests** for core presentation logic.
-- **Integration or component tests** for the new flow (e.g., React Testing Library, Cypress, Playwright) where the repo already uses them.
-- Minimal **CHANGELOG or PR description text** summarizing the behavior change (to be placed in the PR, not this file).
+- Updated route/components/hooks in appropriate `next-app/` modules.
+- Updated/added Vitest tests for changed behavior when UI behavior is meaningfully changed.
+- Focused diffs: avoid unrelated file edits.
 
 ## Implementation checklist
 
-1. Locate the relevant feature module and existing components.
-2. Confirm the backend APIs and types, updating shared TypeScript types if needed.
-3. Implement the UI, wiring in API calls via the existing data layer.
-4. Add or update tests to cover the new behavior and edge cases.
-5. Run the required validation commands (see below).
+1. Map the request to route-level and shared component files in `next-app/`.
+2. Confirm existing server action/service contracts before changing UI wiring.
+3. Reuse existing primitives in `components/ui/` and token variables from `styles/tokens.css`.
+4. Implement UI updates with embedded-shell and suggestion-button constraints where relevant.
+5. Add or update tests for meaningful behavior changes.
+6. Run validation commands from `next-app/` (below).
 
 ## Verification
 
-Run the following (adjust commands to match the project):
+Run from `next-app/`:
 
-- `pnpm lint`
-- `pnpm test -- --runInBand --watch=false`
-- `pnpm typecheck` (if configured separately)
+- `npx tsc --noEmit`
+- `npx vitest run`
 
 The skill is complete when:
 
-- All tests, linters, and type checks pass.
-- The new UI behaves as specified across normal, error, and boundary cases.
-- No unrelated files or modules are modified.
+- Typecheck and tests pass.
+- UI behavior matches requirements across normal, error, and boundary states.
+- Accessibility and responsive checks pass.
+- Only intended files are changed.
 
 ## Safety and escalation
 
-- If the requested change requires backend contract changes, **stop** and request a backend-focused task instead.
-- If design references conflict with existing accessibility standards, favor accessibility and highlight the discrepancy in the PR description.
+- If the change requires Prisma schema/migration work, split into a separate DB-scoped task and follow `docs/runbooks/db-ops.md`.
+- If product behavior expectations conflict with `AGENTS.md` UI delivery contract, follow the contract and explicitly call out the conflict.
