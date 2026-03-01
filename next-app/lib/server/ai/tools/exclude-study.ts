@@ -74,12 +74,14 @@ export const excludeStudyTool: AITool = {
             return {
                 callId: "",
                 result: {
+                    studyId: study.id,
                     title: study.title,
                     authors: study.authors || "Unknown",
                     year: study.year || 0,
                     source: "exclusion",
                     recommendation: "exclude" as const,
                     confidence: 1.0,
+                    screeningTier: "deterministic" as const,
                     matchRationale: reason,
                     doi: (details.doi as string) || undefined,
                     pmid: (details.pmid as string) || undefined,

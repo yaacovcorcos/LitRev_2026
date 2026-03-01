@@ -2,10 +2,14 @@ import { z } from "zod";
 import type { AITool, ToolExecutionContext } from "./base";
 import { prisma } from "@/lib/server/prisma";
 import { ensureProtocol } from "@/lib/server/protocols";
-import type { ProtocolData } from "@/types/protocol";
+import { safeParseJson } from "@/lib/server/ai/json-repair";
+import { isHighConfidenceExclusion } from "@/lib/criteriaMatching";
+import { isTieredScreeningEnabled } from "@/lib/agent/feature-flags";
+import type { ScreeningTier, Study } from "@/types/ledger";
 
 const MAX_BATCH_SIZE = 20;
 const SCREENING_MODEL = "grok-4-1-fast";
+const LOW_CONFIDENCE_THRESHOLD = 0.3;
 
 const inputSchema = z.object({
     studyIds: z.array(z.string()).optional(),
@@ -17,12 +21,15 @@ const inputSchema = z.object({
  */
 const outputSchema = z.object({
     studies: z.array(z.object({
+        studyId: z.string().optional(),
         title: z.string(),
         authors: z.string(),
         year: z.number(),
         source: z.string(),
         recommendation: z.enum(["keep", "exclude", "maybe"]),
         confidence: z.number().min(0).max(1),
+        screeningTier: z.enum(["deterministic", "ai", "heuristic", "default"]).optional(),
+        modelUsed: z.string().optional(),
         matchRationale: z.string().optional(),
     }).passthrough()),
     summary: z.object({
@@ -34,13 +41,62 @@ const outputSchema = z.object({
 });
 
 interface ScreeningResult {
+    studyId?: string;
     title: string;
     authors: string;
     year: number;
     source: string;
     recommendation: "keep" | "exclude" | "maybe";
     confidence: number;
+    screeningTier: ScreeningTier;
+    modelUsed?: string;
     matchRationale: string;
+}
+
+type ParsedScreeningDecision = {
+    decision: "keep" | "exclude" | "maybe";
+    reason: string;
+    confidence: number;
+};
+
+function cleanJsonPayload(content: string): string {
+    return content
+        .trim()
+        .replace(/^```(?:json)?\s*/i, "")
+        .replace(/\s*```$/i, "");
+}
+
+function normalizeParsedDecision(parsed: unknown): ParsedScreeningDecision | null {
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+
+    const record = parsed as Record<string, unknown>;
+    const rawDecision = typeof record.decision === "string" ? record.decision.toLowerCase() : "";
+    const decision: ParsedScreeningDecision["decision"] =
+        rawDecision === "keep" || rawDecision === "exclude" || rawDecision === "maybe"
+            ? rawDecision
+            : "maybe";
+
+    const reason = typeof record.reason === "string" && record.reason.trim().length > 0
+        ? record.reason.trim()
+        : "Unable to determine";
+
+    const confidence = typeof record.confidence === "number"
+        ? Math.min(1, Math.max(0, record.confidence))
+        : 0.5;
+
+    return { decision, reason, confidence };
+}
+
+function applyLowConfidenceSafety(result: ParsedScreeningDecision): ParsedScreeningDecision {
+    if (result.confidence >= LOW_CONFIDENCE_THRESHOLD || result.decision === "maybe") {
+        return result;
+    }
+
+    return {
+        decision: "maybe",
+        reason: `${result.reason} [low confidence — flagged for manual review]`,
+        confidence: result.confidence,
+    };
 }
 
 export const bulkScreeningTool: AITool = {
@@ -75,6 +131,7 @@ export const bulkScreeningTool: AITool = {
             return { callId: "", result: null, error: "No project context available" };
         }
         const studyIds = args.studyIds as string[] | undefined;
+        const tieredScreeningEnabled = isTieredScreeningEnabled();
 
         try {
             // Self-heal: ensure protocol row exists (creates empty default for legacy projects)
@@ -86,7 +143,7 @@ export const bulkScreeningTool: AITool = {
             }
 
             // Fetch studies to screen
-            const whereClause: Record<string, unknown> = { projectId };
+            const whereClause: Record<string, unknown> = { projectId, deletedAt: null };
             if (studyIds && studyIds.length > 0) {
                 whereClause.id = { in: studyIds };
             } else {
@@ -133,6 +190,37 @@ export const bulkScreeningTool: AITool = {
                 const details = (study.details as Record<string, unknown>) ?? {};
                 const abstract = (details.abstract as string) || "No abstract available";
 
+                if (tieredScreeningEnabled) {
+                    const deterministic = isHighConfidenceExclusion(
+                        {
+                            id: study.id,
+                            title: study.title,
+                            authors: study.authors || "Unknown",
+                            year: study.year || 0,
+                            status: "pending",
+                            quality: "-",
+                            details: details as Study["details"],
+                        },
+                        protocolData
+                    );
+
+                    if (deterministic.exclude) {
+                        results.push({
+                            studyId: study.id,
+                            title: study.title,
+                            authors: study.authors || "Unknown",
+                            year: study.year || 0,
+                            source: "bulk-screening",
+                            recommendation: "exclude",
+                            confidence: 1,
+                            screeningTier: "deterministic",
+                            modelUsed: undefined,
+                            matchRationale: deterministic.reasons.join("; "),
+                        });
+                        continue;
+                    }
+                }
+
                 const prompt = `Screen this study against the criteria below. Return ONLY a JSON object with: { "decision": "keep"|"exclude"|"maybe", "reason": "brief criterion-linked rationale", "confidence": 0.0-1.0 }
 
 Study: "${study.title}" (${study.authors}, ${study.year})
@@ -140,6 +228,7 @@ Abstract: ${abstract.slice(0, 2000)}
 
 ${criteriaText}`;
 
+                let responseContent: string | null = null;
                 try {
                     const response = await aiService.chat(
                         [
@@ -181,24 +270,53 @@ Return ONLY valid JSON.`,
                         }
                     );
 
-                    const jsonStr = response.content
-                        .trim()
-                        .replace(/^```(?:json)?\s*/i, "")
-                        .replace(/\s*```$/i, "");
-                    const parsed = JSON.parse(jsonStr);
+                    responseContent = response.content;
+                    const jsonStr = cleanJsonPayload(responseContent);
+                    const parsed = normalizeParsedDecision(JSON.parse(jsonStr));
+                    const decision = parsed ? applyLowConfidenceSafety(parsed) : {
+                        decision: "maybe" as const,
+                        reason: "Unable to determine",
+                        confidence: 0.5,
+                    };
 
                     results.push({
+                        studyId: study.id,
                         title: study.title,
                         authors: study.authors || "Unknown",
                         year: study.year || 0,
                         source: "bulk-screening",
-                        recommendation: ["keep", "exclude", "maybe"].includes(parsed.decision) ? parsed.decision : "maybe",
-                        matchRationale: typeof parsed.reason === "string" ? parsed.reason : "Unable to determine",
-                        confidence: typeof parsed.confidence === "number" ? Math.min(1, Math.max(0, parsed.confidence)) : 0.5,
+                        recommendation: decision.decision,
+                        matchRationale: decision.reason,
+                        confidence: decision.confidence,
+                        screeningTier: "ai",
+                        modelUsed: SCREENING_MODEL,
                     });
                 } catch {
+                    if (tieredScreeningEnabled && responseContent) {
+                        const parsedFromRepair = normalizeParsedDecision(
+                            safeParseJson(cleanJsonPayload(responseContent))
+                        );
+                        if (parsedFromRepair) {
+                            const recovered = applyLowConfidenceSafety(parsedFromRepair);
+                            results.push({
+                                studyId: study.id,
+                                title: study.title,
+                                authors: study.authors || "Unknown",
+                                year: study.year || 0,
+                                source: "bulk-screening",
+                                recommendation: recovered.decision,
+                                matchRationale: recovered.reason,
+                                confidence: recovered.confidence,
+                                screeningTier: "heuristic",
+                                modelUsed: SCREENING_MODEL,
+                            });
+                            continue;
+                        }
+                    }
+
                     // If AI fails for one study, mark as maybe
                     results.push({
+                        studyId: study.id,
                         title: study.title,
                         authors: study.authors || "Unknown",
                         year: study.year || 0,
@@ -206,6 +324,8 @@ Return ONLY valid JSON.`,
                         recommendation: "maybe",
                         matchRationale: "Screening failed — needs manual review",
                         confidence: 0,
+                        screeningTier: "default",
+                        modelUsed: SCREENING_MODEL,
                     });
                 }
             }

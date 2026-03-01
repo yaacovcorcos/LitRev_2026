@@ -437,3 +437,176 @@ describe("applyArtifact — snapshot capture", () => {
         expect((snapshotCall![0] as { data: { snapshot: unknown } }).data.snapshot).toBe("DbNull");
     });
 });
+
+describe("applyArtifact — screening_batch identity + status mapping", () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        mocks.update.mockResolvedValue({ id: "art-1", status: "accepted", appliedAt: new Date() });
+        mocks.emitEvent.mockResolvedValue({ id: "evt-1" });
+    });
+
+    it("applies by studyId and persists screening metadata", async () => {
+        const artifact = makeArtifact({
+            type: "screening_batch",
+            status: "proposed",
+            payload: {
+                studies: [
+                    {
+                        studyId: "study-1",
+                        title: "Title A",
+                        authors: "A",
+                        year: 2023,
+                        source: "bulk-screening",
+                        recommendation: "exclude",
+                        confidence: 0.88,
+                        screeningTier: "ai",
+                        modelUsed: "grok-4-1-fast",
+                        matchRationale: "Failed core criteria",
+                    },
+                ],
+                summary: { total: 1, keepCount: 0, excludeCount: 1, maybeCount: 0 },
+            },
+        });
+        mocks.findUnique.mockResolvedValue(artifact);
+        mocks.findFirst.mockResolvedValue({
+            id: "study-1",
+            details: { triageDecision: "maybe" },
+        });
+
+        await applyArtifact("art-1");
+
+        expect(mocks.findFirst).toHaveBeenCalledWith({
+            where: { id: "study-1", projectId: "proj-1", deletedAt: null },
+            select: { id: true, details: true },
+        });
+        expect(mocks.studyUpdate).toHaveBeenCalledWith({
+            where: { id: "study-1" },
+            data: {
+                status: "excluded",
+                details: expect.objectContaining({
+                    triageDecision: "exclude",
+                    matchRationale: "Failed core criteria",
+                    screeningMeta: expect.objectContaining({
+                        tier: "ai",
+                        modelConfidence: 0.88,
+                        reasons: ["Failed core criteria"],
+                        modelUsed: "grok-4-1-fast",
+                    }),
+                }),
+            },
+        });
+    });
+
+    it("maps maybe recommendation to pending status", async () => {
+        const artifact = makeArtifact({
+            type: "screening_batch",
+            status: "proposed",
+            payload: {
+                studies: [
+                    {
+                        studyId: "study-2",
+                        title: "Title B",
+                        authors: "B",
+                        year: 2024,
+                        source: "bulk-screening",
+                        recommendation: "maybe",
+                        confidence: 0.2,
+                        screeningTier: "default",
+                        matchRationale: "Manual review needed",
+                    },
+                ],
+                summary: { total: 1, keepCount: 0, excludeCount: 0, maybeCount: 1 },
+            },
+        });
+        mocks.findUnique.mockResolvedValue(artifact);
+        mocks.findFirst.mockResolvedValue({
+            id: "study-2",
+            details: {},
+        });
+
+        await applyArtifact("art-1");
+
+        expect(mocks.studyUpdate).toHaveBeenCalledWith({
+            where: { id: "study-2" },
+            data: {
+                status: "pending",
+                details: expect.objectContaining({
+                    triageDecision: "maybe",
+                }),
+            },
+        });
+    });
+
+    it("does not fallback to title when studyId is present but missing", async () => {
+        const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+        const artifact = makeArtifact({
+            type: "screening_batch",
+            status: "proposed",
+            payload: {
+                studies: [
+                    {
+                        studyId: "missing-study",
+                        title: "Same Title",
+                        authors: "A",
+                        year: 2023,
+                        source: "bulk-screening",
+                        recommendation: "keep",
+                        confidence: 0.9,
+                        screeningTier: "ai",
+                    },
+                ],
+                summary: { total: 1, keepCount: 1, excludeCount: 0, maybeCount: 0 },
+            },
+        });
+        mocks.findUnique.mockResolvedValue(artifact);
+        mocks.findFirst.mockResolvedValue(null);
+
+        await applyArtifact("art-1");
+
+        expect(mocks.findFirst).toHaveBeenCalledTimes(1);
+        expect(mocks.studyUpdate).not.toHaveBeenCalled();
+        expect(warnSpy).toHaveBeenCalled();
+        warnSpy.mockRestore();
+    });
+
+    it("falls back to title only for legacy payloads without studyId", async () => {
+        const artifact = makeArtifact({
+            type: "screening_batch",
+            status: "proposed",
+            payload: {
+                studies: [
+                    {
+                        title: "Legacy Title",
+                        authors: "Legacy",
+                        year: 2020,
+                        source: "bulk-screening",
+                        recommendation: "keep",
+                        confidence: 0.9,
+                    },
+                ],
+                summary: { total: 1, keepCount: 1, excludeCount: 0, maybeCount: 0 },
+            },
+        });
+        mocks.findUnique.mockResolvedValue(artifact);
+        mocks.findFirst.mockResolvedValue({
+            id: "legacy-study",
+            details: {},
+        });
+
+        await applyArtifact("art-1");
+
+        expect(mocks.findFirst).toHaveBeenCalledWith({
+            where: { projectId: "proj-1", title: "Legacy Title", deletedAt: null },
+            select: { id: true, details: true },
+        });
+        expect(mocks.studyUpdate).toHaveBeenCalledWith({
+            where: { id: "legacy-study" },
+            data: {
+                status: "active",
+                details: expect.objectContaining({
+                    triageDecision: "keep",
+                }),
+            },
+        });
+    });
+});

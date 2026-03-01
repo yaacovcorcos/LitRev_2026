@@ -11,6 +11,7 @@ export type StudyType =
   | "Other";
 
 export type StudySource = "manual" | "pdf-import" | "pubmed" | "semantic-scholar" | "copilot";
+export type ScreeningTier = "deterministic" | "ai" | "heuristic" | "default";
 
 /**
  * Triage decision for screening workflow.
@@ -44,6 +45,13 @@ export type StudyDetails = {
   exclusionReason?: string;
   triageNote?: string;
   triageDate?: string; // ISO date string
+  screeningMeta?: {
+    tier: ScreeningTier;
+    modelConfidence: number;
+    reasons: string[];
+    screenedAt: string;
+    modelUsed?: string;
+  };
 
   // AI features
   aiSummary?: string;

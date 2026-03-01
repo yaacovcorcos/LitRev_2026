@@ -33,6 +33,7 @@ export type ArtifactStatus =
 // ── Per-Type Payloads ────────────────────────────────────────────────────────
 
 export interface StudyProposalPayload {
+    studyId?: string;
     pmid?: string;
     doi?: string;
     title: string;
@@ -47,6 +48,8 @@ export interface StudyProposalPayload {
     sourceUrl?: string;
     recommendation: "keep" | "exclude" | "maybe";
     confidence: number;
+    screeningTier?: "deterministic" | "ai" | "heuristic" | "default";
+    modelUsed?: string;
     criteriaMatch?: Record<string, boolean>;
     matchRationale?: string;
 }
@@ -183,6 +186,7 @@ export interface MemoryForgetProposalPayload {
 // ── Zod Schemas ──────────────────────────────────────────────────────────────
 
 export const StudyProposalSchema = z.object({
+    studyId: z.string().optional(),
     pmid: z.string().optional(),
     doi: z.string().optional(),
     title: z.string().min(1),
@@ -197,6 +201,8 @@ export const StudyProposalSchema = z.object({
     sourceUrl: z.string().optional(),
     recommendation: z.enum(["keep", "exclude", "maybe"]),
     confidence: z.number().min(0).max(1),
+    screeningTier: z.enum(["deterministic", "ai", "heuristic", "default"]).optional(),
+    modelUsed: z.string().optional(),
     criteriaMatch: z.record(z.string(), z.boolean()).optional(),
     matchRationale: z.string().optional(),
 });

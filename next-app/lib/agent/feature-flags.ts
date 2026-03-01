@@ -36,6 +36,7 @@ export function isChatStudyMentionsEnabled(): boolean {
 }
 
 const DEFAULT_DELEGATION_ENABLED = false;
+const DEFAULT_TIERED_SCREENING_ENABLED = false;
 
 export function isDelegationEnabled(): boolean {
     const fromPublic = readFlag(process.env.NEXT_PUBLIC_ENABLE_DELEGATION);
@@ -43,6 +44,14 @@ export function isDelegationEnabled(): boolean {
     const fromServer = readFlag(process.env.ENABLE_DELEGATION);
     if (fromServer !== null) return fromServer;
     return DEFAULT_DELEGATION_ENABLED;
+}
+
+export function isTieredScreeningEnabled(): boolean {
+    const fromPublic = readFlag(process.env.NEXT_PUBLIC_ENABLE_TIERED_SCREENING);
+    if (fromPublic !== null) return fromPublic;
+    const fromServer = readFlag(process.env.ENABLE_TIERED_SCREENING);
+    if (fromServer !== null) return fromServer;
+    return DEFAULT_TIERED_SCREENING_ENABLED;
 }
 
 export function normalizeAgentMode(requested: AgentMode): AgentMode {

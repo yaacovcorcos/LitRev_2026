@@ -772,23 +772,51 @@ registerApplyFunction("evidence_table", async (artifact) => {
 registerApplyFunction("screening_batch", async (artifact) => {
     const payload = artifact.payload as ScreeningBatchPayload;
     for (const study of payload.studies) {
-        // Find the study in the ledger by title (soft-delete aware)
-        const existing = await prisma.study.findFirst({
-            where: { projectId: artifact.projectId, title: study.title, deletedAt: null },
-            select: { id: true, details: true },
-        });
+        let existing: { id: string; details: unknown } | null = null;
+
+        if (study.studyId) {
+            existing = await prisma.study.findFirst({
+                where: { id: study.studyId, projectId: artifact.projectId, deletedAt: null },
+                select: { id: true, details: true },
+            });
+            if (!existing) {
+                console.warn(
+                    `[screening_batch] Skipping study update: studyId "${study.studyId}" not found in project "${artifact.projectId}".`
+                );
+                continue;
+            }
+        } else {
+            // Legacy artifact fallback: match by title only when no studyId exists.
+            existing = await prisma.study.findFirst({
+                where: { projectId: artifact.projectId, title: study.title, deletedAt: null },
+                select: { id: true, details: true },
+            });
+        }
+
         if (!existing) continue;
 
+        const screenedAtIso = new Date().toISOString();
         const details = (existing.details as Record<string, unknown>) ?? {};
         await prisma.study.update({
             where: { id: existing.id },
             data: {
-                status: study.recommendation === "exclude" ? "excluded" : "active",
+                status: study.recommendation === "exclude"
+                    ? "excluded"
+                    : study.recommendation === "keep"
+                        ? "active"
+                        : "pending",
                 details: {
                     ...details,
                     triageDecision: study.recommendation,
                     matchRationale: study.matchRationale,
-                    screenedAt: new Date().toISOString(),
+                    screenedAt: screenedAtIso,
+                    screeningMeta: {
+                        tier: study.screeningTier ?? "ai",
+                        modelConfidence: study.confidence,
+                        reasons: study.matchRationale ? [study.matchRationale] : [],
+                        screenedAt: screenedAtIso,
+                        modelUsed: study.modelUsed,
+                    },
                 },
             },
         });
