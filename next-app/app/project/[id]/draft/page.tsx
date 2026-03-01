@@ -326,6 +326,18 @@ function DraftContent() {
     });
   }, [updateDraft]);
 
+  const getDraftSnapshot = useCallback((): DraftState => {
+    if (dirtyContentKeysRef.current.size === 0) return draft;
+    const nextContent = { ...draft.contentBySection };
+    for (const key of dirtyContentKeysRef.current) {
+      nextContent[key] = pendingContentRef.current[key];
+    }
+    return {
+      ...draft,
+      contentBySection: nextContent,
+    };
+  }, [draft]);
+
   const queueContentUpdate = useCallback(
     (key: DraftSectionId, json: JSONContent) => {
       pendingContentRef.current[key] = json;
@@ -391,7 +403,7 @@ function DraftContent() {
     citationIssues: exportCitationIssues,
     hasDraftContent, handleExportDocx, handleDeleteExport,
   } = useDraftExport({
-    projectId: id, projectName: project?.name, draft, orderedSections, studies, flushContentCommit,
+    projectId: id, projectName: project?.name, draft, getDraftSnapshot, orderedSections, studies, flushContentCommit,
   });
 
   // Draft copilot chat (extracted hook)

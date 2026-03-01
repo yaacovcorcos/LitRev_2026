@@ -41,6 +41,7 @@ const RELEVANCE_COMPONENT_LABELS: Record<keyof NonNullable<StudyRelevance["compo
     applicability: "Applicability",
     completeness: "Completeness",
 };
+const RELEVANCE_COMPONENT_KEYS = Object.keys(RELEVANCE_COMPONENT_LABELS) as Array<keyof NonNullable<StudyRelevance["components"]>>;
 
 export default function StudyDetailPage() {
     const { id, studyId } = useParams<{ id: string; studyId: string }>();
@@ -245,8 +246,37 @@ export default function StudyDetailPage() {
 
     const saveEdit = async () => {
         if (!id || !studyId || !study) return;
+        const updates: Partial<Study> = { ...editForm };
+        const details = (updates.details as StudyDetails | undefined) ?? undefined;
+        const relevance = (details?.relevance as StudyRelevance | undefined) ?? undefined;
+        if (relevance) {
+            const rationale = typeof relevance.rationale === "string" ? relevance.rationale.trim() : "";
+            if (!rationale) {
+                setAlertMsg("Relevance rationale is required.");
+                return;
+            }
+            if (!Number.isFinite(relevance.score)) {
+                setAlertMsg("Relevance score must be a number between 0 and 100.");
+                return;
+            }
+            const normalizedComponents: NonNullable<StudyRelevance["components"]> = {};
+            for (const key of RELEVANCE_COMPONENT_KEYS) {
+                const raw = relevance.components?.[key];
+                if (typeof raw !== "number" || !Number.isFinite(raw)) continue;
+                normalizedComponents[key] = Math.max(0, Math.min(100, raw));
+            }
+            updates.details = {
+                ...(details ?? {}),
+                relevance: {
+                    ...relevance,
+                    score: Math.max(0, Math.min(100, relevance.score)),
+                    rationale,
+                    components: Object.keys(normalizedComponents).length > 0 ? normalizedComponents : undefined,
+                },
+            };
+        }
         try {
-            const updated = await updateSingleStudy(id, studyId, editForm);
+            const updated = await updateSingleStudy(id, studyId, updates);
             setStudy(updated);
             setIsEditing(false);
             setEditForm({});
@@ -707,6 +737,7 @@ export default function StudyDetailPage() {
                                                 value={editRelevance?.rationale ?? ""}
                                                 onChange={(e) => updateEditRelevance({ rationale: e.target.value })}
                                                 placeholder="Short justification for relevance score"
+                                                required
                                             />
                                         </label>
                                         <div className={styles.relevanceComponents}>
