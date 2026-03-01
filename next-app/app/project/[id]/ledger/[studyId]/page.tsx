@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useProjects } from "@/contexts/ProjectsContext";
+import { EmptyState, EmptyStateSkeleton } from "@/components/ui/EmptyState";
 import { useProjectShell } from "@/contexts/ProjectShellContext";
 import { useLedger } from "@/contexts/LedgerContext";
 import { BaseBackButton } from "@/components/BaseBackButton";
@@ -34,7 +35,7 @@ type DraftBacklink = {
 
 export default function StudyDetailPage() {
     const { id, studyId } = useParams<{ id: string; studyId: string }>();
-    const { getProjectById } = useProjects();
+    const { getProjectById, isLoadingProjects, projectsError } = useProjects();
     const { getStudyById, updateSingleStudy } = useLedger();
     const { isEmbeddedInProjectShell } = useProjectShell();
 
@@ -252,13 +253,41 @@ export default function StudyDetailPage() {
     const d: StudyDetails = study?.details ?? {};
     const pdfFile = useMemo(() => studyFiles.find((f) => f.mimeType === "application/pdf"), [studyFiles]);
 
+    if (isLoadingProjects) {
+        return (
+            <ProjectPageLayout mainClassName={styles.appMainOverride}>
+                <EmptyStateSkeleton className={styles.notFound} />
+            </ProjectPageLayout>
+        );
+    }
+
+    if (projectsError) {
+        return (
+            <ProjectPageLayout mainClassName={styles.appMainOverride}>
+                <EmptyState
+                    variant="error"
+                    icon="cloud_off"
+                    title="Unable to load project"
+                    description={projectsError}
+                    primaryAction={{ label: "Retry", onClick: () => window.location.reload() }}
+                    secondaryAction={{ label: "Back to Dashboard", href: "/" }}
+                    className={styles.notFound}
+                />
+            </ProjectPageLayout>
+        );
+    }
+
     if (!project) {
         return (
             <ProjectPageLayout mainClassName={styles.appMainOverride}>
-                <div className={styles.notFound}>
-                    <h1>Project not found</h1>
-                    <Link href="/" className="btn-minimal">Back to Dashboard</Link>
-                </div>
+                <EmptyState
+                    variant="error"
+                    icon="folder_off"
+                    title="Project not found"
+                    description="This project may have been deleted or you don't have access."
+                    primaryAction={{ label: "Back to Dashboard", href: "/" }}
+                    className={styles.notFound}
+                />
             </ProjectPageLayout>
         );
     }
@@ -266,7 +295,7 @@ export default function StudyDetailPage() {
     if (isLoading) {
         return (
             <ProjectPageLayout mainClassName={styles.appMainOverride}>
-                <div className={styles.loading}>Loading study...</div>
+                <EmptyStateSkeleton className={styles.notFound} />
             </ProjectPageLayout>
         );
     }
@@ -274,10 +303,14 @@ export default function StudyDetailPage() {
     if (!study) {
         return (
             <ProjectPageLayout mainClassName={styles.appMainOverride}>
-                <div className={styles.notFound}>
-                    <h1>Study not found</h1>
-                    <Link href={`/project/${id}/ledger`} className="btn-minimal">Back to Ledger</Link>
-                </div>
+                <EmptyState
+                    variant="error"
+                    icon="article"
+                    title="Study not found"
+                    description="This study may have been removed from the ledger."
+                    primaryAction={{ label: "Back to Ledger", href: `/project/${id}/ledger` }}
+                    className={styles.notFound}
+                />
             </ProjectPageLayout>
         );
     }

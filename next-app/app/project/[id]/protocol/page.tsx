@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { useProjects } from "@/contexts/ProjectsContext";
 import { useLedger } from "@/contexts/LedgerContext";
 import { useProjectShell } from "@/contexts/ProjectShellContext";
+import { EmptyState, EmptyStateSkeleton } from "@/components/ui/EmptyState";
 import Link from "next/link";
 import { BaseBackButton } from "@/components/BaseBackButton";
 import styles from "./protocol.module.css";
@@ -20,7 +21,7 @@ import { ProtocolSections } from "./ProtocolSections";
 /** Inner component that uses the ProtocolContext */
 function ProtocolPageContent() {
     const { id } = useParams<{ id: string }>();
-    const { getProjectById } = useProjects();
+    const { getProjectById, isLoadingProjects, projectsError } = useProjects();
     const { isEmbeddedInProjectShell } = useProjectShell();
     const {
         protocol,
@@ -156,15 +157,41 @@ function ProtocolPageContent() {
     // Generate suggestions based on active section
     const getSuggestions = () => getProtocolSuggestions(activeSection);
 
+    if (isLoadingProjects) {
+        return (
+            <ProjectPageLayout mainClassName={styles.appMainOverride}>
+                <EmptyStateSkeleton className={styles.notFound} />
+            </ProjectPageLayout>
+        );
+    }
+
+    if (projectsError) {
+        return (
+            <ProjectPageLayout mainClassName={styles.appMainOverride}>
+                <EmptyState
+                    variant="error"
+                    icon="cloud_off"
+                    title="Unable to load project"
+                    description={projectsError}
+                    primaryAction={{ label: "Retry", onClick: () => window.location.reload() }}
+                    secondaryAction={{ label: "Back to Dashboard", href: "/" }}
+                    className={styles.notFound}
+                />
+            </ProjectPageLayout>
+        );
+    }
+
     if (!project) {
         return (
             <ProjectPageLayout mainClassName={styles.appMainOverride}>
-                <div className={styles.notFound}>
-                    <h1>Project not found</h1>
-                    <Link href="/" className="btn-minimal">
-                        Back to Dashboard
-                    </Link>
-                </div>
+                <EmptyState
+                    variant="error"
+                    icon="folder_off"
+                    title="Project not found"
+                    description="This project may have been deleted or you don't have access."
+                    primaryAction={{ label: "Back to Dashboard", href: "/" }}
+                    className={styles.notFound}
+                />
             </ProjectPageLayout>
         );
     }
