@@ -21,6 +21,26 @@ All run from `next-app/` except deploy:
 | Test       | `npx vitest run`        | `next-app/`      |
 | Deploy     | `vercel --prod`         | repo root        |
 
+## Git Workflow (Local Auto-Commit Policy)
+
+To keep work safe and reviewable, agents must commit locally after each completed, validated task.
+
+- **One task = one atomic commit** (small, scoped, reversible).
+- **Validate before commit** for code changes: run `npx tsc --noEmit` and `npx vitest run` from `next-app/` (plus any task-specific checks).
+- **Stage only relevant files** for that task; never mix unrelated edits.
+- **Commit immediately after validation**; do not batch multiple completed tasks into one commit.
+- **Never push unless explicitly requested by the user.**
+
+Required local commit flow after each completed task:
+
+1. `git add <changed-files-for-this-task>`
+2. `git diff --cached`
+3. `git status`
+4. Check staged diff for secrets/credentials; if found, stop and fix.
+5. `git commit -m "<type(scope): concise why-focused message>"`
+
+If a task is still in progress, do not commit yet; finish, validate, then commit.
+
 ## Database
 
 - **Env files live in `next-app/`** — `next-app/.env` and `next-app/.env.local`. See `next-app/.env.local.example` for the template.
