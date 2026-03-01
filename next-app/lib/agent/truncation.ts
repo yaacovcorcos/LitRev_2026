@@ -17,6 +17,7 @@ export const TOOL_TRUNCATION_MODES: Record<string, TruncationMode> = {
     search_semantic_scholar: "head",
     recommend_studies: "head",
     bulk_screening: "tail",
+    fetch_open_pdf: "head",
     extract_pdf: "both",
     read_study_content: "both",
     retrieve_memory: "head",

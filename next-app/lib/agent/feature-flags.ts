@@ -37,6 +37,7 @@ export function isChatStudyMentionsEnabled(): boolean {
 
 const DEFAULT_DELEGATION_ENABLED = false;
 const DEFAULT_TIERED_SCREENING_ENABLED = false;
+const DEFAULT_OA_PDF_FETCH_ENABLED = false;
 
 export function isDelegationEnabled(): boolean {
     const fromPublic = readFlag(process.env.NEXT_PUBLIC_ENABLE_DELEGATION);
@@ -52,6 +53,14 @@ export function isTieredScreeningEnabled(): boolean {
     const fromServer = readFlag(process.env.ENABLE_TIERED_SCREENING);
     if (fromServer !== null) return fromServer;
     return DEFAULT_TIERED_SCREENING_ENABLED;
+}
+
+export function isOpenAccessPdfFetchEnabled(): boolean {
+    const fromPublic = readFlag(process.env.NEXT_PUBLIC_ENABLE_OA_PDF_FETCH);
+    if (fromPublic !== null) return fromPublic;
+    const fromServer = readFlag(process.env.ENABLE_OA_PDF_FETCH);
+    if (fromServer !== null) return fromServer;
+    return DEFAULT_OA_PDF_FETCH_ENABLED;
 }
 
 export function normalizeAgentMode(requested: AgentMode): AgentMode {

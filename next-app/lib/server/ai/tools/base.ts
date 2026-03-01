@@ -21,6 +21,7 @@ import { extractPdfTool } from "./extract-pdf";
 import { updateNoteTool } from "./update-note";
 import { semanticScholarSearchTool } from "./semantic-scholar-search";
 import { recommendStudiesTool } from "./recommend-studies";
+import { fetchOpenPdfTool } from "./fetch-open-pdf";
 import { readStudyContentTool } from "./read-study-content";
 import { storeMemoryTool } from "./store-memory";
 import { updateStudyTool } from "./update-study";
@@ -92,6 +93,7 @@ export const AVAILABLE_TOOLS: AITool[] = [
     pubmedSearchTool,
     semanticScholarSearchTool,
     addToLedgerTool,
+    fetchOpenPdfTool,
     excludeStudyTool,
     deleteStudyTool,
     updateProtocolTool,

@@ -191,6 +191,19 @@ function compactToolValue(
             }
             return copy;
         }
+        case "fetch_open_pdf": {
+            return {
+                success: obj.success,
+                status: obj.status,
+                errorCode: obj.errorCode,
+                studyId: obj.studyId,
+                fileAssetId: obj.fileAssetId,
+                filename: obj.filename,
+                provider: obj.provider,
+                sourceUrl: obj.sourceUrl,
+                message: obj.message,
+            };
+        }
         default:
             return null;
     }

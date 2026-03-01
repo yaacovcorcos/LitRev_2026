@@ -72,6 +72,7 @@ export function mapToolToProgressMessage(toolName: string): string {
         add_to_ledger: "Adding study to ledger...",
         exclude_study: "Excluding study...",
         delete_study: "Deleting study from ledger...",
+        fetch_open_pdf: "Fetching free full-text PDF...",
         extract_pdf: "Extracting PDF data...",
         bulk_screening: "Screening studies...",
         update_protocol: "Updating protocol...",

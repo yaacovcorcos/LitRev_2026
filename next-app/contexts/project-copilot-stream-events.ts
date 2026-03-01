@@ -122,6 +122,7 @@ function upsertAssistantReasoning(
 const TOOL_PROGRESS_LABELS: Record<string, string> = {
   search_pubmed: "Searching PubMed...",
   add_to_ledger: "Adding studies to ledger...",
+  fetch_open_pdf: "Fetching free full-text PDF...",
 };
 
 type ChunkHandler = (

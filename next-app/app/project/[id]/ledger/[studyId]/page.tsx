@@ -12,7 +12,7 @@ import { ProjectPageLayout } from "@/components/project/ProjectPageLayout";
 import { CitationBlock } from "@/components/CitationBlock";
 import { StudyQuickInfo } from "@/components/StudyQuickInfo";
 import { StudyFilesPanel } from "@/components/StudyFilesPanel";
-import { listStudyFilesAction, deleteFileAssetAction, uploadStudyFileAction } from "@/app/actions/files";
+import { listStudyFilesAction, deleteFileAssetAction, uploadStudyFileAction, fetchOpenAccessPdfForStudyAction } from "@/app/actions/files";
 import { extractStudyFromPdfAction, deepAnalyzeStudyAction } from "@/app/actions/extraction";
 import { getDraftAction } from "@/app/actions/drafts";
 import { DRAFT_SECTIONS, DraftSectionId } from "@/types/draft";
@@ -21,6 +21,8 @@ import type { Study, StudyDetails, StudyRelevance } from "@/types/ledger";
 import type { FileAsset } from "@/types/files";
 import { AlertDialog } from "@/components/ConfirmDialog";
 import { compileDraftCitations, getCitedSectionIdsByStudyId } from "@/lib/citation-compiler";
+import { addProjectDataChangedListener } from "@/lib/project-data-events";
+import { isOpenAccessPdfFetchEnabled } from "@/lib/agent/feature-flags";
 import styles from "./study.module.css";
 
 // Build lookup for section labels
@@ -66,6 +68,8 @@ export default function StudyDetailPage() {
     // Deep analysis state
     const [isDeepAnalyzing, setIsDeepAnalyzing] = useState(false);
     const [deepAnalysisError, setDeepAnalysisError] = useState<string | null>(null);
+    const [isFetchingOpenPdf, setIsFetchingOpenPdf] = useState(false);
+    const [openPdfNotice, setOpenPdfNotice] = useState<{ kind: "success" | "error"; message: string } | null>(null);
 
     // Draft backlinks state
     const [draftBacklinks, setDraftBacklinks] = useState<DraftBacklink[]>([]);
@@ -97,15 +101,13 @@ export default function StudyDetailPage() {
     // Refresh current study if ledger mutations happen elsewhere (copilot artifact apply, AI page, etc.)
     useEffect(() => {
         if (!id || !studyId) return;
-        const handler = (e: Event) => {
-            const projectId = (e as CustomEvent).detail?.projectId as string | undefined;
-            if (!projectId || projectId !== id) return;
+        const unsub = addProjectDataChangedListener((detail) => {
+            if (detail.projectId !== id || !detail.domains.includes("ledger")) return;
             getStudyByIdRef.current(id, studyId)
                 .then((s) => setStudy(s))
                 .catch((err) => console.error("Failed to refresh study after ledger update", err));
-        };
-        window.addEventListener("litrev:ledger-changed", handler);
-        return () => window.removeEventListener("litrev:ledger-changed", handler);
+        });
+        return unsub;
     }, [id, studyId]);
 
     // Load files
@@ -298,6 +300,10 @@ export default function StudyDetailPage() {
     };
 
     const d: StudyDetails = study?.details ?? {};
+    const openPdfFetchEnabled = isOpenAccessPdfFetchEnabled();
+    const hasIdentifierForOpenPdf = Boolean(
+        (typeof d.doi === "string" && d.doi.trim()) || (typeof d.pmid === "string" && d.pmid.trim())
+    );
     const editRelevance = ((editForm.details as StudyDetails | undefined)?.relevance as StudyRelevance | undefined) ?? undefined;
     const relevance = (d.relevance as StudyRelevance | undefined) ?? undefined;
     const relevanceBandLabel = relevance ? relevance.band.charAt(0).toUpperCase() + relevance.band.slice(1) : "Not scored";
@@ -346,6 +352,38 @@ export default function StudyDetailPage() {
         });
     };
     const pdfFile = useMemo(() => studyFiles.find((f) => f.mimeType === "application/pdf"), [studyFiles]);
+
+    const handleFetchOpenPdf = useCallback(async () => {
+        if (!id || !studyId) return;
+        setIsFetchingOpenPdf(true);
+        setOpenPdfNotice(null);
+        try {
+            const result = await fetchOpenAccessPdfForStudyAction(id, studyId);
+            if (!result.success) {
+                setOpenPdfNotice({
+                    kind: "error",
+                    message: result.error || "Could not fetch a free full-text PDF for this study.",
+                });
+                return;
+            }
+            if (result.status === "already_exists") {
+                setOpenPdfNotice({ kind: "success", message: "This PDF is already attached to the study." });
+                return;
+            }
+            await loadFiles();
+            setOpenPdfNotice({
+                kind: "success",
+                message: "Free full-text PDF imported. You can extract data from it now.",
+            });
+        } catch (error) {
+            setOpenPdfNotice({
+                kind: "error",
+                message: error instanceof Error ? error.message : "Failed to fetch open-access PDF.",
+            });
+        } finally {
+            setIsFetchingOpenPdf(false);
+        }
+    }, [id, studyId, loadFiles]);
 
     if (isLoadingProjects) {
         return (
@@ -531,6 +569,47 @@ export default function StudyDetailPage() {
                                     <span>{deepAnalysisError}</span>
                                     <button className={styles.extractionErrorDismiss} onClick={() => setDeepAnalysisError(null)}>
                                         <span className="material-icons-round">close</span>
+                                    </button>
+                                </div>
+                            )}
+
+                            {/* Open-access PDF import banner */}
+                            {openPdfNotice && (
+                                <div className={openPdfNotice.kind === "error" ? styles.extractionError : styles.fetchPdfSuccess}>
+                                    <span className="material-icons-round">
+                                        {openPdfNotice.kind === "error" ? "error_outline" : "check_circle"}
+                                    </span>
+                                    <span>{openPdfNotice.message}</span>
+                                    <button
+                                        className={styles.extractionErrorDismiss}
+                                        onClick={() => setOpenPdfNotice(null)}
+                                        aria-label="Dismiss open-access PDF message"
+                                    >
+                                        <span className="material-icons-round">close</span>
+                                    </button>
+                                </div>
+                            )}
+
+                            {/* Open-access PDF fetch prompt */}
+                            {openPdfFetchEnabled && !pdfFile && !extractingFileId && !isDeepAnalyzing && (
+                                <div className={styles.analyzePrompt}>
+                                    <span className="material-icons-round">cloud_download</span>
+                                    <div className={styles.analyzePromptText}>
+                                        <strong>No PDF attached yet</strong>
+                                        <p>
+                                            {hasIdentifierForOpenPdf
+                                                ? "Fetch a legal free full-text PDF from open-access sources."
+                                                : "Add a DOI or PMID first to fetch a free full-text PDF."}
+                                        </p>
+                                    </div>
+                                    <button
+                                        className={styles.analyzePromptBtn}
+                                        onClick={handleFetchOpenPdf}
+                                        disabled={isFetchingOpenPdf || !hasIdentifierForOpenPdf}
+                                        title={hasIdentifierForOpenPdf ? "Fetch free full-text PDF" : "Add DOI or PMID first"}
+                                    >
+                                        <span className="material-icons-round">download</span>
+                                        {isFetchingOpenPdf ? "Fetching..." : "Fetch free PDF"}
                                     </button>
                                 </div>
                             )}

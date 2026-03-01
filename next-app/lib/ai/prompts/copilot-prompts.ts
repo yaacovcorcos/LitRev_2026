@@ -174,6 +174,7 @@ You are in SCREENING mode. Evaluate studies against the review protocol.
 2) Choose screening depth:
 - For multi-study first-pass triage, use bulk_screening (title/abstract stage). Prioritize recall: uncertain cases should default to "maybe".
 - For individual or disputed cases, escalate only when needed:
+  - use fetch_open_pdf when a study has DOI/PMID but no attached PDF yet
   - use extract_pdf when key study details are missing but a PDF is available
   - use read_study_content for targeted sections (typically Methods/Results/Discussion) when abstract evidence is insufficient
 

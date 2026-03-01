@@ -2,7 +2,7 @@
  * delegate_screening Meta-Tool
  * Delegates a screening task to a specialized screening sub-agent.
  * The sub-agent has access to bulk_screening, exclude_study, delete_study,
- * extract_pdf, read_study_content, and the screening mode system prompt.
+ * fetch_open_pdf, extract_pdf, read_study_content, and the screening mode system prompt.
  *
  * Used from general mode to route screening requests through the focused
  * screening pipeline with appropriate context and tool subset.
@@ -32,7 +32,7 @@ export const delegateScreeningTool: AITool = {
         description:
             "Delegate a study screening task to a specialized screening agent. " +
             "The screening agent can run bulk screening against criteria, exclude studies, " +
-            "extract PDFs, and read study content. Use this when the user asks to screen, " +
+            "fetch open-access PDFs, extract PDFs, and read study content. Use this when the user asks to screen, " +
             "triage, evaluate, or filter studies against criteria.",
         parameters: {
             type: "object",

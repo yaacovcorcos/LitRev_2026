@@ -6,9 +6,17 @@ import type { ServiceScope, ScopeInput } from "@/lib/server/scope";
 import type { FileAsset } from "@/types/files";
 import type { Study } from "@/types/ledger";
 import type { SearchResult } from "@/types/search";
+import type {
+  OpenAccessPdfCandidate,
+  OpenAccessPdfImportErrorCode,
+  PdfDownloadErrorCode,
+} from "@/types/pdf-fetch";
 import { findDuplicates } from "@/lib/server/search/dedup";
 import { listStudies } from "@/lib/server/ledger";
 import { randomUUID } from "crypto";
+import { isOpenAccessPdfFetchEnabled } from "@/lib/agent/feature-flags";
+import { resolveOpenAccessPdfCandidates } from "@/lib/server/search/oa-resolver";
+import { downloadPdfWithGuards, PdfDownloadError } from "@/lib/server/pdf-download";
 import {
   MAX_STUDY_FILE_SIZE,
   ALLOWED_STUDY_FILE_TYPES,
@@ -151,7 +159,11 @@ function encodeStoragePath(path: string): string {
     .join("/");
 }
 
-async function uploadToSupabaseStorage(path: string, file: File): Promise<{ storagePath: string; publicUrl: string }> {
+async function uploadBytesToSupabaseStorage(
+  path: string,
+  bytes: Uint8Array,
+  contentType: string
+): Promise<{ storagePath: string; publicUrl: string }> {
   const apiKey = SUPABASE_SERVICE_ROLE_KEY;
   if (!SUPABASE_URL || !apiKey) {
     throw new Error("Missing Supabase configuration (SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY).");
@@ -159,17 +171,16 @@ async function uploadToSupabaseStorage(path: string, file: File): Promise<{ stor
 
   const encodedPath = encodeStoragePath(path);
   const uploadUrl = `${SUPABASE_URL}/storage/v1/object/${STORAGE_BUCKET}/${encodedPath}`;
-  const body = new Uint8Array(await file.arrayBuffer());
 
   const response = await fetch(uploadUrl, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
       apikey: apiKey,
-      "Content-Type": file.type || "application/octet-stream",
+      "Content-Type": contentType || "application/octet-stream",
       "x-upsert": "false",
     },
-    body,
+    body: Buffer.from(bytes),
   });
 
   if (!response.ok) {
@@ -182,6 +193,11 @@ async function uploadToSupabaseStorage(path: string, file: File): Promise<{ stor
     storagePath: `${STORAGE_BUCKET}/${path}`,
     publicUrl,
   };
+}
+
+async function uploadToSupabaseStorage(path: string, file: File): Promise<{ storagePath: string; publicUrl: string }> {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  return uploadBytesToSupabaseStorage(path, bytes, file.type || "application/octet-stream");
 }
 
 function splitStoragePath(storagePath: string): { bucket: string; objectPath: string } {
@@ -448,5 +464,294 @@ export async function importStudyWithPdf(
       // Ignore cleanup failure — blob is orphaned but DB is clean
     }
     throw err;
+  }
+}
+
+export type OpenAccessPdfImportResult =
+  | {
+      success: true;
+      status: "imported" | "already_exists";
+      studyId: string;
+      fileAsset: FileAsset;
+      provider: OpenAccessPdfCandidate["provider"];
+      sourceUrl: string;
+      finalUrl: string;
+      checksumSha256: string;
+      doi?: string;
+      pmid?: string;
+    }
+  | {
+      success: false;
+      status: "failed";
+      errorCode: OpenAccessPdfImportErrorCode;
+      error: string;
+      doi?: string;
+      pmid?: string;
+      candidates?: OpenAccessPdfCandidate[];
+      diagnostics?: string[];
+      attempted?: Array<{
+        url: string;
+        code: PdfDownloadErrorCode;
+        message: string;
+      }>;
+    };
+
+function normalizeDoi(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const normalized = value
+    .trim()
+    .replace(/^https?:\/\/(?:dx\.)?doi\.org\//i, "")
+    .replace(/^doi\s*:\s*/i, "")
+    .replace(/[),.;:\]]+$/g, "")
+    .toLowerCase();
+  if (!/^10\.\d{4,9}\/.+/.test(normalized)) return undefined;
+  return normalized;
+}
+
+function normalizePmid(value: unknown): string | undefined {
+  if (typeof value !== "string" && typeof value !== "number") return undefined;
+  const digits = String(value).replace(/\D/g, "");
+  if (digits.length < 6 || digits.length > 9) return undefined;
+  return digits;
+}
+
+function ensurePdfFilename(base: string): string {
+  const safe = sanitizeFilename(base || "study");
+  return safe.toLowerCase().endsWith(".pdf") ? safe : `${safe}.pdf`;
+}
+
+function filenameFromUrl(url: string): string | undefined {
+  try {
+    const parsed = new URL(url);
+    const lastSegment = parsed.pathname.split("/").pop();
+    if (!lastSegment) return undefined;
+    const decoded = decodeURIComponent(lastSegment);
+    return decoded || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function mapDownloadErrorCode(code: PdfDownloadErrorCode): OpenAccessPdfImportErrorCode {
+  switch (code) {
+    case "BLOCKED_URL":
+      return "PDF_BLOCKED";
+    case "PAYLOAD_TOO_LARGE":
+      return "PDF_TOO_LARGE";
+    case "INVALID_PDF":
+      return "INVALID_PDF";
+    default:
+      return "PDF_DOWNLOAD_FAILED";
+  }
+}
+
+function toAttemptError(url: string, error: unknown): {
+  url: string;
+  code: PdfDownloadErrorCode;
+  message: string;
+} {
+  if (error instanceof PdfDownloadError) {
+    return { url, code: error.code, message: error.message };
+  }
+  return {
+    url,
+    code: "NETWORK_ERROR",
+    message: error instanceof Error ? error.message : "Unknown network error",
+  };
+}
+
+function isLikelyPdfAsset(file: {
+  mimeType: string;
+  format: string | null;
+  filename: string;
+}): boolean {
+  if (typeof file.mimeType === "string" && file.mimeType.toLowerCase().includes("pdf")) return true;
+  if (typeof file.format === "string" && file.format.toLowerCase() === "pdf") return true;
+  return file.filename.toLowerCase().endsWith(".pdf");
+}
+
+export async function importOpenAccessPdfForStudy(
+  scopeInput: ScopeInput,
+  projectId: string,
+  studyId: string,
+  options?: { doi?: string; pmid?: string }
+): Promise<OpenAccessPdfImportResult> {
+  const scope = await assertProjectAccess(scopeInput, projectId);
+
+  if (!isOpenAccessPdfFetchEnabled()) {
+    return {
+      success: false,
+      status: "failed",
+      errorCode: "FEATURE_DISABLED",
+      error: "Open-access PDF fetching is disabled by feature flag.",
+    };
+  }
+
+  const study = await prisma.study.findFirst({
+    where: { id: studyId, projectId, deletedAt: null },
+    select: { id: true, title: true, details: true },
+  });
+  if (!study) {
+    return {
+      success: false,
+      status: "failed",
+      errorCode: "STUDY_NOT_FOUND",
+      error: "Study not found.",
+    };
+  }
+
+  const details = (study.details as Record<string, unknown> | null) ?? {};
+  const doi = normalizeDoi(options?.doi ?? details.doi);
+  const pmid = normalizePmid(options?.pmid ?? details.pmid);
+
+  if (!doi && !pmid) {
+    return {
+      success: false,
+      status: "failed",
+      errorCode: "MISSING_IDENTIFIER",
+      error: "Study is missing DOI/PMID. Add an identifier first.",
+    };
+  }
+
+  const resolved = await resolveOpenAccessPdfCandidates({ doi, pmid });
+  if (resolved.candidates.length === 0) {
+    return {
+      success: false,
+      status: "failed",
+      errorCode: "NO_OA_PDF_FOUND",
+      error: "No free full-text PDF was found for this study.",
+      doi,
+      pmid,
+      diagnostics: resolved.diagnostics,
+    };
+  }
+
+  const attempts: Array<{ url: string; code: PdfDownloadErrorCode; message: string }> = [];
+  let selectedCandidate: OpenAccessPdfCandidate | null = null;
+  let downloaded:
+    | Awaited<ReturnType<typeof downloadPdfWithGuards>>
+    | null = null;
+
+  for (const candidate of resolved.candidates) {
+    try {
+      downloaded = await downloadPdfWithGuards(candidate.url, {
+        maxSizeBytes: MAX_STUDY_FILE_SIZE,
+      });
+      selectedCandidate = candidate;
+      break;
+    } catch (error) {
+      attempts.push(toAttemptError(candidate.url, error));
+    }
+  }
+
+  if (!downloaded || !selectedCandidate) {
+    const preferred =
+      attempts.find((a) => a.code === "BLOCKED_URL") ??
+      attempts.find((a) => a.code === "PAYLOAD_TOO_LARGE") ??
+      attempts.find((a) => a.code === "INVALID_PDF") ??
+      attempts[0];
+    const mappedCode = preferred
+      ? mapDownloadErrorCode(preferred.code)
+      : "PDF_DOWNLOAD_FAILED";
+    return {
+      success: false,
+      status: "failed",
+      errorCode: mappedCode,
+      error: preferred?.message || "Failed to download an open-access PDF candidate.",
+      doi,
+      pmid,
+      candidates: resolved.candidates,
+      diagnostics: resolved.diagnostics,
+      attempted: attempts,
+    };
+  }
+
+  const checksumSha256 = downloaded.checksumSha256;
+  const existingStudyFiles = await prisma.fileAsset.findMany({
+    where: { projectId, studyId },
+    orderBy: { createdAt: "desc" },
+  });
+  const duplicate = existingStudyFiles.find((file) => {
+    if (!isLikelyPdfAsset(file)) return false;
+    const existingHash = (file.metadata as Record<string, unknown> | null)?.fileHash;
+    return typeof existingHash === "string" && existingHash === checksumSha256;
+  });
+  if (duplicate) {
+    return {
+      success: true,
+      status: "already_exists",
+      studyId,
+      fileAsset: toFileAsset(duplicate),
+      provider: selectedCandidate.provider,
+      sourceUrl: selectedCandidate.url,
+      finalUrl: downloaded.finalUrl,
+      checksumSha256,
+      doi,
+      pmid,
+    };
+  }
+
+  const fallbackName = `${study.title || "study"}-${study.id}`.slice(0, 90);
+  const sourceFilename = filenameFromUrl(downloaded.finalUrl) || filenameFromUrl(selectedCandidate.url);
+  const filename = ensurePdfFilename(sourceFilename || fallbackName);
+  const objectPath = `projects/${projectId}/studies/${studyId}/${randomUUID()}-${filename}`;
+
+  const { storagePath, publicUrl } = await uploadBytesToSupabaseStorage(
+    objectPath,
+    new Uint8Array(downloaded.buffer),
+    "application/pdf"
+  );
+
+  try {
+    const created = await prisma.fileAsset.create({
+      data: {
+        projectId,
+        workspaceId: scope.workspaceId,
+        studyId,
+        kind: "source",
+        format: "pdf",
+        filename,
+        mimeType: "application/pdf",
+        size: downloaded.size,
+        storagePath,
+        publicUrl,
+        metadata: {
+          fileHash: downloaded.checksumSha256,
+          importSource: "open-access-fetch",
+          resolverProvider: selectedCandidate.provider,
+          resolverEvidence: selectedCandidate.evidence,
+          sourceUrl: selectedCandidate.url,
+          finalUrl: downloaded.finalUrl,
+          doi,
+          pmid,
+        },
+      },
+    });
+
+    return {
+      success: true,
+      status: "imported",
+      studyId,
+      fileAsset: toFileAsset(created),
+      provider: selectedCandidate.provider,
+      sourceUrl: selectedCandidate.url,
+      finalUrl: downloaded.finalUrl,
+      checksumSha256,
+      doi,
+      pmid,
+    };
+  } catch (error) {
+    await deleteFromSupabaseStorage(storagePath).catch(() => {});
+    return {
+      success: false,
+      status: "failed",
+      errorCode: "UNKNOWN_ERROR",
+      error: error instanceof Error ? error.message : "Failed to save downloaded PDF.",
+      doi,
+      pmid,
+      candidates: resolved.candidates,
+      diagnostics: resolved.diagnostics,
+      attempted: attempts,
+    };
   }
 }

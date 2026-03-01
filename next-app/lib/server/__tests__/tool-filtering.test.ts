@@ -49,7 +49,7 @@ describe("getToolDefinitions", () => {
     it("filters tools for screening mode", () => {
         const defs = getToolDefinitions("screening");
         const names = defs.map((d) => d.name).sort();
-        expect(names).toEqual(["ask_user", "bulk_screening", "delete_study", "exclude_study", "extract_pdf", "forget_memory", "inspect_memory", "read_study_content", "store_memory", "update_study"]);
+        expect(names).toEqual(["ask_user", "bulk_screening", "delete_study", "exclude_study", "extract_pdf", "fetch_open_pdf", "forget_memory", "inspect_memory", "read_study_content", "store_memory", "update_study"]);
     });
 
     it("filters tools for drafting mode", () => {
@@ -61,7 +61,7 @@ describe("getToolDefinitions", () => {
     it("filters tools for qa mode", () => {
         const defs = getToolDefinitions("qa");
         const names = defs.map((d) => d.name).sort();
-        expect(names).toEqual(["ask_user", "forget_memory", "inspect_memory", "read_ledger", "read_protocol", "read_study_content", "search_pubmed", "search_semantic_scholar", "store_memory", "update_study"]);
+        expect(names).toEqual(["ask_user", "fetch_open_pdf", "forget_memory", "inspect_memory", "read_ledger", "read_protocol", "read_study_content", "search_pubmed", "search_semantic_scholar", "store_memory", "update_study"]);
     });
 
     it("every allowedTools entry in AGENT_MODE_CONFIG exists in AVAILABLE_TOOLS", () => {

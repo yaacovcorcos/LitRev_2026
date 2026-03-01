@@ -3,8 +3,9 @@
 import { z } from "zod";
 import type { FileAsset } from "@/types/files";
 import type { Study } from "@/types/ledger";
+import type { OpenAccessPdfImportResult } from "@/lib/server/files";
 import type { FileAssetInput } from "@/lib/server/files";
-import { createFileAsset, deleteFileAsset, listProjectFiles, listStudyFiles, uploadStudyFile, importStudyWithPdf, uploadChatAttachment, extractTextFromExistingFile } from "@/lib/server/files";
+import { createFileAsset, deleteFileAsset, listProjectFiles, listStudyFiles, uploadStudyFile, importStudyWithPdf, uploadChatAttachment, extractTextFromExistingFile, importOpenAccessPdfForStudy } from "@/lib/server/files";
 import { withValidatedAction, type ActionResult } from "@/lib/server/action-utils";
 import { withAuth } from "@/lib/server/auth/session";
 import { projectIdSchema, studyIdSchema, resourceIdSchema } from "@/lib/schemas/ids";
@@ -141,4 +142,41 @@ export async function extractTextFromExistingFileAction(
       };
     }),
   );
+}
+
+const fetchOpenAccessPdfInput = z.object({
+  projectId: projectIdSchema,
+  studyId: studyIdSchema,
+  doi: z.string().optional(),
+  pmid: z.string().optional(),
+});
+
+export async function fetchOpenAccessPdfForStudyAction(
+  projectId: string,
+  studyId: string,
+  options?: { doi?: string; pmid?: string }
+): Promise<OpenAccessPdfImportResult> {
+  try {
+    const v = fetchOpenAccessPdfInput.parse({
+      projectId,
+      studyId,
+      doi: options?.doi,
+      pmid: options?.pmid,
+    });
+    return await withAuth(({ userId, workspaceId }) =>
+      importOpenAccessPdfForStudy(
+        { ownerId: userId, workspaceId },
+        v.projectId,
+        v.studyId,
+        { doi: v.doi, pmid: v.pmid }
+      )
+    );
+  } catch (error) {
+    return {
+      success: false,
+      status: "failed",
+      errorCode: "UNKNOWN_ERROR",
+      error: error instanceof Error ? error.message : "Failed to fetch open-access PDF.",
+    };
+  }
 }

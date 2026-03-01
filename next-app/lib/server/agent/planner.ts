@@ -43,6 +43,7 @@ export function detectMultiStepWorkflow(
         add_to_ledger: ["add", "include", "ledger", "save study"],
         exclude_study: ["exclude", "reject", "triage out"],
         delete_study: ["delete study", "delete from ledger", "purge study", "remove from ledger", "hard delete"],
+        fetch_open_pdf: ["fetch pdf", "download pdf", "free full text", "open access pdf", "get full text"],
         extract_pdf: ["extract", "pdf", "parse"],
         bulk_screening: ["screen", "batch", "screening"],
         update_protocol: ["pico", "population", "intervention", "comparison", "outcome", "protocol"],
@@ -110,11 +111,21 @@ function generateHeuristicPlan(message: string, _context: PlanContext): PlanPayl
     }
 
     // Extract step
-    if (/\b(?:extract|pdf|parse)\b/.test(lower)) {
+    if (/\bextract\b.*\bpdf\b/.test(lower) || /\bparse\b.*\bpdf\b/.test(lower)) {
         steps.push({
             label: "Extract data from PDF",
             toolName: "extract_pdf",
             description: "Parse PDF and extract structured data",
+            status: "pending",
+        });
+    }
+
+    // Fetch open-access PDF step
+    if (/\b(?:fetch|download|get)\b.*\b(?:pdf|full\s*text)\b/.test(lower) || /\bopen\s*access\b.*\bpdf\b/.test(lower)) {
+        steps.push({
+            label: "Fetch open-access PDF",
+            toolName: "fetch_open_pdf",
+            description: "Find and attach a legal free full-text PDF using DOI/PMID",
             status: "pending",
         });
     }

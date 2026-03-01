@@ -512,6 +512,11 @@
     opacity: 0.88;
 }
 
+.analyzePromptBtn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
 .analyzePromptBtn .material-icons-round {
     font-size: var(--text-xl);
 }
@@ -645,6 +650,22 @@
 
 .extractionErrorDismiss .material-icons-round {
     font-size: var(--text-xl);
+}
+
+.fetchPdfSuccess {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    background: rgba(var(--rgb-color-success), 0.08);
+    border: 1px solid rgba(var(--rgb-color-success), 0.2);
+    border-radius: var(--radius-lg);
+    font-size: var(--text-base);
+    color: var(--color-success);
+}
+
+.fetchPdfSuccess .material-icons-round:first-child {
+    font-size: var(--text-2xl);
 }
 
 /* Keywords */
