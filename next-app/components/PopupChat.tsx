@@ -9,9 +9,12 @@ import { usePopupChat } from "@/contexts/PopupChatContext";
 import { useProjectCopilot } from "@/contexts/ProjectCopilotContext";
 import { createNoteAction } from "@/app/actions/notes";
 import { createConversation, addMessage } from "@/app/actions/conversations";
+import { applyPopupProtocolProposalAction, logPopupProposalRejectedAction } from "@/app/actions/popup-ai";
 import { AGENT_MODE_PROMPTS, buildStudyContext, sanitizeContext } from "@/lib/ai/prompts/copilot-prompts";
 import { parseNDJSONStream } from "@/lib/ai/stream-parser";
 import { markdownComponents } from "@/components/markdown/CodeBlock";
+import { dispatchProjectDataChanged } from "@/lib/project-data-events";
+import { getFieldLabel } from "@/lib/protocol-fields";
 import type { PopupChatContext, PopupMessage } from "@/types/popup-chat";
 import type { CopilotPage } from "@/types/ai";
 import styles from "./PopupChat.module.css";
@@ -102,6 +105,13 @@ type PopupChatProps = {
     projectId: string;
 };
 
+type PendingProtocolProposal = {
+    field: string;
+    value: string | string[];
+    oldValue?: string | string[] | null;
+    rationale?: string;
+};
+
 export function PopupChat({ projectId }: PopupChatProps) {
     const { isOpen, context, closePopupChat } = usePopupChat();
     const { selectConversation, setCollapsed, refreshConversations } = useProjectCopilot();
@@ -109,6 +119,8 @@ export function PopupChat({ projectId }: PopupChatProps) {
     const [messages, setMessages] = useState<PopupMessage[]>([]);
     const [input, setInput] = useState("");
     const [isStreaming, setIsStreaming] = useState(false);
+    const [phaseText, setPhaseText] = useState<string | null>(null);
+    const [pendingProposal, setPendingProposal] = useState<PendingProtocolProposal | null>(null);
     const [showTurnHint, setShowTurnHint] = useState(false);
     const [turnHintDismissed, setTurnHintDismissed] = useState(false);
 
@@ -129,6 +141,8 @@ export function PopupChat({ projectId }: PopupChatProps) {
         setMessages([]);
         setInput("");
         setIsStreaming(false);
+        setPhaseText(null);
+        setPendingProposal(null);
         setShowTurnHint(false);
         setTurnHintDismissed(false);
         abortRef.current?.abort();
@@ -181,6 +195,7 @@ export function PopupChat({ projectId }: PopupChatProps) {
         setMessages((prev) => [...prev, userMsg]);
         setInput("");
         setIsStreaming(true);
+        setPhaseText(null);
 
         // Build messages array for the API
         const systemPrompt = buildPopupSystemPrompt(context);
@@ -205,7 +220,18 @@ export function PopupChat({ projectId }: PopupChatProps) {
             const response = await fetch("/api/ai/stream", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ messages: apiMessages }),
+                body: JSON.stringify({
+                    messages: apiMessages,
+                    popupContext: context,
+                    options: {
+                        popupMode: true,
+                        projectId,
+                        page: contextToPage(context),
+                        section: context.type === "protocol_section" || context.type === "draft_selection"
+                            ? context.section
+                            : undefined,
+                    },
+                }),
                 signal: controller.signal,
             });
 
@@ -234,6 +260,27 @@ export function PopupChat({ projectId }: PopupChatProps) {
                             prev.map((m) => (m.id === aiMsgId ? { ...m, content: captured } : m)),
                         );
                     }
+                } else if (event.type === "tool_call") {
+                    setPhaseText("Running tool...");
+                } else if (event.type === "progress") {
+                    setPhaseText(event.progressMessage ?? "Running tool...");
+                } else if (event.type === "tool_result") {
+                    setPhaseText("Ready for review");
+                    const result = event.toolResult?.result as Record<string, unknown> | null;
+                    if (event.toolName === "update_protocol" && result) {
+                        const field = typeof result.field === "string" ? result.field : "";
+                        const value = result.value;
+                        if (field && (typeof value === "string" || Array.isArray(value))) {
+                            setPendingProposal({
+                                field,
+                                value,
+                                oldValue: (typeof result.oldValue === "string" || Array.isArray(result.oldValue) || result.oldValue === null)
+                                    ? (result.oldValue as string | string[] | null)
+                                    : undefined,
+                                rationale: typeof result.rationale === "string" ? result.rationale : undefined,
+                            });
+                        }
+                    }
                 } else if (event.type === "error") {
                     throw new Error(event.error);
                 }
@@ -248,17 +295,74 @@ export function PopupChat({ projectId }: PopupChatProps) {
             ]);
         } finally {
             setIsStreaming(false);
+            if (!pendingProposal) setPhaseText(null);
             if (abortRef.current === controller) {
                 abortRef.current = null;
             }
         }
-    }, [input, isStreaming, context, messages]);
+    }, [input, isStreaming, context, messages, projectId, pendingProposal]);
 
     const handleStop = useCallback(() => {
         abortRef.current?.abort();
         abortRef.current = null;
         setIsStreaming(false);
+        setPhaseText(null);
     }, []);
+
+    const handleAcceptProposal = useCallback(async () => {
+        if (!context || !pendingProposal) return;
+        setPhaseText("Applying change...");
+        const result = await applyPopupProtocolProposalAction(context.projectId, context, {
+            field: pendingProposal.field,
+            value: pendingProposal.value,
+            rationale: pendingProposal.rationale,
+        });
+        if (!result.success) {
+            setMessages((prev) => [
+                ...prev,
+                {
+                    id: `pm-${Date.now()}`,
+                    role: "assistant",
+                    content: `I couldn't apply this proposal: ${result.error}`,
+                    createdAt: new Date().toISOString(),
+                },
+            ]);
+            setPhaseText(null);
+            return;
+        }
+        dispatchProjectDataChanged({
+            projectId: context.projectId,
+            domains: ["protocol"],
+            source: "popup_ai_accept",
+        });
+        setMessages((prev) => [
+            ...prev,
+            {
+                id: `pm-${Date.now()}`,
+                role: "assistant",
+                content: `Applied proposal for **${getFieldLabel(pendingProposal.field)}**.`,
+                createdAt: new Date().toISOString(),
+            },
+        ]);
+        setPendingProposal(null);
+        setPhaseText(null);
+    }, [context, pendingProposal]);
+
+    const handleRejectProposal = useCallback(async () => {
+        if (!context || !pendingProposal) return;
+        await logPopupProposalRejectedAction(context.projectId, context, pendingProposal.field);
+        setMessages((prev) => [
+            ...prev,
+            {
+                id: `pm-${Date.now()}`,
+                role: "assistant",
+                content: `Got it — rejected the proposal for **${getFieldLabel(pendingProposal.field)}**. I can suggest another if you want.`,
+                createdAt: new Date().toISOString(),
+            },
+        ]);
+        setPendingProposal(null);
+        setPhaseText(null);
+    }, [context, pendingProposal]);
 
     const handleKeyDown = useCallback(
         (e: React.KeyboardEvent) => {
@@ -456,6 +560,22 @@ export function PopupChat({ projectId }: PopupChatProps) {
 
                     {/* Input */}
                     <div className={styles.inputArea}>
+                        {phaseText ? <div className={styles.turnHint}>{phaseText}</div> : null}
+                        {pendingProposal ? (
+                            <div className={styles.turnHint}>
+                                <div><strong>Proposed change:</strong> {getFieldLabel(pendingProposal.field)}</div>
+                                <div style={{ marginTop: 4 }}>
+                                    {Array.isArray(pendingProposal.value)
+                                        ? pendingProposal.value.join("; ")
+                                        : pendingProposal.value}
+                                </div>
+                                {pendingProposal.rationale ? <div style={{ marginTop: 4 }}>{pendingProposal.rationale}</div> : null}
+                                <div style={{ marginTop: 8, display: "flex", gap: 8 }}>
+                                    <button type="button" className={styles.footerLink} onClick={handleRejectProposal}>Reject</button>
+                                    <button type="button" className={styles.footerLink} onClick={handleAcceptProposal}>Accept</button>
+                                </div>
+                            </div>
+                        ) : null}
                         <div className={styles.inputRow}>
                             <textarea
                                 ref={textareaRef}

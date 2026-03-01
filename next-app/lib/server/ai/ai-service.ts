@@ -376,7 +376,9 @@ class AIService {
     ): AsyncIterable<AIStreamChunk> {
         const hasProjectScope = !!(options?.projectId && options.projectId !== null);
         const scope = hasProjectScope ? "project" as const : "global" as const;
-        const toolDefs = getToolDefinitions(undefined, scope);
+        const toolDefs = options?.tools && options.tools.length > 0
+            ? options.tools
+            : getToolDefinitions(undefined, scope);
         if (toolDefs.length === 0) {
             yield* this.streamChat(messages, options);
             return;
@@ -536,6 +538,11 @@ class AIService {
                     name: tc.name,
                     args: tc.arguments,
                     callId: tc.id,
+                    context: {
+                        projectId: options?.projectId,
+                        studyId: options?.studyId,
+                        userId: options?.userId,
+                    },
                 });
                 yield { type: "tool_result", toolName: tc.name, toolResult: result };
 

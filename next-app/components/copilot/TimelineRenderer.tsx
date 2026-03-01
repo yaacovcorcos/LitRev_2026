@@ -49,6 +49,7 @@ import { addMentionedStudyAction } from "@/app/actions/ledger";
 import { extractMentionedStudies, stripMentionedStudiesMarkup, type MentionedStudy } from "@/lib/ai/mentioned-studies";
 import { isChatStudyMentionsEnabled } from "@/lib/agent/feature-flags";
 import { getReasoningSummaryPreview } from "@/lib/ai/reasoning-visibility";
+import { dispatchProjectDataChanged } from "@/lib/project-data-events";
 import styles from "./TimelineMessages.module.css";
 import artifactStyles from "@/styles/artifacts.module.css";
 import markdownStyles from "@/styles/markdown.module.css";
@@ -297,7 +298,11 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
                 ...prev,
                 [study.key]: result.data.created ? "added" : "exists",
             }));
-            window.dispatchEvent(new CustomEvent("litrev:ledger-changed", { detail: { projectId } }));
+            dispatchProjectDataChanged({
+                projectId,
+                domains: ["ledger"],
+                source: "mentioned_study_add",
+            });
         } catch (error) {
             console.error("[mentions] add to ledger failed", error);
             setMentionStates((prev) => ({ ...prev, [study.key]: "error" }));

@@ -270,18 +270,6 @@ export function ProjectDataProvider({
         return unsub;
     }, [projectId, domainFetcher]);
 
-    // Legacy ledger-changed compat
-    useEffect(() => {
-        const handler = (e: Event) => {
-            const pid = (e as CustomEvent).detail?.projectId as string | undefined;
-            if (pid && pid === projectId) {
-                fetchStudies(projectId);
-            }
-        };
-        window.addEventListener("litrev:ledger-changed", handler);
-        return () => window.removeEventListener("litrev:ledger-changed", handler);
-    }, [projectId, fetchStudies]);
-
     // ── Context value ────────────────────────────────────────────────────────
 
     const value = useMemo<ProjectDataContextValue>(
