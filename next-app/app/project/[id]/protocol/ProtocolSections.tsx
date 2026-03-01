@@ -67,7 +67,9 @@ export function ProtocolSections({ projectId }: Props) {
                         className={styles.askCopilotBtn}
                         onClick={() => openPopupChat({
                             type: "protocol_section",
+                            projectId,
                             section: "Research Question",
+                            sectionKey: "research-question",
                             currentContent: protocol.researchQuestion || "",
                         })}
                     >
@@ -100,7 +102,9 @@ export function ProtocolSections({ projectId }: Props) {
                         className={styles.askCopilotBtn}
                         onClick={() => openPopupChat({
                             type: "protocol_section",
+                            projectId,
                             section: "PICO Framework",
+                            sectionKey: "pico-framework",
                             currentContent: `Population: ${protocol.pico.population}\nIntervention: ${protocol.pico.intervention}\nComparison: ${protocol.pico.comparison}\nOutcome: ${protocol.pico.outcome}`,
                         })}
                     >
@@ -170,7 +174,9 @@ export function ProtocolSections({ projectId }: Props) {
                         className={styles.askCopilotBtn}
                         onClick={() => openPopupChat({
                             type: "protocol_section",
+                            projectId,
                             section: "Eligibility Criteria",
+                            sectionKey: "eligibility-criteria",
                             currentContent: `Inclusion: ${protocol.eligibility.inclusion.join("; ")}\nExclusion: ${protocol.eligibility.exclusion.join("; ")}`,
                         })}
                     >
@@ -230,7 +236,9 @@ export function ProtocolSections({ projectId }: Props) {
                         className={styles.askCopilotBtn}
                         onClick={() => openPopupChat({
                             type: "protocol_section",
+                            projectId,
                             section: "Search Strategy",
+                            sectionKey: "search-strategy",
                             currentContent: `Query: ${protocol.searchStrategy.query}\nDatabases: ${protocol.searchStrategy.databases.join(", ")}`,
                         })}
                     >
@@ -279,7 +287,9 @@ export function ProtocolSections({ projectId }: Props) {
                         className={styles.askCopilotBtn}
                         onClick={() => openPopupChat({
                             type: "protocol_section",
+                            projectId,
                             section: "Methodology",
+                            sectionKey: "methodology",
                             currentContent: `Study designs: ${protocol.methodology.studyDesigns.join(", ")}\nTime frame: ${protocol.methodology.timeFrameStart} - ${protocol.methodology.timeFrameEnd}\nQuality tool: ${protocol.methodology.qualityAssessmentTool}`,
                         })}
                     >

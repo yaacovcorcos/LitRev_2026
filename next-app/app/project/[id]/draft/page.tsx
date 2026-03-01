@@ -848,6 +848,7 @@ function DraftContent() {
                     : ed?.getText().slice(0, 500) ?? "";
                   openPopupChat({
                     type: "draft_selection",
+                    projectId: id,
                     section: activeSectionLabel,
                     selectedText,
                   });

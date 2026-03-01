@@ -243,6 +243,7 @@ export const StudyRow = memo(function StudyRow({
                     event.stopPropagation();
                     openPopupChat({
                       type: "study",
+                      projectId,
                       studyId: study.id,
                       title: study.title,
                       abstract: displaySummary,
