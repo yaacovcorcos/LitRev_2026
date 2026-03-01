@@ -286,6 +286,18 @@ export function CopilotInputCore({
         cancelStream();
     }, [cancelStream, voiceState, stopRecording]);
 
+    useEffect(() => {
+        if (!isLoading && voiceState !== "recording" && voiceState !== "transcribing") return;
+        const onWindowKeyDown = (event: KeyboardEvent) => {
+            if (event.defaultPrevented) return;
+            if (event.key !== "Escape") return;
+            event.preventDefault();
+            handleStop();
+        };
+        window.addEventListener("keydown", onWindowKeyDown);
+        return () => window.removeEventListener("keydown", onWindowKeyDown);
+    }, [handleStop, isLoading, voiceState]);
+
     const handleUploadNew = useCallback(() => {
         if (!canShowAttachments) return;
         setShowAttachPicker(false);
@@ -470,6 +482,12 @@ export function CopilotInputCore({
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     onKeyDown={(e) => {
+                        if (e.key === "Escape" && (isLoading || voiceState === "recording" || voiceState === "transcribing")) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            handleStop();
+                            return;
+                        }
                         if (e.key === "Enter" && !e.shiftKey) {
                             e.preventDefault();
                             e.stopPropagation();
@@ -772,7 +790,7 @@ export function CopilotInputCore({
                         )}
                     </div>
 
-                    {isLoading && !input.trim() && !pendingAttachment ? (
+                    {isLoading ? (
                         <button
                             type="button"
                             className={`${styles.sendBtn} ${styles.sendBtnStop}`}
