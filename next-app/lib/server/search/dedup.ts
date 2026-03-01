@@ -14,6 +14,29 @@ export type DedupResult = {
   duplicates: DuplicateMatch[];
 };
 
+export type StudyDuplicateSignal =
+  | "doi"
+  | "pmid"
+  | "s2PaperId"
+  | "titleYearAuthor"
+  | "titleYear";
+
+export type StudyDuplicatePairConfidence = "high" | "medium";
+
+export type StudyDuplicatePair = {
+  leftStudyId: string;
+  rightStudyId: string;
+  confidence: StudyDuplicatePairConfidence;
+  signals: StudyDuplicateSignal[];
+};
+
+export type StudyDuplicateCluster = {
+  studyIds: string[];
+  confidence: StudyDuplicatePairConfidence;
+  signals: StudyDuplicateSignal[];
+  pairs: StudyDuplicatePair[];
+};
+
 type ExistingStudyRef = {
   id: string;
   title: string;
@@ -78,6 +101,209 @@ function isTitleYearAuthorMatch(existing: ExistingStudyRef, candidateAuthorToken
     return existing.authorToken === candidateAuthorToken;
   }
   return true;
+}
+
+function makePairKey(left: string, right: string): string {
+  return left < right ? `${left}::${right}` : `${right}::${left}`;
+}
+
+function parsePairKey(key: string): { left: string; right: string } {
+  const [left, right] = key.split("::");
+  return { left, right };
+}
+
+function confidenceFromSignals(signals: Set<StudyDuplicateSignal>): StudyDuplicatePairConfidence {
+  if (signals.has("doi") || signals.has("pmid") || signals.has("s2PaperId")) {
+    return "high";
+  }
+  return "medium";
+}
+
+function pushSignal(
+  signalMap: Map<string, Set<StudyDuplicateSignal>>,
+  leftStudyId: string,
+  rightStudyId: string,
+  signal: StudyDuplicateSignal
+): void {
+  if (leftStudyId === rightStudyId) return;
+  const key = makePairKey(leftStudyId, rightStudyId);
+  const signals = signalMap.get(key) ?? new Set<StudyDuplicateSignal>();
+  signals.add(signal);
+  signalMap.set(key, signals);
+}
+
+function buildPairsFromBuckets(
+  buckets: Iterable<ExistingStudyRef[]>,
+  signalMap: Map<string, Set<StudyDuplicateSignal>>,
+  signal: StudyDuplicateSignal
+): void {
+  for (const refs of buckets) {
+    if (refs.length < 2) continue;
+    for (let i = 0; i < refs.length; i += 1) {
+      for (let j = i + 1; j < refs.length; j += 1) {
+        pushSignal(signalMap, refs[i].id, refs[j].id, signal);
+      }
+    }
+  }
+}
+
+function collectStudyRef(study: Study): ExistingStudyRef {
+  return {
+    id: study.id,
+    title: study.title,
+    authorToken: firstAuthorToken(study.authors),
+  };
+}
+
+/**
+ * Build duplicate clusters across already-ingested studies.
+ * This is for v2 dedupe/merge workflows, not incoming search results.
+ */
+export function buildStudyDuplicateClusters(studies: Study[]): StudyDuplicateCluster[] {
+  if (studies.length < 2) return [];
+
+  const doiBuckets = new Map<string, ExistingStudyRef[]>();
+  const pmidBuckets = new Map<string, ExistingStudyRef[]>();
+  const s2Buckets = new Map<string, ExistingStudyRef[]>();
+  const titleYearAuthorBuckets = new Map<string, ExistingStudyRef[]>();
+  const titleYearBuckets = new Map<string, ExistingStudyRef[]>();
+  const signalMap = new Map<string, Set<StudyDuplicateSignal>>();
+
+  for (const study of studies) {
+    const ref = collectStudyRef(study);
+    const details = study.details;
+    const doi = normalizeDoi(typeof details?.doi === "string" ? details.doi : undefined);
+    const pmid = normalizePmid(typeof details?.pmid === "string" ? details.pmid : undefined);
+    const s2PaperId = typeof details?.s2PaperId === "string" ? details.s2PaperId.trim() : undefined;
+    const titleYearKey = toTitleYearKey(study.title, study.year);
+
+    if (doi) {
+      const bucket = doiBuckets.get(doi) ?? [];
+      bucket.push(ref);
+      doiBuckets.set(doi, bucket);
+    }
+    if (pmid) {
+      const bucket = pmidBuckets.get(pmid) ?? [];
+      bucket.push(ref);
+      pmidBuckets.set(pmid, bucket);
+    }
+    if (s2PaperId) {
+      const bucket = s2Buckets.get(s2PaperId) ?? [];
+      bucket.push(ref);
+      s2Buckets.set(s2PaperId, bucket);
+    }
+    if (titleYearKey) {
+      const bucket = titleYearBuckets.get(titleYearKey) ?? [];
+      bucket.push(ref);
+      titleYearBuckets.set(titleYearKey, bucket);
+
+      if (ref.authorToken) {
+        const authorKey = `${titleYearKey}|${ref.authorToken}`;
+        const authorBucket = titleYearAuthorBuckets.get(authorKey) ?? [];
+        authorBucket.push(ref);
+        titleYearAuthorBuckets.set(authorKey, authorBucket);
+      }
+    }
+  }
+
+  buildPairsFromBuckets(doiBuckets.values(), signalMap, "doi");
+  buildPairsFromBuckets(pmidBuckets.values(), signalMap, "pmid");
+  buildPairsFromBuckets(s2Buckets.values(), signalMap, "s2PaperId");
+  buildPairsFromBuckets(titleYearAuthorBuckets.values(), signalMap, "titleYearAuthor");
+
+  // title+year-only signal: only when at least one side has no author token.
+  for (const refs of titleYearBuckets.values()) {
+    if (refs.length < 2) continue;
+    for (let i = 0; i < refs.length; i += 1) {
+      for (let j = i + 1; j < refs.length; j += 1) {
+        const left = refs[i];
+        const right = refs[j];
+        if (left.authorToken && right.authorToken && left.authorToken !== right.authorToken) {
+          continue;
+        }
+        if (left.authorToken && right.authorToken) {
+          continue;
+        }
+        pushSignal(signalMap, left.id, right.id, "titleYear");
+      }
+    }
+  }
+
+  const pairs: StudyDuplicatePair[] = Array.from(signalMap.entries()).map(([key, signals]) => {
+    const { left, right } = parsePairKey(key);
+    return {
+      leftStudyId: left,
+      rightStudyId: right,
+      signals: Array.from(signals),
+      confidence: confidenceFromSignals(signals),
+    };
+  });
+
+  if (pairs.length === 0) return [];
+
+  const parent = new Map<string, string>();
+  const find = (id: string): string => {
+    const cur = parent.get(id) ?? id;
+    if (cur !== id) {
+      const root = find(cur);
+      parent.set(id, root);
+      return root;
+    }
+    return cur;
+  };
+  const union = (left: string, right: string): void => {
+    const leftRoot = find(left);
+    const rightRoot = find(right);
+    if (leftRoot === rightRoot) return;
+    if (leftRoot < rightRoot) {
+      parent.set(rightRoot, leftRoot);
+    } else {
+      parent.set(leftRoot, rightRoot);
+    }
+  };
+
+  for (const pair of pairs) {
+    union(pair.leftStudyId, pair.rightStudyId);
+  }
+
+  const clusterMap = new Map<string, Set<string>>();
+  for (const study of studies) {
+    const root = find(study.id);
+    const bucket = clusterMap.get(root) ?? new Set<string>();
+    bucket.add(study.id);
+    clusterMap.set(root, bucket);
+  }
+
+  const clusters: StudyDuplicateCluster[] = [];
+  for (const studyIdSet of clusterMap.values()) {
+    if (studyIdSet.size < 2) continue;
+    const studyIds = Array.from(studyIdSet).sort();
+    const idSet = new Set(studyIds);
+    const clusterPairs = pairs.filter(
+      (pair) => idSet.has(pair.leftStudyId) && idSet.has(pair.rightStudyId)
+    );
+    const signalSet = new Set<StudyDuplicateSignal>();
+    let confidence: StudyDuplicatePairConfidence = "medium";
+    for (const pair of clusterPairs) {
+      if (pair.confidence === "high") confidence = "high";
+      for (const signal of pair.signals) signalSet.add(signal);
+    }
+
+    clusters.push({
+      studyIds,
+      confidence,
+      signals: Array.from(signalSet),
+      pairs: clusterPairs.sort((a, b) =>
+        `${a.leftStudyId}:${a.rightStudyId}`.localeCompare(`${b.leftStudyId}:${b.rightStudyId}`)
+      ),
+    });
+  }
+
+  return clusters.sort((a, b) => {
+    if (a.confidence !== b.confidence) return a.confidence === "high" ? -1 : 1;
+    if (a.studyIds.length !== b.studyIds.length) return b.studyIds.length - a.studyIds.length;
+    return a.studyIds[0].localeCompare(b.studyIds[0]);
+  });
 }
 
 /**

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { findDuplicates } from "@/lib/server/search/dedup";
+import { buildStudyDuplicateClusters, findDuplicates } from "@/lib/server/search/dedup";
 import type { SearchResult } from "@/types/search";
 import type { Study } from "@/types/ledger";
 
@@ -175,5 +175,67 @@ describe("findDuplicates", () => {
     expect(unique).toHaveLength(1);
     expect(duplicates).toHaveLength(1);
     expect(duplicates[0].matchedBy).toBe("doi");
+  });
+});
+
+describe("buildStudyDuplicateClusters", () => {
+  it("builds transitive high-confidence clusters for identifier matches", () => {
+    const studies: Study[] = [
+      makeStudy({
+        id: "s1",
+        title: "A",
+        details: { doi: "10.1111/demo.1" },
+      }),
+      makeStudy({
+        id: "s2",
+        title: "B",
+        details: { doi: "https://doi.org/10.1111/demo.1", pmid: "123456" },
+      }),
+      makeStudy({
+        id: "s3",
+        title: "C",
+        details: { pmid: "123456" },
+      }),
+      makeStudy({
+        id: "s4",
+        title: "D",
+        details: { doi: "10.2222/other.1" },
+      }),
+    ];
+
+    const clusters = buildStudyDuplicateClusters(studies);
+    expect(clusters).toHaveLength(1);
+    expect(clusters[0].studyIds).toEqual(["s1", "s2", "s3"]);
+    expect(clusters[0].confidence).toBe("high");
+    expect(clusters[0].signals).toEqual(expect.arrayContaining(["doi", "pmid"]));
+  });
+
+  it("returns medium-confidence title/year clusters when identifiers are missing", () => {
+    const studies: Study[] = [
+      makeStudy({
+        id: "s1",
+        title: "Effect of Omega 3 on Sleep",
+        authors: "Smith, J",
+        year: 2020,
+      }),
+      makeStudy({
+        id: "s2",
+        title: "effect of omega-3 on sleep",
+        authors: "J Smith",
+        year: 2020,
+      }),
+      makeStudy({
+        id: "s3",
+        title: "Completely Different Study",
+        authors: "Doe A",
+        year: 2020,
+      }),
+    ];
+
+    const clusters = buildStudyDuplicateClusters(studies);
+    expect(clusters).toHaveLength(1);
+    expect(clusters[0].confidence).toBe("medium");
+    expect(clusters[0].signals).toContain("titleYearAuthor");
+    expect(clusters[0].studyIds).toEqual(["s1", "s2"]);
   });
 });

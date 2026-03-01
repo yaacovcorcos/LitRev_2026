@@ -54,6 +54,84 @@ function normalizeOptionalText(value: unknown): string | undefined {
     return trimmed.length > 0 ? trimmed : undefined;
 }
 
+function rewriteCitationNodeStudyIds(params: {
+    node: JSONContent;
+    replacements: Record<string, string>;
+    changedRef: { count: number };
+}): JSONContent {
+    const { node, replacements, changedRef } = params;
+    const nextNode: JSONContent = { ...node };
+
+    if (node.type === "citation") {
+        const attrs = isObject(node.attrs) ? { ...node.attrs } : {};
+        const studyId = normalizeStudyId(attrs);
+        if (studyId) {
+            const replacement = replacements[studyId];
+            if (replacement && replacement !== studyId) {
+                attrs.studyId = replacement;
+                delete attrs.id;
+                changedRef.count += 1;
+            } else if (attrs.id && !attrs.studyId) {
+                // Canonicalize legacy id attr when no replacement is needed.
+                attrs.studyId = studyId;
+                delete attrs.id;
+                changedRef.count += 1;
+            }
+        }
+        nextNode.attrs = attrs;
+        return nextNode;
+    }
+
+    if (Array.isArray(node.content)) {
+        nextNode.content = node.content.map((child) =>
+            rewriteCitationNodeStudyIds({
+                node: child,
+                replacements,
+                changedRef,
+            }),
+        );
+    }
+
+    return nextNode;
+}
+
+export function rewriteCitationStudyIdsInDoc(
+    doc: JSONContent,
+    replacements: Record<string, string>,
+): { content: JSONContent; changedCount: number } {
+    const changedRef = { count: 0 };
+    const content = rewriteCitationNodeStudyIds({
+        node: asNode(doc),
+        replacements,
+        changedRef,
+    });
+    return { content, changedCount: changedRef.count };
+}
+
+export function rewriteCitationStudyIdsInContentBySection(
+    contentBySection: Record<DraftSectionId, JSONContent>,
+    replacements: Record<string, string>,
+): {
+    contentBySection: Record<DraftSectionId, JSONContent>;
+    changedCount: number;
+    changedSections: DraftSectionId[];
+} {
+    let changedCount = 0;
+    const changedSections: DraftSectionId[] = [];
+    const next: Record<DraftSectionId, JSONContent> = { ...contentBySection };
+
+    for (const [sectionId, content] of Object.entries(contentBySection)) {
+        const rewritten = rewriteCitationStudyIdsInDoc(content, replacements);
+        if (rewritten.changedCount > 0) {
+            next[sectionId] = rewritten.content;
+            changedCount += rewritten.changedCount;
+            changedSections.push(sectionId);
+        }
+    }
+
+    return { contentBySection: next, changedCount, changedSections };
+}
+
 function transformNode(params: {
     node: JSONContent;
     sectionId: DraftSectionId;

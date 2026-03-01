@@ -6,6 +6,8 @@ import {
   compileDraftCitations,
   getCitedSectionIdsByStudyId,
   hasBlockingCitationIssues,
+  rewriteCitationStudyIdsInContentBySection,
+  rewriteCitationStudyIdsInDoc,
 } from "@/lib/citation-compiler";
 
 function makeDoc(content: JSONContent[]): JSONContent {
@@ -174,5 +176,58 @@ describe("reference and backlink helpers", () => {
       ],
     });
     expect(sections).toEqual(["abstract", "methods"]);
+  });
+});
+
+describe("citation id rewrite helpers", () => {
+  it("rewrites study ids in a single doc", () => {
+    const doc = makeDoc([
+      {
+        type: "paragraph",
+        content: [
+          { type: "citation", attrs: { studyId: "old-1", uid: "u1" } },
+          { type: "citation", attrs: { studyId: "keep-1", uid: "u2" } },
+        ],
+      },
+    ]);
+
+    const rewritten = rewriteCitationStudyIdsInDoc(doc, { "old-1": "new-1" });
+    const firstCitation = rewritten.content.content?.[0]?.content?.[0];
+    const secondCitation = rewritten.content.content?.[0]?.content?.[1];
+
+    expect(rewritten.changedCount).toBe(1);
+    expect(firstCitation?.attrs?.studyId).toBe("new-1");
+    expect(secondCitation?.attrs?.studyId).toBe("keep-1");
+  });
+
+  it("rewrites citations across sections and reports changed sections", () => {
+    const contentBySection = {
+      abstract: makeDoc([
+        {
+          type: "paragraph",
+          content: [{ type: "citation", attrs: { studyId: "old-1", uid: "u1" } }],
+        },
+      ]),
+      methods: makeDoc([
+        {
+          type: "paragraph",
+          content: [{ type: "citation", attrs: { studyId: "old-2", uid: "u2" } }],
+        },
+      ]),
+    } as Record<string, JSONContent>;
+
+    const rewritten = rewriteCitationStudyIdsInContentBySection(contentBySection, {
+      "old-1": "new-1",
+      "old-2": "new-2",
+    });
+
+    expect(rewritten.changedCount).toBe(2);
+    expect(rewritten.changedSections.sort()).toEqual(["abstract", "methods"]);
+    expect(
+      rewritten.contentBySection.abstract.content?.[0]?.content?.[0]?.attrs?.studyId
+    ).toBe("new-1");
+    expect(
+      rewritten.contentBySection.methods.content?.[0]?.content?.[0]?.attrs?.studyId
+    ).toBe("new-2");
   });
 });

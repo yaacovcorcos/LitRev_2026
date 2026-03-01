@@ -5,6 +5,12 @@ import { prisma } from "@/lib/server/prisma";
 import { assertProjectAccess } from "@/lib/server/access";
 import { mergeDetails } from "@/lib/utils/merge";
 import { normalizeStudy, type StudyInput } from "@/lib/utils/normalize";
+import {
+  buildStudyDuplicateClusters,
+  type StudyDuplicateCluster,
+  type StudyDuplicatePairConfidence,
+} from "@/lib/server/search/dedup";
+import { rewriteCitationStudyIdsInContentBySection } from "@/lib/citation-compiler";
 import type { ServiceScope, ScopeInput } from "@/lib/server/scope";
 import type { Study, StudyDetails } from "@/types/ledger";
 
@@ -24,6 +30,21 @@ export type MentionedStudyUpsertResult = {
   study: Study;
   created: boolean;
   matchedBy?: "doi" | "pmid" | "s2PaperId" | "titleYear";
+};
+
+export type DedupeMergeClusterResult = {
+  cluster: StudyDuplicateCluster;
+  merged: boolean;
+  canonicalStudyId?: string;
+  mergedStudyIds: string[];
+  skippedReason?: "cluster_not_found" | "insufficient_active_studies" | "single_active_study";
+};
+
+export type DedupeMergeRunResult = {
+  scannedClusters: number;
+  mergedClusters: number;
+  mergedStudies: number;
+  results: DedupeMergeClusterResult[];
 };
 
 export type { PaginationOptions, PaginatedResult } from "@/lib/server/pagination";
@@ -92,6 +113,184 @@ function stableMentionStudyId(projectId: string, input: {
 
   const digest = createHash("sha1").update(`${projectId}|${key}`).digest("hex");
   return `study_${digest.slice(0, 16)}`;
+}
+
+function asDetailsObject(details: unknown): Record<string, unknown> {
+  return (details as Record<string, unknown> | null) ?? {};
+}
+
+function getMergedIntoStudyId(details: unknown): string | undefined {
+  const value = asDetailsObject(details).mergedIntoStudyId;
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function hasManualReviewSignal(study: {
+  status: string;
+  quality: string;
+  details: unknown;
+}): boolean {
+  const details = asDetailsObject(study.details);
+  return (
+    study.status === "active" ||
+    study.status === "excluded" ||
+    study.quality !== "-" ||
+    typeof details.triageDecision === "string" ||
+    typeof details.screeningMeta === "object"
+  );
+}
+
+function metadataRichness(study: {
+  title: string;
+  authors: string;
+  details: unknown;
+}): number {
+  const details = asDetailsObject(study.details);
+  let score = 0;
+  if (study.title.trim().length > 0 && study.title !== "Untitled Study") score += 1;
+  if (study.authors.trim().length > 0 && study.authors !== "Unknown") score += 1;
+  if (typeof details.doi === "string" && details.doi.trim().length > 0) score += 2;
+  if (typeof details.pmid === "string" && details.pmid.trim().length > 0) score += 2;
+  if (typeof details.s2PaperId === "string" && details.s2PaperId.trim().length > 0) score += 2;
+  if (typeof details.abstract === "string" && details.abstract.trim().length > 0) score += 1;
+  if (Array.isArray(details.keywords) && details.keywords.length > 0) score += 1;
+  if (typeof details.studyType === "string" && details.studyType.trim().length > 0) score += 1;
+  if (typeof details.sourceUrl === "string" && details.sourceUrl.trim().length > 0) score += 1;
+  return score;
+}
+
+function pickCanonicalStudyId(
+  studies: Array<{
+    id: string;
+    title: string;
+    authors: string;
+    status: string;
+    quality: string;
+    details: unknown;
+    updatedAt: Date;
+  }>,
+  fileCountByStudyId: Map<string, number>,
+): string {
+  const sorted = [...studies].sort((left, right) => {
+    const leftReviewed = hasManualReviewSignal(left) ? 1 : 0;
+    const rightReviewed = hasManualReviewSignal(right) ? 1 : 0;
+    if (leftReviewed !== rightReviewed) return rightReviewed - leftReviewed;
+
+    const leftMeta = metadataRichness(left);
+    const rightMeta = metadataRichness(right);
+    if (leftMeta !== rightMeta) return rightMeta - leftMeta;
+
+    const leftFiles = fileCountByStudyId.get(left.id) ?? 0;
+    const rightFiles = fileCountByStudyId.get(right.id) ?? 0;
+    if (leftFiles !== rightFiles) return rightFiles - leftFiles;
+
+    if (left.updatedAt.getTime() !== right.updatedAt.getTime()) {
+      return right.updatedAt.getTime() - left.updatedAt.getTime();
+    }
+
+    return left.id.localeCompare(right.id);
+  });
+
+  return sorted[0]?.id ?? studies[0].id;
+}
+
+function mergeStudyDetailsForCanonical(
+  canonicalDetails: unknown,
+  duplicateRows: Array<{ id: string; details: unknown }>,
+  confidence: StudyDuplicatePairConfidence,
+): Record<string, unknown> {
+  const now = new Date().toISOString();
+  const merged = { ...asDetailsObject(canonicalDetails) };
+  const mergedFrom = new Set<string>(
+    Array.isArray(merged.mergedFromStudyIds)
+      ? (merged.mergedFromStudyIds as unknown[]).filter((id): id is string => typeof id === "string")
+      : [],
+  );
+
+  for (const row of duplicateRows) {
+    mergedFrom.add(row.id);
+    const details = asDetailsObject(row.details);
+
+    if (!merged.doi && typeof details.doi === "string" && details.doi.trim().length > 0) {
+      merged.doi = details.doi;
+    }
+    if (!merged.pmid && typeof details.pmid === "string" && details.pmid.trim().length > 0) {
+      merged.pmid = details.pmid;
+    }
+    if (!merged.s2PaperId && typeof details.s2PaperId === "string" && details.s2PaperId.trim().length > 0) {
+      merged.s2PaperId = details.s2PaperId;
+    }
+    if (!merged.abstract && typeof details.abstract === "string" && details.abstract.trim().length > 0) {
+      merged.abstract = details.abstract;
+    } else if (typeof merged.abstract === "string" && typeof details.abstract === "string") {
+      if (details.abstract.trim().length > merged.abstract.trim().length) {
+        merged.abstract = details.abstract;
+      }
+    }
+
+    if (!merged.triageDecision && typeof details.triageDecision === "string") {
+      merged.triageDecision = details.triageDecision;
+    }
+    if (!merged.screeningMeta && typeof details.screeningMeta === "object" && details.screeningMeta !== null) {
+      merged.screeningMeta = details.screeningMeta;
+    }
+
+    const mergedKeywords = Array.isArray(merged.keywords) ? merged.keywords : [];
+    const incomingKeywords = Array.isArray(details.keywords) ? details.keywords : [];
+    if (incomingKeywords.length > 0) {
+      merged.keywords = Array.from(
+        new Set(
+          [...mergedKeywords, ...incomingKeywords].filter(
+            (value): value is string => typeof value === "string" && value.trim().length > 0
+          ),
+        ),
+      );
+    }
+  }
+
+  merged.mergedFromStudyIds = Array.from(mergedFrom);
+  merged.mergeReason = "dedupe_v2_cluster";
+  merged.mergeConfidence = confidence;
+  merged.mergedAt = now;
+  return merged;
+}
+
+async function rewriteDraftCitationsForMergedStudies(
+  tx: {
+    draft: {
+      findUnique: typeof prisma.draft.findUnique;
+      update: typeof prisma.draft.update;
+    };
+  },
+  projectId: string,
+  replacements: Record<string, string>,
+): Promise<void> {
+  const draft = await tx.draft.findUnique({
+    where: { projectId },
+    select: { projectId: true, state: true },
+  });
+  if (!draft || typeof draft.state !== "object" || draft.state === null) return;
+
+  const currentState = draft.state as Record<string, unknown>;
+  const contentBySection = currentState.contentBySection as Record<string, unknown> | undefined;
+  if (!contentBySection || typeof contentBySection !== "object") return;
+
+  const rewritten = rewriteCitationStudyIdsInContentBySection(
+    contentBySection as any,
+    replacements,
+  );
+  if (rewritten.changedCount === 0) return;
+
+  await tx.draft.update({
+    where: { projectId },
+    data: {
+      state: {
+        ...currentState,
+        contentBySection: rewritten.contentBySection,
+      } as any,
+    },
+  });
 }
 
 export async function listStudies(
@@ -299,9 +498,11 @@ export async function getStudy(
   projectId: string,
   studyId: string
 ): Promise<Study | null> {
-  await assertProjectAccess(scopeInput, projectId);
+  const canonicalStudyId = await resolveCanonicalStudyId(scopeInput, projectId, studyId);
+  if (!canonicalStudyId) return null;
+
   const study = await prisma.study.findFirst({
-    where: { id: studyId, projectId, deletedAt: null },
+    where: { id: canonicalStudyId, projectId, deletedAt: null },
   });
   return study ? toStudy(study) : null;
 }
@@ -316,9 +517,13 @@ export async function updateStudy(
   updates: Partial<StudyInput>
 ): Promise<Study> {
   const scope = await assertProjectAccess(scopeInput, projectId);
+  const canonicalStudyId = await resolveCanonicalStudyId(scopeInput, projectId, studyId);
+  if (!canonicalStudyId) {
+    throw new Error("Study not found or access denied.");
+  }
 
   const existing = await prisma.study.findFirst({
-    where: { id: studyId, projectId, deletedAt: null },
+    where: { id: canonicalStudyId, projectId, deletedAt: null },
   });
   if (!existing) {
     throw new Error("Study not found or access denied.");
@@ -339,11 +544,226 @@ export async function updateStudy(
   if (typeof updates.details !== "undefined") data.details = mergedDetails;
 
   const updated = await prisma.study.update({
-    where: { id: studyId },
+    where: { id: canonicalStudyId },
     data: data as any,
   });
 
   return toStudy(updated);
+}
+
+export async function resolveCanonicalStudyId(
+  scopeInput: ScopeInput,
+  projectId: string,
+  studyId: string,
+): Promise<string | null> {
+  await assertProjectAccess(scopeInput, projectId);
+
+  let currentId = studyId;
+  const visited = new Set<string>();
+  while (currentId && !visited.has(currentId)) {
+    visited.add(currentId);
+    const row = await prisma.study.findFirst({
+      where: { id: currentId, projectId },
+      select: { id: true, deletedAt: true, details: true },
+    });
+    if (!row) return null;
+    if (!row.deletedAt) return row.id;
+    const mergedInto = getMergedIntoStudyId(row.details);
+    if (!mergedInto) return null;
+    currentId = mergedInto;
+  }
+
+  return null;
+}
+
+export async function listStudyDuplicateClusters(
+  scopeInput: ScopeInput,
+  projectId: string,
+): Promise<StudyDuplicateCluster[]> {
+  await assertProjectAccess(scopeInput, projectId);
+  const rows = await prisma.study.findMany({
+    where: { projectId, deletedAt: null },
+    select: {
+      id: true,
+      title: true,
+      authors: true,
+      year: true,
+      status: true,
+      quality: true,
+      details: true,
+    },
+    orderBy: { createdAt: "asc" },
+  });
+
+  return buildStudyDuplicateClusters(rows.map(toStudy));
+}
+
+export async function mergeStudyDuplicateCluster(
+  scopeInput: ScopeInput,
+  projectId: string,
+  cluster: StudyDuplicateCluster,
+): Promise<DedupeMergeClusterResult> {
+  await assertProjectAccess(scopeInput, projectId);
+
+  return prisma.$transaction(async (tx: any) => {
+    const activeRows = await tx.study.findMany({
+      where: {
+        projectId,
+        id: { in: cluster.studyIds },
+        deletedAt: null,
+      },
+      select: {
+        id: true,
+        title: true,
+        authors: true,
+        year: true,
+        status: true,
+        quality: true,
+        details: true,
+        updatedAt: true,
+      },
+    });
+
+    if (activeRows.length === 0) {
+      return {
+        cluster,
+        merged: false,
+        mergedStudyIds: [],
+        skippedReason: "cluster_not_found" as const,
+      };
+    }
+
+    if (activeRows.length === 1) {
+      return {
+        cluster,
+        merged: false,
+        canonicalStudyId: activeRows[0].id,
+        mergedStudyIds: [],
+        skippedReason: "single_active_study" as const,
+      };
+    }
+
+    const fileRows = await tx.fileAsset.findMany({
+      where: { projectId, studyId: { in: activeRows.map((row: { id: string }) => row.id) } },
+      select: { studyId: true },
+    });
+    const fileCountByStudyId = new Map<string, number>();
+    for (const file of fileRows) {
+      if (!file.studyId) continue;
+      fileCountByStudyId.set(file.studyId, (fileCountByStudyId.get(file.studyId) ?? 0) + 1);
+    }
+
+    const canonicalStudyId = pickCanonicalStudyId(activeRows, fileCountByStudyId);
+    const duplicateRows = activeRows.filter((row: { id: string }) => row.id !== canonicalStudyId);
+    if (duplicateRows.length === 0) {
+      return {
+        cluster,
+        merged: false,
+        canonicalStudyId,
+        mergedStudyIds: [],
+        skippedReason: "insufficient_active_studies" as const,
+      };
+    }
+
+    const duplicateStudyIds = duplicateRows.map((row: { id: string }) => row.id);
+    const replacements = Object.fromEntries(duplicateStudyIds.map((id: string) => [id, canonicalStudyId]));
+    const now = new Date();
+    const nowIso = now.toISOString();
+
+    await tx.fileAsset.updateMany({
+      where: { projectId, studyId: { in: duplicateStudyIds } },
+      data: { studyId: canonicalStudyId },
+    });
+
+    await tx.studyMemory.updateMany({
+      where: { projectId, studyId: { in: duplicateStudyIds } },
+      data: { studyId: canonicalStudyId },
+    });
+
+    await tx.memoryEmbedding.updateMany({
+      where: { projectId, studyId: { in: duplicateStudyIds } },
+      data: { studyId: canonicalStudyId },
+    });
+
+    await tx.note.updateMany({
+      where: { projectId, linkedStudyId: { in: duplicateStudyIds }, deletedAt: null },
+      data: { linkedStudyId: canonicalStudyId },
+    });
+
+    await tx.aIConversation.updateMany({
+      where: { projectId, studyId: { in: duplicateStudyIds } },
+      data: { studyId: canonicalStudyId },
+    });
+
+    await rewriteDraftCitationsForMergedStudies(tx, projectId, replacements);
+
+    const canonicalRow = activeRows.find((row: { id: string }) => row.id === canonicalStudyId)!;
+    const mergedCanonicalDetails = mergeStudyDetailsForCanonical(
+      canonicalRow.details,
+      duplicateRows.map((row: { id: string; details: unknown }) => ({ id: row.id, details: row.details })),
+      cluster.confidence,
+    );
+
+    await tx.study.update({
+      where: { id: canonicalStudyId },
+      data: { details: mergedCanonicalDetails as any },
+    });
+
+    for (const row of duplicateRows) {
+      const details = asDetailsObject(row.details);
+      await tx.study.update({
+        where: { id: row.id },
+        data: {
+          deletedAt: now,
+          details: {
+            ...details,
+            mergedIntoStudyId: canonicalStudyId,
+            mergeReason: "dedupe_v2_cluster",
+            mergeConfidence: cluster.confidence,
+            mergedAt: nowIso,
+          } as any,
+        },
+      });
+    }
+
+    return {
+      cluster,
+      merged: true,
+      canonicalStudyId,
+      mergedStudyIds: duplicateStudyIds,
+    };
+  });
+}
+
+export async function autoMergeStudyDuplicates(
+  scopeInput: ScopeInput,
+  projectId: string,
+  options?: {
+    includeMediumConfidence?: boolean;
+    maxClusters?: number;
+  },
+): Promise<DedupeMergeRunResult> {
+  const clusters = await listStudyDuplicateClusters(scopeInput, projectId);
+  const includeMediumConfidence = options?.includeMediumConfidence === true;
+  const eligible = clusters.filter(
+    (cluster) => includeMediumConfidence || cluster.confidence === "high",
+  );
+  const selected = typeof options?.maxClusters === "number"
+    ? eligible.slice(0, Math.max(0, options.maxClusters))
+    : eligible;
+
+  const results: DedupeMergeClusterResult[] = [];
+  for (const cluster of selected) {
+    const result = await mergeStudyDuplicateCluster(scopeInput, projectId, cluster);
+    results.push(result);
+  }
+
+  return {
+    scannedClusters: clusters.length,
+    mergedClusters: results.filter((result) => result.merged).length,
+    mergedStudies: results.reduce((count, result) => count + result.mergedStudyIds.length, 0),
+    results,
+  };
 }
 
 export async function addMentionedStudy(
