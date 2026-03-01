@@ -22,6 +22,8 @@ export type CopilotInputProps = {
 export function CopilotInput({ page, section, studyId, inputPlaceholder, prefillCommand, onPrefillConsumed }: CopilotInputProps) {
     const {
         isLoading,
+        queuedMessageCount,
+        sendQueueMode,
         sendMessage,
         cancelStream,
         pendingAttachment,
@@ -54,6 +56,8 @@ export function CopilotInput({ page, section, studyId, inputPlaceholder, prefill
             prefillCommand={prefillCommand}
             onPrefillConsumed={onPrefillConsumed}
             isLoading={isLoading}
+            queuedMessageCount={queuedMessageCount}
+            sendQueueMode={sendQueueMode}
             sendMessage={sendMessage}
             cancelStream={cancelStream}
             pendingAttachment={pendingAttachment}

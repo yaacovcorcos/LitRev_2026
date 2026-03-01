@@ -17,6 +17,7 @@ import { routeToAgent, type RouterPage } from "@/lib/agent/router";
 import { getUserSelectableAgentModes } from "@/lib/agent/feature-flags";
 import { AGENT_MODE_META, type AgentMode, type AutonomyPreset } from "@/types/agent";
 import type { FileAsset } from "@/types/files";
+import type { SendQueueMode } from "@/lib/ai/send-queue-policy";
 import { UserInputCard } from "../artifacts/UserInputCard";
 import styles from "./CopilotInput.module.css";
 
@@ -38,6 +39,8 @@ export type CopilotInputCoreProps = {
     onPrefillConsumed?: () => void;
 
     isLoading: boolean;
+    queuedMessageCount?: number;
+    sendQueueMode?: SendQueueMode;
     sendMessage: (
         text: string,
         page: CopilotPage,
@@ -91,6 +94,8 @@ export function CopilotInputCore({
     prefillCommand,
     onPrefillConsumed,
     isLoading,
+    queuedMessageCount = 0,
+    sendQueueMode = "queue",
     sendMessage,
     cancelStream,
     pendingAttachment = null,
@@ -253,6 +258,12 @@ export function CopilotInputCore({
         if (!isLoading) sendLockRef.current = false;
     }, [isLoading]);
 
+    const releaseSendLockSoon = useCallback(() => {
+        queueMicrotask(() => {
+            sendLockRef.current = false;
+        });
+    }, []);
+
     const canShowAutonomy =
         (showAutonomyPreset ?? true) && !!autonomyPreset && !!updateAutonomyPreset && !!setShowAutonomySettings;
 
@@ -274,10 +285,11 @@ export function CopilotInputCore({
         if (!text && !pendingAttachment) return;
         sendLockRef.current = true;
         sendMessage(text, page, section, selectedModel, effectiveMode, studyId);
+        releaseSendLockSoon();
         setInput("");
         setModeOverride(null);
         requestAnimationFrame(() => textareaRef.current?.focus());
-    }, [input, page, section, studyId, sendMessage, selectedModel, pendingAttachment, effectiveMode]);
+    }, [effectiveMode, input, page, pendingAttachment, releaseSendLockSoon, section, selectedModel, sendMessage, studyId]);
 
     const handleStop = useCallback(() => {
         if (voiceState === "recording" || voiceState === "transcribing") {
@@ -463,6 +475,7 @@ export function CopilotInputCore({
                                     sendLockRef.current = true;
                                     clearChoices?.();
                                     sendMessage(choice.value, page, section, selectedModel, effectiveMode, studyId);
+                                    releaseSendLockSoon();
                                     setInput("");
                                 }}
                             >
@@ -476,6 +489,13 @@ export function CopilotInputCore({
                         ))}
                     </div>
                 </div>
+                {(queuedMessageCount > 0 || (isLoading && sendQueueMode === "queue" && input.trim().length > 0)) && (
+                    <div className={styles.queueHint} aria-live="polite">
+                        {queuedMessageCount > 0
+                            ? `Queued messages: ${queuedMessageCount}`
+                            : "Press Enter to queue this message while the current run is active."}
+                    </div>
+                )}
 
                 <textarea
                     ref={textareaRef}

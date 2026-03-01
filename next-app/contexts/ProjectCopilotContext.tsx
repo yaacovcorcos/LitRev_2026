@@ -365,6 +365,8 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             isLoading,
             streamPhase,
             canAct: !isLoading,
+            queuedMessageCount: stream.queuedMessageCount,
+            sendQueueMode: stream.sendQueueMode,
             reasoningMode,
             selectedModel,
             reasoningSupport,

@@ -684,6 +684,12 @@
     opacity: 0;
 }
 
+.queueHint {
+    padding: 0 14px 8px;
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
 .choiceChip {
     display: inline-flex;
     align-items: center;

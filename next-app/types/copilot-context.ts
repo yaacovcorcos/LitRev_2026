@@ -8,6 +8,7 @@ import type { ArtifactData } from "@/types/artifacts";
 import type { AgentMode, AutonomyPreset, AutonomyLevel } from "@/types/agent";
 import type { ChoiceOption, CopilotPage, ReasoningMode, StreamPhase, UserInputRequest } from "@/types/ai";
 import type { SelectableModelId, ReasoningSupportTier } from "@/lib/ai/config";
+import type { SendQueueMode } from "@/lib/ai/send-queue-policy";
 
 export type PendingAttachment = {
     fileAssetId: string;
@@ -46,6 +47,10 @@ export type ProjectCopilotContextValue = {
     streamPhase: StreamPhase;
     /** Whether the user can interact with artifact actions (false during streaming) */
     canAct: boolean;
+    /** Number of user messages waiting to run after the current stream */
+    queuedMessageCount: number;
+    /** Active send policy for overlapping messages */
+    sendQueueMode: SendQueueMode;
     /** Reasoning visibility mode (off/summary/full) */
     reasoningMode: ReasoningMode;
     /** Currently selected model ID */

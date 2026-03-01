@@ -75,4 +75,32 @@ describe("CopilotInputCore stop controls", () => {
         expect(cancelStream).toHaveBeenCalledTimes(0);
         expect(stopRecordingMock).toHaveBeenCalledTimes(0);
     });
+
+    it("allows multiple sends while loading so messages can be queued", async () => {
+        const sendMessage = vi.fn();
+        render(
+            <CopilotInputCore
+                page="overview"
+                inputPlaceholder="Ask"
+                isLoading={true}
+                sendMessage={sendMessage}
+                cancelStream={vi.fn()}
+                showVoice={false}
+            />,
+        );
+
+        const input = screen.getByLabelText("Copilot prompt");
+
+        fireEvent.change(input, { target: { value: "first follow-up" } });
+        fireEvent.keyDown(input, { key: "Enter" });
+
+        await Promise.resolve();
+
+        fireEvent.change(input, { target: { value: "second follow-up" } });
+        fireEvent.keyDown(input, { key: "Enter" });
+
+        expect(sendMessage).toHaveBeenCalledTimes(2);
+        expect(sendMessage.mock.calls[0][0]).toBe("first follow-up");
+        expect(sendMessage.mock.calls[1][0]).toBe("second follow-up");
+    });
 });

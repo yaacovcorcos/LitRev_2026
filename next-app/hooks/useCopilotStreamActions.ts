@@ -3,7 +3,7 @@
  * extracted from ProjectCopilotContext.tsx for maintainability.
  * Combines C-3 (stream) and C-4 (artifacts) extractions.
  */
-import { useCallback } from "react";
+import { useCallback, useRef, useState } from "react";
 import type {
     CopilotMessage,
     CopilotMessageAttachment,
@@ -21,6 +21,32 @@ import type { ArtifactActionContract } from "@/lib/artifacts/action-contract";
 import { shouldRequestReasoning } from "@/lib/ai/reasoning-visibility";
 import type { PendingAttachment, ApproveArtifactsBatchResult } from "@/types/copilot-context";
 import type { useCopilotConversations } from "@/hooks/useCopilotConversations";
+import { buildInterruptedUserMessage } from "@/lib/ai/interruption-context";
+import {
+    resolveMaxQueuedMessages,
+    resolveSendQueueMode,
+    type SendQueueMode,
+} from "@/lib/ai/send-queue-policy";
+
+type ConversationContextScope = "project" | "study";
+
+type QueuedSend = {
+    userMessage: string;
+    displayText: string;
+    page: CopilotPage;
+    section?: string;
+    model?: string;
+    agentMode?: AgentMode;
+    studyId?: string;
+    convId: string | null;
+    conversationContext: ConversationContextScope;
+    attachmentsMeta?: CopilotMessageAttachment[];
+};
+
+type ActiveSendSnapshot = {
+    userMessage: string;
+    displayText: string;
+};
 
 /** Dependencies injected by the provider. */
 export type CopilotStreamActionsDeps = {
@@ -43,6 +69,13 @@ export type CopilotStreamActionsDeps = {
     onNavigate: (url: string) => void;
 };
 
+const SEND_QUEUE_MODE: SendQueueMode = resolveSendQueueMode(
+    process.env.NEXT_PUBLIC_COPILOT_SEND_QUEUE_MODE,
+);
+const MAX_QUEUED_MESSAGES = resolveMaxQueuedMessages(
+    process.env.NEXT_PUBLIC_COPILOT_MAX_QUEUE,
+);
+
 export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
     const {
         projectId,
@@ -64,6 +97,18 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
         onNavigate,
     } = deps;
 
+    const sendQueueRef = useRef<QueuedSend[]>([]);
+    const isDrainingSendQueueRef = useRef(false);
+    const activeSendRef = useRef<ActiveSendSnapshot | null>(null);
+    const activeAssistantDraftRef = useRef("");
+    const idleResolversRef = useRef<Array<() => void>>([]);
+    const [queuedMessageCount, setQueuedMessageCount] = useState(0);
+
+    const notifyIdle = useCallback(() => {
+        const resolvers = idleResolversRef.current.splice(0);
+        for (const resolve of resolvers) resolve();
+    }, []);
+
     const cancelStream = useCallback(() => {
         streamGenRef.current++;
         if (abortControllerRef.current) {
@@ -72,8 +117,8 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
         }
         setIsLoading(false);
         setPendingChoices([]);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+        notifyIdle();
+    }, [abortControllerRef, notifyIdle, setIsLoading, setPendingChoices, streamGenRef]);
 
     /**
      * Core stream lifecycle: fetch → parse → dispatch chunks.
@@ -214,6 +259,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                     activeReasoningId = nextState.activeReasoningId;
                     localRunId = nextState.localRunId;
                     effectiveConvId = nextState.effectiveConvId;
+                    activeAssistantDraftRef.current = fullContent;
 
                     // Update stream phase based on chunk type
                     if (data.type === "tool_call") {
@@ -281,27 +327,113 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
             if (streamGenRef.current === myGen) {
                 setIsLoading(false);
                 setStreamPhase("idle");
+                notifyIdle();
             }
             if (abortControllerRef.current === controller) {
                 abortControllerRef.current = null;
             }
+            activeAssistantDraftRef.current = "";
         }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [updateState, projectId, convo]);
+    }, [updateState, projectId, convo, abortControllerRef, notifyIdle, setCurrentRunId, setPendingChoices, setPendingUserInput, setIsLoading, setStreamPhase, setArtifacts, streamGenRef, onNavigate]);
+
+    const waitForIdle = useCallback(async () => {
+        if (!isLoadingRef.current) return;
+        await new Promise<void>((resolve) => {
+            idleResolversRef.current.push(resolve);
+        });
+    }, [isLoadingRef]);
+
+    const appendLocalUserMessage = useCallback((payload: {
+        displayText: string;
+        page: CopilotPage;
+        section?: string;
+        attachmentsMeta?: CopilotMessageAttachment[];
+    }) => {
+        const userMessage: CopilotMessage = {
+            id: `m-${Date.now()}`,
+            sender: "user",
+            text: payload.displayText,
+            createdAt: new Date().toISOString(),
+            context: { page: payload.page, section: payload.section },
+            attachments: payload.attachmentsMeta,
+        };
+        updateState((prev) => ({
+            ...prev,
+            messages: [...prev.messages, userMessage],
+        }));
+    }, [updateState]);
+
+    const enqueueSend = useCallback((payload: QueuedSend, toFront = false) => {
+        if (toFront) sendQueueRef.current.unshift(payload);
+        else sendQueueRef.current.push(payload);
+        setQueuedMessageCount(sendQueueRef.current.length);
+    }, []);
+
+    const clearSendQueue = useCallback(() => {
+        sendQueueRef.current = [];
+        setQueuedMessageCount(0);
+    }, []);
+
+    const executeQueuedSend = useCallback(async (payload: QueuedSend) => {
+        activeSendRef.current = {
+            userMessage: payload.userMessage,
+            displayText: payload.displayText,
+        };
+        activeAssistantDraftRef.current = "";
+
+        await runStream({
+            body: {
+                userMessage: payload.userMessage,
+                context: payload.conversationContext,
+                options: {
+                    conversationId: payload.convId ?? undefined,
+                    projectId,
+                    studyId: payload.studyId,
+                    model: payload.model,
+                    reasoningMode,
+                    includeReasoning: shouldRequestReasoning(reasoningMode),
+                    reasoningBudgetTokens: shouldRequestReasoning(reasoningMode) ? 4096 : undefined,
+                    agentMode: payload.agentMode || "general",
+                    page: payload.page,
+                    section: payload.section,
+                    persistedUserMessageContent: payload.displayText,
+                    userMessageAttachments: payload.attachmentsMeta,
+                },
+            },
+            page: payload.page,
+            section: payload.section,
+            convId: payload.convId,
+        });
+
+        activeSendRef.current = null;
+    }, [projectId, reasoningMode, runStream]);
+
+    const drainQueuedSends = useCallback(async () => {
+        if (isDrainingSendQueueRef.current) return;
+        isDrainingSendQueueRef.current = true;
+        try {
+            while (sendQueueRef.current.length > 0) {
+                await waitForIdle();
+                const next = sendQueueRef.current.shift();
+                if (!next) continue;
+                setQueuedMessageCount(sendQueueRef.current.length);
+                await executeQueuedSend(next);
+            }
+        } finally {
+            isDrainingSendQueueRef.current = false;
+        }
+    }, [executeQueuedSend, waitForIdle]);
 
     const sendMessage = useCallback(
         async (text: string, page: CopilotPage, section?: string, model?: string, agentMode?: AgentMode, studyId?: string) => {
             const trimmed = text.trim();
             const attachment = pendingAttachment;
             if (!trimmed && !attachment) return;
-            if (isLoadingRef.current) cancelStream();
             setPendingChoices([]);
             setPendingUserInput(null);
 
-            // Determine conversation context based on page
-            const conversationContext = studyId ? "study" : "project";
+            const conversationContext: ConversationContextScope = studyId ? "study" : "project";
 
-            // Create conversation if needed
             let convId = convo.currentConversationId;
             if (!convId) {
                 try {
@@ -322,10 +454,8 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                 }
             }
 
-            // Build attachment metadata and augmented message for AI
             let messageForAI = trimmed;
             let attachmentsMeta: CopilotMessageAttachment[] | undefined;
-
             if (attachment) {
                 const sizeStr = attachment.size >= 1024 * 1024
                     ? `${(attachment.size / (1024 * 1024)).toFixed(1)} MB`
@@ -342,51 +472,72 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                 setPendingAttachment(null);
             }
 
-            // Add user message (display text only, not the augmented AI text)
             const displayText = trimmed || (attachment ? "I've attached a PDF. Please review it and summarize the key points." : "");
-            const userMessage: CopilotMessage = {
-                id: `m-${Date.now()}`,
-                sender: "user",
-                text: displayText,
-                createdAt: new Date().toISOString(),
-                context: { page, section },
-                attachments: attachmentsMeta,
-            };
-
-            updateState((prev) => ({
-                ...prev,
-                messages: [...prev.messages, userMessage],
-            }));
-
-            // Run the stream
-            await runStream({
-                body: {
-                    userMessage: messageForAI,
-                    context: conversationContext,
-                    options: {
-                        conversationId: convId ?? undefined,
-                        projectId,
-                        studyId,
-                        model,
-                        reasoningMode,
-                        includeReasoning: shouldRequestReasoning(reasoningMode),
-                        reasoningBudgetTokens: shouldRequestReasoning(reasoningMode) ? 4096 : undefined,
-                        agentMode: agentMode || "general",
-                        page,
-                        section,
-                        persistedUserMessageContent: displayText,
-                        userMessageAttachments: attachmentsMeta,
-                    },
-                },
+            appendLocalUserMessage({
+                displayText,
                 page,
                 section,
-                convId,
+                attachmentsMeta,
             });
+
+            const nextSend: QueuedSend = {
+                userMessage: messageForAI,
+                displayText,
+                page,
+                section,
+                model,
+                agentMode,
+                studyId,
+                convId,
+                conversationContext,
+                attachmentsMeta,
+            };
+
+            if (isLoadingRef.current) {
+                const shouldQueue = SEND_QUEUE_MODE === "queue" && sendQueueRef.current.length < MAX_QUEUED_MESSAGES;
+                if (shouldQueue) {
+                    enqueueSend(nextSend);
+                    return;
+                }
+
+                const interrupted = activeSendRef.current;
+                const partialAssistant = activeAssistantDraftRef.current;
+                const interruptedMessage = interrupted
+                    ? buildInterruptedUserMessage({
+                        newUserMessage: nextSend.userMessage,
+                        previousUserMessage: interrupted.userMessage,
+                        partialAssistantResponse: partialAssistant,
+                    })
+                    : nextSend.userMessage;
+
+                clearSendQueue();
+                enqueueSend({ ...nextSend, userMessage: interruptedMessage }, true);
+                cancelStream();
+                void drainQueuedSends();
+                return;
+            }
+
+            enqueueSend(nextSend);
+            void drainQueuedSends();
         },
-        [updateState, projectId, cancelStream, convo, pendingAttachment, reasoningMode, runStream, setPendingChoices, setPendingAttachment, isLoadingRef]
+        [
+            appendLocalUserMessage,
+            cancelStream,
+            clearSendQueue,
+            convo,
+            drainQueuedSends,
+            enqueueSend,
+            isLoadingRef,
+            pendingAttachment,
+            projectId,
+            setPendingChoices,
+            setPendingUserInput,
+            setPendingAttachment,
+        ]
     );
 
     const executePlanAction = useCallback(async (artifactId: string, selectedIndexes: number[]) => {
+        clearSendQueue();
         if (isLoadingRef.current) cancelStream();
         setPendingChoices([]);
 
@@ -496,7 +647,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                 messages: [...prev.messages, feedback],
             }));
         }
-    }, [cancelStream, convo, projectId, reasoningMode, runStream, updateState, setArtifacts, setPendingChoices, isLoadingRef, stateRef]);
+    }, [cancelStream, clearSendQueue, convo, projectId, reasoningMode, runStream, updateState, setArtifacts, setPendingChoices, isLoadingRef, stateRef]);
 
     const reviewArtifactActionLocal = useCallback(async (
         artifactId: string,
@@ -633,6 +784,8 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
     }, [reviewArtifactActionLocal, convo]);
 
     return {
+        sendQueueMode: SEND_QUEUE_MODE,
+        queuedMessageCount,
         cancelStream,
         runStream,
         sendMessage,
