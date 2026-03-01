@@ -1,5 +1,6 @@
 import { DEFAULT_SECTION_ORDER, DRAFT_SECTIONS, DraftMode, DraftSectionId, DraftSectionKey } from "@/types/draft";
 import type { JSONContent } from "@tiptap/core";
+import { compileDraftCitations } from "@/lib/citation-compiler";
 
 const DRAFT_KEY_PREFIX = "litrev_draft_v1";
 
@@ -280,7 +281,7 @@ export function loadDraftState(projectId: string): DraftState {
     });
     const copilotBySection = { ...baseCopilot, ...customCopilot };
 
-    return {
+    const state: DraftState = {
       version: 1,
       mode,
       activeSection,
@@ -292,6 +293,23 @@ export function loadDraftState(projectId: string): DraftState {
       ledgerBySection,
       copilotBySection,
     };
+    const normalized = compileDraftCitations({
+      contentBySection: state.contentBySection,
+      sectionOrder: state.sectionOrder,
+      includeNumberInNodes: false,
+    });
+    const normalizedState: DraftState = {
+      ...state,
+      contentBySection: normalized.normalizedContentBySection,
+    };
+    if (JSON.stringify(state.contentBySection) !== JSON.stringify(normalizedState.contentBySection)) {
+      try {
+        window.localStorage.setItem(storageKey(projectId), JSON.stringify(normalizedState));
+      } catch {
+        // ignore write-back migration failures and keep returning normalized state
+      }
+    }
+    return normalizedState;
   } catch (err) {
     console.warn("loadDraftState failed, using fallback", err);
     try {
