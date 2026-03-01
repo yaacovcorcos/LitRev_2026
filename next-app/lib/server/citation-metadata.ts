@@ -1,15 +1,4 @@
-/**
- * Lightweight citation metadata for preview cards.
- */
-export interface CitationMetadata {
-    title: string;
-    authors: string;
-    year?: number;
-    journal?: string;
-    canonicalUrl?: string;
-    doi?: string;
-    pmid?: string;
-}
+import type { CitationMetadata } from "@/lib/citation-types";
 
 /** Cache for citation metadata (in-memory, per-process). */
 const metadataCache = new Map<string, CitationMetadata | null>();

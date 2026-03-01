@@ -1,13 +1,7 @@
 "use server";
 
-import { resolveCitationMetadataCached, type CitationMetadata } from "@/lib/server/citation-metadata";
-
-// Re-export CitationMetadata type for client-side usage
-export type { CitationMetadata };
-
-export type CitationResult =
-    | { success: true; data: CitationMetadata }
-    | { success: false; error: string };
+import type { CitationResult } from "@/lib/citation-types";
+import { resolveCitationMetadataCached } from "@/lib/server/citation-metadata";
 
 /**
  * Server action to fetch citation metadata for a DOI or PubMed URL.

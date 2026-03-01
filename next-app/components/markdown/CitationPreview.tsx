@@ -13,7 +13,8 @@ import {
     type AnchorHTMLAttributes,
 } from "react";
 import * as Popover from "@/components/ui/Popover";
-import { fetchCitationMetadata, type CitationResult, type CitationMetadata } from "@/app/actions/citation";
+import { fetchCitationMetadata } from "@/app/actions/citation";
+import type { CitationResult, CitationMetadata } from "@/lib/citation-types";
 import styles from "./CitationPreview.module.css";
 
 export type CitationType = "DOI" | "PubMed";

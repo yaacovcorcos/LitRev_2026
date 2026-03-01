@@ -101,6 +101,30 @@
 }
 
 
+.deleteBtn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    flex-shrink: 0;
+    margin-left: 4px;
+}
+
+.deleteBtn:hover {
+    background: rgba(var(--rgb-color-danger), 0.08);
+    color: var(--color-danger);
+}
+
+.deleteBtn .material-icons-round {
+    font-size: 18px;
+}
+
 @media (max-width: 768px) {
 
     .tabLabel,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
 import { useTheme, type ThemePreference } from "@/contexts/ThemeContext";
@@ -25,17 +25,22 @@ type UserMenuProps = {
 export function UserMenu({ collapsed = false }: UserMenuProps) {
   const { data: session } = authClient.useSession();
   const { theme, setTheme } = useTheme();
+  const [hydrated, setHydrated] = useState(false);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
+
+  useEffect(() => {
+    setHydrated(true);
+  }, []);
 
   const cycleTheme = () => {
     const idx = THEME_CYCLE.indexOf(theme);
     setTheme(THEME_CYCLE[(idx + 1) % THEME_CYCLE.length]);
   };
 
-  const user = session?.user;
+  const user = hydrated ? session?.user : null;
   const initials = user ? getInitials(user.name ?? user.email) : "?";
   const displayName = user?.name || user?.email || "Account";
   const wrapperClass = collapsed
