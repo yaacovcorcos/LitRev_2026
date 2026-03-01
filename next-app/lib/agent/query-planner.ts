@@ -1,7 +1,8 @@
 /**
  * Query Planner (CAG-008)
  * Decomposes a natural language search intent into structured search queries
- * for PubMed (Boolean + field tags) and Semantic Scholar (keywords + year range).
+ * for PubMed (Boolean + field tags) and, when warranted, Semantic Scholar
+ * (keywords + year range).
  *
  * Pure module — no server-only, no DB imports. Used by delegate_search
  * to produce a structured search plan before the sub-agent executes.
@@ -186,8 +187,9 @@ function buildYearRange(range?: { start?: number; end?: number }): string | unde
 
 /**
  * Build a structured search plan from a search intent.
- * Returns PubMed queries (with Boolean/field tags) and Semantic Scholar queries
- * (with keywords and year filtering).
+ * Returns PubMed queries (with Boolean/field tags) and optionally Semantic Scholar
+ * queries (with keywords and year filtering) when the task explicitly asks for it
+ * or signals cross-disciplinary/non-biomedical intent.
  */
 export function buildSearchPlan(intent: SearchIntent): SearchPlan {
     const { rawTask, pico, criteria, yearRange } = intent;
@@ -271,33 +273,38 @@ export function buildSearchPlan(intent: SearchIntent): SearchPlan {
         }
     }
 
-    // ── Build Semantic Scholar queries ────────────────────────────────────
+    // ── Build Semantic Scholar queries (gated) ────────────────────────────
+    // Default strategy is PubMed-first. Only pre-plan Semantic Scholar when:
+    // - the task explicitly asks for it, or
+    // - wording indicates cross-disciplinary / non-biomedical intent.
+    const shouldUseSemanticScholar = shouldPlanSemanticScholar(intent, concepts);
+    if (shouldUseSemanticScholar) {
+        const ssYearRange = buildYearRange(yearRange);
 
-    const ssYearRange = buildYearRange(yearRange);
-
-    // Primary: use task directly as keyword query (SS does best with natural language)
-    const primaryKeywords = concepts.slice(0, 5).join(" ");
-    if (primaryKeywords) {
-        semanticScholarQueries.push({
-            query: primaryKeywords,
-            label: "Primary keyword search",
-            yearRange: ssYearRange,
-            maxResults: 20,
-        });
-    }
-
-    // If PICO available, add a PICO-derived keyword query
-    if (hasPico) {
-        const picoKeywords = [pico!.population, pico!.intervention, pico!.outcome]
-            .filter(Boolean)
-            .join(" ");
-        if (picoKeywords && picoKeywords !== primaryKeywords) {
+        // Primary: use task-derived keywords (SS does best with natural language)
+        const primaryKeywords = concepts.slice(0, 5).join(" ");
+        if (primaryKeywords) {
             semanticScholarQueries.push({
-                query: picoKeywords,
-                label: "PICO keyword search",
+                query: primaryKeywords,
+                label: "Primary keyword search",
                 yearRange: ssYearRange,
-                maxResults: 15,
+                maxResults: 20,
             });
+        }
+
+        // If PICO available, add a PICO-derived keyword query
+        if (hasPico) {
+            const picoKeywords = [pico!.population, pico!.intervention, pico!.outcome]
+                .filter(Boolean)
+                .join(" ");
+            if (picoKeywords && picoKeywords !== primaryKeywords) {
+                semanticScholarQueries.push({
+                    query: picoKeywords,
+                    label: "PICO keyword search",
+                    yearRange: ssYearRange,
+                    maxResults: 15,
+                });
+            }
         }
     }
 
@@ -319,6 +326,10 @@ export function buildSearchPlan(intent: SearchIntent): SearchPlan {
 
     if (pubmedQueries.length > 0 && semanticScholarQueries.length > 0) {
         strategyNotes.push("Run PubMed queries first (biomedical focus), then Semantic Scholar for broader coverage.");
+    } else if (pubmedQueries.length > 0) {
+        strategyNotes.push(
+            "Default to PubMed-only first pass. Use Semantic Scholar only if explicitly requested or PubMed recall remains low after refinement."
+        );
     }
 
     strategyNotes.push("Flag duplicates before adding to ledger. Only add candidates with clear relevance.");
@@ -335,6 +346,24 @@ export function buildSearchPlan(intent: SearchIntent): SearchPlan {
         semanticScholarQueries,
         strategyNotes,
     };
+}
+
+const SEMANTIC_SCHOLAR_TRIGGER_REGEX =
+    /\b(semantic scholar|semanticscholar|interdisciplinary|cross-disciplinary|cross disciplinary|multidisciplinary|computer science|machine learning|deep learning|artificial intelligence|nlp|engineering|social science|sociology|economics|policy research|behavioral science)\b/i;
+
+function shouldPlanSemanticScholar(intent: SearchIntent, concepts: string[]): boolean {
+    if (concepts.length === 0) return false;
+
+    const task = intent.rawTask;
+    if (SEMANTIC_SCHOLAR_TRIGGER_REGEX.test(task)) return true;
+
+    // PICO-driven and clinical/protocol searches should stay PubMed-first unless
+    // the user explicitly requests Semantic Scholar.
+    if (intent.pico?.population || intent.pico?.intervention || intent.pico?.comparison || intent.pico?.outcome) {
+        return false;
+    }
+
+    return false;
 }
 
 /**

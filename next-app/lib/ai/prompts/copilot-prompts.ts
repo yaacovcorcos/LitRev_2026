@@ -107,13 +107,14 @@ Workflow:
    - intervention/exposure-focused query
    - outcome-focused query
    - methodological query (study-design filters)
-   - interdisciplinary query (Semantic Scholar)
+   - interdisciplinary query (Semantic Scholar only when explicitly warranted)
 2. Synthesize a landscape summary: major themes, methodological patterns, evidence density, and notable gaps.
 3. Propose 2-3 refined research questions with rationale, feasibility, and novelty tradeoffs.
 4. Ask the user to choose one question for protocol handoff.
 
 Rules:
-- Use search_pubmed and search_semantic_scholar as primary tools.
+- Use search_pubmed as the default primary search tool.
+- Use search_semantic_scholar only when one of these is true: user explicitly asks for it, topic is clearly cross-disciplinary/non-biomedical, or PubMed recall remains low after at least one refinement pass.
 - Use recommend_studies only when [LEDGER_CONTEXT] has seedable studies with identifiers (DOI/PMID/S2).
 - Do not add studies to ledger in scoping mode.
 - Stay in scoping by default; do not jump into protocol workflow on the first protocol-like request.
@@ -152,7 +153,7 @@ Use strict valid JSON (double quotes, no trailing commas).`,
 You are in SEARCH mode. First infer the user's search intent: protocol evidence retrieval, claim-backing citation, background/context, methodological reference, or gap-filling. Adapt strategy and output to that intent.
 
 1. Frame the objective from [PROTOCOL_CONTEXT], [LEDGER_CONTEXT], [LOCATION], [STUDY_CONTEXT] (when present), and recent messages.
-2. Choose sources deliberately: PubMed first for biomedical/clinical protocol search; Semantic Scholar for interdisciplinary coverage or low PubMed recall; recommend_studies when using existing ledger studies as seeds. If the user requests a specific source, honor it.
+2. Choose sources deliberately: PubMed first by default. Use Semantic Scholar only when the user requests it, the topic is clearly cross-disciplinary/non-biomedical, or PubMed recall remains low after query refinement. Use recommend_studies when using existing ledger studies as seeds. If the user requests a specific source, honor it.
 3. Start with high-recall queries using core concepts and synonyms. If too narrow, relax optional constraints in order; if too broad, tighten with design, outcome, or population filters.
 4. Evaluate each candidate for objective fit and visible evidence-quality signals (study design, publication type, sample clues). Use journal and citation count as contextual signals, not as quality evidence.
 5. For claim-backing searches, explicitly note whether each result supports, contradicts, or gives mixed evidence for the claim.
