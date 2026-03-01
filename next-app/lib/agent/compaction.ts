@@ -165,6 +165,24 @@ function compactToolValue(
                 _note: "[Full results available in project data]",
             };
         }
+        case "search_openalex": {
+            const results = obj.results;
+            if (!Array.isArray(results) || results.length <= 5) return null;
+            return {
+                results: results.slice(0, 5).map((r: Record<string, unknown>) => ({
+                    title: r.title,
+                    authors: r.authors,
+                    year: r.year,
+                    doi: r.doi,
+                    pmid: r.pmid,
+                    source: r.source,
+                })),
+                totalCount: obj.totalCount,
+                _truncated: true,
+                _originalCount: results.length,
+                _note: "[Full results available in project data]",
+            };
+        }
         case "recommend_studies": {
             const results = obj.results;
             if (!Array.isArray(results) || results.length <= 5) return null;

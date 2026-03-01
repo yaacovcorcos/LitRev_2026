@@ -86,6 +86,7 @@ export function mapToolToProgressMessage(toolName: string): string {
         forget_memory: "Preparing forget proposal...",
         inspect_memory: "Inspecting memory...",
         search_semantic_scholar: "Searching Semantic Scholar...",
+        search_openalex: "Searching OpenAlex...",
         recommend_studies: "Finding recommendations...",
         delegate_search: "Delegating search workflow...",
         delegate_screening: "Delegating screening workflow...",
@@ -183,8 +184,13 @@ export function shouldUseScopingBatchPlan(params: {
         getToolAutonomyLevel("search_semantic_scholar", normalizedAutonomy),
         getTool("search_semantic_scholar")?.autonomy
     );
+    const openAlexLevel = resolveAutonomyLevel(
+        "search_openalex",
+        getToolAutonomyLevel("search_openalex", normalizedAutonomy),
+        getTool("search_openalex")?.autonomy
+    );
 
-    return pubmedLevel <= 1 || semanticLevel <= 1;
+    return pubmedLevel <= 1 || semanticLevel <= 1 || openAlexLevel <= 1;
 }
 
 export function buildScopingSearchPackPlan(params: { includeRecommendations: boolean }): PlanPayload {
@@ -196,8 +202,8 @@ export function buildScopingSearchPackPlan(params: { includeRecommendations: boo
             status: "pending",
         },
         {
-            label: "Run interdisciplinary landscape search",
-            toolName: "search_semantic_scholar",
+            label: "Run open-index landscape search",
+            toolName: "search_openalex",
             description: "Cross-domain query to capture non-biomedical coverage",
             status: "pending",
         },
@@ -209,7 +215,7 @@ export function buildScopingSearchPackPlan(params: { includeRecommendations: boo
         },
         {
             label: "Run gap-focused follow-up search",
-            toolName: "search_semantic_scholar",
+            toolName: "search_openalex",
             description: "Probe likely evidence gaps by population/outcome variants",
             status: "pending",
         },

@@ -15,6 +15,7 @@ export const DEFAULT_TRUNCATION_MODE: TruncationMode = "head";
 export const TOOL_TRUNCATION_MODES: Record<string, TruncationMode> = {
     search_pubmed: "head",
     search_semantic_scholar: "head",
+    search_openalex: "head",
     recommend_studies: "head",
     bulk_screening: "tail",
     extract_pdf: "both",

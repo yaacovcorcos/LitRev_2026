@@ -1121,6 +1121,8 @@ export default function AIView() {
             const toolName = data.toolCall.name;
             const statusText = toolName === "search_pubmed"
               ? "Searching PubMed..."
+              : toolName === "search_openalex"
+                ? "Searching OpenAlex..."
               : toolName === "add_to_ledger"
                 ? "Adding studies to ledger..."
                 : `Running ${toolName}...`;

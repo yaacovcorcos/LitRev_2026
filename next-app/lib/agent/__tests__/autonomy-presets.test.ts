@@ -21,7 +21,7 @@ describe("PRESET_LEVELS", () => {
     });
 
     const EXPECTED_TOOLS = [
-        "search_pubmed", "extract_pdf", "add_to_ledger", "exclude_study",
+        "search_pubmed", "search_openalex", "extract_pdf", "add_to_ledger", "exclude_study",
         "delete_study", "update_study", "update_note", "update_protocol", "update_criteria", "bulk_screening",
         "retrieve_memory", "create_note", "store_memory", "forget_memory", "inspect_memory",
         "list_projects", "open_project", "create_project",

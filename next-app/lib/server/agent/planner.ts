@@ -40,6 +40,7 @@ export function detectMultiStepWorkflow(
     // Check if message references 2+ tool capabilities
     const toolKeywords: Record<string, string[]> = {
         search_pubmed: ["search", "pubmed", "find studies", "look up", "look for"],
+        search_openalex: ["openalex", "open alex", "cross-disciplinary", "broad search"],
         add_to_ledger: ["add", "include", "ledger", "save study"],
         exclude_study: ["exclude", "reject", "triage out"],
         delete_study: ["delete study", "delete from ledger", "purge study", "remove from ledger", "hard delete"],
@@ -100,10 +101,14 @@ function generateHeuristicPlan(message: string, _context: PlanContext): PlanPayl
     const lower = message.toLowerCase();
 
     // Search step
-    if (/\b(?:search|find|look\s+(?:up|for)|pubmed)\b/.test(lower)) {
+    if (/\b(?:search|find|look\s+(?:up|for)|pubmed|openalex|open alex)\b/.test(lower)) {
+        const toolName = /\b(?:openalex|open alex)\b/.test(lower) ? "search_openalex" : "search_pubmed";
+        const label = toolName === "search_openalex"
+            ? "Search OpenAlex for relevant studies"
+            : "Search PubMed for relevant studies";
         steps.push({
-            label: "Search PubMed for relevant studies",
-            toolName: "search_pubmed",
+            label,
+            toolName,
             description: "Execute literature search based on your query",
             status: "pending",
         });

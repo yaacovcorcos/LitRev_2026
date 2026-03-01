@@ -1159,7 +1159,12 @@ class AIService {
 
                 // Execute all tool calls with autonomy
                 for (const tc of collectedToolCalls) {
-                    if (tc.name === "search_pubmed" || tc.name === "search_semantic_scholar" || tc.name === "recommend_studies") {
+                    if (
+                        tc.name === "search_pubmed" ||
+                        tc.name === "search_semantic_scholar" ||
+                        tc.name === "search_openalex" ||
+                        tc.name === "recommend_studies"
+                    ) {
                         scopingSearchCallsThisRun += 1;
                     }
 

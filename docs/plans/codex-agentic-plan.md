@@ -35,7 +35,7 @@ It translates current architecture plus next-generation agent design principles 
 - Langfuse traces already capture run/tool visibility at runtime.
 - Anthropic reasoning stream events are normalized end-to-end; OpenAI/xAI parity is not complete.
 - Memory extraction and conversation summarization exist, but memory overlap and prioritization are still open.
-- Search enrichment capabilities like OpenAlex/Crossref are recognized but not yet active.
+- OpenAlex search enrichment is active (`search_openalex`), with Crossref fallback enrichment for sparse DOI metadata.
 
 ## Strategic Gaps
 - Clarification is still prompt-driven (`<choices>` protocol), so required user decisions are probabilistic and not guaranteed to appear as structured UI.
@@ -102,7 +102,7 @@ Use this as implementation policy. Each item defines the durable approach and wh
 
 ## Phase 1 — Search-First Retrieval and Progressive Context
 - [ ] `CAG-006` Implement lazy context loading with pointer prompts + `read_protocol`/`read_ledger` tools in `general`/`qa`/`drafting`.
-- [ ] `CAG-007` Ship OpenAlex search tool and integrate into Search/Scoping flows.
+- [x] `CAG-007` Ship OpenAlex search tool and integrate into Search/Scoping flows.
 - [ ] `CAG-008` Add structured query planner output (Boolean + MeSH suggestions) before search execution.
 - [ ] `CAG-009` Introduce source-receipt artifacts in timeline and run logs.
 - [ ] `CAG-010` Implement centralized context budget policy service.

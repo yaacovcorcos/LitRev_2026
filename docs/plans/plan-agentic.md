@@ -30,6 +30,7 @@
 ## Recently Completed
 *Finished work that might still be fragile or require monitoring. Prune oldest first.*
 
+- [x] Added `search_openalex` tool with Search/Scoping/QA integration, OpenAlex normalization, and Crossref fallback enrichment for sparse DOI metadata.
 - [x] P10 mentioned-studies flow shipped: extraction pipeline (structured + fallback), chat chips, one-click add-to-ledger, idempotent duplicate protection, and chat provenance tagging.
 - [x] Added rollout flags for mention/scoping UX controls: `NEXT_PUBLIC_CHAT_STUDY_MENTIONS_V1` and `NEXT_PUBLIC_SCOPING_DECISION_CARD_V2`.
 - [x] Added validation coverage for P10: mention parser tests, add-to-ledger idempotency tests, timeline metadata stripping + mention-action UI tests, and scoping finalization tests.
@@ -39,12 +40,10 @@
 - [x] P10: Scoping mode architecture shipped (routing, tool filtering, batch plan behavior, contract parsing, deterministic handoff).
 - [x] `exclude_study` tool implemented and registered in `AVAILABLE_TOOLS`.
 - [x] `bulk_screening` tool implemented and registered in `AVAILABLE_TOOLS`.
-- [x] `extract_pdf` tool implemented and registered in `AVAILABLE_TOOLS`.
 
 ## Deferred / Parking Lot
 *Ideas acknowledged but explicitly not active right now.*
 
-- [ ] OpenAlex search tool (240M papers, free).
 - [ ] Crossref metadata enrichment (DOI validation, backward snowballing).
 - [ ] Active learning screening priority (ASReview pattern).
 - [ ] Section-aware PDF chunking.
