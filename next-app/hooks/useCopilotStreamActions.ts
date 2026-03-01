@@ -118,9 +118,21 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
             abortControllerRef.current = null;
         }
         setIsLoading(false);
+        setStreamPhase("idle");
+        setCurrentRunId(null);
         setPendingChoices([]);
+        setPendingUserInput(null);
         notifyIdle();
-    }, [abortControllerRef, notifyIdle, setIsLoading, setPendingChoices, streamGenRef]);
+    }, [
+        abortControllerRef,
+        notifyIdle,
+        setCurrentRunId,
+        setIsLoading,
+        setPendingChoices,
+        setPendingUserInput,
+        setStreamPhase,
+        streamGenRef,
+    ]);
 
     /**
      * Core stream lifecycle: fetch → parse → dispatch chunks.
