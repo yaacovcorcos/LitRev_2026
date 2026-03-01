@@ -2,6 +2,7 @@
 
 import { useState, useCallback, type ReactNode, isValidElement, Children } from "react";
 import type { Components } from "react-markdown";
+import { CitationPreview, type CitationType } from "./CitationPreview";
 import styles from "@/styles/markdown.module.css";
 
 /** Map lowercase language tags to display names */
@@ -47,7 +48,7 @@ function childrenToString(children: unknown): string {
     return String(children ?? "");
 }
 
-function getCitationLabel(href?: string): "DOI" | "PubMed" | null {
+function getCitationLabel(href?: string): CitationType | null {
     if (!href) return null;
     try {
         const host = new URL(href).hostname.toLowerCase();
@@ -117,10 +118,21 @@ export const markdownComponents: Components = {
         return <pre>{children}</pre>;
     },
     a: ({ href, children, ...props }) => {
-        const displayText = getCitationLabel(href) ?? children;
+        const citationType = getCitationLabel(href);
+
+        // Citation links get preview behavior
+        if (citationType && href) {
+            return (
+                <CitationPreview href={href} type={citationType} anchorProps={props}>
+                    {citationType}
+                </CitationPreview>
+            );
+        }
+
+        // Non-citation links render as normal
         return (
             <a href={href} target="_blank" rel="noopener noreferrer" {...props}>
-                {displayText}
+                {children}
             </a>
         );
     },
