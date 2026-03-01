@@ -13,7 +13,7 @@ const TAB_DOMAIN_MAP: Record<ViewTab, ProjectDataDomain | null> = {
     protocol: "protocol",
     ledger: "ledger",
     draft: "draft",
-    memory: null,
+    memory: "memory",
     notes: "notes",
 };
 

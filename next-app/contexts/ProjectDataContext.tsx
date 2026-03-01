@@ -13,6 +13,7 @@ import { getProtocolAction } from "@/app/actions/protocols";
 import { listStudiesAction } from "@/app/actions/ledger";
 import { getDraftAction } from "@/app/actions/drafts";
 import { listNotesIndexAction } from "@/app/actions/notes";
+import { getProjectMemoriesAction } from "@/app/actions/memory";
 import {
     addProjectDataChangedListener,
     type ProjectDataDomain,
@@ -21,6 +22,7 @@ import { shouldSkipPreload } from "@/lib/network-aware";
 import { useLedger } from "@/contexts/LedgerContext";
 import type { ProtocolData } from "@/types/protocol";
 import type { Study } from "@/types/ledger";
+import type { ProjectMemory } from "@/types/memory";
 import type { DraftState } from "@/lib/draftStorage";
 import type { NoteIndexItem } from "@/lib/server/notes";
 
@@ -40,6 +42,7 @@ type ProjectDataContextValue = {
     studies: DomainSlice<Study[]>;
     draft: DomainSlice<DraftState>;
     notesList: DomainSlice<NoteIndexItem[]>;
+    memory: DomainSlice<ProjectMemory[]>;
     /** Fetch a domain if not already cached or loading. */
     warmDomain: (domain: ProjectDataDomain) => void;
     /** Force re-fetch a domain (after mutation). */
@@ -73,6 +76,7 @@ export function ProjectDataProvider({
     const [studies, setStudies] = useState<DomainSlice<Study[]>>(INITIAL_SLICE);
     const [draft, setDraft] = useState<DomainSlice<DraftState>>(INITIAL_SLICE);
     const [notesList, setNotesList] = useState<DomainSlice<NoteIndexItem[]>>(INITIAL_SLICE);
+    const [memory, setMemory] = useState<DomainSlice<ProjectMemory[]>>(INITIAL_SLICE);
 
     const { seedProject } = useLedger();
 
@@ -86,6 +90,7 @@ export function ProjectDataProvider({
         setStudies(INITIAL_SLICE);
         setDraft(INITIAL_SLICE);
         setNotesList(INITIAL_SLICE);
+        setMemory(INITIAL_SLICE);
     }, [projectId]);
 
     // ── Domain fetchers ──────────────────────────────────────────────────────
@@ -155,6 +160,22 @@ export function ProjectDataProvider({
         }
     }, []);
 
+    const fetchMemory = useCallback(async (pid: string) => {
+        setMemory({ data: null, state: "loading", error: null });
+        try {
+            const result = await getProjectMemoriesAction(pid, { status: "active" });
+            if (projectIdRef.current !== pid) return;
+            if (result.success) {
+                setMemory({ data: result.data as ProjectMemory[], state: "ready", error: null });
+            } else {
+                setMemory({ data: null, state: "error", error: result.error });
+            }
+        } catch (e) {
+            if (projectIdRef.current !== pid) return;
+            setMemory({ data: null, state: "error", error: (e as Error).message });
+        }
+    }, []);
+
     // ── Lookup for domain state + setter ─────────────────────────────────────
 
     const domainState = useCallback(
@@ -164,10 +185,11 @@ export function ProjectDataProvider({
                 case "ledger": return studies.state;
                 case "draft": return draft.state;
                 case "notes": return notesList.state;
+                case "memory": return memory.state;
                 default: return "idle";
             }
         },
-        [protocol.state, studies.state, draft.state, notesList.state],
+        [protocol.state, studies.state, draft.state, notesList.state, memory.state],
     );
 
     const domainFetcher = useCallback(
@@ -177,10 +199,11 @@ export function ProjectDataProvider({
                 case "ledger": return fetchStudies;
                 case "draft": return fetchDraft;
                 case "notes": return fetchNotesList;
+                case "memory": return fetchMemory;
                 default: return null;
             }
         },
-        [fetchProtocol, fetchStudies, fetchDraft, fetchNotesList],
+        [fetchProtocol, fetchStudies, fetchDraft, fetchNotesList, fetchMemory],
     );
 
     // ── Public API ───────────────────────────────────────────────────────────
@@ -227,8 +250,12 @@ export function ProjectDataProvider({
                 if (projectIdRef.current !== pid) return;
                 fetchNotesList(pid);
             });
+            scheduleIdle(() => {
+                if (projectIdRef.current !== pid) return;
+                fetchMemory(pid);
+            });
         }
-    }, [projectId, fetchProtocol, fetchStudies, fetchDraft, fetchNotesList]);
+    }, [projectId, fetchProtocol, fetchStudies, fetchDraft, fetchNotesList, fetchMemory]);
 
     // ── Event-driven invalidation ────────────────────────────────────────────
 
@@ -264,10 +291,11 @@ export function ProjectDataProvider({
             studies,
             draft,
             notesList,
+            memory,
             warmDomain,
             invalidateDomain,
         }),
-        [projectId, protocol, studies, draft, notesList, warmDomain, invalidateDomain],
+        [projectId, protocol, studies, draft, notesList, memory, warmDomain, invalidateDomain],
     );
 
     return (

@@ -8,6 +8,7 @@ import { EmptyState, EmptyStateSkeleton } from "@/components/ui/EmptyState";
 import { useProjectShell } from "@/contexts/ProjectShellContext";
 import { ProjectPageLayout } from "@/components/project/ProjectPageLayout";
 import { ProjectMemoryProvider, useProjectMemory } from "@/contexts/ProjectMemoryContext";
+import { useProjectData } from "@/hooks/useProjectData";
 import type {
   ProjectMemory,
   ProjectMemoryType,
@@ -965,11 +966,15 @@ function MemoryPageContent() {
 
 export default function MemoryPage() {
   const { id } = useParams<{ id: string }>();
+  const { memory: cachedMemory } = useProjectData();
 
   if (!id) return null;
 
   return (
-    <ProjectMemoryProvider projectId={id}>
+    <ProjectMemoryProvider
+      projectId={id}
+      initialData={cachedMemory.state === "ready" && cachedMemory.data ? cachedMemory.data : undefined}
+    >
       <MemoryPageContent />
     </ProjectMemoryProvider>
   );

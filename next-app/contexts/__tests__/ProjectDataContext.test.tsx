@@ -11,6 +11,7 @@ const mockGetProtocol = vi.fn();
 const mockListStudies = vi.fn();
 const mockGetDraft = vi.fn();
 const mockListNotesIndex = vi.fn();
+const mockGetProjectMemories = vi.fn();
 
 vi.mock("@/app/actions/protocols", () => ({
     getProtocolAction: (...args: unknown[]) => mockGetProtocol(...args),
@@ -23,6 +24,9 @@ vi.mock("@/app/actions/drafts", () => ({
 }));
 vi.mock("@/app/actions/notes", () => ({
     listNotesIndexAction: (...args: unknown[]) => mockListNotesIndex(...args),
+}));
+vi.mock("@/app/actions/memory", () => ({
+    getProjectMemoriesAction: (...args: unknown[]) => mockGetProjectMemories(...args),
 }));
 vi.mock("@/lib/network-aware", () => ({
     shouldSkipPreload: vi.fn(() => false),
@@ -54,6 +58,7 @@ function setupSuccessMocks() {
     mockListStudies.mockResolvedValue({ success: true, data: [{ id: "s1", title: "Study 1" }] });
     mockGetDraft.mockResolvedValue({ success: true, data: { sections: [] } });
     mockListNotesIndex.mockResolvedValue({ success: true, data: [{ id: "n1", title: "Note 1" }] });
+    mockGetProjectMemories.mockResolvedValue({ success: true, data: [{ id: "m1", statement: "Memory 1" }] });
 }
 
 // ── Tests ────────────────────────────────────────────────────────────────────

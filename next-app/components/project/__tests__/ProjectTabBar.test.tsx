@@ -43,12 +43,12 @@ describe("ProjectTabBar intent boost", () => {
         expect(mockWarmDomain).toHaveBeenCalledWith("draft");
     });
 
-    it("does NOT call warmDomain for memory tab (skipped domain)", () => {
+    it("calls warmDomain on tab hover for memory", () => {
         mockWarmDomain.mockClear();
         render(<ProjectTabBar {...defaultProps} />);
         const memoryTab = screen.getByRole("tab", { name: /Memory/i });
         fireEvent.mouseEnter(memoryTab);
-        expect(mockWarmDomain).not.toHaveBeenCalled();
+        expect(mockWarmDomain).toHaveBeenCalledWith("memory");
     });
 
     it("does NOT call warmDomain for overview tab", () => {
