@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseGrobidHeaderXml } from "../grobid";
+import { parseGrobidFulltextXml, parseGrobidHeaderXml } from "../grobid";
 
 describe("parseGrobidHeaderXml", () => {
   it("extracts core metadata from a valid GROBID TEI header", () => {
@@ -72,5 +72,51 @@ describe("parseGrobidHeaderXml", () => {
   </teiHeader>
 </TEI>`;
     expect(parseGrobidHeaderXml(tei)).toBeNull();
+  });
+});
+
+describe("parseGrobidFulltextXml", () => {
+  it("extracts canonical sections from TEI body divs", () => {
+    const tei = `<?xml version="1.0" encoding="UTF-8"?>
+<TEI>
+  <teiHeader>
+    <profileDesc>
+      <abstract><p>Header abstract text.</p></abstract>
+    </profileDesc>
+  </teiHeader>
+  <text>
+    <body>
+      <div>
+        <head>Introduction</head>
+        <p>Intro paragraph.</p>
+      </div>
+      <div>
+        <head>Methods</head>
+        <p>Methods paragraph.</p>
+      </div>
+      <div>
+        <head>Results</head>
+        <p>Results paragraph.</p>
+      </div>
+      <div>
+        <head>Discussion</head>
+        <p>Discussion paragraph.</p>
+      </div>
+    </body>
+  </text>
+</TEI>`;
+
+    const parsed = parseGrobidFulltextXml(tei);
+    expect(parsed).not.toBeNull();
+    expect(parsed?.sections.introduction).toContain("Intro paragraph.");
+    expect(parsed?.sections.methods).toContain("Methods paragraph.");
+    expect(parsed?.sections.results).toContain("Results paragraph.");
+    expect(parsed?.sections.discussion).toContain("Discussion paragraph.");
+    expect(parsed?.sections.abstract).toContain("Header abstract text.");
+    expect(parsed?.fullText).toContain("Intro paragraph.");
+  });
+
+  it("returns null for invalid fulltext xml", () => {
+    expect(parseGrobidFulltextXml("<broken")).toBeNull();
   });
 });

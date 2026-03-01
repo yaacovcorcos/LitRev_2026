@@ -13,6 +13,19 @@ export type GrobidHeaderExtraction = {
     year?: number;
 };
 
+export type GrobidSectionKey =
+    | "abstract"
+    | "introduction"
+    | "methods"
+    | "results"
+    | "discussion"
+    | "conclusion";
+
+export type GrobidFulltextExtraction = {
+    fullText: string;
+    sections: Partial<Record<GrobidSectionKey, string>>;
+};
+
 function asArray<T>(value: T | T[] | null | undefined): T[] {
     if (Array.isArray(value)) return value;
     if (value == null) return [];
@@ -100,6 +113,52 @@ function parseAuthorName(authorNode: unknown): string | undefined {
     );
 }
 
+function normalizeSectionKey(value: string | undefined): GrobidSectionKey | null {
+    if (!value) return null;
+    const lower = value.toLowerCase();
+    if (lower.includes("abstract")) return "abstract";
+    if (lower.includes("intro") || lower.includes("background")) return "introduction";
+    if (lower.includes("method") || lower.includes("material")) return "methods";
+    if (lower.includes("result") || lower.includes("finding")) return "results";
+    if (lower.includes("discussion")) return "discussion";
+    if (lower.includes("conclusion") || lower.includes("summary")) return "conclusion";
+    return null;
+}
+
+function appendSectionText(
+    sections: Partial<Record<GrobidSectionKey, string>>,
+    key: GrobidSectionKey,
+    text: string
+) {
+    if (!text) return;
+    const current = sections[key];
+    sections[key] = current ? `${current}\n\n${text}` : text;
+}
+
+function extractDivOwnText(div: Record<string, unknown>): string {
+    const ownParts: string[] = [];
+    for (const [key, value] of Object.entries(div)) {
+        if (key === "head" || key === "div" || key.startsWith("@")) continue;
+        const text = normalizeWhitespace(extractText(value));
+        if (text) ownParts.push(text);
+    }
+    return normalizeWhitespace(ownParts.join(" "));
+}
+
+function walkDivs(divNode: unknown, sections: Partial<Record<GrobidSectionKey, string>>) {
+    const divs = asArray(divNode).filter((entry): entry is Record<string, unknown> => Boolean(entry && typeof entry === "object"));
+    for (const div of divs) {
+        const headText = normalizeWhitespace(extractText(div.head));
+        const typeText = typeof div["@type"] === "string" ? String(div["@type"]) : "";
+        const sectionKey = normalizeSectionKey(headText || typeText);
+        const ownText = extractDivOwnText(div);
+        if (sectionKey && ownText) {
+            appendSectionText(sections, sectionKey, ownText);
+        }
+        walkDivs(div.div, sections);
+    }
+}
+
 export function parseGrobidHeaderXml(xml: string): GrobidHeaderExtraction | null {
     if (!xml || !xml.trim()) return null;
 
@@ -179,6 +238,49 @@ export function parseGrobidHeaderXml(xml: string): GrobidHeaderExtraction | null
     return hasData ? extraction : null;
 }
 
+export function parseGrobidFulltextXml(xml: string): GrobidFulltextExtraction | null {
+    if (!xml || !xml.trim()) return null;
+
+    const parser = new XMLParser({
+        ignoreAttributes: false,
+        attributeNamePrefix: "@",
+        removeNSPrefix: true,
+        trimValues: true,
+        parseTagValue: true,
+    });
+
+    let parsed: unknown;
+    try {
+        parsed = parser.parse(xml);
+    } catch {
+        return null;
+    }
+
+    const root = parsed as { TEI?: Record<string, unknown> };
+    const tei = root.TEI;
+    if (!tei || typeof tei !== "object") return null;
+
+    const textNode = tei.text as Record<string, unknown> | undefined;
+    const body = textNode?.body as Record<string, unknown> | undefined;
+    const fullText = normalizeWhitespace(extractText(body ?? textNode));
+    if (!fullText) return null;
+
+    const sections: Partial<Record<GrobidSectionKey, string>> = {};
+    walkDivs(body?.div, sections);
+
+    // Fill abstract from header profile if body parsing misses it.
+    if (!sections.abstract) {
+        const teiHeader = tei.teiHeader as Record<string, unknown> | undefined;
+        const profileDesc = teiHeader?.profileDesc as Record<string, unknown> | undefined;
+        const abstractText = normalizeWhitespace(extractText(profileDesc?.abstract));
+        if (abstractText) {
+            sections.abstract = abstractText;
+        }
+    }
+
+    return { fullText, sections };
+}
+
 function getGrobidConfig(): { url: string; timeoutMs: number } | null {
     const url = process.env.GROBID_URL?.trim();
     if (!url) return null;
@@ -224,6 +326,44 @@ export async function extractHeaderWithGrobid(pdfBuffer: Buffer): Promise<Grobid
             console.warn("[grobid] Header extraction timed out");
         } else {
             console.warn("[grobid] Header extraction request failed", error);
+        }
+        return null;
+    } finally {
+        clearTimeout(timeoutId);
+    }
+}
+
+export async function extractFulltextWithGrobid(pdfBuffer: Buffer): Promise<GrobidFulltextExtraction | null> {
+    const config = getGrobidConfig();
+    if (!config) return null;
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), config.timeoutMs);
+
+    try {
+        const formData = new FormData();
+        const fileBytes = Uint8Array.from(pdfBuffer);
+        const fileBlob = new Blob([fileBytes], { type: "application/pdf" });
+        formData.append("input", fileBlob, "paper.pdf");
+
+        const response = await fetch(`${config.url}/api/processFulltextDocument`, {
+            method: "POST",
+            body: formData,
+            signal: controller.signal,
+        });
+
+        if (!response.ok) {
+            console.warn(`[grobid] Fulltext extraction failed: ${response.status} ${response.statusText}`);
+            return null;
+        }
+
+        const teiXml = await response.text();
+        return parseGrobidFulltextXml(teiXml);
+    } catch (error) {
+        if (error instanceof Error && error.name === "AbortError") {
+            console.warn("[grobid] Fulltext extraction timed out");
+        } else {
+            console.warn("[grobid] Fulltext extraction request failed", error);
         }
         return null;
     } finally {
