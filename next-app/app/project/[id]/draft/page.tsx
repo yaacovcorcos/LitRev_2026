@@ -387,6 +387,8 @@ function DraftContent() {
   // Export state + callbacks (extracted hook)
   const {
     isExportModalOpen, setExportModalOpen, exportHistory, latestExport,
+    exportMode, setExportMode, blockingCitationIssuesCount,
+    citationIssues: exportCitationIssues,
     hasDraftContent, handleExportDocx, handleDeleteExport,
   } = useDraftExport({
     projectId: id, projectName: project?.name, draft, orderedSections, studies, flushContentCommit,
@@ -1081,6 +1083,10 @@ function DraftContent() {
         isOpen={isExportModalOpen}
         onClose={() => setExportModalOpen(false)}
         onExport={handleExportDocx}
+        exportMode={exportMode}
+        onExportModeChange={setExportMode}
+        citationIssuesCount={exportCitationIssues.length}
+        blockingCitationIssuesCount={blockingCitationIssuesCount}
         latestExport={latestExport}
         exportHistory={exportHistory}
         onDeleteExport={handleDeleteExport}

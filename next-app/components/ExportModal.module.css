@@ -93,6 +93,27 @@
   line-height: 1.6;
 }
 
+.modeSwitch {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 8px;
+}
+
+.modeOption {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.modeHint {
+  margin: 0 0 16px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
 .exportBtn {
   display: flex;
   align-items: center;

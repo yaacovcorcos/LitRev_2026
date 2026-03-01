@@ -20,6 +20,7 @@ import { loadDraftState, DraftState } from "@/lib/draftStorage";
 import type { Study, StudyDetails } from "@/types/ledger";
 import type { FileAsset } from "@/types/files";
 import { AlertDialog } from "@/components/ConfirmDialog";
+import { compileDraftCitations, getCitedSectionIdsByStudyId } from "@/lib/citation-compiler";
 import styles from "./study.module.css";
 
 // Build lookup for section labels
@@ -133,15 +134,23 @@ export default function StudyDetailPage() {
 
                 if (!draft || !active) return;
 
-                // Find all sections that reference this study
-                const backlinks: DraftBacklink[] = [];
-                for (const [sectionId, studyIds] of Object.entries(draft.ledgerBySection)) {
-                    if (studyIds.includes(studyId)) {
-                        // Get label from base sections or custom sections
+                const compiled = compileDraftCitations({
+                    contentBySection: draft.contentBySection,
+                    sectionOrder: draft.sectionOrder,
+                    includeNumberInNodes: false,
+                });
+                const sectionIds = getCitedSectionIdsByStudyId({
+                    citations: compiled.citations,
+                    studyId,
+                });
+                const order = new Map(draft.sectionOrder.map((sectionId, index) => [sectionId, index]));
+                const backlinks: DraftBacklink[] = sectionIds
+                    .slice()
+                    .sort((a, b) => (order.get(a) ?? Number.MAX_SAFE_INTEGER) - (order.get(b) ?? Number.MAX_SAFE_INTEGER))
+                    .map((sectionId) => {
                         const label = SECTION_LABELS[sectionId] || draft.customSections[sectionId]?.label || sectionId;
-                        backlinks.push({ sectionId, label });
-                    }
-                }
+                        return { sectionId, label };
+                    });
 
                 setDraftBacklinks(backlinks);
             } catch (err) {

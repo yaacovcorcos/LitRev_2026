@@ -11,6 +11,10 @@ type ExportModalProps = {
   isOpen: boolean;
   onClose: () => void;
   onExport: () => Promise<FileAsset>;
+  exportMode: "warn" | "strict";
+  onExportModeChange: (mode: "warn" | "strict") => void;
+  citationIssuesCount: number;
+  blockingCitationIssuesCount: number;
   latestExport?: FileAsset | null;
   exportHistory: FileAsset[];
   onDeleteExport?: (fileId: string) => Promise<void>;
@@ -36,6 +40,10 @@ export function ExportModal({
   isOpen,
   onClose,
   onExport,
+  exportMode,
+  onExportModeChange,
+  citationIssuesCount,
+  blockingCitationIssuesCount,
   latestExport,
   exportHistory,
   onDeleteExport,
@@ -142,6 +150,34 @@ export function ExportModal({
                   Export your draft as a Word document (.docx). You can download it
                   immediately or access it later from the export history.
                 </p>
+                <div className={styles.modeSwitch} role="group" aria-label="Export integrity mode">
+                  <label className={styles.modeOption}>
+                    <input
+                      type="radio"
+                      name="export-mode"
+                      checked={exportMode === "warn"}
+                      onChange={() => onExportModeChange("warn")}
+                    />
+                    <span>Warn</span>
+                  </label>
+                  <label className={styles.modeOption}>
+                    <input
+                      type="radio"
+                      name="export-mode"
+                      checked={exportMode === "strict"}
+                      onChange={() => onExportModeChange("strict")}
+                    />
+                    <span>Strict</span>
+                  </label>
+                </div>
+                {citationIssuesCount > 0 ? (
+                  <p className={styles.modeHint}>
+                    Citation issues: {citationIssuesCount}
+                    {blockingCitationIssuesCount > 0 ? ` (${blockingCitationIssuesCount} blocking in strict mode)` : ""}
+                  </p>
+                ) : (
+                  <p className={styles.modeHint}>No citation issues detected.</p>
+                )}
                 <button
                   type="button"
                   className={styles.exportBtn}
