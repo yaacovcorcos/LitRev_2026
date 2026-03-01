@@ -18,6 +18,7 @@ import type { CopilotPage } from "@/types/ai";
 import { DemoBanner } from "@/components/project/DemoBanner";
 import { isDemoProjectId } from "@/lib/demo/constants";
 import { shouldSkipPreload } from "@/lib/network-aware";
+import { ProjectDataProvider } from "@/contexts/ProjectDataContext";
 import styles from "./project-shell.module.css";
 
 const RAIL_WIDTH = 44;
@@ -303,9 +304,11 @@ export default function ProjectLayout({ children }: ProjectLayoutProps) {
     return (
         <ProjectCopilotProvider projectId={projectId}>
             <PopupChatProvider>
-                <ProjectShellInner projectId={projectId}>
-                    {children}
-                </ProjectShellInner>
+                <ProjectDataProvider projectId={projectId}>
+                    <ProjectShellInner projectId={projectId}>
+                        {children}
+                    </ProjectShellInner>
+                </ProjectDataProvider>
                 <PopupChat projectId={projectId} />
             </PopupChatProvider>
         </ProjectCopilotProvider>
