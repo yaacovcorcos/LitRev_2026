@@ -42,12 +42,42 @@ export async function listStudiesPaginatedAction(
 const replaceStudiesInput = z.object({
   projectId: projectIdSchema,
   studies: z.array(studySchema),
+  emptyBehavior: z.enum(["clear_all"]).optional(),
+}).superRefine((value, ctx) => {
+  if (value.studies.length === 0 && value.emptyBehavior !== "clear_all") {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["emptyBehavior"],
+      message: 'emptyBehavior="clear_all" is required when studies is empty.',
+    });
+  }
+
+  if (value.studies.length > 0 && value.emptyBehavior === "clear_all") {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["emptyBehavior"],
+      message: 'Invalid emptyBehavior: "clear_all" can only be used with an empty studies list.',
+    });
+  }
 });
 
-export async function replaceStudiesAction(projectId: string, studies: Study[]): Promise<ActionResult<Study[]>> {
-  return withValidatedAction(replaceStudiesInput, { projectId, studies },
+type ReplaceStudiesActionOptions = {
+  emptyBehavior?: "clear_all";
+};
+
+export async function replaceStudiesAction(
+  projectId: string,
+  studies: Study[],
+  options?: ReplaceStudiesActionOptions,
+): Promise<ActionResult<Study[]>> {
+  return withValidatedAction(replaceStudiesInput, { projectId, studies, emptyBehavior: options?.emptyBehavior },
     (v) => withAuth(({ userId, workspaceId }) =>
-      replaceStudies({ ownerId: userId, workspaceId }, v.projectId, v.studies as Study[]),
+      replaceStudies(
+        { ownerId: userId, workspaceId },
+        v.projectId,
+        v.studies as Study[],
+        { emptyBehavior: v.emptyBehavior === "clear_all" ? "clear_all" : "reject" },
+      ),
     ),
   );
 }
