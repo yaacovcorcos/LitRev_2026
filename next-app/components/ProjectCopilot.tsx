@@ -79,9 +79,6 @@ export function ProjectCopilot({
         handleReviewArtifact,
         approveArtifactsBatch,
         executePlan,
-        shouldOfferSummary,
-        summarizeAndRefresh,
-        isSummarizing,
         selectedModel,
         // Autonomy settings (Phase 7)
         setShowAutonomySettings,

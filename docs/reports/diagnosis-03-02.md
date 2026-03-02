@@ -555,6 +555,10 @@ Use this per-fix log format:
 
 `[P1-CLEANUP-WAVE2C] | done | 2026-03-02 | next-app/app/actions/memory.ts, docs/reports/diagnosis-03-02.md | strict-unused counts: TS6133 28->14, TS6196 6->6; tsc: pass; vitest: pass (150 files, 1160 tests; 11 skipped) | Removed only dead schema/id imports from memory actions; no action signatures or runtime behavior changed.`
 
+`[R0-TRACK1-BASELINE] | done | 2026-03-02 | docs/reports/diagnosis-03-02.md | strict-unused counts: TS6133=14, TS6196=6; tsc: pass; vitest: pass (153 files, 1169 tests; 11 skipped) | Baseline captured after syncing cleanup worktree main to origin/main and regenerating Prisma client locally.`
+
+`[R1A-LOW-RISK-STRICT-UNUSED] | done | 2026-03-02 | next-app/components/copilot/TimelineRenderer.tsx, next-app/components/project/ConversationMainView.tsx, next-app/components/ProjectCopilot.tsx, next-app/hooks/useCopilotStreamActions.ts, docs/reports/diagnosis-03-02.md | strict-unused counts: TS6133 14->8, TS6196 6->3; tsc: pass; vitest: pass (153 files, 1169 tests; 11 skipped) | Removed only unused type imports/destructured values in low-risk UI/hook files; no behavior or signature changes.`
+
 ---
 
 ## Section 10: Final Position
