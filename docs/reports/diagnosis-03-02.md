@@ -551,6 +551,8 @@ Use this per-fix log format:
 
 `[P1-CLEANUP-WAVE2A] | done | 2026-03-02 | next-app/app/project/[id]/draft/draft-helpers.ts, next-app/app/project/[id]/draft/useDraftCopilot.ts, next-app/app/project/[id]/draft/useDraftSections.ts, next-app/components/EditableChips.tsx, next-app/components/EditableList.tsx, next-app/lib/agent/__tests__/compaction.test.ts, next-app/lib/agent/__tests__/router.test.ts, next-app/lib/server/__tests__/memory-maintenance.test.ts, next-app/lib/server/__tests__/normalize.test.ts, next-app/lib/server/__tests__/pdf-extraction.test.ts, next-app/lib/server/__tests__/planner-validation.test.ts, next-app/lib/server/__tests__/protocol-sync.test.ts, next-app/lib/server/__tests__/tracing.test.ts, docs/reports/diagnosis-03-02.md | strict-unused counts: TS6133 48->29, TS6196 6->6; tsc: pass; vitest: unchanged 2 failing tests in lib/server/__tests__/ai-service-reasoning-policy.test.ts due missing local DB | Allowlist-only cleanup; removed unused imports/locals without runtime behavior changes; deferred high-churn/runtime-sensitive files.`
 
+`[P1-CLEANUP-WAVE2B] | done | 2026-03-02 | next-app/app/project/[id]/draft/page.tsx, next-app/app/project/[id]/onboarding/page.tsx, next-app/lib/server/ledger.ts, docs/reports/diagnosis-03-02.md | strict-unused counts: TS6133 33->31, TS6196 7->6; tsc: pass; vitest: pass (142 files, 1130 tests; 11 skipped) | Allowlist-only leaf cleanup; removed unused imports/types and deferred high-churn /ai + copilot-context files to a follow-up micro-wave.`
+
 ---
 
 ## Section 10: Final Position

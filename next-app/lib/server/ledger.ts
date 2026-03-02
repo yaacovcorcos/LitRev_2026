@@ -11,7 +11,7 @@ import {
   type StudyDuplicatePairConfidence,
 } from "@/lib/server/search/dedup";
 import { rewriteCitationStudyIdsInContentBySection } from "@/lib/citation-compiler";
-import type { ServiceScope, ScopeInput } from "@/lib/server/scope";
+import type { ScopeInput } from "@/lib/server/scope";
 import type { Study, StudyDetails } from "@/types/ledger";
 
 export type { StudyInput };
