@@ -369,7 +369,7 @@ export default function AIView() {
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [pendingChoices, setPendingChoices] = useState<ChoiceOption[]>([]);
-  const [pendingUserInput, setPendingUserInput] = useState<UserInputRequest | null>(null);
+  const [, setPendingUserInput] = useState<UserInputRequest | null>(null);
   const [prefillCommand, setPrefillCommand] = useState<{ text: string; id: string } | null>(null);
   const [reasoningMode, setReasoningMode] = useState<ReasoningMode>(() => getReasoningModePreference());
   const [selectedModel, setSelectedModelState] = useState<SelectableModelId>("gpt-5.2");
