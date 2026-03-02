@@ -2,6 +2,7 @@ import type {
     CitationPreviewMetricEvent,
     CitationPreviewMetricInput,
 } from "@/types/citation-preview-telemetry";
+import { isCitationPreviewTelemetryShippingEnabled } from "@/lib/citation-preview-feature-flags";
 
 const STORAGE_KEY = "litrev:citation-preview-metrics:v1";
 const STORAGE_LIMIT = 2000;
@@ -33,6 +34,7 @@ function shouldShipToServer(): boolean {
     if (shippingOverrideForTests !== null) return shippingOverrideForTests;
     if (typeof window === "undefined") return false;
     if (typeof fetch !== "function") return false;
+    if (!isCitationPreviewTelemetryShippingEnabled()) return false;
     if (typeof process !== "undefined" && process.env.NODE_ENV === "test") return false;
     return true;
 }
