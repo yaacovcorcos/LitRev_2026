@@ -12,6 +12,7 @@ const inFlightRequests = new Map<string, Promise<CitationMetadata | null>>();
 
 const SUCCESS_CACHE_TTL_MS = 1000 * 60 * 60; // 1 hour
 const FAILURE_CACHE_TTL_MS = 1000 * 60 * 5; // 5 minutes
+export const METADATA_CACHE_LIMIT = 2000;
 const cacheTimestamps = new Map<string, number>();
 
 function getCached(key: string): CitationMetadata | null | undefined {
@@ -31,8 +32,18 @@ function getCached(key: string): CitationMetadata | null | undefined {
 }
 
 function setCache(key: string, value: CitationMetadata | null): void {
+    // Refresh insertion order when rewriting an existing key.
+    metadataCache.delete(key);
+    cacheTimestamps.delete(key);
     metadataCache.set(key, value);
     cacheTimestamps.set(key, Date.now());
+
+    while (cacheTimestamps.size > METADATA_CACHE_LIMIT) {
+        const oldestKey = cacheTimestamps.keys().next().value;
+        if (!oldestKey) break;
+        cacheTimestamps.delete(oldestKey);
+        metadataCache.delete(oldestKey);
+    }
 }
 
 export { normalizeDoi, extractPmid, extractDoi };
