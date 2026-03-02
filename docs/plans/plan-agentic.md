@@ -40,6 +40,7 @@
 - [x] P10: Scoping mode architecture shipped (routing, tool filtering, batch plan behavior, contract parsing, deterministic handoff).
 - [x] `exclude_study` tool implemented and registered in `AVAILABLE_TOOLS`.
 - [x] `bulk_screening` tool implemented and registered in `AVAILABLE_TOOLS`.
+- [x] `extract_pdf` tool implemented and registered in `AVAILABLE_TOOLS`.
 
 ## Deferred / Parking Lot
 *Ideas acknowledged but explicitly not active right now.*
