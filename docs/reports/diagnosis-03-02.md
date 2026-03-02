@@ -909,3 +909,181 @@ Carry-forward scope:
 - Do not carry the original "all actions lack runtime validation" claim.
 - Do not treat stream abort handling as a missing foundation control at this stage.
 - Keep these as historical context only in the source audit, not as active blocker items.
+
+---
+
+## Section 12: Final Consolidation Coverage (Single Canonical Diagnosis File)
+
+Goal:
+- This section closes remaining coverage gaps so this file can replace all legacy diagnosis/quality reports.
+
+### 12.1 Additional `codebase-audit-final.md` items (still relevant, previously implicit)
+
+`[CAF-H8]` Continue decomposition of `ai-service.ts` god object  
+Why keep:
+- `next-app/lib/server/ai/ai-service.ts` remains large and multi-responsibility.
+Safety:
+- **Medium-low** (high regression surface).
+Influence:
+- Better maintainability, lower feature-drift risk, clearer testing seams.
+Related files to adapt:
+- `next-app/lib/server/ai/ai-service.ts`
+- New extracted modules under `next-app/lib/server/ai/`.
+
+`[CAF-H9]` Continue decomposition of `app/ai/page.tsx` god page  
+Why keep:
+- `next-app/app/ai/page.tsx` still bundles conversation orchestration, timeline flow, and input logic in one large component.
+Safety:
+- **Medium-low**.
+Influence:
+- Better UI reliability and safer future iteration speed.
+Related files to adapt:
+- `next-app/app/ai/page.tsx`
+- New hooks/components in `next-app/app/ai/`.
+
+`[CAF-L1]` Add few-shot/tool-sequencing examples in prompts where ambiguity remains  
+Why keep:
+- Prompt layer still lacks concrete worked examples for complex mode/tool behavior.
+Safety:
+- **High**.
+Influence:
+- Better tool selection reliability and fewer avoidable agent misfires.
+Related files to adapt:
+- `next-app/lib/ai/prompts/copilot-prompts.ts`
+
+`[CAF-L2]` Re-check muted-text contrast token against body background  
+Why keep:
+- `--text-muted` remains a likely weak-contrast token candidate on the light body surface.
+Safety:
+- **High**.
+Influence:
+- Accessibility/readability improvement with low implementation risk.
+Related files to adapt:
+- `next-app/styles/tokens.css`
+
+`[CAF-L3]` Document and centralize retrieval tuning constants  
+Why keep:
+- Memory retrieval constants remain hardcoded without in-file rationale or config-level provenance.
+Safety:
+- **High** (docs/config improvement first).
+Influence:
+- Easier tuning, safer future adjustment, improved debuggability.
+Related files to adapt:
+- `next-app/lib/server/memory/memory-retrieval.ts`
+
+`[CAF-L4]` Centralize hardcoded extraction model selection  
+Why keep:
+- PDF extraction still hardcodes model IDs directly in service code.
+Safety:
+- **High**.
+Influence:
+- Better model governance and rollout control.
+Related files to adapt:
+- `next-app/lib/server/pdf-extraction.ts`
+- `next-app/lib/ai/config.ts`
+
+`[CAF-L5]` Make undo window configurable  
+Why keep:
+- Artifact undo TTL remains a fixed 5-minute literal.
+Safety:
+- **High**.
+Influence:
+- Better UX flexibility for long-running review workflows.
+Related files to adapt:
+- `next-app/lib/server/agent/artifacts.ts`
+- Config surface (env/config module).
+
+`[CAF-L6]` Reduce wildcard export surface in memory index  
+Why keep:
+- `export *` broadens dependency coupling and weakens import boundary clarity.
+Safety:
+- **High**.
+Influence:
+- Cleaner module boundaries and easier dependency reasoning.
+Related files to adapt:
+- `next-app/lib/server/memory/index.ts`
+- Importers of memory modules.
+
+`[CAF-L7]` Expand structured logging migration beyond security-only events  
+Why keep:
+- Console-based logs still dominate server paths.
+Safety:
+- **Medium** (touches many call sites).
+Influence:
+- Stronger production observability and easier issue triage.
+Related files to adapt:
+- `next-app/lib/server/**`
+
+`[CAF-L8]` Split large context providers with mixed concerns  
+Why keep:
+- `ProtocolContext` and `ProjectCopilotContext` still combine broad state + effects + derived logic.
+Safety:
+- **Medium-low**.
+Influence:
+- Lower re-render pressure and clearer ownership boundaries.
+Related files to adapt:
+- `next-app/contexts/ProtocolContext.tsx`
+- `next-app/contexts/ProjectCopilotContext.tsx`
+
+`[CAF-L9]` Normalize Prisma AI model naming ergonomics (`aIConversation` etc.)  
+Why keep:
+- Current model naming remains awkward and leaks into many call sites.
+Safety:
+- **Medium-low** (schema + migration + broad refactor).
+Influence:
+- Better consistency and reduced cognitive overhead in data layer.
+Related files to adapt:
+- `next-app/prisma/schema.prisma`
+- All call sites using `prisma.aIConversation` / `prisma.aIMessage` / `prisma.aIUsage`.
+
+### 12.2 UX + Cross-Audit Full Coverage Mapping
+
+Canonical mapping for `chatbot-ux-audit-claude.md` Issue `#1-#14` and `codex-feedback-claude.md`:
+
+- `UX-01` mega-context re-render risk -> **open** (`Section 7.2`)
+- `UX-02` missing client chunk throttling -> **open** (`Section 7.1`)
+- `UX-03` popup parity gaps -> **open** (`Section 7.10`)
+- `UX-04` silent failures -> **open** (`Section 7.5`)
+- `UX-05` no progressive rendering -> **open** (`Section 7.6`)
+- `UX-06` `Date.now()` collisions -> **open** (`Section 7.4`)
+- `UX-07` mode pill layout shift -> **open** (added below)
+- `UX-08` mobile copilot reachability -> **open** (`Section 7.7`)
+- `UX-09` dual artifact state drift -> **open** (`Section 7.8`)
+- `UX-10` pending attachment survives conversation switch -> **open** (`Section 7.3`)
+- `UX-11` keyboard focus gap for chat actions -> **fixed** (`Section 7.11`)
+- `UX-12` approve-all timeout too short -> **open** (`Section 7.9`)
+- `UX-13` dead draft copilot state -> **fixed** (`Section 7.11`)
+- `UX-14` `window.prompt` rename flow -> **fixed** (`Section 7.11`)
+
+`[UX-07]` Reserve stable vertical space for mode indicator to avoid first-keystroke layout jump  
+Why keep:
+- Mode indicator still mounts conditionally (`input.trim()`), which can shift textarea layout on first input.
+Safety:
+- **High**.
+Influence:
+- Removes visible input jank with minimal behavioral risk.
+Related files to adapt:
+- `next-app/components/copilot/CopilotInputCore.tsx`
+- `next-app/components/copilot/CopilotInput.module.css`
+
+Cross-audit prioritization notes kept from `codex-feedback-claude.md`:
+- Runtime unification remains desirable, but should follow immediate smoothness fixes.
+- De-prioritize advanced resumable-run/SLO-gate work until baseline UX/perf and telemetry foundations are stable.
+
+### 12.3 `QUALITY_REPORT.md` Coverage Mapping
+
+Canonical mapping for Quality Report findings:
+
+- `Q-01` unauthenticated AI/data endpoints -> **outdated/resolved** (session guards now present in primary AI routes/actions).
+- `Q-02` `single-user` vs `local-user` identity split -> **outdated/resolved** in runtime paths; historical migration references remain.
+- `Q-03` DB TLS no-verify risk -> **partial** (now guarded; still an explicit emergency override path).
+- `Q-04` conversation ownership checks missing -> **largely resolved** (scoped by `userId`/`workspaceId` in conversation actions).
+- `Q-05` memory actions trust client scope -> **largely resolved** (auth-derived access assertions in current actions).
+- `Q-06` rate-limit bypass via project-only keying -> **partial** (identity-aware rate limit exists in AI service; per-action non-chat endpoints remain tracked under `[CAF-H5]`).
+- `Q-07` denormalized `workspaceId` not populated -> **resolved in current write paths** for key study/file flows.
+- `Q-08` dual conversation persistence semantics -> **partial/open** (alignment still needed with broader service-layer/runtime consolidation).
+
+### 12.4 Canonical-File Rule
+
+- `docs/reports/diagnosis-03-02.md` is now the single canonical diagnosis/quality tracker.
+- Legacy diagnosis/quality files are retired after this consolidation and should not be reintroduced.
