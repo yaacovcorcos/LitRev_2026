@@ -578,6 +578,10 @@ Use this per-fix log format:
 
 `[R3-SEEDLOCALSTORAGE-DECISION] | done | 2026-03-02 | next-app/lib/seedLocalStorage.ts, docs/reports/diagnosis-03-02.md | reference-scan only (no code changes) | No in-repo imports were found, but file is retained as a legacy/manual bootstrap utility by default until an explicit retirement decision is requested.`
 
+`[R3B-SECOND-PROMOTION-PR-HYGIENE] | done | 2026-03-02 | GitHub PRs #23, #25, #27, #31, #35, #38, #42 (closed) | branch ancestry check (`origin/codex/cleanup-*` all in `origin/main`) | Closed stale `second` promotion PR backlog for cleanup branches while leaving active citation promotion PRs open.`
+
+`[R4-CODEBLOCK-HOVER-TEST-HARDENING] | done | 2026-03-02 | next-app/components/markdown/__tests__/CodeBlock.links.test.tsx, docs/reports/diagnosis-03-02.md | targeted vitest: pass; tsc: pass; vitest full: pass (158 files, 1193 tests; 11 skipped) | Hardened hover-intent citation test with Popover mocking + fake timers/act to remove repeated `act(...)` warning noise from this suite.`
+
 ---
 
 ## Section 10: Final Position

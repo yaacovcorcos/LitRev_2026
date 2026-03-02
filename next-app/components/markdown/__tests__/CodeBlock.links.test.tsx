@@ -1,10 +1,21 @@
 // @vitest-environment jsdom
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, act } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { markdownComponents } from "../CodeBlock";
 import { fetchCitationMetadata } from "@/app/actions/citation";
+
+vi.mock("@/components/ui/Popover", async () => {
+    const React = await import("react");
+    return {
+        Root: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+        Trigger: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+        Portal: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+        Content: () => null,
+        Arrow: () => null,
+    };
+});
 
 // Mock the citation action
 vi.mock("@/app/actions/citation", () => ({
@@ -27,6 +38,7 @@ describe("markdown link rendering", () => {
     });
 
     afterEach(() => {
+        vi.useRealTimers();
         vi.restoreAllMocks();
     });
 
@@ -102,6 +114,7 @@ describe("markdown link rendering", () => {
     });
 
     it("fetches citation metadata lazily on hover intent", async () => {
+        vi.useFakeTimers();
         render(
             <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
                 {"[Study](https://doi.org/10.1000/xyz123)"}
@@ -113,8 +126,14 @@ describe("markdown link rendering", () => {
 
         expect(mockedFetch).not.toHaveBeenCalled();
 
-        fireEvent.mouseEnter(link);
-        await new Promise((resolve) => setTimeout(resolve, 380));
+        act(() => {
+            fireEvent.mouseEnter(link);
+        });
+        await act(async () => {
+            await vi.advanceTimersByTimeAsync(380);
+            await Promise.resolve();
+            await Promise.resolve();
+        });
 
         expect(mockedFetch).toHaveBeenCalledWith("https://doi.org/10.1000/xyz123");
     });
