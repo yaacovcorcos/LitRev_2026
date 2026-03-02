@@ -1,49 +1,26 @@
-export type ChatSurface = "ai" | "project";
-
-export type ChatUnificationMetricType =
-  | "retry_model_continuity"
-  | "ask_user_context_mismatch"
-  | "stuck_running_tools_after_run_end";
-
-export type RetryModelContinuityPayload = {
-  preserved: boolean;
-  expectedModel: string | null;
-  actualModel: string | null;
-  source: "retry_action";
-};
-
-export type AskUserContextMismatchPayload = {
-  mismatch: boolean;
-  expectedPage: string | null;
-  expectedSection: string | null;
-  resolvedPage: string | null;
-  resolvedSection: string | null;
-};
-
-export type StuckRunningToolsPayload = {
-  unresolvedCount: number;
-  runStatus: string | null;
-  streamPhase: "send" | "plan" | "project_stream";
-};
-
-export type ChatUnificationMetricPayload =
-  | RetryModelContinuityPayload
-  | AskUserContextMismatchPayload
-  | StuckRunningToolsPayload;
-
-export type ChatUnificationMetricEvent = {
-  version: 1;
-  type: ChatUnificationMetricType;
-  surface: ChatSurface;
-  timestamp: string;
-  runId?: string | null;
-  conversationId?: string | null;
-  payload: ChatUnificationMetricPayload;
-};
+import type {
+  AskUserContextMismatchPayload,
+  ChatUnificationMetricEvent,
+  RunEndObservedPayload,
+  RetryModelContinuityPayload,
+  StuckRunningToolsPayload,
+} from "@/types/chat-unification";
 
 const STORAGE_KEY = "litrev:chat-unification-metrics:v1";
 const STORAGE_LIMIT = 2000;
 const METRIC_EVENT = "litrev:chat-unification-metric";
+
+function generateMetricEventId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `metric-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function computeRate(total: number, numerator: number): number | null {
+  if (total <= 0) return null;
+  return numerator / total;
+}
 
 function readEventsFromStorage(): ChatUnificationMetricEvent[] {
   if (typeof window === "undefined") return [];
@@ -59,11 +36,12 @@ function readEventsFromStorage(): ChatUnificationMetricEvent[] {
 }
 
 export function recordChatUnificationMetric(
-  event: Omit<ChatUnificationMetricEvent, "version" | "timestamp">,
+  event: Omit<ChatUnificationMetricEvent, "eventId" | "version" | "timestamp">,
 ): void {
   if (typeof window === "undefined") return;
 
   const normalized: ChatUnificationMetricEvent = {
+    eventId: generateMetricEventId(),
     version: 1,
     timestamp: new Date().toISOString(),
     ...event,
@@ -89,17 +67,26 @@ export type ChatUnificationMetricSummary = {
   retryModelContinuity: {
     total: number;
     preserved: number;
-    rate: number;
+    rate: number | null;
+    hasSample: boolean;
   };
   askUserContextMismatch: {
     total: number;
     mismatches: number;
-    rate: number;
+    rate: number | null;
+    hasSample: boolean;
   };
   stuckRunningToolsAfterRunEnd: {
     total: number;
     violations: number;
-    rate: number;
+    rate: number | null;
+    hasSample: boolean;
+  };
+  runEndObserved: {
+    total: number;
+    completed: number;
+    rateCompleted: number | null;
+    hasSample: boolean;
   };
 };
 
@@ -109,6 +96,7 @@ export function summarizeChatUnificationMetrics(
   const retryEvents = events.filter((event) => event.type === "retry_model_continuity");
   const askUserEvents = events.filter((event) => event.type === "ask_user_context_mismatch");
   const stuckEvents = events.filter((event) => event.type === "stuck_running_tools_after_run_end");
+  const runEndEvents = events.filter((event) => event.type === "run_end_observed");
 
   const preserved = retryEvents.filter((event) => {
     const payload = event.payload as RetryModelContinuityPayload;
@@ -124,22 +112,35 @@ export function summarizeChatUnificationMetrics(
     const payload = event.payload as StuckRunningToolsPayload;
     return payload.unresolvedCount > 0;
   }).length;
+  const completedRuns = runEndEvents.filter((event) => {
+    const payload = event.payload as RunEndObservedPayload;
+    return payload.runStatus === "completed";
+  }).length;
 
   return {
     retryModelContinuity: {
       total: retryEvents.length,
       preserved,
-      rate: retryEvents.length > 0 ? preserved / retryEvents.length : 1,
+      rate: computeRate(retryEvents.length, preserved),
+      hasSample: retryEvents.length > 0,
     },
     askUserContextMismatch: {
       total: askUserEvents.length,
       mismatches,
-      rate: askUserEvents.length > 0 ? mismatches / askUserEvents.length : 0,
+      rate: computeRate(askUserEvents.length, mismatches),
+      hasSample: askUserEvents.length > 0,
     },
     stuckRunningToolsAfterRunEnd: {
       total: stuckEvents.length,
       violations,
-      rate: stuckEvents.length > 0 ? violations / stuckEvents.length : 0,
+      rate: computeRate(stuckEvents.length, violations),
+      hasSample: stuckEvents.length > 0,
+    },
+    runEndObserved: {
+      total: runEndEvents.length,
+      completed: completedRuns,
+      rateCompleted: computeRate(runEndEvents.length, completedRuns),
+      hasSample: runEndEvents.length > 0,
     },
   };
 }
