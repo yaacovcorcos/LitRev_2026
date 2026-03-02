@@ -3,6 +3,25 @@
 ## Purpose
 Define a safe, high-ROI rollout for live reasoning visibility and tool-invocation UX so users feel part of the process without degrading speed or quality.
 
+## Phase 1 Preconditions (Technical)
+1. Shared runtime/reducer path is present on `main`:
+   - `next-app/lib/ai/shared-stream-reducer.ts`
+   - `next-app/lib/ai/ai-stream-runtime.ts`
+   - `next-app/lib/ai/__tests__/stream-adapter-parity.test.ts`
+2. Ask-user context continuity + retry/model continuity fixes are already shipped.
+3. Architecture guard script exists and can run in `enforce` mode.
+
+## Gap Audit (2026-03-02)
+This plan now follows a strict delta-only policy: do not re-implement shipped behavior.
+
+| Area | Already shipped | Missing (Phase 1 target) | Action |
+|---|---|---|---|
+| Shared stream core | `/ai` + project copilot use shared reducer/runtime; parity fixtures exist | None | No core rewrite |
+| Reasoning lane | Reasoning renders in `off/summary/full`; streaming works | Summary-mode live visibility is weaker than full mode; `/ai` does not pass model reasoning support tier to dropdown | Improve UI only (no runtime semantic changes) |
+| Tool lifecycle cards | Typed `tool_activity` cards (`running/done/failed`) with shared reducer intents | Cards lack timing/duration and stronger visual status hierarchy | UI polish only; keep reducer contracts unchanged |
+| Parity harness | Cross-adapter replay tests exist | Add only missing edge assertions discovered during work | Extend existing fixtures/tests only |
+| Guardrails | Architecture script exists; CI currently runs warn mode | Warn mode is non-blocking confidence only | Move CI default to enforce for this phase |
+
 ## Product Outcome
 - Users can see what the agent is doing in real time.
 - Users can follow tool calls as explicit lifecycle steps.
@@ -25,74 +44,49 @@ Unify chat/runtime logic first, then expand advanced UI lanes.
 
 ## Execution Sequence
 
-### Phase V2.0 - Blockers (must fix first)
-1. Fix model ownership in shared input core (single source of truth).
-2. Preserve selected model + reasoning mode in retry flows.
-3. Eliminate duplicate ask-user rendering (single decision surface).
+### Phase V2.0 - Gap Audit + Scope Lock
+1. Produce a done-vs-missing checklist against live code.
+2. Lock implementation scope to missing deltas only.
 
 Exit criteria:
-- No model drift on retry.
-- One ask-user UI path only.
-- No duplicate question rendering.
+- No duplicate implementation work planned.
+- Runtime changes are justified by explicit missing behavior.
 
-### Phase V2.1 - Shared Client Stream Layer
-1. Introduce shared stream reducer + adapters used by `/ai` and project copilot.
-2. Keep surface-specific adapters thin.
-3. Normalize all runtime events into one client event contract.
-
-Exit criteria:
-- Same stream event yields same state transition on both major surfaces.
-
-### Phase V2.2 - Typed Tool Activity Model
-1. Add first-class `tool_activity` timeline type (`queued|running|done|failed`).
-2. Include timestamps, duration, safe summaries, and tool identity.
-3. Reuse existing run-event metadata; do not create a second persistence path.
+### Phase V2.1 - Net-New Reasoning UX Deltas
+1. Improve live reasoning visibility for summary mode while preserving `off/summary/full` contracts.
+2. Wire `/ai` reasoning support tier into dropdown behavior (parity with project copilot controls).
+3. Keep reasoning storage/runtime semantics unchanged.
 
 Exit criteria:
-- Tool lifecycle is typed data, not inferred from prose.
+- Better live visibility without runtime contract drift.
+- `/ai` reasoning controls reflect model support tier.
 
-### Phase V2.3 - Reasoning Lane UX
-1. Render live reasoning with states: `idle|streaming|done|truncated`.
-2. Respect modes: `off|summary|full`.
-3. Add provenance chip (`provider-native` vs `best-effort`).
-
-Exit criteria:
-- Reasoning visibility is predictable and mode-consistent.
-- Clear fallback message when model emits no reasoning.
-
-### Phase V2.4 - Action Lane UX
-1. Render live tool cards with status, duration, and compact I/O summaries.
-2. Group repeated tool activity into batches.
-3. Keep high-signal surface: what ran, why, result.
+### Phase V2.2 - Net-New Tool Activity UX Deltas
+1. Improve tool cards with timing metadata (start/completion + duration) and clearer status hierarchy.
+2. Keep status contract scoped to currently emitted states (`running|done|failed`) for Phase 1.
+3. Do not add new persistence paths.
 
 Exit criteria:
-- User can follow progress without reading raw transcript text.
+- Tool cards communicate progress and completion quality at a glance.
+- No reducer semantic duplication in UI bridge layers.
 
-### Phase V2.5 - Control Lane UX (staged)
-1. V2.5a: retry controls only.
-2. V2.5b: pause control behind flag.
-3. V2.5c: skip/step controls after reliability proof.
+### Phase V2.3 - Parity Hardening (Missing Edges Only)
+1. Extend existing replay fixtures/tests only where edge coverage is missing.
+2. Keep strict parity target at reducer-state + intents.
 
 Exit criteria:
-- User intervention improves trust without introducing unstable run control.
+- New edges covered without rewriting the existing harness.
 
-### Phase V2.6 - Performance + Coalescing
-1. Split coalescing by lane:
-   - Tool/control transitions: fast path.
-   - Reasoning/content deltas: coalesced.
-2. Add lane-specific SLOs.
+### Phase V2.4 - Guardrail Enforcement
+1. Promote chat stream architecture guard from warn to enforce in CI defaults.
+2. Keep allowlists narrow and explicit.
 
-Suggested SLOs:
-- Time-to-first-visible-work: < 1.5s
-- Tool/control status update latency: < 300-500ms
-- No visible scroll/input jank under sustained streams
+Exit criteria:
+- Divergent stream logic additions fail CI by default.
 
-### Phase V2.7 - Rollout
-1. Feature flags:
-   - `NEXT_PUBLIC_ENABLE_LIVE_REASONING_V2`
-   - `NEXT_PUBLIC_ENABLE_TOOL_ACTIVITY_V2`
-   - `NEXT_PUBLIC_ENABLE_AGENT_CONTROLS_V2`
-2. Internal -> power users -> broad rollout by metrics.
+### Phase V2.5 - Rollout
+1. Power users first.
+2. Broaden after KPI verification.
 
 ## Risks and Mitigations
 1. Risk: UI drift across surfaces.
@@ -107,3 +101,12 @@ Track implementation under existing UI governance items:
 - `CUX-027` (tool receipts / copilot UX)
 - `CUX-D01` (chat architecture unification)
 
+## Validation Gates (Per PR)
+1. `cd next-app && npx tsc --noEmit`
+2. `cd next-app && npx vitest run`
+3. `cd next-app && node scripts/check-chat-stream-architecture.mjs --mode=enforce`
+4. Manual smoke:
+   - reasoning visibility (`off/summary/full`) in `/ai` + project copilot
+   - tool lifecycle card transitions
+   - retry/model continuity
+   - ask-user context continuity

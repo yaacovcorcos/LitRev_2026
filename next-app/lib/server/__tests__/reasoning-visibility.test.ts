@@ -4,6 +4,7 @@ import {
   getReasoningBudgetTokens,
   getReasoningModePreference,
   getReasoningSummaryPreview,
+  resolveRequestReasoningMode,
   setReasoningModePreference,
 } from "@/lib/ai/reasoning-visibility";
 
@@ -57,5 +58,13 @@ describe("reasoning visibility helpers", () => {
     expect(getReasoningBudgetTokens("off")).toBeUndefined();
     expect(getReasoningBudgetTokens("summary")).toBe(512);
     expect(getReasoningBudgetTokens("full")).toBe(1024);
+  });
+
+  it("clamps request reasoning mode for non-reasoning models without mutating preference", () => {
+    withMockWindow();
+    setReasoningModePreference("summary");
+
+    expect(resolveRequestReasoningMode("summary", "gpt-5-mini")).toBe("off");
+    expect(getReasoningModePreference()).toBe("summary");
   });
 });

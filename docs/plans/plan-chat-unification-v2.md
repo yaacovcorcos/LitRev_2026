@@ -8,7 +8,7 @@ Unify `/ai`, project copilot, and popup chat onto one shared chat engine while k
 2. Completed: U1.1 shared pure reducer + intents (`shared-stream-reducer`).
 3. Completed: U1.2 project adapter migration.
 4. Completed: U1.3 and U1.4 `/ai` send and plan stream paths now run through the shared reducer runtime.
-5. In progress: U1.5 anti-duplication CI guard (warn mode) and U1.6 adapter replay parity harness.
+5. Completed: U1.5 anti-duplication CI guard is now enforced in CI by default (`--mode=enforce`).
 6. Pending: U1.6 burn-in gate validation and U3 popup migration to shared runtime.
 
 ## Non-Negotiable Constraints
@@ -170,13 +170,10 @@ Exit criteria:
 2. Add scoped architecture checks in CI (client stream files only, allowlist based):
    - no new per-surface stream chunk parsers outside approved adapter/reducer files
    - no `reduceSharedStreamChunk()` usage outside approved shared adapters
-3. Rollout:
-   - start guard in `warn` mode for 1-2 green cycles
-   - promote to `enforce` mode after stable green cycles
+3. Guard is now enabled in `enforce` mode by default in CI.
 
 Exit criteria:
-1. CI guard passes in `warn` mode with zero unexpected violations.
-2. Enforce-mode switch criteria are documented.
+1. CI guard passes in `enforce` mode with zero unexpected violations.
 2. Flag-off fallback remains available pre-cleanup.
 
 ### U1.6 - Cross-Surface Replay Parity + Burn-In Gate
