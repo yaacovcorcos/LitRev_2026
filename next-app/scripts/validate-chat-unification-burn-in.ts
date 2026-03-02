@@ -5,6 +5,7 @@
  *   npx tsx scripts/validate-chat-unification-burn-in.ts --since=2026-03-01T00:00:00.000Z
  *   npx tsx scripts/validate-chat-unification-burn-in.ts --since=... --until=...
  *   npx tsx scripts/validate-chat-unification-burn-in.ts --since=... --report=docs/reports/u1-6-burn-in.md
+ *   npx tsx scripts/validate-chat-unification-burn-in.ts --since=... --until=... --allowShortWindow=1
  */
 
 import { config } from "dotenv";
@@ -22,6 +23,10 @@ import {
   formatChatUnificationBurnInReport,
   type BurnInThresholds,
 } from "../lib/ai/chat-unification-burn-in";
+import {
+  parseIsoDateArg,
+  resolveBurnInWindow,
+} from "../lib/ai/chat-unification-burn-in-cli";
 import type { ChatSurface, ChatUnificationMetricType } from "../types/chat-unification";
 
 const pool = new Pool({
@@ -76,19 +81,6 @@ function parseFloatArg(name: string, fallback: number): number {
   return parsed;
 }
 
-function parseIsoDate(name: string, required = false): Date | undefined {
-  const raw = parseArg(name);
-  if (!raw) {
-    if (!required) return undefined;
-    throw new Error(`Missing required --${name}=<iso-date> argument`);
-  }
-  const timestamp = Date.parse(raw);
-  if (!Number.isFinite(timestamp)) {
-    throw new Error(`Invalid ISO timestamp for --${name}: ${raw}`);
-  }
-  return new Date(timestamp);
-}
-
 function parseThresholdsFromArgs(): BurnInThresholds {
   return {
     minCompletedRuns: parseIntArg("minCompletedRuns", DEFAULT_BURN_IN_THRESHOLDS.minCompletedRuns),
@@ -134,11 +126,14 @@ async function maybeWriteReport(path: string | undefined, content: string): Prom
 }
 
 async function main() {
-  const since = parseIsoDate("since", true) as Date;
-  const until = parseIsoDate("until", false);
-  if (until && since > until) {
-    throw new Error(`--since must be <= --until. received since=${since.toISOString()} until=${until.toISOString()}`);
-  }
+  const since = parseIsoDateArg("since", parseArg("since"), true) as Date;
+  const untilRaw = parseIsoDateArg("until", parseArg("until"), false);
+  const allowShortWindow = parseArg("allowShortWindow") === "1";
+  const window = resolveBurnInWindow({
+    since,
+    until: untilRaw,
+    allowShortWindow,
+  });
 
   const thresholds = parseThresholdsFromArgs();
   const reportPath = parseArg("report");
@@ -156,8 +151,8 @@ async function main() {
     metrics = await prisma.chatUnificationMetric.findMany({
       where: {
         recordedAt: {
-          gte: since,
-          ...(until ? { lte: until } : {}),
+          gte: window.since,
+          lte: window.until,
         },
         type: {
           in: [...METRIC_TYPES],
@@ -192,8 +187,9 @@ async function main() {
   const evaluation = evaluateChatUnificationBurnIn(metrics, thresholds);
 
   const header = [
-    `Window since: ${since.toISOString()}`,
-    `Window until: ${until?.toISOString() ?? "(open-ended to now)"}`,
+    `Window since: ${window.since.toISOString()}`,
+    `Window until: ${window.until.toISOString()}`,
+    `Short-window override: ${allowShortWindow ? "enabled" : "disabled"}`,
     `Rows analyzed: ${metrics.length}`,
   ].join("\n");
   const body = formatChatUnificationBurnInReport(evaluation);
@@ -204,7 +200,8 @@ async function main() {
       JSON.stringify(
         {
           since: since.toISOString(),
-          until: until?.toISOString() ?? null,
+          until: window.until.toISOString(),
+          allowShortWindow,
           rowsAnalyzed: metrics.length,
           evaluation,
         },

@@ -5,11 +5,6 @@ import { ingestChatUnificationMetric } from "@/lib/server/chat-unification-metri
 
 export const runtime = "nodejs";
 
-function asErrorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message;
-  return "Unknown error";
-}
-
 export async function POST(request: NextRequest) {
   try {
     const authResult = await requireApiSession(request);
@@ -48,10 +43,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    console.error("[telemetry/chat-unification] ingestion failed", error);
     return Response.json(
       {
         success: false,
-        error: asErrorMessage(error),
+        error: "Telemetry ingestion failed",
       },
       { status: 500 },
     );

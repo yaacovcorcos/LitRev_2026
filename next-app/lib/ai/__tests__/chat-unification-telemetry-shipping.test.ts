@@ -8,6 +8,9 @@ import {
   setChatUnificationMetricShippingOverrideForTests,
 } from "@/lib/ai/chat-unification-telemetry";
 
+const UUID_V4_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 describe("chat unification telemetry shipping", () => {
   const originalFetch = globalThis.fetch;
 
@@ -60,7 +63,7 @@ describe("chat unification telemetry shipping", () => {
       conversationId: "conv-1",
       projectId: "project-1",
     });
-    expect(typeof parsedBody.eventId).toBe("string");
+    expect(parsedBody.eventId).toMatch(UUID_V4_PATTERN);
     expect(parsedBody.clientTimestamp).toBeTruthy();
   });
 });
