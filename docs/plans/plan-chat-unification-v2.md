@@ -204,6 +204,8 @@ Exit criteria:
      - `ask_user_context_mismatch` denominator >= 30 overall and >= 10 per surface
    - completed-run counting rule:
      - count distinct `runId` where `run_end_observed.payload.runStatus === "completed"` and `runId` belongs to an authorized run
+   - validation command:
+     - `cd next-app && npx tsx scripts/validate-chat-unification-burn-in.ts --since=<ISO-ENABLE-TIMESTAMP> --report=../docs/reports/u1-6-burn-in.md`
 7. Gate cleanup on parity + KPI pass.
 
 Exit criteria:
