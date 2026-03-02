@@ -235,12 +235,20 @@ export async function fetchCrossrefMetadata(
         // Journal
         const containerTitle = work["container-title"];
         const journal = Array.isArray(containerTitle) ? containerTitle[0] : containerTitle;
+        const citationCountRaw = work["is-referenced-by-count"];
+        const citationCount =
+            typeof citationCountRaw === "number" && Number.isFinite(citationCountRaw)
+                ? citationCountRaw
+                : undefined;
 
         return {
             title: title ?? "Untitled",
             authors,
             year,
             journal: journal || undefined,
+            citationCount,
+            citationCountSource: citationCount !== undefined ? "crossref" : undefined,
+            citationCountFetchedAt: citationCount !== undefined ? new Date().toISOString() : undefined,
             canonicalUrl: `https://doi.org/${normalizedDoi}`,
             doi: normalizedDoi,
         };
