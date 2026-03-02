@@ -553,7 +553,7 @@ Use this per-fix log format:
 
 `[P1-CLEANUP-WAVE2B] | done | 2026-03-02 | next-app/app/project/[id]/draft/page.tsx, next-app/app/project/[id]/onboarding/page.tsx, next-app/lib/server/ledger.ts, docs/reports/diagnosis-03-02.md | strict-unused counts: TS6133 29->27, TS6196 7->6; tsc: pass; vitest: pass (148 files, 1154 tests; 11 skipped) | Allowlist-only leaf cleanup; removed unused imports/types and deferred high-churn /ai + copilot-context files to a follow-up micro-wave.`
 
-`[P1-CLEANUP-WAVE2C] | done | 2026-03-02 | next-app/app/actions/memory.ts, docs/reports/diagnosis-03-02.md | strict-unused counts: TS6133 28->15, TS6196 6->6; tsc: pass; vitest: pass (150 files, 1160 tests; 11 skipped) | Removed only dead schema/id imports from memory actions; no action signatures or runtime behavior changed.`
+`[P1-CLEANUP-WAVE2C] | done | 2026-03-02 | next-app/app/actions/memory.ts, docs/reports/diagnosis-03-02.md | strict-unused counts: TS6133 28->14, TS6196 6->6; tsc: pass; vitest: pass (150 files, 1160 tests; 11 skipped) | Removed only dead schema/id imports from memory actions; no action signatures or runtime behavior changed.`
 
 ---
 

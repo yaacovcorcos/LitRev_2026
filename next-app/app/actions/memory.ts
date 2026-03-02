@@ -49,7 +49,6 @@ import {
     type UpdateStudyMemoryInput,
     type StudyMemoryType,
     type StudyMemoryCategory,
-    type StudyMemorySource,
 
     // Memory Retrieval
     retrieveMemories,
