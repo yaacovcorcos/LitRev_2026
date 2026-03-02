@@ -135,6 +135,15 @@
     text-align: left;
 }
 
+.reasoningState {
+    margin-left: auto;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+}
+
 .reasoningToggle :global(.material-icons-round) {
     font-size: 16px;
 }
@@ -328,6 +337,18 @@
     gap: 4px;
 }
 
+.toolActivityCard[data-status="running"] {
+    border-color: rgba(var(--rgb-accent-primary), 0.35);
+}
+
+.toolActivityCard[data-status="done"] {
+    border-color: rgba(var(--rgb-color-success), 0.35);
+}
+
+.toolActivityCard[data-status="failed"] {
+    border-color: rgba(var(--rgb-color-danger), 0.4);
+}
+
 .toolActivityHead {
     display: flex;
     align-items: center;
@@ -362,6 +383,13 @@
     font-size: 12px;
     line-height: 1.5;
     color: var(--text-secondary);
+}
+
+.toolActivityMeta {
+    margin: 0;
+    font-size: 11px;
+    line-height: 1.4;
+    color: var(--text-muted);
 }
 
 .suggestRow {

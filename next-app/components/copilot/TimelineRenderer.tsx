@@ -110,6 +110,34 @@ const TOOL_ACTIVITY_META: Record<"queued" | "running" | "done" | "failed", { ico
     failed: { icon: "error", label: "Failed" },
 };
 
+function parseTimestampMs(value?: string): number | null {
+    if (!value) return null;
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed) ? parsed : null;
+}
+
+function formatDurationMs(durationMs: number): string {
+    if (durationMs < 1000) return `${durationMs}ms`;
+    if (durationMs < 10_000) return `${(durationMs / 1000).toFixed(1)}s`;
+    if (durationMs < 60_000) return `${Math.round(durationMs / 1000)}s`;
+    const minutes = Math.floor(durationMs / 60_000);
+    const seconds = Math.round((durationMs % 60_000) / 1000);
+    return `${minutes}m ${seconds}s`;
+}
+
+function getToolActivityTimingText(item: Extract<TimelineItem, { type: "tool_activity" }>): string {
+    const started = parseTimestampMs(item.startedAt);
+    const completed = parseTimestampMs(item.completedAt);
+
+    if (item.status === "running") return "In progress";
+    if ((item.status === "done" || item.status === "failed") && started !== null && completed !== null && completed >= started) {
+        return `Completed in ${formatDurationMs(completed - started)}`;
+    }
+    if (item.status === "done") return "Completed";
+    if (item.status === "failed") return "Failed";
+    return "Pending";
+}
+
 function getJumpToProps(artifactType: string, projectId: string): { jumpToLink?: string; jumpToLabel?: string } {
     const mapping = ARTIFACT_JUMP_MAP[artifactType];
     if (!mapping) return {};
@@ -271,13 +299,19 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
         [item.content]
     );
     const [mentionStates, setMentionStates] = useState<Record<string, MentionAddState>>({});
-    const [showReasoning, setShowReasoning] = useState(reasoningMode === "full" && isReasoningStreaming);
+    const [showReasoning, setShowReasoning] = useState(reasoningMode !== "off" && isReasoningStreaming);
 
     useEffect(() => {
-        if (reasoningMode === "full" && isReasoningStreaming) {
+        if (reasoningMode !== "off" && isReasoningStreaming) {
             setShowReasoning(true);
         }
     }, [isReasoningStreaming, reasoningMode]);
+
+    const reasoningStateLabel = isReasoningStreaming
+        ? "Live"
+        : item.reasoning?.truncated
+            ? "Truncated"
+            : undefined;
 
     useEffect(() => {
         if (reasoningMode !== "summary") {
@@ -333,6 +367,9 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
                                             ? "Reasoning (summary)"
                                             : "Reasoning"}
                                 </span>
+                                {reasoningStateLabel ? (
+                                    <span className={styles.reasoningState}>{reasoningStateLabel}</span>
+                                ) : null}
                             </button>
                             {showReasoning && (
                                 <div className={styles.reasoningPanel}>
@@ -1101,8 +1138,16 @@ export function TimelineRenderer({
 
             case "tool_activity": {
                 const meta = TOOL_ACTIVITY_META[item.status];
+                const timingText = getToolActivityTimingText(item);
+                const summary = item.summary?.trim();
                 return (
-                    <div key={item.id} className={styles.toolActivityCard} role="status" aria-live="polite">
+                    <div
+                        key={item.id}
+                        className={styles.toolActivityCard}
+                        data-status={item.status}
+                        role="status"
+                        aria-live="polite"
+                    >
                         <div className={styles.toolActivityHead}>
                             <span className={`material-icons-round ${styles.toolActivityIcon}`}>
                                 {meta.icon}
@@ -1110,9 +1155,8 @@ export function TimelineRenderer({
                             <span className={styles.toolActivityTitle}>{item.toolName}</span>
                             <span className={styles.toolActivityState}>{meta.label}</span>
                         </div>
-                        {item.summary ? (
-                            <p className={styles.toolActivitySummary}>{item.summary}</p>
-                        ) : null}
+                        <p className={styles.toolActivityMeta}>{timingText}</p>
+                        {summary ? <p className={styles.toolActivitySummary}>{summary}</p> : null}
                     </div>
                 );
             }

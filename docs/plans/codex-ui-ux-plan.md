@@ -29,6 +29,7 @@ It consolidates all open UI/UX work into one prioritized sequence so implementat
 - High-traffic UI modules (`ledger`, `study detail`, `memory`, `notes`, `protocol`, `login`) now consume shared token scales for typography/motion/layering and reduced hardcoded palette/shadow usage.
 - Timeline recovery UX now maps stream/plan failure messages into recoverable error cards with explicit `Retry` and `Resume` actions wired to resend the last user intent or continue unfinished plan steps.
 - `/ai` standard send and plan-execution stream paths now consume the shared stream reducer + typed intents (same engine contract as project copilot), removing duplicated chunk-switch state machines while preserving project-optional `/ai` behavior.
+- Thinking UX Phase 1 delta pass is active: summary-mode reasoning now opens live while streaming, `/ai` reasoning controls now honor model reasoning support tiers, and tool lifecycle cards expose clearer timing metadata without introducing new runtime semantics.
 
 ## Recently Completed
 - `CUX-007` Added visible tool/run failure recovery UX by converting recoverable failures to timeline error cards and wiring `Retry`/`Resume` actions in both copilot surfaces.

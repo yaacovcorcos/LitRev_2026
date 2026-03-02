@@ -89,4 +89,20 @@ describe("TimelineRenderer reasoning visibility modes", () => {
     expect(screen.getByRole("button", { name: /Thinking/i })).not.toBeNull();
     expect(screen.getByText(/Streaming reasoning body/)).not.toBeNull();
   });
+
+  it("auto-expands while reasoning is streaming in summary mode", () => {
+    render(
+      <TimelineRenderer
+        items={buildAssistantItem("Streaming summary reasoning", "streaming")}
+        reasoningMode="summary"
+        isLoading={false}
+        emptyState={{ icon: "chat", title: "Empty", description: "Empty", suggestions: [] }}
+        onSuggestionClick={vi.fn()}
+      />
+    );
+
+    expect(screen.getByRole("button", { name: /Thinking/i })).not.toBeNull();
+    expect(screen.getByText(/Streaming summary reasoning/)).not.toBeNull();
+    expect(screen.getByText(/Live/i)).not.toBeNull();
+  });
 });

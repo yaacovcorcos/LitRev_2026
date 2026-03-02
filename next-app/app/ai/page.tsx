@@ -35,7 +35,12 @@ import {
   setReasoningModePreference,
   shouldRequestReasoning,
 } from "@/lib/ai/reasoning-visibility";
-import { USER_SELECTABLE_MODELS, type SelectableModelId } from "@/lib/ai/config";
+import {
+  USER_SELECTABLE_MODELS,
+  getReasoningSupportTier,
+  type ReasoningSupportTier,
+  type SelectableModelId,
+} from "@/lib/ai/config";
 import { useRouter } from "next/navigation";
 import styles from "./ai-view.module.css";
 
@@ -366,7 +371,7 @@ export default function AIView() {
   const [pendingUserInput, setPendingUserInput] = useState<UserInputRequest | null>(null);
   const [prefillCommand, setPrefillCommand] = useState<{ text: string; id: string } | null>(null);
   const [reasoningMode, setReasoningMode] = useState<ReasoningMode>(() => getReasoningModePreference());
-  const [selectedModel, setSelectedModel] = useState<SelectableModelId>("gpt-5.2");
+  const [selectedModel, setSelectedModelState] = useState<SelectableModelId>("gpt-5.2");
 
   const [timelineByConversation, setTimelineByConversation] = useState<Record<string, TimelineItem[]>>({});
   const [isConversationLoading, setIsConversationLoading] = useState(false);
@@ -380,6 +385,24 @@ export default function AIView() {
   const sendLockRef = useRef(false);
   const activeConversationIdRef = useRef<string | null>(null);
 
+  const reasoningSupport: ReasoningSupportTier = useMemo(
+    () => getReasoningSupportTier(selectedModel),
+    [selectedModel]
+  );
+
+  const showReasoningControls = reasoningSupport !== "none";
+
+  const setSelectedModel = useCallback((modelId: SelectableModelId) => {
+    setSelectedModelState(modelId);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("litrev_ai_model", modelId);
+    }
+    if (getReasoningSupportTier(modelId) === "none") {
+      setReasoningMode("off");
+      setReasoningModePreference("off");
+    }
+  }, []);
+
   useEffect(() => {
     if (!isTyping) sendLockRef.current = false;
   }, [isTyping]);
@@ -391,12 +414,14 @@ export default function AIView() {
     if (valid) {
       setSelectedModel(stored as SelectableModelId);
     }
-  }, []);
+  }, [setSelectedModel]);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    window.localStorage.setItem("litrev_ai_model", selectedModel);
-  }, [selectedModel]);
+    if (reasoningSupport === "none" && reasoningMode !== "off") {
+      setReasoningMode("off");
+      setReasoningModePreference("off");
+    }
+  }, [reasoningSupport, reasoningMode]);
   useEffect(() => {
     activeConversationIdRef.current = activeConversationId;
   }, [activeConversationId]);
@@ -1651,24 +1676,27 @@ export default function AIView() {
             </div>
 
             <div className={styles.headerActions}>
-              <ReasoningModeDropdown
-                reasoningMode={reasoningMode}
-                onReasoningModeChange={updateReasoningMode}
-              >
-                <button
-                  type="button"
-                  className={styles.reasoningModeBtn}
-                  data-state={reasoningMode}
-                  aria-label={`Reasoning visibility: ${reasoningMode}`}
-                  title={`Reasoning visibility: ${reasoningMode}`}
+              {showReasoningControls && (
+                <ReasoningModeDropdown
+                  reasoningMode={reasoningMode}
+                  onReasoningModeChange={updateReasoningMode}
+                  reasoningSupport={reasoningSupport}
                 >
-                  <span className="material-icons-round">psychology</span>
-                  <span className={styles.reasoningModeLabel}>
-                    {reasoningMode === "off" ? "Off" : reasoningMode === "summary" ? "Summary" : "Full"}
-                  </span>
-                  <span className="material-icons-round">expand_more</span>
-                </button>
-              </ReasoningModeDropdown>
+                  <button
+                    type="button"
+                    className={styles.reasoningModeBtn}
+                    data-state={reasoningMode}
+                    aria-label={`Reasoning visibility: ${reasoningMode}`}
+                    title={`Reasoning visibility: ${reasoningMode}`}
+                  >
+                    <span className="material-icons-round">psychology</span>
+                    <span className={styles.reasoningModeLabel}>
+                      {reasoningMode === "off" ? "Off" : reasoningMode === "summary" ? "Summary" : "Full"}
+                    </span>
+                    <span className="material-icons-round">expand_more</span>
+                  </button>
+                </ReasoningModeDropdown>
+              )}
               <button
                 type="button"
                 className={styles.exportBtn}
