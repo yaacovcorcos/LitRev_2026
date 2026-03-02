@@ -1,8 +1,11 @@
 # U1.6 Burn-In Report Template
 
-Use with:
+This template is for a curated U1.6 sign-off report.  
+To fill `Final Strict Validation Output`, run:
 
-`cd next-app && npx tsx scripts/validate-chat-unification-burn-in.ts --since=<CANARY_SINCE_UTC> --workspaceIds=<ws1,ws2> --userIds=<u1,u2> --requireScopedCohort=1 --requireRunEndPerSurface=1 --minRunIdCoveragePerSurface=0.95 --report=../docs/reports/u1-6-burn-in.md`
+`cd next-app && npx tsx scripts/validate-chat-unification-burn-in.ts --since=<CANARY_SINCE_UTC> --workspaceIds=<ws1,ws2> --userIds=<u1,u2> --requireScopedCohort=1 --requireRunEndPerSurface=1 --minRunIdCoveragePerSurface=0.95`
+
+Then paste the terminal output into the section below.
 
 ## Canary Metadata
 
@@ -19,7 +22,7 @@ Use with:
 ## Day-0 Preflight
 
 - DB preflight complete: `<yes/no>`
-- Migration command used: `<migrate deploy|migrate dev>`
+- Migration command used: `<db-ops.sh migrate|migrate dev>`
 - `run_end_observed` present on `ai`: `<yes/no>`
 - `run_end_observed` present on `project`: `<yes/no>`
 - Run-end `runId` coverage (`ai`): `<value>`

@@ -22,7 +22,7 @@ Provide a deterministic, auditable process for chat-unification canary validatio
 | Environment | Migration command | Notes |
 |---|---|---|
 | Local development | `cd next-app && npx prisma migrate dev` | Local-only. Do not use for shared envs. |
-| Shared/Staging/Production | `cd next-app && npx prisma migrate deploy` | Required for non-local envs. |
+| Shared/Staging/Production | `cd next-app && bash scripts/db-ops.sh migrate` | Safe migration path for non-local envs. |
 
 Do not run `migrate dev` against shared databases.
 
@@ -35,7 +35,7 @@ Run from `next-app/`:
 3. `npx prisma migrate status`
 4. Apply migration:
    - local: `npx prisma migrate dev`
-   - shared/prod: `npx prisma migrate deploy`
+   - shared/prod: `bash scripts/db-ops.sh migrate`
 5. `npx prisma migrate status`
 6. `npx tsc --noEmit`
 7. `npx vitest run`
@@ -92,7 +92,7 @@ Track trend lines daily:
 
 ## Phase 4 - Final Strict Gate (Earliest at +7 Days)
 
-Run without short-window override:
+Run without short-window override. Paste terminal output into a report file created from `docs/reports/u1-6-burn-in-template.md`.
 
 ```bash
 cd next-app && npx tsx scripts/validate-chat-unification-burn-in.ts \
@@ -101,8 +101,7 @@ cd next-app && npx tsx scripts/validate-chat-unification-burn-in.ts \
   --userIds=<u1,u2> \
   --requireScopedCohort=1 \
   --requireRunEndPerSurface=1 \
-  --minRunIdCoveragePerSurface=0.95 \
-  --report=../docs/reports/u1-6-burn-in.md
+  --minRunIdCoveragePerSurface=0.95
 ```
 
 Pass criteria:
