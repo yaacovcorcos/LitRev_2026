@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
     __clearCitationMetadataCacheForTests,
     fetchCrossrefMetadata,
+    METADATA_CACHE_LIMIT,
     normalizeDoi,
     extractPmid,
     extractDoi,
@@ -147,6 +148,36 @@ describe("citation-metadata utilities", () => {
             const third = await resolveCitationMetadataCached(url);
             expect(third).toBeNull();
             expect(fetchMock).toHaveBeenCalledTimes(2);
+        });
+
+        it("evicts oldest cache entries when cache exceeds size limit", async () => {
+            vi.useRealTimers();
+
+            const fetchMock = vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
+                const url = typeof input === "string" ? input : input.toString();
+                const doi = decodeURIComponent(url.split("/works/")[1] ?? "");
+                return {
+                    ok: true,
+                    json: async () => ({
+                        message: {
+                            title: [`Title ${doi}`],
+                            author: [{ family: "Doe", given: "Jane" }],
+                            "container-title": ["Test Journal"],
+                            created: { "date-parts": [[2024]] },
+                        },
+                    }),
+                } as Response;
+            });
+            vi.stubGlobal("fetch", fetchMock);
+
+            for (let i = 0; i < METADATA_CACHE_LIMIT + 1; i += 1) {
+                await resolveCitationMetadataCached(`https://doi.org/10.1000/cache-${i}`);
+            }
+
+            expect(fetchMock).toHaveBeenCalledTimes(METADATA_CACHE_LIMIT + 1);
+
+            await resolveCitationMetadataCached("https://doi.org/10.1000/cache-0");
+            expect(fetchMock).toHaveBeenCalledTimes(METADATA_CACHE_LIMIT + 2);
         });
     });
 

@@ -70,6 +70,16 @@ describe("markdown link rendering", () => {
         expect(link.getAttribute("href")).toBe("https://evil.example/?next=https://doi.org/10.1000/xyz123");
     });
 
+    it("renders unsafe non-citation links as plain text", () => {
+        render(
+            <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                {"[Run this](javascript:alert(1))"}
+            </ReactMarkdown>
+        );
+        expect(screen.queryByRole("link", { name: "Run this" })).toBeNull();
+        expect(screen.getByText("Run this")).not.toBeNull();
+    });
+
     it("renders citation links with data-citation-type attribute", () => {
         render(
             <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
