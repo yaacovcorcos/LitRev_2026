@@ -1,7 +1,6 @@
 import { z } from "zod";
 import type { AITool, ToolExecutionContext } from "./base";
 import { ensureProtocol } from "@/lib/server/protocols";
-import type { ProtocolData } from "@/types/protocol";
 import { isValidFieldPath, validateFieldValue, getFieldLabel, PROTOCOL_FIELD_META } from "@/lib/protocol-fields";
 
 /** Read a nested value from an object using dot-notation path */

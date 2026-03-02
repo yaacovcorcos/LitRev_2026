@@ -8,7 +8,6 @@ import {
     extractStudyFromPdf,
     deepAnalyzeStudyFromPdf,
     type ExtractionResult,
-    type DeepAnalysisResult,
     type ExtractionErrorCode,
 } from "@/lib/server/pdf-extraction";
 import type { Study, StudyDetails } from "@/types/ledger";

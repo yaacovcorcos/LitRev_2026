@@ -547,6 +547,8 @@ Use this per-fix log format:
 
 `[P0-WITHACTION-IMPORT] | done | 2026-03-02 | next-app/app/actions/memory.ts, docs/reports/diagnosis-03-02.md | tsc: pass; vitest: 2 failing tests in lib/server/__tests__/ai-service-reasoning-policy.test.ts (DB env issue, unrelated to import fix) | Added missing withAction import only; no runtime logic change.`
 
+`[P1-CLEANUP-WAVE1] | done | 2026-03-02 | next-app/app/actions/extraction.ts, next-app/app/actions/onboarding.ts, next-app/components/CommandPalette.tsx, next-app/contexts/ProjectMemoryContext.tsx, next-app/lib/schemas/memory.ts, next-app/lib/seedLocalStorage.ts, next-app/lib/server/activity.ts, next-app/lib/server/ai/tools/bulk-screening.ts, next-app/lib/server/ai/tools/update-criteria.ts, next-app/lib/server/ai/tools/update-protocol.ts, next-app/lib/server/drafts.ts, next-app/lib/server/files.ts, next-app/lib/server/ledger.ts, next-app/lib/server/onboarding.ts, next-app/lib/server/projectCopilot.ts, next-app/lib/server/projects.ts, next-app/lib/server/protocols.ts, docs/reports/diagnosis-03-02.md | strict-unused counts: TS6133 61->48, TS6196 12->6; tsc: pass; vitest: unchanged 2 failing tests in lib/server/__tests__/ai-service-reasoning-policy.test.ts due missing local DB | Low-risk import/unused cleanup only; high-churn copilot runtime files intentionally deferred.`
+
 ---
 
 ## Section 10: Final Position

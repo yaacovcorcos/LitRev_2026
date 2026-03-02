@@ -3,7 +3,6 @@ import type { AITool, ToolExecutionContext } from "./base";
 import { prisma } from "@/lib/server/prisma";
 import { ensureProtocol } from "@/lib/server/protocols";
 import { syncProtocolToMemory } from "@/lib/server/memory/protocol-sync";
-import type { ProtocolData } from "@/types/protocol";
 import { findBestFuzzyListMatch } from "@/lib/agent/fuzzy-match";
 
 const inputSchema = z.object({

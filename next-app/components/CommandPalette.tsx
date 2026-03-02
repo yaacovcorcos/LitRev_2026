@@ -3,13 +3,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { Command } from "cmdk";
-import { useRouter, useParams, usePathname } from "next/navigation";
+import { useRouter, useParams } from "next/navigation";
 import { useCommandPalette } from "@/contexts/CommandPaletteContext";
 import { useProjectShell } from "@/contexts/ProjectShellContext";
 import { useProjectCopilotSafe } from "@/contexts/ProjectCopilotContext";
 import { useGlobalShortcuts } from "@/hooks/useGlobalShortcuts";
 import {
-    COMMANDS,
     getGroupedCommands,
     type CommandContext,
     type CommandHelpers,
@@ -31,7 +30,6 @@ export function CommandPalette() {
     const { isOpen, close, sidebarToggle, copilotToggle } = useCommandPalette();
     const router = useRouter();
     const params = useParams<{ id?: string }>();
-    const pathname = usePathname();
     const shell = useProjectShell();
     const copilot = useProjectCopilotSafe();
 
