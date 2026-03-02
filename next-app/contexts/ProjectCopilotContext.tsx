@@ -372,6 +372,7 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             type: "ask_user_context_mismatch",
             surface: "project",
             conversationId: convo.currentConversationIdRef.current,
+            projectId,
             payload: {
                 mismatch: contextMismatch,
                 expectedPage,
@@ -397,7 +398,7 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
         }));
         // Send the answer as the next user message so the AI can continue
         stream.sendMessage(answer, resolvedPage, resolvedSection);
-    }, [convo, stream, updateState, stateRef]);
+    }, [convo, projectId, stream, updateState, stateRef]);
 
     const value = useMemo(
         () => ({

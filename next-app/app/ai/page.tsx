@@ -1048,10 +1048,22 @@ export default function AIView() {
       if (!aborted) {
         const runtimeState = runtime.getState();
         recordChatUnificationMetric({
+          type: "run_end_observed",
+          surface: "ai",
+          runId: runtimeState.localRunId || null,
+          conversationId: runtime.getConversationId(),
+          projectId: selectedProjectId,
+          payload: {
+            runStatus,
+            streamPhase: "send",
+          },
+        });
+        recordChatUnificationMetric({
           type: "stuck_running_tools_after_run_end",
           surface: "ai",
           runId: runtimeState.localRunId || null,
           conversationId: runtime.getConversationId(),
+          projectId: selectedProjectId,
           payload: {
             unresolvedCount: runtimeState.runningToolCallIds.length,
             runStatus,
@@ -1113,6 +1125,7 @@ export default function AIView() {
       type: "ask_user_context_mismatch",
       surface: "ai",
       conversationId: activeConversationId,
+      projectId: selectedProjectId,
       payload: {
         mismatch: contextMismatch,
         expectedPage,
@@ -1135,7 +1148,7 @@ export default function AIView() {
     setPendingUserInput(null);
     // Send the answer as a user message so the AI continues
     void handleSend(answer, resolvedPage, resolvedSection);
-  }, [activeConversationId, timelineByConversation, updateConversationTimeline, handleSend]);
+  }, [activeConversationId, timelineByConversation, updateConversationTimeline, handleSend, selectedProjectId]);
 
   const reviewArtifactLocal = useCallback(async (
     artifactId: string,
@@ -1368,10 +1381,22 @@ export default function AIView() {
       if (!aborted) {
         const runtimeState = runtime.getState();
         recordChatUnificationMetric({
+          type: "run_end_observed",
+          surface: "ai",
+          runId: runtimeState.localRunId || null,
+          conversationId: runtime.getConversationId(),
+          projectId: selectedProjectId,
+          payload: {
+            runStatus,
+            streamPhase: "plan",
+          },
+        });
+        recordChatUnificationMetric({
           type: "stuck_running_tools_after_run_end",
           surface: "ai",
           runId: runtimeState.localRunId || null,
           conversationId: runtime.getConversationId(),
+          projectId: selectedProjectId,
           payload: {
             unresolvedCount: runtimeState.runningToolCallIds.length,
             runStatus,
@@ -1482,6 +1507,7 @@ export default function AIView() {
       type: "retry_model_continuity",
       surface: "ai",
       conversationId: convId,
+      projectId: selectedProjectId,
       payload: {
         preserved: true,
         expectedModel: selectedModel,
@@ -1490,7 +1516,7 @@ export default function AIView() {
       },
     });
     void handleSend(retryText, "ai", undefined, selectedModel);
-  }, [isTyping, activeConversationId, timelineByConversation, handleSend, selectedModel]);
+  }, [isTyping, activeConversationId, timelineByConversation, handleSend, selectedModel, selectedProjectId]);
 
   const handlePrefillConsumed = useCallback(() => {
     setPrefillCommand(null);

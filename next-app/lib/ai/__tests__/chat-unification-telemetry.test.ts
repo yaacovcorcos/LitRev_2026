@@ -68,8 +68,18 @@ describe("chat unification telemetry", () => {
       },
     });
 
+    recordChatUnificationMetric({
+      type: "run_end_observed",
+      surface: "project",
+      runId: "run-1",
+      payload: {
+        runStatus: "completed",
+        streamPhase: "project_stream",
+      },
+    });
+
     const events = getChatUnificationMetricEvents();
-    expect(events).toHaveLength(5);
+    expect(events).toHaveLength(6);
 
     const summary = summarizeChatUnificationMetrics(events);
     expect(summary.retryModelContinuity.total).toBe(2);
@@ -83,5 +93,9 @@ describe("chat unification telemetry", () => {
     expect(summary.stuckRunningToolsAfterRunEnd.total).toBe(2);
     expect(summary.stuckRunningToolsAfterRunEnd.violations).toBe(1);
     expect(summary.stuckRunningToolsAfterRunEnd.rate).toBe(0.5);
+
+    expect(summary.runEndObserved.total).toBe(1);
+    expect(summary.runEndObserved.completed).toBe(1);
+    expect(summary.runEndObserved.rateCompleted).toBe(1);
   });
 });

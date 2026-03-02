@@ -246,10 +246,23 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
             }
 
             recordChatUnificationMetric({
+                type: "run_end_observed",
+                surface: "project",
+                runId: localRunId || null,
+                conversationId: effectiveConvId,
+                projectId,
+                payload: {
+                    runStatus,
+                    streamPhase: "project_stream",
+                },
+            });
+
+            recordChatUnificationMetric({
                 type: "stuck_running_tools_after_run_end",
                 surface: "project",
                 runId: localRunId || null,
                 conversationId: effectiveConvId,
+                projectId,
                 payload: {
                     unresolvedCount: runningToolCallIds.length,
                     runStatus,
@@ -267,10 +280,23 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
             }
 
             recordChatUnificationMetric({
+                type: "run_end_observed",
+                surface: "project",
+                runId: localRunId || null,
+                conversationId: effectiveConvId,
+                projectId,
+                payload: {
+                    runStatus,
+                    streamPhase: "project_stream",
+                },
+            });
+
+            recordChatUnificationMetric({
                 type: "stuck_running_tools_after_run_end",
                 surface: "project",
                 runId: localRunId || null,
                 conversationId: effectiveConvId,
+                projectId,
                 payload: {
                     unresolvedCount: runningToolCallIds.length,
                     runStatus,
