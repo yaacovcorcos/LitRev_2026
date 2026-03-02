@@ -19,6 +19,7 @@ import type { ChoiceOption, CopilotPage, ReasoningMode, StreamPhase, UserInputRe
 import { handleProjectCopilotStreamChunk } from "@/contexts/project-copilot-stream-events";
 import type { ArtifactActionContract } from "@/lib/artifacts/action-contract";
 import { shouldRequestReasoning } from "@/lib/ai/reasoning-visibility";
+import { formatStreamErrorForUI } from "@/lib/ai/stream-error-ui";
 import type { PendingAttachment, ApproveArtifactsBatchResult } from "@/types/copilot-context";
 import type { useCopilotConversations } from "@/hooks/useCopilotConversations";
 
@@ -227,7 +228,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
             });
             runStatus = summary.runStatus;
             stopReason = summary.stopReason;
-            streamErrorMessage = summary.errorMessage;
+            streamErrorMessage = summary.errorMessage ? formatStreamErrorForUI(summary.errorMessage) : null;
 
             // Stale generation — skip refresh
             if (streamGenRef.current !== myGen) {
@@ -246,7 +247,8 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
             console.error("AI chat error:", error);
             setPendingChoices([]);
             setPendingUserInput(null);
-            const errorText = `Sorry, I encountered an error: ${error instanceof Error ? error.message : "Unknown error"}. Please try again.`;
+            const friendlyError = formatStreamErrorForUI(error);
+            const errorText = `Sorry, I encountered an error: ${friendlyError}. Please try again.`;
 
             if (!aiMessageCreated) {
                 const aiMessage: CopilotMessage = {
@@ -261,13 +263,16 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                     messages: [...prev.messages, aiMessage],
                 }));
             } else {
+                const errorMessage: CopilotMessage = {
+                    id: `error-${Date.now()}`,
+                    sender: "ai",
+                    text: errorText,
+                    createdAt: new Date().toISOString(),
+                    context: { page, section },
+                };
                 updateState((prev) => ({
                     ...prev,
-                    messages: prev.messages.map((msg) =>
-                        msg.id === aiMessageId
-                            ? { ...msg, text: fullContent + "\n\n" + errorText }
-                            : msg
-                    ),
+                    messages: [...prev.messages, errorMessage],
                 }));
             }
             return {
@@ -275,7 +280,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                 aborted: false,
                 runStatus,
                 stopReason,
-                errorMessage: error instanceof Error ? error.message : streamErrorMessage,
+                errorMessage: friendlyError,
             };
         } finally {
             if (streamGenRef.current === myGen) {

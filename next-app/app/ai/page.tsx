@@ -26,6 +26,7 @@ import { processAIStream } from "@/lib/ai/stream-processor";
 import { routeToAgent } from "@/lib/agent/router";
 import { dispatchProjectDataChanged, getChangedDomainsForAcceptedArtifact } from "@/lib/project-data-events";
 import { isNavigationSafe } from "@/lib/ai/navigation-safety";
+import { formatStreamErrorForUI } from "@/lib/ai/stream-error-ui";
 import {
   getReasoningModePreference,
   setReasoningModePreference,
@@ -1203,21 +1204,17 @@ export default function AIView() {
       });
     } catch (err) {
       if (!(err instanceof DOMException && err.name === "AbortError")) {
-        const errorText = err instanceof Error ? err.message : "AI request failed";
-        if (!aiMessageCreated) {
-          updateConversationTimeline(convId, (items) => [
-            ...items,
-            {
-              type: "error",
-              id: `error-${Date.now()}`,
-              message: errorText,
-              retryable: true,
-              createdAt: new Date().toISOString(),
-            },
-          ]);
-        } else {
-          upsertAssistant(`${fullContent}\n\nError: ${errorText}`);
-        }
+        const friendlyError = formatStreamErrorForUI(err);
+        updateConversationTimeline(convId, (items) => [
+          ...items,
+          {
+            type: "error",
+            id: `error-${Date.now()}`,
+            message: friendlyError,
+            retryable: true,
+            createdAt: new Date().toISOString(),
+          },
+        ]);
       }
     } finally {
       clearProgress();
@@ -1639,7 +1636,7 @@ export default function AIView() {
       errorMessage = summary.errorMessage;
     } catch (err) {
       if (!(err instanceof DOMException && err.name === "AbortError")) {
-        errorMessage = err instanceof Error ? err.message : "Plan execution failed";
+        errorMessage = formatStreamErrorForUI(err);
       }
     } finally {
       clearProgress();
@@ -1665,20 +1662,16 @@ export default function AIView() {
 
     if (!didComplete && streamGenRef.current === myGen) {
       const reason = errorMessage ?? (stopReason ? `Execution stopped: ${stopReason}` : "Execution did not complete.");
-      if (!aiMessageCreated) {
-        updateConversationTimeline(convId, (items) => [
-          ...items,
-          {
-            type: "error",
-            id: `plan-error-${Date.now()}`,
-            message: `Plan execution failed: ${reason}`,
-            retryable: false,
-            createdAt: new Date().toISOString(),
-          },
-        ]);
-      } else {
-        upsertAssistant(`${fullContent}\n\nPlan execution failed: ${reason}`);
-      }
+      updateConversationTimeline(convId, (items) => [
+        ...items,
+        {
+          type: "error",
+          id: `plan-error-${Date.now()}`,
+          message: `Plan execution failed: ${reason}`,
+          retryable: false,
+          createdAt: new Date().toISOString(),
+        },
+      ]);
     }
   }, [
     activeConversationId,
