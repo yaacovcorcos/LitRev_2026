@@ -1,11 +1,22 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+    __clearCitationMetadataCacheForTests,
     normalizeDoi,
     extractPmid,
     extractDoi,
+    resolveCitationMetadataCached,
 } from "../citation-metadata";
 
 describe("citation-metadata utilities", () => {
+    beforeEach(() => {
+        __clearCitationMetadataCacheForTests();
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+        vi.restoreAllMocks();
+    });
+
     describe("normalizeDoi", () => {
         it("removes https://doi.org/ prefix", () => {
             expect(normalizeDoi("https://doi.org/10.1000/xyz123")).toBe("10.1000/xyz123");
@@ -73,6 +84,68 @@ describe("citation-metadata utilities", () => {
 
         it("returns null for invalid DOI format", () => {
             expect(extractDoi("https://doi.org/invalid")).toBeNull();
+        });
+    });
+
+    describe("resolveCitationMetadataCached", () => {
+        it("dedupes concurrent cache misses for the same DOI", async () => {
+            let resolveFetch!: (value: Response) => void;
+            const fetchMock = vi.fn().mockImplementation(
+                () =>
+                    new Promise<Response>((resolve) => {
+                        resolveFetch = resolve;
+                    })
+            );
+            vi.stubGlobal("fetch", fetchMock);
+
+            const url = "https://doi.org/10.1000/xyz123";
+            const first = resolveCitationMetadataCached(url);
+            const second = resolveCitationMetadataCached(url);
+
+            expect(fetchMock).toHaveBeenCalledTimes(1);
+
+            resolveFetch({
+                ok: true,
+                json: async () => ({
+                    message: {
+                        title: ["Concurrent metadata"],
+                        author: [{ family: "Doe", given: "Jane" }],
+                        "container-title": ["Test Journal"],
+                        created: { "date-parts": [[2024]] },
+                    },
+                }),
+            } as Response);
+
+            const [firstResult, secondResult] = await Promise.all([first, second]);
+            expect(firstResult).toEqual(secondResult);
+            expect(firstResult?.title).toBe("Concurrent metadata");
+            expect(fetchMock).toHaveBeenCalledTimes(1);
+        });
+
+        it("uses shorter TTL for failed lookups", async () => {
+            vi.useFakeTimers();
+            vi.setSystemTime(new Date("2026-03-02T00:00:00.000Z"));
+
+            const fetchMock = vi
+                .fn()
+                .mockResolvedValue({ ok: false } as Response);
+            vi.stubGlobal("fetch", fetchMock);
+
+            const url = "https://doi.org/10.1000/ttl-test";
+
+            const first = await resolveCitationMetadataCached(url);
+            expect(first).toBeNull();
+            expect(fetchMock).toHaveBeenCalledTimes(1);
+
+            vi.setSystemTime(new Date("2026-03-02T00:04:00.000Z"));
+            const second = await resolveCitationMetadataCached(url);
+            expect(second).toBeNull();
+            expect(fetchMock).toHaveBeenCalledTimes(1);
+
+            vi.setSystemTime(new Date("2026-03-02T00:06:00.000Z"));
+            const third = await resolveCitationMetadataCached(url);
+            expect(third).toBeNull();
+            expect(fetchMock).toHaveBeenCalledTimes(2);
         });
     });
 });
