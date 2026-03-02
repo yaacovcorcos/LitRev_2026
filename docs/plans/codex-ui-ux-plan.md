@@ -252,7 +252,7 @@ Implementation guardrails for Phase 4:
   - [ ] Project conversation mode
   - [ ] `/ai` page mode
 - [ ] `CUX-035` Decompose oversized UI modules into smaller components/hooks with behavior-preserving extraction.
-- [ ] `CUX-D01` Activate chat unification execution (`/ai`, project copilot, popup) via `plan-chat-unification-v2.md` with phased parity gates and shared reducer adoption.
+- [ ] `CUX-D01` Activate chat unification execution (`/ai`, project copilot, popup) via `plan-chat-unification-v2.md` with strict sequencing: close U1.6 on `/ai` + project (metric freeze + burn-in sign-off) before starting U3 popup migration.
 
 ## Phase 7 — Deferred / Parking Lot (Not Active)
 - [ ] `CUX-D02` Entrance animation on newest message only.

@@ -9,7 +9,8 @@ Unify `/ai`, project copilot, and popup chat onto one shared chat engine while k
 3. Completed: U1.2 project adapter migration.
 4. Completed: U1.3 and U1.4 `/ai` send and plan stream paths now run through the shared reducer runtime.
 5. Completed: U1.5 anti-duplication CI guard is now enforced in CI by default (`--mode=enforce`).
-6. Pending: U1.6 burn-in gate validation and U3 popup migration to shared runtime.
+6. Pending: U1.6 burn-in gate validation for `/ai` + project surfaces.
+7. Pending: U3 popup migration to shared runtime (starts only after U1.6 sign-off).
 
 ## Non-Negotiable Constraints
 1. No feature regression in any surface.
@@ -17,6 +18,12 @@ Unify `/ai`, project copilot, and popup chat onto one shared chat engine while k
 3. `/ai` may attach to a project only when user-selected.
 4. Project copilot remains project-scoped and shell-embedded.
 5. Popup remains compact and fast, not a full mirror of `/ai`.
+
+## U1.6 Remediation Scope Lock (2026-03-02)
+1. U1.6 remediation and canary scope is locked to `/ai` and project copilot only.
+2. U3 popup runtime migration is explicitly out-of-scope until U1.6 sign-off is complete.
+3. UI identity polish (icons/empty states) and release-provenance hardening run in separate tracks and do not block U1.6 closure.
+4. Telemetry metric schema/semantics must be frozen for the canary window. Any schema or semantic change requires a metric-version bump and a fresh 7-day burn-in window.
 
 ## Architecture Rule
 Use `one engine, multiple shells`.
@@ -183,12 +190,13 @@ Exit criteria:
 3. Parity scope:
    - strict parity target = reducer state + intents only
    - surface rendering differences remain covered by per-surface UI tests
-4. Add burn-in telemetry metrics with explicit schema:
+4. Add burn-in telemetry metrics with explicit schema and a frozen metric-version for the entire canary window:
    - `retry_model_continuity`
    - `ask_user_context_mismatch`
    - `stuck_running_tools_after_run_end`
 5. Burn-in pass rule:
    - window: 7 days internal canary
+   - version lock: report and validator query only the canary metric-version; changing schema/semantics requires version bump + window reset
    - minimum sample size: 200 completed runs total, with at least 50 `/ai` and 50 project runs
    - thresholds:
      - `retry_model_continuity` >= 99%
@@ -213,9 +221,10 @@ Exit criteria:
 2. KPI matches coalescer realities by lane.
 
 ### U3 - Popup Migration to Shared Engine
-1. Move popup from bridge to shared reducer/event adapters.
-2. Preserve popup compact UX via capability gating, not custom runtime logic.
-3. Preserve handoff to full copilot without loss of conversation context.
+1. Start U3 only after U1.6 replay + burn-in sign-off is complete.
+2. Move popup from bridge to shared reducer/event adapters.
+3. Preserve popup compact UX via capability gating, not custom runtime logic.
+4. Preserve handoff to full copilot without loss of conversation context.
 
 Exit criteria:
 1. Popup uses same runtime contracts as other surfaces.
