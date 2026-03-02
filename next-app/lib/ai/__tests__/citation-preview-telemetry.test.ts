@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
     clearCitationPreviewMetrics,
+    flushCitationPreviewMetricsForTests,
     getCitationPreviewMetricEvents,
     recordCitationPreviewMetric,
 } from "@/lib/ai/citation-preview-telemetry";
@@ -10,6 +11,10 @@ import {
 describe("citation preview telemetry", () => {
     beforeEach(() => {
         clearCitationPreviewMetrics();
+    });
+
+    afterEach(() => {
+        vi.unstubAllEnvs();
     });
 
     it("records structured events in local storage", () => {
@@ -49,5 +54,32 @@ describe("citation preview telemetry", () => {
         });
         expect(typeof events[0].eventId).toBe("string");
         expect(typeof events[0].timestamp).toBe("string");
+    });
+
+    it("keeps server shipping disabled by default until explicitly enabled", async () => {
+        vi.useFakeTimers();
+        vi.stubEnv("NODE_ENV", "development");
+
+        try {
+            const fetchMock = vi.fn().mockResolvedValue({ ok: true } as Response);
+            vi.stubGlobal("fetch", fetchMock);
+
+            recordCitationPreviewMetric({
+                type: "hover_intent_started",
+                surface: "project",
+                payload: {
+                    citationKey: "doi:10.1000/default-off",
+                    citationType: "DOI",
+                    trigger: "hover",
+                },
+            });
+
+            await vi.advanceTimersByTimeAsync(600);
+            await flushCitationPreviewMetricsForTests();
+
+            expect(fetchMock).not.toHaveBeenCalled();
+        } finally {
+            vi.useRealTimers();
+        }
     });
 });
