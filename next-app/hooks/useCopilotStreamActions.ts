@@ -111,6 +111,8 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
         let runStatus: string | null = null;
         let stopReason: string | null = null;
         let streamErrorMessage: string | null = null;
+        let actualModel: string | null = null;
+        let actualModelSource: "provider" | "requested" | "unknown" = "unknown";
 
         // Cancel any in-flight stream
         if (abortControllerRef.current) {
@@ -239,6 +241,8 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
             runStatus = summary.runStatus;
             stopReason = summary.stopReason;
             streamErrorMessage = summary.errorMessage ? formatStreamErrorForUI(summary.errorMessage) : null;
+            actualModel = summary.actualModel;
+            actualModelSource = summary.actualModelSource;
 
             // Stale generation — skip refresh
             if (streamGenRef.current !== myGen) {
@@ -254,6 +258,8 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                 payload: {
                     runStatus,
                     streamPhase: "project_stream",
+                    actualModel,
+                    actualModelSource,
                 },
             });
 
@@ -288,6 +294,8 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                 payload: {
                     runStatus,
                     streamPhase: "project_stream",
+                    actualModel,
+                    actualModelSource,
                 },
             });
 

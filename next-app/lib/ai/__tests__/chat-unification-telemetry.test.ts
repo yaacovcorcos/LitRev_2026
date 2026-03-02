@@ -75,6 +75,8 @@ describe("chat unification telemetry", () => {
       payload: {
         runStatus: "completed",
         streamPhase: "project_stream",
+        actualModel: "gpt-5.2",
+        actualModelSource: "provider",
       },
     });
 

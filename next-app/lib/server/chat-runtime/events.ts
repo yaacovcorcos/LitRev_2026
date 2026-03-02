@@ -36,6 +36,8 @@ export type RuntimeStreamEvent =
       runStatus?: string;
       runCostTokensIn?: number;
       runCostTokensOut?: number;
+      actualModel?: string;
+      actualModelSource?: "provider" | "requested" | "unknown";
       stopReason?: string;
       iterationCount?: number;
       toolCallCount?: number;
@@ -124,6 +126,8 @@ export function normalizeStreamChunk(chunk: AIStreamChunk): RuntimeStreamEvent |
         runStatus: chunk.runStatus,
         runCostTokensIn: chunk.runCostTokensIn,
         runCostTokensOut: chunk.runCostTokensOut,
+        actualModel: chunk.actualModel,
+        actualModelSource: chunk.actualModelSource,
         stopReason: chunk.stopReason,
         iterationCount: chunk.iterationCount,
         toolCallCount: chunk.toolCallCount,
@@ -238,6 +242,8 @@ export function toWireChunk(event: RuntimeStreamEvent): AIStreamChunk {
         runStatus: event.runStatus,
         runCostTokensIn: event.runCostTokensIn,
         runCostTokensOut: event.runCostTokensOut,
+        actualModel: event.actualModel,
+        actualModelSource: event.actualModelSource,
         stopReason: event.stopReason,
         iterationCount: event.iterationCount,
         toolCallCount: event.toolCallCount,

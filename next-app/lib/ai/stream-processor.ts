@@ -6,6 +6,8 @@ export type StreamRunSummary = {
     stopReason: string | null;
     errorMessage: string | null;
     conversationId: string | null;
+    actualModel: string | null;
+    actualModelSource: "provider" | "requested" | "unknown";
 };
 
 type ProcessAIStreamParams = {
@@ -32,6 +34,8 @@ export async function processAIStream({
     let stopReason: string | null = null;
     let errorMessage: string | null = null;
     let conversationId: string | null = null;
+    let actualModel: string | null = null;
+    let actualModelSource: "provider" | "requested" | "unknown" = "unknown";
 
     for await (const chunk of parseNDJSONStream(reader, signal)) {
         if (shouldContinue && !shouldContinue()) break;
@@ -41,6 +45,8 @@ export async function processAIStream({
         } else if (chunk.type === "run_end") {
             runStatus = chunk.runStatus ?? null;
             stopReason = chunk.stopReason ?? null;
+            actualModel = chunk.actualModel ?? null;
+            actualModelSource = chunk.actualModelSource ?? "unknown";
             if (chunk.conversationId) conversationId = chunk.conversationId;
         } else if (chunk.type === "error") {
             errorMessage = chunk.error ?? "AI stream error";
@@ -53,5 +59,5 @@ export async function processAIStream({
         }
     }
 
-    return { runStatus, stopReason, errorMessage, conversationId };
+    return { runStatus, stopReason, errorMessage, conversationId, actualModel, actualModelSource };
 }

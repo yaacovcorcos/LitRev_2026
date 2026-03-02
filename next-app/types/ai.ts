@@ -175,6 +175,9 @@ export type AIStreamChunk = {
     runStatus?: string;
     runCostTokensIn?: number;
     runCostTokensOut?: number;
+    /** Provider-observed model ID when available (falls back upstream as needed). */
+    actualModel?: string;
+    actualModelSource?: "provider" | "requested" | "unknown";
     // Loop control metadata (Phase 3)
     stopReason?: string;
     iterationCount?: number;
