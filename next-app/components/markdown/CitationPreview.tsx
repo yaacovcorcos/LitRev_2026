@@ -14,7 +14,8 @@ import {
 } from "react";
 import * as Popover from "@/components/ui/Popover";
 import { fetchCitationMetadata } from "@/app/actions/citation";
-import type { CitationResult, CitationMetadata } from "@/lib/citation-types";
+import type { CitationMetadata } from "@/lib/citation-types";
+import { loadCitationMetadataWithClientCache } from "@/lib/citation-preview-cache";
 import styles from "./CitationPreview.module.css";
 
 export type CitationType = "DOI" | "PubMed";
@@ -57,7 +58,7 @@ export function CitationPreview({ href, type, children, anchorProps }: CitationP
         if (fetchedRef.current || fetchState === "loading") return;
 
         setFetchState("loading");
-        const result: CitationResult = await fetchCitationMetadata(href);
+        const { result } = await loadCitationMetadataWithClientCache(href, fetchCitationMetadata);
 
         if (result.success) {
             setMetadata(result.data);
