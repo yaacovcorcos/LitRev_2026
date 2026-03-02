@@ -76,10 +76,18 @@ describe("chat unification burn-in CLI helpers", () => {
     expect(formatCohortScope(scoped)).toContain("users=u-1,u-2");
     expect(formatCohortScope(unscoped)).toBe("all-traffic (no cohort filter)");
     expect(buildCohortWhereInput(scoped)).toEqual({
-      workspaceId: { in: ["ws-1"] },
-      userId: { in: ["u-1", "u-2"] },
+      OR: [
+        { workspaceId: { in: ["ws-1"] } },
+        { userId: { in: ["u-1", "u-2"] } },
+      ],
     });
     expect(buildCohortWhereInput(unscoped)).toEqual({});
+    expect(buildCohortWhereInput({ workspaceIds: ["ws-1"], userIds: null })).toEqual({
+      workspaceId: { in: ["ws-1"] },
+    });
+    expect(buildCohortWhereInput({ workspaceIds: null, userIds: ["u-1"] })).toEqual({
+      userId: { in: ["u-1"] },
+    });
   });
 
   it("summarizes run_end runId coverage and enforces optional gates", () => {

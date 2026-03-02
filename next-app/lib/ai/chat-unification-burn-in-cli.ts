@@ -44,17 +44,30 @@ export function hasCohortScope(scope: CohortScope): boolean {
 export function buildCohortWhereInput(scope: CohortScope): {
   workspaceId?: { in: string[] };
   userId?: { in: string[] };
+  OR?: Array<{ workspaceId?: { in: string[] }; userId?: { in: string[] } }>;
 } {
   const where: {
     workspaceId?: { in: string[] };
     userId?: { in: string[] };
+    OR?: Array<{ workspaceId?: { in: string[] }; userId?: { in: string[] } }>;
   } = {};
 
-  if (scope.workspaceIds && scope.workspaceIds.length > 0) {
-    where.workspaceId = { in: scope.workspaceIds };
+  const hasWorkspaces = (scope.workspaceIds?.length ?? 0) > 0;
+  const hasUsers = (scope.userIds?.length ?? 0) > 0;
+
+  if (hasWorkspaces && hasUsers) {
+    where.OR = [
+      { workspaceId: { in: scope.workspaceIds as string[] } },
+      { userId: { in: scope.userIds as string[] } },
+    ];
+    return where;
   }
-  if (scope.userIds && scope.userIds.length > 0) {
-    where.userId = { in: scope.userIds };
+
+  if (hasWorkspaces) {
+    where.workspaceId = { in: scope.workspaceIds as string[] };
+  }
+  if (hasUsers) {
+    where.userId = { in: scope.userIds as string[] };
   }
 
   return where;
