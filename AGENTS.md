@@ -63,7 +63,6 @@ All run from `next-app/` except deploy.
 | UI changes under `next-app/app/project/[id]/...`, `next-app/components/...`, `next-app/styles/...` | `frontend-ui-specialist.md` | `docs/plans/codex-ui-ux-plan.md` (or active UI plan), relevant route files | `npx tsc --noEmit`, `npx vitest run` |
 | Agent runtime/orchestration files (`next-app/lib/agent/**`, `next-app/lib/server/agent/**`, `next-app/app/actions/agent.ts`, `next-app/lib/server/ai/sub-agent.ts`) | `agent-runtime-specialist.md` | `docs/plans/plan-agentic.md`, `docs/plans/codex-agentic-plan.md`, and `docs/plans/plan-memory.md` if memory touched | `npx tsc --noEmit`, `npx vitest run` |
 | Plan/PRD/governance edits (`PRD.md`, `docs/plans/**`) | `planning-governance-specialist.md` | `docs/plans/README.md` and target plan file | If code is unchanged, no code gate required |
-| Explicit plan-review requests only (user asks to review a proposed plan, or explicitly asks for `codexR`) | `codexr-plan-reviewer.md` | `docs/plans/README.md`, target plan/spec, and relevant subsystem docs from `docs/agents/cold-memory-index.md` | If code is unchanged, no code gate required |
 | GitHub workflow/governance edits (`.github/workflows/**`, `.github/CODEOWNERS`, git policy in `AGENTS.md`) | `planning-governance-specialist.md` | `docs/runbooks/github-flow.md` | If code is unchanged, no code gate required |
 
 If no row matches, consult `docs/agents/cold-memory-index.md`, then pick the nearest specialist and proceed conservatively.
@@ -179,7 +178,6 @@ PRD vs Domain Plans:
 - `docs/agents/specialists/frontend-ui-specialist.md`
 - `docs/agents/specialists/agent-runtime-specialist.md`
 - `docs/agents/specialists/planning-governance-specialist.md`
-- `docs/agents/specialists/codexr-plan-reviewer.md`
 
 ## Tier 3 Index
 
