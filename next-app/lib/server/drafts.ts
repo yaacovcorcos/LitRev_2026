@@ -4,7 +4,7 @@ import { prisma } from "@/lib/server/prisma";
 import { assertProjectAccess } from "@/lib/server/access";
 import type { DraftState } from "@/lib/draftStorage";
 import type { Prisma } from "@prisma/client";
-import type { ServiceScope, ScopeInput } from "@/lib/server/scope";
+import type { ScopeInput } from "@/lib/server/scope";
 
 function toJsonValue(value: DraftState): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;

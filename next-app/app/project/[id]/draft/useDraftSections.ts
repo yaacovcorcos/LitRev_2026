@@ -25,7 +25,6 @@ export function useDraftSections(deps: UseDraftSectionsDeps) {
     activeEditorRef,
     queueContentUpdate,
     flushContentCommit,
-    focusEditorForSection,
   } = deps;
 
   // Section management state

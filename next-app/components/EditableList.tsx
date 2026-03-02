@@ -40,7 +40,6 @@ export function EditableList({
     onRemove,
     placeholder = "Enter item...",
     addLabel = "Add item",
-    isActive = false,
     onFocus,
     onBlur,
     className = "",

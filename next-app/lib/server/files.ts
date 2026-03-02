@@ -2,7 +2,7 @@ import "server-only";
 
 import { prisma } from "@/lib/server/prisma";
 import { assertProjectAccess } from "@/lib/server/access";
-import type { ServiceScope, ScopeInput } from "@/lib/server/scope";
+import type { ScopeInput } from "@/lib/server/scope";
 import type { FileAsset } from "@/types/files";
 import type { Study } from "@/types/ledger";
 import type { SearchResult } from "@/types/search";

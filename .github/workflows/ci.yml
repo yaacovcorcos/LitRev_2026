@@ -27,6 +27,7 @@ jobs:
     env:
       DATABASE_URL: postgresql://test:test@localhost:5432/litrev_test
       DIRECT_URL: postgresql://test:test@localhost:5432/litrev_test
+      SHADOW_DATABASE_URL: postgresql://test:test@localhost:5432/litrev_shadow
 
     steps:
       - uses: actions/checkout@v4
@@ -40,12 +41,51 @@ jobs:
       - name: Apply migrations
         run: cd next-app && npx prisma migrate deploy
 
+      - name: Prepare shadow database
+        run: |
+          psql "postgresql://test:test@localhost:5432/postgres" -v ON_ERROR_STOP=1 -c 'DROP DATABASE IF EXISTS litrev_shadow;'
+          psql "postgresql://test:test@localhost:5432/postgres" -v ON_ERROR_STOP=1 -c 'CREATE DATABASE litrev_shadow;'
+          psql "postgresql://test:test@localhost:5432/litrev_shadow" -v ON_ERROR_STOP=1 -c 'CREATE EXTENSION IF NOT EXISTS vector;'
+
       - name: Check for schema drift
         run: |
-          cd next-app && npx prisma migrate diff \
-            --from-migrations prisma/migrations \
-            --to-schema prisma/schema.prisma \
-            --exit-code
+          set +e
+          DRIFT_OUTPUT="$(
+            cd next-app && npx prisma migrate diff \
+              --from-migrations prisma/migrations \
+              --to-schema prisma/schema.prisma \
+              --exit-code 2>&1
+          )"
+          DRIFT_STATUS=$?
+          set -e
+
+          printf '%s\n' "$DRIFT_OUTPUT"
+
+          # Exit 0 means no drift.
+          if [ "$DRIFT_STATUS" -eq 0 ]; then
+            exit 0
+          fi
+
+          # Exit 2 means drift was detected. Allow only the known pgvector index drift
+          # that Prisma schema cannot currently model for the MemoryEmbedding vector index.
+          if [ "$DRIFT_STATUS" -eq 2 ]; then
+            CLEAN_OUTPUT="$(printf '%s\n' "$DRIFT_OUTPUT" | sed -E 's/\x1B\[[0-9;]*[mK]//g')"
+
+            if printf '%s\n' "$CLEAN_OUTPUT" | grep -Fq '[*] Changed the `MemoryEmbedding` table' \
+              && printf '%s\n' "$CLEAN_OUTPUT" | grep -Fq '[-] Removed index on columns (embedding)'; then
+              EXTRA_DRIFT="$(printf '%s\n' "$CLEAN_OUTPUT" \
+                | sed -E 's/^[[:space:]]+//' \
+                | grep -E '^\[\*\] Changed the `|^\[\+\] Added|^\[-\] Removed' \
+                | grep -Ev '^\[\*\] Changed the `MemoryEmbedding` table$|^\[-\] Removed index on columns \(embedding\)$' || true)"
+
+              if [ -z "$EXTRA_DRIFT" ]; then
+                echo "Allowed known pgvector index drift (MemoryEmbedding embedding index)."
+                exit 0
+              fi
+            fi
+          fi
+
+          exit "$DRIFT_STATUS"
 
       - name: Type check
         run: cd next-app && npx tsc --noEmit

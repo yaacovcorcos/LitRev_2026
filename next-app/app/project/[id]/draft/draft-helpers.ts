@@ -3,8 +3,8 @@
  * Extracted from page.tsx for maintainability.
  */
 import { CSSProperties } from "react";
-import { DRAFT_SECTIONS, OPTIONAL_SECTION_KEYS, DraftMode, DraftSectionId, DraftSectionKey } from "@/types/draft";
-import { DEFAULT_SECTION_FORMAT, DraftSectionFormat } from "@/lib/draftStorage";
+import { DRAFT_SECTIONS, DraftMode, DraftSectionId, DraftSectionKey } from "@/types/draft";
+import { DraftSectionFormat } from "@/lib/draftStorage";
 import type { JSONContent } from "@tiptap/core";
 import type { Study } from "@/types/ledger";
 

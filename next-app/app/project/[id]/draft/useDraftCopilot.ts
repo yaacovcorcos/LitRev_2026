@@ -4,7 +4,6 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { CopilotMessage, DraftState } from "@/lib/draftStorage";
-import type { DraftSectionId } from "@/types/draft";
 import type { Editor } from "@tiptap/react";
 
 type UseDraftCopilotDeps = {

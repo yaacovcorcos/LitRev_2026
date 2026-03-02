@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { cuidSchema, tagsSchema, searchQuerySchema } from "./ids";
+import { cuidSchema, tagsSchema } from "./ids";
 
 // ── User Memory ──────────────────────────────────────────────────────────────
 

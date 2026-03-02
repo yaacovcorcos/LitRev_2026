@@ -1,9 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
-import { validatePlan, generatePlan, detectMultiStepWorkflow } from "@/lib/server/agent/planner";
-import { AVAILABLE_TOOLS } from "@/lib/server/ai/tools/base";
+import { validatePlan, generatePlan } from "@/lib/server/agent/planner";
 import type { PlanPayload } from "@/types/artifacts";
-
-const REGISTERED_NAMES = AVAILABLE_TOOLS.map((t) => t.definition.name);
 
 describe("validatePlan", () => {
     it("accepts a valid plan with known tool names", () => {

@@ -1,7 +1,7 @@
 import "server-only";
 
 import { prisma } from "@/lib/server/prisma";
-import { requireScope, type ServiceScope, type ScopeInput } from "@/lib/server/scope";
+import { requireScope, type ScopeInput } from "@/lib/server/scope";
 import type { ProjectActivityItem, ProjectActivityKind } from "@/types/activity";
 
 const MIN_LIMIT = 1;
