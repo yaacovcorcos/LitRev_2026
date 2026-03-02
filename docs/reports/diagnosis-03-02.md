@@ -126,10 +126,10 @@ Related files:
 These should be treated as **candidates**, not guaranteed-safe removals.
 
 ### 4.1 Likely legacy/unreferenced candidates
-- `data/projects.ts`
-- `lib/chatStorage.ts`
-- `lib/seedLocalStorage.ts`
-- `lib/server/test-db.ts`
+- `data/projects.ts` (`R2B`: deleted)
+- `lib/chatStorage.ts` (`R2C`: deleted)
+- `lib/seedLocalStorage.ts` (`R3`: retained as legacy manual bootstrap utility pending explicit retirement request)
+- `lib/server/test-db.ts` (`R2A`: deleted)
 
 Why:
 - No in-repo imports found.
@@ -568,6 +568,8 @@ Use this per-fix log format:
 `[R2B-DEADFILE-DATA-PROJECTS] | done | 2026-03-02 | next-app/data/projects.ts, docs/reports/diagnosis-03-02.md | strict-unused counts: TS6133 0->0, TS6196 0->0; tsc: pass; vitest: pass (153 files, 1169 tests; 11 skipped) | Deleted unreferenced legacy sample project dataset after global reference scan showed no imports/usages.`
 
 `[R2C-DEADFILE-CHAT-STORAGE] | done | 2026-03-02 | next-app/lib/chatStorage.ts, docs/reports/diagnosis-03-02.md | strict-unused counts: TS6133 0->0, TS6196 0->0; tsc: pass; vitest: pass | Deleted unreferenced legacy localStorage chat utilities after global reference scan showed no imports/usages.`
+
+`[R3-SEEDLOCALSTORAGE-DECISION] | done | 2026-03-02 | next-app/lib/seedLocalStorage.ts, docs/reports/diagnosis-03-02.md | reference-scan only (no code changes) | No in-repo imports were found, but file is retained as a legacy/manual bootstrap utility by default until an explicit retirement decision is requested.`
 
 ---
 
