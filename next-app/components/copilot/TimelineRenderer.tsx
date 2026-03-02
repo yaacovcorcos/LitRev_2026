@@ -16,7 +16,7 @@ import remarkGfm from "remark-gfm";
 import { markdownComponents } from "../markdown/CodeBlock";
 import type { CopilotMessage } from "@/lib/projectCopilotStorage";
 import type { TimelineItem, TimelineArtifact, TimelineUserInputRequest } from "@/types/timeline";
-import type { ReasoningMode } from "@/types/ai";
+import type { CopilotPage, ReasoningMode } from "@/types/ai";
 import type { AgentMode } from "@/types/agent";
 import type {
     ArtifactType,
@@ -102,6 +102,13 @@ const BATCH_APPROVABLE_TYPES: ReadonlySet<ArtifactType> = new Set<ArtifactType>(
     "memory_proposal",
     "memory_forget_proposal",
 ]);
+
+const TOOL_ACTIVITY_META: Record<"queued" | "running" | "done" | "failed", { icon: string; label: string }> = {
+    queued: { icon: "schedule", label: "Queued" },
+    running: { icon: "sync", label: "Running" },
+    done: { icon: "check_circle", label: "Done" },
+    failed: { icon: "error", label: "Failed" },
+};
 
 function getJumpToProps(artifactType: string, projectId: string): { jumpToLink?: string; jumpToLabel?: string } {
     const mapping = ARTIFACT_JUMP_MAP[artifactType];
@@ -513,7 +520,7 @@ export type TimelineRendererProps = {
     /** Optional explicit project ID override (used in /ai route where useParams has no project id). */
     projectId?: string;
     /** Callback when user answers a structured ask_user question */
-    onAnswerUserInput?: (callId: string, answer: string) => void;
+    onAnswerUserInput?: (callId: string, answer: string, page?: CopilotPage, section?: string) => void;
     /** Whether older messages are available to load */
     hasMore?: boolean;
     /** Whether older messages are currently loading */
@@ -1092,6 +1099,24 @@ export function TimelineRenderer({
                     </div>
                 );
 
+            case "tool_activity": {
+                const meta = TOOL_ACTIVITY_META[item.status];
+                return (
+                    <div key={item.id} className={styles.toolActivityCard} role="status" aria-live="polite">
+                        <div className={styles.toolActivityHead}>
+                            <span className={`material-icons-round ${styles.toolActivityIcon}`}>
+                                {meta.icon}
+                            </span>
+                            <span className={styles.toolActivityTitle}>{item.toolName}</span>
+                            <span className={styles.toolActivityState}>{meta.label}</span>
+                        </div>
+                        {item.summary ? (
+                            <p className={styles.toolActivitySummary}>{item.summary}</p>
+                        ) : null}
+                    </div>
+                );
+            }
+
             case "progress":
                 return (
                     <div key={item.id}>
@@ -1141,7 +1166,13 @@ export function TimelineRenderer({
                         context={item.context}
                         answered={item.answered}
                         answer={item.answer}
-                        onAnswer={(answer) => onAnswerUserInput?.(item.callId, answer)}
+                        onAnswer={(answer) => onAnswerUserInput?.(item.callId, answer, item.page, item.section)}
+                        onDismiss={() => onAnswerUserInput?.(
+                            item.callId,
+                            "Dismissed — please proceed without my input.",
+                            item.page,
+                            item.section
+                        )}
                     />
                 );
 

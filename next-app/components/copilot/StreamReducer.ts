@@ -33,6 +33,39 @@ function extractRecoveryErrorMessage(text: string): string | null {
  */
 export function messagesToTimeline(messages: CopilotMessage[]): TimelineItem[] {
     return messages.map((msg) => {
+        if (msg.toolActivity) {
+            return {
+                type: "tool_activity" as const,
+                id: msg.id,
+                callId: msg.toolActivity.callId,
+                toolName: msg.toolActivity.toolName,
+                status: msg.toolActivity.status,
+                summary: msg.toolActivity.summary,
+                startedAt: msg.toolActivity.startedAt,
+                updatedAt: msg.toolActivity.updatedAt,
+                completedAt: msg.toolActivity.completedAt,
+                createdAt: msg.createdAt,
+            };
+        }
+
+        if (msg.userInputRequest) {
+            return {
+                type: "user_input_request" as const,
+                id: msg.id,
+                callId: msg.userInputRequest.callId,
+                page: msg.context?.page,
+                section: msg.context?.section,
+                question: msg.userInputRequest.question,
+                questionType: msg.userInputRequest.questionType,
+                options: msg.userInputRequest.options,
+                header: msg.userInputRequest.header,
+                context: msg.userInputRequest.context,
+                answered: Boolean(msg.userInputRequest.answered),
+                answer: msg.userInputRequest.answer,
+                createdAt: msg.createdAt,
+            };
+        }
+
         if (msg.sender === "user") {
             return {
                 type: "user_message" as const,
@@ -254,6 +287,54 @@ export function reduceStreamChunk(
             ];
         }
 
+        case "tool_call": {
+            if (!chunk.toolCall?.name) return timeline;
+            const callId = chunk.toolCall.id || `tool-${Date.now()}`;
+            const createdAt = new Date().toISOString();
+            return [
+                ...timeline,
+                {
+                    type: "tool_activity",
+                    id: `tool-${callId}`,
+                    callId,
+                    toolName: chunk.toolCall.name,
+                    status: "running",
+                    startedAt: createdAt,
+                    updatedAt: createdAt,
+                    createdAt,
+                },
+            ];
+        }
+
+        case "tool_result": {
+            const callId = chunk.toolResult?.callId;
+            const now = new Date().toISOString();
+            let fallbackIndex = -1;
+            for (let index = timeline.length - 1; index >= 0; index -= 1) {
+                const item = timeline[index];
+                if (item?.type === "tool_activity" && item.status === "running") {
+                    fallbackIndex = index;
+                    break;
+                }
+            }
+            const updateIndex = callId
+                ? timeline.findIndex((item) => item.type === "tool_activity" && item.callId === callId)
+                : fallbackIndex;
+            if (updateIndex < 0) return timeline;
+
+            const next = [...timeline];
+            const target = next[updateIndex];
+            if (!target || target.type !== "tool_activity") return timeline;
+            next[updateIndex] = {
+                ...target,
+                status: chunk.toolResult?.error ? "failed" : "done",
+                summary: chunk.toolResult?.error ?? undefined,
+                updatedAt: now,
+                completedAt: now,
+            };
+            return next;
+        }
+
         case "user_input_required": {
             if (!chunk.userInputRequest) return timeline;
             const req = chunk.userInputRequest;
@@ -279,7 +360,7 @@ export function reduceStreamChunk(
         case "run_end":
             return timeline;
 
-        // tool_call, tool_result, done — pass through
+        // done — pass through
         default:
             return timeline;
     }

@@ -18,8 +18,9 @@ import type { AgentMode, AutonomyPreset, AutonomyLevel } from "@/types/agent";
 import type { ChoiceOption, CopilotPage, ReasoningMode, StreamPhase, UserInputRequest } from "@/types/ai";
 import { handleProjectCopilotStreamChunk } from "@/contexts/project-copilot-stream-events";
 import type { ArtifactActionContract } from "@/lib/artifacts/action-contract";
-import { shouldRequestReasoning } from "@/lib/ai/reasoning-visibility";
+import { getReasoningBudgetTokens, shouldRequestReasoning } from "@/lib/ai/reasoning-visibility";
 import { formatStreamErrorForUI } from "@/lib/ai/stream-error-ui";
+import { recordChatUnificationMetric } from "@/lib/ai/chat-unification-telemetry";
 import type { PendingAttachment, ApproveArtifactsBatchResult } from "@/types/copilot-context";
 import type { useCopilotConversations } from "@/hooks/useCopilotConversations";
 
@@ -103,6 +104,9 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
         let reasoningState: "streaming" | "done" = "done";
         let reasoningTruncated = false;
         let activeReasoningId: string | null = null;
+        let runningToolCallIds: string[] = [];
+        let lastToolCallId: string | null = null;
+        let syntheticToolCounter = 0;
         let localRunId = "";
         let runStatus: string | null = null;
         let stopReason: string | null = null;
@@ -177,6 +181,9 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                             reasoningState,
                             reasoningTruncated,
                             activeReasoningId,
+                            runningToolCallIds,
+                            lastToolCallId,
+                            syntheticToolCounter,
                             localRunId,
                             effectiveConvId,
                         },
@@ -213,6 +220,9 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                     reasoningState = nextState.reasoningState;
                     reasoningTruncated = nextState.reasoningTruncated;
                     activeReasoningId = nextState.activeReasoningId;
+                    runningToolCallIds = nextState.runningToolCallIds;
+                    lastToolCallId = nextState.lastToolCallId;
+                    syntheticToolCounter = nextState.syntheticToolCounter;
                     localRunId = nextState.localRunId;
                     effectiveConvId = nextState.effectiveConvId;
 
@@ -235,6 +245,18 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                 return { success: false, aborted: true, runStatus, stopReason, errorMessage: streamErrorMessage };
             }
 
+            recordChatUnificationMetric({
+                type: "stuck_running_tools_after_run_end",
+                surface: "project",
+                runId: localRunId || null,
+                conversationId: effectiveConvId,
+                payload: {
+                    unresolvedCount: runningToolCallIds.length,
+                    runStatus,
+                    streamPhase: "project_stream",
+                },
+            });
+
             // Refresh conversation list to update titles/counts
             convo.loadConversations();
             return { success: true, aborted: false, runStatus, stopReason, errorMessage: streamErrorMessage };
@@ -243,6 +265,18 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
             if (error instanceof DOMException && error.name === "AbortError") {
                 return { success: false, aborted: true, runStatus, stopReason, errorMessage: streamErrorMessage };
             }
+
+            recordChatUnificationMetric({
+                type: "stuck_running_tools_after_run_end",
+                surface: "project",
+                runId: localRunId || null,
+                conversationId: effectiveConvId,
+                payload: {
+                    unresolvedCount: runningToolCallIds.length,
+                    runStatus,
+                    streamPhase: "project_stream",
+                },
+            });
 
             console.error("AI chat error:", error);
             setPendingChoices([]);
@@ -375,7 +409,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                         model,
                         reasoningMode,
                         includeReasoning: shouldRequestReasoning(reasoningMode),
-                        reasoningBudgetTokens: shouldRequestReasoning(reasoningMode) ? 4096 : undefined,
+                        reasoningBudgetTokens: getReasoningBudgetTokens(reasoningMode),
                         agentMode: agentMode || "general",
                         page,
                         section,
@@ -429,7 +463,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                     projectId,
                     reasoningMode,
                     includeReasoning: shouldRequestReasoning(reasoningMode),
-                    reasoningBudgetTokens: shouldRequestReasoning(reasoningMode) ? 4096 : undefined,
+                    reasoningBudgetTokens: getReasoningBudgetTokens(reasoningMode),
                     agentMode: "general",
                 },
             },

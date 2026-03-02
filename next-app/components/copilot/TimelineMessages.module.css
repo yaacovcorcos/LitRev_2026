@@ -318,6 +318,52 @@
     opacity: 0.6;
 }
 
+.toolActivityCard {
+    border: 1px solid var(--glass-border);
+    background: rgba(var(--rgb-ui-surface), 0.75);
+    border-radius: 12px;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.toolActivityHead {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+.toolActivityIcon {
+    font-size: 16px;
+    color: var(--text-muted);
+}
+
+.toolActivityTitle {
+    font-size: 13px;
+    color: var(--text-primary);
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.toolActivityState {
+    margin-left: auto;
+    font-size: 11px;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.toolActivitySummary {
+    margin: 0;
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--text-secondary);
+}
+
 .suggestRow {
     display: flex;
     gap: 8px;

@@ -21,6 +21,16 @@ export function shouldRequestReasoning(mode: ReasoningMode): boolean {
   return mode !== "off";
 }
 
+/**
+ * Conservative per-request reasoning budget for providers that support
+ * explicit reasoning controls (for example Anthropic thinking).
+ */
+export function getReasoningBudgetTokens(mode: ReasoningMode): number | undefined {
+  if (mode === "off") return undefined;
+  if (mode === "summary") return 512;
+  return 1024;
+}
+
 export function resolveReasoningMode(input?: ReasoningMode, includeReasoning?: boolean): ReasoningMode {
   if (input === "off" || input === "summary" || input === "full") return input;
   if (includeReasoning === true) return "full";

@@ -46,4 +46,48 @@ describe("messagesToTimeline", () => {
       retryable: true,
     });
   });
+
+  it("maps structured user input and tool activity messages to typed timeline items", () => {
+    const messages: CopilotMessage[] = [
+      {
+        id: "ask-1",
+        sender: "ai",
+        text: "",
+        createdAt: "2026-02-28T00:00:03.000Z",
+        userInputRequest: {
+          callId: "ask-call-1",
+          question: "Continue with strict mode?",
+          questionType: "yes_no",
+          answered: false,
+        },
+      },
+      {
+        id: "tool-1",
+        sender: "ai",
+        text: "",
+        createdAt: "2026-02-28T00:00:04.000Z",
+        toolActivity: {
+          callId: "tc-1",
+          toolName: "search_openalex",
+          status: "running",
+          startedAt: "2026-02-28T00:00:04.000Z",
+          updatedAt: "2026-02-28T00:00:04.000Z",
+        },
+      },
+    ];
+
+    const timeline = messagesToTimeline(messages);
+    expect(timeline[0]).toMatchObject({
+      type: "user_input_request",
+      callId: "ask-call-1",
+      question: "Continue with strict mode?",
+      answered: false,
+    });
+    expect(timeline[1]).toMatchObject({
+      type: "tool_activity",
+      callId: "tc-1",
+      toolName: "search_openalex",
+      status: "running",
+    });
+  });
 });

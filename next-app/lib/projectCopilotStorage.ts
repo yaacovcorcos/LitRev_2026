@@ -4,7 +4,7 @@
  * all project pages (Draft, Protocol, Ledger).
  */
 
-import type { CopilotPage } from "@/types/ai";
+import type { CopilotPage, UserInputRequest } from "@/types/ai";
 
 const PROJECT_COPILOT_KEY_PREFIX = "litrev_project_copilot_v1";
 
@@ -43,6 +43,21 @@ export type CopilotMessage = {
     title: string;
     payload: Record<string, unknown>;
     version: number;
+  };
+  /** Structured ask_user request emitted by the runtime */
+  userInputRequest?: (UserInputRequest & {
+    answered?: boolean;
+    answer?: string;
+  });
+  /** Structured tool activity metadata for timeline rendering */
+  toolActivity?: {
+    callId: string;
+    toolName: string;
+    status: "queued" | "running" | "done" | "failed";
+    summary?: string;
+    startedAt: string;
+    updatedAt: string;
+    completedAt?: string;
   };
 };
 
@@ -112,7 +127,8 @@ export function loadProjectCopilotState(projectId: string): ProjectCopilotState 
         const sender = msg.sender === "ai" ? "ai" : "user";
         const text = typeof msg.text === "string" ? msg.text : "";
         const createdAt = typeof msg.createdAt === "string" ? msg.createdAt : new Date().toISOString();
-        if (text.trim().length > 0) {
+        const hasStructuredPayload = Boolean(msg.userInputRequest || msg.toolActivity || msg.artifact);
+        if (text.trim().length > 0 || hasStructuredPayload) {
           messages.push({
             id,
             sender,
@@ -120,6 +136,10 @@ export function loadProjectCopilotState(projectId: string): ProjectCopilotState 
             createdAt,
             context: msg.context,
             reasoning: msg.reasoning,
+            artifact: msg.artifact,
+            attachments: msg.attachments,
+            userInputRequest: msg.userInputRequest,
+            toolActivity: msg.toolActivity,
           });
         }
       }
