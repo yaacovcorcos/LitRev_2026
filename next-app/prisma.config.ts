@@ -7,6 +7,7 @@ import { defineConfig } from "prisma/config";
 
 const databaseUrl = process.env["DATABASE_URL"];
 const directUrl = process.env["DIRECT_URL"];
+const shadowDatabaseUrl = process.env["SHADOW_DATABASE_URL"];
 
 export default defineConfig({
   schema: "prisma/schema.prisma",
@@ -16,5 +17,6 @@ export default defineConfig({
   datasource: {
     // directUrl bypasses pgbouncer/pooler for migrations - much faster
     url: directUrl || databaseUrl,
+    shadowDatabaseUrl,
   },
 });

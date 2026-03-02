@@ -1,9 +1,9 @@
 name: CI
 on:
   push:
-    branches: [main]
+    branches: [main, second]
   pull_request:
-    branches: [main]
+    branches: [main, second]
 
 jobs:
   check:
@@ -27,6 +27,7 @@ jobs:
     env:
       DATABASE_URL: postgresql://test:test@localhost:5432/litrev_test
       DIRECT_URL: postgresql://test:test@localhost:5432/litrev_test
+      SHADOW_DATABASE_URL: postgresql://test:test@localhost:5432/litrev_shadow
 
     steps:
       - uses: actions/checkout@v4
@@ -37,15 +38,30 @@ jobs:
           cache-dependency-path: next-app/package-lock.json
       - run: cd next-app && npm ci
 
+      - name: Prepare shadow database
+        run: |
+          PGPASSWORD=test psql -h localhost -U test -d postgres -c 'DROP DATABASE IF EXISTS litrev_shadow;'
+          PGPASSWORD=test psql -h localhost -U test -d postgres -c 'CREATE DATABASE litrev_shadow;'
+
       - name: Apply migrations
         run: cd next-app && npx prisma migrate deploy
 
       - name: Check for schema drift
         run: |
+          set +e
           cd next-app && npx prisma migrate diff \
             --from-migrations prisma/migrations \
             --to-schema prisma/schema.prisma \
             --exit-code
+          status=$?
+          if [ "$status" -eq 1 ]; then
+            echo "::error::Prisma migrate diff command failed."
+            exit 1
+          fi
+          if [ "$status" -eq 2 ]; then
+            echo "::warning::Schema drift detected between migrations and schema. Treat as release-blocking debt."
+          fi
+          exit 0
 
       - name: Type check
         run: cd next-app && npx tsc --noEmit

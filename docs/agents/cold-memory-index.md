@@ -20,6 +20,7 @@ Use this index to retrieve authoritative docs before editing high-risk domains.
 | Guided setup behavior | `docs/plans/plan-guided-setup.md` | Onboarding/setup activation flow changes |
 | Prompting/extraction logic | `docs/plans/plan-prompts.md` | Prompt text/schema/LLM extraction changes |
 | UI/UX architecture and roadmap | `docs/plans/codex-ui-ux-plan.md` (or active UI plan), `docs/plans/claude-ui-ux-plan.md` | Component and interaction model changes |
+| GitHub branch/PR/review automation | `docs/runbooks/github-flow.md` | Any edits to `.github/workflows/**`, branch protections, CODEOWNERS, or agent git policy |
 | Product contract | `PRD.md` | Changes to product WHAT/WHO/WHY |
 | Plan governance | `docs/plans/README.md` | Any edits to `docs/plans/*.md` |
 

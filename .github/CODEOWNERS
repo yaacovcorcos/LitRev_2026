@@ -1,0 +1,16 @@
+# Default ownership
+* @yaacovcorcos
+
+# Critical backend and data paths
+/next-app/prisma/ @yaacovcorcos
+/next-app/lib/server/ @yaacovcorcos
+/next-app/app/actions/ @yaacovcorcos
+
+# Agent runtime and provider integrations
+/next-app/lib/agent/ @yaacovcorcos
+/next-app/lib/server/ai/ @yaacovcorcos
+
+# Delivery/governance controls
+/.github/workflows/ @yaacovcorcos
+/next-app/scripts/ @yaacovcorcos
+/AGENTS.md @yaacovcorcos
