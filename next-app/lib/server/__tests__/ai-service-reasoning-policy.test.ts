@@ -1,5 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { AIMessage, AIModel, AIResponse, AIStreamChunk, ChatOptions } from "@/types/ai";
+vi.mock("@/lib/server/ai/rate-limiter", () => ({
+  validateRateLimits: vi.fn(async () => {}),
+  recordUsage: vi.fn(async () => {}),
+}));
 import { AIService } from "@/lib/server/ai/ai-service";
 import { BaseAIProvider } from "@/lib/server/ai/providers/base";
 
