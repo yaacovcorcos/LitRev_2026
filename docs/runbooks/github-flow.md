@@ -20,6 +20,7 @@ This runbook defines the repository branch, PR, review, and promotion flow.
 - Pushes to `codex/**` auto-open or reuse a PR into `second`.
 - Daily/manual automation opens or refreshes a release PR from `second` to `main`.
 - Auto-created PRs request review from `@yaacovcorcos` and post `@codex review`.
+- Every non-draft PR open/update requests Codex review automatically (`@codex review`) once per head commit.
 
 ## Review Visibility
 
