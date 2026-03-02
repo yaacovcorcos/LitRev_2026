@@ -559,6 +559,8 @@ Use this per-fix log format:
 
 `[R1A-LOW-RISK-STRICT-UNUSED] | done | 2026-03-02 | next-app/components/copilot/TimelineRenderer.tsx, next-app/components/project/ConversationMainView.tsx, next-app/components/ProjectCopilot.tsx, next-app/hooks/useCopilotStreamActions.ts, docs/reports/diagnosis-03-02.md | strict-unused counts: TS6133 14->8, TS6196 6->3; tsc: pass; vitest: pass (153 files, 1169 tests; 11 skipped) | Removed only unused type imports/destructured values in low-risk UI/hook files; no behavior or signature changes.`
 
+`[R1B-HIGH-RISK-STRICT-UNUSED] | done | 2026-03-02 | next-app/lib/server/agent/artifacts.ts, next-app/lib/server/ai/ai-service.ts, docs/reports/diagnosis-03-02.md | strict-unused counts: TS6133 8->1, TS6196 3->0; tsc: pass; vitest: pass (153 files, 1169 tests; 11 skipped) | Removed only unused imports/types/local destructured value in high-churn server modules; no runtime logic changes.`
+
 ---
 
 ## Section 10: Final Position

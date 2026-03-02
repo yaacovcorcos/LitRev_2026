@@ -4,8 +4,8 @@
  * Now with structured memory integration and tool execution loop
  */
 
-import type { AIMessage, AIResponse, ChatOptions, AIStreamChunk, ConversationContext, ToolCall, ToolDefinition, ToolResult } from "@/types/ai";
-import type { AutonomyLevel, AgentMode } from "@/types/agent";
+import type { AIMessage, AIResponse, ChatOptions, AIStreamChunk, ConversationContext, ToolCall, ToolResult } from "@/types/ai";
+import type { AgentMode } from "@/types/agent";
 import { BaseAIProvider, getOpenAIProvider, getAnthropicProvider, getXAIProvider, getGoogleProvider } from "./providers";
 import { getOrCreateConversation, addMessageToConversation, getConversationWithSummary, getConversationWithSummaryById, autoSummarizeIfNeeded } from "./memory";
 import { validateRateLimits, recordUsage } from "./rate-limiter";
@@ -35,7 +35,6 @@ import {
     buildLocationContext,
     buildStudyContext,
 } from "@/lib/ai/prompts/copilot-prompts";
-import type { StudyContextData } from "@/lib/ai/prompts/copilot-prompts";
 import { normalizeAgentMode } from "@/lib/agent/feature-flags";
 import { LoopState, type StopReason } from "@/lib/agent/loop-controller";
 import { startRunTrace, startLLMGeneration, startContextSpan, flushTracing } from "./tracing";
@@ -44,14 +43,14 @@ import { sanitizeGeneratedConversationTitle, buildFallbackConversationTitle } fr
 import { detectScopingHandoffSelection, extractLatestScopingReport } from "./scoping";
 import { prisma } from "@/lib/server/prisma";
 import { isProtocolPopulated, type ProtocolData } from "@/types/protocol";
-import type { PlanPayload, ScopingReportPayload } from "@/types/artifacts";
+import type { ScopingReportPayload } from "@/types/artifacts";
 import { ensureConversationRunAvailability } from "@/lib/server/chat-runtime/conversation-run-lock";
 import { classifyAIError } from "./error-classification";
 import { retryAsync, sleep } from "@/lib/server/utils/retry";
 import { resolveReasoningMode } from "@/lib/ai/reasoning-visibility";
 import { createIdempotencyMiddleware, executeWithToolMiddleware, type ToolExecutionRequest, type ToolMiddleware } from "./tool-middleware";
 import { resolveAuthenticatedIdentity } from "@/lib/server/auth/identity";
-import { computeLedgerCounts, computeStudyLedger, type LedgerCounts, type StudyLedgerSnapshot } from "@/lib/server/ledger-utils";
+import { computeLedgerCounts, computeStudyLedger } from "@/lib/server/ledger-utils";
 import {
     mapToolToProgressMessage,
     isStudyLedgerSnapshot,
@@ -214,7 +213,6 @@ class AIService {
         const {
             conversationId,
             projectId,
-            model,
             historicalAssistantCount,
             firstUserMessage,
             assistantMessage,
