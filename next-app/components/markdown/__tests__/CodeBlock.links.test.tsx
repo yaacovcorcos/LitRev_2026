@@ -1,17 +1,17 @@
 // @vitest-environment jsdom
 import { render, screen, fireEvent, act } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
+import type { ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { markdownComponents } from "../CodeBlock";
 import { fetchCitationMetadata } from "@/app/actions/citation";
 
 vi.mock("@/components/ui/Popover", async () => {
-    const React = await import("react");
     return {
-        Root: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-        Trigger: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-        Portal: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+        Root: ({ children }: { children: ReactNode }) => <>{children}</>,
+        Trigger: ({ children }: { children: ReactNode }) => <>{children}</>,
+        Portal: ({ children }: { children: ReactNode }) => <>{children}</>,
         Content: () => null,
         Arrow: () => null,
     };
