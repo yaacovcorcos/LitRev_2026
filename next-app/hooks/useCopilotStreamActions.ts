@@ -14,7 +14,7 @@ import { dispatchProjectDataChanged, getChangedDomainsForAcceptedArtifact } from
 import { createConversation } from "@/app/actions/conversations";
 import { reviewArtifactAction } from "@/app/actions/agent";
 import type { ArtifactData, ArtifactStatus } from "@/types/artifacts";
-import type { AgentMode, AutonomyPreset, AutonomyLevel } from "@/types/agent";
+import type { AgentMode } from "@/types/agent";
 import type { ChoiceOption, CopilotPage, ReasoningMode, StreamPhase, UserInputRequest } from "@/types/ai";
 import { handleProjectCopilotStreamChunk } from "@/contexts/project-copilot-stream-events";
 import type { ArtifactActionContract } from "@/lib/artifacts/action-contract";
