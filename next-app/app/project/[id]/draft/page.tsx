@@ -11,7 +11,6 @@ import {
   useState,
 } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import Link from "next/link";
 import { BaseBackButton } from "@/components/BaseBackButton";
 import { ProjectPageLayout } from "@/components/project/ProjectPageLayout";
 import { useProjects } from "@/contexts/ProjectsContext";
