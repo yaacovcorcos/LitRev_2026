@@ -69,22 +69,11 @@ import { z } from "zod";
 import { withAction, withValidatedAction, type ActionResult } from "@/lib/server/action-utils";
 import { withAuth } from "@/lib/server/auth/session";
 import { prisma } from "@/lib/server/prisma";
-import { cuidSchema, projectIdSchema, searchQuerySchema } from "@/lib/schemas/ids";
+import { cuidSchema } from "@/lib/schemas/ids";
 import {
     createUserMemoryInputSchema,
     updateUserMemoryInputSchema,
     getUserMemoriesOptionsSchema,
-    createProjectMemoryInputSchema,
-    updateProjectMemoryInputSchema,
-    getProjectMemoriesOptionsSchema,
-    createStudyMemoryInputSchema,
-    updateStudyMemoryInputSchema,
-    getStudyMemoriesOptionsSchema,
-    getProjectStudyMemoriesOptionsSchema,
-    memoryContextSchema,
-    memoryRetrievalOptionsSchema,
-    searchStudyMemoriesOptionsSchema,
-    memoryMaintenanceOptionsSchema,
 } from "@/lib/schemas/memory";
 
 async function assertProjectAccess(userId: string, workspaceId: string, projectId: string): Promise<void> {
