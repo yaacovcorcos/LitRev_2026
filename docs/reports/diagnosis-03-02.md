@@ -584,6 +584,10 @@ Use this per-fix log format:
 
 ---
 
+`[CAF-C3-REPLACE-STUDIES-EMPTY-GUARD] | done | 2026-03-02 | next-app/lib/server/ledger.ts, next-app/app/actions/ledger.ts, next-app/lib/server/__tests__/ledger-replace-studies-contract.test.ts, next-app/lib/server/__tests__/ledger-action-replace-studies-validation.test.ts, docs/reports/diagnosis-03-02.md | strict-unused: unchanged pre-existing TS6133 in next-app/components/markdown/__tests__/CodeBlock.links.test.tsx; tsc: pass; vitest: pass (161 files, 1219 tests; 11 skipped) | replaceStudies now rejects empty or id-less payloads by default, allows explicit clear-all only with explicit intent, and action schema enforces the empty-payload contract before service execution.`
+
+---
+
 ## Section 10: Final Position
 
 The corrected framing is:
@@ -633,6 +637,8 @@ Related files to adapt:
 `[CAF-C3]` Add explicit empty-list guard in `replaceStudies`  
 Why keep:
 - Empty incoming IDs still trigger soft-delete of all studies in a project.
+Status update (2026-03-02):
+- Completed via `[CAF-C3-REPLACE-STUDIES-EMPTY-GUARD]`; item retained here for historical traceability.
 Safety:
 - **High** (small guard + caller intent flag).
 Influence:
