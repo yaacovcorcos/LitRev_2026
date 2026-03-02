@@ -1,4 +1,10 @@
 import type { CitationMetadata } from "@/lib/citation-types";
+import {
+    extractDoi,
+    extractPmid,
+    normalizeDoi,
+    resolveCitationKey,
+} from "@/lib/citation-key";
 
 /** Cache for citation metadata (in-memory, per-process). */
 const metadataCache = new Map<string, CitationMetadata | null>();
@@ -21,32 +27,7 @@ function setCache(key: string, value: CitationMetadata | null): void {
     cacheTimestamps.set(key, Date.now());
 }
 
-/**
- * Normalize DOI to standard format: lowercase, no URL prefix.
- */
-export function normalizeDoi(doi: string): string {
-    const clean = doi
-        .replace(/^https?:\/\/(dx\.)?doi\.org\//i, "")
-        .trim()
-        .toLowerCase();
-    return clean;
-}
-
-/**
- * Extract PMID from PubMed URL.
- */
-export function extractPmid(url: string): string | null {
-    const match = url.match(/pubmed\.ncbi\.nlm\.nih\.gov\/(\d+)/i);
-    return match ? match[1] : null;
-}
-
-/**
- * Extract DOI from doi.org URL.
- */
-export function extractDoi(url: string): string | null {
-    const match = url.match(/(?:dx\.)?doi\.org\/(10\.[^/]+\/[^\s]+)/i);
-    return match ? match[1] : null;
-}
+export { normalizeDoi, extractPmid, extractDoi };
 
 /**
  * Resolve citation metadata from a PubMed or DOI URL.
@@ -74,17 +55,14 @@ export async function resolveCitationMetadata(
 export async function resolveCitationMetadataCached(
     url: string
 ): Promise<CitationMetadata | null> {
-    const pmid = extractPmid(url);
-    const doi = extractDoi(url);
+    const keyParts = resolveCitationKey(url);
+    if (!keyParts) return null;
 
-    const cacheKey = pmid ? `pmid:${pmid}` : doi ? `doi:${normalizeDoi(doi)}` : null;
-    if (!cacheKey) return null;
-
-    const cached = getCached(cacheKey);
+    const cached = getCached(keyParts.cacheKey);
     if (cached !== undefined) return cached;
 
     const metadata = await resolveCitationMetadata(url);
-    setCache(cacheKey, metadata);
+    setCache(keyParts.cacheKey, metadata);
     return metadata;
 }
 
