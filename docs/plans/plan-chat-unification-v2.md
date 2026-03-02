@@ -202,7 +202,7 @@ Exit criteria:
      - assign sign-off owner + backup reviewer
    - rollout environment matrix:
      - local development only: `npx prisma migrate dev`
-     - shared/staging/production: `npx prisma migrate deploy`
+     - shared/staging/production: `bash scripts/db-ops.sh migrate`
      - never run `migrate dev` against shared environments
    - Day-0 data quality gate (run immediately after migration + enable):
      - require `run_end_observed` rows for both `ai` and `project` surfaces
@@ -226,7 +226,7 @@ Exit criteria:
      - daily progress (first 7 days only):  
        `cd next-app && npx tsx scripts/validate-chat-unification-burn-in.ts --since=<CANARY_SINCE_UTC> --workspaceIds=<ws1,ws2> --userIds=<u1,u2> --allowShortWindow=1`
      - strict final gate (no short-window override, earliest at +7 days):  
-       `cd next-app && npx tsx scripts/validate-chat-unification-burn-in.ts --since=<CANARY_SINCE_UTC> --workspaceIds=<ws1,ws2> --userIds=<u1,u2> --requireScopedCohort=1 --requireRunEndPerSurface=1 --minRunIdCoveragePerSurface=0.95 --report=../docs/reports/u1-6-burn-in.md`
+       `cd next-app && npx tsx scripts/validate-chat-unification-burn-in.ts --since=<CANARY_SINCE_UTC> --workspaceIds=<ws1,ws2> --userIds=<u1,u2> --requireScopedCohort=1 --requireRunEndPerSurface=1 --minRunIdCoveragePerSurface=0.95`
 7. Gate cleanup on parity + KPI pass.
 
 Exit criteria:
