@@ -16,6 +16,10 @@ import * as Popover from "@/components/ui/Popover";
 import { fetchCitationMetadata } from "@/app/actions/citation";
 import type { CitationMetadata } from "@/lib/citation-types";
 import { loadCitationMetadataWithClientCache } from "@/lib/citation-preview-cache";
+import { getCitationType, resolveCitationKey } from "@/lib/citation-key";
+import { isCitationHoverPrefetchEnabled } from "@/lib/citation-preview-feature-flags";
+import { recordCitationPreviewMetric } from "@/lib/ai/citation-preview-telemetry";
+import type { CitationPreviewSurface, CitationPreviewTrigger } from "@/types/citation-preview-telemetry";
 import styles from "./CitationPreview.module.css";
 
 export type CitationType = "DOI" | "PubMed";
@@ -30,7 +34,16 @@ interface CitationPreviewProps {
 type FetchState = "idle" | "loading" | "loaded" | "error";
 
 const HOVER_INTENT_DELAY = 300; // ms before triggering fetch on hover
+const PREFETCH_INTENT_DELAY = 120; // ms before prefetching on hover intent
 const TOUCH_HOLD_THRESHOLD = 200; // ms to distinguish tap from hold
+
+function inferSurfaceFromPathname(): CitationPreviewSurface {
+    if (typeof window === "undefined") return "unknown";
+    const pathname = window.location.pathname;
+    if (pathname === "/ai" || pathname.startsWith("/ai/")) return "ai";
+    if (pathname.startsWith("/project/")) return "project";
+    return "unknown";
+}
 
 /**
  * Citation link with hover/tap preview card.
@@ -40,41 +53,101 @@ export function CitationPreview({ href, type, children, anchorProps }: CitationP
     const [open, setOpen] = useState(false);
     const [fetchState, setFetchState] = useState<FetchState>("idle");
     const [metadata, setMetadata] = useState<CitationMetadata | null>(null);
-    const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const hoverOpenTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const hoverPrefetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const touchStartRef = useRef<number>(0);
     const isTouchDeviceRef = useRef(false);
     const fetchedRef = useRef(false);
+    const citationKey = resolveCitationKey(href)?.cacheKey ?? null;
+    const citationType = getCitationType(href);
+    const surface = inferSurfaceFromPathname();
+    const prefetchEnabled = isCitationHoverPrefetchEnabled();
+
+    const trackMetric = useCallback(
+        (
+            type:
+                | "hover_intent_started"
+                | "prefetch_started"
+                | "popover_opened"
+                | "metadata_request_started"
+                | "metadata_request_completed"
+                | "metadata_request_failed",
+            payload: {
+                trigger?: CitationPreviewTrigger;
+                fromCache?: boolean;
+                latencyMs?: number;
+                upstreamSource?: "crossref" | "pubmed" | "unknown";
+                errorCode?: string | null;
+            } = {}
+        ) => {
+            recordCitationPreviewMetric({
+                type,
+                surface,
+                payload: {
+                    citationKey,
+                    citationType,
+                    ...payload,
+                },
+            });
+        },
+        [citationKey, citationType, surface]
+    );
 
     // Cleanup timer on unmount
     useEffect(() => {
         return () => {
-            if (hoverTimerRef.current) {
-                clearTimeout(hoverTimerRef.current);
+            if (hoverOpenTimerRef.current) {
+                clearTimeout(hoverOpenTimerRef.current);
+            }
+            if (hoverPrefetchTimerRef.current) {
+                clearTimeout(hoverPrefetchTimerRef.current);
             }
         };
     }, []);
 
-    const doFetch = useCallback(async () => {
+    const doFetch = useCallback(async (trigger: CitationPreviewTrigger) => {
         if (fetchedRef.current || fetchState === "loading") return;
 
+        trackMetric("metadata_request_started", { trigger });
         setFetchState("loading");
-        const { result } = await loadCitationMetadataWithClientCache(href, fetchCitationMetadata);
+        const startedAt = performance.now();
+        const { result, fromCache } = await loadCitationMetadataWithClientCache(href, fetchCitationMetadata);
+        const latencyMs = Math.round(Math.max(0, performance.now() - startedAt));
 
         if (result.success) {
             setMetadata(result.data);
             setFetchState("loaded");
             fetchedRef.current = true;
+            trackMetric("metadata_request_completed", {
+                trigger,
+                fromCache,
+                latencyMs,
+                upstreamSource:
+                    result.data.citationCountSource === "crossref"
+                        ? "crossref"
+                        : citationType === "PubMed"
+                            ? "pubmed"
+                            : citationType === "DOI"
+                                ? "crossref"
+                                : "unknown",
+            });
         } else {
             setFetchState("error");
+            trackMetric("metadata_request_failed", {
+                trigger,
+                latencyMs,
+                errorCode: result.error,
+            });
         }
-    }, [href, fetchState]);
+    }, [href, fetchState, citationType, trackMetric]);
 
-    const openPreview = useCallback(() => {
+    const openPreview = useCallback((trigger: CitationPreviewTrigger) => {
         setOpen(true);
+        trackMetric("popover_opened", { trigger });
         if (!fetchedRef.current && fetchState !== "loading") {
-            void doFetch();
+            void doFetch(trigger);
         }
-    }, [doFetch, fetchState]);
+    }, [doFetch, fetchState, trackMetric]);
 
     const closePreview = useCallback(() => {
         setOpen(false);
@@ -83,15 +156,29 @@ export function CitationPreview({ href, type, children, anchorProps }: CitationP
     // ── Desktop: hover intent ────────────────────────────────────────────────
     const handleMouseEnter = useCallback(() => {
         if (isTouchDeviceRef.current) return;
-        hoverTimerRef.current = setTimeout(() => {
-            openPreview();
+
+        trackMetric("hover_intent_started", { trigger: "hover" });
+
+        if (prefetchEnabled && !fetchedRef.current && fetchState !== "loading") {
+            hoverPrefetchTimerRef.current = setTimeout(() => {
+                trackMetric("prefetch_started", { trigger: "prefetch" });
+                void doFetch("prefetch");
+            }, PREFETCH_INTENT_DELAY);
+        }
+
+        hoverOpenTimerRef.current = setTimeout(() => {
+            openPreview("hover");
         }, HOVER_INTENT_DELAY);
-    }, [openPreview]);
+    }, [doFetch, fetchState, openPreview, prefetchEnabled, trackMetric]);
 
     const handleMouseLeave = useCallback(() => {
-        if (hoverTimerRef.current) {
-            clearTimeout(hoverTimerRef.current);
-            hoverTimerRef.current = null;
+        if (hoverOpenTimerRef.current) {
+            clearTimeout(hoverOpenTimerRef.current);
+            hoverOpenTimerRef.current = null;
+        }
+        if (hoverPrefetchTimerRef.current) {
+            clearTimeout(hoverPrefetchTimerRef.current);
+            hoverPrefetchTimerRef.current = null;
         }
         // Don't close immediately - let Radix handle it when moving to content
     }, []);
@@ -101,7 +188,7 @@ export function CitationPreview({ href, type, children, anchorProps }: CitationP
         (e: FocusEvent) => {
             // Only open on keyboard focus (not mouse click focus)
             if (e.target === e.currentTarget) {
-                openPreview();
+                openPreview("focus");
             }
         },
         [openPreview]
@@ -132,7 +219,7 @@ export function CitationPreview({ href, type, children, anchorProps }: CitationP
                 if (open) {
                     closePreview();
                 } else {
-                    openPreview();
+                    openPreview("touch");
                 }
             }
             // Longer hold: let default behavior (could navigate)
