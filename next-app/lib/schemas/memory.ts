@@ -5,6 +5,8 @@ import { cuidSchema, tagsSchema } from "./ids";
 
 export const userMemoryTypeSchema = z.enum(["preference", "style", "workflow"]);
 export const userMemoryStatusSchema = z.enum(["active", "archived"]);
+export type UserMemoryType = z.infer<typeof userMemoryTypeSchema>;
+export type UserMemoryStatus = z.infer<typeof userMemoryStatusSchema>;
 
 export const createUserMemoryInputSchema = z.object({
     type: userMemoryTypeSchema,
@@ -13,6 +15,7 @@ export const createUserMemoryInputSchema = z.object({
     rationale: z.string().max(5000).optional(),
     tags: tagsSchema.optional(),
 });
+export type CreateUserMemoryInput = z.infer<typeof createUserMemoryInputSchema>;
 
 export const updateUserMemoryInputSchema = z.object({
     value: z.string().min(1).max(10_000).optional(),
@@ -20,6 +23,7 @@ export const updateUserMemoryInputSchema = z.object({
     tags: tagsSchema.optional(),
     status: userMemoryStatusSchema.optional(),
 });
+export type UpdateUserMemoryInput = z.infer<typeof updateUserMemoryInputSchema>;
 
 export const getUserMemoriesOptionsSchema = z.object({
     type: userMemoryTypeSchema.optional(),
@@ -33,6 +37,10 @@ export const projectMemoryTypeSchema = z.enum(["decision", "definition", "criter
 export const projectMemoryCategorySchema = z.enum(["inclusion", "exclusion", "outcome", "population", "intervention", "comparison"]);
 export const projectMemoryStatusSchema = z.enum(["active", "revised", "archived"]);
 export const projectMemoryImportanceSchema = z.enum(["critical", "important", "normal"]);
+export type ProjectMemoryType = z.infer<typeof projectMemoryTypeSchema>;
+export type ProjectMemoryCategory = z.infer<typeof projectMemoryCategorySchema>;
+export type ProjectMemoryStatus = z.infer<typeof projectMemoryStatusSchema>;
+export type ProjectMemoryImportance = z.infer<typeof projectMemoryImportanceSchema>;
 
 export const createProjectMemoryInputSchema = z.object({
     projectId: cuidSchema,
@@ -44,6 +52,7 @@ export const createProjectMemoryInputSchema = z.object({
     tags: tagsSchema.optional(),
     importance: projectMemoryImportanceSchema.optional(),
 });
+export type CreateProjectMemoryInput = z.infer<typeof createProjectMemoryInputSchema>;
 
 export const updateProjectMemoryInputSchema = z.object({
     statement: z.string().min(1).max(10_000).optional(),
@@ -53,6 +62,7 @@ export const updateProjectMemoryInputSchema = z.object({
     importance: projectMemoryImportanceSchema.optional(),
     status: projectMemoryStatusSchema.optional(),
 });
+export type UpdateProjectMemoryInput = z.infer<typeof updateProjectMemoryInputSchema>;
 
 export const getProjectMemoriesOptionsSchema = z.object({
     type: projectMemoryTypeSchema.optional(),
@@ -67,6 +77,9 @@ export const getProjectMemoriesOptionsSchema = z.object({
 export const studyMemoryTypeSchema = z.enum(["summary", "finding", "limitation", "quality", "methods", "results"]);
 export const studyMemoryCategorySchema = z.enum(["methods", "results", "bias", "population", "intervention", "outcomes"]);
 export const studyMemorySourceSchema = z.enum(["ai_generated", "user_input", "extracted"]);
+export type StudyMemoryType = z.infer<typeof studyMemoryTypeSchema>;
+export type StudyMemoryCategory = z.infer<typeof studyMemoryCategorySchema>;
+export type StudyMemorySource = z.infer<typeof studyMemorySourceSchema>;
 
 export const createStudyMemoryInputSchema = z.object({
     studyId: cuidSchema,
@@ -78,6 +91,7 @@ export const createStudyMemoryInputSchema = z.object({
     confidence: z.number().min(0).max(1).optional(),
     tags: tagsSchema.optional(),
 });
+export type CreateStudyMemoryInput = z.infer<typeof createStudyMemoryInputSchema>;
 
 export const updateStudyMemoryInputSchema = z.object({
     content: z.string().min(1).max(50_000).optional(),
@@ -86,6 +100,7 @@ export const updateStudyMemoryInputSchema = z.object({
     tags: tagsSchema.optional(),
     status: z.enum(["active", "archived"]).optional(),
 });
+export type UpdateStudyMemoryInput = z.infer<typeof updateStudyMemoryInputSchema>;
 
 export const getStudyMemoriesOptionsSchema = z.object({
     type: studyMemoryTypeSchema.optional(),
@@ -116,6 +131,7 @@ export const memoryContextSchema = z.object({
     citedStudyIds: z.array(cuidSchema).max(500).optional(),
     runId: cuidSchema.optional(),
 });
+export type MemoryContext = z.infer<typeof memoryContextSchema>;
 
 export const memoryRetrievalOptionsSchema = z.object({
     maxMemories: z.number().int().min(1).max(500).optional(),

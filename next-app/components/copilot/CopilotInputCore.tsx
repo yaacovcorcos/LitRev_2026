@@ -80,7 +80,9 @@ export type CopilotInputCoreProps = {
     /** Active ask_user question to render as overlay above the input */
     pendingUserInput?: UserInputRequest | null;
     /** Callback when user answers the pending ask_user question */
-    onAnswerUserInput?: (callId: string, answer: string, page?: CopilotPage) => void;
+    onAnswerUserInput?: (callId: string, answer: string, page?: CopilotPage, section?: string) => void;
+    /** Render ask_user inside the input shell (disabled by default to avoid duplicate UI with timeline cards). */
+    showUserInputOverlay?: boolean;
 };
 
 export function CopilotInputCore({
@@ -116,10 +118,11 @@ export function CopilotInputCore({
     isCompressing = false,
     pendingUserInput = null,
     onAnswerUserInput,
+    showUserInputOverlay = false,
 }: CopilotInputCoreProps) {
     const [hasMounted, setHasMounted] = useState(false);
     const [input, setInput] = useState("");
-    const [selectedModel, setSelectedModel] = useState<SelectableModelId>("gpt-5.2");
+    const [uncontrolledSelectedModel, setUncontrolledSelectedModel] = useState<SelectableModelId>("gpt-5.2");
     const [answeredUserInput, setAnsweredUserInput] = useState<{
         request: UserInputRequest;
         answer: string;
@@ -131,15 +134,18 @@ export function CopilotInputCore({
         setHasMounted(true);
     }, []);
 
-    // Sync model selection from localStorage after hydration
+    const selectedModel = selectedModelProp ?? uncontrolledSelectedModel;
+    const isModelControlled = typeof selectedModelProp !== "undefined";
+
+    // Sync model selection from localStorage after hydration for uncontrolled mode only
     useEffect(() => {
+        if (isModelControlled) return;
         const stored = window.localStorage.getItem(modelStorageKey);
         const valid = USER_SELECTABLE_MODELS.some((m) => m.id === stored);
         if (valid && stored !== selectedModel) {
-            setSelectedModel(stored as SelectableModelId);
+            setUncontrolledSelectedModel(stored as SelectableModelId);
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    }, [isModelControlled, modelStorageKey, selectedModel]);
 
     const textareaRef = useRef<HTMLTextAreaElement | null>(null);
     const sendLockRef = useRef(false);
@@ -195,12 +201,20 @@ export function CopilotInputCore({
         clearError: clearVoiceError,
     } = useVoiceInput(handleTranscription);
 
-    // Persist model preference
+    // Persist model preference for uncontrolled mode only
     useEffect(() => {
+        if (isModelControlled) return;
         if (typeof window !== "undefined") {
             window.localStorage.setItem(modelStorageKey, selectedModel);
         }
-    }, [selectedModel, modelStorageKey]);
+    }, [isModelControlled, selectedModel, modelStorageKey]);
+
+    const setSelectedModel = useCallback((modelId: SelectableModelId) => {
+        onModelChange?.(modelId);
+        if (!isModelControlled) {
+            setUncontrolledSelectedModel(modelId);
+        }
+    }, [isModelControlled, onModelChange]);
 
     // Auto-resize textarea
     useEffect(() => {
@@ -419,7 +433,7 @@ export function CopilotInputCore({
                 )}
 
                 {/* Structured ask_user overlay — appears above choices */}
-                {(() => {
+                {showUserInputOverlay && (() => {
                     const activeRequest = pendingUserInput ?? answeredUserInput?.request;
                     if (!activeRequest || isLoading) return null;
                     const isAnswered = !pendingUserInput && !!answeredUserInput;
@@ -435,12 +449,12 @@ export function CopilotInputCore({
                             answer={isAnswered ? answeredUserInput?.answer : undefined}
                             onAnswer={(answer) => {
                                 setAnsweredUserInput({ request: activeRequest, answer });
-                                onAnswerUserInput?.(activeRequest.callId, answer, page);
+                                onAnswerUserInput?.(activeRequest.callId, answer, page, section);
                             }}
                             onDismiss={() => {
                                 const dismissAnswer = "Dismissed — please proceed without my input.";
                                 setAnsweredUserInput({ request: activeRequest, answer: dismissAnswer });
-                                onAnswerUserInput?.(activeRequest.callId, dismissAnswer, page);
+                                onAnswerUserInput?.(activeRequest.callId, dismissAnswer, page, section);
                             }}
                         />
                     </div>

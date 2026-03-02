@@ -1,19 +1,15 @@
 import type { CopilotMessage } from "@/lib/projectCopilotStorage";
 import type { ArtifactData, ArtifactStatus, ArtifactType } from "@/types/artifacts";
 import type { AIStreamChunk, ChoiceOption, CopilotPage, UserInputRequest } from "@/types/ai";
-import { appendReasoningRaw } from "@/lib/ai/reasoning-visibility";
+import {
+  createInitialSharedStreamState,
+  reduceSharedStreamChunk,
+  type SharedStreamIntent,
+  type SharedStreamState,
+} from "@/lib/ai/shared-stream-reducer";
 import { isNavigationSafe } from "@/lib/ai/navigation-safety";
 
-export type StreamMutableState = {
-  aiMessageCreated: boolean;
-  fullContent: string;
-  reasoningContent: string;
-  reasoningState: "streaming" | "done";
-  reasoningTruncated: boolean;
-  activeReasoningId: string | null;
-  localRunId: string;
-  effectiveConvId: string | null;
-};
+export type StreamMutableState = SharedStreamState;
 
 type StreamChunkDeps = {
   aiMessageId: string;
@@ -30,281 +26,262 @@ type StreamChunkDeps = {
   emitLedgerChanged: () => void;
   setPendingChoices: (choices: ChoiceOption[]) => void;
   setPendingUserInput: (request: UserInputRequest | null) => void;
+  onIntent?: (intent: SharedStreamIntent) => void;
   onPlanStepUpdate?: (planId: string, stepIndex: number, stepStatus: string) => void;
   onNavigate?: (url: string) => void;
 };
 
-function appendAssistantMessage(
-  deps: StreamChunkDeps,
-  state: StreamMutableState,
-  text: string
+export function createInitialProjectStreamState(
+  overrides?: Partial<StreamMutableState>,
 ): StreamMutableState {
-  if (!state.aiMessageCreated) {
-    const aiMessage: CopilotMessage = {
-      id: deps.aiMessageId,
-      sender: "ai",
-      text,
-      reasoning: state.reasoningContent
-        ? {
-            text: state.reasoningContent,
-            state: state.reasoningState,
-            truncated: state.reasoningTruncated || undefined,
-          }
-        : undefined,
-      createdAt: new Date().toISOString(),
-      context: { page: deps.page, section: deps.section },
-    };
-    deps.updateMessages((messages) => [...messages, aiMessage]);
-    return { ...state, aiMessageCreated: true };
-  }
+  return createInitialSharedStreamState(overrides);
+}
 
-  deps.updateMessages((messages) =>
-    messages.map((msg) => {
-      if (msg.id !== deps.aiMessageId) return msg;
-      const nextReasoning = state.reasoningContent
-        ? {
-            text: state.reasoningContent,
-            state: state.reasoningState,
-            truncated: state.reasoningTruncated || undefined,
-          }
-        : msg.reasoning;
-      return {
-        ...msg,
-        text,
-        reasoning: nextReasoning,
+function upsertAssistantMessage(
+  deps: StreamChunkDeps,
+  payload: Extract<SharedStreamIntent, { type: "assistant_upsert" }>,
+) {
+  deps.updateMessages((messages) => {
+    const idx = messages.findIndex((msg) => msg.id === deps.aiMessageId);
+    if (idx < 0) {
+      const message: CopilotMessage = {
+        id: deps.aiMessageId,
+        sender: "ai",
+        text: payload.text,
+        reasoning: payload.reasoning,
+        createdAt: new Date().toISOString(),
+        context: { page: deps.page, section: deps.section },
       };
-    })
-  );
-  return state;
+      return [...messages, message];
+    }
+
+    const next = [...messages];
+    const existing = next[idx];
+    if (!existing) return messages;
+    next[idx] = {
+      ...existing,
+      text: payload.text,
+      reasoning: payload.reasoning ?? existing.reasoning,
+    };
+    return next;
+  });
 }
 
-function upsertAssistantReasoning(
+function upsertToolActivityMessage(
   deps: StreamChunkDeps,
-  state: StreamMutableState
-): StreamMutableState {
-  if (!state.aiMessageCreated) {
-    const aiMessage: CopilotMessage = {
-      id: deps.aiMessageId,
-      sender: "ai",
-      text: state.fullContent,
-      reasoning: state.reasoningContent
-        ? {
-            text: state.reasoningContent,
-            state: state.reasoningState,
-            truncated: state.reasoningTruncated || undefined,
-          }
-        : undefined,
-      createdAt: new Date().toISOString(),
-      context: { page: deps.page, section: deps.section },
-    };
-    deps.updateMessages((messages) => [...messages, aiMessage]);
-    return { ...state, aiMessageCreated: true };
-  }
+  payload: Extract<SharedStreamIntent, { type: "tool_activity_upsert" }>,
+) {
+  const messageId = `tool-${payload.callId}`;
+  const now = new Date().toISOString();
 
-  deps.updateMessages((messages) =>
-    messages.map((msg) =>
-      msg.id === deps.aiMessageId
-        ? {
-            ...msg,
-            text: state.fullContent,
-            reasoning: {
-              text: state.reasoningContent,
-              state: state.reasoningState,
-              truncated: state.reasoningTruncated || undefined,
-            },
-          }
-        : msg
-    )
-  );
-  return state;
+  deps.updateMessages((messages) => {
+    const idx = messages.findIndex((message) => message.id === messageId);
+    if (idx < 0) {
+      const nextMessage: CopilotMessage = {
+        id: messageId,
+        sender: "ai",
+        text: "",
+        createdAt: now,
+        context: { page: deps.page, section: deps.section },
+        toolActivity: {
+          callId: payload.callId,
+          toolName: payload.toolName,
+          status: payload.status,
+          summary: payload.summary,
+          startedAt: now,
+          updatedAt: now,
+          completedAt: payload.status === "done" || payload.status === "failed" ? now : undefined,
+        },
+      };
+      return [...messages, nextMessage];
+    }
+
+    const next = [...messages];
+    const existing = next[idx];
+    if (!existing?.toolActivity) return messages;
+    next[idx] = {
+      ...existing,
+      toolActivity: {
+        ...existing.toolActivity,
+        status: payload.status,
+        summary: payload.summary ?? existing.toolActivity.summary,
+        updatedAt: now,
+        completedAt:
+          payload.status === "done" || payload.status === "failed"
+            ? now
+            : existing.toolActivity.completedAt,
+      },
+    };
+    return next;
+  });
 }
 
-const TOOL_PROGRESS_LABELS: Record<string, string> = {
-  search_pubmed: "Searching PubMed...",
-  add_to_ledger: "Adding studies to ledger...",
-};
+function appendUserInputMessage(
+  deps: StreamChunkDeps,
+  payload: Extract<SharedStreamIntent, { type: "user_input_append" }>,
+) {
+  deps.updateMessages((messages) => {
+    const messageId = `user-input-${payload.request.callId}`;
+    if (messages.some((message) => message.id === messageId)) return messages;
+    const nextMessage: CopilotMessage = {
+      id: messageId,
+      sender: "ai",
+      text: "",
+      createdAt: new Date().toISOString(),
+      context: {
+        page: payload.page,
+        section: payload.section,
+      },
+      userInputRequest: {
+        ...payload.request,
+        answered: false,
+      },
+    };
+    return [...messages, nextMessage];
+  });
+}
 
-type ChunkHandler = (
-  data: AIStreamChunk,
+function emitArtifactMessage(
+  deps: StreamChunkDeps,
   state: StreamMutableState,
-  deps: StreamChunkDeps
-) => StreamMutableState;
+  payload: Extract<SharedStreamIntent, { type: "artifact_emit" }>,
+) {
+  const artType = (payload.artifactType ?? "plan") as ArtifactType;
+  const artStatus = (payload.artifactStatus ?? "proposed") as ArtifactStatus;
+  const artTitle = payload.artifactTitle ?? "Artifact";
+  const artifactData: ArtifactData = {
+    id: payload.artifactId ?? `art-${Date.now()}`,
+    runId: state.localRunId,
+    projectId: deps.projectId,
+    conversationId: state.effectiveConvId ?? null,
+    type: artType,
+    status: artStatus,
+    title: artTitle,
+    payload: payload.artifactPayload ?? {},
+    version: payload.artifactVersion ?? 1,
+    sourceEventId: null,
+    appliedAt: null,
+    reviewedAt: null,
+    reviewNote: null,
+    createdAt: new Date().toISOString(),
+  };
+  deps.upsertArtifact(artifactData);
 
-const chunkHandlers: Partial<Record<AIStreamChunk["type"], ChunkHandler>> = {
-  content: (data, state, deps) => {
-    const nextContent = `${state.fullContent}${data.content ?? ""}`;
-    const nextState = { ...state, fullContent: nextContent };
-    return appendAssistantMessage(deps, nextState, nextContent);
-  },
-  reasoning_start: (data, state, deps) => {
-    const activeReasoningId = data.reasoningId ?? `reasoning-${Date.now()}`;
-    const nextReasoning =
-      state.reasoningContent.trim().length > 0 ? `${state.reasoningContent}\n\n` : state.reasoningContent;
-    const nextState: StreamMutableState = {
-      ...state,
-      reasoningContent: nextReasoning,
-      reasoningState: "streaming",
-      activeReasoningId,
-    };
-    return upsertAssistantReasoning(deps, nextState);
-  },
-  reasoning_delta: (data, state, deps) => {
-    // Ignore stale/foreign reasoning chunks when an active reasoning block is set.
-    if (state.activeReasoningId && data.reasoningId && data.reasoningId !== state.activeReasoningId) {
-      return state;
-    }
-    if (state.reasoningTruncated) return state;
-    const delta = data.reasoningText ?? "";
-    if (!delta) return state;
-    const nextReasoning = appendReasoningRaw(state.reasoningContent, delta);
-    const nextState: StreamMutableState = {
-      ...state,
-      reasoningContent: nextReasoning.raw,
-      reasoningState: "streaming",
-      reasoningTruncated: state.reasoningTruncated || nextReasoning.truncated,
-      activeReasoningId: data.reasoningId ?? state.activeReasoningId,
-    };
-    return upsertAssistantReasoning(deps, nextState);
-  },
-  reasoning_end: (data, state, deps) => {
-    if (state.activeReasoningId && data.reasoningId && data.reasoningId !== state.activeReasoningId) {
-      return state;
-    }
-    const nextState: StreamMutableState = {
-      ...state,
-      reasoningState: "done",
-      activeReasoningId: null,
-    };
-    return upsertAssistantReasoning(deps, nextState);
-  },
-  tool_call: (data, state, deps) => {
-    const toolName = data.toolCall?.name ?? "";
-    const statusText = TOOL_PROGRESS_LABELS[toolName] ?? `Running ${toolName}...`;
-    const nextText = state.fullContent || `*${statusText}*`;
-    return appendAssistantMessage(deps, state, nextText);
-  },
-  tool_result: (data, state, deps) => {
-    if (data.toolName === "add_to_ledger" || data.toolName === "exclude_study") {
-      deps.emitLedgerChanged();
-    }
-    if (state.aiMessageCreated && !state.fullContent) {
-      deps.updateMessages((messages) =>
-        messages.map((msg) =>
-          msg.id === deps.aiMessageId ? { ...msg, text: "*Processing results...*" } : msg
-        )
-      );
-    }
-    return state;
-  },
-  run_start: (data, state, deps) => {
-    const runId = data.runId ?? "";
-    deps.setCurrentRunId(data.runId ?? null);
-    let effectiveConvId = state.effectiveConvId;
-    if (data.conversationId && data.conversationId !== effectiveConvId) {
-      effectiveConvId = data.conversationId;
-      deps.syncConversationId(data.conversationId);
-    }
-    return { ...state, localRunId: runId, effectiveConvId };
-  },
-  run_end: (_data, state, deps) => {
-    deps.setCurrentRunId(null);
-    return state;
-  },
-  conversation_title: (data, state, deps) => {
-    const targetId = data.conversationId || state.effectiveConvId;
-    const nextTitle = data.conversationTitle?.trim();
-    if (targetId && nextTitle) {
-      deps.upsertConversationTitle(targetId, nextTitle);
-    }
-    return state;
-  },
-  artifact: (data, state, deps) => {
-    const artType = (data.artifactType ?? "plan") as ArtifactType;
-    const artStatus = (data.artifactStatus ?? "proposed") as ArtifactStatus;
-    const artTitle = data.artifactTitle ?? "Artifact";
-    const artifactData: ArtifactData = {
-      id: data.artifactId ?? `art-${Date.now()}`,
-      runId: state.localRunId,
-      projectId: deps.projectId,
-      conversationId: state.effectiveConvId ?? null,
+  const artifactMessage: CopilotMessage = {
+    id: `artifact-${artifactData.id}`,
+    sender: "ai",
+    text: `[${artType}] ${artTitle}`,
+    createdAt: new Date().toISOString(),
+    context: { page: deps.page, section: deps.section },
+    artifact: {
+      id: artifactData.id,
       type: artType,
       status: artStatus,
       title: artTitle,
-      payload: data.artifactPayload ?? {},
-      version: data.artifactVersion ?? 1,
-      sourceEventId: null,
-      appliedAt: null,
-      reviewedAt: null,
-      reviewNote: null,
-      createdAt: new Date().toISOString(),
-    };
-    deps.upsertArtifact(artifactData);
+      payload: (payload.artifactPayload ?? {}) as Record<string, unknown>,
+      version: payload.artifactVersion ?? 1,
+    },
+  };
+  deps.updateMessages((messages) => [...messages, artifactMessage]);
+}
 
-    const artifactMessage: CopilotMessage = {
-      id: `artifact-${artifactData.id}`,
-      sender: "ai",
-      text: `[${artType}] ${artTitle}`,
-      createdAt: new Date().toISOString(),
-      context: { page: deps.page },
-      artifact: {
-        id: artifactData.id,
-        type: artType,
-        status: artStatus,
-        title: artTitle,
-        payload: (data.artifactPayload ?? {}) as Record<string, unknown>,
-        version: data.artifactVersion ?? 1,
-      },
-    };
-    deps.updateMessages((messages) => [...messages, artifactMessage]);
-    return state;
-  },
-  progress: (data, state, deps) => {
-    const progressText = data.progressMessage ?? "Working...";
-    if (!state.aiMessageCreated) {
-      return appendAssistantMessage(deps, state, `*${progressText}*`);
+function applyIntent(
+  deps: StreamChunkDeps,
+  state: StreamMutableState,
+  intent: SharedStreamIntent,
+) {
+  switch (intent.type) {
+    case "assistant_upsert": {
+      upsertAssistantMessage(deps, intent);
+      return;
     }
-    if (!state.fullContent) {
-      deps.updateMessages((messages) =>
-        messages.map((msg) =>
-          msg.id === deps.aiMessageId ? { ...msg, text: `*${progressText}*` } : msg
-        )
-      );
+    case "progress_upsert": {
+      // Project copilot keeps progress lightweight inside assistant bubble to avoid
+      // introducing extra timeline item types in legacy message storage.
+      if (!state.fullContent) {
+        upsertAssistantMessage(deps, {
+          type: "assistant_upsert",
+          text: `*${intent.message}*`,
+        });
+      }
+      return;
     }
-    return state;
-  },
-  choices: (data, state, deps) => {
-    if (data.choices && deps.getCurrentGen() === deps.myGen) {
-      deps.setPendingChoices(data.choices);
+    case "progress_clear": {
+      return;
     }
-    return state;
-  },
-  plan_step_update: (data, state, deps) => {
-    if (data.planId && data.stepIndex !== undefined && data.stepStatus) {
-      deps.onPlanStepUpdate?.(data.planId, data.stepIndex, data.stepStatus);
+    case "tool_activity_upsert": {
+      upsertToolActivityMessage(deps, intent);
+      return;
     }
-    return state;
-  },
-  navigate: (data, state, deps) => {
-    const url = data.navigateUrl ?? "";
-    if (url && isNavigationSafe(url)) {
-      deps.onNavigate?.(url);
+    case "artifact_emit": {
+      emitArtifactMessage(deps, state, intent);
+      return;
     }
-    return state;
-  },
-  user_input_required: (data, state, deps) => {
-    if (data.userInputRequest && deps.getCurrentGen() === deps.myGen) {
-      deps.setPendingUserInput(data.userInputRequest);
+    case "plan_step_update": {
+      deps.onPlanStepUpdate?.(intent.planId, intent.stepIndex, intent.stepStatus);
+      return;
     }
-    return state;
-  },
-};
+    case "checkpoint_append": {
+      return;
+    }
+    case "stream_error": {
+      return;
+    }
+    case "run_set": {
+      deps.setCurrentRunId(intent.runId);
+      return;
+    }
+    case "conversation_sync": {
+      deps.syncConversationId(intent.conversationId);
+      return;
+    }
+    case "conversation_title": {
+      const conversationId = intent.conversationId;
+      if (!conversationId) return;
+      deps.upsertConversationTitle(conversationId, intent.title);
+      return;
+    }
+    case "choices_set": {
+      if (deps.getCurrentGen() === deps.myGen) {
+        deps.setPendingChoices(intent.choices);
+      }
+      return;
+    }
+    case "user_input_set": {
+      if (deps.getCurrentGen() === deps.myGen) {
+        deps.setPendingUserInput(intent.request);
+      }
+      return;
+    }
+    case "user_input_append": {
+      appendUserInputMessage(deps, intent);
+      return;
+    }
+    case "navigate": {
+      if (intent.url && isNavigationSafe(intent.url)) {
+        deps.onNavigate?.(intent.url);
+      }
+      return;
+    }
+    case "ledger_changed": {
+      deps.emitLedgerChanged();
+      return;
+    }
+  }
+}
 
 export function handleProjectCopilotStreamChunk(
   data: AIStreamChunk,
   state: StreamMutableState,
-  deps: StreamChunkDeps
+  deps: StreamChunkDeps,
 ): StreamMutableState {
-  const handler = chunkHandlers[data.type];
-  if (!handler) return state;
-  return handler(data, state, deps);
+  const reduced = reduceSharedStreamChunk(state, data, {
+    page: deps.page,
+    section: deps.section,
+  });
+  for (const intent of reduced.intents) {
+    deps.onIntent?.(intent);
+    applyIntent(deps, reduced.state, intent);
+  }
+  return reduced.state;
 }

@@ -5,7 +5,7 @@
  */
 
 import type { ArtifactType, ArtifactStatus } from "./artifacts";
-import type { UserInputQuestionType, UserInputOption } from "./ai";
+import type { CopilotPage, UserInputQuestionType, UserInputOption } from "./ai";
 
 // ── Attachment (carried on user messages) ────────────────────────────────────
 
@@ -23,6 +23,7 @@ export type TimelineItem =
     | TimelineUserMessage
     | TimelineAssistantMessage
     | TimelineArtifact
+    | TimelineToolActivity
     | TimelineProgress
     | TimelineCheckpoint
     | TimelineError
@@ -60,6 +61,19 @@ export interface TimelineArtifact {
     createdAt: string;
 }
 
+export interface TimelineToolActivity {
+    type: "tool_activity";
+    id: string;
+    callId: string;
+    toolName: string;
+    status: "queued" | "running" | "done" | "failed";
+    summary?: string;
+    startedAt: string;
+    updatedAt: string;
+    completedAt?: string;
+    createdAt: string;
+}
+
 export interface TimelineProgress {
     type: "progress";
     id: string;
@@ -87,6 +101,8 @@ export interface TimelineUserInputRequest {
     type: "user_input_request";
     id: string;
     callId: string;
+    page?: CopilotPage;
+    section?: string;
     question: string;
     questionType: UserInputQuestionType;
     options?: UserInputOption[];

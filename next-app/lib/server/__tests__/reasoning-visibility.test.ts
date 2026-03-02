@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_REASONING_MODE,
+  getReasoningBudgetTokens,
   getReasoningModePreference,
   getReasoningSummaryPreview,
+  resolveRequestReasoningMode,
   setReasoningModePreference,
 } from "@/lib/ai/reasoning-visibility";
 
@@ -50,5 +52,19 @@ describe("reasoning visibility helpers", () => {
     const preview = getReasoningSummaryPreview(longText, 500);
     expect(preview.truncated).toBe(true);
     expect(preview.text.length).toBe(503);
+  });
+
+  it("returns conservative reasoning budgets by mode", () => {
+    expect(getReasoningBudgetTokens("off")).toBeUndefined();
+    expect(getReasoningBudgetTokens("summary")).toBe(512);
+    expect(getReasoningBudgetTokens("full")).toBe(1024);
+  });
+
+  it("clamps request reasoning mode for non-reasoning models without mutating preference", () => {
+    withMockWindow();
+    setReasoningModePreference("summary");
+
+    expect(resolveRequestReasoningMode("summary", "gpt-5-mini")).toBe("off");
+    expect(getReasoningModePreference()).toBe("summary");
   });
 });

@@ -26,9 +26,11 @@ import {
   updateProjectMemoryAction,
   archiveProjectMemoryAction,
   deleteProjectMemoryAction,
-  type CreateProjectMemoryInput,
-  type UpdateProjectMemoryInput,
 } from "@/app/actions/memory";
+import type {
+  CreateProjectMemoryInput,
+  UpdateProjectMemoryInput,
+} from "@/lib/schemas/memory";
 import { addProjectDataChangedListener } from "@/lib/project-data-events";
 
 type ProjectMemoryContextValue = {

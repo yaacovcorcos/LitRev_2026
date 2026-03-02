@@ -37,6 +37,7 @@ import {
     type SelectableModelId,
     type ReasoningSupportTier,
 } from "@/lib/ai/config";
+import { recordChatUnificationMetric } from "@/lib/ai/chat-unification-telemetry";
 import type {
     PendingAttachment,
     ProjectCopilotContextValue,
@@ -350,11 +351,53 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
 
     const clearChoices = useCallback(() => setPendingChoices([]), []);
 
-    const answerUserInput = useCallback((callId: string, answer: string, page?: CopilotPage) => {
+    const answerUserInput = useCallback((callId: string, answer: string, page?: CopilotPage, section?: string) => {
         setPendingUserInput(null);
+        const existing = stateRef.current.messages.find(
+            (message) => message.userInputRequest?.callId === callId
+        );
+        const resolvedPage = page ?? existing?.context?.page ?? "overview";
+        const resolvedSection = section ?? existing?.context?.section;
+        const expectedPage = existing?.context?.page ?? null;
+        const expectedSection = existing?.context?.section ?? null;
+        const contextMismatch = Boolean(
+            existing
+            && (
+                expectedPage !== resolvedPage
+                || expectedSection !== (resolvedSection ?? null)
+            )
+        );
+
+        recordChatUnificationMetric({
+            type: "ask_user_context_mismatch",
+            surface: "project",
+            conversationId: convo.currentConversationIdRef.current,
+            payload: {
+                mismatch: contextMismatch,
+                expectedPage,
+                expectedSection,
+                resolvedPage,
+                resolvedSection: resolvedSection ?? null,
+            },
+        });
+
+        updateState((prev) => ({
+            ...prev,
+            messages: prev.messages.map((message) => {
+                if (!message.userInputRequest || message.userInputRequest.callId !== callId) return message;
+                return {
+                    ...message,
+                    userInputRequest: {
+                        ...message.userInputRequest,
+                        answered: true,
+                        answer,
+                    },
+                };
+            }),
+        }));
         // Send the answer as the next user message so the AI can continue
-        stream.sendMessage(answer, page ?? ("ai" as CopilotPage));
-    }, [stream]);
+        stream.sendMessage(answer, resolvedPage, resolvedSection);
+    }, [convo, stream, updateState, stateRef]);
 
     const value = useMemo(
         () => ({

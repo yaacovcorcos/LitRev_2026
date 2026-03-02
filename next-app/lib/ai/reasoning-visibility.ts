@@ -1,4 +1,5 @@
 import type { ReasoningMode } from "@/types/ai";
+import { getReasoningSupportTier } from "@/lib/ai/config";
 
 export const DEFAULT_REASONING_MODE: ReasoningMode = "full";
 export const MAX_REASONING_CHARS = 8000;
@@ -19,6 +20,24 @@ export const REASONING_MODE_OPTIONS: ReasoningModeOption[] = [
 
 export function shouldRequestReasoning(mode: ReasoningMode): boolean {
   return mode !== "off";
+}
+
+/**
+ * Conservative per-request reasoning budget for providers that support
+ * explicit reasoning controls (for example Anthropic thinking).
+ */
+export function getReasoningBudgetTokens(mode: ReasoningMode): number | undefined {
+  if (mode === "off") return undefined;
+  if (mode === "summary") return 512;
+  return 1024;
+}
+
+/**
+ * Runtime clamp only: keep stored user preference intact, but force requests
+ * to "off" when the selected model has no reasoning support.
+ */
+export function resolveRequestReasoningMode(preferredMode: ReasoningMode, modelId: string): ReasoningMode {
+  return getReasoningSupportTier(modelId) === "none" ? "off" : preferredMode;
 }
 
 export function resolveReasoningMode(input?: ReasoningMode, includeReasoning?: boolean): ReasoningMode {

@@ -135,6 +135,15 @@
     text-align: left;
 }
 
+.reasoningState {
+    margin-left: auto;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+}
+
 .reasoningToggle :global(.material-icons-round) {
     font-size: 16px;
 }
@@ -316,6 +325,71 @@
     font-size: 18px;
     transform: scale(0.83);
     opacity: 0.6;
+}
+
+.toolActivityCard {
+    border: 1px solid var(--glass-border);
+    background: rgba(var(--rgb-ui-surface), 0.75);
+    border-radius: 12px;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.toolActivityCard[data-status="running"] {
+    border-color: rgba(var(--rgb-accent-primary), 0.35);
+}
+
+.toolActivityCard[data-status="done"] {
+    border-color: rgba(var(--rgb-color-success), 0.35);
+}
+
+.toolActivityCard[data-status="failed"] {
+    border-color: rgba(var(--rgb-color-danger), 0.4);
+}
+
+.toolActivityHead {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+.toolActivityIcon {
+    font-size: 16px;
+    color: var(--text-muted);
+}
+
+.toolActivityTitle {
+    font-size: 13px;
+    color: var(--text-primary);
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.toolActivityState {
+    margin-left: auto;
+    font-size: 11px;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.toolActivitySummary {
+    margin: 0;
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--text-secondary);
+}
+
+.toolActivityMeta {
+    margin: 0;
+    font-size: 11px;
+    line-height: 1.4;
+    color: var(--text-muted);
 }
 
 .suggestRow {

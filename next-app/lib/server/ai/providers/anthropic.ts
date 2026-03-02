@@ -12,12 +12,30 @@
  */
 
 import Anthropic from "@anthropic-ai/sdk";
-import type { AIMessage, AIModel, AIResponse, ChatOptions, AIStreamChunk, ToolCall } from "@/types/ai";
+import type { AIMessage, AIModel, AIResponse, ChatOptions, AIStreamChunk, ToolCall, ReasoningMode } from "@/types/ai";
 import { BaseAIProvider } from "./base";
 import { AI_CONFIG, AVAILABLE_MODELS } from "@/lib/ai/config";
 import { parseToolArgs } from "../json-repair";
 import { extractProviderErrorMetadata } from "./error-metadata";
 import { normalizeProviderMessages } from "./message-normalization";
+const MAX_REASONING_BUDGET_TOKENS = 32768;
+
+export function computeAnthropicThinkingBudget(
+    maxTokens: number,
+    requestedBudgetTokens?: number,
+    reasoningMode?: ReasoningMode,
+): number | null {
+    const safeMaxTokens = Number.isFinite(maxTokens) ? Math.max(0, Math.floor(maxTokens)) : AI_CONFIG.defaultMaxTokens;
+    if (safeMaxTokens <= 1) return null;
+
+    const modeDefault = reasoningMode === "summary" ? 512 : 1024;
+    const requested = Number.isFinite(requestedBudgetTokens as number)
+        ? Math.floor(requestedBudgetTokens as number)
+        : modeDefault;
+
+    const boundedRequested = Math.min(MAX_REASONING_BUDGET_TOKENS, Math.max(1, requested));
+    return Math.min(boundedRequested, safeMaxTokens - 1);
+}
 
 export class AnthropicProvider extends BaseAIProvider {
     readonly id = "anthropic";
@@ -106,12 +124,13 @@ export class AnthropicProvider extends BaseAIProvider {
     ): AsyncIterable<AIStreamChunk> {
         const client = this.getClient();
         const model = options?.model || AI_CONFIG.defaultModel;
+        const maxTokens = options?.maxTokens ?? AI_CONFIG.defaultMaxTokens;
 
         const { system, messages: anthropicMessages } = this.convertMessages(messages, options?.systemPrompt);
 
         const params: Anthropic.MessageCreateParams = {
             model,
-            max_tokens: options?.maxTokens ?? AI_CONFIG.defaultMaxTokens,
+            max_tokens: maxTokens,
             messages: anthropicMessages,
             stream: true,
         };
@@ -135,10 +154,17 @@ export class AnthropicProvider extends BaseAIProvider {
         // Anthropic extended thinking is opt-in.
         // Keep budget bounded to prevent runaway token spend.
         if (options?.includeReasoning) {
-            params.thinking = {
-                type: "enabled",
-                budget_tokens: Math.max(512, Math.min(options.reasoningBudgetTokens ?? 4096, 32768)),
-            } as Anthropic.ThinkingConfigParam;
+            const thinkingBudget = computeAnthropicThinkingBudget(
+                maxTokens,
+                options.reasoningBudgetTokens,
+                options.reasoningMode,
+            );
+            if (thinkingBudget && thinkingBudget > 0) {
+                params.thinking = {
+                    type: "enabled",
+                    budget_tokens: thinkingBudget,
+                } as Anthropic.ThinkingConfigParam;
+            }
         }
 
         let totalContent = "";

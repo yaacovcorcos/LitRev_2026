@@ -16,7 +16,7 @@ import remarkGfm from "remark-gfm";
 import { markdownComponents } from "../markdown/CodeBlock";
 import type { CopilotMessage } from "@/lib/projectCopilotStorage";
 import type { TimelineItem, TimelineArtifact, TimelineUserInputRequest } from "@/types/timeline";
-import type { ReasoningMode } from "@/types/ai";
+import type { CopilotPage, ReasoningMode } from "@/types/ai";
 import type { AgentMode } from "@/types/agent";
 import type {
     ArtifactType,
@@ -102,6 +102,44 @@ const BATCH_APPROVABLE_TYPES: ReadonlySet<ArtifactType> = new Set<ArtifactType>(
     "memory_proposal",
     "memory_forget_proposal",
 ]);
+
+const TOOL_ACTIVITY_META: Record<"queued" | "running" | "done" | "failed", { icon: string; label: string }> = {
+    queued: { icon: "schedule", label: "Queued" },
+    running: { icon: "sync", label: "Running" },
+    done: { icon: "check_circle", label: "Done" },
+    failed: { icon: "error", label: "Failed" },
+};
+
+function parseTimestampMs(value?: string): number | null {
+    if (!value) return null;
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed) ? parsed : null;
+}
+
+function formatDurationMs(durationMs: number): string {
+    if (durationMs < 1000) return `${durationMs}ms`;
+    if (durationMs < 10_000) return `${(durationMs / 1000).toFixed(1)}s`;
+    if (durationMs < 60_000) return `${Math.round(durationMs / 1000)}s`;
+    const minutes = Math.floor(durationMs / 60_000);
+    const seconds = Math.round((durationMs % 60_000) / 1000);
+    return `${minutes}m ${seconds}s`;
+}
+
+function getToolActivityTimingText(item: Extract<TimelineItem, { type: "tool_activity" }>): string {
+    const started = parseTimestampMs(item.startedAt);
+    const completed = parseTimestampMs(item.completedAt);
+
+    if (item.status === "running") return "In progress";
+    if (item.status === "done" && started !== null && completed !== null && completed >= started) {
+        return `Completed in ${formatDurationMs(completed - started)}`;
+    }
+    if (item.status === "failed" && started !== null && completed !== null && completed >= started) {
+        return `Failed after ${formatDurationMs(completed - started)}`;
+    }
+    if (item.status === "done") return "Completed";
+    if (item.status === "failed") return "Failed";
+    return "Pending";
+}
 
 function getJumpToProps(artifactType: string, projectId: string): { jumpToLink?: string; jumpToLabel?: string } {
     const mapping = ARTIFACT_JUMP_MAP[artifactType];
@@ -264,13 +302,19 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
         [item.content]
     );
     const [mentionStates, setMentionStates] = useState<Record<string, MentionAddState>>({});
-    const [showReasoning, setShowReasoning] = useState(reasoningMode === "full" && isReasoningStreaming);
+    const [showReasoning, setShowReasoning] = useState(reasoningMode !== "off" && isReasoningStreaming);
 
     useEffect(() => {
-        if (reasoningMode === "full" && isReasoningStreaming) {
+        if (reasoningMode !== "off" && isReasoningStreaming) {
             setShowReasoning(true);
         }
     }, [isReasoningStreaming, reasoningMode]);
+
+    const reasoningStateLabel = isReasoningStreaming
+        ? "Live"
+        : item.reasoning?.truncated
+            ? "Truncated"
+            : undefined;
 
     useEffect(() => {
         if (reasoningMode !== "summary") {
@@ -326,6 +370,9 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
                                             ? "Reasoning (summary)"
                                             : "Reasoning"}
                                 </span>
+                                {reasoningStateLabel ? (
+                                    <span className={styles.reasoningState}>{reasoningStateLabel}</span>
+                                ) : null}
                             </button>
                             {showReasoning && (
                                 <div className={styles.reasoningPanel}>
@@ -513,7 +560,7 @@ export type TimelineRendererProps = {
     /** Optional explicit project ID override (used in /ai route where useParams has no project id). */
     projectId?: string;
     /** Callback when user answers a structured ask_user question */
-    onAnswerUserInput?: (callId: string, answer: string) => void;
+    onAnswerUserInput?: (callId: string, answer: string, page?: CopilotPage, section?: string) => void;
     /** Whether older messages are available to load */
     hasMore?: boolean;
     /** Whether older messages are currently loading */
@@ -1092,6 +1139,31 @@ export function TimelineRenderer({
                     </div>
                 );
 
+            case "tool_activity": {
+                const meta = TOOL_ACTIVITY_META[item.status];
+                const timingText = getToolActivityTimingText(item);
+                const summary = item.summary?.trim();
+                return (
+                    <div
+                        key={item.id}
+                        className={styles.toolActivityCard}
+                        data-status={item.status}
+                        role="status"
+                        aria-live="polite"
+                    >
+                        <div className={styles.toolActivityHead}>
+                            <span className={`material-icons-round ${styles.toolActivityIcon}`}>
+                                {meta.icon}
+                            </span>
+                            <span className={styles.toolActivityTitle}>{item.toolName}</span>
+                            <span className={styles.toolActivityState}>{meta.label}</span>
+                        </div>
+                        <p className={styles.toolActivityMeta}>{timingText}</p>
+                        {summary ? <p className={styles.toolActivitySummary}>{summary}</p> : null}
+                    </div>
+                );
+            }
+
             case "progress":
                 return (
                     <div key={item.id}>
@@ -1141,7 +1213,13 @@ export function TimelineRenderer({
                         context={item.context}
                         answered={item.answered}
                         answer={item.answer}
-                        onAnswer={(answer) => onAnswerUserInput?.(item.callId, answer)}
+                        onAnswer={(answer) => onAnswerUserInput?.(item.callId, answer, item.page, item.section)}
+                        onDismiss={() => onAnswerUserInput?.(
+                            item.callId,
+                            "Dismissed — please proceed without my input.",
+                            item.page,
+                            item.section
+                        )}
                     />
                 );
 

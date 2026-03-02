@@ -12,6 +12,7 @@ import { AutonomySettings } from "./copilot/AutonomySettings";
 import { ReasoningModeDropdown } from "./copilot/ReasoningModeDropdown";
 import { ConversationPicker } from "./ui/ConversationPicker";
 import { decideCopilotWheelContainment } from "./copilot/scrollContainment";
+import { recordChatUnificationMetric } from "@/lib/ai/chat-unification-telemetry";
 import styles from "./ProjectCopilot.module.css";
 
 export type SuggestionConfig = {
@@ -80,6 +81,7 @@ export function ProjectCopilot({
         shouldOfferSummary,
         summarizeAndRefresh,
         isSummarizing,
+        selectedModel,
         // Autonomy settings (Phase 7)
         setShowAutonomySettings,
         // Structured ask_user input
@@ -152,15 +154,26 @@ export function ProjectCopilot({
             .reverse()
             .find((message) => message.sender === "user" && message.text.trim().length > 0);
         if (!lastUserMessage) return;
+        recordChatUnificationMetric({
+            type: "retry_model_continuity",
+            surface: "project",
+            conversationId: currentConversationId,
+            payload: {
+                preserved: Boolean(selectedModel),
+                expectedModel: selectedModel ?? null,
+                actualModel: selectedModel ?? null,
+                source: "retry_action",
+            },
+        });
         sendMessage(
             lastUserMessage.text,
             lastUserMessage.context?.page ?? page,
             lastUserMessage.context?.section,
-            undefined,
+            selectedModel,
             undefined,
             studyId
         );
-    }, [isLoading, messages, page, sendMessage, studyId]);
+    }, [currentConversationId, isLoading, messages, page, sendMessage, selectedModel, studyId]);
 
     const resumeFailedPlan = useCallback(() => {
         if (isLoading) return;

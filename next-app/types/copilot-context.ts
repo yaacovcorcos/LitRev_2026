@@ -164,7 +164,7 @@ export type ProjectCopilotContextValue = {
     /** Active ask_user question pending user response */
     pendingUserInput: UserInputRequest | null;
     /** Answer the pending ask_user question (clears it and sends answer as message) */
-    answerUserInput: (callId: string, answer: string, page?: CopilotPage) => void;
+    answerUserInput: (callId: string, answer: string, page?: CopilotPage, section?: string) => void;
 
     // Message pagination
     /** Whether there are older messages available to load */
