@@ -543,34 +543,3 @@ export async function getPRISMAStatsAction(projectId: string): Promise<ActionRes
         }),
     );
 }
-
-// ============================================================================
-// EXPORT TYPES FOR CLIENT-SIDE USE
-// ============================================================================
-
-export type {
-    // User Memory
-    CreateUserMemoryInput,
-    UpdateUserMemoryInput,
-    UserMemoryType,
-    UserMemoryStatus,
-
-    // Project Memory
-    CreateProjectMemoryInput,
-    UpdateProjectMemoryInput,
-    ProjectMemoryType,
-    ProjectMemoryCategory,
-    ProjectMemoryStatus,
-    ProjectMemoryImportance,
-
-    // Study Memory
-    CreateStudyMemoryInput,
-    UpdateStudyMemoryInput,
-    StudyMemoryType,
-    StudyMemoryCategory,
-    StudyMemorySource,
-
-    // Memory Retrieval
-    MemoryContext,
-    RetrievedMemory,
-};

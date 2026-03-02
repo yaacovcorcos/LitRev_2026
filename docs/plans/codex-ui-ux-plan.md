@@ -28,6 +28,7 @@ It consolidates all open UI/UX work into one prioritized sequence so implementat
 - The design system now includes first-class typography, shadow, z-index, and motion scales in `styles/tokens.css`, with `stylelint` warn-mode governance to surface raw value drift.
 - High-traffic UI modules (`ledger`, `study detail`, `memory`, `notes`, `protocol`, `login`) now consume shared token scales for typography/motion/layering and reduced hardcoded palette/shadow usage.
 - Timeline recovery UX now maps stream/plan failure messages into recoverable error cards with explicit `Retry` and `Resume` actions wired to resend the last user intent or continue unfinished plan steps.
+- Copilot wheel containment no longer hard-locks scroll input when timeline overflow is unavailable, and ask-user overlays are bounded with local scrolling to prevent panel lockups.
 
 ## Recently Completed
 - `CUX-007` Added visible tool/run failure recovery UX by converting recoverable failures to timeline error cards and wiring `Retry`/`Resume` actions in both copilot surfaces.

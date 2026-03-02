@@ -715,6 +715,9 @@
 
 .userInputOverlay {
     padding: 8px 8px 0;
+    max-height: min(44vh, 320px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
 }
 
 /* Empty class used to target the attach button separately from voice */

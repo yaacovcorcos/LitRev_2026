@@ -27,10 +27,11 @@ import {
   archiveProjectMemoryAction,
   deleteProjectMemoryAction,
   searchProjectMemoriesAction,
-  type CreateProjectMemoryInput,
-  type UpdateProjectMemoryInput,
 } from "@/app/actions/memory";
 import { addProjectDataChangedListener } from "@/lib/project-data-events";
+
+type CreateProjectMemoryInput = Parameters<typeof createProjectMemoryAction>[0];
+type UpdateProjectMemoryInput = Parameters<typeof updateProjectMemoryAction>[1];
 
 type ProjectMemoryContextValue = {
   memories: ProjectMemory[];

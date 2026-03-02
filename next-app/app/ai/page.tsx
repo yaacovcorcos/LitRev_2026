@@ -24,6 +24,7 @@ import type { ArtifactStatus, ArtifactType } from "@/types/artifacts";
 import type { TimelineItem } from "@/types/timeline";
 import { processAIStream } from "@/lib/ai/stream-processor";
 import { routeToAgent } from "@/lib/agent/router";
+import { isPlanPausedForInput } from "@/lib/agent/plan-run";
 import { dispatchProjectDataChanged, getChangedDomainsForAcceptedArtifact } from "@/lib/project-data-events";
 import { isNavigationSafe } from "@/lib/ai/navigation-safety";
 import {
@@ -1177,22 +1178,9 @@ export default function AIView() {
           }
 
           if (data.type === "user_input_required" && data.userInputRequest) {
+            // /ai shows ask_user via composer overlay only.
+            // Avoid duplicating the same question in timeline + input.
             setPendingUserInput(data.userInputRequest);
-            updateConversationTimeline(convId, (items) => [
-              ...items,
-              {
-                type: "user_input_request" as const,
-                id: `user-input-${data.userInputRequest!.callId}`,
-                callId: data.userInputRequest!.callId,
-                question: data.userInputRequest!.question,
-                questionType: data.userInputRequest!.questionType,
-                options: data.userInputRequest!.options,
-                header: data.userInputRequest!.header,
-                context: data.userInputRequest!.context,
-                answered: false,
-                createdAt: new Date().toISOString(),
-              },
-            ]);
             return;
           }
 
@@ -1661,9 +1649,10 @@ export default function AIView() {
     }
 
     const didComplete = runStatus === "completed";
+    const pausedForInput = isPlanPausedForInput(stopReason, runStatus);
     setPlanStatus(didComplete ? "accepted" : "proposed");
 
-    if (!didComplete && streamGenRef.current === myGen) {
+    if (!didComplete && !pausedForInput && streamGenRef.current === myGen) {
       const reason = errorMessage ?? (stopReason ? `Execution stopped: ${stopReason}` : "Execution did not complete.");
       if (!aiMessageCreated) {
         updateConversationTimeline(convId, (items) => [

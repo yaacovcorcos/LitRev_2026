@@ -52,7 +52,8 @@ export function decideCopilotWheelContainment({
     }
 
     if (!isElementVerticallyScrollable(timelineElement)) {
-        return { shouldPreventDefault: true, shouldRedirectToTimeline: false };
+        // Never hard-lock wheel input when the timeline can't scroll.
+        return { shouldPreventDefault: false, shouldRedirectToTimeline: false };
     }
 
     return { shouldPreventDefault: true, shouldRedirectToTimeline: true };

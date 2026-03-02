@@ -19,6 +19,7 @@ import type { ChoiceOption, CopilotPage, ReasoningMode, StreamPhase, UserInputRe
 import { handleProjectCopilotStreamChunk } from "@/contexts/project-copilot-stream-events";
 import type { ArtifactActionContract } from "@/lib/artifacts/action-contract";
 import { shouldRequestReasoning } from "@/lib/ai/reasoning-visibility";
+import { shouldShowPlanFailureMessage } from "@/lib/agent/plan-run";
 import type { PendingAttachment, ApproveArtifactsBatchResult } from "@/types/copilot-context";
 import type { useCopilotConversations } from "@/hooks/useCopilotConversations";
 
@@ -481,7 +482,12 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                     : msg
             ),
         }));
-        if (!didComplete && !result.aborted && result.success) {
+        if (shouldShowPlanFailureMessage({
+            success: result.success,
+            aborted: result.aborted,
+            runStatus: result.runStatus,
+            stopReason: result.stopReason,
+        })) {
             const reason = result.errorMessage
                 ?? (result.stopReason ? `Execution stopped: ${result.stopReason}` : "Execution did not complete.");
             const feedback: CopilotMessage = {

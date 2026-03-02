@@ -52,6 +52,7 @@ import { resolveReasoningMode } from "@/lib/ai/reasoning-visibility";
 import { createIdempotencyMiddleware, executeWithToolMiddleware, type ToolExecutionRequest, type ToolMiddleware } from "./tool-middleware";
 import { resolveAuthenticatedIdentity } from "@/lib/server/auth/identity";
 import { computeLedgerCounts, computeStudyLedger, type LedgerCounts, type StudyLedgerSnapshot } from "@/lib/server/ledger-utils";
+import { getUnconsumedPlanStepStatus, isPlanPausedForInput } from "@/lib/agent/plan-run";
 import {
     mapToolToProgressMessage,
     isStudyLedgerSnapshot,
@@ -1268,9 +1269,10 @@ class AIService {
             // ── Plan execution finalization ──
             if (executionMode && options?.planId && planData) {
                 const { completePlanExecution, failPlanExecution } = await import("@/lib/server/agent/plan-execution");
+                const pausedForInput = isPlanPausedForInput(finalStopReason, runStatus);
 
                 // Mark unconsumed selected steps based on stop reason
-                const terminalStatus = finalStopReason === "natural" ? "skipped" as const : "failed" as const;
+                const terminalStatus = getUnconsumedPlanStepStatus(finalStopReason);
                 for (const step of stepQueue) {
                     if (!step.consumed) {
                         step.finalStatus = terminalStatus;
@@ -1286,7 +1288,13 @@ class AIService {
 
                 // Determine plan outcome: every selected step must complete.
                 const allCompleted = stepQueue.length > 0 && stepQueue.every(s => s.finalStatus === "completed");
-                if (!allCompleted || finalStopReason === "cancelled" || finalStopReason === "error") {
+                if (allCompleted && finalStopReason !== "cancelled" && finalStopReason !== "error") {
+                    await completePlanExecution(options.planId, finalSteps);
+                } else if (pausedForInput) {
+                    // User-input pauses are intentional checkpoints, not failures.
+                    await failPlanExecution(options.planId, finalSteps);
+                    runStatus = "paused";
+                } else {
                     const reason = finalStopReason === "cancelled"
                         ? "Cancelled by user"
                         : finalStopReason === "error"
@@ -1296,8 +1304,6 @@ class AIService {
                     if (finalStopReason !== "cancelled") {
                         runStatus = "failed";
                     }
-                } else {
-                    await completePlanExecution(options.planId, finalSteps);
                 }
             }
 

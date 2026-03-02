@@ -104,7 +104,7 @@ describe("scrollContainment", () => {
         expect(decision.shouldRedirectToTimeline).toBe(false);
     });
 
-    it("blocks wheel escape when timeline itself cannot scroll", () => {
+    it("does not hard-block wheel when timeline itself cannot scroll", () => {
         const panel = document.createElement("section");
         const header = document.createElement("div");
         const timeline = document.createElement("div");
@@ -119,7 +119,7 @@ describe("scrollContainment", () => {
             timelineElement: timeline,
         });
 
-        expect(decision.shouldPreventDefault).toBe(true);
+        expect(decision.shouldPreventDefault).toBe(false);
         expect(decision.shouldRedirectToTimeline).toBe(false);
     });
 

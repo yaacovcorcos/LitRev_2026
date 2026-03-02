@@ -18,6 +18,7 @@
 - **P10 Rollout Flags:** Mention flow and scoping decision-card behavior are feature-flagged (`NEXT_PUBLIC_CHAT_STUDY_MENTIONS_V1`, `NEXT_PUBLIC_SCOPING_DECISION_CARD_V2`).
 - **Scoping Mode (P10):** Dedicated pre-protocol routing and prompt behavior is live with low-autonomy batch search-pack planning and deterministic protocol handoff (`update_protocol` proposal-only).
 - **Reasoning Stream Support (Current):** `reasoning_*` stream events are currently wired end-to-end for Anthropic responses. OpenAI/xAI models can run normally, but their provider adapters do not yet emit normalized reasoning stream parts in the same pipeline.
+- **Plan Pause Semantics:** `paused_for_input` is treated as an intentional checkpoint (not execution failure); remaining selected plan steps stay retryable (`pending`) and UI failure banners are suppressed for paused runs.
 
 ## Active Tasks
 *Work that is entirely unimplemented or currently broken.*
