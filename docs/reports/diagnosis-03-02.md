@@ -7,7 +7,7 @@ Method: `tsc` diagnostics, import/reference scans, duplication spot-checks, and 
 ## Current Status Snapshot
 
 - Track 1 cleanup status: complete.
-- Strict-unused status: `TS6133=0`, `TS6196=0` (see `R1C`, `R2A`, `R2B`, `R2C` entries in Section 9.5).
+- Strict-unused status: `TS6133=0`, `TS6196=0` (see `R1A-R1C` entries in Section 9.5).
 - Deleted dead files: `next-app/lib/server/test-db.ts`, `next-app/data/projects.ts`, `next-app/lib/chatStorage.ts`.
 - Decision gate: `next-app/lib/seedLocalStorage.ts` retained as legacy/manual bootstrap utility until explicit retirement request (`R3`).
 
