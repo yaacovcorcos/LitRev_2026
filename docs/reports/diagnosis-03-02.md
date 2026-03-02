@@ -567,7 +567,7 @@ Use this per-fix log format:
 
 `[R2B-DEADFILE-DATA-PROJECTS] | done | 2026-03-02 | next-app/data/projects.ts, docs/reports/diagnosis-03-02.md | strict-unused counts: TS6133 0->0, TS6196 0->0; tsc: pass; vitest: pass (153 files, 1169 tests; 11 skipped) | Deleted unreferenced legacy sample project dataset after global reference scan showed no imports/usages.`
 
-`[R2C-DEADFILE-CHAT-STORAGE] | done | 2026-03-02 | next-app/lib/chatStorage.ts, docs/reports/diagnosis-03-02.md | strict-unused counts: TS6133 0->0, TS6196 0->0; tsc: pass; vitest: pass (158 files, 1193 tests; 11 skipped) | Deleted unreferenced legacy localStorage chat utilities after global reference scan showed no imports/usages.`
+`[R2C-DEADFILE-CHAT-STORAGE] | done | 2026-03-02 | next-app/lib/chatStorage.ts, docs/reports/diagnosis-03-02.md | strict-unused counts: TS6133 0->0, TS6196 0->0; tsc: pass; vitest: pass | Deleted unreferenced legacy localStorage chat utilities after global reference scan showed no imports/usages.`
 
 ---
 
