@@ -98,6 +98,7 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
             type: "retry_model_continuity",
             surface: "project",
             conversationId: currentConversationId,
+            projectId,
             payload: {
                 preserved: Boolean(selectedModel),
                 expectedModel: selectedModel ?? null,
@@ -111,7 +112,7 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
             lastUserMessage.context?.section,
             selectedModel
         );
-    }, [currentConversationId, isLoading, messages, sendMessage, selectedModel]);
+    }, [currentConversationId, isLoading, messages, projectId, sendMessage, selectedModel]);
 
     const resumeFailedPlan = useCallback(() => {
         if (isLoading) return;

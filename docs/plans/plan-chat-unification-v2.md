@@ -9,7 +9,8 @@ Unify `/ai`, project copilot, and popup chat onto one shared chat engine while k
 3. Completed: U1.2 project adapter migration.
 4. Completed: U1.3 and U1.4 `/ai` send and plan stream paths now run through the shared reducer runtime.
 5. Completed: U1.5 anti-duplication CI guard is now enforced in CI by default (`--mode=enforce`).
-6. Pending: U1.6 burn-in gate validation and U3 popup migration to shared runtime.
+6. In progress: U1.6 telemetry ingestion is implemented end-to-end (client metric emission + authenticated server sink + DB storage + run-end metric capture).
+7. Pending: U1.6 burn-in analyzer/sign-off and U3 popup migration to shared runtime.
 
 ## Non-Negotiable Constraints
 1. No feature regression in any surface.
