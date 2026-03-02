@@ -10,6 +10,7 @@ import {
   updateStudyAction,
 } from "@/app/actions/ledger";
 import type { StudyInput } from "@/lib/server/ledger";
+import { addProjectDataChangedListener } from "@/lib/project-data-events";
 
 type LedgerContextValue = {
   getStudiesByProject: (projectId: string) => Study[];
@@ -34,8 +35,9 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
 
   // Refresh a single project's studies when AI tools mutate the ledger
   useEffect(() => {
-    const handler = (e: Event) => {
-      const projectId = (e as CustomEvent).detail?.projectId as string | undefined;
+    const unsub = addProjectDataChangedListener((detail) => {
+      if (!detail.domains.includes("ledger")) return;
+      const projectId = detail.projectId;
       if (!projectId) return;
       loadedProjectsRef.current.add(projectId);
       listStudiesAction(projectId)
@@ -43,9 +45,8 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
           if (result.success) setLedgerMap((prev) => ({ ...prev, [projectId]: result.data }));
         })
         .catch(console.error);
-    };
-    window.addEventListener("litrev:ledger-changed", handler);
-    return () => window.removeEventListener("litrev:ledger-changed", handler);
+    });
+    return unsub;
   }, []);
 
   const getStudiesByProject = useCallback(

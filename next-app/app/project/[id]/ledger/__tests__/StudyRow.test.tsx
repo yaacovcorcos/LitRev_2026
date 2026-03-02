@@ -119,6 +119,7 @@ describe("StudyRow", () => {
     expect(mockOpenPopupChat).toHaveBeenCalledWith(
       expect.objectContaining({
         type: "study",
+        projectId: "project-1",
         studyId: "study-1",
         title: "Example Study",
         authors: "Smith, Lee, Patel",

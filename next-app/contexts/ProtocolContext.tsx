@@ -28,6 +28,7 @@ import {
 } from "@/types/protocol";
 import { getProtocolAction, saveProtocolAction } from "@/app/actions/protocols";
 import { dispatchProjectDataChanged } from "@/lib/project-data-events";
+import { isValidFieldPath, validateFieldValue } from "@/lib/protocol-fields";
 
 /** Context value shape */
 type ProtocolContextValue = {
@@ -77,9 +78,24 @@ type ProtocolContextValue = {
     updateQualityNotes: (value: string) => void;
     /** Update the research question */
     updateResearchQuestion: (value: string) => void;
+    /** Apply update by protocol field path */
+    applyFieldUpdate: (field: string, value: string | string[]) => void;
     /** Reset protocol to defaults */
     resetProtocol: () => void;
 };
+
+function setNestedValue(obj: Record<string, unknown>, path: string, value: unknown) {
+    const keys = path.split(".");
+    let current: Record<string, unknown> = obj;
+    for (let i = 0; i < keys.length - 1; i += 1) {
+        const key = keys[i];
+        if (typeof current[key] !== "object" || current[key] === null) {
+            current[key] = {};
+        }
+        current = current[key] as Record<string, unknown>;
+    }
+    current[keys[keys.length - 1]] = value;
+}
 
 const ProtocolContext = createContext<ProtocolContextValue | undefined>(undefined);
 
@@ -401,6 +417,21 @@ export function ProtocolProvider({ projectId, initialData, children }: ProtocolP
         [updateProtocol]
     );
 
+    const applyFieldUpdate = useCallback(
+        (field: string, value: string | string[]) => {
+            if (!isValidFieldPath(field)) return;
+            const validated = validateFieldValue(field, value);
+            if (!validated.valid) return;
+
+            updateProtocol((prev) => {
+                const next = structuredClone(prev) as ProtocolData;
+                setNestedValue(next as unknown as Record<string, unknown>, field, validated.value);
+                return next;
+            });
+        },
+        [updateProtocol],
+    );
+
     // Reset
     const resetProtocol = useCallback(() => {
         const defaults = createDefaultProtocolData();
@@ -445,6 +476,7 @@ export function ProtocolProvider({ projectId, initialData, children }: ProtocolP
             updateQualityTool,
             updateQualityNotes,
             updateResearchQuestion,
+            applyFieldUpdate,
             resetProtocol,
         }),
         [
@@ -470,6 +502,7 @@ export function ProtocolProvider({ projectId, initialData, children }: ProtocolP
             updateQualityTool,
             updateQualityNotes,
             updateResearchQuestion,
+            applyFieldUpdate,
             resetProtocol,
         ]
     );

@@ -196,9 +196,11 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                             upsertArtifact,
                             updateMessages,
                             emitLedgerChanged: () => {
-                                window.dispatchEvent(
-                                    new CustomEvent("litrev:ledger-changed", { detail: { projectId } })
-                                );
+                                dispatchProjectDataChanged({
+                                    projectId,
+                                    domains: ["ledger"],
+                                    source: "stream_tool_result",
+                                });
                             },
                             setPendingChoices,
                             setPendingUserInput,
