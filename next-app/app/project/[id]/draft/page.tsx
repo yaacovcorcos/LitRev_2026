@@ -86,6 +86,21 @@ function withCompiledCitations(state: DraftState, studies: Study[], includeNumbe
   };
 }
 
+type DraftSectionHeadingProps = {
+  id: string;
+  label: string;
+};
+
+function DraftSectionHeading({ id, label }: DraftSectionHeadingProps) {
+  return (
+    <header className={styles.manuscriptSectionHeader}>
+      <h2 id={id} className={styles.manuscriptSectionTitle}>
+        {label}
+      </h2>
+    </header>
+  );
+}
+
 function DraftContent() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
@@ -972,6 +987,7 @@ function DraftContent() {
                 {isReferencesSection ? (
                   <>
                     <div className={styles.editorSurface} style={activeFormatVars}>
+                      <DraftSectionHeading id={`section-heading-${draft.activeSection}`} label={activeSectionLabel} />
                       <pre className={styles.referencesReadOnly}>{jsonToText(draft.contentBySection.references)}</pre>
                     </div>
                     <div className={styles.helperText}>References are auto-generated from inline citations.</div>
@@ -979,6 +995,7 @@ function DraftContent() {
                 ) : (
                   <>
                     <div className={styles.editorSurface} style={activeFormatVars}>
+                      <DraftSectionHeading id={`section-heading-${draft.activeSection}`} label={activeSectionLabel} />
                       <EditorContent editor={sectionEditor} />
                     </div>
                     <div className={styles.helperText}>{activeSectionMeta?.placeholder}</div>
@@ -1019,11 +1036,7 @@ function DraftContent() {
                         }}
                         aria-labelledby={`manuscript-${section.id}`}
                       >
-                        <header className={styles.manuscriptSectionHeader}>
-                          <h2 id={`manuscript-${section.id}`} className={styles.manuscriptSectionTitle}>
-                            {section.label}
-                          </h2>
-                        </header>
+                        <DraftSectionHeading id={`manuscript-${section.id}`} label={section.label} />
                         {section.id === "references" ? (
                           <div className={styles.manuscriptEditorSurface}>
                             <pre className={styles.referencesReadOnly}>{jsonToText(draft.contentBySection.references)}</pre>
