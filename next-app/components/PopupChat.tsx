@@ -9,46 +9,14 @@ import { usePopupChat } from "@/contexts/PopupChatContext";
 import { useProjectCopilot } from "@/contexts/ProjectCopilotContext";
 import { createNoteAction } from "@/app/actions/notes";
 import { createConversation, addMessage } from "@/app/actions/conversations";
-import { AGENT_MODE_PROMPTS, buildStudyContext, sanitizeContext } from "@/lib/ai/prompts/copilot-prompts";
 import { parseNDJSONStream } from "@/lib/ai/stream-parser";
+import { formatStreamErrorForUI } from "@/lib/ai/stream-error-ui";
 import { markdownComponents } from "@/components/markdown/CodeBlock";
 import type { PopupChatContext, PopupMessage } from "@/types/popup-chat";
 import type { CopilotPage } from "@/types/ai";
 import styles from "./PopupChat.module.css";
 
 const TURN_HINT_THRESHOLD = 3;
-
-/** Build a compact system prompt for the mini-chat. */
-function buildPopupSystemPrompt(ctx: PopupChatContext): string {
-    const base = AGENT_MODE_PROMPTS.general;
-    const conciseness =
-        "\n\nThis is a quick-answer mini-chat. Be concise — aim for 2-4 sentences for simple questions, short structured lists for complex ones. The user can continue in the full copilot for deeper work.";
-
-    let contextBlock = "";
-    switch (ctx.type) {
-        case "study":
-            contextBlock = buildStudyContext({
-                id: ctx.studyId ?? "",
-                title: ctx.title,
-                authors: ctx.authors ?? "",
-                year: 0,
-                quality: "-",
-                abstract: ctx.abstract,
-            });
-            break;
-        case "protocol_section":
-            contextBlock = `\n\n[ADDITIONAL_CONTEXT]\nSection: ${sanitizeContext(ctx.section)}\n${sanitizeContext(ctx.currentContent)}`;
-            break;
-        case "criterion":
-            contextBlock = `\n\n[ADDITIONAL_CONTEXT]\nCriterion (${ctx.criterionType}): ${sanitizeContext(ctx.text)}`;
-            break;
-        case "draft_selection":
-            contextBlock = `\n\n[ADDITIONAL_CONTEXT]\nDraft section: ${sanitizeContext(ctx.section)}\nSelected text: ${sanitizeContext(ctx.selectedText)}`;
-            break;
-    }
-
-    return base + conciseness + contextBlock;
-}
 
 /** Human-readable label for the popup header badge. */
 function getContextLabel(ctx: PopupChatContext): string {
@@ -182,10 +150,8 @@ export function PopupChat({ projectId }: PopupChatProps) {
         setInput("");
         setIsStreaming(true);
 
-        // Build messages array for the API
-        const systemPrompt = buildPopupSystemPrompt(context);
+        // Build popup transcript payload for the server popup runtime (server owns system prompt).
         const apiMessages = [
-            { id: "sys", role: "system" as const, content: systemPrompt, createdAt: "" },
             ...messages.map((m) => ({
                 id: m.id,
                 role: m.role as "user" | "assistant",
@@ -205,7 +171,19 @@ export function PopupChat({ projectId }: PopupChatProps) {
             const response = await fetch("/api/ai/stream", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ messages: apiMessages }),
+                body: JSON.stringify({
+                    messages: apiMessages,
+                    popupContext: context,
+                    options: {
+                        popupMode: true,
+                        projectId: context.projectId,
+                        page: contextToPage(context),
+                        section: context.type === "protocol_section" || context.type === "draft_selection"
+                            ? context.section
+                            : undefined,
+                        agentMode: "general",
+                    },
+                }),
                 signal: controller.signal,
             });
 
@@ -241,7 +219,7 @@ export function PopupChat({ projectId }: PopupChatProps) {
         } catch (error) {
             if (error instanceof DOMException && error.name === "AbortError") return;
 
-            const errorText = `Sorry, I encountered an error: ${error instanceof Error ? error.message : "Unknown error"}`;
+            const errorText = `Sorry, I encountered an error: ${formatStreamErrorForUI(error)}`;
             setMessages((prev) => [
                 ...prev,
                 { id: aiMsgId, role: "assistant", content: fullContent ? fullContent + "\n\n" + errorText : errorText, createdAt: new Date().toISOString() },

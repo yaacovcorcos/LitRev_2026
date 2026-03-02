@@ -27,11 +27,15 @@ import { routeToAgent } from "@/lib/agent/router";
 import { dispatchProjectDataChanged, getChangedDomainsForAcceptedArtifact } from "@/lib/project-data-events";
 import { isNavigationSafe } from "@/lib/ai/navigation-safety";
 import { formatStreamErrorForUI } from "@/lib/ai/stream-error-ui";
+import { createAiStreamRuntime } from "@/lib/ai/ai-stream-runtime";
+import { recordChatUnificationMetric } from "@/lib/ai/chat-unification-telemetry";
 import {
+  getReasoningBudgetTokens,
   getReasoningModePreference,
   setReasoningModePreference,
   shouldRequestReasoning,
 } from "@/lib/ai/reasoning-visibility";
+import { USER_SELECTABLE_MODELS, type SelectableModelId } from "@/lib/ai/config";
 import { useRouter } from "next/navigation";
 import styles from "./ai-view.module.css";
 
@@ -146,7 +150,14 @@ function mapDbMessagesToTimeline(
     createdAt: artifact.createdAt,
   }));
   const getCreatedAt = (item: TimelineItem): string => {
-    if (item.type === "user_message" || item.type === "assistant_message" || item.type === "artifact" || item.type === "checkpoint" || item.type === "error") {
+    if (
+      item.type === "user_message"
+      || item.type === "assistant_message"
+      || item.type === "artifact"
+      || item.type === "tool_activity"
+      || item.type === "checkpoint"
+      || item.type === "error"
+    ) {
       return item.createdAt;
     }
     return "";
@@ -196,6 +207,11 @@ function buildTimelineMarkdown(items: TimelineItem[], title: string): string {
       lines.push("");
       continue;
     }
+    if (item.type === "tool_activity") {
+      const summary = item.summary ? ` — ${item.summary}` : "";
+      lines.push(`- Tool ${item.toolName}: ${item.status}${summary}`);
+      continue;
+    }
     if (item.type === "progress") {
       const progress = item.current !== undefined && item.total !== undefined
         ? ` (${item.current}/${item.total})`
@@ -241,6 +257,13 @@ function buildTimelinePrintHtml(items: TimelineItem[], title: string): string {
         `<section class="entry artifact"><h2>Artifact: ${escapeHtml(item.title)}</h2><p class="meta">${escapeHtml(
           `${item.artifactType} · ${item.status}`
         )}</p><pre>${escapeHtml(JSON.stringify(item.payload, null, 2))}</pre></section>`
+      );
+      continue;
+    }
+    if (item.type === "tool_activity") {
+      const summary = item.summary ? ` · ${item.summary}` : "";
+      blocks.push(
+        `<section class="entry progress"><p>Tool: ${escapeHtml(`${item.toolName} · ${item.status}${summary}`)}</p></section>`
       );
       continue;
     }
@@ -343,6 +366,7 @@ export default function AIView() {
   const [pendingUserInput, setPendingUserInput] = useState<UserInputRequest | null>(null);
   const [prefillCommand, setPrefillCommand] = useState<{ text: string; id: string } | null>(null);
   const [reasoningMode, setReasoningMode] = useState<ReasoningMode>(() => getReasoningModePreference());
+  const [selectedModel, setSelectedModel] = useState<SelectableModelId>("gpt-5.2");
 
   const [timelineByConversation, setTimelineByConversation] = useState<Record<string, TimelineItem[]>>({});
   const [isConversationLoading, setIsConversationLoading] = useState(false);
@@ -359,6 +383,20 @@ export default function AIView() {
   useEffect(() => {
     if (!isTyping) sendLockRef.current = false;
   }, [isTyping]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const stored = window.localStorage.getItem("litrev_ai_model");
+    const valid = USER_SELECTABLE_MODELS.some((m) => m.id === stored);
+    if (valid) {
+      setSelectedModel(stored as SelectableModelId);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem("litrev_ai_model", selectedModel);
+  }, [selectedModel]);
   useEffect(() => {
     activeConversationIdRef.current = activeConversationId;
   }, [activeConversationId]);
@@ -495,6 +533,36 @@ export default function AIView() {
       return updated;
     });
   }, []);
+
+  const ensureConversationTimeline = useCallback((conversationId: string) => {
+    setTimelineByConversation((prev) => ({
+      ...prev,
+      [conversationId]: prev[conversationId] ?? [],
+    }));
+  }, []);
+
+  const upsertConversationTitle = useCallback((conversationId: string, title: string) => {
+    const trimmed = title.trim();
+    if (!trimmed) return;
+    setConversations((prev) => {
+      const existing = prev.find((conv) => conv.id === conversationId);
+      if (!existing) {
+        const now = new Date().toISOString();
+        return sortConversationsByUpdatedAt([{
+          id: conversationId,
+          title: trimmed,
+          projectId: selectedProjectId ?? undefined,
+          createdAt: now,
+          updatedAt: now,
+        }, ...prev]);
+      }
+      return prev.map((conv) =>
+        conv.id === conversationId
+          ? { ...conv, title: trimmed }
+          : conv
+      );
+    });
+  }, [selectedProjectId, sortConversationsByUpdatedAt]);
 
   const cancelStream = useCallback(() => {
     streamGenRef.current++;
@@ -822,7 +890,7 @@ export default function AIView() {
   const handleSend = useCallback(async (
     rawText: string,
     currentPage: CopilotPage,
-    _section?: string,
+    section?: string,
     model?: string,
     agentMode?: AgentMode,
     _studyId?: string,
@@ -836,6 +904,7 @@ export default function AIView() {
 
     const context: ConversationContext = selectedProjectId ? "project" : "global";
     const effectiveAgentMode = agentMode ?? routeToAgent(msgText, "overview");
+    const effectiveModel = model ?? selectedModel;
 
     let convId = await ensureConversation(context);
 
@@ -877,126 +946,24 @@ export default function AIView() {
     abortControllerRef.current = controller;
 
     const aiMessageId = `m-${Date.now() + 1}`;
-    let aiMessageCreated = false;
-    let fullContent = "";
-    let reasoningContent = "";
-    let reasoningState: "streaming" | "done" = "done";
-    let reasoningTruncated = false;
-    let activeReasoningId: string | null = null;
-    let progressItemId: string | null = null;
-
-    const upsertAssistant = (content: string) => {
-      updateConversationTimeline(convId, (items) => {
-        const idx = items.findIndex((it) => it.type === "assistant_message" && it.id === aiMessageId);
-        if (idx === -1) {
-          return [
-            ...items,
-            {
-              type: "assistant_message",
-              id: aiMessageId,
-              content,
-              reasoning: reasoningContent
-                ? {
-                    text: reasoningContent,
-                    state: reasoningState,
-                    truncated: reasoningTruncated || undefined,
-                  }
-                : undefined,
-              createdAt: new Date().toISOString(),
-            },
-          ];
-        }
-
-        const next = [...items];
-        const current = next[idx] as Extract<TimelineItem, { type: "assistant_message" }>;
-        next[idx] = {
-          ...current,
-          content,
-          reasoning: reasoningContent
-            ? {
-                text: reasoningContent,
-                state: reasoningState,
-                truncated: reasoningTruncated || undefined,
-              }
-            : current.reasoning,
-        };
-        return next;
-      });
-      aiMessageCreated = true;
-    };
-
-    const upsertProgress = (message: string, current?: number, total?: number) => {
-      updateConversationTimeline(convId, (items) => {
-        if (!progressItemId) {
-          progressItemId = `progress-${Date.now()}`;
-          return [
-            ...items,
-            {
-              type: "progress",
-              id: progressItemId,
-              message,
-              current,
-              total,
-            },
-          ];
-        }
-
-        const idx = items.findIndex((it) => it.type === "progress" && it.id === progressItemId);
-        if (idx === -1) {
-          return [
-            ...items,
-            {
-              type: "progress",
-              id: progressItemId,
-              message,
-              current,
-              total,
-            },
-          ];
-        }
-
-        const next = [...items];
-        const prevProgress = next[idx] as Extract<TimelineItem, { type: "progress" }>;
-        next[idx] = {
-          ...prevProgress,
-          message,
-          current,
-          total,
-        };
-        return next;
-      });
-    };
-
-    const clearProgress = () => {
-      if (!progressItemId) return;
-      const progressId = progressItemId;
-      progressItemId = null;
-      updateConversationTimeline(convId, (items) =>
-        items.filter((item) => !(item.type === "progress" && item.id === progressId))
-      );
-    };
-
-    const updatePlanStepStatus = (planId: string, stepIndex: number, stepStatus: string) => {
-      updateConversationTimeline(convId, (items) =>
-        items.map((item) => {
-          if (item.type !== "artifact" || item.artifactId !== planId) return item;
-          const payload = item.payload as { steps?: Array<Record<string, unknown>> };
-          if (!payload?.steps || !Array.isArray(payload.steps)) return item;
-
-          const updatedSteps = payload.steps.map((step, idx) =>
-            idx === stepIndex ? { ...step, status: stepStatus } : step
-          );
-
-          return {
-            ...item,
-            payload: {
-              ...payload,
-              steps: updatedSteps,
-            },
-          };
-        })
-      );
-    };
+    let runStatus: string | null = null;
+    let aborted = false;
+    const runtime = createAiStreamRuntime({
+      aiMessageId,
+      page: currentPage,
+      section,
+      initialConversationId: convId,
+      selectedProjectId,
+      myGen,
+      getCurrentGen: () => streamGenRef.current,
+      updateConversationTimeline,
+      ensureConversationTimeline,
+      setActiveConversationId,
+      upsertConversationTitle,
+      setPendingChoices,
+      setPendingUserInput,
+      onNavigate: handleNavigate,
+    });
 
     try {
       const response = await fetch("/api/ai/stream", {
@@ -1008,12 +975,13 @@ export default function AIView() {
           options: {
             conversationId: convId,
             projectId: selectedProjectId ?? undefined,
-            model,
+            model: effectiveModel,
             reasoningMode,
             includeReasoning: shouldRequestReasoning(reasoningMode),
-            reasoningBudgetTokens: shouldRequestReasoning(reasoningMode) ? 4096 : undefined,
+            reasoningBudgetTokens: getReasoningBudgetTokens(reasoningMode),
             agentMode: effectiveAgentMode,
             page: currentPage,
+            section,
 
             additionalContext: selectedProjectId ? undefined : (workspaceContextText || undefined),
           },
@@ -1030,180 +998,21 @@ export default function AIView() {
         throw new Error("No response body");
       }
 
-      await processAIStream({
+      const summary = await processAIStream({
         reader,
         signal: controller.signal,
         shouldContinue: () => streamGenRef.current === myGen,
         throwOnErrorChunk: true,
-        onChunk: (data) => {
-          if (data.type === "run_start") {
-            if (data.conversationId && convId !== data.conversationId) {
-              convId = data.conversationId;
-              setActiveConversationId(data.conversationId);
-              setTimelineByConversation((prev) => ({
-                ...prev,
-                [data.conversationId!]: prev[data.conversationId!] ?? [],
-              }));
-            }
-            return;
-          }
-
-          if (data.type === "conversation_title") {
-            const targetId = data.conversationId || convId;
-            const nextTitle = data.conversationTitle?.trim();
-            if (targetId && nextTitle) {
-              setConversations((prev) => {
-                const existing = prev.find((c) => c.id === targetId);
-                if (!existing) {
-                  const now = new Date().toISOString();
-                  return sortConversationsByUpdatedAt([{
-                    id: targetId,
-                    title: nextTitle,
-                    projectId: selectedProjectId ?? undefined,
-                    createdAt: now,
-                    updatedAt: now,
-                  }, ...prev]);
-                }
-                return prev.map((c) => (c.id === targetId ? { ...c, title: nextTitle } : c));
-              });
-            }
-            return;
-          }
-
-          if (data.type === "navigate") {
-            handleNavigate(data.navigateUrl);
-            return;
-          }
-
-          if (data.type === "content" && data.content) {
-            clearProgress();
-            fullContent += data.content;
-            upsertAssistant(fullContent);
-            return;
-          }
-
-          if (data.type === "reasoning_start") {
-            if (reasoningContent.trim().length > 0) {
-              reasoningContent += "\n\n";
-            }
-            reasoningState = "streaming";
-            activeReasoningId = data.reasoningId ?? activeReasoningId;
-            upsertAssistant(fullContent);
-            return;
-          }
-
-          if (data.type === "reasoning_delta") {
-            if (reasoningTruncated) return;
-            if (activeReasoningId && data.reasoningId && data.reasoningId !== activeReasoningId) return;
-            const delta = data.reasoningText ?? "";
-            if (!delta) return;
-            const next = `${reasoningContent}${delta}`;
-            if (next.length > 8000) {
-              reasoningContent = `${next.slice(0, 8000)}\n\n[Thinking output truncated]`;
-              reasoningTruncated = true;
-            } else {
-              reasoningContent = next;
-            }
-            reasoningState = "streaming";
-            activeReasoningId = data.reasoningId ?? activeReasoningId;
-            upsertAssistant(fullContent);
-            return;
-          }
-
-          if (data.type === "reasoning_end") {
-            if (activeReasoningId && data.reasoningId && data.reasoningId !== activeReasoningId) return;
-            reasoningState = "done";
-            activeReasoningId = null;
-            upsertAssistant(fullContent);
-            return;
-          }
-
-          if (data.type === "tool_call" && data.toolCall && !fullContent) {
-            const toolName = data.toolCall.name;
-            const statusText = toolName === "search_pubmed"
-              ? "Searching PubMed..."
-              : toolName === "search_openalex"
-                ? "Searching OpenAlex..."
-              : toolName === "add_to_ledger"
-                ? "Adding studies to ledger..."
-                : `Running ${toolName}...`;
-            upsertProgress(statusText);
-            return;
-          }
-
-          if (data.type === "tool_result" && !fullContent) {
-            upsertProgress("Processing results...");
-            return;
-          }
-
-          if (data.type === "artifact") {
-            updateConversationTimeline(convId, (items) => [
-              ...items,
-              {
-                type: "artifact",
-                id: `artifact-${data.artifactId ?? Date.now()}`,
-                artifactId: data.artifactId ?? "",
-                artifactType: (data.artifactType ?? "plan") as ArtifactType,
-                status: (data.artifactStatus ?? "proposed") as ArtifactStatus,
-                title: data.artifactTitle ?? "Artifact",
-                payload: data.artifactPayload ?? {},
-                version: data.artifactVersion ?? 1,
-                createdAt: new Date().toISOString(),
-              },
-            ]);
-            return;
-          }
-
-          if (data.type === "progress") {
-            upsertProgress(data.progressMessage ?? "Working...", data.progressCurrent, data.progressTotal);
-            return;
-          }
-
-          if (data.type === "checkpoint") {
-            updateConversationTimeline(convId, (items) => [
-              ...items,
-              {
-                type: "checkpoint",
-                id: `checkpoint-${Date.now()}`,
-                label: data.checkpointLabel ?? "Checkpoint",
-                createdAt: new Date().toISOString(),
-              },
-            ]);
-            return;
-          }
-
-          if (data.type === "choices") {
-            setPendingChoices(data.choices ?? []);
-            return;
-          }
-
-          if (data.type === "user_input_required" && data.userInputRequest) {
-            setPendingUserInput(data.userInputRequest);
-            updateConversationTimeline(convId, (items) => [
-              ...items,
-              {
-                type: "user_input_request" as const,
-                id: `user-input-${data.userInputRequest!.callId}`,
-                callId: data.userInputRequest!.callId,
-                question: data.userInputRequest!.question,
-                questionType: data.userInputRequest!.questionType,
-                options: data.userInputRequest!.options,
-                header: data.userInputRequest!.header,
-                context: data.userInputRequest!.context,
-                answered: false,
-                createdAt: new Date().toISOString(),
-              },
-            ]);
-            return;
-          }
-
-          if (data.type === "plan_step_update" && data.planId && data.stepIndex !== undefined && data.stepStatus) {
-            updatePlanStepStatus(data.planId, data.stepIndex, data.stepStatus);
-          }
-        },
+        onChunk: (data) => runtime.handleChunk(data),
       });
+      runStatus = summary.runStatus;
+      convId = runtime.getConversationId();
     } catch (err) {
-      if (!(err instanceof DOMException && err.name === "AbortError")) {
+      if (err instanceof DOMException && err.name === "AbortError") {
+        aborted = true;
+      } else {
+        convId = runtime.getConversationId();
+        runtime.failRunningTools("Run failed before tool completion.");
         const friendlyError = formatStreamErrorForUI(err);
         updateConversationTimeline(convId, (items) => [
           ...items,
@@ -1217,7 +1026,22 @@ export default function AIView() {
         ]);
       }
     } finally {
-      clearProgress();
+      runtime.clearProgress();
+      convId = runtime.getConversationId();
+      if (!aborted) {
+        const runtimeState = runtime.getState();
+        recordChatUnificationMetric({
+          type: "stuck_running_tools_after_run_end",
+          surface: "ai",
+          runId: runtimeState.localRunId || null,
+          conversationId: runtime.getConversationId(),
+          payload: {
+            unresolvedCount: runtimeState.runningToolCallIds.length,
+            runStatus,
+            streamPhase: "send",
+          },
+        });
+      }
       if (streamGenRef.current === myGen) {
         setIsTyping(false);
         setConversations((prev) =>
@@ -1238,30 +1062,63 @@ export default function AIView() {
     isTyping,
     cancelStream,
     selectedProjectId,
+    selectedModel,
     reasoningMode,
     handleNavigate,
 
     workspaceContextText,
     ensureConversation,
+    ensureConversationTimeline,
+    upsertConversationTitle,
     updateConversationTimeline,
     sortConversationsByUpdatedAt,
   ]);
 
-  const handleAnswerUserInput = useCallback((callId: string, answer: string) => {
+  const handleAnswerUserInput = useCallback((callId: string, answer: string, page?: CopilotPage, section?: string) => {
+    const activeItems = activeConversationId
+      ? (timelineByConversation[activeConversationId] ?? [])
+      : [];
+    const requestItem = activeItems.find(
+      (item) => item.type === "user_input_request" && item.callId === callId
+    );
+    const resolvedPage = page ?? (requestItem?.type === "user_input_request" ? requestItem.page : undefined) ?? "ai";
+    const resolvedSection = section ?? (requestItem?.type === "user_input_request" ? requestItem.section : undefined);
+    const expectedPage = requestItem?.type === "user_input_request" ? (requestItem.page ?? null) : null;
+    const expectedSection = requestItem?.type === "user_input_request" ? (requestItem.section ?? null) : null;
+    const contextMismatch = Boolean(
+      requestItem
+      && (
+        expectedPage !== resolvedPage
+        || expectedSection !== (resolvedSection ?? null)
+      )
+    );
+    recordChatUnificationMetric({
+      type: "ask_user_context_mismatch",
+      surface: "ai",
+      conversationId: activeConversationId,
+      payload: {
+        mismatch: contextMismatch,
+        expectedPage,
+        expectedSection,
+        resolvedPage,
+        resolvedSection: resolvedSection ?? null,
+      },
+    });
+
     // Mark the timeline card as answered
     if (activeConversationId) {
       updateConversationTimeline(activeConversationId, (items) =>
         items.map((item) =>
           item.type === "user_input_request" && item.callId === callId
             ? { ...item, answered: true, answer }
-            : item,
+            : item
         ),
       );
     }
     setPendingUserInput(null);
     // Send the answer as a user message so the AI continues
-    void handleSend(answer, "ai");
-  }, [activeConversationId, updateConversationTimeline, handleSend]);
+    void handleSend(answer, resolvedPage, resolvedSection);
+  }, [activeConversationId, timelineByConversation, updateConversationTimeline, handleSend]);
 
   const reviewArtifactLocal = useCallback(async (
     artifactId: string,
@@ -1370,14 +1227,19 @@ export default function AIView() {
 
   const handleExecutePlan = useCallback(async (artifactId: string, selectedIndexes: number[]) => {
     if (selectedIndexes.length === 0 || isConversationLoading) return;
-    const convId = activeConversationId;
+    let convId = activeConversationId;
     if (!convId) return;
     if (isTyping) cancelStream();
     setPendingChoices([]);
     setPendingUserInput(null);
 
+    const updatePlanConversationTimeline = (updater: (items: TimelineItem[]) => TimelineItem[]) => {
+      if (!convId) return;
+      updateConversationTimeline(convId, updater);
+    };
+
     const setPlanStatus = (nextStatus: ArtifactStatus) => {
-      updateConversationTimeline(convId, (items) =>
+      updatePlanConversationTimeline((items) =>
         items.map((item) =>
           item.type === "artifact" && item.artifactId === artifactId
             ? { ...item, status: nextStatus }
@@ -1386,7 +1248,7 @@ export default function AIView() {
       );
     };
     const updatePlanStepStatus = (planId: string, stepIndex: number, stepStatus: string) => {
-      updateConversationTimeline(convId, (items) =>
+      updatePlanConversationTimeline((items) =>
         items.map((item) => {
           if (item.type !== "artifact" || item.artifactId !== planId) return item;
           const payload = item.payload as { steps?: Array<Record<string, unknown>> };
@@ -1411,79 +1273,26 @@ export default function AIView() {
     abortControllerRef.current = controller;
 
     const aiMessageId = `m-${Date.now() + 1}`;
-    let aiMessageCreated = false;
-    let fullContent = "";
-    let reasoningContent = "";
-    let reasoningState: "streaming" | "done" = "done";
-    let reasoningTruncated = false;
-    let activeReasoningId: string | null = null;
-    let progressItemId: string | null = null;
     let runStatus: string | null = null;
     let stopReason: string | null = null;
     let errorMessage: string | null = null;
-
-    const upsertAssistant = (content: string) => {
-      updateConversationTimeline(convId, (items) => {
-        const idx = items.findIndex((it) => it.type === "assistant_message" && it.id === aiMessageId);
-        if (idx === -1) {
-          return [
-            ...items,
-            {
-              type: "assistant_message",
-              id: aiMessageId,
-              content,
-              reasoning: reasoningContent
-                ? {
-                    text: reasoningContent,
-                    state: reasoningState,
-                    truncated: reasoningTruncated || undefined,
-                  }
-                : undefined,
-              createdAt: new Date().toISOString(),
-            },
-          ];
-        }
-        const next = [...items];
-        const current = next[idx] as Extract<TimelineItem, { type: "assistant_message" }>;
-        next[idx] = {
-          ...current,
-          content,
-          reasoning: reasoningContent
-            ? {
-                text: reasoningContent,
-                state: reasoningState,
-                truncated: reasoningTruncated || undefined,
-              }
-            : current.reasoning,
-        };
-        return next;
-      });
-      aiMessageCreated = true;
-    };
-    const upsertProgress = (message: string, current?: number, total?: number) => {
-      updateConversationTimeline(convId, (items) => {
-        if (!progressItemId) {
-          progressItemId = `progress-${Date.now()}`;
-          return [...items, { type: "progress", id: progressItemId, message, current, total }];
-        }
-        const idx = items.findIndex((it) => it.type === "progress" && it.id === progressItemId);
-        if (idx === -1) {
-          return [...items, { type: "progress", id: progressItemId, message, current, total }];
-        }
-        const next = [...items];
-        const prevProgress = next[idx] as Extract<TimelineItem, { type: "progress" }>;
-        next[idx] = { ...prevProgress, message, current, total };
-        return next;
-      });
-    };
-    const clearProgress = () => {
-      if (!progressItemId) return;
-      const progressId = progressItemId;
-      progressItemId = null;
-      updateConversationTimeline(convId, (items) =>
-        items.filter((item) => !(item.type === "progress" && item.id === progressId))
-      );
-    };
+    let aborted = false;
+    const runtime = createAiStreamRuntime({
+      aiMessageId,
+      page: "ai",
+      initialConversationId: convId,
+      selectedProjectId,
+      myGen,
+      getCurrentGen: () => streamGenRef.current,
+      updateConversationTimeline,
+      ensureConversationTimeline,
+      setActiveConversationId,
+      upsertConversationTitle,
+      setPendingChoices,
+      setPendingUserInput,
+      onPlanStepUpdate: updatePlanStepStatus,
+      onNavigate: handleNavigate,
+    });
 
     try {
       const response = await fetch("/api/ai/stream", {
@@ -1497,9 +1306,10 @@ export default function AIView() {
           options: {
             conversationId: convId,
             projectId: selectedProjectId ?? undefined,
+            model: selectedModel,
             reasoningMode,
             includeReasoning: shouldRequestReasoning(reasoningMode),
-            reasoningBudgetTokens: shouldRequestReasoning(reasoningMode) ? 4096 : undefined,
+            reasoningBudgetTokens: getReasoningBudgetTokens(reasoningMode),
             agentMode: "general",
             page: "ai",
             additionalContext: selectedProjectId ? undefined : (workspaceContextText || undefined),
@@ -1520,126 +1330,37 @@ export default function AIView() {
         signal: controller.signal,
         shouldContinue: () => streamGenRef.current === myGen,
         throwOnErrorChunk: true,
-        onChunk: (data) => {
-          if (data.type === "run_start") {
-            if (data.conversationId && convId !== data.conversationId) {
-              setActiveConversationId(data.conversationId);
-              setTimelineByConversation((prev) => ({
-                ...prev,
-                [data.conversationId!]: prev[data.conversationId!] ?? [],
-              }));
-            }
-            return;
-          }
-          if (data.type === "conversation_title") {
-            const targetId = data.conversationId || convId;
-            const nextTitle = data.conversationTitle?.trim();
-            if (targetId && nextTitle) {
-              setConversations((prev) => {
-                const existing = prev.find((c) => c.id === targetId);
-                if (!existing) {
-                  const now = new Date().toISOString();
-                  return sortConversationsByUpdatedAt([{
-                    id: targetId,
-                    title: nextTitle,
-                    projectId: selectedProjectId ?? undefined,
-                    createdAt: now,
-                    updatedAt: now,
-                  }, ...prev]);
-                }
-                return prev.map((c) => (c.id === targetId ? { ...c, title: nextTitle } : c));
-              });
-            }
-            return;
-          }
-          if (data.type === "navigate") {
-            handleNavigate(data.navigateUrl);
-            return;
-          }
-          if (data.type === "content" && data.content) {
-            clearProgress();
-            fullContent += data.content;
-            upsertAssistant(fullContent);
-            return;
-          }
-          if (data.type === "reasoning_start") {
-            if (reasoningContent.trim().length > 0) reasoningContent += "\n\n";
-            reasoningState = "streaming";
-            activeReasoningId = data.reasoningId ?? activeReasoningId;
-            upsertAssistant(fullContent);
-            return;
-          }
-          if (data.type === "reasoning_delta") {
-            if (reasoningTruncated) return;
-            if (activeReasoningId && data.reasoningId && data.reasoningId !== activeReasoningId) return;
-            const delta = data.reasoningText ?? "";
-            if (!delta) return;
-            const next = `${reasoningContent}${delta}`;
-            if (next.length > 8000) {
-              reasoningContent = `${next.slice(0, 8000)}\n\n[Thinking output truncated]`;
-              reasoningTruncated = true;
-            } else {
-              reasoningContent = next;
-            }
-            reasoningState = "streaming";
-            activeReasoningId = data.reasoningId ?? activeReasoningId;
-            upsertAssistant(fullContent);
-            return;
-          }
-          if (data.type === "reasoning_end") {
-            if (activeReasoningId && data.reasoningId && data.reasoningId !== activeReasoningId) return;
-            reasoningState = "done";
-            activeReasoningId = null;
-            upsertAssistant(fullContent);
-            return;
-          }
-          if (data.type === "tool_call" && data.toolCall && !fullContent) {
-            upsertProgress(`Running ${data.toolCall.name}...`);
-            return;
-          }
-          if (data.type === "tool_result" && !fullContent) {
-            upsertProgress("Processing results...");
-            return;
-          }
-          if (data.type === "progress") {
-            upsertProgress(data.progressMessage ?? "Working...", data.progressCurrent, data.progressTotal);
-            return;
-          }
-          if (data.type === "plan_step_update" && data.planId && data.stepIndex !== undefined && data.stepStatus) {
-            updatePlanStepStatus(data.planId, data.stepIndex, data.stepStatus);
-            return;
-          }
-          if (data.type === "choices") {
-            setPendingChoices(data.choices ?? []);
-            return;
-          }
-          if (data.type === "artifact") {
-            updateConversationTimeline(convId, (items) => [
-              ...items,
-              {
-                type: "artifact",
-                id: `artifact-${data.artifactId ?? Date.now()}`,
-                artifactId: data.artifactId ?? "",
-                artifactType: (data.artifactType ?? "plan") as ArtifactType,
-                status: (data.artifactStatus ?? "proposed") as ArtifactStatus,
-                title: data.artifactTitle ?? "Artifact",
-                payload: data.artifactPayload ?? {},
-                version: data.artifactVersion ?? 1,
-                createdAt: new Date().toISOString(),
-              },
-            ]);
-          }
-        },
+        onChunk: (data) => runtime.handleChunk(data),
       });
+      convId = runtime.getConversationId();
       runStatus = summary.runStatus;
       stopReason = summary.stopReason;
       errorMessage = summary.errorMessage;
     } catch (err) {
-      if (!(err instanceof DOMException && err.name === "AbortError")) {
+      if (err instanceof DOMException && err.name === "AbortError") {
+        aborted = true;
+      } else {
+        convId = runtime.getConversationId();
+        runtime.failRunningTools("Run ended before tool completion.");
         errorMessage = formatStreamErrorForUI(err);
       }
     } finally {
-      clearProgress();
+      runtime.clearProgress();
+      convId = runtime.getConversationId();
+      if (!aborted) {
+        const runtimeState = runtime.getState();
+        recordChatUnificationMetric({
+          type: "stuck_running_tools_after_run_end",
+          surface: "ai",
+          runId: runtimeState.localRunId || null,
+          conversationId: runtime.getConversationId(),
+          payload: {
+            unresolvedCount: runtimeState.runningToolCallIds.length,
+            runStatus,
+            streamPhase: "plan",
+          },
+        });
+      }
       if (streamGenRef.current === myGen) {
         setIsTyping(false);
         setConversations((prev) =>
@@ -1661,6 +1382,7 @@ export default function AIView() {
     setPlanStatus(didComplete ? "accepted" : "proposed");
 
     if (!didComplete && streamGenRef.current === myGen) {
+      runtime.failRunningTools("Run ended before tool completion.");
       const reason = errorMessage ?? (stopReason ? `Execution stopped: ${stopReason}` : "Execution did not complete.");
       updateConversationTimeline(convId, (items) => [
         ...items,
@@ -1679,9 +1401,12 @@ export default function AIView() {
     isTyping,
     cancelStream,
     selectedProjectId,
+    selectedModel,
     reasoningMode,
     handleNavigate,
     workspaceContextText,
+    ensureConversationTimeline,
+    upsertConversationTitle,
     sortConversationsByUpdatedAt,
     updateConversationTimeline,
   ]);
@@ -1735,8 +1460,19 @@ export default function AIView() {
     setPendingChoices([]);
     setPendingUserInput(null);
     setPrefillCommand(null);
-    void handleSend(retryText, "ai");
-  }, [isTyping, activeConversationId, timelineByConversation, handleSend]);
+    recordChatUnificationMetric({
+      type: "retry_model_continuity",
+      surface: "ai",
+      conversationId: convId,
+      payload: {
+        preserved: true,
+        expectedModel: selectedModel,
+        actualModel: selectedModel,
+        source: "retry_action",
+      },
+    });
+    void handleSend(retryText, "ai", undefined, selectedModel);
+  }, [isTyping, activeConversationId, timelineByConversation, handleSend, selectedModel]);
 
   const handlePrefillConsumed = useCallback(() => {
     setPrefillCommand(null);
@@ -1993,8 +1729,8 @@ export default function AIView() {
                 cancelStream={cancelStream}
                 pendingChoices={pendingChoices}
                 clearChoices={() => { setPendingChoices([]); setPendingUserInput(null); }}
-                pendingUserInput={pendingUserInput}
-                onAnswerUserInput={handleAnswerUserInput}
+                selectedModel={selectedModel}
+                onModelChange={setSelectedModel}
                 modelStorageKey="litrev_ai_model"
                 showAutonomyPreset={false}
                 showAttachments={false}

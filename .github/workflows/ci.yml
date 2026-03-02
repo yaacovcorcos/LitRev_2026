@@ -90,6 +90,9 @@ jobs:
       - name: Type check
         run: cd next-app && npx tsc --noEmit
 
+      - name: Chat stream architecture guard (warn mode)
+        run: cd next-app && node scripts/check-chat-stream-architecture.mjs --mode=${CHAT_STREAM_ARCH_GUARD_MODE:-warn}
+
       - name: Run tests
         run: cd next-app && npx vitest run
         env:

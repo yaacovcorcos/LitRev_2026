@@ -28,6 +28,7 @@ It consolidates all open UI/UX work into one prioritized sequence so implementat
 - The design system now includes first-class typography, shadow, z-index, and motion scales in `styles/tokens.css`, with `stylelint` warn-mode governance to surface raw value drift.
 - High-traffic UI modules (`ledger`, `study detail`, `memory`, `notes`, `protocol`, `login`) now consume shared token scales for typography/motion/layering and reduced hardcoded palette/shadow usage.
 - Timeline recovery UX now maps stream/plan failure messages into recoverable error cards with explicit `Retry` and `Resume` actions wired to resend the last user intent or continue unfinished plan steps.
+- `/ai` standard send and plan-execution stream paths now consume the shared stream reducer + typed intents (same engine contract as project copilot), removing duplicated chunk-switch state machines while preserving project-optional `/ai` behavior.
 
 ## Recently Completed
 - `CUX-007` Added visible tool/run failure recovery UX by converting recoverable failures to timeline error cards and wiring `Retry`/`Resume` actions in both copilot surfaces.
@@ -250,9 +251,9 @@ Implementation guardrails for Phase 4:
   - [ ] Project conversation mode
   - [ ] `/ai` page mode
 - [ ] `CUX-035` Decompose oversized UI modules into smaller components/hooks with behavior-preserving extraction.
+- [ ] `CUX-D01` Activate chat unification execution (`/ai`, project copilot, popup) via `plan-chat-unification-v2.md` with phased parity gates and shared reducer adoption.
 
 ## Phase 7 — Deferred / Parking Lot (Not Active)
-- [ ] `CUX-D01` Unify `/ai` chat UI with project conversation.
 - [ ] `CUX-D02` Entrance animation on newest message only.
 - [ ] `CUX-D03` Mobile sidebar slide-in drawer.
 - [ ] `CUX-D04` Context/prompt inspector drawer (debug panel).
