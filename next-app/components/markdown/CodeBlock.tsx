@@ -2,7 +2,8 @@
 
 import { useState, useCallback, type ReactNode, isValidElement, Children } from "react";
 import type { Components } from "react-markdown";
-import { CitationPreview, type CitationType } from "./CitationPreview";
+import { CitationPreview } from "./CitationPreview";
+import { getCitationType } from "@/lib/citation-key";
 import styles from "@/styles/markdown.module.css";
 
 /** Map lowercase language tags to display names */
@@ -46,18 +47,6 @@ function childrenToString(children: unknown): string {
     if (typeof children === "string") return children;
     if (Array.isArray(children)) return children.map(childrenToString).join("");
     return String(children ?? "");
-}
-
-function getCitationLabel(href?: string): CitationType | null {
-    if (!href) return null;
-    try {
-        const host = new URL(href).hostname.toLowerCase();
-        if (host === "doi.org" || host === "dx.doi.org") return "DOI";
-        if (host === "pubmed.ncbi.nlm.nih.gov") return "PubMed";
-        return null;
-    } catch {
-        return null;
-    }
 }
 
 function CodeBlock({ language, code }: { language: string | null; code: string }) {
@@ -118,7 +107,7 @@ export const markdownComponents: Components = {
         return <pre>{children}</pre>;
     },
     a: ({ href, children, ...props }) => {
-        const citationType = getCitationLabel(href);
+        const citationType = getCitationType(href);
 
         // Citation links get preview behavior
         if (citationType && href) {
