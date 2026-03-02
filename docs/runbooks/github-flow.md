@@ -50,6 +50,7 @@ gh pr list --state open --json number,title,headRefName,baseRefName,reviewDecisi
 
 - CI runs on pushes and PRs targeting `main` and `second`.
 - Schema drift check uses a dedicated shadow database URL in CI.
+- Drift output is currently warning-mode (non-empty diff warns; command errors fail) until migration history is realigned.
 
 ## Operational Notes
 
