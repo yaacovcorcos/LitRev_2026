@@ -6,6 +6,8 @@
  *   npx tsx scripts/validate-chat-unification-burn-in.ts --since=... --until=...
  *   npx tsx scripts/validate-chat-unification-burn-in.ts --since=... --report=docs/reports/u1-6-burn-in.md
  *   npx tsx scripts/validate-chat-unification-burn-in.ts --since=... --until=... --allowShortWindow=1
+ *   npx tsx scripts/validate-chat-unification-burn-in.ts --since=... --workspaceIds=ws-1,ws-2 --userIds=user-1
+ *   npx tsx scripts/validate-chat-unification-burn-in.ts --since=... --requireRunEndPerSurface=1 --minRunIdCoveragePerSurface=0.95
  */
 
 import { config } from "dotenv";
@@ -24,8 +26,14 @@ import {
   type BurnInThresholds,
 } from "../lib/ai/chat-unification-burn-in";
 import {
+  buildCohortWhereInput,
+  evaluateRunEndCoverageGates,
+  formatCohortScope,
+  hasCohortScope,
+  parseCsvIdArg,
   parseIsoDateArg,
   resolveBurnInWindow,
+  summarizeRunEndRunIdCoverage,
 } from "../lib/ai/chat-unification-burn-in-cli";
 import type { ChatSurface, ChatUnificationMetricType } from "../types/chat-unification";
 
@@ -79,6 +87,45 @@ function parseFloatArg(name: string, fallback: number): number {
     throw new Error(`Invalid numeric value for --${name}: ${raw}`);
   }
   return parsed;
+}
+
+function parseCoverageConfigFromArgs(): {
+  requireScopedCohort: boolean;
+  requireRunEndPerSurface: boolean;
+  minRunIdCoveragePerSurface: number;
+} {
+  const minRunIdCoveragePerSurface = parseFloatArg("minRunIdCoveragePerSurface", 0);
+  if (minRunIdCoveragePerSurface > 1) {
+    throw new Error(
+      `Invalid numeric value for --minRunIdCoveragePerSurface: ${minRunIdCoveragePerSurface} (expected 0..1)`,
+    );
+  }
+  return {
+    requireScopedCohort: parseArg("requireScopedCohort") === "1",
+    requireRunEndPerSurface: parseArg("requireRunEndPerSurface") === "1",
+    minRunIdCoveragePerSurface,
+  };
+}
+
+function formatRunIdCoverageReport(
+  runIdCoverage: ReturnType<typeof summarizeRunEndRunIdCoverage>,
+): string {
+  const lines: string[] = ["Run-end runId coverage by surface:"];
+  for (const surface of SURFACES) {
+    const coverage = runIdCoverage.bySurface[surface];
+    lines.push(
+      `- ${surface}: withRunId=${coverage.withRunId}/${coverage.total} coverage=${coverage.coverage ?? "n/a"} missing=${coverage.missingRunId}`,
+    );
+    if (coverage.missingSamples.length > 0) {
+      lines.push(`  missing samples (${coverage.missingSamples.length} shown):`);
+      for (const sample of coverage.missingSamples) {
+        lines.push(
+          `  - recordedAt=${sample.recordedAt} conversationId=${sample.conversationId ?? "null"} projectId=${sample.projectId ?? "null"}`,
+        );
+      }
+    }
+  }
+  return lines.join("\n");
 }
 
 function parseThresholdsFromArgs(): BurnInThresholds {
@@ -136,6 +183,16 @@ async function main() {
   });
 
   const thresholds = parseThresholdsFromArgs();
+  const coverageConfig = parseCoverageConfigFromArgs();
+  const cohortScope = {
+    workspaceIds: parseCsvIdArg("workspaceIds", parseArg("workspaceIds")),
+    userIds: parseCsvIdArg("userIds", parseArg("userIds")),
+  };
+  if (coverageConfig.requireScopedCohort && !hasCohortScope(cohortScope)) {
+    throw new Error(
+      "Cohort scope is required. Pass --workspaceIds and/or --userIds when --requireScopedCohort=1.",
+    );
+  }
   const reportPath = parseArg("report");
   const outputJson = parseArg("json") === "1";
 
@@ -160,11 +217,14 @@ async function main() {
         surface: {
           in: [...SURFACES],
         },
+        ...buildCohortWhereInput(cohortScope),
       },
       select: {
         type: true,
         surface: true,
         runId: true,
+        conversationId: true,
+        projectId: true,
         payload: true,
         recordedAt: true,
       },
@@ -172,6 +232,8 @@ async function main() {
       type: ChatUnificationMetricType;
       surface: ChatSurface;
       runId: string | null;
+      conversationId: string | null;
+      projectId: string | null;
       payload: unknown;
       recordedAt: Date;
     }>;
@@ -184,16 +246,28 @@ async function main() {
     throw error;
   }
 
-  const evaluation = evaluateChatUnificationBurnIn(metrics, thresholds);
+  const baseEvaluation = evaluateChatUnificationBurnIn(metrics, thresholds);
+  const runIdCoverage = summarizeRunEndRunIdCoverage(metrics);
+  const runIdCoverageFailures = evaluateRunEndCoverageGates(runIdCoverage, {
+    requireRunEndPerSurface: coverageConfig.requireRunEndPerSurface,
+    minRunIdCoveragePerSurface: coverageConfig.minRunIdCoveragePerSurface,
+  });
+  const evaluation = {
+    ...baseEvaluation,
+    failures: [...baseEvaluation.failures, ...runIdCoverageFailures],
+    passed: baseEvaluation.passed && runIdCoverageFailures.length === 0,
+  };
 
   const header = [
     `Window since: ${window.since.toISOString()}`,
     `Window until: ${window.until.toISOString()}`,
     `Short-window override: ${allowShortWindow ? "enabled" : "disabled"}`,
+    `Cohort scope: ${formatCohortScope(cohortScope)}`,
     `Rows analyzed: ${metrics.length}`,
   ].join("\n");
   const body = formatChatUnificationBurnInReport(evaluation);
-  const output = `${header}\n${body}`;
+  const coverageSection = formatRunIdCoverageReport(runIdCoverage);
+  const output = `${header}\n${body}\n${coverageSection}`;
 
   if (outputJson) {
     console.log(
@@ -203,6 +277,8 @@ async function main() {
           until: window.until.toISOString(),
           allowShortWindow,
           rowsAnalyzed: metrics.length,
+          cohortScope,
+          runIdCoverage,
           evaluation,
         },
         null,
