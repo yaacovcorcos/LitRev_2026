@@ -72,4 +72,26 @@ describe("TimelineRenderer tool activity cards", () => {
     expect(screen.getByText("Running")).not.toBeNull();
     expect(screen.getByText("In progress")).not.toBeNull();
   });
+
+  it("shows failed-after timing for failed tool runs", () => {
+    renderTimeline([
+      {
+        type: "tool_activity",
+        id: "tool-3",
+        callId: "call-3",
+        toolName: "extract_pdf",
+        status: "failed",
+        summary: "PDF parsing failed.",
+        startedAt: "2026-03-02T12:20:00.000Z",
+        updatedAt: "2026-03-02T12:20:03.000Z",
+        completedAt: "2026-03-02T12:20:03.000Z",
+        createdAt: "2026-03-02T12:20:00.000Z",
+      },
+    ]);
+
+    expect(screen.getByText("extract_pdf")).not.toBeNull();
+    expect(screen.getByText("Failed")).not.toBeNull();
+    expect(screen.getByText("Failed after 3.0s")).not.toBeNull();
+    expect(screen.getByText("PDF parsing failed.")).not.toBeNull();
+  });
 });

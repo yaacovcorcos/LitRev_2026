@@ -32,6 +32,7 @@ import { recordChatUnificationMetric } from "@/lib/ai/chat-unification-telemetry
 import {
   getReasoningBudgetTokens,
   getReasoningModePreference,
+  resolveRequestReasoningMode,
   setReasoningModePreference,
   shouldRequestReasoning,
 } from "@/lib/ai/reasoning-visibility";
@@ -397,10 +398,6 @@ export default function AIView() {
     if (typeof window !== "undefined") {
       window.localStorage.setItem("litrev_ai_model", modelId);
     }
-    if (getReasoningSupportTier(modelId) === "none") {
-      setReasoningMode("off");
-      setReasoningModePreference("off");
-    }
   }, []);
 
   useEffect(() => {
@@ -416,12 +413,6 @@ export default function AIView() {
     }
   }, [setSelectedModel]);
 
-  useEffect(() => {
-    if (reasoningSupport === "none" && reasoningMode !== "off") {
-      setReasoningMode("off");
-      setReasoningModePreference("off");
-    }
-  }, [reasoningSupport, reasoningMode]);
   useEffect(() => {
     activeConversationIdRef.current = activeConversationId;
   }, [activeConversationId]);
@@ -930,6 +921,7 @@ export default function AIView() {
     const context: ConversationContext = selectedProjectId ? "project" : "global";
     const effectiveAgentMode = agentMode ?? routeToAgent(msgText, "overview");
     const effectiveModel = model ?? selectedModel;
+    const requestReasoningMode = resolveRequestReasoningMode(reasoningMode, effectiveModel);
 
     let convId = await ensureConversation(context);
 
@@ -1001,9 +993,9 @@ export default function AIView() {
             conversationId: convId,
             projectId: selectedProjectId ?? undefined,
             model: effectiveModel,
-            reasoningMode,
-            includeReasoning: shouldRequestReasoning(reasoningMode),
-            reasoningBudgetTokens: getReasoningBudgetTokens(reasoningMode),
+            reasoningMode: requestReasoningMode,
+            includeReasoning: shouldRequestReasoning(requestReasoningMode),
+            reasoningBudgetTokens: getReasoningBudgetTokens(requestReasoningMode),
             agentMode: effectiveAgentMode,
             page: currentPage,
             section,
@@ -1302,6 +1294,7 @@ export default function AIView() {
     let stopReason: string | null = null;
     let errorMessage: string | null = null;
     let aborted = false;
+    const requestReasoningMode = resolveRequestReasoningMode(reasoningMode, selectedModel);
     const runtime = createAiStreamRuntime({
       aiMessageId,
       page: "ai",
@@ -1332,9 +1325,9 @@ export default function AIView() {
             conversationId: convId,
             projectId: selectedProjectId ?? undefined,
             model: selectedModel,
-            reasoningMode,
-            includeReasoning: shouldRequestReasoning(reasoningMode),
-            reasoningBudgetTokens: getReasoningBudgetTokens(reasoningMode),
+            reasoningMode: requestReasoningMode,
+            includeReasoning: shouldRequestReasoning(requestReasoningMode),
+            reasoningBudgetTokens: getReasoningBudgetTokens(requestReasoningMode),
             agentMode: "general",
             page: "ai",
             additionalContext: selectedProjectId ? undefined : (workspaceContextText || undefined),

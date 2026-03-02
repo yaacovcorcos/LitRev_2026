@@ -130,8 +130,11 @@ function getToolActivityTimingText(item: Extract<TimelineItem, { type: "tool_act
     const completed = parseTimestampMs(item.completedAt);
 
     if (item.status === "running") return "In progress";
-    if ((item.status === "done" || item.status === "failed") && started !== null && completed !== null && completed >= started) {
+    if (item.status === "done" && started !== null && completed !== null && completed >= started) {
         return `Completed in ${formatDurationMs(completed - started)}`;
+    }
+    if (item.status === "failed" && started !== null && completed !== null && completed >= started) {
+        return `Failed after ${formatDurationMs(completed - started)}`;
     }
     if (item.status === "done") return "Completed";
     if (item.status === "failed") return "Failed";
