@@ -4,6 +4,13 @@ Date: 2026-03-02
 Scope: `next-app/`  
 Method: `tsc` diagnostics, import/reference scans, duplication spot-checks, and targeted file verification.
 
+## Current Status Snapshot
+
+- Track 1 cleanup status: complete.
+- Strict-unused status: `TS6133=0`, `TS6196=0` (see `R1A-R1C` entries in Section 9.5).
+- Deleted dead files: `next-app/lib/server/test-db.ts`, `next-app/data/projects.ts`, `next-app/lib/chatStorage.ts`.
+- Decision gate: `next-app/lib/seedLocalStorage.ts` retained as legacy/manual bootstrap utility until explicit retirement request (`R3`).
+
 ## Section 1: What Was Re-Checked in Code
 
 1. Diagnostics were reproduced exactly:
@@ -126,10 +133,10 @@ Related files:
 These should be treated as **candidates**, not guaranteed-safe removals.
 
 ### 4.1 Likely legacy/unreferenced candidates
-- `data/projects.ts`
-- `lib/chatStorage.ts`
-- `lib/seedLocalStorage.ts`
-- `lib/server/test-db.ts`
+- `data/projects.ts` (`R2B`: deleted)
+- `lib/chatStorage.ts` (`R2C`: deleted)
+- `lib/seedLocalStorage.ts` (`R3`: retained as legacy manual bootstrap utility pending explicit retirement request)
+- `lib/server/test-db.ts` (`R2A`: deleted)
 
 Why:
 - No in-repo imports found.
@@ -554,6 +561,26 @@ Use this per-fix log format:
 `[P1-CLEANUP-WAVE2B] | done | 2026-03-02 | next-app/app/project/[id]/draft/page.tsx, next-app/app/project/[id]/onboarding/page.tsx, next-app/lib/server/ledger.ts, docs/reports/diagnosis-03-02.md | strict-unused counts: TS6133 29->27, TS6196 7->6; tsc: pass; vitest: pass (148 files, 1154 tests; 11 skipped) | Allowlist-only leaf cleanup; removed unused imports/types and deferred high-churn /ai + copilot-context files to a follow-up micro-wave.`
 
 `[P1-CLEANUP-WAVE2C] | done | 2026-03-02 | next-app/app/actions/memory.ts, docs/reports/diagnosis-03-02.md | strict-unused counts: TS6133 28->14, TS6196 6->6; tsc: pass; vitest: pass (150 files, 1160 tests; 11 skipped) | Removed only dead schema/id imports from memory actions; no action signatures or runtime behavior changed.`
+
+`[R0-TRACK1-BASELINE] | done | 2026-03-02 | docs/reports/diagnosis-03-02.md | strict-unused counts: TS6133=14, TS6196=6; tsc: pass; vitest: pass (153 files, 1169 tests; 11 skipped) | Baseline captured after syncing cleanup worktree main to origin/main and regenerating Prisma client locally.`
+
+`[R1A-LOW-RISK-STRICT-UNUSED] | done | 2026-03-02 | next-app/components/copilot/TimelineRenderer.tsx, next-app/components/project/ConversationMainView.tsx, next-app/components/ProjectCopilot.tsx, next-app/hooks/useCopilotStreamActions.ts, docs/reports/diagnosis-03-02.md | strict-unused counts: TS6133 14->8, TS6196 6->3; tsc: pass; vitest: pass (153 files, 1169 tests; 11 skipped) | Removed only unused type imports/destructured values in low-risk UI/hook files; no behavior or signature changes.`
+
+`[R1B-HIGH-RISK-STRICT-UNUSED] | done | 2026-03-02 | next-app/lib/server/agent/artifacts.ts, next-app/lib/server/ai/ai-service.ts, docs/reports/diagnosis-03-02.md | strict-unused counts: TS6133 8->1, TS6196 3->0; tsc: pass; vitest: pass (153 files, 1169 tests; 11 skipped) | Removed only unused imports/types/local destructured value in high-churn server modules; no runtime logic changes.`
+
+`[R1C-AI-PAGE-STRICT-UNUSED] | done | 2026-03-02 | next-app/app/ai/page.tsx, docs/reports/diagnosis-03-02.md | strict-unused counts: TS6133 1->0, TS6196 0->0; tsc: pass; vitest: pass (153 files, 1169 tests; 11 skipped) | Removed only unused state variable in ai page while keeping setter and behavior unchanged.`
+
+`[R2A-DEADFILE-TEST-DB] | done | 2026-03-02 | next-app/lib/server/test-db.ts, docs/reports/diagnosis-03-02.md | strict-unused counts: TS6133 0->0, TS6196 0->0; tsc: pass; vitest: pass (153 files, 1169 tests; 11 skipped) | Deleted unreferenced legacy DB smoke helper (`testConnection`) after global reference scan showed no imports/usages.`
+
+`[R2B-DEADFILE-DATA-PROJECTS] | done | 2026-03-02 | next-app/data/projects.ts, docs/reports/diagnosis-03-02.md | strict-unused counts: TS6133 0->0, TS6196 0->0; tsc: pass; vitest: pass (153 files, 1169 tests; 11 skipped) | Deleted unreferenced legacy sample project dataset after global reference scan showed no imports/usages.`
+
+`[R2C-DEADFILE-CHAT-STORAGE] | done | 2026-03-02 | next-app/lib/chatStorage.ts, docs/reports/diagnosis-03-02.md | strict-unused counts: TS6133 0->0, TS6196 0->0; tsc: pass; vitest: pass | Deleted unreferenced legacy localStorage chat utilities after global reference scan showed no imports/usages.`
+
+`[R3-SEEDLOCALSTORAGE-DECISION] | done | 2026-03-02 | next-app/lib/seedLocalStorage.ts, docs/reports/diagnosis-03-02.md | reference-scan only (no code changes) | No in-repo imports were found, but file is retained as a legacy/manual bootstrap utility by default until an explicit retirement decision is requested.`
+
+`[R3B-SECOND-PROMOTION-PR-HYGIENE] | done | 2026-03-02 | GitHub PRs #23, #25, #27, #31, #35, #38, #42 (closed) | branch ancestry check (`origin/codex/cleanup-*` all in `origin/main`) | Closed stale `second` promotion PR backlog for cleanup branches while leaving active citation promotion PRs open.`
+
+`[R4-CODEBLOCK-HOVER-TEST-HARDENING] | done | 2026-03-02 | next-app/components/markdown/__tests__/CodeBlock.links.test.tsx, docs/reports/diagnosis-03-02.md | targeted vitest: pass; tsc: pass; vitest full: pass (158 files, 1193 tests; 11 skipped) | Hardened hover-intent citation test with Popover mocking + fake timers/act to remove repeated `act(...)` warning noise from this suite.`
 
 ---
 

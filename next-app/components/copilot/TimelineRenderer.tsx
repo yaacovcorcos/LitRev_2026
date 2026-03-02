@@ -15,7 +15,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { markdownComponents } from "../markdown/CodeBlock";
 import type { CopilotMessage } from "@/lib/projectCopilotStorage";
-import type { TimelineItem, TimelineArtifact, TimelineUserInputRequest } from "@/types/timeline";
+import type { TimelineItem, TimelineArtifact } from "@/types/timeline";
 import type { CopilotPage, ReasoningMode } from "@/types/ai";
 import type { AgentMode } from "@/types/agent";
 import type {
