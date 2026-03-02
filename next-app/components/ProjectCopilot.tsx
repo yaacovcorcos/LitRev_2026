@@ -57,6 +57,7 @@ export function ProjectCopilot({
     const panelRef = useRef<HTMLElement | null>(null);
     const timelineRef = useRef<HTMLDivElement | null>(null);
     const params = useParams<{ id: string }>();
+    const projectId = params?.id;
     const {
         messages,
         isCollapsed,
@@ -78,9 +79,6 @@ export function ProjectCopilot({
         handleReviewArtifact,
         approveArtifactsBatch,
         executePlan,
-        shouldOfferSummary,
-        summarizeAndRefresh,
-        isSummarizing,
         selectedModel,
         // Autonomy settings (Phase 7)
         setShowAutonomySettings,
@@ -158,6 +156,7 @@ export function ProjectCopilot({
             type: "retry_model_continuity",
             surface: "project",
             conversationId: currentConversationId,
+            projectId,
             payload: {
                 preserved: Boolean(selectedModel),
                 expectedModel: selectedModel ?? null,
@@ -173,7 +172,7 @@ export function ProjectCopilot({
             undefined,
             studyId
         );
-    }, [currentConversationId, isLoading, messages, page, sendMessage, selectedModel, studyId]);
+    }, [currentConversationId, isLoading, messages, page, projectId, sendMessage, selectedModel, studyId]);
 
     const resumeFailedPlan = useCallback(() => {
         if (isLoading) return;

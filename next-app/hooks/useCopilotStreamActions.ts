@@ -14,7 +14,7 @@ import { dispatchProjectDataChanged, getChangedDomainsForAcceptedArtifact } from
 import { createConversation } from "@/app/actions/conversations";
 import { reviewArtifactAction } from "@/app/actions/agent";
 import type { ArtifactData, ArtifactStatus } from "@/types/artifacts";
-import type { AgentMode, AutonomyPreset, AutonomyLevel } from "@/types/agent";
+import type { AgentMode } from "@/types/agent";
 import type { ChoiceOption, CopilotPage, ReasoningMode, StreamPhase, UserInputRequest } from "@/types/ai";
 import { handleProjectCopilotStreamChunk } from "@/contexts/project-copilot-stream-events";
 import type { ArtifactActionContract } from "@/lib/artifacts/action-contract";
@@ -246,10 +246,23 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
             }
 
             recordChatUnificationMetric({
+                type: "run_end_observed",
+                surface: "project",
+                runId: localRunId || null,
+                conversationId: effectiveConvId,
+                projectId,
+                payload: {
+                    runStatus,
+                    streamPhase: "project_stream",
+                },
+            });
+
+            recordChatUnificationMetric({
                 type: "stuck_running_tools_after_run_end",
                 surface: "project",
                 runId: localRunId || null,
                 conversationId: effectiveConvId,
+                projectId,
                 payload: {
                     unresolvedCount: runningToolCallIds.length,
                     runStatus,
@@ -267,10 +280,23 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
             }
 
             recordChatUnificationMetric({
+                type: "run_end_observed",
+                surface: "project",
+                runId: localRunId || null,
+                conversationId: effectiveConvId,
+                projectId,
+                payload: {
+                    runStatus,
+                    streamPhase: "project_stream",
+                },
+            });
+
+            recordChatUnificationMetric({
                 type: "stuck_running_tools_after_run_end",
                 surface: "project",
                 runId: localRunId || null,
                 conversationId: effectiveConvId,
+                projectId,
                 payload: {
                     unresolvedCount: runningToolCallIds.length,
                     runStatus,

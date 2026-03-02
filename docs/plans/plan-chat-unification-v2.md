@@ -9,7 +9,9 @@ Unify `/ai`, project copilot, and popup chat onto one shared chat engine while k
 3. Completed: U1.2 project adapter migration.
 4. Completed: U1.3 and U1.4 `/ai` send and plan stream paths now run through the shared reducer runtime.
 5. Completed: U1.5 anti-duplication CI guard is now enforced in CI by default (`--mode=enforce`).
-6. Pending: U1.6 burn-in gate validation and U3 popup migration to shared runtime.
+6. In progress: U1.6 telemetry ingestion is implemented end-to-end (client metric emission + authenticated server sink + DB storage + run-end metric capture).
+7. In progress: U1.6 preflight hardening now requires explicit cohort scoping, canonical canary timestamp capture, and Day-0 runId-quality checks before the 7-day gate clock starts.
+8. Pending: U1.6 burn-in analyzer/sign-off and U3 popup migration to shared runtime.
 
 ## Non-Negotiable Constraints
 1. No feature regression in any surface.
@@ -187,14 +189,41 @@ Exit criteria:
    - `retry_model_continuity`
    - `ask_user_context_mismatch`
    - `stuck_running_tools_after_run_end`
-5. Burn-in pass rule:
-   - window: 7 days internal canary
+   - `run_end_observed`
+5. Authoritative metric sink decision (ADR-brief):
+   - Use a dedicated `ChatUnificationMetric` table (instead of extending `RunEvent`) because U1.6 gate metrics include UI-level events that can occur without a valid `runId` (for example retry continuity and ask-user context mismatch checks), and we need one canonical store for both run-bound and non-run-bound evidence.
+   - Keep `RunEvent` as the agent execution timeline source; avoid cross-purpose overloading.
+6. Burn-in pass rule:
+   - preflight addendum (must complete before Day 0):
+     - define canary cohort source of truth (`workspaceIds` and/or `userIds`) or enforce canary-only feature-flag exposure for full window
+     - choose sign-off environment (`production` default; `staging` is rehearsal only)
+     - capture one canonical UTC enable timestamp (`CANARY_SINCE_UTC`) at feature-flag enable time and reuse it in every command/report
+     - assign sign-off owner + backup reviewer
+   - rollout environment matrix:
+     - local development only: `npx prisma migrate dev`
+     - shared/staging/production: `npx prisma migrate deploy`
+     - never run `migrate dev` against shared environments
+   - Day-0 data quality gate (run immediately after migration + enable):
+     - require `run_end_observed` rows for both `ai` and `project` surfaces
+     - validate run-end `runId` coverage per surface (non-null `runId` ratio)
+     - include sample rows for missing `runId` in report output
+   - window: 7 days internal canary, anchored from `CANARY_SINCE_UTC` (exact ISO in plan + report output)
    - minimum sample size: 200 completed runs total, with at least 50 `/ai` and 50 project runs
    - thresholds:
      - `retry_model_continuity` >= 99%
      - `ask_user_context_mismatch` = 0
      - `stuck_running_tools_after_run_end` = 0
-6. Gate cleanup on parity + KPI pass.
+   - non-vacuous denominator minimums:
+     - `retry_model_continuity` denominator >= 30 overall and >= 10 per surface
+     - `ask_user_context_mismatch` denominator >= 30 overall and >= 10 per surface
+   - completed-run counting rule:
+     - count distinct `runId` where `run_end_observed.payload.runStatus === "completed"` and `runId` belongs to an authorized run
+   - validation commands:
+     - daily progress (first 7 days only):  
+       `cd next-app && npx tsx scripts/validate-chat-unification-burn-in.ts --since=<CANARY_SINCE_UTC> --workspaceIds=<ws1,ws2> --userIds=<u1,u2> --allowShortWindow=1`
+     - strict final gate (no short-window override, earliest at +7 days):  
+       `cd next-app && npx tsx scripts/validate-chat-unification-burn-in.ts --since=<CANARY_SINCE_UTC> --workspaceIds=<ws1,ws2> --userIds=<u1,u2> --requireScopedCohort=1 --requireRunEndPerSurface=1 --minRunIdCoveragePerSurface=0.95 --report=../docs/reports/u1-6-burn-in.md`
+7. Gate cleanup on parity + KPI pass.
 
 Exit criteria:
 1. Replay parity suite passes for shared stream fixtures.

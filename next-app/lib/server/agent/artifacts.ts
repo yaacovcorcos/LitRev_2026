@@ -9,7 +9,6 @@ import { Prisma } from "@prisma/client";
 import type { ArtifactType, ArtifactStatus, CriteriaCardPayload, ProtocolSuggestionPayload, MemoryProposalPayload, MemoryForgetProposalPayload, StudyProposalPayload, StudyUpdatePayload, DraftDiffPayload, ScreeningBatchPayload, EvidenceTablePayload } from "@/types/artifacts";
 import type { StudyType, StudySource, StudyDetails } from "@/types/ledger";
 import { ARTIFACT_PAYLOAD_SCHEMAS } from "@/types/artifacts";
-import type { ProtocolData } from "@/types/protocol";
 import { emitEvent } from "./events";
 import { onStudyAccepted, onStudyExcluded, onDraftAccepted, onArtifactEdited } from "@/lib/server/memory/decision-extractor";
 import { syncProtocolToMemory } from "@/lib/server/memory/protocol-sync";
@@ -18,7 +17,7 @@ import { validateFieldValue, isValidFieldPath } from "@/lib/protocol-fields";
 import { requireActorContext } from "@/lib/server/actor";
 import { setUserMemory, createProjectMemory, getProjectMemories, getUserMemories } from "@/lib/server/memory";
 import { normalizedMemoryKey, normalizedMemoryValue } from "@/lib/server/memory/conflict-policy";
-import { createNote, updateNote, textToTipTapDoc, listNotes, type NoteContent, extractTextFromContent } from "@/lib/server/notes";
+import { createNote, updateNote, textToTipTapDoc, listNotes } from "@/lib/server/notes";
 import { upsertStudy, updateStudy } from "@/lib/server/ledger";
 
 // ── Apply function registry ──────────────────────────────────────────────────
