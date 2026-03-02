@@ -1,5 +1,27 @@
 import { z } from "zod";
 
+/**
+ * Normalize unknown draft payloads into JSON-safe data before validation.
+ * This strips runtime-only values (for example functions leaked from editor attrs).
+ */
+export function normalizeDraftStateInput(input: unknown): unknown {
+    try {
+        return JSON.parse(
+            JSON.stringify(input, (_key, value) => {
+                if (typeof value === "function" || typeof value === "symbol" || typeof value === "undefined") {
+                    return undefined;
+                }
+                if (typeof value === "number" && !Number.isFinite(value)) {
+                    return null;
+                }
+                return value;
+            }),
+        );
+    } catch {
+        return input;
+    }
+}
+
 /** Recursive JSONContent (TipTap editor content) */
 export const jsonContentSchema: z.ZodType<unknown> = z.lazy(() =>
     z.object({

@@ -6,7 +6,7 @@ import { getDraft, saveDraft } from "@/lib/server/drafts";
 import { withValidatedAction, type ActionResult } from "@/lib/server/action-utils";
 import { withAuth } from "@/lib/server/auth/session";
 import { projectIdSchema } from "@/lib/schemas/ids";
-import { draftStateSchema } from "@/lib/schemas/drafts";
+import { draftStateSchema, normalizeDraftStateInput } from "@/lib/schemas/drafts";
 
 export async function getDraftAction(projectId: string): Promise<ActionResult<DraftState | null>> {
   return withValidatedAction(projectIdSchema, projectId, (validId) =>
@@ -18,7 +18,7 @@ export async function getDraftAction(projectId: string): Promise<ActionResult<Dr
 
 const saveDraftInput = z.object({
   projectId: projectIdSchema,
-  state: draftStateSchema,
+  state: z.preprocess(normalizeDraftStateInput, draftStateSchema),
 });
 
 export async function saveDraftAction(projectId: string, state: DraftState): Promise<ActionResult<DraftState>> {
