@@ -11,6 +11,8 @@ This directory contains the canonical, active plans for LitRev.
 - **UI, UX, components** — Two companion execution plans:
   - [**Claude UI plan**](claude-ui-ux-plan.md): Holistic, root-cause-driven stability sweep (CLU-001–008). Includes Current Architecture reference.
   - [**Codex UI plan**](codex-ui-ux-plan.md): Full product roadmap — stability sweep (CUX-001–A03) + onboarding, citations, copilot features, performance, deferred items.
+  - [**Thinking + Live Process UX V2**](plan-thinking-v2.md): Sequenced plan for live reasoning visibility, tool activity lane, and user-in-the-loop controls built on shared chat runtime/adapters.
+  - [**Chat Unification V2**](plan-chat-unification-v2.md): Full plan to unify `/ai`, project copilot, and popup under one chat engine while preserving feature parity and keeping `/ai` project-optional.
 - [**Guided Setup V2**](plan-guided-setup.md): Dedicated onboarding activation plan for visual redesign, AI-enhanced step flow, personalization, and setup-mode agent behavior.
 - [**System Prompts & LLM Extraction**](plan-prompts.md): The text of prompts, JSON schemas, extraction rules, model parameters.
 
