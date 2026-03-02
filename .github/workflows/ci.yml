@@ -1,9 +1,9 @@
 name: CI
 on:
   push:
-    branches: [main]
+    branches: [main, second]
   pull_request:
-    branches: [main]
+    branches: [main, second]
 
 jobs:
   check:
@@ -27,6 +27,7 @@ jobs:
     env:
       DATABASE_URL: postgresql://test:test@localhost:5432/litrev_test
       DIRECT_URL: postgresql://test:test@localhost:5432/litrev_test
+      SHADOW_DATABASE_URL: postgresql://test:test@localhost:5432/litrev_shadow
 
     steps:
       - uses: actions/checkout@v4
@@ -37,6 +38,11 @@ jobs:
           cache-dependency-path: next-app/package-lock.json
       - run: cd next-app && npm ci
 
+      - name: Prepare shadow database
+        run: |
+          PGPASSWORD=test psql -h localhost -U test -d postgres -c 'DROP DATABASE IF EXISTS litrev_shadow;'
+          PGPASSWORD=test psql -h localhost -U test -d postgres -c 'CREATE DATABASE litrev_shadow;'
+
       - name: Apply migrations
         run: cd next-app && npx prisma migrate deploy
 
@@ -45,6 +51,7 @@ jobs:
           cd next-app && npx prisma migrate diff \
             --from-migrations prisma/migrations \
             --to-schema prisma/schema.prisma \
+            --shadow-database-url "$SHADOW_DATABASE_URL" \
             --exit-code
 
       - name: Type check
