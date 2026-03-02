@@ -131,6 +131,7 @@ describe("markdown link rendering", () => {
         });
         await act(async () => {
             await vi.advanceTimersByTimeAsync(380);
+            // Flush promise chains started inside the hover-intent timer callback.
             await Promise.resolve();
             await Promise.resolve();
         });
