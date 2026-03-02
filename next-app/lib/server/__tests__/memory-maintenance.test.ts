@@ -24,7 +24,6 @@ const mockProjectFindMany = vi.mocked(prisma.projectMemory.findMany);
 const mockStudyFindMany = vi.mocked(prisma.studyMemory.findMany);
 const mockUserUpdateMany = vi.mocked(prisma.userMemory.updateMany);
 const mockProjectUpdateMany = vi.mocked(prisma.projectMemory.updateMany);
-const mockStudyUpdateMany = vi.mocked(prisma.studyMemory.updateMany);
 
 describe("memory maintenance", () => {
     beforeEach(() => {
@@ -116,4 +115,3 @@ describe("memory maintenance", () => {
         })).toBe(true);
     });
 });
-

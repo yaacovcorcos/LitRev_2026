@@ -13,7 +13,6 @@ import {
     MIN_CHUNK_RATIO,
     PRUNE_MINIMUM,
     formatSummaryAsMessage,
-    TOOL_RESULT_MAX_CHARS,
     COMPACTION_SUMMARY_PROMPT,
     estimateMessagesTokensWithSafetyMargin,
     TOKEN_ESTIMATE_SAFETY_MARGIN,

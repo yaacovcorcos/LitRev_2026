@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { extractWithRegex, type RegexExtractionResult } from '../pdf-extraction'
+import { extractWithRegex } from '../pdf-extraction'
 
 // ---------------------------------------------------------------------------
 // DOI Extraction
