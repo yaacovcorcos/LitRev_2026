@@ -49,6 +49,16 @@ function childrenToString(children: unknown): string {
     return String(children ?? "");
 }
 
+function isSafeExternalHref(href: string): boolean {
+    try {
+        const parsed = new URL(href, "https://litrev.local");
+        const protocol = parsed.protocol.toLowerCase();
+        return protocol === "http:" || protocol === "https:" || protocol === "mailto:" || protocol === "tel:";
+    } catch {
+        return false;
+    }
+}
+
 function CodeBlock({ language, code }: { language: string | null; code: string }) {
     const [copied, setCopied] = useState(false);
 
@@ -119,6 +129,9 @@ export const markdownComponents: Components = {
         }
 
         // Non-citation links render as normal
+        if (!href || !isSafeExternalHref(href)) {
+            return <>{children}</>;
+        }
         return (
             <a href={href} target="_blank" rel="noopener noreferrer" {...props}>
                 {children}

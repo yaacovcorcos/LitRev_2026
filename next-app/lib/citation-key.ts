@@ -15,6 +15,14 @@ function safeParseUrl(input: string): URL | null {
     }
 }
 
+function safeDecodeUriComponent(input: string): string | null {
+    try {
+        return decodeURIComponent(input);
+    } catch {
+        return null;
+    }
+}
+
 /**
  * Normalize DOI to a stable lowercase canonical string with no URL prefix.
  */
@@ -45,7 +53,9 @@ export function extractDoi(url: string): string | null {
     if (!parsed) return null;
     if (!DOI_HOSTS.has(parsed.hostname.toLowerCase())) return null;
 
-    const path = decodeURIComponent(parsed.pathname).replace(/^\/+/, "").replace(/\/+$/, "");
+    const decodedPath = safeDecodeUriComponent(parsed.pathname);
+    if (!decodedPath) return null;
+    const path = decodedPath.replace(/^\/+/, "").replace(/\/+$/, "");
     const match = path.match(/^(10\.[^/]+\/\S+)$/i);
     return match ? match[1] : null;
 }
