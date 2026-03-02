@@ -586,6 +586,8 @@ Use this per-fix log format:
 
 `[CAF-C3-REPLACE-STUDIES-EMPTY-GUARD] | done | 2026-03-02 | next-app/lib/server/ledger.ts, next-app/app/actions/ledger.ts, next-app/lib/server/__tests__/ledger-replace-studies-contract.test.ts, next-app/lib/server/__tests__/ledger-action-replace-studies-validation.test.ts, docs/reports/diagnosis-03-02.md | strict-unused: unchanged pre-existing TS6133 in next-app/components/markdown/__tests__/CodeBlock.links.test.tsx; tsc: pass; vitest: pass (161 files, 1219 tests; 11 skipped) | replaceStudies now rejects empty or id-less payloads by default, allows explicit clear-all only with explicit intent, and action schema enforces the empty-payload contract before service execution.`
 
+`[R4B-CODEBLOCK-STRICT-UNUSED] | done | 2026-03-02 | next-app/components/markdown/__tests__/CodeBlock.links.test.tsx, docs/reports/diagnosis-03-02.md | strict-unused: pass (TS6133=0, TS6196=0); tsc: pass; vitest: pass (161 files, 1219 tests; 11 skipped) | Replaced an unused runtime `React` binding with a type-only `ReactNode` import in the Popover mock to clear the final strict-unused baseline issue.`
+
 ---
 
 ## Section 10: Final Position
