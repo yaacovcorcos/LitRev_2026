@@ -27,7 +27,7 @@ import {
 import type { EligibilityData, PICOData, ProtocolData } from "@/types/protocol";
 import { withValidatedAction, type ActionResult } from "@/lib/server/action-utils";
 import { withAuth } from "@/lib/server/auth/session";
-import { projectIdSchema, safeStringSchema } from "@/lib/schemas/ids";
+import { projectIdSchema } from "@/lib/schemas/ids";
 import {
   onboardingProgressUpdatesSchema,
   onboardingDerivedProfileSchema,

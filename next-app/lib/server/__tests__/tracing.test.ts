@@ -3,7 +3,7 @@
  * Covers no-op behavior, arg summarization, and span interface.
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 
 // tracing.ts uses "server-only" which is mocked globally in vitest.setup.ts
 import {

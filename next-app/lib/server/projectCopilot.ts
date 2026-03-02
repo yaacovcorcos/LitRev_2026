@@ -3,7 +3,7 @@ import "server-only";
 import { prisma } from "@/lib/server/prisma";
 import { assertProjectAccess } from "@/lib/server/access";
 import type { ProjectCopilotState } from "@/lib/projectCopilotStorage";
-import type { ServiceScope, ScopeInput } from "@/lib/server/scope";
+import type { ScopeInput } from "@/lib/server/scope";
 
 export async function getProjectCopilotState(
   scopeInput: ScopeInput,

@@ -26,7 +26,6 @@ import {
   updateProjectMemoryAction,
   archiveProjectMemoryAction,
   deleteProjectMemoryAction,
-  searchProjectMemoriesAction,
   type CreateProjectMemoryInput,
   type UpdateProjectMemoryInput,
 } from "@/app/actions/memory";

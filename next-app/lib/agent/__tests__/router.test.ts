@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { routeToAgent, AGENT_MODE_CONFIG, type RouterPage } from "../router";
+import { routeToAgent, AGENT_MODE_CONFIG } from "../router";
 
 describe("routeToAgent", () => {
     const originalScopingFlag = process.env.NEXT_PUBLIC_ENABLE_SCOPING_MODE;

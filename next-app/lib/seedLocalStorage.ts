@@ -1,6 +1,6 @@
 import { loadProjects, saveProjects } from "@/lib/storage";
 import { saveLedger } from "@/lib/ledgerStorage";
-import { createDefaultDraftState, emptyDoc, saveDraftState, type DraftState } from "@/lib/draftStorage";
+import { createDefaultDraftState, saveDraftState, type DraftState } from "@/lib/draftStorage";
 import { hasProtocolData, saveProtocolData } from "@/lib/protocolStorage";
 import {
   createDefaultProjectCopilotState,

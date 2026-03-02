@@ -80,7 +80,7 @@ describe("syncProtocolToMemory", () => {
     });
 
     it("syncs inclusion criteria as criterion memories", async () => {
-        const result = await syncProtocolToMemory("proj-1", makeProtocol());
+        await syncProtocolToMemory("proj-1", makeProtocol());
 
         expect(mockCreate).toHaveBeenCalledWith(expect.objectContaining({
             type: "criterion",

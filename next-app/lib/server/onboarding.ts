@@ -2,7 +2,7 @@ import "server-only";
 
 import { prisma } from "@/lib/server/prisma";
 import { assertProjectAccess } from "@/lib/server/access";
-import type { ServiceScope, ScopeInput } from "@/lib/server/scope";
+import type { ScopeInput } from "@/lib/server/scope";
 import { requireScope } from "@/lib/server/scope";
 import type { Prisma } from "@prisma/client";
 import type { OnboardingDerivedProfile } from "@/lib/server/onboarding-ai";
@@ -20,15 +20,6 @@ export type ProjectOnboardingState = {
 
 export type OnboardingStepId = "topicQuestion" | "pico" | "criteria" | "strategy" | "workflow" | "launch";
 export type OnboardingStepStatus = "pending" | "completed" | "skipped";
-
-const DEFAULT_STEP_STATUSES: Record<OnboardingStepId, OnboardingStepStatus> = {
-  topicQuestion: "pending",
-  pico: "pending",
-  criteria: "pending",
-  strategy: "pending",
-  workflow: "pending",
-  launch: "pending",
-};
 
 function parseGuidedSetupValue(value: string | null | undefined): boolean {
   if (!value) return DEFAULT_GUIDED_SETUP;

@@ -38,7 +38,6 @@ export function EditableChips({
     onRemove,
     addLabel = "Add",
     placeholder = "Type and press Enter...",
-    isActive = false,
     onFocus,
     onBlur,
     className = "",
