@@ -1,8 +1,8 @@
 export type PopupChatContext =
-    | { type: "study"; studyId: string; title: string; abstract?: string; authors?: string }
-    | { type: "criterion"; text: string; criterionType: "inclusion" | "exclusion" }
-    | { type: "draft_selection"; section: string; selectedText: string }
-    | { type: "protocol_section"; section: string; currentContent: string };
+    | { type: "study"; projectId: string; studyId: string; title: string; abstract?: string; authors?: string }
+    | { type: "criterion"; projectId: string; text: string; criterionType: "inclusion" | "exclusion" }
+    | { type: "draft_selection"; projectId: string; section: string; selectedText: string }
+    | { type: "protocol_section"; projectId: string; section: string; sectionKey?: string; currentContent: string };
 
 export type PopupMessage = {
     id: string;

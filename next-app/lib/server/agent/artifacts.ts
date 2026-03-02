@@ -645,26 +645,57 @@ registerApplyFunction("memory_forget_proposal", async (artifact) => {
 // study_proposal: upsert the study with triage decision
 registerApplyFunction("study_proposal", async (artifact) => {
     const payload = artifact.payload as StudyProposalPayload;
+    const mappedStatus = payload.recommendation === "exclude"
+        ? "excluded"
+        : payload.recommendation === "keep"
+            ? "active"
+            : "pending";
+
+    const normalizedSource: StudySource | undefined = payload.source === "manual"
+        || payload.source === "pdf-import"
+        || payload.source === "pubmed"
+        || payload.source === "semantic-scholar"
+        || payload.source === "copilot"
+        ? payload.source
+        : payload.source
+            ? "copilot"
+            : undefined;
+
+    const detailPatch: Partial<StudyDetails> = {
+        triageDecision: payload.recommendation,
+    };
+    if (payload.matchRationale) detailPatch.matchRationale = payload.matchRationale;
+    if (normalizedSource) detailPatch.source = normalizedSource;
+    if (payload.sourceUrl) detailPatch.sourceUrl = payload.sourceUrl;
+    if (payload.doi) detailPatch.doi = payload.doi;
+    if (payload.pmid) detailPatch.pmid = payload.pmid;
+    if (payload.abstract) detailPatch.abstract = payload.abstract;
+    if (payload.journal) detailPatch.journal = payload.journal;
+    if (payload.studyType) detailPatch.studyType = payload.studyType as StudyType;
+    if (typeof payload.sampleSize === "number") detailPatch.sampleSize = payload.sampleSize;
+
+    if (payload.studyId) {
+        const existing = await prisma.study.findFirst({
+            where: { id: payload.studyId, projectId: artifact.projectId, deletedAt: null },
+            select: { id: true },
+        });
+        if (existing) {
+            await updateStudy(undefined, artifact.projectId, existing.id, {
+                status: mappedStatus,
+                details: detailPatch,
+            });
+            return;
+        }
+    }
+
     await upsertStudy(undefined, artifact.projectId, {
+        id: payload.studyId,
         title: payload.title,
         authors: payload.authors,
         year: payload.year,
-        status: payload.recommendation === "exclude" ? "excluded"
-              : payload.recommendation === "keep" ? "active"
-              : "pending",
+        status: mappedStatus,
         quality: "-",
-        details: {
-            doi: payload.doi,
-            pmid: payload.pmid,
-            abstract: payload.abstract,
-            journal: payload.journal,
-            studyType: payload.studyType as StudyType | undefined,
-            sampleSize: payload.sampleSize,
-            triageDecision: payload.recommendation,
-            matchRationale: payload.matchRationale,
-            source: payload.source as StudySource | undefined,
-            sourceUrl: payload.sourceUrl,
-        },
+        details: detailPatch,
     });
 });
 
@@ -772,23 +803,51 @@ registerApplyFunction("evidence_table", async (artifact) => {
 registerApplyFunction("screening_batch", async (artifact) => {
     const payload = artifact.payload as ScreeningBatchPayload;
     for (const study of payload.studies) {
-        // Find the study in the ledger by title (soft-delete aware)
-        const existing = await prisma.study.findFirst({
-            where: { projectId: artifact.projectId, title: study.title, deletedAt: null },
-            select: { id: true, details: true },
-        });
+        let existing: { id: string; details: unknown } | null = null;
+
+        if (study.studyId) {
+            existing = await prisma.study.findFirst({
+                where: { id: study.studyId, projectId: artifact.projectId, deletedAt: null },
+                select: { id: true, details: true },
+            });
+            if (!existing) {
+                console.warn(
+                    `[screening_batch] Skipping study update: studyId "${study.studyId}" not found in project "${artifact.projectId}".`
+                );
+                continue;
+            }
+        } else {
+            // Legacy artifact fallback: match by title only when no studyId exists.
+            existing = await prisma.study.findFirst({
+                where: { projectId: artifact.projectId, title: study.title, deletedAt: null },
+                select: { id: true, details: true },
+            });
+        }
+
         if (!existing) continue;
 
+        const screenedAtIso = new Date().toISOString();
         const details = (existing.details as Record<string, unknown>) ?? {};
         await prisma.study.update({
             where: { id: existing.id },
             data: {
-                status: study.recommendation === "exclude" ? "excluded" : "active",
+                status: study.recommendation === "exclude"
+                    ? "excluded"
+                    : study.recommendation === "keep"
+                        ? "active"
+                        : "pending",
                 details: {
                     ...details,
                     triageDecision: study.recommendation,
                     matchRationale: study.matchRationale,
-                    screenedAt: new Date().toISOString(),
+                    screenedAt: screenedAtIso,
+                    screeningMeta: {
+                        tier: study.screeningTier ?? "ai",
+                        modelConfidence: study.confidence,
+                        reasons: study.matchRationale ? [study.matchRationale] : [],
+                        screenedAt: screenedAtIso,
+                        modelUsed: study.modelUsed,
+                    },
                 },
             },
         });

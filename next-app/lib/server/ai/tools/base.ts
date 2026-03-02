@@ -20,6 +20,7 @@ import { bulkScreeningTool } from "./bulk-screening";
 import { extractPdfTool } from "./extract-pdf";
 import { updateNoteTool } from "./update-note";
 import { semanticScholarSearchTool } from "./semantic-scholar-search";
+import { openAlexSearchTool } from "./openalex-search";
 import { recommendStudiesTool } from "./recommend-studies";
 import { readStudyContentTool } from "./read-study-content";
 import { storeMemoryTool } from "./store-memory";
@@ -91,6 +92,7 @@ export interface ToolExecutionContext {
 export const AVAILABLE_TOOLS: AITool[] = [
     pubmedSearchTool,
     semanticScholarSearchTool,
+    openAlexSearchTool,
     addToLedgerTool,
     excludeStudyTool,
     deleteStudyTool,
@@ -121,6 +123,7 @@ export type ToolScope = "global" | "project";
 const GLOBAL_SCOPE_TOOL_ALLOWLIST = new Set<string>([
     "search_pubmed",
     "search_semantic_scholar",
+    "search_openalex",
     "store_memory",
     "forget_memory",
     "inspect_memory",

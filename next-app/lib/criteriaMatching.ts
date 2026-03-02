@@ -134,6 +134,11 @@ export type CriteriaMatchResult = {
     meetsAllCriteria: boolean;
 };
 
+export type HighConfidenceExclusionResult = {
+    exclude: boolean;
+    reasons: string[];
+};
+
 /**
  * Evaluate all criteria for a study
  */
@@ -149,6 +154,42 @@ export function evaluateCriteria(study: Study, protocol: ProtocolData): Criteria
         eligibilityScore: score,
         exclusionReasons: reasons,
         meetsAllCriteria: reasons.length === 0,
+    };
+}
+
+/**
+ * Conservative deterministic exclusion gate for screening cost optimization.
+ * Only excludes when protocol constraints are explicit and study metadata is explicit.
+ */
+export function isHighConfidenceExclusion(
+    study: Study,
+    protocol: ProtocolData
+): HighConfidenceExclusionResult {
+    const reasons: string[] = [];
+
+    const hasYearConstraint = Boolean(protocol.methodology.timeFrameStart || protocol.methodology.timeFrameEnd);
+    const hasKnownYear = Number.isFinite(study.year) && study.year > 0;
+    if (hasYearConstraint && hasKnownYear && !matchesYearRange(study, protocol)) {
+        const { timeFrameStart, timeFrameEnd } = protocol.methodology;
+        if (timeFrameStart && timeFrameEnd) {
+            reasons.push(`Published outside protocol time frame (${timeFrameStart}-${timeFrameEnd})`);
+        } else if (timeFrameStart) {
+            reasons.push(`Published before protocol start year (${timeFrameStart})`);
+        } else if (timeFrameEnd) {
+            reasons.push(`Published after protocol end year (${timeFrameEnd})`);
+        }
+    }
+
+    const protocolHasDesigns = protocol.methodology.studyDesigns.length > 0;
+    const studyType = study.details?.studyType;
+    const hasKnownDesign = typeof studyType === "string" && studyType.length > 0 && studyType !== "Other";
+    if (protocolHasDesigns && hasKnownDesign && !matchesStudyDesign(study, protocol)) {
+        reasons.push(`Study design (${studyType}) is outside protocol design criteria`);
+    }
+
+    return {
+        exclude: reasons.length > 0,
+        reasons,
     };
 }
 

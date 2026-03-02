@@ -66,7 +66,7 @@ import {
     type PRISMAStats,
 } from "@/lib/server/memory";
 import { z } from "zod";
-import { withValidatedAction, type ActionResult } from "@/lib/server/action-utils";
+import { withAction, withValidatedAction, type ActionResult } from "@/lib/server/action-utils";
 import { withAuth } from "@/lib/server/auth/session";
 import { prisma } from "@/lib/server/prisma";
 import { cuidSchema, projectIdSchema, searchQuerySchema } from "@/lib/schemas/ids";

@@ -1,8 +1,7 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { Study } from "@/types/ledger";
-import { useProjects } from "@/contexts/ProjectsContext";
 import {
   listStudiesAction,
   upsertStudyAction,
@@ -21,47 +20,24 @@ type LedgerContextValue = {
   getPaperCount: (projectId: string) => number;
   getStudyById: (projectId: string, studyId: string) => Promise<Study | null>;
   updateSingleStudy: (projectId: string, studyId: string, updates: Partial<StudyInput>) => Promise<Study>;
+  /** Push studies into the cache from an external source (e.g. ProjectDataProvider). */
+  seedProject: (projectId: string, studies: Study[]) => void;
+  /** Ensure a project's studies are loaded — fetches once, no-op on subsequent calls. */
+  ensureProjectLoaded: (projectId: string) => void;
 };
 
 const LedgerContext = createContext<LedgerContextValue | undefined>(undefined);
 
 export function LedgerProvider({ children }: { children: React.ReactNode }) {
-  const { projects } = useProjects();
   const [ledgerMap, setLedgerMap] = useState<Record<string, Study[]>>({});
-
-  useEffect(() => {
-    let isActive = true;
-    const load = async () => {
-      if (!projects.length) {
-        if (isActive) setLedgerMap({});
-        return;
-      }
-      const entries = await Promise.all(
-        projects.map(async (project) => {
-          const result = await listStudiesAction(project.id);
-          return [project.id, result.success ? result.data : []] as const;
-        })
-      );
-
-      if (!isActive) return;
-      const nextMap: Record<string, Study[]> = {};
-      for (const [projectId, studies] of entries) {
-        nextMap[projectId] = [...studies];
-      }
-      setLedgerMap(nextMap);
-    };
-
-    load();
-    return () => {
-      isActive = false;
-    };
-  }, [projects]);
+  const loadedProjectsRef = useRef<Set<string>>(new Set());
 
   // Refresh a single project's studies when AI tools mutate the ledger
   useEffect(() => {
     const handler = (e: Event) => {
       const projectId = (e as CustomEvent).detail?.projectId as string | undefined;
       if (!projectId) return;
+      loadedProjectsRef.current.add(projectId);
       listStudiesAction(projectId)
         .then((result) => {
           if (result.success) setLedgerMap((prev) => ({ ...prev, [projectId]: result.data }));
@@ -173,6 +149,23 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
     []
   );
 
+  /** Push studies into the cache from an external source (e.g. ProjectDataProvider). */
+  const seedProject = useCallback((projectId: string, studies: Study[]) => {
+    loadedProjectsRef.current.add(projectId);
+    setLedgerMap((prev) => ({ ...prev, [projectId]: studies }));
+  }, []);
+
+  /** Fetch a project's studies if not already loaded. No-op for already-loaded projects. */
+  const ensureProjectLoaded = useCallback((projectId: string) => {
+    if (loadedProjectsRef.current.has(projectId)) return;
+    loadedProjectsRef.current.add(projectId);
+    listStudiesAction(projectId)
+      .then((result) => {
+        if (result.success) setLedgerMap((prev) => ({ ...prev, [projectId]: result.data }));
+      })
+      .catch(console.error);
+  }, []);
+
   const value = useMemo(
     () => ({
       getStudiesByProject,
@@ -183,8 +176,10 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
       getPaperCount,
       getStudyById,
       updateSingleStudy,
+      seedProject,
+      ensureProjectLoaded,
     }),
-    [getStudiesByProject, addStudy, replaceStudyInCache, removeStudies, upsertNewStudy, getPaperCount, getStudyById, updateSingleStudy]
+    [getStudiesByProject, addStudy, replaceStudyInCache, removeStudies, upsertNewStudy, getPaperCount, getStudyById, updateSingleStudy, seedProject, ensureProjectLoaded]
   );
 
   return <LedgerContext.Provider value={value}>{children}</LedgerContext.Provider>;

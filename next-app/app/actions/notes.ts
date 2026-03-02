@@ -5,12 +5,14 @@ import {
     createNote,
     getNote,
     listNotes,
+    listNotesIndex,
     listNotesPaginated,
     updateNote,
     deleteNote,
     searchNotes,
     textToTipTapDoc,
     type CreateNoteInput,
+    type NoteIndexItem,
     type PaginationOptions,
     type UpdateNoteInput,
     type ListNotesOptions,
@@ -123,6 +125,16 @@ export async function listNotesAction(projectId: string, options?: ListNotesOpti
         withAuth(async ({ userId, workspaceId }) => {
             await assertProjectAccess(v.projectId, userId, workspaceId);
             return listNotes(v.projectId, v.options as ListNotesOptions | undefined);
+        }),
+    );
+}
+
+/** Lightweight notes index — metadata only, no content payload. */
+export async function listNotesIndexAction(projectId: string): Promise<ActionResult<NoteIndexItem[]>> {
+    return withValidatedAction(projectIdSchema, projectId, (validId) =>
+        withAuth(async ({ userId, workspaceId }) => {
+            await assertProjectAccess(validId, userId, workspaceId);
+            return listNotesIndex(validId);
         }),
     );
 }

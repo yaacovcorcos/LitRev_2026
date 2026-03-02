@@ -9,6 +9,7 @@ import type { AutonomyLevel, AutonomyPreset } from "@/types/agent";
 export const PRESET_LEVELS: Record<AutonomyPreset, Record<string, AutonomyLevel>> = {
     manual: {
         search_pubmed: 1,
+        search_openalex: 1,
         extract_pdf: 1,
         add_to_ledger: 1,
         exclude_study: 1,
@@ -29,6 +30,7 @@ export const PRESET_LEVELS: Record<AutonomyPreset, Record<string, AutonomyLevel>
     },
     assisted: {
         search_pubmed: 2,
+        search_openalex: 2,
         extract_pdf: 3,
         add_to_ledger: 2,
         exclude_study: 2,
@@ -49,6 +51,7 @@ export const PRESET_LEVELS: Record<AutonomyPreset, Record<string, AutonomyLevel>
     },
     autonomous: {
         search_pubmed: 4,
+        search_openalex: 4,
         extract_pdf: 4,
         add_to_ledger: 3,
         exclude_study: 2,

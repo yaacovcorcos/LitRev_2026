@@ -17,6 +17,7 @@ import { ProjectPageLayout } from "@/components/project/ProjectPageLayout";
 import { useProjects } from "@/contexts/ProjectsContext";
 import { useLedger } from "@/contexts/LedgerContext";
 import { ProjectCopilot } from "@/components/ProjectCopilot";
+import { EmptyState, EmptyStateSkeleton } from "@/components/ui/EmptyState";
 import { useProjectCopilot } from "@/contexts/ProjectCopilotContext";
 import { useProjectShell } from "@/contexts/ProjectShellContext";
 import { OPTIONAL_SECTION_KEYS, type DraftMode, DraftSectionId } from "@/types/draft";
@@ -28,7 +29,8 @@ import {
   saveDraftState,
   createDefaultDraftState,
 } from "@/lib/draftStorage";
-import { getDraftAction, saveDraftAction } from "@/app/actions/drafts";
+import { saveDraftAction } from "@/app/actions/drafts";
+import { useProjectData } from "@/hooks/useProjectData";
 import dynamic from "next/dynamic";
 const ExportModal = dynamic(() => import("@/components/ExportModal").then(m => m.ExportModal), { ssr: false });
 import { DemoGuideCard } from "@/components/project/DemoGuideCard";
@@ -51,6 +53,7 @@ import {
   isDraftMode,
   clamp,
   docHasContent,
+  jsonToText,
   formatToVars,
   FONT_FAMILY_OPTIONS,
   BASE_SECTION_MAP,
@@ -59,12 +62,35 @@ import {
 import { useDraftExport } from "./useDraftExport";
 import { useDraftSections } from "./useDraftSections";
 import { useDraftCopilot } from "./useDraftCopilot";
+import { buildReferencesDoc, compileDraftCitations } from "@/lib/citation-compiler";
+
+function createCitationUid(sectionId: DraftSectionId): string {
+  const rand = Math.random().toString(36).slice(2, 8);
+  return `cit-${sectionId}-${Date.now().toString(36)}-${rand}`;
+}
+
+function withCompiledCitations(state: DraftState, studies: Study[], includeNumberInNodes: boolean): DraftState {
+  const compiled = compileDraftCitations({
+    contentBySection: state.contentBySection,
+    sectionOrder: state.sectionOrder,
+    studies,
+    includeNumberInNodes,
+  });
+  const referencesDoc = buildReferencesDoc(compiled.orderedStudyIds, studies);
+  return {
+    ...state,
+    contentBySection: {
+      ...compiled.normalizedContentBySection,
+      references: referencesDoc,
+    },
+  };
+}
 
 function DraftContent() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { getProjectById } = useProjects();
+  const { getProjectById, isLoadingProjects, projectsError } = useProjects();
   const { getStudiesByProject } = useLedger();
   const project = getProjectById(id);
   const studies = useMemo(() => (id ? getStudiesByProject(id) : []), [id, getStudiesByProject]);
@@ -76,6 +102,14 @@ function DraftContent() {
   const querySection = searchParams.get("section");
 
   const [draft, setDraft] = useState<DraftState>(createDefaultDraftState);
+  const normalizeForEditor = useCallback(
+    (state: DraftState) => withCompiledCitations(state, studies, true),
+    [studies]
+  );
+  const normalizeForPersistence = useCallback(
+    (state: DraftState) => withCompiledCitations(state, studies, false),
+    [studies]
+  );
 
   const applyDraftFromQuery = useCallback(
     (loaded: DraftState) => {
@@ -103,28 +137,30 @@ function DraftContent() {
     [queryMode, querySection]
   );
 
+  const { draft: cachedDraft, warmDomain } = useProjectData();
+  const appliedCachedRef = useRef(false);
+
   useEffect(() => {
-    let isActive = true;
+    // Always paint from localStorage first (instant)
     const local = loadDraftState(id);
-    setDraft(applyDraftFromQuery(local));
+    setDraft(normalizeForEditor(applyDraftFromQuery(local)));
+    appliedCachedRef.current = false;
+  }, [id, applyDraftFromQuery, normalizeForEditor]);
 
-    const loadRemote = async () => {
-      if (!id) return;
-      try {
-        const result = await getDraftAction(id);
-        if (result.success && result.data && isActive) {
-          setDraft(applyDraftFromQuery(result.data));
-        }
-      } catch (err) {
-        console.error("Failed to load draft from backend", err);
-      }
-    };
+  // Apply server data from preload cache when ready
+  useEffect(() => {
+    if (appliedCachedRef.current) return;
+    if (cachedDraft.state === "ready" && cachedDraft.data) {
+      setDraft(normalizeForEditor(applyDraftFromQuery(cachedDraft.data)));
+      appliedCachedRef.current = true;
+    } else if (cachedDraft.state === "idle") {
+      warmDomain("draft");
+    }
+  }, [cachedDraft, applyDraftFromQuery, normalizeForEditor, warmDomain]);
 
-    loadRemote();
-    return () => {
-      isActive = false;
-    };
-  }, [id, applyDraftFromQuery]);
+  useEffect(() => {
+    setDraft((prev) => normalizeForEditor(prev));
+  }, [normalizeForEditor]);
   const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "error">("saved");
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -175,6 +211,17 @@ function DraftContent() {
     () => orderedSections.filter((section) => docHasContent(draft.contentBySection[section.id])),
     [draft.contentBySection, orderedSections]
   );
+  const compiledCitations = useMemo(
+    () =>
+      compileDraftCitations({
+        contentBySection: draft.contentBySection,
+        sectionOrder: draft.sectionOrder,
+        studies,
+        includeNumberInNodes: true,
+      }),
+    [draft.contentBySection, draft.sectionOrder, studies]
+  );
+  const citationIssues = compiledCitations.issues;
 
   const availableSectionKeys = useMemo(
     () => OPTIONAL_SECTION_KEYS.filter((key) => !draft.sectionOrder.includes(key)),
@@ -193,6 +240,7 @@ function DraftContent() {
     [draft.activeSection, sectionMetaById]
   );
   const activeSectionLabel = activeSectionMeta?.label ?? "Draft";
+  const isReferencesSection = draft.activeSection === "references";
   const formatVarsById = useMemo(() => {
     const map: Record<DraftSectionId, CSSProperties> = {};
     for (const [id, format] of Object.entries(draft.formattingBySection)) {
@@ -225,9 +273,10 @@ function DraftContent() {
       }
       setSaveStatus("saving");
       saveTimerRef.current = setTimeout(async () => {
+        const persistableState = normalizeForPersistence(next);
         if (id) {
-          saveDraftState(id, next);
-          const result = await saveDraftAction(id, next);
+          saveDraftState(id, persistableState);
+          const result = await saveDraftAction(id, persistableState);
           if (!result.success) {
             console.error("Failed to save draft to backend:", result.error);
             setSaveStatus("error");
@@ -237,19 +286,22 @@ function DraftContent() {
         setSaveStatus("saved");
       }, 400);
     },
-    [id]
+    [id, normalizeForPersistence]
   );
 
   const updateDraft = useCallback(
     (updater: (prev: DraftState) => DraftState) => {
       setDraft((prev) => {
-        const next = updater(prev);
+        let next = updater(prev);
         if (next === prev) return prev;
+        if (next.contentBySection !== prev.contentBySection || next.sectionOrder !== prev.sectionOrder) {
+          next = normalizeForEditor(next);
+        }
         scheduleSave(next);
         return next;
       });
     },
-    [scheduleSave]
+    [normalizeForEditor, scheduleSave]
   );
 
   const flushContentCommit = useCallback(() => {
@@ -273,6 +325,18 @@ function DraftContent() {
       };
     });
   }, [updateDraft]);
+
+  const getDraftSnapshot = useCallback((): DraftState => {
+    if (dirtyContentKeysRef.current.size === 0) return draft;
+    const nextContent = { ...draft.contentBySection };
+    for (const key of dirtyContentKeysRef.current) {
+      nextContent[key] = pendingContentRef.current[key];
+    }
+    return {
+      ...draft,
+      contentBySection: nextContent,
+    };
+  }, [draft]);
 
   const queueContentUpdate = useCallback(
     (key: DraftSectionId, json: JSONContent) => {
@@ -335,9 +399,11 @@ function DraftContent() {
   // Export state + callbacks (extracted hook)
   const {
     isExportModalOpen, setExportModalOpen, exportHistory, latestExport,
+    exportMode, setExportMode, blockingCitationIssuesCount,
+    citationIssues: exportCitationIssues,
     hasDraftContent, handleExportDocx, handleDeleteExport,
   } = useDraftExport({
-    projectId: id, projectName: project?.name, draft, orderedSections, studies, flushContentCommit,
+    projectId: id, projectName: project?.name, draft, getDraftSnapshot, orderedSections, studies, flushContentCommit,
   });
 
   // Draft copilot chat (extracted hook)
@@ -415,10 +481,11 @@ function DraftContent() {
       ?? (draft.mode === "section" ? sectionEditor : editorBySectionRef.current[draft.activeSection])
       ?? null;
     if (!editor) return;
+    const uid = createCitationUid(draft.activeSection);
     editor
       .chain()
       .focus()
-      .insertContent({ type: "citation", attrs: { id: study.id, label: studyLabel(study) } })
+      .insertContent({ type: "citation", attrs: { studyId: study.id, uid } })
       .insertContent(" ")
       .run();
   };
@@ -537,6 +604,7 @@ function DraftContent() {
         setActiveEditor(editor);
       },
       onUpdate: ({ editor }) => {
+        if (activeSectionRef.current === "references") return;
         const key = activeSectionRef.current;
         handleUpdateSection(key, editor.getJSON());
       },
@@ -545,6 +613,11 @@ function DraftContent() {
   );
 
   const lastLoadedSectionRef = useRef<DraftSectionId | null>(null);
+
+  useEffect(() => {
+    if (!sectionEditor) return;
+    sectionEditor.setEditable(!isReferencesSection);
+  }, [isReferencesSection, sectionEditor]);
 
   useEffect(() => {
     if (!sectionEditor) return;
@@ -633,15 +706,41 @@ function DraftContent() {
     };
   }, [updateDraft]);
 
+  if (isLoadingProjects) {
+    return (
+      <ProjectPageLayout noMainPadding initiallyCollapsed mainClassName={styles.appMainOverride}>
+        <EmptyStateSkeleton className={styles.notFound} />
+      </ProjectPageLayout>
+    );
+  }
+
+  if (projectsError) {
+    return (
+      <ProjectPageLayout noMainPadding initiallyCollapsed mainClassName={styles.appMainOverride}>
+        <EmptyState
+          variant="error"
+          icon="cloud_off"
+          title="Unable to load project"
+          description={projectsError}
+          primaryAction={{ label: "Retry", onClick: () => window.location.reload() }}
+          secondaryAction={{ label: "Back to Dashboard", href: "/" }}
+          className={styles.notFound}
+        />
+      </ProjectPageLayout>
+    );
+  }
+
   if (!project) {
     return (
       <ProjectPageLayout noMainPadding initiallyCollapsed mainClassName={styles.appMainOverride}>
-        <div className={styles.notFound}>
-          <h1>Project not found</h1>
-          <Link href="/" className="btn-minimal">
-            Back to Dashboard
-          </Link>
-        </div>
+        <EmptyState
+          variant="error"
+          icon="folder_off"
+          title="Project not found"
+          description="This project may have been deleted or you don't have access."
+          primaryAction={{ label: "Back to Dashboard", href: "/" }}
+          className={styles.notFound}
+        />
       </ProjectPageLayout>
     );
   }
@@ -704,14 +803,16 @@ function DraftContent() {
                 <div className={styles.ledgerHeaderTop}>
                   <span className={styles.ledgerTitle}>Evidence Ledger</span>
                   <div className={styles.panelHeaderActions}>
-                    <button
-                      type="button"
-                      className={styles.iconBtn}
-                      aria-label="Add evidence"
-                      onClick={() => setAddEvidenceOpen(true)}
-                    >
-                      <span className="material-icons-round">add</span>
-                    </button>
+                    {!isReferencesSection && (
+                      <button
+                        type="button"
+                        className={styles.iconBtn}
+                        aria-label="Add evidence"
+                        onClick={() => setAddEvidenceOpen(true)}
+                      >
+                        <span className="material-icons-round">add</span>
+                      </button>
+                    )}
                     <button
                       type="button"
                       className={styles.panelToggle}
@@ -736,7 +837,15 @@ function DraftContent() {
               </div>
 
               <div className={styles.panelBody}>
-                {usedEvidence.length === 0 ? (
+                {isReferencesSection ? (
+                  <div className={styles.emptyPanel}>
+                    <div className={styles.emptyIcon}>
+                      <span className="material-icons-round">auto_awesome</span>
+                    </div>
+                    <h3>Auto-generated section</h3>
+                    <p>References are generated from citation nodes in manuscript sections.</p>
+                  </div>
+                ) : usedEvidence.length === 0 ? (
                   <div className={styles.emptyPanel}>
                     <div className={styles.emptyIcon}>
                       <span className="material-icons-round">library_add</span>
@@ -813,15 +922,17 @@ function DraftContent() {
 
             <div className={styles.toolbarRow}>
               <EditorToolbar
-                editor={draft.mode === "section" ? sectionEditor : activeEditor}
+                editor={isReferencesSection ? null : (draft.mode === "section" ? sectionEditor : activeEditor)}
                 dir={paragraphDir}
                 onAskAi={() => {
+                  if (isReferencesSection) return;
                   const ed = draft.mode === "section" ? sectionEditor : activeEditor;
                   const selectedText = ed && !ed.state.selection.empty
                     ? ed.state.doc.textBetween(ed.state.selection.from, ed.state.selection.to)
                     : ed?.getText().slice(0, 500) ?? "";
                   openPopupChat({
                     type: "draft_selection",
+                    projectId: id,
                     section: activeSectionLabel,
                     selectedText,
                   });
@@ -837,6 +948,19 @@ function DraftContent() {
                 onUpdateFormat={updateSectionFormat}
               />
             </div>
+            {citationIssues.length > 0 && (
+              <div className={styles.citationIssues} role="status" aria-live="polite">
+                <div className={styles.citationIssuesTitle}>
+                  <span className="material-icons-round">warning</span>
+                  {citationIssues.length} citation issue{citationIssues.length === 1 ? "" : "s"} detected
+                </div>
+                <ul className={styles.citationIssuesList}>
+                  {citationIssues.slice(0, 3).map((issue) => (
+                    <li key={`${issue.uid}-${issue.type}`}>{issue.message}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
             {draft.mode === "section" ? (
               <div
@@ -845,10 +969,21 @@ function DraftContent() {
                 id="draft-section-panel"
                 aria-labelledby={`draft-tab-${draft.activeSection}`}
               >
-                <div className={styles.editorSurface} style={activeFormatVars}>
-                  <EditorContent editor={sectionEditor} />
-                </div>
-                <div className={styles.helperText}>{activeSectionMeta?.placeholder}</div>
+                {isReferencesSection ? (
+                  <>
+                    <div className={styles.editorSurface} style={activeFormatVars}>
+                      <pre className={styles.referencesReadOnly}>{jsonToText(draft.contentBySection.references)}</pre>
+                    </div>
+                    <div className={styles.helperText}>References are auto-generated from inline citations.</div>
+                  </>
+                ) : (
+                  <>
+                    <div className={styles.editorSurface} style={activeFormatVars}>
+                      <EditorContent editor={sectionEditor} />
+                    </div>
+                    <div className={styles.helperText}>{activeSectionMeta?.placeholder}</div>
+                  </>
+                )}
               </div>
             ) : (
               <div className={styles.fullDraftScroll} role="region" aria-label="Full draft">
@@ -889,16 +1024,22 @@ function DraftContent() {
                             {section.label}
                           </h2>
                         </header>
-                        <FullSectionEditor
-                          sectionId={section.id}
-                          content={draft.contentBySection[section.id] ?? emptyDoc()}
-                          placeholderText={section.placeholder}
-                          surfaceClassName={styles.manuscriptEditorSurface}
-                          surfaceStyle={formatVarsById[section.id] ?? formatToVars(DEFAULT_SECTION_FORMAT)}
-                          onFocusSection={handleFocusSection}
-                          onUpdateSection={handleUpdateSection}
-                          registerEditor={registerEditor}
-                        />
+                        {section.id === "references" ? (
+                          <div className={styles.manuscriptEditorSurface}>
+                            <pre className={styles.referencesReadOnly}>{jsonToText(draft.contentBySection.references)}</pre>
+                          </div>
+                        ) : (
+                          <FullSectionEditor
+                            sectionId={section.id}
+                            content={draft.contentBySection[section.id] ?? emptyDoc()}
+                            placeholderText={section.placeholder}
+                            surfaceClassName={styles.manuscriptEditorSurface}
+                            surfaceStyle={formatVarsById[section.id] ?? formatToVars(DEFAULT_SECTION_FORMAT)}
+                            onFocusSection={handleFocusSection}
+                            onUpdateSection={handleUpdateSection}
+                            registerEditor={registerEditor}
+                          />
+                        )}
                       </section>
                     ))
                   )}
@@ -954,6 +1095,10 @@ function DraftContent() {
         isOpen={isExportModalOpen}
         onClose={() => setExportModalOpen(false)}
         onExport={handleExportDocx}
+        exportMode={exportMode}
+        onExportModeChange={setExportMode}
+        citationIssuesCount={exportCitationIssues.length}
+        blockingCitationIssuesCount={blockingCitationIssuesCount}
         latestExport={latestExport}
         exportHistory={exportHistory}
         onDeleteExport={handleDeleteExport}

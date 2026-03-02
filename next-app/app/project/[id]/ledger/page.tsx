@@ -11,6 +11,7 @@ import {
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useProjects } from "@/contexts/ProjectsContext";
+import { EmptyState, EmptyStateSkeleton } from "@/components/ui/EmptyState";
 import { useProjectShell } from "@/contexts/ProjectShellContext";
 import { BaseBackButton } from "@/components/BaseBackButton";
 import { StudyFilesPanel } from "@/components/StudyFilesPanel";
@@ -24,7 +25,7 @@ import {
   importStudyWithPdfAction,
 } from "@/app/actions/files";
 import { extractStudyFromPdfAction } from "@/app/actions/extraction";
-import { getProtocolAction } from "@/app/actions/protocols";
+import { useProjectData } from "@/hooks/useProjectData";
 import {
   evaluateCriteria,
   type CriteriaMatchResult,
@@ -51,7 +52,7 @@ type CriteriaFilter =
 
 export default function LedgerPage() {
   const { id } = useParams<{ id: string }>();
-  const { getProjectById } = useProjects();
+  const { getProjectById, isLoadingProjects, projectsError } = useProjects();
   const { isEmbeddedInProjectShell } = useProjectShell();
   const {
     getStudiesByProject,
@@ -114,30 +115,22 @@ export default function LedgerPage() {
   });
 
   // Protocol & criteria filtering
+  const { protocol: cachedProtocol, warmDomain } = useProjectData();
   const [protocol, setProtocol] = useState<ProtocolData>(
     createDefaultProtocolData,
   );
   const [criteriaFilter, setCriteriaFilter] = useState<CriteriaFilter>("all");
 
-  // Load protocol data
+  // Load protocol data from preload cache
   useEffect(() => {
-    if (!id) return;
-    let active = true;
-    getProtocolAction(id)
-      .then((result) => {
-        if (active && result.success && result.data) setProtocol(result.data);
-      })
-      .catch((err) => {
-        console.error("Failed to load protocol", err);
-        if (active)
-          setAlertMsg(
-            "Failed to load protocol criteria. Filtering may be unavailable.",
-          );
-      });
-    return () => {
-      active = false;
-    };
-  }, [id]);
+    if (cachedProtocol.state === "ready" && cachedProtocol.data) {
+      setProtocol(cachedProtocol.data);
+    } else if (cachedProtocol.state === "error") {
+      setAlertMsg("Failed to load protocol criteria. Filtering may be unavailable.");
+    } else if (cachedProtocol.state === "idle") {
+      warmDomain("protocol");
+    }
+  }, [cachedProtocol, warmDomain]);
 
   // Compute criteria matches for all studies
   const studyCriteriaMap = useMemo(() => {
@@ -305,19 +298,44 @@ export default function LedgerPage() {
     }
   };
 
+  // Loading state
+  if (isLoadingProjects) {
+    return (
+      <ProjectPageLayout mainClassName={styles.appMainOverride}>
+        <EmptyStateSkeleton className={styles.notFound} />
+      </ProjectPageLayout>
+    );
+  }
+
+  // Error state
+  if (projectsError) {
+    return (
+      <ProjectPageLayout mainClassName={styles.appMainOverride}>
+        <EmptyState
+          variant="error"
+          icon="cloud_off"
+          title="Unable to load project"
+          description={projectsError}
+          primaryAction={{ label: "Retry", onClick: () => window.location.reload() }}
+          secondaryAction={{ label: "Back to Dashboard", href: "/" }}
+          className={styles.notFound}
+        />
+      </ProjectPageLayout>
+    );
+  }
+
+  // Not found state
   if (!project) {
     return (
       <ProjectPageLayout mainClassName={styles.appMainOverride}>
-        <div className={styles.notFound}>
-          <h1>Project not found</h1>
-          <Link
-            href="/"
-            className="btn-minimal"
-            style={{ width: "auto", padding: "12px 24px" }}
-          >
-            Back to Dashboard
-          </Link>
-        </div>
+        <EmptyState
+          variant="error"
+          icon="folder_off"
+          title="Project not found"
+          description="This project may have been deleted or you don't have access."
+          primaryAction={{ label: "Back to Dashboard", href: "/" }}
+          className={styles.notFound}
+        />
       </ProjectPageLayout>
     );
   }

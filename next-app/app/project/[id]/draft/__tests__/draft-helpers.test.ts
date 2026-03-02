@@ -158,17 +158,29 @@ describe("jsonToText", () => {
     };
     expect(jsonToText(doc)).toBe("**bold**");
   });
-  it("renders citations", () => {
+  it("renders numbered citations", () => {
     const doc = {
       type: "doc",
       content: [
         {
           type: "paragraph",
-          content: [{ type: "citation", attrs: { label: "Smith, 2024" } }],
+          content: [{ type: "citation", attrs: { number: 4 } }],
         },
       ],
     };
-    expect(jsonToText(doc)).toBe("(Smith, 2024)");
+    expect(jsonToText(doc)).toBe("[4]");
+  });
+  it("renders unresolved citations as [?]", () => {
+    const doc = {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [{ type: "citation", attrs: {} }],
+        },
+      ],
+    };
+    expect(jsonToText(doc)).toBe("[?]");
   });
   it("renders headings with # prefix", () => {
     const doc = {

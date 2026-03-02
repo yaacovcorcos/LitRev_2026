@@ -60,9 +60,11 @@ const ProjectMemoryContext = createContext<ProjectMemoryContextValue | undefined
 type ProjectMemoryProviderProps = {
   projectId: string;
   children: ReactNode;
+  /** Pre-fetched memories from ProjectDataProvider — skips initial server fetch when provided. */
+  initialData?: ProjectMemory[];
 };
 
-export function ProjectMemoryProvider({ projectId, children }: ProjectMemoryProviderProps) {
+export function ProjectMemoryProvider({ projectId, children, initialData }: ProjectMemoryProviderProps) {
   const [memories, setMemories] = useState<ProjectMemory[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -89,8 +91,13 @@ export function ProjectMemoryProvider({ projectId, children }: ProjectMemoryProv
   }, [projectId]);
 
   useEffect(() => {
+    if (initialData && initialData.length > 0) {
+      setMemories(initialData);
+      setIsLoading(false);
+      return;
+    }
     loadMemories();
-  }, [loadMemories]);
+  }, [loadMemories, initialData]);
 
   useEffect(() => {
     return addProjectDataChangedListener((detail) => {

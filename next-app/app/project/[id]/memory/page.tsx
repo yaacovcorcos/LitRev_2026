@@ -2,12 +2,13 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useParams } from "next/navigation";
-import Link from "next/link";
 import { BaseBackButton } from "@/components/BaseBackButton";
 import { useProjects } from "@/contexts/ProjectsContext";
+import { EmptyState, EmptyStateSkeleton } from "@/components/ui/EmptyState";
 import { useProjectShell } from "@/contexts/ProjectShellContext";
 import { ProjectPageLayout } from "@/components/project/ProjectPageLayout";
 import { ProjectMemoryProvider, useProjectMemory } from "@/contexts/ProjectMemoryContext";
+import { useProjectData } from "@/hooks/useProjectData";
 import type {
   ProjectMemory,
   ProjectMemoryType,
@@ -127,7 +128,7 @@ const TABS: { id: TabId; label: string; icon: string }[] = [
 
 function MemoryPageContent() {
   const { id } = useParams<{ id: string }>();
-  const { getProjectById } = useProjects();
+  const { getProjectById, isLoadingProjects, projectsError } = useProjects();
   const { isEmbeddedInProjectShell } = useProjectShell();
   const project = id ? getProjectById(id) : undefined;
   const {
@@ -316,13 +317,41 @@ function MemoryPageContent() {
     });
   };
 
+  if (isLoadingProjects) {
+    return (
+      <ProjectPageLayout>
+        <EmptyStateSkeleton className={styles.notFound} />
+      </ProjectPageLayout>
+    );
+  }
+
+  if (projectsError) {
+    return (
+      <ProjectPageLayout>
+        <EmptyState
+          variant="error"
+          icon="cloud_off"
+          title="Unable to load project"
+          description={projectsError}
+          primaryAction={{ label: "Retry", onClick: () => window.location.reload() }}
+          secondaryAction={{ label: "Back to Dashboard", href: "/" }}
+          className={styles.notFound}
+        />
+      </ProjectPageLayout>
+    );
+  }
+
   if (!project) {
     return (
       <ProjectPageLayout>
-        <div className={styles.notFound}>
-          <h1>Project not found</h1>
-          <Link href="/" className="btn-minimal">Back to Dashboard</Link>
-        </div>
+        <EmptyState
+          variant="error"
+          icon="folder_off"
+          title="Project not found"
+          description="This project may have been deleted or you don't have access."
+          primaryAction={{ label: "Back to Dashboard", href: "/" }}
+          className={styles.notFound}
+        />
       </ProjectPageLayout>
     );
   }
@@ -937,11 +966,15 @@ function MemoryPageContent() {
 
 export default function MemoryPage() {
   const { id } = useParams<{ id: string }>();
+  const { memory: cachedMemory } = useProjectData();
 
   if (!id) return null;
 
   return (
-    <ProjectMemoryProvider projectId={id}>
+    <ProjectMemoryProvider
+      projectId={id}
+      initialData={cachedMemory.state === "ready" && cachedMemory.data ? cachedMemory.data : undefined}
+    >
       <MemoryPageContent />
     </ProjectMemoryProvider>
   );

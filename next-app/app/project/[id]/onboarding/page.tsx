@@ -17,6 +17,7 @@ import {
   validateSetupAction,
 } from "@/app/actions/onboarding";
 import { useProjects } from "@/contexts/ProjectsContext";
+import { EmptyState, EmptyStateSkeleton } from "@/components/ui/EmptyState";
 import { createDefaultProtocolData, type ProtocolData } from "@/types/protocol";
 import { mirrorGuidedSetupCompleted } from "@/lib/demo/onboarding";
 import type {
@@ -92,7 +93,7 @@ type ActionResultLike<T> = { success: boolean; data?: T; error?: string };
 export default function ProjectOnboardingPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
-  const { getProjectById, isInitialized } = useProjects();
+  const { getProjectById, isInitialized, isLoadingProjects, projectsError } = useProjects();
   const project = id ? getProjectById(id) : undefined;
 
   const [isLoading, setIsLoading] = useState(true);
@@ -305,18 +306,34 @@ export default function ProjectOnboardingPage() {
     [id, persistProgress, router],
   );
 
-  if (!isInitialized) {
-    return <div className={styles.loadingCard}>Loading project...</div>;
+  if (!isInitialized || isLoadingProjects) {
+    return <EmptyStateSkeleton className={styles.notFound} />;
+  }
+
+  if (projectsError) {
+    return (
+      <EmptyState
+        variant="error"
+        icon="cloud_off"
+        title="Unable to load project"
+        description={projectsError}
+        primaryAction={{ label: "Retry", onClick: () => window.location.reload() }}
+        secondaryAction={{ label: "Back to Dashboard", href: "/" }}
+        className={styles.notFound}
+      />
+    );
   }
 
   if (!project) {
     return (
-      <div className={styles.notFound}>
-        <h1>Project not found</h1>
-        <Link href="/" className="btn-minimal">
-          Back to Home
-        </Link>
-      </div>
+      <EmptyState
+        variant="error"
+        icon="folder_off"
+        title="Project not found"
+        description="This project may have been deleted or you don't have access."
+        primaryAction={{ label: "Back to Dashboard", href: "/" }}
+        className={styles.notFound}
+      />
     );
   }
 

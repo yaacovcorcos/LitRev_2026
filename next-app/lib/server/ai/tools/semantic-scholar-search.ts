@@ -25,7 +25,7 @@ export const semanticScholarSearchTool: AITool = {
     definition: {
         name: "search_semantic_scholar",
         description:
-            "Search Semantic Scholar for academic papers across all disciplines (215M+ papers). Supports keyword search with optional year filtering. Use for non-biomedical topics, CS, psychology, engineering, or when PubMed returns insufficient results. Returns titles, authors, abstracts, DOIs, citation counts, and Semantic Scholar paper IDs.",
+            "Search Semantic Scholar for academic papers across all disciplines (215M+ papers). Supports keyword search with optional year filtering. Not first-line for biomedical reviews: default to PubMed first. Use this tool when the user explicitly requests Semantic Scholar, when the topic is cross-disciplinary/non-biomedical (for example CS, psychology, engineering), or when PubMed recall remains insufficient after refinement. Returns titles, authors, abstracts, DOIs, citation counts, and Semantic Scholar paper IDs.",
         parameters: {
             type: "object",
             properties: {

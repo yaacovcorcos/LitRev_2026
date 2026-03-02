@@ -8,6 +8,7 @@ import {
     buildDeepAnalysisPrompt,
 } from "./pdf-extraction-prompts";
 import type { StudyDetails, StudyType } from "@/types/ledger";
+import { extractHeaderWithGrobid, type GrobidHeaderExtraction } from "./grobid";
 
 // Constants
 const MAX_PDF_SIZE_MB = 50;
@@ -61,6 +62,18 @@ export type RegexExtractionResult = {
     title?: string;
     authors?: string;
 };
+
+function hasGrobidMetadata(result: GrobidHeaderExtraction | null): boolean {
+    if (!result) return false;
+    return Boolean(
+        result.title ||
+        result.authors ||
+        result.abstract ||
+        result.doi ||
+        result.journal ||
+        result.year
+    );
+}
 
 /**
  * Fetch PDF from Supabase storage using storagePath + service role key
@@ -420,29 +433,100 @@ export async function extractStudyFromPdf(
 ): Promise<ExtractionResult> {
     try {
         const pdfBuffer = await fetchPdfFromStorage(storagePath);
-        const text = await extractTextFromPdf(pdfBuffer);
+        const grobidPromise = extractHeaderWithGrobid(pdfBuffer).catch((error) => {
+            console.warn("[pdf-extraction] GROBID header extraction failed", error);
+            return null;
+        });
 
-        if (!text || text.length < 100) {
+        let text = "";
+        let textParseError: ExtractionError | null = null;
+        try {
+            text = await extractTextFromPdf(pdfBuffer);
+        } catch (error) {
+            textParseError = error instanceof ExtractionError
+                ? error
+                : new ExtractionError(
+                    "PDF_PARSE_FAILED",
+                    error instanceof Error ? error.message : "Failed to parse PDF"
+                );
+        }
+
+        const grobidResult = await grobidPromise;
+        const hasGrobidData = hasGrobidMetadata(grobidResult);
+
+        if ((!text || text.length < 100) && !hasGrobidData) {
             return {
                 success: false,
                 details: {},
                 confidence: {},
                 missingFields: ["abstract"],
-                error: "PDF contains insufficient text (may be scanned/image-based)",
-                errorCode: "PDF_PARSE_FAILED",
+                error: textParseError?.message || "PDF contains insufficient text (may be scanned/image-based)",
+                errorCode: textParseError?.code || "PDF_PARSE_FAILED",
             };
         }
 
-        const regexResults = extractWithRegex(text);
-        const aiResult = await quickExtractWithAI(text, regexResults, projectId);
+        const regexResults = text && text.length >= 100 ? extractWithRegex(text) : {};
+
+        let aiResult: {
+            title?: string;
+            authors?: string;
+            year?: number;
+            details: Partial<StudyDetails>;
+            confidence: Record<string, ConfidenceLevel>;
+        } = {
+            details: {},
+            confidence: {},
+        };
+        let aiFailure: ExtractionError | null = null;
+
+        if (text && text.length >= 100) {
+            try {
+                aiResult = await quickExtractWithAI(text, regexResults, projectId);
+            } catch (error) {
+                aiFailure = error instanceof ExtractionError
+                    ? error
+                    : new ExtractionError(
+                        "AI_FAILED",
+                        error instanceof Error ? error.message : "Unknown AI extraction error"
+                    );
+                console.warn("[pdf-extraction] AI quick extraction failed", aiFailure.message);
+            }
+        }
 
         // Merge: regex takes precedence for DOI/PMID
         const details: Partial<StudyDetails> = {
             ...aiResult.details,
-            doi: regexResults.doi || aiResult.details.doi,
+            ...(grobidResult?.abstract && !aiResult.details.abstract ? { abstract: grobidResult.abstract } : {}),
+            ...(grobidResult?.journal && !aiResult.details.journal ? { journal: grobidResult.journal } : {}),
+            doi: regexResults.doi || grobidResult?.doi || aiResult.details.doi,
             pmid: regexResults.pmid || aiResult.details.pmid,
             source: "pdf-import",
         };
+
+        const title = grobidResult?.title || aiResult.title || regexResults.title;
+        const authors = grobidResult?.authors || aiResult.authors || regexResults.authors;
+        const year = grobidResult?.year || aiResult.year || regexResults.year;
+
+        const hasAnyExtractedField = Boolean(
+            title ||
+            authors ||
+            year ||
+            details.abstract ||
+            details.doi ||
+            details.pmid ||
+            details.journal
+        );
+
+        if (!hasAnyExtractedField && aiFailure) {
+            return {
+                success: false,
+                details: {},
+                confidence: {},
+                missingFields: ["abstract", "doi", "journal"],
+                error: aiFailure.message,
+                errorCode: aiFailure.code,
+            };
+        }
 
         const expectedFields = ["abstract", "doi", "journal"];
         const missingFields = expectedFields.filter((f) => {
@@ -453,9 +537,9 @@ export async function extractStudyFromPdf(
 
         return {
             success: true,
-            title: aiResult.title || regexResults.title,
-            authors: aiResult.authors || regexResults.authors,
-            year: aiResult.year || regexResults.year,
+            title,
+            authors,
+            year,
             details,
             confidence: aiResult.confidence,
             missingFields,

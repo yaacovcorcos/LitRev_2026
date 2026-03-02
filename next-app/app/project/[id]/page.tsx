@@ -1,12 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
+import { useParams } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
-import { Modal } from "@/components/Modal";
 import { TopBar } from "@/components/TopBar";
 import { useProjects } from "@/contexts/ProjectsContext";
 import { useProjectShell } from "@/contexts/ProjectShellContext";
+import { EmptyState, EmptyStateSkeleton } from "@/components/ui/EmptyState";
 import Link from "next/link";
 import { RecentActivityPanel } from "@/components/project/RecentActivityPanel";
 import { DemoGuideCard } from "@/components/project/DemoGuideCard";
@@ -152,12 +152,9 @@ function LedgerPreview({ stats }: { stats: LedgerStats }) {
 
 export default function ProjectDetail() {
   const { id } = useParams<{ id: string }>();
-  const router = useRouter();
-  const { getProjectById, deleteProject } = useProjects();
+  const { getProjectById, isLoadingProjects, projectsError } = useProjects();
   const { isEmbeddedInProjectShell } = useProjectShell();
   const project = id ? getProjectById(id) : undefined;
-  const [isDeleteOpen, setIsDeleteOpen] = useState(false);
-  const closeDeleteModal = useCallback(() => setIsDeleteOpen(false), []);
 
   const [draftStats, setDraftStats] = useState<DraftStats | null>(null);
   const [protocolStats, setProtocolStats] = useState<ProtocolStats | null>(null);
@@ -206,27 +203,41 @@ export default function ProjectDetail() {
     ];
   }, [project]);
 
-  if (!project) {
-    if (isEmbeddedInProjectShell) {
-      return (
-        <div className={styles.notFound}>
-          <h1>Project not found</h1>
-          <Link href="/" className="btn-minimal">
-            Back to Dashboard
-          </Link>
-        </div>
-      );
-    }
-    return (
-      <AppShell activeNav="projects">
-        <div className={styles.notFound}>
-          <h1>Project not found</h1>
-          <Link href="/" className="btn-minimal">
-            Back to Dashboard
-          </Link>
-        </div>
-      </AppShell>
+  // Loading state: show skeleton while projects are being fetched
+  if (isLoadingProjects) {
+    const skeleton = <EmptyStateSkeleton className={styles.notFound} />;
+    return isEmbeddedInProjectShell ? skeleton : <AppShell activeNav="projects">{skeleton}</AppShell>;
+  }
+
+  // Error state: fetch failed
+  if (projectsError) {
+    const errorView = (
+      <EmptyState
+        variant="error"
+        icon="cloud_off"
+        title="Unable to load project"
+        description={projectsError}
+        primaryAction={{ label: "Retry", onClick: () => window.location.reload() }}
+        secondaryAction={{ label: "Back to Dashboard", href: "/" }}
+        className={styles.notFound}
+      />
     );
+    return isEmbeddedInProjectShell ? errorView : <AppShell activeNav="projects">{errorView}</AppShell>;
+  }
+
+  // Not found: projects loaded but this one doesn't exist
+  if (!project) {
+    const notFoundView = (
+      <EmptyState
+        variant="error"
+        icon="folder_off"
+        title="Project not found"
+        description="This project may have been deleted or you don't have access."
+        primaryAction={{ label: "Back to Dashboard", href: "/" }}
+        className={styles.notFound}
+      />
+    );
+    return isEmbeddedInProjectShell ? notFoundView : <AppShell activeNav="projects">{notFoundView}</AppShell>;
   }
 
   const draftPreview = statsLoading
@@ -252,21 +263,6 @@ export default function ProjectDetail() {
       <TopBar
         title={project.name}
         subtitle={project.description || "No description provided."}
-        actions={
-          <>
-            <button
-              className={styles.deleteBtn}
-              type="button"
-              title="Delete project"
-              aria-label="Delete project"
-              onClick={() => {
-                setIsDeleteOpen(true);
-              }}
-            >
-              <span className="material-icons-round">delete_outline</span>
-            </button>
-          </>
-        }
       />
 
       <DemoGuideCard
@@ -331,52 +327,13 @@ export default function ProjectDetail() {
     </div>
   );
 
-  const deleteModal = (
-    <Modal isOpen={isDeleteOpen} onClose={closeDeleteModal} ariaLabelledBy="deleteProjectTitle">
-      <div className="modal-header">
-        <h2 id="deleteProjectTitle">Delete project</h2>
-        <button className="close-modal-btn" aria-label="Close dialog" onClick={closeDeleteModal}>
-          <span className="material-icons-round">close</span>
-        </button>
-      </div>
-      <div className="modal-body">
-        <p>
-          This will permanently delete <strong>{project.name}</strong> and all related data. This action cannot be
-          undone.
-        </p>
-      </div>
-      <div className="modal-actions">
-        <button type="button" className="btn btn-outline cancel-btn" onClick={closeDeleteModal}>
-          Cancel
-        </button>
-        <button
-          type="button"
-          className="btn btn-danger"
-          onClick={() => {
-            closeDeleteModal();
-            deleteProject(project.id);
-            router.push("/");
-          }}
-        >
-          Delete project
-        </button>
-      </div>
-    </Modal>
-  );
-
   if (isEmbeddedInProjectShell) {
-    return (
-      <>
-        {contentJSX}
-        {deleteModal}
-      </>
-    );
+    return contentJSX;
   }
 
   return (
     <AppShell activeNav="projects">
       {contentJSX}
-      {deleteModal}
     </AppShell>
   );
 }

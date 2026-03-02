@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useProjects } from "@/contexts/ProjectsContext";
+import { EmptyState, EmptyStateSkeleton } from "@/components/ui/EmptyState";
 import { useProjectShell } from "@/contexts/ProjectShellContext";
 import { useLedger } from "@/contexts/LedgerContext";
 import { BaseBackButton } from "@/components/BaseBackButton";
@@ -16,9 +17,10 @@ import { extractStudyFromPdfAction, deepAnalyzeStudyAction } from "@/app/actions
 import { getDraftAction } from "@/app/actions/drafts";
 import { DRAFT_SECTIONS, DraftSectionId } from "@/types/draft";
 import { loadDraftState, DraftState } from "@/lib/draftStorage";
-import type { Study, StudyDetails } from "@/types/ledger";
+import type { Study, StudyDetails, StudyRelevance } from "@/types/ledger";
 import type { FileAsset } from "@/types/files";
 import { AlertDialog } from "@/components/ConfirmDialog";
+import { compileDraftCitations, getCitedSectionIdsByStudyId } from "@/lib/citation-compiler";
 import styles from "./study.module.css";
 
 // Build lookup for section labels
@@ -32,9 +34,18 @@ type DraftBacklink = {
     label: string;
 };
 
+const RELEVANCE_COMPONENT_LABELS: Record<keyof NonNullable<StudyRelevance["components"]>, string> = {
+    protocolFit: "Protocol Fit",
+    designFit: "Design Fit",
+    outcomeDirectness: "Outcome Directness",
+    applicability: "Applicability",
+    completeness: "Completeness",
+};
+const RELEVANCE_COMPONENT_KEYS = Object.keys(RELEVANCE_COMPONENT_LABELS) as Array<keyof NonNullable<StudyRelevance["components"]>>;
+
 export default function StudyDetailPage() {
     const { id, studyId } = useParams<{ id: string; studyId: string }>();
-    const { getProjectById } = useProjects();
+    const { getProjectById, isLoadingProjects, projectsError } = useProjects();
     const { getStudyById, updateSingleStudy } = useLedger();
     const { isEmbeddedInProjectShell } = useProjectShell();
 
@@ -132,15 +143,23 @@ export default function StudyDetailPage() {
 
                 if (!draft || !active) return;
 
-                // Find all sections that reference this study
-                const backlinks: DraftBacklink[] = [];
-                for (const [sectionId, studyIds] of Object.entries(draft.ledgerBySection)) {
-                    if (studyIds.includes(studyId)) {
-                        // Get label from base sections or custom sections
+                const compiled = compileDraftCitations({
+                    contentBySection: draft.contentBySection,
+                    sectionOrder: draft.sectionOrder,
+                    includeNumberInNodes: false,
+                });
+                const sectionIds = getCitedSectionIdsByStudyId({
+                    citations: compiled.citations,
+                    studyId,
+                });
+                const order = new Map(draft.sectionOrder.map((sectionId, index) => [sectionId, index]));
+                const backlinks: DraftBacklink[] = sectionIds
+                    .slice()
+                    .sort((a, b) => (order.get(a) ?? Number.MAX_SAFE_INTEGER) - (order.get(b) ?? Number.MAX_SAFE_INTEGER))
+                    .map((sectionId) => {
                         const label = SECTION_LABELS[sectionId] || draft.customSections[sectionId]?.label || sectionId;
-                        backlinks.push({ sectionId, label });
-                    }
-                }
+                        return { sectionId, label };
+                    });
 
                 setDraftBacklinks(backlinks);
             } catch (err) {
@@ -227,8 +246,37 @@ export default function StudyDetailPage() {
 
     const saveEdit = async () => {
         if (!id || !studyId || !study) return;
+        const updates: Partial<Study> = { ...editForm };
+        const details = (updates.details as StudyDetails | undefined) ?? undefined;
+        const relevance = (details?.relevance as StudyRelevance | undefined) ?? undefined;
+        if (relevance) {
+            const rationale = typeof relevance.rationale === "string" ? relevance.rationale.trim() : "";
+            if (!rationale) {
+                setAlertMsg("Relevance rationale is required.");
+                return;
+            }
+            if (!Number.isFinite(relevance.score)) {
+                setAlertMsg("Relevance score must be a number between 0 and 100.");
+                return;
+            }
+            const normalizedComponents: NonNullable<StudyRelevance["components"]> = {};
+            for (const key of RELEVANCE_COMPONENT_KEYS) {
+                const raw = relevance.components?.[key];
+                if (typeof raw !== "number" || !Number.isFinite(raw)) continue;
+                normalizedComponents[key] = Math.max(0, Math.min(100, raw));
+            }
+            updates.details = {
+                ...(details ?? {}),
+                relevance: {
+                    ...relevance,
+                    score: Math.max(0, Math.min(100, relevance.score)),
+                    rationale,
+                    components: Object.keys(normalizedComponents).length > 0 ? normalizedComponents : undefined,
+                },
+            };
+        }
         try {
-            const updated = await updateSingleStudy(id, studyId, editForm);
+            const updated = await updateSingleStudy(id, studyId, updates);
             setStudy(updated);
             setIsEditing(false);
             setEditForm({});
@@ -250,15 +298,90 @@ export default function StudyDetailPage() {
     };
 
     const d: StudyDetails = study?.details ?? {};
+    const editRelevance = ((editForm.details as StudyDetails | undefined)?.relevance as StudyRelevance | undefined) ?? undefined;
+    const relevance = (d.relevance as StudyRelevance | undefined) ?? undefined;
+    const relevanceBandLabel = relevance ? relevance.band.charAt(0).toUpperCase() + relevance.band.slice(1) : "Not scored";
+    const updateEditRelevance = (patch: Partial<StudyRelevance>) => {
+        setEditForm((prev) => {
+            const details = (prev.details as StudyDetails) ?? {};
+            const base: StudyRelevance = (details.relevance as StudyRelevance | undefined) ?? {
+                score: 50,
+                band: "moderate",
+                rationale: "Needs assessment.",
+            };
+            return {
+                ...prev,
+                details: {
+                    ...details,
+                    relevance: {
+                        ...base,
+                        ...patch,
+                    },
+                },
+            };
+        });
+    };
+    const updateEditRelevanceComponent = (
+        key: keyof NonNullable<StudyRelevance["components"]>,
+        value: number | undefined
+    ) => {
+        setEditForm((prev) => {
+            const details = (prev.details as StudyDetails) ?? {};
+            const base: StudyRelevance = (details.relevance as StudyRelevance | undefined) ?? {
+                score: 50,
+                band: "moderate",
+                rationale: "Needs assessment.",
+            };
+            const components = { ...(base.components ?? {}), [key]: value };
+            return {
+                ...prev,
+                details: {
+                    ...details,
+                    relevance: {
+                        ...base,
+                        components,
+                    },
+                },
+            };
+        });
+    };
     const pdfFile = useMemo(() => studyFiles.find((f) => f.mimeType === "application/pdf"), [studyFiles]);
+
+    if (isLoadingProjects) {
+        return (
+            <ProjectPageLayout mainClassName={styles.appMainOverride}>
+                <EmptyStateSkeleton className={styles.notFound} />
+            </ProjectPageLayout>
+        );
+    }
+
+    if (projectsError) {
+        return (
+            <ProjectPageLayout mainClassName={styles.appMainOverride}>
+                <EmptyState
+                    variant="error"
+                    icon="cloud_off"
+                    title="Unable to load project"
+                    description={projectsError}
+                    primaryAction={{ label: "Retry", onClick: () => window.location.reload() }}
+                    secondaryAction={{ label: "Back to Dashboard", href: "/" }}
+                    className={styles.notFound}
+                />
+            </ProjectPageLayout>
+        );
+    }
 
     if (!project) {
         return (
             <ProjectPageLayout mainClassName={styles.appMainOverride}>
-                <div className={styles.notFound}>
-                    <h1>Project not found</h1>
-                    <Link href="/" className="btn-minimal">Back to Dashboard</Link>
-                </div>
+                <EmptyState
+                    variant="error"
+                    icon="folder_off"
+                    title="Project not found"
+                    description="This project may have been deleted or you don't have access."
+                    primaryAction={{ label: "Back to Dashboard", href: "/" }}
+                    className={styles.notFound}
+                />
             </ProjectPageLayout>
         );
     }
@@ -266,7 +389,7 @@ export default function StudyDetailPage() {
     if (isLoading) {
         return (
             <ProjectPageLayout mainClassName={styles.appMainOverride}>
-                <div className={styles.loading}>Loading study...</div>
+                <EmptyStateSkeleton className={styles.notFound} />
             </ProjectPageLayout>
         );
     }
@@ -274,10 +397,14 @@ export default function StudyDetailPage() {
     if (!study) {
         return (
             <ProjectPageLayout mainClassName={styles.appMainOverride}>
-                <div className={styles.notFound}>
-                    <h1>Study not found</h1>
-                    <Link href={`/project/${id}/ledger`} className="btn-minimal">Back to Ledger</Link>
-                </div>
+                <EmptyState
+                    variant="error"
+                    icon="article"
+                    title="Study not found"
+                    description="This study may have been removed from the ledger."
+                    primaryAction={{ label: "Back to Ledger", href: `/project/${id}/ledger` }}
+                    className={styles.notFound}
+                />
             </ProjectPageLayout>
         );
     }
@@ -348,6 +475,9 @@ export default function StudyDetailPage() {
                                 </span>
                                 <span className={`${styles.qualityBadge} ${study.quality === "High" ? styles.qualityHigh : study.quality === "Medium" ? styles.qualityMedium : ""}`}>
                                     Quality: {study.quality}
+                                </span>
+                                <span className={`${styles.relevanceBadge} ${relevance?.band === "high" ? styles.relevanceHigh : relevance?.band === "moderate" ? styles.relevanceModerate : relevance?.band === "low" ? styles.relevanceLow : ""}`}>
+                                    Relevance: {relevance ? `${relevanceBandLabel}${typeof relevance.score === "number" ? ` (${relevance.score})` : ""}` : "Not scored"}
                                 </span>
                             </div>
 
@@ -563,6 +693,95 @@ export default function StudyDetailPage() {
                                 )}
                                 {d.qualityRationale && (
                                     <p className={styles.qualityRationale}>{d.qualityRationale}</p>
+                                )}
+                            </section>
+
+                            <section className={styles.section}>
+                                <h2 className={styles.sectionTitle}>
+                                    <span className="material-icons-round">insights</span>
+                                    Relevance Assessment
+                                </h2>
+                                {isEditing ? (
+                                    <div className={styles.relevanceEditor}>
+                                        <label className={styles.relevanceField}>
+                                            <span>Score (0-100)</span>
+                                            <input
+                                                type="number"
+                                                min={0}
+                                                max={100}
+                                                value={editRelevance?.score ?? ""}
+                                                onChange={(e) =>
+                                                    updateEditRelevance({
+                                                        score: Number.isFinite(e.target.valueAsNumber)
+                                                            ? Math.max(0, Math.min(100, e.target.valueAsNumber))
+                                                            : 0,
+                                                    })
+                                                }
+                                            />
+                                        </label>
+                                        <label className={styles.relevanceField}>
+                                            <span>Band</span>
+                                            <select
+                                                value={editRelevance?.band ?? "moderate"}
+                                                onChange={(e) => updateEditRelevance({ band: e.target.value as StudyRelevance["band"] })}
+                                            >
+                                                <option value="high">High</option>
+                                                <option value="moderate">Moderate</option>
+                                                <option value="low">Low</option>
+                                            </select>
+                                        </label>
+                                        <label className={styles.relevanceField}>
+                                            <span>Rationale</span>
+                                            <textarea
+                                                rows={4}
+                                                value={editRelevance?.rationale ?? ""}
+                                                onChange={(e) => updateEditRelevance({ rationale: e.target.value })}
+                                                placeholder="Short justification for relevance score"
+                                                required
+                                            />
+                                        </label>
+                                        <div className={styles.relevanceComponents}>
+                                            {Object.entries(RELEVANCE_COMPONENT_LABELS).map(([key, label]) => (
+                                                <label key={key} className={styles.relevanceField}>
+                                                    <span>{label}</span>
+                                                    <input
+                                                        type="number"
+                                                        min={0}
+                                                        max={100}
+                                                        value={editRelevance?.components?.[key as keyof NonNullable<StudyRelevance["components"]>] ?? ""}
+                                                        onChange={(e) =>
+                                                            updateEditRelevanceComponent(
+                                                                key as keyof NonNullable<StudyRelevance["components"]>,
+                                                                Number.isFinite(e.target.valueAsNumber)
+                                                                    ? Math.max(0, Math.min(100, e.target.valueAsNumber))
+                                                                    : undefined
+                                                            )
+                                                        }
+                                                    />
+                                                </label>
+                                            ))}
+                                        </div>
+                                    </div>
+                                ) : relevance ? (
+                                    <div className={styles.relevanceDisplay}>
+                                        <span className={`${styles.relevanceBadgeLarge} ${relevance.band === "high" ? styles.relevanceHigh : relevance.band === "moderate" ? styles.relevanceModerate : styles.relevanceLow}`}>
+                                            {relevanceBandLabel} {typeof relevance.score === "number" ? `(${relevance.score})` : ""}
+                                        </span>
+                                        <p className={styles.relevanceRationale}>{relevance.rationale}</p>
+                                        {relevance.components && (
+                                            <div className={styles.relevanceComponentsReadOnly}>
+                                                {Object.entries(relevance.components).map(([key, value]) =>
+                                                    typeof value === "number" ? (
+                                                        <span key={key} className={styles.relevanceComponentChip}>
+                                                            {RELEVANCE_COMPONENT_LABELS[key as keyof NonNullable<StudyRelevance["components"]>]}: {value}
+                                                        </span>
+                                                    ) : null
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <p className={styles.emptyText}>No relevance score available.</p>
                                 )}
                             </section>
 

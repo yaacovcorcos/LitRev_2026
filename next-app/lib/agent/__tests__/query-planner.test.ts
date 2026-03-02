@@ -57,9 +57,24 @@ describe("buildSearchPlan", () => {
         expect(ssQuery.query).not.toContain("[tiab]");
     });
 
-    it("adds PICO keyword query to Semantic Scholar when PICO is available", () => {
+    it("defaults to PubMed-only planning for biomedical PICO searches", () => {
         const intent: SearchIntent = {
             rawTask: "Find RCTs on diabetes treatment",
+            pico: {
+                population: "type 2 diabetes",
+                intervention: "metformin",
+                outcome: "HbA1c reduction",
+            },
+        };
+
+        const plan = buildSearchPlan(intent);
+        expect(plan.pubmedQueries.length).toBeGreaterThanOrEqual(1);
+        expect(plan.semanticScholarQueries.length).toBe(0);
+    });
+
+    it("adds PICO keyword query to Semantic Scholar when PICO is available", () => {
+        const intent: SearchIntent = {
+            rawTask: "Find RCTs on diabetes treatment and also search Semantic Scholar",
             pico: {
                 population: "type 2 diabetes",
                 intervention: "metformin",
@@ -102,7 +117,7 @@ describe("buildSearchPlan", () => {
 
     it("applies year range to Semantic Scholar queries", () => {
         const intent: SearchIntent = {
-            rawTask: "diabetes treatment studies",
+            rawTask: "machine learning for diabetes treatment studies",
             yearRange: { start: 2020, end: 2024 },
         };
 
@@ -216,7 +231,7 @@ describe("buildSearchPlan", () => {
 describe("formatSearchPlanAsTask", () => {
     it("formats a plan into structured markdown for the sub-agent", () => {
         const intent: SearchIntent = {
-            rawTask: "Find RCTs on SGLT2 inhibitors in heart failure",
+            rawTask: "Find RCTs on SGLT2 inhibitors in heart failure and include Semantic Scholar",
             pico: {
                 population: "heart failure patients",
                 intervention: "SGLT2 inhibitors",

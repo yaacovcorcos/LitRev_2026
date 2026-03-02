@@ -16,6 +16,7 @@ import {
     deleteNoteAction,
     searchNotesAction,
 } from "@/app/actions/notes";
+import { useProjectData } from "@/hooks/useProjectData";
 import type { NoteContent } from "@/lib/server/notes";
 import { DemoGuideCard } from "@/components/project/DemoGuideCard";
 import { ProjectPageLayout } from "@/components/project/ProjectPageLayout";
@@ -100,6 +101,8 @@ export default function NotesPage() {
 
     // ── Data loading ─────────────────────────────────────────────────────────
 
+    const { notesList: cachedNotes } = useProjectData();
+
     const loadNotes = useCallback(async () => {
         if (!projectId) return;
         setIsLoading(true);
@@ -108,9 +111,36 @@ export default function NotesPage() {
         setIsLoading(false);
     }, [projectId]);
 
+    // Seed from preload cache to eliminate loading spinner on tab switch
+    const seededFromCacheRef = useRef(false);
     useEffect(() => {
-        loadNotes();
-    }, [loadNotes]);
+        if (seededFromCacheRef.current) return;
+        if (cachedNotes.state === "ready" && cachedNotes.data && cachedNotes.data.length > 0) {
+            // Index data has id/title/tags/source/updatedAt — enough for sidebar
+            setNotes(cachedNotes.data.map((n) => ({
+                id: n.id,
+                projectId,
+                title: n.title,
+                content: { type: "doc", content: [{ type: "paragraph" }] },
+                tags: n.tags,
+                linkedStudyId: null,
+                linkedSection: null,
+                source: n.source,
+                sourceConversationId: null,
+                sourceMessageId: null,
+                createdAt: n.updatedAt,
+                updatedAt: n.updatedAt,
+            })));
+            setIsLoading(false);
+            seededFromCacheRef.current = true;
+            // Still fetch full data in background for content
+            loadNotes();
+            return;
+        }
+        if (cachedNotes.state === "idle" || cachedNotes.state === "error") {
+            loadNotes();
+        }
+    }, [cachedNotes, projectId, loadNotes]);
 
     useEffect(() => {
         return addProjectDataChangedListener((detail) => {

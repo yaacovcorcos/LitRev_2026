@@ -8,22 +8,42 @@ import type { FileAsset } from "@/types/files";
 import type { DraftState } from "@/lib/draftStorage";
 import { docHasContent, jsonToText, type SectionMeta } from "./draft-helpers";
 import type { Study } from "@/types/ledger";
+import { compileDraftCitations, formatReferenceEntry, hasBlockingCitationIssues } from "@/lib/citation-compiler";
 
 type UseDraftExportDeps = {
   projectId: string;
   projectName: string | undefined;
   draft: DraftState;
+  getDraftSnapshot: () => DraftState;
   orderedSections: SectionMeta[];
   studies: Study[];
   flushContentCommit: () => void;
 };
 
 export function useDraftExport(deps: UseDraftExportDeps) {
-  const { projectId, projectName, draft, orderedSections, studies, flushContentCommit } = deps;
+  const { projectId, projectName, draft, getDraftSnapshot, orderedSections, studies, flushContentCommit } = deps;
 
   const [isExportModalOpen, setExportModalOpen] = useState(false);
   const [exportHistory, setExportHistory] = useState<FileAsset[]>([]);
   const [latestExport, setLatestExport] = useState<FileAsset | null>(null);
+  const [exportMode, setExportMode] = useState<"warn" | "strict">("warn");
+
+  const compiledCitations = useMemo(
+    () =>
+      compileDraftCitations({
+        contentBySection: draft.contentBySection,
+        sectionOrder: orderedSections.map((section) => section.id),
+        studies,
+        includeNumberInNodes: true,
+      }),
+    [draft.contentBySection, orderedSections, studies]
+  );
+  const citationIssues = compiledCitations.issues;
+  const blockingCitationIssuesCount = useMemo(
+    () =>
+      citationIssues.filter((issue) => issue.type === "missing_study_id" || issue.type === "missing_study").length,
+    [citationIssues]
+  );
 
   const hasDraftContent = useMemo(() => {
     return orderedSections.some((section) => docHasContent(draft.contentBySection[section.id]));
@@ -51,41 +71,49 @@ export function useDraftExport(deps: UseDraftExportDeps) {
   const handleExportDocx = useCallback(async (): Promise<FileAsset> => {
     if (!projectName || !projectId) throw new Error("Project not found");
 
+    const exportDraft = getDraftSnapshot();
     flushContentCommit();
+    const compiledForExport = compileDraftCitations({
+      contentBySection: exportDraft.contentBySection,
+      sectionOrder: orderedSections.map((section) => section.id),
+      studies,
+      includeNumberInNodes: true,
+    });
+    const exportCitationIssues = compiledForExport.issues;
+
+    if (exportMode === "strict" && hasBlockingCitationIssues(exportCitationIssues)) {
+      throw new Error("Export blocked in strict mode: fix missing citation targets before exporting.");
+    }
 
     const lines: string[] = [];
     lines.push(`# ${projectName}`);
     lines.push("");
     lines.push(`*Draft exported on ${new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}*`);
     lines.push("");
+    if (exportCitationIssues.length > 0 && exportMode === "warn") {
+      lines.push(`> Export warnings: ${exportCitationIssues.length} citation issue${exportCitationIssues.length === 1 ? "" : "s"} detected.`);
+      lines.push("");
+    }
 
     for (const section of orderedSections) {
-      const content = draft.contentBySection[section.id];
+      if (section.id === "references") continue;
+      const content = exportDraft.contentBySection[section.id];
       if (!docHasContent(content)) continue;
       lines.push(`## ${section.label}`);
       lines.push("");
-      lines.push(jsonToText(content));
+      const normalized = compiledForExport.normalizedContentBySection[section.id] ?? content;
+      lines.push(jsonToText(normalized));
       lines.push("");
     }
 
-    const allCitedIds = new Set<string>();
-    for (const sectionIds of Object.values(draft.ledgerBySection)) {
-      for (const studyId of sectionIds) {
-        allCitedIds.add(studyId);
-      }
-    }
-
-    const citedStudies = studies.filter((s) => allCitedIds.has(s.id));
-    if (citedStudies.length > 0) {
+    if (compiledForExport.orderedStudyIds.length > 0) {
       lines.push(`## References`);
       lines.push("");
-      citedStudies
-        .sort((a, b) => a.authors.localeCompare(b.authors))
-        .forEach((study, idx) => {
-          const journalInfo = study.details?.journal ? ` *${study.details.journal}*.` : "";
-          const doiInfo = study.details?.doi ? ` https://doi.org/${study.details.doi}` : "";
-          lines.push(`${idx + 1}. ${study.authors} (${study.year}). ${study.title}.${journalInfo}${doiInfo}`);
-        });
+      const byId = new Map(studies.map((study) => [study.id, study]));
+      compiledForExport.orderedStudyIds.forEach((studyId, index) => {
+        const study = byId.get(studyId);
+        lines.push(study ? formatReferenceEntry(study, index + 1) : `${index + 1}. Missing study metadata for ${studyId}.`);
+      });
       lines.push("");
     }
 
@@ -105,7 +133,7 @@ export function useDraftExport(deps: UseDraftExportDeps) {
       storagePath,
       publicUrl: storagePath,
       version: nextVersion,
-      metadata: { sections: orderedSections.length },
+      metadata: { sections: orderedSections.length, exportMode, citationIssues: exportCitationIssues.length },
     });
     if (!createResult.success) throw new Error(createResult.error);
     const newExport = createResult.data;
@@ -114,7 +142,16 @@ export function useDraftExport(deps: UseDraftExportDeps) {
     setLatestExport(newExport);
 
     return newExport;
-  }, [projectName, projectId, flushContentCommit, orderedSections, draft.contentBySection, draft.ledgerBySection, latestExport, studies]);
+  }, [
+    getDraftSnapshot,
+    projectName,
+    projectId,
+    flushContentCommit,
+    exportMode,
+    orderedSections,
+    latestExport,
+    studies,
+  ]);
 
   const handleDeleteExport = useCallback(async (fileId: string) => {
     if (!projectId) return;
@@ -130,7 +167,14 @@ export function useDraftExport(deps: UseDraftExportDeps) {
   const handleExportDraft = useCallback(() => {
     if (!projectName || !projectId) return;
 
+    const exportDraft = getDraftSnapshot();
     flushContentCommit();
+    const compiledForExport = compileDraftCitations({
+      contentBySection: exportDraft.contentBySection,
+      sectionOrder: orderedSections.map((section) => section.id),
+      studies,
+      includeNumberInNodes: true,
+    });
 
     const lines: string[] = [];
     lines.push(`# ${projectName}`);
@@ -141,12 +185,25 @@ export function useDraftExport(deps: UseDraftExportDeps) {
     lines.push("");
 
     for (const section of orderedSections) {
-      const content = draft.contentBySection[section.id];
+      if (section.id === "references") continue;
+      const content = exportDraft.contentBySection[section.id];
       if (!docHasContent(content)) continue;
 
       lines.push(`## ${section.label}`);
       lines.push("");
-      lines.push(jsonToText(content));
+      const normalized = compiledForExport.normalizedContentBySection[section.id] ?? content;
+      lines.push(jsonToText(normalized));
+      lines.push("");
+    }
+
+    if (compiledForExport.orderedStudyIds.length > 0) {
+      lines.push(`## References`);
+      lines.push("");
+      const byId = new Map(studies.map((study) => [study.id, study]));
+      compiledForExport.orderedStudyIds.forEach((studyId, index) => {
+        const study = byId.get(studyId);
+        lines.push(study ? formatReferenceEntry(study, index + 1) : `${index + 1}. Missing study metadata for ${studyId}.`);
+      });
       lines.push("");
     }
 
@@ -160,13 +217,17 @@ export function useDraftExport(deps: UseDraftExportDeps) {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-  }, [projectName, projectId, draft.contentBySection, orderedSections, flushContentCommit]);
+  }, [getDraftSnapshot, projectName, projectId, orderedSections, studies, flushContentCommit]);
 
   return {
     isExportModalOpen,
     setExportModalOpen,
     exportHistory,
     latestExport,
+    exportMode,
+    setExportMode,
+    citationIssues,
+    blockingCitationIssuesCount,
     hasDraftContent,
     handleExportDocx,
     handleDeleteExport,

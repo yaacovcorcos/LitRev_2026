@@ -27,6 +27,7 @@ import {
     getProtocolSectionLabel,
 } from "@/types/protocol";
 import { getProtocolAction, saveProtocolAction } from "@/app/actions/protocols";
+import { dispatchProjectDataChanged } from "@/lib/project-data-events";
 
 /** Context value shape */
 type ProtocolContextValue = {
@@ -140,6 +141,8 @@ export function ProtocolProvider({ projectId, initialData, children }: ProtocolP
                 const result = await saveProtocolAction(projectId, data);
                 if (!result.success) {
                     console.error("Failed to save protocol to backend:", result.error);
+                } else {
+                    dispatchProjectDataChanged({ projectId, domains: ["protocol"], source: "protocol_edit" });
                 }
             }, 500);
         },
@@ -406,6 +409,7 @@ export function ProtocolProvider({ projectId, initialData, children }: ProtocolP
         if (projectId) {
             saveProtocolAction(projectId, defaults).then((result) => {
                 if (!result.success) console.error("Failed to reset protocol in backend:", result.error);
+                else dispatchProjectDataChanged({ projectId, domains: ["protocol"], source: "protocol_reset" });
             });
         }
     }, [projectId]);

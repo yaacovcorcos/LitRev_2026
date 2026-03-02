@@ -95,6 +95,7 @@ describe("validatePlan", () => {
         // Every toolName the heuristic planner can produce must exist in AVAILABLE_TOOLS
         const toolMessages = [
             "search pubmed",
+            "search openalex",
             "extract pdf",
             "screen studies",
             "add to ledger",
@@ -175,12 +176,23 @@ describe("generatePlan", () => {
             expect(step.status).toBe("pending");
         }
     });
+
+    it("uses OpenAlex search step when the message explicitly asks for OpenAlex", async () => {
+        const plan = await generatePlan("search openalex for broader evidence", {
+            projectId: "test",
+            hasProtocol: true,
+            studyCount: 0,
+        });
+        expect(plan).not.toBeNull();
+        expect(plan!.steps[0]?.toolName).toBe("search_openalex");
+    });
 });
 
 // Helper: maps a keyword to the toolName the heuristic planner would produce
 function getHeuristicToolName(msg: string): string {
     const map: Record<string, string> = {
         "search pubmed": "search_pubmed",
+        "search openalex": "search_openalex",
         "extract pdf": "extract_pdf",
         "screen studies": "bulk_screening",
         "add to ledger": "add_to_ledger",

@@ -5,6 +5,9 @@ import { assertProjectAccess } from "@/lib/server/access";
 import type { ServiceScope, ScopeInput } from "@/lib/server/scope";
 import type { FileAsset } from "@/types/files";
 import type { Study } from "@/types/ledger";
+import type { SearchResult } from "@/types/search";
+import { findDuplicates } from "@/lib/server/search/dedup";
+import { listStudies } from "@/lib/server/ledger";
 import { randomUUID } from "crypto";
 import {
   MAX_STUDY_FILE_SIZE,
@@ -108,6 +111,13 @@ export async function createFileAsset(
   input: FileAssetInput
 ): Promise<FileAsset> {
   const scope = await assertProjectAccess(scopeInput, projectId);
+
+  // Validate that storagePath is scoped to this project to prevent
+  // cross-tenant file access via arbitrary path injection.
+  if (!input.storagePath.includes(`/${projectId}/`)) {
+    throw new Error("Storage path must belong to the specified project.");
+  }
+
   const created = await prisma.fileAsset.create({
     data: {
       id: input.id ?? undefined,
@@ -356,7 +366,19 @@ export async function importStudyWithPdf(
   const scope = await assertProjectAccess(scopeInput, projectId);
   validateFileServer(file);
 
-  const studyId = randomUUID();
+  const inferredTitle = file.name.replace(/\.[^/.]+$/, "").trim() || "Untitled Study";
+  const inferredYear = new Date().getFullYear();
+  const dedupeProbe: SearchResult = {
+    title: inferredTitle,
+    authors: "Unknown",
+    year: inferredYear,
+    source: "crossref",
+  };
+  const existingStudies = await listStudies(scope, projectId);
+  const { duplicates } = findDuplicates(existingStudies, [dedupeProbe]);
+  const matchedDuplicate = duplicates[0];
+
+  const studyId = matchedDuplicate?.existingStudyId ?? randomUUID();
   const ext = file.name.toLowerCase().slice(file.name.lastIndexOf(".") + 1);
   const safeName = sanitizeFilename(file.name);
   const objectPath = `projects/${projectId}/studies/${studyId}/${randomUUID()}-${safeName}`;
@@ -367,19 +389,29 @@ export async function importStudyWithPdf(
   // 2. Create Study + FileAsset in a single DB transaction
   try {
     const [studyRecord, fileRecord] = await prisma.$transaction(async (tx: any) => {
-      const s = await tx.study.create({
-        data: {
-          id: studyId,
-          projectId,
-          workspaceId: scope.workspaceId,
-          title: file.name.replace(/\.[^/.]+$/, "") || "Untitled Study",
-          authors: "Unknown",
-          year: new Date().getFullYear(),
-          status: "pending",
-          quality: "-",
-          details: { source: "pdf-import" },
-        },
-      });
+      let s;
+      if (matchedDuplicate) {
+        s = await tx.study.findFirst({
+          where: { id: studyId, projectId, deletedAt: null },
+        });
+        if (!s) {
+          throw new Error("Duplicate matched study not found.");
+        }
+      } else {
+        s = await tx.study.create({
+          data: {
+            id: studyId,
+            projectId,
+            workspaceId: scope.workspaceId,
+            title: inferredTitle,
+            authors: "Unknown",
+            year: inferredYear,
+            status: "pending",
+            quality: "-",
+            details: { source: "pdf-import" },
+          },
+        });
+      }
       const f = await tx.fileAsset.create({
         data: {
           projectId,

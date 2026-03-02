@@ -138,7 +138,9 @@ export const jsonToText = (doc: JSONContent | null | undefined): string => {
       return text;
     }
     if (node.type === "citation") {
-      return node.attrs?.label ? `(${node.attrs.label})` : "(Citation)";
+      const raw = node.attrs?.number;
+      const number = typeof raw === "number" && Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : null;
+      return number ? `[${number}]` : "[?]";
     }
     if (node.type === "hardBreak") {
       return "\n";

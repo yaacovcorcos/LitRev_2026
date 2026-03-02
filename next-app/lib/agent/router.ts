@@ -22,12 +22,12 @@ export interface AgentModeConfig {
 }
 
 export const AGENT_MODE_CONFIG: Record<AgentMode, AgentModeConfig> = {
-    protocol: { systemPromptKey: "protocol", allowedTools: ["update_protocol", "update_criteria", "update_study", "search_pubmed", "search_semantic_scholar", "store_memory", "forget_memory", "inspect_memory", "ask_user"], memoryScope: "project", description: "Defining PICO and criteria" },
-    scoping: { systemPromptKey: "scoping", allowedTools: ["search_pubmed", "search_semantic_scholar", "recommend_studies", "store_memory", "forget_memory", "inspect_memory", "list_projects", "open_project", "ask_user"], memoryScope: "project", description: "Exploring the literature landscape" },
-    search: { systemPromptKey: "search", allowedTools: ["search_pubmed", "search_semantic_scholar", "add_to_ledger", "recommend_studies", "read_protocol", "update_study", "store_memory", "forget_memory", "inspect_memory", "ask_user"], memoryScope: "project", description: "Finding studies" },
+    protocol: { systemPromptKey: "protocol", allowedTools: ["update_protocol", "update_criteria", "update_study", "search_pubmed", "search_semantic_scholar", "search_openalex", "store_memory", "forget_memory", "inspect_memory", "ask_user"], memoryScope: "project", description: "Defining PICO and criteria" },
+    scoping: { systemPromptKey: "scoping", allowedTools: ["search_pubmed", "search_semantic_scholar", "search_openalex", "recommend_studies", "store_memory", "forget_memory", "inspect_memory", "list_projects", "open_project", "ask_user"], memoryScope: "project", description: "Exploring the literature landscape" },
+    search: { systemPromptKey: "search", allowedTools: ["search_pubmed", "search_semantic_scholar", "search_openalex", "add_to_ledger", "recommend_studies", "read_protocol", "update_study", "store_memory", "forget_memory", "inspect_memory", "ask_user"], memoryScope: "project", description: "Finding studies" },
     screening: { systemPromptKey: "screening", allowedTools: ["bulk_screening", "exclude_study", "delete_study", "extract_pdf", "read_study_content", "update_study", "store_memory", "forget_memory", "inspect_memory", "ask_user"], memoryScope: "study", description: "Evaluating studies" },
     drafting: { systemPromptKey: "drafting", allowedTools: ["update_note", "read_study_content", "read_protocol", "read_ledger", "update_study", "store_memory", "forget_memory", "inspect_memory", "ask_user"], memoryScope: "project", description: "Writing sections" },
-    qa: { systemPromptKey: "qa", allowedTools: ["search_pubmed", "search_semantic_scholar", "read_study_content", "read_protocol", "read_ledger", "update_study", "store_memory", "forget_memory", "inspect_memory", "ask_user"], memoryScope: "project", description: "Checking citations" },
+    qa: { systemPromptKey: "qa", allowedTools: ["search_pubmed", "search_semantic_scholar", "search_openalex", "read_study_content", "read_protocol", "read_ledger", "update_study", "store_memory", "forget_memory", "inspect_memory", "ask_user"], memoryScope: "project", description: "Checking citations" },
     general: { systemPromptKey: "general", allowedTools: [], memoryScope: "project", description: "General conversation" },
 };
 
@@ -81,10 +81,10 @@ export function routeToAgent(message: string, currentPage: RouterPage, projectSt
     if (/landscape|scoping|what.*out there|what.*been (?:done|studied)|research question|exploratory|feasib|is there enough/.test(msg)) {
         return scopingEnabled ? "scoping" : "search";
     }
-    if (!hasProtocol && /search|find stud|pubmed|semantic scholar|look for|literature|recommend/.test(msg)) {
+    if (!hasProtocol && /search|find stud|pubmed|semantic scholar|openalex|look for|literature|recommend/.test(msg)) {
         return scopingEnabled ? "scoping" : "search";
     }
-    if (/search|find stud|pubmed|semantic scholar|look for|literature|recommend/.test(msg)) return "search";
+    if (/search|find stud|pubmed|semantic scholar|openalex|look for|literature|recommend/.test(msg)) return "search";
     if (/screen|triage|evaluat|review against|match criteria/.test(msg)) return "screening";
     if (/write|draft|compose|methods|results|discussion|introduction/.test(msg)) return "drafting";
     if (/check|verify|cite|unsupported|claim|conflict/.test(msg)) return "qa";

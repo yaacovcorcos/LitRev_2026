@@ -140,6 +140,17 @@ export async function listNotes(projectId: string, options?: ListNotesOptions) {
     });
 }
 
+/** Lightweight index — metadata only, no content payload. */
+export async function listNotesIndex(projectId: string) {
+    return prisma.note.findMany({
+        where: { projectId, deletedAt: null },
+        select: { id: true, title: true, tags: true, source: true, updatedAt: true },
+        orderBy: { updatedAt: "desc" },
+    });
+}
+
+export type NoteIndexItem = Awaited<ReturnType<typeof listNotesIndex>>[number];
+
 export async function listNotesPaginated(
     projectId: string,
     options?: ListNotesOptions & PaginationOptions,
