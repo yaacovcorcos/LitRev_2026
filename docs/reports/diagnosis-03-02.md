@@ -543,6 +543,10 @@ Use this per-fix log format:
 
 `[Fix-ID] | status | date | files | validation | notes`
 
+### 9.5 Per-Fix Log
+
+`[P0-WITHACTION-IMPORT] | done | 2026-03-02 | next-app/app/actions/memory.ts, docs/reports/diagnosis-03-02.md | tsc: pass; vitest: 2 failing tests in lib/server/__tests__/ai-service-reasoning-policy.test.ts (DB env issue, unrelated to import fix) | Added missing withAction import only; no runtime logic change.`
+
 ---
 
 ## Section 10: Final Position
