@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
     __clearCitationMetadataCacheForTests,
+    fetchCrossrefMetadata,
     normalizeDoi,
     extractPmid,
     extractDoi,
@@ -146,6 +147,31 @@ describe("citation-metadata utilities", () => {
             const third = await resolveCitationMetadataCached(url);
             expect(third).toBeNull();
             expect(fetchMock).toHaveBeenCalledTimes(2);
+        });
+    });
+
+    describe("fetchCrossrefMetadata", () => {
+        it("maps journal and citation count fields when available", async () => {
+            const fetchMock = vi.fn().mockResolvedValue({
+                ok: true,
+                json: async () => ({
+                    message: {
+                        title: ["Citation rich paper"],
+                        author: [{ family: "Smith", given: "Jane" }],
+                        "container-title": ["Journal of Testing"],
+                        "published-online": { "date-parts": [[2025, 1, 2]] },
+                        "is-referenced-by-count": 345,
+                    },
+                }),
+            } as Response);
+            vi.stubGlobal("fetch", fetchMock);
+
+            const result = await fetchCrossrefMetadata("10.1000/xyz123");
+            expect(result).not.toBeNull();
+            expect(result?.journal).toBe("Journal of Testing");
+            expect(result?.citationCount).toBe(345);
+            expect(result?.citationCountSource).toBe("crossref");
+            expect(typeof result?.citationCountFetchedAt).toBe("string");
         });
     });
 });
