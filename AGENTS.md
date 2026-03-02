@@ -63,18 +63,25 @@ All run from `next-app/` except deploy.
 | UI changes under `next-app/app/project/[id]/...`, `next-app/components/...`, `next-app/styles/...` | `frontend-ui-specialist.md` | `docs/plans/codex-ui-ux-plan.md` (or active UI plan), relevant route files | `npx tsc --noEmit`, `npx vitest run` |
 | Agent runtime/orchestration files (`next-app/lib/agent/**`, `next-app/lib/server/agent/**`, `next-app/app/actions/agent.ts`, `next-app/lib/server/ai/sub-agent.ts`) | `agent-runtime-specialist.md` | `docs/plans/plan-agentic.md`, `docs/plans/codex-agentic-plan.md`, and `docs/plans/plan-memory.md` if memory touched | `npx tsc --noEmit`, `npx vitest run` |
 | Plan/PRD/governance edits (`PRD.md`, `docs/plans/**`) | `planning-governance-specialist.md` | `docs/plans/README.md` and target plan file | If code is unchanged, no code gate required |
+| GitHub workflow/governance edits (`.github/workflows/**`, `.github/CODEOWNERS`, git policy in `AGENTS.md`) | `planning-governance-specialist.md` | `docs/runbooks/github-flow.md` | If code is unchanged, no code gate required |
 
 If no row matches, consult `docs/agents/cold-memory-index.md`, then pick the nearest specialist and proceed conservatively.
 
-## Git Workflow (Local Auto-Commit Policy)
+## Git Workflow (Agent Auto-Commit/Push Policy)
 
 - One task = one atomic commit.
-- Use feature branches by default; do not commit directly to `main` unless explicitly requested.
+- Branch roles:
+  - `main`: default branch and production deployment branch.
+  - `second`: integration branch for agent task PRs.
+- Use feature branches by default (`codex/<task>`). Base from `second`; do not commit directly to `main` or `second` unless explicitly requested.
 - For code changes, validate with `npx tsc --noEmit` and `npx vitest run`.
 - If validation fails, fix first; do not commit failing code.
 - Stage only relevant files for the task.
 - Commit immediately after validation; do not batch completed tasks.
-- Never push unless explicitly requested.
+- After validation passes, push by default and open/update a PR targeting `second`.
+- Promotion from `second` to `main` is cadence-based (daily/manual release PR), not a permanently open rolling PR.
+- Hotfixes use `hotfix/<task>` branches and PR directly to `main`.
+- Before merge decisions, pull latest review feedback with `gh pr view <number> --json reviews,comments`.
 - Use conventional commit types: `feat`, `fix`, `refactor`, `test`, `chore`, `docs`.
 
 Required local commit flow:
@@ -82,6 +89,8 @@ Required local commit flow:
 1. `git add <changed-files-for-this-task>`
 2. `git diff --cached` and `git status`
 3. `git commit -m "<type(scope): concise why-focused message>"`
+4. `git push -u origin <branch>`
+5. `gh pr create --base second --head <branch> ...` (or update an existing PR)
 
 ## Database Contract (Non-Negotiable)
 
