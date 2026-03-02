@@ -107,6 +107,27 @@ function parseCoverageConfigFromArgs(): {
   };
 }
 
+function formatRunIdCoverageReport(
+  runIdCoverage: ReturnType<typeof summarizeRunEndRunIdCoverage>,
+): string {
+  const lines: string[] = ["Run-end runId coverage by surface:"];
+  for (const surface of SURFACES) {
+    const coverage = runIdCoverage.bySurface[surface];
+    lines.push(
+      `- ${surface}: withRunId=${coverage.withRunId}/${coverage.total} coverage=${coverage.coverage ?? "n/a"} missing=${coverage.missingRunId}`,
+    );
+    if (coverage.missingSamples.length > 0) {
+      lines.push(`  missing samples (${coverage.missingSamples.length} shown):`);
+      for (const sample of coverage.missingSamples) {
+        lines.push(
+          `  - recordedAt=${sample.recordedAt} conversationId=${sample.conversationId ?? "null"} projectId=${sample.projectId ?? "null"}`,
+        );
+      }
+    }
+  }
+  return lines.join("\n");
+}
+
 function parseThresholdsFromArgs(): BurnInThresholds {
   return {
     minCompletedRuns: parseIntArg("minCompletedRuns", DEFAULT_BURN_IN_THRESHOLDS.minCompletedRuns),
@@ -245,22 +266,8 @@ async function main() {
     `Rows analyzed: ${metrics.length}`,
   ].join("\n");
   const body = formatChatUnificationBurnInReport(evaluation);
-  const coverageLines: string[] = ["Run-end runId coverage by surface:"];
-  for (const surface of SURFACES) {
-    const coverage = runIdCoverage.bySurface[surface];
-    coverageLines.push(
-      `- ${surface}: withRunId=${coverage.withRunId}/${coverage.total} coverage=${coverage.coverage ?? "n/a"} missing=${coverage.missingRunId}`,
-    );
-    if (coverage.missingSamples.length > 0) {
-      coverageLines.push(`  missing samples (${coverage.missingSamples.length} shown):`);
-      for (const sample of coverage.missingSamples) {
-        coverageLines.push(
-          `  - recordedAt=${sample.recordedAt} conversationId=${sample.conversationId ?? "null"} projectId=${sample.projectId ?? "null"}`,
-        );
-      }
-    }
-  }
-  const output = `${header}\n${body}\n${coverageLines.join("\n")}`;
+  const coverageSection = formatRunIdCoverageReport(runIdCoverage);
+  const output = `${header}\n${body}\n${coverageSection}`;
 
   if (outputJson) {
     console.log(
