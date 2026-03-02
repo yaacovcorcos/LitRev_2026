@@ -187,14 +187,23 @@ Exit criteria:
    - `retry_model_continuity`
    - `ask_user_context_mismatch`
    - `stuck_running_tools_after_run_end`
-5. Burn-in pass rule:
-   - window: 7 days internal canary
+   - `run_end_observed`
+5. Authoritative metric sink decision (ADR-brief):
+   - Use a dedicated `ChatUnificationMetric` table (instead of extending `RunEvent`) because U1.6 gate metrics include UI-level events that can occur without a valid `runId` (for example retry continuity and ask-user context mismatch checks), and we need one canonical store for both run-bound and non-run-bound evidence.
+   - Keep `RunEvent` as the agent execution timeline source; avoid cross-purpose overloading.
+6. Burn-in pass rule:
+   - window: 7 days internal canary, anchored from explicit feature-flag enable timestamp (`since` ISO captured in plan + report output)
    - minimum sample size: 200 completed runs total, with at least 50 `/ai` and 50 project runs
    - thresholds:
      - `retry_model_continuity` >= 99%
      - `ask_user_context_mismatch` = 0
      - `stuck_running_tools_after_run_end` = 0
-6. Gate cleanup on parity + KPI pass.
+   - non-vacuous denominator minimums:
+     - `retry_model_continuity` denominator >= 30 overall and >= 10 per surface
+     - `ask_user_context_mismatch` denominator >= 30 overall and >= 10 per surface
+   - completed-run counting rule:
+     - count distinct `runId` where `run_end_observed.payload.runStatus === "completed"` and `runId` belongs to an authorized run
+7. Gate cleanup on parity + KPI pass.
 
 Exit criteria:
 1. Replay parity suite passes for shared stream fixtures.
