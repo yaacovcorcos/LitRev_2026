@@ -160,6 +160,10 @@ export function CitationPreview({ href, type, children, anchorProps }: CitationP
         return authors.slice(0, 77) + "...";
     };
 
+    const formatCitationCount = (count: number): string => {
+        return new Intl.NumberFormat().format(count);
+    };
+
     return (
         <Popover.Root open={open} onOpenChange={setOpen}>
             <Popover.Trigger asChild>
@@ -227,6 +231,11 @@ export function CitationPreview({ href, type, children, anchorProps }: CitationP
                             </p>
                             {metadata.journal && (
                                 <p className={styles.journal}>{metadata.journal}</p>
+                            )}
+                            {typeof metadata.citationCount === "number" && (
+                                <p className={styles.citationCount}>
+                                    Cited {formatCitationCount(metadata.citationCount)} times
+                                </p>
                             )}
                             <div className={styles.footer}>
                                 <a

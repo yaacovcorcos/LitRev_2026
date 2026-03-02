@@ -137,6 +137,12 @@
     font-style: italic;
 }
 
+.citationCount {
+    margin: 0;
+    font-size: var(--text-xs);
+    color: var(--text-secondary);
+}
+
 .footer {
     display: flex;
     justify-content: flex-end;
