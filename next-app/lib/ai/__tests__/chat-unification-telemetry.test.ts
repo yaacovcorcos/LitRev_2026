@@ -21,6 +21,7 @@ describe("chat unification telemetry", () => {
         preserved: true,
         expectedModel: "gpt-5.2",
         actualModel: "gpt-5.2",
+        actualModelSource: "provider",
         source: "retry_action",
       },
     });
@@ -32,6 +33,7 @@ describe("chat unification telemetry", () => {
         preserved: false,
         expectedModel: "gpt-5.2",
         actualModel: "claude-sonnet",
+        actualModelSource: "provider",
         source: "retry_action",
       },
     });

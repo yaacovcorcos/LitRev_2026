@@ -40,6 +40,7 @@ describe("chat unification telemetry shipping", () => {
         preserved: true,
         expectedModel: "gpt-5.2",
         actualModel: "gpt-5.2",
+        actualModelSource: "provider",
         source: "retry_action",
       },
     });
