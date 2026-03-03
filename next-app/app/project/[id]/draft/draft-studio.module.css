@@ -10,6 +10,14 @@
     padding-top: var(--header-height, 44px) !important;
 }
 
+.appMainOverrideMobileV2 {
+    min-height: 0;
+}
+
+.pageMobileV2 {
+    height: calc(var(--app-height, 100vh) - var(--header-height, 44px) - var(--mobile-nav-offset, 0px));
+}
+
 .top {
     display: flex;
     align-items: center;
