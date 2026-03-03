@@ -86,4 +86,29 @@ describe("chat unification burn-in evaluation", () => {
     expect(report.failures.some((failure) => failure.includes("Ask-user mismatch above threshold"))).toBe(true);
     expect(report.failures.some((failure) => failure.includes("Stuck-running violations above threshold"))).toBe(true);
   });
+
+  it("uses unresolvedCountBeforeClear as stuck-tool gate truth with legacy fallback", () => {
+    const rows: ChatUnificationBurnInMetricRow[] = [
+      at("run_end_observed", "ai", { runStatus: "completed", streamPhase: "send" }, "run-ai-1"),
+      at("run_end_observed", "project", { runStatus: "completed", streamPhase: "project_stream" }, "run-prj-1"),
+      at("retry_model_continuity", "ai", { preserved: true }),
+      at("retry_model_continuity", "project", { preserved: true }),
+      at("ask_user_context_mismatch", "ai", { mismatch: false }),
+      at("ask_user_context_mismatch", "project", { mismatch: false }),
+      at("stuck_running_tools_after_run_end", "ai", {
+        unresolvedCount: 0,
+        unresolvedCountBeforeClear: 1,
+        unresolvedCountAfterClear: 0,
+      }),
+      at("stuck_running_tools_after_run_end", "project", {
+        unresolvedCount: 1,
+      }),
+    ];
+
+    const report = evaluateChatUnificationBurnIn(rows, LOW_THRESHOLDS);
+    expect(report.stuckRunningToolsAfterRunEnd.violations).toBe(2);
+    expect(report.stuckRunningToolsAfterRunEnd.preClearViolations).toBe(1);
+    expect(report.stuckRunningToolsAfterRunEnd.postClearViolations).toBe(0);
+    expect(report.stuckRunningToolsAfterRunEnd.legacyFallbackViolations).toBe(1);
+  });
 });
