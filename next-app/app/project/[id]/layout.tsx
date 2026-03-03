@@ -18,7 +18,7 @@ import type { CopilotPage } from "@/types/ai";
 import { DemoBanner } from "@/components/project/DemoBanner";
 import { isDemoProjectId } from "@/lib/demo/constants";
 import { shouldSkipPreload } from "@/lib/network-aware";
-import { isMobileViewportV2Enabled } from "@/lib/mobile/feature-flags";
+import { isMobileScrollLockV2Enabled, isMobileViewportV2Enabled } from "@/lib/mobile/feature-flags";
 import { ProjectDataProvider } from "@/contexts/ProjectDataContext";
 import styles from "./project-shell.module.css";
 
@@ -44,6 +44,7 @@ function ProjectShellInner({ projectId, children }: ProjectShellInnerProps) {
   const router = useRouter();
   const pathname = usePathname();
   const mobileViewportV2Enabled = isMobileViewportV2Enabled();
+  const mobileScrollLockV2Enabled = isMobileScrollLockV2Enabled();
     const { isCollapsed, panelWidth, setPanelWidth, toggleCollapsed, setStudyFilter } = useProjectCopilot();
     const { registerCopilotToggle } = useCommandPalette();
     const { getProjectById, deleteProject } = useProjects();
@@ -97,18 +98,50 @@ function ProjectShellInner({ projectId, children }: ProjectShellInnerProps) {
         const prevBodyOverflow = body.style.overflow;
         const prevBodyOverscroll = body.style.overscrollBehavior;
 
-        html.style.overflow = "hidden";
-        html.style.overscrollBehavior = "none";
-        body.style.overflow = "hidden";
-        body.style.overscrollBehavior = "none";
+        const applyLockedRootScroll = () => {
+            html.style.overflow = "hidden";
+            html.style.overscrollBehavior = "none";
+            body.style.overflow = "hidden";
+            body.style.overscrollBehavior = "none";
+        };
+
+        const applyUnlockedRootScroll = () => {
+            html.style.overflow = "";
+            html.style.overscrollBehavior = "";
+            body.style.overflow = "";
+            body.style.overscrollBehavior = "";
+        };
+
+        if (!mobileScrollLockV2Enabled || typeof window === "undefined") {
+            applyLockedRootScroll();
+            return () => {
+                html.style.overflow = prevHtmlOverflow;
+                html.style.overscrollBehavior = prevHtmlOverscroll;
+                body.style.overflow = prevBodyOverflow;
+                body.style.overscrollBehavior = prevBodyOverscroll;
+            };
+        }
+
+        const mobileQuery = window.matchMedia("(max-width: 900px)");
+        const applyByViewport = () => {
+            if (mobileQuery.matches) {
+                applyUnlockedRootScroll();
+                return;
+            }
+            applyLockedRootScroll();
+        };
+
+        applyByViewport();
+        mobileQuery.addEventListener("change", applyByViewport);
 
         return () => {
+            mobileQuery.removeEventListener("change", applyByViewport);
             html.style.overflow = prevHtmlOverflow;
             html.style.overscrollBehavior = prevHtmlOverscroll;
             body.style.overflow = prevBodyOverflow;
             body.style.overscrollBehavior = prevBodyOverscroll;
         };
-    }, []);
+    }, [mobileScrollLockV2Enabled]);
 
     // Derive initial mode from route to avoid deep-link flicker.
     const [focusMode, setFocusMode] = useState<FocusMode>(() =>

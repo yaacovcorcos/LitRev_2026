@@ -18,6 +18,7 @@ Define one stable mobile viewport contract before route-level UI migrations.
 - `/project/[id]/ledger` and `/project/[id]/ledger/[studyId]` viewport-height updates are gated by `NEXT_PUBLIC_MOBILE_LEDGER_V2`.
 - `/project/[id]/draft` viewport-height updates are gated by `NEXT_PUBLIC_MOBILE_DRAFT_V2`.
 - Popup chat mobile viewport adjustments are gated by `NEXT_PUBLIC_MOBILE_POPUP_V2`.
+- Project-shell root scroll lock now supports flag-gated mobile unlock behavior via `NEXT_PUBLIC_MOBILE_SCROLL_LOCK_V2`.
 
 ## Feature Flags (Default Off)
 
