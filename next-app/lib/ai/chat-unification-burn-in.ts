@@ -69,6 +69,9 @@ export type ChatUnificationBurnInReport = {
   };
   stuckRunningToolsAfterRunEnd: BurnInMetricSummary & {
     violations: number;
+    preClearViolations: number;
+    postClearViolations: number;
+    legacyFallbackViolations: number;
   };
 };
 
@@ -148,6 +151,9 @@ export function evaluateChatUnificationBurnIn(
   let askMismatches = 0;
   let stuckTotal = 0;
   let stuckViolations = 0;
+  let stuckPreClearViolations = 0;
+  let stuckPostClearViolations = 0;
+  let stuckLegacyFallbackViolations = 0;
 
   const completedRunIds = new Set<string>();
   const completedRunIdsBySurface: Record<ChatSurface, Set<string>> = {
@@ -184,11 +190,34 @@ export function evaluateChatUnificationBurnIn(
     if (row.type === "stuck_running_tools_after_run_end") {
       stuckTotal += 1;
       stuckBySurface[row.surface].total += 1;
-      const unresolved = payload?.unresolvedCount;
-      const violation = typeof unresolved === "number" && unresolved > 0;
+      const unresolvedBeforeClear =
+        typeof payload?.unresolvedCountBeforeClear === "number"
+          ? payload.unresolvedCountBeforeClear
+          : null;
+      const unresolvedLegacy =
+        typeof payload?.unresolvedCount === "number" ? payload.unresolvedCount : null;
+      const unresolvedAfterClear =
+        typeof payload?.unresolvedCountAfterClear === "number"
+          ? payload.unresolvedCountAfterClear
+          : null;
+      const unresolvedForGate = unresolvedBeforeClear ?? unresolvedLegacy;
+      const violation = typeof unresolvedForGate === "number" && unresolvedForGate > 0;
       if (violation) {
         stuckViolations += 1;
         stuckBySurface[row.surface].violations = (stuckBySurface[row.surface].violations ?? 0) + 1;
+      }
+      if (typeof unresolvedBeforeClear === "number" && unresolvedBeforeClear > 0) {
+        stuckPreClearViolations += 1;
+      }
+      if (typeof unresolvedAfterClear === "number" && unresolvedAfterClear > 0) {
+        stuckPostClearViolations += 1;
+      }
+      if (
+        unresolvedBeforeClear === null &&
+        typeof unresolvedLegacy === "number" &&
+        unresolvedLegacy > 0
+      ) {
+        stuckLegacyFallbackViolations += 1;
       }
       continue;
     }
@@ -398,6 +427,9 @@ export function evaluateChatUnificationBurnIn(
     stuckRunningToolsAfterRunEnd: {
       total: stuckTotal,
       violations: stuckViolations,
+      preClearViolations: stuckPreClearViolations,
+      postClearViolations: stuckPostClearViolations,
+      legacyFallbackViolations: stuckLegacyFallbackViolations,
       rate: stuckViolationRate,
       bySurface: stuckBySurface,
     },
@@ -435,7 +467,10 @@ export function formatChatUnificationBurnInReport(
     `Ask-user mismatch: ${report.askUserContextMismatch.mismatches}/${report.askUserContextMismatch.total} (${report.askUserContextMismatch.rate ?? "n/a"})`,
   );
   lines.push(
-    `Stuck-running violations: ${report.stuckRunningToolsAfterRunEnd.violations}/${report.stuckRunningToolsAfterRunEnd.total} (${report.stuckRunningToolsAfterRunEnd.rate ?? "n/a"})`,
+    `Stuck-running violations (gate=preClear/fallback): ${report.stuckRunningToolsAfterRunEnd.violations}/${report.stuckRunningToolsAfterRunEnd.total} (${report.stuckRunningToolsAfterRunEnd.rate ?? "n/a"})`,
+  );
+  lines.push(
+    `Stuck-running detail: preClear=${report.stuckRunningToolsAfterRunEnd.preClearViolations}, postClear=${report.stuckRunningToolsAfterRunEnd.postClearViolations}, legacyFallback=${report.stuckRunningToolsAfterRunEnd.legacyFallbackViolations}`,
   );
   if (report.failures.length > 0) {
     lines.push("Failures:");

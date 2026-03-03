@@ -11,6 +11,7 @@ This runbook is the operational gate for U1.6 sign-off. Use it after metric trut
 ## Required Inputs
 - `CANARY_SINCE_UTC`: exact UTC timestamp when canary exposure started
 - `CANARY_DEPLOY_SHA`: commit SHA deployed to production `main`
+- `CANARY_DEPLOYMENT_URL`: production deployment URL or ID
 - `CANARY_WORKSPACE_IDS` and/or `CANARY_USER_IDS`
 - sign-off owner + backup reviewer
 
@@ -19,6 +20,7 @@ This runbook is the operational gate for U1.6 sign-off. Use it after metric trut
 2. Deploy production from `main`.
 3. Record:
    - `CANARY_DEPLOY_SHA=<main sha>`
+   - `CANARY_DEPLOYMENT_URL=<production deploy url-or-id>`
    - `CANARY_SINCE_UTC=<YYYY-MM-DDTHH:MM:SS.000Z>`
    - cohort IDs (`workspaceIds` and/or `userIds`)
 4. Confirm metric contract freeze (`v2`) and no schema changes pending.
@@ -72,6 +74,12 @@ cd next-app && npx tsx scripts/validate-chat-unification-burn-in.ts \
   - ask-user mismatch: `>= 30` total and `>= 10` per surface
 - Day-0 and final run-end coverage gates pass.
 
+## Retry Continuity Status
+- Current `retry_model_continuity.preserved` is client-computed and should be treated as provisional signal.
+- Final U1.6 sign-off must either:
+  - land server-side expected/actual correlation truth before sign-off, or
+  - explicitly mark retry continuity as provisional in the sign-off record and keep U1.6 partially open.
+
 ## Invalidation Rules
 - Any change to metric schema or metric version during active burn-in invalidates the window.
 - If invalidated, restart with a new production deployment and a new `CANARY_SINCE_UTC`.
@@ -80,6 +88,7 @@ cd next-app && npx tsx scripts/validate-chat-unification-burn-in.ts \
 Record this in the sign-off issue or report:
 - Date started (UTC):
 - `CANARY_DEPLOY_SHA`:
+- `CANARY_DEPLOYMENT_URL`:
 - `CANARY_SINCE_UTC`:
 - `metricVersion`:
 - cohort scope:
