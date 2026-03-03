@@ -28,7 +28,7 @@ import { dispatchProjectDataChanged, getChangedDomainsForAcceptedArtifact } from
 import { isNavigationSafe } from "@/lib/ai/navigation-safety";
 import { formatStreamErrorForUI } from "@/lib/ai/stream-error-ui";
 import { createAiStreamRuntime } from "@/lib/ai/ai-stream-runtime";
-import { recordChatUnificationMetric } from "@/lib/ai/chat-unification-telemetry";
+import { generateChatUnificationRequestKey, recordChatUnificationMetric } from "@/lib/ai/chat-unification-telemetry";
 import type { RetryModelExpectation } from "@/types/chat-unification";
 import {
   getReasoningBudgetTokens,
@@ -926,6 +926,19 @@ export default function AIView() {
     const requestReasoningMode = resolveRequestReasoningMode(reasoningMode, effectiveModel);
 
     let convId = await ensureConversation(context);
+    if (retryModelExpectation) {
+      recordChatUnificationMetric({
+        type: "retry_model_continuity",
+        surface: "ai",
+        conversationId: convId,
+        projectId: selectedProjectId,
+        payload: {
+          requestKey: retryModelExpectation.requestKey,
+          expectedModel: retryModelExpectation.expectedModel,
+          source: retryModelExpectation.source,
+        },
+      });
+    }
 
     const nowIso = new Date().toISOString();
     const userId = `m-${Date.now()}`;
@@ -1005,6 +1018,7 @@ export default function AIView() {
             agentMode: effectiveAgentMode,
             page: currentPage,
             section,
+            telemetryRequestKey: retryModelExpectation?.requestKey,
 
             additionalContext: selectedProjectId ? undefined : (workspaceContextText || undefined),
           },
@@ -1065,6 +1079,7 @@ export default function AIView() {
           conversationId: runtime.getConversationId(),
           projectId: selectedProjectId,
           payload: {
+            requestKey: retryModelExpectation?.requestKey ?? null,
             runStatus,
             streamPhase: "send",
             actualModel,
@@ -1085,28 +1100,6 @@ export default function AIView() {
             streamPhase: "send",
           },
         });
-        if (retryModelExpectation) {
-          const preserved = (
-            actualModelSource === "provider"
-            && retryModelExpectation.expectedModel !== null
-            && actualModel !== null
-            && retryModelExpectation.expectedModel === actualModel
-          );
-          recordChatUnificationMetric({
-            type: "retry_model_continuity",
-            surface: "ai",
-            runId: runtimeState.localRunId || null,
-            conversationId: runtime.getConversationId(),
-            projectId: selectedProjectId,
-            payload: {
-              preserved,
-              expectedModel: retryModelExpectation.expectedModel,
-              actualModel,
-              actualModelSource,
-              source: retryModelExpectation.source,
-            },
-          });
-        }
       }
       if (streamGenRef.current === myGen) {
         setIsTyping(false);
@@ -1561,6 +1554,7 @@ export default function AIView() {
       undefined,
       undefined,
       {
+        requestKey: generateChatUnificationRequestKey(),
         expectedModel: selectedModel ?? null,
         source: "retry_action",
       },

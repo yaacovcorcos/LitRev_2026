@@ -87,6 +87,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
         page: CopilotPage;
         section?: string;
         convId: string | null;
+        retryRequestKey?: string;
         onPlanStepUpdate?: (planId: string, stepIndex: number, stepStatus: string) => void;
     }): Promise<{
         success: boolean;
@@ -99,7 +100,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
         runId: string | null;
         conversationId: string | null;
     }> => {
-        const { body, page, section, convId, onPlanStepUpdate } = params;
+        const { body, page, section, convId, retryRequestKey, onPlanStepUpdate } = params;
         let effectiveConvId = convId;
 
         // Stream lifecycle guards
@@ -282,6 +283,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                 conversationId: effectiveConvId,
                 projectId,
                 payload: {
+                    requestKey: retryRequestKey ?? null,
                     runStatus,
                     streamPhase: "project_stream",
                     actualModel,
@@ -340,6 +342,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                 conversationId: effectiveConvId,
                 projectId,
                 payload: {
+                    requestKey: retryRequestKey ?? null,
                     runStatus,
                     streamPhase: "project_stream",
                     actualModel,
@@ -493,8 +496,22 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                 messages: [...prev.messages, userMessage],
             }));
 
+            if (retryModelExpectation) {
+                recordChatUnificationMetric({
+                    type: "retry_model_continuity",
+                    surface: "project",
+                    conversationId: convId ?? null,
+                    projectId,
+                    payload: {
+                        requestKey: retryModelExpectation.requestKey,
+                        expectedModel: retryModelExpectation.expectedModel,
+                        source: retryModelExpectation.source,
+                    },
+                });
+            }
+
             // Run the stream
-            const streamResult = await runStream({
+            await runStream({
                 body: {
                     userMessage: messageForAI,
                     context: conversationContext,
@@ -511,36 +528,14 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                         section,
                         persistedUserMessageContent: displayText,
                         userMessageAttachments: attachmentsMeta,
+                        telemetryRequestKey: retryModelExpectation?.requestKey,
                     },
                 },
                 page,
                 section,
                 convId,
+                retryRequestKey: retryModelExpectation?.requestKey,
             });
-
-            if (!streamResult.aborted && retryModelExpectation) {
-                const preserved = (
-                    streamResult.actualModelSource === "provider"
-                    && retryModelExpectation.expectedModel !== null
-                    && streamResult.actualModel !== null
-                    && retryModelExpectation.expectedModel === streamResult.actualModel
-                );
-
-                recordChatUnificationMetric({
-                    type: "retry_model_continuity",
-                    surface: "project",
-                    runId: streamResult.runId,
-                    conversationId: streamResult.conversationId ?? convId ?? null,
-                    projectId,
-                    payload: {
-                        preserved,
-                        expectedModel: retryModelExpectation.expectedModel,
-                        actualModel: streamResult.actualModel,
-                        actualModelSource: streamResult.actualModelSource,
-                        source: retryModelExpectation.source,
-                    },
-                });
-            }
         },
         [updateState, projectId, cancelStream, convo, pendingAttachment, reasoningMode, runStream, setPendingChoices, setPendingAttachment, isLoadingRef]
     );
