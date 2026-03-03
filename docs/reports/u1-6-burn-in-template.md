@@ -10,6 +10,9 @@ Then paste the terminal output into the section below.
 ## Canary Metadata
 
 - Environment: `<production|staging>`
+- Promotion path: `<second -> main PR/ref>`
+- Deployed `main` commit SHA: `<sha>`
+- Production deployment id/url: `<id + https://...>`
 - Owner: `<name>`
 - Backup reviewer: `<name>`
 - `CANARY_SINCE_UTC`: `<ISO8601>`
