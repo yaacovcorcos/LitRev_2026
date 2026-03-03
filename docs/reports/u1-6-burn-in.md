@@ -5,11 +5,12 @@ This is a prefilled Day-0 stub. Replace all `TBD_*` fields once canary is explic
 ## Canary Metadata
 
 - Environment: `production`
+- Promotion path: `TBD_PROMOTION_PATH`
+- Deployed `main` commit SHA: `TBD_MAIN_SHA`
+- Production deployment id/url: `TBD_PROD_DEPLOY_URL_OR_ID`
 - Owner: `TBD_OWNER`
 - Backup reviewer: `TBD_BACKUP_REVIEWER`
 - `CANARY_SINCE_UTC`: `TBD_CONFIRM_AT_FLAG_ENABLE`
-- `CANARY_DEPLOY_SHA`: `883687c4abc61504bff8f7cbc7dc348d8fcc0989`
-- `CANARY_DEPLOYMENT_URL`: `TBD_PROD_DEPLOY_URL_OR_ID`
 - Cohort workspace IDs: `TBD_WORKSPACE_IDS`
 - Cohort user IDs: `TBD_USER_IDS`
 - Flags:
@@ -18,8 +19,8 @@ This is a prefilled Day-0 stub. Replace all `TBD_*` fields once canary is explic
 
 ## Day-0 Preflight
 
-- Promotion PR to main: `#89` (`mergedAt=2026-03-03T14:22:36Z`)
-- Main CI run: `22620755786` (`success`, completed `2026-03-03T11:24:44Z`)
+- Promotion PR to main: `TBD_PROMOTION_PR` (`mergedAt=TBD_MERGED_AT`)
+- Main CI run: `TBD_CI_RUN` (`success`, completed `TBD_COMPLETED_AT`)
 - DB preflight complete: `TBD`
 - Migration command used: `TBD`
 - `run_end_observed` present on `ai`: `TBD`
@@ -27,14 +28,14 @@ This is a prefilled Day-0 stub. Replace all `TBD_*` fields once canary is explic
 - Run-end `runId` coverage (`ai`): `TBD`
 - Run-end `runId` coverage (`project`): `TBD`
 - Missing runId sample review: `TBD`
-- Day-0 evidence captured (`sha/url/since/cohort`): `partial (sha known, url/since/cohort pending)`
+- Day-0 evidence captured (`sha/url/since/cohort`): `TBD`
 
 ## Day-0 Validator Command (Strict Cohort Gate)
 
 ```bash
 cd next-app && npx tsx scripts/validate-chat-unification-burn-in.ts \
   --since=<CANARY_SINCE_UTC> \
-  --metricVersion=2 \
+  --metricVersion=3 \
   --workspaceIds=<ws1,ws2> \
   --userIds=<u1,u2> \
   --requireScopedCohort=1 \
