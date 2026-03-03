@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { act, renderHook } from "@testing-library/react";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ThemeProvider, useTheme } from "../ThemeContext";
 import type { ReactNode } from "react";
 
@@ -10,6 +10,7 @@ const wrapper = ({ children }: { children: ReactNode }) => (
 
 describe("ThemeContext", () => {
   beforeEach(() => {
+    vi.restoreAllMocks();
     localStorage.clear();
     document.documentElement.removeAttribute("data-theme");
   });
@@ -72,6 +73,18 @@ describe("ThemeContext", () => {
     expect(result.current.resolved).toBe("light");
     expect(document.documentElement.getAttribute("data-theme")).toBe("light");
     expect(localStorage.getItem("litrev-theme")).toBe("light");
+  });
+
+  it("does not throw when migration write to localStorage fails", () => {
+    vi.spyOn(Storage.prototype, "getItem").mockReturnValue("system");
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("Storage blocked");
+    });
+
+    const { result } = renderHook(() => useTheme(), { wrapper });
+    expect(result.current.theme).toBe("light");
+    expect(result.current.resolved).toBe("light");
+    expect(document.documentElement.getAttribute("data-theme")).toBe("light");
   });
 
   it("throws when useTheme is called outside ThemeProvider", () => {

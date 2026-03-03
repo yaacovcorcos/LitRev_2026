@@ -45,10 +45,14 @@ function resolve(pref: ThemePreference): ResolvedTheme {
 
 function readStored(): ThemePreference {
   if (typeof window === "undefined") return "light";
-  const raw = localStorage.getItem(STORAGE_KEY);
-  if (raw === "light" || raw === "dark") return raw;
-  // Migrate legacy "system" (or invalid values) to policy-compliant light default.
-  localStorage.setItem(STORAGE_KEY, "light");
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw === "light" || raw === "dark") return raw;
+    // Migrate legacy "system" (or invalid values) to policy-compliant light default.
+    localStorage.setItem(STORAGE_KEY, "light");
+  } catch {
+    // Storage can be blocked in privacy modes; fail soft to light.
+  }
   return "light";
 }
 
@@ -64,7 +68,11 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   const setTheme = useCallback((next: ThemePreference) => {
     setThemeState(next);
-    localStorage.setItem(STORAGE_KEY, next);
+    try {
+      localStorage.setItem(STORAGE_KEY, next);
+    } catch {
+      // Keep runtime theme update even if persistence is unavailable.
+    }
     const r = resolve(next);
     setResolved(r);
     applyToDOM(r);
