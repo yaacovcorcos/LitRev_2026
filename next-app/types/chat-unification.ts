@@ -8,6 +8,8 @@ export type ChatUnificationMetricType =
   | "stuck_running_tools_after_run_end"
   | "run_end_observed";
 
+export type ChatUnificationActualModelSource = "provider" | "requested" | "unknown";
+
 export type RetryModelContinuityPayload = {
   preserved: boolean;
   expectedModel: string | null;
@@ -32,6 +34,8 @@ export type StuckRunningToolsPayload = {
 export type RunEndObservedPayload = {
   runStatus: string | null;
   streamPhase: ChatUnificationStreamPhase;
+  actualModel: string | null;
+  actualModelSource: ChatUnificationActualModelSource;
 };
 
 export type ChatUnificationMetricPayloadByType = {

@@ -108,6 +108,7 @@ export class XAIProvider extends BaseAIProvider {
 
         let totalContent = "";
         let usage: AIStreamChunk["usage"] | undefined;
+        let observedModel: string | undefined;
         const pendingToolCalls = new Map<number, { id: string; name: string; arguments: string }>();
         const includeReasoning = !!options?.includeReasoning;
         let activeReasoningId: string | null = null;
@@ -115,6 +116,10 @@ export class XAIProvider extends BaseAIProvider {
 
         try {
             for await (const chunk of stream) {
+                const chunkModel = (chunk as { model?: unknown }).model;
+                if (!observedModel && typeof chunkModel === "string" && chunkModel.trim().length > 0) {
+                    observedModel = chunkModel;
+                }
                 const choice = chunk.choices[0];
 
                 if (choice) {
@@ -208,6 +213,8 @@ export class XAIProvider extends BaseAIProvider {
                 type: "done",
                 content: totalContent,
                 usage,
+                actualModel: observedModel,
+                actualModelSource: observedModel ? "provider" : undefined,
             };
         } catch (error) {
             const metadata = extractProviderErrorMetadata(error);

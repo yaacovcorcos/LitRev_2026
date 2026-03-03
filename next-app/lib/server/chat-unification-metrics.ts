@@ -22,6 +22,7 @@ const CHAT_UNIFICATION_METRIC_TYPES = [
 ] as const satisfies readonly ChatUnificationMetricType[];
 
 const CHAT_STREAM_PHASE_VALUES = ["send", "plan", "project_stream"] as const;
+const ACTUAL_MODEL_SOURCE_VALUES = ["provider", "requested", "unknown"] as const;
 
 const RetryModelContinuityPayloadSchema: z.ZodType<RetryModelContinuityPayload> = z.object({
   preserved: z.boolean(),
@@ -47,6 +48,8 @@ const StuckRunningToolsPayloadSchema: z.ZodType<StuckRunningToolsPayload> = z.ob
 const RunEndObservedPayloadSchema: z.ZodType<RunEndObservedPayload> = z.object({
   runStatus: z.string().nullable(),
   streamPhase: z.enum(CHAT_STREAM_PHASE_VALUES),
+  actualModel: z.string().nullable().optional().default(null),
+  actualModelSource: z.enum(ACTUAL_MODEL_SOURCE_VALUES).optional().default("unknown"),
 });
 
 const ChatUnificationMetricInputSchema = z.object({

@@ -964,6 +964,8 @@ export default function AIView() {
 
     const aiMessageId = `m-${Date.now() + 1}`;
     let runStatus: string | null = null;
+    let actualModel: string | null = null;
+    let actualModelSource: "provider" | "requested" | "unknown" = "unknown";
     let aborted = false;
     const runtime = createAiStreamRuntime({
       aiMessageId,
@@ -1023,6 +1025,8 @@ export default function AIView() {
         onChunk: (data) => runtime.handleChunk(data),
       });
       runStatus = summary.runStatus;
+      actualModel = summary.actualModel;
+      actualModelSource = summary.actualModelSource;
       convId = runtime.getConversationId();
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") {
@@ -1056,6 +1060,8 @@ export default function AIView() {
           payload: {
             runStatus,
             streamPhase: "send",
+            actualModel,
+            actualModelSource,
           },
         });
         recordChatUnificationMetric({
@@ -1304,6 +1310,8 @@ export default function AIView() {
 
     const aiMessageId = `m-${Date.now() + 1}`;
     let runStatus: string | null = null;
+    let actualModel: string | null = null;
+    let actualModelSource: "provider" | "requested" | "unknown" = "unknown";
     let stopReason: string | null = null;
     let errorMessage: string | null = null;
     let aborted = false;
@@ -1365,6 +1373,8 @@ export default function AIView() {
       });
       convId = runtime.getConversationId();
       runStatus = summary.runStatus;
+      actualModel = summary.actualModel;
+      actualModelSource = summary.actualModelSource;
       stopReason = summary.stopReason;
       errorMessage = summary.errorMessage;
     } catch (err) {
@@ -1389,6 +1399,8 @@ export default function AIView() {
           payload: {
             runStatus,
             streamPhase: "plan",
+            actualModel,
+            actualModelSource,
           },
         });
         recordChatUnificationMetric({
