@@ -17,6 +17,10 @@
     flex-direction: column;
 }
 
+.appMainOverrideMobileV2 {
+    height: calc(var(--app-height, 100vh) - var(--mobile-nav-offset, 0px));
+}
+
 /* Main body grid with resizable copilot panel */
 .body {
     flex: 1;
