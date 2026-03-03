@@ -17,6 +17,12 @@ This is a prefilled Day-0 stub. Replace all `TBD_*` fields once canary is explic
   - `NEXT_PUBLIC_ENABLE_CHAT_UNIFICATION_V2=1`
   - `ENABLE_CHAT_UNIFICATION_V2=1`
 
+## Captured Candidates (Verify Before Sign-Off)
+
+- Candidate main SHA at stub generation: `TBD_MAIN_SHA_AT_STUB_GENERATION`
+- Latest promotion PR observed: `TBD_LATEST_PROMOTION_PR`
+- Latest successful prior main CI observed: `TBD_LATEST_MAIN_CI`
+
 ## Day-0 Preflight
 
 - Promotion PR to main: `TBD_PROMOTION_PR` (`mergedAt=TBD_MERGED_AT`)
