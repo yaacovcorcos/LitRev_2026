@@ -16,6 +16,10 @@ import type { Study, StudyDetails } from "@/types/ledger";
 
 export type { StudyInput };
 
+export type ReplaceStudiesOptions = {
+  emptyBehavior?: "reject" | "clear_all";
+};
+
 export type MentionedStudyInput = {
   title?: string;
   authors?: string;
@@ -392,60 +396,77 @@ export async function upsertStudy(
 export async function replaceStudies(
   scopeInput: ScopeInput,
   projectId: string,
-  studies: StudyInput[]
+  studies: StudyInput[],
+  options: ReplaceStudiesOptions = {},
 ): Promise<Study[]> {
   const scope = await assertProjectAccess(scopeInput, projectId);
   const normalized = studies.map(normalizeStudy);
-  return prisma.$transaction(async (tx: any) => {
-    const incomingIds = normalized
-      .map((s) => s.id)
-      .filter((id): id is string => typeof id === "string" && id.length > 0);
+  const emptyBehavior = options.emptyBehavior ?? "reject";
+  const incomingIds = normalized
+    .map((s) => s.id)
+    .filter((id): id is string => typeof id === "string" && id.length > 0);
 
-    // Sync semantics: soft-delete studies missing from incoming list, then upsert incoming rows.
-    // This avoids destructive hard-delete behavior and preserves related records for recovery.
-    if (incomingIds.length === 0) {
+  if (normalized.length === 0 && emptyBehavior !== "clear_all") {
+    throw new Error('replaceStudies rejected empty payload; pass emptyBehavior="clear_all" to clear all studies.');
+  }
+
+  if (normalized.length > 0 && incomingIds.length !== normalized.length) {
+    throw new Error("replaceStudies requires an id for every incoming study.");
+  }
+
+  return prisma.$transaction(async (tx: any) => {
+    if (normalized.length === 0) {
       await tx.study.updateMany({
         where: { projectId, deletedAt: null },
         data: { deletedAt: new Date() },
       });
-    } else {
-      await tx.study.updateMany({
-        where: {
-          projectId,
-          deletedAt: null,
-          id: { notIn: incomingIds },
-        },
-        data: { deletedAt: new Date() },
+      const saved = await tx.study.findMany({
+        where: { projectId, deletedAt: null },
+        orderBy: { createdAt: "asc" },
       });
+      return saved.map(toStudy);
     }
 
+    // Sync semantics: soft-delete studies missing from incoming list, then upsert incoming rows.
+    // This avoids destructive hard-delete behavior and preserves related records for recovery.
+    await tx.study.updateMany({
+      where: {
+        projectId,
+        deletedAt: null,
+        id: { notIn: incomingIds },
+      },
+      data: { deletedAt: new Date() },
+    });
+
     for (const study of normalized) {
-      if (study.id) {
-        const existing = await tx.study.findFirst({
-          where: { id: study.id, projectId },
-          select: { id: true },
+      const studyId = study.id;
+      if (!studyId) {
+        throw new Error("replaceStudies requires an id for every incoming study.");
+      }
+      const existing = await tx.study.findFirst({
+        where: { id: studyId, projectId },
+        select: { id: true },
+      });
+      if (existing) {
+        await tx.study.update({
+          where: { id: studyId },
+          data: {
+            workspaceId: scope.workspaceId,
+            title: study.title,
+            authors: study.authors,
+            year: study.year,
+            status: study.status,
+            quality: study.quality,
+            details: study.details as any,
+            deletedAt: null,
+          },
         });
-        if (existing) {
-          await tx.study.update({
-            where: { id: study.id },
-            data: {
-              workspaceId: scope.workspaceId,
-              title: study.title,
-              authors: study.authors,
-              year: study.year,
-              status: study.status,
-              quality: study.quality,
-              details: study.details as any,
-              deletedAt: null,
-            },
-          });
-          continue;
-        }
+        continue;
       }
 
       await tx.study.create({
         data: {
-          id: study.id ?? undefined,
+          id: studyId,
           projectId,
           workspaceId: scope.workspaceId,
           title: study.title,

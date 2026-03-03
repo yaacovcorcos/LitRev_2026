@@ -11,7 +11,8 @@ Unify `/ai`, project copilot, and popup chat onto one shared chat engine while k
 5. Completed: U1.5 anti-duplication CI guard is now enforced in CI by default (`--mode=enforce`).
 6. In progress: U1.6 telemetry ingestion is implemented end-to-end (client metric emission + authenticated server sink + DB storage + run-end metric capture).
 7. In progress: U1.6 preflight hardening now requires explicit cohort scoping, canonical canary timestamp capture, and Day-0 runId-quality checks before the 7-day gate clock starts.
-8. Pending: U1.6 burn-in analyzer/sign-off and U3 popup migration to shared runtime.
+8. In progress: U1.6 operational execution is codified in `docs/runbooks/chat-unification-burn-in.md` with reusable report template `docs/reports/u1-6-burn-in-template.md`; final 7-day sign-off evidence remains pending.
+9. Pending: U3 popup migration to shared runtime.
 
 ## Non-Negotiable Constraints
 1. No feature regression in any surface.
@@ -205,7 +206,7 @@ Exit criteria:
      - use `docs/runbooks/chat-unification-u1-6-burn-in.md` checklist for operational logging (SHA, timestamp, cohort, commands)
    - rollout environment matrix:
      - local development only: `npx prisma migrate dev`
-     - shared/staging/production: `npx prisma migrate deploy`
+     - shared/staging/production: `bash scripts/db-ops.sh migrate`
      - never run `migrate dev` against shared environments
    - Day-0 data quality gate (run immediately after migration + enable):
      - require `run_end_observed` rows for both `ai` and `project` surfaces
@@ -222,6 +223,9 @@ Exit criteria:
      - `ask_user_context_mismatch` denominator >= 30 overall and >= 10 per surface
    - completed-run counting rule:
      - count distinct `runId` where `run_end_observed.payload.runStatus === "completed"` and `runId` belongs to an authorized run
+   - execution docs:
+     - runbook: `docs/runbooks/chat-unification-burn-in.md`
+     - report template: `docs/reports/u1-6-burn-in-template.md`
    - validation commands:
      - daily progress (first 7 days only):  
        `cd next-app && npx tsx scripts/validate-chat-unification-burn-in.ts --since=<CANARY_SINCE_UTC> --metricVersion=2 --workspaceIds=<ws1,ws2> --userIds=<u1,u2> --allowShortWindow=1`
