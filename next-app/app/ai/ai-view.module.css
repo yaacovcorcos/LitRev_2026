@@ -461,6 +461,10 @@
         overflow: visible;
     }
 
+    .layout[data-mobile-ai-v2="true"] .historySidebar {
+        height: auto;
+    }
+
     .chatInterface {
         margin-left: 0;
     }
