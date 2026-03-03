@@ -17,6 +17,7 @@ Define one stable mobile viewport contract before route-level UI migrations.
 - `/project/[id]/notes` mobile layout adjustments are gated by `NEXT_PUBLIC_MOBILE_NOTES_V2`.
 - `/project/[id]/ledger` and `/project/[id]/ledger/[studyId]` viewport-height updates are gated by `NEXT_PUBLIC_MOBILE_LEDGER_V2`.
 - `/project/[id]/draft` viewport-height updates are gated by `NEXT_PUBLIC_MOBILE_DRAFT_V2`.
+- Popup chat mobile viewport adjustments are gated by `NEXT_PUBLIC_MOBILE_POPUP_V2`.
 
 ## Feature Flags (Default Off)
 
