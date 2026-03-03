@@ -21,11 +21,23 @@ export type RetryModelExpectation = {
   source: RetryModelContinuitySource;
 };
 
-export type RetryModelContinuityPayload = {
+export type RetryModelContinuityPayloadV3 = {
   requestKey: string;
   expectedModel: string | null;
   source: RetryModelContinuitySource;
 };
+
+export type RetryModelContinuityPayloadLegacy = {
+  preserved: boolean;
+  expectedModel: string | null;
+  actualModel: string | null;
+  actualModelSource?: ChatUnificationActualModelSource;
+  source: RetryModelContinuitySource;
+};
+
+export type RetryModelContinuityPayload =
+  | RetryModelContinuityPayloadV3
+  | RetryModelContinuityPayloadLegacy;
 
 export type AskUserContextMismatchPayload = {
   mismatch: boolean;

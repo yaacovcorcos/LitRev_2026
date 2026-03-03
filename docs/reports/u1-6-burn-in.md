@@ -5,11 +5,12 @@ This is a prefilled Day-0 stub. Replace all `TBD_*` fields once canary is explic
 ## Canary Metadata
 
 - Environment: `production`
+- Promotion path: `TBD_PROMOTION_PATH`
+- Deployed `main` commit SHA: `TBD_MAIN_SHA`
+- Production deployment id/url: `TBD_PROD_DEPLOY_URL_OR_ID`
 - Owner: `TBD_OWNER`
 - Backup reviewer: `TBD_BACKUP_REVIEWER`
 - `CANARY_SINCE_UTC`: `TBD_CONFIRM_AT_FLAG_ENABLE`
-- `CANARY_DEPLOY_SHA`: `TBD_CONFIRM_PRODUCTION_DEPLOY_SHA`
-- `CANARY_DEPLOYMENT_URL`: `TBD_PROD_DEPLOY_URL_OR_ID`
 - Cohort workspace IDs: `TBD_WORKSPACE_IDS`
 - Cohort user IDs: `TBD_USER_IDS`
 - Flags:
@@ -24,8 +25,8 @@ This is a prefilled Day-0 stub. Replace all `TBD_*` fields once canary is explic
 
 ## Day-0 Preflight
 
-- Promotion PR to main: `TBD_CONFIRM`
-- Main CI run: `TBD_CONFIRM`
+- Promotion PR to main: `TBD_PROMOTION_PR` (`mergedAt=TBD_MERGED_AT`)
+- Main CI run: `TBD_CI_RUN` (`success`, completed `TBD_COMPLETED_AT`)
 - DB preflight complete: `TBD`
 - Migration command used: `TBD`
 - `run_end_observed` present on `ai`: `TBD`
@@ -40,7 +41,7 @@ This is a prefilled Day-0 stub. Replace all `TBD_*` fields once canary is explic
 ```bash
 cd next-app && npx tsx scripts/validate-chat-unification-burn-in.ts \
   --since=<CANARY_SINCE_UTC> \
-  --metricVersion=2 \
+  --metricVersion=3 \
   --workspaceIds=<ws1,ws2> \
   --userIds=<u1,u2> \
   --requireScopedCohort=1 \

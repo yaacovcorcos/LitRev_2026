@@ -3,18 +3,19 @@
 This template is for a curated U1.6 sign-off report.  
 To fill `Final Strict Validation Output`, run:
 
-`cd next-app && npx tsx scripts/validate-chat-unification-burn-in.ts --since=<CANARY_SINCE_UTC> --metricVersion=2 --workspaceIds=<ws1,ws2> --userIds=<u1,u2> --requireScopedCohort=1 --requireRunEndPerSurface=1 --minRunIdCoveragePerSurface=0.95`
+`cd next-app && npx tsx scripts/validate-chat-unification-burn-in.ts --since=<CANARY_SINCE_UTC> --metricVersion=3 --workspaceIds=<ws1,ws2> --userIds=<u1,u2> --requireScopedCohort=1 --requireRunEndPerSurface=1 --minRunIdCoveragePerSurface=0.95`
 
 Then paste the terminal output into the section below.
 
 ## Canary Metadata
 
 - Environment: `<production|staging>`
+- Promotion path: `<second -> main PR/ref>`
+- Deployed `main` commit SHA: `<sha>`
+- Production deployment id/url: `<id + https://...>`
 - Owner: `<name>`
 - Backup reviewer: `<name>`
 - `CANARY_SINCE_UTC`: `<ISO8601>`
-- `CANARY_DEPLOY_SHA`: `<main sha>`
-- `CANARY_DEPLOYMENT_URL`: `<deployment url or id>`
 - Cohort workspace IDs: `<ws1,ws2 or n/a>`
 - Cohort user IDs: `<u1,u2 or n/a>`
 - Flags:
@@ -49,7 +50,7 @@ Paste the full script output below:
 ## Pass/Fail Decision
 
 - Pass: `<yes/no>`
-- Retry metric version integrity: `<v2-clean | mixed>`
+- Retry metric version integrity: `<v3-clean | mixed>`
 - Retry continuity status: `<authoritative | provisional(client-computed)>`
 - If fail, blocking reasons:
   1. `<reason>`

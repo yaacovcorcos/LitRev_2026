@@ -10,6 +10,8 @@ import type {
   ChatSurface,
   ChatUnificationMetricType,
   RetryModelContinuityPayload,
+  RetryModelContinuityPayloadLegacy,
+  RetryModelContinuityPayloadV3,
   RunEndObservedPayload,
   StuckRunningToolsPayload,
 } from "@/types/chat-unification";
@@ -38,11 +40,14 @@ const RetryModelContinuityPayloadV1V2Schema = z.object({
   source: z.literal("retry_action"),
 });
 
-const RetryModelContinuityPayloadV3Schema: z.ZodType<RetryModelContinuityPayload> = z.object({
+const RetryModelContinuityPayloadV3Schema: z.ZodType<RetryModelContinuityPayloadV3> = z.object({
   requestKey: z.string().uuid(),
   expectedModel: z.string().nullable(),
   source: z.literal("retry_action"),
 });
+
+const RetryModelContinuityPayloadLegacySchema: z.ZodType<RetryModelContinuityPayloadLegacy> =
+  RetryModelContinuityPayloadV1V2Schema;
 
 const AskUserContextMismatchPayloadSchema: z.ZodType<AskUserContextMismatchPayload> = z.object({
   mismatch: z.boolean(),
@@ -93,12 +98,7 @@ function parsePayload(
       if (version >= 3) {
         return RetryModelContinuityPayloadV3Schema.parse(payload);
       }
-      const legacy = RetryModelContinuityPayloadV1V2Schema.parse(payload);
-      return {
-        requestKey: "00000000-0000-0000-0000-000000000000",
-        expectedModel: legacy.expectedModel,
-        source: legacy.source,
-      };
+      return RetryModelContinuityPayloadLegacySchema.parse(payload);
     }
     case "ask_user_context_mismatch":
       return AskUserContextMismatchPayloadSchema.parse(payload);
