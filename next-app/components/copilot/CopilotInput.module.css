@@ -52,13 +52,14 @@
     font-family: inherit;
     color: var(--text-primary);
     resize: none;
-    outline: none;
+    outline: 2px solid transparent;
+    outline-offset: 2px;
     line-height: 1.5;
     overflow-y: auto;
 }
 
 .inputTextarea:focus-visible {
-    outline: none;
+    outline-color: var(--focus-ring-color, var(--accent-primary));
 }
 
 .inputTextarea::placeholder {
@@ -203,7 +204,9 @@
 .actionBtn:focus-visible,
 .compressBtn:focus-visible,
 .sendBtn:focus-visible {
-    outline: none;
+    outline: 2px solid var(--focus-ring-color, var(--accent-primary));
+    outline-offset: 2px;
+    box-shadow: var(--shadow-focus-ring);
 }
 
 /* ---- Action Buttons ---- */

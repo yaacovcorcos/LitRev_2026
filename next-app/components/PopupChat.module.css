@@ -302,17 +302,21 @@
     font-family: inherit;
     color: var(--text-primary);
     resize: none;
-    outline: none;
+    outline: 2px solid transparent;
+    outline-offset: 2px;
     line-height: 1.4;
     overflow-y: auto;
     transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .inputField:focus {
-    outline: none;
     border-color: var(--focus-ring-color, rgba(var(--rgb-ui-contrast), 0.12));
     background: rgba(var(--rgb-ui-contrast), 0.02);
     box-shadow: var(--shadow-focus-ring);
+}
+
+.inputField:focus-visible {
+    outline-color: var(--focus-ring-color, var(--accent-primary));
 }
 
 .inputField::placeholder {
