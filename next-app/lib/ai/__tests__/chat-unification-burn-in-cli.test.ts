@@ -4,11 +4,13 @@ import {
   evaluateRunEndCoverageGates,
   formatCohortScope,
   hasCohortScope,
+  parseMetricVersionArg,
   parseCsvIdArg,
   parseIsoDateArg,
   resolveBurnInWindow,
   summarizeRunEndRunIdCoverage,
 } from "@/lib/ai/chat-unification-burn-in-cli";
+import { CHAT_UNIFICATION_METRIC_VERSION } from "@/types/chat-unification";
 
 describe("chat unification burn-in CLI helpers", () => {
   it("throws when required --since is missing", () => {
@@ -58,6 +60,15 @@ describe("chat unification burn-in CLI helpers", () => {
     expect(() => parseCsvIdArg("workspaceIds", " , , ")).toThrow(
       "Invalid --workspaceIds list",
     );
+  });
+
+  it("defaults metric version to the frozen current version and rejects unsupported versions", () => {
+    expect(parseMetricVersionArg(undefined)).toBe(CHAT_UNIFICATION_METRIC_VERSION);
+    expect(parseMetricVersionArg(String(CHAT_UNIFICATION_METRIC_VERSION))).toBe(
+      CHAT_UNIFICATION_METRIC_VERSION,
+    );
+    expect(parseMetricVersionArg("1")).toBe(1);
+    expect(() => parseMetricVersionArg("3")).toThrow("Unsupported --metricVersion=3");
   });
 
   it("formats and materializes cohort scope filters", () => {

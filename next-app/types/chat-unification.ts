@@ -1,6 +1,9 @@
 export type ChatSurface = "ai" | "project";
 
 export type ChatUnificationStreamPhase = "send" | "plan" | "project_stream";
+export const CHAT_UNIFICATION_METRIC_VERSION = 2 as const;
+export const CHAT_UNIFICATION_ACCEPTED_METRIC_VERSIONS = [1, CHAT_UNIFICATION_METRIC_VERSION] as const;
+export type ChatUnificationMetricVersion = (typeof CHAT_UNIFICATION_ACCEPTED_METRIC_VERSIONS)[number];
 
 export type ChatUnificationMetricType =
   | "retry_model_continuity"
@@ -60,7 +63,7 @@ export type ChatUnificationMetricPayload =
 
 export type ChatUnificationMetricEvent = {
   eventId: string;
-  version: 1;
+  version: ChatUnificationMetricVersion;
   type: ChatUnificationMetricType;
   surface: ChatSurface;
   timestamp: string;
@@ -72,7 +75,7 @@ export type ChatUnificationMetricEvent = {
 
 export type ChatUnificationMetricInput = {
   eventId: string;
-  version?: 1;
+  version?: ChatUnificationMetricVersion;
   type: ChatUnificationMetricType;
   surface: ChatSurface;
   runId?: string | null;
