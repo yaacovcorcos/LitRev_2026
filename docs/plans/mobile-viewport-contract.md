@@ -29,6 +29,17 @@ All route migrations must be shipped behind route-specific flags and canary-vali
 4. Keep a single scroll owner per screen.
 5. Never rely on `html/body` global lock for mobile unless explicitly canary-gated.
 
+### Runtime Contract (Flag-Gated)
+
+When `NEXT_PUBLIC_MOBILE_VP_V2=1`:
+
+- A client runtime (`MobileViewportRuntime`) updates `--app-vh` and `--app-height` from
+  `window.visualViewport.height` when available, else `window.innerHeight`.
+- Updates are applied on `resize`, `orientationchange`, `visualViewport.resize`, and mobile breakpoint changes.
+- CSS fallback remains active:
+  - `--app-height` defaults to `100vh` and upgrades to `100dvh` when supported.
+  - `--app-min-height` defaults to `100vh` and upgrades to `100svh` when supported.
+
 ## Telemetry Schema
 
 Mobile metrics are recorded with:
