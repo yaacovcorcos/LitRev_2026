@@ -32,6 +32,33 @@ Define one stable mobile viewport contract before route-level UI migrations.
 
 All route migrations must be shipped behind route-specific flags and canary-validated before enabling.
 
+## Promotion Order (Default-Off -> Canary -> Broad)
+
+Enable flags in this order to minimize cross-surface regressions:
+
+1. `NEXT_PUBLIC_MOBILE_VP_V2`
+2. `NEXT_PUBLIC_MOBILE_AI_V2`
+3. `NEXT_PUBLIC_MOBILE_NOTES_V2`
+4. `NEXT_PUBLIC_MOBILE_LEDGER_V2`
+5. `NEXT_PUBLIC_MOBILE_DRAFT_V2`
+6. `NEXT_PUBLIC_MOBILE_POPUP_V2`
+7. `NEXT_PUBLIC_MOBILE_SCROLL_LOCK_V2` (last, after route containment checks pass)
+
+For each step:
+
+- Enable only one new flag at a time.
+- Run the canary checklist below on iOS Safari + Chrome Android.
+- If any blocker appears, revert only that flag to `0` and keep previously validated flags unchanged.
+
+### Rollback Matrix
+
+- `/ai` regression: set `NEXT_PUBLIC_MOBILE_AI_V2=0`
+- `/project/[id]/notes` regression: set `NEXT_PUBLIC_MOBILE_NOTES_V2=0`
+- `/project/[id]/ledger` regression: set `NEXT_PUBLIC_MOBILE_LEDGER_V2=0`
+- `/project/[id]/draft` regression: set `NEXT_PUBLIC_MOBILE_DRAFT_V2=0`
+- Popup mobile regression: set `NEXT_PUBLIC_MOBILE_POPUP_V2=0`
+- Mobile dead-scroll/double-scroll regression in shell: set `NEXT_PUBLIC_MOBILE_SCROLL_LOCK_V2=0`
+
 ## Viewport Contract
 
 1. Prefer dynamic viewport units (`dvh`) for primary app-height containers.
@@ -82,7 +109,7 @@ Storage key: `litrev:mobile-metrics:v1` (best-effort local telemetry for canary 
 2. Route flag rollback validated (toggle flag to `0` without code revert)
 3. `npx tsc --noEmit`
 4. `npx vitest run`
-5. Mobile smoke e2e pass (once Playwright infra is added)
+5. Mobile smoke e2e pass (`npm run test:e2e:mobile`)
 
 ## Browser Support Notes
 
