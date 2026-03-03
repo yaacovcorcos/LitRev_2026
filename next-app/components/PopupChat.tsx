@@ -14,6 +14,7 @@ import { formatStreamErrorForUI } from "@/lib/ai/stream-error-ui";
 import { markdownComponents } from "@/components/markdown/CodeBlock";
 import type { PopupChatContext, PopupMessage } from "@/types/popup-chat";
 import type { CopilotPage } from "@/types/ai";
+import { isMobilePopupV2Enabled } from "@/lib/mobile/feature-flags";
 import styles from "./PopupChat.module.css";
 
 const TURN_HINT_THRESHOLD = 3;
@@ -71,6 +72,7 @@ type PopupChatProps = {
 };
 
 export function PopupChat({ projectId }: PopupChatProps) {
+    const mobilePopupV2Enabled = isMobilePopupV2Enabled();
     const { isOpen, context, closePopupChat } = usePopupChat();
     const { selectConversation, setCollapsed, refreshConversations } = useProjectCopilot();
 
@@ -344,6 +346,7 @@ export function PopupChat({ projectId }: PopupChatProps) {
     const label = getContextLabel(context);
     const icon = contextIcon(context);
     const canSend = input.trim().length > 0 && !isStreaming;
+    const popupClassName = `${styles.popupChat} ${mobilePopupV2Enabled ? styles.popupChatMobileV2 : ""}`;
 
     return (
         <Dialog.Root open={isOpen} onOpenChange={(open) => { if (!open) closePopupChat(); }}>
@@ -351,7 +354,8 @@ export function PopupChat({ projectId }: PopupChatProps) {
                 <Dialog.Overlay className={styles.overlay} />
                 <Dialog.Content
                     ref={cardRef}
-                    className={styles.popupChat}
+                    className={popupClassName}
+                    data-mobile-popup-v2={mobilePopupV2Enabled ? "1" : "0"}
                     aria-label="Ask AI mini-chat"
                     onEscapeKeyDown={() => closePopupChat()}
                     onInteractOutside={(e) => {

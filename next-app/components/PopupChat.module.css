@@ -395,6 +395,12 @@
         bottom: 8px;
         width: auto;
     }
+
+    .popupChatMobileV2 {
+        top: calc(var(--header-height, 44px) + 8px);
+        bottom: calc(8px + var(--mobile-nav-offset, 0px));
+        max-height: calc(var(--app-height, 100vh) - var(--header-height, 44px) - var(--mobile-nav-offset, 0px) - 16px);
+    }
 }
 
 /* ---- Reduced motion (A11y) ---- */
