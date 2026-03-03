@@ -1026,19 +1026,14 @@ export default function AIView() {
         signal: controller.signal,
         shouldContinue: () => streamGenRef.current === myGen,
         throwOnErrorChunk: true,
-        onChunk: (data) => {
-          if (data.type === "run_end") {
-            unresolvedCountBeforeClear = runtime.getState().runningToolCallIds.length;
-            runtime.handleChunk(data);
-            unresolvedCountAfterClear = runtime.getState().runningToolCallIds.length;
-            return;
-          }
-          runtime.handleChunk(data);
-        },
+        onChunk: (data) => runtime.handleChunk(data),
       });
       runStatus = summary.runStatus;
       actualModel = summary.actualModel;
       actualModelSource = summary.actualModelSource;
+      const runEndToolCounts = runtime.getLastRunEndToolCounts();
+      unresolvedCountBeforeClear = runEndToolCounts?.beforeClear ?? null;
+      unresolvedCountAfterClear = runEndToolCounts?.afterClear ?? null;
       convId = runtime.getConversationId();
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") {
@@ -1407,20 +1402,15 @@ export default function AIView() {
         signal: controller.signal,
         shouldContinue: () => streamGenRef.current === myGen,
         throwOnErrorChunk: true,
-        onChunk: (data) => {
-          if (data.type === "run_end") {
-            unresolvedCountBeforeClear = runtime.getState().runningToolCallIds.length;
-            runtime.handleChunk(data);
-            unresolvedCountAfterClear = runtime.getState().runningToolCallIds.length;
-            return;
-          }
-          runtime.handleChunk(data);
-        },
+        onChunk: (data) => runtime.handleChunk(data),
       });
       convId = runtime.getConversationId();
       runStatus = summary.runStatus;
       actualModel = summary.actualModel;
       actualModelSource = summary.actualModelSource;
+      const runEndToolCounts = runtime.getLastRunEndToolCounts();
+      unresolvedCountBeforeClear = runEndToolCounts?.beforeClear ?? null;
+      unresolvedCountAfterClear = runEndToolCounts?.afterClear ?? null;
       stopReason = summary.stopReason;
       errorMessage = summary.errorMessage;
     } catch (err) {
