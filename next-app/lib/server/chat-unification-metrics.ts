@@ -30,11 +30,17 @@ const CHAT_STREAM_PHASE_VALUES = ["send", "plan", "project_stream"] as const;
 const ACTUAL_MODEL_SOURCE_VALUES = ["provider", "requested", "unknown"] as const;
 const CHAT_UNIFICATION_METRIC_VERSIONS = CHAT_UNIFICATION_ACCEPTED_METRIC_VERSIONS;
 
-const RetryModelContinuityPayloadSchema: z.ZodType<RetryModelContinuityPayload> = z.object({
+const RetryModelContinuityPayloadV1V2Schema = z.object({
   preserved: z.boolean(),
   expectedModel: z.string().nullable(),
   actualModel: z.string().nullable(),
   actualModelSource: z.enum(ACTUAL_MODEL_SOURCE_VALUES).optional().default("unknown"),
+  source: z.literal("retry_action"),
+});
+
+const RetryModelContinuityPayloadV3Schema: z.ZodType<RetryModelContinuityPayload> = z.object({
+  requestKey: z.string().uuid(),
+  expectedModel: z.string().nullable(),
   source: z.literal("retry_action"),
 });
 
@@ -55,6 +61,7 @@ const StuckRunningToolsPayloadSchema: z.ZodType<StuckRunningToolsPayload> = z.ob
 });
 
 const RunEndObservedPayloadSchema: z.ZodType<RunEndObservedPayload> = z.object({
+  requestKey: z.string().uuid().nullable().optional().default(null),
   runStatus: z.string().nullable(),
   streamPhase: z.enum(CHAT_STREAM_PHASE_VALUES),
   actualModel: z.string().nullable().optional().default(null),
@@ -77,12 +84,22 @@ const ChatUnificationMetricInputSchema = z.object({
 });
 
 function parsePayload(
+  version: ChatUnificationMetricVersion,
   type: ChatUnificationMetricType,
   payload: unknown,
 ): RetryModelContinuityPayload | AskUserContextMismatchPayload | StuckRunningToolsPayload | RunEndObservedPayload {
   switch (type) {
-    case "retry_model_continuity":
-      return RetryModelContinuityPayloadSchema.parse(payload);
+    case "retry_model_continuity": {
+      if (version >= 3) {
+        return RetryModelContinuityPayloadV3Schema.parse(payload);
+      }
+      const legacy = RetryModelContinuityPayloadV1V2Schema.parse(payload);
+      return {
+        requestKey: "00000000-0000-0000-0000-000000000000",
+        expectedModel: legacy.expectedModel,
+        source: legacy.source,
+      };
+    }
     case "ask_user_context_mismatch":
       return AskUserContextMismatchPayloadSchema.parse(payload);
     case "stuck_running_tools_after_run_end":
@@ -138,7 +155,7 @@ export async function ingestChatUnificationMetric(
 ): Promise<IngestChatUnificationMetricResult> {
   const parsed = ChatUnificationMetricInputSchema.parse(input);
   const metricVersion = (parsed.version ?? CHAT_UNIFICATION_METRIC_VERSION) as ChatUnificationMetricVersion;
-  const payload = parsePayload(parsed.type, parsed.payload);
+  const payload = parsePayload(metricVersion, parsed.type, parsed.payload);
 
   if (parsed.projectId) {
     await assertProjectAccess(

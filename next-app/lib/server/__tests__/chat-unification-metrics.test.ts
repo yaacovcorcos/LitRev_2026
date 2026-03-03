@@ -47,9 +47,8 @@ describe("chat-unification-metrics", () => {
       surface: "ai",
       runId: "run-1",
       payload: {
-        preserved: true,
+        requestKey: "57f83cc1-fd08-4204-8d34-5b14b84f0d91",
         expectedModel: "gpt-5.2",
-        actualModel: "gpt-5.2",
         source: "retry_action",
       },
     });
