@@ -8,7 +8,7 @@ This is a prefilled Day-0 stub. Replace all `TBD_*` fields once canary is explic
 - Owner: `TBD_OWNER`
 - Backup reviewer: `TBD_BACKUP_REVIEWER`
 - `CANARY_SINCE_UTC`: `TBD_CONFIRM_AT_FLAG_ENABLE`
-- `CANARY_DEPLOY_SHA`: `883687c4abc61504bff8f7cbc7dc348d8fcc0989`
+- `CANARY_DEPLOY_SHA`: `TBD_CONFIRM_PRODUCTION_DEPLOY_SHA`
 - `CANARY_DEPLOYMENT_URL`: `TBD_PROD_DEPLOY_URL_OR_ID`
 - Cohort workspace IDs: `TBD_WORKSPACE_IDS`
 - Cohort user IDs: `TBD_USER_IDS`
@@ -16,10 +16,16 @@ This is a prefilled Day-0 stub. Replace all `TBD_*` fields once canary is explic
   - `NEXT_PUBLIC_ENABLE_CHAT_UNIFICATION_V2=1`
   - `ENABLE_CHAT_UNIFICATION_V2=1`
 
+## Captured Candidates (Verify Before Sign-Off)
+
+- Candidate main SHA at stub generation: `bb70c14f0bd062b71a0faeb4d1ce1f54c8f9a28a`
+- Latest promotion PR observed: `#95` (`mergedAt=2026-03-03T15:40:46Z`)
+- Latest successful prior main CI observed: `22627784825` (`success`, created `2026-03-03T14:35:01Z`)
+
 ## Day-0 Preflight
 
-- Promotion PR to main: `#89` (`mergedAt=2026-03-03T14:22:36Z`)
-- Main CI run: `22620755786` (`success`, completed `2026-03-03T11:24:44Z`)
+- Promotion PR to main: `TBD_CONFIRM`
+- Main CI run: `TBD_CONFIRM`
 - DB preflight complete: `TBD`
 - Migration command used: `TBD`
 - `run_end_observed` present on `ai`: `TBD`
@@ -27,7 +33,7 @@ This is a prefilled Day-0 stub. Replace all `TBD_*` fields once canary is explic
 - Run-end `runId` coverage (`ai`): `TBD`
 - Run-end `runId` coverage (`project`): `TBD`
 - Missing runId sample review: `TBD`
-- Day-0 evidence captured (`sha/url/since/cohort`): `partial (sha known, url/since/cohort pending)`
+- Day-0 evidence captured (`sha/url/since/cohort`): `TBD`
 
 ## Day-0 Validator Command (Strict Cohort Gate)
 
