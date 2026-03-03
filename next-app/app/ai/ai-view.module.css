@@ -11,6 +11,10 @@
     overflow: hidden;
 }
 
+.layout[data-mobile-ai-v2="true"] {
+    height: calc(var(--app-height, 100vh) - var(--header-height, 44px) - var(--content-top-offset, 12px) - var(--mobile-nav-offset, 0px));
+}
+
 .layout[data-history-collapsed="true"] {
     --history-width: 60px;
 }
@@ -31,6 +35,10 @@
     left: var(--shell-sidebar-width, 200px);
     height: calc(100vh - var(--header-height, 44px));
     z-index: var(--z-sidebar);
+}
+
+.layout[data-mobile-ai-v2="true"] .historySidebar {
+    height: calc(var(--app-height, 100vh) - var(--header-height, 44px));
 }
 
 .collapsed {
@@ -451,6 +459,10 @@
         border-right: none;
         height: auto;
         overflow: visible;
+    }
+
+    .layout[data-mobile-ai-v2="true"] .historySidebar {
+        height: auto;
     }
 
     .chatInterface {
