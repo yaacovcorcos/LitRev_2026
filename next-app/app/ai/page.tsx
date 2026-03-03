@@ -1073,20 +1073,6 @@ export default function AIView() {
       if (!aborted) {
         const runtimeState = runtime.getState();
         recordChatUnificationMetric({
-          type: "run_end_observed",
-          surface: "ai",
-          runId: runtimeState.localRunId || null,
-          conversationId: runtime.getConversationId(),
-          projectId: selectedProjectId,
-          payload: {
-            requestKey: retryModelExpectation?.requestKey ?? null,
-            runStatus,
-            streamPhase: "send",
-            actualModel,
-            actualModelSource,
-          },
-        });
-        recordChatUnificationMetric({
           type: "stuck_running_tools_after_run_end",
           surface: "ai",
           runId: runtimeState.localRunId || null,
@@ -1419,19 +1405,6 @@ export default function AIView() {
       convId = runtime.getConversationId();
       if (!aborted) {
         const runtimeState = runtime.getState();
-        recordChatUnificationMetric({
-          type: "run_end_observed",
-          surface: "ai",
-          runId: runtimeState.localRunId || null,
-          conversationId: runtime.getConversationId(),
-          projectId: selectedProjectId,
-          payload: {
-            runStatus,
-            streamPhase: "plan",
-            actualModel,
-            actualModelSource,
-          },
-        });
         recordChatUnificationMetric({
           type: "stuck_running_tools_after_run_end",
           surface: "ai",
