@@ -10,8 +10,34 @@ function readFlag(raw: string | undefined): boolean | null {
   return null;
 }
 
-function getPublicFlag(name: string): boolean | null {
-  return readFlag(process.env[name]);
+type MobilePublicEnvName =
+  | "NEXT_PUBLIC_MOBILE_VP_V2"
+  | "NEXT_PUBLIC_MOBILE_SCROLL_LOCK_V2"
+  | "NEXT_PUBLIC_MOBILE_LEDGER_V2"
+  | "NEXT_PUBLIC_MOBILE_NOTES_V2"
+  | "NEXT_PUBLIC_MOBILE_DRAFT_V2"
+  | "NEXT_PUBLIC_MOBILE_AI_V2"
+  | "NEXT_PUBLIC_MOBILE_POPUP_V2";
+
+function getPublicFlag(name: MobilePublicEnvName): boolean | null {
+  switch (name) {
+    case "NEXT_PUBLIC_MOBILE_VP_V2":
+      return readFlag(process.env.NEXT_PUBLIC_MOBILE_VP_V2);
+    case "NEXT_PUBLIC_MOBILE_SCROLL_LOCK_V2":
+      return readFlag(process.env.NEXT_PUBLIC_MOBILE_SCROLL_LOCK_V2);
+    case "NEXT_PUBLIC_MOBILE_LEDGER_V2":
+      return readFlag(process.env.NEXT_PUBLIC_MOBILE_LEDGER_V2);
+    case "NEXT_PUBLIC_MOBILE_NOTES_V2":
+      return readFlag(process.env.NEXT_PUBLIC_MOBILE_NOTES_V2);
+    case "NEXT_PUBLIC_MOBILE_DRAFT_V2":
+      return readFlag(process.env.NEXT_PUBLIC_MOBILE_DRAFT_V2);
+    case "NEXT_PUBLIC_MOBILE_AI_V2":
+      return readFlag(process.env.NEXT_PUBLIC_MOBILE_AI_V2);
+    case "NEXT_PUBLIC_MOBILE_POPUP_V2":
+      return readFlag(process.env.NEXT_PUBLIC_MOBILE_POPUP_V2);
+    default:
+      return null;
+  }
 }
 
 export type MobileFeatureKey =
@@ -33,7 +59,7 @@ const DEFAULTS: Record<MobileFeatureKey, boolean> = {
   popupV2: false,
 };
 
-function getFlag(name: string, fallback: boolean): boolean {
+function getFlag(name: MobilePublicEnvName, fallback: boolean): boolean {
   const value = getPublicFlag(name);
   if (value !== null) return value;
   return fallback;
