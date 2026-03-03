@@ -6,6 +6,7 @@ import {
   isMobileTelemetryContext,
   recordMobileMetric,
 } from "../telemetry";
+import { COARSE_POINTER_MEDIA_QUERY, MOBILE_VIEWPORT_MEDIA_QUERY } from "../breakpoints";
 
 describe("mobile telemetry", () => {
   beforeEach(() => {
@@ -49,7 +50,7 @@ describe("mobile telemetry", () => {
     const originalMatchMedia = window.matchMedia;
     try {
       window.matchMedia = ((query: string) => ({
-        matches: query === "(max-width: 900px)" || query === "(pointer: coarse)",
+        matches: query === MOBILE_VIEWPORT_MEDIA_QUERY || query === COARSE_POINTER_MEDIA_QUERY,
         media: query,
         onchange: null,
         addListener: () => {},

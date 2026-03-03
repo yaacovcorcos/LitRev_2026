@@ -2,9 +2,8 @@
 
 import { useEffect } from "react";
 import { isMobileViewportV2Enabled } from "@/lib/mobile/feature-flags";
+import { MOBILE_VIEWPORT_MEDIA_QUERY } from "@/lib/mobile/breakpoints";
 import { getEffectiveViewportHeight, setMobileViewportVars } from "@/lib/mobile/viewport";
-
-const MOBILE_MAX_WIDTH_MEDIA_QUERY = "(max-width: 1024px)";
 
 export function MobileViewportRuntime() {
   useEffect(() => {
@@ -13,7 +12,7 @@ export function MobileViewportRuntime() {
     }
 
     const root = document.documentElement;
-    const mediaQuery = window.matchMedia(MOBILE_MAX_WIDTH_MEDIA_QUERY);
+    const mediaQuery = window.matchMedia(MOBILE_VIEWPORT_MEDIA_QUERY);
     let rafId = 0;
     const clearViewportVars = () => {
       root.style.removeProperty("--app-vh");

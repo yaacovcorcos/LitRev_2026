@@ -89,9 +89,12 @@ Mobile metrics are recorded with:
 - `mobile_flow_completed`
 
 Storage key: `litrev:mobile-metrics:v1` (best-effort local telemetry for canary validation).
+Current authority: **debug-only local telemetry** (not a release gate source of truth until server ingest is added).
 
 ### KPI Mapping
 
+- Use these metrics for canary debugging/trend checks only.
+- Promotion/rollback decisions still require manual device validation + e2e pass.
 - Task-success baseline: compute success rate from `mobile_flow_completed` where:
   - `flowId=ai_message_send`
   - `flowId=popup_continue_to_copilot`

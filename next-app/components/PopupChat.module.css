@@ -62,6 +62,12 @@
     cursor: grabbing;
 }
 
+.headerDragDisabled,
+.headerDragDisabled:active {
+    cursor: default;
+    touch-action: auto;
+}
+
 .contextBadge {
     display: flex;
     align-items: center;

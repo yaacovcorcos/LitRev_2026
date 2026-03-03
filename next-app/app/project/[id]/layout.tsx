@@ -18,6 +18,7 @@ import type { CopilotPage } from "@/types/ai";
 import { DemoBanner } from "@/components/project/DemoBanner";
 import { isDemoProjectId } from "@/lib/demo/constants";
 import { shouldSkipPreload } from "@/lib/network-aware";
+import { MOBILE_VIEWPORT_MEDIA_QUERY } from "@/lib/mobile/breakpoints";
 import { isMobileScrollLockV2Enabled, isMobileViewportV2Enabled } from "@/lib/mobile/feature-flags";
 import { ProjectDataProvider } from "@/contexts/ProjectDataContext";
 import styles from "./project-shell.module.css";
@@ -122,7 +123,7 @@ function ProjectShellInner({ projectId, children }: ProjectShellInnerProps) {
             };
         }
 
-        const mobileQuery = window.matchMedia("(max-width: 900px)");
+        const mobileQuery = window.matchMedia(MOBILE_VIEWPORT_MEDIA_QUERY);
         const applyByViewport = () => {
             if (mobileQuery.matches) {
                 applyUnlockedRootScroll();
@@ -132,10 +133,18 @@ function ProjectShellInner({ projectId, children }: ProjectShellInnerProps) {
         };
 
         applyByViewport();
-        mobileQuery.addEventListener("change", applyByViewport);
+        if (typeof mobileQuery.addEventListener === "function") {
+            mobileQuery.addEventListener("change", applyByViewport);
+        } else if (typeof mobileQuery.addListener === "function") {
+            mobileQuery.addListener(applyByViewport);
+        }
 
         return () => {
-            mobileQuery.removeEventListener("change", applyByViewport);
+            if (typeof mobileQuery.removeEventListener === "function") {
+                mobileQuery.removeEventListener("change", applyByViewport);
+            } else if (typeof mobileQuery.removeListener === "function") {
+                mobileQuery.removeListener(applyByViewport);
+            }
             html.style.overflow = prevHtmlOverflow;
             html.style.overscrollBehavior = prevHtmlOverscroll;
             body.style.overflow = prevBodyOverflow;
