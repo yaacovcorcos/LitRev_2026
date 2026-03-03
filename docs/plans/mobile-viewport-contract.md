@@ -9,6 +9,12 @@ Define one stable mobile viewport contract before route-level UI migrations.
 - Applies to `next-app` mobile web surfaces (`/ai`, project shell, and project sub-routes).
 - Defines feature flags, viewport behavior, telemetry events, and rollout gates.
 
+## Adoption Status
+
+- `NEXT_PUBLIC_MOBILE_VP_V2`: runtime + token contract is implemented.
+- Project shell root height now supports viewport-token mode when `NEXT_PUBLIC_MOBILE_VP_V2=1`.
+- `/ai` route viewport migration is independently gated by `NEXT_PUBLIC_MOBILE_AI_V2`.
+
 ## Feature Flags (Default Off)
 
 - `NEXT_PUBLIC_MOBILE_VP_V2`

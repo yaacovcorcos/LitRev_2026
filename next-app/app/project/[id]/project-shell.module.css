@@ -9,6 +9,10 @@
     overflow: hidden;
 }
 
+.shellMainViewportV2 {
+    height: var(--app-height, 100vh);
+}
+
 /* Conversation-centric mode: full-width chat */
 .conversationBody {
     flex: 1;

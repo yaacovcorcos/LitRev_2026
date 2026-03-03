@@ -18,6 +18,7 @@ import type { CopilotPage } from "@/types/ai";
 import { DemoBanner } from "@/components/project/DemoBanner";
 import { isDemoProjectId } from "@/lib/demo/constants";
 import { shouldSkipPreload } from "@/lib/network-aware";
+import { isMobileViewportV2Enabled } from "@/lib/mobile/feature-flags";
 import { ProjectDataProvider } from "@/contexts/ProjectDataContext";
 import styles from "./project-shell.module.css";
 
@@ -40,8 +41,9 @@ type ProjectShellInnerProps = {
 };
 
 function ProjectShellInner({ projectId, children }: ProjectShellInnerProps) {
-    const router = useRouter();
-    const pathname = usePathname();
+  const router = useRouter();
+  const pathname = usePathname();
+  const mobileViewportV2Enabled = isMobileViewportV2Enabled();
     const { isCollapsed, panelWidth, setPanelWidth, toggleCollapsed, setStudyFilter } = useProjectCopilot();
     const { registerCopilotToggle } = useCommandPalette();
     const { getProjectById, deleteProject } = useProjects();
@@ -232,7 +234,12 @@ function ProjectShellInner({ projectId, children }: ProjectShellInnerProps) {
 
     return (
         <ProjectShellProvider value={shellValue}>
-            <AppShell activeNav="projects" mainClassName={styles.shellMain} noMainPadding initiallyCollapsed>
+            <AppShell
+                activeNav="projects"
+                mainClassName={`${styles.shellMain} ${mobileViewportV2Enabled ? styles.shellMainViewportV2 : ""}`}
+                noMainPadding
+                initiallyCollapsed
+            >
                 {isOnboardingRoute ? (
                     <div className={styles.onboardingBody}>{children}</div>
                 ) : (
