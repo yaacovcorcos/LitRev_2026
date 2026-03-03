@@ -1,3 +1,5 @@
+import { COARSE_POINTER_MEDIA_QUERY, MOBILE_VIEWPORT_MEDIA_QUERY } from "./breakpoints";
+
 export type MobileMetricType =
   | "mobile_viewport_issue"
   | "mobile_keyboard_overlap"
@@ -109,4 +111,14 @@ export function clearMobileMetrics(): void {
   } catch {
     // Best-effort cleanup only.
   }
+}
+
+export function isMobileTelemetryContext(): boolean {
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+    return false;
+  }
+  return (
+    window.matchMedia(MOBILE_VIEWPORT_MEDIA_QUERY).matches
+    || window.matchMedia(COARSE_POINTER_MEDIA_QUERY).matches
+  );
 }

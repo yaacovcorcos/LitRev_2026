@@ -42,6 +42,12 @@
     color: var(--text-primary);
 }
 
+.modeBtn:focus-visible {
+    outline: 2px solid var(--focus-ring-color, var(--accent-primary));
+    outline-offset: 2px;
+    box-shadow: var(--shadow-focus-ring);
+}
+
 .modeBtn .material-icons-round {
     font-size: 16px;
 }
@@ -85,6 +91,12 @@
     color: var(--text-primary);
 }
 
+.tab:focus-visible {
+    outline: 2px solid var(--focus-ring-color, var(--accent-primary));
+    outline-offset: 2px;
+    box-shadow: var(--shadow-focus-ring);
+}
+
 .tab .material-icons-round {
     font-size: 18px;
 }
@@ -119,6 +131,12 @@
 .deleteBtn:hover {
     background: rgba(var(--rgb-color-danger), 0.08);
     color: var(--color-danger);
+}
+
+.deleteBtn:focus-visible {
+    outline: 2px solid var(--focus-ring-color, var(--accent-primary));
+    outline-offset: 2px;
+    box-shadow: var(--shadow-focus-ring);
 }
 
 .deleteBtn .material-icons-round {

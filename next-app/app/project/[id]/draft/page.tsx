@@ -62,6 +62,7 @@ import { useDraftExport } from "./useDraftExport";
 import { useDraftSections } from "./useDraftSections";
 import { useDraftCopilot } from "./useDraftCopilot";
 import { buildReferencesDoc, compileDraftCitations } from "@/lib/citation-compiler";
+import { isMobileDraftV2Enabled } from "@/lib/mobile/feature-flags";
 
 function createCitationUid(sectionId: DraftSectionId): string {
   const rand = Math.random().toString(36).slice(2, 8);
@@ -102,6 +103,7 @@ function DraftSectionHeading({ id, label }: DraftSectionHeadingProps) {
 
 function DraftContent() {
   const { id } = useParams<{ id: string }>();
+  const mobileDraftV2Enabled = isMobileDraftV2Enabled();
   const router = useRouter();
   const searchParams = useSearchParams();
   const { getProjectById, isLoadingProjects, projectsError } = useProjects();
@@ -269,6 +271,7 @@ function DraftContent() {
   const activeFormatVars = formatVarsById[draft.activeSection] ?? formatToVars(DEFAULT_SECTION_FORMAT);
   const ledgerPanelId = "draft-ledger-panel";
   const copilotPanelId = "draft-copilot-panel";
+  const draftMainClassName = `${styles.appMainOverride} ${mobileDraftV2Enabled ? styles.appMainOverrideMobileV2 : ""}`;
 
   const copilotEmptyState = useMemo(() => ({
     icon: "tips_and_updates",
@@ -722,7 +725,7 @@ function DraftContent() {
 
   if (isLoadingProjects) {
     return (
-      <ProjectPageLayout noMainPadding initiallyCollapsed mainClassName={styles.appMainOverride}>
+      <ProjectPageLayout noMainPadding initiallyCollapsed mainClassName={draftMainClassName}>
         <EmptyStateSkeleton className={styles.notFound} />
       </ProjectPageLayout>
     );
@@ -730,7 +733,7 @@ function DraftContent() {
 
   if (projectsError) {
     return (
-      <ProjectPageLayout noMainPadding initiallyCollapsed mainClassName={styles.appMainOverride}>
+      <ProjectPageLayout noMainPadding initiallyCollapsed mainClassName={draftMainClassName}>
         <EmptyState
           variant="error"
           icon="cloud_off"
@@ -746,7 +749,7 @@ function DraftContent() {
 
   if (!project) {
     return (
-      <ProjectPageLayout noMainPadding initiallyCollapsed mainClassName={styles.appMainOverride}>
+      <ProjectPageLayout noMainPadding initiallyCollapsed mainClassName={draftMainClassName}>
         <EmptyState
           variant="error"
           icon="folder_off"
@@ -760,10 +763,11 @@ function DraftContent() {
   }
 
   const showResultsGuide = draft.activeSection === "results" && !docHasContent(draft.contentBySection.results);
+  const draftPageClassName = `${styles.page} ${mobileDraftV2Enabled ? styles.pageMobileV2 : ""}`;
 
   const pageContent = (
     <>
-      <div className={styles.page}>
+      <div className={draftPageClassName} data-mobile-draft-v2={mobileDraftV2Enabled ? "1" : "0"}>
         <DraftTopBar
           projectName={project.name}
           activeSection={draft.activeSection}
@@ -1119,7 +1123,7 @@ function DraftContent() {
   );
 
   return (
-    <ProjectPageLayout noMainPadding initiallyCollapsed mainClassName={styles.appMainOverride}>
+    <ProjectPageLayout noMainPadding initiallyCollapsed mainClassName={draftMainClassName}>
       {pageContent}
     </ProjectPageLayout>
   );

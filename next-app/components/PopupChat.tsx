@@ -14,6 +14,9 @@ import { formatStreamErrorForUI } from "@/lib/ai/stream-error-ui";
 import { markdownComponents } from "@/components/markdown/CodeBlock";
 import type { PopupChatContext, PopupMessage } from "@/types/popup-chat";
 import type { CopilotPage } from "@/types/ai";
+import { COARSE_POINTER_MEDIA_QUERY } from "@/lib/mobile/breakpoints";
+import { isMobilePopupV2Enabled } from "@/lib/mobile/feature-flags";
+import { isMobileTelemetryContext, recordMobileMetric } from "@/lib/mobile/telemetry";
 import styles from "./PopupChat.module.css";
 
 const TURN_HINT_THRESHOLD = 3;
@@ -71,6 +74,7 @@ type PopupChatProps = {
 };
 
 export function PopupChat({ projectId }: PopupChatProps) {
+    const mobilePopupV2Enabled = isMobilePopupV2Enabled();
     const { isOpen, context, closePopupChat } = usePopupChat();
     const { selectConversation, setCollapsed, refreshConversations } = useProjectCopilot();
 
@@ -79,6 +83,7 @@ export function PopupChat({ projectId }: PopupChatProps) {
     const [isStreaming, setIsStreaming] = useState(false);
     const [showTurnHint, setShowTurnHint] = useState(false);
     const [turnHintDismissed, setTurnHintDismissed] = useState(false);
+    const [isDragEnabled, setIsDragEnabled] = useState(true);
 
     const abortRef = useRef<AbortController | null>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -135,9 +140,48 @@ export function PopupChat({ projectId }: PopupChatProps) {
         }
     }, [isOpen]);
 
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        const pointerQuery = window.matchMedia(COARSE_POINTER_MEDIA_QUERY);
+        const updateDragMode = () => {
+            setIsDragEnabled(!pointerQuery.matches);
+        };
+
+        updateDragMode();
+
+        if (typeof pointerQuery.addEventListener === "function") {
+            pointerQuery.addEventListener("change", updateDragMode);
+        } else if (typeof pointerQuery.addListener === "function") {
+            pointerQuery.addListener(updateDragMode);
+        }
+
+        return () => {
+            if (typeof pointerQuery.removeEventListener === "function") {
+                pointerQuery.removeEventListener("change", updateDragMode);
+            } else if (typeof pointerQuery.removeListener === "function") {
+                pointerQuery.removeListener(updateDragMode);
+            }
+        };
+    }, []);
+
     const handleSend = useCallback(async () => {
         const trimmed = input.trim();
         if (!trimmed || isStreaming || !context) return;
+        const startedAt = Date.now();
+        let sendSucceeded = false;
+
+        if (isMobileTelemetryContext()) {
+            recordMobileMetric({
+                type: "mobile_action_tap",
+                surface: "popup",
+                payload: {
+                    route: typeof window !== "undefined" ? window.location.pathname : "/project",
+                    actionId: "popup_send",
+                    targetMinPx: 32,
+                    inputMode: "touch",
+                },
+            });
+        }
 
         const userMsg: PopupMessage = {
             id: `pm-${Date.now()}`,
@@ -216,6 +260,7 @@ export function PopupChat({ projectId }: PopupChatProps) {
                     throw new Error(event.error);
                 }
             }
+            sendSucceeded = true;
         } catch (error) {
             if (error instanceof DOMException && error.name === "AbortError") return;
 
@@ -228,6 +273,18 @@ export function PopupChat({ projectId }: PopupChatProps) {
             setIsStreaming(false);
             if (abortRef.current === controller) {
                 abortRef.current = null;
+            }
+            if (isMobileTelemetryContext()) {
+                recordMobileMetric({
+                    type: "mobile_flow_completed",
+                    surface: "popup",
+                    payload: {
+                        route: typeof window !== "undefined" ? window.location.pathname : "/project",
+                        flowId: "ai_message_send",
+                        durationMs: Date.now() - startedAt,
+                        success: sendSucceeded,
+                    },
+                });
             }
         }
     }, [input, isStreaming, context, messages]);
@@ -250,6 +307,7 @@ export function PopupChat({ projectId }: PopupChatProps) {
 
     // ---- Drag handling ----
     const handleDragStart = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
+        if (!isDragEnabled) return;
         // Only drag from the header area, not from buttons inside it
         if ((e.target as HTMLElement).closest("button")) return;
 
@@ -271,9 +329,10 @@ export function PopupChat({ projectId }: PopupChatProps) {
         dragOffset.current = { x: e.clientX - rect.left, y: e.clientY - rect.top };
         card.setPointerCapture(e.pointerId);
         card.style.transition = "none";
-    }, []);
+    }, [isDragEnabled]);
 
     const handleDragMove = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
+        if (!isDragEnabled) return;
         if (!isDragging.current || !cardRef.current) return;
 
         const card = cardRef.current;
@@ -286,17 +345,32 @@ export function PopupChat({ projectId }: PopupChatProps) {
         posRef.current = { x, y };
         card.style.left = `${x}px`;
         card.style.top = `${y}px`;
-    }, []);
+    }, [isDragEnabled]);
 
     const handleDragEnd = useCallback(() => {
+        if (!isDragEnabled) return;
         isDragging.current = false;
         if (cardRef.current) {
             cardRef.current.style.transition = "";
         }
-    }, []);
+    }, [isDragEnabled]);
 
     const handleContinueInCopilot = useCallback(async () => {
         if (!context || messages.length === 0) return;
+        const startedAt = Date.now();
+
+        if (isMobileTelemetryContext()) {
+            recordMobileMetric({
+                type: "mobile_action_tap",
+                surface: "popup",
+                payload: {
+                    route: typeof window !== "undefined" ? window.location.pathname : "/project",
+                    actionId: "popup_continue_to_copilot",
+                    targetMinPx: 24,
+                    inputMode: "touch",
+                },
+            });
+        }
 
         try {
             const page = contextToPage(context);
@@ -308,7 +382,21 @@ export function PopupChat({ projectId }: PopupChatProps) {
                 page,
                 context: studyId ? "study" : "project",
             });
-            if (!convResult.success) return;
+            if (!convResult.success) {
+                if (isMobileTelemetryContext()) {
+                    recordMobileMetric({
+                        type: "mobile_flow_completed",
+                        surface: "popup",
+                        payload: {
+                            route: typeof window !== "undefined" ? window.location.pathname : "/project",
+                            flowId: "popup_continue_to_copilot",
+                            durationMs: Date.now() - startedAt,
+                            success: false,
+                        },
+                    });
+                }
+                return;
+            }
             const convId = convResult.data.id;
 
             // Insert messages sequentially
@@ -324,8 +412,32 @@ export function PopupChat({ projectId }: PopupChatProps) {
             setCollapsed(false);
             await refreshConversations();
             closePopupChat();
+            if (isMobileTelemetryContext()) {
+                recordMobileMetric({
+                    type: "mobile_flow_completed",
+                    surface: "popup",
+                    payload: {
+                        route: typeof window !== "undefined" ? window.location.pathname : "/project",
+                        flowId: "popup_continue_to_copilot",
+                        durationMs: Date.now() - startedAt,
+                        success: true,
+                    },
+                });
+            }
         } catch (err) {
             console.error("Failed to continue in copilot:", err);
+            if (isMobileTelemetryContext()) {
+                recordMobileMetric({
+                    type: "mobile_flow_completed",
+                    surface: "popup",
+                    payload: {
+                        route: typeof window !== "undefined" ? window.location.pathname : "/project",
+                        flowId: "popup_continue_to_copilot",
+                        durationMs: Date.now() - startedAt,
+                        success: false,
+                    },
+                });
+            }
         }
     }, [context, messages, projectId, selectConversation, setCollapsed, refreshConversations, closePopupChat]);
 
@@ -344,6 +456,7 @@ export function PopupChat({ projectId }: PopupChatProps) {
     const label = getContextLabel(context);
     const icon = contextIcon(context);
     const canSend = input.trim().length > 0 && !isStreaming;
+    const popupClassName = `${styles.popupChat} ${mobilePopupV2Enabled ? styles.popupChatMobileV2 : ""}`;
 
     return (
         <Dialog.Root open={isOpen} onOpenChange={(open) => { if (!open) closePopupChat(); }}>
@@ -351,21 +464,22 @@ export function PopupChat({ projectId }: PopupChatProps) {
                 <Dialog.Overlay className={styles.overlay} />
                 <Dialog.Content
                     ref={cardRef}
-                    className={styles.popupChat}
+                    className={popupClassName}
+                    data-mobile-popup-v2={mobilePopupV2Enabled ? "1" : "0"}
                     aria-label="Ask AI mini-chat"
                     onEscapeKeyDown={() => closePopupChat()}
                     onInteractOutside={(e) => {
                         // Don't close if clicking inside the popup itself
                         e.preventDefault();
                     }}
-                    onPointerMove={handleDragMove}
-                    onPointerUp={handleDragEnd}
+                    onPointerMove={isDragEnabled ? handleDragMove : undefined}
+                    onPointerUp={isDragEnabled ? handleDragEnd : undefined}
                 >
                     <Dialog.Title className="sr-only">Ask AI mini-chat</Dialog.Title>
                     {/* Header — drag handle */}
                     <div
-                        className={styles.header}
-                        onPointerDown={handleDragStart}
+                        className={`${styles.header} ${!isDragEnabled ? styles.headerDragDisabled : ""}`}
+                        onPointerDown={isDragEnabled ? handleDragStart : undefined}
                     >
                         <div className={styles.contextBadge}>
                             <div className={styles.contextIcon}>
