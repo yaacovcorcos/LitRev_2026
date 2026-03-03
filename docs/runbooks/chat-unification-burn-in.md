@@ -14,8 +14,11 @@ Provide a deterministic, auditable process for chat-unification canary validatio
 3. Cohort scope is defined:
    - `workspaceIds`, and/or
    - `userIds`.
-4. Sign-off owner and backup reviewer are assigned.
-5. One canonical `CANARY_SINCE_UTC` timestamp is captured at flag enable time.
+4. `second -> main` promotion is complete and production deployment evidence is captured:
+   - deployed `main` commit SHA
+   - production deployment id/URL
+5. Sign-off owner and backup reviewer are assigned.
+6. One canonical `CANARY_SINCE_UTC` timestamp is captured at flag enable time immediately after production deploy/enable.
 
 ## Environment Matrix
 
@@ -47,7 +50,8 @@ Record command outputs in the run report.
 1. Enable `NEXT_PUBLIC_ENABLE_CHAT_UNIFICATION_V2=1` and `ENABLE_CHAT_UNIFICATION_V2=1` for the canary cohort.
 2. Immediately capture timestamp:
    - `CANARY_SINCE_UTC=<ISO8601 UTC at enable time>`
-3. Reuse exactly that timestamp for all daily and final commands.
+3. Owner confirms cohort scope + captured `CANARY_SINCE_UTC` before Day-0 validation.
+4. Reuse exactly that timestamp for all daily and final commands.
 
 ## Phase 2 - Day-0 Data Quality Gate
 
@@ -80,7 +84,8 @@ cd next-app && npx tsx scripts/validate-chat-unification-burn-in.ts \
   --since=<CANARY_SINCE_UTC> \
   --workspaceIds=<ws1,ws2> \
   --userIds=<u1,u2> \
-  --allowShortWindow=1
+  --allowShortWindow=1 \
+  --requireScopedCohort=1
 ```
 
 Track trend lines daily:
