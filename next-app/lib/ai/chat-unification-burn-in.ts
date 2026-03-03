@@ -1,14 +1,39 @@
-import type { ChatSurface, ChatUnificationMetricType } from "@/types/chat-unification";
+import type {
+  ChatSurface,
+  ChatUnificationMetricType,
+  RetryModelContinuityCompletionPayload,
+  RetryModelContinuityIntentPayload,
+} from "@/types/chat-unification";
 
 const SURFACES: ChatSurface[] = ["ai", "project"];
+const RETRY_MATCH_WINDOW_MS = 30 * 60 * 1000;
+const RETRY_TERMINAL_RUN_STATUSES = new Set(["completed", "failed", "cancelled", "paused"]);
 
-export type ChatUnificationBurnInMetricRow = {
-  version: number;
-  type: ChatUnificationMetricType;
+type RetryJoinSample = {
+  requestKey: string;
+  expectedModel: string | null;
+  actualModel: string | null;
+  preserved: boolean;
   surface: ChatSurface;
   userId: string | null;
   workspaceId: string | null;
+};
+
+type RetryJoinBucket = {
+  intents: Array<{ payload: RetryModelContinuityIntentPayload; recordedAt: Date }>;
+  completions: Array<{ payload: RetryModelContinuityCompletionPayload; recordedAt: Date }>;
+  surface: ChatSurface;
+  userId: string | null;
+  workspaceId: string | null;
+};
+
+export type ChatUnificationBurnInMetricRow = {
+  type: ChatUnificationMetricType;
+  version: number;
+  surface: ChatSurface;
   runId: string | null;
+  userId: string | null;
+  workspaceId: string | null;
   payload: unknown;
   recordedAt: Date;
 };
@@ -18,24 +43,23 @@ export type BurnInThresholds = {
   minCompletedRunsPerSurface: number;
   minRetrySamplesOverall: number;
   minRetrySamplesPerSurface: number;
-  minRetryMatchedOverall: number;
-  minRetryMatchedPerSurface: number;
+  minRetryMatchRateOverall: number;
+  minRetryMatchRatePerSurface: number;
   minAskUserSamplesOverall: number;
   minAskUserSamplesPerSurface: number;
   retryContinuityRateMin: number;
-  retryMatchRateMin: number;
-  retryMatchRateMinPerSurface: number;
   askUserMismatchRateMax: number;
   stuckRunningViolationRateMax: number;
-  retryJoinWindowMinutes: number;
 };
 
 export type SurfaceMetricSummary = {
   total: number;
   preserved?: number;
-  matched?: number;
   mismatches?: number;
   violations?: number;
+  unmatchedIntents?: number;
+  unmatchedCompletions?: number;
+  matchRate?: number | null;
 };
 
 export type BurnInMetricSummary = {
@@ -53,13 +77,28 @@ export type ChatUnificationBurnInReport = {
       total: number;
       bySurface: Record<ChatSurface, number>;
     };
+    retryJoin: {
+      intentTotal: number;
+      completionTotal: number;
+      matchedPairs: number;
+      unmatchedRetryIntents: number;
+      unmatchedRunCompletions: number;
+      matchRateOverall: number | null;
+      bySurface: Record<
+        ChatSurface,
+        {
+          intentTotal: number;
+          completionTotal: number;
+          matchedPairs: number;
+          unmatchedRetryIntents: number;
+          unmatchedRunCompletions: number;
+          matchRate: number | null;
+        }
+      >;
+    };
   };
   retryModelContinuity: BurnInMetricSummary & {
     preserved: number;
-    matched: number;
-    matchRate: number | null;
-    unmatchedIntents: number;
-    excludedByRunStatus: Record<string, number>;
   };
   askUserContextMismatch: BurnInMetricSummary & {
     mismatches: number;
@@ -74,16 +113,13 @@ export const DEFAULT_BURN_IN_THRESHOLDS: BurnInThresholds = {
   minCompletedRunsPerSurface: 50,
   minRetrySamplesOverall: 30,
   minRetrySamplesPerSurface: 10,
-  minRetryMatchedOverall: 30,
-  minRetryMatchedPerSurface: 10,
+  minRetryMatchRateOverall: 0.95,
+  minRetryMatchRatePerSurface: 0.9,
   minAskUserSamplesOverall: 30,
   minAskUserSamplesPerSurface: 10,
   retryContinuityRateMin: 0.99,
-  retryMatchRateMin: 0.95,
-  retryMatchRateMinPerSurface: 0.9,
   askUserMismatchRateMax: 0,
   stuckRunningViolationRateMax: 0,
-  retryJoinWindowMinutes: 30,
 };
 
 function computeRate(numerator: number, denominator: number): number | null {
@@ -103,28 +139,111 @@ function payloadAsObject(payload: unknown): Record<string, unknown> | null {
   return payload as Record<string, unknown>;
 }
 
-function payloadRequestKey(payload: unknown): string | null {
-  const value = payloadAsObject(payload)?.requestKey;
-  return typeof value === "string" && value.length > 0 ? value : null;
+function asRetryIntentPayload(payload: unknown): RetryModelContinuityIntentPayload | null {
+  const objectPayload = payloadAsObject(payload);
+  if (!objectPayload) return null;
+  if (objectPayload.source !== "retry_action") return null;
+  if (typeof objectPayload.requestKey !== "string") return null;
+  const expectedModel =
+    typeof objectPayload.expectedModel === "string" || objectPayload.expectedModel === null
+      ? (objectPayload.expectedModel as string | null)
+      : null;
+  return {
+    requestKey: objectPayload.requestKey,
+    expectedModel,
+    source: "retry_action",
+  };
 }
 
-function payloadRunStatus(payload: unknown): string | null {
-  const value = payloadAsObject(payload)?.runStatus;
-  return typeof value === "string" && value.length > 0 ? value : null;
+function asRetryCompletionPayload(payload: unknown): RetryModelContinuityCompletionPayload | null {
+  const objectPayload = payloadAsObject(payload);
+  if (!objectPayload) return null;
+  if (objectPayload.source !== "run_completion") return null;
+  if (typeof objectPayload.requestKey !== "string") return null;
+  const actualModel =
+    typeof objectPayload.actualModel === "string" || objectPayload.actualModel === null
+      ? (objectPayload.actualModel as string | null)
+      : null;
+  const runId =
+    typeof objectPayload.runId === "string" || objectPayload.runId === null
+      ? (objectPayload.runId as string | null)
+      : null;
+  const runStatus =
+    typeof objectPayload.runStatus === "string" || objectPayload.runStatus === null
+      ? (objectPayload.runStatus as string | null)
+      : null;
+  return {
+    requestKey: objectPayload.requestKey,
+    actualModel,
+    runId,
+    runStatus,
+    source: "run_completion",
+  };
 }
 
-function payloadActualModel(payload: unknown): string | null {
-  const value = payloadAsObject(payload)?.actualModel;
-  return typeof value === "string" && value.length > 0 ? value : null;
+function joinKey(row: ChatUnificationBurnInMetricRow, requestKey: string): string {
+  return [
+    requestKey,
+    row.userId ?? "",
+    row.workspaceId ?? "",
+    row.surface,
+  ].join("|");
 }
 
-function payloadExpectedModel(payload: unknown): string | null {
-  const value = payloadAsObject(payload)?.expectedModel;
-  return typeof value === "string" && value.length > 0 ? value : null;
-}
+function pairRetrySamples(bucket: RetryJoinBucket): {
+  matches: RetryJoinSample[];
+  unmatchedIntents: number;
+  unmatchedCompletions: number;
+} {
+  const intents = [...bucket.intents].sort((a, b) => a.recordedAt.getTime() - b.recordedAt.getTime());
+  const completions = [...bucket.completions].sort((a, b) => a.recordedAt.getTime() - b.recordedAt.getTime());
 
-function retryJoinKey(row: ChatUnificationBurnInMetricRow, requestKey: string): string {
-  return [requestKey, row.userId ?? "null", row.workspaceId ?? "null", row.surface].join("|");
+  const matches: RetryJoinSample[] = [];
+  let unmatchedIntents = 0;
+  let unmatchedCompletions = 0;
+  let i = 0;
+  let j = 0;
+
+  while (i < intents.length && j < completions.length) {
+    const intent = intents[i];
+    const completion = completions[j];
+    const deltaMs = completion.recordedAt.getTime() - intent.recordedAt.getTime();
+
+    if (Math.abs(deltaMs) <= RETRY_MATCH_WINDOW_MS) {
+      const expected = intent.payload.expectedModel;
+      const actual = completion.payload.actualModel;
+      matches.push({
+        requestKey: intent.payload.requestKey,
+        expectedModel: expected,
+        actualModel: actual,
+        preserved: expected !== null && actual !== null && expected === actual,
+        surface: bucket.surface,
+        userId: bucket.userId,
+        workspaceId: bucket.workspaceId,
+      });
+      i += 1;
+      j += 1;
+      continue;
+    }
+
+    if (deltaMs < -RETRY_MATCH_WINDOW_MS) {
+      unmatchedCompletions += 1;
+      j += 1;
+      continue;
+    }
+
+    unmatchedIntents += 1;
+    i += 1;
+  }
+
+  unmatchedIntents += intents.length - i;
+  unmatchedCompletions += completions.length - j;
+
+  return {
+    matches,
+    unmatchedIntents,
+    unmatchedCompletions,
+  };
 }
 
 export function evaluateChatUnificationBurnIn(
@@ -137,7 +256,6 @@ export function evaluateChatUnificationBurnIn(
 
   let retryTotal = 0;
   let retryPreserved = 0;
-  let retryMatched = 0;
   let askTotal = 0;
   let askMismatches = 0;
   let stuckTotal = 0;
@@ -148,19 +266,57 @@ export function evaluateChatUnificationBurnIn(
     ai: new Set<string>(),
     project: new Set<string>(),
   };
-  const joinWindowMs = thresholds.retryJoinWindowMinutes * 60 * 1000;
-  const excludedByRunStatus: Record<string, number> = {};
-  const completionRowsByJoinKey = new Map<string, ChatUnificationBurnInMetricRow[]>();
-  const retryIntentRows: ChatUnificationBurnInMetricRow[] = [];
+
+  const retryJoinBuckets = new Map<string, RetryJoinBucket>();
+  const retryIntentCountsBySurface: Record<ChatSurface, number> = { ai: 0, project: 0 };
+  const retryCompletionCountsBySurface: Record<ChatSurface, number> = { ai: 0, project: 0 };
+  let retryIntentTotal = 0;
+  let retryCompletionTotal = 0;
+  let hasRetryV1 = false;
+  let hasRetryV2 = false;
 
   for (const row of rows) {
     if (!SURFACES.includes(row.surface)) continue;
     const payload = payloadAsObject(row.payload);
 
     if (row.type === "retry_model_continuity") {
-      retryTotal += 1;
-      retryBySurface[row.surface].total += 1;
-      retryIntentRows.push(row);
+      if (row.version === 1) hasRetryV1 = true;
+      if (row.version >= 2) hasRetryV2 = true;
+
+      if (row.version >= 2) {
+        const intent = asRetryIntentPayload(row.payload);
+        if (intent) {
+          retryIntentTotal += 1;
+          retryIntentCountsBySurface[row.surface] += 1;
+          const key = joinKey(row, intent.requestKey);
+          const bucket = retryJoinBuckets.get(key) ?? {
+            intents: [],
+            completions: [],
+            surface: row.surface,
+            userId: row.userId,
+            workspaceId: row.workspaceId,
+          };
+          bucket.intents.push({ payload: intent, recordedAt: row.recordedAt });
+          retryJoinBuckets.set(key, bucket);
+          continue;
+        }
+
+        const completion = asRetryCompletionPayload(row.payload);
+        if (completion && RETRY_TERMINAL_RUN_STATUSES.has(completion.runStatus ?? "")) {
+          retryCompletionTotal += 1;
+          retryCompletionCountsBySurface[row.surface] += 1;
+          const key = joinKey(row, completion.requestKey);
+          const bucket = retryJoinBuckets.get(key) ?? {
+            intents: [],
+            completions: [],
+            surface: row.surface,
+            userId: row.userId,
+            workspaceId: row.workspaceId,
+          };
+          bucket.completions.push({ payload: completion, recordedAt: row.recordedAt });
+          retryJoinBuckets.set(key, bucket);
+        }
+      }
       continue;
     }
 
@@ -188,66 +344,53 @@ export function evaluateChatUnificationBurnIn(
     }
 
     if (row.type === "run_end_observed") {
-      const requestKey = payloadRequestKey(row.payload);
-      if (requestKey) {
-        const key = retryJoinKey(row, requestKey);
-        const list = completionRowsByJoinKey.get(key) ?? [];
-        list.push(row);
-        completionRowsByJoinKey.set(key, list);
-      }
       if (!row.runId) continue;
-      if (payloadRunStatus(row.payload) === "completed") {
+      if (payload?.runStatus === "completed") {
         completedRunIds.add(row.runId);
         completedRunIdsBySurface[row.surface].add(row.runId);
       }
     }
   }
 
-  const retryMatchedBySurface: Record<ChatSurface, number> = { ai: 0, project: 0 };
-  const retryPreservedBySurface: Record<ChatSurface, number> = { ai: 0, project: 0 };
-  const usedCompletionRows = new Set<ChatUnificationBurnInMetricRow>();
-  const eligibleRunStatuses = new Set(["completed"]);
+  const retryJoinBySurface = {
+    ai: { matchedPairs: 0, unmatchedRetryIntents: 0, unmatchedRunCompletions: 0 },
+    project: { matchedPairs: 0, unmatchedRetryIntents: 0, unmatchedRunCompletions: 0 },
+  };
 
-  for (const row of retryIntentRows) {
-    const requestKey = payloadRequestKey(row.payload);
-    if (!requestKey) continue;
-    const key = retryJoinKey(row, requestKey);
-    const completions = completionRowsByJoinKey.get(key);
-    if (!completions || completions.length === 0) continue;
-
-    const candidate = completions.find((completion) => {
-      if (usedCompletionRows.has(completion)) return false;
-      const deltaMs = completion.recordedAt.getTime() - row.recordedAt.getTime();
-      return deltaMs >= 0 && deltaMs <= joinWindowMs;
-    });
-    if (!candidate) continue;
-    usedCompletionRows.add(candidate);
-    retryMatched += 1;
-    retryMatchedBySurface[row.surface] += 1;
-
-    const runStatus = payloadRunStatus(candidate.payload) ?? "unknown";
-    if (!eligibleRunStatuses.has(runStatus)) {
-      excludedByRunStatus[runStatus] = (excludedByRunStatus[runStatus] ?? 0) + 1;
-      continue;
+  for (const bucket of retryJoinBuckets.values()) {
+    const paired = pairRetrySamples(bucket);
+    for (const sample of paired.matches) {
+      retryTotal += 1;
+      retryBySurface[sample.surface].total += 1;
+      if (sample.preserved) {
+        retryPreserved += 1;
+        retryBySurface[sample.surface].preserved = (retryBySurface[sample.surface].preserved ?? 0) + 1;
+      }
+      retryJoinBySurface[sample.surface].matchedPairs += 1;
     }
-
-    const expectedModel = payloadExpectedModel(row.payload);
-    const actualModel = payloadActualModel(candidate.payload);
-    const preserved = expectedModel !== null && actualModel !== null && expectedModel === actualModel;
-    if (preserved) {
-      retryPreserved += 1;
-      retryPreservedBySurface[row.surface] += 1;
-    }
+    retryJoinBySurface[bucket.surface].unmatchedRetryIntents += paired.unmatchedIntents;
+    retryJoinBySurface[bucket.surface].unmatchedRunCompletions += paired.unmatchedCompletions;
   }
 
-  retryBySurface.ai.preserved = retryPreservedBySurface.ai;
-  retryBySurface.project.preserved = retryPreservedBySurface.project;
-  retryBySurface.ai.matched = retryMatchedBySurface.ai;
-  retryBySurface.project.matched = retryMatchedBySurface.project;
+  const unmatchedRetryIntents =
+    retryJoinBySurface.ai.unmatchedRetryIntents + retryJoinBySurface.project.unmatchedRetryIntents;
+  const unmatchedRunCompletions =
+    retryJoinBySurface.ai.unmatchedRunCompletions + retryJoinBySurface.project.unmatchedRunCompletions;
 
-  const retryEligibleTotal = retryMatched - Object.values(excludedByRunStatus).reduce((sum, value) => sum + value, 0);
-  const retryRate = computeRate(retryPreserved, retryEligibleTotal);
-  const retryMatchRate = computeRate(retryMatched, retryTotal);
+  const retryMatchRateOverall = computeRate(retryTotal, retryIntentTotal);
+  const retryMatchRateBySurface = {
+    ai: computeRate(retryJoinBySurface.ai.matchedPairs, retryIntentCountsBySurface.ai),
+    project: computeRate(retryJoinBySurface.project.matchedPairs, retryIntentCountsBySurface.project),
+  };
+
+  retryBySurface.ai.unmatchedIntents = retryJoinBySurface.ai.unmatchedRetryIntents;
+  retryBySurface.project.unmatchedIntents = retryJoinBySurface.project.unmatchedRetryIntents;
+  retryBySurface.ai.unmatchedCompletions = retryJoinBySurface.ai.unmatchedRunCompletions;
+  retryBySurface.project.unmatchedCompletions = retryJoinBySurface.project.unmatchedRunCompletions;
+  retryBySurface.ai.matchRate = retryMatchRateBySurface.ai;
+  retryBySurface.project.matchRate = retryMatchRateBySurface.project;
+
+  const retryRate = computeRate(retryPreserved, retryTotal);
   const askMismatchRate = computeRate(askMismatches, askTotal);
   const stuckViolationRate = computeRate(stuckViolations, stuckTotal);
 
@@ -257,6 +400,13 @@ export function evaluateChatUnificationBurnIn(
     ai: completedRunIdsBySurface.ai.size,
     project: completedRunIdsBySurface.project.size,
   };
+
+  if (hasRetryV1 && hasRetryV2) {
+    failures.push("Mixed retry_model_continuity metric versions detected (v1 + v2). Use a pure v2 measurement window.");
+  }
+  if (hasRetryV1 && !hasRetryV2) {
+    failures.push("Legacy retry_model_continuity metric version (v1) detected without v2 rows. U1.6 continuity requires v2 server-joined telemetry.");
+  }
 
   if (completedRunsTotal < thresholds.minCompletedRuns) {
     failures.push(
@@ -274,28 +424,29 @@ export function evaluateChatUnificationBurnIn(
 
   if (retryTotal < thresholds.minRetrySamplesOverall) {
     failures.push(
-      `Retry continuity denominator too small: ${retryTotal} < ${thresholds.minRetrySamplesOverall}.`,
+      `Retry continuity matched denominator too small: ${retryTotal} < ${thresholds.minRetrySamplesOverall}.`,
     );
   }
   for (const surface of SURFACES) {
     const surfaceTotal = retryBySurface[surface].total;
     if (surfaceTotal < thresholds.minRetrySamplesPerSurface) {
       failures.push(
-        `${surface} retry denominator too small: ${surfaceTotal} < ${thresholds.minRetrySamplesPerSurface}.`,
+        `${surface} retry matched denominator too small: ${surfaceTotal} < ${thresholds.minRetrySamplesPerSurface}.`,
       );
     }
   }
 
-  if (retryMatched < thresholds.minRetryMatchedOverall) {
+  if (retryMatchRateOverall === null || retryMatchRateOverall < thresholds.minRetryMatchRateOverall) {
     failures.push(
-      `Retry matched sample too small: ${retryMatched} < ${thresholds.minRetryMatchedOverall}.`,
+      `Retry join match-rate below threshold: ${retryMatchRateOverall ?? "n/a"} < ${thresholds.minRetryMatchRateOverall}.`,
     );
   }
+
   for (const surface of SURFACES) {
-    const matched = retryMatchedBySurface[surface];
-    if (matched < thresholds.minRetryMatchedPerSurface) {
+    const surfaceMatchRate = retryMatchRateBySurface[surface];
+    if (surfaceMatchRate === null || surfaceMatchRate < thresholds.minRetryMatchRatePerSurface) {
       failures.push(
-        `${surface} retry matched sample too small: ${matched} < ${thresholds.minRetryMatchedPerSurface}.`,
+        `${surface} retry join match-rate below threshold: ${surfaceMatchRate ?? "n/a"} < ${thresholds.minRetryMatchRatePerSurface}.`,
       );
     }
   }
@@ -310,20 +461,6 @@ export function evaluateChatUnificationBurnIn(
     if (surfaceTotal < thresholds.minAskUserSamplesPerSurface) {
       failures.push(
         `${surface} ask-user denominator too small: ${surfaceTotal} < ${thresholds.minAskUserSamplesPerSurface}.`,
-      );
-    }
-  }
-
-  if (retryMatchRate === null || retryMatchRate < thresholds.retryMatchRateMin) {
-    failures.push(
-      `Retry match-rate below threshold: ${retryMatchRate ?? "n/a"} < ${thresholds.retryMatchRateMin}.`,
-    );
-  }
-  for (const surface of SURFACES) {
-    const surfaceRate = computeRate(retryMatchedBySurface[surface], retryBySurface[surface].total);
-    if (surfaceRate === null || surfaceRate < thresholds.retryMatchRateMinPerSurface) {
-      failures.push(
-        `${surface} retry match-rate below threshold: ${surfaceRate ?? "n/a"} < ${thresholds.retryMatchRateMinPerSurface}.`,
       );
     }
   }
@@ -355,14 +492,36 @@ export function evaluateChatUnificationBurnIn(
         total: completedRunsTotal,
         bySurface: completedRunsBySurface,
       },
+      retryJoin: {
+        intentTotal: retryIntentTotal,
+        completionTotal: retryCompletionTotal,
+        matchedPairs: retryTotal,
+        unmatchedRetryIntents,
+        unmatchedRunCompletions,
+        matchRateOverall: retryMatchRateOverall,
+        bySurface: {
+          ai: {
+            intentTotal: retryIntentCountsBySurface.ai,
+            completionTotal: retryCompletionCountsBySurface.ai,
+            matchedPairs: retryJoinBySurface.ai.matchedPairs,
+            unmatchedRetryIntents: retryJoinBySurface.ai.unmatchedRetryIntents,
+            unmatchedRunCompletions: retryJoinBySurface.ai.unmatchedRunCompletions,
+            matchRate: retryMatchRateBySurface.ai,
+          },
+          project: {
+            intentTotal: retryIntentCountsBySurface.project,
+            completionTotal: retryCompletionCountsBySurface.project,
+            matchedPairs: retryJoinBySurface.project.matchedPairs,
+            unmatchedRetryIntents: retryJoinBySurface.project.unmatchedRetryIntents,
+            unmatchedRunCompletions: retryJoinBySurface.project.unmatchedRunCompletions,
+            matchRate: retryMatchRateBySurface.project,
+          },
+        },
+      },
     },
     retryModelContinuity: {
       total: retryTotal,
       preserved: retryPreserved,
-      matched: retryMatched,
-      matchRate: retryMatchRate,
-      unmatchedIntents: retryTotal - retryMatched,
-      excludedByRunStatus,
       rate: retryRate,
       bySurface: retryBySurface,
     },
@@ -391,20 +550,11 @@ export function formatChatUnificationBurnInReport(
     `Completed by surface: ai=${report.sample.completedRuns.bySurface.ai}, project=${report.sample.completedRuns.bySurface.project}`,
   );
   lines.push(
-    `Retry continuity: ${report.retryModelContinuity.preserved}/${report.retryModelContinuity.matched} (${report.retryModelContinuity.rate ?? "n/a"})`,
+    `Retry join: intents=${report.sample.retryJoin.intentTotal}, completions=${report.sample.retryJoin.completionTotal}, matched=${report.sample.retryJoin.matchedPairs}, unmatchedIntents=${report.sample.retryJoin.unmatchedRetryIntents}, unmatchedCompletions=${report.sample.retryJoin.unmatchedRunCompletions}, matchRate=${report.sample.retryJoin.matchRateOverall ?? "n/a"}`,
   );
   lines.push(
-    `Retry match-rate: ${report.retryModelContinuity.matched}/${report.retryModelContinuity.total} (${report.retryModelContinuity.matchRate ?? "n/a"})`,
+    `Retry continuity: ${report.retryModelContinuity.preserved}/${report.retryModelContinuity.total} (${report.retryModelContinuity.rate ?? "n/a"})`,
   );
-  lines.push(
-    `Retry unmatched intents: ${report.retryModelContinuity.unmatchedIntents}`,
-  );
-  const excludedStatuses = Object.entries(report.retryModelContinuity.excludedByRunStatus);
-  if (excludedStatuses.length > 0) {
-    lines.push(
-      `Retry excluded statuses: ${excludedStatuses.map(([status, count]) => `${status}=${count}`).join(", ")}`,
-    );
-  }
   lines.push(
     `Ask-user mismatch: ${report.askUserContextMismatch.mismatches}/${report.askUserContextMismatch.total} (${report.askUserContextMismatch.rate ?? "n/a"})`,
   );

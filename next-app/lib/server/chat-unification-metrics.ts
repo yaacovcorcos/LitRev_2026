@@ -6,16 +6,14 @@ import { assertProjectAccess } from "@/lib/server/access";
 import type { AuthContext } from "@/lib/server/auth/session";
 import type {
   AskUserContextMismatchPayload,
-  ChatUnificationMetricVersion,
   ChatSurface,
   ChatUnificationMetricType,
+  RetryModelContinuityCompletionPayload,
+  RetryModelContinuityIntentPayload,
+  RetryModelContinuityLegacyPayload,
   RetryModelContinuityPayload,
   RunEndObservedPayload,
   StuckRunningToolsPayload,
-} from "@/types/chat-unification";
-import {
-  CHAT_UNIFICATION_ACCEPTED_METRIC_VERSIONS,
-  CHAT_UNIFICATION_METRIC_VERSION,
 } from "@/types/chat-unification";
 
 const CHAT_SURFACE_VALUES = ["ai", "project"] as const satisfies readonly ChatSurface[];
@@ -27,22 +25,29 @@ const CHAT_UNIFICATION_METRIC_TYPES = [
 ] as const satisfies readonly ChatUnificationMetricType[];
 
 const CHAT_STREAM_PHASE_VALUES = ["send", "plan", "project_stream"] as const;
-const ACTUAL_MODEL_SOURCE_VALUES = ["provider", "requested", "unknown"] as const;
-const CHAT_UNIFICATION_METRIC_VERSIONS = CHAT_UNIFICATION_ACCEPTED_METRIC_VERSIONS;
 
-const RetryModelContinuityPayloadV1V2Schema = z.object({
+const RetryModelContinuityLegacyPayloadSchema: z.ZodType<RetryModelContinuityLegacyPayload> = z.object({
   preserved: z.boolean(),
   expectedModel: z.string().nullable(),
   actualModel: z.string().nullable(),
-  actualModelSource: z.enum(ACTUAL_MODEL_SOURCE_VALUES).optional().default("unknown"),
   source: z.literal("retry_action"),
 });
 
-const RetryModelContinuityPayloadV3Schema: z.ZodType<RetryModelContinuityPayload> = z.object({
-  requestKey: z.string().uuid(),
-  expectedModel: z.string().nullable(),
-  source: z.literal("retry_action"),
-});
+const RetryModelContinuityIntentPayloadSchema: z.ZodType<RetryModelContinuityIntentPayload> =
+  z.object({
+    requestKey: z.string().uuid(),
+    expectedModel: z.string().nullable(),
+    source: z.literal("retry_action"),
+  });
+
+const RetryModelContinuityCompletionPayloadSchema: z.ZodType<RetryModelContinuityCompletionPayload> =
+  z.object({
+    requestKey: z.string().uuid(),
+    actualModel: z.string().nullable(),
+    runId: z.string().trim().min(1).nullable(),
+    runStatus: z.string().nullable(),
+    source: z.literal("run_completion"),
+  });
 
 const AskUserContextMismatchPayloadSchema: z.ZodType<AskUserContextMismatchPayload> = z.object({
   mismatch: z.boolean(),
@@ -54,26 +59,18 @@ const AskUserContextMismatchPayloadSchema: z.ZodType<AskUserContextMismatchPaylo
 
 const StuckRunningToolsPayloadSchema: z.ZodType<StuckRunningToolsPayload> = z.object({
   unresolvedCount: z.number().int().min(0),
-  unresolvedCountBeforeClear: z.number().int().min(0).nullable().optional().default(null),
-  unresolvedCountAfterClear: z.number().int().min(0).nullable().optional().default(null),
   runStatus: z.string().nullable(),
   streamPhase: z.enum(CHAT_STREAM_PHASE_VALUES),
 });
 
 const RunEndObservedPayloadSchema: z.ZodType<RunEndObservedPayload> = z.object({
-  requestKey: z.string().uuid().nullable().optional().default(null),
   runStatus: z.string().nullable(),
   streamPhase: z.enum(CHAT_STREAM_PHASE_VALUES),
-  actualModel: z.string().nullable().optional().default(null),
-  actualModelSource: z.enum(ACTUAL_MODEL_SOURCE_VALUES).optional().default("unknown"),
 });
 
 const ChatUnificationMetricInputSchema = z.object({
   eventId: z.string().uuid(),
-  version: z.union([
-    z.literal(CHAT_UNIFICATION_METRIC_VERSIONS[0]),
-    z.literal(CHAT_UNIFICATION_METRIC_VERSIONS[1]),
-  ]).optional(),
+  version: z.union([z.literal(1), z.literal(2)]).optional(),
   type: z.enum(CHAT_UNIFICATION_METRIC_TYPES),
   surface: z.enum(CHAT_SURFACE_VALUES),
   runId: z.string().trim().min(1).optional().nullable(),
@@ -84,22 +81,21 @@ const ChatUnificationMetricInputSchema = z.object({
 });
 
 function parsePayload(
-  version: ChatUnificationMetricVersion,
+  version: 1 | 2,
   type: ChatUnificationMetricType,
   payload: unknown,
 ): RetryModelContinuityPayload | AskUserContextMismatchPayload | StuckRunningToolsPayload | RunEndObservedPayload {
   switch (type) {
-    case "retry_model_continuity": {
-      if (version >= 3) {
-        return RetryModelContinuityPayloadV3Schema.parse(payload);
+    case "retry_model_continuity":
+      if (version === 1) {
+        return RetryModelContinuityLegacyPayloadSchema.parse(payload);
       }
-      const legacy = RetryModelContinuityPayloadV1V2Schema.parse(payload);
-      return {
-        requestKey: "00000000-0000-0000-0000-000000000000",
-        expectedModel: legacy.expectedModel,
-        source: legacy.source,
-      };
-    }
+      return z
+        .union([
+          RetryModelContinuityIntentPayloadSchema,
+          RetryModelContinuityCompletionPayloadSchema,
+        ])
+        .parse(payload);
     case "ask_user_context_mismatch":
       return AskUserContextMismatchPayloadSchema.parse(payload);
     case "stuck_running_tools_after_run_end":
@@ -154,8 +150,8 @@ export async function ingestChatUnificationMetric(
   input: unknown,
 ): Promise<IngestChatUnificationMetricResult> {
   const parsed = ChatUnificationMetricInputSchema.parse(input);
-  const metricVersion = (parsed.version ?? CHAT_UNIFICATION_METRIC_VERSION) as ChatUnificationMetricVersion;
-  const payload = parsePayload(metricVersion, parsed.type, parsed.payload);
+  const version = parsed.version ?? 1;
+  const payload = parsePayload(version, parsed.type, parsed.payload);
 
   if (parsed.projectId) {
     await assertProjectAccess(
@@ -170,7 +166,7 @@ export async function ingestChatUnificationMetric(
     const created = await prisma.chatUnificationMetric.create({
       data: {
         eventId: parsed.eventId,
-        version: metricVersion,
+        version,
         type: parsed.type,
         surface: parsed.surface,
         userId: auth.userId,

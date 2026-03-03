@@ -18,8 +18,8 @@ describe("chat unification telemetry", () => {
       type: "retry_model_continuity",
       surface: "ai",
       payload: {
-        requestKey: "b93f7ca5-5ba2-4fcb-9514-f291767fd16d",
         expectedModel: "gpt-5.2",
+        requestKey: "f7b7e4ad-a620-4b6d-bf93-2d9ce2f8ff2e",
         source: "retry_action",
       },
     });
@@ -28,9 +28,22 @@ describe("chat unification telemetry", () => {
       type: "retry_model_continuity",
       surface: "project",
       payload: {
-        requestKey: "f5ec9b2d-a5d8-4579-ace3-a85bf1ee4a9f",
+        actualModel: "claude-sonnet",
+        requestKey: "889d119c-c2af-4ee6-a67d-c3ef98935d18",
+        runId: "run-1",
+        runStatus: "completed",
+        source: "run_completion",
+      },
+    });
+
+    recordChatUnificationMetric({
+      type: "retry_model_continuity",
+      surface: "project",
+      payload: {
+        actualModel: "claude-sonnet",
         expectedModel: "gpt-5.2",
         source: "retry_action",
+        preserved: false,
       },
     });
 
@@ -51,8 +64,6 @@ describe("chat unification telemetry", () => {
       surface: "project",
       payload: {
         unresolvedCount: 2,
-        unresolvedCountBeforeClear: 2,
-        unresolvedCountAfterClear: 0,
         runStatus: "failed",
         streamPhase: "project_stream",
       },
@@ -63,23 +74,8 @@ describe("chat unification telemetry", () => {
       surface: "project",
       payload: {
         unresolvedCount: 0,
-        unresolvedCountBeforeClear: 0,
-        unresolvedCountAfterClear: 0,
         runStatus: "completed",
         streamPhase: "project_stream",
-      },
-    });
-
-    recordChatUnificationMetric({
-      type: "run_end_observed",
-      surface: "ai",
-      runId: "run-0",
-      payload: {
-        requestKey: "b93f7ca5-5ba2-4fcb-9514-f291767fd16d",
-        runStatus: "completed",
-        streamPhase: "send",
-        actualModel: "gpt-5.2",
-        actualModelSource: "provider",
       },
     });
 
@@ -88,11 +84,8 @@ describe("chat unification telemetry", () => {
       surface: "project",
       runId: "run-1",
       payload: {
-        requestKey: "f5ec9b2d-a5d8-4579-ace3-a85bf1ee4a9f",
         runStatus: "completed",
         streamPhase: "project_stream",
-        actualModel: "claude-sonnet",
-        actualModelSource: "provider",
       },
     });
 
@@ -100,9 +93,9 @@ describe("chat unification telemetry", () => {
     expect(events).toHaveLength(7);
 
     const summary = summarizeChatUnificationMetrics(events);
-    expect(summary.retryModelContinuity.total).toBe(2);
-    expect(summary.retryModelContinuity.preserved).toBe(1);
-    expect(summary.retryModelContinuity.rate).toBe(0.5);
+    expect(summary.retryModelContinuity.total).toBe(3);
+    expect(summary.retryModelContinuity.preserved).toBe(0);
+    expect(summary.retryModelContinuity.rate).toBe(0);
 
     expect(summary.askUserContextMismatch.total).toBe(1);
     expect(summary.askUserContextMismatch.mismatches).toBe(1);
@@ -112,8 +105,8 @@ describe("chat unification telemetry", () => {
     expect(summary.stuckRunningToolsAfterRunEnd.violations).toBe(1);
     expect(summary.stuckRunningToolsAfterRunEnd.rate).toBe(0.5);
 
-    expect(summary.runEndObserved.total).toBe(2);
-    expect(summary.runEndObserved.completed).toBe(2);
+    expect(summary.runEndObserved.total).toBe(1);
+    expect(summary.runEndObserved.completed).toBe(1);
     expect(summary.runEndObserved.rateCompleted).toBe(1);
   });
 });

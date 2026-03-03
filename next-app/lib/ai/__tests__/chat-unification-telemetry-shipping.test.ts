@@ -37,8 +37,8 @@ describe("chat unification telemetry shipping", () => {
       conversationId: "conv-1",
       projectId: "project-1",
       payload: {
-        requestKey: "7c76966b-84c6-4cf4-98c4-f6c68f7b5911",
         expectedModel: "gpt-5.2",
+        requestKey: "f7b7e4ad-a620-4b6d-bf93-2d9ce2f8ff2e",
         source: "retry_action",
       },
     });
@@ -57,6 +57,7 @@ describe("chat unification telemetry shipping", () => {
 
     const parsedBody = JSON.parse(String((options as RequestInit).body));
     expect(parsedBody).toMatchObject({
+      version: 2,
       type: "retry_model_continuity",
       surface: "ai",
       conversationId: "conv-1",

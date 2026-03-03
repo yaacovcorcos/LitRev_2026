@@ -12,7 +12,10 @@ import { CopilotInput } from "../copilot/CopilotInput";
 import { AutonomySettings } from "../copilot/AutonomySettings";
 import { SuggestionChips } from "./SuggestionChips";
 import { ConversationPicker } from "../ui/ConversationPicker";
-import { generateChatUnificationRequestKey } from "@/lib/ai/chat-unification-telemetry";
+import {
+    createChatUnificationRequestKey,
+    recordChatUnificationMetric,
+} from "@/lib/ai/chat-unification-telemetry";
 import styles from "./ConversationMainView.module.css";
 
 export type ConversationMainViewProps = {
@@ -91,6 +94,18 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
             .reverse()
             .find((message) => message.sender === "user" && message.text.trim().length > 0);
         if (!lastUserMessage) return;
+        const retryRequestKey = createChatUnificationRequestKey();
+        recordChatUnificationMetric({
+            type: "retry_model_continuity",
+            surface: "project",
+            conversationId: currentConversationId,
+            projectId,
+            payload: {
+                expectedModel: selectedModel ?? null,
+                requestKey: retryRequestKey,
+                source: "retry_action",
+            },
+        });
         sendMessage(
             lastUserMessage.text,
             lastUserMessage.context?.page ?? ("overview" as CopilotPage),
@@ -98,13 +113,9 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
             selectedModel,
             undefined,
             undefined,
-            {
-                requestKey: generateChatUnificationRequestKey(),
-                expectedModel: selectedModel ?? null,
-                source: "retry_action",
-            },
+            retryRequestKey,
         );
-    }, [isLoading, messages, sendMessage, selectedModel]);
+    }, [currentConversationId, isLoading, messages, projectId, sendMessage, selectedModel]);
 
     const resumeFailedPlan = useCallback(() => {
         if (isLoading) return;

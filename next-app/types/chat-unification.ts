@@ -1,9 +1,6 @@
 export type ChatSurface = "ai" | "project";
 
 export type ChatUnificationStreamPhase = "send" | "plan" | "project_stream";
-export const CHAT_UNIFICATION_METRIC_VERSION = 3 as const;
-export const CHAT_UNIFICATION_ACCEPTED_METRIC_VERSIONS = [1, 2, CHAT_UNIFICATION_METRIC_VERSION] as const;
-export type ChatUnificationMetricVersion = (typeof CHAT_UNIFICATION_ACCEPTED_METRIC_VERSIONS)[number];
 
 export type ChatUnificationMetricType =
   | "retry_model_continuity"
@@ -11,21 +8,31 @@ export type ChatUnificationMetricType =
   | "stuck_running_tools_after_run_end"
   | "run_end_observed";
 
-export type ChatUnificationActualModelSource = "provider" | "requested" | "unknown";
-
-export type RetryModelContinuitySource = "retry_action";
-
-export type RetryModelExpectation = {
-  requestKey: string;
+export type RetryModelContinuityLegacyPayload = {
+  preserved: boolean;
   expectedModel: string | null;
-  source: RetryModelContinuitySource;
+  actualModel: string | null;
+  source: "retry_action";
 };
 
-export type RetryModelContinuityPayload = {
+export type RetryModelContinuityIntentPayload = {
   requestKey: string;
   expectedModel: string | null;
-  source: RetryModelContinuitySource;
+  source: "retry_action";
 };
+
+export type RetryModelContinuityCompletionPayload = {
+  requestKey: string;
+  actualModel: string | null;
+  runId: string | null;
+  runStatus: string | null;
+  source: "run_completion";
+};
+
+export type RetryModelContinuityPayload =
+  | RetryModelContinuityLegacyPayload
+  | RetryModelContinuityIntentPayload
+  | RetryModelContinuityCompletionPayload;
 
 export type AskUserContextMismatchPayload = {
   mismatch: boolean;
@@ -37,18 +44,13 @@ export type AskUserContextMismatchPayload = {
 
 export type StuckRunningToolsPayload = {
   unresolvedCount: number;
-  unresolvedCountBeforeClear: number | null;
-  unresolvedCountAfterClear: number | null;
   runStatus: string | null;
   streamPhase: ChatUnificationStreamPhase;
 };
 
 export type RunEndObservedPayload = {
-  requestKey?: string | null;
   runStatus: string | null;
   streamPhase: ChatUnificationStreamPhase;
-  actualModel: string | null;
-  actualModelSource: ChatUnificationActualModelSource;
 };
 
 export type ChatUnificationMetricPayloadByType = {
@@ -63,7 +65,7 @@ export type ChatUnificationMetricPayload =
 
 export type ChatUnificationMetricEvent = {
   eventId: string;
-  version: ChatUnificationMetricVersion;
+  version: 1 | 2;
   type: ChatUnificationMetricType;
   surface: ChatSurface;
   timestamp: string;
@@ -75,7 +77,7 @@ export type ChatUnificationMetricEvent = {
 
 export type ChatUnificationMetricInput = {
   eventId: string;
-  version?: ChatUnificationMetricVersion;
+  version?: 1 | 2;
   type: ChatUnificationMetricType;
   surface: ChatSurface;
   runId?: string | null;
