@@ -17,6 +17,7 @@ import { routeToAgent, type RouterPage } from "@/lib/agent/router";
 import { getUserSelectableAgentModes } from "@/lib/agent/feature-flags";
 import { AGENT_MODE_META, type AgentMode, type AutonomyPreset } from "@/types/agent";
 import type { FileAsset } from "@/types/files";
+import type { RetryModelExpectation } from "@/types/chat-unification";
 import { UserInputCard } from "../artifacts/UserInputCard";
 import styles from "./CopilotInput.module.css";
 
@@ -44,7 +45,8 @@ export type CopilotInputCoreProps = {
         section?: string,
         model?: string,
         agentMode?: AgentMode,
-        studyId?: string
+        studyId?: string,
+        retryModelExpectation?: RetryModelExpectation,
     ) => void | Promise<void>;
     cancelStream: () => void;
 

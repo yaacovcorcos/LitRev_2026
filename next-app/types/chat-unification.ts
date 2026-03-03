@@ -10,11 +10,19 @@ export type ChatUnificationMetricType =
 
 export type ChatUnificationActualModelSource = "provider" | "requested" | "unknown";
 
+export type RetryModelContinuitySource = "retry_action";
+
+export type RetryModelExpectation = {
+  expectedModel: string | null;
+  source: RetryModelContinuitySource;
+};
+
 export type RetryModelContinuityPayload = {
   preserved: boolean;
   expectedModel: string | null;
   actualModel: string | null;
-  source: "retry_action";
+  actualModelSource: ChatUnificationActualModelSource;
+  source: RetryModelContinuitySource;
 };
 
 export type AskUserContextMismatchPayload = {

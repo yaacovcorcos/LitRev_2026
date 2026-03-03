@@ -29,6 +29,7 @@ import { isNavigationSafe } from "@/lib/ai/navigation-safety";
 import { formatStreamErrorForUI } from "@/lib/ai/stream-error-ui";
 import { createAiStreamRuntime } from "@/lib/ai/ai-stream-runtime";
 import { recordChatUnificationMetric } from "@/lib/ai/chat-unification-telemetry";
+import type { RetryModelExpectation } from "@/types/chat-unification";
 import {
   getReasoningBudgetTokens,
   getReasoningModePreference,
@@ -910,6 +911,7 @@ export default function AIView() {
     model?: string,
     agentMode?: AgentMode,
     _studyId?: string,
+    retryModelExpectation?: RetryModelExpectation,
   ) => {
     const msgText = rawText.trim();
     if (!msgText || sendLockRef.current) return;
@@ -1076,6 +1078,28 @@ export default function AIView() {
             streamPhase: "send",
           },
         });
+        if (retryModelExpectation) {
+          const preserved = (
+            actualModelSource === "provider"
+            && retryModelExpectation.expectedModel !== null
+            && actualModel !== null
+            && retryModelExpectation.expectedModel === actualModel
+          );
+          recordChatUnificationMetric({
+            type: "retry_model_continuity",
+            surface: "ai",
+            runId: runtimeState.localRunId || null,
+            conversationId: runtime.getConversationId(),
+            projectId: selectedProjectId,
+            payload: {
+              preserved,
+              expectedModel: retryModelExpectation.expectedModel,
+              actualModel,
+              actualModelSource,
+              source: retryModelExpectation.source,
+            },
+          });
+        }
       }
       if (streamGenRef.current === myGen) {
         setIsTyping(false);
@@ -1515,19 +1539,18 @@ export default function AIView() {
     setPendingChoices([]);
     setPendingUserInput(null);
     setPrefillCommand(null);
-    recordChatUnificationMetric({
-      type: "retry_model_continuity",
-      surface: "ai",
-      conversationId: convId,
-      projectId: selectedProjectId,
-      payload: {
-        preserved: true,
-        expectedModel: selectedModel,
-        actualModel: selectedModel,
+    void handleSend(
+      retryText,
+      "ai",
+      undefined,
+      selectedModel,
+      undefined,
+      undefined,
+      {
+        expectedModel: selectedModel ?? null,
         source: "retry_action",
       },
-    });
-    void handleSend(retryText, "ai", undefined, selectedModel);
+    );
   }, [isTyping, activeConversationId, timelineByConversation, handleSend, selectedModel, selectedProjectId]);
 
   const handlePrefillConsumed = useCallback(() => {

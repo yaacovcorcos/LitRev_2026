@@ -28,6 +28,7 @@ const RetryModelContinuityPayloadSchema: z.ZodType<RetryModelContinuityPayload> 
   preserved: z.boolean(),
   expectedModel: z.string().nullable(),
   actualModel: z.string().nullable(),
+  actualModelSource: z.enum(ACTUAL_MODEL_SOURCE_VALUES).optional().default("unknown"),
   source: z.literal("retry_action"),
 });
 

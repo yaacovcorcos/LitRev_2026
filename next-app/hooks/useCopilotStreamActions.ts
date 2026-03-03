@@ -21,6 +21,7 @@ import type { ArtifactActionContract } from "@/lib/artifacts/action-contract";
 import { getReasoningBudgetTokens, shouldRequestReasoning } from "@/lib/ai/reasoning-visibility";
 import { formatStreamErrorForUI } from "@/lib/ai/stream-error-ui";
 import { recordChatUnificationMetric } from "@/lib/ai/chat-unification-telemetry";
+import type { RetryModelExpectation } from "@/types/chat-unification";
 import type { PendingAttachment, ApproveArtifactsBatchResult } from "@/types/copilot-context";
 import type { useCopilotConversations } from "@/hooks/useCopilotConversations";
 
@@ -87,7 +88,17 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
         section?: string;
         convId: string | null;
         onPlanStepUpdate?: (planId: string, stepIndex: number, stepStatus: string) => void;
-    }): Promise<{ success: boolean; aborted: boolean; runStatus: string | null; stopReason: string | null; errorMessage: string | null }> => {
+    }): Promise<{
+        success: boolean;
+        aborted: boolean;
+        runStatus: string | null;
+        stopReason: string | null;
+        errorMessage: string | null;
+        actualModel: string | null;
+        actualModelSource: "provider" | "requested" | "unknown";
+        runId: string | null;
+        conversationId: string | null;
+    }> => {
         const { body, page, section, convId, onPlanStepUpdate } = params;
         let effectiveConvId = convId;
 
@@ -246,7 +257,17 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
 
             // Stale generation — skip refresh
             if (streamGenRef.current !== myGen) {
-                return { success: false, aborted: true, runStatus, stopReason, errorMessage: streamErrorMessage };
+                return {
+                    success: false,
+                    aborted: true,
+                    runStatus,
+                    stopReason,
+                    errorMessage: streamErrorMessage,
+                    actualModel,
+                    actualModelSource,
+                    runId: localRunId || null,
+                    conversationId: effectiveConvId,
+                };
             }
 
             recordChatUnificationMetric({
@@ -278,11 +299,31 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
 
             // Refresh conversation list to update titles/counts
             convo.loadConversations();
-            return { success: true, aborted: false, runStatus, stopReason, errorMessage: streamErrorMessage };
+            return {
+                success: true,
+                aborted: false,
+                runStatus,
+                stopReason,
+                errorMessage: streamErrorMessage,
+                actualModel,
+                actualModelSource,
+                runId: localRunId || null,
+                conversationId: effectiveConvId,
+            };
         } catch (error) {
             // Silently ignore aborted requests
             if (error instanceof DOMException && error.name === "AbortError") {
-                return { success: false, aborted: true, runStatus, stopReason, errorMessage: streamErrorMessage };
+                return {
+                    success: false,
+                    aborted: true,
+                    runStatus,
+                    stopReason,
+                    errorMessage: streamErrorMessage,
+                    actualModel,
+                    actualModelSource,
+                    runId: localRunId || null,
+                    conversationId: effectiveConvId,
+                };
             }
 
             recordChatUnificationMetric({
@@ -349,6 +390,10 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                 runStatus,
                 stopReason,
                 errorMessage: friendlyError,
+                actualModel,
+                actualModelSource,
+                runId: localRunId || null,
+                conversationId: effectiveConvId,
             };
         } finally {
             if (streamGenRef.current === myGen) {
@@ -363,7 +408,15 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
     }, [updateState, projectId, convo]);
 
     const sendMessage = useCallback(
-        async (text: string, page: CopilotPage, section?: string, model?: string, agentMode?: AgentMode, studyId?: string) => {
+        async (
+            text: string,
+            page: CopilotPage,
+            section?: string,
+            model?: string,
+            agentMode?: AgentMode,
+            studyId?: string,
+            retryModelExpectation?: RetryModelExpectation,
+        ) => {
             const trimmed = text.trim();
             const attachment = pendingAttachment;
             if (!trimmed && !attachment) return;
@@ -432,7 +485,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
             }));
 
             // Run the stream
-            await runStream({
+            const streamResult = await runStream({
                 body: {
                     userMessage: messageForAI,
                     context: conversationContext,
@@ -455,6 +508,30 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                 section,
                 convId,
             });
+
+            if (!streamResult.aborted && retryModelExpectation) {
+                const preserved = (
+                    streamResult.actualModelSource === "provider"
+                    && retryModelExpectation.expectedModel !== null
+                    && streamResult.actualModel !== null
+                    && retryModelExpectation.expectedModel === streamResult.actualModel
+                );
+
+                recordChatUnificationMetric({
+                    type: "retry_model_continuity",
+                    surface: "project",
+                    runId: streamResult.runId,
+                    conversationId: streamResult.conversationId ?? convId ?? null,
+                    projectId,
+                    payload: {
+                        preserved,
+                        expectedModel: retryModelExpectation.expectedModel,
+                        actualModel: streamResult.actualModel,
+                        actualModelSource: streamResult.actualModelSource,
+                        source: retryModelExpectation.source,
+                    },
+                });
+            }
         },
         [updateState, projectId, cancelStream, convo, pendingAttachment, reasoningMode, runStream, setPendingChoices, setPendingAttachment, isLoadingRef]
     );
