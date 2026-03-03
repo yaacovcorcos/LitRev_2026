@@ -55,9 +55,24 @@ function generateMetricEventId(): string {
   return generateUuidV4Fallback();
 }
 
+export function generateChatUnificationRequestKey(): string {
+  return generateMetricEventId();
+}
+
 function computeRate(total: number, numerator: number): number | null {
   if (total <= 0) return null;
   return numerator / total;
+}
+
+function payloadAsRecord(payload: unknown): Record<string, unknown> | null {
+  if (!payload || typeof payload !== "object") return null;
+  return payload as Record<string, unknown>;
+}
+
+function getPayloadRequestKey(payload: unknown): string | null {
+  const record = payloadAsRecord(payload);
+  const key = record?.requestKey;
+  return typeof key === "string" && key.length > 0 ? key : null;
 }
 
 function shouldShipToServer(): boolean {
@@ -218,6 +233,11 @@ export function getChatUnificationMetricEvents(): ChatUnificationMetricEvent[] {
 }
 
 export type ChatUnificationMetricSummary = {
+  /**
+   * Local browser-only debug summary. Do not use for U1.6 release gates.
+   * Authoritative gate metrics are computed server-side by burn-in validators.
+   */
+  isDebugOnly: true;
   retryModelContinuity: {
     total: number;
     preserved: number;
@@ -252,9 +272,26 @@ export function summarizeChatUnificationMetrics(
   const stuckEvents = events.filter((event) => event.type === "stuck_running_tools_after_run_end");
   const runEndEvents = events.filter((event) => event.type === "run_end_observed");
 
+  const runEndByRequestKey = new Map<string, RunEndObservedPayload>();
+  for (const runEndEvent of runEndEvents) {
+    const payload = runEndEvent.payload as RunEndObservedPayload;
+    const requestKey = getPayloadRequestKey(payload);
+    if (!requestKey) continue;
+    runEndByRequestKey.set(`${requestKey}|${runEndEvent.surface}`, payload);
+  }
+
   const preserved = retryEvents.filter((event) => {
     const payload = event.payload as RetryModelContinuityPayload;
-    return payload.preserved;
+    const requestKey = getPayloadRequestKey(payload);
+    if (!requestKey) {
+      const legacyPayload = payloadAsRecord(payload);
+      return legacyPayload?.preserved === true;
+    }
+    const runPayload = runEndByRequestKey.get(`${requestKey}|${event.surface}`);
+    if (!runPayload) return false;
+    return payload.expectedModel !== null
+      && runPayload.actualModel !== null
+      && payload.expectedModel === runPayload.actualModel;
   }).length;
 
   const mismatches = askUserEvents.filter((event) => {
@@ -272,6 +309,7 @@ export function summarizeChatUnificationMetrics(
   }).length;
 
   return {
+    isDebugOnly: true,
     retryModelContinuity: {
       total: retryEvents.length,
       preserved,

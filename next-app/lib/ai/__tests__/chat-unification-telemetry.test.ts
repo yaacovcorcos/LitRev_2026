@@ -18,10 +18,8 @@ describe("chat unification telemetry", () => {
       type: "retry_model_continuity",
       surface: "ai",
       payload: {
-        preserved: true,
+        requestKey: "b93f7ca5-5ba2-4fcb-9514-f291767fd16d",
         expectedModel: "gpt-5.2",
-        actualModel: "gpt-5.2",
-        actualModelSource: "provider",
         source: "retry_action",
       },
     });
@@ -30,10 +28,8 @@ describe("chat unification telemetry", () => {
       type: "retry_model_continuity",
       surface: "project",
       payload: {
-        preserved: false,
+        requestKey: "f5ec9b2d-a5d8-4579-ace3-a85bf1ee4a9f",
         expectedModel: "gpt-5.2",
-        actualModel: "claude-sonnet",
-        actualModelSource: "provider",
         source: "retry_action",
       },
     });
@@ -76,18 +72,32 @@ describe("chat unification telemetry", () => {
 
     recordChatUnificationMetric({
       type: "run_end_observed",
-      surface: "project",
-      runId: "run-1",
+      surface: "ai",
+      runId: "run-0",
       payload: {
+        requestKey: "b93f7ca5-5ba2-4fcb-9514-f291767fd16d",
         runStatus: "completed",
-        streamPhase: "project_stream",
+        streamPhase: "send",
         actualModel: "gpt-5.2",
         actualModelSource: "provider",
       },
     });
 
+    recordChatUnificationMetric({
+      type: "run_end_observed",
+      surface: "project",
+      runId: "run-1",
+      payload: {
+        requestKey: "f5ec9b2d-a5d8-4579-ace3-a85bf1ee4a9f",
+        runStatus: "completed",
+        streamPhase: "project_stream",
+        actualModel: "claude-sonnet",
+        actualModelSource: "provider",
+      },
+    });
+
     const events = getChatUnificationMetricEvents();
-    expect(events).toHaveLength(6);
+    expect(events).toHaveLength(7);
 
     const summary = summarizeChatUnificationMetrics(events);
     expect(summary.retryModelContinuity.total).toBe(2);
@@ -102,8 +112,8 @@ describe("chat unification telemetry", () => {
     expect(summary.stuckRunningToolsAfterRunEnd.violations).toBe(1);
     expect(summary.stuckRunningToolsAfterRunEnd.rate).toBe(0.5);
 
-    expect(summary.runEndObserved.total).toBe(1);
-    expect(summary.runEndObserved.completed).toBe(1);
+    expect(summary.runEndObserved.total).toBe(2);
+    expect(summary.runEndObserved.completed).toBe(2);
     expect(summary.runEndObserved.rateCompleted).toBe(1);
   });
 });

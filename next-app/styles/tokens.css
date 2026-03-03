@@ -124,6 +124,9 @@
     --header-height: 44px;
     --content-top-offset: 12px;
     --mobile-nav-height: 72px;
+    --app-vh: 1vh;
+    --app-height: 100vh;
+    --app-min-height: 100vh;
 
     /* Typography Scale */
     --text-2xs: 10px;
@@ -186,6 +189,18 @@
     --scrollbar-thumb-hover: rgba(var(--rgb-ui-contrast), 0.20);
     --scrollbar-track: transparent;
     --scrollbar-radius: 3px;
+}
+
+@supports (height: 100svh) {
+    :root {
+        --app-min-height: 100svh;
+    }
+}
+
+@supports (height: 100dvh) {
+    :root {
+        --app-height: 100dvh;
+    }
 }
 
 /* ── Dark Theme ─────────────────────────────────────────────── */

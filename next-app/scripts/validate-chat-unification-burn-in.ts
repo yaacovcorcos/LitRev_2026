@@ -145,6 +145,22 @@ function parseThresholdsFromArgs(): BurnInThresholds {
       "minRetrySamplesPerSurface",
       DEFAULT_BURN_IN_THRESHOLDS.minRetrySamplesPerSurface,
     ),
+    minRetryMatchedOverall: parseIntArg(
+      "minRetryMatchedOverall",
+      DEFAULT_BURN_IN_THRESHOLDS.minRetryMatchedOverall,
+    ),
+    minRetryMatchedPerSurface: parseIntArg(
+      "minRetryMatchedPerSurface",
+      DEFAULT_BURN_IN_THRESHOLDS.minRetryMatchedPerSurface,
+    ),
+    minRetryEligibleOverall: parseIntArg(
+      "minRetryEligibleOverall",
+      DEFAULT_BURN_IN_THRESHOLDS.minRetryEligibleOverall,
+    ),
+    minRetryEligiblePerSurface: parseIntArg(
+      "minRetryEligiblePerSurface",
+      DEFAULT_BURN_IN_THRESHOLDS.minRetryEligiblePerSurface,
+    ),
     minAskUserSamplesOverall: parseIntArg(
       "minAskUserSamplesOverall",
       DEFAULT_BURN_IN_THRESHOLDS.minAskUserSamplesOverall,
@@ -157,6 +173,14 @@ function parseThresholdsFromArgs(): BurnInThresholds {
       "retryContinuityRateMin",
       DEFAULT_BURN_IN_THRESHOLDS.retryContinuityRateMin,
     ),
+    retryMatchRateMin: parseFloatArg(
+      "retryMatchRateMin",
+      DEFAULT_BURN_IN_THRESHOLDS.retryMatchRateMin,
+    ),
+    retryMatchRateMinPerSurface: parseFloatArg(
+      "retryMatchRateMinPerSurface",
+      DEFAULT_BURN_IN_THRESHOLDS.retryMatchRateMinPerSurface,
+    ),
     askUserMismatchRateMax: parseFloatArg(
       "askUserMismatchRateMax",
       DEFAULT_BURN_IN_THRESHOLDS.askUserMismatchRateMax,
@@ -164,6 +188,10 @@ function parseThresholdsFromArgs(): BurnInThresholds {
     stuckRunningViolationRateMax: parseFloatArg(
       "stuckRunningViolationRateMax",
       DEFAULT_BURN_IN_THRESHOLDS.stuckRunningViolationRateMax,
+    ),
+    retryJoinWindowMinutes: parseIntArg(
+      "retryJoinWindowMinutes",
+      DEFAULT_BURN_IN_THRESHOLDS.retryJoinWindowMinutes,
     ),
   };
 }
@@ -191,6 +219,7 @@ async function main() {
     userIds: parseCsvIdArg("userIds", parseArg("userIds")),
   };
   const metricVersion = parseMetricVersionArg(parseArg("metricVersion"));
+  const allowMixedVersions = parseArg("allowMixedVersions") === "1";
   if (coverageConfig.requireScopedCohort && !hasCohortScope(cohortScope)) {
     throw new Error(
       "Cohort scope is required. Pass --workspaceIds and/or --userIds when --requireScopedCohort=1.",
@@ -200,14 +229,46 @@ async function main() {
   const outputJson = parseArg("json") === "1";
 
   let metrics: Array<{
+    version: number;
     type: ChatUnificationMetricType;
     surface: ChatSurface;
+    userId: string | null;
+    workspaceId: string | null;
     runId: string | null;
     payload: unknown;
     recordedAt: Date;
   }>;
 
   try {
+    const mixedVersionRows = await prisma.chatUnificationMetric.findMany({
+      where: {
+        recordedAt: {
+          gte: window.since,
+          lte: window.until,
+        },
+        type: {
+          in: [...METRIC_TYPES],
+        },
+        surface: {
+          in: [...SURFACES],
+        },
+        ...buildCohortWhereInput(cohortScope),
+      },
+      select: {
+        version: true,
+      },
+      distinct: ["version"],
+    });
+
+    if (!allowMixedVersions) {
+      const observedVersions = mixedVersionRows.map((row) => row.version).sort((a, b) => a - b);
+      if (observedVersions.length > 1) {
+        throw new Error(
+          `Mixed metric versions detected in window: [${observedVersions.join(", ")}]. Re-run with --allowMixedVersions=1 for diagnostics only.`,
+        );
+      }
+    }
+
     metrics = await prisma.chatUnificationMetric.findMany({
       where: {
         recordedAt: {
@@ -224,8 +285,11 @@ async function main() {
         ...buildCohortWhereInput(cohortScope),
       },
       select: {
+        version: true,
         type: true,
         surface: true,
+        userId: true,
+        workspaceId: true,
         runId: true,
         conversationId: true,
         projectId: true,
@@ -233,8 +297,11 @@ async function main() {
         recordedAt: true,
       },
     }) as Array<{
+      version: number;
       type: ChatUnificationMetricType;
       surface: ChatSurface;
+      userId: string | null;
+      workspaceId: string | null;
       runId: string | null;
       conversationId: string | null;
       projectId: string | null;
@@ -266,6 +333,7 @@ async function main() {
     `Window since: ${window.since.toISOString()}`,
     `Window until: ${window.until.toISOString()}`,
     `Short-window override: ${allowShortWindow ? "enabled" : "disabled"}`,
+    `Mixed-version override: ${allowMixedVersions ? "enabled" : "disabled"}`,
     `Cohort scope: ${formatCohortScope(cohortScope)}`,
     `Rows analyzed: ${metrics.length}`,
     `Metric version: ${metricVersion}`,

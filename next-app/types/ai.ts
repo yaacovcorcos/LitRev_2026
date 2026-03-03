@@ -116,6 +116,11 @@ export type ChatOptions = {
     userId?: string;
     workspaceId?: string;
     userMessageAttachments?: ConversationMessageAttachment[];
+    /**
+     * Correlation key for retry telemetry continuity checks.
+     * Present only when the send action is triggered from retry.
+     */
+    telemetryRequestKey?: string;
     stream?: boolean;
     signal?: AbortSignal;
 };

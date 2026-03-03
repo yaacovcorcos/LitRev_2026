@@ -54,14 +54,18 @@
     border-radius: 8px;
     font-size: var(--text-base);
     background: rgba(var(--rgb-ui-contrast), 0.02);
-    outline: none;
+    outline: 2px solid transparent;
+    outline-offset: 2px;
     transition: border-color var(--duration-base) var(--ease-standard), box-shadow var(--duration-base) var(--ease-standard);
 }
 
 .searchInput:focus {
-    outline: none;
     border-color: var(--focus-ring-color, var(--accent-primary));
     box-shadow: var(--shadow-focus-ring);
+}
+
+.searchInput:focus-visible {
+    outline-color: var(--focus-ring-color, var(--accent-primary));
 }
 
 .newNoteBtn {
@@ -265,12 +269,18 @@
 
 .tagInput {
     border: none;
-    outline: none;
+    outline: 2px solid transparent;
+    outline-offset: 2px;
     background: transparent;
     font-size: var(--text-sm);
     color: var(--text-primary);
     width: 100px;
     padding: 3px 0;
+}
+
+.tagInput:focus-visible {
+    outline-color: var(--focus-ring-color, var(--accent-primary));
+    border-radius: var(--radius-sm);
 }
 
 .tagInput::placeholder {
@@ -454,7 +464,15 @@
         border-bottom: 1px solid var(--glass-border);
     }
 
+    .page[data-mobile-notes-v2="true"] .sidebar {
+        max-height: min(200px, calc(var(--app-height, 100vh) * 0.28));
+    }
+
     .editorArea {
         padding: 16px;
+    }
+
+    .page[data-mobile-notes-v2="true"] .editorArea {
+        padding-bottom: calc(16px + env(safe-area-inset-bottom));
     }
 }

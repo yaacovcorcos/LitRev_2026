@@ -70,15 +70,19 @@
     color: var(--text-primary);
     font-size: 13px;
     padding: 7px 10px;
-    outline: none;
+    outline: 2px solid transparent;
+    outline-offset: 2px;
     transition: border-color 0.15s;
 }
 
 .searchInput:focus,
 .searchInput:focus-visible {
-    outline: none;
-    outline-offset: 0;
     border-color: rgba(var(--rgb-ui-contrast), 0.2);
+    box-shadow: var(--shadow-focus-ring);
+}
+
+.searchInput:focus-visible {
+    outline-color: var(--focus-ring-color, var(--accent-primary));
 }
 
 .list {
@@ -281,15 +285,19 @@
     color: var(--text-primary);
     font-size: 14px;
     padding: 8px 10px;
-    outline: none;
+    outline: 2px solid transparent;
+    outline-offset: 2px;
     transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .renameInput:focus,
 .renameInput:focus-visible {
-    outline: none;
     border-color: var(--focus-ring-color, var(--accent-primary));
     box-shadow: var(--shadow-focus-ring);
+}
+
+.renameInput:focus-visible {
+    outline-color: var(--focus-ring-color, var(--accent-primary));
 }
 
 .renameError {

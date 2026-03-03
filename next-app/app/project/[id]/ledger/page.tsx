@@ -38,6 +38,7 @@ import { ConfirmDialog, AlertDialog } from "@/components/ConfirmDialog";
 import { DemoGuideCard } from "@/components/project/DemoGuideCard";
 import { StudyRow } from "./StudyRow";
 import { LedgerStatsBar } from "./LedgerStatsBar";
+import { isMobileLedgerV2Enabled } from "@/lib/mobile/feature-flags";
 import {
   useLedgerActions,
   type LedgerConfirmDialogState,
@@ -52,6 +53,7 @@ type CriteriaFilter =
 
 export default function LedgerPage() {
   const { id } = useParams<{ id: string }>();
+  const mobileLedgerV2Enabled = isMobileLedgerV2Enabled();
   const { getProjectById, isLoadingProjects, projectsError } = useProjects();
   const { isEmbeddedInProjectShell } = useProjectShell();
   const {
@@ -69,6 +71,7 @@ export default function LedgerPage() {
     [id, getStudiesByProject],
   );
   const extractedCount = studies.filter((s) => s.status === "extracted").length;
+  const ledgerMainClassName = `${styles.appMainOverride} ${mobileLedgerV2Enabled ? styles.appMainOverrideMobileV2 : ""}`;
 
   // Study files panel state
   const [selectedStudy, setSelectedStudy] = useState<Study | null>(null);
@@ -301,7 +304,7 @@ export default function LedgerPage() {
   // Loading state
   if (isLoadingProjects) {
     return (
-      <ProjectPageLayout mainClassName={styles.appMainOverride}>
+      <ProjectPageLayout mainClassName={ledgerMainClassName}>
         <EmptyStateSkeleton className={styles.notFound} />
       </ProjectPageLayout>
     );
@@ -310,7 +313,7 @@ export default function LedgerPage() {
   // Error state
   if (projectsError) {
     return (
-      <ProjectPageLayout mainClassName={styles.appMainOverride}>
+      <ProjectPageLayout mainClassName={ledgerMainClassName}>
         <EmptyState
           variant="error"
           icon="cloud_off"
@@ -327,7 +330,7 @@ export default function LedgerPage() {
   // Not found state
   if (!project) {
     return (
-      <ProjectPageLayout mainClassName={styles.appMainOverride}>
+      <ProjectPageLayout mainClassName={ledgerMainClassName}>
         <EmptyState
           variant="error"
           icon="folder_off"
@@ -659,7 +662,7 @@ export default function LedgerPage() {
 
   return (
     <ProjectPageLayout
-      mainClassName={styles.appMainOverride}
+      mainClassName={ledgerMainClassName}
       copilot={{
         page: "ledger",
         contextDisplay: `${studies.length} studies \u00b7 ${extractedCount} extracted`,
@@ -687,7 +690,7 @@ export default function LedgerPage() {
         panelId: "ledger-copilot-panel",
       }}
     >
-      <div className={styles.page}>
+      <div className={styles.page} data-mobile-ledger-v2={mobileLedgerV2Enabled ? "true" : "false"}>
         <div className={styles.mainContent}>{mainContent}</div>
         {filesPopup}
         {dialogs}

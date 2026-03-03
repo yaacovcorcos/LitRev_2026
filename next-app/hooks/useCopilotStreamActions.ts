@@ -276,20 +276,6 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
             }
 
             recordChatUnificationMetric({
-                type: "run_end_observed",
-                surface: "project",
-                runId: localRunId || null,
-                conversationId: effectiveConvId,
-                projectId,
-                payload: {
-                    runStatus,
-                    streamPhase: "project_stream",
-                    actualModel,
-                    actualModelSource,
-                },
-            });
-
-            recordChatUnificationMetric({
                 type: "stuck_running_tools_after_run_end",
                 surface: "project",
                 runId: localRunId || null,
@@ -332,20 +318,6 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                     conversationId: effectiveConvId,
                 };
             }
-
-            recordChatUnificationMetric({
-                type: "run_end_observed",
-                surface: "project",
-                runId: localRunId || null,
-                conversationId: effectiveConvId,
-                projectId,
-                payload: {
-                    runStatus,
-                    streamPhase: "project_stream",
-                    actualModel,
-                    actualModelSource,
-                },
-            });
 
             recordChatUnificationMetric({
                 type: "stuck_running_tools_after_run_end",
@@ -493,8 +465,22 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                 messages: [...prev.messages, userMessage],
             }));
 
+            if (retryModelExpectation) {
+                recordChatUnificationMetric({
+                    type: "retry_model_continuity",
+                    surface: "project",
+                    conversationId: convId ?? null,
+                    projectId,
+                    payload: {
+                        requestKey: retryModelExpectation.requestKey,
+                        expectedModel: retryModelExpectation.expectedModel,
+                        source: retryModelExpectation.source,
+                    },
+                });
+            }
+
             // Run the stream
-            const streamResult = await runStream({
+            await runStream({
                 body: {
                     userMessage: messageForAI,
                     context: conversationContext,
@@ -511,36 +497,13 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                         section,
                         persistedUserMessageContent: displayText,
                         userMessageAttachments: attachmentsMeta,
+                        telemetryRequestKey: retryModelExpectation?.requestKey,
                     },
                 },
                 page,
                 section,
                 convId,
             });
-
-            if (!streamResult.aborted && retryModelExpectation) {
-                const preserved = (
-                    streamResult.actualModelSource === "provider"
-                    && retryModelExpectation.expectedModel !== null
-                    && streamResult.actualModel !== null
-                    && retryModelExpectation.expectedModel === streamResult.actualModel
-                );
-
-                recordChatUnificationMetric({
-                    type: "retry_model_continuity",
-                    surface: "project",
-                    runId: streamResult.runId,
-                    conversationId: streamResult.conversationId ?? convId ?? null,
-                    projectId,
-                    payload: {
-                        preserved,
-                        expectedModel: retryModelExpectation.expectedModel,
-                        actualModel: streamResult.actualModel,
-                        actualModelSource: streamResult.actualModelSource,
-                        source: retryModelExpectation.source,
-                    },
-                });
-            }
         },
         [updateState, projectId, cancelStream, convo, pendingAttachment, reasoningMode, runStream, setPendingChoices, setPendingAttachment, isLoadingRef]
     );

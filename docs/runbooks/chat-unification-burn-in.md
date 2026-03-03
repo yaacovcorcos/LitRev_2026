@@ -86,9 +86,10 @@ cd next-app && npx tsx scripts/validate-chat-unification-burn-in.ts \
 Track trend lines daily:
 
 1. Completed run counts overall and per surface.
-2. Retry continuity rate and denominator.
-3. Ask-user mismatch rate and denominator.
-4. Stuck-running violations.
+2. Retry continuity (server-joined) rate and matched denominator.
+3. Retry join health: matched pairs, unmatched intents/completions, and match-rate.
+4. Ask-user mismatch rate and denominator.
+5. Stuck-running violations.
 
 ## Phase 4 - Final Strict Gate (Earliest at +7 Days)
 
@@ -108,9 +109,11 @@ Pass criteria:
 
 1. Window duration is at least 7 days.
 2. Completed runs: `>= 200` total, `>= 50` on each surface.
-3. Retry continuity: `>= 99%`, with denominator `>= 30` overall and `>= 10` per surface.
-4. Ask-user mismatch: `= 0`, with denominator `>= 30` overall and `>= 10` per surface.
-5. Stuck-running violations: `= 0`.
+3. Retry continuity: `>= 99%`, with matched denominator `>= 30` overall and `>= 10` per surface.
+4. Retry join match-rate: `>= 95%` overall and `>= 90%` per surface.
+5. Burn-in window is v2-clean for `retry_model_continuity` (mixed v1+v2 window is a fail).
+6. Ask-user mismatch: `= 0`, with denominator `>= 30` overall and `>= 10` per surface.
+7. Stuck-running violations: `= 0`.
 
 ## Failure Handling
 
