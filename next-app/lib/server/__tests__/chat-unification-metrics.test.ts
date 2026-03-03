@@ -199,4 +199,38 @@ describe("chat-unification-metrics", () => {
       }),
     );
   });
+
+  it("preserves legacy retry payload shape for historical continuity analytics", async () => {
+    mocks.agentRunFindFirst.mockResolvedValue(null);
+    mocks.chatMetricCreate.mockResolvedValue({ id: "metric-legacy-retry" });
+
+    await ingestChatUnificationMetric(AUTH, {
+      eventId: "7d6319fc-3a4d-4d4c-9eb2-e8ec3b4661cb",
+      version: 2,
+      type: "retry_model_continuity",
+      surface: "ai",
+      payload: {
+        preserved: true,
+        expectedModel: "gpt-4.1",
+        actualModel: "gpt-4.1",
+        actualModelSource: "provider",
+        source: "retry_action",
+      },
+    });
+
+    expect(mocks.chatMetricCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          version: 2,
+          payload: expect.objectContaining({
+            preserved: true,
+            expectedModel: "gpt-4.1",
+            actualModel: "gpt-4.1",
+            actualModelSource: "provider",
+            source: "retry_action",
+          }),
+        }),
+      }),
+    );
+  });
 });
