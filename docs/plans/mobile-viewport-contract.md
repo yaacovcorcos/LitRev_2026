@@ -14,6 +14,7 @@ Define one stable mobile viewport contract before route-level UI migrations.
 - `NEXT_PUBLIC_MOBILE_VP_V2`: runtime + token contract is implemented.
 - Project shell root height now supports viewport-token mode when `NEXT_PUBLIC_MOBILE_VP_V2=1`.
 - `/ai` route viewport migration is independently gated by `NEXT_PUBLIC_MOBILE_AI_V2`.
+- `/project/[id]/notes` mobile layout adjustments are gated by `NEXT_PUBLIC_MOBILE_NOTES_V2`.
 
 ## Feature Flags (Default Off)
 

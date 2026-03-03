@@ -464,7 +464,15 @@
         border-bottom: 1px solid var(--glass-border);
     }
 
+    .page[data-mobile-notes-v2="true"] .sidebar {
+        max-height: min(200px, calc(var(--app-height, 100vh) * 0.28));
+    }
+
     .editorArea {
         padding: 16px;
+    }
+
+    .page[data-mobile-notes-v2="true"] .editorArea {
+        padding-bottom: calc(16px + env(safe-area-inset-bottom));
     }
 }
