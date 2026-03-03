@@ -968,6 +968,8 @@ export default function AIView() {
     let runStatus: string | null = null;
     let actualModel: string | null = null;
     let actualModelSource: "provider" | "requested" | "unknown" = "unknown";
+    let unresolvedCountBeforeClear: number | null = null;
+    let unresolvedCountAfterClear: number | null = null;
     let aborted = false;
     const runtime = createAiStreamRuntime({
       aiMessageId,
@@ -1024,7 +1026,15 @@ export default function AIView() {
         signal: controller.signal,
         shouldContinue: () => streamGenRef.current === myGen,
         throwOnErrorChunk: true,
-        onChunk: (data) => runtime.handleChunk(data),
+        onChunk: (data) => {
+          if (data.type === "run_end") {
+            unresolvedCountBeforeClear = runtime.getState().runningToolCallIds.length;
+            runtime.handleChunk(data);
+            unresolvedCountAfterClear = runtime.getState().runningToolCallIds.length;
+            return;
+          }
+          runtime.handleChunk(data);
+        },
       });
       runStatus = summary.runStatus;
       actualModel = summary.actualModel;
@@ -1074,6 +1084,8 @@ export default function AIView() {
           projectId: selectedProjectId,
           payload: {
             unresolvedCount: runtimeState.runningToolCallIds.length,
+            unresolvedCountBeforeClear,
+            unresolvedCountAfterClear,
             runStatus,
             streamPhase: "send",
           },
@@ -1336,6 +1348,8 @@ export default function AIView() {
     let runStatus: string | null = null;
     let actualModel: string | null = null;
     let actualModelSource: "provider" | "requested" | "unknown" = "unknown";
+    let unresolvedCountBeforeClear: number | null = null;
+    let unresolvedCountAfterClear: number | null = null;
     let stopReason: string | null = null;
     let errorMessage: string | null = null;
     let aborted = false;
@@ -1393,7 +1407,15 @@ export default function AIView() {
         signal: controller.signal,
         shouldContinue: () => streamGenRef.current === myGen,
         throwOnErrorChunk: true,
-        onChunk: (data) => runtime.handleChunk(data),
+        onChunk: (data) => {
+          if (data.type === "run_end") {
+            unresolvedCountBeforeClear = runtime.getState().runningToolCallIds.length;
+            runtime.handleChunk(data);
+            unresolvedCountAfterClear = runtime.getState().runningToolCallIds.length;
+            return;
+          }
+          runtime.handleChunk(data);
+        },
       });
       convId = runtime.getConversationId();
       runStatus = summary.runStatus;
@@ -1435,6 +1457,8 @@ export default function AIView() {
           projectId: selectedProjectId,
           payload: {
             unresolvedCount: runtimeState.runningToolCallIds.length,
+            unresolvedCountBeforeClear,
+            unresolvedCountAfterClear,
             runStatus,
             streamPhase: "plan",
           },
