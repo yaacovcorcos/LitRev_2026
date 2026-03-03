@@ -6,8 +6,9 @@ import type {
   RetryModelContinuityPayload,
   StuckRunningToolsPayload,
 } from "@/types/chat-unification";
+import { CHAT_UNIFICATION_METRIC_VERSION } from "@/types/chat-unification";
 
-const STORAGE_KEY = "litrev:chat-unification-metrics:v1";
+const STORAGE_KEY = `litrev:chat-unification-metrics:v${CHAT_UNIFICATION_METRIC_VERSION}`;
 const STORAGE_LIMIT = 2000;
 const METRIC_EVENT = "litrev:chat-unification-metric";
 const TELEMETRY_ENDPOINT = "/api/telemetry/chat-unification";
@@ -194,7 +195,7 @@ export function recordChatUnificationMetric(
 
   const normalized: ChatUnificationMetricEvent = {
     eventId: generateMetricEventId(),
-    version: 1,
+    version: CHAT_UNIFICATION_METRIC_VERSION,
     timestamp: new Date().toISOString(),
     ...event,
   };

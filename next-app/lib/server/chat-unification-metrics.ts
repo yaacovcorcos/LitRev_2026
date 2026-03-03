@@ -6,11 +6,16 @@ import { assertProjectAccess } from "@/lib/server/access";
 import type { AuthContext } from "@/lib/server/auth/session";
 import type {
   AskUserContextMismatchPayload,
+  ChatUnificationMetricVersion,
   ChatSurface,
   ChatUnificationMetricType,
   RetryModelContinuityPayload,
   RunEndObservedPayload,
   StuckRunningToolsPayload,
+} from "@/types/chat-unification";
+import {
+  CHAT_UNIFICATION_ACCEPTED_METRIC_VERSIONS,
+  CHAT_UNIFICATION_METRIC_VERSION,
 } from "@/types/chat-unification";
 
 const CHAT_SURFACE_VALUES = ["ai", "project"] as const satisfies readonly ChatSurface[];
@@ -23,6 +28,7 @@ const CHAT_UNIFICATION_METRIC_TYPES = [
 
 const CHAT_STREAM_PHASE_VALUES = ["send", "plan", "project_stream"] as const;
 const ACTUAL_MODEL_SOURCE_VALUES = ["provider", "requested", "unknown"] as const;
+const CHAT_UNIFICATION_METRIC_VERSIONS = CHAT_UNIFICATION_ACCEPTED_METRIC_VERSIONS;
 
 const RetryModelContinuityPayloadSchema: z.ZodType<RetryModelContinuityPayload> = z.object({
   preserved: z.boolean(),
@@ -57,7 +63,10 @@ const RunEndObservedPayloadSchema: z.ZodType<RunEndObservedPayload> = z.object({
 
 const ChatUnificationMetricInputSchema = z.object({
   eventId: z.string().uuid(),
-  version: z.literal(1).optional(),
+  version: z.union([
+    z.literal(CHAT_UNIFICATION_METRIC_VERSIONS[0]),
+    z.literal(CHAT_UNIFICATION_METRIC_VERSIONS[1]),
+  ]).optional(),
   type: z.enum(CHAT_UNIFICATION_METRIC_TYPES),
   surface: z.enum(CHAT_SURFACE_VALUES),
   runId: z.string().trim().min(1).optional().nullable(),
@@ -128,6 +137,7 @@ export async function ingestChatUnificationMetric(
   input: unknown,
 ): Promise<IngestChatUnificationMetricResult> {
   const parsed = ChatUnificationMetricInputSchema.parse(input);
+  const metricVersion = (parsed.version ?? CHAT_UNIFICATION_METRIC_VERSION) as ChatUnificationMetricVersion;
   const payload = parsePayload(parsed.type, parsed.payload);
 
   if (parsed.projectId) {
@@ -143,7 +153,7 @@ export async function ingestChatUnificationMetric(
     const created = await prisma.chatUnificationMetric.create({
       data: {
         eventId: parsed.eventId,
-        version: 1,
+        version: metricVersion,
         type: parsed.type,
         surface: parsed.surface,
         userId: auth.userId,

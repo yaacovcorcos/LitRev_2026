@@ -8,6 +8,7 @@
  *   npx tsx scripts/validate-chat-unification-burn-in.ts --since=... --until=... --allowShortWindow=1
  *   npx tsx scripts/validate-chat-unification-burn-in.ts --since=... --workspaceIds=ws-1,ws-2 --userIds=user-1
  *   npx tsx scripts/validate-chat-unification-burn-in.ts --since=... --requireRunEndPerSurface=1 --minRunIdCoveragePerSurface=0.95
+ *   npx tsx scripts/validate-chat-unification-burn-in.ts --since=... --metricVersion=2
  */
 
 import { config } from "dotenv";
@@ -30,6 +31,7 @@ import {
   evaluateRunEndCoverageGates,
   formatCohortScope,
   hasCohortScope,
+  parseMetricVersionArg,
   parseCsvIdArg,
   parseIsoDateArg,
   resolveBurnInWindow,
@@ -188,6 +190,7 @@ async function main() {
     workspaceIds: parseCsvIdArg("workspaceIds", parseArg("workspaceIds")),
     userIds: parseCsvIdArg("userIds", parseArg("userIds")),
   };
+  const metricVersion = parseMetricVersionArg(parseArg("metricVersion"));
   if (coverageConfig.requireScopedCohort && !hasCohortScope(cohortScope)) {
     throw new Error(
       "Cohort scope is required. Pass --workspaceIds and/or --userIds when --requireScopedCohort=1.",
@@ -217,6 +220,7 @@ async function main() {
         surface: {
           in: [...SURFACES],
         },
+        version: metricVersion,
         ...buildCohortWhereInput(cohortScope),
       },
       select: {
@@ -264,6 +268,7 @@ async function main() {
     `Short-window override: ${allowShortWindow ? "enabled" : "disabled"}`,
     `Cohort scope: ${formatCohortScope(cohortScope)}`,
     `Rows analyzed: ${metrics.length}`,
+    `Metric version: ${metricVersion}`,
   ].join("\n");
   const body = formatChatUnificationBurnInReport(evaluation);
   const coverageSection = formatRunIdCoverageReport(runIdCoverage);
@@ -277,6 +282,7 @@ async function main() {
           until: window.until.toISOString(),
           allowShortWindow,
           rowsAnalyzed: metrics.length,
+          metricVersion,
           cohortScope,
           runIdCoverage,
           evaluation,
