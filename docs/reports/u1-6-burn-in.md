@@ -5,11 +5,12 @@ This is a prefilled Day-0 stub. Replace all `TBD_*` fields once canary is explic
 ## Canary Metadata
 
 - Environment: `production`
+- Promotion path: `TBD_PROMOTION_PATH`
+- Deployed `main` commit SHA: `TBD_MAIN_SHA`
+- Production deployment id/url: `TBD_PROD_DEPLOY_URL_OR_ID`
 - Owner: `TBD_OWNER`
 - Backup reviewer: `TBD_BACKUP_REVIEWER`
 - `CANARY_SINCE_UTC`: `TBD_CONFIRM_AT_FLAG_ENABLE`
-- `CANARY_DEPLOY_SHA`: `TBD_CONFIRM_PRODUCTION_DEPLOY_SHA`
-- `CANARY_DEPLOYMENT_URL`: `TBD_PROD_DEPLOY_URL_OR_ID`
 - Cohort workspace IDs: `TBD_WORKSPACE_IDS`
 - Cohort user IDs: `TBD_USER_IDS`
 - Flags:
@@ -18,14 +19,14 @@ This is a prefilled Day-0 stub. Replace all `TBD_*` fields once canary is explic
 
 ## Captured Candidates (Verify Before Sign-Off)
 
-- Candidate main SHA at stub generation: `bb70c14f0bd062b71a0faeb4d1ce1f54c8f9a28a`
-- Latest promotion PR observed: `#95` (`mergedAt=2026-03-03T15:40:46Z`)
-- Latest successful prior main CI observed: `22627784825` (`success`, created `2026-03-03T14:35:01Z`)
+- Candidate main SHA at stub generation: `TBD_MAIN_SHA_AT_STUB_GENERATION`
+- Latest promotion PR observed: `TBD_LATEST_PROMOTION_PR`
+- Latest successful prior main CI observed: `TBD_LATEST_MAIN_CI`
 
 ## Day-0 Preflight
 
-- Promotion PR to main: `TBD_CONFIRM`
-- Main CI run: `TBD_CONFIRM`
+- Promotion PR to main: `TBD_PROMOTION_PR` (`mergedAt=TBD_MERGED_AT`)
+- Main CI run: `TBD_CI_RUN` (`success`, completed `TBD_COMPLETED_AT`)
 - DB preflight complete: `TBD`
 - Migration command used: `TBD`
 - `run_end_observed` present on `ai`: `TBD`
@@ -40,7 +41,7 @@ This is a prefilled Day-0 stub. Replace all `TBD_*` fields once canary is explic
 ```bash
 cd next-app && npx tsx scripts/validate-chat-unification-burn-in.ts \
   --since=<CANARY_SINCE_UTC> \
-  --metricVersion=2 \
+  --metricVersion=3 \
   --workspaceIds=<ws1,ws2> \
   --userIds=<u1,u2> \
   --requireScopedCohort=1 \
