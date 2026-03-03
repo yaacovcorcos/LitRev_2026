@@ -124,6 +124,8 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
         let streamErrorMessage: string | null = null;
         let actualModel: string | null = null;
         let actualModelSource: "provider" | "requested" | "unknown" = "unknown";
+        let unresolvedCountBeforeClear: number | null = null;
+        let unresolvedCountAfterClear: number | null = null;
 
         // Cancel any in-flight stream
         if (abortControllerRef.current) {
@@ -185,6 +187,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                 shouldContinue: () => streamGenRef.current === myGen,
                 throwOnErrorChunk: true,
                 onChunk: (data) => {
+                    const runningToolCallIdsBeforeChunk = runningToolCallIds;
                     const nextState = handleProjectCopilotStreamChunk(
                         data,
                         {
@@ -245,6 +248,8 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                     } else if (data.type === "content" || data.type === "reasoning_start" || data.type === "reasoning_delta") {
                         setStreamPhase("streaming");
                     } else if (data.type === "run_end") {
+                        unresolvedCountBeforeClear = runningToolCallIdsBeforeChunk.length;
+                        unresolvedCountAfterClear = nextState.runningToolCallIds.length;
                         setStreamPhase("completing");
                     }
                 },
@@ -292,6 +297,8 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                 projectId,
                 payload: {
                     unresolvedCount: runningToolCallIds.length,
+                    unresolvedCountBeforeClear,
+                    unresolvedCountAfterClear,
                     runStatus,
                     streamPhase: "project_stream",
                 },
@@ -348,6 +355,8 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                 projectId,
                 payload: {
                     unresolvedCount: runningToolCallIds.length,
+                    unresolvedCountBeforeClear,
+                    unresolvedCountAfterClear,
                     runStatus,
                     streamPhase: "project_stream",
                 },

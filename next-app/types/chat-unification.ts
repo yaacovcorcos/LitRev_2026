@@ -35,6 +35,8 @@ export type AskUserContextMismatchPayload = {
 
 export type StuckRunningToolsPayload = {
   unresolvedCount: number;
+  unresolvedCountBeforeClear: number | null;
+  unresolvedCountAfterClear: number | null;
   runStatus: string | null;
   streamPhase: ChatUnificationStreamPhase;
 };

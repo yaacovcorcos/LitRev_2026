@@ -42,6 +42,8 @@ const AskUserContextMismatchPayloadSchema: z.ZodType<AskUserContextMismatchPaylo
 
 const StuckRunningToolsPayloadSchema: z.ZodType<StuckRunningToolsPayload> = z.object({
   unresolvedCount: z.number().int().min(0),
+  unresolvedCountBeforeClear: z.number().int().min(0).nullable().optional().default(null),
+  unresolvedCountAfterClear: z.number().int().min(0).nullable().optional().default(null),
   runStatus: z.string().nullable(),
   streamPhase: z.enum(CHAT_STREAM_PHASE_VALUES),
 });

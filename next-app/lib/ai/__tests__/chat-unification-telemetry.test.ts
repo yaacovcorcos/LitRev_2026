@@ -55,6 +55,8 @@ describe("chat unification telemetry", () => {
       surface: "project",
       payload: {
         unresolvedCount: 2,
+        unresolvedCountBeforeClear: 2,
+        unresolvedCountAfterClear: 0,
         runStatus: "failed",
         streamPhase: "project_stream",
       },
@@ -65,6 +67,8 @@ describe("chat unification telemetry", () => {
       surface: "project",
       payload: {
         unresolvedCount: 0,
+        unresolvedCountBeforeClear: 0,
+        unresolvedCountAfterClear: 0,
         runStatus: "completed",
         streamPhase: "project_stream",
       },
