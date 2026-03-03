@@ -12,6 +12,7 @@ import { CopilotInput } from "../copilot/CopilotInput";
 import { AutonomySettings } from "../copilot/AutonomySettings";
 import { SuggestionChips } from "./SuggestionChips";
 import { ConversationPicker } from "../ui/ConversationPicker";
+import { generateChatUnificationRequestKey } from "@/lib/ai/chat-unification-telemetry";
 import styles from "./ConversationMainView.module.css";
 
 export type ConversationMainViewProps = {
@@ -98,6 +99,7 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
             undefined,
             undefined,
             {
+                requestKey: generateChatUnificationRequestKey(),
                 expectedModel: selectedModel ?? null,
                 source: "retry_action",
             },

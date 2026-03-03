@@ -128,14 +128,18 @@
     background: rgba(var(--rgb-ui-surface), 0.6);
     font-size: 13px;
     color: var(--text-primary);
-    outline: none;
+    outline: 2px solid transparent;
+    outline-offset: 2px;
     transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .dropdownSearchInput:focus {
-    outline: none;
     border-color: var(--focus-ring-color, var(--accent-primary));
     box-shadow: var(--shadow-focus-ring);
+}
+
+.dropdownSearchInput:focus-visible {
+    outline-color: var(--focus-ring-color, var(--accent-primary));
 }
 
 .dropdownList {

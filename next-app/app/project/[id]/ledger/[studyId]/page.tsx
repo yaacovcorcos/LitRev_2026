@@ -21,6 +21,7 @@ import type { Study, StudyDetails, StudyRelevance } from "@/types/ledger";
 import type { FileAsset } from "@/types/files";
 import { AlertDialog } from "@/components/ConfirmDialog";
 import { compileDraftCitations, getCitedSectionIdsByStudyId } from "@/lib/citation-compiler";
+import { isMobileLedgerV2Enabled } from "@/lib/mobile/feature-flags";
 import styles from "./study.module.css";
 
 // Build lookup for section labels
@@ -45,11 +46,13 @@ const RELEVANCE_COMPONENT_KEYS = Object.keys(RELEVANCE_COMPONENT_LABELS) as Arra
 
 export default function StudyDetailPage() {
     const { id, studyId } = useParams<{ id: string; studyId: string }>();
+    const mobileLedgerV2Enabled = isMobileLedgerV2Enabled();
     const { getProjectById, isLoadingProjects, projectsError } = useProjects();
     const { getStudyById, updateSingleStudy } = useLedger();
     const { isEmbeddedInProjectShell } = useProjectShell();
 
     const project = id ? getProjectById(id) : undefined;
+    const ledgerStudyMainClassName = `${styles.appMainOverride} ${mobileLedgerV2Enabled ? styles.appMainOverrideMobileV2 : ""}`;
     const [study, setStudy] = useState<Study | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [isEditing, setIsEditing] = useState(false);
@@ -349,7 +352,7 @@ export default function StudyDetailPage() {
 
     if (isLoadingProjects) {
         return (
-            <ProjectPageLayout mainClassName={styles.appMainOverride}>
+            <ProjectPageLayout mainClassName={ledgerStudyMainClassName}>
                 <EmptyStateSkeleton className={styles.notFound} />
             </ProjectPageLayout>
         );
@@ -357,7 +360,7 @@ export default function StudyDetailPage() {
 
     if (projectsError) {
         return (
-            <ProjectPageLayout mainClassName={styles.appMainOverride}>
+            <ProjectPageLayout mainClassName={ledgerStudyMainClassName}>
                 <EmptyState
                     variant="error"
                     icon="cloud_off"
@@ -373,7 +376,7 @@ export default function StudyDetailPage() {
 
     if (!project) {
         return (
-            <ProjectPageLayout mainClassName={styles.appMainOverride}>
+            <ProjectPageLayout mainClassName={ledgerStudyMainClassName}>
                 <EmptyState
                     variant="error"
                     icon="folder_off"
@@ -388,7 +391,7 @@ export default function StudyDetailPage() {
 
     if (isLoading) {
         return (
-            <ProjectPageLayout mainClassName={styles.appMainOverride}>
+            <ProjectPageLayout mainClassName={ledgerStudyMainClassName}>
                 <EmptyStateSkeleton className={styles.notFound} />
             </ProjectPageLayout>
         );
@@ -396,7 +399,7 @@ export default function StudyDetailPage() {
 
     if (!study) {
         return (
-            <ProjectPageLayout mainClassName={styles.appMainOverride}>
+            <ProjectPageLayout mainClassName={ledgerStudyMainClassName}>
                 <EmptyState
                     variant="error"
                     icon="article"
@@ -849,7 +852,7 @@ export default function StudyDetailPage() {
 
     return (
         <ProjectPageLayout
-            mainClassName={styles.appMainOverride}
+            mainClassName={ledgerStudyMainClassName}
             copilot={{
                 page: "study",
                 studyId,

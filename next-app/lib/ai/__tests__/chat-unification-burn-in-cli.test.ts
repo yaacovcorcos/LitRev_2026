@@ -68,7 +68,8 @@ describe("chat unification burn-in CLI helpers", () => {
       CHAT_UNIFICATION_METRIC_VERSION,
     );
     expect(parseMetricVersionArg("1")).toBe(1);
-    expect(() => parseMetricVersionArg("3")).toThrow("Unsupported --metricVersion=3");
+    expect(parseMetricVersionArg("2")).toBe(2);
+    expect(() => parseMetricVersionArg("4")).toThrow("Unsupported --metricVersion=4");
   });
 
   it("formats and materializes cohort scope filters", () => {

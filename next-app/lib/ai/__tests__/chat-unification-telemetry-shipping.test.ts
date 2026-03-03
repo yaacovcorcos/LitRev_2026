@@ -37,10 +37,8 @@ describe("chat unification telemetry shipping", () => {
       conversationId: "conv-1",
       projectId: "project-1",
       payload: {
-        preserved: true,
+        requestKey: "7c76966b-84c6-4cf4-98c4-f6c68f7b5911",
         expectedModel: "gpt-5.2",
-        actualModel: "gpt-5.2",
-        actualModelSource: "provider",
         source: "retry_action",
       },
     });

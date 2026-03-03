@@ -1,8 +1,8 @@
 export type ChatSurface = "ai" | "project";
 
 export type ChatUnificationStreamPhase = "send" | "plan" | "project_stream";
-export const CHAT_UNIFICATION_METRIC_VERSION = 2 as const;
-export const CHAT_UNIFICATION_ACCEPTED_METRIC_VERSIONS = [1, CHAT_UNIFICATION_METRIC_VERSION] as const;
+export const CHAT_UNIFICATION_METRIC_VERSION = 3 as const;
+export const CHAT_UNIFICATION_ACCEPTED_METRIC_VERSIONS = [1, 2, CHAT_UNIFICATION_METRIC_VERSION] as const;
 export type ChatUnificationMetricVersion = (typeof CHAT_UNIFICATION_ACCEPTED_METRIC_VERSIONS)[number];
 
 export type ChatUnificationMetricType =
@@ -16,15 +16,14 @@ export type ChatUnificationActualModelSource = "provider" | "requested" | "unkno
 export type RetryModelContinuitySource = "retry_action";
 
 export type RetryModelExpectation = {
+  requestKey: string;
   expectedModel: string | null;
   source: RetryModelContinuitySource;
 };
 
 export type RetryModelContinuityPayload = {
-  preserved: boolean;
+  requestKey: string;
   expectedModel: string | null;
-  actualModel: string | null;
-  actualModelSource: ChatUnificationActualModelSource;
   source: RetryModelContinuitySource;
 };
 
@@ -45,6 +44,7 @@ export type StuckRunningToolsPayload = {
 };
 
 export type RunEndObservedPayload = {
+  requestKey?: string | null;
   runStatus: string | null;
   streamPhase: ChatUnificationStreamPhase;
   actualModel: string | null;

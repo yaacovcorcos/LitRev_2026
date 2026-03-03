@@ -47,9 +47,8 @@ describe("chat-unification-metrics", () => {
       surface: "ai",
       runId: "run-1",
       payload: {
-        preserved: true,
+        requestKey: "57f83cc1-fd08-4204-8d34-5b14b84f0d91",
         expectedModel: "gpt-5.2",
-        actualModel: "gpt-5.2",
         source: "retry_action",
       },
     });
@@ -64,6 +63,32 @@ describe("chat-unification-metrics", () => {
           userId: "user-1",
           workspaceId: "ws-1",
           runId: "run-1",
+        }),
+      }),
+    );
+  });
+
+  it("accepts explicit metric version 3 payloads", async () => {
+    mocks.agentRunFindFirst.mockResolvedValue(null);
+    mocks.chatMetricCreate.mockResolvedValue({ id: "metric-v3" });
+
+    const result = await ingestChatUnificationMetric(AUTH, {
+      eventId: "d15ea95a-b1da-449c-a132-c71ca6a6c568",
+      version: 3,
+      type: "retry_model_continuity",
+      surface: "project",
+      payload: {
+        requestKey: "7b1ca9fd-5e5b-4d7b-a2e4-2b3d8f2af1f8",
+        expectedModel: "claude-sonnet",
+        source: "retry_action",
+      },
+    });
+
+    expect(result).toEqual({ deduped: false, id: "metric-v3" });
+    expect(mocks.chatMetricCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          version: 3,
         }),
       }),
     );

@@ -5,6 +5,7 @@ import type { FocusMode, ViewTab } from "@/contexts/ProjectShellContext";
 import type { ProjectDataDomain } from "@/lib/project-data-events";
 import { useProjectData } from "@/hooks/useProjectData";
 import { Modal } from "@/components/Modal";
+import { isMobileTelemetryContext, recordMobileMetric } from "@/lib/mobile/telemetry";
 import { StatusIndicator } from "./StatusIndicator";
 import styles from "./ProjectTabBar.module.css";
 
@@ -58,6 +59,20 @@ export function ProjectTabBar({
         if (domain) warmDomain(domain);
     }, [warmDomain]);
 
+    const recordNavigationTap = useCallback((actionId: string) => {
+        if (!isMobileTelemetryContext()) return;
+        recordMobileMetric({
+            type: "mobile_action_tap",
+            surface: "project_shell",
+            payload: {
+                route: typeof window !== "undefined" ? window.location.pathname : "/project",
+                actionId,
+                targetMinPx: 44,
+                inputMode: "touch",
+            },
+        });
+    }, []);
+
     return (
         <>
             <nav className={styles.tabBar} aria-label="Project navigation">
@@ -68,7 +83,10 @@ export function ProjectTabBar({
                         role="radio"
                         aria-checked={focusMode === "conversation"}
                         className={`${styles.modeBtn} ${focusMode === "conversation" ? styles.modeBtnActive : ""}`}
-                        onClick={onConversationClick}
+                        onClick={() => {
+                            recordNavigationTap("mode_conversation");
+                            onConversationClick();
+                        }}
                     >
                         <span className="material-icons-round">chat</span>
                         <span className={styles.btnLabel}>Conversation</span>
@@ -78,7 +96,10 @@ export function ProjectTabBar({
                         role="radio"
                         aria-checked={focusMode === "view"}
                         className={`${styles.modeBtn} ${focusMode === "view" ? styles.modeBtnActive : ""}`}
-                        onClick={() => onTabClick(activeTab ?? "overview")}
+                        onClick={() => {
+                            recordNavigationTap("mode_workspace");
+                            onTabClick(activeTab ?? "overview");
+                        }}
                     >
                         <span className="material-icons-round">workspaces</span>
                         <span className={styles.btnLabel}>Workspace</span>
@@ -93,7 +114,10 @@ export function ProjectTabBar({
                             role="tab"
                             aria-selected={activeTab === tab.key && focusMode === "view"}
                             className={`${styles.tab} ${activeTab === tab.key && focusMode === "view" ? styles.tabActive : ""}`}
-                            onClick={() => onTabClick(tab.key)}
+                            onClick={() => {
+                                recordNavigationTap(`tab_${tab.key}`);
+                                onTabClick(tab.key);
+                            }}
                             onMouseEnter={() => handleTabIntent(tab.key)}
                             onFocus={() => handleTabIntent(tab.key)}
                         >

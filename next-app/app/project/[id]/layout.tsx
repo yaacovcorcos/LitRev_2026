@@ -18,6 +18,8 @@ import type { CopilotPage } from "@/types/ai";
 import { DemoBanner } from "@/components/project/DemoBanner";
 import { isDemoProjectId } from "@/lib/demo/constants";
 import { shouldSkipPreload } from "@/lib/network-aware";
+import { MOBILE_VIEWPORT_MEDIA_QUERY } from "@/lib/mobile/breakpoints";
+import { isMobileScrollLockV2Enabled, isMobileViewportV2Enabled } from "@/lib/mobile/feature-flags";
 import { ProjectDataProvider } from "@/contexts/ProjectDataContext";
 import styles from "./project-shell.module.css";
 
@@ -40,8 +42,10 @@ type ProjectShellInnerProps = {
 };
 
 function ProjectShellInner({ projectId, children }: ProjectShellInnerProps) {
-    const router = useRouter();
-    const pathname = usePathname();
+  const router = useRouter();
+  const pathname = usePathname();
+  const mobileViewportV2Enabled = isMobileViewportV2Enabled();
+  const mobileScrollLockV2Enabled = isMobileScrollLockV2Enabled();
     const { isCollapsed, panelWidth, setPanelWidth, toggleCollapsed, setStudyFilter } = useProjectCopilot();
     const { registerCopilotToggle } = useCommandPalette();
     const { getProjectById, deleteProject } = useProjects();
@@ -95,18 +99,58 @@ function ProjectShellInner({ projectId, children }: ProjectShellInnerProps) {
         const prevBodyOverflow = body.style.overflow;
         const prevBodyOverscroll = body.style.overscrollBehavior;
 
-        html.style.overflow = "hidden";
-        html.style.overscrollBehavior = "none";
-        body.style.overflow = "hidden";
-        body.style.overscrollBehavior = "none";
+        const applyLockedRootScroll = () => {
+            html.style.overflow = "hidden";
+            html.style.overscrollBehavior = "none";
+            body.style.overflow = "hidden";
+            body.style.overscrollBehavior = "none";
+        };
+
+        const applyUnlockedRootScroll = () => {
+            html.style.overflow = "";
+            html.style.overscrollBehavior = "";
+            body.style.overflow = "";
+            body.style.overscrollBehavior = "";
+        };
+
+        if (!mobileScrollLockV2Enabled || typeof window === "undefined") {
+            applyLockedRootScroll();
+            return () => {
+                html.style.overflow = prevHtmlOverflow;
+                html.style.overscrollBehavior = prevHtmlOverscroll;
+                body.style.overflow = prevBodyOverflow;
+                body.style.overscrollBehavior = prevBodyOverscroll;
+            };
+        }
+
+        const mobileQuery = window.matchMedia(MOBILE_VIEWPORT_MEDIA_QUERY);
+        const applyByViewport = () => {
+            if (mobileQuery.matches) {
+                applyUnlockedRootScroll();
+                return;
+            }
+            applyLockedRootScroll();
+        };
+
+        applyByViewport();
+        if (typeof mobileQuery.addEventListener === "function") {
+            mobileQuery.addEventListener("change", applyByViewport);
+        } else if (typeof mobileQuery.addListener === "function") {
+            mobileQuery.addListener(applyByViewport);
+        }
 
         return () => {
+            if (typeof mobileQuery.removeEventListener === "function") {
+                mobileQuery.removeEventListener("change", applyByViewport);
+            } else if (typeof mobileQuery.removeListener === "function") {
+                mobileQuery.removeListener(applyByViewport);
+            }
             html.style.overflow = prevHtmlOverflow;
             html.style.overscrollBehavior = prevHtmlOverscroll;
             body.style.overflow = prevBodyOverflow;
             body.style.overscrollBehavior = prevBodyOverscroll;
         };
-    }, []);
+    }, [mobileScrollLockV2Enabled]);
 
     // Derive initial mode from route to avoid deep-link flicker.
     const [focusMode, setFocusMode] = useState<FocusMode>(() =>
@@ -232,7 +276,12 @@ function ProjectShellInner({ projectId, children }: ProjectShellInnerProps) {
 
     return (
         <ProjectShellProvider value={shellValue}>
-            <AppShell activeNav="projects" mainClassName={styles.shellMain} noMainPadding initiallyCollapsed>
+            <AppShell
+                activeNav="projects"
+                mainClassName={`${styles.shellMain} ${mobileViewportV2Enabled ? styles.shellMainViewportV2 : ""}`}
+                noMainPadding
+                initiallyCollapsed
+            >
                 {isOnboardingRoute ? (
                     <div className={styles.onboardingBody}>{children}</div>
                 ) : (

@@ -11,6 +11,10 @@
     overflow: hidden;
 }
 
+.layout[data-mobile-ai-v2="true"] {
+    height: calc(var(--app-height, 100vh) - var(--header-height, 44px) - var(--content-top-offset, 12px) - var(--mobile-nav-offset, 0px));
+}
+
 .layout[data-history-collapsed="true"] {
     --history-width: 60px;
 }
@@ -31,6 +35,10 @@
     left: var(--shell-sidebar-width, 200px);
     height: calc(100vh - var(--header-height, 44px));
     z-index: var(--z-sidebar);
+}
+
+.layout[data-mobile-ai-v2="true"] .historySidebar {
+    height: calc(var(--app-height, 100vh) - var(--header-height, 44px));
 }
 
 .collapsed {
@@ -199,13 +207,18 @@
     color: var(--text-primary);
     font-family: inherit;
     font-size: 13px;
-    outline: none;
+    outline: 2px solid transparent;
+    outline-offset: 2px;
 }
 
 .renameInput:focus,
 .renameInput:focus-visible {
-    outline: none;
     border-color: rgba(var(--rgb-ui-contrast), 0.25);
+    box-shadow: var(--shadow-focus-ring);
+}
+
+.renameInput:focus-visible {
+    outline-color: var(--focus-ring-color, var(--accent-primary));
 }
 
 .activeHistory {
@@ -451,6 +464,10 @@
         border-right: none;
         height: auto;
         overflow: visible;
+    }
+
+    .layout[data-mobile-ai-v2="true"] .historySidebar {
+        height: auto;
     }
 
     .chatInterface {
