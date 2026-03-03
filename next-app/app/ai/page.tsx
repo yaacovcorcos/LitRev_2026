@@ -28,10 +28,8 @@ import { dispatchProjectDataChanged, getChangedDomainsForAcceptedArtifact } from
 import { isNavigationSafe } from "@/lib/ai/navigation-safety";
 import { formatStreamErrorForUI } from "@/lib/ai/stream-error-ui";
 import { createAiStreamRuntime } from "@/lib/ai/ai-stream-runtime";
-import {
-  createChatUnificationRequestKey,
-  recordChatUnificationMetric,
-} from "@/lib/ai/chat-unification-telemetry";
+import { generateChatUnificationRequestKey, recordChatUnificationMetric } from "@/lib/ai/chat-unification-telemetry";
+import type { RetryModelExpectation } from "@/types/chat-unification";
 import {
   getReasoningBudgetTokens,
   getReasoningModePreference,
@@ -913,7 +911,7 @@ export default function AIView() {
     model?: string,
     agentMode?: AgentMode,
     _studyId?: string,
-    retryRequestKey?: string,
+    retryModelExpectation?: RetryModelExpectation,
   ) => {
     const msgText = rawText.trim();
     if (!msgText || sendLockRef.current) return;
@@ -928,6 +926,19 @@ export default function AIView() {
     const requestReasoningMode = resolveRequestReasoningMode(reasoningMode, effectiveModel);
 
     let convId = await ensureConversation(context);
+    if (retryModelExpectation) {
+      recordChatUnificationMetric({
+        type: "retry_model_continuity",
+        surface: "ai",
+        conversationId: convId,
+        projectId: selectedProjectId,
+        payload: {
+          requestKey: retryModelExpectation.requestKey,
+          expectedModel: retryModelExpectation.expectedModel,
+          source: retryModelExpectation.source,
+        },
+      });
+    }
 
     const nowIso = new Date().toISOString();
     const userId = `m-${Date.now()}`;
@@ -968,6 +979,10 @@ export default function AIView() {
 
     const aiMessageId = `m-${Date.now() + 1}`;
     let runStatus: string | null = null;
+    let actualModel: string | null = null;
+    let actualModelSource: "provider" | "requested" | "unknown" = "unknown";
+    let unresolvedCountBeforeClear: number | null = null;
+    let unresolvedCountAfterClear: number | null = null;
     let aborted = false;
     const runtime = createAiStreamRuntime({
       aiMessageId,
@@ -997,13 +1012,13 @@ export default function AIView() {
             conversationId: convId,
             projectId: selectedProjectId ?? undefined,
             model: effectiveModel,
-            retryRequestKey,
             reasoningMode: requestReasoningMode,
             includeReasoning: shouldRequestReasoning(requestReasoningMode),
             reasoningBudgetTokens: getReasoningBudgetTokens(requestReasoningMode),
             agentMode: effectiveAgentMode,
             page: currentPage,
             section,
+            telemetryRequestKey: retryModelExpectation?.requestKey,
 
             additionalContext: selectedProjectId ? undefined : (workspaceContextText || undefined),
           },
@@ -1028,6 +1043,11 @@ export default function AIView() {
         onChunk: (data) => runtime.handleChunk(data),
       });
       runStatus = summary.runStatus;
+      actualModel = summary.actualModel;
+      actualModelSource = summary.actualModelSource;
+      const runEndToolCounts = runtime.getLastRunEndToolCounts();
+      unresolvedCountBeforeClear = runEndToolCounts?.beforeClear ?? null;
+      unresolvedCountAfterClear = runEndToolCounts?.afterClear ?? null;
       convId = runtime.getConversationId();
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") {
@@ -1059,8 +1079,11 @@ export default function AIView() {
           conversationId: runtime.getConversationId(),
           projectId: selectedProjectId,
           payload: {
+            requestKey: retryModelExpectation?.requestKey ?? null,
             runStatus,
             streamPhase: "send",
+            actualModel,
+            actualModelSource,
           },
         });
         recordChatUnificationMetric({
@@ -1071,6 +1094,8 @@ export default function AIView() {
           projectId: selectedProjectId,
           payload: {
             unresolvedCount: runtimeState.runningToolCallIds.length,
+            unresolvedCountBeforeClear,
+            unresolvedCountAfterClear,
             runStatus,
             streamPhase: "send",
           },
@@ -1309,6 +1334,10 @@ export default function AIView() {
 
     const aiMessageId = `m-${Date.now() + 1}`;
     let runStatus: string | null = null;
+    let actualModel: string | null = null;
+    let actualModelSource: "provider" | "requested" | "unknown" = "unknown";
+    let unresolvedCountBeforeClear: number | null = null;
+    let unresolvedCountAfterClear: number | null = null;
     let stopReason: string | null = null;
     let errorMessage: string | null = null;
     let aborted = false;
@@ -1370,6 +1399,11 @@ export default function AIView() {
       });
       convId = runtime.getConversationId();
       runStatus = summary.runStatus;
+      actualModel = summary.actualModel;
+      actualModelSource = summary.actualModelSource;
+      const runEndToolCounts = runtime.getLastRunEndToolCounts();
+      unresolvedCountBeforeClear = runEndToolCounts?.beforeClear ?? null;
+      unresolvedCountAfterClear = runEndToolCounts?.afterClear ?? null;
       stopReason = summary.stopReason;
       errorMessage = summary.errorMessage;
     } catch (err) {
@@ -1394,6 +1428,8 @@ export default function AIView() {
           payload: {
             runStatus,
             streamPhase: "plan",
+            actualModel,
+            actualModelSource,
           },
         });
         recordChatUnificationMetric({
@@ -1404,6 +1440,8 @@ export default function AIView() {
           projectId: selectedProjectId,
           payload: {
             unresolvedCount: runtimeState.runningToolCallIds.length,
+            unresolvedCountBeforeClear,
+            unresolvedCountAfterClear,
             runStatus,
             streamPhase: "plan",
           },
@@ -1508,19 +1546,19 @@ export default function AIView() {
     setPendingChoices([]);
     setPendingUserInput(null);
     setPrefillCommand(null);
-    const retryRequestKey = createChatUnificationRequestKey();
-    recordChatUnificationMetric({
-      type: "retry_model_continuity",
-      surface: "ai",
-      conversationId: convId,
-      projectId: selectedProjectId,
-      payload: {
-        expectedModel: selectedModel,
-        requestKey: retryRequestKey,
+    void handleSend(
+      retryText,
+      "ai",
+      undefined,
+      selectedModel,
+      undefined,
+      undefined,
+      {
+        requestKey: generateChatUnificationRequestKey(),
+        expectedModel: selectedModel ?? null,
         source: "retry_action",
       },
-    });
-    void handleSend(retryText, "ai", undefined, selectedModel, undefined, undefined, retryRequestKey);
+    );
   }, [isTyping, activeConversationId, timelineByConversation, handleSend, selectedModel, selectedProjectId]);
 
   const handlePrefillConsumed = useCallback(() => {

@@ -123,8 +123,6 @@ export type ChatOptions = {
     telemetryRequestKey?: string;
     stream?: boolean;
     signal?: AbortSignal;
-    /** Correlation key for retry continuity telemetry (U1.6 metric v2). */
-    retryRequestKey?: string;
 };
 
 // Response types

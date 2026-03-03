@@ -6,8 +6,9 @@ import type {
   RetryModelContinuityPayload,
   StuckRunningToolsPayload,
 } from "@/types/chat-unification";
+import { CHAT_UNIFICATION_METRIC_VERSION } from "@/types/chat-unification";
 
-const STORAGE_KEY = "litrev:chat-unification-metrics:v1";
+const STORAGE_KEY = `litrev:chat-unification-metrics:v${CHAT_UNIFICATION_METRIC_VERSION}`;
 const STORAGE_LIMIT = 2000;
 const METRIC_EVENT = "litrev:chat-unification-metric";
 const TELEMETRY_ENDPOINT = "/api/telemetry/chat-unification";
@@ -54,13 +55,24 @@ function generateMetricEventId(): string {
   return generateUuidV4Fallback();
 }
 
-export function createChatUnificationRequestKey(): string {
+export function generateChatUnificationRequestKey(): string {
   return generateMetricEventId();
 }
 
 function computeRate(total: number, numerator: number): number | null {
   if (total <= 0) return null;
   return numerator / total;
+}
+
+function payloadAsRecord(payload: unknown): Record<string, unknown> | null {
+  if (!payload || typeof payload !== "object") return null;
+  return payload as Record<string, unknown>;
+}
+
+function getPayloadRequestKey(payload: unknown): string | null {
+  const record = payloadAsRecord(payload);
+  const key = record?.requestKey;
+  return typeof key === "string" && key.length > 0 ? key : null;
 }
 
 function shouldShipToServer(): boolean {
@@ -198,7 +210,7 @@ export function recordChatUnificationMetric(
 
   const normalized: ChatUnificationMetricEvent = {
     eventId: generateMetricEventId(),
-    version: 2,
+    version: CHAT_UNIFICATION_METRIC_VERSION,
     timestamp: new Date().toISOString(),
     ...event,
   };
@@ -255,9 +267,26 @@ export function summarizeChatUnificationMetrics(
   const stuckEvents = events.filter((event) => event.type === "stuck_running_tools_after_run_end");
   const runEndEvents = events.filter((event) => event.type === "run_end_observed");
 
+  const runEndByRequestKey = new Map<string, RunEndObservedPayload>();
+  for (const runEndEvent of runEndEvents) {
+    const payload = runEndEvent.payload as RunEndObservedPayload;
+    const requestKey = getPayloadRequestKey(payload);
+    if (!requestKey) continue;
+    runEndByRequestKey.set(requestKey, payload);
+  }
+
   const preserved = retryEvents.filter((event) => {
     const payload = event.payload as RetryModelContinuityPayload;
-    return "preserved" in payload && payload.preserved;
+    const requestKey = getPayloadRequestKey(payload);
+    if (!requestKey) {
+      const legacyPayload = payloadAsRecord(payload);
+      return legacyPayload?.preserved === true;
+    }
+    const runPayload = runEndByRequestKey.get(requestKey);
+    if (!runPayload) return false;
+    return payload.expectedModel !== null
+      && runPayload.actualModel !== null
+      && payload.expectedModel === runPayload.actualModel;
   }).length;
 
   const mismatches = askUserEvents.filter((event) => {

@@ -21,6 +21,7 @@ import type { ArtifactActionContract } from "@/lib/artifacts/action-contract";
 import { getReasoningBudgetTokens, shouldRequestReasoning } from "@/lib/ai/reasoning-visibility";
 import { formatStreamErrorForUI } from "@/lib/ai/stream-error-ui";
 import { recordChatUnificationMetric } from "@/lib/ai/chat-unification-telemetry";
+import type { RetryModelExpectation } from "@/types/chat-unification";
 import type { PendingAttachment, ApproveArtifactsBatchResult } from "@/types/copilot-context";
 import type { useCopilotConversations } from "@/hooks/useCopilotConversations";
 
@@ -86,9 +87,20 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
         page: CopilotPage;
         section?: string;
         convId: string | null;
+        retryRequestKey?: string;
         onPlanStepUpdate?: (planId: string, stepIndex: number, stepStatus: string) => void;
-    }): Promise<{ success: boolean; aborted: boolean; runStatus: string | null; stopReason: string | null; errorMessage: string | null }> => {
-        const { body, page, section, convId, onPlanStepUpdate } = params;
+    }): Promise<{
+        success: boolean;
+        aborted: boolean;
+        runStatus: string | null;
+        stopReason: string | null;
+        errorMessage: string | null;
+        actualModel: string | null;
+        actualModelSource: "provider" | "requested" | "unknown";
+        runId: string | null;
+        conversationId: string | null;
+    }> => {
+        const { body, page, section, convId, retryRequestKey, onPlanStepUpdate } = params;
         let effectiveConvId = convId;
 
         // Stream lifecycle guards
@@ -111,6 +123,10 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
         let runStatus: string | null = null;
         let stopReason: string | null = null;
         let streamErrorMessage: string | null = null;
+        let actualModel: string | null = null;
+        let actualModelSource: "provider" | "requested" | "unknown" = "unknown";
+        let unresolvedCountBeforeClear: number | null = null;
+        let unresolvedCountAfterClear: number | null = null;
 
         // Cancel any in-flight stream
         if (abortControllerRef.current) {
@@ -172,6 +188,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                 shouldContinue: () => streamGenRef.current === myGen,
                 throwOnErrorChunk: true,
                 onChunk: (data) => {
+                    const runningToolCallIdsBeforeChunk = runningToolCallIds;
                     const nextState = handleProjectCopilotStreamChunk(
                         data,
                         {
@@ -232,6 +249,8 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                     } else if (data.type === "content" || data.type === "reasoning_start" || data.type === "reasoning_delta") {
                         setStreamPhase("streaming");
                     } else if (data.type === "run_end") {
+                        unresolvedCountBeforeClear = runningToolCallIdsBeforeChunk.length;
+                        unresolvedCountAfterClear = nextState.runningToolCallIds.length;
                         setStreamPhase("completing");
                     }
                 },
@@ -239,10 +258,22 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
             runStatus = summary.runStatus;
             stopReason = summary.stopReason;
             streamErrorMessage = summary.errorMessage ? formatStreamErrorForUI(summary.errorMessage) : null;
+            actualModel = summary.actualModel;
+            actualModelSource = summary.actualModelSource;
 
             // Stale generation — skip refresh
             if (streamGenRef.current !== myGen) {
-                return { success: false, aborted: true, runStatus, stopReason, errorMessage: streamErrorMessage };
+                return {
+                    success: false,
+                    aborted: true,
+                    runStatus,
+                    stopReason,
+                    errorMessage: streamErrorMessage,
+                    actualModel,
+                    actualModelSource,
+                    runId: localRunId || null,
+                    conversationId: effectiveConvId,
+                };
             }
 
             recordChatUnificationMetric({
@@ -252,8 +283,11 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                 conversationId: effectiveConvId,
                 projectId,
                 payload: {
+                    requestKey: retryRequestKey ?? null,
                     runStatus,
                     streamPhase: "project_stream",
+                    actualModel,
+                    actualModelSource,
                 },
             });
 
@@ -265,6 +299,8 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                 projectId,
                 payload: {
                     unresolvedCount: runningToolCallIds.length,
+                    unresolvedCountBeforeClear,
+                    unresolvedCountAfterClear,
                     runStatus,
                     streamPhase: "project_stream",
                 },
@@ -272,11 +308,31 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
 
             // Refresh conversation list to update titles/counts
             convo.loadConversations();
-            return { success: true, aborted: false, runStatus, stopReason, errorMessage: streamErrorMessage };
+            return {
+                success: true,
+                aborted: false,
+                runStatus,
+                stopReason,
+                errorMessage: streamErrorMessage,
+                actualModel,
+                actualModelSource,
+                runId: localRunId || null,
+                conversationId: effectiveConvId,
+            };
         } catch (error) {
             // Silently ignore aborted requests
             if (error instanceof DOMException && error.name === "AbortError") {
-                return { success: false, aborted: true, runStatus, stopReason, errorMessage: streamErrorMessage };
+                return {
+                    success: false,
+                    aborted: true,
+                    runStatus,
+                    stopReason,
+                    errorMessage: streamErrorMessage,
+                    actualModel,
+                    actualModelSource,
+                    runId: localRunId || null,
+                    conversationId: effectiveConvId,
+                };
             }
 
             recordChatUnificationMetric({
@@ -286,8 +342,11 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                 conversationId: effectiveConvId,
                 projectId,
                 payload: {
+                    requestKey: retryRequestKey ?? null,
                     runStatus,
                     streamPhase: "project_stream",
+                    actualModel,
+                    actualModelSource,
                 },
             });
 
@@ -299,6 +358,8 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                 projectId,
                 payload: {
                     unresolvedCount: runningToolCallIds.length,
+                    unresolvedCountBeforeClear,
+                    unresolvedCountAfterClear,
                     runStatus,
                     streamPhase: "project_stream",
                 },
@@ -341,6 +402,10 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                 runStatus,
                 stopReason,
                 errorMessage: friendlyError,
+                actualModel,
+                actualModelSource,
+                runId: localRunId || null,
+                conversationId: effectiveConvId,
             };
         } finally {
             if (streamGenRef.current === myGen) {
@@ -362,7 +427,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
             model?: string,
             agentMode?: AgentMode,
             studyId?: string,
-            retryRequestKey?: string,
+            retryModelExpectation?: RetryModelExpectation,
         ) => {
             const trimmed = text.trim();
             const attachment = pendingAttachment;
@@ -431,6 +496,20 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                 messages: [...prev.messages, userMessage],
             }));
 
+            if (retryModelExpectation) {
+                recordChatUnificationMetric({
+                    type: "retry_model_continuity",
+                    surface: "project",
+                    conversationId: convId ?? null,
+                    projectId,
+                    payload: {
+                        requestKey: retryModelExpectation.requestKey,
+                        expectedModel: retryModelExpectation.expectedModel,
+                        source: retryModelExpectation.source,
+                    },
+                });
+            }
+
             // Run the stream
             await runStream({
                 body: {
@@ -441,7 +520,6 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                         projectId,
                         studyId,
                         model,
-                        retryRequestKey,
                         reasoningMode,
                         includeReasoning: shouldRequestReasoning(reasoningMode),
                         reasoningBudgetTokens: getReasoningBudgetTokens(reasoningMode),
@@ -450,11 +528,13 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                         section,
                         persistedUserMessageContent: displayText,
                         userMessageAttachments: attachmentsMeta,
+                        telemetryRequestKey: retryModelExpectation?.requestKey,
                     },
                 },
                 page,
                 section,
                 convId,
+                retryRequestKey: retryModelExpectation?.requestKey,
             });
         },
         [updateState, projectId, cancelStream, convo, pendingAttachment, reasoningMode, runStream, setPendingChoices, setPendingAttachment, isLoadingRef]

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { CHAT_UNIFICATION_METRIC_VERSION } from "@/types/chat-unification";
 
 const mocks = vi.hoisted(() => ({
   chatMetricCreate: vi.fn(),
@@ -36,19 +37,18 @@ describe("chat-unification-metrics", () => {
     vi.clearAllMocks();
   });
 
-  it("ingests retry continuity intent metrics (v2) with server-enriched identity", async () => {
+  it("ingests retry continuity metrics with server-enriched identity", async () => {
     mocks.agentRunFindFirst.mockResolvedValue({ id: "run-1" });
     mocks.chatMetricCreate.mockResolvedValue({ id: "metric-1" });
 
     const result = await ingestChatUnificationMetric(AUTH, {
       eventId: "f7b7e4ad-a620-4b6d-bf93-2d9ce2f8ff2e",
-      version: 2,
       type: "retry_model_continuity",
       surface: "ai",
       runId: "run-1",
       payload: {
+        requestKey: "57f83cc1-fd08-4204-8d34-5b14b84f0d91",
         expectedModel: "gpt-5.2",
-        requestKey: "889d119c-c2af-4ee6-a67d-c3ef98935d18",
         source: "retry_action",
       },
     });
@@ -57,8 +57,8 @@ describe("chat-unification-metrics", () => {
     expect(mocks.chatMetricCreate).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
-          version: 2,
           type: "retry_model_continuity",
+          version: CHAT_UNIFICATION_METRIC_VERSION,
           surface: "ai",
           userId: "user-1",
           workspaceId: "ws-1",
@@ -150,20 +150,18 @@ describe("chat-unification-metrics", () => {
     ).rejects.toThrow();
   });
 
-  it("accepts legacy retry continuity payloads when version=1", async () => {
+  it("accepts legacy metric version payloads for compatibility", async () => {
     mocks.agentRunFindFirst.mockResolvedValue(null);
     mocks.chatMetricCreate.mockResolvedValue({ id: "metric-legacy" });
 
     await ingestChatUnificationMetric(AUTH, {
-      eventId: "0e67fd9a-55ef-4684-afec-f14eb26ca709",
+      eventId: "6f37f8d2-4d6e-4338-9554-20d0eb37ec75",
       version: 1,
-      type: "retry_model_continuity",
-      surface: "project",
+      type: "run_end_observed",
+      surface: "ai",
       payload: {
-        preserved: true,
-        expectedModel: "gpt-5.2",
-        actualModel: "gpt-5.2",
-        source: "retry_action",
+        runStatus: "completed",
+        streamPhase: "send",
       },
     });
 
@@ -171,7 +169,6 @@ describe("chat-unification-metrics", () => {
       expect.objectContaining({
         data: expect.objectContaining({
           version: 1,
-          type: "retry_model_continuity",
         }),
       }),
     );

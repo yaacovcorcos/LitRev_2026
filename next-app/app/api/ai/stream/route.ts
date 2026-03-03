@@ -5,7 +5,6 @@
  */
 
 import { NextRequest } from "next/server";
-import { randomUUID } from "node:crypto";
 import { AIService, getAIService } from "@/lib/server/ai";
 import type { AIMessage, ChatOptions, ConversationContext } from "@/types/ai";
 import type { AgentMode } from "@/types/agent";
@@ -22,9 +21,6 @@ import { createPopupToolGuard, getAllowedPopupToolNames } from "@/lib/server/ai/
 import { createIdempotencyMiddleware } from "@/lib/server/ai/tool-middleware";
 import { getToolDefinitions } from "@/lib/server/ai/tools";
 import { isPopupToolsEnabled } from "@/lib/ai/popup-feature-flags";
-import { ingestChatUnificationMetric } from "@/lib/server/chat-unification-metrics";
-import { prisma } from "@/lib/server/prisma";
-import type { ChatSurface } from "@/types/chat-unification";
 
 // Force Node runtime for Prisma compatibility
 export const runtime = "nodejs";
@@ -49,49 +45,6 @@ const STREAM_EVENT_TYPES: RuntimeStreamEvent["type"][] = [
     "navigate",
     "user_input_required",
 ];
-
-const RETRY_TERMINAL_RUN_STATUSES = new Set(["completed", "failed", "cancelled", "paused"]);
-
-function normalizeModel(value: string | null | undefined): string | null {
-    if (!value) return null;
-    const trimmed = value.trim();
-    return trimmed.length > 0 ? trimmed : null;
-}
-
-function deriveServerSurface(
-    context: ConversationContext | undefined,
-    options: (ChatOptions & { page?: string; popupMode?: boolean }) | undefined,
-): ChatSurface {
-    if (options?.popupMode) return "ai";
-    if (options?.page && options.page !== "ai") return "project";
-    if (context === "global") return "ai";
-    if (context === "project" && options?.page === "ai") return "ai";
-    if (options?.projectId) return "project";
-    return "ai";
-}
-
-async function resolvePersistedRunModel(
-    runId: string | undefined,
-    userId: string,
-    workspaceId: string | null,
-): Promise<string | null> {
-    if (!runId) return null;
-    const ownershipClauses =
-        workspaceId
-            ? [
-                { userId },
-                { project: { ownerId: userId, workspaceId } },
-            ]
-            : [{ userId }];
-    const run = await prisma.agentRun.findFirst({
-        where: {
-            id: runId,
-            OR: ownershipClauses,
-        },
-        select: { model: true },
-    });
-    return normalizeModel(run?.model ?? null);
-}
 
 export async function POST(request: NextRequest) {
     try {
@@ -140,7 +93,6 @@ export async function POST(request: NextRequest) {
             userId: authResult.context.userId,
             workspaceId: authResult.context.workspaceId,
         };
-        const surface = deriveServerSurface(context, options);
 
         // Create a readable stream
         const encoder = new TextEncoder();
@@ -162,40 +114,6 @@ export async function POST(request: NextRequest) {
                     runtimeRouter.use(async ({ event, thread: runtimeThread }, next) => {
                         if (event.conversationId) runtimeThread.bindConversation(event.conversationId);
                         if (event.type === "run_start" && event.runId) runtimeThread.bindRun(event.runId);
-                        if (
-                            event.type === "run_end"
-                            && scopedOptions.retryRequestKey
-                            && RETRY_TERMINAL_RUN_STATUSES.has(event.runStatus ?? "")
-                        ) {
-                            const runtimeModel = normalizeModel(scopedOptions.model);
-                            const persistedModel = await resolvePersistedRunModel(
-                                event.runId,
-                                authResult.context.userId,
-                                authResult.context.workspaceId,
-                            );
-                            const actualModel = runtimeModel ?? persistedModel ?? "unknown";
-
-                            try {
-                                await ingestChatUnificationMetric(authResult.context, {
-                                    eventId: randomUUID(),
-                                    version: 2,
-                                    type: "retry_model_continuity",
-                                    surface,
-                                    runId: event.runId ?? null,
-                                    conversationId: event.conversationId ?? scopedOptions.conversationId ?? null,
-                                    projectId: scopedOptions.projectId ?? null,
-                                    payload: {
-                                        requestKey: scopedOptions.retryRequestKey,
-                                        actualModel,
-                                        runId: event.runId ?? null,
-                                        runStatus: event.runStatus ?? null,
-                                        source: "run_completion",
-                                    },
-                                });
-                            } catch (error) {
-                                console.warn("[ai/stream] failed to emit retry completion metric", error);
-                            }
-                        }
                         if (event.type === "run_end") runtimeThread.bindRun(undefined);
                         await next();
                     });
