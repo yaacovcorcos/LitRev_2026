@@ -96,4 +96,23 @@ describe("UserMenu", () => {
     expect(alert.textContent).toContain("Sign out failed from API");
     expect(mockRouterReplace).not.toHaveBeenCalled();
   });
+
+  it("cycles theme between light and dark only", () => {
+    mockUseSession.mockReturnValue({ data: null, isPending: false });
+
+    render(<ThemeProvider><UserMenu /></ThemeProvider>);
+
+    fireEvent.click(screen.getByRole("button", { name: /account menu for account/i }));
+
+    const themeButton = screen.getByRole("menuitem", { name: /theme: light/i });
+    expect(themeButton.textContent).toContain("Light");
+
+    fireEvent.click(themeButton);
+    expect(screen.getByRole("menuitem", { name: /theme: dark/i }).textContent).toContain("Dark");
+    expect(localStorage.getItem("litrev-theme")).toBe("dark");
+
+    fireEvent.click(screen.getByRole("menuitem", { name: /theme: dark/i }));
+    expect(screen.getByRole("menuitem", { name: /theme: light/i }).textContent).toContain("Light");
+    expect(localStorage.getItem("litrev-theme")).toBe("light");
+  });
 });

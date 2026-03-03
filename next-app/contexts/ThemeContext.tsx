@@ -11,9 +11,6 @@ import {
 
 /* ── Types ──────────────────────────────────────────────────── */
 
-export type ThemePreference = "light" | "dark" | "system";
-export type ResolvedTheme = "light" | "dark";
-
 interface ThemeContextValue {
   /** User-chosen preference (persisted to localStorage). */
   theme: ThemePreference;
@@ -39,23 +36,20 @@ export function useTheme() {
 
 /* ── Helpers ────────────────────────────────────────────────── */
 
-function getSystemPreference(): ResolvedTheme {
-  if (typeof window === "undefined" || typeof window.matchMedia !== "function")
-    return "light";
-  return window.matchMedia("(prefers-color-scheme: dark)").matches
-    ? "dark"
-    : "light";
-}
+export type ThemePreference = "light" | "dark";
+export type ResolvedTheme = "light" | "dark";
 
 function resolve(pref: ThemePreference): ResolvedTheme {
-  return pref === "system" ? getSystemPreference() : pref;
+  return pref;
 }
 
 function readStored(): ThemePreference {
-  if (typeof window === "undefined") return "system";
+  if (typeof window === "undefined") return "light";
   const raw = localStorage.getItem(STORAGE_KEY);
-  if (raw === "light" || raw === "dark" || raw === "system") return raw;
-  return "system";
+  if (raw === "light" || raw === "dark") return raw;
+  // Migrate legacy "system" (or invalid values) to policy-compliant light default.
+  localStorage.setItem(STORAGE_KEY, "light");
+  return "light";
 }
 
 function applyToDOM(resolved: ResolvedTheme) {
@@ -81,31 +75,6 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     const r = resolve(theme);
     setResolved(r);
     applyToDOM(r);
-  }, [theme]);
-
-  /* Listen for OS preference changes when in "system" mode */
-  useEffect(() => {
-    if (typeof window.matchMedia !== "function") return;
-    const mq = window.matchMedia("(prefers-color-scheme: dark)");
-    const handler = () => {
-      if (theme !== "system") return;
-      const r = mq.matches ? "dark" : "light";
-      setResolved(r);
-      applyToDOM(r);
-    };
-    /* Safari <14 only has addListener/removeListener */
-    if (mq.addEventListener) {
-      mq.addEventListener("change", handler);
-    } else if (mq.addListener) {
-      mq.addListener(handler);
-    }
-    return () => {
-      if (mq.removeEventListener) {
-        mq.removeEventListener("change", handler);
-      } else if (mq.removeListener) {
-        mq.removeListener(handler);
-      }
-    };
   }, [theme]);
 
   return (
