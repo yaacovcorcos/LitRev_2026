@@ -16,8 +16,6 @@ Then paste the terminal output into the section below.
 - Owner: `<name>`
 - Backup reviewer: `<name>`
 - `CANARY_SINCE_UTC`: `<ISO8601>`
-- `CANARY_DEPLOY_SHA`: `<main sha>`
-- `CANARY_DEPLOYMENT_URL`: `<deployment url or id>`
 - Cohort workspace IDs: `<ws1,ws2 or n/a>`
 - Cohort user IDs: `<u1,u2 or n/a>`
 - Flags:
