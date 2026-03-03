@@ -15,9 +15,14 @@ export function MobileViewportRuntime() {
     const root = document.documentElement;
     const mediaQuery = window.matchMedia(MOBILE_MAX_WIDTH_MEDIA_QUERY);
     let rafId = 0;
+    const clearViewportVars = () => {
+      root.style.removeProperty("--app-vh");
+      root.style.removeProperty("--app-height");
+    };
 
     const updateViewport = () => {
       if (!mediaQuery.matches) {
+        clearViewportVars();
         return;
       }
       const viewportHeight = getEffectiveViewportHeight(window);
@@ -39,7 +44,7 @@ export function MobileViewportRuntime() {
 
     window.addEventListener("resize", scheduleUpdate, { passive: true });
     window.addEventListener("orientationchange", scheduleUpdate, { passive: true });
-    window.visualViewport?.addEventListener("resize", scheduleUpdate);
+    window.visualViewport?.addEventListener("resize", scheduleUpdate, { passive: true });
 
     if (typeof mediaQuery.addEventListener === "function") {
       mediaQuery.addEventListener("change", onMediaChange);
@@ -51,6 +56,7 @@ export function MobileViewportRuntime() {
       window.removeEventListener("resize", scheduleUpdate);
       window.removeEventListener("orientationchange", scheduleUpdate);
       window.visualViewport?.removeEventListener("resize", scheduleUpdate);
+      clearViewportVars();
 
       if (typeof mediaQuery.removeEventListener === "function") {
         mediaQuery.removeEventListener("change", onMediaChange);
