@@ -22,6 +22,7 @@ import { DemoGuideCard } from "@/components/project/DemoGuideCard";
 import { ProjectPageLayout } from "@/components/project/ProjectPageLayout";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { addProjectDataChangedListener } from "@/lib/project-data-events";
+import { isMobileNotesV2Enabled } from "@/lib/mobile/feature-flags";
 import styles from "./notes.module.css";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -53,6 +54,7 @@ const emptyDoc: JSONContent = {
 export default function NotesPage() {
     const params = useParams<{ id: string }>();
     const projectId = params?.id ?? "";
+    const mobileNotesV2Enabled = isMobileNotesV2Enabled();
 
     // State
     const [notes, setNotes] = useState<Note[]>([]);
@@ -334,7 +336,7 @@ export default function NotesPage() {
 
     return (
         <ProjectPageLayout>
-        <div className={styles.page}>
+        <div className={styles.page} data-mobile-notes-v2={mobileNotesV2Enabled ? "true" : "false"}>
             {/* Header */}
             <div className={styles.header}>
                 <div className={styles.headerLeft}>
