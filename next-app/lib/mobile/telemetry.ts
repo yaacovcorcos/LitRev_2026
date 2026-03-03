@@ -63,6 +63,8 @@ export type MobileMetricEvent = {
 const STORAGE_KEY = "litrev:mobile-metrics:v1";
 const STORAGE_LIMIT = 2000;
 const METRIC_EVENT = "litrev:mobile-metric";
+const MOBILE_VIEWPORT_QUERY = "(max-width: 900px)";
+const MOBILE_POINTER_QUERY = "(pointer: coarse)";
 
 function readEventsFromStorage(): MobileMetricEvent[] {
   if (typeof window === "undefined") return [];
@@ -109,4 +111,14 @@ export function clearMobileMetrics(): void {
   } catch {
     // Best-effort cleanup only.
   }
+}
+
+export function isMobileTelemetryContext(): boolean {
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+    return false;
+  }
+  return (
+    window.matchMedia(MOBILE_VIEWPORT_QUERY).matches
+    || window.matchMedia(MOBILE_POINTER_QUERY).matches
+  );
 }

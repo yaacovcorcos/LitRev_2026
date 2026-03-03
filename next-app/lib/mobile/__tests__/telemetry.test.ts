@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   clearMobileMetrics,
   getMobileMetricEvents,
+  isMobileTelemetryContext,
   recordMobileMetric,
 } from "../telemetry";
 
@@ -42,5 +43,25 @@ describe("mobile telemetry", () => {
 
     clearMobileMetrics();
     expect(getMobileMetricEvents()).toHaveLength(0);
+  });
+
+  it("detects mobile telemetry context from viewport or coarse pointer", () => {
+    const originalMatchMedia = window.matchMedia;
+    try {
+      window.matchMedia = ((query: string) => ({
+        matches: query === "(max-width: 900px)" || query === "(pointer: coarse)",
+        media: query,
+        onchange: null,
+        addListener: () => {},
+        removeListener: () => {},
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        dispatchEvent: () => false,
+      })) as typeof window.matchMedia;
+
+      expect(isMobileTelemetryContext()).toBe(true);
+    } finally {
+      window.matchMedia = originalMatchMedia;
+    }
   });
 });

@@ -63,6 +63,16 @@ Mobile metrics are recorded with:
 
 Storage key: `litrev:mobile-metrics:v1` (best-effort local telemetry for canary validation).
 
+### KPI Mapping
+
+- Task-success baseline: compute success rate from `mobile_flow_completed` where:
+  - `flowId=ai_message_send`
+  - `flowId=popup_continue_to_copilot`
+- Mis-tap proxy baseline: compute ratio of rapid repeated `mobile_action_tap` events for the same `actionId` on the same route within 800ms.
+- Current instrumented surfaces:
+  - `project_shell`: mode and tab taps (`mobile_action_tap`)
+  - `popup`: send tap + continue-to-copilot flow completion (`mobile_action_tap`, `mobile_flow_completed`)
+
 ## Canary Checklist
 
 1. iOS Safari + Chrome Android manual pass:

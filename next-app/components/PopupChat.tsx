@@ -15,6 +15,7 @@ import { markdownComponents } from "@/components/markdown/CodeBlock";
 import type { PopupChatContext, PopupMessage } from "@/types/popup-chat";
 import type { CopilotPage } from "@/types/ai";
 import { isMobilePopupV2Enabled } from "@/lib/mobile/feature-flags";
+import { isMobileTelemetryContext, recordMobileMetric } from "@/lib/mobile/telemetry";
 import styles from "./PopupChat.module.css";
 
 const TURN_HINT_THRESHOLD = 3;
@@ -140,6 +141,21 @@ export function PopupChat({ projectId }: PopupChatProps) {
     const handleSend = useCallback(async () => {
         const trimmed = input.trim();
         if (!trimmed || isStreaming || !context) return;
+        const startedAt = Date.now();
+        let sendSucceeded = false;
+
+        if (isMobileTelemetryContext()) {
+            recordMobileMetric({
+                type: "mobile_action_tap",
+                surface: "popup",
+                payload: {
+                    route: typeof window !== "undefined" ? window.location.pathname : "/project",
+                    actionId: "popup_send",
+                    targetMinPx: 32,
+                    inputMode: "touch",
+                },
+            });
+        }
 
         const userMsg: PopupMessage = {
             id: `pm-${Date.now()}`,
@@ -218,6 +234,7 @@ export function PopupChat({ projectId }: PopupChatProps) {
                     throw new Error(event.error);
                 }
             }
+            sendSucceeded = true;
         } catch (error) {
             if (error instanceof DOMException && error.name === "AbortError") return;
 
@@ -230,6 +247,18 @@ export function PopupChat({ projectId }: PopupChatProps) {
             setIsStreaming(false);
             if (abortRef.current === controller) {
                 abortRef.current = null;
+            }
+            if (isMobileTelemetryContext()) {
+                recordMobileMetric({
+                    type: "mobile_flow_completed",
+                    surface: "popup",
+                    payload: {
+                        route: typeof window !== "undefined" ? window.location.pathname : "/project",
+                        flowId: "ai_message_send",
+                        durationMs: Date.now() - startedAt,
+                        success: sendSucceeded,
+                    },
+                });
             }
         }
     }, [input, isStreaming, context, messages]);
@@ -299,6 +328,20 @@ export function PopupChat({ projectId }: PopupChatProps) {
 
     const handleContinueInCopilot = useCallback(async () => {
         if (!context || messages.length === 0) return;
+        const startedAt = Date.now();
+
+        if (isMobileTelemetryContext()) {
+            recordMobileMetric({
+                type: "mobile_action_tap",
+                surface: "popup",
+                payload: {
+                    route: typeof window !== "undefined" ? window.location.pathname : "/project",
+                    actionId: "popup_continue_to_copilot",
+                    targetMinPx: 24,
+                    inputMode: "touch",
+                },
+            });
+        }
 
         try {
             const page = contextToPage(context);
@@ -310,7 +353,21 @@ export function PopupChat({ projectId }: PopupChatProps) {
                 page,
                 context: studyId ? "study" : "project",
             });
-            if (!convResult.success) return;
+            if (!convResult.success) {
+                if (isMobileTelemetryContext()) {
+                    recordMobileMetric({
+                        type: "mobile_flow_completed",
+                        surface: "popup",
+                        payload: {
+                            route: typeof window !== "undefined" ? window.location.pathname : "/project",
+                            flowId: "popup_continue_to_copilot",
+                            durationMs: Date.now() - startedAt,
+                            success: false,
+                        },
+                    });
+                }
+                return;
+            }
             const convId = convResult.data.id;
 
             // Insert messages sequentially
@@ -326,8 +383,32 @@ export function PopupChat({ projectId }: PopupChatProps) {
             setCollapsed(false);
             await refreshConversations();
             closePopupChat();
+            if (isMobileTelemetryContext()) {
+                recordMobileMetric({
+                    type: "mobile_flow_completed",
+                    surface: "popup",
+                    payload: {
+                        route: typeof window !== "undefined" ? window.location.pathname : "/project",
+                        flowId: "popup_continue_to_copilot",
+                        durationMs: Date.now() - startedAt,
+                        success: true,
+                    },
+                });
+            }
         } catch (err) {
             console.error("Failed to continue in copilot:", err);
+            if (isMobileTelemetryContext()) {
+                recordMobileMetric({
+                    type: "mobile_flow_completed",
+                    surface: "popup",
+                    payload: {
+                        route: typeof window !== "undefined" ? window.location.pathname : "/project",
+                        flowId: "popup_continue_to_copilot",
+                        durationMs: Date.now() - startedAt,
+                        success: false,
+                    },
+                });
+            }
         }
     }, [context, messages, projectId, selectConversation, setCollapsed, refreshConversations, closePopupChat]);
 
