@@ -153,6 +153,14 @@ function parseThresholdsFromArgs(): BurnInThresholds {
       "minRetryMatchedPerSurface",
       DEFAULT_BURN_IN_THRESHOLDS.minRetryMatchedPerSurface,
     ),
+    minRetryEligibleOverall: parseIntArg(
+      "minRetryEligibleOverall",
+      DEFAULT_BURN_IN_THRESHOLDS.minRetryEligibleOverall,
+    ),
+    minRetryEligiblePerSurface: parseIntArg(
+      "minRetryEligiblePerSurface",
+      DEFAULT_BURN_IN_THRESHOLDS.minRetryEligiblePerSurface,
+    ),
     minAskUserSamplesOverall: parseIntArg(
       "minAskUserSamplesOverall",
       DEFAULT_BURN_IN_THRESHOLDS.minAskUserSamplesOverall,
