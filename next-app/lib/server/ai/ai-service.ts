@@ -74,6 +74,28 @@ const RETRY_JITTER = 0.15;
 const PUSH_PROTOCOL_CONTEXT_MODES = new Set<AgentMode>(["protocol", "screening", "drafting"]);
 const PUSH_LEDGER_CONTEXT_MODES = new Set<AgentMode>(["screening", "search"]);
 
+type RunActualModelMeta = {
+    actualModel: string | null;
+    actualModelSource: "provider" | "requested" | "unknown";
+};
+
+function resolveRunActualModelMeta(
+    requestedModel: string | undefined,
+    providerModel: string | null,
+    invokedModel: boolean,
+): RunActualModelMeta {
+    if (providerModel) {
+        return { actualModel: providerModel, actualModelSource: "provider" };
+    }
+    if (invokedModel) {
+        return {
+            actualModel: requestedModel ?? AI_CONFIG.defaultModel,
+            actualModelSource: "requested",
+        };
+    }
+    return { actualModel: null, actualModelSource: "unknown" };
+}
+
 export type ToolRuntimeContext = {
     signal?: AbortSignal;
     systemContexts?: {
@@ -338,20 +360,28 @@ class AIService {
         let totalInputTokens = 0;
         let totalOutputTokens = 0;
         let totalCachedInputTokens = 0;
+        let observedModel: string | null = null;
 
         for await (const chunk of provider.streamChat(messages, effectiveOptions)) {
-            if (chunk.type === "done" && chunk.usage) {
-                totalInputTokens = chunk.usage.inputTokens;
-                totalOutputTokens = chunk.usage.outputTokens;
-                totalCachedInputTokens = chunk.usage.cachedInputTokens ?? 0;
+            if (chunk.type === "done") {
+                if (chunk.usage) {
+                    totalInputTokens = chunk.usage.inputTokens;
+                    totalOutputTokens = chunk.usage.outputTokens;
+                    totalCachedInputTokens = chunk.usage.cachedInputTokens ?? 0;
+                }
+                if (typeof chunk.actualModel === "string" && chunk.actualModel.trim().length > 0) {
+                    observedModel = chunk.actualModel;
+                }
             }
             yield chunk;
         }
 
+        const usageModel = observedModel ?? effectiveOptions?.model ?? AI_CONFIG.defaultModel;
+
         // Record usage after streaming completes
         await recordUsage(
             projectId,
-            effectiveOptions?.model || AI_CONFIG.defaultModel,
+            usageModel,
             totalInputTokens,
             totalOutputTokens,
             {
@@ -903,7 +933,15 @@ class AIService {
                 };
 
                 await endRun(run.id, "completed");
-                yield { type: "run_end", runId: run.id, runStatus: "completed", conversationId: conversation.id };
+                const runModelMeta = resolveRunActualModelMeta(options?.model, null, false);
+                yield {
+                    type: "run_end",
+                    runId: run.id,
+                    runStatus: "completed",
+                    conversationId: conversation.id,
+                    actualModel: runModelMeta.actualModel ?? undefined,
+                    actualModelSource: runModelMeta.actualModelSource,
+                };
                 return;
             }
 
@@ -945,7 +983,15 @@ class AIService {
                         };
 
                         await endRun(run.id, "completed");
-                        yield { type: "run_end", runId: run.id, runStatus: "completed", conversationId: conversation.id };
+                        const runModelMeta = resolveRunActualModelMeta(options?.model, null, false);
+                        yield {
+                            type: "run_end",
+                            runId: run.id,
+                            runStatus: "completed",
+                            conversationId: conversation.id,
+                            actualModel: runModelMeta.actualModel ?? undefined,
+                            actualModelSource: runModelMeta.actualModelSource,
+                        };
                         return;
                     }
                     // planPayload is null — validation failed, fall through to normal chat
@@ -994,6 +1040,8 @@ class AIService {
             const currentMessages = [...historyMessages];
             let totalTokensIn = 0;
             let totalTokensOut = 0;
+            let observedRunModel: string | null = null;
+            let invokedModel = false;
             const loop = new LoopState();
 
             while (true) {
@@ -1036,6 +1084,7 @@ class AIService {
                         toolCount: toolDefs.length,
                     });
 
+                    invokedModel = true;
                     const rawStream = this.streamChat(currentMessages, chatOptions);
                     try {
                         for await (const chunk of withChoicesExtraction(rawStream)) {
@@ -1065,6 +1114,9 @@ class AIService {
                                     totalTokensIn += chunk.usage.inputTokens;
                                     totalTokensOut += chunk.usage.outputTokens;
                                     genSpan.update({ usageDetails: { input: chunk.usage.inputTokens, output: chunk.usage.outputTokens } });
+                                }
+                                if (typeof chunk.actualModel === "string" && chunk.actualModel.trim().length > 0) {
+                                    observedRunModel = chunk.actualModel;
                                 }
                             } else if (chunk.type === "error") {
                                 const classified = classifyAIError(chunk);
@@ -1122,7 +1174,16 @@ class AIService {
                         loop.markStopped("error");
                         yield { type: "error", error: terminalError, conversationId: conversation.id };
                         await endRun(run.id, "failed");
-                        yield { type: "run_end", runId: run.id, runStatus: "failed", stopReason: "error", conversationId: conversation.id };
+                        const runModelMeta = resolveRunActualModelMeta(chatOptions.model, observedRunModel, invokedModel);
+                        yield {
+                            type: "run_end",
+                            runId: run.id,
+                            runStatus: "failed",
+                            stopReason: "error",
+                            conversationId: conversation.id,
+                            actualModel: runModelMeta.actualModel ?? undefined,
+                            actualModelSource: runModelMeta.actualModelSource,
+                        };
                         return;
                     }
 
@@ -1398,6 +1459,7 @@ class AIService {
             await flushTracing();
 
             await endRun(run.id, runStatus, totalTokensIn, totalTokensOut);
+            const runModelMeta = resolveRunActualModelMeta(chatOptions.model, observedRunModel, invokedModel);
             yield {
                 type: "run_end",
                 runId: run.id,
@@ -1408,6 +1470,8 @@ class AIService {
                 iterationCount: loop.iterations,
                 toolCallCount: loop.totalToolCalls,
                 conversationId: conversation.id,
+                actualModel: runModelMeta.actualModel ?? undefined,
+                actualModelSource: runModelMeta.actualModelSource,
             };
         } catch (error) {
             const isAbortError =
@@ -1427,7 +1491,15 @@ class AIService {
                 trace.update({ metadata: { aborted: true } }).end();
                 await flushTracing();
                 await endRun(run.id, "cancelled");
-                yield { type: "run_end", runId: run.id, runStatus: "cancelled", conversationId: conversation.id };
+                const runModelMeta = resolveRunActualModelMeta(options?.model, null, false);
+                yield {
+                    type: "run_end",
+                    runId: run.id,
+                    runStatus: "cancelled",
+                    conversationId: conversation.id,
+                    actualModel: runModelMeta.actualModel ?? undefined,
+                    actualModelSource: runModelMeta.actualModelSource,
+                };
                 return;
             }
 
@@ -1458,7 +1530,15 @@ class AIService {
                 error: error instanceof Error ? error.message : "Unexpected error",
                 conversationId: conversation.id,
             };
-            yield { type: "run_end", runId: run.id, runStatus: "failed", conversationId: conversation.id };
+            const runModelMeta = resolveRunActualModelMeta(options?.model, null, false);
+            yield {
+                type: "run_end",
+                runId: run.id,
+                runStatus: "failed",
+                conversationId: conversation.id,
+                actualModel: runModelMeta.actualModel ?? undefined,
+                actualModelSource: runModelMeta.actualModelSource,
+            };
         }
     }
 

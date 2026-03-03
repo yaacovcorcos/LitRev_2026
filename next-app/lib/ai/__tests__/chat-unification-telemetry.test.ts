@@ -21,6 +21,7 @@ describe("chat unification telemetry", () => {
         preserved: true,
         expectedModel: "gpt-5.2",
         actualModel: "gpt-5.2",
+        actualModelSource: "provider",
         source: "retry_action",
       },
     });
@@ -32,6 +33,7 @@ describe("chat unification telemetry", () => {
         preserved: false,
         expectedModel: "gpt-5.2",
         actualModel: "claude-sonnet",
+        actualModelSource: "provider",
         source: "retry_action",
       },
     });
@@ -53,6 +55,8 @@ describe("chat unification telemetry", () => {
       surface: "project",
       payload: {
         unresolvedCount: 2,
+        unresolvedCountBeforeClear: 2,
+        unresolvedCountAfterClear: 0,
         runStatus: "failed",
         streamPhase: "project_stream",
       },
@@ -63,6 +67,8 @@ describe("chat unification telemetry", () => {
       surface: "project",
       payload: {
         unresolvedCount: 0,
+        unresolvedCountBeforeClear: 0,
+        unresolvedCountAfterClear: 0,
         runStatus: "completed",
         streamPhase: "project_stream",
       },
@@ -75,6 +81,8 @@ describe("chat unification telemetry", () => {
       payload: {
         runStatus: "completed",
         streamPhase: "project_stream",
+        actualModel: "gpt-5.2",
+        actualModelSource: "provider",
       },
     });
 

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { CHAT_UNIFICATION_METRIC_VERSION } from "@/types/chat-unification";
 
 const mocks = vi.hoisted(() => ({
   chatMetricCreate: vi.fn(),
@@ -58,6 +59,7 @@ describe("chat-unification-metrics", () => {
       expect.objectContaining({
         data: expect.objectContaining({
           type: "retry_model_continuity",
+          version: CHAT_UNIFICATION_METRIC_VERSION,
           surface: "ai",
           userId: "user-1",
           workspaceId: "ws-1",
@@ -147,5 +149,29 @@ describe("chat-unification-metrics", () => {
         },
       }),
     ).rejects.toThrow();
+  });
+
+  it("accepts legacy metric version payloads for compatibility", async () => {
+    mocks.agentRunFindFirst.mockResolvedValue(null);
+    mocks.chatMetricCreate.mockResolvedValue({ id: "metric-legacy" });
+
+    await ingestChatUnificationMetric(AUTH, {
+      eventId: "6f37f8d2-4d6e-4338-9554-20d0eb37ec75",
+      version: 1,
+      type: "run_end_observed",
+      surface: "ai",
+      payload: {
+        runStatus: "completed",
+        streamPhase: "send",
+      },
+    });
+
+    expect(mocks.chatMetricCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          version: 1,
+        }),
+      }),
+    );
   });
 });

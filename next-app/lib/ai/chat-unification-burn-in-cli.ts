@@ -1,4 +1,9 @@
-import type { ChatSurface } from "@/types/chat-unification";
+import {
+  CHAT_UNIFICATION_ACCEPTED_METRIC_VERSIONS,
+  CHAT_UNIFICATION_METRIC_VERSION,
+  type ChatSurface,
+  type ChatUnificationMetricVersion,
+} from "@/types/chat-unification";
 
 const MIN_BURN_IN_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 const MAX_SAMPLE_ROWS_PER_SURFACE = 5;
@@ -30,6 +35,23 @@ export function parseCsvIdArg(name: string, raw: string | undefined): string[] |
     throw new Error(`Invalid --${name} list: provide at least one non-empty id`);
   }
   return Array.from(new Set(ids));
+}
+
+export function parseMetricVersionArg(raw: string | undefined): ChatUnificationMetricVersion {
+  if (!raw) return CHAT_UNIFICATION_METRIC_VERSION;
+
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isInteger(parsed)) {
+    throw new Error(`Invalid --metricVersion value: ${raw}`);
+  }
+
+  if (!CHAT_UNIFICATION_ACCEPTED_METRIC_VERSIONS.includes(parsed as ChatUnificationMetricVersion)) {
+    throw new Error(
+      `Unsupported --metricVersion=${parsed}. Supported versions: ${CHAT_UNIFICATION_ACCEPTED_METRIC_VERSIONS.join(", ")}`,
+    );
+  }
+
+  return parsed as ChatUnificationMetricVersion;
 }
 
 export type CohortScope = {

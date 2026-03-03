@@ -36,11 +36,13 @@ export type AiStreamRuntime = {
   failRunningTools: (summary: string) => void;
   getConversationId: () => string;
   getState: () => SharedStreamState;
+  getLastRunEndToolCounts: () => { beforeClear: number; afterClear: number } | null;
 };
 
 export function createAiStreamRuntime(deps: AiStreamRuntimeDeps): AiStreamRuntime {
   let currentConversationId = deps.initialConversationId;
   let progressItemId: string | null = null;
+  let lastRunEndToolCounts: { beforeClear: number; afterClear: number } | null = null;
   let streamState = createInitialSharedStreamState({
     effectiveConvId: deps.initialConversationId,
   });
@@ -326,11 +328,18 @@ export function createAiStreamRuntime(deps: AiStreamRuntimeDeps): AiStreamRuntim
 
   return {
     handleChunk: (chunk: AIStreamChunk) => {
+      const runningToolCallsBeforeChunk = streamState.runningToolCallIds.length;
       const reduced = reduceSharedStreamChunk(streamState, chunk, {
         page: deps.page,
         section: deps.section,
       });
       streamState = reduced.state;
+      if (chunk.type === "run_end") {
+        lastRunEndToolCounts = {
+          beforeClear: runningToolCallsBeforeChunk,
+          afterClear: streamState.runningToolCallIds.length,
+        };
+      }
       for (const intent of reduced.intents) {
         applyIntent(intent);
       }
@@ -339,5 +348,6 @@ export function createAiStreamRuntime(deps: AiStreamRuntimeDeps): AiStreamRuntim
     failRunningTools,
     getConversationId: () => currentConversationId,
     getState: () => streamState,
+    getLastRunEndToolCounts: () => lastRunEndToolCounts,
   };
 }

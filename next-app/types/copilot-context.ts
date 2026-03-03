@@ -8,6 +8,7 @@ import type { ArtifactData } from "@/types/artifacts";
 import type { AgentMode, AutonomyPreset, AutonomyLevel } from "@/types/agent";
 import type { ChoiceOption, CopilotPage, ReasoningMode, StreamPhase, UserInputRequest } from "@/types/ai";
 import type { SelectableModelId, ReasoningSupportTier } from "@/lib/ai/config";
+import type { RetryModelExpectation } from "@/types/chat-unification";
 
 export type PendingAttachment = {
     fileAssetId: string;
@@ -61,7 +62,15 @@ export type ProjectCopilotContextValue = {
     /** Update the panel width */
     setPanelWidth: (width: number) => void;
     /** Send a message to the copilot */
-    sendMessage: (text: string, page: CopilotPage, section?: string, model?: string, agentMode?: AgentMode, studyId?: string) => void;
+    sendMessage: (
+        text: string,
+        page: CopilotPage,
+        section?: string,
+        model?: string,
+        agentMode?: AgentMode,
+        studyId?: string,
+        retryModelExpectation?: RetryModelExpectation,
+    ) => void;
     /** Update global reasoning visibility mode */
     setReasoningMode: (mode: ReasoningMode) => void;
     /** Cancel the current stream */

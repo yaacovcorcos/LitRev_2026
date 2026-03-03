@@ -69,6 +69,8 @@ export class RuntimeThreadContext {
   async runEnd(params?: {
     runId?: string;
     runStatus?: string;
+    actualModel?: string;
+    actualModelSource?: "provider" | "requested" | "unknown";
     stopReason?: string;
     iterationCount?: number;
     toolCallCount?: number;
@@ -79,6 +81,8 @@ export class RuntimeThreadContext {
       type: "run_end",
       runId: params?.runId ?? this.runId,
       runStatus: params?.runStatus,
+      actualModel: params?.actualModel,
+      actualModelSource: params?.actualModelSource,
       stopReason: params?.stopReason,
       iterationCount: params?.iterationCount,
       toolCallCount: params?.toolCallCount,
@@ -88,4 +92,3 @@ export class RuntimeThreadContext {
     });
   }
 }
-

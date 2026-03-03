@@ -12,7 +12,6 @@ import { CopilotInput } from "../copilot/CopilotInput";
 import { AutonomySettings } from "../copilot/AutonomySettings";
 import { SuggestionChips } from "./SuggestionChips";
 import { ConversationPicker } from "../ui/ConversationPicker";
-import { recordChatUnificationMetric } from "@/lib/ai/chat-unification-telemetry";
 import styles from "./ConversationMainView.module.css";
 
 export type ConversationMainViewProps = {
@@ -91,25 +90,19 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
             .reverse()
             .find((message) => message.sender === "user" && message.text.trim().length > 0);
         if (!lastUserMessage) return;
-        recordChatUnificationMetric({
-            type: "retry_model_continuity",
-            surface: "project",
-            conversationId: currentConversationId,
-            projectId,
-            payload: {
-                preserved: Boolean(selectedModel),
-                expectedModel: selectedModel ?? null,
-                actualModel: selectedModel ?? null,
-                source: "retry_action",
-            },
-        });
         sendMessage(
             lastUserMessage.text,
             lastUserMessage.context?.page ?? ("overview" as CopilotPage),
             lastUserMessage.context?.section,
-            selectedModel
+            selectedModel,
+            undefined,
+            undefined,
+            {
+                expectedModel: selectedModel ?? null,
+                source: "retry_action",
+            },
         );
-    }, [currentConversationId, isLoading, messages, projectId, sendMessage, selectedModel]);
+    }, [isLoading, messages, sendMessage, selectedModel]);
 
     const resumeFailedPlan = useCallback(() => {
         if (isLoading) return;

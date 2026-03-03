@@ -29,6 +29,7 @@ import { isNavigationSafe } from "@/lib/ai/navigation-safety";
 import { formatStreamErrorForUI } from "@/lib/ai/stream-error-ui";
 import { createAiStreamRuntime } from "@/lib/ai/ai-stream-runtime";
 import { recordChatUnificationMetric } from "@/lib/ai/chat-unification-telemetry";
+import type { RetryModelExpectation } from "@/types/chat-unification";
 import {
   getReasoningBudgetTokens,
   getReasoningModePreference,
@@ -910,6 +911,7 @@ export default function AIView() {
     model?: string,
     agentMode?: AgentMode,
     _studyId?: string,
+    retryModelExpectation?: RetryModelExpectation,
   ) => {
     const msgText = rawText.trim();
     if (!msgText || sendLockRef.current) return;
@@ -964,6 +966,10 @@ export default function AIView() {
 
     const aiMessageId = `m-${Date.now() + 1}`;
     let runStatus: string | null = null;
+    let actualModel: string | null = null;
+    let actualModelSource: "provider" | "requested" | "unknown" = "unknown";
+    let unresolvedCountBeforeClear: number | null = null;
+    let unresolvedCountAfterClear: number | null = null;
     let aborted = false;
     const runtime = createAiStreamRuntime({
       aiMessageId,
@@ -1023,6 +1029,11 @@ export default function AIView() {
         onChunk: (data) => runtime.handleChunk(data),
       });
       runStatus = summary.runStatus;
+      actualModel = summary.actualModel;
+      actualModelSource = summary.actualModelSource;
+      const runEndToolCounts = runtime.getLastRunEndToolCounts();
+      unresolvedCountBeforeClear = runEndToolCounts?.beforeClear ?? null;
+      unresolvedCountAfterClear = runEndToolCounts?.afterClear ?? null;
       convId = runtime.getConversationId();
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") {
@@ -1056,6 +1067,8 @@ export default function AIView() {
           payload: {
             runStatus,
             streamPhase: "send",
+            actualModel,
+            actualModelSource,
           },
         });
         recordChatUnificationMetric({
@@ -1066,10 +1079,34 @@ export default function AIView() {
           projectId: selectedProjectId,
           payload: {
             unresolvedCount: runtimeState.runningToolCallIds.length,
+            unresolvedCountBeforeClear,
+            unresolvedCountAfterClear,
             runStatus,
             streamPhase: "send",
           },
         });
+        if (retryModelExpectation) {
+          const preserved = (
+            actualModelSource === "provider"
+            && retryModelExpectation.expectedModel !== null
+            && actualModel !== null
+            && retryModelExpectation.expectedModel === actualModel
+          );
+          recordChatUnificationMetric({
+            type: "retry_model_continuity",
+            surface: "ai",
+            runId: runtimeState.localRunId || null,
+            conversationId: runtime.getConversationId(),
+            projectId: selectedProjectId,
+            payload: {
+              preserved,
+              expectedModel: retryModelExpectation.expectedModel,
+              actualModel,
+              actualModelSource,
+              source: retryModelExpectation.source,
+            },
+          });
+        }
       }
       if (streamGenRef.current === myGen) {
         setIsTyping(false);
@@ -1304,6 +1341,10 @@ export default function AIView() {
 
     const aiMessageId = `m-${Date.now() + 1}`;
     let runStatus: string | null = null;
+    let actualModel: string | null = null;
+    let actualModelSource: "provider" | "requested" | "unknown" = "unknown";
+    let unresolvedCountBeforeClear: number | null = null;
+    let unresolvedCountAfterClear: number | null = null;
     let stopReason: string | null = null;
     let errorMessage: string | null = null;
     let aborted = false;
@@ -1365,6 +1406,11 @@ export default function AIView() {
       });
       convId = runtime.getConversationId();
       runStatus = summary.runStatus;
+      actualModel = summary.actualModel;
+      actualModelSource = summary.actualModelSource;
+      const runEndToolCounts = runtime.getLastRunEndToolCounts();
+      unresolvedCountBeforeClear = runEndToolCounts?.beforeClear ?? null;
+      unresolvedCountAfterClear = runEndToolCounts?.afterClear ?? null;
       stopReason = summary.stopReason;
       errorMessage = summary.errorMessage;
     } catch (err) {
@@ -1389,6 +1435,8 @@ export default function AIView() {
           payload: {
             runStatus,
             streamPhase: "plan",
+            actualModel,
+            actualModelSource,
           },
         });
         recordChatUnificationMetric({
@@ -1399,6 +1447,8 @@ export default function AIView() {
           projectId: selectedProjectId,
           payload: {
             unresolvedCount: runtimeState.runningToolCallIds.length,
+            unresolvedCountBeforeClear,
+            unresolvedCountAfterClear,
             runStatus,
             streamPhase: "plan",
           },
@@ -1503,19 +1553,18 @@ export default function AIView() {
     setPendingChoices([]);
     setPendingUserInput(null);
     setPrefillCommand(null);
-    recordChatUnificationMetric({
-      type: "retry_model_continuity",
-      surface: "ai",
-      conversationId: convId,
-      projectId: selectedProjectId,
-      payload: {
-        preserved: true,
-        expectedModel: selectedModel,
-        actualModel: selectedModel,
+    void handleSend(
+      retryText,
+      "ai",
+      undefined,
+      selectedModel,
+      undefined,
+      undefined,
+      {
+        expectedModel: selectedModel ?? null,
         source: "retry_action",
       },
-    });
-    void handleSend(retryText, "ai", undefined, selectedModel);
+    );
   }, [isTyping, activeConversationId, timelineByConversation, handleSend, selectedModel, selectedProjectId]);
 
   const handlePrefillConsumed = useCallback(() => {

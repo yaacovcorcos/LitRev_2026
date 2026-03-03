@@ -170,6 +170,7 @@ export class AnthropicProvider extends BaseAIProvider {
         let totalContent = "";
         let inputTokens = 0;
         let outputTokens = 0;
+        let observedModel: string | undefined;
 
         const activeBlocks = new Map<number, {
             kind: "tool";
@@ -188,6 +189,10 @@ export class AnthropicProvider extends BaseAIProvider {
             for await (const event of stream as AsyncIterable<Anthropic.MessageStreamEvent>) {
                 switch (event.type) {
                     case "message_start": {
+                        const eventModel = (event.message as { model?: unknown }).model;
+                        if (!observedModel && typeof eventModel === "string" && eventModel.trim().length > 0) {
+                            observedModel = eventModel;
+                        }
                         if (event.message.usage) {
                             inputTokens = event.message.usage.input_tokens;
                         }
@@ -290,6 +295,8 @@ export class AnthropicProvider extends BaseAIProvider {
                 type: "done",
                 content: totalContent,
                 usage,
+                actualModel: observedModel,
+                actualModelSource: observedModel ? "provider" : undefined,
             };
         } catch (error) {
             const metadata = extractProviderErrorMetadata(error);
