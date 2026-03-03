@@ -97,3 +97,9 @@ jobs:
         run: cd next-app && npx vitest run
         env:
           RUN_DB_TESTS: "1"
+
+      - name: Install Playwright browser
+        run: cd next-app && npx playwright install --with-deps chromium
+
+      - name: Run mobile smoke e2e
+        run: cd next-app && npm run test:e2e:mobile
