@@ -233,6 +233,11 @@ export function getChatUnificationMetricEvents(): ChatUnificationMetricEvent[] {
 }
 
 export type ChatUnificationMetricSummary = {
+  /**
+   * Local browser-only debug summary. Do not use for U1.6 release gates.
+   * Authoritative gate metrics are computed server-side by burn-in validators.
+   */
+  isDebugOnly: true;
   retryModelContinuity: {
     total: number;
     preserved: number;
@@ -272,7 +277,7 @@ export function summarizeChatUnificationMetrics(
     const payload = runEndEvent.payload as RunEndObservedPayload;
     const requestKey = getPayloadRequestKey(payload);
     if (!requestKey) continue;
-    runEndByRequestKey.set(requestKey, payload);
+    runEndByRequestKey.set(`${requestKey}|${runEndEvent.surface}`, payload);
   }
 
   const preserved = retryEvents.filter((event) => {
@@ -282,7 +287,7 @@ export function summarizeChatUnificationMetrics(
       const legacyPayload = payloadAsRecord(payload);
       return legacyPayload?.preserved === true;
     }
-    const runPayload = runEndByRequestKey.get(requestKey);
+    const runPayload = runEndByRequestKey.get(`${requestKey}|${event.surface}`);
     if (!runPayload) return false;
     return payload.expectedModel !== null
       && runPayload.actualModel !== null
@@ -304,6 +309,7 @@ export function summarizeChatUnificationMetrics(
   }).length;
 
   return {
+    isDebugOnly: true,
     retryModelContinuity: {
       total: retryEvents.length,
       preserved,

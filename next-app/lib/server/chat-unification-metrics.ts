@@ -70,10 +70,10 @@ const RunEndObservedPayloadSchema: z.ZodType<RunEndObservedPayload> = z.object({
 
 const ChatUnificationMetricInputSchema = z.object({
   eventId: z.string().uuid(),
-  version: z.union([
-    z.literal(CHAT_UNIFICATION_METRIC_VERSIONS[0]),
-    z.literal(CHAT_UNIFICATION_METRIC_VERSIONS[1]),
-  ]).optional(),
+  version: z.number().int().refine(
+    (value) => CHAT_UNIFICATION_METRIC_VERSIONS.includes(value as ChatUnificationMetricVersion),
+    `Unsupported metric version. Supported versions: ${CHAT_UNIFICATION_METRIC_VERSIONS.join(", ")}`,
+  ).optional(),
   type: z.enum(CHAT_UNIFICATION_METRIC_TYPES),
   surface: z.enum(CHAT_SURFACE_VALUES),
   runId: z.string().trim().min(1).optional().nullable(),

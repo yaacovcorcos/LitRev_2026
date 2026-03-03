@@ -12,6 +12,8 @@ const LOW_THRESHOLDS: BurnInThresholds = {
   minRetrySamplesPerSurface: 1,
   minRetryMatchedOverall: 2,
   minRetryMatchedPerSurface: 1,
+  minRetryEligibleOverall: 2,
+  minRetryEligiblePerSurface: 1,
   minAskUserSamplesOverall: 2,
   minAskUserSamplesPerSurface: 1,
   retryContinuityRateMin: 0.9,

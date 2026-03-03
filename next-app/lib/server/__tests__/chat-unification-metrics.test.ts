@@ -68,6 +68,32 @@ describe("chat-unification-metrics", () => {
     );
   });
 
+  it("accepts explicit metric version 3 payloads", async () => {
+    mocks.agentRunFindFirst.mockResolvedValue(null);
+    mocks.chatMetricCreate.mockResolvedValue({ id: "metric-v3" });
+
+    const result = await ingestChatUnificationMetric(AUTH, {
+      eventId: "d15ea95a-b1da-449c-a132-c71ca6a6c568",
+      version: 3,
+      type: "retry_model_continuity",
+      surface: "project",
+      payload: {
+        requestKey: "7b1ca9fd-5e5b-4d7b-a2e4-2b3d8f2af1f8",
+        expectedModel: "claude-sonnet",
+        source: "retry_action",
+      },
+    });
+
+    expect(result).toEqual({ deduped: false, id: "metric-v3" });
+    expect(mocks.chatMetricCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          version: 3,
+        }),
+      }),
+    );
+  });
+
   it("validates project access when projectId is provided", async () => {
     mocks.agentRunFindFirst.mockResolvedValue(null);
     mocks.chatMetricCreate.mockResolvedValue({ id: "metric-2" });

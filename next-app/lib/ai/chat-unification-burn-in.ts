@@ -20,6 +20,8 @@ export type BurnInThresholds = {
   minRetrySamplesPerSurface: number;
   minRetryMatchedOverall: number;
   minRetryMatchedPerSurface: number;
+  minRetryEligibleOverall: number;
+  minRetryEligiblePerSurface: number;
   minAskUserSamplesOverall: number;
   minAskUserSamplesPerSurface: number;
   retryContinuityRateMin: number;
@@ -57,6 +59,7 @@ export type ChatUnificationBurnInReport = {
   retryModelContinuity: BurnInMetricSummary & {
     preserved: number;
     matched: number;
+    eligible: number;
     matchRate: number | null;
     unmatchedIntents: number;
     excludedByRunStatus: Record<string, number>;
@@ -76,6 +79,8 @@ export const DEFAULT_BURN_IN_THRESHOLDS: BurnInThresholds = {
   minRetrySamplesPerSurface: 10,
   minRetryMatchedOverall: 30,
   minRetryMatchedPerSurface: 10,
+  minRetryEligibleOverall: 30,
+  minRetryEligiblePerSurface: 10,
   minAskUserSamplesOverall: 30,
   minAskUserSamplesPerSurface: 10,
   retryContinuityRateMin: 0.99,
@@ -138,6 +143,7 @@ export function evaluateChatUnificationBurnIn(
   let retryTotal = 0;
   let retryPreserved = 0;
   let retryMatched = 0;
+  let retryEligible = 0;
   let askTotal = 0;
   let askMismatches = 0;
   let stuckTotal = 0;
@@ -204,6 +210,7 @@ export function evaluateChatUnificationBurnIn(
   }
 
   const retryMatchedBySurface: Record<ChatSurface, number> = { ai: 0, project: 0 };
+  const retryEligibleBySurface: Record<ChatSurface, number> = { ai: 0, project: 0 };
   const retryPreservedBySurface: Record<ChatSurface, number> = { ai: 0, project: 0 };
   const usedCompletionRows = new Set<ChatUnificationBurnInMetricRow>();
   const eligibleRunStatuses = new Set(["completed"]);
@@ -230,6 +237,8 @@ export function evaluateChatUnificationBurnIn(
       excludedByRunStatus[runStatus] = (excludedByRunStatus[runStatus] ?? 0) + 1;
       continue;
     }
+    retryEligible += 1;
+    retryEligibleBySurface[row.surface] += 1;
 
     const expectedModel = payloadExpectedModel(row.payload);
     const actualModel = payloadActualModel(candidate.payload);
@@ -245,8 +254,7 @@ export function evaluateChatUnificationBurnIn(
   retryBySurface.ai.matched = retryMatchedBySurface.ai;
   retryBySurface.project.matched = retryMatchedBySurface.project;
 
-  const retryEligibleTotal = retryMatched - Object.values(excludedByRunStatus).reduce((sum, value) => sum + value, 0);
-  const retryRate = computeRate(retryPreserved, retryEligibleTotal);
+  const retryRate = computeRate(retryPreserved, retryEligible);
   const retryMatchRate = computeRate(retryMatched, retryTotal);
   const askMismatchRate = computeRate(askMismatches, askTotal);
   const stuckViolationRate = computeRate(stuckViolations, stuckTotal);
@@ -290,6 +298,20 @@ export function evaluateChatUnificationBurnIn(
     failures.push(
       `Retry matched sample too small: ${retryMatched} < ${thresholds.minRetryMatchedOverall}.`,
     );
+  }
+
+  if (retryEligible < thresholds.minRetryEligibleOverall) {
+    failures.push(
+      `Retry eligible sample too small: ${retryEligible} < ${thresholds.minRetryEligibleOverall}.`,
+    );
+  }
+  for (const surface of SURFACES) {
+    const eligible = retryEligibleBySurface[surface];
+    if (eligible < thresholds.minRetryEligiblePerSurface) {
+      failures.push(
+        `${surface} retry eligible sample too small: ${eligible} < ${thresholds.minRetryEligiblePerSurface}.`,
+      );
+    }
   }
   for (const surface of SURFACES) {
     const matched = retryMatchedBySurface[surface];
@@ -360,6 +382,7 @@ export function evaluateChatUnificationBurnIn(
       total: retryTotal,
       preserved: retryPreserved,
       matched: retryMatched,
+      eligible: retryEligible,
       matchRate: retryMatchRate,
       unmatchedIntents: retryTotal - retryMatched,
       excludedByRunStatus,
@@ -391,10 +414,13 @@ export function formatChatUnificationBurnInReport(
     `Completed by surface: ai=${report.sample.completedRuns.bySurface.ai}, project=${report.sample.completedRuns.bySurface.project}`,
   );
   lines.push(
-    `Retry continuity: ${report.retryModelContinuity.preserved}/${report.retryModelContinuity.matched} (${report.retryModelContinuity.rate ?? "n/a"})`,
+    `Retry continuity: ${report.retryModelContinuity.preserved}/${report.retryModelContinuity.eligible} (${report.retryModelContinuity.rate ?? "n/a"})`,
   );
   lines.push(
     `Retry match-rate: ${report.retryModelContinuity.matched}/${report.retryModelContinuity.total} (${report.retryModelContinuity.matchRate ?? "n/a"})`,
+  );
+  lines.push(
+    `Retry eligible matched: ${report.retryModelContinuity.eligible}/${report.retryModelContinuity.matched}`,
   );
   lines.push(
     `Retry unmatched intents: ${report.retryModelContinuity.unmatchedIntents}`,
