@@ -59,7 +59,8 @@
 }
 
 .inputTextarea:focus-visible {
-    outline-color: var(--focus-ring-color, var(--accent-primary));
+    /* Keep a single focus indicator owned by the parent .inputBox */
+    outline: none;
 }
 
 .inputTextarea::placeholder {
