@@ -5,7 +5,7 @@ This runbook is the operational gate for U1.6 sign-off. Use it after metric trut
 ## Scope
 - Surfaces: `/ai` and project copilot only
 - Environment: production (`main` deploy)
-- Metric contract: `CHAT_UNIFICATION_METRIC_VERSION=2`
+- Metric contract: `CHAT_UNIFICATION_METRIC_VERSION=3`
 - Burn-in duration: 7 days from a single canonical UTC enable timestamp
 
 ## Required Inputs
@@ -23,13 +23,13 @@ This runbook is the operational gate for U1.6 sign-off. Use it after metric trut
    - `CANARY_DEPLOYMENT_URL=<production deploy url-or-id>`
    - `CANARY_SINCE_UTC=<YYYY-MM-DDTHH:MM:SS.000Z>`
    - cohort IDs (`workspaceIds` and/or `userIds`)
-4. Confirm metric contract freeze (`v2`) and no schema changes pending.
+4. Confirm metric contract freeze (`v3`) and no schema changes pending.
 5. Run day-0 gate (allow short window for immediate verification):
 
 ```bash
 cd next-app && npx tsx scripts/validate-chat-unification-burn-in.ts \
   --since=<CANARY_SINCE_UTC> \
-  --metricVersion=2 \
+  --metricVersion=3 \
   --workspaceIds=<ws1,ws2> \
   --userIds=<u1,u2> \
   --requireScopedCohort=1 \
@@ -43,7 +43,7 @@ cd next-app && npx tsx scripts/validate-chat-unification-burn-in.ts \
 ```bash
 cd next-app && npx tsx scripts/validate-chat-unification-burn-in.ts \
   --since=<CANARY_SINCE_UTC> \
-  --metricVersion=2 \
+  --metricVersion=3 \
   --workspaceIds=<ws1,ws2> \
   --userIds=<u1,u2> \
   --allowShortWindow=1
@@ -55,7 +55,7 @@ Run this no earlier than 7 full days after `CANARY_SINCE_UTC`.
 ```bash
 cd next-app && npx tsx scripts/validate-chat-unification-burn-in.ts \
   --since=<CANARY_SINCE_UTC> \
-  --metricVersion=2 \
+  --metricVersion=3 \
   --workspaceIds=<ws1,ws2> \
   --userIds=<u1,u2> \
   --requireScopedCohort=1 \
