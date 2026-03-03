@@ -87,7 +87,6 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
         page: CopilotPage;
         section?: string;
         convId: string | null;
-        retryRequestKey?: string;
         onPlanStepUpdate?: (planId: string, stepIndex: number, stepStatus: string) => void;
     }): Promise<{
         success: boolean;
@@ -100,7 +99,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
         runId: string | null;
         conversationId: string | null;
     }> => {
-        const { body, page, section, convId, retryRequestKey, onPlanStepUpdate } = params;
+        const { body, page, section, convId, onPlanStepUpdate } = params;
         let effectiveConvId = convId;
 
         // Stream lifecycle guards
@@ -277,21 +276,6 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
             }
 
             recordChatUnificationMetric({
-                type: "run_end_observed",
-                surface: "project",
-                runId: localRunId || null,
-                conversationId: effectiveConvId,
-                projectId,
-                payload: {
-                    requestKey: retryRequestKey ?? null,
-                    runStatus,
-                    streamPhase: "project_stream",
-                    actualModel,
-                    actualModelSource,
-                },
-            });
-
-            recordChatUnificationMetric({
                 type: "stuck_running_tools_after_run_end",
                 surface: "project",
                 runId: localRunId || null,
@@ -334,21 +318,6 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                     conversationId: effectiveConvId,
                 };
             }
-
-            recordChatUnificationMetric({
-                type: "run_end_observed",
-                surface: "project",
-                runId: localRunId || null,
-                conversationId: effectiveConvId,
-                projectId,
-                payload: {
-                    requestKey: retryRequestKey ?? null,
-                    runStatus,
-                    streamPhase: "project_stream",
-                    actualModel,
-                    actualModelSource,
-                },
-            });
 
             recordChatUnificationMetric({
                 type: "stuck_running_tools_after_run_end",
@@ -534,7 +503,6 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                 page,
                 section,
                 convId,
-                retryRequestKey: retryModelExpectation?.requestKey,
             });
         },
         [updateState, projectId, cancelStream, convo, pendingAttachment, reasoningMode, runStream, setPendingChoices, setPendingAttachment, isLoadingRef]

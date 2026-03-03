@@ -21,6 +21,12 @@ import { createPopupToolGuard, getAllowedPopupToolNames } from "@/lib/server/ai/
 import { createIdempotencyMiddleware } from "@/lib/server/ai/tool-middleware";
 import { getToolDefinitions } from "@/lib/server/ai/tools";
 import { isPopupToolsEnabled } from "@/lib/ai/popup-feature-flags";
+import { ingestChatUnificationMetric } from "@/lib/server/chat-unification-metrics";
+import {
+    buildRunEndObservedPayload,
+    deriveChatUnificationStreamPhase,
+    deriveChatUnificationSurface,
+} from "@/lib/server/ai/chat-unification-runtime-metrics";
 
 // Force Node runtime for Prisma compatibility
 export const runtime = "nodejs";
@@ -111,6 +117,36 @@ export async function POST(request: NextRequest) {
                             await runtimeRouter.dispatch(event, thread);
                         },
                     });
+                    const mergedPlanId = planId ?? options?.planId;
+                    const surface = deriveChatUnificationSurface(scopedOptions);
+                    const streamPhase = deriveChatUnificationStreamPhase({
+                        options: scopedOptions,
+                        isPlanExecution: Boolean(mergedPlanId),
+                    });
+                    let lastRunEnd: RuntimeStreamEvent | null = null;
+                    const maybeRecordRunEndMetric = async () => {
+                        if (!lastRunEnd || lastRunEnd.type !== "run_end") return;
+                        if (typeof crypto === "undefined" || typeof crypto.randomUUID !== "function") return;
+                        try {
+                            await ingestChatUnificationMetric(authResult.context, {
+                                eventId: crypto.randomUUID(),
+                                type: "run_end_observed",
+                                surface,
+                                runId: lastRunEnd.runId ?? null,
+                                conversationId: lastRunEnd.conversationId ?? null,
+                                projectId: scopedOptions.projectId ?? null,
+                                payload: buildRunEndObservedPayload({
+                                    requestKey: scopedOptions.telemetryRequestKey ?? null,
+                                    runStatus: lastRunEnd.runStatus ?? null,
+                                    streamPhase,
+                                    actualModel: lastRunEnd.actualModel ?? null,
+                                    actualModelSource: lastRunEnd.actualModelSource ?? "unknown",
+                                }),
+                            });
+                        } catch (error) {
+                            console.error("Failed to ingest server run_end_observed metric:", error);
+                        }
+                    };
                     runtimeRouter.use(async ({ event, thread: runtimeThread }, next) => {
                         if (event.conversationId) runtimeThread.bindConversation(event.conversationId);
                         if (event.type === "run_start" && event.runId) runtimeThread.bindRun(event.runId);
@@ -126,12 +162,14 @@ export async function POST(request: NextRequest) {
                     try {
                         // If using conversation memory — use artifact-aware streaming
                         if ((userMessage || planId) && context) {
-                            const mergedPlanId = planId ?? options?.planId;
                             for await (const chunk of service.streamChatWithArtifacts(
                                 userMessage || "", context, { ...scopedOptions, planId: mergedPlanId, selectedSteps, signal: request.signal }
                             )) {
                                 const normalized = normalizeStreamChunk(chunk);
                                 if (!normalized) continue;
+                                if (normalized.type === "run_end") {
+                                    lastRunEnd = normalized;
+                                }
                                 await coalescer.push(normalized);
                             }
                         }
@@ -178,12 +216,18 @@ export async function POST(request: NextRequest) {
                                     )) {
                                         const normalized = normalizeStreamChunk(chunk);
                                         if (!normalized) continue;
+                                        if (normalized.type === "run_end") {
+                                            lastRunEnd = normalized;
+                                        }
                                         await coalescer.push(normalized);
                                     }
                                 } else {
                                     for await (const chunk of service.streamChat(popupMessages, { ...scopedOptions, signal: request.signal })) {
                                         const normalized = normalizeStreamChunk(chunk);
                                         if (!normalized) continue;
+                                        if (normalized.type === "run_end") {
+                                            lastRunEnd = normalized;
+                                        }
                                         await coalescer.push(normalized);
                                     }
                                 }
@@ -191,6 +235,9 @@ export async function POST(request: NextRequest) {
                                 for await (const chunk of service.streamChat(messages, { ...scopedOptions, signal: request.signal })) {
                                     const normalized = normalizeStreamChunk(chunk);
                                     if (!normalized) continue;
+                                    if (normalized.type === "run_end") {
+                                        lastRunEnd = normalized;
+                                    }
                                     await coalescer.push(normalized);
                                 }
                             }
@@ -202,6 +249,7 @@ export async function POST(request: NextRequest) {
                         await coalescer.push({ type: "error", error: errorMessage });
                     } finally {
                         await coalescer.flushAll();
+                        await maybeRecordRunEndMetric();
                         await coalescer.stop();
                         controller.close();
                     }
