@@ -31,9 +31,9 @@ Then paste the terminal output into the section below.
 
 ## Daily Snapshot Log (Days 1-6)
 
-| Date (UTC) | Completed runs total | Completed `/ai` | Completed `project` | Retry continuity | Ask-user mismatch | Stuck-running violations | Notes |
-|---|---:|---:|---:|---:|---:|---:|---|
-| `<YYYY-MM-DD>` | `<n>` | `<n>` | `<n>` | `<rate + denom>` | `<rate + denom>` | `<rate + denom>` | `<notes>` |
+| Date (UTC) | Completed runs total | Completed `/ai` | Completed `project` | Retry continuity | Retry join health | Ask-user mismatch | Stuck-running violations | Notes |
+|---|---:|---:|---:|---:|---:|---:|---:|---|
+| `<YYYY-MM-DD>` | `<n>` | `<n>` | `<n>` | `<rate + matched denom>` | `<match rate + unmatched counts>` | `<rate + denom>` | `<rate + denom>` | `<notes>` |
 
 ## Final Strict Validation Output
 
@@ -46,6 +46,7 @@ Paste the full script output below:
 ## Pass/Fail Decision
 
 - Pass: `<yes/no>`
+- Retry metric version integrity: `<v2-clean | mixed>`
 - If fail, blocking reasons:
   1. `<reason>`
   2. `<reason>`
