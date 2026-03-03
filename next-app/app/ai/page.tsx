@@ -30,6 +30,7 @@ import { formatStreamErrorForUI } from "@/lib/ai/stream-error-ui";
 import { createAiStreamRuntime } from "@/lib/ai/ai-stream-runtime";
 import { generateChatUnificationRequestKey, recordChatUnificationMetric } from "@/lib/ai/chat-unification-telemetry";
 import type { RetryModelExpectation } from "@/types/chat-unification";
+import { isMobileAiV2Enabled } from "@/lib/mobile/feature-flags";
 import {
   getReasoningBudgetTokens,
   getReasoningModePreference,
@@ -352,6 +353,7 @@ function buildTimelinePrintHtml(items: TimelineItem[], title: string): string {
 
 export default function AIView() {
   const router = useRouter();
+  const mobileAiV2Enabled = isMobileAiV2Enabled();
   const { projects } = useProjects();
   const [isHistoryCollapsed, setHistoryCollapsed] = useState(false);
 
@@ -1589,7 +1591,11 @@ export default function AIView() {
   return (
     <>
     <AppShell activeNav="ai" noMainPadding initiallyCollapsed>
-      <div className={styles.layout} data-history-collapsed={isHistoryCollapsed}>
+      <div
+        className={styles.layout}
+        data-history-collapsed={isHistoryCollapsed}
+        data-mobile-ai-v2={mobileAiV2Enabled ? "true" : "false"}
+      >
         <aside className={historyClass} aria-label="Chat history">
           <div className={styles.sidebarHeader}>
             <button
