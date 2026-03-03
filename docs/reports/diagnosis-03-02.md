@@ -1134,3 +1134,30 @@ Canonical mapping for Quality Report findings:
 
 - `docs/reports/diagnosis-03-02.md` is now the single canonical diagnosis/quality tracker.
 - Legacy diagnosis/quality files are retired after this consolidation and should not be reintroduced.
+
+### 12.5 U1.6 Retry Continuity Authority Hardening (2026-03-03)
+
+Status: **completed**
+
+What changed:
+- Migrated `retry_model_continuity` to v2 intent/completion semantics:
+  - client retry event now sends intent only (`requestKey`, `expectedModel`, `source=retry_action`)
+  - server stream runtime now emits completion truth (`requestKey`, `actualModel`, `runId`, `runStatus`, `source=run_completion`)
+- Added retry `requestKey` propagation through chat request options across `/ai` and project copilot retry paths.
+- Updated ingestion validation to support:
+  - v1 legacy payloads (compatibility window)
+  - v2 intent/completion payloads
+- Rewrote burn-in evaluator to compute continuity only from server-joined v2 pairs using composite key:
+  - `requestKey + userId + workspaceId + surface`
+  - with explicit unmatched counters and match-rate thresholds.
+- Added mixed-version window failure in burn-in evaluation to prevent invalid KPI windows.
+- Updated U1.6 plan/runbook/template docs to reflect server-authoritative continuity and retry join health gates.
+
+Safety and blast radius:
+- **Medium**: touches telemetry contracts across client, API route, ingestion service, and burn-in analysis.
+- Behavior impact is contained to telemetry/reporting; chat execution behavior is unchanged.
+
+Validation:
+- `cd next-app && npx tsc --noEmit` ✅
+- `cd next-app && npx tsc --noEmit --noUnusedLocals --noUnusedParameters` ✅
+- `cd next-app && npx vitest run` ✅

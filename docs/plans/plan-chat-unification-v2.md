@@ -191,6 +191,10 @@ Exit criteria:
    - `ask_user_context_mismatch`
    - `stuck_running_tools_after_run_end`
    - `run_end_observed`
+   - `retry_model_continuity` v2 contract is authoritative:
+     - client sends retry intent only (`requestKey`, `expectedModel`, `source=retry_action`)
+     - server emits run-completion truth (`requestKey`, `actualModel`, `runId`, `runStatus`, `source=run_completion`)
+     - analyzer computes `preserved` only from matched v2 intent/completion pairs
 5. Authoritative metric sink decision (ADR-brief):
    - Use a dedicated `ChatUnificationMetric` table (instead of extending `RunEvent`) because U1.6 gate metrics include UI-level events that can occur without a valid `runId` (for example retry continuity and ask-user context mismatch checks), and we need one canonical store for both run-bound and non-run-bound evidence.
    - Keep `RunEvent` as the agent execution timeline source; avoid cross-purpose overloading.
@@ -219,6 +223,7 @@ Exit criteria:
      - retry intent/completion match-rate >= 95% overall and >= 90% per surface
      - `ask_user_context_mismatch` = 0
      - `stuck_running_tools_after_run_end` = 0
+     - retry join match-rate >= 95% overall and >= 90% per surface
    - non-vacuous denominator minimums:
      - `retry_model_continuity` intent denominator >= 30 overall and >= 10 per surface
      - `retry_model_continuity` matched denominator >= 30 overall and >= 10 per surface
