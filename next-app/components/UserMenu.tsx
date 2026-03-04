@@ -6,13 +6,15 @@ import { authClient } from "@/lib/auth-client";
 import { useTheme, type ThemePreference } from "@/contexts/ThemeContext";
 import styles from "@/components/UserMenu.module.css";
 
-const THEME_CYCLE: ThemePreference[] = ["light", "dark"];
+const THEME_CYCLE: ThemePreference[] = ["light", "light-carbon", "dark"];
 const THEME_ICON: Record<ThemePreference, string> = {
   light: "light_mode",
+  "light-carbon": "palette",
   dark: "dark_mode",
 };
 const THEME_LABEL: Record<ThemePreference, string> = {
   light: "Light",
+  "light-carbon": "Light Carbon",
   dark: "Dark",
 };
 

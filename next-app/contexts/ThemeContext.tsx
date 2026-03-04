@@ -36,8 +36,8 @@ export function useTheme() {
 
 /* ── Helpers ────────────────────────────────────────────────── */
 
-export type ThemePreference = "light" | "dark";
-export type ResolvedTheme = "light" | "dark";
+export type ThemePreference = "light" | "light-carbon" | "dark";
+export type ResolvedTheme = "light" | "light-carbon" | "dark";
 
 function resolve(pref: ThemePreference): ResolvedTheme {
   return pref;
@@ -47,7 +47,7 @@ function readStored(): ThemePreference {
   if (typeof window === "undefined") return "light";
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw === "light" || raw === "dark") return raw;
+    if (raw === "light" || raw === "light-carbon" || raw === "dark") return raw;
     // Migrate legacy "system" (or invalid values) to policy-compliant light default.
     localStorage.setItem(STORAGE_KEY, "light");
   } catch {
