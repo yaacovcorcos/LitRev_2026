@@ -199,14 +199,13 @@
     flex-shrink: 0;
 }
 
-/* Kill global orange focus outline on all input-bar buttons */
+/* Shadow-only focus for input-bar buttons */
 .modelBtn:focus-visible,
 .presetBtn:focus-visible,
 .actionBtn:focus-visible,
 .compressBtn:focus-visible,
 .sendBtn:focus-visible {
-    outline: 2px solid var(--focus-ring-color, var(--accent-primary));
-    outline-offset: 2px;
+    outline: none;
     box-shadow: var(--shadow-focus-ring);
 }
 
@@ -711,8 +710,8 @@
 }
 
 .choiceChip:focus-visible {
-    outline: 2px solid var(--accent-primary);
-    outline-offset: 2px;
+    outline: none;
+    box-shadow: var(--shadow-focus-ring);
 }
 
 /* ---- ask_user Overlay ---- */

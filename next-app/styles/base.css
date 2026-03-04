@@ -49,8 +49,21 @@ input:focus-visible,
 textarea:focus-visible,
 select:focus-visible,
 [role="button"]:focus-visible {
-    outline: 2px solid var(--focus-ring-color, var(--accent-primary));
-    outline-offset: 2px;
+    outline: none;
+    box-shadow: var(--shadow-focus-ring);
+}
+
+@media (forced-colors: active) {
+    button:focus-visible,
+    a:focus-visible,
+    input:focus-visible,
+    textarea:focus-visible,
+    select:focus-visible,
+    [role="button"]:focus-visible {
+        box-shadow: none;
+        outline: 2px solid Highlight;
+        outline-offset: 2px;
+    }
 }
 
 button:disabled {
