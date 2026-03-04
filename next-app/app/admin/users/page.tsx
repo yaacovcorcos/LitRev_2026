@@ -7,7 +7,7 @@ import {
   listAdminUsers,
   type AdminUsersSortKey,
 } from "@/lib/server/admin/users-directory";
-import { forbidden } from "next/navigation";
+import { notFound } from "next/navigation";
 import Link from "next/link";
 import styles from "./users.module.css";
 import { AdminUserRoleControls } from "./AdminUserRoleControls";
@@ -76,7 +76,7 @@ export default async function AdminUsersPage({
     adminContext = await requirePlatformAdmin();
   } catch (error) {
     if (error instanceof PlatformAdminAccessError) {
-      forbidden();
+      notFound();
     }
     throw error;
   }

@@ -8,7 +8,7 @@ import {
   type AdminUsageBreakdownRow,
   type AdminUsageWindowDays,
 } from "@/lib/server/admin/usage-analytics";
-import { forbidden } from "next/navigation";
+import { notFound } from "next/navigation";
 import Link from "next/link";
 import styles from "./usage.module.css";
 
@@ -58,7 +58,7 @@ export default async function AdminUsagePage({
     await requirePlatformAdmin();
   } catch (error) {
     if (error instanceof PlatformAdminAccessError) {
-      forbidden();
+      notFound();
     }
     throw error;
   }

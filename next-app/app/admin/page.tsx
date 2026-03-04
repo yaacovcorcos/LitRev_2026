@@ -3,7 +3,7 @@ import {
   PlatformAdminAccessError,
   requirePlatformAdmin,
 } from "@/lib/server/auth/platform-admin";
-import { forbidden } from "next/navigation";
+import { notFound } from "next/navigation";
 import Link from "next/link";
 import styles from "./admin.module.css";
 
@@ -14,7 +14,7 @@ export default async function AdminPage() {
     await requirePlatformAdmin();
   } catch (error) {
     if (error instanceof PlatformAdminAccessError) {
-      forbidden();
+      notFound();
     }
     throw error;
   }

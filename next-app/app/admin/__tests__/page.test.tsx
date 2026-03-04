@@ -6,7 +6,7 @@ const mocks = vi.hoisted(() => {
 
   return {
     requirePlatformAdmin: vi.fn(),
-    forbidden: vi.fn(),
+    notFound: vi.fn(),
     PlatformAdminAccessError: MockPlatformAdminAccessError,
   };
 });
@@ -17,7 +17,7 @@ vi.mock("@/lib/server/auth/platform-admin", () => ({
 }));
 
 vi.mock("next/navigation", () => ({
-  forbidden: mocks.forbidden,
+  notFound: mocks.notFound,
 }));
 
 vi.mock("@/components/AppShell", () => ({
@@ -29,7 +29,7 @@ const { default: AdminPage } = await import("@/app/admin/page");
 describe("/admin page", () => {
   beforeEach(() => {
     mocks.requirePlatformAdmin.mockReset();
-    mocks.forbidden.mockReset();
+    mocks.notFound.mockReset();
   });
 
   it("renders admin shell for platform admins", async () => {
@@ -39,17 +39,17 @@ describe("/admin page", () => {
 
     expect(result).toBeTruthy();
     expect(mocks.requirePlatformAdmin).toHaveBeenCalledTimes(1);
-    expect(mocks.forbidden).not.toHaveBeenCalled();
+    expect(mocks.notFound).not.toHaveBeenCalled();
   });
 
-  it("calls forbidden for non-admin users", async () => {
+  it("calls notFound for non-admin users", async () => {
     const denied = new Error("forbidden");
     Object.setPrototypeOf(denied, mocks.PlatformAdminAccessError.prototype);
     mocks.requirePlatformAdmin.mockRejectedValue(denied);
 
     await expect(AdminPage()).rejects.toThrow("forbidden");
 
-    expect(mocks.forbidden).toHaveBeenCalledTimes(1);
+    expect(mocks.notFound).toHaveBeenCalledTimes(1);
   });
 
   it("rethrows unexpected errors", async () => {
@@ -57,6 +57,6 @@ describe("/admin page", () => {
     mocks.requirePlatformAdmin.mockRejectedValue(failure);
 
     await expect(AdminPage()).rejects.toThrow("db down");
-    expect(mocks.forbidden).not.toHaveBeenCalled();
+    expect(mocks.notFound).not.toHaveBeenCalled();
   });
 });
