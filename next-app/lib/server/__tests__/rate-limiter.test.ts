@@ -222,6 +222,9 @@ describe('Rate Limiter', () => {
           projectId: 'project-1',
           userId: null,
           workspaceId: null,
+          source: 'project_copilot',
+          contextPage: 'legacy_unknown',
+          conversationId: null,
           model: 'gpt-5.2',
           inputTokens: 500,
           outputTokens: 200,
@@ -238,6 +241,9 @@ describe('Rate Limiter', () => {
           projectId: 'project-1',
           userId: null,
           workspaceId: null,
+          source: 'project_copilot',
+          contextPage: 'legacy_unknown',
+          conversationId: null,
           model: 'gpt-5.2-mini',
           inputTokens: 0,
           outputTokens: 0,
@@ -271,6 +277,9 @@ describe('Rate Limiter', () => {
           projectId: null,
           userId: null,
           workspaceId: null,
+          source: 'ai_page',
+          contextPage: 'legacy_unknown',
+          conversationId: null,
           model: 'gpt-5.2',
           inputTokens: 100,
           outputTokens: 20,
@@ -291,10 +300,32 @@ describe('Rate Limiter', () => {
           projectId: 'project-2',
           userId: 'user-3',
           workspaceId: 'workspace-3',
+          source: 'project_copilot',
+          contextPage: 'legacy_unknown',
+          conversationId: null,
           model: 'gpt-5.2',
           inputTokens: 250,
           outputTokens: 125,
         },
+      })
+    })
+
+    it('records explicit attribution fields when provided', async () => {
+      mockCreate.mockResolvedValue({})
+      await recordUsage('project-2', 'gpt-5.2', 250, 125, {
+        userId: 'user-3',
+        workspaceId: 'workspace-3',
+        source: 'project_copilot',
+        contextPage: 'ledger',
+        conversationId: 'conv-1',
+      })
+
+      expect(mockCreate).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          source: 'project_copilot',
+          contextPage: 'ledger',
+          conversationId: 'conv-1',
+        }),
       })
     })
   })

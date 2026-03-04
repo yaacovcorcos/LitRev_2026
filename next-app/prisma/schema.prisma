@@ -264,6 +264,7 @@ model AIConversation {
   updatedAt   DateTime             @updatedAt
   messages    AIMessage[]
   summary     ConversationSummary?
+  usage       AIUsage[]
   project     Project?             @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([userId, context])
@@ -299,15 +300,22 @@ model AIUsage {
   userId       String?  // User who made the request (required for multi-user)
   workspaceId  String?  // Workspace for billing/limits (required for multi-user)
   projectId    String?  // Optional: specific project context
+  conversationId String?
+  source      String   @default("legacy_unknown")
+  contextPage String   @default("legacy_unknown")
   model        String
   inputTokens  Int
   outputTokens Int
   createdAt    DateTime @default(now())
+  conversation AIConversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
   project      Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
 
   @@index([userId, createdAt])
   @@index([workspaceId, createdAt])
   @@index([projectId, createdAt])
+  @@index([conversationId, createdAt])
+  @@index([source, createdAt])
+  @@index([contextPage, createdAt])
 }
 
 // ============================================================================
