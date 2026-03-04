@@ -1,0 +1,56 @@
+{
+  "capturedAt": "2026-03-04T00:48:53Z",
+  "commit": "33a1f4b",
+  "environment": {
+    "browser": "Playwright mobile-chromium (Pixel 7)",
+    "os": "macOS (runner environment)",
+    "deviceProfile": "desktop-normal + mobile-sim",
+    "networkProfile": "normal",
+    "flags": {
+      "NEXT_PUBLIC_MOBILE_VP_V2": "unknown",
+      "NEXT_PUBLIC_MOBILE_SCROLL_LOCK_V2": "unknown",
+      "NEXT_PUBLIC_MOBILE_AI_V2": "unknown",
+      "NEXT_PUBLIC_MOBILE_POPUP_V2": "unknown"
+    }
+  },
+  "surfaces": [
+    "project-conversation",
+    "project-view-copilot",
+    "ai",
+    "popup"
+  ],
+  "checks": {
+    "tsc_no_emit": "pass",
+    "vitest_run": "pass",
+    "playwright_mobile_smoke": "pass"
+  },
+  "metrics": {
+    "dead_scroll_incident_rate": {
+      "project-conversation": null,
+      "project-view-copilot": null,
+      "ai": null,
+      "popup": null
+    },
+    "stuck_stream_terminal_state_rate": null,
+    "retry_success_rate_after_interrupt": null,
+    "p95_input_to_first_visible_response_ms": {
+      "desktop_normal": null,
+      "poor_network": null
+    },
+    "p95_long_tasks_over_200ms_per_stream": null
+  },
+  "thresholds": {
+    "dead_scroll_incident_rate_max": 0.002,
+    "stuck_stream_terminal_state_rate_max": 0.001,
+    "retry_success_rate_after_interrupt_min": 0.98,
+    "p95_input_to_first_visible_response_ms_desktop_max": 800,
+    "p95_input_to_first_visible_response_ms_poor_network_max": 1800,
+    "p95_long_tasks_over_200ms_per_stream_max": 2
+  },
+  "result": "fail",
+  "notes": [
+    "Required compile/test gates passed in this environment.",
+    "A0 quantitative reliability metrics are not yet collected for required network/flag matrix.",
+    "Manual reproducibility runs for dead-scroll and interrupted-stream failure signatures are still pending."
+  ]
+}

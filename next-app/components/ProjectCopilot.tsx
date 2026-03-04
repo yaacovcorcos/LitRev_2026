@@ -118,6 +118,7 @@ export function ProjectCopilot({
             target: event.target,
             panelElement: panelRef.current,
             timelineElement: timelineRef.current,
+            deltaY: event.deltaY,
             ctrlKey: event.ctrlKey,
         });
         if (!decision.shouldPreventDefault) return;

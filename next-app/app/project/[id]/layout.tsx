@@ -17,6 +17,8 @@ import { getStudyAction } from "@/app/actions/ledger";
 import type { CopilotPage } from "@/types/ai";
 import { DemoBanner } from "@/components/project/DemoBanner";
 import { isDemoProjectId } from "@/lib/demo/constants";
+import { isScrollOwnershipA1Enabled } from "@/lib/feature-flags";
+import { shouldLockRootScroll } from "@/lib/mobile/scroll-lock-policy";
 import { shouldSkipPreload } from "@/lib/network-aware";
 import { MOBILE_VIEWPORT_MEDIA_QUERY } from "@/lib/mobile/breakpoints";
 import { isMobileScrollLockV2Enabled, isMobileViewportV2Enabled } from "@/lib/mobile/feature-flags";
@@ -44,6 +46,7 @@ type ProjectShellInnerProps = {
 function ProjectShellInner({ projectId, children }: ProjectShellInnerProps) {
   const router = useRouter();
   const pathname = usePathname();
+  const scrollOwnershipA1Enabled = isScrollOwnershipA1Enabled();
   const mobileViewportV2Enabled = isMobileViewportV2Enabled();
   const mobileScrollLockV2Enabled = isMobileScrollLockV2Enabled();
     const { isCollapsed, panelWidth, setPanelWidth, toggleCollapsed, setStudyFilter } = useProjectCopilot();
@@ -88,10 +91,33 @@ function ProjectShellInner({ projectId, children }: ProjectShellInnerProps) {
         requestAnimationFrame(step);
     }, [projectId, router]);
 
-    // Keep root scrolling disabled while project shell is active so wheel/touch
-    // events stay scoped to workspace panes (content/copilot/timeline).
+    // Derive initial mode from route to avoid deep-link flicker.
+    const [focusMode, setFocusMode] = useState<FocusMode>(() =>
+        tabFromPathname(pathname) ? "view" : "conversation"
+    );
+
+    const [activeTab, setActiveTabState] = useState<ViewTab | null>(() => {
+        return tabFromPathname(pathname) ?? "overview";
+    });
+
+    // Sync activeTab when pathname changes (e.g., browser back/forward)
     useEffect(() => {
-        if (typeof document === "undefined") return;
+        const tab = tabFromPathname(pathname);
+        if (tab) {
+            setActiveTabState(tab);
+            setFocusMode("view");
+        }
+    }, [pathname]);
+
+    // Keep root scrolling scoped to shell owners.
+    // A1 path applies an explicit truth table:
+    // - desktop + view mode => locked
+    // - desktop + conversation mode => unlocked
+    // - mobile => preserve existing mobile-scroll-lock behavior
+    // When A1 is disabled we keep baseline behavior unchanged.
+    useEffect(() => {
+        if (typeof document === "undefined" || typeof window === "undefined") return;
+
         const html = document.documentElement;
         const body = document.body;
         const prevHtmlOverflow = html.style.overflow;
@@ -113,9 +139,39 @@ function ProjectShellInner({ projectId, children }: ProjectShellInnerProps) {
             body.style.overscrollBehavior = "";
         };
 
-        if (!mobileScrollLockV2Enabled || typeof window === "undefined") {
-            applyLockedRootScroll();
+        if (!scrollOwnershipA1Enabled) {
+            if (!mobileScrollLockV2Enabled) {
+                applyLockedRootScroll();
+                return () => {
+                    html.style.overflow = prevHtmlOverflow;
+                    html.style.overscrollBehavior = prevHtmlOverscroll;
+                    body.style.overflow = prevBodyOverflow;
+                    body.style.overscrollBehavior = prevBodyOverscroll;
+                };
+            }
+
+            const mobileQuery = window.matchMedia(MOBILE_VIEWPORT_MEDIA_QUERY);
+            const applyByViewport = () => {
+                if (mobileQuery.matches) {
+                    applyUnlockedRootScroll();
+                    return;
+                }
+                applyLockedRootScroll();
+            };
+
+            applyByViewport();
+            if (typeof mobileQuery.addEventListener === "function") {
+                mobileQuery.addEventListener("change", applyByViewport);
+            } else if (typeof mobileQuery.addListener === "function") {
+                mobileQuery.addListener(applyByViewport);
+            }
+
             return () => {
+                if (typeof mobileQuery.removeEventListener === "function") {
+                    mobileQuery.removeEventListener("change", applyByViewport);
+                } else if (typeof mobileQuery.removeListener === "function") {
+                    mobileQuery.removeListener(applyByViewport);
+                }
                 html.style.overflow = prevHtmlOverflow;
                 html.style.overscrollBehavior = prevHtmlOverscroll;
                 body.style.overflow = prevBodyOverflow;
@@ -124,51 +180,39 @@ function ProjectShellInner({ projectId, children }: ProjectShellInnerProps) {
         }
 
         const mobileQuery = window.matchMedia(MOBILE_VIEWPORT_MEDIA_QUERY);
-        const applyByViewport = () => {
-            if (mobileQuery.matches) {
+        const applyByViewportAndMode = () => {
+            const shouldLock = shouldLockRootScroll({
+                a1Enabled: scrollOwnershipA1Enabled,
+                mobileScrollLockV2Enabled,
+                isMobileViewport: mobileQuery.matches,
+                focusMode,
+            });
+            if (shouldLock) {
+                applyLockedRootScroll();
+            } else {
                 applyUnlockedRootScroll();
-                return;
             }
-            applyLockedRootScroll();
         };
 
-        applyByViewport();
+        applyByViewportAndMode();
         if (typeof mobileQuery.addEventListener === "function") {
-            mobileQuery.addEventListener("change", applyByViewport);
+            mobileQuery.addEventListener("change", applyByViewportAndMode);
         } else if (typeof mobileQuery.addListener === "function") {
-            mobileQuery.addListener(applyByViewport);
+            mobileQuery.addListener(applyByViewportAndMode);
         }
 
         return () => {
             if (typeof mobileQuery.removeEventListener === "function") {
-                mobileQuery.removeEventListener("change", applyByViewport);
+                mobileQuery.removeEventListener("change", applyByViewportAndMode);
             } else if (typeof mobileQuery.removeListener === "function") {
-                mobileQuery.removeListener(applyByViewport);
+                mobileQuery.removeListener(applyByViewportAndMode);
             }
             html.style.overflow = prevHtmlOverflow;
             html.style.overscrollBehavior = prevHtmlOverscroll;
             body.style.overflow = prevBodyOverflow;
             body.style.overscrollBehavior = prevBodyOverscroll;
         };
-    }, [mobileScrollLockV2Enabled]);
-
-    // Derive initial mode from route to avoid deep-link flicker.
-    const [focusMode, setFocusMode] = useState<FocusMode>(() =>
-        tabFromPathname(pathname) ? "view" : "conversation"
-    );
-
-    const [activeTab, setActiveTabState] = useState<ViewTab | null>(() => {
-        return tabFromPathname(pathname) ?? "overview";
-    });
-
-    // Sync activeTab when pathname changes (e.g., browser back/forward)
-    useEffect(() => {
-        const tab = tabFromPathname(pathname);
-        if (tab) {
-            setActiveTabState(tab);
-            setFocusMode("view");
-        }
-    }, [pathname]);
+    }, [focusMode, mobileScrollLockV2Enabled, scrollOwnershipA1Enabled]);
 
     const setActiveTab = useCallback((tab: ViewTab) => {
         setActiveTabState(tab);

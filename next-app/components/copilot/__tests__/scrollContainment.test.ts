@@ -57,6 +57,7 @@ describe("scrollContainment", () => {
             target: header,
             panelElement: panel,
             timelineElement: timeline,
+            deltaY: 24,
         });
 
         expect(decision.shouldPreventDefault).toBe(true);
@@ -74,6 +75,7 @@ describe("scrollContainment", () => {
             target: timeline,
             panelElement: panel,
             timelineElement: timeline,
+            deltaY: 24,
         });
 
         expect(decision.shouldPreventDefault).toBe(false);
@@ -98,13 +100,14 @@ describe("scrollContainment", () => {
             target: textarea,
             panelElement: panel,
             timelineElement: timeline,
+            deltaY: 24,
         });
 
         expect(decision.shouldPreventDefault).toBe(false);
         expect(decision.shouldRedirectToTimeline).toBe(false);
     });
 
-    it("blocks wheel escape when timeline itself cannot scroll", () => {
+    it("does not block when timeline itself cannot scroll", () => {
         const panel = document.createElement("section");
         const header = document.createElement("div");
         const timeline = document.createElement("div");
@@ -117,9 +120,10 @@ describe("scrollContainment", () => {
             target: header,
             panelElement: panel,
             timelineElement: timeline,
+            deltaY: 24,
         });
 
-        expect(decision.shouldPreventDefault).toBe(true);
+        expect(decision.shouldPreventDefault).toBe(false);
         expect(decision.shouldRedirectToTimeline).toBe(false);
     });
 
@@ -136,10 +140,65 @@ describe("scrollContainment", () => {
             target: header,
             panelElement: panel,
             timelineElement: timeline,
+            deltaY: 24,
             ctrlKey: true,
         });
 
         expect(decision.shouldPreventDefault).toBe(false);
         expect(decision.shouldRedirectToTimeline).toBe(false);
+    });
+
+    it("does not block when nested scroller cannot consume and timeline cannot consume", () => {
+        const panel = document.createElement("section");
+        const wrap = document.createElement("div");
+        const nested = document.createElement("div");
+        const timeline = document.createElement("div");
+
+        nested.style.overflowY = "auto";
+        timeline.style.overflowY = "auto";
+        setScrollMetrics(nested, { clientHeight: 120, scrollHeight: 120 });
+        setScrollMetrics(timeline, { clientHeight: 300, scrollHeight: 300 });
+
+        panel.appendChild(wrap);
+        wrap.appendChild(nested);
+        panel.appendChild(timeline);
+
+        const decision = decideCopilotWheelContainment({
+            target: nested,
+            panelElement: panel,
+            timelineElement: timeline,
+            deltaY: 24,
+        });
+
+        expect(decision.shouldPreventDefault).toBe(false);
+        expect(decision.shouldRedirectToTimeline).toBe(false);
+    });
+
+    it("redirects to timeline when nested scroller is at edge and timeline can consume", () => {
+        const panel = document.createElement("section");
+        const wrap = document.createElement("div");
+        const nested = document.createElement("div");
+        const timeline = document.createElement("div");
+
+        nested.style.overflowY = "auto";
+        timeline.style.overflowY = "auto";
+        setScrollMetrics(nested, { clientHeight: 120, scrollHeight: 180 });
+        setScrollMetrics(timeline, { clientHeight: 300, scrollHeight: 600 });
+        Object.defineProperty(nested, "scrollTop", { configurable: true, get: () => 60 });
+        Object.defineProperty(timeline, "scrollTop", { configurable: true, get: () => 100 });
+
+        panel.appendChild(wrap);
+        wrap.appendChild(nested);
+        panel.appendChild(timeline);
+
+        const decision = decideCopilotWheelContainment({
+            target: nested,
+            panelElement: panel,
+            timelineElement: timeline,
+            deltaY: 24,
+        });
+
+        expect(decision.shouldPreventDefault).toBe(true);
+        expect(decision.shouldRedirectToTimeline).toBe(true);
     });
 });
