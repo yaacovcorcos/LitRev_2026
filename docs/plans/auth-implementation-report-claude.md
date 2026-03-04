@@ -131,9 +131,11 @@ outdated:
 - **Clerk:** Excellent DX but vendor lock-in, no native Prisma adapter, user
   data on external servers. For a research tool handling academic data, we want
   data sovereignty.
-- **Supabase Auth:** We already use Supabase for file storage, but our primary
-  database is Prisma + PostgreSQL (not Supabase DB). Using Supabase Auth would
-  create an awkward dual-database architecture with sync overhead.
+- **Supabase Auth:** We already use Supabase Postgres as the primary deployed
+  database (via Prisma) and Supabase Storage for files. We intentionally do not
+  use Supabase Auth because Better Auth already manages identity/session tables
+  in the same database. Better Auth is the sole identity authority in this
+  project.
 
 ### Better Auth Specifics
 

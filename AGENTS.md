@@ -101,8 +101,14 @@ Required local commit flow:
 - `DIRECT_URL` is mandatory for migration traffic in production.
 - `DATABASE_URL` is runtime only.
 - For Supabase production migrations, prefer a session-mode pooler host on `:5432` reachable from Vercel build containers.
-- Supabase is file storage only (PDF upload/download), not the primary database.
+- Local development may use localhost Postgres; deployed environments use Supabase Postgres.
+- Primary deployed database is Supabase Postgres (accessed via Prisma).
+- Supabase Auth is not used; authentication is handled by Better Auth with Prisma-backed tables.
+- Supabase Storage is used for file upload/download.
 - Required file storage env vars: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`.
+- Local DB (localhost) is for development/testing only; it is never the target for production rollout decisions.
+- Production migrations must target Supabase Postgres via production `DIRECT_URL` (non-localhost).
+- A Git push does not migrate any database; migration occurs only when migration commands/deploy pipeline run against production environment variables.
 - Prisma tests are mocked by default; real DB tests require `RUN_DB_TESTS=1`.
 - Scoping feature flags:
   - `NEXT_PUBLIC_ENABLE_SCOPING_MODE`
