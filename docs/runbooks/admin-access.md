@@ -56,3 +56,14 @@ select id, email, name, "isPlatformAdmin", "createdAt"
 from "User"
 order by "isPlatformAdmin" desc, "createdAt" asc;
 ```
+
+## Guard Boundary Checklist
+
+When adding admin capabilities, enforce server-side platform-admin guards at every boundary:
+
+1. Route/server-component entry points (`/admin/**`) must call `requirePlatformAdmin()`.
+2. Admin server actions must wrap execution with `withPlatformAdminAction(...)`.
+3. Admin API handlers must call `requirePlatformAdminApi(request)` before any admin data access.
+4. Background/cron admin tasks must call `requirePlatformAdminBackground(userId)` before reading or mutating admin-only data.
+
+Never rely on hidden UI controls as authorization.
