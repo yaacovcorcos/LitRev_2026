@@ -95,3 +95,17 @@ Migration index set for this page:
 1. `Session_userId_updatedAt_idx`
 2. `User_createdAt_idx`
 3. `User_isPlatformAdmin_createdAt_idx`
+
+## Platform Admin Mutations + Audit
+
+- Endpoint: `POST /api/admin/users/[userId]/platform-admin`
+- Request body:
+  - `makeAdmin: boolean`
+  - `reason?: string` (stored in audit log)
+- Server-side safeguards:
+  - only platform admins can mutate
+  - serializable transaction + admin-row lock before revoke flow
+  - last-admin protection blocks downgrade of final platform admin (`409`)
+- Audit writes:
+  - table: `AdminAuditLog`
+  - fields: `actorUserId`, `targetUserId`, `action`, `reason`, `requestId`, `before`, `after`, `createdAt`

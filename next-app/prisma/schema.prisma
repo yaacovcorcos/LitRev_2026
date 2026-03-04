@@ -26,9 +26,29 @@ model User {
   memories    UserMemory[]
   sessions    Session[]
   accounts    Account[]
+  adminActions AdminAuditLog[] @relation("AdminAuditActor")
+  adminTargets AdminAuditLog[] @relation("AdminAuditTarget")
 
   @@index([createdAt])
   @@index([isPlatformAdmin, createdAt])
+}
+
+model AdminAuditLog {
+  id          String   @id @default(cuid())
+  actorUserId String
+  targetUserId String
+  action      String
+  reason      String?
+  requestId   String?
+  before      Json?
+  after       Json?
+  createdAt   DateTime @default(now())
+
+  actor  User @relation("AdminAuditActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+  target User @relation("AdminAuditTarget", fields: [targetUserId], references: [id], onDelete: Restrict)
+
+  @@index([actorUserId, createdAt])
+  @@index([targetUserId, createdAt])
 }
 
 model Session {
