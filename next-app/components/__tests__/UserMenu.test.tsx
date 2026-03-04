@@ -97,7 +97,7 @@ describe("UserMenu", () => {
     expect(mockRouterReplace).not.toHaveBeenCalled();
   });
 
-  it("cycles theme through light, light-carbon, and dark", () => {
+  it("cycles theme between light and dark only", () => {
     mockUseSession.mockReturnValue({ data: null, isPending: false });
 
     render(<ThemeProvider><UserMenu /></ThemeProvider>);
@@ -108,10 +108,6 @@ describe("UserMenu", () => {
     expect(themeButton.textContent).toContain("Light");
 
     fireEvent.click(themeButton);
-    expect(screen.getByRole("menuitem", { name: /theme: light carbon/i }).textContent).toContain("Light Carbon");
-    expect(localStorage.getItem("litrev-theme")).toBe("light-carbon");
-
-    fireEvent.click(screen.getByRole("menuitem", { name: /theme: light carbon/i }));
     expect(screen.getByRole("menuitem", { name: /theme: dark/i }).textContent).toContain("Dark");
     expect(localStorage.getItem("litrev-theme")).toBe("dark");
 
