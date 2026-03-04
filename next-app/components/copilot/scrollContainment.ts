@@ -6,6 +6,14 @@ export function isElementVerticallyScrollable(element: HTMLElement): boolean {
     return element.scrollHeight > element.clientHeight + 1;
 }
 
+function canScrollInDirection(element: HTMLElement, deltaY: number): boolean {
+    if (deltaY === 0) return false;
+    const top = element.scrollTop;
+    const maxTop = element.scrollHeight - element.clientHeight;
+    if (deltaY > 0) return top < maxTop - 1;
+    return top > 1;
+}
+
 export function findScrollableAncestorWithinBoundary(
     start: HTMLElement | null,
     boundary: HTMLElement | null,
@@ -29,11 +37,13 @@ export function decideCopilotWheelContainment({
     target,
     panelElement,
     timelineElement,
+    deltaY,
     ctrlKey = false,
 }: {
     target: EventTarget | null;
     panelElement: HTMLElement | null;
     timelineElement: HTMLElement | null;
+    deltaY: number;
     ctrlKey?: boolean;
 }): WheelContainmentDecision {
     if (ctrlKey) {
@@ -44,16 +54,22 @@ export function decideCopilotWheelContainment({
     }
 
     const scrollOwner = findScrollableAncestorWithinBoundary(target, panelElement);
-    if (scrollOwner && scrollOwner !== panelElement && scrollOwner !== timelineElement) {
-        return { shouldPreventDefault: false, shouldRedirectToTimeline: false };
-    }
     if (scrollOwner === timelineElement) {
         return { shouldPreventDefault: false, shouldRedirectToTimeline: false };
     }
 
-    if (!isElementVerticallyScrollable(timelineElement)) {
-        return { shouldPreventDefault: true, shouldRedirectToTimeline: false };
+    if (scrollOwner && scrollOwner !== panelElement && scrollOwner !== timelineElement) {
+        if (canScrollInDirection(scrollOwner, deltaY)) {
+            return { shouldPreventDefault: false, shouldRedirectToTimeline: false };
+        }
+        if (isElementVerticallyScrollable(timelineElement) && canScrollInDirection(timelineElement, deltaY)) {
+            return { shouldPreventDefault: true, shouldRedirectToTimeline: true };
+        }
+        return { shouldPreventDefault: false, shouldRedirectToTimeline: false };
     }
 
-    return { shouldPreventDefault: true, shouldRedirectToTimeline: true };
+    if (isElementVerticallyScrollable(timelineElement) && canScrollInDirection(timelineElement, deltaY)) {
+        return { shouldPreventDefault: true, shouldRedirectToTimeline: true };
+    }
+    return { shouldPreventDefault: false, shouldRedirectToTimeline: false };
 }

@@ -72,6 +72,7 @@ export default function NotesPage() {
     // Track pending saves so we can flush them before switching notes
     const pendingSaveRef = useRef<{ noteId: string; content: JSONContent } | null>(null);
     const pendingTitleRef = useRef<{ noteId: string; title: string } | null>(null);
+    const loadRequestSeqRef = useRef(0);
 
     // Selected note data
     const selectedNote = useMemo(
@@ -107,40 +108,59 @@ export default function NotesPage() {
 
     const loadNotes = useCallback(async () => {
         if (!projectId) return;
+        const requestSeq = ++loadRequestSeqRef.current;
         setIsLoading(true);
-        const result = await listNotesAction(projectId);
-        if (result.success) setNotes(result.data as Note[]);
-        setIsLoading(false);
+        try {
+            const result = await listNotesAction(projectId);
+            if (requestSeq !== loadRequestSeqRef.current) return;
+            if (result.success) {
+                const nextNotes = result.data as Note[];
+                setNotes(nextNotes);
+                setSelectedNoteId((prev) => {
+                    if (!prev) return prev;
+                    return nextNotes.some((n) => n.id === prev) ? prev : null;
+                });
+            }
+        } catch (error) {
+            if (requestSeq !== loadRequestSeqRef.current) return;
+            console.error("[notes] failed to load notes", error);
+        } finally {
+            if (requestSeq === loadRequestSeqRef.current) {
+                setIsLoading(false);
+            }
+        }
     }, [projectId]);
 
     // Seed from preload cache to eliminate loading spinner on tab switch
     const seededFromCacheRef = useRef(false);
     useEffect(() => {
         if (seededFromCacheRef.current) return;
-        if (cachedNotes.state === "ready" && cachedNotes.data && cachedNotes.data.length > 0) {
-            // Index data has id/title/tags/source/updatedAt — enough for sidebar
-            setNotes(cachedNotes.data.map((n) => ({
-                id: n.id,
-                projectId,
-                title: n.title,
-                content: { type: "doc", content: [{ type: "paragraph" }] },
-                tags: n.tags,
-                linkedStudyId: null,
-                linkedSection: null,
-                source: n.source,
-                sourceConversationId: null,
-                sourceMessageId: null,
-                createdAt: n.updatedAt,
-                updatedAt: n.updatedAt,
-            })));
-            setIsLoading(false);
-            seededFromCacheRef.current = true;
-            // Still fetch full data in background for content
-            loadNotes();
+        if (cachedNotes.state === "ready") {
+            if (cachedNotes.data && cachedNotes.data.length > 0) {
+                // Index data has id/title/tags/source/updatedAt — enough for sidebar
+                setNotes(cachedNotes.data.map((n) => ({
+                    id: n.id,
+                    projectId,
+                    title: n.title,
+                    content: { type: "doc", content: [{ type: "paragraph" }] },
+                    tags: n.tags,
+                    linkedStudyId: null,
+                    linkedSection: null,
+                    source: n.source,
+                    sourceConversationId: null,
+                    sourceMessageId: null,
+                    createdAt: n.updatedAt,
+                    updatedAt: n.updatedAt,
+                })));
+                setIsLoading(false);
+                seededFromCacheRef.current = true;
+            }
+            // Always refresh full data when preload reaches ready, even if ready=[]
+            void loadNotes();
             return;
         }
         if (cachedNotes.state === "idle" || cachedNotes.state === "error") {
-            loadNotes();
+            void loadNotes();
         }
     }, [cachedNotes, projectId, loadNotes]);
 

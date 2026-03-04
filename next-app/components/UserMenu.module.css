@@ -181,15 +181,6 @@
   min-width: 20px;
 }
 
-.themeBadge {
-  margin-left: auto;
-  font-size: 10px;
-  color: var(--text-muted);
-  font-weight: 400;
-  letter-spacing: 0.03em;
-  min-width: 0;
-}
-
 .menuItemDanger {
   composes: menuItem;
   color: var(--color-danger);

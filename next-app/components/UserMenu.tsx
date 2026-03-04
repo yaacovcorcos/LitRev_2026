@@ -6,16 +6,14 @@ import { authClient } from "@/lib/auth-client";
 import { useTheme, type ThemePreference } from "@/contexts/ThemeContext";
 import styles from "@/components/UserMenu.module.css";
 
-const THEME_CYCLE: ThemePreference[] = ["light", "dark", "system"];
+const THEME_CYCLE: ThemePreference[] = ["light", "dark"];
 const THEME_ICON: Record<ThemePreference, string> = {
   light: "light_mode",
   dark: "dark_mode",
-  system: "contrast",
 };
 const THEME_LABEL: Record<ThemePreference, string> = {
   light: "Light",
   dark: "Dark",
-  system: "System",
 };
 
 type UserMenuProps = {
@@ -132,9 +130,6 @@ export function UserMenu({ collapsed = false }: UserMenuProps) {
                 {THEME_ICON[theme]}
               </span>
               {THEME_LABEL[theme]}
-              <span className={styles.themeBadge}>
-                {theme === "system" ? "auto" : ""}
-              </span>
             </button>
             <button
               type="button"
