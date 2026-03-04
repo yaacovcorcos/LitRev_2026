@@ -7,13 +7,11 @@
     background: var(--bg-sidebar);
     backdrop-filter: blur(20px);
     transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    overflow: hidden;
     white-space: nowrap;
     position: fixed;
     top: var(--header-height, 44px);
     left: 0;
     height: calc(100vh - var(--header-height, 44px));
-    overflow-y: auto;
     z-index: var(--z-sidebar);
 }
 
