@@ -34,6 +34,27 @@
   line-height: 1.6;
 }
 
+.actions {
+  padding-top: 4px;
+}
+
+.primaryLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--border-default);
+  border-radius: 10px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  text-decoration: none;
+  font-weight: 600;
+  padding: 8px 12px;
+}
+
+.primaryLink:hover {
+  background: var(--bg-sidebar);
+}
+
 .backLink {
   width: fit-content;
   color: var(--accent-primary);

@@ -4,6 +4,7 @@ import {
   requirePlatformAdmin,
 } from "@/lib/server/auth/platform-admin";
 import { forbidden } from "next/navigation";
+import Link from "next/link";
 import styles from "./admin.module.css";
 
 export const dynamic = "force-dynamic";
@@ -27,6 +28,11 @@ export default async function AdminPage() {
           <p className={styles.description}>
             Admin foundation is active. User management and analytics modules are staged in later phases.
           </p>
+          <div className={styles.actions}>
+            <Link className={styles.primaryLink} href="/admin/users">
+              Open Users Directory
+            </Link>
+          </div>
         </header>
       </section>
     </AppShell>

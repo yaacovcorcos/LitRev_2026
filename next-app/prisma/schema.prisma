@@ -26,6 +26,9 @@ model User {
   memories    UserMemory[]
   sessions    Session[]
   accounts    Account[]
+
+  @@index([createdAt])
+  @@index([isPlatformAdmin, createdAt])
 }
 
 model Session {
@@ -41,6 +44,7 @@ model Session {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@index([userId, updatedAt])
 }
 
 model Account {
