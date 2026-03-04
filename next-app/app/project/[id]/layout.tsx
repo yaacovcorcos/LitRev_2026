@@ -23,6 +23,7 @@ import { shouldSkipPreload } from "@/lib/network-aware";
 import { MOBILE_VIEWPORT_MEDIA_QUERY } from "@/lib/mobile/breakpoints";
 import { isMobileScrollLockV2Enabled, isMobileViewportV2Enabled } from "@/lib/mobile/feature-flags";
 import { ProjectDataProvider } from "@/contexts/ProjectDataContext";
+import { recordReliabilityMetric } from "@/lib/ai/reliability-telemetry";
 import styles from "./project-shell.module.css";
 
 const RAIL_WIDTH = 44;
@@ -68,6 +69,33 @@ function ProjectShellInner({ projectId, children }: ProjectShellInnerProps) {
     useEffect(() => {
         if (!projectId || typeof window === "undefined") return;
         window.localStorage.setItem("litrev:lastProjectId", projectId);
+    }, [projectId]);
+
+    useEffect(() => {
+        if (!projectId) return;
+        const startedAtMs = Date.now();
+        const sessionId = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+            ? crypto.randomUUID()
+            : `shell-${projectId}-${startedAtMs}`;
+        recordReliabilityMetric({
+            type: "reliability.v1.shell.session_started",
+            surface: "shell",
+            projectId,
+            payload: {
+                sessionId,
+            },
+        });
+        return () => {
+            recordReliabilityMetric({
+                type: "reliability.v1.shell.session_ended",
+                surface: "shell",
+                projectId,
+                payload: {
+                    sessionId,
+                    durationMs: Date.now() - startedAtMs,
+                },
+            });
+        };
     }, [projectId]);
 
     // Prefetch JS bundles for sibling project routes

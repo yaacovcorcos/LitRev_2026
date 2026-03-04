@@ -3,7 +3,7 @@
  * extracted from ProjectCopilotContext.tsx for maintainability.
  * Combines C-3 (stream) and C-4 (artifacts) extractions.
  */
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
 import type {
     CopilotMessage,
     CopilotMessageAttachment,
@@ -21,6 +21,8 @@ import type { ArtifactActionContract } from "@/lib/artifacts/action-contract";
 import { getReasoningBudgetTokens, shouldRequestReasoning } from "@/lib/ai/reasoning-visibility";
 import { formatStreamErrorForUI } from "@/lib/ai/stream-error-ui";
 import { recordChatUnificationMetric } from "@/lib/ai/chat-unification-telemetry";
+import { terminalReasonFromThrownError, type StreamTerminalReason } from "@/lib/ai/stream-lifecycle";
+import { recordReliabilityMetric } from "@/lib/ai/reliability-telemetry";
 import type { RetryModelExpectation } from "@/types/chat-unification";
 import type { PendingAttachment, ApproveArtifactsBatchResult } from "@/types/copilot-context";
 import type { useCopilotConversations } from "@/hooks/useCopilotConversations";
@@ -67,7 +69,10 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
         onNavigate,
     } = deps;
 
+    const userCancelRequestedRef = useRef(false);
+
     const cancelStream = useCallback(() => {
+        userCancelRequestedRef.current = true;
         streamGenRef.current++;
         if (abortControllerRef.current) {
             abortControllerRef.current.abort();
@@ -96,6 +101,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
         errorMessage: string | null;
         actualModel: string | null;
         actualModelSource: "provider" | "requested" | "unknown";
+        terminalReason: StreamTerminalReason | null;
         runId: string | null;
         conversationId: string | null;
     }> => {
@@ -126,6 +132,40 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
         let actualModelSource: "provider" | "requested" | "unknown" = "unknown";
         let unresolvedCountBeforeClear: number | null = null;
         let unresolvedCountAfterClear: number | null = null;
+        let terminalReason: StreamTerminalReason | null = null;
+        const requestKey = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+            ? crypto.randomUUID()
+            : `project-stream-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        let terminalEventEmitted = false;
+
+        recordReliabilityMetric({
+            type: "reliability.v1.stream.started",
+            surface: "project",
+            projectId,
+            conversationId: effectiveConvId,
+            payload: {
+                requestKey,
+                phase: "project_stream",
+            },
+        });
+
+        const emitTerminalMetric = (reason: StreamTerminalReason, status: string | null) => {
+            if (terminalEventEmitted) return;
+            terminalEventEmitted = true;
+            recordReliabilityMetric({
+                type: "reliability.v1.stream.terminal",
+                surface: "project",
+                projectId,
+                conversationId: effectiveConvId,
+                runId: localRunId || null,
+                payload: {
+                    requestKey,
+                    phase: "project_stream",
+                    reason,
+                    runStatus: status,
+                },
+            });
+        };
 
         // Cancel any in-flight stream
         if (abortControllerRef.current) {
@@ -133,6 +173,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
         }
         const controller = new AbortController();
         abortControllerRef.current = controller;
+        userCancelRequestedRef.current = false;
 
         try {
             const response = await fetch("/api/ai/stream", {
@@ -259,9 +300,11 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
             streamErrorMessage = summary.errorMessage ? formatStreamErrorForUI(summary.errorMessage) : null;
             actualModel = summary.actualModel;
             actualModelSource = summary.actualModelSource;
+            terminalReason = summary.terminalReason;
 
             // Stale generation — skip refresh
             if (streamGenRef.current !== myGen) {
+                emitTerminalMetric(terminalReason ?? "cancelled_by_user", runStatus);
                 return {
                     success: false,
                     aborted: true,
@@ -270,6 +313,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                     errorMessage: streamErrorMessage,
                     actualModel,
                     actualModelSource,
+                    terminalReason,
                     runId: localRunId || null,
                     conversationId: effectiveConvId,
                 };
@@ -292,6 +336,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
 
             // Refresh conversation list to update titles/counts
             convo.loadConversations();
+            emitTerminalMetric(terminalReason ?? "completed", runStatus);
             return {
                 success: true,
                 aborted: false,
@@ -300,12 +345,17 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                 errorMessage: streamErrorMessage,
                 actualModel,
                 actualModelSource,
+                terminalReason,
                 runId: localRunId || null,
                 conversationId: effectiveConvId,
             };
         } catch (error) {
             // Silently ignore aborted requests
             if (error instanceof DOMException && error.name === "AbortError") {
+                terminalReason = terminalReasonFromThrownError(error, {
+                    isUserAbort: userCancelRequestedRef.current,
+                });
+                emitTerminalMetric(terminalReason, runStatus);
                 return {
                     success: false,
                     aborted: true,
@@ -314,10 +364,13 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                     errorMessage: streamErrorMessage,
                     actualModel,
                     actualModelSource,
+                    terminalReason,
                     runId: localRunId || null,
                     conversationId: effectiveConvId,
                 };
             }
+            terminalReason = terminalReasonFromThrownError(error);
+            emitTerminalMetric(terminalReason, runStatus);
 
             recordChatUnificationMetric({
                 type: "stuck_running_tools_after_run_end",
@@ -373,6 +426,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                 errorMessage: friendlyError,
                 actualModel,
                 actualModelSource,
+                terminalReason,
                 runId: localRunId || null,
                 conversationId: effectiveConvId,
             };

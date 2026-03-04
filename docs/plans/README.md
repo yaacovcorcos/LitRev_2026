@@ -22,6 +22,7 @@ This directory contains the canonical, active plans for LitRev.
 - [**PRD**](../../PRD.md): Product vision and high-level behavioral constraints.
 - [**Quality Report**](../../QUALITY_REPORT.md): Audit findings and concrete technical debt.
 - [**Chat Unification Burn-In Runbook**](../runbooks/chat-unification-burn-in.md): Operational U1.6 canary validation steps and sign-off procedure.
+- [**Reliability A3 Canary Runbook**](../runbooks/reliability-a3-canary.md): staged sample gates, pass/fail thresholds, rollback triggers, and flag interaction matrix.
 
 ---
 
