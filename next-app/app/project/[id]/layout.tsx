@@ -109,13 +109,10 @@ function ProjectShellInner({ projectId, children }: ProjectShellInnerProps) {
         }
     }, [pathname]);
 
-    // Keep root scrolling scoped to shell owners.
-    // A1 path applies an explicit truth table:
-    // - desktop + view mode => locked
-    // - desktop + conversation mode => unlocked
-    // - mobile => preserve existing mobile-scroll-lock behavior
-    // When A1 is disabled we keep baseline behavior unchanged.
+    // Keep root scrolling scoped to shell owners (baseline path).
+    // A1 disabled => preserve existing behavior/dependencies unchanged.
     useEffect(() => {
+        if (scrollOwnershipA1Enabled) return;
         if (typeof document === "undefined" || typeof window === "undefined") return;
 
         const html = document.documentElement;
@@ -139,45 +136,73 @@ function ProjectShellInner({ projectId, children }: ProjectShellInnerProps) {
             body.style.overscrollBehavior = "";
         };
 
-        if (!scrollOwnershipA1Enabled) {
-            if (!mobileScrollLockV2Enabled) {
-                applyLockedRootScroll();
-                return () => {
-                    html.style.overflow = prevHtmlOverflow;
-                    html.style.overscrollBehavior = prevHtmlOverscroll;
-                    body.style.overflow = prevBodyOverflow;
-                    body.style.overscrollBehavior = prevBodyOverscroll;
-                };
-            }
-
-            const mobileQuery = window.matchMedia(MOBILE_VIEWPORT_MEDIA_QUERY);
-            const applyByViewport = () => {
-                if (mobileQuery.matches) {
-                    applyUnlockedRootScroll();
-                    return;
-                }
-                applyLockedRootScroll();
-            };
-
-            applyByViewport();
-            if (typeof mobileQuery.addEventListener === "function") {
-                mobileQuery.addEventListener("change", applyByViewport);
-            } else if (typeof mobileQuery.addListener === "function") {
-                mobileQuery.addListener(applyByViewport);
-            }
-
+        if (!mobileScrollLockV2Enabled) {
+            applyLockedRootScroll();
             return () => {
-                if (typeof mobileQuery.removeEventListener === "function") {
-                    mobileQuery.removeEventListener("change", applyByViewport);
-                } else if (typeof mobileQuery.removeListener === "function") {
-                    mobileQuery.removeListener(applyByViewport);
-                }
                 html.style.overflow = prevHtmlOverflow;
                 html.style.overscrollBehavior = prevHtmlOverscroll;
                 body.style.overflow = prevBodyOverflow;
                 body.style.overscrollBehavior = prevBodyOverscroll;
             };
         }
+
+        const mobileQuery = window.matchMedia(MOBILE_VIEWPORT_MEDIA_QUERY);
+        const applyByViewport = () => {
+            if (mobileQuery.matches) {
+                applyUnlockedRootScroll();
+                return;
+            }
+            applyLockedRootScroll();
+        };
+
+        applyByViewport();
+        if (typeof mobileQuery.addEventListener === "function") {
+            mobileQuery.addEventListener("change", applyByViewport);
+        } else if (typeof mobileQuery.addListener === "function") {
+            mobileQuery.addListener(applyByViewport);
+        }
+
+        return () => {
+            if (typeof mobileQuery.removeEventListener === "function") {
+                mobileQuery.removeEventListener("change", applyByViewport);
+            } else if (typeof mobileQuery.removeListener === "function") {
+                mobileQuery.removeListener(applyByViewport);
+            }
+            html.style.overflow = prevHtmlOverflow;
+            html.style.overscrollBehavior = prevHtmlOverscroll;
+            body.style.overflow = prevBodyOverflow;
+            body.style.overscrollBehavior = prevBodyOverscroll;
+        };
+    }, [mobileScrollLockV2Enabled, scrollOwnershipA1Enabled]);
+
+    // Keep root scrolling scoped to shell owners (A1 truth table path).
+    // - desktop + view mode => locked
+    // - desktop + conversation mode => unlocked
+    // - mobile => preserve existing mobile-scroll-lock behavior
+    useEffect(() => {
+        if (!scrollOwnershipA1Enabled) return;
+        if (typeof document === "undefined" || typeof window === "undefined") return;
+
+        const html = document.documentElement;
+        const body = document.body;
+        const prevHtmlOverflow = html.style.overflow;
+        const prevHtmlOverscroll = html.style.overscrollBehavior;
+        const prevBodyOverflow = body.style.overflow;
+        const prevBodyOverscroll = body.style.overscrollBehavior;
+
+        const applyLockedRootScroll = () => {
+            html.style.overflow = "hidden";
+            html.style.overscrollBehavior = "none";
+            body.style.overflow = "hidden";
+            body.style.overscrollBehavior = "none";
+        };
+
+        const applyUnlockedRootScroll = () => {
+            html.style.overflow = "";
+            html.style.overscrollBehavior = "";
+            body.style.overflow = "";
+            body.style.overscrollBehavior = "";
+        };
 
         const mobileQuery = window.matchMedia(MOBILE_VIEWPORT_MEDIA_QUERY);
         const applyByViewportAndMode = () => {
