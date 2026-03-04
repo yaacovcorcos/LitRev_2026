@@ -123,13 +123,12 @@ export function CitationPreview({ href, type, children, anchorProps }: CitationP
                 fromCache,
                 latencyMs,
                 upstreamSource:
-                    result.data.citationCountSource === "crossref"
-                        ? "crossref"
-                        : citationType === "PubMed"
-                            ? "pubmed"
-                            : citationType === "DOI"
-                                ? "crossref"
-                                : "unknown",
+                    result.data.citationCountSource
+                    ?? (citationType === "PubMed"
+                        ? "pubmed"
+                        : citationType === "DOI"
+                            ? "crossref"
+                            : "unknown"),
             });
         } else {
             setFetchState("error");
