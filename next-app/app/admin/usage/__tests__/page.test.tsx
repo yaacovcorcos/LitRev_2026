@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => {
   return {
     requirePlatformAdmin: vi.fn(),
     getAdminUsageAnalytics: vi.fn(),
-    forbidden: vi.fn(),
+    notFound: vi.fn(),
     PlatformAdminAccessError: MockPlatformAdminAccessError,
   };
 });
@@ -22,7 +22,7 @@ vi.mock("@/lib/server/admin/usage-analytics", () => ({
 }));
 
 vi.mock("next/navigation", () => ({
-  forbidden: mocks.forbidden,
+  notFound: mocks.notFound,
 }));
 
 vi.mock("@/components/AppShell", () => ({
@@ -35,7 +35,7 @@ describe("/admin/usage page", () => {
   beforeEach(() => {
     mocks.requirePlatformAdmin.mockReset();
     mocks.getAdminUsageAnalytics.mockReset();
-    mocks.forbidden.mockReset();
+    mocks.notFound.mockReset();
 
     mocks.getAdminUsageAnalytics.mockResolvedValue({
       windowDays: 30,
@@ -65,7 +65,7 @@ describe("/admin/usage page", () => {
     expect(result).toBeTruthy();
     expect(mocks.requirePlatformAdmin).toHaveBeenCalledTimes(1);
     expect(mocks.getAdminUsageAnalytics).toHaveBeenCalledWith({ windowDays: 7 });
-    expect(mocks.forbidden).not.toHaveBeenCalled();
+    expect(mocks.notFound).not.toHaveBeenCalled();
   });
 
   it("falls back to 30-day window for invalid values", async () => {
@@ -76,13 +76,13 @@ describe("/admin/usage page", () => {
     expect(mocks.getAdminUsageAnalytics).toHaveBeenCalledWith({ windowDays: 30 });
   });
 
-  it("calls forbidden for non-admin users", async () => {
+  it("calls notFound for non-admin users", async () => {
     const denied = new Error("forbidden");
     Object.setPrototypeOf(denied, mocks.PlatformAdminAccessError.prototype);
     mocks.requirePlatformAdmin.mockRejectedValue(denied);
 
     await expect(AdminUsagePage({})).rejects.toThrow("forbidden");
 
-    expect(mocks.forbidden).toHaveBeenCalledTimes(1);
+    expect(mocks.notFound).toHaveBeenCalledTimes(1);
   });
 });

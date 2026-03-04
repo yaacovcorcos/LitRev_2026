@@ -72,7 +72,7 @@ Never rely on hidden UI controls as authorization.
 
 - Route: `/admin`
 - Guard: `requirePlatformAdmin()` at the route boundary.
-- Non-admin behavior: `403` response via `app/admin/forbidden.tsx`.
+- Non-admin behavior: route responds as `404` via `notFound()` to avoid exposing admin surface existence.
 - Navigation visibility: admin links are shown only when `/api/admin/status` returns `isPlatformAdmin=true`.
 
 ## Users Directory (Read-only)
