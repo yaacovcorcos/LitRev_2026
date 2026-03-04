@@ -22,13 +22,18 @@ describe("ThemeContext", () => {
     expect(localStorage.getItem("litrev-theme")).toBe("light");
   });
 
-  it("updates between light and dark and syncs data-theme", () => {
+  it("updates between light, light-carbon, and dark and syncs data-theme", () => {
     const { result } = renderHook(() => useTheme(), { wrapper });
 
     act(() => result.current.setTheme("light"));
     expect(result.current.theme).toBe("light");
     expect(result.current.resolved).toBe("light");
     expect(document.documentElement.getAttribute("data-theme")).toBe("light");
+
+    act(() => result.current.setTheme("light-carbon"));
+    expect(result.current.theme).toBe("light-carbon");
+    expect(result.current.resolved).toBe("light-carbon");
+    expect(document.documentElement.getAttribute("data-theme")).toBe("light-carbon");
 
     act(() => result.current.setTheme("dark"));
     expect(result.current.theme).toBe("dark");
@@ -42,6 +47,9 @@ describe("ThemeContext", () => {
     act(() => result.current.setTheme("dark"));
     expect(localStorage.getItem("litrev-theme")).toBe("dark");
 
+    act(() => result.current.setTheme("light-carbon"));
+    expect(localStorage.getItem("litrev-theme")).toBe("light-carbon");
+
     act(() => result.current.setTheme("light"));
     expect(localStorage.getItem("litrev-theme")).toBe("light");
   });
@@ -53,6 +61,15 @@ describe("ThemeContext", () => {
     expect(result.current.theme).toBe("dark");
     expect(result.current.resolved).toBe("dark");
     expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
+  });
+
+  it("reads stored light-carbon preference on mount", () => {
+    localStorage.setItem("litrev-theme", "light-carbon");
+
+    const { result } = renderHook(() => useTheme(), { wrapper });
+    expect(result.current.theme).toBe("light-carbon");
+    expect(result.current.resolved).toBe("light-carbon");
+    expect(document.documentElement.getAttribute("data-theme")).toBe("light-carbon");
   });
 
   it('migrates legacy "system" to light on mount', () => {
