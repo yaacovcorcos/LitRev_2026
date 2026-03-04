@@ -109,7 +109,12 @@ function ensureShippingLifecycleHooks(): void {
 
 async function flushPendingMetrics(): Promise<void> {
     if (!shouldShipToServer()) return;
-    if (isFlushing) return;
+    if (isFlushing) {
+        if (pendingMetrics.length > 0) {
+            scheduleFlush();
+        }
+        return;
+    }
     if (pendingMetrics.length === 0) return;
 
     isFlushing = true;
@@ -132,7 +137,9 @@ async function flushPendingMetrics(): Promise<void> {
         isFlushing = false;
         if (retryQueue.length > 0) {
             pendingMetrics = [...retryQueue, ...pendingMetrics];
-            scheduleFlush(RETRY_DELAY_MS);
+        }
+        if (pendingMetrics.length > 0) {
+            scheduleFlush(retryQueue.length > 0 ? RETRY_DELAY_MS : FLUSH_DELAY_MS);
         }
     }
 }
