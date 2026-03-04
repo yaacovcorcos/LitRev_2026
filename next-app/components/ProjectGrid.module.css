@@ -234,7 +234,8 @@
 }
 
 .sampleProjectTitle {
-    padding-inline-start: 40px;
+    padding-inline-start: 0;
+    text-align: center;
 }
 
 .cardSubtitle {
