@@ -45,6 +45,11 @@ describe("citation key utilities", () => {
             expect(extractDoi("https://example.com/10.1000/xyz123")).toBeNull();
             expect(extractDoi("https://doi.org/invalid")).toBeNull();
         });
+
+        it("returns null for malformed DOI URL encoding", () => {
+            expect(extractDoi("https://doi.org/10.1000/%ZZ")).toBeNull();
+            expect(extractDoi("https://doi.org/10.1000/%")).toBeNull();
+        });
     });
 
     describe("getCitationType", () => {

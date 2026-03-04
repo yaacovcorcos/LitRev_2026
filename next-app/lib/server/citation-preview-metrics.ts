@@ -18,22 +18,28 @@ const METRIC_SURFACES = ["project", "popup", "ai", "unknown"] as const;
 const METRIC_CITATION_TYPES = ["DOI", "PubMed"] as const;
 const METRIC_TRIGGERS = ["hover", "focus", "touch", "prefetch"] as const;
 
+const MAX_EVENT_ID_LENGTH = 128;
+const MAX_ID_LENGTH = 128;
+const MAX_TIMESTAMP_LENGTH = 64;
+const MAX_CITATION_KEY_LENGTH = 512;
+const MAX_ERROR_CODE_LENGTH = 128;
+
 const CitationPreviewMetricInputSchema: z.ZodType<CitationPreviewMetricInput> = z.object({
-    eventId: z.string().trim().min(1),
+    eventId: z.string().trim().min(1).max(MAX_EVENT_ID_LENGTH),
     version: z.literal(1),
     type: z.enum(METRIC_TYPES),
     surface: z.enum(METRIC_SURFACES),
-    projectId: z.string().trim().min(1).optional().nullable(),
-    conversationId: z.string().trim().min(1).optional().nullable(),
-    clientTimestamp: z.string().trim().min(1),
+    projectId: z.string().trim().min(1).max(MAX_ID_LENGTH).optional().nullable(),
+    conversationId: z.string().trim().min(1).max(MAX_ID_LENGTH).optional().nullable(),
+    clientTimestamp: z.string().trim().min(1).max(MAX_TIMESTAMP_LENGTH),
     payload: z.object({
-        citationKey: z.string().trim().min(1).nullable(),
+        citationKey: z.string().trim().min(1).max(MAX_CITATION_KEY_LENGTH).nullable(),
         citationType: z.enum(METRIC_CITATION_TYPES).nullable(),
         trigger: z.enum(METRIC_TRIGGERS).optional(),
         fromCache: z.boolean().optional(),
         latencyMs: z.number().finite().min(0).optional(),
         upstreamSource: z.enum(["crossref", "pubmed", "unknown"]).optional(),
-        errorCode: z.string().trim().min(1).nullable().optional(),
+        errorCode: z.string().trim().min(1).max(MAX_ERROR_CODE_LENGTH).nullable().optional(),
     }),
 });
 
@@ -47,10 +53,11 @@ function pruneSeenEventIds(now: number): void {
             seenEventIds.delete(eventId);
         }
     }
-    if (seenEventIds.size <= EVENT_ID_LIMIT) return;
-    const sorted = [...seenEventIds.entries()].sort((a, b) => a[1] - b[1]);
-    for (const [eventId] of sorted.slice(0, seenEventIds.size - EVENT_ID_LIMIT)) {
-        seenEventIds.delete(eventId);
+
+    while (seenEventIds.size > EVENT_ID_LIMIT) {
+        const oldestEventId = seenEventIds.keys().next().value;
+        if (!oldestEventId) return;
+        seenEventIds.delete(oldestEventId);
     }
 }
 
@@ -82,4 +89,8 @@ export async function ingestCitationPreviewMetric(
     return {
         deduped: dedupeState.deduped,
     };
+}
+
+export function __clearCitationPreviewMetricDedupeForTests(): void {
+    seenEventIds.clear();
 }

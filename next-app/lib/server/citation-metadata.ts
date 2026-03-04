@@ -8,23 +8,42 @@ import {
 
 /** Cache for citation metadata (in-memory, per-process). */
 const metadataCache = new Map<string, CitationMetadata | null>();
+const inFlightRequests = new Map<string, Promise<CitationMetadata | null>>();
 
-const CACHE_TTL = 1000 * 60 * 60; // 1 hour
+const SUCCESS_CACHE_TTL_MS = 1000 * 60 * 60; // 1 hour
+const FAILURE_CACHE_TTL_MS = 1000 * 60 * 5; // 5 minutes
+export const METADATA_CACHE_LIMIT = 2000;
 const cacheTimestamps = new Map<string, number>();
 
 function getCached(key: string): CitationMetadata | null | undefined {
     const timestamp = cacheTimestamps.get(key);
-    if (timestamp && Date.now() - timestamp > CACHE_TTL) {
+    if (!timestamp) return undefined;
+
+    const cachedValue = metadataCache.get(key);
+    const ttl = cachedValue ? SUCCESS_CACHE_TTL_MS : FAILURE_CACHE_TTL_MS;
+
+    if (Date.now() - timestamp > ttl) {
         metadataCache.delete(key);
         cacheTimestamps.delete(key);
         return undefined;
     }
-    return metadataCache.get(key);
+
+    return cachedValue;
 }
 
 function setCache(key: string, value: CitationMetadata | null): void {
+    // Refresh insertion order when rewriting an existing key.
+    metadataCache.delete(key);
+    cacheTimestamps.delete(key);
     metadataCache.set(key, value);
     cacheTimestamps.set(key, Date.now());
+
+    while (cacheTimestamps.size > METADATA_CACHE_LIMIT) {
+        const oldestKey = cacheTimestamps.keys().next().value;
+        if (!oldestKey) break;
+        cacheTimestamps.delete(oldestKey);
+        metadataCache.delete(oldestKey);
+    }
 }
 
 export { normalizeDoi, extractPmid, extractDoi };
@@ -61,9 +80,26 @@ export async function resolveCitationMetadataCached(
     const cached = getCached(keyParts.cacheKey);
     if (cached !== undefined) return cached;
 
-    const metadata = await resolveCitationMetadata(url);
-    setCache(keyParts.cacheKey, metadata);
-    return metadata;
+    const pending = inFlightRequests.get(keyParts.cacheKey);
+    if (pending) return pending;
+
+    const requestPromise = resolveCitationMetadata(url)
+        .then((metadata) => {
+            setCache(keyParts.cacheKey, metadata);
+            return metadata;
+        })
+        .finally(() => {
+            inFlightRequests.delete(keyParts.cacheKey);
+        });
+
+    inFlightRequests.set(keyParts.cacheKey, requestPromise);
+    return requestPromise;
+}
+
+export function __clearCitationMetadataCacheForTests(): void {
+    metadataCache.clear();
+    cacheTimestamps.clear();
+    inFlightRequests.clear();
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -210,12 +246,20 @@ export async function fetchCrossrefMetadata(
         // Journal
         const containerTitle = work["container-title"];
         const journal = Array.isArray(containerTitle) ? containerTitle[0] : containerTitle;
+        const citationCountRaw = work["is-referenced-by-count"];
+        const citationCount =
+            typeof citationCountRaw === "number" && Number.isFinite(citationCountRaw)
+                ? citationCountRaw
+                : undefined;
 
         return {
             title: title ?? "Untitled",
             authors,
             year,
             journal: journal || undefined,
+            citationCount,
+            citationCountSource: citationCount !== undefined ? "crossref" : undefined,
+            citationCountFetchedAt: citationCount !== undefined ? new Date().toISOString() : undefined,
             canonicalUrl: `https://doi.org/${normalizedDoi}`,
             doi: normalizedDoi,
         };
