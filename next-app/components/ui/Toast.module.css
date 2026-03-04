@@ -120,8 +120,9 @@
 }
 
 .dismiss:focus-visible {
-  outline: 2px solid var(--accent-primary);
+  outline: 2px solid transparent;
   outline-offset: 1px;
+  box-shadow: var(--shadow-focus-ring);
 }
 
 .dismiss .material-icons-round {
