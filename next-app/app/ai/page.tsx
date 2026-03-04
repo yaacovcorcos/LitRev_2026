@@ -57,6 +57,11 @@ const quickActions = [
   { id: "methodology", icon: "school", label: "Methodology advisor", prompt: "Act as my methodology advisor. Critique my review design and suggest improvements using PRISMA and evidence-quality best practices." },
 ];
 
+const makeId = (prefix: string) =>
+  (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function")
+    ? `${prefix}-${crypto.randomUUID()}`
+    : `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
 type ChatConversation = {
   id: string;
   title: string | null;
@@ -1123,7 +1128,7 @@ export default function AIView() {
           ...items,
           {
             type: "error",
-            id: `terminal-error-${Date.now()}`,
+            id: makeId("terminal-error"),
             message: terminalReason === "timed_out"
               ? "The response timed out. Retry to continue."
               : "The stream ended unexpectedly. Retry to continue.",
