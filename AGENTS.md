@@ -61,6 +61,7 @@ All run from `next-app/` except deploy.
 | Prisma schema/migrations, DB runtime errors (`column does not exist`, `Invalid prisma.* invocation`) | `db-ops-specialist.md` | `docs/runbooks/db-ops.md`, `docs/plans/db-production-runbook.md` | `bash scripts/db-ops.sh diagnose`, `npx prisma validate`, `npx prisma migrate status` |
 | Production deploy request / Vercel production release | `release-deploy-specialist.md` | `docs/runbooks/db-ops.md` | `bash scripts/release-gate-prod.sh`, `npx prisma validate`, `npx prisma migrate status`, `npx tsc --noEmit`, `npx vitest run` |
 | UI changes under `next-app/app/project/[id]/...`, `next-app/components/...`, `next-app/styles/...` | `frontend-ui-specialist.md` | `docs/plans/codex-ui-ux-plan.md` (or active UI plan), relevant route files | `npx tsc --noEmit`, `npx vitest run` |
+| Platform admin control-plane changes (`next-app/app/admin/**`, `next-app/app/api/admin/**`, `next-app/lib/server/admin/**`, `next-app/lib/server/auth/platform-admin.ts`) | `frontend-ui-specialist.md` | `docs/runbooks/admin-access.md`, `docs/plans/plan-backend.md` | `npx tsc --noEmit`, `npx vitest run` |
 | Agent runtime/orchestration files (`next-app/lib/agent/**`, `next-app/lib/server/agent/**`, `next-app/app/actions/agent.ts`, `next-app/lib/server/ai/sub-agent.ts`) | `agent-runtime-specialist.md` | `docs/plans/plan-agentic.md`, `docs/plans/codex-agentic-plan.md`, and `docs/plans/plan-memory.md` if memory touched | `npx tsc --noEmit`, `npx vitest run` |
 | Plan/PRD/governance edits (`PRD.md`, `docs/plans/**`) | `planning-governance-specialist.md` | `docs/plans/README.md` and target plan file | If code is unchanged, no code gate required |
 | GitHub workflow/governance edits (`.github/workflows/**`, `.github/CODEOWNERS`, git policy in `AGENTS.md`) | `planning-governance-specialist.md` | `docs/runbooks/github-flow.md` | If code is unchanged, no code gate required |
@@ -103,7 +104,7 @@ Required local commit flow:
 - For Supabase production migrations, prefer a session-mode pooler host on `:5432` reachable from Vercel build containers.
 - Local development may use localhost Postgres; deployed environments use Supabase Postgres.
 - Primary deployed database is Supabase Postgres (accessed via Prisma).
-- Supabase Auth is not used; authentication is handled by Better Auth with Prisma-backed tables.
+- Supabase Auth is not used; Better Auth is the sole identity authority in this project.
 - Supabase Storage is used for file upload/download.
 - Required file storage env vars: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`.
 - Local DB (localhost) is for development/testing only; it is never the target for production rollout decisions.

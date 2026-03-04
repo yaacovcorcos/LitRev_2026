@@ -16,6 +16,7 @@ model User {
   id          String             @id @default(cuid())
   email       String             @unique
   name        String
+  isPlatformAdmin Boolean        @default(false)
   emailVerified Boolean          @default(false)
   image       String?
   createdAt   DateTime           @default(now())
@@ -25,6 +26,29 @@ model User {
   memories    UserMemory[]
   sessions    Session[]
   accounts    Account[]
+  adminActions AdminAuditLog[] @relation("AdminAuditActor")
+  adminTargets AdminAuditLog[] @relation("AdminAuditTarget")
+
+  @@index([createdAt])
+  @@index([isPlatformAdmin, createdAt])
+}
+
+model AdminAuditLog {
+  id          String   @id @default(cuid())
+  actorUserId String
+  targetUserId String
+  action      String
+  reason      String?
+  requestId   String?
+  before      Json?
+  after       Json?
+  createdAt   DateTime @default(now())
+
+  actor  User @relation("AdminAuditActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+  target User @relation("AdminAuditTarget", fields: [targetUserId], references: [id], onDelete: Restrict)
+
+  @@index([actorUserId, createdAt])
+  @@index([targetUserId, createdAt])
 }
 
 model Session {
@@ -40,6 +64,7 @@ model Session {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@index([userId, updatedAt])
 }
 
 model Account {
@@ -239,6 +264,7 @@ model AIConversation {
   updatedAt   DateTime             @updatedAt
   messages    AIMessage[]
   summary     ConversationSummary?
+  usage       AIUsage[]
   project     Project?             @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([userId, context])
@@ -274,15 +300,22 @@ model AIUsage {
   userId       String?  // User who made the request (required for multi-user)
   workspaceId  String?  // Workspace for billing/limits (required for multi-user)
   projectId    String?  // Optional: specific project context
+  conversationId String?
+  source      String   @default("legacy_unknown")
+  contextPage String   @default("legacy_unknown")
   model        String
   inputTokens  Int
   outputTokens Int
   createdAt    DateTime @default(now())
+  conversation AIConversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
   project      Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
 
   @@index([userId, createdAt])
   @@index([workspaceId, createdAt])
   @@index([projectId, createdAt])
+  @@index([conversationId, createdAt])
+  @@index([source, createdAt])
+  @@index([contextPage, createdAt])
 }
 
 // ============================================================================

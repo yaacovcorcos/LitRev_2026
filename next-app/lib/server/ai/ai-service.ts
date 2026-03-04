@@ -298,6 +298,7 @@ class AIService {
     ): Promise<AIResponse> {
         const identity = resolveAuthenticatedIdentity(options);
         const projectId = options?.projectId ?? null;
+        const optionsWithAttribution = options as ChatOptions & { page?: string };
 
         // Validate rate limits
         await validateRateLimits({
@@ -331,6 +332,9 @@ class AIService {
                 cachedInputTokens: response.usage.cachedInputTokens,
                 userId: identity.userId,
                 workspaceId: identity.workspaceId ?? null,
+                source: projectId ? "project_copilot" : "ai_page",
+                contextPage: optionsWithAttribution.page ?? (projectId ? "legacy_unknown" : "ai"),
+                conversationId: options?.conversationId ?? null,
             },
         );
 
@@ -346,6 +350,7 @@ class AIService {
     ): AsyncIterable<AIStreamChunk> {
         const identity = resolveAuthenticatedIdentity(options);
         const projectId = options?.projectId ?? null;
+        const optionsWithAttribution = options as ChatOptions & { page?: string };
 
         // Validate rate limits
         await validateRateLimits({
@@ -388,6 +393,9 @@ class AIService {
                 cachedInputTokens: totalCachedInputTokens,
                 userId: identity.userId,
                 workspaceId: identity.workspaceId ?? null,
+                source: projectId ? "project_copilot" : "ai_page",
+                contextPage: optionsWithAttribution.page ?? (projectId ? "legacy_unknown" : "ai"),
+                conversationId: options?.conversationId ?? null,
             },
         );
     }

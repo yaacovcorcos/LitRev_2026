@@ -44,6 +44,47 @@ type UsageScope = {
     workspaceId: string | null;
 };
 
+const LEGACY_UNKNOWN = "legacy_unknown" as const;
+
+export type AIUsageSource =
+    | "project_copilot"
+    | "ai_page"
+    | typeof LEGACY_UNKNOWN;
+
+export type AIUsageContextPage =
+    | "ledger"
+    | "protocol"
+    | "draft"
+    | "study"
+    | "ai"
+    | "overview"
+    | "notes"
+    | "memory"
+    | typeof LEGACY_UNKNOWN;
+
+function normalizeUsageSource(source?: string | null, projectId?: string | null): AIUsageSource {
+    if (source === "project_copilot" || source === "ai_page" || source === LEGACY_UNKNOWN) {
+        return source;
+    }
+    return projectId ? "project_copilot" : "ai_page";
+}
+
+function normalizeUsageContextPage(contextPage?: string | null): AIUsageContextPage {
+    switch (contextPage) {
+        case "ledger":
+        case "protocol":
+        case "draft":
+        case "study":
+        case "ai":
+        case "overview":
+        case "notes":
+        case "memory":
+            return contextPage;
+        default:
+            return LEGACY_UNKNOWN;
+    }
+}
+
 function normalizeScope(input: UsageScopeInput): UsageScope {
     if (typeof input === "string" || input === null) {
         return {
@@ -178,6 +219,9 @@ export async function recordUsage(
         cachedInputTokens?: number;
         userId?: string | null;
         workspaceId?: string | null;
+        source?: string | null;
+        contextPage?: string | null;
+        conversationId?: string | null;
     },
 ): Promise<void> {
     const scope = normalizeScope({
@@ -191,6 +235,9 @@ export async function recordUsage(
             projectId: scope.projectId,
             userId: scope.userId,
             workspaceId: scope.workspaceId,
+            source: normalizeUsageSource(options?.source, scope.projectId),
+            contextPage: normalizeUsageContextPage(options?.contextPage),
+            conversationId: options?.conversationId ?? null,
             model,
             inputTokens,
             outputTokens,

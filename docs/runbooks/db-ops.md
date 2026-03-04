@@ -122,6 +122,19 @@ Expected before production migration commands:
 - `OK_non_local_target`
 - `npx prisma migrate status` runs against production Supabase connection
 
+### Migration Target Preflight (Required)
+
+Run this before any production migration command:
+
+```bash
+echo "$DIRECT_URL"
+npx prisma migrate status
+```
+
+Expected:
+- `DIRECT_URL` resolves to Supabase Postgres (not `localhost` / `127.0.0.1`)
+- `prisma migrate status` points at the intended deployment target
+
 ## Rules
 
 1. Never use `prisma db push` in production.
