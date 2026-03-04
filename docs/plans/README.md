@@ -14,6 +14,7 @@ This directory contains the canonical, active plans for LitRev.
   - [**Mobile viewport contract**](mobile-viewport-contract.md): Flag-gated mobile viewport policy, telemetry schema, and canary/rollback gates for route migrations.
   - [**Thinking + Live Process UX V2**](plan-thinking-v2.md): Sequenced plan for live reasoning visibility, tool activity lane, and user-in-the-loop controls built on shared chat runtime/adapters.
   - [**Chat Unification V2**](plan-chat-unification-v2.md): Full plan to unify `/ai`, project copilot, and popup under one chat engine while preserving feature parity and keeping `/ai` project-optional.
+- [**Reliability A2/A3 Execution**](reliability-a2-a3-execution.md): Deterministic stream terminal-state contract (A2) and staged reliability telemetry/canary gates (A3).
 - [**Guided Setup V2**](plan-guided-setup.md): Dedicated onboarding activation plan for visual redesign, AI-enhanced step flow, personalization, and setup-mode agent behavior.
 - [**System Prompts & LLM Extraction**](plan-prompts.md): The text of prompts, JSON schemas, extraction rules, model parameters.
 
