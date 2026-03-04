@@ -48,9 +48,3 @@
 .retryButton:hover {
   filter: brightness(0.96);
 }
-
-.retryButton:focus-visible {
-  outline: 2px solid transparent;
-  outline-offset: 2px;
-  box-shadow: var(--shadow-focus-ring);
-}

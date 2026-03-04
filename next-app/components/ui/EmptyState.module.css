@@ -75,12 +75,6 @@
     filter: brightness(0.94);
 }
 
-.primaryAction:focus-visible {
-    outline: 2px solid transparent;
-    outline-offset: 2px;
-    box-shadow: var(--shadow-focus-ring);
-}
-
 /* Secondary action button */
 .secondaryAction {
     display: inline-flex;
@@ -103,11 +97,6 @@
     color: var(--text-primary);
 }
 
-.secondaryAction:focus-visible {
-    outline: 2px solid transparent;
-    outline-offset: 2px;
-    box-shadow: var(--shadow-focus-ring);
-}
 
 /* Skeleton variant */
 .skeleton {
