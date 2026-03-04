@@ -21,6 +21,10 @@ import { isMobileTelemetryContext, recordMobileMetric } from "@/lib/mobile/telem
 import styles from "./PopupChat.module.css";
 
 const TURN_HINT_THRESHOLD = 3;
+const makeId = (prefix: string) =>
+    (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function")
+        ? `${prefix}-${crypto.randomUUID()}`
+        : `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
 /** Human-readable label for the popup header badge. */
 function getContextLabel(ctx: PopupChatContext): string {
@@ -87,6 +91,7 @@ export function PopupChat({ projectId }: PopupChatProps) {
     const [isDragEnabled, setIsDragEnabled] = useState(true);
 
     const abortRef = useRef<AbortController | null>(null);
+    const userStopRequestedRef = useRef(false);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const cardRef = useRef<HTMLDivElement>(null);
 
@@ -105,6 +110,7 @@ export function PopupChat({ projectId }: PopupChatProps) {
         setIsStreaming(false);
         setShowTurnHint(false);
         setTurnHintDismissed(false);
+        userStopRequestedRef.current = false;
         abortRef.current?.abort();
         abortRef.current = null;
         // Reset position to default bottom-right
@@ -185,7 +191,7 @@ export function PopupChat({ projectId }: PopupChatProps) {
         }
 
         const userMsg: PopupMessage = {
-            id: `pm-${Date.now()}`,
+            id: makeId("pm"),
             role: "user",
             content: trimmed,
             createdAt: new Date().toISOString(),
@@ -206,9 +212,10 @@ export function PopupChat({ projectId }: PopupChatProps) {
             { id: userMsg.id, role: "user" as const, content: trimmed, createdAt: userMsg.createdAt },
         ];
 
-        const aiMsgId = `pm-${Date.now() + 1}`;
+        const aiMsgId = makeId("pm");
         let fullContent = "";
         let terminalReason: StreamTerminalReason | null = null;
+        userStopRequestedRef.current = false;
 
         const controller = new AbortController();
         abortRef.current = controller;
@@ -263,6 +270,9 @@ export function PopupChat({ projectId }: PopupChatProps) {
                 },
             });
             terminalReason = summary.terminalReason;
+            if (userStopRequestedRef.current && terminalReason === "failed_network") {
+                terminalReason = "cancelled_by_user";
+            }
             sendSucceeded = terminalReason === "completed";
             if (terminalReason && terminalReason !== "completed" && terminalReason !== "cancelled_by_user") {
                 const fallbackError = terminalReason === "timed_out"
@@ -270,7 +280,7 @@ export function PopupChat({ projectId }: PopupChatProps) {
                     : "The stream ended unexpectedly. Please retry.";
                 setMessages((prev) => [
                     ...prev,
-                    { id: `terminal-${Date.now()}`, role: "assistant", content: fallbackError, createdAt: new Date().toISOString() },
+                    { id: makeId("terminal"), role: "assistant", content: fallbackError, createdAt: new Date().toISOString() },
                 ]);
             }
         } catch (error) {
@@ -290,17 +300,6 @@ export function PopupChat({ projectId }: PopupChatProps) {
             if (abortRef.current === controller) {
                 abortRef.current = null;
             }
-            if (terminalReason === "timed_out") {
-                setMessages((prev) => [
-                    ...prev,
-                    {
-                        id: `timeout-${Date.now()}`,
-                        role: "assistant",
-                        content: "The response timed out. Please retry.",
-                        createdAt: new Date().toISOString(),
-                    },
-                ]);
-            }
             if (isMobileTelemetryContext()) {
                 recordMobileMetric({
                     type: "mobile_flow_completed",
@@ -317,6 +316,7 @@ export function PopupChat({ projectId }: PopupChatProps) {
     }, [input, isStreaming, context, messages]);
 
     const handleStop = useCallback(() => {
+        userStopRequestedRef.current = true;
         abortRef.current?.abort();
         abortRef.current = null;
         setIsStreaming(false);
