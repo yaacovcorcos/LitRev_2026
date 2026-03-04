@@ -26,11 +26,14 @@ export default async function AdminPage() {
           <p className={styles.eyebrow}>Platform Admin</p>
           <h1 className={styles.title}>Admin Console</h1>
           <p className={styles.description}>
-            Admin foundation is active. User management and analytics modules are staged in later phases.
+            Platform admin control plane for user access and usage analytics.
           </p>
           <div className={styles.actions}>
             <Link className={styles.primaryLink} href="/admin/users">
               Open Users Directory
+            </Link>
+            <Link className={styles.primaryLink} href="/admin/usage">
+              Open Usage Analytics
             </Link>
           </div>
         </header>
