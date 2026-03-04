@@ -98,6 +98,46 @@
   font-size: 0.78rem;
 }
 
+.roleControls {
+  display: grid;
+  gap: 6px;
+  min-width: 180px;
+}
+
+.reasonInput {
+  height: 30px;
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  padding: 0 8px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+.roleButton {
+  height: 30px;
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  background: var(--bg-sidebar);
+  color: var(--text-primary);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.roleButton:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.roleHint {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+}
+
+.roleError {
+  color: var(--danger-primary);
+  font-size: 0.72rem;
+}
+
 .footer {
   display: flex;
   justify-content: space-between;

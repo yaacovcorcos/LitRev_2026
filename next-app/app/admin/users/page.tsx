@@ -10,6 +10,7 @@ import {
 import { forbidden } from "next/navigation";
 import Link from "next/link";
 import styles from "./users.module.css";
+import { AdminUserRoleControls } from "./AdminUserRoleControls";
 
 type SearchParams = Record<string, string | string[] | undefined>;
 
@@ -70,8 +71,9 @@ export default async function AdminUsersPage({
 }: {
   searchParams?: Promise<SearchParams>;
 }) {
+  let adminContext: Awaited<ReturnType<typeof requirePlatformAdmin>>;
   try {
-    await requirePlatformAdmin();
+    adminContext = await requirePlatformAdmin();
   } catch (error) {
     if (error instanceof PlatformAdminAccessError) {
       forbidden();
@@ -168,12 +170,13 @@ export default async function AdminUsersPage({
                 <th>Workspaces</th>
                 <th>Projects</th>
                 <th>7d Tokens</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
               {directory.rows.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className={styles.empty}>
+                  <td colSpan={11} className={styles.empty}>
                     No users found for the selected filters.
                   </td>
                 </tr>
@@ -192,6 +195,13 @@ export default async function AdminUsersPage({
                     <td>
                       {row.totalTokens7d.toLocaleString()} ({row.inputTokens7d.toLocaleString()} in /{" "}
                       {row.outputTokens7d.toLocaleString()} out)
+                    </td>
+                    <td>
+                      <AdminUserRoleControls
+                        targetUserId={row.id}
+                        isPlatformAdmin={row.isPlatformAdmin}
+                        isSelf={row.id === adminContext.userId}
+                      />
                     </td>
                   </tr>
                 ))
