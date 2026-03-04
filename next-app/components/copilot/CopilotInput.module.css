@@ -200,7 +200,9 @@
 .compressBtn:focus-visible,
 .sendBtn:focus-visible {
     outline: none;
-    box-shadow: none;
+    box-shadow:
+        0 0 0 1px rgba(var(--rgb-ui-contrast), 0.14),
+        0 2px 8px rgba(var(--rgb-ui-contrast), 0.08);
 }
 
 /* ---- Action Buttons ---- */
