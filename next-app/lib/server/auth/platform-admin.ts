@@ -19,13 +19,18 @@ export class PlatformAdminAccessError extends Error {
 
 export type PlatformAdminContext = AuthContext & { isPlatformAdmin: true };
 
-async function ensurePlatformAdminByUserId(userId: string): Promise<void> {
+export async function isPlatformAdminUser(userId: string): Promise<boolean> {
   const user = await prisma.user.findUnique({
     where: { id: userId },
     select: { isPlatformAdmin: true },
   });
 
-  if (!user?.isPlatformAdmin) {
+  return Boolean(user?.isPlatformAdmin);
+}
+
+async function ensurePlatformAdminByUserId(userId: string): Promise<void> {
+  const isAdmin = await isPlatformAdminUser(userId);
+  if (!isAdmin) {
     throw new PlatformAdminAccessError();
   }
 }

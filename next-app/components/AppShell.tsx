@@ -2,7 +2,13 @@
 
 import { Sidebar } from "@/components/Sidebar";
 import { MobileNav } from "@/components/MobileNav";
-import { mainNavLinks, bottomNavLinks, mobileNavLinks } from "@/data/navLinks";
+import {
+  adminMainNavLink,
+  adminMobileNavLink,
+  bottomNavLinks,
+  mainNavLinks,
+  mobileNavLinks,
+} from "@/data/navLinks";
 import styles from "@/components/AppShell.module.css";
 import { usePathname, useRouter } from "next/navigation";
 import { CSSProperties, ReactNode, useEffect, useMemo, useState } from "react";
@@ -18,6 +24,7 @@ type AppShellProps = {
   noMainPadding?: boolean;
   mainClassName?: string;
   initiallyCollapsed?: boolean;
+  forceAdminNav?: boolean;
 };
 
 export function AppShell({
@@ -28,12 +35,14 @@ export function AppShell({
   noMainPadding = false,
   mainClassName = "",
   initiallyCollapsed,
+  forceAdminNav = false,
 }: AppShellProps) {
   const pathname = usePathname();
   const shouldDefaultCollapse = pathname !== "/";
   const [collapsed, setCollapsed] = useState(initiallyCollapsed ?? shouldDefaultCollapse);
   const [mobileSigningOut, setMobileSigningOut] = useState(false);
   const [mobileSignOutError, setMobileSignOutError] = useState<string | null>(null);
+  const [isPlatformAdmin, setIsPlatformAdmin] = useState(forceAdminNav);
   const router = useRouter();
   const { registerSidebarToggle } = useCommandPalette();
 
@@ -42,12 +51,61 @@ export function AppShell({
     return () => registerSidebarToggle(null);
   }, [registerSidebarToggle]);
 
+  useEffect(() => {
+    if (forceAdminNav) {
+      setIsPlatformAdmin(true);
+      return;
+    }
+
+    let cancelled = false;
+    const controller = new AbortController();
+
+    const loadAdminStatus = async () => {
+      try {
+        const response = await fetch("/api/admin/status", {
+          method: "GET",
+          cache: "no-store",
+          signal: controller.signal,
+        });
+
+        if (!response.ok) {
+          if (!cancelled) setIsPlatformAdmin(false);
+          return;
+        }
+
+        const payload = await response.json() as { isPlatformAdmin?: boolean };
+        if (!cancelled) {
+          setIsPlatformAdmin(Boolean(payload.isPlatformAdmin));
+        }
+      } catch {
+        if (!cancelled) setIsPlatformAdmin(false);
+      }
+    };
+
+    void loadAdminStatus();
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [forceAdminNav]);
+
   const cssVars = useMemo(() => {
     return {
       "--shell-gutter": collapsed ? "32px" : "50px",
       "--shell-sidebar-width": collapsed ? "68px" : "200px",
     } as CSSProperties;
   }, [collapsed]);
+
+  const sidebarMainLinks = useMemo(
+    () => (isPlatformAdmin ? [...mainNavLinks, adminMainNavLink] : mainNavLinks),
+    [isPlatformAdmin],
+  );
+
+  const shellMobileNavLinks = useMemo(
+    () => (isPlatformAdmin ? [...mobileNavLinks, adminMobileNavLink] : mobileNavLinks),
+    [isPlatformAdmin],
+  );
 
   const handleNewProject = () => {
     if (onNewProject) {
@@ -87,7 +145,7 @@ export function AppShell({
         style={cssVars}
       >
         <Sidebar
-          mainLinks={mainNavLinks}
+          mainLinks={sidebarMainLinks}
           bottomLinks={bottomNavLinks}
           activeNav={activeNav}
           collapsed={collapsed}
@@ -101,7 +159,7 @@ export function AppShell({
         </main>
         {showMobileNav ? (
           <MobileNav
-            links={mobileNavLinks}
+            links={shellMobileNavLinks}
             activeNav={activeNav}
             onNewProject={handleNewProject}
             onSignOut={handleMobileSignOut}
