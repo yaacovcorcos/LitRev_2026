@@ -73,14 +73,12 @@ If no row matches, consult `docs/agents/cold-memory-index.md`, then pick the nea
 - One task = one atomic commit.
 - Branch roles:
   - `main`: default branch and production deployment branch.
-  - `second`: integration branch for agent task PRs.
-- Use feature branches by default (`codex/<task>`). Base from `second`; do not commit directly to `main` or `second` unless explicitly requested.
+- Use feature branches by default (`codex/<task>`). Base from `main`; do not commit directly to `main` unless explicitly requested.
 - For code changes, validate with `npx tsc --noEmit` and `npx vitest run`.
 - If validation fails, fix first; do not commit failing code.
 - Stage only relevant files for the task.
 - Commit immediately after validation; do not batch completed tasks.
-- After validation passes, push by default and open/update a PR targeting `second`.
-- Promotion from `second` to `main` is cadence-based (daily/manual release PR), not a permanently open rolling PR.
+- After validation passes, push by default and open/update a PR targeting `main`.
 - Hotfixes use `hotfix/<task>` branches and PR directly to `main`.
 - Before merge decisions, pull latest review feedback with `gh pr view <number> --json reviews,comments`.
 - Use conventional commit types: `feat`, `fix`, `refactor`, `test`, `chore`, `docs`.
@@ -91,7 +89,7 @@ Required local commit flow:
 2. `git diff --cached` and `git status`
 3. `git commit -m "<type(scope): concise why-focused message>"`
 4. `git push -u origin <branch>`
-5. `gh pr create --base second --head <branch> ...` (or update an existing PR)
+5. `gh pr create --base main --head <branch> ...` (or update an existing PR)
 
 ## Database Contract (Non-Negotiable)
 

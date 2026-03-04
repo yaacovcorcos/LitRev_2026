@@ -1,9 +1,9 @@
-name: Release PR Second To Main
+name: Auto PR To Main
 
 on:
-  schedule:
-    - cron: "0 14 * * *"
-  workflow_dispatch:
+  push:
+    branches:
+      - "codex/**"
 
 permissions:
   contents: read
@@ -11,29 +11,17 @@ permissions:
   pull-requests: write
 
 jobs:
-  open-release-pr:
+  open-pr:
     runs-on: ubuntu-latest
     steps:
-      - name: Open or refresh release PR
+      - name: Open or reuse pull request
         uses: actions/github-script@v7
         with:
           script: |
             const owner = context.repo.owner;
             const repo = context.repo.repo;
+            const headBranch = context.ref.replace("refs/heads/", "");
             const baseBranch = "main";
-            const headBranch = "second";
-
-            const compare = await github.rest.repos.compareCommits({
-              owner,
-              repo,
-              base: baseBranch,
-              head: headBranch,
-            });
-
-            if (compare.data.ahead_by === 0) {
-              core.info("second has no commits ahead of main; skipping PR creation.");
-              return;
-            }
 
             const open = await github.paginate(github.rest.pulls.list, {
               owner,
@@ -44,31 +32,23 @@ jobs:
               per_page: 100,
             });
 
-            const title = `release: promote ${headBranch} to ${baseBranch} (${new Date().toISOString().slice(0, 10)})`;
-            const body = [
-              "Automated release promotion PR.",
-              "",
-              `- Head: \`${headBranch}\``,
-              `- Base: \`${baseBranch}\``,
-              `- Commits ahead: ${compare.data.ahead_by}`,
-              "",
-              "Run full release checks before merge and keep this PR narrowly scoped.",
-            ].join("\\n");
-
             let pr = null;
             let created = false;
 
             if (open.length > 0) {
               pr = open[0];
-              await github.rest.pulls.update({
-                owner,
-                repo,
-                pull_number: pr.number,
-                title,
-                body,
-              });
-              core.info(`Updated existing release PR #${pr.number}`);
+              core.info(`PR already exists: #${pr.number}`);
             } else {
+              const title = `chore(agent): promote ${headBranch} into ${baseBranch}`;
+              const body = [
+                "Automated PR opened by workflow after branch push.",
+                "",
+                `- Head: \`${headBranch}\``,
+                `- Base: \`${baseBranch}\``,
+                "",
+                "Please review CI and requested feedback before merge.",
+              ].join("\\n");
+
               const result = await github.rest.pulls.create({
                 owner,
                 repo,
@@ -78,9 +58,10 @@ jobs:
                 body,
                 maintainer_can_modify: true,
               });
+
               pr = result.data;
               created = true;
-              core.info(`Created release PR #${pr.number}`);
+              core.info(`Created PR #${pr.number}`);
             }
 
             try {

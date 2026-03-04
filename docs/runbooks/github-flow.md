@@ -5,20 +5,17 @@ This runbook defines the repository branch, PR, review, and promotion flow.
 ## Branch Model
 
 - `main`: default branch and production deployment source.
-- `second`: integration branch for agent task PRs.
-- `codex/<task>`: task branches created from `second`.
+- `codex/<task>`: task branches created from `main`.
 - `hotfix/<task>`: emergency branch for direct PRs to `main`.
 
 ## PR Routing
 
-- Task delivery path: `codex/<task>` -> `second`.
-- Release promotion path: `second` -> `main` (cadence-based PR, daily or manually triggered).
+- Task delivery path: `codex/<task>` -> `main`.
 - Hotfix path: `hotfix/<task>` -> `main`.
 
 ## Automation Contracts
 
-- Pushes to `codex/**` auto-open or reuse a PR into `second`.
-- Daily/manual automation opens or refreshes a release PR from `second` to `main`.
+- Pushes to `codex/**` auto-open or reuse a PR into `main`.
 - Auto-created PRs request review from `@yaacovcorcos` and post `@codex review`.
 - Every non-draft PR open/update requests Codex review automatically (`@codex review`) once per head commit.
 
@@ -40,21 +37,14 @@ gh pr list --state open --json number,title,headRefName,baseRefName,reviewDecisi
   - Require conversation resolution.
   - Require status check `check`.
   - Block force-push and branch deletion.
-- `second`:
-  - Require pull request before merge.
-  - Require 1 approval.
-  - Require conversation resolution.
-  - Require status check `check`.
-  - Block force-push and branch deletion.
 
 ## CI Expectations
 
-- CI runs on pushes and PRs targeting `main` and `second`.
+- CI runs on pushes and PRs targeting `main`.
 - Schema drift check uses a dedicated shadow database URL in CI.
 - Drift output is currently warning-mode (non-empty diff warns; command errors fail) until migration history is realigned.
 
 ## Operational Notes
 
-- Keep PR scope narrow and merge frequently into `second`.
-- Treat red CI on `second` as release-blocking debt.
-- Do not merge `second` to `main` until required checks and approvals pass.
+- Keep PR scope narrow and merge frequently into `main`.
+- Treat red CI on `main` PRs as release-blocking debt.
