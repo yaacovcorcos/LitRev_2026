@@ -27,6 +27,10 @@ describe("stream lifecycle", () => {
     expect(terminalReasonFromRunEnd({ runStatus: "failed", stopReason: "cancelled" })).toBe("cancelled_by_user");
   });
 
+  it("maps cancelled runStatus without stopReason to cancelled_by_user", () => {
+    expect(terminalReasonFromRunEnd({ runStatus: "cancelled", stopReason: null })).toBe("cancelled_by_user");
+  });
+
   it("maps network-ish errors to failed_network", () => {
     expect(terminalReasonFromThrownError(new TypeError("Failed to fetch"))).toBe("failed_network");
   });

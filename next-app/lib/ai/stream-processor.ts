@@ -26,6 +26,13 @@ type ProcessAIStreamParams = {
     throwOnErrorChunk?: boolean;
 };
 
+function generateAttemptId(): string {
+    if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+        return `attempt-${crypto.randomUUID()}`;
+    }
+    return `attempt-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 /**
  * Shared stream processor used by both copilot surfaces and /ai.
  * It centralizes stream parsing + run lifecycle extraction while letting each
@@ -44,7 +51,7 @@ export async function processAIStream({
     let conversationId: string | null = null;
     let actualModel: string | null = null;
     let actualModelSource: "provider" | "requested" | "unknown" = "unknown";
-    const lifecycle = createLifecycleSnapshot(`attempt-${Date.now()}`);
+    const lifecycle = createLifecycleSnapshot(generateAttemptId());
     let lifecycleState = lifecycle;
 
     for await (const chunk of parseNDJSONStream(reader, signal)) {

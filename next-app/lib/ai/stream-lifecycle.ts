@@ -48,15 +48,14 @@ export function terminalReasonFromRunEnd(params: {
   const stopReason = params.stopReason?.toLowerCase() ?? null;
 
   if (runStatus === "completed") return "completed";
+  if (runStatus === "cancelled" || runStatus === "canceled") return "cancelled_by_user";
   if (stopReason === "cancelled" || stopReason === "aborted") return "cancelled_by_user";
   return "failed_server";
 }
 
 export function terminalReasonFromErrorChunk(chunk: AIStreamChunk): StreamTerminalReason {
-  const status = chunk.errorStatus ?? null;
-  if (typeof status === "number" && status >= 400) {
-    return "failed_server";
-  }
+  // TODO: Differentiate more granularly if server starts emitting transport-origin metadata.
+  void chunk;
   return "failed_server";
 }
 
@@ -70,8 +69,6 @@ export function terminalReasonFromThrownError(
   if (error instanceof DOMException && error.name === "AbortError") {
     return "cancelled_by_user";
   }
-
-  if (error instanceof TypeError) return "failed_network";
 
   const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
   const networkHints = ["network", "failed to fetch", "econn", "timeout", "timed out", "socket", "offline"];
