@@ -44,14 +44,15 @@ export function ProjectGrid({ projects, viewMode, onNewProject, showSampleCard =
         const isHarvesting = p.status === "harvesting";
         const isList = viewMode === "list";
         const isSample = isDemoProjectId(p.id);
-        const cardClass = `${styles.card} ${viewMode === "list" ? styles.listViewCard : ""}`;
-        const titleClass = `${styles.projectTitle} ${viewMode === "list" ? styles.listViewCardTitle : ""} ${isSample ? styles.sampleProjectTitle : ""}`;
-        const statusClass = `${styles.cardStatus} ${isHarvesting ? styles.statusHarvesting : styles.statusReady} ${viewMode === "list" ? styles.listViewStatus : ""
+        const cardClass = `${styles.card} ${viewMode === "list" ? styles.listViewCard : ""} ${isSample && isList ? styles.sampleProjectCard : ""}`;
+        const titleClass = `${styles.projectTitle} ${viewMode === "list" ? styles.listViewCardTitle : ""} ${isSample && isList ? styles.sampleProjectTitle : ""}`;
+        const statusClass = `${styles.cardStatus} ${isSample ? styles.statusSample : isHarvesting ? styles.statusHarvesting : styles.statusReady} ${viewMode === "list" ? styles.listViewStatus : ""
           }`;
-        const buttonClass = `${styles.viewProjectBtn} ${viewMode === "list" ? styles.listViewButton : ""}`;
+        const buttonClass = `${styles.viewProjectBtn} ${viewMode === "list" ? styles.listViewButton : ""} ${isSample && isList ? styles.sampleProjectButton : ""}`;
+        const paperCountClass = `${styles.paperCountBottom} ${isSample && isList ? styles.sampleProjectPaperCount : ""}`;
         const paperCount = p.papers ?? 0;
         const paperCountInline = !isList && isHarvesting;
-        const statusText = p.statusText;
+        const statusText = isSample ? "Sample" : p.statusText;
 
         return (
           <Link
@@ -64,12 +65,9 @@ export function ProjectGrid({ projects, viewMode, onNewProject, showSampleCard =
             data-id={p.id}
             aria-label={`Open project ${p.name}`}
           >
-            {isSample ? <span className={styles.sampleBadge}>Sample</span> : null}
-            {!isSample ? (
-              <div className={statusClass}>
-                {statusText}
-              </div>
-            ) : null}
+            <div className={statusClass}>
+              {statusText}
+            </div>
             <h3 className={titleClass}>{p.name}</h3>
             {isHarvesting ? (
               <div className={styles.progressSection}>
@@ -85,7 +83,7 @@ export function ProjectGrid({ projects, viewMode, onNewProject, showSampleCard =
                 </div>
               </div>
             ) : null}
-            {!paperCountInline ? <div className={styles.paperCountBottom}>{paperCount} Papers</div> : null}
+            {!paperCountInline ? <div className={paperCountClass}>{paperCount} Papers</div> : null}
             <span className={buttonClass} data-id={p.id}>
               View Project
             </span>
