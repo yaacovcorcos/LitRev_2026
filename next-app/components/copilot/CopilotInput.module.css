@@ -33,11 +33,6 @@
     border-radius: 24px 24px 0 0;
 }
 
-.inputBox:focus-within {
-    border-color: rgba(var(--rgb-ui-contrast), 0.1);
-    box-shadow: var(--shadow-lg);
-}
-
 /* ---- Textarea ---- */
 
 .inputTextarea {
@@ -52,15 +47,14 @@
     font-family: inherit;
     color: var(--text-primary);
     resize: none;
-    outline: 2px solid transparent;
-    outline-offset: 2px;
+    outline: none;
     line-height: 1.5;
     overflow-y: auto;
 }
 
 .inputTextarea:focus-visible {
-    /* Keep a single focus indicator owned by the parent .inputBox */
     outline: none;
+    box-shadow: none;
 }
 
 .inputTextarea::placeholder {
@@ -206,7 +200,9 @@
 .compressBtn:focus-visible,
 .sendBtn:focus-visible {
     outline: none;
-    box-shadow: var(--shadow-focus-ring);
+    box-shadow:
+        0 0 0 1px rgba(var(--rgb-ui-contrast), 0.14),
+        0 2px 8px rgba(var(--rgb-ui-contrast), 0.08);
 }
 
 /* ---- Action Buttons ---- */
