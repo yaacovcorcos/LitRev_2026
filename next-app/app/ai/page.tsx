@@ -63,6 +63,8 @@ const makeId = (prefix: string) =>
     ? `${prefix}-${crypto.randomUUID()}`
     : `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
+const AI_HISTORY_COLLAPSED_KEY = "litrev_ai_history_collapsed";
+
 type ChatConversation = {
   id: string;
   title: string | null;
@@ -362,7 +364,13 @@ export default function AIView() {
   const router = useRouter();
   const mobileAiV2Enabled = isMobileAiV2Enabled();
   const { projects } = useProjects();
-  const [isHistoryCollapsed, setHistoryCollapsed] = useState(false);
+  const [isHistoryCollapsed, setHistoryCollapsed] = useState<boolean>(() => {
+    if (typeof window === "undefined") return true;
+    const stored = window.localStorage.getItem(AI_HISTORY_COLLAPSED_KEY);
+    if (stored === "true") return true;
+    if (stored === "false") return false;
+    return true;
+  });
 
   const [conversations, setConversations] = useState<ChatConversation[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
@@ -402,6 +410,11 @@ export default function AIView() {
   );
 
   const showReasoningControls = reasoningSupport !== "none";
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(AI_HISTORY_COLLAPSED_KEY, isHistoryCollapsed ? "true" : "false");
+  }, [isHistoryCollapsed]);
 
   const setSelectedModel = useCallback((modelId: SelectableModelId) => {
     setSelectedModelState(modelId);

@@ -212,8 +212,8 @@
     --rgb-ui-scrim: 11, 22, 34;
 
     /* Core surfaces */
-    --bg-body: #f8fafc;
-    --rgb-bg-body: 248, 250, 252;
+    --bg-body: #f6f9fc;
+    --rgb-bg-body: 246, 249, 252;
     --bg-sidebar: rgba(245, 248, 252, 0.88);
     --rgb-bg-sidebar: 245, 248, 252;
     --bg-surface: #ffffff;
