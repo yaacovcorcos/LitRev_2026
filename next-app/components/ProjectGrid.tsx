@@ -45,13 +45,13 @@ export function ProjectGrid({ projects, viewMode, onNewProject, showSampleCard =
         const isList = viewMode === "list";
         const isSample = isDemoProjectId(p.id);
         const cardClass = `${styles.card} ${viewMode === "list" ? styles.listViewCard : ""}`;
-        const titleClass = `${styles.projectTitle} ${viewMode === "list" ? styles.listViewCardTitle : ""}`;
+        const titleClass = `${styles.projectTitle} ${viewMode === "list" ? styles.listViewCardTitle : ""} ${isSample ? styles.sampleProjectTitle : ""}`;
         const statusClass = `${styles.cardStatus} ${isHarvesting ? styles.statusHarvesting : styles.statusReady} ${viewMode === "list" ? styles.listViewStatus : ""
           }`;
         const buttonClass = `${styles.viewProjectBtn} ${viewMode === "list" ? styles.listViewButton : ""}`;
         const paperCount = p.papers ?? 0;
         const paperCountInline = !isList && isHarvesting;
-        const statusText = isSample ? "Sample" : p.statusText;
+        const statusText = p.statusText;
 
         return (
           <Link
@@ -65,9 +65,11 @@ export function ProjectGrid({ projects, viewMode, onNewProject, showSampleCard =
             aria-label={`Open project ${p.name}`}
           >
             {isSample ? <span className={styles.sampleBadge}>Sample</span> : null}
-            <div className={statusClass}>
-              {statusText}
-            </div>
+            {!isSample ? (
+              <div className={statusClass}>
+                {statusText}
+              </div>
+            ) : null}
             <h3 className={titleClass}>{p.name}</h3>
             {isHarvesting ? (
               <div className={styles.progressSection}>
