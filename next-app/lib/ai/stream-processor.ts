@@ -1,5 +1,12 @@
 import type { AIStreamChunk } from "@/types/ai";
 import { parseNDJSONStream } from "@/lib/ai/stream-parser";
+import {
+    createLifecycleSnapshot,
+    finalizeLifecycle,
+    terminalReasonFromErrorChunk,
+    terminalReasonFromRunEnd,
+    type StreamTerminalReason,
+} from "@/lib/ai/stream-lifecycle";
 
 export type StreamRunSummary = {
     runStatus: string | null;
@@ -8,6 +15,7 @@ export type StreamRunSummary = {
     conversationId: string | null;
     actualModel: string | null;
     actualModelSource: "provider" | "requested" | "unknown";
+    terminalReason: StreamTerminalReason | null;
 };
 
 type ProcessAIStreamParams = {
@@ -36,6 +44,8 @@ export async function processAIStream({
     let conversationId: string | null = null;
     let actualModel: string | null = null;
     let actualModelSource: "provider" | "requested" | "unknown" = "unknown";
+    const lifecycle = createLifecycleSnapshot(`attempt-${Date.now()}`);
+    let lifecycleState = lifecycle;
 
     for await (const chunk of parseNDJSONStream(reader, signal)) {
         if (shouldContinue && !shouldContinue()) break;
@@ -48,8 +58,19 @@ export async function processAIStream({
             actualModel = chunk.actualModel ?? null;
             actualModelSource = chunk.actualModelSource ?? "unknown";
             if (chunk.conversationId) conversationId = chunk.conversationId;
+            lifecycleState = finalizeLifecycle(
+                lifecycleState,
+                terminalReasonFromRunEnd({
+                    runStatus: chunk.runStatus,
+                    stopReason: chunk.stopReason,
+                }),
+            ).snapshot;
         } else if (chunk.type === "error") {
             errorMessage = chunk.error ?? "AI stream error";
+            lifecycleState = finalizeLifecycle(
+                lifecycleState,
+                terminalReasonFromErrorChunk(chunk),
+            ).snapshot;
         }
 
         await onChunk(chunk);
@@ -59,5 +80,17 @@ export async function processAIStream({
         }
     }
 
-    return { runStatus, stopReason, errorMessage, conversationId, actualModel, actualModelSource };
+    if (lifecycleState.terminalReason === null) {
+        lifecycleState = finalizeLifecycle(lifecycleState, "failed_network").snapshot;
+    }
+
+    return {
+        runStatus,
+        stopReason,
+        errorMessage,
+        conversationId,
+        actualModel,
+        actualModelSource,
+        terminalReason: lifecycleState.terminalReason,
+    };
 }
