@@ -9,8 +9,9 @@ import { usePopupChat } from "@/contexts/PopupChatContext";
 import { useProjectCopilot } from "@/contexts/ProjectCopilotContext";
 import { createNoteAction } from "@/app/actions/notes";
 import { createConversation, addMessage } from "@/app/actions/conversations";
-import { parseNDJSONStream } from "@/lib/ai/stream-parser";
+import { processAIStream } from "@/lib/ai/stream-processor";
 import { formatStreamErrorForUI } from "@/lib/ai/stream-error-ui";
+import { terminalReasonFromThrownError, type StreamTerminalReason } from "@/lib/ai/stream-lifecycle";
 import { markdownComponents } from "@/components/markdown/CodeBlock";
 import type { PopupChatContext, PopupMessage } from "@/types/popup-chat";
 import type { CopilotPage } from "@/types/ai";
@@ -207,6 +208,7 @@ export function PopupChat({ projectId }: PopupChatProps) {
 
         const aiMsgId = `pm-${Date.now() + 1}`;
         let fullContent = "";
+        let terminalReason: StreamTerminalReason | null = null;
 
         const controller = new AbortController();
         abortRef.current = controller;
@@ -239,30 +241,44 @@ export function PopupChat({ projectId }: PopupChatProps) {
             if (!reader) throw new Error("No response body");
 
             let aiCreated = false;
-
-            for await (const event of parseNDJSONStream(reader, controller.signal)) {
-                if (event.type === "content" && event.content) {
+            const summary = await processAIStream({
+                reader,
+                signal: controller.signal,
+                throwOnErrorChunk: true,
+                onChunk: (event) => {
+                    if (event.type !== "content" || !event.content) return;
                     fullContent += event.content;
-
                     if (!aiCreated) {
                         aiCreated = true;
                         setMessages((prev) => [
                             ...prev,
                             { id: aiMsgId, role: "assistant", content: fullContent, createdAt: new Date().toISOString() },
                         ]);
-                    } else {
-                        const captured = fullContent;
-                        setMessages((prev) =>
-                            prev.map((m) => (m.id === aiMsgId ? { ...m, content: captured } : m)),
-                        );
+                        return;
                     }
-                } else if (event.type === "error") {
-                    throw new Error(event.error);
-                }
+                    const captured = fullContent;
+                    setMessages((prev) =>
+                        prev.map((m) => (m.id === aiMsgId ? { ...m, content: captured } : m)),
+                    );
+                },
+            });
+            terminalReason = summary.terminalReason;
+            sendSucceeded = terminalReason === "completed";
+            if (terminalReason && terminalReason !== "completed" && terminalReason !== "cancelled_by_user") {
+                const fallbackError = terminalReason === "timed_out"
+                    ? "The response timed out. Please retry."
+                    : "The stream ended unexpectedly. Please retry.";
+                setMessages((prev) => [
+                    ...prev,
+                    { id: `terminal-${Date.now()}`, role: "assistant", content: fallbackError, createdAt: new Date().toISOString() },
+                ]);
             }
-            sendSucceeded = true;
         } catch (error) {
-            if (error instanceof DOMException && error.name === "AbortError") return;
+            if (error instanceof DOMException && error.name === "AbortError") {
+                terminalReason = terminalReasonFromThrownError(error, { isUserAbort: true });
+                return;
+            }
+            terminalReason = terminalReasonFromThrownError(error);
 
             const errorText = `Sorry, I encountered an error: ${formatStreamErrorForUI(error)}`;
             setMessages((prev) => [
@@ -273,6 +289,17 @@ export function PopupChat({ projectId }: PopupChatProps) {
             setIsStreaming(false);
             if (abortRef.current === controller) {
                 abortRef.current = null;
+            }
+            if (terminalReason === "timed_out") {
+                setMessages((prev) => [
+                    ...prev,
+                    {
+                        id: `timeout-${Date.now()}`,
+                        role: "assistant",
+                        content: "The response timed out. Please retry.",
+                        createdAt: new Date().toISOString(),
+                    },
+                ]);
             }
             if (isMobileTelemetryContext()) {
                 recordMobileMetric({
