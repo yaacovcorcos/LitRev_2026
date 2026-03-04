@@ -74,3 +74,24 @@ Never rely on hidden UI controls as authorization.
 - Guard: `requirePlatformAdmin()` at the route boundary.
 - Non-admin behavior: `403` response via `app/admin/forbidden.tsx`.
 - Navigation visibility: admin links are shown only when `/api/admin/status` returns `isPlatformAdmin=true`.
+
+## Users Directory (Read-only)
+
+- Route: `/admin/users`
+- Guard: `requirePlatformAdmin()` at the route boundary.
+- Query behavior:
+  - server-side pagination only (`page`, `pageSize`)
+  - search by user name/email
+  - admin filter (`all` / `true` / `false`)
+  - created date window and last-seen date window
+  - sortable by created/name/email
+- Columns exposed:
+  - `id`, `name`, `email`, `createdAt`, `emailVerified`, `isPlatformAdmin`, `lastSeenAt`
+  - workspace count (`WorkspaceMember`)
+  - project count (`Project`)
+  - 7-day token summary from `AIUsage`
+
+Migration index set for this page:
+1. `Session_userId_updatedAt_idx`
+2. `User_createdAt_idx`
+3. `User_isPlatformAdmin_createdAt_idx`
