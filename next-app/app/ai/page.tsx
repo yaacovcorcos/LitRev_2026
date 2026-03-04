@@ -29,6 +29,8 @@ import { isNavigationSafe } from "@/lib/ai/navigation-safety";
 import { formatStreamErrorForUI } from "@/lib/ai/stream-error-ui";
 import { createAiStreamRuntime } from "@/lib/ai/ai-stream-runtime";
 import { generateChatUnificationRequestKey, recordChatUnificationMetric } from "@/lib/ai/chat-unification-telemetry";
+import { terminalReasonFromThrownError, type StreamTerminalReason } from "@/lib/ai/stream-lifecycle";
+import { recordReliabilityMetric } from "@/lib/ai/reliability-telemetry";
 import type { RetryModelExpectation } from "@/types/chat-unification";
 import { isMobileAiV2Enabled } from "@/lib/mobile/feature-flags";
 import {
@@ -55,6 +57,11 @@ const quickActions = [
   { id: "compare", icon: "compare_arrows", label: "Compare projects", prompt: "Compare inclusion criteria and progress across my projects. Highlight conflicts and give recommendations." },
   { id: "methodology", icon: "school", label: "Methodology advisor", prompt: "Act as my methodology advisor. Critique my review design and suggest improvements using PRISMA and evidence-quality best practices." },
 ];
+
+const makeId = (prefix: string) =>
+  (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function")
+    ? `${prefix}-${crypto.randomUUID()}`
+    : `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
 type ChatConversation = {
   id: string;
@@ -980,12 +987,46 @@ export default function AIView() {
     abortControllerRef.current = controller;
 
     const aiMessageId = `m-${Date.now() + 1}`;
+    const requestKey = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID()
+      : `ai-send-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     let runStatus: string | null = null;
+    let terminalReason: StreamTerminalReason | null = null;
     let actualModel: string | null = null;
     let actualModelSource: "provider" | "requested" | "unknown" = "unknown";
     let unresolvedCountBeforeClear: number | null = null;
     let unresolvedCountAfterClear: number | null = null;
     let aborted = false;
+    let emittedTerminalError = false;
+    let terminalEventEmitted = false;
+
+    recordReliabilityMetric({
+      type: "reliability.v1.stream.started",
+      surface: "ai",
+      projectId: selectedProjectId,
+      conversationId: convId,
+      payload: {
+        requestKey,
+        phase: "send",
+      },
+    });
+
+    const emitTerminalMetric = (reason: StreamTerminalReason, status: string | null) => {
+      if (terminalEventEmitted) return;
+      terminalEventEmitted = true;
+      recordReliabilityMetric({
+        type: "reliability.v1.stream.terminal",
+        surface: "ai",
+        projectId: selectedProjectId,
+        conversationId: convId,
+        payload: {
+          requestKey,
+          phase: "send",
+          reason,
+          runStatus: status,
+        },
+      });
+    };
     const runtime = createAiStreamRuntime({
       aiMessageId,
       page: currentPage,
@@ -1045,6 +1086,7 @@ export default function AIView() {
         onChunk: (data) => runtime.handleChunk(data),
       });
       runStatus = summary.runStatus;
+      terminalReason = summary.terminalReason;
       actualModel = summary.actualModel;
       actualModelSource = summary.actualModelSource;
       const runEndToolCounts = runtime.getLastRunEndToolCounts();
@@ -1054,10 +1096,15 @@ export default function AIView() {
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") {
         aborted = true;
+        terminalReason = terminalReasonFromThrownError(err, { isUserAbort: true });
+        emitTerminalMetric(terminalReason, runStatus);
       } else {
+        terminalReason = terminalReasonFromThrownError(err);
+        emitTerminalMetric(terminalReason, runStatus);
         convId = runtime.getConversationId();
         runtime.failRunningTools("Run failed before tool completion.");
         const friendlyError = formatStreamErrorForUI(err);
+        emittedTerminalError = true;
         updateConversationTimeline(convId, (items) => [
           ...items,
           {
@@ -1103,6 +1150,30 @@ export default function AIView() {
       }
       if (abortControllerRef.current === controller) {
         abortControllerRef.current = null;
+      }
+      if (terminalReason && !aborted) {
+        emitTerminalMetric(terminalReason, runStatus);
+      }
+      if (
+        streamGenRef.current === myGen
+        && !aborted
+        && !emittedTerminalError
+        && terminalReason
+        && terminalReason !== "completed"
+        && terminalReason !== "cancelled_by_user"
+      ) {
+        updateConversationTimeline(convId, (items) => [
+          ...items,
+          {
+            type: "error",
+            id: makeId("terminal-error"),
+            message: terminalReason === "timed_out"
+              ? "The response timed out. Retry to continue."
+              : "The stream ended unexpectedly. Retry to continue.",
+            retryable: true,
+            createdAt: new Date().toISOString(),
+          },
+        ]);
       }
     }
   }, [
@@ -1321,7 +1392,11 @@ export default function AIView() {
     abortControllerRef.current = controller;
 
     const aiMessageId = `m-${Date.now() + 1}`;
+    const requestKey = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID()
+      : `ai-plan-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     let runStatus: string | null = null;
+    let terminalReason: StreamTerminalReason | null = null;
     let actualModel: string | null = null;
     let actualModelSource: "provider" | "requested" | "unknown" = "unknown";
     let unresolvedCountBeforeClear: number | null = null;
@@ -1329,6 +1404,7 @@ export default function AIView() {
     let stopReason: string | null = null;
     let errorMessage: string | null = null;
     let aborted = false;
+    let terminalEventEmitted = false;
     const requestReasoningMode = resolveRequestReasoningMode(reasoningMode, selectedModel);
     const runtime = createAiStreamRuntime({
       aiMessageId,
@@ -1346,6 +1422,34 @@ export default function AIView() {
       onPlanStepUpdate: updatePlanStepStatus,
       onNavigate: handleNavigate,
     });
+
+    recordReliabilityMetric({
+      type: "reliability.v1.stream.started",
+      surface: "ai",
+      projectId: selectedProjectId,
+      conversationId: convId,
+      payload: {
+        requestKey,
+        phase: "plan",
+      },
+    });
+
+    const emitTerminalMetric = (reason: StreamTerminalReason, status: string | null) => {
+      if (terminalEventEmitted) return;
+      terminalEventEmitted = true;
+      recordReliabilityMetric({
+        type: "reliability.v1.stream.terminal",
+        surface: "ai",
+        projectId: selectedProjectId,
+        conversationId: convId,
+        payload: {
+          requestKey,
+          phase: "plan",
+          reason,
+          runStatus: status,
+        },
+      });
+    };
 
     try {
       const response = await fetch("/api/ai/stream", {
@@ -1387,6 +1491,7 @@ export default function AIView() {
       });
       convId = runtime.getConversationId();
       runStatus = summary.runStatus;
+      terminalReason = summary.terminalReason;
       actualModel = summary.actualModel;
       actualModelSource = summary.actualModelSource;
       const runEndToolCounts = runtime.getLastRunEndToolCounts();
@@ -1397,7 +1502,11 @@ export default function AIView() {
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") {
         aborted = true;
+        terminalReason = terminalReasonFromThrownError(err, { isUserAbort: true });
+        emitTerminalMetric(terminalReason, runStatus);
       } else {
+        terminalReason = terminalReasonFromThrownError(err);
+        emitTerminalMetric(terminalReason, runStatus);
         convId = runtime.getConversationId();
         runtime.failRunningTools("Run ended before tool completion.");
         errorMessage = formatStreamErrorForUI(err);
@@ -1437,9 +1546,12 @@ export default function AIView() {
       if (abortControllerRef.current === controller) {
         abortControllerRef.current = null;
       }
+      if (terminalReason && !aborted) {
+        emitTerminalMetric(terminalReason, runStatus);
+      }
     }
 
-    const didComplete = runStatus === "completed";
+    const didComplete = terminalReason === "completed";
     setPlanStatus(didComplete ? "accepted" : "proposed");
 
     if (!didComplete && streamGenRef.current === myGen) {
@@ -1521,6 +1633,17 @@ export default function AIView() {
     setPendingChoices([]);
     setPendingUserInput(null);
     setPrefillCommand(null);
+    const requestKey = generateChatUnificationRequestKey();
+    recordReliabilityMetric({
+      type: "reliability.v1.retry.clicked",
+      surface: "ai",
+      projectId: selectedProjectId,
+      conversationId: convId,
+      payload: {
+        requestKey,
+        source: "retry_action",
+      },
+    });
     void handleSend(
       retryText,
       "ai",
@@ -1529,7 +1652,7 @@ export default function AIView() {
       undefined,
       undefined,
       {
-        requestKey: generateChatUnificationRequestKey(),
+        requestKey,
         expectedModel: selectedModel ?? null,
         source: "retry_action",
       },
