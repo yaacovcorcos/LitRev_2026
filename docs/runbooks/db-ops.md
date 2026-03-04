@@ -103,10 +103,24 @@ If a future RunEvent migration introduces the same duplicate-sequence issue, the
 
 ## Environment Requirements
 
-- `DATABASE_URL` — pooled connection (pgbouncer), used at runtime
-- `DIRECT_URL` — direct connection, required for all migration commands
-- Both must be non-localhost for production operations
-- Source: `next-app/.env.local` or shell environment
+- Local environment: localhost Postgres for development and tests only.
+- Production environment: Supabase Postgres (source of truth for deployed app).
+- `DATABASE_URL` — pooled runtime connection (pgbouncer).
+- `DIRECT_URL` — direct migration connection; required for migrate commands.
+- For production migration work, both URLs must point to non-localhost Supabase hosts.
+- Always verify target before migrations (do not run rollout migrations against local DB).
+
+### Preflight Target Verification
+
+```bash
+echo "$DIRECT_URL" | sed 's/:\/\/.*@/:\/\/***@/'
+echo "$DIRECT_URL" | grep -E "localhost|127\\.0\\.0\\.1" && echo "ERROR_local_target" || echo "OK_non_local_target"
+npx prisma migrate status
+```
+
+Expected before production migration commands:
+- `OK_non_local_target`
+- `npx prisma migrate status` runs against production Supabase connection
 
 ## Rules
 

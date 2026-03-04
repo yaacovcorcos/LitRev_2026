@@ -2,6 +2,7 @@
 
 ## Purpose
 Safely deploy schema changes to production Postgres (Supabase) with clear verification, drift handling, and rollback posture.
+Local localhost databases are development-only; this runbook applies to production Supabase Postgres targets only.
 
 ## Scope
 - In scope: Prisma migration execution, schema/index verification, DB health checks.
