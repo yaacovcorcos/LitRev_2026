@@ -29,6 +29,7 @@ import { isNavigationSafe } from "@/lib/ai/navigation-safety";
 import { formatStreamErrorForUI } from "@/lib/ai/stream-error-ui";
 import { createAiStreamRuntime } from "@/lib/ai/ai-stream-runtime";
 import { generateChatUnificationRequestKey, recordChatUnificationMetric } from "@/lib/ai/chat-unification-telemetry";
+import { terminalReasonFromThrownError, type StreamTerminalReason } from "@/lib/ai/stream-lifecycle";
 import type { RetryModelExpectation } from "@/types/chat-unification";
 import { isMobileAiV2Enabled } from "@/lib/mobile/feature-flags";
 import {
@@ -981,11 +982,13 @@ export default function AIView() {
 
     const aiMessageId = `m-${Date.now() + 1}`;
     let runStatus: string | null = null;
+    let terminalReason: StreamTerminalReason | null = null;
     let actualModel: string | null = null;
     let actualModelSource: "provider" | "requested" | "unknown" = "unknown";
     let unresolvedCountBeforeClear: number | null = null;
     let unresolvedCountAfterClear: number | null = null;
     let aborted = false;
+    let emittedTerminalError = false;
     const runtime = createAiStreamRuntime({
       aiMessageId,
       page: currentPage,
@@ -1045,6 +1048,7 @@ export default function AIView() {
         onChunk: (data) => runtime.handleChunk(data),
       });
       runStatus = summary.runStatus;
+      terminalReason = summary.terminalReason;
       actualModel = summary.actualModel;
       actualModelSource = summary.actualModelSource;
       const runEndToolCounts = runtime.getLastRunEndToolCounts();
@@ -1054,10 +1058,13 @@ export default function AIView() {
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") {
         aborted = true;
+        terminalReason = terminalReasonFromThrownError(err, { isUserAbort: true });
       } else {
+        terminalReason = terminalReasonFromThrownError(err);
         convId = runtime.getConversationId();
         runtime.failRunningTools("Run failed before tool completion.");
         const friendlyError = formatStreamErrorForUI(err);
+        emittedTerminalError = true;
         updateConversationTimeline(convId, (items) => [
           ...items,
           {
@@ -1103,6 +1110,27 @@ export default function AIView() {
       }
       if (abortControllerRef.current === controller) {
         abortControllerRef.current = null;
+      }
+      if (
+        streamGenRef.current === myGen
+        && !aborted
+        && !emittedTerminalError
+        && terminalReason
+        && terminalReason !== "completed"
+        && terminalReason !== "cancelled_by_user"
+      ) {
+        updateConversationTimeline(convId, (items) => [
+          ...items,
+          {
+            type: "error",
+            id: `terminal-error-${Date.now()}`,
+            message: terminalReason === "timed_out"
+              ? "The response timed out. Retry to continue."
+              : "The stream ended unexpectedly. Retry to continue.",
+            retryable: true,
+            createdAt: new Date().toISOString(),
+          },
+        ]);
       }
     }
   }, [
@@ -1322,6 +1350,7 @@ export default function AIView() {
 
     const aiMessageId = `m-${Date.now() + 1}`;
     let runStatus: string | null = null;
+    let terminalReason: StreamTerminalReason | null = null;
     let actualModel: string | null = null;
     let actualModelSource: "provider" | "requested" | "unknown" = "unknown";
     let unresolvedCountBeforeClear: number | null = null;
@@ -1387,6 +1416,7 @@ export default function AIView() {
       });
       convId = runtime.getConversationId();
       runStatus = summary.runStatus;
+      terminalReason = summary.terminalReason;
       actualModel = summary.actualModel;
       actualModelSource = summary.actualModelSource;
       const runEndToolCounts = runtime.getLastRunEndToolCounts();
@@ -1397,7 +1427,9 @@ export default function AIView() {
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") {
         aborted = true;
+        terminalReason = terminalReasonFromThrownError(err, { isUserAbort: true });
       } else {
+        terminalReason = terminalReasonFromThrownError(err);
         convId = runtime.getConversationId();
         runtime.failRunningTools("Run ended before tool completion.");
         errorMessage = formatStreamErrorForUI(err);
@@ -1439,7 +1471,7 @@ export default function AIView() {
       }
     }
 
-    const didComplete = runStatus === "completed";
+    const didComplete = terminalReason === "completed";
     setPlanStatus(didComplete ? "accepted" : "proposed");
 
     if (!didComplete && streamGenRef.current === myGen) {
