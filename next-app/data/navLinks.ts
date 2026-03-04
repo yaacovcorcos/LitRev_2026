@@ -6,6 +6,13 @@ export const mainNavLinks: NavLink[] = [
   { label: "Library", icon: "bookmarks", href: "/library", navKey: "library" },
 ];
 
+export const adminMainNavLink: NavLink = {
+  label: "Admin",
+  icon: "admin_panel_settings",
+  href: "/admin",
+  navKey: "admin",
+};
+
 export const bottomNavLinks: NavLink[] = [
   { label: "Notifications", icon: "notifications", href: "#notifications", navKey: "notifications" },
   { label: "Profile", icon: "person", href: "#profile", navKey: "profile" },
@@ -18,3 +25,10 @@ export const mobileNavLinks: NavLink[] = [
   { label: "New", icon: "add_circle", href: "#", navKey: "new" },
   { label: "Library", icon: "bookmarks", href: "/library", navKey: "library" },
 ];
+
+export const adminMobileNavLink: NavLink = {
+  label: "Admin",
+  icon: "admin_panel_settings",
+  href: "/admin",
+  navKey: "admin",
+};

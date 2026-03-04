@@ -1,0 +1,52 @@
+.page {
+  min-height: calc(100vh - var(--header-height, 44px));
+  padding: 44px 52px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+}
+
+.header {
+  max-width: 720px;
+  display: grid;
+  gap: 12px;
+}
+
+.eyebrow {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+}
+
+.title {
+  margin: 0;
+  font-size: clamp(1.8rem, 3.2vw, 2.7rem);
+  line-height: 1.1;
+  color: var(--text-primary);
+}
+
+.description {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 1rem;
+  line-height: 1.6;
+}
+
+.backLink {
+  width: fit-content;
+  color: var(--accent-primary);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.backLink:hover {
+  text-decoration: underline;
+}
+
+@media (max-width: 900px) {
+  .page {
+    padding: 20px 18px calc(20px + var(--mobile-nav-offset));
+  }
+}

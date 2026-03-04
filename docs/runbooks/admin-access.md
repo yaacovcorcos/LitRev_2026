@@ -67,3 +67,10 @@ When adding admin capabilities, enforce server-side platform-admin guards at eve
 4. Background/cron admin tasks must call `requirePlatformAdminBackground(userId)` before reading or mutating admin-only data.
 
 Never rely on hidden UI controls as authorization.
+
+## Admin Shell Access
+
+- Route: `/admin`
+- Guard: `requirePlatformAdmin()` at the route boundary.
+- Non-admin behavior: `403` response via `app/admin/forbidden.tsx`.
+- Navigation visibility: admin links are shown only when `/api/admin/status` returns `isPlatformAdmin=true`.
