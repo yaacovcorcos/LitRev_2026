@@ -108,6 +108,19 @@ If a future RunEvent migration introduces the same duplicate-sequence issue, the
 - Both must be non-localhost for production operations
 - Source: `next-app/.env.local` or shell environment
 
+### Migration Target Preflight (Required)
+
+Run this before any production migration command:
+
+```bash
+echo "$DIRECT_URL"
+npx prisma migrate status
+```
+
+Expected:
+- `DIRECT_URL` resolves to Supabase Postgres (not `localhost` / `127.0.0.1`)
+- `prisma migrate status` points at the intended deployment target
+
 ## Rules
 
 1. Never use `prisma db push` in production.

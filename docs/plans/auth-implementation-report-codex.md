@@ -54,6 +54,7 @@ This is a two-risk rollout:
 ## 3. Strategic Decisions
 
 1. **Use Better Auth, not Auth.js v5, for new implementation.**
+   Better Auth is the sole identity authority in this project.
 2. **Adopt Actor context via AsyncLocalStorage** at request boundary.
 3. **Enforce auth at server boundary** (server actions + route handlers), not middleware-only.
 4. **Treat first-login claim as core feature**, not cleanup.
