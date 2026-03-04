@@ -65,7 +65,7 @@
 }
 
 .searchInput:focus-visible {
-    outline-color: var(--focus-ring-color, var(--accent-primary));
+    outline: none;
 }
 
 .newNoteBtn {
@@ -279,7 +279,7 @@
 }
 
 .tagInput:focus-visible {
-    outline-color: var(--focus-ring-color, var(--accent-primary));
+    outline: none;
     border-radius: var(--radius-sm);
 }
 

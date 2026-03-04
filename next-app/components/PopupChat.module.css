@@ -322,7 +322,7 @@
 }
 
 .inputField:focus-visible {
-    outline-color: var(--focus-ring-color, var(--accent-primary));
+    outline: none;
 }
 
 .inputField::placeholder {
