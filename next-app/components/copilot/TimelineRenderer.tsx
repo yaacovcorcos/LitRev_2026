@@ -519,7 +519,7 @@ export type TimelineRendererProps = {
         icon: string;
         title: string;
         description: string;
-        suggestions: { label: string; prompt: string }[];
+        suggestions: { label: string; prompt: string; icon?: string; description?: string }[];
     };
     onSuggestionClick: (prompt: string) => void;
     /** Callback for one-click action prompts from artifact cards (e.g., scoping decision actions). */
@@ -856,11 +856,21 @@ export function TimelineRenderer({
                             <button
                                 key={suggestion.label}
                                 type="button"
-                                className={styles.suggestChip}
+                                className={suggestion.description ? styles.suggestCard : styles.suggestChip}
                                 onClick={() => onSuggestionClick(suggestion.prompt)}
                                 disabled={isLoading}
                             >
-                                {suggestion.label}
+                                {suggestion.icon ? (
+                                    <span className={`material-icons-round ${styles.suggestCardIcon}`} aria-hidden="true">
+                                        {suggestion.icon}
+                                    </span>
+                                ) : null}
+                                <span className={styles.suggestCardBody}>
+                                    <span className={styles.suggestCardLabel}>{suggestion.label}</span>
+                                    {suggestion.description ? (
+                                        <span className={styles.suggestCardDescription}>{suggestion.description}</span>
+                                    ) : null}
+                                </span>
                             </button>
                         ))}
                     </div>

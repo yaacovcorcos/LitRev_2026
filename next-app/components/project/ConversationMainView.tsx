@@ -10,7 +10,6 @@ import { createNoteAction } from "@/app/actions/notes";
 import { TimelineRenderer } from "../copilot/TimelineRenderer";
 import { CopilotInput } from "../copilot/CopilotInput";
 import { AutonomySettings } from "../copilot/AutonomySettings";
-import { SuggestionChips } from "./SuggestionChips";
 import { ConversationPicker } from "../ui/ConversationPicker";
 import { generateChatUnificationRequestKey } from "@/lib/ai/chat-unification-telemetry";
 import styles from "./ConversationMainView.module.css";
@@ -18,6 +17,27 @@ import styles from "./ConversationMainView.module.css";
 export type ConversationMainViewProps = {
     projectId: string;
 };
+
+const AI_PAGE_INSPIRED_SUGGESTIONS = [
+    {
+        label: "Find related studies",
+        prompt: "Find me recent papers about ",
+        icon: "search",
+        description: "Discover recent literature connected to your topic",
+    },
+    {
+        label: "Summarize a paper",
+        prompt: "I need help summarizing a paper. Here's the abstract: ",
+        icon: "description",
+        description: "Turn dense abstracts into clear takeaways",
+    },
+    {
+        label: "Help draft a section",
+        prompt: "Help me draft the Introduction section of my literature review.",
+        icon: "edit_note",
+        description: "Draft publication-ready section text quickly",
+    },
+] as const;
 
 export function ConversationMainView({ projectId }: ConversationMainViewProps) {
     const {
@@ -52,6 +72,27 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
     // Dynamic suggestion chips from project state (Phase 4.2)
     const snapshot = useProjectState(projectId);
     const chips = useMemo(() => getSuggestions(snapshot), [snapshot]);
+    const emptyStateSuggestions = useMemo(() => {
+        const merged = [
+            ...chips.map((chip) => ({
+                label: chip.label,
+                prompt: chip.prompt,
+                icon: chip.icon,
+                description: chip.description,
+            })),
+            ...AI_PAGE_INSPIRED_SUGGESTIONS,
+        ];
+        const unique: Array<{ label: string; prompt: string; icon: string; description: string }> = [];
+        const seen = new Set<string>();
+        for (const suggestion of merged) {
+            const key = `${suggestion.label}|${suggestion.prompt}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            unique.push(suggestion);
+            if (unique.length >= 6) break;
+        }
+        return unique;
+    }, [chips]);
 
     const [prefillCommand, setPrefillCommand] = useState<{ text: string; id: string } | null>(null);
 
@@ -62,10 +103,6 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
     const handleActionPrompt = useCallback((prompt: string, mode?: AgentMode) => {
         sendMessage(prompt, "overview" as CopilotPage, undefined, undefined, mode);
     }, [sendMessage]);
-
-    const handleChipSend = useCallback((prompt: string) => {
-        setPrefillCommand({ text: prompt, id: crypto.randomUUID() });
-    }, []);
 
     const handlePrefillConsumed = useCallback(() => {
         setPrefillCommand(null);
@@ -202,7 +239,7 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
                             icon: "chat",
                             title: "Start a conversation",
                             description: "Ask anything about your project, search for studies, or plan your next steps.",
-                            suggestions: [],
+                            suggestions: emptyStateSuggestions,
                         }}
                         onSuggestionClick={handleSuggestionClick}
                         onActionPrompt={handleActionPrompt}
@@ -218,15 +255,6 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
                         isLoadingOlder={isLoadingOlder}
                         onLoadOlder={loadOlderMessages}
                     />
-
-                    {/* Suggestion chips (shown when no messages) */}
-                    {!hasMessages && (
-                        <SuggestionChips
-                            projectId={projectId}
-                            onSend={handleChipSend}
-                            chips={chips}
-                        />
-                    )}
 
                     {/* Input */}
                     <div className={styles.inputWrapper}>

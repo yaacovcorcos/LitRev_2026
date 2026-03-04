@@ -77,8 +77,8 @@
 
 .searchInput:focus,
 .searchInput:focus-visible {
-    border-color: rgba(var(--rgb-ui-contrast), 0.2);
-    box-shadow: var(--shadow-focus-ring);
+    border-color: rgba(var(--rgb-ui-contrast), 0.22);
+    box-shadow: inset 0 0 0 1px rgba(var(--rgb-ui-contrast), 0.12);
 }
 
 .searchInput:focus-visible {
