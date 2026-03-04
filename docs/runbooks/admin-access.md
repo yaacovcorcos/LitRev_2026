@@ -96,6 +96,22 @@ Migration index set for this page:
 2. `User_createdAt_idx`
 3. `User_isPlatformAdmin_createdAt_idx`
 
+## Usage Analytics Dashboard
+
+- Route: `/admin/usage`
+- Guard: `requirePlatformAdmin()` at the route boundary.
+- Query behavior:
+  - rolling windows: 7, 30, 90 days
+  - summary totals (requests/tokens/users/workspaces)
+  - breakdown tables by `source`, `contextPage`, and `model`
+  - daily trend from DB-side day truncation
+- Legacy compatibility contract:
+  - `AIUsage.source` or `AIUsage.contextPage` rows with `legacy_unknown` are treated as legacy rows.
+  - `AIUsage.conversationId` is optional and may be `NULL` for historical rows.
+  - Dashboard semantics:
+    - `legacyRequests`: rows where `source='legacy_unknown'` OR `contextPage='legacy_unknown'`
+    - `attributedRequests`: `totalRequests - legacyRequests`
+
 ## Platform Admin Mutations + Audit
 
 - Endpoint: `POST /api/admin/users/[userId]/platform-admin`
@@ -109,3 +125,34 @@ Migration index set for this page:
 - Audit writes:
   - table: `AdminAuditLog`
   - fields: `actorUserId`, `targetUserId`, `action`, `reason`, `requestId`, `before`, `after`, `createdAt`
+
+## Incident Response
+
+### Recover Platform Admin Lockout
+
+If no authorized admin can access `/admin`, run explicit recovery:
+
+```bash
+npx tsx scripts/bootstrap-platform-admin.ts --mode recover --email coryacos1@gmail.com
+```
+
+Then verify:
+
+```sql
+select id, email, "isPlatformAdmin"
+from "User"
+where email = 'coryacos1@gmail.com';
+```
+
+### Verify Audit Trail Integrity
+
+```sql
+select "createdAt", "actorUserId", "targetUserId", action, reason, "requestId"
+from "AdminAuditLog"
+order by "createdAt" desc
+limit 50;
+```
+
+Notes:
+- Successful platform-admin role changes must write one `AdminAuditLog` row each.
+- Failed mutation attempts are currently surfaced via API status/error responses and are not persisted as audit rows.

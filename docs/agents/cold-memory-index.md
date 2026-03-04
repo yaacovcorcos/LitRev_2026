@@ -14,6 +14,7 @@ Use this index to retrieve authoritative docs before editing high-risk domains.
 | Subsystem | Primary docs | When to retrieve |
 |---|---|---|
 | Database operations, migrations, production drift | `docs/runbooks/db-ops.md`, `docs/plans/db-production-runbook.md` | Any Prisma schema change, migration issue, deploy DB gate, runtime schema errors |
+| Platform admin control plane (bootstrap, guards, mutations, audit, analytics) | `docs/runbooks/admin-access.md`, `docs/plans/plan-backend.md` | Changes under `next-app/app/admin/**`, `next-app/app/api/admin/**`, `next-app/lib/server/admin/**`, or admin guard logic |
 | Agent orchestration and execution loop | `docs/plans/plan-agentic.md`, `docs/plans/codex-agentic-plan.md`, `next-app/lib/agent/**`, `next-app/lib/server/agent/**` | Changes to planner/execution/router/sub-agent flow |
 | Memory and retrieval architecture | `docs/plans/plan-memory.md` | Any memory extraction, embedding, retrieval, or memory lifecycle work |
 | Backend and infrastructure decisions | `docs/plans/plan-backend.md` | Server action/service/DB contract changes |
