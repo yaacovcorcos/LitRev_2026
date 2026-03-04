@@ -12,6 +12,7 @@ import { createConversation, addMessage } from "@/app/actions/conversations";
 import { processAIStream } from "@/lib/ai/stream-processor";
 import { formatStreamErrorForUI } from "@/lib/ai/stream-error-ui";
 import { terminalReasonFromThrownError, type StreamTerminalReason } from "@/lib/ai/stream-lifecycle";
+import { recordReliabilityMetric } from "@/lib/ai/reliability-telemetry";
 import { markdownComponents } from "@/components/markdown/CodeBlock";
 import type { PopupChatContext, PopupMessage } from "@/types/popup-chat";
 import type { CopilotPage } from "@/types/ai";
@@ -216,6 +217,36 @@ export function PopupChat({ projectId }: PopupChatProps) {
         let fullContent = "";
         let terminalReason: StreamTerminalReason | null = null;
         userStopRequestedRef.current = false;
+        const requestKey = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+            ? crypto.randomUUID()
+            : `popup-stream-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        let terminalEventEmitted = false;
+
+        recordReliabilityMetric({
+            type: "reliability.v1.stream.started",
+            surface: "popup",
+            projectId: context.projectId,
+            payload: {
+                requestKey,
+                phase: "popup_stream",
+            },
+        });
+
+        const emitTerminalMetric = (reason: StreamTerminalReason) => {
+            if (terminalEventEmitted) return;
+            terminalEventEmitted = true;
+            recordReliabilityMetric({
+                type: "reliability.v1.stream.terminal",
+                surface: "popup",
+                projectId: context.projectId,
+                payload: {
+                    requestKey,
+                    phase: "popup_stream",
+                    reason,
+                    runStatus: reason === "completed" ? "completed" : "failed",
+                },
+            });
+        };
 
         const controller = new AbortController();
         abortRef.current = controller;
@@ -274,6 +305,7 @@ export function PopupChat({ projectId }: PopupChatProps) {
                 terminalReason = "cancelled_by_user";
             }
             sendSucceeded = terminalReason === "completed";
+            if (terminalReason) emitTerminalMetric(terminalReason);
             if (terminalReason && terminalReason !== "completed" && terminalReason !== "cancelled_by_user") {
                 const fallbackError = terminalReason === "timed_out"
                     ? "The response timed out. Please retry."
@@ -286,9 +318,11 @@ export function PopupChat({ projectId }: PopupChatProps) {
         } catch (error) {
             if (error instanceof DOMException && error.name === "AbortError") {
                 terminalReason = terminalReasonFromThrownError(error, { isUserAbort: true });
+                emitTerminalMetric(terminalReason);
                 return;
             }
             terminalReason = terminalReasonFromThrownError(error);
+            emitTerminalMetric(terminalReason);
 
             const errorText = `Sorry, I encountered an error: ${formatStreamErrorForUI(error)}`;
             setMessages((prev) => [
