@@ -7,13 +7,15 @@
 /* ---- Input Box ---- */
 
 .inputBox {
-    margin: 0 clamp(16px, 4vw, 64px) 24px;
-    background: linear-gradient(to bottom, rgba(var(--rgb-ui-surface), 0.35), rgba(var(--rgb-ui-surface), 0.75));
+    margin: 0 clamp(16px, 4vw, 64px) 14px;
+    background: linear-gradient(to bottom, rgba(var(--rgb-ui-surface), 0.44), rgba(var(--rgb-ui-surface), 0.82));
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
-    border: 1px solid rgba(var(--rgb-ui-contrast), 0.06);
+    border: 1px solid rgba(var(--rgb-ui-contrast), 0.08);
     border-radius: 24px;
-    box-shadow: var(--shadow-sm);
+    box-shadow:
+        0 10px 28px rgba(var(--rgb-ui-scrim), 0.16),
+        0 2px 8px rgba(var(--rgb-ui-scrim), 0.08);
     transition: border-color 0.2s ease, box-shadow 0.2s ease;
     position: relative;
     flex-shrink: 0;
@@ -27,15 +29,24 @@
     bottom: 100%;
     left: 0;
     right: 0;
-    height: 48px;
-    background: linear-gradient(to bottom, transparent, rgba(var(--rgb-ui-surface), 0.25));
+    height: 24px;
+    background: linear-gradient(to bottom, transparent, rgba(var(--rgb-ui-surface), 0.08));
     pointer-events: none;
     border-radius: 24px 24px 0 0;
 }
 
-.inputBox:focus-within {
-    border-color: rgba(var(--rgb-ui-contrast), 0.1);
-    box-shadow: var(--shadow-lg);
+.inputBox::after {
+    content: "";
+    position: absolute;
+    left: 16px;
+    right: 16px;
+    bottom: -10px;
+    height: 14px;
+    border-radius: 999px;
+    background: rgba(var(--rgb-ui-scrim), 0.16);
+    filter: blur(14px);
+    pointer-events: none;
+    z-index: -1;
 }
 
 /* ---- Textarea ---- */
@@ -52,15 +63,14 @@
     font-family: inherit;
     color: var(--text-primary);
     resize: none;
-    outline: 2px solid transparent;
-    outline-offset: 2px;
+    outline: none;
     line-height: 1.5;
     overflow-y: auto;
 }
 
 .inputTextarea:focus-visible {
-    /* Keep a single focus indicator owned by the parent .inputBox */
     outline: none;
+    box-shadow: none;
 }
 
 .inputTextarea::placeholder {
@@ -206,7 +216,9 @@
 .compressBtn:focus-visible,
 .sendBtn:focus-visible {
     outline: none;
-    box-shadow: var(--shadow-focus-ring);
+    box-shadow:
+        0 0 0 1px rgba(var(--rgb-ui-contrast), 0.14),
+        0 2px 8px rgba(var(--rgb-ui-contrast), 0.08);
 }
 
 /* ---- Action Buttons ---- */
