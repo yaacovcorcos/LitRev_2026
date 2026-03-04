@@ -22,6 +22,7 @@ import { getReasoningBudgetTokens, shouldRequestReasoning } from "@/lib/ai/reaso
 import { formatStreamErrorForUI } from "@/lib/ai/stream-error-ui";
 import { recordChatUnificationMetric } from "@/lib/ai/chat-unification-telemetry";
 import { terminalReasonFromThrownError, type StreamTerminalReason } from "@/lib/ai/stream-lifecycle";
+import { recordReliabilityMetric } from "@/lib/ai/reliability-telemetry";
 import type { RetryModelExpectation } from "@/types/chat-unification";
 import type { PendingAttachment, ApproveArtifactsBatchResult } from "@/types/copilot-context";
 import type { useCopilotConversations } from "@/hooks/useCopilotConversations";
@@ -132,6 +133,39 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
         let unresolvedCountBeforeClear: number | null = null;
         let unresolvedCountAfterClear: number | null = null;
         let terminalReason: StreamTerminalReason | null = null;
+        const requestKey = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+            ? crypto.randomUUID()
+            : `project-stream-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        let terminalEventEmitted = false;
+
+        recordReliabilityMetric({
+            type: "reliability.v1.stream.started",
+            surface: "project",
+            projectId,
+            conversationId: effectiveConvId,
+            payload: {
+                requestKey,
+                phase: "project_stream",
+            },
+        });
+
+        const emitTerminalMetric = (reason: StreamTerminalReason, status: string | null) => {
+            if (terminalEventEmitted) return;
+            terminalEventEmitted = true;
+            recordReliabilityMetric({
+                type: "reliability.v1.stream.terminal",
+                surface: "project",
+                projectId,
+                conversationId: effectiveConvId,
+                runId: localRunId || null,
+                payload: {
+                    requestKey,
+                    phase: "project_stream",
+                    reason,
+                    runStatus: status,
+                },
+            });
+        };
 
         // Cancel any in-flight stream
         if (abortControllerRef.current) {
@@ -270,6 +304,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
 
             // Stale generation — skip refresh
             if (streamGenRef.current !== myGen) {
+                emitTerminalMetric(terminalReason ?? "cancelled_by_user", runStatus);
                 return {
                     success: false,
                     aborted: true,
@@ -301,6 +336,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
 
             // Refresh conversation list to update titles/counts
             convo.loadConversations();
+            emitTerminalMetric(terminalReason ?? "completed", runStatus);
             return {
                 success: true,
                 aborted: false,
@@ -319,6 +355,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                 terminalReason = terminalReasonFromThrownError(error, {
                     isUserAbort: userCancelRequestedRef.current,
                 });
+                emitTerminalMetric(terminalReason, runStatus);
                 return {
                     success: false,
                     aborted: true,
@@ -333,6 +370,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                 };
             }
             terminalReason = terminalReasonFromThrownError(error);
+            emitTerminalMetric(terminalReason, runStatus);
 
             recordChatUnificationMetric({
                 type: "stuck_running_tools_after_run_end",
