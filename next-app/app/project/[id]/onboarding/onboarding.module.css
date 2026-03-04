@@ -255,8 +255,8 @@
 .textarea:focus-visible,
 .stepBtn:focus-visible,
 .choiceRow input:focus-visible {
-  outline: 2px solid var(--accent-primary);
-  outline-offset: 2px;
+  outline: none;
+  box-shadow: var(--shadow-focus-ring);
 }
 
 .grid,

@@ -43,8 +43,8 @@
 }
 
 .card:focus-visible {
-    outline: 2px solid var(--accent-primary);
-    outline-offset: 2px;
+    outline: none;
+    box-shadow: var(--shadow-focus-ring);
 }
 
 .card:hover {
@@ -100,8 +100,8 @@
 }
 
 .sampleCardOpenBtn:focus-visible {
-    outline: 2px solid var(--accent-primary);
-    outline-offset: 2px;
+    outline: none;
+    box-shadow: var(--shadow-focus-ring);
 }
 
 .sampleCardOpenBtn:hover {
@@ -429,8 +429,8 @@
 }
 
 .sampleCardDismissBtn:focus-visible {
-    outline: 2px solid var(--accent-primary);
-    outline-offset: 2px;
+    outline: none;
+    box-shadow: var(--shadow-focus-ring);
 }
 
 .sampleCardError {
