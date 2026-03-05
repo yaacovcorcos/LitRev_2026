@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { validatePlan, generatePlan } from "@/lib/server/agent/planner";
+import { detectMultiStepWorkflow, validatePlan, generatePlan } from "@/lib/server/agent/planner";
 import type { PlanPayload } from "@/types/artifacts";
 
 describe("validatePlan", () => {
@@ -182,6 +182,52 @@ describe("generatePlan", () => {
         });
         expect(plan).not.toBeNull();
         expect(plan!.steps[0]?.toolName).toBe("search_openalex");
+    });
+
+    it("does not create a plan for read-only PDF QA prompts", async () => {
+        const prompt = "Read the methods section from this study PDF and tell me the intervention and comparator.";
+        expect(
+            detectMultiStepWorkflow(prompt, ["extract_pdf", "update_note", "read_study_content"]),
+        ).toBe(false);
+
+        const plan = await generatePlan(prompt, {
+            projectId: "test",
+            hasProtocol: true,
+            studyCount: 1,
+        });
+        expect(plan).toBeNull();
+    });
+
+    it("still plans draft updates when the user explicitly asks to write and save a section", async () => {
+        const prompt = "Write a Methods section summary from this study PDF and save it to the draft.";
+        expect(
+            detectMultiStepWorkflow(prompt, ["extract_pdf", "update_note", "read_study_content"]),
+        ).toBe(false);
+
+        const plan = await generatePlan(prompt, {
+            projectId: "test",
+            hasProtocol: true,
+            studyCount: 1,
+        });
+        expect(plan).not.toBeNull();
+        expect(plan!.steps).toEqual([
+            expect.objectContaining({ toolName: "update_note" }),
+        ]);
+    });
+
+    it("plans PDF extraction only when explicit extraction verbs are present", async () => {
+        const prompt = "Extract metadata from this PDF and save the summary to the draft.";
+        expect(
+            detectMultiStepWorkflow(prompt, ["extract_pdf", "update_note", "read_study_content"]),
+        ).toBe(true);
+
+        const plan = await generatePlan(prompt, {
+            projectId: "test",
+            hasProtocol: true,
+            studyCount: 1,
+        });
+        expect(plan).not.toBeNull();
+        expect(plan!.steps.map((step) => step.toolName)).toEqual(["extract_pdf", "update_note"]);
     });
 });
 

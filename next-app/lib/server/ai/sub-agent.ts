@@ -24,7 +24,7 @@ import type { AgentMode, RunStatus } from "@/types/agent";
 import type { ArtifactType } from "@/types/artifacts";
 import { LoopState, type LoopBudget, type StopReason } from "@/lib/agent/loop-controller";
 import { getToolDefinitions, executeTool } from "./tools/base";
-import { compactToolResult } from "@/lib/agent/compaction";
+import { buildModelVisibleToolResult, compactToolResult, type ToolResultWithArtifactState } from "@/lib/agent/compaction";
 import { assembleSystemPrompt } from "@/lib/ai/prompts/copilot-prompts";
 import { getAIService } from "./ai-service";
 import { createArtifact, applyArtifact } from "@/lib/server/agent/artifacts";
@@ -327,13 +327,7 @@ export async function executeSubAgent(params: SubAgentParams): Promise<SubAgentR
                     signal,
                     systemContexts,
                 });
-
-                const preview = compactToolResult(
-                    tc.name,
-                    result.result ?? result.error ?? "",
-                    500, // shorter preview for sub-agent log
-                );
-                toolLog.push({ name: tc.name, resultPreview: preview });
+                let resultForModel: ToolResultWithArtifactState = result;
                 if (childRunId) {
                     try {
                         await emitEvent(childRunId, "tool_result", { success: !result.error, error: result.error ?? null }, { toolName: tc.name });
@@ -361,6 +355,13 @@ export async function executeSubAgent(params: SubAgentParams): Promise<SubAgentR
                             userId,
                         });
                         if (artifactId) {
+                            resultForModel = {
+                                ...result,
+                                artifactId,
+                                artifactType: mapToolToArtifactType(tc.name) ?? undefined,
+                                artifactTitle: mapToolToArtifactTitle(tc.name, tc.arguments),
+                                artifactStatus: "auto_applied",
+                            };
                             toolLog.push({
                                 name: `${tc.name}:auto_applied`,
                                 resultPreview: `Applied delegated artifact ${artifactId}`,
@@ -382,10 +383,17 @@ export async function executeSubAgent(params: SubAgentParams): Promise<SubAgentR
                     }
                 }
 
+                const preview = compactToolResult(
+                    tc.name,
+                    buildModelVisibleToolResult(resultForModel),
+                    500, // shorter preview for sub-agent log
+                );
+                toolLog.push({ name: tc.name, resultPreview: preview });
+
                 const toolMsg: AIMessage = {
                     id: `sub-agent-tool-${tc.id}`,
                     role: "tool",
-                    content: compactToolResult(tc.name, result.result ?? result.error ?? ""),
+                    content: compactToolResult(tc.name, buildModelVisibleToolResult(resultForModel)),
                     toolResultId: tc.id,
                     createdAt: new Date().toISOString(),
                 };

@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import type { AIMessage } from "@/types/ai";
 import {
+    buildModelVisibleToolResult,
     estimateTokens,
     estimateMessagesTokens,
     compactToolResult,
@@ -116,6 +117,45 @@ describe("isOversizedForSummary", () => {
 // ── compactToolResult ────────────────────────────────────────────────────────
 
 describe("compactToolResult", () => {
+    it("wraps proposed artifact results with explicit review state for the model", () => {
+        const visible = buildModelVisibleToolResult({
+            callId: "tc1",
+            result: { section: "Methods", content: "Draft body" },
+            artifactId: "artifact-1",
+            artifactType: "draft_diff",
+            artifactTitle: "Draft: Methods",
+            artifactStatus: "proposed",
+        });
+
+        expect(visible).toBe([
+            "[Artifact status: proposed]",
+            "Created a proposal for user review. The change is not applied until the user accepts it.",
+            "Do not say this change is saved, updated, inserted, or applied yet.",
+            "Artifact type: draft_diff",
+            "Artifact title: Draft: Methods",
+            'Result: {"section":"Methods","content":"Draft body"}',
+        ].join("\n"));
+    });
+
+    it("wraps auto-applied artifact results with applied state for the model", () => {
+        const visible = buildModelVisibleToolResult({
+            callId: "tc2",
+            result: { field: "researchQuestion", value: "RQ" },
+            artifactId: "artifact-2",
+            artifactType: "protocol_suggestion",
+            artifactTitle: "Protocol: researchQuestion",
+            artifactStatus: "auto_applied",
+        });
+
+        expect(visible).toBe([
+            "[Artifact status: auto_applied]",
+            "The change was applied automatically in the current flow.",
+            "Artifact type: protocol_suggestion",
+            "Artifact title: Protocol: researchQuestion",
+            'Result: {"field":"researchQuestion","value":"RQ"}',
+        ].join("\n"));
+    });
+
     it("returns stringified value unchanged when under limit", () => {
         const value = { success: true, title: "test" };
         const result = compactToolResult("extract_pdf", value);

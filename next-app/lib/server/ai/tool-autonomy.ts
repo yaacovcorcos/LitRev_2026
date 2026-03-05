@@ -9,6 +9,7 @@ import type { AIStreamChunk, ToolCall, ToolResult } from "@/types/ai";
 import type { AgentMode } from "@/types/agent";
 import { isToolAllowedInScope, getTool, resolveAutonomyLevel } from "./tools";
 import { getEffectiveAllowedTools } from "@/lib/agent/router";
+import type { ToolResultWithArtifactState } from "@/lib/agent/compaction";
 import { emitEvent } from "@/lib/server/agent/events";
 import { createArtifact, applyArtifact } from "@/lib/server/agent/artifacts";
 import { getAutonomyConfig, getToolAutonomyLevel } from "@/lib/server/agent/autonomy";
@@ -135,6 +136,8 @@ export async function* executeToolWithAutonomy(
     // Determine artifact type from tool name
     const artifactType = mapToolToArtifactType(toolCall.name);
 
+    let artifactResult: ToolResultWithArtifactState = result;
+
     if (artifactType && result.result && projectId) {
         if (level === 2) {
             // Propose: create artifact with "proposed" status, yield to client
@@ -151,11 +154,18 @@ export async function* executeToolWithAutonomy(
             yield {
                 type: "artifact",
                 artifactId: artifact.id,
-                artifactType: artifact.type,
+                artifactType: artifact.type as ToolResultWithArtifactState["artifactType"],
                 artifactStatus: "proposed",
                 artifactTitle: artifact.title,
                 artifactPayload: artifact.payload,
                 artifactVersion: 1,
+            };
+            artifactResult = {
+                ...result,
+                artifactId: artifact.id,
+                artifactType: artifact.type as ToolResultWithArtifactState["artifactType"],
+                artifactTitle: artifact.title,
+                artifactStatus: "proposed",
             };
         } else if (level === 3) {
             // Auto-notify: create artifact as auto_applied, apply it, yield to client
@@ -174,11 +184,18 @@ export async function* executeToolWithAutonomy(
             yield {
                 type: "artifact",
                 artifactId: artifact.id,
-                artifactType: artifact.type,
+                artifactType: artifact.type as ToolResultWithArtifactState["artifactType"],
                 artifactStatus: "auto_applied",
                 artifactTitle: artifact.title,
                 artifactPayload: artifact.payload,
                 artifactVersion: 1,
+            };
+            artifactResult = {
+                ...result,
+                artifactId: artifact.id,
+                artifactType: artifact.type as ToolResultWithArtifactState["artifactType"],
+                artifactTitle: artifact.title,
+                artifactStatus: "auto_applied",
             };
         }
         // Level 4 (Auto-silent): execute + apply but don't yield artifact to client
@@ -194,8 +211,15 @@ export async function* executeToolWithAutonomy(
             });
 
             await applyArtifact(artifact.id, "auto_applied");
+            artifactResult = {
+                ...result,
+                artifactId: artifact.id,
+                artifactType: artifact.type as ToolResultWithArtifactState["artifactType"],
+                artifactTitle: artifact.title,
+                artifactStatus: "auto_applied",
+            };
         }
     }
 
-    return result;
+    return artifactResult;
 }
