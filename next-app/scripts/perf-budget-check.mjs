@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 
 const DEFAULT_BUDGET_PATH = "../output/performance/baseline/budget-thresholds.json";
 const DEFAULT_BASELINE_PATH = "../output/performance/baseline/baseline-latest.json";
-const DEFAULT_RESULTS_PATH = "../output/performance/results/results-fixture.json";
+const DEFAULT_RESULTS_PATH = "../output/performance/results/results-latest.json";
 
 export function parseArgs(argv, cwd = process.cwd()) {
   const args = {
