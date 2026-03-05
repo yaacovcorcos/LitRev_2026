@@ -200,14 +200,14 @@ Exit criteria:
    - Keep `RunEvent` as the agent execution timeline source; avoid cross-purpose overloading.
 6. Burn-in pass rule:
    - preflight addendum (must complete before Day 0):
-     - promote `second -> main` via release PR, deploy `main`, and record deployed commit SHA before starting burn-in measurement
+     - merge the release PR to `main`, deploy production from `main`, and record the deployed commit SHA before starting burn-in measurement
      - define canary cohort source of truth (`workspaceIds` and/or `userIds`) or enforce canary-only feature-flag exposure for full window
      - choose sign-off environment (`production` default; `staging` is rehearsal only)
      - capture one canonical UTC enable timestamp (`CANARY_SINCE_UTC`) at feature-flag enable time and reuse it in every command/report
       - freeze burn-in metric contract version (current: `CHAT_UNIFICATION_METRIC_VERSION=3`) before canary starts; do not change during the 7-day window
      - any metric schema/version change during burn-in invalidates comparability and resets the 7-day window from the new enable timestamp
      - assign sign-off owner + backup reviewer
-     - use `docs/runbooks/chat-unification-u1-6-burn-in.md` checklist for operational logging (SHA, timestamp, cohort, commands)
+     - use `docs/runbooks/chat-unification-burn-in.md` for the canonical operational checklist, inputs, metric-integrity rules, and sign-off flow
    - rollout environment matrix:
      - local development only: `npx prisma migrate dev`
      - shared/staging/production: `bash scripts/db-ops.sh migrate`
@@ -241,8 +241,8 @@ Exit criteria:
    - validation commands:
      - daily progress (first 7 days only):  
        `cd next-app && npx tsx scripts/validate-chat-unification-burn-in.ts --since=<CANARY_SINCE_UTC> --metricVersion=3 --workspaceIds=<ws1,ws2> --userIds=<u1,u2> --allowShortWindow=1`
-     - strict final gate (no short-window override, earliest at +7 days):  
-       `cd next-app && npx tsx scripts/validate-chat-unification-burn-in.ts --since=<CANARY_SINCE_UTC> --metricVersion=3 --workspaceIds=<ws1,ws2> --userIds=<u1,u2> --requireScopedCohort=1 --requireRunEndPerSurface=1 --minRunIdCoveragePerSurface=0.95 --report=../docs/reports/u1-6-burn-in.md`
+     - strict final gate (no short-window override, earliest at +7 days; paste output into `docs/reports/u1-6-burn-in.md` created from the report template):
+       `cd next-app && npx tsx scripts/validate-chat-unification-burn-in.ts --since=<CANARY_SINCE_UTC> --metricVersion=3 --workspaceIds=<ws1,ws2> --userIds=<u1,u2> --requireScopedCohort=1 --requireRunEndPerSurface=1 --minRunIdCoveragePerSurface=0.95`
 7. Gate cleanup on parity + KPI pass.
 
 Exit criteria:

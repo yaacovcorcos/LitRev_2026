@@ -2,7 +2,7 @@
 
 Date: 2026-02-25  
 Branch: `spike-vercel-chat-sdk-adaptation`  
-Plan refs: `codex/overall_stealing_process_codex.md`, `overall_stealing_process_claude.md`
+Plan refs: `codex/overall_stealing_process_codex.md` (merged steal-plan reference) and the active implementation plans under `docs/plans/*.md`
 Upstream reference basis: cloned repos at `cloned_repos/openclaw_repo/` and `cloned_repos/opencode_repo/` (via the source-file mappings captured in the two plan docs above).
 
 ## Phase Tracker
@@ -162,7 +162,7 @@ Capture these before final Wave 3 sign-off (manual run is acceptable):
 
 ### Plan files reviewed
 1. `codex/overall_stealing_process_codex.md`
-2. `overall_stealing_process_claude.md`
+2. Claude steal synthesis (merged into the Codex overall plan during archival)
 
 ### Scenario-A reasoning/runtime files reviewed (clean branch)
 1. `next-app/app/api/ai/stream/route.ts`
