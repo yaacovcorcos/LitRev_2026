@@ -23,6 +23,28 @@ const MULTI_STEP_PATTERNS = [
     /\ball\s+(?:studies|results)\b/i,
 ];
 
+const SEARCH_STEP_RE = /\b(?:search|find|look\s+(?:up|for)|pubmed|openalex|open alex)\b/i;
+const OPENALEX_RE = /\b(?:openalex|open alex)\b/i;
+const EXTRACT_PDF_ACTION_RE = /(?:\b(?:extract|parse|analy[sz]e)\b[\s\S]{0,40}\bpdf\b|\bpdf\b[\s\S]{0,40}\b(?:extract|parse|analy[sz]e)\b)/i;
+const ADD_TO_LEDGER_RE = /(?:\b(?:add|include|keep)\b[\s\S]{0,40}\b(?:study|studies|paper|papers|ledger|result|results)\b|\bsave\b[\s\S]{0,40}\b(?:study|studies|paper|papers)\b|\b(?:save|add|include|keep)\b[\s\S]{0,40}\bledger\b)/i;
+const DRAFT_ACTION_RE = /\b(?:write|draft|rewrite|revise|append|save|compose|insert)\b/i;
+const DRAFT_TARGET_RE = /\b(?:draft|section|paragraph|summary|introduction|methods|results|discussion|conclusion|abstract)\b/i;
+
+function wantsPdfExtraction(message: string): boolean {
+    return EXTRACT_PDF_ACTION_RE.test(message);
+}
+
+function wantsAddToLedger(message: string): boolean {
+    return ADD_TO_LEDGER_RE.test(message);
+}
+
+function wantsDraftUpdate(message: string): boolean {
+    return (
+        DRAFT_ACTION_RE.test(message) &&
+        DRAFT_TARGET_RE.test(message)
+    ) || /\b(?:save|append|add)\b[\s\S]{0,40}\bdraft\b/i.test(message);
+}
+
 /**
  * Heuristic: does this message imply multiple tool calls?
  * Returns true if the message matches multi-step patterns
@@ -41,14 +63,11 @@ export function detectMultiStepWorkflow(
     const toolKeywords: Record<string, string[]> = {
         search_pubmed: ["search", "pubmed", "find studies", "look up", "look for"],
         search_openalex: ["openalex", "open alex", "cross-disciplinary", "broad search"],
-        add_to_ledger: ["add", "include", "ledger", "save study"],
         exclude_study: ["exclude", "reject", "triage out"],
         delete_study: ["delete study", "delete from ledger", "purge study", "remove from ledger", "hard delete"],
-        extract_pdf: ["extract", "pdf", "parse"],
         bulk_screening: ["screen", "batch", "screening"],
         update_protocol: ["pico", "population", "intervention", "comparison", "outcome", "protocol"],
         update_criteria: ["criteria", "inclusion", "exclusion", "eligibility"],
-        update_note: ["draft", "write", "section"],
         update_study: ["edit study", "update study", "change abstract", "update doi", "update pmid", "fix metadata"],
     };
 
@@ -56,8 +75,14 @@ export function detectMultiStepWorkflow(
     const lowerMessage = message.toLowerCase();
 
     for (const toolName of availableTools) {
-        const keywords = toolKeywords[toolName];
-        if (keywords?.some((kw) => lowerMessage.includes(kw))) {
+        const matched = toolName === "add_to_ledger"
+            ? wantsAddToLedger(lowerMessage)
+            : toolName === "extract_pdf"
+            ? wantsPdfExtraction(lowerMessage)
+            : toolName === "update_note"
+                ? wantsDraftUpdate(lowerMessage)
+                : (toolKeywords[toolName]?.some((kw) => lowerMessage.includes(kw)) ?? false);
+        if (matched) {
             toolMatches++;
         }
     }
@@ -101,8 +126,8 @@ function generateHeuristicPlan(message: string, _context: PlanContext): PlanPayl
     const lower = message.toLowerCase();
 
     // Search step
-    if (/\b(?:search|find|look\s+(?:up|for)|pubmed|openalex|open alex)\b/.test(lower)) {
-        const toolName = /\b(?:openalex|open alex)\b/.test(lower) ? "search_openalex" : "search_pubmed";
+    if (SEARCH_STEP_RE.test(lower)) {
+        const toolName = OPENALEX_RE.test(lower) ? "search_openalex" : "search_pubmed";
         const label = toolName === "search_openalex"
             ? "Search OpenAlex for relevant studies"
             : "Search PubMed for relevant studies";
@@ -115,7 +140,7 @@ function generateHeuristicPlan(message: string, _context: PlanContext): PlanPayl
     }
 
     // Extract step
-    if (/\b(?:extract|pdf|parse)\b/.test(lower)) {
+    if (wantsPdfExtraction(lower)) {
         steps.push({
             label: "Extract data from PDF",
             toolName: "extract_pdf",
@@ -135,7 +160,7 @@ function generateHeuristicPlan(message: string, _context: PlanContext): PlanPayl
     }
 
     // Add/include step
-    if (/\b(?:add|include|ledger|save|keep)\b/.test(lower)) {
+    if (wantsAddToLedger(lower)) {
         steps.push({
             label: "Add studies to review ledger",
             toolName: "add_to_ledger",
@@ -175,7 +200,7 @@ function generateHeuristicPlan(message: string, _context: PlanContext): PlanPayl
     }
 
     // Draft step
-    if (/\b(?:draft|write|section|summary)\b/.test(lower)) {
+    if (wantsDraftUpdate(lower)) {
         steps.push({
             label: "Draft review section",
             toolName: "update_note",

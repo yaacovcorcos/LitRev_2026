@@ -11,7 +11,8 @@
  * kept or removed as atomic pairs to avoid provider errors.
  */
 
-import type { AIMessage } from "@/types/ai";
+import type { AIMessage, ToolResult } from "@/types/ai";
+import type { ArtifactStatus, ArtifactType } from "@/types/artifacts";
 import { truncateToolOutput } from "./truncation";
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -27,6 +28,17 @@ export const PRUNE_PROTECT = 40_000;
 export const OVERSIZED_MESSAGE_CONTEXT_SHARE = 0.5;
 const TOOL_CALL_NAME_MAX_CHARS = 64;
 const TOOL_CALL_NAME_RE = /^[A-Za-z0-9_-]+$/;
+const TOOL_RESULT_STATUS_NOTES = {
+    proposed: "Created a proposal for user review. The change is not applied until the user accepts it.",
+    auto_applied: "The change was applied automatically in the current flow.",
+} as const;
+
+export type ToolResultWithArtifactState = ToolResult & {
+    artifactId?: string;
+    artifactType?: ArtifactType;
+    artifactTitle?: string;
+    artifactStatus?: ArtifactStatus;
+};
 
 // ── Token estimation ─────────────────────────────────────────────────────────
 
@@ -109,6 +121,42 @@ export function compactToolResult(
         maxChars,
         preserveMarkdownFences: true,
     });
+}
+
+/**
+ * Build a model-visible tool payload.
+ * Keeps tool contracts intact for runtime consumers while making artifact review/apply
+ * state explicit to the language model in tool-message context.
+ */
+export function buildModelVisibleToolResult(toolResult: ToolResultWithArtifactState): unknown {
+    if (toolResult.error) return toolResult.error;
+    if (!toolResult.artifactStatus) {
+        return toolResult.result ?? "";
+    }
+
+    const payload = typeof toolResult.result === "string"
+        ? toolResult.result
+        : JSON.stringify(toolResult.result ?? null);
+    const note = TOOL_RESULT_STATUS_NOTES[toolResult.artifactStatus as keyof typeof TOOL_RESULT_STATUS_NOTES];
+
+    if (toolResult.artifactStatus === "proposed") {
+        return [
+            "[Artifact status: proposed]",
+            note,
+            "Do not say this change is saved, updated, inserted, or applied yet.",
+            `Artifact type: ${toolResult.artifactType ?? "unknown"}`,
+            `Artifact title: ${toolResult.artifactTitle ?? "Artifact"}`,
+            `Result: ${payload}`,
+        ].join("\n");
+    }
+
+    return [
+        `[Artifact status: ${toolResult.artifactStatus}]`,
+        note ?? "This change has already been applied in the current flow.",
+        `Artifact type: ${toolResult.artifactType ?? "unknown"}`,
+        `Artifact title: ${toolResult.artifactTitle ?? "Artifact"}`,
+        `Result: ${payload}`,
+    ].join("\n");
 }
 
 /** Tool-specific compaction for known tools */

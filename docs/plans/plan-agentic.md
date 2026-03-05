@@ -18,6 +18,8 @@
 - **P10 Rollout Flags:** Mention flow and scoping decision-card behavior are feature-flagged (`NEXT_PUBLIC_CHAT_STUDY_MENTIONS_V1`, `NEXT_PUBLIC_SCOPING_DECISION_CARD_V2`).
 - **Scoping Mode (P10):** Dedicated pre-protocol routing and prompt behavior is live with low-autonomy batch search-pack planning and deterministic protocol handoff (`update_protocol` proposal-only).
 - **Reasoning Stream Support (Current):** `reasoning_*` stream events are currently wired end-to-end for Anthropic responses. OpenAI/xAI models can run normally, but their provider adapters do not yet emit normalized reasoning stream parts in the same pipeline.
+- **Proposal-State Tool Context:** Proposal-style tool results now surface whether they are `proposed` vs `auto_applied` in the model-visible tool-message context, so assistant replies can distinguish review-only changes from already-applied ones.
+- **Plan Heuristic Guardrails:** Plan-before-act heuristics now require explicit extraction/writing verbs for `extract_pdf` and `update_note`, reducing false execution plans for read-only PDF/section questions.
 
 ## Active Tasks
 *Work that is entirely unimplemented or currently broken.*
@@ -30,6 +32,7 @@
 ## Recently Completed
 *Finished work that might still be fragile or require monitoring. Prune oldest first.*
 
+- [x] Tightened proposal-style assistant behavior so model-visible tool results distinguish `proposed` from `auto_applied`, and planner heuristics now require explicit extraction/writing verbs for `extract_pdf` and `update_note`.
 - [x] Added `search_openalex` tool with Search/Scoping/QA integration, OpenAlex normalization, and Crossref fallback enrichment for sparse DOI metadata.
 - [x] P10 mentioned-studies flow shipped: extraction pipeline (structured + fallback), chat chips, one-click add-to-ledger, idempotent duplicate protection, and chat provenance tagging.
 - [x] Added rollout flags for mention/scoping UX controls: `NEXT_PUBLIC_CHAT_STUDY_MENTIONS_V1` and `NEXT_PUBLIC_SCOPING_DECISION_CARD_V2`.
@@ -39,8 +42,6 @@
 - [x] Wired `update_criteria` into tool registry and protocol-mode tool filtering.
 - [x] P10: Scoping mode architecture shipped (routing, tool filtering, batch plan behavior, contract parsing, deterministic handoff).
 - [x] `exclude_study` tool implemented and registered in `AVAILABLE_TOOLS`.
-- [x] `bulk_screening` tool implemented and registered in `AVAILABLE_TOOLS`.
-- [x] `extract_pdf` tool implemented and registered in `AVAILABLE_TOOLS`.
 
 ## Deferred / Parking Lot
 *Ideas acknowledged but explicitly not active right now.*

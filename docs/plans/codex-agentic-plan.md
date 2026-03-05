@@ -34,6 +34,8 @@ It translates current architecture plus next-generation agent design principles 
 - Tool execution uses schema validation with self-healing correction on malformed payloads.
 - Langfuse traces already capture run/tool visibility at runtime.
 - Anthropic reasoning stream events are normalized end-to-end; OpenAI/xAI parity is not complete.
+- Proposal-style tool results now surface `proposed` vs `auto_applied` state in model-visible tool-message context, so the assistant can distinguish review-only artifacts from already-applied changes.
+- Plan-before-act heuristics now require explicit extraction/writing verbs for `extract_pdf` and `update_note`, reducing false plans on read-only PDF/section requests.
 - Memory extraction and conversation summarization exist, but memory overlap and prioritization are still open.
 - OpenAlex search enrichment is active (`search_openalex`), with Crossref fallback enrichment for sparse DOI metadata.
 
