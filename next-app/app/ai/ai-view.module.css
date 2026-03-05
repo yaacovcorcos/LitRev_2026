@@ -275,6 +275,33 @@
     gap: 16px;
 }
 
+.mobileHistoryToggle {
+    display: none;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 10px;
+    border: 1px solid var(--glass-border);
+    border-radius: 10px;
+    background: rgba(var(--rgb-ui-surface), 0.6);
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.mobileHistoryToggle:hover {
+    background: rgba(var(--rgb-ui-surface), 0.85);
+    color: var(--text-primary);
+}
+
+.mobileHistoryLabel {
+    line-height: 1;
+}
+
+.mobileHistoryOverlay {
+    display: none;
+}
+
 .headerActions {
     margin-left: auto;
     display: inline-flex;
@@ -456,6 +483,7 @@
     .layout {
         padding-left: 0;
         flex-direction: column;
+        gap: 0;
     }
 
     .historySidebar {
@@ -481,6 +509,51 @@
     .chatHeader {
         padding: 12px 16px;
         flex-wrap: wrap;
+    }
+
+    .mobileHistoryToggle {
+        display: inline-flex;
+    }
+
+    .layout[data-mobile-ai-v2="true"] {
+        flex-direction: row;
+    }
+
+    .layout[data-mobile-ai-v2="true"] .historySidebar {
+        position: fixed;
+        top: var(--header-height, 44px);
+        left: 0;
+        width: min(86vw, 320px);
+        height: calc(var(--app-height, 100vh) - var(--header-height, 44px) - var(--mobile-nav-offset, 0px));
+        border-right: 1px solid var(--glass-border);
+        border-bottom: none;
+        padding: 20px 12px 16px;
+        overflow-y: auto;
+        z-index: var(--z-modal);
+        transform: translateX(0);
+        transition: transform 0.24s ease;
+    }
+
+    .layout[data-mobile-ai-v2="true"][data-history-collapsed="true"] .historySidebar {
+        transform: translateX(-110%);
+    }
+
+    .layout[data-mobile-ai-v2="true"] .chatInterface {
+        width: 100%;
+    }
+
+    .layout[data-mobile-ai-v2="true"] .mobileHistoryOverlay {
+        display: block;
+        position: fixed;
+        top: var(--header-height, 44px);
+        left: 0;
+        right: 0;
+        bottom: var(--mobile-nav-offset, 0px);
+        z-index: calc(var(--z-modal) - 1);
+        background: rgba(var(--rgb-ui-scrim), 0.32);
+        border: none;
+        margin: 0;
+        padding: 0;
     }
 
     .headerActions {

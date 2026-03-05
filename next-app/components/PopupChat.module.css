@@ -394,6 +394,18 @@
 
 /* ---- Responsive ---- */
 
+@media (max-width: 900px) {
+    .popupChatMobileV2 {
+        left: 12px;
+        right: 12px;
+        top: calc(var(--header-height, 44px) + 8px);
+        bottom: calc(8px + var(--mobile-nav-offset, 0px));
+        width: auto;
+        max-width: none;
+        max-height: calc(var(--app-height, 100vh) - var(--header-height, 44px) - var(--mobile-nav-offset, 0px) - 16px);
+    }
+}
+
 @media (max-width: 500px) {
     .popupChat {
         right: 8px;
