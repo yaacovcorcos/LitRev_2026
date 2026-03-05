@@ -334,6 +334,14 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                 },
             });
 
+            if (
+                effectiveConvId &&
+                streamGenRef.current === myGen &&
+                convo.currentConversationId === effectiveConvId
+            ) {
+                convo.markConversationActivity(effectiveConvId);
+            }
+
             // Refresh conversation list to update titles/counts
             convo.loadConversations();
             emitTerminalMetric(terminalReason ?? "completed", runStatus);
@@ -475,6 +483,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                     if (convResult.success) {
                         convId = convResult.data.id;
                         convo.setCurrentConversationId(convResult.data.id);
+                        convo.markConversationActivity(convResult.data.id);
                     } else {
                         console.error("Failed to create conversation:", convResult.error);
                     }
@@ -518,6 +527,9 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                 ...prev,
                 messages: [...prev.messages, userMessage],
             }));
+            if (convId) {
+                convo.markConversationActivity(convId);
+            }
 
             if (retryModelExpectation) {
                 recordChatUnificationMetric({
