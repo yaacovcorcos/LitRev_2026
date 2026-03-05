@@ -13,6 +13,7 @@ type ProjectGridProps = {
 
 export function ProjectGrid({ projects, viewMode, onNewProject, showSampleCard = true }: ProjectGridProps) {
   const gridClass = viewMode === "list" ? `${styles.projectGrid} ${styles.listView}` : styles.projectGrid;
+  const classes = (...tokens: Array<string | false>) => tokens.filter(Boolean).join(" ");
 
   return (
     <div className={gridClass}>
@@ -44,12 +45,15 @@ export function ProjectGrid({ projects, viewMode, onNewProject, showSampleCard =
         const isHarvesting = p.status === "harvesting";
         const isList = viewMode === "list";
         const isSample = isDemoProjectId(p.id);
-        const cardClass = `${styles.card} ${viewMode === "list" ? styles.listViewCard : ""} ${isSample && isList ? styles.sampleProjectCard : ""}`;
-        const titleClass = `${styles.projectTitle} ${viewMode === "list" ? styles.listViewCardTitle : ""} ${isSample && isList ? styles.sampleProjectTitle : ""}`;
-        const statusClass = `${styles.cardStatus} ${isSample ? styles.statusSample : isHarvesting ? styles.statusHarvesting : styles.statusReady} ${viewMode === "list" ? styles.listViewStatus : ""
-          }`;
-        const buttonClass = `${styles.viewProjectBtn} ${viewMode === "list" ? styles.listViewButton : ""} ${isSample && isList ? styles.sampleProjectButton : ""}`;
-        const paperCountClass = `${styles.paperCountBottom} ${isSample && isList ? styles.sampleProjectPaperCount : ""}`;
+        const cardClass = classes(styles.card, isList && styles.listViewCard, isSample && isList && styles.sampleProjectCard);
+        const titleClass = classes(styles.projectTitle, isList && styles.listViewCardTitle, isSample && isList && styles.sampleProjectTitle);
+        const statusClass = classes(
+          styles.cardStatus,
+          isSample ? styles.statusSample : isHarvesting ? styles.statusHarvesting : styles.statusReady,
+          isList && styles.listViewStatus,
+        );
+        const buttonClass = classes(styles.viewProjectBtn, isList && styles.listViewButton, isSample && isList && styles.sampleProjectButton);
+        const paperCountClass = classes(styles.paperCountBottom, isSample && isList && styles.sampleProjectPaperCount);
         const paperCount = p.papers ?? 0;
         const paperCountInline = !isList && isHarvesting;
         const statusText = isSample ? "Sample" : p.statusText;
