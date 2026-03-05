@@ -1,9 +1,9 @@
-# Codex UI/UX Execution Plan (Canonical)
+# UI/UX Execution Plan (Canonical)
 
 ## Purpose
 Single canonical tracker for UI/UX execution across `next-app` surfaces.
 
-This file replaces dual active tracking between `codex-ui-ux-plan.md` and `claude-ui-ux-plan.md`.
+This file replaces dual active tracking between `plan-ux-ui.md` and `claude-ui-ux-plan.md`.
 Domain-specific execution plans remain canonical for their domains:
 - Guided setup: `docs/plans/plan-guided-setup.md`
 - Chat runtime unification: `docs/plans/plan-chat-unification-v2.md`
