@@ -25,6 +25,7 @@ Use this index to retrieve authoritative docs before editing high-risk domains.
 | GitHub branch/PR/review automation | `docs/runbooks/github-flow.md` | Any edits to `.github/workflows/**`, branch protections, CODEOWNERS, or agent git policy |
 | Product contract | `PRD.md` | Changes to product WHAT/WHO/WHY |
 | Plan governance | `docs/plans/README.md` | Any edits to `docs/plans/*.md` |
+| Cross-agent implementation planning contract | `docs/agents/universal-planning-meta-prompt.md` | Any request to draft implementation plans across domains, or any change to planning quality standards |
 
 ## Gap Signal Policy
 

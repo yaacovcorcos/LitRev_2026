@@ -159,6 +159,7 @@ PRD vs Domain Plans:
 
 - Edit `PRD.md` only when product WHAT/WHO/WHY changes.
 - Edit `docs/plans/*.md` when implementation HOW changes.
+- For cross-agent implementation planning requests, use the canonical prompt in `docs/agents/universal-planning-meta-prompt.md`.
 
 ## Open-Source Adaptation Rules
 
@@ -187,3 +188,4 @@ PRD vs Domain Plans:
 ## Tier 3 Index
 
 - `docs/agents/cold-memory-index.md`
+- `docs/agents/universal-planning-meta-prompt.md`
