@@ -2,7 +2,7 @@
 
 Date: 2026-02-25  
 Branch: `spike-vercel-chat-sdk-adaptation`  
-Plan refs: `codex/overall_stealing_process_codex.md`, `overall_stealing_process_claude.md`
+Plan refs: `codex/overall_stealing_process_codex.md` (canonical), `overall_stealing_process_claude.md` (historical reference)
 Upstream reference basis: cloned repos at `cloned_repos/openclaw_repo/` and `cloned_repos/opencode_repo/` (via the source-file mappings captured in the two plan docs above).
 
 ## Phase Tracker

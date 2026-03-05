@@ -10,7 +10,7 @@ Then paste the terminal output into the section below.
 ## Canary Metadata
 
 - Environment: `<production|staging>`
-- Promotion path: `<second -> main PR/ref>`
+- Promotion path: `<release PR or merge ref to main>`
 - Deployed `main` commit SHA: `<sha>`
 - Production deployment id/url: `<id + https://...>`
 - Owner: `<name>`

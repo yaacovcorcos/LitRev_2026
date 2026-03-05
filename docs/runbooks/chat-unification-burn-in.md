@@ -1,6 +1,7 @@
 # Chat Unification Burn-In Runbook
 
 This runbook operationalizes `U1.6` from `docs/plans/plan-chat-unification-v2.md`.
+It is the canonical burn-in runbook and supersedes `docs/runbooks/chat-unification-u1-6-burn-in.md`, which is retained only as a compatibility pointer.
 Use it before opening `U3` popup migration.
 
 ## Purpose
@@ -14,7 +15,7 @@ Provide a deterministic, auditable process for chat-unification canary validatio
 3. Cohort scope is defined:
    - `workspaceIds`, and/or
    - `userIds`.
-4. `second -> main` promotion is complete and production deployment evidence is captured:
+4. The release PR or merge to `main` is complete and production deployment evidence is captured:
    - deployed `main` commit SHA
    - production deployment id/URL
 5. Sign-off owner and backup reviewer are assigned.
@@ -60,6 +61,7 @@ Run (short-window allowed only for pre-day-7 checks):
 ```bash
 cd next-app && npx tsx scripts/validate-chat-unification-burn-in.ts \
   --since=<CANARY_SINCE_UTC> \
+  --metricVersion=3 \
   --workspaceIds=<ws1,ws2> \
   --userIds=<u1,u2> \
   --allowShortWindow=1 \
@@ -82,6 +84,7 @@ Run once daily:
 ```bash
 cd next-app && npx tsx scripts/validate-chat-unification-burn-in.ts \
   --since=<CANARY_SINCE_UTC> \
+  --metricVersion=3 \
   --workspaceIds=<ws1,ws2> \
   --userIds=<u1,u2> \
   --allowShortWindow=1 \
@@ -103,6 +106,7 @@ Run without short-window override. Paste terminal output into a report file crea
 ```bash
 cd next-app && npx tsx scripts/validate-chat-unification-burn-in.ts \
   --since=<CANARY_SINCE_UTC> \
+  --metricVersion=3 \
   --workspaceIds=<ws1,ws2> \
   --userIds=<u1,u2> \
   --requireScopedCohort=1 \

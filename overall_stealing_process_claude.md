@@ -1,6 +1,10 @@
-# Overall Stealing Process — Definitive Implementation Plan (Claude)
+# Overall Stealing Process — Claude Historical Reference
 
-> **What this document is:** The single source of truth for all patterns worth stealing from OpenClaw and OpenCode, synthesized from 6 analysis reports (Claude ×2, Gemini ×2, Codex ×2) and 2 overall plans (Claude, Codex). Every pattern names its source repo, exact source files, the exact LitRev files to create or modify, and the algorithm/constants. This document is self-contained — per-repo analysis files have been deleted (Claude's) or merged (Codex's).
+> **Status:** Historical reference only. This file is preserved for provenance and comparison, not as the current execution source of truth.
+>
+> **Canonical planning sources:** `codex/overall_stealing_process_codex.md` is the merged steal-plan reference, and the active execution truth now lives in the relevant files under `docs/plans/*.md`.
+>
+> **What this document is:** Claude's detailed synthesis of patterns worth stealing from OpenClaw and OpenCode, including source-repo mappings and implementation notes captured during the original adaptation work.
 >
 > **Canonical inputs merged:** `openclaw_analysis_report_claude.md` (deleted), `openclaw_analysis_report_gemini.md`, `openclaw_analysis_report_codex.md` (merged into Codex overall), `opencode_analysis_report_claude.md` (deleted), `opencode_analysis_report_gemini.md`, `opencode_analysis_report_codex.md` (merged into Codex overall), `overall_stealing_process_codex.md`.
 >
