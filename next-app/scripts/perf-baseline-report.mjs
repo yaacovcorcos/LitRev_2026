@@ -33,6 +33,17 @@ function renderTableRows(routes = {}) {
   return lines;
 }
 
+function renderSampleNotes(routeProfileSampleCounts = {}) {
+  const entries = Object.entries(routeProfileSampleCounts);
+  if (entries.length === 0) {
+    return ["- No route/profile sample counts recorded."];
+  }
+
+  return entries
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([key, value]) => `- ${key}: ${value}`);
+}
+
 function main() {
   const args = parseArgs(process.argv);
   const input = JSON.parse(fs.readFileSync(args.input, "utf8"));
@@ -43,15 +54,21 @@ function main() {
     "",
     `- Captured at: ${input.capturedAt ?? "unknown"}`,
     `- Commit: ${input.commit ?? "unknown"}`,
-    `- Source: ${path.relative(process.cwd(), args.input)}`,
+    `- Source type: ${input.source ?? "unknown"}`,
+    `- Run ID: ${input.runId ?? "unknown"}`,
+    `- Source artifact: ${path.relative(process.cwd(), args.input)}`,
+    `- Total samples: ${input.metadata?.sampleCount ?? "unknown"}`,
     "",
     "| Route | Profile | Samples | LCP p75 (ms) | INP p75 (ms) | CLS p75 | TTFB p75 (ms) |",
     "|---|---|---:|---:|---:|---:|---:|",
     ...rows,
     "",
+    "## Route/Profile Samples",
+    ...renderSampleNotes(input.metadata?.routeProfileSampleCounts),
+    "",
     "## Notes",
     "- This report is generated from the baseline JSON artifact.",
-    "- CI gate authority remains synthetic probe outputs.",
+    "- CI gate authority is the generated probe artifact, not this markdown summary.",
   ].join("\n");
 
   fs.mkdirSync(path.dirname(args.output), { recursive: true });

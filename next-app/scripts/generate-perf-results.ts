@@ -77,6 +77,7 @@ type ScriptArgs = {
   budgetPath: string;
   outputPath: string;
   commit: string;
+  source: string;
   runs: number;
 };
 
@@ -115,6 +116,7 @@ function parseArgs(argv: string[]): ScriptArgs {
     budgetPath: path.resolve(process.cwd(), DEFAULT_BUDGET_PATH),
     outputPath: path.resolve(process.cwd(), DEFAULT_OUTPUT_PATH),
     commit: process.env.GITHUB_SHA ?? "local",
+    source: "ci-probe-playwright",
     runs: DEFAULT_RUNS,
   };
 
@@ -129,6 +131,7 @@ function parseArgs(argv: string[]): ScriptArgs {
     if (rawKey === "budget" && next) args.budgetPath = path.resolve(process.cwd(), next);
     if (rawKey === "output" && next) args.outputPath = path.resolve(process.cwd(), next);
     if (rawKey === "commit" && next) args.commit = next;
+    if (rawKey === "source" && next) args.source = next;
     if (rawKey === "runs" && next) args.runs = Number.parseInt(next, 10);
   }
 
@@ -588,7 +591,7 @@ async function main() {
   const artifact = buildProbeResultsArtifact({
     capturedAt: new Date().toISOString(),
     commit: args.commit,
-    source: "ci-probe-playwright",
+    source: args.source,
     runId: `${args.commit}-${Date.now()}`,
     samples: collectedSamples,
   });
