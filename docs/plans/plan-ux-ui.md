@@ -3,7 +3,7 @@
 ## Purpose
 Single canonical tracker for UI/UX execution across `next-app` surfaces.
 
-This file replaces dual active tracking between `plan-ux-ui.md` and `claude-ui-ux-plan.md`.
+This file consolidates the former dual-plan tracking into `plan-ux-ui.md`.
 Domain-specific execution plans remain canonical for their domains:
 - Guided setup: `docs/plans/plan-guided-setup.md`
 - Chat runtime unification: `docs/plans/plan-chat-unification-v2.md`
@@ -80,7 +80,7 @@ Use this mapping for old PRs/comments referencing CLU IDs.
 - [ ] `CUX-A03` Expand async `aria-live` announcements coverage and consistency across remaining async UI states.
 
 ## Recently Completed
-- [x] Unified UI plan governance: this file is now the single canonical UI/UX tracker; Claude UI plan is deprecated to archive/reference-only.
+- [x] Unified UI plan governance: this file is now the single canonical UI/UX tracker.
 - [x] `CUX-002` Project page shell parity via shared `ProjectPageLayout`.
 - [x] `CUX-003` / `CUX-004` ConversationPicker overhaul and app-native rename/menu behavior.
 - [x] `CUX-005` / `CUX-006` / `CUX-007` streaming gate, prefill reliability, and failure recovery foundation.
