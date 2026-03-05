@@ -8,11 +8,13 @@ import { CommandPalette } from "@/components/CommandPalette";
 import { NotificationProvider } from "@/contexts/NotificationContext";
 import { ToastContainer } from "@/components/ui/Toast";
 import { MobileViewportRuntime } from "@/components/mobile/MobileViewportRuntime";
+import { PerformanceVitalsReporter } from "@/app/PerformanceVitalsReporter";
 
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <ThemeProvider>
       <MobileViewportRuntime />
+      <PerformanceVitalsReporter />
       <NotificationProvider>
         <CommandPaletteProvider>
           <ProjectsProvider>

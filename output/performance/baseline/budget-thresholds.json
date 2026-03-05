@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "authority": "ci_synthetic",
+  "allowedRegressionPercent": 10,
+  "mandatoryProfiles": [
+    "desktop-normal",
+    "mobile-mid"
+  ],
+  "mandatoryRoutes": [
+    "/project/[id]",
+    "/project/[id]/ledger",
+    "/project/[id]/draft",
+    "/ai"
+  ],
+  "nightlyRoutes": [
+    "/",
+    "/project/[id]/protocol",
+    "/project/[id]/notes"
+  ],
+  "samples": {
+    "ci": {
+      "minRunsPerRouteProfile": 9
+    },
+    "production": {
+      "desktopNormalMinEventsPerRoutePerDay": 200,
+      "mobileMinEventsPerRoutePerDay": 150,
+      "slowNetworkMinEventsPerRoutePerDay": 50
+    }
+  },
+  "thresholds": {
+    "desktop-normal": {
+      "LCP": 2200,
+      "INP": 180,
+      "CLS": 0.08,
+      "TTFB": 600
+    },
+    "mobile-mid": {
+      "LCP": 2800,
+      "INP": 220,
+      "CLS": 0.1,
+      "TTFB": 800
+    },
+    "slow-network": {
+      "LCP": 4000,
+      "INP": 300,
+      "CLS": 0.12,
+      "TTFB": 1200
+    }
+  }
+}

@@ -22,7 +22,9 @@
     "admin:bootstrap": "tsx scripts/bootstrap-platform-admin.ts",
     "chat:burnin:validate": "tsx scripts/validate-chat-unification-burn-in.ts",
     "memory:warmup": "tsx scripts/warmup-memory-embeddings.ts",
-    "memory:validate": "tsx scripts/validate-memory-rollout.ts"
+    "memory:validate": "tsx scripts/validate-memory-rollout.ts",
+    "perf:budget-check": "node scripts/perf-budget-check.mjs",
+    "perf:baseline-report": "node scripts/perf-baseline-report.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.73.0",

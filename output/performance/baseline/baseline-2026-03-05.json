@@ -1,0 +1,42 @@
+{
+  "capturedAt": "2026-03-05T12:00:00Z",
+  "commit": "uncommitted",
+  "source": "synthetic-seed",
+  "routes": {
+    "/": {
+      "desktop-normal": { "samples": 9, "p75": { "LCP": 2060, "INP": 140, "CLS": 0.04, "TTFB": 430 } },
+      "mobile-mid": { "samples": 9, "p75": { "LCP": 2520, "INP": 190, "CLS": 0.06, "TTFB": 640 } },
+      "slow-network": { "samples": 9, "p75": { "LCP": 3560, "INP": 260, "CLS": 0.09, "TTFB": 1080 } }
+    },
+    "/project/[id]": {
+      "desktop-normal": { "samples": 9, "p75": { "LCP": 2140, "INP": 160, "CLS": 0.05, "TTFB": 480 } },
+      "mobile-mid": { "samples": 9, "p75": { "LCP": 2710, "INP": 205, "CLS": 0.08, "TTFB": 720 } },
+      "slow-network": { "samples": 9, "p75": { "LCP": 3810, "INP": 286, "CLS": 0.11, "TTFB": 1140 } }
+    },
+    "/project/[id]/protocol": {
+      "desktop-normal": { "samples": 9, "p75": { "LCP": 2190, "INP": 170, "CLS": 0.06, "TTFB": 530 } },
+      "mobile-mid": { "samples": 9, "p75": { "LCP": 2780, "INP": 212, "CLS": 0.09, "TTFB": 760 } },
+      "slow-network": { "samples": 9, "p75": { "LCP": 3920, "INP": 294, "CLS": 0.12, "TTFB": 1180 } }
+    },
+    "/project/[id]/ledger": {
+      "desktop-normal": { "samples": 9, "p75": { "LCP": 2180, "INP": 176, "CLS": 0.07, "TTFB": 560 } },
+      "mobile-mid": { "samples": 9, "p75": { "LCP": 2790, "INP": 218, "CLS": 0.1, "TTFB": 790 } },
+      "slow-network": { "samples": 9, "p75": { "LCP": 3980, "INP": 298, "CLS": 0.12, "TTFB": 1190 } }
+    },
+    "/project/[id]/draft": {
+      "desktop-normal": { "samples": 9, "p75": { "LCP": 2170, "INP": 174, "CLS": 0.07, "TTFB": 550 } },
+      "mobile-mid": { "samples": 9, "p75": { "LCP": 2770, "INP": 216, "CLS": 0.1, "TTFB": 780 } },
+      "slow-network": { "samples": 9, "p75": { "LCP": 3960, "INP": 295, "CLS": 0.12, "TTFB": 1180 } }
+    },
+    "/project/[id]/notes": {
+      "desktop-normal": { "samples": 9, "p75": { "LCP": 2160, "INP": 171, "CLS": 0.06, "TTFB": 540 } },
+      "mobile-mid": { "samples": 9, "p75": { "LCP": 2760, "INP": 214, "CLS": 0.09, "TTFB": 770 } },
+      "slow-network": { "samples": 9, "p75": { "LCP": 3940, "INP": 292, "CLS": 0.12, "TTFB": 1170 } }
+    },
+    "/ai": {
+      "desktop-normal": { "samples": 9, "p75": { "LCP": 2120, "INP": 162, "CLS": 0.05, "TTFB": 500 } },
+      "mobile-mid": { "samples": 9, "p75": { "LCP": 2720, "INP": 208, "CLS": 0.08, "TTFB": 740 } },
+      "slow-network": { "samples": 9, "p75": { "LCP": 3850, "INP": 288, "CLS": 0.11, "TTFB": 1150 } }
+    }
+  }
+}
