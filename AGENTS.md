@@ -159,7 +159,7 @@ PRD vs Domain Plans:
 
 - Edit `PRD.md` only when product WHAT/WHO/WHY changes.
 - Edit `docs/plans/*.md` when implementation HOW changes.
-- For cross-agent implementation planning requests, use the canonical prompt in `docs/agents/universal-planning-meta-prompt.md`.
+- When writing an implementation plan, use the canonical prompt in `docs/agents/universal-planning-meta-prompt.md`.
 
 ## Open-Source Adaptation Rules
 
