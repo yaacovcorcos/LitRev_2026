@@ -8,12 +8,13 @@ Define one stable mobile viewport contract before route-level UI migrations.
 
 - Applies to `next-app` mobile web surfaces (`/ai`, project shell, and project sub-routes).
 - Defines feature flags, viewport behavior, telemetry events, and rollout gates.
+- Canonical mobile breakpoint: `900px` (`next-app/lib/mobile/breakpoints.ts` + CSS `@media (max-width: 900px)` contract).
 
 ## Adoption Status
 
 - `NEXT_PUBLIC_MOBILE_VP_V2`: runtime + token contract is implemented.
 - Project shell root height now supports viewport-token mode when `NEXT_PUBLIC_MOBILE_VP_V2=1`.
-- `/ai` route viewport migration is independently gated by `NEXT_PUBLIC_MOBILE_AI_V2`.
+- `/ai` route viewport migration + mobile history drawer behavior are independently gated by `NEXT_PUBLIC_MOBILE_AI_V2`.
 - `/project/[id]/notes` mobile layout adjustments are gated by `NEXT_PUBLIC_MOBILE_NOTES_V2`.
 - `/project/[id]/ledger` and `/project/[id]/ledger/[studyId]` viewport-height updates are gated by `NEXT_PUBLIC_MOBILE_LEDGER_V2`.
 - `/project/[id]/draft` viewport-height updates are gated by `NEXT_PUBLIC_MOBILE_DRAFT_V2`.
@@ -31,6 +32,11 @@ Define one stable mobile viewport contract before route-level UI migrations.
 - `NEXT_PUBLIC_MOBILE_POPUP_V2`
 
 All route migrations must be shipped behind route-specific flags and canary-validated before enabling.
+
+### Rollback Semantics
+
+- Current rollout uses build-time public env flags (`NEXT_PUBLIC_*`), so rollback is **redeploy-based** by default.
+- Runtime rollback is only immediate if a dedicated runtime config service is added; this is not active today.
 
 ## Promotion Order (Default-Off -> Canary -> Broad)
 
@@ -58,6 +64,7 @@ For each step:
 - `/project/[id]/draft` regression: set `NEXT_PUBLIC_MOBILE_DRAFT_V2=0`
 - Popup mobile regression: set `NEXT_PUBLIC_MOBILE_POPUP_V2=0`
 - Mobile dead-scroll/double-scroll regression in shell: set `NEXT_PUBLIC_MOBILE_SCROLL_LOCK_V2=0`
+- After changing any `NEXT_PUBLIC_*` flag, redeploy the frontend to apply the rollback.
 
 ## Viewport Contract
 
@@ -113,6 +120,24 @@ Current authority: **debug-only local telemetry** (not a release gate source of 
 3. `npx tsc --noEmit`
 4. `npx vitest run`
 5. Mobile smoke e2e pass (`npm run test:e2e:mobile`)
+
+### Required Flag-Interaction Matrix (Targeted)
+
+Run this matrix on `/ai`, `/project/[id]`, and popup flow routes:
+
+- `NEXT_PUBLIC_MOBILE_VP_V2`: `0/1`
+- `NEXT_PUBLIC_MOBILE_AI_V2`: `0/1`
+- `NEXT_PUBLIC_MOBILE_POPUP_V2`: `0/1`
+- `NEXT_PUBLIC_MOBILE_SCROLL_LOCK_V2`: `0/1`
+
+Minimum targeted combinations:
+
+1. all `0` (baseline)
+2. VP only (`VP=1`, others `0`)
+3. VP + AI (`VP=1`, `AI=1`, others `0`)
+4. VP + Popup (`VP=1`, `POPUP=1`, others `0`)
+5. VP + Scroll lock (`VP=1`, `SCROLL_LOCK=1`, others `0`)
+6. VP + AI + Popup + Scroll lock (all `1`)
 
 ## Browser Support Notes
 

@@ -33,6 +33,8 @@ import { terminalReasonFromThrownError, type StreamTerminalReason } from "@/lib/
 import { recordReliabilityMetric } from "@/lib/ai/reliability-telemetry";
 import type { RetryModelExpectation } from "@/types/chat-unification";
 import { isMobileAiV2Enabled } from "@/lib/mobile/feature-flags";
+import { MOBILE_VIEWPORT_MEDIA_QUERY } from "@/lib/mobile/breakpoints";
+import { isMobileTelemetryContext, recordMobileMetric } from "@/lib/mobile/telemetry";
 import {
   getReasoningBudgetTokens,
   getReasoningModePreference,
@@ -376,6 +378,7 @@ export default function AIView() {
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [isProjectDropdownOpen, setProjectDropdownOpen] = useState(false);
+  const [isMobileViewport, setIsMobileViewport] = useState(false);
 
   const [workspaceContextText, setWorkspaceContextText] = useState("");
   const [workspaceProjectCount, setWorkspaceProjectCount] = useState(0);
@@ -437,6 +440,27 @@ export default function AIView() {
   }, [setSelectedModel]);
 
   useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
+    const mobileQuery = window.matchMedia(MOBILE_VIEWPORT_MEDIA_QUERY);
+    const apply = () => setIsMobileViewport(mobileQuery.matches);
+    apply();
+
+    if (typeof mobileQuery.addEventListener === "function") {
+      mobileQuery.addEventListener("change", apply);
+    } else if (typeof mobileQuery.addListener === "function") {
+      mobileQuery.addListener(apply);
+    }
+
+    return () => {
+      if (typeof mobileQuery.removeEventListener === "function") {
+        mobileQuery.removeEventListener("change", apply);
+      } else if (typeof mobileQuery.removeListener === "function") {
+        mobileQuery.removeListener(apply);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     activeConversationIdRef.current = activeConversationId;
   }, [activeConversationId]);
 
@@ -449,6 +473,39 @@ export default function AIView() {
     if (!url || !isNavigationSafe(url)) return;
     router.push(url);
   }, [router]);
+
+  const emitMobileActionTap = useCallback((actionId: string, targetMinPx?: number) => {
+    if (!isMobileTelemetryContext()) return;
+    recordMobileMetric({
+      type: "mobile_action_tap",
+      surface: "ai",
+      payload: {
+        route: typeof window !== "undefined" ? window.location.pathname : "/ai",
+        actionId,
+        targetMinPx,
+        inputMode: "touch",
+      },
+    });
+  }, []);
+
+  const handleHistoryToggle = useCallback(() => {
+    emitMobileActionTap("ai_history_toggle", 32);
+    setHistoryCollapsed((prev) => {
+      const next = !prev;
+      if (mobileAiV2Enabled && isMobileViewport && prev && isMobileTelemetryContext()) {
+        recordMobileMetric({
+          type: "mobile_drawer_opened",
+          surface: "ai",
+          payload: {
+            route: typeof window !== "undefined" ? window.location.pathname : "/ai",
+            drawerId: "history",
+            source: "button",
+          },
+        });
+      }
+      return next;
+    });
+  }, [emitMobileActionTap, isMobileViewport, mobileAiV2Enabled]);
 
 
   useEffect(() => {
@@ -641,6 +698,9 @@ export default function AIView() {
   }, [activeConversationId, selectedProjectId, sortConversationsByUpdatedAt, updateConversationTimeline]);
 
   const handleSelectConversation = useCallback(async (id: string) => {
+    if (mobileAiV2Enabled && isMobileViewport) {
+      setHistoryCollapsed(true);
+    }
     setActiveConversationId(id);
     setPendingChoices([]);
     setPendingUserInput(null);
@@ -663,7 +723,7 @@ export default function AIView() {
     } finally {
       setIsConversationLoading(false);
     }
-  }, [timelineByConversation, updateConversationTimeline]);
+  }, [isMobileViewport, mobileAiV2Enabled, timelineByConversation, updateConversationTimeline]);
 
   const handleDeleteConversation = useCallback(async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -845,6 +905,17 @@ export default function AIView() {
     };
   }, [contextMenu]);
 
+  useEffect(() => {
+    if (!mobileAiV2Enabled || !isMobileViewport || isHistoryCollapsed) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setHistoryCollapsed(true);
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [isHistoryCollapsed, isMobileViewport, mobileAiV2Enabled]);
+
   const handleCompressHistory = useCallback(async () => {
     const sourceId = activeConversationId;
     if (!sourceId || isCompressing) return;
@@ -900,6 +971,7 @@ export default function AIView() {
   }, [activeConversationId, isCompressing, isTyping, cancelStream, sortConversationsByUpdatedAt, updateConversationTimeline]);
 
   const handleNewChat = useCallback(async () => {
+    emitMobileActionTap("ai_new_chat", 44);
     const context: ConversationContext = selectedProjectId ? "project" : "global";
     const convResult = await createConversation({
       context,
@@ -921,10 +993,13 @@ export default function AIView() {
     setConversations((prev) => sortConversationsByUpdatedAt([newConv, ...prev]));
     setActiveConversationId(id);
     updateConversationTimeline(id, () => []);
+    if (mobileAiV2Enabled && isMobileViewport) {
+      setHistoryCollapsed(true);
+    }
     setPendingChoices([]);
     setPendingUserInput(null);
     setPrefillCommand(null);
-  }, [selectedProjectId, sortConversationsByUpdatedAt, updateConversationTimeline]);
+  }, [emitMobileActionTap, isMobileViewport, mobileAiV2Enabled, selectedProjectId, sortConversationsByUpdatedAt, updateConversationTimeline]);
 
   const handleSend = useCallback(async (
     rawText: string,
@@ -937,6 +1012,9 @@ export default function AIView() {
   ) => {
     const msgText = rawText.trim();
     if (!msgText || sendLockRef.current) return;
+    const sendStartedAtMs = Date.now();
+    let sendSucceeded = false;
+    emitMobileActionTap("ai_send_message", 44);
     if (isTyping) cancelStream();
     sendLockRef.current = true;
     setPendingChoices([]);
@@ -1100,6 +1178,7 @@ export default function AIView() {
       });
       runStatus = summary.runStatus;
       terminalReason = summary.terminalReason;
+      sendSucceeded = summary.terminalReason === "completed";
       actualModel = summary.actualModel;
       actualModelSource = summary.actualModelSource;
       const runEndToolCounts = runtime.getLastRunEndToolCounts();
@@ -1188,8 +1267,22 @@ export default function AIView() {
           },
         ]);
       }
+
+      if (isMobileTelemetryContext()) {
+        recordMobileMetric({
+          type: "mobile_flow_completed",
+          surface: "ai",
+          payload: {
+            route: typeof window !== "undefined" ? window.location.pathname : "/ai",
+            flowId: "ai_message_send",
+            durationMs: Date.now() - sendStartedAtMs,
+            success: sendSucceeded,
+          },
+        });
+      }
     }
   }, [
+    emitMobileActionTap,
     isTyping,
     cancelStream,
     selectedProjectId,
@@ -1736,10 +1829,10 @@ export default function AIView() {
           <div className={styles.sidebarHeader}>
             <button
               className={styles.sidebarToggle}
-              aria-label={isHistoryCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
+              aria-label={isHistoryCollapsed ? "Open chat history" : "Close chat history"}
               aria-expanded={!isHistoryCollapsed}
               aria-controls={historyContentId}
-              onClick={() => setHistoryCollapsed((prev) => !prev)}
+              onClick={handleHistoryToggle}
             >
               <span className="material-icons-round">menu_open</span>
             </button>
@@ -1811,11 +1904,33 @@ export default function AIView() {
             </div>
           </div>
         </aside>
+        {mobileAiV2Enabled && isMobileViewport && !isHistoryCollapsed ? (
+          <button
+            type="button"
+            className={styles.mobileHistoryOverlay}
+            aria-label="Close chat history"
+            onClick={() => setHistoryCollapsed(true)}
+          />
+        ) : null}
 
         <section className={styles.chatInterface} role="region" aria-label="Chat interface">
           <div className={styles.chatHeader}>
+            {mobileAiV2Enabled && isMobileViewport ? (
+              <button
+                type="button"
+                className={styles.mobileHistoryToggle}
+                aria-label={isHistoryCollapsed ? "Open chat history" : "Close chat history"}
+                aria-expanded={!isHistoryCollapsed}
+                aria-controls={historyContentId}
+                onClick={handleHistoryToggle}
+              >
+                <span className="material-icons-round">menu</span>
+                <span className={styles.mobileHistoryLabel}>Chats</span>
+              </button>
+            ) : null}
             <div className={styles.projectSelector} ref={projectDropdownRef}>
               <button
+                type="button"
                 className={styles.projectButton}
                 onClick={() => setProjectDropdownOpen((prev) => !prev)}
                 aria-expanded={isProjectDropdownOpen}
