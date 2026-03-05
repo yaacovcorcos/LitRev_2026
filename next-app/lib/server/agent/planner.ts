@@ -28,7 +28,8 @@ const OPENALEX_RE = /\b(?:openalex|open alex)\b/i;
 const EXTRACT_PDF_ACTION_RE = /(?:\b(?:extract|parse|analy[sz]e)\b[\s\S]{0,40}\bpdf\b|\bpdf\b[\s\S]{0,40}\b(?:extract|parse|analy[sz]e)\b)/i;
 const ADD_TO_LEDGER_RE = /(?:\b(?:add|include|keep)\b[\s\S]{0,40}\b(?:study|studies|paper|papers|ledger|result|results)\b|\bsave\b[\s\S]{0,40}\b(?:study|studies|paper|papers)\b|\b(?:save|add|include|keep)\b[\s\S]{0,40}\bledger\b)/i;
 const DRAFT_ACTION_RE = /\b(?:write|draft|rewrite|revise|append|save|compose|insert)\b/i;
-const DRAFT_TARGET_RE = /\b(?:draft|section|paragraph|summary|introduction|methods|results|discussion|conclusion|abstract)\b/i;
+const DRAFT_TARGET_RE = /\b(?:draft|section|paragraph|summary|abstract)\b/i;
+const DRAFT_SECTION_RE = /\b(?:introduction|methods|results|discussion|conclusion)\s+section\b/i;
 
 function wantsPdfExtraction(message: string): boolean {
     return EXTRACT_PDF_ACTION_RE.test(message);
@@ -41,7 +42,7 @@ function wantsAddToLedger(message: string): boolean {
 function wantsDraftUpdate(message: string): boolean {
     return (
         DRAFT_ACTION_RE.test(message) &&
-        DRAFT_TARGET_RE.test(message)
+        (DRAFT_TARGET_RE.test(message) || DRAFT_SECTION_RE.test(message))
     ) || /\b(?:save|append|add)\b[\s\S]{0,40}\bdraft\b/i.test(message);
 }
 

@@ -3,6 +3,7 @@ import "./load-env";
 import fs from "node:fs";
 import path from "node:path";
 import { randomBytes } from "node:crypto";
+import { fileURLToPath } from "node:url";
 
 import { PrismaPg } from "@prisma/adapter-pg";
 import { serializeSignedCookie } from "better-call";
@@ -11,6 +12,12 @@ import { PrismaClient, type Prisma } from "@prisma/client";
 import { Pool } from "pg";
 import { createDefaultProtocolData } from "../types/protocol";
 import { createDefaultDraftState } from "../lib/draftStorage";
+import {
+  createPerformanceArtifactRoots,
+  parseAllowList,
+  resolvePathWithinRoots,
+  validatePerformanceProbeBaseUrl,
+} from "../lib/performance-probe-config";
 import {
   PROBE_METRIC_NAMES,
   SUPPORTED_PROBE_PROFILES,
@@ -27,6 +34,11 @@ const DEFAULT_OUTPUT_PATH = "../output/performance/results/results-latest.json";
 const DEFAULT_BASE_URL = process.env.PERF_PROBE_BASE_URL ?? "http://127.0.0.1:3201";
 const DEFAULT_RUNS = 9;
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 30;
+const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = path.resolve(SCRIPT_DIR, "..", "..");
+const ARTIFACT_ROOTS = createPerformanceArtifactRoots(REPO_ROOT);
+const ALLOWED_PROBE_HOSTS = parseAllowList(process.env.PERF_PROBE_ALLOWED_HOSTS);
+const ALLOWED_PROBE_ORIGINS = parseAllowList(process.env.PERF_PROBE_ALLOWED_ORIGINS);
 
 const PERF_USER_ID = "perf-probe-user";
 const PERF_WORKSPACE_ID = `workspace-${PERF_USER_ID}`;
@@ -112,7 +124,10 @@ const PROFILE_CONFIGS: Record<ProbeProfile, BrowserContextOptions> = {
 
 function parseArgs(argv: string[]): ScriptArgs {
   const args: ScriptArgs = {
-    baseUrl: DEFAULT_BASE_URL,
+    baseUrl: validatePerformanceProbeBaseUrl(DEFAULT_BASE_URL, {
+      allowedHosts: ALLOWED_PROBE_HOSTS,
+      allowedOrigins: ALLOWED_PROBE_ORIGINS,
+    }),
     budgetPath: path.resolve(process.cwd(), DEFAULT_BUDGET_PATH),
     outputPath: path.resolve(process.cwd(), DEFAULT_OUTPUT_PATH),
     commit: process.env.GITHUB_SHA ?? "local",
@@ -127,9 +142,28 @@ function parseArgs(argv: string[]): ScriptArgs {
     const next = rawVal ?? argv[i + 1];
     if (rawVal == null && argv[i + 1] && !argv[i + 1].startsWith("--")) i += 1;
 
-    if (rawKey === "base-url" && next) args.baseUrl = next;
-    if (rawKey === "budget" && next) args.budgetPath = path.resolve(process.cwd(), next);
-    if (rawKey === "output" && next) args.outputPath = path.resolve(process.cwd(), next);
+    if (rawKey === "base-url" && next) {
+      args.baseUrl = validatePerformanceProbeBaseUrl(next, {
+        allowedHosts: ALLOWED_PROBE_HOSTS,
+        allowedOrigins: ALLOWED_PROBE_ORIGINS,
+      });
+    }
+    if (rawKey === "budget" && next) {
+      args.budgetPath = resolvePathWithinRoots({
+        cwd: process.cwd(),
+        inputPath: next,
+        label: "budget",
+        allowedRoots: [ARTIFACT_ROOTS.baselineRoot],
+      });
+    }
+    if (rawKey === "output" && next) {
+      args.outputPath = resolvePathWithinRoots({
+        cwd: process.cwd(),
+        inputPath: next,
+        label: "output",
+        allowedRoots: [ARTIFACT_ROOTS.resultsRoot],
+      });
+    }
     if (rawKey === "commit" && next) args.commit = next;
     if (rawKey === "source" && next) args.source = next;
     if (rawKey === "runs" && next) args.runs = Number.parseInt(next, 10);
@@ -138,6 +172,19 @@ function parseArgs(argv: string[]): ScriptArgs {
   if (!Number.isFinite(args.runs) || args.runs < 1) {
     throw new Error(`Invalid --runs value: ${args.runs}`);
   }
+
+  args.budgetPath = resolvePathWithinRoots({
+    cwd: process.cwd(),
+    inputPath: args.budgetPath,
+    label: "budget",
+    allowedRoots: [ARTIFACT_ROOTS.baselineRoot],
+  });
+  args.outputPath = resolvePathWithinRoots({
+    cwd: process.cwd(),
+    inputPath: args.outputPath,
+    label: "output",
+    allowedRoots: [ARTIFACT_ROOTS.resultsRoot],
+  });
 
   return args;
 }
