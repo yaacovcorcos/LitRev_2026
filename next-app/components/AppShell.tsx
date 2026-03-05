@@ -15,6 +15,7 @@ import { CSSProperties, ReactNode, useEffect, useMemo, useState } from "react";
 import { SlimHeader } from "@/components/SlimHeader";
 import { useCommandPalette } from "@/contexts/CommandPaletteContext";
 import { authClient } from "@/lib/auth-client";
+import { clearAllContextCaptureHistory } from "@/lib/context-capture/history";
 
 type AppShellProps = {
   activeNav: string;
@@ -127,6 +128,7 @@ export function AppShell({
         return;
       }
 
+      clearAllContextCaptureHistory();
       router.replace("/login");
       router.refresh();
     } catch {

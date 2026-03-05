@@ -7,13 +7,40 @@ export const copilotPageSchema = z.enum([
 
 export const messageRoleSchema = z.enum(["user", "assistant", "system"]);
 
-export const messageAttachmentSchema = z.object({
+export const fileMessageAttachmentSchema = z.object({
     fileAssetId: cuidSchema,
     filename: z.string().min(1).max(500),
     mimeType: z.string().min(1).max(200),
     size: z.number().int().nonnegative(),
     isExisting: z.boolean().optional(),
 });
+
+const contextCaptureTargetSchema = z.object({
+    kind: z.enum([
+        "protocol_section",
+        "protocol_field",
+        "protocol_criterion",
+        "draft_selection",
+        "study",
+        "study_set",
+        "note",
+        "note_selection",
+        "artifact",
+        "assistant_message",
+    ]),
+    projectId: cuidSchema,
+    label: z.string().min(1).max(500),
+    icon: z.string().min(1).max(100),
+    preview: z.string().max(5_000).optional(),
+}).passthrough();
+
+export const messageAttachmentSchema = z.union([
+    fileMessageAttachmentSchema,
+    z.object({
+        type: z.literal("context_capture"),
+        target: contextCaptureTargetSchema,
+    }),
+]);
 
 export const listConversationsParamsSchema = z.object({
     projectId: cuidSchema.optional(),

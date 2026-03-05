@@ -19,7 +19,15 @@ import { reviewArtifactAction } from "@/app/actions/agent";
 import { getGlobalWorkspaceContextAction } from "@/app/actions/ai-assistant";
 import { summarizeConversationAction } from "@/app/actions/summarize-conversation";
 import type { AgentMode } from "@/types/agent";
-import type { CopilotPage, ConversationContext, ChoiceOption, ReasoningMode, UserInputRequest } from "@/types/ai";
+import type {
+  ChoiceOption,
+  ConversationContext,
+  ConversationContextAttachment,
+  ConversationMessageAttachment,
+  CopilotPage,
+  ReasoningMode,
+  UserInputRequest,
+} from "@/types/ai";
 import type { ArtifactStatus, ArtifactType } from "@/types/artifacts";
 import type { TimelineItem } from "@/types/timeline";
 import { processAIStream } from "@/lib/ai/stream-processor";
@@ -119,7 +127,7 @@ function mapDbMessagesToTimeline(
   role: string;
   content: string;
   createdAt: string;
-  attachments?: Array<{ fileAssetId: string; filename: string; mimeType: string; size: number; isExisting?: boolean }>;
+  attachments?: ConversationMessageAttachment[];
 }>,
   artifacts: Array<{
     id: string;
@@ -132,6 +140,8 @@ function mapDbMessagesToTimeline(
   }> = [],
 ): TimelineItem[] {
   const messageItems: TimelineItem[] = [];
+  const isContextAttachment = (attachment: ConversationMessageAttachment): attachment is ConversationContextAttachment =>
+    "type" in attachment && attachment.type === "context_capture";
   for (const msg of messages) {
     if (msg.role === "user") {
       messageItems.push({
@@ -139,12 +149,16 @@ function mapDbMessagesToTimeline(
         id: msg.id,
         content: msg.content,
         createdAt: msg.createdAt,
-        attachments: msg.attachments?.map((a) => ({
-          fileAssetId: a.fileAssetId,
-          filename: a.filename,
-          mimeType: a.mimeType,
-          size: a.size,
-        })),
+        attachments: msg.attachments?.map((a) => (
+          isContextAttachment(a)
+            ? a
+            : {
+              fileAssetId: a.fileAssetId,
+              filename: a.filename,
+              mimeType: a.mimeType,
+              size: a.size,
+            }
+        )),
       });
       continue;
     }

@@ -44,6 +44,8 @@ describe("CopilotInputCore model control", () => {
             "claude-haiku-4-5",
             "general",
             undefined,
+            undefined,
+            undefined,
         );
     });
 

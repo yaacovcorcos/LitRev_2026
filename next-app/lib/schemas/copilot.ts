@@ -24,7 +24,7 @@ export const copilotMessageSchema = z.object({
         })
         .optional(),
     attachments: z
-        .array(
+        .array(z.union([
             z.object({
                 fileAssetId: z.string(),
                 filename: z.string(),
@@ -32,7 +32,28 @@ export const copilotMessageSchema = z.object({
                 mimeType: z.string(),
                 isExisting: z.boolean().optional(),
             }),
-        )
+            z.object({
+                type: z.literal("context_capture"),
+                target: z.object({
+                    kind: z.enum([
+                        "protocol_section",
+                        "protocol_field",
+                        "protocol_criterion",
+                        "draft_selection",
+                        "study",
+                        "study_set",
+                        "note",
+                        "note_selection",
+                        "artifact",
+                        "assistant_message",
+                    ]),
+                    projectId: z.string(),
+                    label: z.string(),
+                    icon: z.string(),
+                    preview: z.string().optional(),
+                }).passthrough(),
+            }),
+        ]))
         .optional(),
     artifact: z
         .object({

@@ -8,7 +8,13 @@ import type {
     ProjectCopilotState,
 } from "@/lib/projectCopilotStorage";
 import type { ArtifactData, ArtifactStatus, ArtifactType } from "@/types/artifacts";
-import type { ChoiceOption, CopilotPage, UserInputRequest } from "@/types/ai";
+import type {
+    ChoiceOption,
+    ConversationContextAttachment,
+    ConversationMessageAttachment,
+    CopilotPage,
+    UserInputRequest,
+} from "@/types/ai";
 import type { ConversationListItem } from "@/types/copilot-context";
 import {
     listConversations,
@@ -26,6 +32,12 @@ import {
     markConversationActive,
     readProjectEntryState,
 } from "@/lib/project-entry-restore";
+
+function isContextAttachment(
+    attachment: ConversationMessageAttachment,
+): attachment is ConversationContextAttachment {
+    return "type" in attachment && attachment.type === "context_capture";
+}
 
 /** Dependencies injected by the provider. */
 export type CopilotConversationsDeps = {
@@ -318,13 +330,17 @@ export function useCopilotConversations(deps: CopilotConversationsDeps) {
                         text: m.content,
                         createdAt: m.createdAt,
                         context: { page: convo.page as CopilotPage },
-                        attachments: m.attachments?.map((a) => ({
-                            fileAssetId: a.fileAssetId,
-                            filename: a.filename,
-                            size: a.size,
-                            mimeType: a.mimeType,
-                            isExisting: a.isExisting,
-                        })),
+                        attachments: m.attachments?.map((a) => (
+                            isContextAttachment(a)
+                                ? a
+                                : {
+                                    fileAssetId: a.fileAssetId,
+                                    filename: a.filename,
+                                    size: a.size,
+                                    mimeType: a.mimeType,
+                                    isExisting: a.isExisting,
+                                }
+                        )),
                     }));
                 // Filter artifacts to only those within the loaded message time range
                 const oldestMessageTime = persistedMessages.length > 0
@@ -428,13 +444,17 @@ export function useCopilotConversations(deps: CopilotConversationsDeps) {
                     text: m.content,
                     createdAt: m.createdAt,
                     context: { page: conversationPage },
-                    attachments: m.attachments?.map((a) => ({
-                        fileAssetId: a.fileAssetId,
-                        filename: a.filename,
-                        size: a.size,
-                        mimeType: a.mimeType,
-                        isExisting: a.isExisting,
-                    })),
+                    attachments: m.attachments?.map((a) => (
+                        isContextAttachment(a)
+                            ? a
+                            : {
+                                fileAssetId: a.fileAssetId,
+                                filename: a.filename,
+                                size: a.size,
+                                mimeType: a.mimeType,
+                                isExisting: a.isExisting,
+                            }
+                    )),
                 }));
 
             // Include any artifacts that are now within the expanded time range

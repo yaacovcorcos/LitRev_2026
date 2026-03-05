@@ -9,6 +9,7 @@ import type { AgentMode, AutonomyPreset, AutonomyLevel } from "@/types/agent";
 import type { ChoiceOption, CopilotPage, ReasoningMode, StreamPhase, UserInputRequest } from "@/types/ai";
 import type { SelectableModelId, ReasoningSupportTier } from "@/lib/ai/config";
 import type { RetryModelExpectation } from "@/types/chat-unification";
+import type { ContextCaptureHistoryEntry, ContextCaptureTarget } from "@/types/context-capture";
 
 export type PendingAttachment = {
     fileAssetId: string;
@@ -30,6 +31,11 @@ export type ApproveArtifactsBatchResult = {
     approvedCount: number;
     failedArtifactIds: string[];
     stopped: boolean;
+};
+
+export type PrefillCommand = {
+    text: string;
+    id: string;
 };
 
 export type ProjectCopilotContextValue = {
@@ -70,6 +76,7 @@ export type ProjectCopilotContextValue = {
         agentMode?: AgentMode,
         studyId?: string,
         retryModelExpectation?: RetryModelExpectation,
+        contextTargets?: ContextCaptureTarget[],
     ) => void;
     /** Update global reasoning visibility mode */
     setReasoningMode: (mode: ReasoningMode) => void;
@@ -117,6 +124,26 @@ export type ProjectCopilotContextValue = {
     clearAttachment: () => void;
     /** Project ID for the current copilot */
     projectId: string;
+    /** Attached context targets waiting to be sent with the next message */
+    attachedContextTargets: ContextCaptureTarget[];
+    /** Recent reusable context history for the current project */
+    recentContextHistory: ContextCaptureHistoryEntry[];
+    /** Replace the current attached context targets */
+    setAttachedContextTargets: (targets: ContextCaptureTarget[]) => void;
+    /** Add one or more attached context targets without duplicates */
+    addAttachedContextTargets: (targets: ContextCaptureTarget[]) => void;
+    /** Remove one attached context target by its stable target key */
+    removeAttachedContextTarget: (targetKey: string) => void;
+    /** Clear all attached context targets */
+    clearAttachedContextTargets: () => void;
+    /** Record targets into recent context history */
+    recordContextHistory: (targets: ContextCaptureTarget[]) => void;
+    /** Cross-surface prefill command queued for the composer */
+    prefillCommand: PrefillCommand | null;
+    /** Queue a prefill command for the composer */
+    queuePrefillCommand: (text: string) => void;
+    /** Mark the queued prefill command as consumed */
+    consumePrefillCommand: () => void;
 
     // Agent run state (planC Phase 2)
     /** Current active run ID (null when no agent is running) */

@@ -4,6 +4,8 @@ import { memo, type MouseEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { usePopupChat } from "@/contexts/PopupChatContext";
+import { useContextCaptureActions } from "@/hooks/useContextCaptureActions";
+import { buildStudyTarget } from "@/lib/context-capture/targets";
 import { type CriteriaMatchResult } from "@/lib/criteriaMatching";
 import type { Study, StudyDetails, TriageDecision } from "@/types/ledger";
 import styles from "./ledger.module.css";
@@ -39,6 +41,7 @@ export const StudyRow = memo(function StudyRow({
 }: StudyRowProps) {
   const router = useRouter();
   const { openPopupChat } = usePopupChat();
+  const { captureEnabled, openPopupForTarget } = useContextCaptureActions();
   const details: StudyDetails = study.details ?? {};
 
   const summaryText =
@@ -241,6 +244,22 @@ export const StudyRow = memo(function StudyRow({
                   className={styles.triageBtn}
                   onClick={(event) => {
                     event.stopPropagation();
+                    if (captureEnabled) {
+                      openPopupForTarget(buildStudyTarget({
+                        projectId,
+                        study: {
+                          studyId: study.id,
+                          title: study.title,
+                          authors: study.authors,
+                          year: study.year,
+                          abstract: displaySummary,
+                          journal: details.journal,
+                          quality: study.quality,
+                          aiSummary: details.aiSummary,
+                        },
+                      }));
+                      return;
+                    }
                     openPopupChat({
                       type: "study",
                       projectId,

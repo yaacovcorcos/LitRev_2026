@@ -480,13 +480,16 @@ Rejected:
 - continue adding ad hoc popup unions per page
 - ship lasso/drag selection before reusing existing multi-select state
 
+## Current Architecture
+- Shared context-capture contracts now live in `next-app/types/context-capture.ts` and `next-app/lib/context-capture/**`, including typed targets, target builders, history rules, feature flags, action registry, and telemetry helpers.
+- The chat stream route now accepts `options.contextTargets`, validates that every target matches the active `projectId`, and formats them server-side through `next-app/lib/server/ai/context-capture.ts` before calling the model.
+- Popup remains intentionally limited to the popup-safe subset via `contextTargetToPopupContext()`, while richer targets fall through to the main copilot with visible receipts instead of being flattened into opaque prompt text.
+- Project copilot state now carries attached context targets, bounded session-history reuse, and prefill commands; typed context attachments are restored in conversation/timeline hydration rather than being treated as file attachments.
+- Protocol, draft, ledger, and notes now emit shared targets: protocol sections/fields/criteria, draft selections, single-study and multi-study ledger bundles, and note-level capture. `study_set` is capped at 6 studies in UI + formatter logic.
+- Desktop-only draft quick actions are gated by `NEXT_PUBLIC_CONTEXT_TOOLBAR_V1` and suppressed on mobile/coarse-pointer viewports. Popup headers now show compact context previews, and successful sign-out clears stored context history across project scopes.
+
 ## Active Tasks
-- [ ] `CTX-001` Add shared context-capture target/action contracts, popup-safe adapter boundaries, and rollout flags.
-- [ ] `CTX-002` Migrate existing protocol, draft, and single-study ledger entry points onto the shared target model.
-- [ ] `CTX-003` Add protocol criterion capture, ledger multi-study capture, and note-level capture.
-- [ ] `CTX-004` Add composer receipts, popup receipts, and recent-context history with TTL/redaction rules.
-- [ ] `CTX-005` Add telemetry and rollout-safe fallback validation.
-- [ ] `CTX-006` Add optional desktop anchored selection affordances for draft/protocol behind a dedicated flag.
+- None currently. Add new items only if rollout feedback justifies broader popup transport, artifact/message entrypoints, or richer desktop affordances.
 
 ## Risk + Rollback
 ### Primary Failure Modes
@@ -611,4 +614,9 @@ When implementation begins, from `next-app/`:
 - `PRD.md` remains unchanged because this is a HOW change, not a WHAT/WHY change.
 
 ## Recently Completed
-- None yet.
+- [x] `CTX-006` Shipped desktop-only draft context quick actions behind `NEXT_PUBLIC_CONTEXT_TOOLBAR_V1`, with mobile/coarse-pointer suppression and shared action-registry wiring.
+- [x] `CTX-005` Added context-capture telemetry events and a validated telemetry ingestion route, and verified fallback behavior when popup-safe routing is unavailable.
+- [x] `CTX-004` Added composer receipts, popup previews, bounded session-history reuse, and typed conversation/timeline attachment hydration for captured context.
+- [x] `CTX-003` Added protocol criterion capture, ledger multi-study capture with a hard cap of 6, and note-level capture into the main copilot.
+- [x] `CTX-002` Migrated protocol section actions, draft selection capture, and single-study ledger entry points onto shared target builders and adapters.
+- [x] `CTX-001` Added the shared context-capture domain, popup-safe adapter boundary, feature flags, and server-side context formatting contract.

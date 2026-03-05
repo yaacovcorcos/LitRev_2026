@@ -4,19 +4,13 @@
  * all project pages (Draft, Protocol, Ledger).
  */
 
-import type { CopilotPage, UserInputRequest } from "@/types/ai";
+import type { ConversationMessageAttachment, CopilotPage, UserInputRequest } from "@/types/ai";
 
 const PROJECT_COPILOT_KEY_PREFIX = "litrev_project_copilot_v1";
 
 export type CopilotSender = "user" | "ai";
 
-export type CopilotMessageAttachment = {
-  fileAssetId: string;
-  filename: string;
-  size: number;
-  mimeType: string;
-  isExisting?: boolean;
-};
+export type CopilotMessageAttachment = ConversationMessageAttachment;
 
 export type CopilotMessage = {
   id: string;

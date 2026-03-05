@@ -12,6 +12,9 @@ const { mockUseSession, mockSignOut, mockRouterReplace, mockRouterRefresh } = vi
     mockRouterRefresh: vi.fn(),
   }),
 );
+const { mockClearAllContextCaptureHistory } = vi.hoisted(() => ({
+  mockClearAllContextCaptureHistory: vi.fn(),
+}));
 
 vi.mock("@/lib/auth-client", () => ({
   authClient: {
@@ -27,12 +30,17 @@ vi.mock("next/navigation", () => ({
   }),
 }));
 
+vi.mock("@/lib/context-capture/history", () => ({
+  clearAllContextCaptureHistory: mockClearAllContextCaptureHistory,
+}));
+
 describe("UserMenu", () => {
   beforeEach(() => {
     mockUseSession.mockReset();
     mockSignOut.mockReset();
     mockRouterReplace.mockReset();
     mockRouterRefresh.mockReset();
+    mockClearAllContextCaptureHistory.mockReset();
   });
 
   it("renders a fallback sign-out button when session has no user", () => {
@@ -67,6 +75,7 @@ describe("UserMenu", () => {
 
     await waitFor(() => {
       expect(mockSignOut).toHaveBeenCalledTimes(1);
+      expect(mockClearAllContextCaptureHistory).toHaveBeenCalledTimes(1);
       expect(mockRouterReplace).toHaveBeenCalledWith("/login");
       expect(mockRouterRefresh).toHaveBeenCalledTimes(1);
     });
@@ -94,6 +103,7 @@ describe("UserMenu", () => {
 
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toContain("Sign out failed from API");
+    expect(mockClearAllContextCaptureHistory).not.toHaveBeenCalled();
     expect(mockRouterReplace).not.toHaveBeenCalled();
   });
 

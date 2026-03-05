@@ -5,7 +5,7 @@
  * Perfect for inclusion/exclusion criteria.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import styles from "./Editable.module.css";
 
 export type EditableListProps = {
@@ -31,6 +31,8 @@ export type EditableListProps = {
     className?: string;
     /** aria-label for the list */
     ariaLabel?: string;
+    /** Optional render hook for row-level actions */
+    renderItemActions?: (index: number, item: string) => ReactNode;
 };
 
 export function EditableList({
@@ -44,6 +46,7 @@ export function EditableList({
     onBlur,
     className = "",
     ariaLabel,
+    renderItemActions,
 }: EditableListProps) {
     const [editingIndex, setEditingIndex] = useState<number | null>(null);
     const [editValue, setEditValue] = useState("");
@@ -175,6 +178,11 @@ export function EditableList({
                             </div>
                         )}
                     </div>
+                    {renderItemActions ? (
+                        <div className={styles.editableListActions}>
+                            {renderItemActions(index, item)}
+                        </div>
+                    ) : null}
                     <button
                         type="button"
                         className={styles.editableListRemove}

@@ -30,6 +30,11 @@ export function CopilotInput({ page, section, studyId, inputPlaceholder, prefill
         attachExistingFile,
         clearAttachment,
         projectId,
+        attachedContextTargets,
+        recentContextHistory,
+        removeAttachedContextTarget,
+        clearAttachedContextTargets,
+        addAttachedContextTargets,
         autonomyPreset,
         updateAutonomyPreset,
         setShowAutonomySettings,
@@ -62,6 +67,11 @@ export function CopilotInput({ page, section, studyId, inputPlaceholder, prefill
             attachExistingFile={attachExistingFile}
             clearAttachment={clearAttachment}
             projectId={projectId}
+            attachedContextTargets={attachedContextTargets}
+            recentContextHistory={recentContextHistory}
+            removeAttachedContextTarget={removeAttachedContextTarget}
+            clearAttachedContextTargets={clearAttachedContextTargets}
+            addAttachedContextTargets={addAttachedContextTargets}
             hasProtocol={projectSnapshot.hasProtocol}
             autonomyPreset={autonomyPreset}
             updateAutonomyPreset={updateAutonomyPreset}

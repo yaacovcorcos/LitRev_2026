@@ -22,6 +22,13 @@ vi.mock("@/contexts/PopupChatContext", () => ({
   }),
 }));
 
+vi.mock("@/hooks/useContextCaptureActions", () => ({
+  useContextCaptureActions: () => ({
+    captureEnabled: false,
+    openPopupForTarget: vi.fn(),
+  }),
+}));
+
 function makeStudy(overrides: Partial<Study> = {}): Study {
   return {
     id: "study-1",

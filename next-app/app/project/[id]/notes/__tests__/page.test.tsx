@@ -35,6 +35,13 @@ vi.mock("@/lib/mobile/feature-flags", () => ({
     isMobileNotesV2Enabled: () => false,
 }));
 
+vi.mock("@/hooks/useContextCaptureActions", () => ({
+    useContextCaptureActions: () => ({
+        captureEnabled: false,
+        prefillCopilotWithTargets: vi.fn(),
+    }),
+}));
+
 vi.mock("@/components/project/ProjectPageLayout", () => ({
     ProjectPageLayout: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));

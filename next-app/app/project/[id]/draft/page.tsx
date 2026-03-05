@@ -43,6 +43,9 @@ import type { JSONContent } from "@tiptap/core";
 import { Citation, ParagraphDirection, EditorToolbar, FullSectionEditor } from "./DraftEditors";
 import type { Study } from "@/types/ledger";
 import { usePopupChat } from "@/contexts/PopupChatContext";
+import { useContextCaptureActions } from "@/hooks/useContextCaptureActions";
+import { getContextCaptureAction } from "@/lib/context-capture/actions";
+import { buildDraftSelectionTarget } from "@/lib/context-capture/targets";
 import { AddEvidenceModal } from "./AddEvidenceModal";
 import { DraftTopBar, DraftFormattingPanel } from "./DraftToolbar";
 import {
@@ -62,7 +65,9 @@ import { useDraftExport } from "./useDraftExport";
 import { useDraftSections } from "./useDraftSections";
 import { useDraftCopilot } from "./useDraftCopilot";
 import { buildReferencesDoc, compileDraftCitations } from "@/lib/citation-compiler";
+import { COARSE_POINTER_MEDIA_QUERY, MOBILE_VIEWPORT_MEDIA_QUERY } from "@/lib/mobile/breakpoints";
 import { isMobileDraftV2Enabled } from "@/lib/mobile/feature-flags";
+import { isContextToolbarV1Enabled } from "@/lib/context-capture/feature-flags";
 
 function createCitationUid(sectionId: DraftSectionId): string {
   const rand = Math.random().toString(36).slice(2, 8);
@@ -113,6 +118,11 @@ function DraftContent() {
   const { isCollapsed: copilotCollapsed, panelWidth: copilotPanelWidth, setPanelWidth: setCopilotPanelWidth } = useProjectCopilot();
   const { isEmbeddedInProjectShell } = useProjectShell();
   const { openPopupChat } = usePopupChat();
+  const { captureEnabled, openPopupForTarget, runAction } = useContextCaptureActions();
+  const contextToolbarEnabled = isContextToolbarV1Enabled();
+  const sendToCopilotAction = getContextCaptureAction("send_to_copilot");
+  const rewriteSelectionAction = getContextCaptureAction("rewrite_selection");
+  const checkClaimSupportAction = getContextCaptureAction("check_claim_support");
 
   const queryMode = searchParams.get("mode");
   const querySection = searchParams.get("section");
@@ -199,6 +209,8 @@ function DraftContent() {
   const [isFormatOpen, setFormatOpen] = useState(false);
   const formatRef = useRef<HTMLDivElement | null>(null);
   const [paragraphDir, setParagraphDir] = useState<"ltr" | "rtl">("ltr");
+  const [showDesktopContextToolbar, setShowDesktopContextToolbar] = useState(false);
+  const [canRunDraftContextActions, setCanRunDraftContextActions] = useState(false);
 
   const sectionMetaById = useMemo(() => {
     const map = new Map<DraftSectionId, SectionMeta>(BASE_SECTION_MAP);
@@ -392,6 +404,36 @@ function DraftContent() {
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (!contextToolbarEnabled || typeof window === "undefined") {
+      setShowDesktopContextToolbar(false);
+      return;
+    }
+    const viewportQuery = window.matchMedia(MOBILE_VIEWPORT_MEDIA_QUERY);
+    const pointerQuery = window.matchMedia(COARSE_POINTER_MEDIA_QUERY);
+    const syncToolbarMode = () => {
+      setShowDesktopContextToolbar(!viewportQuery.matches && !pointerQuery.matches);
+    };
+
+    syncToolbarMode();
+
+    if (typeof viewportQuery.addEventListener === "function") {
+      viewportQuery.addEventListener("change", syncToolbarMode);
+      pointerQuery.addEventListener("change", syncToolbarMode);
+      return () => {
+        viewportQuery.removeEventListener("change", syncToolbarMode);
+        pointerQuery.removeEventListener("change", syncToolbarMode);
+      };
+    }
+
+    viewportQuery.addListener(syncToolbarMode);
+    pointerQuery.addListener(syncToolbarMode);
+    return () => {
+      viewportQuery.removeListener(syncToolbarMode);
+      pointerQuery.removeListener(syncToolbarMode);
+    };
+  }, [contextToolbarEnabled]);
 
   const registerEditor = useCallback((key: DraftSectionId, editor: Editor | null) => {
     editorBySectionRef.current[key] = editor;
@@ -651,18 +693,66 @@ function DraftContent() {
 
   const formattingEditor = draft.mode === "section" ? sectionEditor : activeEditor;
 
+  const buildCurrentDraftSelectionTarget = useCallback(() => {
+    if (isReferencesSection) return null;
+    const editor = draft.mode === "section"
+      ? sectionEditor
+      : activeEditorRef.current ?? activeEditor;
+    if (!editor) return null;
+
+    const fullText = editor.getText().trim();
+    if (!fullText) return null;
+
+    const selectedText = !editor.state.selection.empty
+      ? editor.state.doc.textBetween(editor.state.selection.from, editor.state.selection.to).trim()
+      : fullText.slice(0, 500);
+
+    return buildDraftSelectionTarget({
+      projectId: id,
+      section: activeSectionLabel,
+      selectedText,
+      surroundingText: fullText.slice(0, 1_200),
+      citedStudyIds: draft.ledgerBySection[draft.activeSection] ?? undefined,
+      sourceSurface: "draft",
+    });
+  }, [
+    activeEditor,
+    activeSectionLabel,
+    draft.activeSection,
+    draft.ledgerBySection,
+    draft.mode,
+    id,
+    isReferencesSection,
+    sectionEditor,
+  ]);
+
+  const handleDraftContextAction = useCallback((
+    actionId: "send_to_copilot" | "rewrite_selection" | "check_claim_support",
+    prompt: string,
+  ) => {
+    const target = buildCurrentDraftSelectionTarget();
+    if (!target) return;
+    runAction({
+      actionId,
+      targets: [target],
+      prompt,
+      page: "draft",
+      section: activeSectionLabel,
+    });
+  }, [activeSectionLabel, buildCurrentDraftSelectionTarget, runAction]);
+
   useEffect(() => {
     if (!formattingEditor) return;
-    const syncDir = () => {
-      const dir = formattingEditor.getAttributes("paragraph")?.dir === "rtl" ? "rtl" : "ltr";
-      setParagraphDir(dir);
+    const syncEditorState = () => {
+      setParagraphDir(formattingEditor.getAttributes("paragraph")?.dir === "rtl" ? "rtl" : "ltr");
+      setCanRunDraftContextActions(Boolean(formattingEditor.getText().trim()));
     };
-    syncDir();
-    formattingEditor.on("selectionUpdate", syncDir);
-    formattingEditor.on("transaction", syncDir);
+    syncEditorState();
+    formattingEditor.on("selectionUpdate", syncEditorState);
+    formattingEditor.on("transaction", syncEditorState);
     return () => {
-      formattingEditor.off("selectionUpdate", syncDir);
-      formattingEditor.off("transaction", syncDir);
+      formattingEditor.off("selectionUpdate", syncEditorState);
+      formattingEditor.off("transaction", syncEditorState);
     };
   }, [formattingEditor]);
 
@@ -764,6 +854,10 @@ function DraftContent() {
 
   const showResultsGuide = draft.activeSection === "results" && !docHasContent(draft.contentBySection.results);
   const draftPageClassName = `${styles.page} ${mobileDraftV2Enabled ? styles.pageMobileV2 : ""}`;
+  const showDraftContextToolbar = captureEnabled
+    && contextToolbarEnabled
+    && showDesktopContextToolbar
+    && !isReferencesSection;
 
   const pageContent = (
     <>
@@ -948,6 +1042,15 @@ function DraftContent() {
                   const selectedText = ed && !ed.state.selection.empty
                     ? ed.state.doc.textBetween(ed.state.selection.from, ed.state.selection.to)
                     : ed?.getText().slice(0, 500) ?? "";
+                  if (captureEnabled) {
+                    openPopupForTarget(buildDraftSelectionTarget({
+                      projectId: id,
+                      section: activeSectionLabel,
+                      selectedText,
+                      surroundingText: ed?.getText().slice(0, 1_200) ?? "",
+                    }));
+                    return;
+                  }
                   openPopupChat({
                     type: "draft_selection",
                     projectId: id,
@@ -956,6 +1059,50 @@ function DraftContent() {
                   });
                 }}
               />
+              {showDraftContextToolbar ? (
+                <div className={styles.contextActionStrip} role="group" aria-label="Draft context actions">
+                  <div className={styles.contextActionMeta}>Draft context</div>
+                  <button
+                    type="button"
+                    className={styles.contextActionPrimary}
+                    onClick={() => handleDraftContextAction(
+                      "send_to_copilot",
+                      sendToCopilotAction.defaultPrompt ?? "Use this context in your answer.",
+                    )}
+                    disabled={!canRunDraftContextActions}
+                    title={canRunDraftContextActions ? "Attach this draft context to the copilot composer." : "Add draft text to enable context actions."}
+                  >
+                    <span className="material-icons-round">{sendToCopilotAction.icon}</span>
+                    {sendToCopilotAction.label}
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.contextActionButton}
+                    onClick={() => handleDraftContextAction(
+                      "rewrite_selection",
+                      rewriteSelectionAction.defaultPrompt ?? "Rewrite this text for clarity while preserving the meaning and staying conservative.",
+                    )}
+                    disabled={!canRunDraftContextActions}
+                    title={canRunDraftContextActions ? "Prefill the copilot with a rewrite request for this draft context." : "Add draft text to enable context actions."}
+                  >
+                    <span className="material-icons-round">{rewriteSelectionAction.icon}</span>
+                    {rewriteSelectionAction.label}
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.contextActionButton}
+                    onClick={() => handleDraftContextAction(
+                      "check_claim_support",
+                      checkClaimSupportAction.defaultPrompt ?? "Check whether this claim is supported and point out any missing or weak evidence.",
+                    )}
+                    disabled={!canRunDraftContextActions}
+                    title={canRunDraftContextActions ? "Prefill the copilot with a claim-support check for this draft context." : "Add draft text to enable context actions."}
+                  >
+                    <span className="material-icons-round">{checkClaimSupportAction.icon}</span>
+                    {checkClaimSupportAction.label}
+                  </button>
+                </div>
+              ) : null}
               <DraftFormattingPanel
                 isOpen={isFormatOpen}
                 setOpen={setFormatOpen}

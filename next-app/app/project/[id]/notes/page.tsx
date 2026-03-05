@@ -23,6 +23,8 @@ import { ProjectPageLayout } from "@/components/project/ProjectPageLayout";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { addProjectDataChangedListener } from "@/lib/project-data-events";
 import { isMobileNotesV2Enabled } from "@/lib/mobile/feature-flags";
+import { useContextCaptureActions } from "@/hooks/useContextCaptureActions";
+import { buildNoteTarget } from "@/lib/context-capture/targets";
 import styles from "./notes.module.css";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -55,6 +57,7 @@ export default function NotesPage() {
     const params = useParams<{ id: string }>();
     const projectId = params?.id ?? "";
     const mobileNotesV2Enabled = isMobileNotesV2Enabled();
+    const { captureEnabled, prefillCopilotWithTargets } = useContextCaptureActions();
 
     // State
     const [notes, setNotes] = useState<Note[]>([]);
@@ -492,6 +495,30 @@ export default function NotesPage() {
                                     <span className="material-icons-round">link</span>
                                     Linked study
                                 </span>
+                            )}
+
+                            {captureEnabled && (
+                                <button
+                                    type="button"
+                                    className={styles.copilotNoteBtn}
+                                    onClick={() => prefillCopilotWithTargets({
+                                        targets: [buildNoteTarget({
+                                            projectId,
+                                            noteId: selectedNote.id,
+                                            title: selectedNote.title,
+                                            content: selectedNote.content as JSONContent,
+                                            tags: selectedNote.tags,
+                                            linkedStudyId: selectedNote.linkedStudyId,
+                                            linkedSection: selectedNote.linkedSection,
+                                        })],
+                                        prompt: "Use this note as context. Summarize the key takeaways and suggest the next best action for the protocol, draft, or ledger.",
+                                        page: "notes",
+                                        section: selectedNote.title || "Untitled note",
+                                    })}
+                                >
+                                    <span className="material-icons-round">chat</span>
+                                    Use in Copilot
+                                </button>
                             )}
                         </div>
 
