@@ -1,6 +1,7 @@
 # Chat Unification Burn-In Runbook
 
 This runbook operationalizes `U1.6` from `docs/plans/plan-chat-unification-v2.md`.
+It is the only active U1.6 burn-in operational source.
 Use it before opening `U3` popup migration.
 
 ## Purpose
@@ -11,14 +12,23 @@ Provide a deterministic, auditable process for chat-unification canary validatio
 
 1. Shared chat runtime phases (`U1.0`-`U1.5`) are merged to `main`.
 2. Telemetry migration for `ChatUnificationMetric` is applied in the target environment.
-3. Cohort scope is defined:
+3. Burn-in metric contract is frozen at `CHAT_UNIFICATION_METRIC_VERSION=3` for the entire canary window.
+4. Cohort scope is defined:
    - `workspaceIds`, and/or
    - `userIds`.
-4. `second -> main` promotion is complete and production deployment evidence is captured:
+5. The release PR or merge to `main` is complete and production deployment evidence is captured:
    - deployed `main` commit SHA
    - production deployment id/URL
-5. Sign-off owner and backup reviewer are assigned.
-6. One canonical `CANARY_SINCE_UTC` timestamp is captured at flag enable time immediately after production deploy/enable.
+6. Sign-off owner and backup reviewer are assigned.
+7. One canonical `CANARY_SINCE_UTC` timestamp is captured at flag enable time immediately after production deploy/enable.
+
+## Required Inputs
+
+- `CANARY_SINCE_UTC`
+- `CANARY_DEPLOY_SHA`
+- `CANARY_DEPLOYMENT_URL`
+- `CANARY_WORKSPACE_IDS` and/or `CANARY_USER_IDS`
+- sign-off owner + backup reviewer
 
 ## Environment Matrix
 
@@ -60,6 +70,7 @@ Run (short-window allowed only for pre-day-7 checks):
 ```bash
 cd next-app && npx tsx scripts/validate-chat-unification-burn-in.ts \
   --since=<CANARY_SINCE_UTC> \
+  --metricVersion=3 \
   --workspaceIds=<ws1,ws2> \
   --userIds=<u1,u2> \
   --allowShortWindow=1 \
@@ -82,6 +93,7 @@ Run once daily:
 ```bash
 cd next-app && npx tsx scripts/validate-chat-unification-burn-in.ts \
   --since=<CANARY_SINCE_UTC> \
+  --metricVersion=3 \
   --workspaceIds=<ws1,ws2> \
   --userIds=<u1,u2> \
   --allowShortWindow=1 \
@@ -103,6 +115,7 @@ Run without short-window override. Paste terminal output into a report file crea
 ```bash
 cd next-app && npx tsx scripts/validate-chat-unification-burn-in.ts \
   --since=<CANARY_SINCE_UTC> \
+  --metricVersion=3 \
   --workspaceIds=<ws1,ws2> \
   --userIds=<u1,u2> \
   --requireScopedCohort=1 \
@@ -119,6 +132,12 @@ Pass criteria:
 5. Burn-in window is v2-clean for `retry_model_continuity` (mixed v1+v2 window is a fail).
 6. Ask-user mismatch: `= 0`, with denominator `>= 30` overall and `>= 10` per surface.
 7. Stuck-running violations: `= 0`.
+
+## Metric Integrity Rules
+
+1. `retry_model_continuity` is authoritative only from server-joined v2 intent/completion pairs inside `metricVersion=3` data.
+2. Any metric schema or metric-version change during the active burn-in window invalidates the window.
+3. If invalidated, restart burn-in with a new production deploy and a new `CANARY_SINCE_UTC`.
 
 ## Failure Handling
 

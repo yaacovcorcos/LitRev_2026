@@ -189,7 +189,7 @@ Canonical implementation plans:
 - Architecture and Infrastructure: `docs/plans/plan-backend.md`
 - Agentic Systems and AI Orchestration: `docs/plans/plan-agentic.md`
 - Memory and Retrieval: `docs/plans/plan-memory.md`
-- UI and UX: `docs/plans/plan-ui-ux.md`
+- UI and UX: `docs/plans/plan-ux-ui.md`
 - Prompts and Extraction Rules: `docs/plans/plan-prompts.md`
 
 Index and governance: `docs/plans/README.md`.

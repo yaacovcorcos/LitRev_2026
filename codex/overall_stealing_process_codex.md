@@ -2,7 +2,7 @@
 
 Date: February 25, 2026  
 Owner: Codex  
-Status: Canonical merged plan (supersedes all per-repo analysis docs)  
+Status: Historical merged steal-plan reference; active execution truth now lives in `docs/plans/*.md`
 Scope: What to steal from OpenClaw + OpenCode for LitRev 2026 (`next-app/`)  
 
 ---
@@ -13,8 +13,9 @@ Scope: What to steal from OpenClaw + OpenCode for LitRev 2026 (`next-app/`)
 2. `openclaw_analysis_report_gemini.md`
 3. `opencode_analysis_report_claude.md`
 4. `opencode_analysis_report_gemini.md`
-5. `overall_stealing_process_claude.md`
-6. This document (updated Codex overall plan)
+5. This document (updated Codex overall plan)
+
+Claude's unique synthesis/disagreement notes were merged into this document before archival of the standalone Claude file.
 
 Also included:
 1. Vercel-inspired spike summary (stream/runtime refactor + run lock + typed artifact actions)
