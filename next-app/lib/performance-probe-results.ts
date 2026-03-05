@@ -20,6 +20,14 @@ type ProbeArtifactArgs = {
   samples: ProbeSample[];
 };
 
+type MetricBuckets = Record<ProbeMetricName, number[]>;
+
+type RouteProfileAggregate = {
+  routeTemplate: PerformanceRouteTemplate;
+  profile: ProbeProfile;
+  metrics: MetricBuckets;
+};
+
 function sortNumbers(values: number[]): number[] {
   return [...values].sort((left, right) => left - right);
 }
@@ -29,6 +37,15 @@ function roundMetric(metricName: ProbeMetricName, value: number): number {
     return Number(value.toFixed(3));
   }
   return Math.round(value);
+}
+
+function createMetricBuckets(): MetricBuckets {
+  return {
+    LCP: [],
+    INP: [],
+    CLS: [],
+    TTFB: [],
+  };
 }
 
 export function percentile75(values: number[]): number {
@@ -49,41 +66,41 @@ export function buildProbeResultsArtifact({
   samples,
 }: ProbeArtifactArgs) {
   const routes: Record<string, Record<string, { samples: number; p75: Record<ProbeMetricName, number> }>> = {};
+  const routeProfileSampleCounts: Record<string, number> = {};
+  const aggregates = new Map<string, RouteProfileAggregate>();
 
   for (const sample of samples) {
-    if (!routes[sample.routeTemplate]) {
-      routes[sample.routeTemplate] = {};
-    }
+    const key = `${sample.routeTemplate}:${sample.profile}`;
+    routeProfileSampleCounts[key] = (routeProfileSampleCounts[key] ?? 0) + 1;
 
-    const profileBucket = routes[sample.routeTemplate]![sample.profile] ?? {
-      samples: 0,
-      p75: {
-        LCP: 0,
-        INP: 0,
-        CLS: 0,
-        TTFB: 0,
-      },
+    const aggregate = aggregates.get(key) ?? {
+      routeTemplate: sample.routeTemplate,
+      profile: sample.profile,
+      metrics: createMetricBuckets(),
     };
 
-    routes[sample.routeTemplate]![sample.profile] = profileBucket;
+    for (const metricName of PROBE_METRIC_NAMES) {
+      aggregate.metrics[metricName].push(sample.metrics[metricName]);
+    }
+
+    aggregates.set(key, aggregate);
   }
 
-  for (const [routeTemplate, profileBuckets] of Object.entries(routes)) {
-    for (const profile of Object.keys(profileBuckets)) {
-      const matchingSamples = samples.filter(
-        (sample) => sample.routeTemplate === routeTemplate && sample.profile === profile,
-      );
-
-      profileBuckets[profile] = {
-        samples: matchingSamples.length,
-        p75: {
-          LCP: roundMetric("LCP", percentile75(matchingSamples.map((sample) => sample.metrics.LCP))),
-          INP: roundMetric("INP", percentile75(matchingSamples.map((sample) => sample.metrics.INP))),
-          CLS: roundMetric("CLS", percentile75(matchingSamples.map((sample) => sample.metrics.CLS))),
-          TTFB: roundMetric("TTFB", percentile75(matchingSamples.map((sample) => sample.metrics.TTFB))),
-        },
-      };
+  for (const aggregate of aggregates.values()) {
+    if (!routes[aggregate.routeTemplate]) {
+      routes[aggregate.routeTemplate] = {};
     }
+
+    const routeProfileKey = `${aggregate.routeTemplate}:${aggregate.profile}`;
+    routes[aggregate.routeTemplate]![aggregate.profile] = {
+      samples: routeProfileSampleCounts[routeProfileKey] ?? 0,
+      p75: {
+        LCP: roundMetric("LCP", percentile75(aggregate.metrics.LCP)),
+        INP: roundMetric("INP", percentile75(aggregate.metrics.INP)),
+        CLS: roundMetric("CLS", percentile75(aggregate.metrics.CLS)),
+        TTFB: roundMetric("TTFB", percentile75(aggregate.metrics.TTFB)),
+      },
+    };
   }
 
   return {
@@ -93,11 +110,7 @@ export function buildProbeResultsArtifact({
     runId,
     metadata: {
       sampleCount: samples.length,
-      routeProfileSampleCounts: samples.reduce<Record<string, number>>((acc, sample) => {
-        const key = `${sample.routeTemplate}:${sample.profile}`;
-        acc[key] = (acc[key] ?? 0) + 1;
-        return acc;
-      }, {}),
+      routeProfileSampleCounts,
     },
     routes,
   };

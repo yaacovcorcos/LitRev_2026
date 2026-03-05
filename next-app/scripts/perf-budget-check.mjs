@@ -6,6 +6,12 @@ import { fileURLToPath } from "node:url";
 const DEFAULT_BUDGET_PATH = "../output/performance/baseline/budget-thresholds.json";
 const DEFAULT_BASELINE_PATH = "../output/performance/baseline/baseline-latest.json";
 const DEFAULT_RESULTS_PATH = "../output/performance/results/results-latest.json";
+const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = path.resolve(SCRIPT_DIR, "..", "..");
+const DEFAULT_ARTIFACT_ROOTS = {
+  baselineRoot: path.resolve(REPO_ROOT, "output", "performance", "baseline"),
+  resultsRoot: path.resolve(REPO_ROOT, "output", "performance", "results"),
+};
 
 export function parseArgs(argv, cwd = process.cwd()) {
   const args = {
@@ -38,6 +44,20 @@ function canonicalizeFilePath(filePath) {
   }
 }
 
+function isWithinRoot(filePath, allowedRoot) {
+  const normalizedPath = path.resolve(filePath);
+  const normalizedRoot = path.resolve(allowedRoot);
+  return normalizedPath === normalizedRoot || normalizedPath.startsWith(`${normalizedRoot}${path.sep}`);
+}
+
+function validateArtifactLocation(filePath, label, allowedRoots) {
+  if (allowedRoots.some((allowedRoot) => isWithinRoot(filePath, allowedRoot))) {
+    return;
+  }
+
+  throw new Error(`[invalid-${label}-path] ${filePath}: must stay within ${allowedRoots.join(" or ")}`);
+}
+
 function readJson(filePath, label) {
   try {
     const raw = fs.readFileSync(filePath, "utf8");
@@ -57,7 +77,17 @@ function readJson(filePath, label) {
   }
 }
 
-export function validateArtifactPaths({ baseline, results }) {
+export function validateArtifactPaths(
+  {
+    budget,
+    baseline,
+    results,
+  },
+  artifactRoots = DEFAULT_ARTIFACT_ROOTS,
+) {
+  validateArtifactLocation(budget, "budget", [artifactRoots.baselineRoot]);
+  validateArtifactLocation(baseline, "baseline", [artifactRoots.baselineRoot, artifactRoots.resultsRoot]);
+  validateArtifactLocation(results, "results", [artifactRoots.baselineRoot, artifactRoots.resultsRoot]);
   if (canonicalizeFilePath(baseline) === canonicalizeFilePath(results)) {
     throw new Error(`[same-path] baseline and results resolve to the same file: ${baseline}`);
   }
@@ -139,12 +169,13 @@ export function runBudgetCheck(argv = process.argv, options = {}) {
     cwd = process.cwd(),
     stdout = console.log,
     stderr = console.error,
+    artifactRoots = DEFAULT_ARTIFACT_ROOTS,
   } = options;
 
   let args;
   try {
     args = parseArgs(argv, cwd);
-    validateArtifactPaths(args);
+    validateArtifactPaths(args, artifactRoots);
   } catch (error) {
     stderr(`[perf-budget-check] ${error instanceof Error ? error.message : String(error)}`);
     return 1;

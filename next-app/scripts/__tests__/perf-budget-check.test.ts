@@ -71,6 +71,13 @@ function createLogger() {
   };
 }
 
+function makeArtifactRoots(root: string) {
+  return {
+    baselineRoot: root,
+    resultsRoot: root,
+  };
+}
+
 afterEach(() => {
   while (tempDirs.length > 0) {
     const dir = tempDirs.pop();
@@ -101,7 +108,7 @@ describe("perf-budget-check", () => {
         "--results",
         "./baseline.json",
       ],
-      { cwd, stdout: logger.stdout, stderr: logger.stderr },
+      { cwd, stdout: logger.stdout, stderr: logger.stderr, artifactRoots: makeArtifactRoots(cwd) },
     );
 
     expect(exitCode).toBe(1);
@@ -130,7 +137,7 @@ describe("perf-budget-check", () => {
         "--results",
         "./results.json",
       ],
-      { cwd, stdout: logger.stdout, stderr: logger.stderr },
+      { cwd, stdout: logger.stdout, stderr: logger.stderr, artifactRoots: makeArtifactRoots(cwd) },
     );
 
     expect(exitCode).toBe(1);
@@ -159,7 +166,7 @@ describe("perf-budget-check", () => {
         "--results",
         "./results.json",
       ],
-      { cwd, stdout: logger.stdout, stderr: logger.stderr },
+      { cwd, stdout: logger.stdout, stderr: logger.stderr, artifactRoots: makeArtifactRoots(cwd) },
     );
 
     expect(exitCode).toBe(1);
@@ -190,7 +197,7 @@ describe("perf-budget-check", () => {
         "--results",
         "./results.json",
       ],
-      { cwd, stdout: logger.stdout, stderr: logger.stderr },
+      { cwd, stdout: logger.stdout, stderr: logger.stderr, artifactRoots: makeArtifactRoots(cwd) },
     );
 
     expect(exitCode).toBe(0);
@@ -221,11 +228,36 @@ describe("perf-budget-check", () => {
         "--results",
         "./results.json",
       ],
-      { cwd, stdout: logger.stdout, stderr: logger.stderr },
+      { cwd, stdout: logger.stdout, stderr: logger.stderr, artifactRoots: makeArtifactRoots(cwd) },
     );
 
     expect(exitCode).toBe(1);
     expect(logger.lines).toContain("stdout:[perf-budget-check] violations:");
     expect(logger.lines.some((line) => line.includes("[regression] /project/[id] desktop-normal LCP"))).toBe(true);
+  });
+
+  it("fails when the budget path escapes the allowed artifact roots", () => {
+    const cwd = createTempDir();
+    const outsideRoot = createTempDir();
+    const logger = createLogger();
+
+    writeJson(path.join(outsideRoot, "budget.json"), makeBudget());
+
+    const exitCode = runBudgetCheck(
+      [
+        "node",
+        "scripts/perf-budget-check.mjs",
+        "--budget",
+        `${outsideRoot}/budget.json`,
+        "--baseline",
+        "./baseline.json",
+        "--results",
+        "./results.json",
+      ],
+      { cwd, stdout: logger.stdout, stderr: logger.stderr, artifactRoots: makeArtifactRoots(cwd) },
+    );
+
+    expect(exitCode).toBe(1);
+    expect(logger.lines.some((line) => line.includes("[invalid-budget-path]"))).toBe(true);
   });
 });

@@ -229,6 +229,22 @@ describe("generatePlan", () => {
         expect(plan).not.toBeNull();
         expect(plan!.steps.map((step) => step.toolName)).toEqual(["extract_pdf", "update_note"]);
     });
+
+    it("does not treat ledger saves of search results as draft updates", async () => {
+        const prompt = "Save these search results to the ledger.";
+        expect(
+            detectMultiStepWorkflow(prompt, ["add_to_ledger", "update_note"]),
+        ).toBe(false);
+
+        const plan = await generatePlan(prompt, {
+            projectId: "test",
+            hasProtocol: true,
+            studyCount: 2,
+        });
+        expect(plan).not.toBeNull();
+        expect(plan!.steps.some((step) => step.toolName === "add_to_ledger")).toBe(true);
+        expect(plan!.steps.some((step) => step.toolName === "update_note")).toBe(false);
+    });
 });
 
 // Helper: maps a keyword to the toolName the heuristic planner would produce
