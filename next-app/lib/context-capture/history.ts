@@ -55,7 +55,7 @@ function sanitizeTargetForHistory(target: ContextCaptureTarget): ContextCaptureT
             return {
                 ...target,
                 preview: sanitizeContextCaptureText(target.preview, 80),
-                studies: target.studies.slice(0, 3).map((study) => ({
+                studies: target.studies.map((study) => ({
                     studyId: study.studyId,
                     title: study.title,
                     authors: study.authors,
@@ -73,7 +73,7 @@ function sanitizeTargetForHistory(target: ContextCaptureTarget): ContextCaptureT
         case "protocol_field":
             return {
                 ...target,
-                value: "",
+                value: sanitizeContextCaptureText(target.value, 240),
                 preview: sanitizeContextCaptureText(target.preview, 80),
             };
         case "protocol_criterion":
