@@ -10,14 +10,17 @@ import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "reac
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import * as Popover from "@radix-ui/react-popover";
 import type { CopilotPage, ChoiceOption, UserInputRequest } from "@/types/ai";
+import type { ContextCaptureHistoryEntry, ContextCaptureTarget } from "@/types/context-capture";
 import { USER_SELECTABLE_MODELS, type SelectableModelId } from "@/lib/ai/config";
 import { useVoiceInput } from "@/hooks/useVoiceInput";
 import { listProjectFilesAction } from "@/app/actions/files";
 import { routeToAgent, type RouterPage } from "@/lib/agent/router";
 import { getUserSelectableAgentModes } from "@/lib/agent/feature-flags";
+import { recordContextCaptureMetric } from "@/lib/context-capture/telemetry";
 import { AGENT_MODE_META, type AgentMode, type AutonomyPreset } from "@/types/agent";
 import type { FileAsset } from "@/types/files";
 import type { RetryModelExpectation } from "@/types/chat-unification";
+import { getContextTargetKey } from "@/lib/context-capture/targets";
 import { UserInputCard } from "../artifacts/UserInputCard";
 import styles from "./CopilotInput.module.css";
 
@@ -47,6 +50,7 @@ export type CopilotInputCoreProps = {
         agentMode?: AgentMode,
         studyId?: string,
         retryModelExpectation?: RetryModelExpectation,
+        contextTargets?: ContextCaptureTarget[],
     ) => void | Promise<void>;
     cancelStream: () => void;
 
@@ -56,6 +60,11 @@ export type CopilotInputCoreProps = {
     attachExistingFile?: (fileAssetId: string) => void | Promise<void>;
     clearAttachment?: () => void;
     projectId?: string;
+    attachedContextTargets?: ContextCaptureTarget[];
+    recentContextHistory?: ContextCaptureHistoryEntry[];
+    removeAttachedContextTarget?: (targetKey: string) => void;
+    clearAttachedContextTargets?: () => void;
+    addAttachedContextTargets?: (targets: ContextCaptureTarget[]) => void;
     hasProtocol?: boolean;
 
     autonomyPreset?: AutonomyPreset;
@@ -103,6 +112,11 @@ export function CopilotInputCore({
     attachExistingFile,
     clearAttachment,
     projectId,
+    attachedContextTargets = [],
+    recentContextHistory = [],
+    removeAttachedContextTarget,
+    clearAttachedContextTargets,
+    addAttachedContextTargets,
     hasProtocol,
     autonomyPreset,
     updateAutonomyPreset,
@@ -289,11 +303,26 @@ export function CopilotInputCore({
         const text = input.trim();
         if (!text && !pendingAttachment) return;
         sendLockRef.current = true;
-        sendMessage(text, page, section, selectedModel, effectiveMode, studyId);
+        const nextContextTargets = attachedContextTargets.length > 0 ? attachedContextTargets : undefined;
+        sendMessage(text, page, section, selectedModel, effectiveMode, studyId, undefined, nextContextTargets);
+        if (nextContextTargets?.length) {
+            clearAttachedContextTargets?.();
+        }
         setInput("");
         setModeOverride(null);
         requestAnimationFrame(() => textareaRef.current?.focus());
-    }, [input, page, section, studyId, sendMessage, selectedModel, pendingAttachment, effectiveMode]);
+    }, [
+        input,
+        page,
+        section,
+        studyId,
+        sendMessage,
+        selectedModel,
+        pendingAttachment,
+        effectiveMode,
+        attachedContextTargets,
+        clearAttachedContextTargets,
+    ]);
 
     const handleStop = useCallback(() => {
         if (voiceState === "recording" || voiceState === "transcribing") {
@@ -431,6 +460,71 @@ export function CopilotInputCore({
                                 </button>
                             </>
                         ) : null}
+                    </div>
+                )}
+
+                {attachedContextTargets.length > 0 && (
+                    <div className={styles.contextReceipts} role="group" aria-label="Attached context">
+                        {attachedContextTargets.map((target) => {
+                            const targetKey = getContextTargetKey(target);
+                            return (
+                                <div key={targetKey} className={styles.contextReceipt}>
+                                    <span className={`material-icons-round ${styles.contextReceiptIcon}`}>{target.icon}</span>
+                                    <span className={styles.contextReceiptLabel}>{target.label}</span>
+                                    {target.preview ? (
+                                        <span className={styles.contextReceiptPreview}>{target.preview}</span>
+                                    ) : null}
+                                    <button
+                                        type="button"
+                                        className={styles.contextReceiptRemove}
+                                        onClick={() => {
+                                            removeAttachedContextTarget?.(targetKey);
+                                            recordContextCaptureMetric({
+                                                type: "context_capture_removed",
+                                                projectId: target.projectId,
+                                                payload: {
+                                                    surface: target.sourceSurface ?? page,
+                                                    targetKinds: [target.kind],
+                                                    actionId: null,
+                                                    launchMode: "prefill",
+                                                },
+                                            });
+                                        }}
+                                        aria-label={`Remove ${target.label}`}
+                                    >
+                                        <span className="material-icons-round">close</span>
+                                    </button>
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
+
+                {recentContextHistory.length > 0 && attachedContextTargets.length === 0 && !isLoading && (
+                    <div className={styles.contextHistory} role="group" aria-label="Recent context">
+                        {recentContextHistory.map((entry) => (
+                            <button
+                                key={entry.id}
+                                type="button"
+                                className={styles.contextHistoryChip}
+                                onClick={() => {
+                                    addAttachedContextTargets?.([entry.target]);
+                                    recordContextCaptureMetric({
+                                        type: "context_capture_reused",
+                                        projectId: entry.target.projectId,
+                                        payload: {
+                                            surface: entry.target.sourceSurface ?? page,
+                                            targetKinds: [entry.target.kind],
+                                            actionId: null,
+                                            launchMode: "prefill",
+                                        },
+                                    });
+                                }}
+                            >
+                                <span className="material-icons-round">{entry.target.icon}</span>
+                                <span>{entry.target.label}</span>
+                            </button>
+                        ))}
                     </div>
                 )}
 

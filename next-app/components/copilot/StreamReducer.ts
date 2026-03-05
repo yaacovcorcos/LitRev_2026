@@ -7,7 +7,7 @@
 
 import type { TimelineItem } from "@/types/timeline";
 import type { CopilotMessage } from "@/lib/projectCopilotStorage";
-import type { AIStreamChunk } from "@/types/ai";
+import type { AIStreamChunk, ConversationContextAttachment, ConversationMessageAttachment } from "@/types/ai";
 import type { ArtifactType, ArtifactStatus } from "@/types/artifacts";
 
 const STREAM_ERROR_PREFIX = "Sorry, I encountered an error:";
@@ -25,6 +25,12 @@ function extractRecoveryErrorMessage(text: string): string | null {
         return trimmed.slice(PLAN_ERROR_PREFIX.length).trim();
     }
     return null;
+}
+
+function isContextAttachment(
+    attachment: ConversationMessageAttachment,
+): attachment is ConversationContextAttachment {
+    return "type" in attachment && attachment.type === "context_capture";
 }
 
 /**
@@ -71,12 +77,16 @@ export function messagesToTimeline(messages: CopilotMessage[]): TimelineItem[] {
                 type: "user_message" as const,
                 id: msg.id,
                 content: msg.text,
-                attachments: msg.attachments?.map((att) => ({
-                    fileAssetId: att.fileAssetId,
-                    filename: att.filename,
-                    mimeType: att.mimeType,
-                    size: att.size,
-                })),
+                attachments: msg.attachments?.map((att) => (
+                    isContextAttachment(att)
+                        ? att
+                        : {
+                            fileAssetId: att.fileAssetId,
+                            filename: att.filename,
+                            mimeType: att.mimeType,
+                            size: att.size,
+                        }
+                )),
                 createdAt: msg.createdAt,
             };
         }

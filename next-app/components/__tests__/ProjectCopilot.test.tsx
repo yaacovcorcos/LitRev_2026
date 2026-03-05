@@ -82,6 +82,8 @@ describe("ProjectCopilot suggestion wiring", () => {
       summarizeAndRefresh: vi.fn(),
       isSummarizing: false,
       setShowAutonomySettings: vi.fn(),
+      prefillCommand: null,
+      consumePrefillCommand: vi.fn(),
     });
   });
 

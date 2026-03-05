@@ -22,6 +22,9 @@ Domain-specific execution plans remain canonical for their domains:
   - `ResizableSplitter` (+ a11y tests)
   - `ErrorFallback`
   - shared confirmation dialog path for destructive actions.
+- Shared scoped-context UI is active:
+  - `ProjectCopilot` / `CopilotInputCore` now render typed context receipts and recent-context history chips owned by `docs/plans/plan-context-capture.md`.
+  - `PopupChat` shows compact context previews, and draft desktop quick actions are gated behind the dedicated context-toolbar flag rather than leaking into mobile flows.
 - Async feedback architecture is active:
   - `useAsyncAction` + `NotificationProvider` + toast live region.
 - Token system is active in `styles/tokens.css` and style linting is configured in `next-app/.stylelintrc.cjs` and `next-app/package.json` (`lint:styles`).
@@ -72,7 +75,6 @@ Use this mapping for old PRs/comments referencing CLU IDs.
 - [ ] `CUX-027` Add explicit tool receipt blocks per assistant turn.
 - [ ] `CUX-028` Add inline approve/apply/undo artifact controls with safe confirmations.
 - [ ] `CUX-029` Add autonomy contract badge in composer.
-- [ ] `CUX-030` Add context chips above composer (`Protocol`, `Ledger`, etc.).
 - [ ] `CUX-031` Add study details side panel from ledger links.
 - [ ] `CUX-032` Add import-study duplicate warning UX.
 
@@ -94,6 +96,7 @@ Use this mapping for old PRs/comments referencing CLU IDs.
 - Guided setup/onboarding UX execution: `docs/plans/plan-guided-setup.md`.
 - Draft citation-authoring UX program: tracked under domain-specific draft/protocol plans when activated.
 - Chat runtime unification and rollout gates: `docs/plans/plan-chat-unification-v2.md` (`CUX-D01` dependency).
+- Context capture and scoped AI entrypoints: `docs/plans/plan-context-capture.md` (owns composer context receipts/chips and cross-surface context reuse).
 - Thinking/tool-lane UX deltas: `docs/plans/plan-thinking-v2.md`.
 - Performance budgets and enforcement: `docs/plans/plan-speed-performance.md`.
 - Reliability blocker baselines and A1 patch targeting: `docs/plans/reliability-a0-brief.md`.

@@ -39,6 +39,8 @@ import { DemoGuideCard } from "@/components/project/DemoGuideCard";
 import { StudyRow } from "./StudyRow";
 import { LedgerStatsBar } from "./LedgerStatsBar";
 import { isMobileLedgerV2Enabled } from "@/lib/mobile/feature-flags";
+import { useContextCaptureActions } from "@/hooks/useContextCaptureActions";
+import { buildStudySetTarget } from "@/lib/context-capture/targets";
 import {
   useLedgerActions,
   type LedgerConfirmDialogState,
@@ -54,6 +56,7 @@ type CriteriaFilter =
 export default function LedgerPage() {
   const { id } = useParams<{ id: string }>();
   const mobileLedgerV2Enabled = isMobileLedgerV2Enabled();
+  const { captureEnabled, runAction, sendToCopilot } = useContextCaptureActions();
   const { getProjectById, isLoadingProjects, projectsError } = useProjects();
   const { isEmbeddedInProjectShell } = useProjectShell();
   const {
@@ -188,6 +191,30 @@ export default function LedgerPage() {
       }
     });
   }, [studies, criteriaFilter, studyCriteriaMap, hasProtocolCriteria]);
+
+  const selectedStudies = useMemo(
+    () => validSelectedIds
+      .map((studyId) => studies.find((study) => study.id === studyId))
+      .filter((study): study is Study => Boolean(study)),
+    [studies, validSelectedIds],
+  );
+
+  const canUseStudySetActions = captureEnabled && validSelectedIds.length >= 2 && validSelectedIds.length <= 6;
+  const studySetTarget = canUseStudySetActions
+    ? buildStudySetTarget({
+      projectId: id,
+      studies: selectedStudies.map((study) => ({
+        studyId: study.id,
+        title: study.title,
+        authors: study.authors,
+        year: study.year,
+        abstract: study.details?.abstract,
+        journal: study.details?.journal,
+        quality: study.quality,
+        aiSummary: study.details?.aiSummary,
+      })),
+    })
+    : null;
 
   const loadStudyFiles = useCallback(
     async (studyId: string) => {
@@ -376,6 +403,40 @@ export default function LedgerPage() {
               <span className="material-icons-round">delete</span>
               Delete {validSelectedIds.length}
             </button>
+          ) : null}
+          {canUseStudySetActions && studySetTarget ? (
+            <>
+              <button
+                className="header-btn"
+                onClick={() => runAction({
+                  actionId: "compare_selected_studies",
+                  targets: [studySetTarget],
+                  prompt: "Compare these selected studies and highlight the main agreements, disagreements, and screening implications.",
+                  page: "ledger",
+                  section: "Selected studies",
+                })}
+              >
+                <span className="material-icons-round">compare_arrows</span>
+                Compare {validSelectedIds.length}
+              </button>
+              <button
+                className="header-btn"
+                onClick={() => sendToCopilot({
+                  targets: [studySetTarget],
+                  prompt: "Review these selected studies and propose a concise screening rationale that explains the main similarities, differences, and keep/exclude signals.",
+                  page: "ledger",
+                  section: "Selected studies",
+                })}
+              >
+                <span className="material-icons-round">fact_check</span>
+                Screening Rationale
+              </button>
+            </>
+          ) : null}
+          {captureEnabled && isSelectMode && validSelectedIds.length > 6 ? (
+            <span className={styles.selectionHint}>
+              Compare up to 6 studies at a time.
+            </span>
           ) : null}
           <button className="header-btn" onClick={handleQuickAddStudy}>
             <span className="material-icons-round">add</span>

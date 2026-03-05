@@ -27,6 +27,8 @@ import {
     deriveChatUnificationStreamPhase,
     deriveChatUnificationSurface,
 } from "@/lib/server/ai/chat-unification-runtime-metrics";
+import type { ContextCaptureTarget } from "@/types/context-capture";
+import { buildContextCapturePromptBlock } from "@/lib/server/ai/context-capture";
 
 // Force Node runtime for Prisma compatibility
 export const runtime = "nodejs";
@@ -93,9 +95,34 @@ export async function POST(request: NextRequest) {
             }
         }
 
+        const contextTargets = Array.isArray(options?.contextTargets)
+            ? options.contextTargets as ContextCaptureTarget[]
+            : [];
+
+        if (contextTargets.length > 0) {
+            if (!options?.projectId) {
+                return new Response(
+                    JSON.stringify({ error: "Context capture targets require a project scope" }),
+                    { status: 400, headers: { "Content-Type": "application/json" } },
+                );
+            }
+            const hasMismatch = contextTargets.some((target) => target.projectId !== options.projectId);
+            if (hasMismatch) {
+                return new Response(
+                    JSON.stringify({ error: "Context capture target project mismatch" }),
+                    { status: 400, headers: { "Content-Type": "application/json" } },
+                );
+            }
+        }
+
+        const contextCapturePrompt = contextTargets.length > 0
+            ? buildContextCapturePromptBlock(contextTargets)
+            : "";
+
         const service = getAIService();
         const scopedOptions = {
             ...options,
+            additionalContext: [options?.additionalContext, contextCapturePrompt].filter(Boolean).join("\n\n") || undefined,
             userId: authResult.context.userId,
             workspaceId: authResult.context.workspaceId,
         };

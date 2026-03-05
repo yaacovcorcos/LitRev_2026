@@ -15,7 +15,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { markdownComponents } from "../markdown/CodeBlock";
 import type { CopilotMessage } from "@/lib/projectCopilotStorage";
-import type { TimelineItem, TimelineArtifact } from "@/types/timeline";
+import type { TimelineAttachment, TimelineArtifact, TimelineContextAttachment, TimelineItem } from "@/types/timeline";
 import type { CopilotPage, ReasoningMode } from "@/types/ai";
 import type { AgentMode } from "@/types/agent";
 import type {
@@ -49,6 +49,7 @@ import { addMentionedStudyAction } from "@/app/actions/ledger";
 import { extractMentionedStudies, stripMentionedStudiesMarkup, type MentionedStudy } from "@/lib/ai/mentioned-studies";
 import { isChatStudyMentionsEnabled } from "@/lib/agent/feature-flags";
 import { getReasoningSummaryPreview } from "@/lib/ai/reasoning-visibility";
+import { getContextTargetKey } from "@/lib/context-capture/targets";
 import styles from "./TimelineMessages.module.css";
 import artifactStyles from "@/styles/artifacts.module.css";
 import markdownStyles from "@/styles/markdown.module.css";
@@ -181,6 +182,12 @@ function stripAssistantMarkupForDisplay(content: string): string {
         .trimEnd();
 }
 
+function isContextTimelineAttachment(
+    attachment: TimelineAttachment,
+): attachment is TimelineContextAttachment {
+    return "type" in attachment && attachment.type === "context_capture";
+}
+
 const UserMessageRow = memo(function UserMessageRow({ item, onCopy, onBranchFromMessage }: UserMessageRowProps) {
     return (
         <div className={`${styles.chatMsg} ${styles.chatMsgUser}`} role="article" aria-label="You">
@@ -189,15 +196,25 @@ const UserMessageRow = memo(function UserMessageRow({ item, onCopy, onBranchFrom
                     {item.attachments && item.attachments.length > 0 && (
                         <div className={styles.messageAttachments}>
                             {item.attachments.map((att) => (
-                                <div key={att.fileAssetId ?? att.filename} className={styles.messageAttachment}>
-                                    <span className="material-icons-round" style={{ fontSize: 14 }}>description</span>
-                                    <span className={styles.messageAttachmentName}>{att.filename}</span>
-                                    <span className={styles.messageAttachmentSize}>
-                                        {att.size >= 1024 * 1024
-                                            ? `${(att.size / (1024 * 1024)).toFixed(1)} MB`
-                                            : `${Math.round(att.size / 1024)} KB`}
-                                    </span>
-                                </div>
+                                isContextTimelineAttachment(att) ? (
+                                    <div key={getContextTargetKey(att.target)} className={`${styles.messageAttachment} ${styles.contextAttachment}`}>
+                                        <span className="material-icons-round" style={{ fontSize: 14 }}>{att.target.icon}</span>
+                                        <span className={styles.messageAttachmentName}>{att.target.label}</span>
+                                        {att.target.preview ? (
+                                            <span className={styles.contextAttachmentPreview}>{att.target.preview}</span>
+                                        ) : null}
+                                    </div>
+                                ) : (
+                                    <div key={att.fileAssetId ?? att.filename} className={styles.messageAttachment}>
+                                        <span className="material-icons-round" style={{ fontSize: 14 }}>description</span>
+                                        <span className={styles.messageAttachmentName}>{att.filename}</span>
+                                        <span className={styles.messageAttachmentSize}>
+                                            {att.size >= 1024 * 1024
+                                                ? `${(att.size / (1024 * 1024)).toFixed(1)} MB`
+                                                : `${Math.round(att.size / 1024)} KB`}
+                                        </span>
+                                    </div>
+                                )
                             ))}
                         </div>
                     )}

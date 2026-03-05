@@ -147,6 +147,13 @@
     min-width: 0;
 }
 
+.editableListActions {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
 .editableListText {
     cursor: text;
     line-height: 1.5;

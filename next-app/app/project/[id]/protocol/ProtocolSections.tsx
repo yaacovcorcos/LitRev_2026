@@ -3,11 +3,18 @@
 import { useCallback } from "react";
 import { useProtocol } from "@/contexts/ProtocolContext";
 import { usePopupChat } from "@/contexts/PopupChatContext";
+import { useContextCaptureActions } from "@/hooks/useContextCaptureActions";
 import { EditableText } from "@/components/EditableText";
 import { EditableTextArea } from "@/components/EditableTextArea";
 import { EditableList } from "@/components/EditableList";
 import { EditableChips } from "@/components/EditableChips";
 import { DemoGuideCard } from "@/components/project/DemoGuideCard";
+import { getContextCaptureAction } from "@/lib/context-capture/actions";
+import {
+    buildProtocolCriterionTarget,
+    buildProtocolFieldTarget,
+    buildProtocolSectionTarget,
+} from "@/lib/context-capture/targets";
 import type { ProtocolSection } from "@/types/protocol";
 import styles from "./protocol.module.css";
 
@@ -38,6 +45,9 @@ export function ProtocolSections({ projectId }: Props) {
     } = useProtocol();
 
     const { openPopupChat } = usePopupChat();
+    const { captureEnabled, openPopupForTarget, prefillCopilotWithTargets } = useContextCaptureActions();
+    const refineFieldPrompt = getContextCaptureAction("refine_protocol_field").defaultPrompt
+        ?? "Refine this protocol field so it is clearer and easier to apply consistently.";
 
     const createSectionHandlers = useCallback(
         (section: ProtocolSection) => ({
@@ -49,6 +59,85 @@ export function ProtocolSections({ projectId }: Props) {
             },
         }),
         [setActiveSection],
+    );
+
+    const handleSectionAskAi = useCallback((args: {
+        section: string;
+        sectionKey?: string;
+        currentContent: string;
+    }) => {
+        if (captureEnabled) {
+            openPopupForTarget(buildProtocolSectionTarget({
+                projectId,
+                section: args.section,
+                sectionKey: args.sectionKey,
+                currentContent: args.currentContent,
+            }));
+            return;
+        }
+
+        openPopupChat({
+            type: "protocol_section",
+            projectId,
+            section: args.section,
+            sectionKey: args.sectionKey,
+            currentContent: args.currentContent,
+        });
+    }, [captureEnabled, openPopupChat, openPopupForTarget, projectId]);
+
+    const handleFieldRefine = useCallback((args: {
+        section: string;
+        sectionKey: string;
+        fieldPath: string;
+        fieldLabel: string;
+        value: string;
+        allowedProtocolFields?: string[];
+    }) => {
+        if (!captureEnabled) return;
+        prefillCopilotWithTargets({
+            targets: [buildProtocolFieldTarget({
+                projectId,
+                section: args.section,
+                sectionKey: args.sectionKey,
+                fieldPath: args.fieldPath,
+                fieldLabel: args.fieldLabel,
+                value: args.value,
+                allowedProtocolFields: args.allowedProtocolFields,
+            })],
+            prompt: refineFieldPrompt,
+            page: "protocol",
+            section: args.section,
+        });
+    }, [captureEnabled, prefillCopilotWithTargets, projectId, refineFieldPrompt]);
+
+    const handleCriterionAskAi = useCallback((criterionType: "inclusion" | "exclusion", index: number, text: string) => {
+        if (captureEnabled) {
+            openPopupForTarget(buildProtocolCriterionTarget({
+                projectId,
+                criterionType,
+                criterionIndex: index,
+                text,
+            }));
+            return;
+        }
+        openPopupChat({
+            type: "criterion",
+            projectId,
+            text,
+            criterionType,
+        });
+    }, [captureEnabled, openPopupChat, openPopupForTarget, projectId]);
+
+    const renderFieldAction = (label: string, onClick: () => void) => (
+        <button
+            type="button"
+            className={styles.fieldCopilotBtn}
+            onClick={onClick}
+            aria-label={`Refine ${label} with copilot`}
+        >
+            <span className="material-icons-round">chat</span>
+            Refine
+        </button>
     );
 
     return (
@@ -65,9 +154,7 @@ export function ProtocolSections({ projectId }: Props) {
                     <button
                         type="button"
                         className={styles.askCopilotBtn}
-                        onClick={() => openPopupChat({
-                            type: "protocol_section",
-                            projectId,
+                        onClick={() => handleSectionAskAi({
                             section: "Research Question",
                             sectionKey: "research-question",
                             currentContent: protocol.researchQuestion || "",
@@ -77,6 +164,18 @@ export function ProtocolSections({ projectId }: Props) {
                         Ask AI
                     </button>
                 </div>
+                {captureEnabled ? (
+                    <div className={styles.fieldActionRow}>
+                        {renderFieldAction("research question", () => handleFieldRefine({
+                            section: "Research Question",
+                            sectionKey: "research-question",
+                            fieldPath: "researchQuestion",
+                            fieldLabel: "Research Question",
+                            value: protocol.researchQuestion || "",
+                            allowedProtocolFields: ["researchQuestion"],
+                        }))}
+                    </div>
+                ) : null}
                 <EditableTextArea
                     value={protocol.researchQuestion ?? ""}
                     onChange={updateResearchQuestion}
@@ -100,9 +199,7 @@ export function ProtocolSections({ projectId }: Props) {
                     <button
                         type="button"
                         className={styles.askCopilotBtn}
-                        onClick={() => openPopupChat({
-                            type: "protocol_section",
-                            projectId,
+                        onClick={() => handleSectionAskAi({
                             section: "PICO Framework",
                             sectionKey: "pico-framework",
                             currentContent: `Population: ${protocol.pico.population}\nIntervention: ${protocol.pico.intervention}\nComparison: ${protocol.pico.comparison}\nOutcome: ${protocol.pico.outcome}`,
@@ -114,7 +211,16 @@ export function ProtocolSections({ projectId }: Props) {
                 </div>
                 <div className={styles.picoGrid}>
                     <div className={styles.picoCard}>
-                        <span className={styles.picoLabel}>Population</span>
+                        <div className={styles.fieldLabelRow}>
+                            <span className={styles.picoLabel}>Population</span>
+                            {captureEnabled ? renderFieldAction("population", () => handleFieldRefine({
+                                section: "PICO Framework",
+                                sectionKey: "pico-framework",
+                                fieldPath: "pico.population",
+                                fieldLabel: "Population",
+                                value: protocol.pico.population,
+                            })) : null}
+                        </div>
                         <EditableText
                             value={protocol.pico.population}
                             onChange={(value) => updatePICO("population", value)}
@@ -125,7 +231,16 @@ export function ProtocolSections({ projectId }: Props) {
                         />
                     </div>
                     <div className={styles.picoCard}>
-                        <span className={styles.picoLabel}>Intervention</span>
+                        <div className={styles.fieldLabelRow}>
+                            <span className={styles.picoLabel}>Intervention</span>
+                            {captureEnabled ? renderFieldAction("intervention", () => handleFieldRefine({
+                                section: "PICO Framework",
+                                sectionKey: "pico-framework",
+                                fieldPath: "pico.intervention",
+                                fieldLabel: "Intervention",
+                                value: protocol.pico.intervention,
+                            })) : null}
+                        </div>
                         <EditableText
                             value={protocol.pico.intervention}
                             onChange={(value) => updatePICO("intervention", value)}
@@ -136,7 +251,16 @@ export function ProtocolSections({ projectId }: Props) {
                         />
                     </div>
                     <div className={styles.picoCard}>
-                        <span className={styles.picoLabel}>Comparison</span>
+                        <div className={styles.fieldLabelRow}>
+                            <span className={styles.picoLabel}>Comparison</span>
+                            {captureEnabled ? renderFieldAction("comparison", () => handleFieldRefine({
+                                section: "PICO Framework",
+                                sectionKey: "pico-framework",
+                                fieldPath: "pico.comparison",
+                                fieldLabel: "Comparison",
+                                value: protocol.pico.comparison,
+                            })) : null}
+                        </div>
                         <EditableText
                             value={protocol.pico.comparison}
                             onChange={(value) => updatePICO("comparison", value)}
@@ -147,7 +271,16 @@ export function ProtocolSections({ projectId }: Props) {
                         />
                     </div>
                     <div className={styles.picoCard}>
-                        <span className={styles.picoLabel}>Outcome</span>
+                        <div className={styles.fieldLabelRow}>
+                            <span className={styles.picoLabel}>Outcome</span>
+                            {captureEnabled ? renderFieldAction("outcome", () => handleFieldRefine({
+                                section: "PICO Framework",
+                                sectionKey: "pico-framework",
+                                fieldPath: "pico.outcome",
+                                fieldLabel: "Outcome",
+                                value: protocol.pico.outcome,
+                            })) : null}
+                        </div>
                         <EditableText
                             value={protocol.pico.outcome}
                             onChange={(value) => updatePICO("outcome", value)}
@@ -172,9 +305,7 @@ export function ProtocolSections({ projectId }: Props) {
                     <button
                         type="button"
                         className={styles.askCopilotBtn}
-                        onClick={() => openPopupChat({
-                            type: "protocol_section",
-                            projectId,
+                        onClick={() => handleSectionAskAi({
                             section: "Eligibility Criteria",
                             sectionKey: "eligibility-criteria",
                             currentContent: `Inclusion: ${protocol.eligibility.inclusion.join("; ")}\nExclusion: ${protocol.eligibility.exclusion.join("; ")}`,
@@ -203,6 +334,16 @@ export function ProtocolSections({ projectId }: Props) {
                             isActive={activeSection === "eligibility-inclusion"}
                             {...createSectionHandlers("eligibility-inclusion")}
                             ariaLabel="Inclusion criteria"
+                            renderItemActions={captureEnabled ? (index, item) => (
+                                <button
+                                    type="button"
+                                    className={styles.criterionActionBtn}
+                                    onClick={() => handleCriterionAskAi("inclusion", index, item)}
+                                    aria-label={`Ask AI about inclusion criterion ${index + 1}`}
+                                >
+                                    <span className="material-icons-round">smart_toy</span>
+                                </button>
+                            ) : undefined}
                         />
                     </div>
                     <div className={styles.criteriaGroup}>
@@ -217,6 +358,16 @@ export function ProtocolSections({ projectId }: Props) {
                             isActive={activeSection === "eligibility-exclusion"}
                             {...createSectionHandlers("eligibility-exclusion")}
                             ariaLabel="Exclusion criteria"
+                            renderItemActions={captureEnabled ? (index, item) => (
+                                <button
+                                    type="button"
+                                    className={styles.criterionActionBtn}
+                                    onClick={() => handleCriterionAskAi("exclusion", index, item)}
+                                    aria-label={`Ask AI about exclusion criterion ${index + 1}`}
+                                >
+                                    <span className="material-icons-round">smart_toy</span>
+                                </button>
+                            ) : undefined}
                         />
                     </div>
                 </div>
@@ -234,9 +385,7 @@ export function ProtocolSections({ projectId }: Props) {
                     <button
                         type="button"
                         className={styles.askCopilotBtn}
-                        onClick={() => openPopupChat({
-                            type: "protocol_section",
-                            projectId,
+                        onClick={() => handleSectionAskAi({
                             section: "Search Strategy",
                             sectionKey: "search-strategy",
                             currentContent: `Query: ${protocol.searchStrategy.query}\nDatabases: ${protocol.searchStrategy.databases.join(", ")}`,
@@ -247,6 +396,17 @@ export function ProtocolSections({ projectId }: Props) {
                     </button>
                 </div>
                 <div className={styles.searchBox}>
+                    {captureEnabled ? (
+                        <div className={styles.fieldActionRow}>
+                            {renderFieldAction("search query", () => handleFieldRefine({
+                                section: "Search Strategy",
+                                sectionKey: "search-strategy",
+                                fieldPath: "searchStrategy.query",
+                                fieldLabel: "Search Query",
+                                value: protocol.searchStrategy.query,
+                            }))}
+                        </div>
+                    ) : null}
                     <EditableTextArea
                         value={protocol.searchStrategy.query}
                         onChange={updateSearchQuery}
@@ -259,7 +419,16 @@ export function ProtocolSections({ projectId }: Props) {
                     />
                 </div>
                 <div className={styles.databaseSection}>
-                    <span className={styles.databaseLabel}>Databases</span>
+                    <div className={styles.fieldLabelRow}>
+                        <span className={styles.databaseLabel}>Databases</span>
+                        {captureEnabled ? renderFieldAction("databases", () => handleFieldRefine({
+                            section: "Search Strategy",
+                            sectionKey: "search-strategy",
+                            fieldPath: "searchStrategy.databases",
+                            fieldLabel: "Databases",
+                            value: protocol.searchStrategy.databases.join(", "),
+                        })) : null}
+                    </div>
                     <EditableChips
                         items={protocol.searchStrategy.databases}
                         onAdd={addDatabase}
@@ -285,9 +454,7 @@ export function ProtocolSections({ projectId }: Props) {
                     <button
                         type="button"
                         className={styles.askCopilotBtn}
-                        onClick={() => openPopupChat({
-                            type: "protocol_section",
-                            projectId,
+                        onClick={() => handleSectionAskAi({
                             section: "Methodology",
                             sectionKey: "methodology",
                             currentContent: `Study designs: ${protocol.methodology.studyDesigns.join(", ")}\nTime frame: ${protocol.methodology.timeFrameStart} - ${protocol.methodology.timeFrameEnd}\nQuality tool: ${protocol.methodology.qualityAssessmentTool}`,
@@ -301,7 +468,16 @@ export function ProtocolSections({ projectId }: Props) {
                 <div className={styles.methodologyGrid}>
                     {/* Study Designs */}
                     <div className={styles.methodologyCard}>
-                        <span className={styles.methodologyLabel}>Study Designs</span>
+                        <div className={styles.fieldLabelRow}>
+                            <span className={styles.methodologyLabel}>Study Designs</span>
+                            {captureEnabled ? renderFieldAction("study designs", () => handleFieldRefine({
+                                section: "Methodology",
+                                sectionKey: "methodology",
+                                fieldPath: "methodology.studyDesigns",
+                                fieldLabel: "Study Designs",
+                                value: protocol.methodology.studyDesigns.join(", "),
+                            })) : null}
+                        </div>
                         <EditableChips
                             items={protocol.methodology.studyDesigns}
                             onAdd={addStudyDesign}
@@ -316,7 +492,16 @@ export function ProtocolSections({ projectId }: Props) {
 
                     {/* Time Frame */}
                     <div className={styles.methodologyCard}>
-                        <span className={styles.methodologyLabel}>Publication Time Frame</span>
+                        <div className={styles.fieldLabelRow}>
+                            <span className={styles.methodologyLabel}>Publication Time Frame</span>
+                            {captureEnabled ? renderFieldAction("publication time frame", () => handleFieldRefine({
+                                section: "Methodology",
+                                sectionKey: "methodology",
+                                fieldPath: "methodology.timeFrame",
+                                fieldLabel: "Publication Time Frame",
+                                value: `${protocol.methodology.timeFrameStart} - ${protocol.methodology.timeFrameEnd}`.trim(),
+                            })) : null}
+                        </div>
                         <div className={styles.timeFrameRow}>
                             <div className={styles.timeFrameField}>
                                 <span className={styles.timeFrameLabel}>From</span>
@@ -346,7 +531,16 @@ export function ProtocolSections({ projectId }: Props) {
 
                     {/* Quality Assessment */}
                     <div className={`${styles.methodologyCard} ${styles.methodologyCardFull}`}>
-                        <span className={styles.methodologyLabel}>Quality Assessment Tool</span>
+                        <div className={styles.fieldLabelRow}>
+                            <span className={styles.methodologyLabel}>Quality Assessment Tool</span>
+                            {captureEnabled ? renderFieldAction("quality assessment tool", () => handleFieldRefine({
+                                section: "Methodology",
+                                sectionKey: "methodology",
+                                fieldPath: "methodology.qualityAssessmentTool",
+                                fieldLabel: "Quality Assessment Tool",
+                                value: protocol.methodology.qualityAssessmentTool,
+                            })) : null}
+                        </div>
                         <EditableText
                             value={protocol.methodology.qualityAssessmentTool}
                             onChange={updateQualityTool}
@@ -356,7 +550,16 @@ export function ProtocolSections({ projectId }: Props) {
                             ariaLabel="Quality assessment tool"
                         />
                         <div className={styles.qualityNotes}>
-                            <span className={styles.qualityNotesLabel}>Assessment Notes</span>
+                            <div className={styles.fieldLabelRow}>
+                                <span className={styles.qualityNotesLabel}>Assessment Notes</span>
+                                {captureEnabled ? renderFieldAction("assessment notes", () => handleFieldRefine({
+                                    section: "Methodology",
+                                    sectionKey: "methodology",
+                                    fieldPath: "methodology.qualityAssessmentNotes",
+                                    fieldLabel: "Assessment Notes",
+                                    value: protocol.methodology.qualityAssessmentNotes,
+                                })) : null}
+                            </div>
                             <EditableTextArea
                                 value={protocol.methodology.qualityAssessmentNotes}
                                 onChange={updateQualityNotes}

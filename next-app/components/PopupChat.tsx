@@ -41,6 +41,19 @@ function getContextLabel(ctx: PopupChatContext): string {
     }
 }
 
+function getContextPreview(ctx: PopupChatContext): string | null {
+    switch (ctx.type) {
+        case "study":
+            return ctx.authors ?? ctx.abstract ?? null;
+        case "criterion":
+            return ctx.text;
+        case "draft_selection":
+            return ctx.selectedText;
+        case "protocol_section":
+            return ctx.currentContent;
+    }
+}
+
 /** Map popup context type to a CopilotPage for conversation creation. */
 function contextToPage(ctx: PopupChatContext): CopilotPage {
     switch (ctx.type) {
@@ -515,6 +528,7 @@ export function PopupChat({ projectId }: PopupChatProps) {
     if (!context) return null;
 
     const label = getContextLabel(context);
+    const preview = getContextPreview(context);
     const icon = contextIcon(context);
     const canSend = input.trim().length > 0 && !isStreaming;
     const popupClassName = `${styles.popupChat} ${mobilePopupV2Enabled ? styles.popupChatMobileV2 : ""}`;
@@ -546,7 +560,10 @@ export function PopupChat({ projectId }: PopupChatProps) {
                             <div className={styles.contextIcon}>
                                 <span className="material-icons-round">{icon}</span>
                             </div>
-                            <span className={styles.contextLabel}>{label}</span>
+                            <div className={styles.contextMeta}>
+                                <span className={styles.contextLabel}>{label}</span>
+                                {preview ? <span className={styles.contextPreview}>{preview}</span> : null}
+                            </div>
                         </div>
                         <Dialog.Close asChild>
                             <button type="button" className={styles.closeBtn} aria-label="Close">

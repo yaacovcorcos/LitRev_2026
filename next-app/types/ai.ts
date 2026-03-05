@@ -3,6 +3,8 @@
  * Core types for the AI integration system
  */
 
+import type { ContextCaptureTarget } from "./context-capture";
+
 // Copilot page context (which project tab the user is on)
 export type CopilotPage = "draft" | "protocol" | "ledger" | "study" | "overview" | "notes" | "memory" | "ai";
 
@@ -80,13 +82,20 @@ export type ChoiceOption = {
     icon?: string;
 };
 
-export type ConversationMessageAttachment = {
+export type ConversationFileAttachment = {
     fileAssetId: string;
     filename: string;
     mimeType: string;
     size: number;
     isExisting?: boolean;
 };
+
+export type ConversationContextAttachment = {
+    type: "context_capture";
+    target: ContextCaptureTarget;
+};
+
+export type ConversationMessageAttachment = ConversationFileAttachment | ConversationContextAttachment;
 
 export type AITone = "standard" | "deep";
 export type ReasoningMode = "off" | "summary" | "full";
@@ -116,6 +125,7 @@ export type ChatOptions = {
     userId?: string;
     workspaceId?: string;
     userMessageAttachments?: ConversationMessageAttachment[];
+    contextTargets?: ContextCaptureTarget[];
     /**
      * Correlation key for retry telemetry continuity checks.
      * Present only when the send action is triggered from retry.

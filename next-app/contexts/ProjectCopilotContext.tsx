@@ -24,7 +24,7 @@ import { getAutonomyConfigAction, updateAutonomyAction } from "@/app/actions/age
 import { useCopilotConversations } from "@/hooks/useCopilotConversations";
 import { useCopilotStreamActions } from "@/hooks/useCopilotStreamActions";
 import type { ArtifactData } from "@/types/artifacts";
-import type { AutonomyPreset, AutonomyLevel } from "@/types/agent";
+import type { AgentMode, AutonomyPreset, AutonomyLevel } from "@/types/agent";
 import type { ChoiceOption, CopilotPage, ReasoningMode, StreamPhase, UserInputRequest } from "@/types/ai";
 import { useRouter } from "next/navigation";
 import {
@@ -38,10 +38,20 @@ import {
     type ReasoningSupportTier,
 } from "@/lib/ai/config";
 import { recordChatUnificationMetric } from "@/lib/ai/chat-unification-telemetry";
+import {
+    clearContextCaptureHistory,
+    loadContextCaptureHistory,
+    pushContextCaptureHistory,
+} from "@/lib/context-capture/history";
+import { isContextCaptureV1Enabled, isContextHistoryV1Enabled } from "@/lib/context-capture/feature-flags";
+import { getContextTargetKey } from "@/lib/context-capture/targets";
 import type {
     PendingAttachment,
+    PrefillCommand,
     ProjectCopilotContextValue,
 } from "@/types/copilot-context";
+import type { ContextCaptureHistoryEntry, ContextCaptureTarget } from "@/types/context-capture";
+import type { RetryModelExpectation } from "@/types/chat-unification";
 
 const MODEL_STORAGE_KEY = "litrev_copilot_model";
 const DEFAULT_MODEL: SelectableModelId = "gpt-5.2";
@@ -72,6 +82,9 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
     // Attachment state
     const [pendingAttachment, setPendingAttachment] = useState<PendingAttachment | null>(null);
     const [isAttaching, setIsAttaching] = useState(false);
+    const [attachedContextTargets, setAttachedContextTargetsState] = useState<ContextCaptureTarget[]>([]);
+    const [recentContextHistory, setRecentContextHistory] = useState<ContextCaptureHistoryEntry[]>([]);
+    const [prefillCommand, setPrefillCommand] = useState<PrefillCommand | null>(null);
 
     // Agent run state (Phase 2)
     const [currentRunId, setCurrentRunId] = useState<string | null>(null);
@@ -101,6 +114,14 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
                 // Messages will be loaded from the conversation system
                 messages: [],
             }));
+            setAttachedContextTargetsState([]);
+            setPrefillCommand(null);
+            if (isContextHistoryV1Enabled()) {
+                setRecentContextHistory(loadContextCaptureHistory(projectId));
+            } else {
+                setRecentContextHistory([]);
+                clearContextCaptureHistory(projectId);
+            }
         }
     }, [projectId]);
 
@@ -340,6 +361,55 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
         setPendingAttachment(null);
     }, []);
 
+    const setAttachedContextTargets = useCallback((targets: ContextCaptureTarget[]) => {
+        if (!isContextCaptureV1Enabled()) {
+            setAttachedContextTargetsState([]);
+            return;
+        }
+        const deduped = Array.from(new Map(targets.map((target) => [getContextTargetKey(target), target])).values());
+        setAttachedContextTargetsState(deduped);
+    }, []);
+
+    const addAttachedContextTargets = useCallback((targets: ContextCaptureTarget[]) => {
+        if (!isContextCaptureV1Enabled() || targets.length === 0) return;
+        setAttachedContextTargetsState((current) => {
+            const merged = new Map(current.map((target) => [getContextTargetKey(target), target]));
+            for (const target of targets) {
+                merged.set(getContextTargetKey(target), target);
+            }
+            return Array.from(merged.values());
+        });
+    }, []);
+
+    const removeAttachedContextTarget = useCallback((targetKey: string) => {
+        setAttachedContextTargetsState((current) =>
+            current.filter((target) => getContextTargetKey(target) !== targetKey),
+        );
+    }, []);
+
+    const clearAttachedContextTargets = useCallback(() => {
+        setAttachedContextTargetsState([]);
+    }, []);
+
+    const recordContextHistory = useCallback((targets: ContextCaptureTarget[]) => {
+        if (!projectId || !isContextHistoryV1Enabled() || targets.length === 0) return;
+        const next = pushContextCaptureHistory(projectId, targets);
+        setRecentContextHistory(next);
+    }, [projectId]);
+
+    const queuePrefillCommand = useCallback((text: string) => {
+        const trimmed = text.trim();
+        if (!trimmed) return;
+        const id = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+            ? crypto.randomUUID()
+            : `prefill-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        setPrefillCommand({ text: trimmed, id });
+    }, []);
+
+    const consumePrefillCommand = useCallback(() => {
+        setPrefillCommand(null);
+    }, []);
+
     const clearMessages = useCallback(() => {
         updateState((prev) => ({
             ...prev,
@@ -400,6 +470,34 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
         stream.sendMessage(answer, resolvedPage, resolvedSection);
     }, [convo, projectId, stream, updateState, stateRef]);
 
+    const sendMessageWithContext = useCallback(
+        (
+            text: string,
+            page: CopilotPage,
+            section?: string,
+            model?: string,
+            agentMode?: AgentMode,
+            studyId?: string,
+            retryModelExpectation?: RetryModelExpectation,
+            contextTargets?: ContextCaptureTarget[],
+        ) => {
+            if (contextTargets?.length) {
+                recordContextHistory(contextTargets);
+            }
+            return stream.sendMessage(
+                text,
+                page,
+                section,
+                model,
+                agentMode,
+                studyId,
+                retryModelExpectation,
+                contextTargets,
+            );
+        },
+        [recordContextHistory, stream],
+    );
+
     const value = useMemo(
         () => ({
             state,
@@ -416,7 +514,7 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             toggleCollapsed,
             setCollapsed,
             setPanelWidth,
-            sendMessage: stream.sendMessage,
+            sendMessage: sendMessageWithContext,
             setReasoningMode,
             cancelStream: stream.cancelStream,
             clearMessages,
@@ -440,6 +538,16 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             attachExistingFile,
             clearAttachment,
             projectId,
+            attachedContextTargets,
+            recentContextHistory,
+            setAttachedContextTargets,
+            addAttachedContextTargets,
+            removeAttachedContextTarget,
+            clearAttachedContextTargets,
+            recordContextHistory,
+            prefillCommand,
+            queuePrefillCommand,
+            consumePrefillCommand,
             // Agent run state (Phase 2)
             currentRunId,
             artifacts,
@@ -481,6 +589,7 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             toggleCollapsed,
             setCollapsed,
             setPanelWidth,
+            sendMessageWithContext,
             stream,
             setReasoningMode,
             clearMessages,
@@ -490,6 +599,16 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             attachFile,
             attachExistingFile,
             clearAttachment,
+            attachedContextTargets,
+            recentContextHistory,
+            setAttachedContextTargets,
+            addAttachedContextTargets,
+            removeAttachedContextTarget,
+            clearAttachedContextTargets,
+            recordContextHistory,
+            prefillCommand,
+            queuePrefillCommand,
+            consumePrefillCommand,
             currentRunId,
             artifacts,
             shouldOfferSummary,

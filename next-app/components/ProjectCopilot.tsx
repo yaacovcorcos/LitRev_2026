@@ -88,6 +88,8 @@ export function ProjectCopilot({
         hasMore,
         isLoadingOlder,
         loadOlderMessages,
+        prefillCommand: sharedPrefillCommand,
+        consumePrefillCommand,
     } = useProjectCopilot();
 
     // Hide reasoning controls when model doesn't support reasoning
@@ -105,9 +107,15 @@ export function ProjectCopilot({
         setPrefillCommand({ text: prompt, id: crypto.randomUUID() });
     }, []);
 
+    const activePrefillCommand = sharedPrefillCommand ?? prefillCommand;
+
     const handlePrefillConsumed = useCallback(() => {
+        if (sharedPrefillCommand) {
+            consumePrefillCommand();
+            return;
+        }
         setPrefillCommand(null);
-    }, []);
+    }, [consumePrefillCommand, sharedPrefillCommand]);
 
     const handleTimelineContainerElement = useCallback((node: HTMLDivElement | null) => {
         timelineRef.current = node;
@@ -377,13 +385,13 @@ export function ProjectCopilot({
 
                 {/* Input area */}
                 <CopilotInput
-                    page={page}
-                    section={section}
-                    studyId={studyId}
-                    inputPlaceholder={inputPlaceholder}
-                    prefillCommand={prefillCommand}
-                    onPrefillConsumed={handlePrefillConsumed}
-                />
+                page={page}
+                section={section}
+                studyId={studyId}
+                inputPlaceholder={inputPlaceholder}
+                prefillCommand={activePrefillCommand}
+                onPrefillConsumed={handlePrefillConsumed}
+            />
             </div>
             <AutonomySettings />
         </aside>

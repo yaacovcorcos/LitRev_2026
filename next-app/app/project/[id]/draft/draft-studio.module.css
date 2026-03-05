@@ -786,6 +786,79 @@
     flex-wrap: wrap;
 }
 
+.contextActionStrip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px;
+    border-radius: 16px;
+    border: 1px solid var(--glass-border);
+    background:
+        linear-gradient(135deg, rgba(var(--rgb-accent-primary), 0.08), rgba(var(--rgb-ui-surface), 0.68)),
+        rgba(var(--rgb-ui-surface), 0.7);
+    box-shadow: var(--shadow-sm);
+    flex-wrap: wrap;
+}
+
+.contextActionMeta {
+    padding: 0 8px;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+}
+
+.contextActionButton,
+.contextActionPrimary {
+    border: none;
+    border-radius: 12px;
+    padding: 8px 12px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+
+.contextActionPrimary {
+    background: var(--accent-primary);
+    color: var(--color-white);
+}
+
+.contextActionPrimary:hover:not(:disabled) {
+    background: var(--accent-primary-hover);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-lg);
+}
+
+.contextActionButton {
+    background: rgba(var(--rgb-ui-surface), 0.7);
+    color: var(--text-primary);
+    border: 1px solid rgba(var(--rgb-ui-contrast), 0.06);
+}
+
+.contextActionButton:hover:not(:disabled) {
+    background: rgba(var(--rgb-ui-surface), 0.95);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-md);
+}
+
+.contextActionButton:disabled,
+.contextActionPrimary:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+.contextActionButton .material-icons-round,
+.contextActionPrimary .material-icons-round {
+    font-size: 16px;
+}
+
 .toolbar {
     display: flex;
     align-items: center;
@@ -1419,6 +1492,10 @@
         margin: 0 16px 16px;
         flex-direction: column;
         align-items: stretch;
+    }
+
+    .contextActionStrip {
+        width: 100%;
     }
 
     .formattingControls {

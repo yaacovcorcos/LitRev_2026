@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
+import { clearAllContextCaptureHistory } from "@/lib/context-capture/history";
 import { useTheme, type ThemePreference } from "@/contexts/ThemeContext";
 import styles from "@/components/UserMenu.module.css";
 
@@ -60,6 +61,7 @@ export function UserMenu({ collapsed = false }: UserMenuProps) {
       }
 
       setOpen(false);
+      clearAllContextCaptureHistory();
       router.replace("/login");
       router.refresh();
     } catch {

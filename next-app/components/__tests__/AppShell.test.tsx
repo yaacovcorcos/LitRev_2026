@@ -18,6 +18,9 @@ const {
   mockSignOut: vi.fn(),
   mockFetch: vi.fn(),
 }));
+const { mockClearAllContextCaptureHistory } = vi.hoisted(() => ({
+  mockClearAllContextCaptureHistory: vi.fn(),
+}));
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
@@ -32,6 +35,10 @@ vi.mock("@/lib/auth-client", () => ({
   authClient: {
     signOut: mockSignOut,
   },
+}));
+
+vi.mock("@/lib/context-capture/history", () => ({
+  clearAllContextCaptureHistory: mockClearAllContextCaptureHistory,
 }));
 
 vi.mock("@/contexts/CommandPaletteContext", () => ({
@@ -85,6 +92,7 @@ describe("AppShell default sidebar collapse", () => {
     mockRouterRefresh.mockReset();
     mockSignOut.mockReset();
     mockFetch.mockReset();
+    mockClearAllContextCaptureHistory.mockReset();
     mockFetch.mockResolvedValue(
       new Response(JSON.stringify({ isPlatformAdmin: false }), {
         status: 200,
@@ -148,6 +156,7 @@ describe("AppShell default sidebar collapse", () => {
 
     await waitFor(() => {
       expect(mockSignOut).toHaveBeenCalledTimes(1);
+      expect(mockClearAllContextCaptureHistory).toHaveBeenCalledTimes(1);
       expect(mockRouterReplace).toHaveBeenCalledWith("/login");
       expect(mockRouterRefresh).toHaveBeenCalledTimes(1);
     });

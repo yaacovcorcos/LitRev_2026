@@ -14,15 +14,9 @@ import {
     branchConversationParamsSchema,
     getOrCreateConversationParamsSchema,
 } from "@/lib/schemas/conversations";
-import type { CopilotPage } from "@/types/ai";
+import type { ConversationMessageAttachment, CopilotPage } from "@/types/ai";
 
-export type MessageAttachment = {
-    fileAssetId: string;
-    filename: string;
-    mimeType: string;
-    size: number;
-    isExisting?: boolean;
-};
+export type MessageAttachment = ConversationMessageAttachment;
 
 export type ConversationMessage = {
     id: string;

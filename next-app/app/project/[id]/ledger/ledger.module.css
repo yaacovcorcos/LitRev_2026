@@ -143,6 +143,13 @@
 .headerActions {
     display: flex;
     gap: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.selectionHint {
+    font-size: var(--text-sm);
+    color: var(--text-muted);
 }
 
 .statsRow {

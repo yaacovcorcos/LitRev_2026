@@ -6,16 +6,24 @@
 
 import type { ArtifactType, ArtifactStatus } from "./artifacts";
 import type { CopilotPage, UserInputQuestionType, UserInputOption } from "./ai";
+import type { ContextCaptureTarget } from "./context-capture";
 
 // ── Attachment (carried on user messages) ────────────────────────────────────
 
-export interface TimelineAttachment {
+export interface TimelineFileAttachment {
     fileAssetId?: string;
     filename: string;
     mimeType: string;
     size: number;
     extractedText?: string;
 }
+
+export interface TimelineContextAttachment {
+    type: "context_capture";
+    target: ContextCaptureTarget;
+}
+
+export type TimelineAttachment = TimelineFileAttachment | TimelineContextAttachment;
 
 // ── TimelineItem — discriminated union ───────────────────────────────────────
 

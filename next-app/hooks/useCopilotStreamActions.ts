@@ -16,6 +16,7 @@ import { reviewArtifactAction } from "@/app/actions/agent";
 import type { ArtifactData, ArtifactStatus } from "@/types/artifacts";
 import type { AgentMode } from "@/types/agent";
 import type { ChoiceOption, CopilotPage, ReasoningMode, StreamPhase, UserInputRequest } from "@/types/ai";
+import type { ContextCaptureTarget } from "@/types/context-capture";
 import { handleProjectCopilotStreamChunk } from "@/contexts/project-copilot-stream-events";
 import type { ArtifactActionContract } from "@/lib/artifacts/action-contract";
 import { getReasoningBudgetTokens, shouldRequestReasoning } from "@/lib/ai/reasoning-visibility";
@@ -459,6 +460,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
             agentMode?: AgentMode,
             studyId?: string,
             retryModelExpectation?: RetryModelExpectation,
+            contextTargets?: ContextCaptureTarget[],
         ) => {
             const trimmed = text.trim();
             const attachment = pendingAttachment;
@@ -467,8 +469,14 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
             setPendingChoices([]);
             setPendingUserInput(null);
 
+            const resolvedStudyId = studyId ?? (
+                contextTargets?.length === 1 && contextTargets[0]?.kind === "study"
+                    ? contextTargets[0].studyId
+                    : undefined
+            );
+
             // Determine conversation context based on page
-            const conversationContext = studyId ? "study" : "project";
+            const conversationContext = resolvedStudyId ? "study" : "project";
 
             // Create conversation if needed
             let convId = convo.currentConversationId;
@@ -476,7 +484,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                 try {
                     const convResult = await createConversation({
                         projectId,
-                        studyId,
+                        studyId: resolvedStudyId,
                         page,
                         context: conversationContext,
                     });
@@ -510,6 +518,16 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                     isExisting: attachment.isExisting,
                 }];
                 setPendingAttachment(null);
+            }
+
+            if (contextTargets?.length) {
+                attachmentsMeta = [
+                    ...(attachmentsMeta ?? []),
+                    ...contextTargets.map((target) => ({
+                        type: "context_capture" as const,
+                        target,
+                    })),
+                ];
             }
 
             // Add user message (display text only, not the augmented AI text)
@@ -553,7 +571,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                     options: {
                         conversationId: convId ?? undefined,
                         projectId,
-                        studyId,
+                        studyId: resolvedStudyId,
                         model,
                         reasoningMode,
                         includeReasoning: shouldRequestReasoning(reasoningMode),
@@ -563,6 +581,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                         section,
                         persistedUserMessageContent: displayText,
                         userMessageAttachments: attachmentsMeta,
+                        contextTargets,
                         telemetryRequestKey: retryModelExpectation?.requestKey,
                     },
                 },
