@@ -108,6 +108,35 @@ Rules:
 - CI must fail fast if either required artifact is missing.
 - Results artifacts must be uploaded for inspection on every CI run.
 
+## Calibration Contract
+- Canonical calibration note location:
+  - `docs/reports/performance/calibration-<YYYY-MM-DD>-<short-sha>.md`
+- Canonical weekly review location:
+  - `docs/reports/performance/weekly-review-<YYYY-MM-DD>.md`
+- Calibration acceptance for warn-mode closeout:
+  - `3` consecutive completed warn-mode CI cycles
+  - each cycle must meet the minimum sample thresholds for the mandatory route/profile matrix
+  - each cycle must archive a calibration note with commit SHA, artifact path, route/profile sample counts, threshold misses, and baseline deltas
+- Numeric decision rule for the current `/project/[id]` `desktop-normal` `CLS` miss:
+  - classify as `persistent regression` if the metric exceeds threshold in `2 of 3` completed warn-mode cycles with sufficient samples
+  - classify as `probe noise` only if the metric exceeds threshold in `0 or 1 of 3` cycles and the max-min spread across those cycles is `<= 0.02 CLS`
+  - otherwise classify as `unresolved variance` and keep the gate in `warn` mode until either instrumentation is tightened or the route is remediated
+
+## Waiver Contract
+- The enforce-mode waiver path must be operational, not documentation-only.
+- Canonical waiver file:
+  - `output/performance/baseline/waivers.json`
+- Each waiver entry must be machine-readable and include:
+  - `route`
+  - `profile`
+  - `metric`
+  - `approver`
+  - `reason`
+  - `expiresAt`
+  - `followUp`
+- The budget checker must fail invalid or expired waivers.
+- `enforce` mode may only be activated once the current blocking regression is fixed or covered by a valid waiver entry.
+
 ## Current Baseline Snapshot
 - Frozen baseline source:
   - `baseline-freeze-playwright`
@@ -199,13 +228,21 @@ Rules:
 
 ## Active Tasks
 - [ ] `SPD-001e` Keep the gate in `warn` mode for the first 3 clean CI cycles and capture variance deltas for the real probe.
+  - Archive one calibration note per completed warn-mode cycle at `docs/reports/performance/calibration-<YYYY-MM-DD>-<short-sha>.md`.
+  - Use the numeric calibration rule above to classify the current `/project/[id]` desktop `CLS` miss as persistent regression, probe noise, or unresolved variance.
 - [ ] `SPD-001f` Decide whether the current `/project/[id]` desktop `CLS` over-budget state should be fixed immediately or temporarily waived before `enforce` mode.
+  - If it remains persistent after calibration, either fix the route or add a valid machine-readable waiver in `output/performance/baseline/waivers.json`.
 - [ ] `SPD-002` Reduce eager project-shell warmup and sibling-route prefetch.
 - [ ] `SPD-003` Dedupe overview boot-time fetches on `/project/[id]`.
 - [ ] `SPD-004` Remove shared-shell render-blocking overhead.
 - [ ] `SPD-005` Reduce `/ai` bundle and timeline cost.
 - [ ] `SPD-006` Expand the probe matrix to nightly-only routes and slow-network coverage.
 - [ ] `SPD-007` Promote the budget gate from `warn` to `enforce` once variance and waiver policy are settled.
+  - Wire the checker and CI to consume `output/performance/baseline/waivers.json`.
+  - Only mark `SPD-007` complete after `warn`-mode calibration is archived and the blocking metric is fixed or explicitly waived.
+- [ ] `SPD-001g` Publish the weekly review process now, then complete the first actual review only after a real 7-day observation window exists.
+  - Use `docs/reports/performance/weekly-review-<YYYY-MM-DD>.md` for the canonical review artifact.
+  - Do not mark the first weekly review complete early if a full week of probe output is not yet available.
 
 ## Recently Completed
 - [x] `SPD-001a` Web Vitals reporter, route context mapping, ingestion endpoint, and privacy allowlist are implemented.
