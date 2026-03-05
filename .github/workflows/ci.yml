@@ -105,6 +105,12 @@ jobs:
       - name: Run mobile smoke e2e
         run: cd next-app && npm run test:e2e:mobile
 
+      - name: Assert performance artifacts exist
+        run: |
+          test -f output/performance/baseline/budget-thresholds.json || (echo "::error::missing performance budget artifact" && exit 1)
+          test -f output/performance/baseline/baseline-latest.json || (echo "::error::missing performance baseline artifact" && exit 1)
+          test -f output/performance/results/results-fixture.json || (echo "::error::missing performance results fixture" && exit 1)
+
       - name: Performance budget gate
         run: |
           cd next-app
@@ -112,4 +118,4 @@ jobs:
             --mode="${PERF_BUDGET_MODE}" \
             --budget="../output/performance/baseline/budget-thresholds.json" \
             --baseline="../output/performance/baseline/baseline-latest.json" \
-            --results="../output/performance/baseline/baseline-latest.json"
+            --results="../output/performance/results/results-fixture.json"

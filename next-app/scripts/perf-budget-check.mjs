@@ -1,13 +1,18 @@
 #!/usr/bin/env node
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-function parseArgs(argv) {
+const DEFAULT_BUDGET_PATH = "../output/performance/baseline/budget-thresholds.json";
+const DEFAULT_BASELINE_PATH = "../output/performance/baseline/baseline-latest.json";
+const DEFAULT_RESULTS_PATH = "../output/performance/results/results-fixture.json";
+
+export function parseArgs(argv, cwd = process.cwd()) {
   const args = {
     mode: "warn",
-    budget: path.resolve(process.cwd(), "../output/performance/baseline/budget-thresholds.json"),
-    baseline: path.resolve(process.cwd(), "../output/performance/baseline/baseline-latest.json"),
-    results: path.resolve(process.cwd(), "../output/performance/baseline/baseline-latest.json"),
+    budget: path.resolve(cwd, DEFAULT_BUDGET_PATH),
+    baseline: path.resolve(cwd, DEFAULT_BASELINE_PATH),
+    results: path.resolve(cwd, DEFAULT_RESULTS_PATH),
   };
 
   for (let i = 2; i < argv.length; i += 1) {
@@ -18,16 +23,44 @@ function parseArgs(argv) {
     const next = rawVal ?? argv[i + 1];
     if (rawVal == null && argv[i + 1] && !argv[i + 1].startsWith("--")) i += 1;
     if (key === "mode" && next) args.mode = next;
-    if (key === "budget" && next) args.budget = path.resolve(process.cwd(), next);
-    if (key === "baseline" && next) args.baseline = path.resolve(process.cwd(), next);
-    if (key === "results" && next) args.results = path.resolve(process.cwd(), next);
+    if (key === "budget" && next) args.budget = path.resolve(cwd, next);
+    if (key === "baseline" && next) args.baseline = path.resolve(cwd, next);
+    if (key === "results" && next) args.results = path.resolve(cwd, next);
   }
   return args;
 }
 
-function readJson(filePath) {
-  const raw = fs.readFileSync(filePath, "utf8");
-  return JSON.parse(raw);
+function canonicalizeFilePath(filePath) {
+  try {
+    return fs.realpathSync(filePath);
+  } catch {
+    return path.normalize(filePath);
+  }
+}
+
+function readJson(filePath, label) {
+  try {
+    const raw = fs.readFileSync(filePath, "utf8");
+    try {
+      return JSON.parse(raw);
+    } catch (error) {
+      throw new Error(`[invalid-${label}] ${filePath}: ${error.message}`);
+    }
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith(`[invalid-${label}]`)) {
+      throw error;
+    }
+    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+      throw new Error(`[missing-${label}] ${filePath}: file not found`);
+    }
+    throw new Error(`[read-${label}] ${filePath}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+export function validateArtifactPaths({ baseline, results }) {
+  if (canonicalizeFilePath(baseline) === canonicalizeFilePath(results)) {
+    throw new Error(`[same-path] baseline and results resolve to the same file: ${baseline}`);
+  }
 }
 
 function numberOrNull(value) {
@@ -101,34 +134,64 @@ function compareResults({ budget, baseline, results }) {
   return { issues, info };
 }
 
-function main() {
-  const args = parseArgs(process.argv);
-  const budget = readJson(args.budget);
-  const baseline = readJson(args.baseline);
-  const results = readJson(args.results);
+export function runBudgetCheck(argv = process.argv, options = {}) {
+  const {
+    cwd = process.cwd(),
+    stdout = console.log,
+    stderr = console.error,
+  } = options;
+
+  let args;
+  try {
+    args = parseArgs(argv, cwd);
+    validateArtifactPaths(args);
+  } catch (error) {
+    stderr(`[perf-budget-check] ${error instanceof Error ? error.message : String(error)}`);
+    return 1;
+  }
+
+  let budget;
+  let baseline;
+  let results;
+
+  try {
+    budget = readJson(args.budget, "budget");
+    baseline = readJson(args.baseline, "baseline");
+    results = readJson(args.results, "results");
+  } catch (error) {
+    stderr(`[perf-budget-check] ${error instanceof Error ? error.message : String(error)}`);
+    return 1;
+  }
 
   const { issues, info } = compareResults({ budget, baseline, results });
 
-  console.log("[perf-budget-check] mode=", args.mode);
+  stdout(`[perf-budget-check] mode=${args.mode}`);
   for (const line of info) {
-    console.log(line);
+    stdout(line);
   }
 
   if (issues.length === 0) {
-    console.log("[perf-budget-check] pass");
-    process.exit(0);
+    stdout("[perf-budget-check] pass");
+    return 0;
   }
 
-  console.log("[perf-budget-check] violations:");
+  stdout("[perf-budget-check] violations:");
   for (const line of issues) {
-    console.log(` - ${line}`);
+    stdout(` - ${line}`);
   }
 
   if (args.mode === "enforce") {
-    process.exit(1);
+    return 1;
   }
 
-  process.exit(0);
+  return 0;
 }
 
-main();
+export function main() {
+  process.exit(runBudgetCheck(process.argv));
+}
+
+const entrypoint = process.argv[1] ? path.resolve(process.argv[1]) : null;
+if (entrypoint && fileURLToPath(import.meta.url) === entrypoint) {
+  main();
+}
