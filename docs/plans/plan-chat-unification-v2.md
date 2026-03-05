@@ -105,7 +105,7 @@ Acceptance criteria:
 
 ### U0 - Parity Split + Governance Activation
 1. Split parity checklist into `core runtime parity` vs `surface UX parity`.
-2. Promote `CUX-D01` to active tracking in `codex-ui-ux-plan.md` at kickoff.
+2. Promote `CUX-D01` to active tracking in `plan-ux-ui.md` at kickoff.
 3. Capture baseline metrics by surface:
    - first visible token latency
    - retry success/model continuity

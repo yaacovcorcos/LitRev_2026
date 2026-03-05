@@ -12,7 +12,7 @@ Use for UI behavior/styling changes, especially routes under `app/project/[id]/.
 
 ## Required Tier 3 Reads
 
-- `docs/plans/codex-ui-ux-plan.md` (or currently active UI plan)
+- `docs/plans/plan-ux-ui.md` (or currently active UI plan)
 - Any route-level docs or tests directly tied to touched files
 
 ## Guardrails

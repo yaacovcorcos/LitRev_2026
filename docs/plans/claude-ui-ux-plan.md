@@ -4,14 +4,14 @@
 
 This file is no longer an active execution tracker.
 
-- Canonical active UI/UX plan: `docs/plans/codex-ui-ux-plan.md`
+- Canonical active UI/UX plan: `docs/plans/plan-ux-ui.md`
 - Use this file only as historical implementation reference for prior CLU items.
 - Do not add new active tasks here.
 
 ## Purpose
 
 This is Claude's execution plan for the UI stability and consistency sweep.
-It complements `codex-ui-ux-plan.md` (Codex's execution checklist).
+It complements `plan-ux-ui.md` (the canonical execution checklist).
 Codex's plan covers the full product roadmap (onboarding, citations, copilot features, performance).
 This plan focuses on the **stability sweep** with holistic, root-cause-driven solutions.
 
