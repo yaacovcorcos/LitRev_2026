@@ -233,6 +233,10 @@
     margin-top: 0;
 }
 
+.sampleProjectTitle {
+    padding-inline-start: 40px;
+}
+
 .cardSubtitle {
     color: var(--text-secondary);
     font-size: 14px;

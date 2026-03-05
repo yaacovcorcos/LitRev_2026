@@ -24,6 +24,11 @@ import { MOBILE_VIEWPORT_MEDIA_QUERY } from "@/lib/mobile/breakpoints";
 import { isMobileScrollLockV2Enabled, isMobileViewportV2Enabled } from "@/lib/mobile/feature-flags";
 import { ProjectDataProvider } from "@/contexts/ProjectDataContext";
 import { recordReliabilityMetric } from "@/lib/ai/reliability-telemetry";
+import {
+    isProjectEntryRestoreEnabled,
+    readProjectEntryState,
+    setProjectModeBucket,
+} from "@/lib/project-entry-restore";
 import styles from "./project-shell.module.css";
 
 const RAIL_WIDTH = 44;
@@ -47,6 +52,7 @@ type ProjectShellInnerProps = {
 function ProjectShellInner({ projectId, children }: ProjectShellInnerProps) {
   const router = useRouter();
   const pathname = usePathname();
+  const projectEntryRestoreEnabled = isProjectEntryRestoreEnabled();
   const scrollOwnershipA1Enabled = isScrollOwnershipA1Enabled();
   const mobileViewportV2Enabled = isMobileViewportV2Enabled();
   const mobileScrollLockV2Enabled = isMobileScrollLockV2Enabled();
@@ -128,14 +134,28 @@ function ProjectShellInner({ projectId, children }: ProjectShellInnerProps) {
         return tabFromPathname(pathname) ?? "overview";
     });
 
-    // Sync activeTab when pathname changes (e.g., browser back/forward)
+    // Sync shell mode from route and persisted mode bucket.
+    // Route tabs always force workspace mode. Root route (/project/:id) restores bucket.
     useEffect(() => {
         const tab = tabFromPathname(pathname);
         if (tab) {
             setActiveTabState(tab);
             setFocusMode("view");
+            if (projectEntryRestoreEnabled) {
+                setProjectModeBucket(projectId, "workspace");
+            }
+            return;
         }
-    }, [pathname]);
+        if (!projectEntryRestoreEnabled) return;
+        const entryState = readProjectEntryState(projectId);
+        if (entryState?.lastModeBucket === "workspace") {
+            setActiveTabState("overview");
+            setFocusMode("view");
+            return;
+        }
+        // Default first-entry/revisit bucket is conversation.
+        setFocusMode("conversation");
+    }, [pathname, projectEntryRestoreEnabled, projectId]);
 
     // Keep root scrolling scoped to shell owners (baseline path).
     // A1 disabled => preserve existing behavior/dependencies unchanged.
@@ -270,6 +290,9 @@ function ProjectShellInner({ projectId, children }: ProjectShellInnerProps) {
     const setActiveTab = useCallback((tab: ViewTab) => {
         setActiveTabState(tab);
         setFocusMode("view");
+        if (projectEntryRestoreEnabled) {
+            setProjectModeBucket(projectId, "workspace");
+        }
         // Navigate to the appropriate route
         switch (tab) {
             case "overview":
@@ -291,11 +314,14 @@ function ProjectShellInner({ projectId, children }: ProjectShellInnerProps) {
                 router.push(`/project/${projectId}/memory`);
                 break;
         }
-    }, [projectId, router]);
+    }, [projectEntryRestoreEnabled, projectId, router]);
 
     const returnToConversation = useCallback(() => {
         setFocusMode("conversation");
-    }, []);
+        if (projectEntryRestoreEnabled) {
+            setProjectModeBucket(projectId, "conversation");
+        }
+    }, [projectEntryRestoreEnabled, projectId]);
 
     const handleTabClick = useCallback((tab: ViewTab) => {
         setActiveTab(tab);
