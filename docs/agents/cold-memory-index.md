@@ -20,7 +20,7 @@ Use this index to retrieve authoritative docs before editing high-risk domains.
 | Backend and infrastructure decisions | `docs/plans/plan-backend.md` | Server action/service/DB contract changes |
 | Guided setup behavior | `docs/plans/plan-guided-setup.md` | Onboarding/setup activation flow changes |
 | Prompting/extraction logic | `docs/plans/plan-prompts.md` | Prompt text/schema/LLM extraction changes |
-| UI/UX architecture and roadmap | `docs/plans/codex-ui-ux-plan.md` (or active UI plan), `docs/plans/claude-ui-ux-plan.md` | Component and interaction model changes |
+| UI/UX architecture and roadmap | `docs/plans/codex-ui-ux-plan.md` | Component and interaction model changes (use `claude-ui-ux-plan.md` as archive reference only) |
 | Mobile chat UX execution (`/project` conversation, `/ai`, popup) | `docs/plans/mobile-plan.md`, `docs/plans/plan-chat-unification-v2.md` | Any mobile chat layout, interaction, drawer/composer, or popup behavior change |
 | Chat unification rollout operations | `docs/plans/plan-chat-unification-v2.md`, `docs/runbooks/chat-unification-burn-in.md` | U1.6 canary setup, burn-in validation, and U3 unlock decisions |
 | GitHub branch/PR/review automation | `docs/runbooks/github-flow.md` | Any edits to `.github/workflows/**`, branch protections, CODEOWNERS, or agent git policy |

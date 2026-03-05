@@ -1,5 +1,13 @@
 # Claude UI/UX Fixes Plan
 
+## Status: Deprecated (Archive Reference)
+
+This file is no longer an active execution tracker.
+
+- Canonical active UI/UX plan: `docs/plans/codex-ui-ux-plan.md`
+- Use this file only as historical implementation reference for prior CLU items.
+- Do not add new active tasks here.
+
 ## Purpose
 
 This is Claude's execution plan for the UI stability and consistency sweep.
