@@ -11,7 +11,6 @@ import { BaseBackButton } from "@/components/BaseBackButton";
 import styles from "./protocol.module.css";
 import { ProjectPageLayout } from "@/components/project/ProjectPageLayout";
 import { ProtocolProvider, useProtocol } from "@/contexts/ProtocolContext";
-import { useProjectData } from "@/hooks/useProjectData";
 import { calculatePRISMACounts } from "@/lib/criteriaMatching";
 import { DemoGuideCard } from "@/components/project/DemoGuideCard";
 import { buildProtocolMarkdown, getProtocolSuggestions } from "./protocolExport";
@@ -27,6 +26,11 @@ function ProtocolPageContent() {
         protocol,
         activeSection,
         activeSectionLabel,
+        saveState,
+        saveError,
+        pendingPatch,
+        applyPendingPatch,
+        keepLocalEdits,
         updatePICO,
         addInclusion,
         addExclusion,
@@ -157,6 +161,46 @@ function ProtocolPageContent() {
     // Generate suggestions based on active section
     const getSuggestions = () => getProtocolSuggestions(activeSection);
 
+    const saveStatus = useMemo(() => {
+        if (pendingPatch) {
+            return {
+                label: "Incoming update ready",
+                detail: "Resolve the incoming copilot update before continuing.",
+                tone: styles.statusBadgeAttention,
+            };
+        }
+
+        if (saveState === "saving") {
+            return {
+                label: "Saving...",
+                detail: "Protocol changes are syncing in the background.",
+                tone: styles.statusBadgeSaving,
+            };
+        }
+
+        if (saveState === "local-only") {
+            return {
+                label: "Saved locally",
+                detail: "Your latest protocol edits are preserved locally and will sync next.",
+                tone: styles.statusBadgeLocal,
+            };
+        }
+
+        if (saveState === "error") {
+            return {
+                label: "Save failed",
+                detail: saveError ?? "Local backup preserved. Retry by editing or blurring a field again.",
+                tone: styles.statusBadgeError,
+            };
+        }
+
+        return {
+            label: "All changes saved",
+            detail: "Protocol changes are in sync across the project.",
+            tone: styles.statusBadgeSaved,
+        };
+    }, [pendingPatch, saveError, saveState]);
+
     if (isLoadingProjects) {
         return (
             <ProjectPageLayout mainClassName={styles.appMainOverride}>
@@ -224,14 +268,51 @@ function ProtocolPageContent() {
 
                             {/* Status Bar */}
                             <div className={styles.statusBar}>
+                                {pendingPatch ? (
+                                    <div className={styles.pendingPatchBanner}>
+                                        <div className={styles.pendingPatchCopy}>
+                                            <span className="material-icons-round">sync_alt</span>
+                                            <div>
+                                                <strong>{pendingPatch.summary}</strong>
+                                                <p>
+                                                    This protocol update was accepted in copilot. Apply it now or keep your current local edits.
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <div className={styles.pendingPatchActions}>
+                                            <button
+                                                type="button"
+                                                className={styles.pendingPatchPrimary}
+                                                onClick={applyPendingPatch}
+                                            >
+                                                Apply incoming
+                                            </button>
+                                            <button
+                                                type="button"
+                                                className={styles.pendingPatchSecondary}
+                                                onClick={keepLocalEdits}
+                                            >
+                                                Keep mine
+                                            </button>
+                                        </div>
+                                    </div>
+                                ) : null}
                                 <div className={styles.completenessSection}>
                                     <div className={styles.completenessHeader}>
-                                        <span className={styles.completenessLabel}>
-                                            Protocol Completeness
-                                        </span>
-                                        <span className={styles.completenessValue}>
-                                            {completeness.completedCount}/{completeness.totalCount} sections
-                                        </span>
+                                        <div className={styles.statusHeaderCopy}>
+                                            <span className={styles.completenessLabel}>
+                                                Protocol Completeness
+                                            </span>
+                                            <span className={styles.completenessValue}>
+                                                {completeness.completedCount}/{completeness.totalCount} sections
+                                            </span>
+                                        </div>
+                                        <div className={styles.statusMeta}>
+                                            <span className={`${styles.statusBadge} ${saveStatus.tone}`}>
+                                                {saveStatus.label}
+                                            </span>
+                                            <span className={styles.statusDetail}>{saveStatus.detail}</span>
+                                        </div>
                                     </div>
                                     <div className={styles.progressBar}>
                                         <div
@@ -346,13 +427,9 @@ function ProtocolPageContent() {
 /** Protocol page wrapper with ProtocolProvider */
 export default function ProtocolPage() {
     const { id } = useParams<{ id: string }>();
-    const { protocol: cachedProtocol } = useProjectData();
 
     return (
-        <ProtocolProvider
-            projectId={id ?? ""}
-            initialData={cachedProtocol.state === "ready" && cachedProtocol.data ? cachedProtocol.data : undefined}
-        >
+        <ProtocolProvider projectId={id ?? ""}>
             <ProtocolPageContent />
         </ProtocolProvider>
     );
