@@ -38,6 +38,7 @@ import type { Study } from "@/types/ledger";
 import type { ProjectMemory } from "@/types/memory";
 import type { DraftState } from "@/lib/draftStorage";
 import type { NoteIndexItem } from "@/lib/server/notes";
+import type { ProjectBootMode } from "@/lib/project-entry-boot-mode";
 
 type LoadState = "idle" | "loading" | "ready" | "error";
 
@@ -116,9 +117,11 @@ function hasUnsyncedChanges(
 
 export function ProjectDataProvider({
     projectId,
+    bootMode,
     children,
 }: {
     projectId: string;
+    bootMode: ProjectBootMode;
     children: ReactNode;
 }) {
     const [protocol, setProtocol] = useState<ProtocolDomainSlice>(INITIAL_PROTOCOL_SLICE);
@@ -675,11 +678,23 @@ export function ProjectDataProvider({
         if (!projectId) return;
         const pid = projectId;
 
-        void fetchProtocol(pid).then(() => {
-            if (projectIdRef.current !== pid) return;
+        if (bootMode === "conversation") {
+            void fetchProtocol(pid).then(() => {
+                if (projectIdRef.current !== pid) return;
+                void fetchStudies(pid);
+            });
+            return;
+        }
+
+        if (bootMode === "protocol") {
+            void fetchProtocol(pid);
+            return;
+        }
+
+        if (bootMode === "ledger") {
             void fetchStudies(pid);
-        });
-    }, [fetchProtocol, fetchStudies, projectId]);
+        }
+    }, [bootMode, fetchProtocol, fetchStudies, projectId]);
 
     const handleProjectDataChanged = useCallback((detail: ProjectDataChangedDetail) => {
         if (detail.projectId !== projectIdRef.current) return;
