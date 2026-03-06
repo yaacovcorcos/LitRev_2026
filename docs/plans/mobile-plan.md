@@ -183,9 +183,11 @@ Enable or roll out one wave at a time:
 5. `NEXT_PUBLIC_MOBILE_HOME_V2`
 6. `NEXT_PUBLIC_MOBILE_AUTH_V2`
 7. `NEXT_PUBLIC_MOBILE_PROTOCOL_V2`
-8. shared touch-target sweep
-9. reliability telemetry + mobile e2e certification
-10. chat foundation follow-up:
+8. `MOB-FND-007` shared touch-target sweep
+9. `MOB-FND-008` reliability telemetry + mobile e2e certification
+10. optional admin/settings wave if `MOB-FND-009` audit justifies it:
+   - `NEXT_PUBLIC_MOBILE_ADMIN_V2`
+11. chat foundation follow-up:
    - `NEXT_PUBLIC_MOBILE_AI_V2`
    - `NEXT_PUBLIC_MOBILE_NOTES_V2`
    - `NEXT_PUBLIC_MOBILE_LEDGER_V2`
@@ -209,6 +211,8 @@ Rollback matrix:
 - `/project/[id]/draft` regression: `NEXT_PUBLIC_MOBILE_DRAFT_V2=0`
 - popup regression: `NEXT_PUBLIC_MOBILE_POPUP_V2=0`
 - shell dead-scroll/double-scroll regression in chat shells: `NEXT_PUBLIC_MOBILE_SCROLL_LOCK_V2=0`
+- shared touch-target regression: route-group flag rollback where available; otherwise revert and redeploy
+- reliability telemetry regression: revert telemetry code independently
 - non-flagged contract cleanup waves: revert and redeploy
 
 After changing any `NEXT_PUBLIC_*` value, redeploy to apply.
