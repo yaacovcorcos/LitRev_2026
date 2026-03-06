@@ -13,6 +13,7 @@ import type { StudyInput } from "@/lib/server/ledger";
 
 type LedgerContextValue = {
   getStudiesByProject: (projectId: string) => Study[];
+  isProjectLoaded: (projectId: string) => boolean;
   addStudy: (projectId: string, study: Study) => void;
   replaceStudyInCache: (projectId: string, study: Study) => void;
   removeStudies: (projectId: string, studyIds: string[]) => Promise<void>;
@@ -54,6 +55,10 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
     },
     [ledgerMap]
   );
+
+  const isProjectLoaded = useCallback((projectId: string) => {
+    return loadedProjectsRef.current.has(projectId);
+  }, []);
 
   /** Insert a study into the local cache (study already persisted server-side). */
   const addStudy = useCallback((projectId: string, study: Study) => {
@@ -169,6 +174,7 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo(
     () => ({
       getStudiesByProject,
+      isProjectLoaded,
       addStudy,
       replaceStudyInCache,
       removeStudies,
@@ -179,7 +185,7 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
       seedProject,
       ensureProjectLoaded,
     }),
-    [getStudiesByProject, addStudy, replaceStudyInCache, removeStudies, upsertNewStudy, getPaperCount, getStudyById, updateSingleStudy, seedProject, ensureProjectLoaded]
+    [getStudiesByProject, isProjectLoaded, addStudy, replaceStudyInCache, removeStudies, upsertNewStudy, getPaperCount, getStudyById, updateSingleStudy, seedProject, ensureProjectLoaded]
   );
 
   return <LedgerContext.Provider value={value}>{children}</LedgerContext.Provider>;

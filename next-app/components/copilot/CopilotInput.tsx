@@ -48,7 +48,7 @@ export function CopilotInput({ page, section, studyId, inputPlaceholder, prefill
         selectedModel,
         setSelectedModel,
     } = useProjectCopilot();
-    const projectSnapshot = useProjectState(projectId);
+    const projectState = useProjectState(projectId);
 
     return (
         <CopilotInputCoreClient
@@ -72,7 +72,7 @@ export function CopilotInput({ page, section, studyId, inputPlaceholder, prefill
             removeAttachedContextTarget={removeAttachedContextTarget}
             clearAttachedContextTargets={clearAttachedContextTargets}
             addAttachedContextTargets={addAttachedContextTargets}
-            hasProtocol={projectSnapshot.hasProtocol}
+            hasProtocol={projectState.hasProtocolForRouting}
             autonomyPreset={autonomyPreset}
             updateAutonomyPreset={updateAutonomyPreset}
             setShowAutonomySettings={setShowAutonomySettings}
