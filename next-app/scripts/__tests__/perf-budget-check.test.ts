@@ -303,8 +303,8 @@ describe("perf-budget-check", () => {
     const logger = createLogger();
 
     writeJson(path.join(cwd, "budget.json"), makeBudget());
-    writeJson(path.join(cwd, "baseline.json"), makeRun({ lcp: 2000 }));
-    writeJson(path.join(cwd, "results.json"), makeRun({ lcp: 2300 }));
+    writeJson(path.join(cwd, "baseline.json"), makeRun({ lcp: 1900 }));
+    writeJson(path.join(cwd, "results.json"), makeRun({ lcp: 2100 }));
     writeJson(path.join(cwd, "waivers.json"), {
       version: 1,
       waivers: [
@@ -345,7 +345,58 @@ describe("perf-budget-check", () => {
     );
 
     expect(exitCode).toBe(0);
-    expect(logger.lines.some((line) => line.includes("stdout:[waived] [regression] /project/[id] desktop-normal LCP"))).toBe(true);
+    expect(logger.lines.some((line) => line.includes("[waived] [regression] /project/[id] desktop-normal LCP"))).toBe(true);
+  });
+
+  it("does not waive threshold breaches", () => {
+    const cwd = createTempDir();
+    const logger = createLogger();
+
+    writeJson(path.join(cwd, "budget.json"), makeBudget());
+    writeJson(path.join(cwd, "baseline.json"), makeRun({ lcp: 2150 }));
+    writeJson(path.join(cwd, "results.json"), makeRun({ lcp: 2300 }));
+    writeJson(path.join(cwd, "waivers.json"), {
+      version: 1,
+      waivers: [
+        {
+          route: "/project/[id]",
+          profile: "desktop-normal",
+          metric: "LCP",
+          approver: "perf-owner",
+          reason: "Regression-only waiver should not suppress hard thresholds",
+          expiresAt: "2026-03-20T00:00:00.000Z",
+          followUp: "SPD-002",
+        },
+      ],
+    });
+
+    const exitCode = runBudgetCheck(
+      [
+        "node",
+        "scripts/perf-budget-check.mjs",
+        "--mode",
+        "enforce",
+        "--budget",
+        "./budget.json",
+        "--baseline",
+        "./baseline.json",
+        "--results",
+        "./results.json",
+        "--waivers",
+        "./waivers.json",
+      ],
+      {
+        cwd,
+        stdout: logger.stdout,
+        stderr: logger.stderr,
+        artifactRoots: makeArtifactRoots(cwd),
+        now: new Date("2026-03-10T12:00:00.000Z"),
+      },
+    );
+
+    expect(exitCode).toBe(1);
+    expect(logger.lines.some((line) => line.includes("[threshold] /project/[id] desktop-normal LCP"))).toBe(true);
+    expect(logger.lines.some((line) => line.includes("[waived] [threshold]"))).toBe(false);
   });
 
   it("fails when a waiver is expired", () => {

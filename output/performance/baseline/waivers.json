@@ -9,6 +9,15 @@
       "reason": "Calibration showed a 6ms TTFB spread can exceed the 10% regression limit at low-millisecond baselines; keep enforce mode active while the regression heuristic is tightened.",
       "expiresAt": "2026-03-20T00:00:00.000Z",
       "followUp": "SPD-001h"
+    },
+    {
+      "route": "/project/[id]/draft",
+      "profile": "mobile-mid",
+      "metric": "TTFB",
+      "approver": "yaacovcorcos",
+      "reason": "CI run 0c40505b8e75e4114ff3c6fa121a43d6683a336e produced a 2ms TTFB increase that crossed the 10% regression limit from an 11ms baseline; keep enforce mode active while the regression heuristic is tightened.",
+      "expiresAt": "2026-03-20T00:00:00.000Z",
+      "followUp": "SPD-001h"
     }
   ]
 }

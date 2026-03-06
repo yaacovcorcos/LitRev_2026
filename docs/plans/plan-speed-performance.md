@@ -24,7 +24,7 @@ Define the canonical implementation plan for app speed, responsiveness, and stab
   - `output/performance/baseline/baseline-latest.json` now mirrors the authoritative CI probe shape and provenance
   - a dated frozen copy also exists under `output/performance/baseline/`
 - Three consecutive warn-mode calibration notes are archived under `docs/reports/performance/`.
-- The gate now runs in `enforce` mode with one temporary, checked-in waiver for low-baseline `TTFB` regression noise on `/project/[id]/draft` `desktop-normal`.
+- The gate now runs in `enforce` mode with temporary, checked-in waivers for low-baseline `TTFB` regression noise on `/project/[id]/draft`.
 - The previously suspected `/project/[id]` desktop `CLS` threshold miss did not reproduce in the three authoritative CI calibration runs.
 
 ## Canonical Metrics and Budgets
@@ -151,8 +151,9 @@ Rules:
   - `9` samples for each mandatory route/profile pair
 - Calibration outcome:
   - `/project/[id]` `desktop-normal` `CLS` is classified as `probe noise` because it exceeded threshold in `0 of 3` consecutive warn-mode CI cycles and had `0.000` spread across those cycles
-- Active temporary waiver:
-  - `/project/[id]/draft` `desktop-normal` `TTFB` until `2026-03-20T00:00:00.000Z` while low-baseline regression sensitivity is tightened
+- Active temporary waivers:
+  - `/project/[id]/draft` `desktop-normal` `TTFB` until `2026-03-20T00:00:00.000Z`
+  - `/project/[id]/draft` `mobile-mid` `TTFB` until `2026-03-20T00:00:00.000Z`
 
 ## Quick Wins vs Structural Refactors
 
@@ -234,8 +235,8 @@ Rules:
 - [ ] `SPD-001g` Complete the first weekly review only after a real 7-day observation window exists.
   - Use `docs/reports/performance/weekly-review-<YYYY-MM-DD>.md` for the canonical review artifact.
   - Do not mark the first weekly review complete early if a full week of probe output is not yet available.
-- [ ] `SPD-001h` Remove the temporary `/project/[id]/draft` `desktop-normal` `TTFB` waiver.
-  - Either tighten low-baseline regression handling so 1-6ms TTFB swings do not produce false positives, or prove stable CI behavior without the waiver and then delete it.
+- [ ] `SPD-001h` Remove the temporary `/project/[id]/draft` `TTFB` waivers.
+  - Either tighten low-baseline regression handling so 1-6ms TTFB swings do not produce false positives, or prove stable CI behavior without the waivers and then delete them.
 - [ ] `SPD-002` Reduce eager project-shell warmup and sibling-route prefetch.
 - [ ] `SPD-003` Dedupe overview boot-time fetches on `/project/[id]`.
 - [ ] `SPD-004` Remove shared-shell render-blocking overhead.
@@ -243,7 +244,7 @@ Rules:
 - [ ] `SPD-006` Expand the probe matrix to nightly-only routes and slow-network coverage.
 
 ## Recently Completed
-- [x] `SPD-007` Budget gate now runs in `enforce` mode, consumes `output/performance/baseline/waivers.json`, and has one temporary scoped waiver for low-baseline `TTFB` noise.
+- [x] `SPD-007` Budget gate now runs in `enforce` mode, consumes `output/performance/baseline/waivers.json`, and has temporary scoped waivers for low-baseline draft-route `TTFB` noise.
 - [x] `SPD-001f` The `/project/[id]` desktop `CLS` alert was resolved through calibration, not a route fix: it did not reproduce in three authoritative CI cycles, so the baseline was refreshed to a CI-native artifact instead of waiving `CLS`.
 - [x] `SPD-001e` Three consecutive warn-mode CI calibration notes are archived and the numeric calibration rule is now applied from committed evidence.
 - [x] `SPD-001a` Web Vitals reporter, route context mapping, ingestion endpoint, and privacy allowlist are implemented.

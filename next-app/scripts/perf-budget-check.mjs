@@ -260,10 +260,7 @@ function validateWaivers(waiverDocument, now = new Date()) {
       );
     }
 
-    return {
-      ...normalized,
-      expiresAt: normalized.expiresAt,
-    };
+    return normalized;
   });
 }
 
@@ -272,7 +269,7 @@ function applyWaivers(issues, waivers) {
   const waivedMessages = [];
 
   for (const issue of issues) {
-    if ((issue.type !== "threshold" && issue.type !== "regression") || !issue.metricName) {
+    if (issue.type !== "regression" || !issue.metricName) {
       activeIssues.push(issue);
       continue;
     }
