@@ -53,6 +53,7 @@ import { createIdempotencyMiddleware, executeWithToolMiddleware, type ToolExecut
 import { resolveAuthenticatedIdentity } from "@/lib/server/auth/identity";
 import { computeLedgerCounts, computeStudyLedger } from "@/lib/server/ledger-utils";
 import {
+    dropShadowedInvalidToolCalls,
     mapToolToProgressMessage,
     isStudyLedgerSnapshot,
     getLedgerCounts,
@@ -543,6 +544,23 @@ class AIService {
                 }
 
                 break;
+            }
+
+            if (collectedToolCalls.length === 0) {
+                return;
+            }
+
+            const sanitizedToolCalls = dropShadowedInvalidToolCalls(collectedToolCalls);
+            if (sanitizedToolCalls.dropped.length > 0) {
+                console.warn(
+                    "[ai-service] Dropped malformed shadowed tool calls:",
+                    sanitizedToolCalls.dropped.map((toolCall) => ({
+                        id: toolCall.id,
+                        name: toolCall.name,
+                        reason: toolCall.reason,
+                    })),
+                );
+                collectedToolCalls = sanitizedToolCalls.toolCalls;
             }
 
             if (collectedToolCalls.length === 0) {
@@ -1204,6 +1222,19 @@ class AIService {
                     collectedToolCalls = [
                         updateProtocolCall ?? buildScopingHandoffToolCall(effectiveHandoffSelection.question),
                     ];
+                }
+
+                const sanitizedToolCalls = dropShadowedInvalidToolCalls(collectedToolCalls);
+                if (sanitizedToolCalls.dropped.length > 0) {
+                    console.warn(
+                        "[ai-service] Dropped malformed shadowed tool calls:",
+                        sanitizedToolCalls.dropped.map((toolCall) => ({
+                            id: toolCall.id,
+                            name: toolCall.name,
+                            reason: toolCall.reason,
+                        })),
+                    );
+                    collectedToolCalls = sanitizedToolCalls.toolCalls;
                 }
 
                 if (collectedToolCalls.length === 0) {

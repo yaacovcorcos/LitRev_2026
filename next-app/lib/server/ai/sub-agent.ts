@@ -30,6 +30,7 @@ import { getAIService } from "./ai-service";
 import { createArtifact, applyArtifact } from "@/lib/server/agent/artifacts";
 import { startRun, endRun } from "@/lib/server/agent/run";
 import { emitEvent } from "@/lib/server/agent/events";
+import { dropShadowedInvalidToolCalls } from "./tool-helpers";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -279,6 +280,26 @@ export async function executeSubAgent(params: SubAgentParams): Promise<SubAgentR
             }
 
             // No tool calls = AI is done, natural end
+            if (collectedToolCalls.length === 0) {
+                lastContent = contentSoFar;
+                loop.markStopped("natural");
+                break;
+            }
+
+            const sanitizedToolCalls = dropShadowedInvalidToolCalls(collectedToolCalls);
+            if (sanitizedToolCalls.dropped.length > 0) {
+                console.warn(
+                    "[sub-agent] Dropped malformed shadowed tool calls:",
+                    sanitizedToolCalls.dropped.map((toolCall) => ({
+                        id: toolCall.id,
+                        name: toolCall.name,
+                        reason: toolCall.reason,
+                    })),
+                );
+                collectedToolCalls.length = 0;
+                collectedToolCalls.push(...sanitizedToolCalls.toolCalls);
+            }
+
             if (collectedToolCalls.length === 0) {
                 lastContent = contentSoFar;
                 loop.markStopped("natural");

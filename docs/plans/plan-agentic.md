@@ -32,6 +32,7 @@
 ## Recently Completed
 *Finished work that might still be fragile or require monitoring. Prune oldest first.*
 
+- [x] Hardened `update_protocol` proposal execution: the tool now advertises an explicit scalar/array `value` schema to providers, and the executor drops malformed sibling `update_protocol` calls when a valid proposal exists in the same turn.
 - [x] Tightened proposal-style assistant behavior so model-visible tool results distinguish `proposed` from `auto_applied`, and planner heuristics now require explicit extraction/writing verbs for `extract_pdf` and `update_note`.
 - [x] Added `search_openalex` tool with Search/Scoping/QA integration, OpenAlex normalization, and Crossref fallback enrichment for sparse DOI metadata.
 - [x] P10 mentioned-studies flow shipped: extraction pipeline (structured + fallback), chat chips, one-click add-to-ledger, idempotent duplicate protection, and chat provenance tagging.
@@ -41,7 +42,6 @@
 - [x] Implemented `delete_study` tool and registered it in `AVAILABLE_TOOLS` and screening mode.
 - [x] Wired `update_criteria` into tool registry and protocol-mode tool filtering.
 - [x] P10: Scoping mode architecture shipped (routing, tool filtering, batch plan behavior, contract parsing, deterministic handoff).
-- [x] `exclude_study` tool implemented and registered in `AVAILABLE_TOOLS`.
 
 ## Deferred / Parking Lot
 *Ideas acknowledged but explicitly not active right now.*

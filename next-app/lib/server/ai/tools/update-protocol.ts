@@ -16,7 +16,10 @@ function getNestedValue(obj: Record<string, unknown>, path: string): unknown {
 
 const inputSchema = z.object({
     field: z.string().min(1, "field is required"),
-    value: z.union([z.string(), z.array(z.string())]),
+    // Keep the structural requirement light here and defer field-specific
+    // coercion/validation to validateFieldValue(), which knows whether the
+    // target field expects a scalar or string[] payload.
+    value: z.unknown(),
     rationale: z.string().min(1, "rationale is required"),
 });
 
@@ -43,8 +46,23 @@ export const updateProtocolTool: AITool = {
                         `Dot-notation path to the protocol field. Valid: ${ALL_PATHS}`,
                 },
                 value: {
+                    anyOf: [
+                        { type: "string" },
+                        { type: "number" },
+                        { type: "boolean" },
+                        {
+                            type: "array",
+                            items: {
+                                anyOf: [
+                                    { type: "string" },
+                                    { type: "number" },
+                                    { type: "boolean" },
+                                ],
+                            },
+                        },
+                    ],
                     description:
-                        "The new value. For string fields, pass a string. For array fields (eligibility.inclusion, eligibility.exclusion, searchStrategy.databases, methodology.studyDesigns), pass the complete new array of strings.",
+                        "The new value. For string fields, pass a string. For array fields (eligibility.inclusion, eligibility.exclusion, searchStrategy.databases, methodology.studyDesigns), pass the complete new array.",
                 },
                 rationale: {
                     type: "string",

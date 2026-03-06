@@ -5,13 +5,14 @@
  * Extracted from ai-service.ts — no dependency on AIService class.
  */
 
-import type { ArtifactType } from "@/types/artifacts";
 import type { AgentMode } from "@/types/agent";
 import type { ToolCall, ToolDefinition } from "@/types/ai";
+import type { ArtifactType } from "@/types/artifacts";
 import type { PlanPayload, ScopingReportPayload } from "@/types/artifacts";
 import { getEffectiveAllowedTools } from "@/lib/agent/router";
 import { getToolDefinitions, getTool, resolveAutonomyLevel } from "./tools";
 import { getToolAutonomyLevel } from "@/lib/server/agent/autonomy";
+import { isValidFieldPath, validateFieldValue } from "@/lib/protocol-fields";
 import {
     appendScopingReportComment,
     buildFallbackScopingReport,
@@ -93,6 +94,81 @@ export function mapToolToProgressMessage(toolName: string): string {
         delegate_protocol: "Delegating protocol workflow...",
     };
     return messages[toolName] ?? `Running ${toolName}...`;
+}
+
+export type DroppedToolCall = {
+    id: string;
+    name: string;
+    reason: string;
+};
+
+/**
+ * Some providers occasionally emit both malformed and valid update_protocol
+ * calls in the same turn. When that happens, executing the malformed sibling
+ * only adds a noisy failure card while the valid proposal still succeeds.
+ *
+ * Keep the invalid call only when it is the only protocol proposal we have,
+ * so genuine failures still surface.
+ */
+export function dropShadowedInvalidToolCalls(toolCalls: ToolCall[]): {
+    toolCalls: ToolCall[];
+    dropped: DroppedToolCall[];
+} {
+    const hasValidUpdateProtocol = toolCalls.some((toolCall) => {
+        if (toolCall.name !== "update_protocol") return false;
+        return validateUpdateProtocolArgs(toolCall.arguments).success;
+    });
+
+    if (!hasValidUpdateProtocol) {
+        return { toolCalls, dropped: [] };
+    }
+
+    const kept: ToolCall[] = [];
+    const dropped: DroppedToolCall[] = [];
+
+    for (const toolCall of toolCalls) {
+        if (toolCall.name !== "update_protocol") {
+            kept.push(toolCall);
+            continue;
+        }
+
+        const validation = validateUpdateProtocolArgs(toolCall.arguments);
+        if (validation.success) {
+            kept.push(toolCall);
+            continue;
+        }
+
+        dropped.push({
+            id: toolCall.id,
+            name: toolCall.name,
+            reason: validation.error,
+        });
+    }
+
+    return { toolCalls: kept, dropped };
+}
+
+function validateUpdateProtocolArgs(args: Record<string, unknown>): { success: true } | { success: false; error: string } {
+    const field = typeof args.field === "string" ? args.field.trim() : "";
+    if (!field) {
+        return { success: false, error: "Input validation failed: field is required" };
+    }
+
+    if (!isValidFieldPath(field)) {
+        return { success: false, error: `Invalid protocol field: \"${field}\"` };
+    }
+
+    const rationale = typeof args.rationale === "string" ? args.rationale.trim() : "";
+    if (!rationale) {
+        return { success: false, error: "Input validation failed: rationale is required" };
+    }
+
+    const valueValidation = validateFieldValue(field, args.value);
+    if (!valueValidation.valid) {
+        return { success: false, error: valueValidation.error };
+    }
+
+    return { success: true };
 }
 
 // ── Ledger helper functions for prompt context ───────────────────────────────
