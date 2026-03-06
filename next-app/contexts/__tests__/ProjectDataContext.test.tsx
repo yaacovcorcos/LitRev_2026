@@ -91,27 +91,11 @@ describe("ProjectDataContext", () => {
         setupSuccessMocks();
     });
 
-    it("boot mode conversation fetches protocol first, then studies after it settles", async () => {
-        const callOrder: string[] = [];
-        mockGetProtocol.mockImplementation(async () => {
-            callOrder.push("protocol");
-            return { success: true, data: FULL_PROTOCOL };
-        });
-        mockListStudies.mockImplementation(async () => {
-            callOrder.push("studies");
-            return { success: true, data: [] };
-        });
-
+    it("boot mode conversation does not eagerly fetch protocol or studies", async () => {
         renderHook(() => useProjectData(), { wrapper: createWrapper("conversation") });
 
-        await waitFor(() => {
-            expect(callOrder).toContain("protocol");
-            expect(callOrder).toContain("studies");
-        });
-
-        const protocolIdx = callOrder.indexOf("protocol");
-        const studiesIdx = callOrder.indexOf("studies");
-        expect(protocolIdx).toBeLessThan(studiesIdx);
+        expect(mockGetProtocol).not.toHaveBeenCalled();
+        expect(mockListStudies).not.toHaveBeenCalled();
     });
 
     it("boot mode protocol sets protocol state to ready after successful fetch", async () => {

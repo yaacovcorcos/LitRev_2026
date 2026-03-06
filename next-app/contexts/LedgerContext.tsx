@@ -13,6 +13,7 @@ import type { StudyInput } from "@/lib/server/ledger";
 
 type LedgerContextValue = {
   getStudiesByProject: (projectId: string) => Study[];
+  isProjectLoaded: (projectId: string) => boolean;
   addStudy: (projectId: string, study: Study) => void;
   replaceStudyInCache: (projectId: string, study: Study) => void;
   removeStudies: (projectId: string, studyIds: string[]) => Promise<void>;
@@ -31,18 +32,30 @@ const LedgerContext = createContext<LedgerContextValue | undefined>(undefined);
 export function LedgerProvider({ children }: { children: React.ReactNode }) {
   const [ledgerMap, setLedgerMap] = useState<Record<string, Study[]>>({});
   const loadedProjectsRef = useRef<Set<string>>(new Set());
+  const loadingProjectsRef = useRef<Set<string>>(new Set());
 
   // Refresh a single project's studies when AI tools mutate the ledger
   useEffect(() => {
     const handler = (e: Event) => {
       const projectId = (e as CustomEvent).detail?.projectId as string | undefined;
       if (!projectId) return;
-      loadedProjectsRef.current.add(projectId);
-      listStudiesAction(projectId)
+      const wasLoaded = loadedProjectsRef.current.has(projectId);
+      if (!wasLoaded) {
+        loadingProjectsRef.current.add(projectId);
+      }
+      const refreshPromise = listStudiesAction(projectId)
         .then((result) => {
-          if (result.success) setLedgerMap((prev) => ({ ...prev, [projectId]: result.data }));
+          if (result.success) {
+            loadedProjectsRef.current.add(projectId);
+            setLedgerMap((prev) => ({ ...prev, [projectId]: result.data }));
+          }
         })
         .catch(console.error);
+      if (!wasLoaded) {
+        void refreshPromise.finally(() => {
+          loadingProjectsRef.current.delete(projectId);
+        });
+      }
     };
     window.addEventListener("litrev:ledger-changed", handler);
     return () => window.removeEventListener("litrev:ledger-changed", handler);
@@ -54,6 +67,10 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
     },
     [ledgerMap]
   );
+
+  const isProjectLoaded = useCallback((projectId: string) => {
+    return loadedProjectsRef.current.has(projectId);
+  }, []);
 
   /** Insert a study into the local cache (study already persisted server-side). */
   const addStudy = useCallback((projectId: string, study: Study) => {
@@ -151,24 +168,32 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
 
   /** Push studies into the cache from an external source (e.g. ProjectDataProvider). */
   const seedProject = useCallback((projectId: string, studies: Study[]) => {
+    loadingProjectsRef.current.delete(projectId);
     loadedProjectsRef.current.add(projectId);
     setLedgerMap((prev) => ({ ...prev, [projectId]: studies }));
   }, []);
 
   /** Fetch a project's studies if not already loaded. No-op for already-loaded projects. */
   const ensureProjectLoaded = useCallback((projectId: string) => {
-    if (loadedProjectsRef.current.has(projectId)) return;
-    loadedProjectsRef.current.add(projectId);
+    if (loadedProjectsRef.current.has(projectId) || loadingProjectsRef.current.has(projectId)) return;
+    loadingProjectsRef.current.add(projectId);
     listStudiesAction(projectId)
       .then((result) => {
-        if (result.success) setLedgerMap((prev) => ({ ...prev, [projectId]: result.data }));
+        if (result.success) {
+          loadedProjectsRef.current.add(projectId);
+          setLedgerMap((prev) => ({ ...prev, [projectId]: result.data }));
+        }
       })
-      .catch(console.error);
+      .catch(console.error)
+      .finally(() => {
+        loadingProjectsRef.current.delete(projectId);
+      });
   }, []);
 
   const value = useMemo(
     () => ({
       getStudiesByProject,
+      isProjectLoaded,
       addStudy,
       replaceStudyInCache,
       removeStudies,
@@ -179,7 +204,7 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
       seedProject,
       ensureProjectLoaded,
     }),
-    [getStudiesByProject, addStudy, replaceStudyInCache, removeStudies, upsertNewStudy, getPaperCount, getStudyById, updateSingleStudy, seedProject, ensureProjectLoaded]
+    [getStudiesByProject, isProjectLoaded, addStudy, replaceStudyInCache, removeStudies, upsertNewStudy, getPaperCount, getStudyById, updateSingleStudy, seedProject, ensureProjectLoaded]
   );
 
   return <LedgerContext.Provider value={value}>{children}</LedgerContext.Provider>;

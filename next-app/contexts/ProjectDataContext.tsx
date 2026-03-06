@@ -678,14 +678,6 @@ export function ProjectDataProvider({
         if (!projectId) return;
         const pid = projectId;
 
-        if (bootMode === "conversation") {
-            void fetchProtocol(pid).then(() => {
-                if (projectIdRef.current !== pid) return;
-                void fetchStudies(pid);
-            });
-            return;
-        }
-
         if (bootMode === "protocol") {
             void fetchProtocol(pid);
             return;

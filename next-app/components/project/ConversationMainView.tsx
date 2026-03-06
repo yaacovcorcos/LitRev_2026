@@ -70,8 +70,10 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
 
 
     // Dynamic suggestion chips from project state (Phase 4.2)
-    const snapshot = useProjectState(projectId);
-    const chips = useMemo(() => getSuggestions(snapshot), [snapshot]);
+    const projectState = useProjectState(projectId, { bootstrap: true });
+    const chips = useMemo(() => (
+        projectState.isReady ? getSuggestions(projectState.snapshot) : []
+    ), [projectState.isReady, projectState.snapshot]);
     const emptyStateSuggestions = useMemo(() => {
         const merged = [
             ...chips.map((chip) => ({
