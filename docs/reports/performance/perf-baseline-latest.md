@@ -1,22 +1,22 @@
 # Performance Baseline Report
 
-- Captured at: 2026-03-05T22:58:21.844Z
-- Commit: 535cd80114550d171cf6655c3f3749f6bb835abf
-- Source type: baseline-freeze-playwright
-- Run ID: 535cd80114550d171cf6655c3f3749f6bb835abf-1772751501844
+- Captured at: 2026-03-05T23:48:16.324Z
+- Commit: ead2ac8607dbbf6af2ccb6174388e0f726986d0c
+- Source type: ci-probe-playwright
+- Run ID: ead2ac8607dbbf6af2ccb6174388e0f726986d0c-1772754496324
 - Source artifact: ../output/performance/baseline/baseline-latest.json
 - Total samples: 72
 
 | Route | Profile | Samples | LCP p75 (ms) | INP p75 (ms) | CLS p75 | TTFB p75 (ms) |
 |---|---|---:|---:|---:|---:|---:|
-| /project/[id] | desktop-normal | 9 | 92 | 16 | 0.131 | 20 |
-| /project/[id] | mobile-mid | 9 | 48 | 16 | 0 | 13 |
-| /project/[id]/ledger | desktop-normal | 9 | 176 | 24 | 0.014 | 13 |
-| /project/[id]/ledger | mobile-mid | 9 | 64 | 16 | 0 | 7 |
-| /project/[id]/draft | desktop-normal | 9 | 256 | 24 | 0.014 | 50 |
-| /project/[id]/draft | mobile-mid | 9 | 64 | 16 | 0 | 8 |
-| /ai | desktop-normal | 9 | 60 | 16 | 0 | 4 |
-| /ai | mobile-mid | 9 | 56 | 16 | 0 | 3 |
+| /project/[id] | desktop-normal | 9 | 108 | 16 | 0 | 17 |
+| /project/[id] | mobile-mid | 9 | 84 | 16 | 0 | 11 |
+| /project/[id]/ledger | desktop-normal | 9 | 304 | 24 | 0.017 | 13 |
+| /project/[id]/ledger | mobile-mid | 9 | 400 | 16 | 0 | 11 |
+| /project/[id]/draft | desktop-normal | 9 | 376 | 32 | 0.014 | 12 |
+| /project/[id]/draft | mobile-mid | 9 | 512 | 16 | 0 | 11 |
+| /ai | desktop-normal | 9 | 100 | 16 | 0 | 4 |
+| /ai | mobile-mid | 9 | 76 | 16 | 0 | 5 |
 
 ## Route/Profile Samples
 - /ai:desktop-normal: 9

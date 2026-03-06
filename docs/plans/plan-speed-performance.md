@@ -18,12 +18,14 @@ Define the canonical implementation plan for app speed, responsiveness, and stab
   - same-path baseline/results inputs
   - missing baseline/results artifacts
   - malformed JSON inputs
+- The budget checker now also validates a checked-in waiver file at `output/performance/baseline/waivers.json` and rejects invalid or expired waivers.
 - CI now builds a production app, starts `next start`, generates a real per-commit probe artifact, uploads it, and runs the budget checker against that artifact.
-- The committed baseline is no longer synthetic:
-  - `output/performance/baseline/baseline-latest.json` is probe-generated
+- The committed baseline is probe-generated from the CI probe path:
+  - `output/performance/baseline/baseline-latest.json` now mirrors the authoritative CI probe shape and provenance
   - a dated frozen copy also exists under `output/performance/baseline/`
-- The gate is still `warn` mode, not `enforce`.
-- The current highest-signal runtime issue surfaced by the real baseline is desktop `CLS` on `/project/[id]`, which is above the committed threshold.
+- Three consecutive warn-mode calibration notes are archived under `docs/reports/performance/`.
+- The gate now runs in `enforce` mode with one temporary, checked-in waiver for low-baseline `TTFB` regression noise on `/project/[id]/draft` `desktop-normal`.
+- The previously suspected `/project/[id]` desktop `CLS` threshold miss did not reproduce in the three authoritative CI calibration runs.
 
 ## Canonical Metrics and Budgets
 
@@ -90,7 +92,7 @@ Budget policy:
   - production-only regressions create follow-up work, not immediate gate override
 - Current state:
   - artifact generation is authoritative
-  - merge behavior is still `warn` while the first real baseline stabilizes
+  - merge behavior is `enforce` with checked-in waiver support for temporary, scoped exceptions
 
 ## CI Artifact Contract
 - Baseline artifact:
@@ -139,16 +141,18 @@ Rules:
 
 ## Current Baseline Snapshot
 - Frozen baseline source:
-  - `baseline-freeze-playwright`
+  - `ci-probe-playwright`
 - Captured at:
-  - `2026-03-05T22:58:21.844Z`
+  - `2026-03-05T23:48:16.324Z`
 - Baseline commit:
-  - `535cd80114550d171cf6655c3f3749f6bb835abf`
+  - `ead2ac8607dbbf6af2ccb6174388e0f726986d0c`
 - Sample coverage:
   - `72` total samples
   - `9` samples for each mandatory route/profile pair
-- Current threshold miss:
-  - `/project/[id]` `desktop-normal` `CLS = 0.131` vs budget `0.08`
+- Calibration outcome:
+  - `/project/[id]` `desktop-normal` `CLS` is classified as `probe noise` because it exceeded threshold in `0 of 3` consecutive warn-mode CI cycles and had `0.000` spread across those cycles
+- Active temporary waiver:
+  - `/project/[id]/draft` `desktop-normal` `TTFB` until `2026-03-20T00:00:00.000Z` while low-baseline regression sensitivity is tightened
 
 ## Quick Wins vs Structural Refactors
 
@@ -227,24 +231,21 @@ Rules:
   - timeline rendering surfaces
 
 ## Active Tasks
-- [ ] `SPD-001e` Keep the gate in `warn` mode for the first 3 clean CI cycles and capture variance deltas for the real probe.
-  - Archive one calibration note per completed warn-mode cycle at `docs/reports/performance/calibration-<YYYY-MM-DD>-<short-sha>.md`.
-  - Use the numeric calibration rule above to classify the current `/project/[id]` desktop `CLS` miss as persistent regression, probe noise, or unresolved variance.
-- [ ] `SPD-001f` Decide whether the current `/project/[id]` desktop `CLS` over-budget state should be fixed immediately or temporarily waived before `enforce` mode.
-  - If it remains persistent after calibration, either fix the route or add a valid machine-readable waiver in `output/performance/baseline/waivers.json`.
+- [ ] `SPD-001g` Complete the first weekly review only after a real 7-day observation window exists.
+  - Use `docs/reports/performance/weekly-review-<YYYY-MM-DD>.md` for the canonical review artifact.
+  - Do not mark the first weekly review complete early if a full week of probe output is not yet available.
+- [ ] `SPD-001h` Remove the temporary `/project/[id]/draft` `desktop-normal` `TTFB` waiver.
+  - Either tighten low-baseline regression handling so 1-6ms TTFB swings do not produce false positives, or prove stable CI behavior without the waiver and then delete it.
 - [ ] `SPD-002` Reduce eager project-shell warmup and sibling-route prefetch.
 - [ ] `SPD-003` Dedupe overview boot-time fetches on `/project/[id]`.
 - [ ] `SPD-004` Remove shared-shell render-blocking overhead.
 - [ ] `SPD-005` Reduce `/ai` bundle and timeline cost.
 - [ ] `SPD-006` Expand the probe matrix to nightly-only routes and slow-network coverage.
-- [ ] `SPD-007` Promote the budget gate from `warn` to `enforce` once variance and waiver policy are settled.
-  - Wire the checker and CI to consume `output/performance/baseline/waivers.json`.
-  - Only mark `SPD-007` complete after `warn`-mode calibration is archived and the blocking metric is fixed or explicitly waived.
-- [ ] `SPD-001g` Publish the weekly review process now, then complete the first actual review only after a real 7-day observation window exists.
-  - Use `docs/reports/performance/weekly-review-<YYYY-MM-DD>.md` for the canonical review artifact.
-  - Do not mark the first weekly review complete early if a full week of probe output is not yet available.
 
 ## Recently Completed
+- [x] `SPD-007` Budget gate now runs in `enforce` mode, consumes `output/performance/baseline/waivers.json`, and has one temporary scoped waiver for low-baseline `TTFB` noise.
+- [x] `SPD-001f` The `/project/[id]` desktop `CLS` alert was resolved through calibration, not a route fix: it did not reproduce in three authoritative CI cycles, so the baseline was refreshed to a CI-native artifact instead of waiving `CLS`.
+- [x] `SPD-001e` Three consecutive warn-mode CI calibration notes are archived and the numeric calibration rule is now applied from committed evidence.
 - [x] `SPD-001a` Web Vitals reporter, route context mapping, ingestion endpoint, and privacy allowlist are implemented.
 - [x] `SPD-001b` Real probe-generated baseline artifacts are committed and the seeded baseline is removed.
 - [x] `SPD-001c` CI baseline/results artifact wiring is separated and guarded against same-path drift.

@@ -1,4 +1,14 @@
 {
   "version": 1,
-  "waivers": []
+  "waivers": [
+    {
+      "route": "/project/[id]/draft",
+      "profile": "desktop-normal",
+      "metric": "TTFB",
+      "approver": "yaacovcorcos",
+      "reason": "Calibration showed a 6ms TTFB spread can exceed the 10% regression limit at low-millisecond baselines; keep enforce mode active while the regression heuristic is tightened.",
+      "expiresAt": "2026-03-20T00:00:00.000Z",
+      "followUp": "SPD-001h"
+    }
+  ]
 }
