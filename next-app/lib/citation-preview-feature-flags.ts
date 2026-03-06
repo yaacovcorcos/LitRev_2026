@@ -10,14 +10,12 @@ function readFlag(raw: string | undefined): boolean | null {
     return null;
 }
 
-const DEFAULT_CITATION_HOVER_PREFETCH_ENABLED = false;
+const DEFAULT_CITATION_HOVER_PREFETCH_ENABLED = true;
 const DEFAULT_CITATION_PREVIEW_TELEMETRY_SHIPPING_ENABLED = false;
 
 export function isCitationHoverPrefetchEnabled(): boolean {
     const publicFlag = readFlag(process.env.NEXT_PUBLIC_ENABLE_CITATION_HOVER_PREFETCH);
     if (publicFlag !== null) return publicFlag;
-    const serverFlag = readFlag(process.env.ENABLE_CITATION_HOVER_PREFETCH);
-    if (serverFlag !== null) return serverFlag;
     return DEFAULT_CITATION_HOVER_PREFETCH_ENABLED;
 }
 
