@@ -31,7 +31,7 @@ jobs:
       BETTER_AUTH_SECRET: ci-perf-probe-secret-0123456789abcdef0123456789abcdef
       NEXT_PUBLIC_APP_VERSION: ci-perf-probe
       NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA: ${{ github.sha }}
-      PERF_BUDGET_MODE: warn
+      PERF_BUDGET_MODE: enforce
 
     steps:
       - uses: actions/checkout@v4
@@ -149,6 +149,7 @@ jobs:
         run: |
           test -f output/performance/baseline/budget-thresholds.json || (echo "::error::missing performance budget artifact" && exit 1)
           test -f output/performance/baseline/baseline-latest.json || (echo "::error::missing performance baseline artifact" && exit 1)
+          test -f output/performance/baseline/waivers.json || (echo "::error::missing performance waivers artifact" && exit 1)
           test -f output/performance/results/results-${GITHUB_SHA}.json || (echo "::error::missing performance results artifact" && exit 1)
 
       - name: Upload performance results artifact
@@ -165,4 +166,5 @@ jobs:
             --mode="${PERF_BUDGET_MODE}" \
             --budget="../output/performance/baseline/budget-thresholds.json" \
             --baseline="../output/performance/baseline/baseline-latest.json" \
-            --results="../output/performance/results/results-${GITHUB_SHA}.json"
+            --results="../output/performance/results/results-${GITHUB_SHA}.json" \
+            --waivers="../output/performance/baseline/waivers.json"
