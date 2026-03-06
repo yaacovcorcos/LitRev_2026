@@ -149,6 +149,7 @@ jobs:
         run: |
           test -f output/performance/baseline/budget-thresholds.json || (echo "::error::missing performance budget artifact" && exit 1)
           test -f output/performance/baseline/baseline-latest.json || (echo "::error::missing performance baseline artifact" && exit 1)
+          test -f output/performance/baseline/waivers.json || (echo "::error::missing performance waivers artifact" && exit 1)
           test -f output/performance/results/results-${GITHUB_SHA}.json || (echo "::error::missing performance results artifact" && exit 1)
 
       - name: Upload performance results artifact
@@ -165,4 +166,5 @@ jobs:
             --mode="${PERF_BUDGET_MODE}" \
             --budget="../output/performance/baseline/budget-thresholds.json" \
             --baseline="../output/performance/baseline/baseline-latest.json" \
-            --results="../output/performance/results/results-${GITHUB_SHA}.json"
+            --results="../output/performance/results/results-${GITHUB_SHA}.json" \
+            --waivers="../output/performance/baseline/waivers.json"
