@@ -41,7 +41,7 @@ function buildProject(
   };
 }
 
-export function HomeContent() {
+function HomeContent() {
   const {
     projects,
     addProject,

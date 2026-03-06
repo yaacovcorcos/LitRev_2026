@@ -19,7 +19,6 @@ import { DemoBanner } from "@/components/project/DemoBanner";
 import { isDemoProjectId } from "@/lib/demo/constants";
 import { isScrollOwnershipA1Enabled } from "@/lib/feature-flags";
 import { shouldLockRootScroll } from "@/lib/mobile/scroll-lock-policy";
-import { shouldSkipPreload } from "@/lib/network-aware";
 import { MOBILE_VIEWPORT_MEDIA_QUERY } from "@/lib/mobile/breakpoints";
 import { isMobileScrollLockV2Enabled, isMobileViewportV2Enabled } from "@/lib/mobile/feature-flags";
 import { ProjectDataProvider } from "@/contexts/ProjectDataContext";
@@ -103,27 +102,6 @@ function ProjectShellInner({ projectId, children }: ProjectShellInnerProps) {
             });
         };
     }, [projectId]);
-
-    // Prefetch JS bundles for sibling project routes
-    useEffect(() => {
-        if (!projectId || shouldSkipPreload()) return;
-        const routes = [
-            `/project/${projectId}`,
-            `/project/${projectId}/protocol`,
-            `/project/${projectId}/ledger`,
-            `/project/${projectId}/draft`,
-            `/project/${projectId}/notes`,
-        ];
-        let i = 0;
-        const step = () => {
-            if (i < routes.length) {
-                router.prefetch(routes[i]);
-                i++;
-                requestAnimationFrame(step);
-            }
-        };
-        requestAnimationFrame(step);
-    }, [projectId, router]);
 
     // Derive initial mode from route to avoid deep-link flicker.
     const [focusMode, setFocusMode] = useState<FocusMode>(() =>

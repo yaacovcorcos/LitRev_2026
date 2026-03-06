@@ -19,7 +19,6 @@ import {
     type ProjectDataDomain,
     type ProjectDataChangedDetail,
 } from "@/lib/project-data-events";
-import { shouldSkipPreload } from "@/lib/network-aware";
 import { useLedger } from "@/contexts/LedgerContext";
 import {
     applyProtocolArtifactPatch,
@@ -105,14 +104,6 @@ const INITIAL_PROTOCOL_SLICE: ProtocolDomainSlice = {
 export const ProjectDataContext = createContext<ProjectDataContextValue | null>(null);
 
 const PROTOCOL_SAVE_DEBOUNCE_MS = 500;
-
-const scheduleIdle = (fn: () => void) => {
-    if (typeof requestIdleCallback !== "undefined") {
-        requestIdleCallback(fn);
-    } else {
-        setTimeout(fn, 100);
-    }
-};
 
 function hasUnsyncedChanges(
     lastSavedAtMs: number,
@@ -683,28 +674,12 @@ export function ProjectDataProvider({
     useEffect(() => {
         if (!projectId) return;
         const pid = projectId;
-        const skipHeavy = shouldSkipPreload();
 
         void fetchProtocol(pid).then(() => {
             if (projectIdRef.current !== pid) return;
             void fetchStudies(pid);
         });
-
-        if (!skipHeavy) {
-            scheduleIdle(() => {
-                if (projectIdRef.current !== pid) return;
-                void fetchDraft(pid);
-            });
-            scheduleIdle(() => {
-                if (projectIdRef.current !== pid) return;
-                void fetchNotesList(pid);
-            });
-            scheduleIdle(() => {
-                if (projectIdRef.current !== pid) return;
-                void fetchMemory(pid);
-            });
-        }
-    }, [fetchDraft, fetchMemory, fetchNotesList, fetchProtocol, fetchStudies, projectId]);
+    }, [fetchProtocol, fetchStudies, projectId]);
 
     const handleProjectDataChanged = useCallback((detail: ProjectDataChangedDetail) => {
         if (detail.projectId !== projectIdRef.current) return;
