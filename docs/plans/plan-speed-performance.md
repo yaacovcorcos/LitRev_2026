@@ -24,7 +24,12 @@ Define the canonical implementation plan for app speed, responsiveness, and stab
   - `output/performance/baseline/baseline-latest.json` now mirrors the authoritative CI probe shape and provenance
   - a dated frozen copy also exists under `output/performance/baseline/`
 - Three consecutive warn-mode calibration notes are archived under `docs/reports/performance/`.
-- The gate now runs in `enforce` mode with temporary, checked-in waivers for low-baseline `TTFB` regression noise on `/project/[id]/draft`.
+- The gate now runs in `enforce` mode with no active waivers; `output/performance/baseline/waivers.json` remains checked in as the machine-readable exception contract.
+- Regression gating now requires both percentage regression and a minimum meaningful absolute delta before failing:
+  - `LCP`: `75ms`
+  - `INP`: `16ms`
+  - `CLS`: `0.02`
+  - `TTFB`: `20ms`
 - The previously suspected `/project/[id]` desktop `CLS` threshold miss did not reproduce in the three authoritative CI calibration runs.
 
 ## Canonical Metrics and Budgets
@@ -68,6 +73,7 @@ Define the canonical implementation plan for app speed, responsiveness, and stab
 
 Budget policy:
 - Protected metrics must not regress more than `10%` versus baseline without explicit sign-off.
+- Regression failures only trigger when the percentage breach also exceeds the minimum meaningful absolute delta for that metric (`LCP 75ms`, `INP 16ms`, `CLS 0.02`, `TTFB 20ms`).
 - Each optimization wave must name one primary target metric before implementation.
 - Baseline resets require a dedicated PR and updated report artifacts.
 
@@ -152,8 +158,7 @@ Rules:
 - Calibration outcome:
   - `/project/[id]` `desktop-normal` `CLS` is classified as `probe noise` because it exceeded threshold in `0 of 3` consecutive warn-mode CI cycles and had `0.000` spread across those cycles
 - Active temporary waivers:
-  - `/project/[id]/draft` `desktop-normal` `TTFB` until `2026-03-20T00:00:00.000Z`
-  - `/project/[id]/draft` `mobile-mid` `TTFB` until `2026-03-20T00:00:00.000Z`
+  - none
 
 ## Quick Wins vs Structural Refactors
 
@@ -232,11 +237,6 @@ Rules:
   - timeline rendering surfaces
 
 ## Active Tasks
-- [ ] `SPD-001g` Complete the first weekly review only after a real 7-day observation window exists.
-  - Use `docs/reports/performance/weekly-review-<YYYY-MM-DD>.md` for the canonical review artifact.
-  - Do not mark the first weekly review complete early if a full week of probe output is not yet available.
-- [ ] `SPD-001h` Remove the temporary `/project/[id]/draft` `TTFB` waivers.
-  - Either tighten low-baseline regression handling so 1-6ms TTFB swings do not produce false positives, or prove stable CI behavior without the waivers and then delete them.
 - [ ] `SPD-002` Reduce eager project-shell warmup and sibling-route prefetch.
 - [ ] `SPD-003` Dedupe overview boot-time fetches on `/project/[id]`.
 - [ ] `SPD-004` Remove shared-shell render-blocking overhead.
@@ -244,7 +244,9 @@ Rules:
 - [ ] `SPD-006` Expand the probe matrix to nightly-only routes and slow-network coverage.
 
 ## Recently Completed
-- [x] `SPD-007` Budget gate now runs in `enforce` mode, consumes `output/performance/baseline/waivers.json`, and has temporary scoped waivers for low-baseline draft-route `TTFB` noise.
+- [x] `SPD-001h` Temporary draft-route `TTFB` waivers were removed after the regression gate adopted minimum meaningful absolute delta floors and recent authoritative CI artifacts passed without waiver hits.
+- [x] `SPD-001g` The first weekly performance review is documented in `docs/reports/performance/weekly-review-2026-03-06.md`, covering the first real 7-day calendar window after perf-gate activation and calling out pre-activation no-run days explicitly.
+- [x] `SPD-007` Budget gate now runs in `enforce` mode, consumes `output/performance/baseline/waivers.json`, and currently has no active waivers.
 - [x] `SPD-001f` The `/project/[id]` desktop `CLS` alert was resolved through calibration, not a route fix: it did not reproduce in three authoritative CI cycles, so the baseline was refreshed to a CI-native artifact instead of waiving `CLS`.
 - [x] `SPD-001e` Three consecutive warn-mode CI calibration notes are archived and the numeric calibration rule is now applied from committed evidence.
 - [x] `SPD-001a` Web Vitals reporter, route context mapping, ingestion endpoint, and privacy allowlist are implemented.
