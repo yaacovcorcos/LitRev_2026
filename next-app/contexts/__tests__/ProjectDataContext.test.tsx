@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import { ProjectDataProvider } from "../ProjectDataContext";
 import { useProjectData } from "@/hooks/useProjectData";
 import { createDefaultProtocolData } from "@/types/protocol";
+import type { ProjectBootMode } from "@/lib/project-entry-boot-mode";
 
 // ── Mocks ────────────────────────────────────────────────────────────────────
 
@@ -61,8 +62,14 @@ const FULL_PROTOCOL = {
     researchQuestion: "RQ1",
 };
 
-function wrapper({ children }: { children: ReactNode }) {
-    return <ProjectDataProvider projectId={PROJECT_ID}>{children}</ProjectDataProvider>;
+function createWrapper(bootMode: ProjectBootMode) {
+    return function Wrapper({ children }: { children: ReactNode }) {
+        return (
+            <ProjectDataProvider projectId={PROJECT_ID} bootMode={bootMode}>
+                {children}
+            </ProjectDataProvider>
+        );
+    };
 }
 
 function setupSuccessMocks() {
@@ -84,7 +91,7 @@ describe("ProjectDataContext", () => {
         setupSuccessMocks();
     });
 
-    it("fetches protocol first, then studies after it settles", async () => {
+    it("boot mode conversation fetches protocol first, then studies after it settles", async () => {
         const callOrder: string[] = [];
         mockGetProtocol.mockImplementation(async () => {
             callOrder.push("protocol");
@@ -95,7 +102,7 @@ describe("ProjectDataContext", () => {
             return { success: true, data: [] };
         });
 
-        renderHook(() => useProjectData(), { wrapper });
+        renderHook(() => useProjectData(), { wrapper: createWrapper("conversation") });
 
         await waitFor(() => {
             expect(callOrder).toContain("protocol");
@@ -107,17 +114,18 @@ describe("ProjectDataContext", () => {
         expect(protocolIdx).toBeLessThan(studiesIdx);
     });
 
-    it("sets protocol state to ready after successful fetch", async () => {
-        const { result } = renderHook(() => useProjectData(), { wrapper });
+    it("boot mode protocol sets protocol state to ready after successful fetch", async () => {
+        const { result } = renderHook(() => useProjectData(), { wrapper: createWrapper("protocol") });
 
         await waitFor(() => {
             expect(result.current.protocol.state).toBe("ready");
         });
         expect(result.current.protocol.data).toEqual(FULL_PROTOCOL);
+        expect(mockListStudies).not.toHaveBeenCalled();
     });
 
     it("warmDomain is a no-op when state is ready", async () => {
-        const { result } = renderHook(() => useProjectData(), { wrapper });
+        const { result } = renderHook(() => useProjectData(), { wrapper: createWrapper("protocol") });
 
         await waitFor(() => {
             expect(result.current.protocol.state).toBe("ready");
@@ -132,13 +140,9 @@ describe("ProjectDataContext", () => {
     });
 
     it("warmDomain triggers fetch when state is idle", async () => {
-        const { result } = renderHook(() => useProjectData(), { wrapper });
+        const { result } = renderHook(() => useProjectData(), { wrapper: createWrapper("overview") });
 
-        await waitFor(() => {
-            expect(result.current.protocol.state).toBe("ready");
-        });
-
-        // Notes stay idle until tab intent or route demand warms them.
+        expect(result.current.protocol.state).toBe("idle");
         expect(result.current.notesList.state).toBe("idle");
 
         act(() => {
@@ -151,21 +155,29 @@ describe("ProjectDataContext", () => {
         expect(mockListNotesIndex).toHaveBeenCalledWith(PROJECT_ID);
     });
 
-    it("does not eagerly fetch non-active draft, notes, or memory domains on project entry", async () => {
-        renderHook(() => useProjectData(), { wrapper });
+    it("boot mode overview does not eagerly fetch protocol, studies, or non-active domains on project entry", async () => {
+        renderHook(() => useProjectData(), { wrapper: createWrapper("overview") });
 
-        await waitFor(() => {
-            expect(mockGetProtocol).toHaveBeenCalledWith(PROJECT_ID);
-            expect(mockListStudies).toHaveBeenCalledWith(PROJECT_ID);
-        });
-
+        expect(mockGetProtocol).not.toHaveBeenCalled();
+        expect(mockListStudies).not.toHaveBeenCalled();
         expect(mockGetDraft).not.toHaveBeenCalled();
         expect(mockListNotesIndex).not.toHaveBeenCalled();
         expect(mockGetProjectMemories).not.toHaveBeenCalled();
     });
 
+    it("boot mode ledger eagerly fetches studies only", async () => {
+        const { result } = renderHook(() => useProjectData(), { wrapper: createWrapper("ledger") });
+
+        await waitFor(() => {
+            expect(result.current.studies.state).toBe("ready");
+        });
+
+        expect(mockListStudies).toHaveBeenCalledWith(PROJECT_ID);
+        expect(mockGetProtocol).not.toHaveBeenCalled();
+    });
+
     it("invalidateDomain forces a re-fetch even when ready", async () => {
-        const { result } = renderHook(() => useProjectData(), { wrapper });
+        const { result } = renderHook(() => useProjectData(), { wrapper: createWrapper("protocol") });
 
         await waitFor(() => {
             expect(result.current.protocol.state).toBe("ready");
@@ -184,7 +196,7 @@ describe("ProjectDataContext", () => {
     it("handles fetch errors gracefully", async () => {
         mockGetProtocol.mockResolvedValue({ success: false, error: "Not found" });
 
-        const { result } = renderHook(() => useProjectData(), { wrapper });
+        const { result } = renderHook(() => useProjectData(), { wrapper: createWrapper("protocol") });
 
         await waitFor(() => {
             expect(result.current.protocol.state).toBe("error");
@@ -193,7 +205,7 @@ describe("ProjectDataContext", () => {
     });
 
     it("applies accepted protocol patches immediately without a refetch", async () => {
-        const { result } = renderHook(() => useProjectData(), { wrapper });
+        const { result } = renderHook(() => useProjectData(), { wrapper: createWrapper("protocol") });
 
         await waitFor(() => {
             expect(result.current.protocol.state).toBe("ready");

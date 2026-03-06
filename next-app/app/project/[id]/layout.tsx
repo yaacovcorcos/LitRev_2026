@@ -25,30 +25,24 @@ import { ProjectDataProvider } from "@/contexts/ProjectDataContext";
 import { recordReliabilityMetric } from "@/lib/ai/reliability-telemetry";
 import {
     isProjectEntryRestoreEnabled,
-    readProjectEntryState,
     setProjectModeBucket,
 } from "@/lib/project-entry-restore";
+import {
+    deriveProjectShellBootState,
+    type ProjectShellBootState,
+} from "@/lib/project-entry-boot-mode";
 import styles from "./project-shell.module.css";
 
 const RAIL_WIDTH = 44;
 const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
 
-/** Map pathname segments to ViewTab */
-function tabFromPathname(pathname: string): ViewTab | null {
-    if (pathname.endsWith("/protocol")) return "protocol";
-    if (pathname.endsWith("/ledger") || pathname.includes("/ledger/")) return "ledger";
-    if (pathname.endsWith("/draft")) return "draft";
-    if (pathname.endsWith("/memory")) return "memory";
-    if (pathname.endsWith("/notes")) return "notes";
-    return null;
-}
-
 type ProjectShellInnerProps = {
     projectId: string;
+    initialShellState: ProjectShellBootState;
     children: ReactNode;
 };
 
-function ProjectShellInner({ projectId, children }: ProjectShellInnerProps) {
+function ProjectShellInner({ projectId, initialShellState, children }: ProjectShellInnerProps) {
   const router = useRouter();
   const pathname = usePathname();
   const projectEntryRestoreEnabled = isProjectEntryRestoreEnabled();
@@ -104,36 +98,18 @@ function ProjectShellInner({ projectId, children }: ProjectShellInnerProps) {
     }, [projectId]);
 
     // Derive initial mode from route to avoid deep-link flicker.
-    const [focusMode, setFocusMode] = useState<FocusMode>(() =>
-        tabFromPathname(pathname) ? "view" : "conversation"
-    );
-
-    const [activeTab, setActiveTabState] = useState<ViewTab | null>(() => {
-        return tabFromPathname(pathname) ?? "overview";
-    });
+    const [focusMode, setFocusMode] = useState<FocusMode>(() => initialShellState.focusMode);
+    const [activeTab, setActiveTabState] = useState<ViewTab | null>(() => initialShellState.activeTab);
 
     // Sync shell mode from route and persisted mode bucket.
-    // Route tabs always force workspace mode. Root route (/project/:id) restores bucket.
+    // Route tabs always force workspace mode. Root route (/project/:id) restores the saved bucket synchronously.
     useEffect(() => {
-        const tab = tabFromPathname(pathname);
-        if (tab) {
-            setActiveTabState(tab);
-            setFocusMode("view");
-            if (projectEntryRestoreEnabled) {
-                setProjectModeBucket(projectId, "workspace");
-            }
-            return;
+        setActiveTabState(initialShellState.activeTab);
+        setFocusMode(initialShellState.focusMode);
+        if (projectEntryRestoreEnabled && initialShellState.bootMode !== "conversation") {
+            setProjectModeBucket(projectId, "workspace");
         }
-        if (!projectEntryRestoreEnabled) return;
-        const entryState = readProjectEntryState(projectId);
-        if (entryState?.lastModeBucket === "workspace") {
-            setActiveTabState("overview");
-            setFocusMode("view");
-            return;
-        }
-        // Default first-entry/revisit bucket is conversation.
-        setFocusMode("conversation");
-    }, [pathname, projectEntryRestoreEnabled, projectId]);
+    }, [initialShellState, projectEntryRestoreEnabled, projectId]);
 
     // Keep root scrolling scoped to shell owners (baseline path).
     // A1 disabled => preserve existing behavior/dependencies unchanged.
@@ -449,13 +425,20 @@ type ProjectLayoutProps = {
 
 export default function ProjectLayout({ children }: ProjectLayoutProps) {
     const params = useParams<{ id: string }>();
+    const pathname = usePathname();
     const projectId = params?.id ?? "";
+    const projectEntryRestoreEnabled = isProjectEntryRestoreEnabled();
+    const initialShellState = useMemo(() => deriveProjectShellBootState({
+        pathname,
+        projectId,
+        projectEntryRestoreEnabled,
+    }), [pathname, projectEntryRestoreEnabled, projectId]);
 
     return (
         <ProjectCopilotProvider projectId={projectId}>
             <PopupChatProvider>
-                <ProjectDataProvider projectId={projectId}>
-                    <ProjectShellInner projectId={projectId}>
+                <ProjectDataProvider projectId={projectId} bootMode={initialShellState.bootMode}>
+                    <ProjectShellInner projectId={projectId} initialShellState={initialShellState}>
                         {children}
                     </ProjectShellInner>
                 </ProjectDataProvider>

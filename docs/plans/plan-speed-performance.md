@@ -24,8 +24,11 @@ Define the canonical implementation plan for app speed, responsiveness, and stab
   - `output/performance/baseline/baseline-latest.json` now mirrors the authoritative CI probe shape and provenance
   - a dated frozen copy also exists under `output/performance/baseline/`
 - The workspace index currently loads immediately after session resolution through `ProjectsContext`, using a client-side `listProjectsAction()` fetch after hydration.
-- Project entry currently does more than index loading: `ProjectDataContext` warms protocol, studies, draft, notes, and memory on mount, with only coarse network gating.
-- Project shell entry currently prefetches sibling project routes (`overview`, `protocol`, `ledger`, `draft`, `notes`) on mount, which can compete with first-interaction work.
+- Project entry boot is now route-aware through the shared project shell boot contract:
+  - root conversation entry still boots `protocol -> studies` to preserve current conversation state and suggestion behavior
+  - root overview entry no longer boots provider data by default
+  - `protocol` deep links boot protocol only, and `ledger` deep links boot studies only
+- Project shell entry no longer prefetches sibling project routes on mount; tab hover/focus intent still warms route-specific project domains through `ProjectTabBar`.
 - Three consecutive warn-mode calibration notes are archived under `docs/reports/performance/`.
 - The gate now runs in `enforce` mode with no active waivers; `output/performance/baseline/waivers.json` remains checked in as the machine-readable exception contract.
 - Regression gating now requires both percentage regression and a minimum meaningful absolute delta before failing:
