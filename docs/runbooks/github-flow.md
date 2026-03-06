@@ -46,5 +46,38 @@ gh pr list --state open --json number,title,headRefName,baseRefName,reviewDecisi
 
 ## Operational Notes
 
+- Rule: feature branches hold work; local `main` only mirrors merged work.
+- Maintain one designated clean `main` worktree.
+- Preferred path for new setups is `.worktrees/main`; if an existing clean `main` worktree is already designated for this repo, reuse it instead of creating another one.
+- Do not use the clean `main` worktree for normal implementation edits.
+- Keep the designated local `main` worktree exactly in sync with `origin/main`.
+- If local `main` is ahead of or behind `origin/main`, reconcile before starting new work.
+- If the current checkout is detached, dirty, or `main` is checked out in another worktree, do not blindly run `git switch main`; reconcile worktree ownership first.
+- Create task worktrees from the clean `main` worktree using `codex/<task>` branches.
+- After merge, fast-forward the clean `main` worktree, then remove the merged task worktree and delete the merged branch.
 - Keep PR scope narrow and merge frequently into `main`.
 - Treat red CI on `main` PRs as release-blocking debt.
+
+## Standard Flow
+
+From the clean `main` worktree:
+
+1. `git fetch origin --prune`
+2. `git pull --ff-only origin main`
+3. `git worktree add -b codex/<task> .worktrees/<task> origin/main`
+
+If the designated clean `main` worktree is not located at `.worktrees/main`, substitute the designated path in the commands below.
+
+From the task worktree:
+
+1. implement and validate
+2. `git commit`
+3. `git push -u origin codex/<task>`
+4. open PR to `main`
+
+After merge:
+
+1. `git -C <main-worktree> fetch origin --prune`
+2. `git -C <main-worktree> pull --ff-only origin main`
+3. `git worktree remove .worktrees/<task>`
+4. `git branch -d codex/<task>`

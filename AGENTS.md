@@ -70,26 +70,73 @@ If no row matches, consult `docs/agents/cold-memory-index.md`, then pick the nea
 
 ## Git Workflow (Agent Auto-Commit/Push Policy)
 
-- One task = one atomic commit.
-- Branch roles:
-  - `main`: default branch and production deployment branch.
-- Use feature branches by default (`codex/<task>`). Base from `main`; do not commit directly to `main` unless explicitly requested.
+Rule: feature branches hold work; local `main` only mirrors merged work.
+
+- `main` is the canonical local mirror of `origin/main`, not a normal working branch.
+- Use one designated clean `main` worktree for sync and branch creation.
+- Preferred path for new setups is `.worktrees/main`; if an existing clean `main` worktree is already designated for this repo, reuse it instead of creating another one.
+- Do not commit directly to local `main` except for an explicit emergency hotfix requested by the user.
+- All normal agent work must happen on named feature branches: `codex/<task>`.
+- Hotfix branches use `hotfix/<task>` and PR directly to `main`.
+- Avoid long-lived detached worktrees. Every active worktree should either track a named branch or be the designated clean `main` worktree.
 - For code changes, validate with `npx tsc --noEmit` and `npx vitest run`.
 - If validation fails, fix first; do not commit failing code.
 - Stage only relevant files for the task.
 - Commit immediately after validation; do not batch completed tasks.
-- After validation passes, push by default and open/update a PR targeting `main`.
-- Hotfixes use `hotfix/<task>` branches and PR directly to `main`.
 - Before merge decisions, pull latest review feedback with `gh pr view <number> --json reviews,comments`.
 - Use conventional commit types: `feat`, `fix`, `refactor`, `test`, `chore`, `docs`.
 
-Required local commit flow:
+### Main Mirror Contract
+
+- The designated local `main` worktree must match `origin/main` exactly during normal workflow.
+- Local `main` must not remain ahead of or behind `origin/main`.
+- If local `main` differs from `origin/main` in either direction, stop and reconcile before starting new work.
+
+### Worktree Preflight
+
+Before starting or syncing work:
+
+- Confirm which worktree is the designated clean `main` worktree.
+- If the current checkout is detached, dirty, or `main` is checked out in another worktree, do not blindly run `git switch main`.
+- Reconcile worktree ownership first, then run sync commands from the designated clean `main` worktree.
+
+### Required Branch Start Flow
+
+Run from the designated clean `main` worktree:
+
+1. `git fetch origin --prune`
+2. `git pull --ff-only origin main`
+3. `git worktree add -b codex/<task> .worktrees/<task> origin/main`
+
+If resuming an existing task branch, verify it is still intended work before reusing it. Prefer a fresh worktree/branch by default.
+
+### Required Local Commit Flow
+
+Run from the task worktree:
 
 1. `git add <changed-files-for-this-task>`
-2. `git diff --cached` and `git status`
-3. `git commit -m "<type(scope): concise why-focused message>"`
-4. `git push -u origin <branch>`
-5. `gh pr create --base main --head <branch> ...` (or update an existing PR)
+2. `git diff --cached`
+3. `git status`
+4. `git commit -m "<type(scope): concise why-focused message>"`
+5. `git push -u origin codex/<task>`
+6. `gh pr create --base main --head codex/<task> ...` (or update an existing PR)
+
+### Required Post-Merge Sync Flow
+
+After any PR is merged into GitHub `main`:
+
+1. Run from the designated clean `main` worktree:
+   - `git fetch origin --prune`
+   - `git pull --ff-only origin main`
+2. Remove the merged task worktree:
+   - `git worktree remove .worktrees/<task>`
+3. Delete the merged local branch:
+   - `git branch -d codex/<task>`
+
+### Additional Rules
+
+- One task = one atomic commit unless the task clearly requires a small series of coherent commits.
+- After validation passes, push by default and open/update a PR targeting `main`.
 
 ## Database Contract (Non-Negotiable)
 
