@@ -482,7 +482,7 @@ Rejected:
 
 ## Current Architecture
 - Shared context-capture contracts now live in `next-app/types/context-capture.ts` and `next-app/lib/context-capture/**`, including typed targets, target builders, history rules, feature flags, action registry, and telemetry helpers.
-- The chat stream route now accepts `options.contextTargets`, validates that every target matches the active `projectId`, and formats them server-side through `next-app/lib/server/ai/context-capture.ts` before calling the model.
+- The chat stream route now accepts `options.contextTargets`, validates that every target matches the active `projectId`, and formats them server-side through `next-app/lib/server/ai/context-capture.ts` as bounded reference text that is explicitly treated as untrusted input before calling the model.
 - Popup remains intentionally limited to the popup-safe subset via `contextTargetToPopupContext()`, while richer targets fall through to the main copilot with visible receipts instead of being flattened into opaque prompt text.
 - Project copilot state now carries attached context targets, bounded session-history reuse, and prefill commands; typed context attachments are restored in conversation/timeline hydration rather than being treated as file attachments.
 - Protocol, draft, ledger, and notes now emit shared targets: protocol sections/fields/criteria, draft selections, single-study and multi-study ledger bundles, and note-level capture. `study_set` is capped at 6 studies in UI + formatter logic.
