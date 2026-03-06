@@ -48,6 +48,7 @@ export function terminalReasonFromRunEnd(params: {
   const stopReason = params.stopReason?.toLowerCase() ?? null;
 
   if (runStatus === "completed") return "completed";
+  if (runStatus === "cancelled" || runStatus === "canceled") return "cancelled_by_user";
   if (stopReason === "cancelled" || stopReason === "aborted") return "cancelled_by_user";
   return "failed_server";
 }
