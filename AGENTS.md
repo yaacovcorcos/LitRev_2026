@@ -106,7 +106,11 @@ Run from the designated clean `main` worktree:
 
 1. `git fetch origin --prune`
 2. `git pull --ff-only origin main`
-3. `git worktree add -b codex/<task> .worktrees/<task> origin/main`
+3. `git -C <repo-root> worktree add -b codex/<task> .worktrees/<task> origin/main`
+
+Notes:
+- `<repo-root>` is the repository root, not the clean `main` worktree path.
+- This keeps task worktrees as siblings under `<repo-root>/.worktrees/` instead of nesting them under `.worktrees/main/`.
 
 If resuming an existing task branch, verify it is still intended work before reusing it. Prefer a fresh worktree/branch by default.
 
@@ -118,20 +122,21 @@ Run from the task worktree:
 2. `git diff --cached`
 3. `git status`
 4. `git commit -m "<type(scope): concise why-focused message>"`
-5. `git push -u origin codex/<task>`
-6. `gh pr create --base main --head codex/<task> ...` (or update an existing PR)
+5. `git push -u origin <branch>`
+6. `gh pr create --base main --head <branch> ...` (or update an existing PR)
+
+Notes:
+- Normal task branches use `codex/<task>`.
+- Emergency branches use `hotfix/<task>`.
 
 ### Required Post-Merge Sync Flow
 
 After any PR is merged into GitHub `main`:
 
-1. Run from the designated clean `main` worktree:
-   - `git fetch origin --prune`
-   - `git pull --ff-only origin main`
-2. Remove the merged task worktree:
-   - `git worktree remove .worktrees/<task>`
-3. Delete the merged local branch:
-   - `git branch -d codex/<task>`
+1. `git -C <main-worktree> fetch origin --prune`
+2. `git -C <main-worktree> pull --ff-only origin main`
+3. `git -C <repo-root> worktree remove .worktrees/<task>`
+4. `git -C <main-worktree> branch -d <branch>`
 
 ### Additional Rules
 

@@ -64,20 +64,24 @@ From the clean `main` worktree:
 
 1. `git fetch origin --prune`
 2. `git pull --ff-only origin main`
-3. `git worktree add -b codex/<task> .worktrees/<task> origin/main`
+3. `git -C <repo-root> worktree add -b codex/<task> .worktrees/<task> origin/main`
 
-If the designated clean `main` worktree is not located at `.worktrees/main`, substitute the designated path in the commands below.
+Note: `<repo-root>` is the repository root. This keeps task worktrees under `<repo-root>/.worktrees/` instead of nesting them under the clean `main` worktree.
 
 From the task worktree:
 
 1. implement and validate
 2. `git commit`
-3. `git push -u origin codex/<task>`
+3. `git push -u origin <branch>`
 4. open PR to `main`
+
+Notes:
+- Normal task branches use `codex/<task>`.
+- Emergency branches use `hotfix/<task>`.
 
 After merge:
 
 1. `git -C <main-worktree> fetch origin --prune`
 2. `git -C <main-worktree> pull --ff-only origin main`
-3. `git worktree remove .worktrees/<task>`
-4. `git branch -d codex/<task>`
+3. `git -C <repo-root> worktree remove .worktrees/<task>`
+4. `git -C <main-worktree> branch -d <branch>`
