@@ -10,7 +10,12 @@ import type {
     ProjectCopilotState,
 } from "@/lib/projectCopilotStorage";
 import { processAIStream } from "@/lib/ai/stream-processor";
-import { dispatchProjectDataChanged, getChangedDomainsForAcceptedArtifact } from "@/lib/project-data-events";
+import {
+    dispatchProjectDataChanged,
+    getChangedDomainsForAcceptedArtifact,
+    getProtocolPatchForAcceptedArtifact,
+} from "@/lib/project-data-events";
+import { isProtocolLiveSyncV1Enabled } from "@/lib/protocol-live-sync-feature-flags";
 import { createConversation } from "@/app/actions/conversations";
 import { reviewArtifactAction } from "@/app/actions/agent";
 import type { ArtifactData, ArtifactStatus } from "@/types/artifacts";
@@ -758,10 +763,14 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
         if (status === "accepted" && result.artifact) {
             const domains = getChangedDomainsForAcceptedArtifact(result.artifact.type, result.artifact.payload);
             if (domains.length > 0) {
+                const protocolPatch = isProtocolLiveSyncV1Enabled()
+                    ? getProtocolPatchForAcceptedArtifact(result.artifact.type, result.artifact.payload)
+                    : null;
                 dispatchProjectDataChanged({
                     projectId,
                     domains,
                     source: "artifact_review",
+                    protocolPatch: protocolPatch ?? undefined,
                 });
             }
         }

@@ -4,17 +4,26 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
 import { ProjectDataProvider } from "../ProjectDataContext";
 import { useProjectData } from "@/hooks/useProjectData";
+import { createDefaultProtocolData } from "@/types/protocol";
 
 // ── Mocks ────────────────────────────────────────────────────────────────────
 
 const mockGetProtocol = vi.fn();
+const mockSaveProtocol = vi.fn();
 const mockListStudies = vi.fn();
 const mockGetDraft = vi.fn();
 const mockListNotesIndex = vi.fn();
 const mockGetProjectMemories = vi.fn();
+let projectDataChangedListener: ((detail: {
+    projectId: string;
+    domains: string[];
+    source?: string;
+    protocolPatch?: unknown;
+}) => void) | null = null;
 
 vi.mock("@/app/actions/protocols", () => ({
     getProtocolAction: (...args: unknown[]) => mockGetProtocol(...args),
+    saveProtocolAction: (...args: unknown[]) => mockSaveProtocol(...args),
 }));
 vi.mock("@/app/actions/ledger", () => ({
     listStudiesAction: (...args: unknown[]) => mockListStudies(...args),
@@ -32,7 +41,14 @@ vi.mock("@/lib/network-aware", () => ({
     shouldSkipPreload: vi.fn(() => false),
 }));
 vi.mock("@/lib/project-data-events", () => ({
-    addProjectDataChangedListener: vi.fn(() => () => {}),
+    addProjectDataChangedListener: vi.fn((listener: typeof projectDataChangedListener) => {
+        projectDataChangedListener = listener;
+        return () => {
+            if (projectDataChangedListener === listener) {
+                projectDataChangedListener = null;
+            }
+        };
+    }),
 }));
 const mockSeedProject = vi.fn();
 vi.mock("@/contexts/LedgerContext", () => ({
@@ -48,13 +64,18 @@ if (typeof globalThis.requestIdleCallback === "undefined") {
 }
 
 const PROJECT_ID = "proj_123";
+const FULL_PROTOCOL = {
+    ...createDefaultProtocolData(),
+    researchQuestion: "RQ1",
+};
 
 function wrapper({ children }: { children: ReactNode }) {
     return <ProjectDataProvider projectId={PROJECT_ID}>{children}</ProjectDataProvider>;
 }
 
 function setupSuccessMocks() {
-    mockGetProtocol.mockResolvedValue({ success: true, data: { researchQuestion: "RQ1" } });
+    mockGetProtocol.mockResolvedValue({ success: true, data: FULL_PROTOCOL });
+    mockSaveProtocol.mockResolvedValue({ success: true, data: FULL_PROTOCOL });
     mockListStudies.mockResolvedValue({ success: true, data: [{ id: "s1", title: "Study 1" }] });
     mockGetDraft.mockResolvedValue({ success: true, data: { sections: [] } });
     mockListNotesIndex.mockResolvedValue({ success: true, data: [{ id: "n1", title: "Note 1" }] });
@@ -66,6 +87,8 @@ function setupSuccessMocks() {
 describe("ProjectDataContext", () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        projectDataChangedListener = null;
+        window.localStorage.clear();
         setupSuccessMocks();
     });
 
@@ -73,7 +96,7 @@ describe("ProjectDataContext", () => {
         const callOrder: string[] = [];
         mockGetProtocol.mockImplementation(async () => {
             callOrder.push("protocol");
-            return { success: true, data: { researchQuestion: "RQ1" } };
+            return { success: true, data: FULL_PROTOCOL };
         });
         mockListStudies.mockImplementation(async () => {
             callOrder.push("studies");
@@ -98,7 +121,7 @@ describe("ProjectDataContext", () => {
         await waitFor(() => {
             expect(result.current.protocol.state).toBe("ready");
         });
-        expect(result.current.protocol.data).toEqual({ researchQuestion: "RQ1" });
+        expect(result.current.protocol.data).toEqual(FULL_PROTOCOL);
     });
 
     it("warmDomain is a no-op when state is ready", async () => {
@@ -150,10 +173,13 @@ describe("ProjectDataContext", () => {
         });
 
         const callCount = mockGetProtocol.mock.calls.length;
-        act(() => {
+        await act(async () => {
             result.current.invalidateDomain("protocol");
         });
-        expect(mockGetProtocol.mock.calls.length).toBe(callCount + 1);
+        await waitFor(() => {
+            expect(mockGetProtocol.mock.calls.length).toBe(callCount + 1);
+            expect(result.current.protocol.state).toBe("ready");
+        });
     });
 
     it("handles fetch errors gracefully", async () => {
@@ -165,5 +191,38 @@ describe("ProjectDataContext", () => {
             expect(result.current.protocol.state).toBe("error");
         });
         expect(result.current.protocol.error).toBe("Not found");
+    });
+
+    it("applies accepted protocol patches immediately without a refetch", async () => {
+        const { result } = renderHook(() => useProjectData(), { wrapper });
+
+        await waitFor(() => {
+            expect(result.current.protocol.state).toBe("ready");
+        });
+
+        const beforeCalls = mockGetProtocol.mock.calls.length;
+
+        act(() => {
+            projectDataChangedListener?.({
+                projectId: PROJECT_ID,
+                domains: ["protocol"],
+                source: "artifact_review",
+                protocolPatch: {
+                    type: "protocol_suggestion",
+                    fieldPath: "researchQuestion",
+                    fieldLabel: "Research Question",
+                    value: "Updated from copilot",
+                    sourceLabel: "Copilot protocol update",
+                    affectedPaths: ["researchQuestion"],
+                },
+            });
+        });
+
+        expect(result.current.protocol.data).toEqual({
+            ...FULL_PROTOCOL,
+            researchQuestion: "Updated from copilot",
+        });
+        expect(result.current.protocol.saveState).toBe("saved");
+        expect(mockGetProtocol.mock.calls.length).toBe(beforeCalls);
     });
 });

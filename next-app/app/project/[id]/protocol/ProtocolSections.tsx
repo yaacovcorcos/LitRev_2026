@@ -24,7 +24,8 @@ export function ProtocolSections({ projectId }: Props) {
     const {
         protocol,
         activeSection,
-        setActiveSection,
+        focusField,
+        blurField,
         updatePICO,
         addInclusion,
         removeInclusion,
@@ -50,15 +51,11 @@ export function ProtocolSections({ projectId }: Props) {
         ?? "Refine this protocol field so it is clearer and easier to apply consistently.";
 
     const createSectionHandlers = useCallback(
-        (section: ProtocolSection) => ({
-            onFocus: () => setActiveSection(section),
-            onBlur: () => {
-                setTimeout(() => {
-                    // Small delay to allow focus to move to another field
-                }, 100);
-            },
+        (section: ProtocolSection, fieldPath: string) => ({
+            onFocus: () => focusField(section, fieldPath),
+            onBlur: () => blurField(fieldPath),
         }),
-        [setActiveSection],
+        [blurField, focusField],
     );
 
     const handleSectionAskAi = useCallback((args: {
@@ -181,7 +178,7 @@ export function ProtocolSections({ projectId }: Props) {
                     onChange={updateResearchQuestion}
                     placeholder="What is the primary question this systematic review aims to answer?"
                     isActive={activeSection === "research-question"}
-                    {...createSectionHandlers("research-question")}
+                    {...createSectionHandlers("research-question", "researchQuestion")}
                     ariaLabel="Research question"
                     minHeight={60}
                 />
@@ -226,7 +223,7 @@ export function ProtocolSections({ projectId }: Props) {
                             onChange={(value) => updatePICO("population", value)}
                             placeholder="Define your target population..."
                             isActive={activeSection === "pico-population"}
-                            {...createSectionHandlers("pico-population")}
+                            {...createSectionHandlers("pico-population", "pico.population")}
                             ariaLabel="Population"
                         />
                     </div>
@@ -246,7 +243,7 @@ export function ProtocolSections({ projectId }: Props) {
                             onChange={(value) => updatePICO("intervention", value)}
                             placeholder="Define the intervention..."
                             isActive={activeSection === "pico-intervention"}
-                            {...createSectionHandlers("pico-intervention")}
+                            {...createSectionHandlers("pico-intervention", "pico.intervention")}
                             ariaLabel="Intervention"
                         />
                     </div>
@@ -266,7 +263,7 @@ export function ProtocolSections({ projectId }: Props) {
                             onChange={(value) => updatePICO("comparison", value)}
                             placeholder="Define the comparison..."
                             isActive={activeSection === "pico-comparison"}
-                            {...createSectionHandlers("pico-comparison")}
+                            {...createSectionHandlers("pico-comparison", "pico.comparison")}
                             ariaLabel="Comparison"
                         />
                     </div>
@@ -286,7 +283,7 @@ export function ProtocolSections({ projectId }: Props) {
                             onChange={(value) => updatePICO("outcome", value)}
                             placeholder="Define the expected outcomes..."
                             isActive={activeSection === "pico-outcome"}
-                            {...createSectionHandlers("pico-outcome")}
+                            {...createSectionHandlers("pico-outcome", "pico.outcome")}
                             ariaLabel="Outcome"
                         />
                     </div>
@@ -332,7 +329,7 @@ export function ProtocolSections({ projectId }: Props) {
                             placeholder="Enter inclusion criterion..."
                             addLabel="Add inclusion criterion"
                             isActive={activeSection === "eligibility-inclusion"}
-                            {...createSectionHandlers("eligibility-inclusion")}
+                            {...createSectionHandlers("eligibility-inclusion", "eligibility.inclusion")}
                             ariaLabel="Inclusion criteria"
                             renderItemActions={captureEnabled ? (index, item) => (
                                 <button
@@ -356,7 +353,7 @@ export function ProtocolSections({ projectId }: Props) {
                             placeholder="Enter exclusion criterion..."
                             addLabel="Add exclusion criterion"
                             isActive={activeSection === "eligibility-exclusion"}
-                            {...createSectionHandlers("eligibility-exclusion")}
+                            {...createSectionHandlers("eligibility-exclusion", "eligibility.exclusion")}
                             ariaLabel="Exclusion criteria"
                             renderItemActions={captureEnabled ? (index, item) => (
                                 <button
@@ -412,7 +409,7 @@ export function ProtocolSections({ projectId }: Props) {
                         onChange={updateSearchQuery}
                         placeholder="Enter your search query using Boolean operators..."
                         isActive={activeSection === "search-query"}
-                        {...createSectionHandlers("search-query")}
+                        {...createSectionHandlers("search-query", "searchStrategy.query")}
                         ariaLabel="Search query"
                         monospace
                         minHeight={80}
@@ -436,7 +433,7 @@ export function ProtocolSections({ projectId }: Props) {
                         addLabel="Add database"
                         placeholder="Database name..."
                         isActive={activeSection === "search-databases"}
-                        {...createSectionHandlers("search-databases")}
+                        {...createSectionHandlers("search-databases", "searchStrategy.databases")}
                         ariaLabel="Search databases"
                     />
                 </div>
@@ -485,7 +482,7 @@ export function ProtocolSections({ projectId }: Props) {
                             addLabel="Add design"
                             placeholder="Study design type..."
                             isActive={activeSection === "methodology-designs"}
-                            {...createSectionHandlers("methodology-designs")}
+                            {...createSectionHandlers("methodology-designs", "methodology.studyDesigns")}
                             ariaLabel="Study design types"
                         />
                     </div>
@@ -510,7 +507,7 @@ export function ProtocolSections({ projectId }: Props) {
                                     onChange={updateTimeFrameStart}
                                     placeholder="e.g., 2018"
                                     isActive={activeSection === "methodology-timeframe"}
-                                    {...createSectionHandlers("methodology-timeframe")}
+                                    {...createSectionHandlers("methodology-timeframe", "methodology.timeFrameStart")}
                                     ariaLabel="Time frame start year"
                                 />
                             </div>
@@ -522,7 +519,7 @@ export function ProtocolSections({ projectId }: Props) {
                                     onChange={updateTimeFrameEnd}
                                     placeholder="e.g., 2024"
                                     isActive={activeSection === "methodology-timeframe"}
-                                    {...createSectionHandlers("methodology-timeframe")}
+                                    {...createSectionHandlers("methodology-timeframe", "methodology.timeFrameEnd")}
                                     ariaLabel="Time frame end year"
                                 />
                             </div>
@@ -546,7 +543,7 @@ export function ProtocolSections({ projectId }: Props) {
                             onChange={updateQualityTool}
                             placeholder="e.g., QUADAS-2, Cochrane RoB2, Newcastle-Ottawa Scale..."
                             isActive={activeSection === "methodology-quality"}
-                            {...createSectionHandlers("methodology-quality")}
+                            {...createSectionHandlers("methodology-quality", "methodology.qualityAssessmentTool")}
                             ariaLabel="Quality assessment tool"
                         />
                         <div className={styles.qualityNotes}>
@@ -565,7 +562,7 @@ export function ProtocolSections({ projectId }: Props) {
                                 onChange={updateQualityNotes}
                                 placeholder="Describe how quality/risk of bias will be assessed..."
                                 isActive={activeSection === "methodology-quality"}
-                                {...createSectionHandlers("methodology-quality")}
+                                {...createSectionHandlers("methodology-quality", "methodology.qualityAssessmentNotes")}
                                 ariaLabel="Quality assessment notes"
                                 minHeight={60}
                             />

@@ -11,6 +11,7 @@ This directory contains the canonical, active plans for LitRev.
 - **UI, UX, components** — Canonical + archive:
   - [**UI/UX Canonical Plan**](plan-ux-ui.md): Single active tracker for UI/UX execution and remaining backlog.
   - [**Context Capture Plan**](plan-context-capture.md): Canonical plan for scoped AI entrypoints, semantic selection targets, context receipts/history, and cross-surface context reuse.
+  - [**Protocol Live Sync**](plan-protocol-live-sync.md): Canonical plan for shared live protocol state, local durability, immediate copilot acceptance patching, and conflict-safe protocol UX.
   - [**Reliability A0 brief**](reliability-a0-brief.md): Deterministic repro + baseline threshold contract for Track A blocker reliability work.
   - [**Mobile plan**](mobile-plan.md): Canonical mobile strategy + viewport/rollout contract for project conversation, `/ai`, and popup UX quality.
   - [**Thinking + Live Process UX V2**](plan-thinking-v2.md): Sequenced plan for live reasoning visibility, tool activity lane, and user-in-the-loop controls built on shared chat runtime/adapters.

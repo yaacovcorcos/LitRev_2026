@@ -1,26 +1,20 @@
 /**
  * useProjectState
- * Assembles a ProjectStateSnapshot from available contexts.
- * Protocol data fetched via server action (ProtocolProvider is page-scoped).
- * (planC Phase 4.2)
+ * Assembles a ProjectStateSnapshot from shared project data contexts.
  */
 
 "use client";
 
-import { useMemo, useState, useEffect } from "react";
+import { useMemo } from "react";
 import { useLedger } from "@/contexts/LedgerContext";
-import { getProtocolAction } from "@/app/actions/protocols";
+import { useProjectData } from "@/hooks/useProjectData";
 import { isProtocolPopulated, type ProtocolData } from "@/types/protocol";
 import type { ProjectStateSnapshot } from "@/lib/agent/suggestions";
 
 export function useProjectState(projectId: string): ProjectStateSnapshot {
     const { getStudiesByProject } = useLedger();
-    const [protocol, setProtocol] = useState<ProtocolData | null>(null);
-
-    useEffect(() => {
-        if (!projectId) return;
-        getProtocolAction(projectId).then((r) => { if (r.success) setProtocol(r.data); }).catch(() => {});
-    }, [projectId]);
+    const { protocol: protocolSlice } = useProjectData();
+    const protocol: ProtocolData | null = protocolSlice.data;
 
     return useMemo(() => {
         const studies = getStudiesByProject(projectId);

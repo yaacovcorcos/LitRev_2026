@@ -1,5 +1,6 @@
 "use client";
 
+import { buildProtocolArtifactPatch, type ProtocolArtifactPatch } from "@/lib/protocol-live-sync";
 import type { MemoryProposalPayload } from "@/types/artifacts";
 
 export type ProjectDataDomain = "ledger" | "notes" | "memory" | "protocol" | "draft";
@@ -8,6 +9,7 @@ export type ProjectDataChangedDetail = {
     projectId: string;
     domains: ProjectDataDomain[];
     source?: string;
+    protocolPatch?: ProtocolArtifactPatch;
 };
 
 const PROJECT_DATA_CHANGED_EVENT = "litrev:project-data-changed";
@@ -75,4 +77,11 @@ export function getChangedDomainsForAcceptedArtifact(
         default:
             return [];
     }
+}
+
+export function getProtocolPatchForAcceptedArtifact(
+    artifactType: string,
+    payload: unknown
+): ProtocolArtifactPatch | null {
+    return buildProtocolArtifactPatch(artifactType, payload);
 }
