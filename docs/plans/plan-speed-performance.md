@@ -23,9 +23,9 @@ Define the canonical implementation plan for app speed, responsiveness, and stab
 - The committed baseline is probe-generated from the CI probe path:
   - `output/performance/baseline/baseline-latest.json` now mirrors the authoritative CI probe shape and provenance
   - a dated frozen copy also exists under `output/performance/baseline/`
-- The workspace index still loads immediately after session resolution through `ProjectsContext`, using a client-side `listProjectsAction()` fetch after hydration.
-- Project entry now fetches only protocol and ledger/studies by default through `ProjectDataContext`; draft, notes, and memory stay idle until tab intent or direct route demand warms them.
-- Project shell entry no longer prefetches sibling project routes on mount; non-active surfaces warm from explicit hover/focus intent in `ProjectTabBar` or from the active route itself.
+- The workspace index currently loads immediately after session resolution through `ProjectsContext`, using a client-side `listProjectsAction()` fetch after hydration.
+- Project entry currently does more than index loading: `ProjectDataContext` warms protocol, studies, draft, notes, and memory on mount, with only coarse network gating.
+- Project shell entry currently prefetches sibling project routes (`overview`, `protocol`, `ledger`, `draft`, `notes`) on mount, which can compete with first-interaction work.
 - Three consecutive warn-mode calibration notes are archived under `docs/reports/performance/`.
 - The gate now runs in `enforce` mode with no active waivers; `output/performance/baseline/waivers.json` remains checked in as the machine-readable exception contract.
 - Regression gating now requires both percentage regression and a minimum meaningful absolute delta before failing:
@@ -216,8 +216,6 @@ Rules:
 - Target:
   - reduce active-surface boot-time requests by at least `2`
   - improve p75 by at least `8%` or `150ms`
-- Status:
-  - complete
 - Scope:
   - `next-app/app/project/[id]/layout.tsx`
   - `next-app/contexts/ProjectDataContext.tsx`
@@ -262,13 +260,38 @@ Rules:
   - timeline rendering surfaces
 
 ## Active Tasks
+- [ ] `SPD-002` Reduce project-entry boot cost on `next-app/app/project/[id]/...`:
+  - Primary metric:
+    - reduce `/project/[id]` initial-entry `LCP` and boot-time request count for the active surface
+  - Target:
+    - reduce active-surface boot-time requests by at least `2`
+    - improve `/project/[id]` initial-entry `LCP` by at least `150ms` or `8%`
+  - Keep first project entry focused on data required for the active surface.
+  - Move non-active domains (`draft`, `notes`, `memory`, and non-critical sibling previews) behind explicit intent or proven idle time.
+  - Identify server-action waterfalls and sequential dependencies on project entry.
+  - Eliminate duplicate fetches across route-level boundaries.
+  - Prioritize fixes by user-visible latency and interaction impact.
 - [ ] `SPD-003` Dedupe overview boot-time fetches on `/project/[id]`.
-- [ ] `SPD-004` Remove shared-shell render-blocking overhead.
+- [ ] `SPD-004` Optimize preloading and prefetch strategy:
+  - Primary metric:
+    - reduce unnecessary prefetch and warmup work without regressing next-intent navigation latency
+  - Target:
+    - reduce sibling-route prefetch count on project entry from `5` to only justified routes
+    - reduce non-active-domain warmup requests on project entry by at least `2`
+    - keep next-tab navigation latency regression within `<= 100ms` p75
+  - Keep the post-login workspace index lightweight and limited to index fields.
+  - Narrow the project list payload to lightweight index fields and add pagination or caps if workspace size grows.
+  - Do not treat auth success as a trigger for heavy project-domain warmup.
+  - Allow project-domain warmup only after project entry, and only for active-surface or measured high-value domains.
+  - Make sibling-route `router.prefetch(...)` evidence-based rather than default-on.
+  - Prefer intent-based prefetching for explicit navigation, hover intent, or last-opened-project resume.
+  - Preload only truly critical above-the-fold assets and data.
+  - Verify improvements on both desktop and mobile navigation flows.
 - [ ] `SPD-005` Reduce `/ai` bundle and timeline cost.
 - [ ] `SPD-006` Expand the probe matrix to nightly-only routes and slow-network coverage.
+  - Keep nightly-only routes (`/`, `/project/[id]/protocol`, `/project/[id]/notes`) and the slow-network profile out of the PR gate until their artifacts are stable.
 
 ## Recently Completed
-- [x] `SPD-002` Reduced project-entry boot cost by removing blanket draft/notes/memory warmup from `ProjectDataContext` and removing sibling-route prefetch from the project shell; those domains now warm from tab intent or direct route demand.
 - [x] `SPD-001` is complete: the vitals pipeline, real baseline artifacts, calibration notes, enforce-mode gate, and first weekly review are all live and documented.
 - [x] `SPD-001h` Temporary draft-route `TTFB` waivers were removed after the regression gate adopted minimum meaningful absolute delta floors and recent authoritative CI artifacts passed without waiver hits.
 - [x] `SPD-001g` The first weekly performance review is documented in `docs/reports/performance/weekly-review-2026-03-06.md`, covering the first real 7-day calendar window after perf-gate activation and calling out pre-activation no-run days explicitly.
