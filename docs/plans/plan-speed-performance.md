@@ -269,18 +269,23 @@ Rules:
   - Target:
     - reduce active-surface boot-time requests by at least `2`
     - improve `/project/[id]` initial-entry `LCP` by at least `150ms` or `8%`
+  - Status:
+    - route-aware provider boot and lazy conversation bootstrap are now live, but the latest authoritative CI comparison still fell short of the closure bar (`/project/[id]` `LCP` stayed `108ms` on desktop and improved only `84ms -> 80ms` on mobile)
   - Keep first project entry focused on data required for the active surface.
   - Move non-active domains (`draft`, `notes`, `memory`, and non-critical sibling previews) behind explicit intent or proven idle time.
   - Identify server-action waterfalls and sequential dependencies on project entry.
   - Eliminate duplicate fetches across route-level boundaries.
+  - Remaining focus:
+    - isolate root-route waterfalls that still survive after the provider boot cuts
+    - verify whether the remaining root-entry cost is owned by overview stats and other route-level fetches before folding work into `SPD-003`
   - Prioritize fixes by user-visible latency and interaction impact.
 - [ ] `SPD-003` Dedupe overview boot-time fetches on `/project/[id]`.
 - [ ] `SPD-004` Optimize preloading and prefetch strategy:
   - Primary metric:
     - reduce unnecessary prefetch and warmup work without regressing next-intent navigation latency
   - Target:
-    - reduce sibling-route prefetch count on project entry from `5` to only justified routes
-    - reduce non-active-domain warmup requests on project entry by at least `2`
+    - keep default project entry free of sibling-route mount prefetch
+    - reduce hover/focus warmup to only measured high-value domains
     - keep next-tab navigation latency regression within `<= 100ms` p75
   - Keep the post-login workspace index lightweight and limited to index fields.
   - Narrow the project list payload to lightweight index fields and add pagination or caps if workspace size grows.
@@ -295,6 +300,7 @@ Rules:
   - Keep nightly-only routes (`/`, `/project/[id]/protocol`, `/project/[id]/notes`) and the slow-network profile out of the PR gate until their artifacts are stable.
 
 ## Recently Completed
+- [x] `SPD-002a` Project entry boot is now route-aware, and root conversation entry now bootstraps its project snapshot lazily from `useProjectState` instead of eager provider `protocol -> studies` boot; authoritative CI shows the change is safe, but `SPD-002` remains open because the root-entry `LCP` target was not met.
 - [x] `SPD-001` is complete: the vitals pipeline, real baseline artifacts, calibration notes, enforce-mode gate, and first weekly review are all live and documented.
 - [x] `SPD-001h` Temporary draft-route `TTFB` waivers were removed after the regression gate adopted minimum meaningful absolute delta floors and recent authoritative CI artifacts passed without waiver hits.
 - [x] `SPD-001g` The first weekly performance review is documented in `docs/reports/performance/weekly-review-2026-03-06.md`, covering the first real 7-day calendar window after perf-gate activation and calling out pre-activation no-run days explicitly.
