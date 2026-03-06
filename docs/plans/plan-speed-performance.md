@@ -160,6 +160,13 @@ Rules:
 - Active temporary waivers:
   - none
 
+### Completion Checklist (`SPD-001`)
+- [x] `SPD-001a` Web Vitals client reporter + performance telemetry endpoint + privacy allowlist implemented.
+- [x] `SPD-001b` Frozen baseline artifacts committed with numeric sample thresholds.
+- [x] `SPD-001c` Warn-only CI completed for 3 consecutive cycles with variance reports.
+- [x] `SPD-001d` CI switched to fail-on-regression with waiver policy active.
+- [x] First weekly performance review completed and documented.
+
 ## Quick Wins vs Structural Refactors
 
 ### Quick Wins
@@ -244,6 +251,7 @@ Rules:
 - [ ] `SPD-006` Expand the probe matrix to nightly-only routes and slow-network coverage.
 
 ## Recently Completed
+- [x] `SPD-001` is complete: the vitals pipeline, real baseline artifacts, calibration notes, enforce-mode gate, and first weekly review are all live and documented.
 - [x] `SPD-001h` Temporary draft-route `TTFB` waivers were removed after the regression gate adopted minimum meaningful absolute delta floors and recent authoritative CI artifacts passed without waiver hits.
 - [x] `SPD-001g` The first weekly performance review is documented in `docs/reports/performance/weekly-review-2026-03-06.md`, covering the first real 7-day calendar window after perf-gate activation and calling out pre-activation no-run days explicitly.
 - [x] `SPD-007` Budget gate now runs in `enforce` mode, consumes `output/performance/baseline/waivers.json`, and currently has no active waivers.
