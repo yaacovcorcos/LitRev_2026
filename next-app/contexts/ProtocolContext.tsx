@@ -1,5 +1,12 @@
 "use client";
 
+/**
+ * Protocol Context
+ * Page-level adapter over the shared protocol slice in ProjectDataContext.
+ * Provides section-aware editing helpers, field focus/dirty registration,
+ * and protocol save/conflict state to protocol route components.
+ */
+
 import {
     createContext,
     useCallback,
