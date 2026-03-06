@@ -56,7 +56,7 @@ function makeBudget() {
   };
 }
 
-function makeRun({ lcp = 2100, samples = 9 } = {}) {
+function makeRun({ lcp = 2100, inp = 170, cls = 0.05, ttfb = 500, samples = 9 } = {}) {
   return {
     capturedAt: "2026-03-06T08:00:00.000Z",
     commit: "test-sha",
@@ -67,9 +67,9 @@ function makeRun({ lcp = 2100, samples = 9 } = {}) {
           samples,
           p75: {
             LCP: lcp,
-            INP: 170,
-            CLS: 0.05,
-            TTFB: 500,
+            INP: inp,
+            CLS: cls,
+            TTFB: ttfb,
           },
         },
       },
@@ -268,6 +268,66 @@ describe("perf-budget-check", () => {
     expect(exitCode).toBe(1);
     expect(logger.lines).toContain("stdout:[perf-budget-check] violations:");
     expect(logger.lines.some((line) => line.includes("[regression] /project/[id] desktop-normal LCP"))).toBe(true);
+  });
+
+  it("does not flag low-signal LCP regression noise below the absolute floor", () => {
+    const cwd = createTempDir();
+    const logger = createLogger();
+
+    writeDefaultArtifacts(cwd);
+    writeJson(path.join(cwd, "baseline.json"), makeRun({ lcp: 376 }));
+    writeJson(path.join(cwd, "results.json"), makeRun({ lcp: 428 }));
+
+    const exitCode = runBudgetCheck(
+      [
+        "node",
+        "scripts/perf-budget-check.mjs",
+        "--mode",
+        "enforce",
+        "--budget",
+        "./budget.json",
+        "--baseline",
+        "./baseline.json",
+        "--results",
+        "./results.json",
+        "--waivers",
+        "./waivers.json",
+      ],
+      { cwd, stdout: logger.stdout, stderr: logger.stderr, artifactRoots: makeArtifactRoots(cwd) },
+    );
+
+    expect(exitCode).toBe(0);
+    expect(logger.lines).toContain("stdout:[perf-budget-check] pass");
+  });
+
+  it("does not flag low-signal TTFB regression noise below the absolute floor", () => {
+    const cwd = createTempDir();
+    const logger = createLogger();
+
+    writeDefaultArtifacts(cwd);
+    writeJson(path.join(cwd, "baseline.json"), makeRun({ ttfb: 12 }));
+    writeJson(path.join(cwd, "results.json"), makeRun({ ttfb: 15 }));
+
+    const exitCode = runBudgetCheck(
+      [
+        "node",
+        "scripts/perf-budget-check.mjs",
+        "--mode",
+        "enforce",
+        "--budget",
+        "./budget.json",
+        "--baseline",
+        "./baseline.json",
+        "--results",
+        "./results.json",
+        "--waivers",
+        "./waivers.json",
+      ],
+      { cwd, stdout: logger.stdout, stderr: logger.stderr, artifactRoots: makeArtifactRoots(cwd) },
+    );
+
+    expect(exitCode).toBe(0);
+    expect(logger.lines).toContain("stdout:[perf-budget-check] pass");
   });
 
   it("fails when the budget path escapes the allowed artifact roots", () => {

@@ -13,6 +13,12 @@ const DEFAULT_ARTIFACT_ROOTS = {
   baselineRoot: path.resolve(REPO_ROOT, "output", "performance", "baseline"),
   resultsRoot: path.resolve(REPO_ROOT, "output", "performance", "results"),
 };
+const REGRESSION_MIN_DELTA_BY_METRIC = {
+  LCP: 75,
+  INP: 16,
+  CLS: 0.02,
+  TTFB: 20,
+};
 
 export function parseArgs(argv, cwd = process.cwd()) {
   const args = {
@@ -198,8 +204,10 @@ function compareResults({ budget, baseline, results }) {
 
         const baselineP75 = getMetric(baselineEntry?.p75, metricName);
         if (baselineP75 != null && baselineP75 > 0) {
+          const absoluteDelta = p75 - baselineP75;
           const pct = ((p75 - baselineP75) / baselineP75) * 100;
-          if (pct > regressionLimit) {
+          const minDelta = REGRESSION_MIN_DELTA_BY_METRIC[metricName] ?? 0;
+          if (pct > regressionLimit && absoluteDelta > minDelta) {
             issues.push(createIssue({
               type: "regression",
               route,
