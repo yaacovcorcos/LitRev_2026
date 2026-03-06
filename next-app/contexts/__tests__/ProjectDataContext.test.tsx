@@ -37,9 +37,6 @@ vi.mock("@/app/actions/notes", () => ({
 vi.mock("@/app/actions/memory", () => ({
     getProjectMemoriesAction: (...args: unknown[]) => mockGetProjectMemories(...args),
 }));
-vi.mock("@/lib/network-aware", () => ({
-    shouldSkipPreload: vi.fn(() => false),
-}));
 vi.mock("@/lib/project-data-events", () => ({
     addProjectDataChangedListener: vi.fn((listener: typeof projectDataChangedListener) => {
         projectDataChangedListener = listener;
@@ -57,11 +54,6 @@ vi.mock("@/contexts/LedgerContext", () => ({
         ensureProjectLoaded: vi.fn(),
     }),
 }));
-
-// Polyfill requestIdleCallback for jsdom
-if (typeof globalThis.requestIdleCallback === "undefined") {
-    globalThis.requestIdleCallback = ((cb: () => void) => setTimeout(cb, 0)) as unknown as typeof requestIdleCallback;
-}
 
 const PROJECT_ID = "proj_123";
 const FULL_PROTOCOL = {
@@ -140,21 +132,15 @@ describe("ProjectDataContext", () => {
     });
 
     it("warmDomain triggers fetch when state is idle", async () => {
-        // Only let protocol auto-load; keep notes idle by making network "slow"
-        const { shouldSkipPreload } = await import("@/lib/network-aware");
-        vi.mocked(shouldSkipPreload).mockReturnValue(true);
-
         const { result } = renderHook(() => useProjectData(), { wrapper });
 
-        // Wait for protocol to load (always loads even with skip)
         await waitFor(() => {
             expect(result.current.protocol.state).toBe("ready");
         });
 
-        // Notes should still be idle (skipped due to slow network)
+        // Notes stay idle until tab intent or route demand warms them.
         expect(result.current.notesList.state).toBe("idle");
 
-        // Manually warm notes
         act(() => {
             result.current.warmDomain("notes");
         });
@@ -163,6 +149,19 @@ describe("ProjectDataContext", () => {
             expect(result.current.notesList.state).toBe("ready");
         });
         expect(mockListNotesIndex).toHaveBeenCalledWith(PROJECT_ID);
+    });
+
+    it("does not eagerly fetch non-active draft, notes, or memory domains on project entry", async () => {
+        renderHook(() => useProjectData(), { wrapper });
+
+        await waitFor(() => {
+            expect(mockGetProtocol).toHaveBeenCalledWith(PROJECT_ID);
+            expect(mockListStudies).toHaveBeenCalledWith(PROJECT_ID);
+        });
+
+        expect(mockGetDraft).not.toHaveBeenCalled();
+        expect(mockListNotesIndex).not.toHaveBeenCalled();
+        expect(mockGetProjectMemories).not.toHaveBeenCalled();
     });
 
     it("invalidateDomain forces a re-fetch even when ready", async () => {

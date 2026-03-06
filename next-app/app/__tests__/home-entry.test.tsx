@@ -2,7 +2,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { HomeContent } from "../page";
+import Home from "../page";
 
 const {
   mockReplace,
@@ -99,7 +99,7 @@ describe("Home entry UX", () => {
   });
 
   it("shows a dedicated new-user welcome screen and can enter workspace", async () => {
-    render(<HomeContent />);
+    render(<Home />);
 
     expect(screen.queryByTestId("app-shell")).toBeNull();
     expect(screen.getByText("Start a new review")).toBeTruthy();
@@ -142,7 +142,7 @@ describe("Home entry UX", () => {
       retryMigration: vi.fn(async () => {}),
     });
 
-    render(<HomeContent />);
+    render(<Home />);
 
     const continueLink = screen.getByRole("link", { name: "Back to Second Project" });
     expect(continueLink.getAttribute("href")).toBe("/project/p2");

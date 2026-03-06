@@ -23,6 +23,9 @@ Define the canonical implementation plan for app speed, responsiveness, and stab
 - The committed baseline is probe-generated from the CI probe path:
   - `output/performance/baseline/baseline-latest.json` now mirrors the authoritative CI probe shape and provenance
   - a dated frozen copy also exists under `output/performance/baseline/`
+- The workspace index still loads immediately after session resolution through `ProjectsContext`, using a client-side `listProjectsAction()` fetch after hydration.
+- Project entry now fetches only protocol and ledger/studies by default through `ProjectDataContext`; draft, notes, and memory stay idle until tab intent or direct route demand warms them.
+- Project shell entry no longer prefetches sibling project routes on mount; non-active surfaces warm from explicit hover/focus intent in `ProjectTabBar` or from the active route itself.
 - Three consecutive warn-mode calibration notes are archived under `docs/reports/performance/`.
 - The gate now runs in `enforce` mode with no active waivers; `output/performance/baseline/waivers.json` remains checked in as the machine-readable exception contract.
 - Regression gating now requires both percentage regression and a minimum meaningful absolute delta before failing:
@@ -31,6 +34,18 @@ Define the canonical implementation plan for app speed, responsiveness, and stab
   - `CLS`: `0.02`
   - `TTFB`: `20ms`
 - The previously suspected `/project/[id]` desktop `CLS` threshold miss did not reproduce in the three authoritative CI calibration runs.
+
+## Preload Policy
+
+Data warmup policy:
+- After login, load the workspace index only.
+- After project entry, load only the data required for the active surface by default.
+- Background domain warmup must be justified by measured user-facing wins.
+
+Route prefetch policy:
+- Do not prefetch sibling project routes by default on project mount.
+- Route prefetch should be triggered by measured high-probability transitions or explicit user intent.
+- Any added route prefetch must show that it improves follow-on navigation without harming initial entry.
 
 ## Canonical Metrics and Budgets
 
@@ -193,13 +208,16 @@ Rules:
 
 ## Wave Backlog
 
-### Wave 1: Project Shell Warmup Reduction
+### Wave 1: Project Entry Warmup Reduction
 - Target route:
   - `/project/[id]`
 - Primary metric:
-  - mobile `LCP`
+  - initial-entry `LCP`
 - Target:
+  - reduce active-surface boot-time requests by at least `2`
   - improve p75 by at least `8%` or `150ms`
+- Status:
+  - complete
 - Scope:
   - `next-app/app/project/[id]/layout.tsx`
   - `next-app/contexts/ProjectDataContext.tsx`
@@ -244,20 +262,18 @@ Rules:
   - timeline rendering surfaces
 
 ## Active Tasks
-- [ ] `SPD-002` Reduce eager project-shell warmup and sibling-route prefetch.
 - [ ] `SPD-003` Dedupe overview boot-time fetches on `/project/[id]`.
 - [ ] `SPD-004` Remove shared-shell render-blocking overhead.
 - [ ] `SPD-005` Reduce `/ai` bundle and timeline cost.
 - [ ] `SPD-006` Expand the probe matrix to nightly-only routes and slow-network coverage.
 
 ## Recently Completed
+- [x] `SPD-002` Reduced project-entry boot cost by removing blanket draft/notes/memory warmup from `ProjectDataContext` and removing sibling-route prefetch from the project shell; those domains now warm from tab intent or direct route demand.
 - [x] `SPD-001` is complete: the vitals pipeline, real baseline artifacts, calibration notes, enforce-mode gate, and first weekly review are all live and documented.
 - [x] `SPD-001h` Temporary draft-route `TTFB` waivers were removed after the regression gate adopted minimum meaningful absolute delta floors and recent authoritative CI artifacts passed without waiver hits.
 - [x] `SPD-001g` The first weekly performance review is documented in `docs/reports/performance/weekly-review-2026-03-06.md`, covering the first real 7-day calendar window after perf-gate activation and calling out pre-activation no-run days explicitly.
 - [x] `SPD-007` Budget gate now runs in `enforce` mode, consumes `output/performance/baseline/waivers.json`, and currently has no active waivers.
 - [x] `SPD-001f` The `/project/[id]` desktop `CLS` alert was resolved through calibration, not a route fix: it did not reproduce in three authoritative CI cycles, so the baseline was refreshed to a CI-native artifact instead of waiving `CLS`.
 - [x] `SPD-001e` Three consecutive warn-mode CI calibration notes are archived and the numeric calibration rule is now applied from committed evidence.
-- [x] `SPD-001a` Web Vitals reporter, route context mapping, ingestion endpoint, and privacy allowlist are implemented.
-- [x] `SPD-001b` Real probe-generated baseline artifacts are committed and the seeded baseline is removed.
 - [x] `SPD-001c` CI baseline/results artifact wiring is separated and guarded against same-path drift.
 - [x] `SPD-001d` CI now builds a production app, generates real results artifacts, uploads them, and checks them in `warn` mode.
