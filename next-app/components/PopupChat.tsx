@@ -328,9 +328,20 @@ export function PopupChat({ projectId }: PopupChatProps) {
                 const fallbackError = terminalReason === "timed_out"
                     ? "The response timed out. Please retry."
                     : "The stream ended unexpectedly. Please retry.";
+                const errorState = buildClientErrorState(fallbackError);
                 setMessages((prev) => [
                     ...prev,
-                    { id: makeId("terminal"), role: "assistant", content: fallbackError, createdAt: new Date().toISOString() },
+                    {
+                        id: makeId("terminal"),
+                        role: "assistant",
+                        content: errorState.message,
+                        retryable: isRetryableTerminalReason(terminalReason),
+                        errorMeta: {
+                            ...errorState.errorMeta,
+                            retryable: isRetryableTerminalReason(terminalReason),
+                        },
+                        createdAt: new Date().toISOString(),
+                    },
                 ]);
             }
         } catch (error) {
@@ -348,7 +359,14 @@ export function PopupChat({ projectId }: PopupChatProps) {
             }
             setMessages((prev) => [
                 ...prev,
-                { id: aiMsgId, role: "assistant", content: fullContent ? `${fullContent}\n\n${errorState.message}` : errorState.message, createdAt: new Date().toISOString() },
+                {
+                    id: aiMsgId,
+                    role: "assistant",
+                    content: fullContent ? `${fullContent}\n\n${errorState.message}` : errorState.message,
+                    retryable: errorState.retryable,
+                    errorMeta: errorState.errorMeta,
+                    createdAt: new Date().toISOString(),
+                },
             ]);
         } finally {
             setIsStreaming(false);

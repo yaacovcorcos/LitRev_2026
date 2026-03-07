@@ -24,6 +24,7 @@ Use this index to retrieve authoritative docs before editing high-risk domains.
 | Mobile chat UX execution (`/project` conversation, `/ai`, popup) | `docs/plans/mobile-plan.md`, `docs/plans/plan-chat-unification-v2.md` | Any mobile chat layout, interaction, drawer/composer, or popup behavior change |
 | Chat unification rollout operations | `docs/plans/plan-chat-unification-v2.md`, `docs/runbooks/chat-unification-burn-in.md` | U1.6 canary setup, burn-in validation, and U3 unlock decisions |
 | GitHub branch/PR/review automation | `docs/runbooks/github-flow.md` | Any edits to `.github/workflows/**`, branch protections, CODEOWNERS, or agent git policy |
+| Durable repo-review baseline and review comparisons | `docs/runbooks/repo-review-baseline.md`, `docs/reports/diagnosis-03-02.md`, `docs/plans/plan-agentic.md` | Any deep diagnosis rerun, review-quality comparison, or governance update about prior findings |
 | Product contract | `PRD.md` | Changes to product WHAT/WHO/WHY |
 | Plan governance | `docs/plans/README.md` | Any edits to `docs/plans/*.md` |
 | Cross-agent implementation planning contract | `docs/agents/universal-planning-meta-prompt.md` | Any request to draft implementation plans across domains, or any change to planning quality standards |

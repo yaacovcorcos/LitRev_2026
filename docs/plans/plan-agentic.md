@@ -108,7 +108,8 @@ Every fix entry must include:
 - **Model Request Capability Handling Is Under-Specified:** provider adapters still assume too much shared request compatibility across models; tracked under `FIX-010`.
 - **Protocol Mutation Uses Shared Field-Aware Normalization:** `update_protocol`, same-turn tool-call sanitization, and repeat detection now reuse the same field/value normalize-classify path so unambiguous wrapper shapes are repaired consistently, whitespace-only field mismatches no longer diverge between validation and execution, and normalization/hashing paths cap nested input depth safely.
 - **Tool Prerequisites Are Not First-Class:** the runtime still lacks a formal model for required project, study, criteria, or PDF context before tool execution; tracked under `FIX-008`.
-- **Run Recovery Semantics Are Now Structured End-to-End:** deterministic failure envelopes now survive into client timeline state, retry affordances are derived from structured metadata instead of defaulting optimistic, and server finalization uses explicit run facts so failed no-answer runs no longer masquerade as `completed`.
+- **Run Recovery Semantics Are Structured On Timeline-Based Surfaces:** `/ai` and project copilot now preserve deterministic failure envelopes into client state, retry affordances are derived from structured metadata, and server finalization uses explicit run facts so failed no-answer runs no longer masquerade as `completed`. Popup now retains lightweight error metadata, but it still does not have full timeline-style parity.
+- **Shared Failure Handling Still Needs One Owner:** shared stream reducers emit typed `stream_error` intents, but terminal failure presentation is not fully centralized yet; tracked under `FIX-011`.
 
 ## Verified Failure Classes
 *The concrete runtime failures this plan is intended to eliminate.*
@@ -192,6 +193,16 @@ Every fix entry must include:
     - runtime evals assert real orchestration behavior
     - search turns emit normalized `source_receipt` data
 
+- [ ] `FIX-011` Shared failure handling and popup parity
+  - Severity: `P1`
+  - Problem: shared reducers now emit typed stream-error intents, but terminal failure rendering is still split across `/ai`, project copilot, and popup, and popup still lacks full timeline-style recovery parity.
+  - Supporting detail: canonical plan only for now.
+  - Exit criteria:
+    - shared stream-error intents are consumed consistently by timeline-based adapters
+    - popup retains structured error metadata for terminal failures
+    - popup and shared adapters have dedicated regression coverage for terminal failure rendering
+    - remaining popup limitations are documented explicitly instead of implied away
+
 ## Execution Order
 
 Work should proceed in this order unless a production incident forces reprioritization:
@@ -203,7 +214,8 @@ Work should proceed in this order unless a production incident forces reprioriti
 5. `FIX-003` popup action-surface honesty
 6. `FIX-004` general-mode scoping and clarification cleanup
 7. `FIX-005` docs/evals/provenance hardening
-8. roadmap phases after the active fixes above are stable
+8. `FIX-011` shared failure handling and popup parity
+9. roadmap phases after the active fixes above are stable
 
 ## End-to-End Delivery Program
 
@@ -225,8 +237,8 @@ Work should proceed in this order unless a production incident forces reprioriti
 
 ### Track D — Surface Honesty, Evals, and Provenance
 
-- Land `FIX-003` and `FIX-005` after the lower-level contracts are stable.
-- Popup honesty should match the real runtime surface, and evals/provenance should measure the behavior the runtime actually ships.
+- Land `FIX-003`, `FIX-005`, and `FIX-011` after the lower-level contracts are stable.
+- Popup honesty should match the real runtime surface, shared failure rendering should stop drifting per surface, and evals/provenance should measure the behavior the runtime actually ships.
 
 ## Active Roadmap
 *Durable capability and architecture work after the immediate fixes.*
@@ -349,11 +361,11 @@ These files are supporting documents. Status, priority, and closure rules live h
 
 ## Recently Completed
 
+- [x] Added repo-review baseline indexing and shared failure follow-up hardening: deep review comparisons now have a durable runbook anchor, shared `stream_error` intents are consumed by both timeline adapters, and popup now retains lightweight structured error metadata even though it still lacks full timeline-style parity.
 - [x] Implemented `FIX-009` recovery semantics and truthful run outcomes: structured error envelopes now survive through stream processor, reducer, and timeline state; retryable UI affordances no longer default to true for deterministic failures; and server finalization derives `runStatus` from explicit run facts while emitting one fallback assistant explanation for deterministic no-answer failures.
 - [x] Implemented `FIX-007` protocol mutation hardening: `update_protocol`, same-turn tool-call sanitization, and repeat detection now share one field-aware normalize/classify path, trim whitespace-only field mismatches consistently at execution time, and cap nested normalization/hashing depth so malformed tool payloads cannot recurse indefinitely.
 - [x] Implemented FIX-006 request/tool-boundary hardening: malformed provider tool-call payloads no longer coerce to `{}` and execute, tool schema validation failures now emit structured error envelopes, and stream/timeline state preserves retryability metadata end-to-end.
 - [x] Hardened `update_protocol` proposal execution: the tool now advertises an explicit scalar/array `value` schema to providers, and the executor drops malformed sibling `update_protocol` calls when a valid proposal exists in the same turn.
-- [x] Tightened proposal-style assistant behavior so model-visible tool results distinguish `proposed` from `auto_applied`, and planner heuristics now require explicit extraction/writing verbs for `extract_pdf` and `update_note`.
 
 ## Deferred / Parking Lot
 
