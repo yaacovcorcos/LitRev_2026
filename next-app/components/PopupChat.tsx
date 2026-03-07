@@ -10,7 +10,7 @@ import { useProjectCopilot } from "@/contexts/ProjectCopilotContext";
 import { createNoteAction } from "@/app/actions/notes";
 import { createConversation, addMessage } from "@/app/actions/conversations";
 import { processAIStream } from "@/lib/ai/stream-processor";
-import { formatStreamErrorForUI } from "@/lib/ai/stream-error-ui";
+import { buildClientErrorState, isRetryableTerminalReason, shouldSuppressClientFallback } from "@/lib/ai/stream-error-ui";
 import { terminalReasonFromThrownError, type StreamTerminalReason } from "@/lib/ai/stream-lifecycle";
 import { recordReliabilityMetric } from "@/lib/ai/reliability-telemetry";
 import { markdownComponents } from "@/components/markdown/CodeBlock";
@@ -319,7 +319,12 @@ export function PopupChat({ projectId }: PopupChatProps) {
             }
             sendSucceeded = terminalReason === "completed";
             if (terminalReason) emitTerminalMetric(terminalReason);
-            if (terminalReason && terminalReason !== "completed" && terminalReason !== "cancelled_by_user") {
+            if (
+                terminalReason
+                && terminalReason !== "completed"
+                && terminalReason !== "cancelled_by_user"
+                && isRetryableTerminalReason(terminalReason)
+            ) {
                 const fallbackError = terminalReason === "timed_out"
                     ? "The response timed out. Please retry."
                     : "The stream ended unexpectedly. Please retry.";
@@ -337,10 +342,13 @@ export function PopupChat({ projectId }: PopupChatProps) {
             terminalReason = terminalReasonFromThrownError(error);
             emitTerminalMetric(terminalReason);
 
-            const errorText = `Sorry, I encountered an error: ${formatStreamErrorForUI(error)}`;
+            const errorState = buildClientErrorState(error);
+            if (shouldSuppressClientFallback({ errorMeta: errorState.errorMeta, hasAssistantContent: fullContent.trim().length > 0 })) {
+                return;
+            }
             setMessages((prev) => [
                 ...prev,
-                { id: aiMsgId, role: "assistant", content: fullContent ? fullContent + "\n\n" + errorText : errorText, createdAt: new Date().toISOString() },
+                { id: aiMsgId, role: "assistant", content: fullContent ? `${fullContent}\n\n${errorState.message}` : errorState.message, createdAt: new Date().toISOString() },
             ]);
         } finally {
             setIsStreaming(false);

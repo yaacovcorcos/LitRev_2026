@@ -9,23 +9,7 @@ import type { TimelineItem } from "@/types/timeline";
 import type { CopilotMessage } from "@/lib/projectCopilotStorage";
 import type { AIStreamChunk, ConversationContextAttachment, ConversationMessageAttachment } from "@/types/ai";
 import type { ArtifactType, ArtifactStatus } from "@/types/artifacts";
-
-const STREAM_ERROR_PREFIX = "Sorry, I encountered an error:";
-const PLAN_ERROR_PREFIX = "Plan execution failed:";
-
-function extractRecoveryErrorMessage(text: string): string | null {
-    const trimmed = text.trim();
-    if (trimmed.startsWith(STREAM_ERROR_PREFIX)) {
-        return trimmed
-            .slice(STREAM_ERROR_PREFIX.length)
-            .replace(/\.\s*Please try again\.?$/i, "")
-            .trim();
-    }
-    if (trimmed.startsWith(PLAN_ERROR_PREFIX)) {
-        return trimmed.slice(PLAN_ERROR_PREFIX.length).trim();
-    }
-    return null;
-}
+import { buildClientErrorState, extractLegacyRecoveryError } from "@/lib/ai/stream-error-ui";
 
 function isContextAttachment(
     attachment: ConversationMessageAttachment,
@@ -116,13 +100,13 @@ export function messagesToTimeline(messages: CopilotMessage[]): TimelineItem[] {
                 createdAt: msg.createdAt,
             };
         }
-        const recoveryErrorMessage = extractRecoveryErrorMessage(msg.text);
-        if (recoveryErrorMessage) {
+        const recoveryError = extractLegacyRecoveryError(msg.text);
+        if (recoveryError) {
             return {
                 type: "error" as const,
                 id: `error-${msg.id}`,
-                message: recoveryErrorMessage,
-                retryable: true,
+                message: recoveryError.message,
+                retryable: recoveryError.retryable,
                 errorMeta: undefined,
                 createdAt: msg.createdAt,
             };
@@ -298,14 +282,15 @@ export function reduceStreamChunk(
         }
 
         case "error": {
+            const errorState = buildClientErrorState(chunk.errorMeta ?? chunk.error ?? "Unknown error");
             return [
                 ...timeline,
                 {
                     type: "error",
                     id: `error-${Date.now()}`,
-                    message: chunk.error ?? "Unknown error",
-                    retryable: chunk.errorMeta?.retryable ?? true,
-                    errorMeta: chunk.errorMeta,
+                    message: errorState.message,
+                    retryable: errorState.retryable,
+                    errorMeta: errorState.errorMeta,
                     createdAt: new Date().toISOString(),
                 },
             ];
