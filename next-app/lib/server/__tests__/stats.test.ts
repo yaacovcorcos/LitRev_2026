@@ -13,7 +13,12 @@ const mockDraftFindFirst = vi.mocked(prisma.draft.findFirst);
 const mockProtocolFindFirst = vi.mocked(prisma.protocol.findFirst);
 const mockStudyFindMany = vi.mocked(prisma.study.findMany);
 
-const { getDraftStatsAction, getProtocolStatsAction, getLedgerStatsAction } =
+const {
+  getDraftStatsAction,
+  getProtocolStatsAction,
+  getLedgerStatsAction,
+  getProjectOverviewStatsAction,
+} =
   await import("@/app/actions/stats");
 
 describe("getDraftStatsAction", () => {
@@ -190,5 +195,105 @@ describe("getLedgerStatsAction", () => {
     expect(result.data!.extractedCount).toBe(0);
     expect(result.data!.screenedCount).toBe(0);
     expect(result.data!.pendingCount).toBe(2);
+  });
+});
+
+describe("getProjectOverviewStatsAction", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("returns all three preview slices from one action boundary", async () => {
+    mockDraftFindFirst.mockResolvedValue({
+      id: "d1",
+      projectId: "p1",
+      state: {
+        version: 1,
+        sectionOrder: ["abstract"],
+        contentBySection: {
+          abstract: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "Abstract" }] }] },
+        },
+        customSections: {},
+      },
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    } as never);
+    mockProtocolFindFirst.mockResolvedValue({
+      data: {
+        researchQuestion: "What changes overview latency?",
+        eligibility: {
+          inclusion: ["Adults"],
+          exclusion: [],
+        },
+      },
+      updatedAt: new Date("2026-02-20T10:00:00Z"),
+    } as never);
+    mockStudyFindMany.mockResolvedValue([
+      { status: "extracted" },
+      { status: "pending" },
+    ] as never);
+
+    const result = await getProjectOverviewStatsAction("p1");
+
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+
+    expect(result.data).toEqual({
+      draft: {
+        data: {
+          sections: [{ key: "abstract", label: "Abstract", hasContent: true }],
+          completedCount: 1,
+          totalCount: 1,
+        },
+        error: null,
+      },
+      protocol: {
+        data: {
+          criteriaCount: 1,
+          hasResearchQuestion: true,
+          updatedAt: "2026-02-20T10:00:00.000Z",
+        },
+        error: null,
+      },
+      ledger: {
+        data: {
+          totalStudies: 2,
+          extractedCount: 1,
+          screenedCount: 0,
+          pendingCount: 1,
+        },
+        error: null,
+      },
+    });
+    expect(mockDraftFindFirst).toHaveBeenCalledTimes(1);
+    expect(mockProtocolFindFirst).toHaveBeenCalledTimes(1);
+    expect(mockStudyFindMany).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps partial failures local to the affected preview slice", async () => {
+    mockDraftFindFirst.mockRejectedValue(new Error("draft exploded"));
+    mockProtocolFindFirst.mockResolvedValue(null as never);
+    mockStudyFindMany.mockResolvedValue([{ status: "active" }] as never);
+
+    const result = await getProjectOverviewStatsAction("p1");
+
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+
+    expect(result.data.draft).toEqual({
+      data: null,
+      error: "Could not load draft preview.",
+    });
+    expect(result.data.protocol).toEqual({
+      data: null,
+      error: null,
+    });
+    expect(result.data.ledger).toEqual({
+      data: {
+        totalStudies: 1,
+        extractedCount: 0,
+        screenedCount: 1,
+        pendingCount: 0,
+      },
+      error: null,
+    });
   });
 });

@@ -11,9 +11,10 @@ import Link from "next/link";
 import { RecentActivityPanel } from "@/components/project/RecentActivityPanel";
 import { DemoGuideCard } from "@/components/project/DemoGuideCard";
 import {
-  getDraftStatsAction, type DraftStats,
-  getProtocolStatsAction, type ProtocolStats,
-  getLedgerStatsAction, type LedgerStats,
+  getProjectOverviewStatsAction,
+  type DraftStats,
+  type ProtocolStats,
+  type LedgerStats,
 } from "@/app/actions/stats";
 import styles from "./project-workspace.module.css";
 import { Project } from "@/types/project";
@@ -173,16 +174,18 @@ export default function ProjectDetail() {
     setStatsLoading(true);
 
     async function load() {
-      const [draftRes, protocolRes, ledgerRes] = await Promise.all([
-        getDraftStatsAction(projectId),
-        getProtocolStatsAction(projectId),
-        getLedgerStatsAction(projectId),
-      ]);
+      const overviewRes = await getProjectOverviewStatsAction(projectId);
 
       if (cancelled) return;
-      setDraftStats(draftRes.success ? draftRes.data : null);
-      setProtocolStats(protocolRes.success ? protocolRes.data : null);
-      setLedgerStats(ledgerRes.success ? ledgerRes.data : null);
+      if (overviewRes.success) {
+        setDraftStats(overviewRes.data.draft.data);
+        setProtocolStats(overviewRes.data.protocol.data);
+        setLedgerStats(overviewRes.data.ledger.data);
+      } else {
+        setDraftStats(null);
+        setProtocolStats(null);
+        setLedgerStats(null);
+      }
       setStatsLoading(false);
     }
 
