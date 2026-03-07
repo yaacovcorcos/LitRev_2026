@@ -53,6 +53,20 @@ describe("classifyAIError", () => {
         expect(classified.code).toBe("TOOL_CALL_ARGS_PARSE_FAILED");
         expect(classified.retryable).toBe(false);
     });
+
+    it("preserves context overflow classification for structured envelopes", () => {
+        const classified = classifyAIError({
+            errorMeta: {
+                kind: "provider_request",
+                code: "context_length_exceeded",
+                retryable: false,
+                source: "provider_request",
+                message: "maximum context length is 128000 tokens",
+            },
+        });
+        expect(classified.reason).toBe("context_overflow");
+        expect(classified.retryable).toBe(false);
+    });
 });
 
 describe("helpers", () => {

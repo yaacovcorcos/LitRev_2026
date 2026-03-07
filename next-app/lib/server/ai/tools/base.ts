@@ -213,7 +213,7 @@ export function validateToolInput(
     return {
         success: false,
         error,
-        errorMeta: createToolSchemaValidationErrorEnvelope(tool.definition.name, error),
+        errorMeta: createToolSchemaValidationErrorEnvelope(tool.definition.name),
     };
 }
 

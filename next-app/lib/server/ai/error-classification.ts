@@ -110,11 +110,35 @@ function reasonFromEnvelope(envelope: AIErrorEnvelope, status?: number): AIError
     if (envelope.kind === "tool_call_parse" || envelope.kind === "tool_schema_validation") {
         return "format";
     }
+    const lowerCode = envelope.code.toLowerCase();
+    if (lowerCode === "context_length_exceeded") return "context_overflow";
+    if (lowerCode === "insufficient_quota") return "billing";
+    if (lowerCode === "model_not_found") return "model_not_found";
+    if (lowerCode === "invalid_api_key") return "auth";
+    if (isContextOverflowMessage(envelope.message)) return "context_overflow";
     if (status === 401 || status === 403) return "auth";
     if (status === 402) return "billing";
     if (status === 404) return "model_not_found";
     if (status === 429) return "rate_limit";
     if (status === 408 || (status !== undefined && status >= 500)) return "timeout";
+    if (/rate.?limit|quota|too many requests|tpm|rpm|capacity|overloaded|529/i.test(envelope.message)) {
+        return "rate_limit";
+    }
+    if (/timed?\s*out|deadline exceeded|context deadline exceeded|econnreset|etimedout|gateway timeout/i.test(envelope.message)) {
+        return "timeout";
+    }
+    if (/insufficient.*credit|billing|payment|required|plan.*exceeded/i.test(envelope.message)) {
+        return "billing";
+    }
+    if (/invalid.*key|unauthorized|forbidden|authentication/i.test(envelope.message)) {
+        return "auth";
+    }
+    if (/tool[_ ]?use.*id|invalid.*request|malformed|invalid prompt|bad request/i.test(envelope.message)) {
+        return "format";
+    }
+    if (/model.*not.*found|does not exist|unknown model/i.test(envelope.message)) {
+        return "model_not_found";
+    }
     return envelope.retryable ? "timeout" : "unknown";
 }
 

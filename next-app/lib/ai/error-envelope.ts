@@ -96,13 +96,17 @@ export function envelopeFromStreamChunk(
             headers: chunk.errorMeta.headers ?? chunk.errorHeaders,
         };
     }
+    const status = chunk.errorStatus;
+    const retryable = status === undefined
+        ? true
+        : status === 408 || status === 429 || status >= 500;
     return {
         kind: "runtime",
         code: chunk.errorCode ?? "STREAM_ERROR",
-        retryable: false,
+        retryable,
         source: "runtime",
         message: chunk.error ?? "AI stream error",
-        status: chunk.errorStatus,
+        status,
         headers: chunk.errorHeaders,
     };
 }
@@ -129,7 +133,6 @@ export function createToolCallParseErrorEnvelope(params: {
 
 export function createToolSchemaValidationErrorEnvelope(
     toolName: string,
-    _message: string,
 ): AIErrorEnvelope {
     return {
         kind: "tool_schema_validation",

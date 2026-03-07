@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { AIErrorWithEnvelope } from "@/lib/ai/error-envelope";
+import { AIErrorWithEnvelope, extractAIErrorEnvelope } from "@/lib/ai/error-envelope";
 
 const parseNDJSONStreamMock = vi.fn();
 
@@ -80,5 +80,30 @@ describe("processAIStream terminal lifecycle", () => {
       throwOnErrorChunk: true,
       onChunk: () => {},
     })).rejects.toBeInstanceOf(AIErrorWithEnvelope);
+  });
+
+  it("defaults legacy error chunks without metadata to retryable", async () => {
+    parseNDJSONStreamMock.mockImplementation(async function* () {
+      yield {
+        type: "error",
+        error: "temporary upstream failure",
+      };
+    });
+
+    const { processAIStream } = await import("@/lib/ai/stream-processor");
+
+    let thrown: unknown;
+    try {
+      await processAIStream({
+        reader: {} as ReadableStreamDefaultReader<Uint8Array>,
+        throwOnErrorChunk: true,
+        onChunk: () => {},
+      });
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(AIErrorWithEnvelope);
+    expect(extractAIErrorEnvelope(thrown)?.retryable).toBe(true);
   });
 });
