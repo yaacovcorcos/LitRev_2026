@@ -10,6 +10,7 @@ export type PopupMessage = {
     id: string;
     role: "user" | "assistant";
     content: string;
+    errorMessage?: string;
     retryable?: boolean;
     errorMeta?: AIErrorEnvelope;
     createdAt: string;
