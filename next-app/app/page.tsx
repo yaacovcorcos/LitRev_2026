@@ -378,6 +378,7 @@ function HomeContent() {
               !isNewUser && continueProject ? (
                 <Link
                   href={`/project/${continueProject.id}`}
+                  prefetch={false}
                   className={layoutStyles.resumeControl}
                   aria-label={`Back to ${continueProject.name}`}
                 >

@@ -6,6 +6,7 @@ import type { ProjectDataDomain } from "@/lib/project-data-events";
 import { useProjectData } from "@/hooks/useProjectData";
 import { Modal } from "@/components/Modal";
 import { isMobileTelemetryContext, recordMobileMetric } from "@/lib/mobile/telemetry";
+import { COARSE_POINTER_MEDIA_QUERY, MOBILE_VIEWPORT_MEDIA_QUERY } from "@/lib/mobile/breakpoints";
 import { StatusIndicator } from "./StatusIndicator";
 import styles from "./ProjectTabBar.module.css";
 
@@ -17,6 +18,8 @@ const TAB_DOMAIN_MAP: Record<ViewTab, ProjectDataDomain | null> = {
     memory: "memory",
     notes: "notes",
 };
+
+const HOVER_WARM_DOMAINS = new Set<ProjectDataDomain>(["protocol", "ledger"]);
 
 type TabDef = {
     key: ViewTab;
@@ -54,9 +57,15 @@ export function ProjectTabBar({
     const closeDeleteModal = useCallback(() => setIsDeleteOpen(false), []);
     const { warmDomain } = useProjectData();
 
-    const handleTabIntent = useCallback((tab: ViewTab) => {
+    const handleTabHover = useCallback((tab: ViewTab) => {
         const domain = TAB_DOMAIN_MAP[tab];
-        if (domain) warmDomain(domain);
+        if (!domain || !HOVER_WARM_DOMAINS.has(domain)) return;
+        if (typeof window !== "undefined" && typeof window.matchMedia === "function") {
+            const isMobileViewport = window.matchMedia(MOBILE_VIEWPORT_MEDIA_QUERY).matches;
+            const hasCoarsePointer = window.matchMedia(COARSE_POINTER_MEDIA_QUERY).matches;
+            if (isMobileViewport || hasCoarsePointer) return;
+        }
+        warmDomain(domain);
     }, [warmDomain]);
 
     const recordNavigationTap = useCallback((actionId: string) => {
@@ -118,8 +127,7 @@ export function ProjectTabBar({
                                 recordNavigationTap(`tab_${tab.key}`);
                                 onTabClick(tab.key);
                             }}
-                            onMouseEnter={() => handleTabIntent(tab.key)}
-                            onFocus={() => handleTabIntent(tab.key)}
+                            onMouseEnter={() => handleTabHover(tab.key)}
                         >
                             <span className="material-icons-round">{tab.icon}</span>
                             <span className={styles.tabLabel}>{tab.label}</span>

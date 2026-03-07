@@ -62,6 +62,7 @@ export function ProjectGrid({ projects, viewMode, onNewProject, showSampleCard =
           <Link
             key={p.id}
             href={`/project/${p.id}`}
+            prefetch={false}
             className={cardClass}
             data-name={p.name}
             data-modified={p.modified}

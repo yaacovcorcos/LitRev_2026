@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import type { ReactNode } from "react";
+import type { AnchorHTMLAttributes, ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import Home from "../page";
 
@@ -18,6 +18,23 @@ const {
   mockProjectGrid: vi.fn(({ showSampleCard }: { showSampleCard?: boolean }) => (
     <div data-testid="project-grid">{showSampleCard !== false ? "sample:on" : "sample:off"}</div>
   )),
+}));
+
+vi.mock("next/link", () => ({
+  default: ({
+    href,
+    prefetch,
+    children,
+    ...props
+  }: {
+    href: string;
+    prefetch?: boolean;
+    children: ReactNode;
+  } & AnchorHTMLAttributes<HTMLAnchorElement>) => (
+    <a href={href} data-prefetch={String(prefetch)} {...props}>
+      {children}
+    </a>
+  ),
 }));
 
 vi.mock("next/navigation", () => ({
@@ -146,5 +163,6 @@ describe("Home entry UX", () => {
 
     const continueLink = screen.getByRole("link", { name: "Back to Second Project" });
     expect(continueLink.getAttribute("href")).toBe("/project/p2");
+    expect(continueLink.getAttribute("data-prefetch")).toBe("false");
   });
 });
