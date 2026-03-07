@@ -1,0 +1,105 @@
+name: Performance Nightly
+
+on:
+  schedule:
+    - cron: "0 2 * * *"
+  workflow_dispatch:
+
+jobs:
+  nightly-probe:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: litrev_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://test:test@localhost:5432/litrev_test
+      DIRECT_URL: postgresql://test:test@localhost:5432/litrev_test
+      SHADOW_DATABASE_URL: postgresql://test:test@localhost:5432/litrev_shadow
+      BETTER_AUTH_SECRET: ci-perf-probe-secret-0123456789abcdef0123456789abcdef
+      NEXT_PUBLIC_APP_VERSION: perf-nightly
+      NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA: ${{ github.sha }}
+      PERF_NIGHTLY_RUN_ID: nightly-${{ github.run_id }}-${{ github.run_attempt }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: next-app/package-lock.json
+      - run: cd next-app && npm ci
+
+      - name: Apply migrations
+        run: cd next-app && npx prisma migrate deploy
+
+      - name: Prepare shadow database
+        run: |
+          psql "postgresql://test:test@localhost:5432/postgres" -v ON_ERROR_STOP=1 -c 'DROP DATABASE IF EXISTS litrev_shadow;'
+          psql "postgresql://test:test@localhost:5432/postgres" -v ON_ERROR_STOP=1 -c 'CREATE DATABASE litrev_shadow;'
+          psql "postgresql://test:test@localhost:5432/litrev_shadow" -v ON_ERROR_STOP=1 -c 'CREATE EXTENSION IF NOT EXISTS vector;'
+
+      - name: Install Playwright browser
+        run: cd next-app && npx playwright install --with-deps chromium
+
+      - name: Build production app for nightly performance probe
+        run: cd next-app && npx next build
+        env:
+          NEXT_PUBLIC_ENABLE_PERFORMANCE_TELEMETRY: "0"
+
+      - name: Generate nightly performance results artifact
+        run: |
+          cd next-app
+          mkdir -p ../tmp
+          npx next start --hostname 127.0.0.1 --port 3201 > ../tmp/perf-nightly-server.log 2>&1 &
+          PERF_SERVER_PID=$!
+
+          cleanup() {
+            kill "$PERF_SERVER_PID" >/dev/null 2>&1 || true
+            wait "$PERF_SERVER_PID" >/dev/null 2>&1 || true
+          }
+
+          trap cleanup EXIT
+
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:3201/login >/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+
+          curl --fail --silent http://127.0.0.1:3201/login >/dev/null
+
+          npm run perf:generate-results -- \
+            --matrix nightly \
+            --base-url "http://127.0.0.1:3201" \
+            --budget "../output/performance/baseline/budget-thresholds.json" \
+            --output "../output/performance/nightly/${PERF_NIGHTLY_RUN_ID}/results-nightly.json" \
+            --commit "${GITHUB_SHA}" \
+            --source "nightly-probe-playwright" \
+            --runs 9
+        env:
+          NEXT_PUBLIC_ENABLE_PERFORMANCE_TELEMETRY: "0"
+
+      - name: Assert nightly artifacts exist
+        run: |
+          test -f output/performance/nightly/${PERF_NIGHTLY_RUN_ID}/results-nightly.json || (echo "::error::missing nightly performance results artifact" && exit 1)
+
+      - name: Upload nightly performance artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-nightly-${{ github.run_id }}-${{ github.run_attempt }}
+          path: output/performance/nightly/${{ env.PERF_NIGHTLY_RUN_ID }}/results-nightly.json
+          if-no-files-found: error
