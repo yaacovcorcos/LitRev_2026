@@ -310,7 +310,7 @@ export default function ProjectDetail() {
       <section className={styles.infoPanelsRow}>
         <div className={styles.infoPanel}>
           <h4 className={styles.infoPanelTitle}>Recent Activity</h4>
-          <RecentActivityPanel projectId={project.id} />
+          <RecentActivityPanel projectId={project.id} deferUntilIdle />
         </div>
         <div className={styles.infoPanel}>
           <h4 className={styles.infoPanelTitle}>Project Details</h4>

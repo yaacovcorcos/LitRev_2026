@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { act, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RecentActivityPanel } from "../RecentActivityPanel";
 
 const { mockGetRecentActivityAction } = vi.hoisted(() => ({
@@ -14,6 +14,11 @@ vi.mock("@/app/actions/activity", () => ({
 describe("RecentActivityPanel", () => {
     beforeEach(() => {
         vi.clearAllMocks();
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+        vi.unstubAllGlobals();
     });
 
     it("renders loading then activity rows", async () => {
@@ -55,5 +60,23 @@ describe("RecentActivityPanel", () => {
         await waitFor(() => {
             expect(screen.getByText("Could not load recent activity.")).toBeTruthy();
         });
+    });
+
+    it("keeps the loading shell visible and defers the fetch until idle when requested", async () => {
+        vi.useFakeTimers();
+        vi.stubGlobal("requestIdleCallback", undefined);
+        vi.stubGlobal("cancelIdleCallback", undefined);
+        mockGetRecentActivityAction.mockResolvedValue({ success: true, data: [] });
+
+        render(<RecentActivityPanel projectId="project-1" deferUntilIdle />);
+
+        expect(screen.getByLabelText("Loading recent activity")).toBeTruthy();
+        expect(mockGetRecentActivityAction).not.toHaveBeenCalled();
+
+        await act(async () => {
+            await vi.advanceTimersByTimeAsync(250);
+        });
+
+        expect(mockGetRecentActivityAction).toHaveBeenCalledWith("project-1", 8);
     });
 });

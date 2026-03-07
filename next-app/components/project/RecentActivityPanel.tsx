@@ -9,6 +9,7 @@ import styles from "./RecentActivityPanel.module.css";
 type RecentActivityPanelProps = {
     projectId: string;
     limit?: number;
+    deferUntilIdle?: boolean;
 };
 
 function formatRelativeTime(value: string): string {
@@ -65,12 +66,55 @@ function LoadingRows() {
     );
 }
 
-export function RecentActivityPanel({ projectId, limit = 8 }: RecentActivityPanelProps) {
+export function RecentActivityPanel({
+    projectId,
+    limit = 8,
+    deferUntilIdle = false,
+}: RecentActivityPanelProps) {
     const [items, setItems] = useState<ProjectActivityItem[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [hasError, setHasError] = useState(false);
+    const [loadEnabled, setLoadEnabled] = useState(() => !deferUntilIdle);
 
     useEffect(() => {
+        if (!deferUntilIdle) {
+            setLoadEnabled(true);
+            return;
+        }
+
+        let idleId: number | null = null;
+        let timeoutId: number | null = null;
+        const hasWindow = typeof window !== "undefined";
+        const supportsIdleCallback = hasWindow && typeof window.requestIdleCallback === "function";
+        const supportsIdleCancel = hasWindow && typeof window.cancelIdleCallback === "function";
+        const enableLoad = () => setLoadEnabled(true);
+
+        setLoadEnabled(false);
+        setItems([]);
+        setHasError(false);
+        setIsLoading(true);
+
+        if (supportsIdleCallback) {
+            idleId = window.requestIdleCallback(enableLoad, { timeout: 500 });
+        } else if (hasWindow) {
+            timeoutId = window.setTimeout(enableLoad, 250);
+        } else {
+            enableLoad();
+        }
+
+        return () => {
+            if (idleId != null && supportsIdleCancel) {
+                window.cancelIdleCallback(idleId);
+            }
+            if (timeoutId != null) {
+                window.clearTimeout(timeoutId);
+            }
+        };
+    }, [deferUntilIdle, limit, projectId]);
+
+    useEffect(() => {
+        if (!loadEnabled) return;
+
         let isActive = true;
         setIsLoading(true);
         setHasError(false);
@@ -92,7 +136,7 @@ export function RecentActivityPanel({ projectId, limit = 8 }: RecentActivityPane
         return () => {
             isActive = false;
         };
-    }, [projectId, limit]);
+    }, [limit, loadEnabled, projectId]);
 
     if (isLoading) return <LoadingRows />;
 
