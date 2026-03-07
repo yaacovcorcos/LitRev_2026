@@ -148,8 +148,33 @@ const PLAN_ERROR_PREFIX = "Plan execution failed:";
 export function shouldSuppressClientFallback(params: {
     errorMeta?: AIErrorEnvelope;
     hasAssistantContent: boolean;
+    hasRenderedError?: boolean;
 }): boolean {
+    if (params.hasRenderedError) return true;
     return Boolean(params.errorMeta && !params.errorMeta.retryable && params.hasAssistantContent);
+}
+
+export function isSameRenderedError(params: {
+    existingMessage?: string | null;
+    existingMeta?: AIErrorEnvelope | null;
+    nextMessage: string;
+    nextMeta?: AIErrorEnvelope | null;
+}): boolean {
+    const existingMessage = collapseWhitespace(params.existingMessage ?? "");
+    const nextMessage = collapseWhitespace(params.nextMessage);
+    if (!existingMessage || existingMessage !== nextMessage) {
+        return false;
+    }
+
+    const existingMeta = params.existingMeta ?? null;
+    const nextMeta = params.nextMeta ?? null;
+
+    if (existingMeta && nextMeta) {
+        return existingMeta.code === nextMeta.code
+            && existingMeta.source === nextMeta.source;
+    }
+
+    return true;
 }
 
 export function isRetryableTerminalReason(reason: StreamTerminalReason | null): boolean {

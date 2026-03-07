@@ -25,7 +25,7 @@ import type { ContextCaptureTarget } from "@/types/context-capture";
 import { handleProjectCopilotStreamChunk } from "@/contexts/project-copilot-stream-events";
 import type { ArtifactActionContract } from "@/lib/artifacts/action-contract";
 import { getReasoningBudgetTokens, shouldRequestReasoning } from "@/lib/ai/reasoning-visibility";
-import { buildClientErrorState, formatStreamErrorForUI, shouldSuppressClientFallback } from "@/lib/ai/stream-error-ui";
+import { buildClientErrorState, formatStreamErrorForUI, isSameRenderedError, shouldSuppressClientFallback } from "@/lib/ai/stream-error-ui";
 import { recordChatUnificationMetric } from "@/lib/ai/chat-unification-telemetry";
 import { terminalReasonFromThrownError, type StreamTerminalReason } from "@/lib/ai/stream-lifecycle";
 import { recordReliabilityMetric } from "@/lib/ai/reliability-telemetry";
@@ -405,38 +405,39 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
             setPendingChoices([]);
             setPendingUserInput(null);
             const errorState = buildClientErrorState(error);
-            const shouldSuppressFallback = shouldSuppressClientFallback({
-                errorMeta: errorState.errorMeta,
-                hasAssistantContent: aiMessageCreated || fullContent.trim().length > 0,
-            });
+            updateState((prev) => {
+                const hasRenderedError = prev.messages.some((message) =>
+                    message.sender === "ai" && isSameRenderedError({
+                        existingMessage: message.text,
+                        existingMeta: message.streamError,
+                        nextMessage: errorState.message,
+                        nextMeta: errorState.errorMeta,
+                    })
+                );
+                const shouldSuppressFallback = shouldSuppressClientFallback({
+                    errorMeta: errorState.errorMeta,
+                    hasAssistantContent: aiMessageCreated || fullContent.trim().length > 0,
+                    hasRenderedError,
+                });
 
-            if (!shouldSuppressFallback && !aiMessageCreated) {
-                const aiMessage: CopilotMessage = {
-                    id: aiMessageId,
+                if (shouldSuppressFallback) {
+                    return prev;
+                }
+
+                const nextMessage: CopilotMessage = {
+                    id: aiMessageCreated ? `error-${Date.now()}` : aiMessageId,
                     sender: "ai",
                     text: errorState.message,
                     streamError: errorState.errorMeta,
                     createdAt: new Date().toISOString(),
                     context: { page, section },
                 };
-                updateState((prev) => ({
+
+                return {
                     ...prev,
-                    messages: [...prev.messages, aiMessage],
-                }));
-            } else if (!shouldSuppressFallback) {
-                const errorMessage: CopilotMessage = {
-                    id: `error-${Date.now()}`,
-                    sender: "ai",
-                    text: errorState.message,
-                    streamError: errorState.errorMeta,
-                    createdAt: new Date().toISOString(),
-                    context: { page, section },
+                    messages: [...prev.messages, nextMessage],
                 };
-                updateState((prev) => ({
-                    ...prev,
-                    messages: [...prev.messages, errorMessage],
-                }));
-            }
+            });
             return {
                 success: false,
                 aborted: false,

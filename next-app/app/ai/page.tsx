@@ -33,7 +33,7 @@ import { processAIStream } from "@/lib/ai/stream-processor";
 import { routeToAgent } from "@/lib/agent/router";
 import { dispatchProjectDataChanged, getChangedDomainsForAcceptedArtifact } from "@/lib/project-data-events";
 import { isNavigationSafe } from "@/lib/ai/navigation-safety";
-import { buildClientErrorState, formatStreamErrorForUI, isRetryableTerminalReason, shouldSuppressClientFallback } from "@/lib/ai/stream-error-ui";
+import { buildClientErrorState, formatStreamErrorForUI, isRetryableTerminalReason, isSameRenderedError, shouldSuppressClientFallback } from "@/lib/ai/stream-error-ui";
 import { createAiStreamRuntime } from "@/lib/ai/ai-stream-runtime";
 import { generateChatUnificationRequestKey, recordChatUnificationMetric } from "@/lib/ai/chat-unification-telemetry";
 import { terminalReasonFromThrownError, type StreamTerminalReason } from "@/lib/ai/stream-lifecycle";
@@ -1295,7 +1295,15 @@ export default function AIView() {
           const hasAssistantContent = items.some(
             (item) => item.type === "assistant_message" && item.content.trim().length > 0
           );
-          if (shouldSuppressClientFallback({ errorMeta: errorState.errorMeta, hasAssistantContent })) {
+          const hasRenderedError = items.some((item) =>
+            item.type === "error" && isSameRenderedError({
+              existingMessage: item.message,
+              existingMeta: item.errorMeta,
+              nextMessage: errorState.message,
+              nextMeta: errorState.errorMeta,
+            })
+          );
+          if (shouldSuppressClientFallback({ errorMeta: errorState.errorMeta, hasAssistantContent, hasRenderedError })) {
             return items;
           }
           return [

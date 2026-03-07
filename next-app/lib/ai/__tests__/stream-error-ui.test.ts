@@ -4,6 +4,7 @@ import {
     extractLegacyRecoveryError,
     formatStreamErrorForUI,
     isRetryableTerminalReason,
+    isSameRenderedError,
     shouldSuppressClientFallback,
 } from "@/lib/ai/stream-error-ui";
 
@@ -79,6 +80,62 @@ describe("formatStreamErrorForUI", () => {
             },
             hasAssistantContent: true,
         })).toBe(true);
+    });
+
+    it("suppresses fallback when the same structured error is already rendered", () => {
+        expect(shouldSuppressClientFallback({
+            errorMeta: {
+                kind: "tool_call_parse",
+                code: "TOOL_CALL_ARGS_PARSE_FAILED",
+                retryable: false,
+                source: "provider_tool_call",
+                message: "Bad arguments",
+            },
+            hasAssistantContent: false,
+            hasRenderedError: true,
+        })).toBe(true);
+    });
+
+    it("matches rendered structured errors by code, source, and message", () => {
+        expect(isSameRenderedError({
+            existingMessage: "Bad arguments",
+            existingMeta: {
+                kind: "tool_call_parse",
+                code: "TOOL_CALL_ARGS_PARSE_FAILED",
+                retryable: false,
+                source: "provider_tool_call",
+                message: "Bad arguments",
+            },
+            nextMessage: "Bad arguments",
+            nextMeta: {
+                kind: "tool_call_parse",
+                code: "TOOL_CALL_ARGS_PARSE_FAILED",
+                retryable: false,
+                source: "provider_tool_call",
+                message: "Bad arguments",
+            },
+        })).toBe(true);
+    });
+
+    it("does not collapse different structured errors that only share a rendered message", () => {
+        expect(isSameRenderedError({
+            existingMessage: "The model is temporarily busy. Please retry in a moment.",
+            existingMeta: {
+                kind: "provider_request",
+                code: "RATE_LIMIT_A",
+                retryable: true,
+                source: "provider_request",
+                message: "429 provider A rate limit",
+            },
+            nextMessage: "The model is temporarily busy. Please retry in a moment.",
+            nextMeta: {
+                kind: "provider_request",
+                code: "RATE_LIMIT_B",
+                retryable: true,
+                source: "provider_request",
+                message: "429 provider B rate limit",
+            },
+        })).toBe(false);
     });
 
     it("marks only timed out and failed network terminal reasons as retryable", () => {
