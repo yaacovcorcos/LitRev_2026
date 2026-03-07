@@ -35,6 +35,9 @@ Define the canonical implementation plan for app speed, responsiveness, and stab
 - `/ai` now has route-local readiness instrumentation and a build-artifact bundle report:
   - `next-app/app/ai/page.tsx` records composer-ready and timeline-ready markers into `window.__litrevAiPerf`
   - `next-app/scripts/report-ai-bundle.ts` reports `/ai` entry chunk count and total JS bytes from `.next/server/app/ai.html`
+- `/ai` closeout measurement is now reproducible from repo-local tooling:
+  - `next-app/scripts/capture-ai-closeout.ts` captures empty and populated `/ai` scenarios against a built app
+  - `next-app/scripts/compare-ai-closeout.ts` evaluates the pinned `SPD-005` thresholds against a baseline/head pair
 - `/ai` also now opts into route-local lazy boundaries without forking shared copilot infrastructure:
   - the shared composer lazy-loads attachment and autonomy controls behind dynamic feature islands
   - the shared `TimelineRenderer` supports an opt-in initial visible window and readiness callback, and `/ai` uses that opt-in path while project copilot/conversation keep the default full render behavior
@@ -273,10 +276,20 @@ Rules:
 
 ## Active Tasks
 - [ ] `SPD-005` Reduce `/ai` bundle and timeline cost.
-  - Canonical measurement sources now exist:
+  - Canonical measurement sources now exist and the first closeout run is recorded in `docs/reports/performance/ai-closeout-2026-03-07.md`:
     - `npm run perf:ai-bundle-report`
+    - `npm run perf:ai-closeout-capture`
+    - `npm run perf:ai-closeout-compare`
     - route-local `/ai` readiness markers in `window.__litrevAiPerf`
-  - Remaining closeout work is to capture authoritative before/after comparisons and confirm shared copilot non-regression after the first `/ai` route-local splitting wave.
+  - Pinned closeout thresholds:
+    - bundle bytes: `>= 5%` or `50 KB` improvement
+    - empty `/ai` composer-ready: `>= 10%` or `75 ms` improvement
+    - populated `/ai` timeline-ready: `>= 15%` or `150 ms` improvement
+  - Current measured status vs baseline commit `31d45033696c3c54d9b223bb6576fc933e22bc4c`:
+    - bundle bytes improved only `0.1%`
+    - empty `/ai` composer-ready regressed by `111 ms`
+    - populated `/ai` timeline-ready regressed by `53 ms`
+  - Next narrow follow-up should target `/ai` initial route hydration and history/sidebar cost; do not fork the shared composer and do not expand shared timeline semantics until a new populated-route measurement shows that path is still dominant.
 - [ ] `SPD-006` Expand the probe matrix to nightly-only routes and slow-network coverage.
   - Keep nightly-only routes (`/`, `/project/[id]/protocol`, `/project/[id]/notes`) and the slow-network profile out of the PR gate until their artifacts are stable.
 
