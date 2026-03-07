@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import type { AnchorHTMLAttributes, ReactNode } from "react";
+import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import Home from "../page";
 
@@ -20,22 +20,10 @@ const {
   )),
 }));
 
-vi.mock("next/link", () => ({
-  default: ({
-    href,
-    prefetch,
-    children,
-    ...props
-  }: {
-    href: string;
-    prefetch?: boolean;
-    children: ReactNode;
-  } & AnchorHTMLAttributes<HTMLAnchorElement>) => (
-    <a href={href} data-prefetch={String(prefetch)} {...props}>
-      {children}
-    </a>
-  ),
-}));
+vi.mock("next/link", async () => {
+  const { nextLinkPrefetchMock } = await import("@/test-utils/next-link-prefetch-mock");
+  return nextLinkPrefetchMock;
+});
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
