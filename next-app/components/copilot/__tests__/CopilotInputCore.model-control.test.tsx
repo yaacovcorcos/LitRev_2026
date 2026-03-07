@@ -18,6 +18,23 @@ vi.mock("@/app/actions/files", () => ({
 }));
 
 describe("CopilotInputCore model control", () => {
+    it("signals readiness once the textarea is mounted", () => {
+        const onReady = vi.fn();
+        render(
+            <CopilotInputCore
+                page="overview"
+                inputPlaceholder="Ask"
+                isLoading={false}
+                sendMessage={vi.fn()}
+                cancelStream={vi.fn()}
+                showVoice={false}
+                onReady={onReady}
+            />,
+        );
+
+        expect(onReady).toHaveBeenCalledTimes(1);
+    });
+
     it("sends using the externally controlled selected model", () => {
         const sendMessage = vi.fn();
         render(

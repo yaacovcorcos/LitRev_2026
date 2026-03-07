@@ -166,4 +166,59 @@ describe("TimelineRenderer load-older messages", () => {
     // Empty state should be shown, no load older button
     expect(screen.queryByRole("button", { name: /load older messages/i })).toBeNull();
   });
+
+  it("collapses older already-loaded messages when initialVisibleCount is provided", () => {
+    render(
+      <TimelineRenderer
+        {...defaultProps}
+        items={makeItems(6)}
+        initialVisibleCount={3}
+        visibleStep={2}
+      />,
+    );
+
+    expect(screen.queryByText("Message 1")).toBeNull();
+    expect(screen.queryByText("Message 2")).toBeNull();
+    expect(screen.queryByText("Message 3")).toBeNull();
+    expect(screen.getByText("Message 4")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /show 2 earlier messages/i })).toBeTruthy();
+  });
+
+  it("reveals hidden messages in steps when requested", () => {
+    render(
+      <TimelineRenderer
+        {...defaultProps}
+        items={makeItems(6)}
+        initialVisibleCount={3}
+        visibleStep={2}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /show 2 earlier messages/i }));
+
+    expect(screen.getByText("Message 2")).toBeTruthy();
+    expect(screen.getByText("Message 3")).toBeTruthy();
+    expect(screen.getByText("Message 4")).toBeTruthy();
+    expect(screen.queryByText("Message 1")).toBeNull();
+    expect(screen.getByRole("button", { name: /show 1 earlier message/i })).toBeTruthy();
+  });
+
+  it("reports timeline readiness details for the visible window", () => {
+    const onTimelineReady = vi.fn();
+
+    render(
+      <TimelineRenderer
+        {...defaultProps}
+        items={makeItems(5)}
+        initialVisibleCount={2}
+        onTimelineReady={onTimelineReady}
+      />,
+    );
+
+    expect(onTimelineReady).toHaveBeenCalledWith({
+      visibleItems: 2,
+      hiddenItems: 3,
+      totalItems: 5,
+    });
+  });
 });

@@ -32,6 +32,12 @@ Define the canonical implementation plan for app speed, responsiveness, and stab
 - Workspace project entry links now disable default route prefetch, and the workspace index query is narrowed at the Prisma layer to index fields only before hydration consumes the result.
 - Root overview entry keeps the header, vital signs, and workstation shells immediate while deferring the recent-activity fetch until idle.
 - Root overview workstation previews now load through a single combined overview action under one auth/validation envelope, reducing preview boot-time requests from three client actions to one while preserving per-card partial failure handling.
+- `/ai` now has route-local readiness instrumentation and a build-artifact bundle report:
+  - `next-app/app/ai/page.tsx` records composer-ready and timeline-ready markers into `window.__litrevAiPerf`
+  - `next-app/scripts/report-ai-bundle.ts` reports `/ai` entry chunk count and total JS bytes from `.next/server/app/ai.html`
+- `/ai` also now opts into route-local lazy boundaries without forking shared copilot infrastructure:
+  - the shared composer lazy-loads attachment and autonomy controls behind dynamic feature islands
+  - the shared `TimelineRenderer` supports an opt-in initial visible window and readiness callback, and `/ai` uses that opt-in path while project copilot/conversation keep the default full render behavior
 - Three consecutive warn-mode calibration notes are archived under `docs/reports/performance/`.
 - The gate now runs in `enforce` mode with no active waivers; `output/performance/baseline/waivers.json` remains checked in as the machine-readable exception contract.
 - Regression gating now requires both percentage regression and a minimum meaningful absolute delta before failing:
@@ -258,15 +264,19 @@ Rules:
 - Target route:
   - `/ai`
 - Primary metric:
-  - desktop and mobile `LCP`
+  - `/ai` entry JS bytes plus populated timeline-ready latency
 - Target:
-  - lower initial JS cost and reduce long timeline rendering work
+  - reduce route entry JS cost and reduce long-timeline render cost without regressing composer/send behavior
 - Scope:
   - `/ai` route bundle boundaries
-  - timeline rendering surfaces
+  - shared timeline rendering surfaces used by `/ai`
 
 ## Active Tasks
 - [ ] `SPD-005` Reduce `/ai` bundle and timeline cost.
+  - Canonical measurement sources now exist:
+    - `npm run perf:ai-bundle-report`
+    - route-local `/ai` readiness markers in `window.__litrevAiPerf`
+  - Remaining closeout work is to capture authoritative before/after comparisons and confirm shared copilot non-regression after the first `/ai` route-local splitting wave.
 - [ ] `SPD-006` Expand the probe matrix to nightly-only routes and slow-network coverage.
   - Keep nightly-only routes (`/`, `/project/[id]/protocol`, `/project/[id]/notes`) and the slow-network profile out of the PR gate until their artifacts are stable.
 
