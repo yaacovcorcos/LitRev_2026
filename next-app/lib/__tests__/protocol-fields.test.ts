@@ -53,6 +53,26 @@ describe("normalizeAndClassifyProtocolMutation", () => {
       code: "STRING_EXPECTS_SINGLE_VALUE",
     });
   });
+
+  it("rejects excessively nested wrapper values", () => {
+    const result = normalizeAndClassifyProtocolMutation("researchQuestion", {
+      value: {
+        value: {
+          value: {
+            value: {
+              value: "Too deep",
+            },
+          },
+        },
+      },
+    });
+
+    expect(result).toMatchObject({
+      valid: false,
+      code: "VALUE_NESTING_TOO_DEEP",
+      error: "Research Question value nesting is too deep to normalize safely",
+    });
+  });
 });
 
 describe("validateFieldValue", () => {

@@ -70,7 +70,7 @@ describe("updateProtocolTool", () => {
   it("normalizes unambiguous object wrappers for string fields", async () => {
     const result = await updateProtocolTool.execute(
       {
-        field: "researchQuestion",
+        field: " researchQuestion ",
         value: { text: "New question" },
         rationale: "The user refined the question",
       },
@@ -98,5 +98,32 @@ describe("updateProtocolTool", () => {
 
     expect(result.result).toBeNull();
     expect(result.error).toBe("Research Question expects a string, got an unsupported object shape");
+  });
+
+  it("rejects excessively nested wrapper values with a classified error", async () => {
+    const result = await updateProtocolTool.execute(
+      {
+        field: "researchQuestion",
+        value: {
+          value: {
+            value: {
+              value: {
+                value: "Too deep",
+              },
+            },
+          },
+        },
+        rationale: "The user refined the question",
+      },
+      { projectId: "proj-1" }
+    );
+
+    expect(result.result).toBeNull();
+    expect(result.error).toBe("Research Question value nesting is too deep to normalize safely");
+    expect(result.errorMeta).toMatchObject({
+      kind: "tool_schema_validation",
+      code: "PROTOCOL_MUTATION_VALIDATION_FAILED",
+      retryable: false,
+    });
   });
 });

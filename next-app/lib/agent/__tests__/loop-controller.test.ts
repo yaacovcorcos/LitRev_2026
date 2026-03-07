@@ -43,6 +43,22 @@ describe("hashToolCall", () => {
         const h2 = hashToolCall("tool", { b: undefined, a: null });
         expect(h1).toBe(h2);
     });
+
+    it("caps hashing depth so deeply nested args do not overflow", () => {
+        let nested: Record<string, unknown> = { leaf: "value" };
+        for (let i = 0; i < 50; i += 1) {
+            nested = { child: nested };
+        }
+
+        expect(() => hashToolCall("tool", nested)).not.toThrow();
+    });
+
+    it("handles circular structures safely", () => {
+        const args: Record<string, unknown> = { label: "loop" };
+        args.self = args;
+
+        expect(() => hashToolCall("tool", args)).not.toThrow();
+    });
 });
 
 describe("LoopState", () => {
