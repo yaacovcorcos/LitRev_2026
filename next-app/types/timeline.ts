@@ -5,7 +5,7 @@
  */
 
 import type { ArtifactType, ArtifactStatus } from "./artifacts";
-import type { CopilotPage, UserInputQuestionType, UserInputOption } from "./ai";
+import type { AIErrorEnvelope, CopilotPage, UserInputQuestionType, UserInputOption } from "./ai";
 import type { ContextCaptureTarget } from "./context-capture";
 
 // ── Attachment (carried on user messages) ────────────────────────────────────
@@ -76,6 +76,7 @@ export interface TimelineToolActivity {
     toolName: string;
     status: "queued" | "running" | "done" | "failed";
     summary?: string;
+    errorMeta?: AIErrorEnvelope;
     startedAt: string;
     updatedAt: string;
     completedAt?: string;
@@ -102,6 +103,7 @@ export interface TimelineError {
     id: string;
     message: string;
     retryable: boolean;
+    errorMeta?: AIErrorEnvelope;
     createdAt: string;
 }
 

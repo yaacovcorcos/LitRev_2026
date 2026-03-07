@@ -145,6 +145,7 @@ export function createAiStreamRuntime(deps: AiStreamRuntimeDeps): AiStreamRuntim
             toolName: intent.toolName,
             status: intent.status,
             summary: intent.summary,
+            errorMeta: intent.errorMeta,
             startedAt: ts,
             updatedAt: ts,
             completedAt: intent.status === "done" || intent.status === "failed" ? ts : undefined,
@@ -159,6 +160,7 @@ export function createAiStreamRuntime(deps: AiStreamRuntimeDeps): AiStreamRuntim
         ...existing,
         status: intent.status,
         summary: intent.summary ?? existing.summary,
+        errorMeta: intent.errorMeta ?? existing.errorMeta,
         updatedAt: ts,
         completedAt:
           intent.status === "done" || intent.status === "failed"

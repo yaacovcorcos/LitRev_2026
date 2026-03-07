@@ -136,4 +136,37 @@ describe("TimelineRenderer action affordances", () => {
     expect(onRetryLastMessage).toHaveBeenCalledTimes(1);
     expect(onResumeRun).toHaveBeenCalledTimes(1);
   });
+
+  it("does not render retry/resume actions for non-retryable error cards", () => {
+    const items: TimelineItem[] = [
+      {
+        type: "error",
+        id: "err-2",
+        message: "The model returned invalid arguments for update_protocol.",
+        retryable: false,
+        errorMeta: {
+          kind: "tool_call_parse",
+          code: "TOOL_CALL_ARGS_PARSE_FAILED",
+          retryable: false,
+          source: "provider_tool_call",
+          message: "The model returned invalid arguments for update_protocol.",
+        },
+        createdAt: "2026-02-28T00:00:00.000Z",
+      },
+    ];
+
+    render(
+      <TimelineRenderer
+        items={items}
+        isLoading={false}
+        emptyState={{ icon: "chat", title: "Empty", description: "Empty", suggestions: [] }}
+        onSuggestionClick={vi.fn()}
+        onRetryLastMessage={vi.fn()}
+        onResumeRun={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: /retry/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /resume/i })).toBeNull();
+  });
 });

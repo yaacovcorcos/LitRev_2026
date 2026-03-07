@@ -1,5 +1,5 @@
 import { appendReasoningRaw } from "@/lib/ai/reasoning-visibility";
-import type { AIStreamChunk, ChoiceOption, CopilotPage, UserInputRequest } from "@/types/ai";
+import type { AIErrorEnvelope, AIStreamChunk, ChoiceOption, CopilotPage, UserInputRequest } from "@/types/ai";
 
 export type SharedToolStatus = "queued" | "running" | "done" | "failed";
 
@@ -40,6 +40,7 @@ export type SharedStreamIntent =
       toolName: string;
       status: SharedToolStatus;
       summary?: string;
+      errorMeta?: AIErrorEnvelope;
     }
   | {
       type: "artifact_emit";
@@ -63,6 +64,7 @@ export type SharedStreamIntent =
   | {
       type: "stream_error";
       message: string;
+      errorMeta?: AIErrorEnvelope;
     }
   | {
       type: "run_set";
@@ -264,6 +266,7 @@ export function reduceSharedStreamChunk(
           toolName: chunk.toolName ?? "tool",
           status: chunk.toolResult?.error ? "failed" : "done",
           summary: chunk.toolResult?.error ?? undefined,
+          errorMeta: chunk.toolResult?.errorMeta,
         });
       }
       if (chunk.toolName === "add_to_ledger" || chunk.toolName === "exclude_study") {
@@ -408,6 +411,7 @@ export function reduceSharedStreamChunk(
       intents.push({
         type: "stream_error",
         message: chunk.error ?? "Unknown error",
+        errorMeta: chunk.errorMeta,
       });
       return { state: prev, intents };
     }

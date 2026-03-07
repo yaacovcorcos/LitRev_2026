@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { AIErrorWithEnvelope } from "@/lib/ai/error-envelope";
 
 const parseNDJSONStreamMock = vi.fn();
 
@@ -55,5 +56,29 @@ describe("processAIStream terminal lifecycle", () => {
     });
 
     expect(summary.terminalReason).toBe("failed_network");
+  });
+
+  it("throws a structured envelope error when configured to throw on error chunks", async () => {
+    parseNDJSONStreamMock.mockImplementation(async function* () {
+      yield {
+        type: "error",
+        error: "The model returned invalid arguments for update_protocol.",
+        errorMeta: {
+          kind: "tool_call_parse",
+          code: "TOOL_CALL_ARGS_PARSE_FAILED",
+          retryable: false,
+          source: "provider_tool_call",
+          message: "The model returned invalid arguments for update_protocol.",
+        },
+      };
+    });
+
+    const { processAIStream } = await import("@/lib/ai/stream-processor");
+
+    await expect(processAIStream({
+      reader: {} as ReadableStreamDefaultReader<Uint8Array>,
+      throwOnErrorChunk: true,
+      onChunk: () => {},
+    })).rejects.toBeInstanceOf(AIErrorWithEnvelope);
   });
 });

@@ -6,6 +6,7 @@
 
 import type { AIMessage, AIResponse, ChatOptions, AIStreamChunk, ConversationContext, ToolCall, ToolResult } from "@/types/ai";
 import type { AgentMode } from "@/types/agent";
+import { buildStreamErrorChunk, envelopeFromStreamChunk } from "@/lib/ai/error-envelope";
 import { BaseAIProvider, getOpenAIProvider, getAnthropicProvider, getXAIProvider, getGoogleProvider } from "./providers";
 import { getOrCreateConversation, addMessageToConversation, getConversationWithSummary, getConversationWithSummaryById, autoSummarizeIfNeeded } from "./memory";
 import { validateRateLimits, recordUsage } from "./rate-limiter";
@@ -46,7 +47,7 @@ import { prisma } from "@/lib/server/prisma";
 import { isProtocolPopulated, type ProtocolData } from "@/types/protocol";
 import type { ScopingReportPayload } from "@/types/artifacts";
 import { ensureConversationRunAvailability } from "@/lib/server/chat-runtime/conversation-run-lock";
-import { classifyAIError } from "./error-classification";
+import { classifyAIError, toAIErrorEnvelope } from "./error-classification";
 import { retryAsync, sleep } from "@/lib/server/utils/retry";
 import { resolveReasoningMode } from "@/lib/ai/reasoning-visibility";
 import { createIdempotencyMiddleware, executeWithToolMiddleware, type ToolExecutionRequest, type ToolMiddleware } from "./tool-middleware";
@@ -461,7 +462,7 @@ class AIService {
                 let retryAfterMs: number | undefined;
                 let shouldRetry = false;
                 let shouldRecoverOverflow = false;
-                let terminalError: string | null = null;
+                let terminalErrorChunk: AIStreamChunk | null = null;
 
                 try {
                     for await (const chunk of this.streamChat(currentMessages, optionsWithTools)) {
@@ -486,8 +487,9 @@ class AIService {
                                 yield chunk;
                             }
                         } else if (chunk.type === "error") {
-                            const classified = classifyAIError(chunk);
-                            const message = classified.message || chunk.error || "Unknown streaming error";
+                            const errorMeta = envelopeFromStreamChunk(chunk);
+                            const classified = classifyAIError(errorMeta);
+                            const message = classified.message || errorMeta.message || chunk.error || "Unknown streaming error";
                             if (!hadVisibleOutput && classified.reason === "context_overflow" && overflowRecoveryCount < MAX_OVERFLOW_RECOVERY_ATTEMPTS) {
                                 shouldRecoverOverflow = true;
                                 break;
@@ -497,7 +499,7 @@ class AIService {
                                 retryAfterMs = classified.retryAfterMs;
                                 break;
                             }
-                            terminalError = message;
+                            terminalErrorChunk = buildStreamErrorChunk({ ...errorMeta, message });
                             break;
                         }
                     }
@@ -509,7 +511,11 @@ class AIService {
                         shouldRetry = true;
                         retryAfterMs = classified.retryAfterMs;
                     } else {
-                        terminalError = classified.message || "Unknown streaming error";
+                        terminalErrorChunk = buildStreamErrorChunk(toAIErrorEnvelope(error, {
+                            kind: "runtime",
+                            source: "runtime",
+                            message: classified.message || "Unknown streaming error",
+                        }));
                     }
                 }
 
@@ -537,9 +543,9 @@ class AIService {
                     continue;
                 }
 
-                if (terminalError) {
+                if (terminalErrorChunk) {
                     loop.markStopped("error");
-                    yield { type: "error", error: terminalError };
+                    yield terminalErrorChunk;
                     return;
                 }
 
@@ -1099,11 +1105,11 @@ class AIService {
                 while (true) {
                     collectedToolCalls = [];
                     contentSoFar = "";
-                    let hadVisibleOutput = false;
-                    let retryAfterMs: number | undefined;
-                    let shouldRetry = false;
-                    let shouldRecoverOverflow = false;
-                    let terminalError: string | null = null;
+                        let hadVisibleOutput = false;
+                        let retryAfterMs: number | undefined;
+                        let shouldRetry = false;
+                        let shouldRecoverOverflow = false;
+                        let terminalErrorChunk: AIStreamChunk | null = null;
 
                     const genSpan = startLLMGeneration(trace, `llm-call-${loop.iterations}-attempt-${retryCount + 1}`, {
                         model: chatOptions.model,
@@ -1146,7 +1152,8 @@ class AIService {
                                     observedRunModel = chunk.actualModel;
                                 }
                             } else if (chunk.type === "error") {
-                                const classified = classifyAIError(chunk);
+                                const errorMeta = envelopeFromStreamChunk(chunk);
+                                const classified = classifyAIError(errorMeta);
                                 if (!hadVisibleOutput && classified.reason === "context_overflow" && overflowRecoveryCount < MAX_OVERFLOW_RECOVERY_ATTEMPTS) {
                                     shouldRecoverOverflow = true;
                                     break;
@@ -1156,7 +1163,13 @@ class AIService {
                                     retryAfterMs = classified.retryAfterMs;
                                     break;
                                 }
-                                terminalError = classified.message || chunk.error || "Unknown streaming error";
+                                terminalErrorChunk = buildStreamErrorChunk(
+                                    {
+                                        ...errorMeta,
+                                        message: classified.message || errorMeta.message || chunk.error || "Unknown streaming error",
+                                    },
+                                    { conversationId: conversation.id },
+                                );
                                 break;
                             }
                         }
@@ -1168,7 +1181,14 @@ class AIService {
                             shouldRetry = true;
                             retryAfterMs = classified.retryAfterMs;
                         } else {
-                            terminalError = classified.message || "Unknown streaming error";
+                            terminalErrorChunk = buildStreamErrorChunk(
+                                toAIErrorEnvelope(error, {
+                                    kind: "runtime",
+                                    source: "runtime",
+                                    message: classified.message || "Unknown streaming error",
+                                }),
+                                { conversationId: conversation.id },
+                            );
                         }
                     }
                     genSpan.end();
@@ -1197,9 +1217,9 @@ class AIService {
                         continue;
                     }
 
-                    if (terminalError) {
+                    if (terminalErrorChunk) {
                         loop.markStopped("error");
-                        yield { type: "error", error: terminalError, conversationId: conversation.id };
+                        yield terminalErrorChunk;
                         await endRun(run.id, "failed");
                         const runModelMeta = resolveRunActualModelMeta(chatOptions.model, observedRunModel, invokedModel);
                         yield {
@@ -1565,11 +1585,14 @@ class AIService {
             await flushTracing();
 
             await endRun(run.id, "failed");
-            yield {
-                type: "error",
-                error: error instanceof Error ? error.message : "Unexpected error",
-                conversationId: conversation.id,
-            };
+            yield buildStreamErrorChunk(
+                toAIErrorEnvelope(error, {
+                    kind: "runtime",
+                    source: "runtime",
+                    message: error instanceof Error ? error.message : "Unexpected error",
+                }),
+                { conversationId: conversation.id },
+            );
             const runModelMeta = resolveRunActualModelMeta(options?.model, null, false);
             yield {
                 type: "run_end",

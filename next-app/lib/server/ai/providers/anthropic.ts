@@ -16,8 +16,10 @@ import type { AIMessage, AIModel, AIResponse, ChatOptions, AIStreamChunk, ToolCa
 import { BaseAIProvider } from "./base";
 import { AI_CONFIG, AVAILABLE_MODELS } from "@/lib/ai/config";
 import { parseToolArgs } from "../json-repair";
+import { AIErrorWithEnvelope, buildStreamErrorChunk } from "@/lib/ai/error-envelope";
 import { extractProviderErrorMetadata } from "./error-metadata";
 import { normalizeProviderMessages } from "./message-normalization";
+import { toAIErrorEnvelope } from "../error-classification";
 const MAX_REASONING_BUDGET_TOKENS = 32768;
 
 export function computeAnthropicThinkingBudget(
@@ -97,10 +99,14 @@ export class AnthropicProvider extends BaseAIProvider {
             if (block.type === "text") {
                 content += block.text;
             } else if (block.type === "tool_use") {
+                const parsedArgs = parseToolArgs(JSON.stringify(block.input), block.name, "anthropic");
+                if (!parsedArgs.success) {
+                    throw new AIErrorWithEnvelope(parsedArgs.errorMeta);
+                }
                 toolCalls.push({
                     id: block.id,
                     name: block.name,
-                    arguments: block.input as Record<string, unknown>,
+                    arguments: parsedArgs.args,
                 });
             }
         }
@@ -257,10 +263,15 @@ export class AnthropicProvider extends BaseAIProvider {
                         if (!activeBlock) break;
 
                         if (activeBlock.kind === "tool") {
+                            const parsedArgs = parseToolArgs(activeBlock.args, activeBlock.name, "anthropic:stream");
+                            if (!parsedArgs.success) {
+                                yield buildStreamErrorChunk(parsedArgs.errorMeta);
+                                return;
+                            }
                             const toolCall: ToolCall = {
                                 id: activeBlock.id,
                                 name: activeBlock.name,
-                                arguments: parseToolArgs(activeBlock.args, activeBlock.name, "anthropic:stream"),
+                                arguments: parsedArgs.args,
                             };
                             yield { type: "tool_call", toolCall };
                         } else if (activeBlock.kind === "reasoning") {
@@ -300,11 +311,16 @@ export class AnthropicProvider extends BaseAIProvider {
             };
         } catch (error) {
             const metadata = extractProviderErrorMetadata(error);
-            yield {
-                type: "error",
-                error: error instanceof Error ? error.message : "Unknown streaming error",
-                ...metadata,
-            };
+            const errorMeta = toAIErrorEnvelope(error, {
+                kind: "provider_request",
+                source: "provider_request",
+                code: metadata.errorCode ?? undefined,
+            });
+            yield buildStreamErrorChunk({
+                ...errorMeta,
+                status: errorMeta.status ?? metadata.errorStatus,
+                headers: errorMeta.headers ?? metadata.errorHeaders,
+            });
         }
     }
 

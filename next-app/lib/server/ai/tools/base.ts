@@ -6,6 +6,7 @@
 
 import { z } from "zod";
 import type { ToolDefinition, ToolResult } from "@/types/ai";
+import { createToolSchemaValidationErrorEnvelope } from "@/lib/ai/error-envelope";
 import type { ToolAutonomyMeta, AutonomyLevel, AgentMode } from "@/types/agent";
 import type { ProtocolData } from "@/types/protocol";
 import { HARD_CAPS } from "@/types/agent";
@@ -199,7 +200,7 @@ export function resolveAutonomyLevel(
 export function validateToolInput(
     tool: AITool,
     args: Record<string, unknown>
-): { success: true; data: unknown } | { success: false; error: string } {
+): { success: true; data: unknown } | { success: false; error: string; errorMeta: ReturnType<typeof createToolSchemaValidationErrorEnvelope> } {
     if (!tool.inputSchema) {
         return { success: true, data: args };
     }
@@ -208,7 +209,12 @@ export function validateToolInput(
         return { success: true, data: result.data };
     }
     const issues = result.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");
-    return { success: false, error: `Input validation failed: ${issues}` };
+    const error = `Input validation failed: ${issues}`;
+    return {
+        success: false,
+        error,
+        errorMeta: createToolSchemaValidationErrorEnvelope(tool.definition.name, error),
+    };
 }
 
 /**
@@ -254,6 +260,7 @@ export async function executeTool(
             callId,
             result: null,
             error: inputValidation.error,
+            errorMeta: inputValidation.errorMeta,
         };
     }
 

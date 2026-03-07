@@ -88,6 +88,7 @@ function upsertToolActivityMessage(
           toolName: payload.toolName,
           status: payload.status,
           summary: payload.summary,
+          errorMeta: payload.errorMeta,
           startedAt: now,
           updatedAt: now,
           completedAt: payload.status === "done" || payload.status === "failed" ? now : undefined,
@@ -105,6 +106,7 @@ function upsertToolActivityMessage(
         ...existing.toolActivity,
         status: payload.status,
         summary: payload.summary ?? existing.toolActivity.summary,
+        errorMeta: payload.errorMeta ?? existing.toolActivity.errorMeta,
         updatedAt: now,
         completedAt:
           payload.status === "done" || payload.status === "failed"

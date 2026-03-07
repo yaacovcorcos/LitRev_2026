@@ -38,6 +38,21 @@ describe("classifyAIError", () => {
         });
         expect(classified.retryAfterMs).toBe(2000);
     });
+
+    it("uses the structured envelope for tool-call parse failures", () => {
+        const classified = classifyAIError({
+            errorMeta: {
+                kind: "tool_call_parse",
+                code: "TOOL_CALL_ARGS_PARSE_FAILED",
+                retryable: false,
+                source: "provider_tool_call",
+                message: "The model returned invalid arguments for update_protocol.",
+            },
+        });
+        expect(classified.reason).toBe("format");
+        expect(classified.code).toBe("TOOL_CALL_ARGS_PARSE_FAILED");
+        expect(classified.retryable).toBe(false);
+    });
 });
 
 describe("helpers", () => {

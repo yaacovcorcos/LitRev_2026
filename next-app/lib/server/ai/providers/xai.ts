@@ -8,9 +8,11 @@ import type { AIMessage, AIModel, AIResponse, ChatOptions, AIStreamChunk, ToolCa
 import { BaseAIProvider } from "./base";
 import { AI_CONFIG, AVAILABLE_MODELS } from "@/lib/ai/config";
 import { parseToolArgs } from "../json-repair";
+import { AIErrorWithEnvelope, buildStreamErrorChunk } from "@/lib/ai/error-envelope";
 import { extractProviderErrorMetadata } from "./error-metadata";
 import { normalizeProviderMessages } from "./message-normalization";
 import { extractReasoningTextsFromDelta } from "./reasoning-delta";
+import { toAIErrorEnvelope } from "../error-classification";
 
 export class XAIProvider extends BaseAIProvider {
     readonly id = "xai";
@@ -59,17 +61,26 @@ export class XAIProvider extends BaseAIProvider {
 
         const choice = response.choices[0];
 
+        const toolCalls: ToolCall[] = [];
+        for (const tc of choice.message.tool_calls
+            ?.filter((tc): tc is OpenAI.Chat.Completions.ChatCompletionMessageToolCall & { type: "function" } => tc.type === "function")
+            ?? []) {
+            const parsedArgs = parseToolArgs(tc.function.arguments, tc.function.name, "xai");
+            if (!parsedArgs.success) {
+                throw new AIErrorWithEnvelope(parsedArgs.errorMeta);
+            }
+            toolCalls.push({
+                id: tc.id,
+                name: tc.function.name,
+                arguments: parsedArgs.args,
+            });
+        }
+
         return {
             id: response.id,
             content: choice.message.content || "",
             model: response.model,
-            toolCalls: choice.message.tool_calls
-                ?.filter((tc): tc is OpenAI.Chat.Completions.ChatCompletionMessageToolCall & { type: "function" } => tc.type === "function")
-                .map((tc) => ({
-                    id: tc.id,
-                    name: tc.function.name,
-                    arguments: parseToolArgs(tc.function.arguments, tc.function.name, "xai"),
-                })),
+            toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
             usage: {
                 inputTokens: response.usage?.prompt_tokens || 0,
                 outputTokens: response.usage?.completion_tokens || 0,
@@ -171,12 +182,21 @@ export class XAIProvider extends BaseAIProvider {
                             yield { type: "reasoning_end", reasoningId: activeReasoningId };
                             activeReasoningId = null;
                         }
+                        const parsedToolCalls: ToolCall[] = [];
                         for (const [, tc] of pendingToolCalls) {
-                            const toolCall: ToolCall = {
+                            const parsedArgs = parseToolArgs(tc.arguments, tc.name, "xai:stream");
+                            if (!parsedArgs.success) {
+                                yield buildStreamErrorChunk(parsedArgs.errorMeta);
+                                pendingToolCalls.clear();
+                                return;
+                            }
+                            parsedToolCalls.push({
                                 id: tc.id,
                                 name: tc.name,
-                                arguments: parseToolArgs(tc.arguments, tc.name, "xai:stream"),
-                            };
+                                arguments: parsedArgs.args,
+                            });
+                        }
+                        for (const toolCall of parsedToolCalls) {
                             yield { type: "tool_call", toolCall };
                         }
                         pendingToolCalls.clear();
@@ -218,11 +238,16 @@ export class XAIProvider extends BaseAIProvider {
             };
         } catch (error) {
             const metadata = extractProviderErrorMetadata(error);
-            yield {
-                type: "error",
-                error: error instanceof Error ? error.message : "Unknown streaming error",
-                ...metadata,
-            };
+            const errorMeta = toAIErrorEnvelope(error, {
+                kind: "provider_request",
+                source: "provider_request",
+                code: metadata.errorCode ?? undefined,
+            });
+            yield buildStreamErrorChunk({
+                ...errorMeta,
+                status: errorMeta.status ?? metadata.errorStatus,
+                headers: errorMeta.headers ?? metadata.errorHeaders,
+            });
         }
     }
 

@@ -19,5 +19,16 @@ describe("formatStreamErrorForUI", () => {
             "The model is temporarily busy. Please retry in a moment.",
         );
     });
-});
 
+    it("uses structured envelope messages for tool-call parse failures", () => {
+        expect(formatStreamErrorForUI({
+            errorMeta: {
+                kind: "tool_call_parse",
+                code: "TOOL_CALL_ARGS_PARSE_FAILED",
+                retryable: false,
+                source: "provider_tool_call",
+                message: "The model returned invalid arguments for update_protocol, so the action was not run.",
+            },
+        })).toBe("The model returned invalid arguments for update_protocol, so the action was not run.");
+    });
+});

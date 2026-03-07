@@ -25,6 +25,7 @@ import type { ContextCaptureTarget } from "@/types/context-capture";
 import { handleProjectCopilotStreamChunk } from "@/contexts/project-copilot-stream-events";
 import type { ArtifactActionContract } from "@/lib/artifacts/action-contract";
 import { getReasoningBudgetTokens, shouldRequestReasoning } from "@/lib/ai/reasoning-visibility";
+import { extractAIErrorEnvelope } from "@/lib/ai/error-envelope";
 import { formatStreamErrorForUI } from "@/lib/ai/stream-error-ui";
 import { recordChatUnificationMetric } from "@/lib/ai/chat-unification-telemetry";
 import { terminalReasonFromThrownError, type StreamTerminalReason } from "@/lib/ai/stream-lifecycle";
@@ -404,14 +405,19 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
             console.error("AI chat error:", error);
             setPendingChoices([]);
             setPendingUserInput(null);
+            const errorMeta = extractAIErrorEnvelope(error);
             const friendlyError = formatStreamErrorForUI(error);
-            const errorText = `Sorry, I encountered an error: ${friendlyError}. Please try again.`;
+            const shouldSuggestRetry = errorMeta?.retryable ?? true;
+            const errorText = shouldSuggestRetry
+                ? `Sorry, I encountered an error: ${friendlyError}. Please try again.`
+                : friendlyError;
 
             if (!aiMessageCreated) {
                 const aiMessage: CopilotMessage = {
                     id: aiMessageId,
                     sender: "ai",
                     text: errorText,
+                    streamError: errorMeta,
                     createdAt: new Date().toISOString(),
                     context: { page, section },
                 };
@@ -424,6 +430,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                     id: `error-${Date.now()}`,
                     sender: "ai",
                     text: errorText,
+                    streamError: errorMeta,
                     createdAt: new Date().toISOString(),
                     context: { page, section },
                 };
