@@ -1,9 +1,13 @@
 import { extractAIErrorEnvelope } from "@/lib/ai/error-envelope";
+import type { AIErrorEnvelope } from "@/types/ai";
+import type { StreamTerminalReason } from "@/lib/ai/stream-lifecycle";
 
 const CLAUDE_REASONING_BUDGET_PATTERN = /max_tokens.*greater than.*thinking\.budget_tokens/i;
 const RATE_LIMIT_PATTERN = /rate.?limit|too many requests|overloaded|capacity/i;
 const AUTH_PATTERN = /unauthorized|forbidden|invalid.*api key|authentication/i;
 const CONTEXT_PATTERN = /context window|context length|too long|token limit|request.*too.*large|input.*too.*long/i;
+const NETWORK_PATTERN = /network|failed to fetch|econn|timeout|timed out|socket|offline/i;
+const RETRY_HINT_PATTERN = /retry|temporarily busy|try again/i;
 
 function collapseWhitespace(value: string): string {
     return value.replace(/\s+/g, " ").trim();
@@ -76,4 +80,78 @@ export function formatStreamErrorForUI(error: unknown): string {
     }
 
     return base.length > 240 ? `${base.slice(0, 237)}...` : base;
+}
+
+function inferRetryableFromMessage(message: string): boolean {
+    const normalized = collapseWhitespace(message).toLowerCase();
+    if (!normalized) return false;
+    if (RATE_LIMIT_PATTERN.test(normalized)) return true;
+    if (NETWORK_PATTERN.test(normalized)) return true;
+    if (RETRY_HINT_PATTERN.test(normalized) && !AUTH_PATTERN.test(normalized) && !CONTEXT_PATTERN.test(normalized)) {
+        return true;
+    }
+    return false;
+}
+
+export function buildClientErrorState(error: unknown): {
+    message: string;
+    retryable: boolean;
+    errorMeta: AIErrorEnvelope;
+} {
+    const errorMeta = extractAIErrorEnvelope(error);
+    const message = formatStreamErrorForUI(error);
+    if (errorMeta) {
+        return {
+            message,
+            retryable: errorMeta.retryable,
+            errorMeta,
+        };
+    }
+    const retryable = inferRetryableFromMessage(message);
+    return {
+        message,
+        retryable,
+        errorMeta: {
+            kind: "runtime",
+            code: "CLIENT_STREAM_ERROR",
+            retryable,
+            source: "runtime",
+            message,
+        },
+    };
+}
+
+export function extractLegacyRecoveryError(text: string): { message: string; retryable: boolean } | null {
+    const trimmed = text.trim();
+    if (trimmed.startsWith(STREAM_ERROR_PREFIX)) {
+        const retryable = /please try again\.?$/i.test(trimmed);
+        return {
+            message: trimmed
+                .slice(STREAM_ERROR_PREFIX.length)
+                .replace(/\.\s*Please try again\.?$/i, "")
+                .trim(),
+            retryable,
+        };
+    }
+    if (trimmed.startsWith(PLAN_ERROR_PREFIX)) {
+        return {
+            message: trimmed.slice(PLAN_ERROR_PREFIX.length).trim(),
+            retryable: false,
+        };
+    }
+    return null;
+}
+
+const STREAM_ERROR_PREFIX = "Sorry, I encountered an error:";
+const PLAN_ERROR_PREFIX = "Plan execution failed:";
+
+export function shouldSuppressClientFallback(params: {
+    errorMeta?: AIErrorEnvelope;
+    hasAssistantContent: boolean;
+}): boolean {
+    return Boolean(params.errorMeta && !params.errorMeta.retryable && params.hasAssistantContent);
+}
+
+export function isRetryableTerminalReason(reason: StreamTerminalReason | null): boolean {
+    return reason === "failed_network" || reason === "timed_out";
 }

@@ -33,8 +33,7 @@ import { processAIStream } from "@/lib/ai/stream-processor";
 import { routeToAgent } from "@/lib/agent/router";
 import { dispatchProjectDataChanged, getChangedDomainsForAcceptedArtifact } from "@/lib/project-data-events";
 import { isNavigationSafe } from "@/lib/ai/navigation-safety";
-import { extractAIErrorEnvelope } from "@/lib/ai/error-envelope";
-import { formatStreamErrorForUI } from "@/lib/ai/stream-error-ui";
+import { buildClientErrorState, formatStreamErrorForUI, isRetryableTerminalReason, shouldSuppressClientFallback } from "@/lib/ai/stream-error-ui";
 import { createAiStreamRuntime } from "@/lib/ai/ai-stream-runtime";
 import { generateChatUnificationRequestKey, recordChatUnificationMetric } from "@/lib/ai/chat-unification-telemetry";
 import { terminalReasonFromThrownError, type StreamTerminalReason } from "@/lib/ai/stream-lifecycle";
@@ -1290,20 +1289,27 @@ export default function AIView() {
         emitTerminalMetric(terminalReason, runStatus);
         convId = runtime.getConversationId();
         runtime.failRunningTools("Run failed before tool completion.");
-        const errorMeta = extractAIErrorEnvelope(err);
-        const friendlyError = formatStreamErrorForUI(err);
+        const errorState = buildClientErrorState(err);
         emittedTerminalError = true;
-        updateConversationTimeline(convId, (items) => [
-          ...items,
-          {
-            type: "error",
-            id: `error-${Date.now()}`,
-            message: friendlyError,
-            retryable: errorMeta?.retryable ?? true,
-            errorMeta: errorMeta,
-            createdAt: new Date().toISOString(),
-          },
-        ]);
+        updateConversationTimeline(convId, (items) => {
+          const hasAssistantContent = items.some(
+            (item) => item.type === "assistant_message" && item.content.trim().length > 0
+          );
+          if (shouldSuppressClientFallback({ errorMeta: errorState.errorMeta, hasAssistantContent })) {
+            return items;
+          }
+          return [
+            ...items,
+            {
+              type: "error",
+              id: `error-${Date.now()}`,
+              message: errorState.message,
+              retryable: errorState.retryable,
+              errorMeta: errorState.errorMeta,
+              createdAt: new Date().toISOString(),
+            },
+          ];
+        });
       }
     } finally {
       runtime.clearProgress();
@@ -1351,15 +1357,21 @@ export default function AIView() {
         && terminalReason !== "completed"
         && terminalReason !== "cancelled_by_user"
       ) {
+        const terminalMessage = terminalReason === "timed_out"
+          ? "The response timed out. Retry to continue."
+          : "The stream ended unexpectedly. Retry to continue.";
+        const terminalErrorState = buildClientErrorState(terminalMessage);
         updateConversationTimeline(convId, (items) => [
           ...items,
           {
             type: "error",
             id: makeId("terminal-error"),
-            message: terminalReason === "timed_out"
-              ? "The response timed out. Retry to continue."
-              : "The stream ended unexpectedly. Retry to continue.",
-            retryable: true,
+            message: terminalErrorState.message,
+            retryable: isRetryableTerminalReason(terminalReason),
+            errorMeta: {
+              ...terminalErrorState.errorMeta,
+              retryable: isRetryableTerminalReason(terminalReason),
+            },
             createdAt: new Date().toISOString(),
           },
         ]);
@@ -1760,13 +1772,18 @@ export default function AIView() {
     if (!didComplete && streamGenRef.current === myGen) {
       runtime.failRunningTools("Run ended before tool completion.");
       const reason = errorMessage ?? (stopReason ? `Execution stopped: ${stopReason}` : "Execution did not complete.");
+      const errorState = buildClientErrorState(`Plan execution failed: ${reason}`);
       updateConversationTimeline(convId, (items) => [
         ...items,
         {
           type: "error",
           id: `plan-error-${Date.now()}`,
-          message: `Plan execution failed: ${reason}`,
+          message: errorState.message,
           retryable: false,
+          errorMeta: {
+            ...errorState.errorMeta,
+            retryable: false,
+          },
           createdAt: new Date().toISOString(),
         },
       ]);

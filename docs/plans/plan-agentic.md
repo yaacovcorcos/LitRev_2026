@@ -108,7 +108,7 @@ Every fix entry must include:
 - **Model Request Capability Handling Is Under-Specified:** provider adapters still assume too much shared request compatibility across models; tracked under `FIX-010`.
 - **Protocol Mutation Uses Shared Field-Aware Normalization:** `update_protocol`, same-turn tool-call sanitization, and repeat detection now reuse the same field/value normalize-classify path so unambiguous wrapper shapes are repaired consistently, whitespace-only field mismatches no longer diverge between validation and execution, and normalization/hashing paths cap nested input depth safely.
 - **Tool Prerequisites Are Not First-Class:** the runtime still lacks a formal model for required project, study, criteria, or PDF context before tool execution; tracked under `FIX-008`.
-- **Run Recovery Semantics Are Still Misleading:** deterministic failures can still surface as retryable or leave runs looking more successful than they were; tracked under `FIX-009`.
+- **Run Recovery Semantics Are Now Structured End-to-End:** deterministic failure envelopes now survive into client timeline state, retry affordances are derived from structured metadata instead of defaulting optimistic, and server finalization uses explicit run facts so failed no-answer runs no longer masquerade as `completed`.
 
 ## Verified Failure Classes
 *The concrete runtime failures this plan is intended to eliminate.*
@@ -135,16 +135,6 @@ Every fix entry must include:
     - missing prerequisites stop execution before the tool runs
     - blocked tools route to `ask_user`, a read tool, or a clear user-facing explanation instead of blind action attempts
     - `general` mode no longer performs obviously impossible actions before clarifying
-
-- [ ] `FIX-009` Recovery semantics and truthful run outcomes
-  - Severity: `P0`
-  - Problem: deterministic failures are still too noisy in the UI, and runs can still appear more successful than they were when the requested mutation failed.
-  - Supporting detail: canonical plan only for now.
-  - Exit criteria:
-    - deterministic request and validation failures remain non-retryable through the user-facing error path
-    - Retry/Resume affordances only appear for genuinely retryable failures
-    - runs with only deterministic tool failures and no useful completion do not look `completed`
-    - failed mutation runs produce a user-facing fallback explanation when no final assistant answer exists
 
 - [ ] `FIX-010` Model capability negotiation
   - Severity: `P0`
@@ -207,21 +197,21 @@ Every fix entry must include:
 Work should proceed in this order unless a production incident forces reprioritization:
 
 1. `FIX-008` tool prerequisite gating and action eligibility
-2. `FIX-009` recovery semantics and truthful run outcomes
-3. `FIX-010` model capability negotiation
-4. `FIX-001` delegation safety
-5. `FIX-002` plan execution confinement
-6. `FIX-003` popup action-surface honesty
-7. `FIX-004` general-mode scoping and clarification cleanup
-8. `FIX-005` docs/evals/provenance hardening
-9. roadmap phases after the active fixes above are stable
+2. `FIX-010` model capability negotiation
+3. `FIX-001` delegation safety
+4. `FIX-002` plan execution confinement
+5. `FIX-003` popup action-surface honesty
+6. `FIX-004` general-mode scoping and clarification cleanup
+7. `FIX-005` docs/evals/provenance hardening
+8. roadmap phases after the active fixes above are stable
 
 ## End-to-End Delivery Program
 
 ### Track A — Request-Boundary Reliability and Truthful Failure Handling
 
 - `FIX-007` shipped the protocol-mutation normalization/suppression layer.
-- Land `FIX-009` and `FIX-010` next so deterministic failures become truthful and model-specific request mismatches stop failing before meaningful work begins.
+- `FIX-009` shipped truthful failure handling: structured error envelopes now survive processor/reducer/timeline state, non-retryable failures no longer default back to retryable UI affordances, and server finalization emits one fallback explanation for deterministic no-answer failures while deriving `runStatus` from explicit run facts.
+- Land `FIX-010` next so model-specific request mismatches stop failing before meaningful work begins.
 
 ### Track B — Action Eligibility and Honest Execution
 
@@ -359,17 +349,11 @@ These files are supporting documents. Status, priority, and closure rules live h
 
 ## Recently Completed
 
+- [x] Implemented `FIX-009` recovery semantics and truthful run outcomes: structured error envelopes now survive through stream processor, reducer, and timeline state; retryable UI affordances no longer default to true for deterministic failures; and server finalization derives `runStatus` from explicit run facts while emitting one fallback assistant explanation for deterministic no-answer failures.
 - [x] Implemented `FIX-007` protocol mutation hardening: `update_protocol`, same-turn tool-call sanitization, and repeat detection now share one field-aware normalize/classify path, trim whitespace-only field mismatches consistently at execution time, and cap nested normalization/hashing depth so malformed tool payloads cannot recurse indefinitely.
 - [x] Implemented FIX-006 request/tool-boundary hardening: malformed provider tool-call payloads no longer coerce to `{}` and execute, tool schema validation failures now emit structured error envelopes, and stream/timeline state preserves retryability metadata end-to-end.
 - [x] Hardened `update_protocol` proposal execution: the tool now advertises an explicit scalar/array `value` schema to providers, and the executor drops malformed sibling `update_protocol` calls when a valid proposal exists in the same turn.
 - [x] Tightened proposal-style assistant behavior so model-visible tool results distinguish `proposed` from `auto_applied`, and planner heuristics now require explicit extraction/writing verbs for `extract_pdf` and `update_note`.
-- [x] Added `search_openalex` tool with Search/Scoping/QA integration, OpenAlex normalization, and Crossref fallback enrichment for sparse DOI metadata.
-- [x] P10 mentioned-studies flow shipped: extraction pipeline (structured + fallback), chat chips, one-click add-to-ledger, idempotent duplicate protection, and chat provenance tagging.
-- [x] Added rollout flags for mention/scoping UX controls: `NEXT_PUBLIC_CHAT_STUDY_MENTIONS_V1` and `NEXT_PUBLIC_SCOPING_DECISION_CARD_V2`.
-- [x] Added validation coverage for P10: mention parser tests, add-to-ledger idempotency tests, timeline metadata stripping + mention-action UI tests, and scoping finalization tests.
-- [x] Implemented apply function for `evidence_table` artifacts (persists accepted table to project Notes).
-- [x] Implemented `delete_study` tool and registered it in `AVAILABLE_TOOLS` and screening mode.
-- [x] Wired `update_criteria` into tool registry and protocol-mode tool filtering.
 
 ## Deferred / Parking Lot
 
