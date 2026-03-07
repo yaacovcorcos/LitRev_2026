@@ -20,6 +20,11 @@ const {
   )),
 }));
 
+vi.mock("next/link", async () => {
+  const { nextLinkPrefetchMock } = await import("@/test-utils/next-link-prefetch-mock");
+  return nextLinkPrefetchMock;
+});
+
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
     push: vi.fn(),
@@ -146,5 +151,6 @@ describe("Home entry UX", () => {
 
     const continueLink = screen.getByRole("link", { name: "Back to Second Project" });
     expect(continueLink.getAttribute("href")).toBe("/project/p2");
+    expect(continueLink.getAttribute("data-prefetch")).toBe("false");
   });
 });

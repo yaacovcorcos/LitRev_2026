@@ -74,17 +74,21 @@ function normalizeProjectUpdates(updates: Partial<ProjectInput>): Partial<Projec
   return normalized;
 }
 
-function toProject(record: {
-  id: string;
-  name: string;
-  description: string | null;
-  status: string;
-  statusText: string;
-  papers: number | null;
-  progress: unknown;
-  created: Date;
-  modified: Date;
-}): Project {
+const projectIndexSelect = {
+  id: true,
+  name: true,
+  description: true,
+  status: true,
+  statusText: true,
+  papers: true,
+  progress: true,
+  created: true,
+  modified: true,
+} satisfies Prisma.ProjectSelect;
+
+type ProjectIndexRecord = Prisma.ProjectGetPayload<{ select: typeof projectIndexSelect }>;
+
+function toProject(record: ProjectIndexRecord): Project {
   const status = parseProjectStatus(record.status.trim());
   return {
     id: record.id,
@@ -103,6 +107,7 @@ export async function listProjects(scopeInput: ScopeInput): Promise<Project[]> {
   const scope = requireScope(scopeInput ?? undefined);
   const projects = await prisma.project.findMany({
     where: { workspaceId: scope.workspaceId, ownerId: scope.ownerId },
+    select: projectIndexSelect,
     orderBy: { modified: "desc" },
   });
   return projects.map(toProject);
