@@ -65,10 +65,33 @@ export type UserInputRequest = {
     context?: string;
 };
 
+export type AIErrorKind =
+    | "provider_request"
+    | "tool_call_parse"
+    | "tool_schema_validation"
+    | "runtime";
+
+export type AIErrorSource =
+    | "provider_request"
+    | "provider_tool_call"
+    | "tool_validator"
+    | "runtime";
+
+export type AIErrorEnvelope = {
+    kind: AIErrorKind | string;
+    code: string;
+    retryable: boolean;
+    source: AIErrorSource | string;
+    message: string;
+    status?: number;
+    headers?: Record<string, string>;
+};
+
 export type ToolResult = {
     callId: string;
     result: unknown;
     error?: string;
+    errorMeta?: AIErrorEnvelope;
     /** When true, the tool requires user input before the agent can continue. */
     requiresUserInput?: boolean;
     /** Structured request for user input (present when requiresUserInput is true). */
@@ -165,6 +188,7 @@ export type AIStreamChunk = {
     errorStatus?: number;
     errorCode?: string;
     errorHeaders?: Record<string, string>;
+    errorMeta?: AIErrorEnvelope;
     usage?: AIResponse["usage"];
     toolCall?: ToolCall;
     toolResult?: ToolResult;

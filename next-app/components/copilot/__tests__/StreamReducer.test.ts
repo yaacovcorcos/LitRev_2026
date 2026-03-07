@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CopilotMessage } from "@/lib/projectCopilotStorage";
-import { messagesToTimeline } from "../StreamReducer";
+import { messagesToTimeline, reduceStreamChunk } from "../StreamReducer";
 
 describe("messagesToTimeline", () => {
   it("maps recoverable assistant stream failures to timeline error items", () => {
@@ -88,6 +88,56 @@ describe("messagesToTimeline", () => {
       callId: "tc-1",
       toolName: "search_openalex",
       status: "running",
+    });
+  });
+
+  it("maps structured persisted stream errors without forcing retryable=true", () => {
+    const messages: CopilotMessage[] = [
+      {
+        id: "err-structured",
+        sender: "ai",
+        text: "The model returned invalid arguments for update_protocol.",
+        createdAt: "2026-02-28T00:00:05.000Z",
+        streamError: {
+          kind: "tool_call_parse",
+          code: "TOOL_CALL_ARGS_PARSE_FAILED",
+          retryable: false,
+          source: "provider_tool_call",
+          message: "The model returned invalid arguments for update_protocol.",
+        },
+      },
+    ];
+
+    const timeline = messagesToTimeline(messages);
+    expect(timeline[0]).toMatchObject({
+      type: "error",
+      message: "The model returned invalid arguments for update_protocol.",
+      retryable: false,
+      errorMeta: {
+        code: "TOOL_CALL_ARGS_PARSE_FAILED",
+      },
+    });
+  });
+
+  it("preserves structured retryability on streamed error chunks", () => {
+    const timeline = reduceStreamChunk([], {
+      type: "error",
+      error: "The model returned invalid arguments for update_protocol.",
+      errorMeta: {
+        kind: "tool_call_parse",
+        code: "TOOL_CALL_ARGS_PARSE_FAILED",
+        retryable: false,
+        source: "provider_tool_call",
+        message: "The model returned invalid arguments for update_protocol.",
+      },
+    }, "ai-1");
+
+    expect(timeline[0]).toMatchObject({
+      type: "error",
+      retryable: false,
+      errorMeta: {
+        kind: "tool_call_parse",
+      },
     });
   });
 });

@@ -4,7 +4,7 @@
  * all project pages (Draft, Protocol, Ledger).
  */
 
-import type { ConversationMessageAttachment, CopilotPage, UserInputRequest } from "@/types/ai";
+import type { AIErrorEnvelope, ConversationMessageAttachment, CopilotPage, UserInputRequest } from "@/types/ai";
 
 const PROJECT_COPILOT_KEY_PREFIX = "litrev_project_copilot_v1";
 
@@ -16,6 +16,7 @@ export type CopilotMessage = {
   id: string;
   sender: CopilotSender;
   text: string;
+  streamError?: AIErrorEnvelope;
   reasoning?: {
     text: string;
     state?: "streaming" | "done";
@@ -49,6 +50,7 @@ export type CopilotMessage = {
     toolName: string;
     status: "queued" | "running" | "done" | "failed";
     summary?: string;
+    errorMeta?: AIErrorEnvelope;
     startedAt: string;
     updatedAt: string;
     completedAt?: string;
@@ -130,6 +132,7 @@ export function loadProjectCopilotState(projectId: string): ProjectCopilotState 
             createdAt,
             context: msg.context,
             reasoning: msg.reasoning,
+            streamError: msg.streamError,
             artifact: msg.artifact,
             attachments: msg.attachments,
             userInputRequest: msg.userInputRequest,

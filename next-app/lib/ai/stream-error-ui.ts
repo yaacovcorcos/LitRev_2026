@@ -1,3 +1,5 @@
+import { extractAIErrorEnvelope } from "@/lib/ai/error-envelope";
+
 const CLAUDE_REASONING_BUDGET_PATTERN = /max_tokens.*greater than.*thinking\.budget_tokens/i;
 const RATE_LIMIT_PATTERN = /rate.?limit|too many requests|overloaded|capacity/i;
 const AUTH_PATTERN = /unauthorized|forbidden|invalid.*api key|authentication/i;
@@ -8,6 +10,8 @@ function collapseWhitespace(value: string): string {
 }
 
 function extractRawErrorMessage(error: unknown): string {
+    const errorMeta = extractAIErrorEnvelope(error);
+    if (errorMeta?.message) return errorMeta.message;
     if (typeof error === "string") return error;
     if (error instanceof Error) return error.message;
     if (error && typeof error === "object") {
@@ -73,4 +77,3 @@ export function formatStreamErrorForUI(error: unknown): string {
 
     return base.length > 240 ? `${base.slice(0, 237)}...` : base;
 }
-

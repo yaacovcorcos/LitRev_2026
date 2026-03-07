@@ -1,3 +1,6 @@
+import type { AIErrorEnvelope } from "@/types/ai";
+import { createToolCallParseErrorEnvelope } from "@/lib/ai/error-envelope";
+
 /**
  * Self-Healing JSON
  * Conservative repair for malformed JSON from AI model responses.
@@ -58,14 +61,32 @@ export function safeParseJson(raw: string): unknown | null {
 
 /**
  * Parse tool call arguments with type narrowing.
- * Returns a Record<string, unknown> or {} on failure, with a warning.
+ * Returns parsed arguments on success or a classified non-executable error on failure.
  */
-export function parseToolArgs(raw: string, toolName: string, provider: string): Record<string, unknown> {
+export function parseToolArgs(
+    raw: string,
+    toolName: string,
+    provider: string,
+): { success: true; args: Record<string, unknown> } | { success: false; errorMeta: AIErrorEnvelope } {
     const parsed = safeParseJson(raw);
     if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-        return parsed as Record<string, unknown>;
+        return {
+            success: true,
+            args: parsed as Record<string, unknown>,
+        };
     }
-    const reason = parsed === null ? "parse failed" : Array.isArray(parsed) ? "got array" : `got ${typeof parsed}`;
+    const reason = parsed === null
+        ? "parse failed"
+        : Array.isArray(parsed)
+            ? "got array"
+            : `got ${typeof parsed}`;
     console.warn(`[${provider}] Failed to parse tool args for ${toolName}: ${reason}`);
-    return {};
+    return {
+        success: false,
+        errorMeta: createToolCallParseErrorEnvelope({
+            provider,
+            toolName,
+            reason: parsed === null ? "parse_failed" : Array.isArray(parsed) ? "array_payload" : "non_object_payload",
+        }),
+    };
 }

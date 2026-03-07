@@ -1,3 +1,5 @@
+import type { AIErrorEnvelope } from "@/types/ai";
+import { extractAIErrorEnvelope } from "@/lib/ai/error-envelope";
 import { parseRetryAfterHeaderMs } from "@/lib/server/utils/retry";
 import { normalizeHeaderRecord } from "@/lib/server/utils/header-record";
 
@@ -76,12 +78,16 @@ function toStatus(value: unknown): number | undefined {
 }
 
 function extractStatus(error: unknown): number | undefined {
+    const envelope = extractAIErrorEnvelope(error);
+    if (envelope?.status !== undefined) return envelope.status;
     if (!error || typeof error !== "object") return undefined;
     const maybe = error as ErrorLike;
     return toStatus(maybe.errorStatus) ?? toStatus(maybe.statusCode) ?? toStatus(maybe.status);
 }
 
 function extractCode(error: unknown): string | undefined {
+    const envelope = extractAIErrorEnvelope(error);
+    if (typeof envelope?.code === "string" && envelope.code.trim()) return envelope.code;
     if (!error || typeof error !== "object") return undefined;
     const maybe = error as ErrorLike;
     const code = maybe.errorCode ?? maybe.code;
@@ -91,11 +97,49 @@ function extractCode(error: unknown): string | undefined {
 }
 
 function extractHeaders(error: unknown): Record<string, string> | undefined {
+    const envelope = extractAIErrorEnvelope(error);
+    if (envelope?.headers) return envelope.headers;
     if (!error || typeof error !== "object") return undefined;
     const maybe = error as ErrorLike;
     return normalizeHeaderRecord(maybe.errorHeaders)
         ?? normalizeHeaderRecord(maybe.responseHeaders)
         ?? normalizeHeaderRecord(maybe.headers);
+}
+
+function reasonFromEnvelope(envelope: AIErrorEnvelope, status?: number): AIErrorReason {
+    if (envelope.kind === "tool_call_parse" || envelope.kind === "tool_schema_validation") {
+        return "format";
+    }
+    const lowerCode = envelope.code.toLowerCase();
+    if (lowerCode === "context_length_exceeded") return "context_overflow";
+    if (lowerCode === "insufficient_quota") return "billing";
+    if (lowerCode === "model_not_found") return "model_not_found";
+    if (lowerCode === "invalid_api_key") return "auth";
+    if (isContextOverflowMessage(envelope.message)) return "context_overflow";
+    if (status === 401 || status === 403) return "auth";
+    if (status === 402) return "billing";
+    if (status === 404) return "model_not_found";
+    if (status === 429) return "rate_limit";
+    if (status === 408 || (status !== undefined && status >= 500)) return "timeout";
+    if (/rate.?limit|quota|too many requests|tpm|rpm|capacity|overloaded|529/i.test(envelope.message)) {
+        return "rate_limit";
+    }
+    if (/timed?\s*out|deadline exceeded|context deadline exceeded|econnreset|etimedout|gateway timeout/i.test(envelope.message)) {
+        return "timeout";
+    }
+    if (/insufficient.*credit|billing|payment|required|plan.*exceeded/i.test(envelope.message)) {
+        return "billing";
+    }
+    if (/invalid.*key|unauthorized|forbidden|authentication/i.test(envelope.message)) {
+        return "auth";
+    }
+    if (/tool[_ ]?use.*id|invalid.*request|malformed|invalid prompt|bad request/i.test(envelope.message)) {
+        return "format";
+    }
+    if (/model.*not.*found|does not exist|unknown model/i.test(envelope.message)) {
+        return "model_not_found";
+    }
+    return envelope.retryable ? "timeout" : "unknown";
 }
 
 export function isContextOverflowMessage(message: string): boolean {
@@ -107,6 +151,20 @@ export function isRetryableReason(reason: AIErrorReason): boolean {
 }
 
 export function classifyAIError(error: unknown): ClassifiedAIError {
+    const envelope = extractAIErrorEnvelope(error);
+    if (envelope) {
+        const status = envelope.status ?? extractStatus(error);
+        const headers = envelope.headers ?? extractHeaders(error);
+        return {
+            reason: reasonFromEnvelope(envelope, status),
+            message: envelope.message,
+            status,
+            code: envelope.code,
+            retryAfterMs: parseRetryAfterHeaderMs(headers),
+            retryable: envelope.retryable,
+        };
+    }
+
     const message = extractMessage(error);
     const status = extractStatus(error);
     const code = extractCode(error);
@@ -156,5 +214,35 @@ export function classifyAIError(error: unknown): ClassifiedAIError {
         code,
         retryAfterMs,
         retryable: isRetryableReason(reason),
+    };
+}
+
+export function toAIErrorEnvelope(
+    error: unknown,
+    overrides?: Partial<Pick<AIErrorEnvelope, "kind" | "code" | "retryable" | "source" | "message">>,
+): AIErrorEnvelope {
+    const existing = extractAIErrorEnvelope(error);
+    if (existing) {
+        return {
+            ...existing,
+            kind: overrides?.kind ?? existing.kind,
+            code: overrides?.code ?? existing.code,
+            retryable: overrides?.retryable ?? existing.retryable,
+            source: overrides?.source ?? existing.source,
+            message: overrides?.message ?? existing.message,
+        };
+    }
+
+    const classified = classifyAIError(error);
+    const headers = extractHeaders(error);
+
+    return {
+        kind: overrides?.kind ?? "provider_request",
+        code: overrides?.code ?? classified.code ?? "PROVIDER_REQUEST_FAILED",
+        retryable: overrides?.retryable ?? classified.retryable,
+        source: overrides?.source ?? "provider_request",
+        message: overrides?.message ?? classified.message ?? "The request failed.",
+        status: classified.status,
+        headers,
     };
 }

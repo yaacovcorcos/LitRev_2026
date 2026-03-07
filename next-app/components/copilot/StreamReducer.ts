@@ -47,9 +47,21 @@ export function messagesToTimeline(messages: CopilotMessage[]): TimelineItem[] {
                 toolName: msg.toolActivity.toolName,
                 status: msg.toolActivity.status,
                 summary: msg.toolActivity.summary,
+                errorMeta: msg.toolActivity.errorMeta,
                 startedAt: msg.toolActivity.startedAt,
                 updatedAt: msg.toolActivity.updatedAt,
                 completedAt: msg.toolActivity.completedAt,
+                createdAt: msg.createdAt,
+            };
+        }
+
+        if (msg.streamError) {
+            return {
+                type: "error" as const,
+                id: `error-${msg.id}`,
+                message: msg.text.trim() || msg.streamError.message,
+                retryable: msg.streamError.retryable,
+                errorMeta: msg.streamError,
                 createdAt: msg.createdAt,
             };
         }
@@ -111,6 +123,7 @@ export function messagesToTimeline(messages: CopilotMessage[]): TimelineItem[] {
                 id: `error-${msg.id}`,
                 message: recoveryErrorMessage,
                 retryable: true,
+                errorMeta: undefined,
                 createdAt: msg.createdAt,
             };
         }
@@ -291,7 +304,8 @@ export function reduceStreamChunk(
                     type: "error",
                     id: `error-${Date.now()}`,
                     message: chunk.error ?? "Unknown error",
-                    retryable: true,
+                    retryable: chunk.errorMeta?.retryable ?? true,
+                    errorMeta: chunk.errorMeta,
                     createdAt: new Date().toISOString(),
                 },
             ];
@@ -339,6 +353,7 @@ export function reduceStreamChunk(
                 ...target,
                 status: chunk.toolResult?.error ? "failed" : "done",
                 summary: chunk.toolResult?.error ?? undefined,
+                errorMeta: chunk.toolResult?.errorMeta,
                 updatedAt: now,
                 completedAt: now,
             };

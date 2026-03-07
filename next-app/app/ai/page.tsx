@@ -34,6 +34,7 @@ import { processAIStream } from "@/lib/ai/stream-processor";
 import { routeToAgent } from "@/lib/agent/router";
 import { dispatchProjectDataChanged, getChangedDomainsForAcceptedArtifact } from "@/lib/project-data-events";
 import { isNavigationSafe } from "@/lib/ai/navigation-safety";
+import { extractAIErrorEnvelope } from "@/lib/ai/error-envelope";
 import { formatStreamErrorForUI } from "@/lib/ai/stream-error-ui";
 import { createAiStreamRuntime } from "@/lib/ai/ai-stream-runtime";
 import { generateChatUnificationRequestKey, recordChatUnificationMetric } from "@/lib/ai/chat-unification-telemetry";
@@ -1209,6 +1210,7 @@ export default function AIView() {
         emitTerminalMetric(terminalReason, runStatus);
         convId = runtime.getConversationId();
         runtime.failRunningTools("Run failed before tool completion.");
+        const errorMeta = extractAIErrorEnvelope(err);
         const friendlyError = formatStreamErrorForUI(err);
         emittedTerminalError = true;
         updateConversationTimeline(convId, (items) => [
@@ -1217,7 +1219,8 @@ export default function AIView() {
             type: "error",
             id: `error-${Date.now()}`,
             message: friendlyError,
-            retryable: true,
+            retryable: errorMeta?.retryable ?? true,
+            errorMeta: errorMeta,
             createdAt: new Date().toISOString(),
           },
         ]);

@@ -1,4 +1,5 @@
 import type { AIStreamChunk } from "@/types/ai";
+import { AIErrorWithEnvelope, envelopeFromStreamChunk } from "@/lib/ai/error-envelope";
 import { parseNDJSONStream } from "@/lib/ai/stream-parser";
 import {
     createLifecycleSnapshot,
@@ -12,6 +13,7 @@ export type StreamRunSummary = {
     runStatus: string | null;
     stopReason: string | null;
     errorMessage: string | null;
+    errorMeta: AIStreamChunk["errorMeta"] | null;
     conversationId: string | null;
     actualModel: string | null;
     actualModelSource: "provider" | "requested" | "unknown";
@@ -41,6 +43,7 @@ export async function processAIStream({
     let runStatus: string | null = null;
     let stopReason: string | null = null;
     let errorMessage: string | null = null;
+    let errorMeta: AIStreamChunk["errorMeta"] | null = null;
     let conversationId: string | null = null;
     let actualModel: string | null = null;
     let actualModelSource: "provider" | "requested" | "unknown" = "unknown";
@@ -66,7 +69,9 @@ export async function processAIStream({
                 }),
             ).snapshot;
         } else if (chunk.type === "error") {
-            errorMessage = chunk.error ?? "AI stream error";
+            const envelope = envelopeFromStreamChunk(chunk);
+            errorMessage = envelope.message;
+            errorMeta = envelope;
             lifecycleState = finalizeLifecycle(
                 lifecycleState,
                 terminalReasonFromErrorChunk(chunk),
@@ -76,7 +81,7 @@ export async function processAIStream({
         await onChunk(chunk);
 
         if (chunk.type === "error" && throwOnErrorChunk) {
-            throw new Error(chunk.error ?? "AI stream error");
+            throw new AIErrorWithEnvelope(envelopeFromStreamChunk(chunk));
         }
     }
 
@@ -88,6 +93,7 @@ export async function processAIStream({
         runStatus,
         stopReason,
         errorMessage,
+        errorMeta,
         conversationId,
         actualModel,
         actualModelSource,

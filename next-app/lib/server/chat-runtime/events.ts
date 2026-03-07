@@ -1,4 +1,4 @@
-import type { AIStreamChunk, ChoiceOption, ToolCall, ToolResult, UserInputRequest } from "@/types/ai";
+import type { AIErrorEnvelope, AIStreamChunk, ChoiceOption, ToolCall, ToolResult, UserInputRequest } from "@/types/ai";
 
 type SharedFields = {
   conversationId?: string;
@@ -12,7 +12,7 @@ export type RuntimeStreamEvent =
   | ({ type: "tool_call"; toolCall: ToolCall } & SharedFields)
   | ({ type: "tool_result"; toolResult: ToolResult; toolName?: string } & SharedFields)
   | ({ type: "done"; usage?: AIStreamChunk["usage"] } & SharedFields)
-  | ({ type: "error"; error: string } & SharedFields)
+  | ({ type: "error"; error: string; errorMeta?: AIErrorEnvelope } & SharedFields)
   | ({
       type: "artifact";
       artifactId: string;
@@ -90,7 +90,12 @@ export function normalizeStreamChunk(chunk: AIStreamChunk): RuntimeStreamEvent |
     case "done":
       return { type: "done", usage: chunk.usage, conversationId };
     case "error":
-      return { type: "error", error: chunk.error ?? "Unknown error", conversationId };
+      return {
+        type: "error",
+        error: chunk.error ?? "Unknown error",
+        errorMeta: chunk.errorMeta,
+        conversationId,
+      };
     case "artifact":
       if (!chunk.artifactId || !chunk.artifactType) return null;
       return {
@@ -207,7 +212,12 @@ export function toWireChunk(event: RuntimeStreamEvent): AIStreamChunk {
     case "done":
       return { type: "done", usage: event.usage, conversationId: event.conversationId };
     case "error":
-      return { type: "error", error: event.error, conversationId: event.conversationId };
+      return {
+        type: "error",
+        error: event.error,
+        errorMeta: event.errorMeta,
+        conversationId: event.conversationId,
+      };
     case "artifact":
       return {
         type: "artifact",

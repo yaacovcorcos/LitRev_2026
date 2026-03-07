@@ -114,37 +114,67 @@ describe("safeParseJson", () => {
 describe("parseToolArgs", () => {
     it("returns parsed object for valid JSON", () => {
         const result = parseToolArgs('{"query": "test"}', "search_pubmed", "openai");
-        expect(result).toEqual({ query: "test" });
+        expect(result).toEqual({
+            success: true,
+            args: { query: "test" },
+        });
     });
 
-    it("returns {} and warns for invalid JSON", () => {
+    it("returns a classified non-executable error for invalid JSON", () => {
         const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
         const result = parseToolArgs("not json", "search_pubmed", "openai");
-        expect(result).toEqual({});
+        expect(result).toMatchObject({
+            success: false,
+            errorMeta: {
+                kind: "tool_call_parse",
+                code: "TOOL_CALL_ARGS_PARSE_FAILED",
+                retryable: false,
+                source: "provider_tool_call",
+            },
+        });
         expect(spy).toHaveBeenCalledWith(expect.stringContaining("[openai]"));
         expect(spy).toHaveBeenCalledWith(expect.stringContaining("search_pubmed"));
         spy.mockRestore();
     });
 
-    it("returns {} and warns for JSON array (not object)", () => {
+    it("returns a classified non-executable error for JSON array payloads", () => {
         const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
         const result = parseToolArgs("[1, 2, 3]", "some_tool", "xai");
-        expect(result).toEqual({});
+        expect(result).toMatchObject({
+            success: false,
+            errorMeta: {
+                kind: "tool_call_parse",
+                code: "TOOL_CALL_ARGS_NOT_OBJECT",
+                retryable: false,
+                source: "provider_tool_call",
+            },
+        });
         expect(spy).toHaveBeenCalledWith(expect.stringContaining("[xai]"));
         spy.mockRestore();
     });
 
-    it("returns {} and warns for JSON primitive", () => {
+    it("returns a classified non-executable error for JSON primitives", () => {
         const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
         const result = parseToolArgs('"hello"', "some_tool", "openai");
-        expect(result).toEqual({});
+        expect(result).toMatchObject({
+            success: false,
+            errorMeta: {
+                kind: "tool_call_parse",
+                code: "TOOL_CALL_ARGS_NOT_OBJECT",
+                retryable: false,
+                source: "provider_tool_call",
+            },
+        });
         spy.mockRestore();
     });
 
     it("repairs and returns trailing-comma JSON without warning", () => {
         const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
         const result = parseToolArgs('{"query": "test",}', "search_pubmed", "openai");
-        expect(result).toEqual({ query: "test" });
+        expect(result).toEqual({
+            success: true,
+            args: { query: "test" },
+        });
         expect(spy).not.toHaveBeenCalled();
         spy.mockRestore();
     });

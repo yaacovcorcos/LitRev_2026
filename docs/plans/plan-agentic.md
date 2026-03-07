@@ -9,6 +9,8 @@
 - **Handoffs Between Agent Modes (P5):** Modes are configured in `AGENT_MODE_CONFIG` (`systemPromptKey`, `allowedTools[]`, `memoryScope`, `description`) and selected by router + feature-flag normalization before prompt/tool assembly.
 - **Prompt Caching Optimization (P6):** Prompt assembly follows a stable-to-variable order (`mode -> scope -> project -> protocol -> autonomy -> ledger -> location -> study -> memory -> additional`) to maximize prefix-caching hits while preserving grounding.
 - **Self-Healing JSON (P7):** Failed Zod validations on tool payloads are fed back to the LLM for correction before failing the run.
+- **Typed Tool-Call Boundary:** Provider tool-call payloads are now parsed as a strict object-or-error contract. Parse failures, array payloads, and tool schema validation failures are classified as non-executable structured errors instead of being coerced into fake `{}` tool calls.
+- **Structured Stream Errors:** Error envelopes (`kind`, `code`, `retryable`, `source`, `message`) now survive provider -> runtime -> stream -> timeline transport, so deterministic tool-boundary failures are visible to the UI as typed non-retryable errors.
 - **Observability (P9):** Runs and tool calls are traced via Langfuse (1 run = 1 trace, tool = span, LLM = generation).
 - **Autonomy Levels:** Tools have defined safety ranges (1=suggest, 4=autonomous). `executeTool` strictly enforces these caps based on user/project config.
 - **Protocol Criteria Editing:** `update_criteria` is registered and mode-allowed for protocol work, enabling atomic add/remove edits for inclusion/exclusion criteria with protocol-memory sync.
@@ -32,6 +34,7 @@
 ## Recently Completed
 *Finished work that might still be fragile or require monitoring. Prune oldest first.*
 
+- [x] Implemented FIX-006 request/tool-boundary hardening: malformed provider tool-call payloads no longer coerce to `{}` and execute, tool schema validation failures now emit structured error envelopes, and stream/timeline state preserves retryability metadata end-to-end.
 - [x] Hardened `update_protocol` proposal execution: the tool now advertises an explicit scalar/array `value` schema to providers, and the executor drops malformed sibling `update_protocol` calls when a valid proposal exists in the same turn.
 - [x] Tightened proposal-style assistant behavior so model-visible tool results distinguish `proposed` from `auto_applied`, and planner heuristics now require explicit extraction/writing verbs for `extract_pdf` and `update_note`.
 - [x] Added `search_openalex` tool with Search/Scoping/QA integration, OpenAlex normalization, and Crossref fallback enrichment for sparse DOI metadata.
