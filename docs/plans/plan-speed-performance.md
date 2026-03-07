@@ -29,7 +29,8 @@ Define the canonical implementation plan for app speed, responsiveness, and stab
   - `protocol` deep links boot protocol only, and `ledger` deep links boot studies only
   - root conversation entry no longer uses provider eager boot; conversation state now bootstraps lazily from `useProjectState` with lightweight fallback counts and protocol-unknown routing until data settles
 - Project shell entry no longer prefetches sibling project routes on mount; tab hover/focus intent still warms route-specific project domains through `ProjectTabBar`.
-- Root overview entry now keeps the header, vital signs, and workstation shells immediate while deferring the recent-activity fetch until idle; the remaining root-entry network cost is overview-owned workstation preview data tracked under `SPD-003`.
+- Root overview entry keeps the header, vital signs, and workstation shells immediate while deferring the recent-activity fetch until idle.
+- Root overview workstation previews now load through a single combined overview action under one auth/validation envelope, reducing preview boot-time requests from three client actions to one while preserving per-card partial failure handling.
 - Three consecutive warn-mode calibration notes are archived under `docs/reports/performance/`.
 - The gate now runs in `enforce` mode with no active waivers; `output/performance/baseline/waivers.json` remains checked in as the machine-readable exception contract.
 - Regression gating now requires both percentage regression and a minimum meaningful absolute delta before failing:
@@ -230,10 +231,10 @@ Rules:
 - Target route:
   - `/project/[id]`
 - Primary metric:
-  - desktop `TTFB`
+  - overview preview-ready latency
 - Target:
-  - improve p75 by at least `100ms`
-  - reduce boot-time request count and total boot latency
+  - reduce root overview preview boot-time requests from `3` to `1`
+  - improve preview-ready latency once all three workstation cards settle to data/empty/error state
 - Scope:
   - `next-app/app/project/[id]/page.tsx`
   - `next-app/app/actions/stats.ts`
@@ -264,22 +265,6 @@ Rules:
   - timeline rendering surfaces
 
 ## Active Tasks
-- [ ] `SPD-003` Dedupe overview boot-time fetches on `/project/[id]`.
-  - Primary metric:
-    - desktop `TTFB`
-  - Target:
-    - improve p75 by at least `100ms`
-    - reduce boot-time request count and total boot latency on root `/project/[id]`
-  - Status:
-    - `SPD-002` is complete: route-aware provider boot and deferred recent activity removed the avoidable non-active-surface root-entry work, and restored root conversation entry still relies on the existing lazy `useProjectState` fallback path without eager provider boot
-  - Remaining measured bottleneck:
-    - overview still issues three workstation preview stats actions from `next-app/app/project/[id]/page.tsx`
-  - Scope:
-    - `next-app/app/project/[id]/page.tsx`
-    - `next-app/app/actions/stats.ts`
-  - Keep the overview first-paint contract intact:
-    - header, vital signs, and workstation shells remain immediate
-    - deferred modules must keep stable placeholders rather than hollow empty states
 - [ ] `SPD-004` Optimize preloading and prefetch strategy:
   - Primary metric:
     - reduce unnecessary prefetch and warmup work without regressing next-intent navigation latency
@@ -300,6 +285,7 @@ Rules:
   - Keep nightly-only routes (`/`, `/project/[id]/protocol`, `/project/[id]/notes`) and the slow-network profile out of the PR gate until their artifacts are stable.
 
 ## Recently Completed
+- [x] `SPD-003` Root overview preview fetch dedupe is complete: workstation previews now load through one combined overview action with a single auth/validation boundary, and the page consumer keeps the same first-paint shell while reducing preview boot-time requests from `3` to `1`.
 - [x] `SPD-002` Project entry boot cleanup is complete: route-aware provider boot, lazy conversation bootstrap, and idle-deferred recent activity removed the avoidable non-active-surface root-entry work, so the remaining `/project/[id]` cost is now explicitly overview-owned and tracked under `SPD-003`.
 - [x] `SPD-002a` Project entry boot is now route-aware, and root conversation entry now bootstraps its project snapshot lazily from `useProjectState` instead of eager provider `protocol -> studies` boot; authoritative CI shows the change is safe, but `SPD-002` remains open because the root-entry `LCP` target was not met.
 - [x] `SPD-001` is complete: the vitals pipeline, real baseline artifacts, calibration notes, enforce-mode gate, and first weekly review are all live and documented.
