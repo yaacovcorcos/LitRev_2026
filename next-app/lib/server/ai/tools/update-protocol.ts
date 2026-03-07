@@ -100,7 +100,7 @@ export const updateProtocolTool: AITool = {
 
     async execute(args: Record<string, unknown>, context?: ToolExecutionContext) {
         const projectId = (context?.projectId ?? args.projectId) as string | undefined;
-        const field = args.field as string;
+        const field = typeof args.field === "string" ? args.field.trim() : "";
         const rawValue = args.value;
         const rationale = args.rationale as string;
 

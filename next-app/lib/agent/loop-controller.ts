@@ -37,16 +37,25 @@ export function hashToolCall(name: string, args: Record<string, unknown>): strin
     return name + ":" + stableStringify(args);
 }
 
-function stableStringify(obj: unknown): string {
+const MAX_TOOL_CALL_STRINGIFY_DEPTH = 20;
+
+function stableStringify(obj: unknown, depth = 0, seen = new WeakSet<object>()): string {
     if (obj === null || obj === undefined) return String(obj);
     if (typeof obj !== "object") return JSON.stringify(obj);
+    if (depth >= MAX_TOOL_CALL_STRINGIFY_DEPTH) return JSON.stringify("[MaxDepthExceeded]");
+    if (seen.has(obj)) return JSON.stringify("[Circular]");
+    seen.add(obj);
     if (Array.isArray(obj)) {
-        return "[" + obj.map(stableStringify).join(",") + "]";
+        const result = "[" + obj.map((item) => stableStringify(item, depth + 1, seen)).join(",") + "]";
+        seen.delete(obj);
+        return result;
     }
     const sorted = Object.keys(obj as Record<string, unknown>).sort();
-    return "{" + sorted.map(k =>
-        JSON.stringify(k) + ":" + stableStringify((obj as Record<string, unknown>)[k])
+    const result = "{" + sorted.map(k =>
+        JSON.stringify(k) + ":" + stableStringify((obj as Record<string, unknown>)[k], depth + 1, seen)
     ).join(",") + "}";
+    seen.delete(obj);
+    return result;
 }
 
 // ── Loop State ───────────────────────────────────────────────────────────────

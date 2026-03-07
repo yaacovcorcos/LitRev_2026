@@ -72,6 +72,7 @@ export function isArrayField(path: string): boolean {
 export type ProtocolMutationFailureCode =
     | "FIELD_REQUIRED"
     | "UNKNOWN_FIELD"
+    | "VALUE_NESTING_TOO_DEEP"
     | "STRING_EXPECTS_SINGLE_VALUE"
     | "STRING_ARRAY_EXPECTS_SCALAR_ITEMS"
     | "AMBIGUOUS_VALUE_WRAPPER"
@@ -111,6 +112,8 @@ function repeatKeyForValue(path: string, value: string | string[]): string {
     return `update_protocol:${path}:valid:${JSON.stringify(value)}`;
 }
 
+const MAX_PROTOCOL_MUTATION_WRAPPER_DEPTH = 2;
+
 function unwrapSingleValueObject(
     value: Record<string, unknown>,
     candidates: readonly string[],
@@ -134,6 +137,7 @@ function unwrapSingleValueObject(
 function normalizeScalarString(
     meta: ProtocolFieldMeta,
     rawValue: unknown,
+    depth = 0,
 ): Omit<Extract<ProtocolMutationClassification, { valid: true }>, "meta" | "repeatKey">
     | Omit<Extract<ProtocolMutationClassification, { valid: false }>, "meta" | "repeatKey"> {
     if (typeof rawValue === "string") {
@@ -162,9 +166,16 @@ function normalizeScalarString(
     }
 
     if (rawValue != null && typeof rawValue === "object") {
+        if (depth >= MAX_PROTOCOL_MUTATION_WRAPPER_DEPTH) {
+            return {
+                valid: false,
+                code: "VALUE_NESTING_TOO_DEEP",
+                error: `${meta.label} value nesting is too deep to normalize safely`,
+            };
+        }
         const unwrapped = unwrapSingleValueObject(rawValue as Record<string, unknown>, ["value", "text"]);
         if (unwrapped) {
-            const normalized = normalizeScalarString(meta, unwrapped.value);
+            const normalized = normalizeScalarString(meta, unwrapped.value, depth + 1);
             if (!normalized.valid) {
                 return normalized;
             }
@@ -191,6 +202,7 @@ function normalizeScalarString(
 function normalizeStringArray(
     meta: ProtocolFieldMeta,
     rawValue: unknown,
+    depth = 0,
 ): Omit<Extract<ProtocolMutationClassification, { valid: true }>, "meta" | "repeatKey">
     | Omit<Extract<ProtocolMutationClassification, { valid: false }>, "meta" | "repeatKey"> {
     if (Array.isArray(rawValue)) {
@@ -221,9 +233,16 @@ function normalizeStringArray(
     }
 
     if (rawValue != null && typeof rawValue === "object") {
+        if (depth >= MAX_PROTOCOL_MUTATION_WRAPPER_DEPTH) {
+            return {
+                valid: false,
+                code: "VALUE_NESTING_TOO_DEEP",
+                error: `${meta.label} value nesting is too deep to normalize safely`,
+            };
+        }
         const unwrapped = unwrapSingleValueObject(rawValue as Record<string, unknown>, ["items"]);
         if (unwrapped) {
-            const normalized = normalizeStringArray(meta, unwrapped.value);
+            const normalized = normalizeStringArray(meta, unwrapped.value, depth + 1);
             if (!normalized.valid) {
                 return normalized;
             }

@@ -106,7 +106,7 @@ Every fix entry must include:
 - **Popup Runtime Is Still Lighter Than Copilot:** popup remains on a non-artifact path, so protocol mutation capability is not yet honest there; tracked under `FIX-003`.
 - **General Mode Is Still Too Broad:** default `general` behavior can overexpose tools and rely on prompt-era clarification behavior; tracked under `FIX-004`.
 - **Model Request Capability Handling Is Under-Specified:** provider adapters still assume too much shared request compatibility across models; tracked under `FIX-010`.
-- **Protocol Mutation Uses Shared Field-Aware Normalization:** `update_protocol`, same-turn tool-call sanitization, and repeat detection now reuse the same field/value normalize-classify path so unambiguous wrapper shapes are repaired consistently and duplicate invalid mutation noise is collapsed early.
+- **Protocol Mutation Uses Shared Field-Aware Normalization:** `update_protocol`, same-turn tool-call sanitization, and repeat detection now reuse the same field/value normalize-classify path so unambiguous wrapper shapes are repaired consistently, whitespace-only field mismatches no longer diverge between validation and execution, and normalization/hashing paths cap nested input depth safely.
 - **Tool Prerequisites Are Not First-Class:** the runtime still lacks a formal model for required project, study, criteria, or PDF context before tool execution; tracked under `FIX-008`.
 - **Run Recovery Semantics Are Still Misleading:** deterministic failures can still surface as retryable or leave runs looking more successful than they were; tracked under `FIX-009`.
 
@@ -359,7 +359,7 @@ These files are supporting documents. Status, priority, and closure rules live h
 
 ## Recently Completed
 
-- [x] Implemented `FIX-007` protocol mutation hardening: `update_protocol`, same-turn tool-call sanitization, and repeat detection now share one field-aware normalize/classify path, so unambiguous wrapper shapes are repaired consistently and duplicate invalid mutation attempts collapse before they spam the UI.
+- [x] Implemented `FIX-007` protocol mutation hardening: `update_protocol`, same-turn tool-call sanitization, and repeat detection now share one field-aware normalize/classify path, trim whitespace-only field mismatches consistently at execution time, and cap nested normalization/hashing depth so malformed tool payloads cannot recurse indefinitely.
 - [x] Implemented FIX-006 request/tool-boundary hardening: malformed provider tool-call payloads no longer coerce to `{}` and execute, tool schema validation failures now emit structured error envelopes, and stream/timeline state preserves retryability metadata end-to-end.
 - [x] Hardened `update_protocol` proposal execution: the tool now advertises an explicit scalar/array `value` schema to providers, and the executor drops malformed sibling `update_protocol` calls when a valid proposal exists in the same turn.
 - [x] Tightened proposal-style assistant behavior so model-visible tool results distinguish `proposed` from `auto_applied`, and planner heuristics now require explicit extraction/writing verbs for `extract_pdf` and `update_note`.
