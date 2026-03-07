@@ -30,7 +30,7 @@ import { getAIService } from "./ai-service";
 import { createArtifact, applyArtifact } from "@/lib/server/agent/artifacts";
 import { startRun, endRun } from "@/lib/server/agent/run";
 import { emitEvent } from "@/lib/server/agent/events";
-import { dropShadowedInvalidToolCalls } from "./tool-helpers";
+import { dropShadowedInvalidToolCalls, getToolCallRepeatKey } from "./tool-helpers";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -307,7 +307,10 @@ export async function executeSubAgent(params: SubAgentParams): Promise<SubAgentR
             }
 
             // Check for doom loops
-            if (loop.recordToolCalls(collectedToolCalls)) {
+            if (loop.recordToolCalls(collectedToolCalls.map((toolCall) => ({
+                ...toolCall,
+                repeatKey: getToolCallRepeatKey(toolCall),
+            })))) {
                 lastContent = contentSoFar || "Repeat detected — stopping.";
                 break;
             }

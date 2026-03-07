@@ -67,7 +67,7 @@ describe("updateProtocolTool", () => {
     });
   });
 
-  it("returns a field-specific error for malformed object values", async () => {
+  it("normalizes unambiguous object wrappers for string fields", async () => {
     const result = await updateProtocolTool.execute(
       {
         field: "researchQuestion",
@@ -77,7 +77,26 @@ describe("updateProtocolTool", () => {
       { projectId: "proj-1" }
     );
 
+    expect(result.error).toBeUndefined();
+    expect(result.result).toEqual({
+      field: "researchQuestion",
+      value: "New question",
+      oldValue: "Old question",
+      rationale: "The user refined the question",
+    });
+  });
+
+  it("returns a field-specific error for unsupported object wrappers", async () => {
+    const result = await updateProtocolTool.execute(
+      {
+        field: "researchQuestion",
+        value: { label: "New question" },
+        rationale: "The user refined the question",
+      },
+      { projectId: "proj-1" }
+    );
+
     expect(result.result).toBeNull();
-    expect(result.error).toBe("Research Question expects a string, got an object");
+    expect(result.error).toBe("Research Question expects a string, got an unsupported object shape");
   });
 });

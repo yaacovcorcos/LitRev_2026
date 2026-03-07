@@ -106,7 +106,7 @@ Every fix entry must include:
 - **Popup Runtime Is Still Lighter Than Copilot:** popup remains on a non-artifact path, so protocol mutation capability is not yet honest there; tracked under `FIX-003`.
 - **General Mode Is Still Too Broad:** default `general` behavior can overexpose tools and rely on prompt-era clarification behavior; tracked under `FIX-004`.
 - **Model Request Capability Handling Is Under-Specified:** provider adapters still assume too much shared request compatibility across models; tracked under `FIX-010`.
-- **Protocol Mutation Contract Is Still Too Polymorphic:** `update_protocol` still uses a broad `value` contract and remains prone to scalar/list mismatch failures; tracked under `FIX-007`.
+- **Protocol Mutation Uses Shared Field-Aware Normalization:** `update_protocol`, same-turn tool-call sanitization, and repeat detection now reuse the same field/value normalize-classify path so unambiguous wrapper shapes are repaired consistently and duplicate invalid mutation noise is collapsed early.
 - **Tool Prerequisites Are Not First-Class:** the runtime still lacks a formal model for required project, study, criteria, or PDF context before tool execution; tracked under `FIX-008`.
 - **Run Recovery Semantics Are Still Misleading:** deterministic failures can still surface as retryable or leave runs looking more successful than they were; tracked under `FIX-009`.
 
@@ -125,16 +125,6 @@ Every fix entry must include:
 
 ## Active Fixes
 *Immediate remediation work for shipped behavior that is broken, misleading, or lower quality than the intended contract.*
-
-- [ ] `FIX-007` Protocol mutation reliability and contract redesign
-  - Severity: `P0`
-  - Problem: `update_protocol` still uses a polymorphic `value` contract that is too weak for reliable model tool calling and still produces scalar/list mismatch failures.
-  - Supporting detail: canonical plan only for now; create a focused supporting plan only if the redesign expands beyond protocol mutation.
-  - Exit criteria:
-    - obvious harmless shape mismatches are normalized before rejection
-    - repeated invalid `update_protocol` attempts for the same field are suppressed early
-    - protocol mutation failures surface one truthful explanation instead of a stack of near-duplicate task cards
-    - a follow-up contract decision is made: keep the normalized single-tool design or split protocol mutation into more typed tools
 
 - [ ] `FIX-008` Tool prerequisite gating and action eligibility
   - Severity: `P0`
@@ -216,23 +206,22 @@ Every fix entry must include:
 
 Work should proceed in this order unless a production incident forces reprioritization:
 
-1. `FIX-007` protocol mutation reliability and contract redesign
-2. `FIX-008` tool prerequisite gating and action eligibility
-3. `FIX-009` recovery semantics and truthful run outcomes
-4. `FIX-010` model capability negotiation
-5. `FIX-001` delegation safety
-6. `FIX-002` plan execution confinement
-7. `FIX-003` popup action-surface honesty
-8. `FIX-004` general-mode scoping and clarification cleanup
-9. `FIX-005` docs/evals/provenance hardening
-10. roadmap phases after the active fixes above are stable
+1. `FIX-008` tool prerequisite gating and action eligibility
+2. `FIX-009` recovery semantics and truthful run outcomes
+3. `FIX-010` model capability negotiation
+4. `FIX-001` delegation safety
+5. `FIX-002` plan execution confinement
+6. `FIX-003` popup action-surface honesty
+7. `FIX-004` general-mode scoping and clarification cleanup
+8. `FIX-005` docs/evals/provenance hardening
+9. roadmap phases after the active fixes above are stable
 
 ## End-to-End Delivery Program
 
-### Track A — Mutation and Request-Boundary Reliability
+### Track A — Request-Boundary Reliability and Truthful Failure Handling
 
-- Land `FIX-007` first so protocol editing becomes robust under real model tool-call output.
-- Land `FIX-009` and `FIX-010` in the same wave or immediately after so deterministic failures become truthful and model-specific request mismatches stop failing before meaningful work begins.
+- `FIX-007` shipped the protocol-mutation normalization/suppression layer.
+- Land `FIX-009` and `FIX-010` next so deterministic failures become truthful and model-specific request mismatches stop failing before meaningful work begins.
 
 ### Track B — Action Eligibility and Honest Execution
 
@@ -370,6 +359,7 @@ These files are supporting documents. Status, priority, and closure rules live h
 
 ## Recently Completed
 
+- [x] Implemented `FIX-007` protocol mutation hardening: `update_protocol`, same-turn tool-call sanitization, and repeat detection now share one field-aware normalize/classify path, so unambiguous wrapper shapes are repaired consistently and duplicate invalid mutation attempts collapse before they spam the UI.
 - [x] Implemented FIX-006 request/tool-boundary hardening: malformed provider tool-call payloads no longer coerce to `{}` and execute, tool schema validation failures now emit structured error envelopes, and stream/timeline state preserves retryability metadata end-to-end.
 - [x] Hardened `update_protocol` proposal execution: the tool now advertises an explicit scalar/array `value` schema to providers, and the executor drops malformed sibling `update_protocol` calls when a valid proposal exists in the same turn.
 - [x] Tightened proposal-style assistant behavior so model-visible tool results distinguish `proposed` from `auto_applied`, and planner heuristics now require explicit extraction/writing verbs for `extract_pdf` and `update_note`.
@@ -380,7 +370,6 @@ These files are supporting documents. Status, priority, and closure rules live h
 - [x] Implemented apply function for `evidence_table` artifacts (persists accepted table to project Notes).
 - [x] Implemented `delete_study` tool and registered it in `AVAILABLE_TOOLS` and screening mode.
 - [x] Wired `update_criteria` into tool registry and protocol-mode tool filtering.
-- [x] P10: Scoping mode architecture shipped (routing, tool filtering, batch plan behavior, contract parsing, deterministic handoff).
 
 ## Deferred / Parking Lot
 

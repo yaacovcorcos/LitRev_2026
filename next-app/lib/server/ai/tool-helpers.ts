@@ -10,9 +10,10 @@ import type { ToolCall, ToolDefinition } from "@/types/ai";
 import type { ArtifactType } from "@/types/artifacts";
 import type { PlanPayload, ScopingReportPayload } from "@/types/artifacts";
 import { getEffectiveAllowedTools } from "@/lib/agent/router";
+import { hashToolCall } from "@/lib/agent/loop-controller";
 import { getToolDefinitions, getTool, resolveAutonomyLevel } from "./tools";
 import { getToolAutonomyLevel } from "@/lib/server/agent/autonomy";
-import { isValidFieldPath, validateFieldValue } from "@/lib/protocol-fields";
+import { normalizeAndClassifyProtocolMutation } from "@/lib/protocol-fields";
 import {
     appendScopingReportComment,
     buildFallbackScopingReport,
@@ -102,29 +103,37 @@ export type DroppedToolCall = {
     reason: string;
 };
 
+type UpdateProtocolArgsValidation =
+    | { success: true; field: string; repeatKey: string }
+    | { success: false; field?: string; error: string; repeatKey: string };
+
 /**
  * Some providers occasionally emit both malformed and valid update_protocol
  * calls in the same turn. When that happens, executing the malformed sibling
  * only adds a noisy failure card while the valid proposal still succeeds.
  *
- * Keep the invalid call only when it is the only protocol proposal we have,
- * so genuine failures still surface.
+ * Drop invalid siblings when a valid proposal for the same field exists, and
+ * collapse duplicate malformed siblings by semantic failure key so one bad
+ * mutation intent does not become a stack of failed cards.
  */
 export function dropShadowedInvalidToolCalls(toolCalls: ToolCall[]): {
     toolCalls: ToolCall[];
     dropped: DroppedToolCall[];
 } {
-    const hasValidUpdateProtocol = toolCalls.some((toolCall) => {
-        if (toolCall.name !== "update_protocol") return false;
-        return validateUpdateProtocolArgs(toolCall.arguments).success;
-    });
-
-    if (!hasValidUpdateProtocol) {
-        return { toolCalls, dropped: [] };
+    const updateProtocolValidations = new Map<string, UpdateProtocolArgsValidation>();
+    const validFields = new Set<string>();
+    for (const toolCall of toolCalls) {
+        if (toolCall.name !== "update_protocol") continue;
+        const validation = validateUpdateProtocolArgs(toolCall.arguments);
+        updateProtocolValidations.set(toolCall.id, validation);
+        if (validation.success) {
+            validFields.add(validation.field);
+        }
     }
 
     const kept: ToolCall[] = [];
     const dropped: DroppedToolCall[] = [];
+    const seenInvalidRepeatKeys = new Set<string>();
 
     for (const toolCall of toolCalls) {
         if (toolCall.name !== "update_protocol") {
@@ -132,43 +141,77 @@ export function dropShadowedInvalidToolCalls(toolCalls: ToolCall[]): {
             continue;
         }
 
-        const validation = validateUpdateProtocolArgs(toolCall.arguments);
+        const validation = updateProtocolValidations.get(toolCall.id) ?? validateUpdateProtocolArgs(toolCall.arguments);
         if (validation.success) {
             kept.push(toolCall);
             continue;
         }
 
-        dropped.push({
-            id: toolCall.id,
-            name: toolCall.name,
-            reason: validation.error,
-        });
+        if (validation.field && validFields.has(validation.field)) {
+            dropped.push({
+                id: toolCall.id,
+                name: toolCall.name,
+                reason: validation.error,
+            });
+            continue;
+        }
+
+        if (seenInvalidRepeatKeys.has(validation.repeatKey)) {
+            dropped.push({
+                id: toolCall.id,
+                name: toolCall.name,
+                reason: validation.error,
+            });
+            continue;
+        }
+
+        seenInvalidRepeatKeys.add(validation.repeatKey);
+        kept.push(toolCall);
     }
 
     return { toolCalls: kept, dropped };
 }
 
-function validateUpdateProtocolArgs(args: Record<string, unknown>): { success: true } | { success: false; error: string } {
-    const field = typeof args.field === "string" ? args.field.trim() : "";
-    if (!field) {
-        return { success: false, error: "Input validation failed: field is required" };
+export function getToolCallRepeatKey(toolCall: ToolCall): string {
+    if (toolCall.name !== "update_protocol") {
+        return hashToolCall(toolCall.name, toolCall.arguments);
     }
 
-    if (!isValidFieldPath(field)) {
-        return { success: false, error: `Invalid protocol field: \"${field}\"` };
+    const validation = validateUpdateProtocolArgs(toolCall.arguments);
+    return validation.repeatKey;
+}
+
+function validateUpdateProtocolArgs(args: Record<string, unknown>): UpdateProtocolArgsValidation {
+    const field = typeof args.field === "string" ? args.field.trim() : "";
+    if (!field) {
+        return {
+            success: false,
+            error: "Input validation failed: field is required",
+            repeatKey: "update_protocol:__missing_field__:FIELD_REQUIRED",
+        };
     }
 
     const rationale = typeof args.rationale === "string" ? args.rationale.trim() : "";
     if (!rationale) {
-        return { success: false, error: "Input validation failed: rationale is required" };
+        return {
+            success: false,
+            field,
+            error: "Input validation failed: rationale is required",
+            repeatKey: `update_protocol:${field}:RATIONALE_REQUIRED`,
+        };
     }
 
-    const valueValidation = validateFieldValue(field, args.value);
-    if (!valueValidation.valid) {
-        return { success: false, error: valueValidation.error };
+    const classification = normalizeAndClassifyProtocolMutation(field, args.value);
+    if (!classification.valid) {
+        return {
+            success: false,
+            field,
+            error: classification.error,
+            repeatKey: classification.repeatKey,
+        };
     }
 
-    return { success: true };
+    return { success: true, field, repeatKey: classification.repeatKey };
 }
 
 // ── Ledger helper functions for prompt context ───────────────────────────────
