@@ -6,23 +6,28 @@
 
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
+import dynamic from "next/dynamic";
+import { useCallback, useEffect, useRef, useState } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import * as Popover from "@radix-ui/react-popover";
 import type { CopilotPage, ChoiceOption, UserInputRequest } from "@/types/ai";
 import type { ContextCaptureHistoryEntry, ContextCaptureTarget } from "@/types/context-capture";
 import { USER_SELECTABLE_MODELS, type SelectableModelId } from "@/lib/ai/config";
 import { useVoiceInput } from "@/hooks/useVoiceInput";
-import { listProjectFilesAction } from "@/app/actions/files";
 import { routeToAgent, type RouterPage } from "@/lib/agent/router";
 import { getUserSelectableAgentModes } from "@/lib/agent/feature-flags";
 import { recordContextCaptureMetric } from "@/lib/context-capture/telemetry";
 import { AGENT_MODE_META, type AgentMode, type AutonomyPreset } from "@/types/agent";
-import type { FileAsset } from "@/types/files";
 import type { RetryModelExpectation } from "@/types/chat-unification";
 import { getContextTargetKey } from "@/lib/context-capture/targets";
 import { UserInputCard } from "../artifacts/UserInputCard";
 import styles from "./CopilotInput.module.css";
+
+const CopilotAttachmentButton = dynamic(() =>
+    import("./CopilotAttachmentButton").then((module) => module.CopilotAttachmentButton)
+);
+const CopilotAutonomyPresetButton = dynamic(() =>
+    import("./CopilotAutonomyPresetButton").then((module) => module.CopilotAutonomyPresetButton)
+);
 
 export type InputAttachment = {
     fileAssetId: string;
@@ -94,6 +99,7 @@ export type CopilotInputCoreProps = {
     onAnswerUserInput?: (callId: string, answer: string, page?: CopilotPage, section?: string) => void;
     /** Render ask_user inside the input shell (disabled by default to avoid duplicate UI with timeline cards). */
     showUserInputOverlay?: boolean;
+    onReady?: () => void;
 };
 
 export function CopilotInputCore({
@@ -135,6 +141,7 @@ export function CopilotInputCore({
     pendingUserInput = null,
     onAnswerUserInput,
     showUserInputOverlay = false,
+    onReady,
 }: CopilotInputCoreProps) {
     const [hasMounted, setHasMounted] = useState(false);
     const [input, setInput] = useState("");
@@ -149,6 +156,12 @@ export function CopilotInputCore({
     useEffect(() => {
         setHasMounted(true);
     }, []);
+
+    useEffect(() => {
+        if (!hasMounted) return;
+        if (!textareaRef.current) return;
+        onReady?.();
+    }, [hasMounted, onReady]);
 
     const selectedModel = selectedModelProp ?? uncontrolledSelectedModel;
     const isModelControlled = typeof selectedModelProp !== "undefined";
@@ -289,15 +302,6 @@ export function CopilotInputCore({
     const canShowAttachments =
         (showAttachments ?? true) && !!projectId && !!attachFile && !!attachExistingFile && !!clearAttachment;
 
-    // Attachment state
-    const fileInputRef = useRef<HTMLInputElement | null>(null);
-    const [showAttachPicker, setShowAttachPicker] = useState(false);
-    const [projectFiles, setProjectFiles] = useState<FileAsset[]>([]);
-    const [loadingProjectFiles, setLoadingProjectFiles] = useState(false);
-    // 30-second TTL cache for the project file list so repeated popover opens are instant
-    const fileListCacheRef = useRef<{ files: FileAsset[]; fetchedAt: number } | null>(null);
-    const FILE_LIST_TTL_MS = 30_000;
-
     const handleSend = useCallback(() => {
         if (sendLockRef.current) return;
         const text = input.trim();
@@ -343,42 +347,11 @@ export function CopilotInputCore({
         return () => window.removeEventListener("keydown", onWindowKeyDown);
     }, [handleStop, isLoading, voiceState]);
 
-    const handleUploadNew = useCallback(() => {
-        if (!canShowAttachments) return;
-        setShowAttachPicker(false);
-        requestAnimationFrame(() => fileInputRef.current?.click());
-    }, [canShowAttachments]);
-
-    const handleFileSelected = useCallback((e: ChangeEvent<HTMLInputElement>) => {
-        if (!attachFile) return;
-        const file = e.target.files?.[0];
-        if (!file) return;
-        if (!file.name.toLowerCase().endsWith(".pdf")) return;
-        attachFile(file);
-        e.target.value = "";
-    }, [attachFile]);
-
-    const handleAttachExisting = useCallback((fileAssetId: string) => {
-        if (!attachExistingFile) return;
-        setShowAttachPicker(false);
-        attachExistingFile(fileAssetId);
-    }, [attachExistingFile]);
-
     const selectedModelInfo = USER_SELECTABLE_MODELS.find((m) => m.id === selectedModel);
     const ALL_MODES: AgentMode[] = getUserSelectableAgentModes();
 
     return (
         <>
-            {canShowAttachments && (
-                <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept=".pdf"
-                    style={{ display: "none" }}
-                    onChange={handleFileSelected}
-                />
-            )}
-
             <form
                 className={styles.inputBox}
                 onSubmit={(e) => {
@@ -686,64 +659,11 @@ export function CopilotInputCore({
                         )}
 
                         {canShowAutonomy && (hasMounted ? (
-                            <DropdownMenu.Root>
-                                <DropdownMenu.Trigger asChild>
-                                    <button
-                                        type="button"
-                                        className={styles.presetBtn}
-                                        title={`Autonomy: ${autonomyPreset}`}
-                                    >
-                                        <span className="material-icons-round" style={{ fontSize: 14 }}>
-                                            {autonomyPreset === "manual" ? "back_hand"
-                                                : autonomyPreset === "autonomous" ? "smart_toy"
-                                                : autonomyPreset === "custom" ? "tune"
-                                                : "handshake"}
-                                        </span>
-                                        <span>
-                                            {autonomyPreset === "manual" ? "Manual"
-                                                : autonomyPreset === "autonomous" ? "Auto"
-                                                : autonomyPreset === "custom" ? "Custom"
-                                                : "Assisted"}
-                                        </span>
-                                        <span className="material-icons-round" style={{ fontSize: 14 }}>expand_more</span>
-                                    </button>
-                                </DropdownMenu.Trigger>
-                                <DropdownMenu.Portal>
-                                    <DropdownMenu.Content className={styles.presetDropdown} side="top" align="start" sideOffset={4}>
-                                        <DropdownMenu.RadioGroup
-                                            value={autonomyPreset}
-                                            onValueChange={(v) => updateAutonomyPreset?.(v as AutonomyPreset)}
-                                        >
-                                            {([
-                                                { key: "manual" as const, icon: "back_hand", label: "Manual", desc: "Suggest only" },
-                                                { key: "assisted" as const, icon: "handshake", label: "Assisted", desc: "Propose & confirm" },
-                                                { key: "autonomous" as const, icon: "smart_toy", label: "Auto", desc: "Act & notify" },
-                                            ]).map((preset) => (
-                                                <DropdownMenu.RadioItem
-                                                    key={preset.key}
-                                                    value={preset.key}
-                                                    className={`${styles.presetItem} ${autonomyPreset === preset.key ? styles.presetItemActive : ""}`}
-                                                >
-                                                    <span className={`material-icons-round ${styles.presetItemIcon}`}>
-                                                        {preset.icon}
-                                                    </span>
-                                                    <span className={styles.presetItemName}>{preset.label}</span>
-                                                    <span className={styles.presetItemDesc}>{preset.desc}</span>
-                                                </DropdownMenu.RadioItem>
-                                            ))}
-                                        </DropdownMenu.RadioGroup>
-                                        <DropdownMenu.Separator className={styles.presetDivider} />
-                                        <DropdownMenu.Item
-                                            className={`${styles.presetItem} ${autonomyPreset === "custom" ? styles.presetItemActive : ""}`}
-                                            onSelect={() => setShowAutonomySettings?.(true)}
-                                        >
-                                            <span className={`material-icons-round ${styles.presetItemIcon}`}>tune</span>
-                                            <span className={styles.presetItemName}>Customize...</span>
-                                            <span className={styles.presetItemDesc}>Per-tool settings</span>
-                                        </DropdownMenu.Item>
-                                    </DropdownMenu.Content>
-                                </DropdownMenu.Portal>
-                            </DropdownMenu.Root>
+                            <CopilotAutonomyPresetButton
+                                autonomyPreset={autonomyPreset}
+                                onUpdateAutonomyPreset={updateAutonomyPreset!}
+                                onOpenAutonomySettings={() => setShowAutonomySettings?.(true)}
+                            />
                         ) : (
                             <button
                                 type="button"
@@ -768,107 +688,13 @@ export function CopilotInputCore({
                         ))}
 
                         {canShowAttachments && (hasMounted ? (
-                            <Popover.Root
-                                open={showAttachPicker}
-                                onOpenChange={(open) => {
-                                    if (open && projectId) {
-                                        const cache = fileListCacheRef.current;
-                                        const isFresh = cache && (Date.now() - cache.fetchedAt) < FILE_LIST_TTL_MS;
-                                        if (isFresh) {
-                                            // Cache hit — show instantly, no loading state
-                                            setProjectFiles(cache.files);
-                                        } else if (!loadingProjectFiles) {
-                                            setLoadingProjectFiles(true);
-                                            listProjectFilesAction(projectId)
-                                                .then((result) => {
-                                                    if (!result.success) { console.error(result.error); return; }
-                                                    const pdfs = result.data.filter((f) => f.format === "pdf" || f.mimeType.includes("pdf"));
-                                                    fileListCacheRef.current = { files: pdfs, fetchedAt: Date.now() };
-                                                    setProjectFiles(pdfs);
-                                                })
-                                                .catch(console.error)
-                                                .finally(() => setLoadingProjectFiles(false));
-                                        }
-                                    }
-                                    setShowAttachPicker(open);
-                                }}
-                            >
-                                <Popover.Trigger asChild>
-                                    <button
-                                        type="button"
-                                        className={`${styles.actionBtn} ${styles.attachBtn}`}
-                                        aria-label="Attach file"
-                                        title="Attach file"
-                                        disabled={isAttaching}
-                                    >
-                                        <span className="material-icons-round">
-                                            {isAttaching ? "hourglass_top" : "attach_file"}
-                                        </span>
-                                    </button>
-                                </Popover.Trigger>
-                                <Popover.Portal>
-                                    <Popover.Content className={styles.attachPicker} side="top" align="start" sideOffset={6}>
-                                        <button
-                                            type="button"
-                                            className={styles.attachPickerItem}
-                                            onClick={handleUploadNew}
-                                        >
-                                            <span className="material-icons-round" style={{ fontSize: 16 }}>upload_file</span>
-                                            <span>Upload PDF</span>
-                                        </button>
-                                        {projectFiles.length > 0 && (() => {
-                                            const thisStudyFiles = studyId
-                                                ? projectFiles.filter((f) => f.studyId === studyId)
-                                                : [];
-                                            const otherFiles = studyId
-                                                ? projectFiles.filter((f) => f.studyId !== studyId)
-                                                : projectFiles;
-                                            return (
-                                                <>
-                                                    <div className={styles.attachPickerDivider} />
-                                                    {thisStudyFiles.length > 0 && (
-                                                        <>
-                                                            <div className={styles.attachPickerLabel}>This study</div>
-                                                            {thisStudyFiles.map((file) => (
-                                                                <button
-                                                                    key={file.id}
-                                                                    type="button"
-                                                                    className={styles.attachPickerItem}
-                                                                    onClick={() => handleAttachExisting(file.id)}
-                                                                >
-                                                                    <span className="material-icons-round" style={{ fontSize: 16 }}>description</span>
-                                                                    <span className={styles.attachPickerFileName}>{file.filename}</span>
-                                                                </button>
-                                                            ))}
-                                                        </>
-                                                    )}
-                                                    {otherFiles.length > 0 && (
-                                                        <>
-                                                            <div className={styles.attachPickerLabel}>
-                                                                {thisStudyFiles.length > 0 ? "Other studies" : "From project studies"}
-                                                            </div>
-                                                            {otherFiles.slice(0, 10).map((file) => (
-                                                                <button
-                                                                    key={file.id}
-                                                                    type="button"
-                                                                    className={styles.attachPickerItem}
-                                                                    onClick={() => handleAttachExisting(file.id)}
-                                                                >
-                                                                    <span className="material-icons-round" style={{ fontSize: 16 }}>description</span>
-                                                                    <span className={styles.attachPickerFileName}>{file.filename}</span>
-                                                                </button>
-                                                            ))}
-                                                        </>
-                                                    )}
-                                                </>
-                                            );
-                                        })()}
-                                        {loadingProjectFiles && (
-                                            <div className={styles.attachPickerLoading}>Loading...</div>
-                                        )}
-                                    </Popover.Content>
-                                </Popover.Portal>
-                            </Popover.Root>
+                            <CopilotAttachmentButton
+                                projectId={projectId!}
+                                studyId={studyId}
+                                isAttaching={isAttaching}
+                                onAttachFile={attachFile!}
+                                onAttachExistingFile={attachExistingFile!}
+                            />
                         ) : (
                             <button
                                 type="button"
@@ -876,7 +702,6 @@ export function CopilotInputCore({
                                 aria-label="Attach file"
                                 title="Attach file"
                                 disabled={isAttaching}
-                                onClick={handleUploadNew}
                             >
                                 <span className="material-icons-round">
                                     {isAttaching ? "hourglass_top" : "attach_file"}

@@ -586,6 +586,12 @@ export type TimelineRendererProps = {
     onLoadOlder?: () => Promise<void>;
     /** Exposes the scroll container element to parent layout surfaces. */
     onContainerElementChange?: (node: HTMLDivElement | null) => void;
+    /** Optional client-side windowing for long timelines. Defaults to rendering all items. */
+    initialVisibleCount?: number;
+    /** Number of hidden items to reveal per click when client-side windowing is enabled. */
+    visibleStep?: number;
+    /** Route-local readiness callback once the currently visible timeline settles. */
+    onTimelineReady?: (details: { visibleItems: number; hiddenItems: number; totalItems: number }) => void;
 };
 
 export function TimelineRenderer({
@@ -613,6 +619,9 @@ export function TimelineRenderer({
     isLoadingOlder,
     onLoadOlder,
     onContainerElementChange,
+    initialVisibleCount,
+    visibleStep = 60,
+    onTimelineReady,
 }: TimelineRendererProps) {
     const params = useParams();
     const routeProjectId = params && typeof params === "object" && "id" in params
@@ -687,8 +696,26 @@ export function TimelineRenderer({
         prevLoadingRef.current = isLoading;
     }, [isLoading, notifyStreamStart]);
 
+    const windowSize = initialVisibleCount && initialVisibleCount > 0 ? initialVisibleCount : null;
+    const [visibleCount, setVisibleCount] = useState<number>(() => {
+        if (!windowSize) return timeline.length;
+        return Math.min(windowSize, timeline.length);
+    });
+
+    useEffect(() => {
+        if (!windowSize) {
+            setVisibleCount(timeline.length);
+            return;
+        }
+        setVisibleCount(Math.min(windowSize, timeline.length));
+    }, [conversationId, timeline.length, windowSize]);
+
+    const effectiveVisibleCount = windowSize ? Math.min(visibleCount, timeline.length) : timeline.length;
+    const hiddenItemCount = Math.max(0, timeline.length - effectiveVisibleCount);
+    const visibleTimeline = hiddenItemCount > 0 ? timeline.slice(-effectiveVisibleCount) : timeline;
+    const visibleFirstTimelineId = visibleTimeline[0]?.id ?? null;
     // ── Content change — schedule scroll if pinned ──────────────────────────
-    useLayoutEffect(() => { notifyContentChanged(); }, [timeline, notifyContentChanged]);
+    useLayoutEffect(() => { notifyContentChanged(); }, [notifyContentChanged, timeline, visibleFirstTimelineId, effectiveVisibleCount]);
     useEffect(() => {
         return () => {
             if (approveAllDismissTimerRef.current) {
@@ -719,15 +746,15 @@ export function TimelineRenderer({
     // ── Prepend anchor for "load older messages" ─────────────────────────
     const firstItemRef = useRef<HTMLDivElement | null>(null);
     const pendingPrependRef = useRef<{ firstIdBeforeLoad: string | null } | null>(null);
-    const firstTimelineId = timeline[0]?.id ?? null;
-    const latestFirstTimelineIdRef = useRef<string | null>(firstTimelineId);
+    const revealPendingRef = useRef(false);
+    const latestFirstTimelineIdRef = useRef<string | null>(visibleFirstTimelineId);
     useLayoutEffect(() => {
-        latestFirstTimelineIdRef.current = firstTimelineId;
-    }, [firstTimelineId]);
+        latestFirstTimelineIdRef.current = visibleFirstTimelineId;
+    }, [visibleFirstTimelineId]);
 
     const handleLoadOlder = useCallback(async () => {
         if (!onLoadOlder) return;
-        const firstIdBeforeLoad = firstTimelineId;
+        const firstIdBeforeLoad = visibleFirstTimelineId;
         capturePrependAnchor(firstItemRef.current);
         pendingPrependRef.current = { firstIdBeforeLoad };
         await onLoadOlder();
@@ -738,18 +765,41 @@ export function TimelineRenderer({
         ) {
             pendingPrependRef.current = null;
         }
-    }, [onLoadOlder, capturePrependAnchor, firstTimelineId]);
+    }, [onLoadOlder, capturePrependAnchor, visibleFirstTimelineId]);
+
+    const handleRevealEarlier = useCallback(() => {
+        if (hiddenItemCount <= 0) return;
+        capturePrependAnchor(firstItemRef.current);
+        revealPendingRef.current = true;
+        setVisibleCount((current) => Math.min(timeline.length, current + Math.max(visibleStep, 1)));
+    }, [capturePrependAnchor, hiddenItemCount, timeline.length, visibleStep]);
 
     // Restore viewport after prepend
     useLayoutEffect(() => {
         const pending = pendingPrependRef.current;
         if (!pending) return;
         // Restore only once a prepend has actually changed the first visible item.
-        if (firstTimelineId !== pending.firstIdBeforeLoad) {
+        if (visibleFirstTimelineId !== pending.firstIdBeforeLoad) {
             restorePrependAnchor();
             pendingPrependRef.current = null;
         }
-    }, [firstTimelineId, restorePrependAnchor]);
+    }, [restorePrependAnchor, visibleFirstTimelineId]);
+
+    useLayoutEffect(() => {
+        if (!revealPendingRef.current) return;
+        restorePrependAnchor();
+        revealPendingRef.current = false;
+    }, [restorePrependAnchor, visibleFirstTimelineId]);
+
+    useEffect(() => {
+        if (!onTimelineReady) return;
+        if (isConversationLoading) return;
+        onTimelineReady({
+            visibleItems: visibleTimeline.length,
+            hiddenItems: hiddenItemCount,
+            totalItems: timeline.length,
+        });
+    }, [hiddenItemCount, isConversationLoading, onTimelineReady, timeline.length, visibleTimeline.length]);
 
     const handleCopy = useCallback((text: string) => {
         navigator.clipboard.writeText(text).catch(console.error);
@@ -1130,8 +1180,8 @@ export function TimelineRenderer({
     };
 
     // Streaming cursor: which assistant message is actively receiving tokens
-    const lastAssistantIndex = timeline.length > 0 && timeline[timeline.length - 1].type === "assistant_message"
-        ? timeline.length - 1
+    const lastAssistantIndex = visibleTimeline.length > 0 && visibleTimeline[visibleTimeline.length - 1].type === "assistant_message"
+        ? visibleTimeline.length - 1
         : -1;
     const isStreaming = isLoading && lastAssistantIndex >= 0;
 
@@ -1274,7 +1324,24 @@ export function TimelineRenderer({
                         </button>
                     </div>
                 )}
-                {timeline.map((item, index) => {
+                {hiddenItemCount > 0 && (
+                    <div className={styles.loadOlderRow}>
+                        <button
+                            type="button"
+                            className={styles.loadOlderBtn}
+                            onClick={handleRevealEarlier}
+                            aria-label={`Show ${Math.min(visibleStep, hiddenItemCount)} earlier messages`}
+                        >
+                            <span className="material-icons-round" style={{ fontSize: 16 }}>
+                                expand_less
+                            </span>
+                            {`Show ${Math.min(visibleStep, hiddenItemCount)} earlier ${
+                                Math.min(visibleStep, hiddenItemCount) === 1 ? "message" : "messages"
+                            }`}
+                        </button>
+                    </div>
+                )}
+                {visibleTimeline.map((item, index) => {
                     const rendered = renderTimelineItem(item, index);
                     if (index === 0) {
                         return (
@@ -1285,7 +1352,7 @@ export function TimelineRenderer({
                     }
                     return rendered;
                 })}
-                {isLoading && timeline.length > 0 && timeline[timeline.length - 1].type === "user_message" && (
+                {isLoading && visibleTimeline.length > 0 && visibleTimeline[visibleTimeline.length - 1].type === "user_message" && (
                     <div className={styles.loadingIndicator}>
                         <div className={styles.loadingDots}>
                             <span className={styles.loadingDot} />

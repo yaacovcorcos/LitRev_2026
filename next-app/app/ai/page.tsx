@@ -1,12 +1,11 @@
 "use client";
 
 import { AppShell } from "@/components/AppShell";
-import { TimelineRenderer } from "@/components/copilot/TimelineRenderer";
 import { CopilotInputCoreClient } from "@/components/copilot/CopilotInputCoreClient";
-import { ReasoningModeDropdown } from "@/components/copilot/ReasoningModeDropdown";
 import { useProjects } from "@/contexts/ProjectsContext";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import dynamic from "next/dynamic";
 import {
   listConversations,
   createConversation,
@@ -59,6 +58,32 @@ import {
 } from "@/lib/ai/config";
 import { useRouter } from "next/navigation";
 import styles from "./ai-view.module.css";
+
+const AiTimelineRenderer = dynamic(() =>
+  import("@/components/copilot/TimelineRenderer").then((module) => module.TimelineRenderer)
+);
+const AiReasoningModeDropdown = dynamic(() =>
+  import("@/components/copilot/ReasoningModeDropdown").then((module) => module.ReasoningModeDropdown)
+);
+
+const AI_ROUTE_MEASURE = "litrev-ai-route";
+const AI_COMPOSER_MEASURE = "litrev-ai-composer-ready";
+const AI_TIMELINE_MEASURE = "litrev-ai-timeline-ready";
+const AI_VISIBLE_TIMELINE_INITIAL_COUNT = 80;
+const AI_VISIBLE_TIMELINE_STEP = 80;
+
+declare global {
+  interface Window {
+    __litrevAiPerf?: {
+      activeConversationId: string | null;
+      composerReadyMs?: number;
+      timelineReadyMs?: number;
+      visibleItems?: number;
+      hiddenItems?: number;
+      totalItems?: number;
+    };
+  }
+}
 
 const quickActions = [
   { id: "summarize", icon: "description", label: "Summarize a paper", prompt: "I need help summarizing a paper. Here's the abstract: " },
@@ -421,6 +446,9 @@ export default function AIView() {
   const streamGenRef = useRef(0);
   const sendLockRef = useRef(false);
   const activeConversationIdRef = useRef<string | null>(null);
+  const routePerfStartRef = useRef<number | null>(null);
+  const measuredComposerConversationRef = useRef<string | null>(null);
+  const measuredTimelineConversationRef = useRef<string | null>(null);
 
   const reasoningSupport: ReasoningSupportTier = useMemo(
     () => getReasoningSupportTier(selectedModel),
@@ -477,6 +505,58 @@ export default function AIView() {
 
   useEffect(() => {
     activeConversationIdRef.current = activeConversationId;
+  }, [activeConversationId]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    routePerfStartRef.current = performance.now();
+    measuredComposerConversationRef.current = null;
+    measuredTimelineConversationRef.current = null;
+    performance.mark(`${AI_ROUTE_MEASURE}:start`);
+    window.__litrevAiPerf = {
+      activeConversationId: activeConversationId ?? null,
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    measuredComposerConversationRef.current = null;
+    measuredTimelineConversationRef.current = null;
+    routePerfStartRef.current = performance.now();
+    performance.mark(`${AI_ROUTE_MEASURE}:start`);
+    window.__litrevAiPerf = {
+      ...(window.__litrevAiPerf ?? {}),
+      activeConversationId: activeConversationId ?? null,
+    };
+  }, [activeConversationId]);
+
+  const markComposerReady = useCallback(() => {
+    if (typeof window === "undefined") return;
+    if (measuredComposerConversationRef.current === activeConversationId) return;
+    measuredComposerConversationRef.current = activeConversationId;
+    const elapsed = routePerfStartRef.current !== null ? Math.round(performance.now() - routePerfStartRef.current) : undefined;
+    performance.mark(`${AI_COMPOSER_MEASURE}:${activeConversationId ?? "empty"}`);
+    window.__litrevAiPerf = {
+      ...(window.__litrevAiPerf ?? {}),
+      activeConversationId: activeConversationId ?? null,
+      composerReadyMs: elapsed,
+    };
+  }, [activeConversationId]);
+
+  const handleTimelineReady = useCallback((details: { visibleItems: number; hiddenItems: number; totalItems: number }) => {
+    if (typeof window === "undefined") return;
+    if (measuredTimelineConversationRef.current === activeConversationId) return;
+    measuredTimelineConversationRef.current = activeConversationId;
+    const elapsed = routePerfStartRef.current !== null ? Math.round(performance.now() - routePerfStartRef.current) : undefined;
+    performance.mark(`${AI_TIMELINE_MEASURE}:${activeConversationId ?? "empty"}`);
+    window.__litrevAiPerf = {
+      ...(window.__litrevAiPerf ?? {}),
+      activeConversationId: activeConversationId ?? null,
+      timelineReadyMs: elapsed,
+      visibleItems: details.visibleItems,
+      hiddenItems: details.hiddenItems,
+      totalItems: details.totalItems,
+    };
   }, [activeConversationId]);
 
   const updateReasoningMode = useCallback((mode: ReasoningMode) => {
@@ -1986,7 +2066,7 @@ export default function AIView() {
 
             <div className={styles.headerActions}>
               {showReasoningControls && (
-                <ReasoningModeDropdown
+                <AiReasoningModeDropdown
                   reasoningMode={reasoningMode}
                   onReasoningModeChange={updateReasoningMode}
                   reasoningSupport={reasoningSupport}
@@ -2004,7 +2084,7 @@ export default function AIView() {
                     </span>
                     <span className="material-icons-round">expand_more</span>
                   </button>
-                </ReasoningModeDropdown>
+                </AiReasoningModeDropdown>
               )}
               <button
                 type="button"
@@ -2028,7 +2108,7 @@ export default function AIView() {
           </div>
 
           <div className={styles.chatContent}>
-            <TimelineRenderer
+            <AiTimelineRenderer
               variant="page"
               projectId={selectedProjectId ?? undefined}
               items={activeTimeline}
@@ -2036,6 +2116,9 @@ export default function AIView() {
               isLoading={isTyping}
               isConversationLoading={isConversationLoading}
               conversationId={activeConversationId ?? undefined}
+              initialVisibleCount={AI_VISIBLE_TIMELINE_INITIAL_COUNT}
+              visibleStep={AI_VISIBLE_TIMELINE_STEP}
+              onTimelineReady={handleTimelineReady}
               emptyState={{
                 icon: "auto_awesome",
                 title: "How can I help with your research?",
@@ -2075,6 +2158,7 @@ export default function AIView() {
                 onCompress={handleCompressHistory}
                 canCompress={activeTimeline.length >= 20}
                 isCompressing={isCompressing}
+                onReady={markComposerReady}
               />
               <p className={styles.disclaimer}>AI can make mistakes. Please verify important information.</p>
             </div>

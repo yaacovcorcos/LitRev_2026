@@ -25,7 +25,8 @@
     "memory:validate": "tsx scripts/validate-memory-rollout.ts",
     "perf:budget-check": "node scripts/perf-budget-check.mjs",
     "perf:generate-results": "tsx scripts/generate-perf-results.ts",
-    "perf:baseline-report": "node scripts/perf-baseline-report.mjs"
+    "perf:baseline-report": "node scripts/perf-baseline-report.mjs",
+    "perf:ai-bundle-report": "tsx scripts/report-ai-bundle.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.73.0",
