@@ -67,12 +67,14 @@ export type UserInputRequest = {
 
 export type AIErrorKind =
     | "provider_request"
+    | "model_capability"
     | "tool_call_parse"
     | "tool_schema_validation"
     | "runtime";
 
 export type AIErrorSource =
     | "provider_request"
+    | "request_policy"
     | "provider_tool_call"
     | "tool_validator"
     | "runtime";

@@ -105,7 +105,7 @@ Every fix entry must include:
 - **Delegation Runtime Exists But Is Not Yet Safe Enough:** specialist delegation is shipped behind flags, but child autonomy and child clarification still have correctness gaps tracked under `FIX-001`.
 - **Popup Runtime Is Still Lighter Than Copilot:** popup remains on a non-artifact path, so protocol mutation capability is not yet honest there; tracked under `FIX-003`.
 - **General Mode Is Still Too Broad:** default `general` behavior can overexpose tools and rely on prompt-era clarification behavior; tracked under `FIX-004`.
-- **Model Request Capability Handling Is Under-Specified:** provider adapters still assume too much shared request compatibility across models; tracked under `FIX-010`.
+- **Model Requests Now Use Per-Model Capability Policy:** one authoritative model capability registry now feeds a shared request-policy normalizer, OpenAI/xAI/Google/Anthropic all reuse it before send, fixed-default OpenAI models omit unsupported `temperature`, and unsupported explicit reasoning budgets fail locally as structured `model_capability` errors instead of raw provider 400s.
 - **Protocol Mutation Uses Shared Field-Aware Normalization:** `update_protocol`, same-turn tool-call sanitization, and repeat detection now reuse the same field/value normalize-classify path so unambiguous wrapper shapes are repaired consistently, whitespace-only field mismatches no longer diverge between validation and execution, and normalization/hashing paths cap nested input depth safely.
 - **Tool Prerequisites Are Not First-Class:** the runtime still lacks a formal model for required project, study, criteria, or PDF context before tool execution; tracked under `FIX-008`.
 - **Run Recovery Semantics Are Structured On Timeline-Based Surfaces:** `/ai` and project copilot now preserve deterministic failure envelopes into client state, retry affordances are derived from structured metadata, and server finalization uses explicit run facts so failed no-answer runs no longer masquerade as `completed`. Popup now retains lightweight error metadata, but it still does not have full timeline-style parity.
@@ -136,16 +136,6 @@ Every fix entry must include:
     - missing prerequisites stop execution before the tool runs
     - blocked tools route to `ask_user`, a read tool, or a clear user-facing explanation instead of blind action attempts
     - `general` mode no longer performs obviously impossible actions before clarifying
-
-- [ ] `FIX-010` Model capability negotiation
-  - Severity: `P0`
-  - Problem: provider adapters still assume a uniform request contract and can pass unsupported params such as shared temperature defaults to models that reject them.
-  - Supporting detail: canonical plan only for now.
-  - Exit criteria:
-    - request normalization is policy-driven per provider/model
-    - unsupported params are omitted or coerced before the request is sent
-    - provider capability mismatches fail as classified runtime errors, not generic request failures
-    - tests cover known incompatible models
 
 - [ ] `FIX-001` Delegation safety and child clarification
   - Severity: `P0`
@@ -208,14 +198,13 @@ Every fix entry must include:
 Work should proceed in this order unless a production incident forces reprioritization:
 
 1. `FIX-008` tool prerequisite gating and action eligibility
-2. `FIX-010` model capability negotiation
-3. `FIX-001` delegation safety
-4. `FIX-002` plan execution confinement
-5. `FIX-003` popup action-surface honesty
-6. `FIX-004` general-mode scoping and clarification cleanup
-7. `FIX-005` docs/evals/provenance hardening
-8. `FIX-011` shared failure handling and popup parity
-9. roadmap phases after the active fixes above are stable
+2. `FIX-001` delegation safety
+3. `FIX-002` plan execution confinement
+4. `FIX-003` popup action-surface honesty
+5. `FIX-004` general-mode scoping and clarification cleanup
+6. `FIX-005` docs/evals/provenance hardening
+7. `FIX-011` shared failure handling and popup parity
+8. roadmap phases after the active fixes above are stable
 
 ## End-to-End Delivery Program
 
@@ -223,7 +212,7 @@ Work should proceed in this order unless a production incident forces reprioriti
 
 - `FIX-007` shipped the protocol-mutation normalization/suppression layer.
 - `FIX-009` shipped truthful failure handling: structured error envelopes now survive processor/reducer/timeline state, non-retryable failures no longer default back to retryable UI affordances, and server finalization emits one fallback explanation for deterministic no-answer failures while deriving `runStatus` from explicit run facts.
-- Land `FIX-010` next so model-specific request mismatches stop failing before meaningful work begins.
+- `FIX-010` shipped provider/model request-policy normalization: one authoritative model registry now drives temperature/reasoning capability handling, provider adapters reuse shared builders for `chat()` and `streamChat()`, and blocked reasoning-budget mismatches fail locally as structured capability errors instead of provider-side request failures.
 
 ### Track B — Action Eligibility and Honest Execution
 
@@ -361,6 +350,7 @@ These files are supporting documents. Status, priority, and closure rules live h
 
 ## Recently Completed
 
+- [x] Implemented `FIX-010` model capability negotiation: one authoritative model registry now drives per-model request-policy normalization, OpenAI/xAI/Google/Anthropic all reuse shared request builders for `chat()` and `streamChat()`, fixed-default OpenAI models omit unsupported temperature params, and unsupported explicit reasoning budgets fail locally as structured `model_capability` errors.
 - [x] Added repo-review baseline indexing and shared failure follow-up hardening: deep review comparisons now have a durable runbook anchor, shared `stream_error` intents are consumed by both timeline adapters, and popup now retains lightweight structured error metadata even though it still lacks full timeline-style parity.
 - [x] Implemented `FIX-009` recovery semantics and truthful run outcomes: structured error envelopes now survive through stream processor, reducer, and timeline state; retryable UI affordances no longer default to true for deterministic failures; and server finalization derives `runStatus` from explicit run facts while emitting one fallback assistant explanation for deterministic no-answer failures.
 - [x] Implemented `FIX-007` protocol mutation hardening: `update_protocol`, same-turn tool-call sanitization, and repeat detection now share one field-aware normalize/classify path, trim whitespace-only field mismatches consistently at execution time, and cap nested normalization/hashing depth so malformed tool payloads cannot recurse indefinitely.
