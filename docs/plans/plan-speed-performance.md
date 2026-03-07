@@ -92,6 +92,9 @@ Route prefetch policy:
   - `/project/[id]/notes`
 - Profiles:
   - `slow-network`
+- Current interpretation:
+  - observational shell/web-vitals coverage only
+  - route-ready instrumentation for `protocol` / `notes` is a separate follow-up if needed
 
 ### Budget Table
 | Metric | Desktop Budget | Mobile Budget | Slow Network Budget |
@@ -291,7 +294,9 @@ Rules:
     - populated `/ai` timeline-ready regressed by `53 ms`
   - Next narrow follow-up should target `/ai` initial route hydration and history/sidebar cost; do not fork the shared composer and do not expand shared timeline semantics until a new populated-route measurement shows that path is still dominant.
 - [ ] `SPD-006` Expand the probe matrix to nightly-only routes and slow-network coverage.
-  - Keep nightly-only routes (`/`, `/project/[id]/protocol`, `/project/[id]/notes`) and the slow-network profile out of the PR gate until their artifacts are stable.
+  - Nightly coverage must run from the separate `nightlyRoutes` / `nightlyProfiles` matrix contract and write to `output/performance/nightly/**`; do not overload the PR-gated mandatory matrix or `output/performance/results/results-<sha>.json`.
+  - Treat nightly `/`, `/project/[id]/protocol`, and `/project/[id]/notes` probes as shell/web-vitals observational coverage for now. Route-ready instrumentation is a separate follow-up if those surfaces become active optimization targets.
+  - Keep nightly-only routes and the `slow-network` profile out of the PR gate until their artifacts are stable across consecutive nightly runs.
 
 ## Recently Completed
 - [x] `SPD-004` Preload/prefetch policy is now tightened: home/workspace project links and the resume CTA disable default route prefetch, the workspace index query is narrowed at the Prisma layer to index fields only, and project-shell tab warming now removes focus/coarse-pointer speculative fetches while keeping only a provisional `protocol` / `ledger` hover allowlist.

@@ -3,7 +3,10 @@ import type { PerformanceRouteTemplate } from "@/types/performance-telemetry";
 export const PROBE_METRIC_NAMES = ["LCP", "INP", "CLS", "TTFB"] as const;
 export type ProbeMetricName = (typeof PROBE_METRIC_NAMES)[number];
 
-export const SUPPORTED_PROBE_PROFILES = ["desktop-normal", "mobile-mid"] as const;
+export const PROBE_MATRIX_NAMES = ["mandatory", "nightly"] as const;
+export type ProbeMatrixName = (typeof PROBE_MATRIX_NAMES)[number];
+
+export const SUPPORTED_PROBE_PROFILES = ["desktop-normal", "mobile-mid", "slow-network"] as const;
 export type ProbeProfile = (typeof SUPPORTED_PROBE_PROFILES)[number];
 
 export type ProbeSample = {
@@ -15,6 +18,7 @@ export type ProbeSample = {
 type ProbeArtifactArgs = {
   capturedAt: string;
   commit: string;
+  matrix: ProbeMatrixName;
   source: string;
   runId: string;
   samples: ProbeSample[];
@@ -61,6 +65,7 @@ export function percentile75(values: number[]): number {
 export function buildProbeResultsArtifact({
   capturedAt,
   commit,
+  matrix,
   source,
   runId,
   samples,
@@ -106,9 +111,11 @@ export function buildProbeResultsArtifact({
   return {
     capturedAt,
     commit,
+    matrix,
     source,
     runId,
     metadata: {
+      matrix,
       sampleCount: samples.length,
       routeProfileSampleCounts,
     },
@@ -116,16 +123,16 @@ export function buildProbeResultsArtifact({
   };
 }
 
-export function findCoverageIssues(args: {
+export function findMatrixCoverageIssues(args: {
   results: ReturnType<typeof buildProbeResultsArtifact>;
-  mandatoryRoutes: string[];
-  mandatoryProfiles: string[];
+  routes: string[];
+  profiles: string[];
   minSamples: number;
 }) {
   const issues: string[] = [];
 
-  for (const routeTemplate of args.mandatoryRoutes) {
-    for (const profile of args.mandatoryProfiles) {
+  for (const routeTemplate of args.routes) {
+    for (const profile of args.profiles) {
       const entry = args.results.routes[routeTemplate]?.[profile];
       if (!entry) {
         issues.push(`[missing-route-profile] ${routeTemplate} ${profile}`);

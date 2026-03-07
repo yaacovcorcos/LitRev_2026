@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildProbeResultsArtifact,
-  findCoverageIssues,
+  findMatrixCoverageIssues,
   percentile75,
   type ProbeSample,
 } from "@/lib/performance-probe-results";
@@ -43,6 +43,7 @@ describe("performance-probe-results", () => {
     const artifact = buildProbeResultsArtifact({
       capturedAt: "2026-03-06T10:00:00.000Z",
       commit: "abc123",
+      matrix: "mandatory",
       source: "ci-probe-playwright",
       runId: "run-1",
       samples,
@@ -51,9 +52,11 @@ describe("performance-probe-results", () => {
     expect(artifact).toEqual({
       capturedAt: "2026-03-06T10:00:00.000Z",
       commit: "abc123",
+      matrix: "mandatory",
       source: "ci-probe-playwright",
       runId: "run-1",
       metadata: {
+        matrix: "mandatory",
         sampleCount: 9,
         routeProfileSampleCounts: {
           "/project/[id]:desktop-normal": 9,
@@ -75,10 +78,26 @@ describe("performance-probe-results", () => {
     });
   });
 
+  it("records the matrix in the artifact metadata", () => {
+    const artifact = buildProbeResultsArtifact({
+      capturedAt: "2026-03-06T10:00:00.000Z",
+      commit: "abc123",
+      matrix: "nightly",
+      source: "nightly-probe-playwright",
+      runId: "run-1",
+      samples: [makeSample({ routeTemplate: "/", profile: "slow-network" })],
+    });
+
+    expect(artifact.matrix).toBe("nightly");
+    expect(artifact.metadata.matrix).toBe("nightly");
+    expect(artifact.routes["/"]?.["slow-network"]?.samples).toBe(1);
+  });
+
   it("reports missing and insufficient coverage for required route/profile pairs", () => {
     const artifact = buildProbeResultsArtifact({
       capturedAt: "2026-03-06T10:00:00.000Z",
       commit: "abc123",
+      matrix: "mandatory",
       source: "ci-probe-playwright",
       runId: "run-1",
       samples: [
@@ -88,10 +107,10 @@ describe("performance-probe-results", () => {
     });
 
     expect(
-      findCoverageIssues({
+      findMatrixCoverageIssues({
         results: artifact,
-        mandatoryRoutes: ["/project/[id]", "/ai"],
-        mandatoryProfiles: ["desktop-normal", "mobile-mid"],
+        routes: ["/project/[id]", "/ai"],
+        profiles: ["desktop-normal", "mobile-mid"],
         minSamples: 2,
       }),
     ).toEqual([
@@ -100,5 +119,25 @@ describe("performance-probe-results", () => {
       "[missing-route-profile] /ai desktop-normal",
       "[insufficient-sample] /ai mobile-mid: samples=1, required=2",
     ]);
+  });
+
+  it("validates nightly route/profile coverage", () => {
+    const artifact = buildProbeResultsArtifact({
+      capturedAt: "2026-03-06T10:00:00.000Z",
+      commit: "abc123",
+      matrix: "nightly",
+      source: "nightly-probe-playwright",
+      runId: "run-1",
+      samples: [makeSample({ routeTemplate: "/project/[id]/notes", profile: "slow-network" })],
+    });
+
+    expect(
+      findMatrixCoverageIssues({
+        results: artifact,
+        routes: ["/project/[id]/notes"],
+        profiles: ["slow-network"],
+        minSamples: 1,
+      }),
+    ).toEqual([]);
   });
 });
