@@ -28,7 +28,8 @@ Define the canonical implementation plan for app speed, responsiveness, and stab
   - root overview entry no longer boots provider data by default
   - `protocol` deep links boot protocol only, and `ledger` deep links boot studies only
   - root conversation entry no longer uses provider eager boot; conversation state now bootstraps lazily from `useProjectState` with lightweight fallback counts and protocol-unknown routing until data settles
-- Project shell entry no longer prefetches sibling project routes on mount; tab hover/focus intent still warms route-specific project domains through `ProjectTabBar`.
+- Project shell entry no longer prefetches sibling project routes on mount; project-shell tab warming is now limited to pointer hover on the provisional `protocol` / `ledger` allowlist, while keyboard focus and coarse-pointer/mobile contexts no longer trigger speculative domain warmup.
+- Workspace project entry links now disable default route prefetch, and the workspace index query is narrowed at the Prisma layer to index fields only before hydration consumes the result.
 - Root overview entry keeps the header, vital signs, and workstation shells immediate while deferring the recent-activity fetch until idle.
 - Root overview workstation previews now load through a single combined overview action under one auth/validation envelope, reducing preview boot-time requests from three client actions to one while preserving per-card partial failure handling.
 - Three consecutive warn-mode calibration notes are archived under `docs/reports/performance/`.
@@ -265,26 +266,12 @@ Rules:
   - timeline rendering surfaces
 
 ## Active Tasks
-- [ ] `SPD-004` Optimize preloading and prefetch strategy:
-  - Primary metric:
-    - reduce unnecessary prefetch and warmup work without regressing next-intent navigation latency
-  - Target:
-    - keep default project entry free of sibling-route mount prefetch
-    - reduce hover/focus warmup to only measured high-value domains
-    - keep next-tab navigation latency regression within `<= 100ms` p75
-  - Keep the post-login workspace index lightweight and limited to index fields.
-  - Narrow the project list payload to lightweight index fields and add pagination or caps if workspace size grows.
-  - Do not treat auth success as a trigger for heavy project-domain warmup.
-  - Allow project-domain warmup only after project entry, and only for active-surface or measured high-value domains.
-  - Make sibling-route `router.prefetch(...)` evidence-based rather than default-on.
-  - Prefer intent-based prefetching for explicit navigation, hover intent, or last-opened-project resume.
-  - Preload only truly critical above-the-fold assets and data.
-  - Verify improvements on both desktop and mobile navigation flows.
 - [ ] `SPD-005` Reduce `/ai` bundle and timeline cost.
 - [ ] `SPD-006` Expand the probe matrix to nightly-only routes and slow-network coverage.
   - Keep nightly-only routes (`/`, `/project/[id]/protocol`, `/project/[id]/notes`) and the slow-network profile out of the PR gate until their artifacts are stable.
 
 ## Recently Completed
+- [x] `SPD-004` Preload/prefetch policy is now tightened: home/workspace project links and the resume CTA disable default route prefetch, the workspace index query is narrowed at the Prisma layer to index fields only, and project-shell tab warming now removes focus/coarse-pointer speculative fetches while keeping only a provisional `protocol` / `ledger` hover allowlist.
 - [x] `SPD-003` Root overview preview fetch dedupe is complete: workstation previews now load through one combined overview action with a single auth/validation boundary, and the page consumer keeps the same first-paint shell while reducing preview boot-time requests from `3` to `1`.
 - [x] `SPD-002` Project entry boot cleanup is complete: route-aware provider boot, lazy conversation bootstrap, and idle-deferred recent activity removed the avoidable non-active-surface root-entry work, so the remaining `/project/[id]` cost is now explicitly overview-owned and tracked under `SPD-003`.
 - [x] `SPD-002a` Project entry boot is now route-aware, and root conversation entry now bootstraps its project snapshot lazily from `useProjectState` instead of eager provider `protocol -> studies` boot; authoritative CI shows the change is safe, but `SPD-002` remains open because the root-entry `LCP` target was not met.

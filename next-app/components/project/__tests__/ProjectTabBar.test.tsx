@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ProjectTabBar } from "../ProjectTabBar";
+import { COARSE_POINTER_MEDIA_QUERY, MOBILE_VIEWPORT_MEDIA_QUERY } from "@/lib/mobile/breakpoints";
 
 // ── Mocks ────────────────────────────────────────────────────────────────────
 
@@ -29,6 +30,20 @@ describe("ProjectTabBar intent boost", () => {
         onConversationClick: vi.fn(),
     };
 
+    beforeEach(() => {
+        mockWarmDomain.mockClear();
+        window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+            matches: false,
+            media: query,
+            onchange: null,
+            addListener: vi.fn(),
+            removeListener: vi.fn(),
+            addEventListener: vi.fn(),
+            removeEventListener: vi.fn(),
+            dispatchEvent: vi.fn(),
+        })) as typeof window.matchMedia;
+    });
+
     it("calls warmDomain on tab hover for protocol", () => {
         render(<ProjectTabBar {...defaultProps} />);
         const protocolTab = screen.getByRole("tab", { name: /Protocol/i });
@@ -36,34 +51,63 @@ describe("ProjectTabBar intent boost", () => {
         expect(mockWarmDomain).toHaveBeenCalledWith("protocol");
     });
 
-    it("calls warmDomain on tab hover for draft", () => {
+    it("calls warmDomain on tab hover for ledger", () => {
+        render(<ProjectTabBar {...defaultProps} />);
+        const ledgerTab = screen.getByRole("tab", { name: /Ledger/i });
+        fireEvent.mouseEnter(ledgerTab);
+        expect(mockWarmDomain).toHaveBeenCalledWith("ledger");
+    });
+
+    it("does not call warmDomain on tab hover for draft", () => {
         render(<ProjectTabBar {...defaultProps} />);
         const draftTab = screen.getByRole("tab", { name: /Draft/i });
         fireEvent.mouseEnter(draftTab);
-        expect(mockWarmDomain).toHaveBeenCalledWith("draft");
+        expect(mockWarmDomain).not.toHaveBeenCalled();
     });
 
-    it("calls warmDomain on tab hover for memory", () => {
-        mockWarmDomain.mockClear();
+    it("does not call warmDomain on tab hover for memory", () => {
         render(<ProjectTabBar {...defaultProps} />);
         const memoryTab = screen.getByRole("tab", { name: /Memory/i });
         fireEvent.mouseEnter(memoryTab);
-        expect(mockWarmDomain).toHaveBeenCalledWith("memory");
+        expect(mockWarmDomain).not.toHaveBeenCalled();
+    });
+
+    it("does not call warmDomain on tab hover for notes", () => {
+        render(<ProjectTabBar {...defaultProps} />);
+        const notesTab = screen.getByRole("tab", { name: /Notes/i });
+        fireEvent.mouseEnter(notesTab);
+        expect(mockWarmDomain).not.toHaveBeenCalled();
     });
 
     it("does NOT call warmDomain for overview tab", () => {
-        mockWarmDomain.mockClear();
         render(<ProjectTabBar {...defaultProps} />);
         const overviewTab = screen.getByRole("tab", { name: /Overview/i });
         fireEvent.mouseEnter(overviewTab);
         expect(mockWarmDomain).not.toHaveBeenCalled();
     });
 
-    it("calls warmDomain on tab focus for ledger", () => {
-        mockWarmDomain.mockClear();
+    it("does not call warmDomain on tab focus", () => {
         render(<ProjectTabBar {...defaultProps} />);
         const ledgerTab = screen.getByRole("tab", { name: /Ledger/i });
         fireEvent.focus(ledgerTab);
-        expect(mockWarmDomain).toHaveBeenCalledWith("ledger");
+        expect(mockWarmDomain).not.toHaveBeenCalled();
+    });
+
+    it("does not warm domains on coarse-pointer or mobile contexts", () => {
+        window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+            matches: query === COARSE_POINTER_MEDIA_QUERY || query === MOBILE_VIEWPORT_MEDIA_QUERY,
+            media: query,
+            onchange: null,
+            addListener: vi.fn(),
+            removeListener: vi.fn(),
+            addEventListener: vi.fn(),
+            removeEventListener: vi.fn(),
+            dispatchEvent: vi.fn(),
+        })) as typeof window.matchMedia;
+
+        render(<ProjectTabBar {...defaultProps} />);
+        const protocolTab = screen.getByRole("tab", { name: /Protocol/i });
+        fireEvent.mouseEnter(protocolTab);
+        expect(mockWarmDomain).not.toHaveBeenCalled();
     });
 });
