@@ -8,6 +8,7 @@ import {
   type SharedStreamState,
 } from "@/lib/ai/shared-stream-reducer";
 import { isNavigationSafe } from "@/lib/ai/navigation-safety";
+import { buildClientErrorState } from "@/lib/ai/stream-error-ui";
 
 export type StreamMutableState = SharedStreamState;
 
@@ -143,6 +144,24 @@ function appendUserInputMessage(
   });
 }
 
+function appendStreamErrorMessage(
+  deps: StreamChunkDeps,
+  payload: Extract<SharedStreamIntent, { type: "stream_error" }>,
+) {
+  const errorState = buildClientErrorState(payload.errorMeta ?? payload.message);
+  deps.updateMessages((messages) => [
+    ...messages,
+    {
+      id: `error-${Date.now()}`,
+      sender: "ai",
+      text: errorState.message,
+      streamError: errorState.errorMeta,
+      createdAt: new Date().toISOString(),
+      context: { page: deps.page, section: deps.section },
+    },
+  ]);
+}
+
 function emitArtifactMessage(
   deps: StreamChunkDeps,
   state: StreamMutableState,
@@ -227,6 +246,7 @@ function applyIntent(
       return;
     }
     case "stream_error": {
+      appendStreamErrorMessage(deps, intent);
       return;
     }
     case "run_set": {

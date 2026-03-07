@@ -2,6 +2,7 @@ import type { ArtifactStatus, ArtifactType } from "@/types/artifacts";
 import type { AIStreamChunk, ChoiceOption, CopilotPage, UserInputRequest } from "@/types/ai";
 import type { TimelineItem } from "@/types/timeline";
 import { dispatchProjectDataChanged } from "@/lib/project-data-events";
+import { buildClientErrorState } from "@/lib/ai/stream-error-ui";
 import {
   createInitialSharedStreamState,
   reduceSharedStreamChunk,
@@ -200,6 +201,21 @@ export function createAiStreamRuntime(deps: AiStreamRuntimeDeps): AiStreamRuntim
     ]);
   };
 
+  const appendStreamError = (intent: Extract<SharedStreamIntent, { type: "stream_error" }>) => {
+    const errorState = buildClientErrorState(intent.errorMeta ?? intent.message);
+    updateCurrentTimeline((items) => [
+      ...items,
+      {
+        type: "error",
+        id: `error-${Date.now()}`,
+        message: errorState.message,
+        retryable: errorState.retryable,
+        errorMeta: errorState.errorMeta,
+        createdAt: now(),
+      },
+    ]);
+  };
+
   const appendUserInputRequest = (intent: Extract<SharedStreamIntent, { type: "user_input_append" }>) => {
     const requestId = `user-input-${intent.request.callId}`;
     updateCurrentTimeline((items) => {
@@ -259,6 +275,7 @@ export function createAiStreamRuntime(deps: AiStreamRuntimeDeps): AiStreamRuntim
         return;
       }
       case "stream_error": {
+        appendStreamError(intent);
         return;
       }
       case "run_set": {
