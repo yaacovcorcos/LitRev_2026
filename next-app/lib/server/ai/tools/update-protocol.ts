@@ -1,7 +1,13 @@
 import { z } from "zod";
 import type { AITool, ToolExecutionContext } from "./base";
+import type { AIErrorEnvelope } from "@/types/ai";
 import { ensureProtocol } from "@/lib/server/protocols";
-import { isValidFieldPath, validateFieldValue, getFieldLabel, PROTOCOL_FIELD_META } from "@/lib/protocol-fields";
+import {
+    getFieldLabel,
+    isValidFieldPath,
+    normalizeAndClassifyProtocolMutation,
+    PROTOCOL_FIELD_META,
+} from "@/lib/protocol-fields";
 
 /** Read a nested value from an object using dot-notation path */
 function getNestedValue(obj: Record<string, unknown>, path: string): unknown {
@@ -31,6 +37,16 @@ const outputSchema = z.object({
 });
 
 const ALL_PATHS = PROTOCOL_FIELD_META.map((m) => m.path).join(", ");
+
+function buildProtocolMutationErrorEnvelope(message: string): AIErrorEnvelope {
+    return {
+        kind: "tool_schema_validation",
+        code: "PROTOCOL_MUTATION_VALIDATION_FAILED",
+        retryable: false,
+        source: "tool_validator",
+        message,
+    };
+}
 
 export const updateProtocolTool: AITool = {
     definition: {
@@ -102,11 +118,16 @@ export const updateProtocolTool: AITool = {
         }
 
         // Validate and normalize value type for this field
-        const validation = validateFieldValue(field, rawValue);
-        if (!validation.valid) {
-            return { callId: "", result: null, error: validation.error };
+        const classification = normalizeAndClassifyProtocolMutation(field, rawValue);
+        if (!classification.valid) {
+            return {
+                callId: "",
+                result: null,
+                error: classification.error,
+                errorMeta: buildProtocolMutationErrorEnvelope(classification.error),
+            };
         }
-        const value = validation.value;
+        const value = classification.value;
 
         try {
             const data = await ensureProtocol(projectId);

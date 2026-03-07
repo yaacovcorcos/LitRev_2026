@@ -55,6 +55,7 @@ import { resolveAuthenticatedIdentity } from "@/lib/server/auth/identity";
 import { computeLedgerCounts, computeStudyLedger } from "@/lib/server/ledger-utils";
 import {
     dropShadowedInvalidToolCalls,
+    getToolCallRepeatKey,
     mapToolToProgressMessage,
     isStudyLedgerSnapshot,
     getLedgerCounts,
@@ -574,7 +575,10 @@ class AIService {
             }
 
             // Check for repeated tool calls
-            if (loop.recordToolCalls(collectedToolCalls)) {
+            if (loop.recordToolCalls(collectedToolCalls.map((toolCall) => ({
+                ...toolCall,
+                repeatKey: getToolCallRepeatKey(toolCall),
+            })))) {
                 yield {
                     type: "done",
                     content: stopReasonMessage("repeat_detected"),
@@ -1263,7 +1267,10 @@ class AIService {
                 }
 
                 // Check for repeated tool calls
-                if (loop.recordToolCalls(collectedToolCalls)) {
+                if (loop.recordToolCalls(collectedToolCalls.map((toolCall) => ({
+                    ...toolCall,
+                    repeatKey: getToolCallRepeatKey(toolCall),
+                })))) {
                     break; // repeat_detected — shouldContinue will catch it next iteration
                 }
 

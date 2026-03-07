@@ -100,6 +100,28 @@ describe("LoopState", () => {
         expect(state.shouldContinue()).toEqual({ continue: false, stopReason: "repeat_detected" });
     });
 
+    it("detects repeated calls using a supplied semantic repeat key", () => {
+        const state = new LoopState();
+
+        for (let i = 1; i <= DOOM_LOOP_THRESHOLD; i += 1) {
+            state.shouldContinue();
+            const repeated = state.recordToolCalls([
+                {
+                    name: "update_protocol",
+                    arguments: { field: "researchQuestion", value: [`Question ${i}`] },
+                    repeatKey: "update_protocol:researchQuestion:STRING_EXPECTS_SINGLE_VALUE",
+                },
+            ]);
+            if (i < DOOM_LOOP_THRESHOLD) {
+                expect(repeated).toBe(false);
+            } else {
+                expect(repeated).toBe(true);
+            }
+        }
+
+        expect(state.shouldContinue()).toEqual({ continue: false, stopReason: "repeat_detected" });
+    });
+
     it("resets consecutive counter when tool call changes", () => {
         const state = new LoopState();
         state.shouldContinue();

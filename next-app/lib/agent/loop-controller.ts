@@ -76,10 +76,10 @@ export class LoopState {
      * Returns true when the same tool call repeats consecutively enough times
      * to trigger doom-loop protection.
      */
-    recordToolCalls(calls: { name: string; arguments: Record<string, unknown> }[]): boolean {
+    recordToolCalls(calls: { name: string; arguments: Record<string, unknown>; repeatKey?: string }[]): boolean {
         this._totalToolCalls += calls.length;
         for (const call of calls) {
-            const hash = hashToolCall(call.name, call.arguments);
+            const hash = call.repeatKey ?? hashToolCall(call.name, call.arguments);
             if (hash === this._lastToolHash) {
                 this._consecutiveSameToolCallCount += 1;
             } else {

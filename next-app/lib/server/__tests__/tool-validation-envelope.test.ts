@@ -13,4 +13,22 @@ describe("tool schema validation envelope", () => {
             source: "tool_validator",
         });
     });
+
+    it("returns classified mutation error metadata for invalid update_protocol values", async () => {
+        const result = await executeTool("update_protocol", {
+            field: "methodology.qualityAssessmentTool",
+            value: { label: "GRADE" },
+            rationale: "Use GRADE",
+        }, "call-2", {
+            projectId: "project-1",
+        });
+
+        expect(result.error).toBe("Quality Assessment Tool expects a string, got an unsupported object shape");
+        expect(result.errorMeta).toMatchObject({
+            kind: "tool_schema_validation",
+            code: "PROTOCOL_MUTATION_VALIDATION_FAILED",
+            retryable: false,
+            source: "tool_validator",
+        });
+    });
 });
