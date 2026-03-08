@@ -11,7 +11,7 @@
 
 export const AI_CONFIG = {
     defaultProvider: (process.env.AI_DEFAULT_PROVIDER || "openai").trim(),
-    defaultModel: (process.env.AI_DEFAULT_MODEL || "gpt-5.2").trim(),
+    defaultModel: (process.env.AI_DEFAULT_MODEL || "grok-4-1-fast").trim(),
     reasoningModel: (process.env.AI_REASONING_MODEL || "gpt-5.2").trim(),
     maxRequestsPerMinute: parseInt((process.env.AI_RATE_LIMIT || "20").trim(), 10),
     maxTokensPerDay: parseInt((process.env.AI_DAILY_TOKEN_LIMIT || "500000").trim(), 10),

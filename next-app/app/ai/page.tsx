@@ -260,7 +260,7 @@ export default function AIView() {
   const [, setPendingUserInput] = useState<UserInputRequest | null>(null);
   const [prefillCommand, setPrefillCommand] = useState<{ text: string; id: string } | null>(null);
   const [reasoningMode, setReasoningMode] = useState<ReasoningMode>(() => getReasoningModePreference());
-  const [selectedModel, setSelectedModelState] = useState<SelectableModelId>("gpt-5.2");
+  const [selectedModel, setSelectedModelState] = useState<SelectableModelId>("grok-4-1-fast");
 
   const [timelineByConversation, setTimelineByConversation] = useState<Record<string, TimelineItem[]>>({});
   const [isConversationLoading, setIsConversationLoading] = useState(false);

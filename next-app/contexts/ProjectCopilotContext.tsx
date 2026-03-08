@@ -54,7 +54,7 @@ import type { ContextCaptureHistoryEntry, ContextCaptureTarget } from "@/types/c
 import type { RetryModelExpectation } from "@/types/chat-unification";
 
 const MODEL_STORAGE_KEY = "litrev_copilot_model";
-const DEFAULT_MODEL: SelectableModelId = "gpt-5.2";
+const DEFAULT_MODEL: SelectableModelId = "grok-4-1-fast";
 
 export type { PendingAttachment } from "@/types/copilot-context";
 
