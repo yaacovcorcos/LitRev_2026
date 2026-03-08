@@ -3,7 +3,8 @@ import type { StreamTerminalReason } from "@/lib/ai/stream-lifecycle";
 export const RELIABILITY_METRIC_VERSION = 1 as const;
 
 export type ReliabilitySurface = "ai" | "project" | "popup" | "shell";
-export type ReliabilityViewport = "mobile" | "desktop" | "unknown";
+export const RELIABILITY_VIEWPORT_VALUES = ["phone", "compact", "desktop", "unknown"] as const;
+export type ReliabilityViewport = (typeof RELIABILITY_VIEWPORT_VALUES)[number];
 export type ReliabilityNetworkHint = "online" | "offline" | "slow" | "unknown";
 
 export type ReliabilityFlagsSnapshot = {

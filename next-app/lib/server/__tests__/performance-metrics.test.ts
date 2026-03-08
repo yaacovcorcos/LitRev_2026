@@ -90,7 +90,7 @@ describe("performance-metrics", () => {
       projectId: null,
       clientTimestamp: "2026-03-05T10:00:00.000Z",
       dimensions: {
-        viewport: "mobile",
+        viewport: "phone",
         network: "3g",
         online: true,
         synthetic: false,

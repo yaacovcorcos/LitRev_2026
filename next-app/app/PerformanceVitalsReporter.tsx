@@ -10,6 +10,7 @@ import {
   type PerformanceViewport,
 } from "@/types/performance-telemetry";
 import { resolvePerformanceRouteContext } from "@/lib/performance-route-context";
+import { getViewportClass } from "@/lib/mobile/tiers";
 
 const TELEMETRY_ENDPOINT = "/api/telemetry/performance";
 
@@ -25,7 +26,7 @@ function shouldShip(): boolean {
 
 function getViewport(): PerformanceViewport {
   if (typeof window === "undefined") return "unknown";
-  return window.matchMedia("(max-width: 768px)").matches ? "mobile" : "desktop";
+  return getViewportClass(window);
 }
 
 function getNetwork(): { network: PerformanceNetwork; online: boolean | null } {
