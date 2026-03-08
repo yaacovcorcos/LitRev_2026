@@ -8,7 +8,35 @@ This file is a staging area for rough product ideas before they are promoted int
 - ready: clear enough to move into a plan
 - rejected: intentionally not moving forward
 
-## Ideas
+## Organization
+- Keep ideas grouped by priority first, then by product area.
+- Move ideas upward or downward as priority changes.
+- Promote only clearer, implementation-ready items into canonical plans.
+
+## Top Priority
+
+### Inline Citations and Reference Lists in Draft + Chat
+- Status: exploring
+- Summary: Both the draft experience and chat experience need first-class support for inline citations and a generated reference list at the end.
+- Why this matters:
+  - This is one of the most important product gaps right now.
+  - Users need output that is much closer to usable academic writing.
+  - Citations and references need to work consistently across drafting and conversational writing flows.
+- Draft requirements:
+  - Insert inline citations directly into generated or rewritten draft text.
+  - Maintain or generate a references section at the end of the draft or section output.
+  - Keep citation formatting tied to real studies in the project ledger.
+- Chat requirements:
+  - Allow chat responses to include inline citations in the body text.
+  - Allow longer writing-style chat responses to include a references list at the end.
+  - Make cited studies traceable and grounded to actual project sources.
+- Open questions:
+  - Which citation style should be supported first
+  - Whether references should be appended automatically or optionally
+  - How inline citations map to ledger studies and draft rich-text structure
+  - Whether chat references are per-message only or can be saved into draft artifacts
+
+## Medium Priority
 
 ### Draft Rewrite Modes
 - Status: exploring
