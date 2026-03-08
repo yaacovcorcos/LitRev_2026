@@ -362,4 +362,60 @@ describe("project copilot stream event handlers", () => {
       },
     });
   });
+
+  it("removes canonical fallback assistant text when deterministic capability errors are emitted", () => {
+    const messages: CopilotMessage[] = [{
+      id: "m-1",
+      sender: "ai",
+      text: "I couldn't complete that request: GPT-5.2 does not support an explicit reasoning budget.",
+      createdAt: "2026-03-02T00:00:00.000Z",
+      context: { page: "overview" },
+    }];
+    const deps = {
+      aiMessageId: "m-1",
+      page: "overview" as const,
+      section: "protocol",
+      projectId: "p-1",
+      myGen: 1,
+      getCurrentGen: () => 1,
+      setCurrentRunId: vi.fn(),
+      syncConversationId: vi.fn(),
+      upsertConversationTitle: vi.fn(),
+      upsertArtifact: vi.fn(),
+      updateMessages: (updater: (msgs: CopilotMessage[]) => CopilotMessage[]) => {
+        const next = updater(messages);
+        messages.splice(0, messages.length, ...next);
+      },
+      emitLedgerChanged: vi.fn(),
+      setPendingChoices: vi.fn(),
+      onPlanStepUpdate: vi.fn(),
+      setPendingUserInput: vi.fn(),
+    };
+
+    handleProjectCopilotStreamChunk(
+      {
+        type: "error",
+        error: "GPT-5.2 does not support an explicit reasoning budget.",
+        errorMeta: {
+          kind: "model_capability",
+          code: "UNSUPPORTED_REASONING_CAPABILITY",
+          retryable: false,
+          source: "request_policy",
+          message: "GPT-5.2 does not support an explicit reasoning budget.",
+        },
+      },
+      baseState(),
+      deps,
+    );
+
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).toMatchObject({
+      sender: "ai",
+      text: "GPT-5.2 does not support an explicit reasoning budget.",
+      streamError: {
+        code: "UNSUPPORTED_REASONING_CAPABILITY",
+        retryable: false,
+      },
+    });
+  });
 });

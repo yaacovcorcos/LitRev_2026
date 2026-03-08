@@ -1,4 +1,5 @@
 import { extractAIErrorEnvelope } from "@/lib/ai/error-envelope";
+import { buildFailureFallbackMessage } from "@/lib/ai/run-outcome";
 import type { AIErrorEnvelope } from "@/types/ai";
 import type { StreamTerminalReason } from "@/lib/ai/stream-lifecycle";
 
@@ -11,6 +12,10 @@ const RETRY_HINT_PATTERN = /retry|temporarily busy|try again/i;
 
 function collapseWhitespace(value: string): string {
     return value.replace(/\s+/g, " ").trim();
+}
+
+function normalizedText(value: string): string {
+    return collapseWhitespace(value).toLowerCase();
 }
 
 function extractRawErrorMessage(error: unknown): string {
@@ -179,4 +184,30 @@ export function isSameRenderedError(params: {
 
 export function isRetryableTerminalReason(reason: StreamTerminalReason | null): boolean {
     return reason === "failed_network" || reason === "timed_out";
+}
+
+export function isDeterministicCapabilityFailure(errorMeta: AIErrorEnvelope | null | undefined): boolean {
+    return Boolean(
+        errorMeta
+        && !errorMeta.retryable
+        && errorMeta.kind === "model_capability"
+        && errorMeta.code === "UNSUPPORTED_REASONING_CAPABILITY",
+    );
+}
+
+export function matchesCanonicalFailureFallback(params: {
+    assistantText: string;
+    streamError: unknown;
+}): boolean {
+    const assistantText = normalizedText(params.assistantText);
+    if (!assistantText) return false;
+
+    const withoutMessageFallback = normalizedText(buildFailureFallbackMessage(""));
+    if (assistantText === withoutMessageFallback) return true;
+
+    const formattedError = collapseWhitespace(formatStreamErrorForUI(params.streamError));
+    if (!formattedError) return false;
+
+    const withMessageFallback = normalizedText(buildFailureFallbackMessage(formattedError));
+    return assistantText === withMessageFallback;
 }

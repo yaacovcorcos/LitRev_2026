@@ -8,7 +8,11 @@ import {
   type SharedStreamState,
 } from "@/lib/ai/shared-stream-reducer";
 import { isNavigationSafe } from "@/lib/ai/navigation-safety";
-import { buildClientErrorState } from "@/lib/ai/stream-error-ui";
+import {
+  buildClientErrorState,
+  isDeterministicCapabilityFailure,
+  matchesCanonicalFailureFallback,
+} from "@/lib/ai/stream-error-ui";
 
 export type StreamMutableState = SharedStreamState;
 
@@ -149,17 +153,30 @@ function appendStreamErrorMessage(
   payload: Extract<SharedStreamIntent, { type: "stream_error" }>,
 ) {
   const errorState = buildClientErrorState(payload.errorMeta ?? payload.message);
-  deps.updateMessages((messages) => [
-    ...messages,
-    {
-      id: `error-${Date.now()}`,
-      sender: "ai",
-      text: errorState.message,
-      streamError: errorState.errorMeta,
-      createdAt: new Date().toISOString(),
-      context: { page: deps.page, section: deps.section },
-    },
-  ]);
+  deps.updateMessages((messages) => {
+    const normalizedMessages = isDeterministicCapabilityFailure(errorState.errorMeta)
+      ? messages.filter((message) => (
+        !(message.sender === "ai"
+          && !message.streamError
+          && matchesCanonicalFailureFallback({
+            assistantText: message.text,
+            streamError: errorState.errorMeta,
+          }))
+      ))
+      : messages;
+
+    return [
+      ...normalizedMessages,
+      {
+        id: `error-${Date.now()}`,
+        sender: "ai",
+        text: errorState.message,
+        streamError: errorState.errorMeta,
+        createdAt: new Date().toISOString(),
+        context: { page: deps.page, section: deps.section },
+      },
+    ];
+  });
 }
 
 function emitArtifactMessage(

@@ -3,8 +3,10 @@ import {
     buildClientErrorState,
     extractLegacyRecoveryError,
     formatStreamErrorForUI,
+    isDeterministicCapabilityFailure,
     isRetryableTerminalReason,
     isSameRenderedError,
+    matchesCanonicalFailureFallback,
     shouldSuppressClientFallback,
 } from "@/lib/ai/stream-error-ui";
 
@@ -142,5 +144,48 @@ describe("formatStreamErrorForUI", () => {
         expect(isRetryableTerminalReason("timed_out")).toBe(true);
         expect(isRetryableTerminalReason("failed_network")).toBe(true);
         expect(isRetryableTerminalReason("failed_server")).toBe(false);
+    });
+
+    it("matches canonical fallback with reason text from structured errors", () => {
+        expect(matchesCanonicalFailureFallback({
+            assistantText: "I couldn't complete that request: GPT-5.2 does not support an explicit reasoning budget.",
+            streamError: {
+                kind: "model_capability",
+                code: "UNSUPPORTED_REASONING_CAPABILITY",
+                retryable: false,
+                source: "request_policy",
+                message: "GPT-5.2 does not support an explicit reasoning budget.",
+            },
+        })).toBe(true);
+    });
+
+    it("matches canonical fallback without a reason body", () => {
+        expect(matchesCanonicalFailureFallback({
+            assistantText: "I couldn't complete that request because the action failed before I could produce a useful answer.",
+            streamError: {
+                kind: "model_capability",
+                code: "UNSUPPORTED_REASONING_CAPABILITY",
+                retryable: false,
+                source: "request_policy",
+                message: "",
+            },
+        })).toBe(true);
+    });
+
+    it("flags deterministic capability failures", () => {
+        expect(isDeterministicCapabilityFailure({
+            kind: "model_capability",
+            code: "UNSUPPORTED_REASONING_CAPABILITY",
+            retryable: false,
+            source: "request_policy",
+            message: "Unsupported budget",
+        })).toBe(true);
+        expect(isDeterministicCapabilityFailure({
+            kind: "model_capability",
+            code: "UNSUPPORTED_REASONING_CAPABILITY",
+            retryable: true,
+            source: "request_policy",
+            message: "Unsupported budget",
+        })).toBe(false);
     });
 });

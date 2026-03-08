@@ -24,8 +24,14 @@ import type { ChoiceOption, CopilotPage, ReasoningMode, StreamPhase, UserInputRe
 import type { ContextCaptureTarget } from "@/types/context-capture";
 import { handleProjectCopilotStreamChunk } from "@/contexts/project-copilot-stream-events";
 import type { ArtifactActionContract } from "@/lib/artifacts/action-contract";
-import { getReasoningBudgetTokens, shouldRequestReasoning } from "@/lib/ai/reasoning-visibility";
-import { buildClientErrorState, formatStreamErrorForUI, isSameRenderedError, shouldSuppressClientFallback } from "@/lib/ai/stream-error-ui";
+import { resolveReasoningRequest } from "@/lib/ai/reasoning-request";
+import {
+    buildClientErrorState,
+    formatStreamErrorForUI,
+    isSameRenderedError,
+    matchesCanonicalFailureFallback,
+    shouldSuppressClientFallback,
+} from "@/lib/ai/stream-error-ui";
 import { recordChatUnificationMetric } from "@/lib/ai/chat-unification-telemetry";
 import { terminalReasonFromThrownError, type StreamTerminalReason } from "@/lib/ai/stream-lifecycle";
 import { recordReliabilityMetric } from "@/lib/ai/reliability-telemetry";
@@ -416,7 +422,10 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                 );
                 const shouldSuppressFallback = shouldSuppressClientFallback({
                     errorMeta: errorState.errorMeta,
-                    hasAssistantContent: aiMessageCreated || fullContent.trim().length > 0,
+                    hasAssistantContent: matchesCanonicalFailureFallback({
+                        assistantText: fullContent,
+                        streamError: errorState.errorMeta,
+                    }),
                     hasRenderedError,
                 });
 
@@ -574,6 +583,11 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                 });
             }
 
+            const reasoningRequest = resolveReasoningRequest({
+                preferredMode: reasoningMode,
+                modelId: model,
+            });
+
             // Run the stream
             await runStream({
                 body: {
@@ -584,9 +598,9 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                         projectId,
                         studyId: resolvedStudyId,
                         model,
-                        reasoningMode,
-                        includeReasoning: shouldRequestReasoning(reasoningMode),
-                        reasoningBudgetTokens: getReasoningBudgetTokens(reasoningMode),
+                        reasoningMode: reasoningRequest.reasoningMode,
+                        includeReasoning: reasoningRequest.includeReasoning,
+                        reasoningBudgetTokens: reasoningRequest.reasoningBudgetTokens,
                         agentMode: agentMode || "general",
                         page,
                         section,
@@ -630,6 +644,9 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
         const convId = convo.currentConversationId;
         const planMessage = stateRef.current.messages.find((msg) => msg.artifact?.id === artifactId);
         const executionPage = planMessage?.context?.page ?? "overview";
+        const reasoningRequest = resolveReasoningRequest({
+            preferredMode: reasoningMode,
+        });
 
         const result = await runStream({
             body: {
@@ -640,9 +657,9 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                 options: {
                     conversationId: convId ?? undefined,
                     projectId,
-                    reasoningMode,
-                    includeReasoning: shouldRequestReasoning(reasoningMode),
-                    reasoningBudgetTokens: getReasoningBudgetTokens(reasoningMode),
+                    reasoningMode: reasoningRequest.reasoningMode,
+                    includeReasoning: reasoningRequest.includeReasoning,
+                    reasoningBudgetTokens: reasoningRequest.reasoningBudgetTokens,
                     agentMode: "general",
                 },
             },
