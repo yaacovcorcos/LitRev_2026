@@ -1,33 +1,56 @@
 .page {
+    --surface-section-gap: 20px;
     height: 100%;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
+    gap: 20px;
 }
 
 .headerArea {
     flex-shrink: 0;
     display: flex;
     flex-direction: column;
-    gap: 12px;
-    padding: 0 32px;
+    gap: 16px;
+    padding: 0 var(--compact-page-gutter);
+}
+
+.homeTopBar {
+    margin-bottom: 0;
+}
+
+.homeControlsBar {
+    width: 100%;
+}
+
+.homeControlsRow {
+    width: 100%;
+    justify-content: space-between;
+}
+
+.homeControlsAction {
+    margin-left: auto;
+}
+
+.homeSortButton {
+    min-width: 148px;
+}
+
+.homeViewToggles {
+    flex-shrink: 0;
 }
 
 .scrollArea {
-    flex: 1;
-    min-height: 0;
-    overflow: auto;
-    padding: 32px 48px calc(48px + var(--mobile-nav-offset));
+    --surface-bottom-offset: 32px;
+    padding-top: 8px;
+    padding-bottom: calc(var(--surface-bottom-offset) + 8px);
 }
 
 .resumeControl {
     position: relative;
-    height: var(--control-height);
-    max-width: min(360px, 100%);
+    min-height: var(--touch-target-min);
+    max-width: min(380px, 100%);
     min-width: 0;
-    padding: 0 10px 0 14px;
+    padding: 0 12px 0 16px;
     border: 1px solid color-mix(in srgb, var(--glass-border) 70%, var(--accent-primary) 30%);
-    border-radius: 12px;
+    border-radius: 14px;
     background:
         linear-gradient(
             135deg,
@@ -38,7 +61,7 @@
     display: inline-flex;
     align-items: center;
     justify-content: space-between;
-    gap: 10px;
+    gap: 12px;
     text-decoration: none;
     color: var(--text-primary);
     cursor: pointer;
@@ -106,13 +129,13 @@
 }
 
 .resumeControlArrow {
-    width: 22px;
-    height: 22px;
+    width: 24px;
+    height: 24px;
     border-radius: 999px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    font-size: 17px;
+    font-size: 18px;
     flex-shrink: 0;
     color: color-mix(in srgb, var(--accent-primary) 68%, var(--text-muted) 32%);
     background: color-mix(in srgb, var(--accent-primary) 12%, white 88%);
@@ -130,23 +153,30 @@
     padding-right: 0 !important;
 }
 
-.initializingShell {
-    min-height: 100vh;
-    display: flex;
-    align-items: center;
+.initializingShell,
+.zeroShell {
     justify-content: center;
-    padding: 24px;
+    align-items: center;
     background:
         radial-gradient(circle at 20% 20%, rgba(var(--rgb-accent-primary), 0.12), transparent 38%),
         radial-gradient(circle at 80% 75%, rgba(var(--rgb-accent-secondary), 0.14), transparent 42%),
         var(--bg-body);
 }
 
+.zeroShell {
+    background:
+        radial-gradient(circle at 16% 14%, rgba(var(--rgb-accent-primary), 0.10), transparent 38%),
+        radial-gradient(circle at 84% 78%, rgba(var(--rgb-accent-secondary), 0.12), transparent 42%),
+        var(--bg-body);
+}
+
 .initializingContent {
+    width: min(420px, 100%);
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: 0;
+    text-align: center;
     animation: initFadeIn 0.6s ease-out both;
 }
 
@@ -167,12 +197,11 @@
 }
 
 .initializingGreeting {
-    margin: 0;
+    margin: 0 0 8px;
     color: var(--text-primary);
     font-size: 20px;
     font-weight: 400;
     letter-spacing: -0.01em;
-    margin-bottom: 8px;
 }
 
 .initializingText {
@@ -198,16 +227,17 @@
     font-size: 13px;
 }
 
-.initializingRetry {
+.initializingRetry,
+.migrationRetry {
     border: 1px solid color-mix(in srgb, var(--accent-primary) 30%, transparent);
     background: color-mix(in srgb, var(--accent-primary) 8%, white);
     color: var(--text-primary);
-    border-radius: 8px;
+    border-radius: 10px;
     font-size: 13px;
     font-weight: 600;
-    padding: 8px 16px;
+    padding: 8px 14px;
     cursor: pointer;
-    transition: background 0.2s ease;
+    transition: background 0.2s ease, border-color 0.2s ease;
 }
 
 .initializingRetry:disabled {
@@ -215,36 +245,21 @@
     cursor: not-allowed;
 }
 
-.initializingRetry:hover {
+.initializingRetry:hover,
+.migrationRetry:hover {
     background: color-mix(in srgb, var(--accent-primary) 14%, white);
 }
 
-/* ── Zero-state welcome ─────────────────────────────────────── */
-
-.zeroShell {
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 24px;
-    background:
-        radial-gradient(circle at 16% 14%, rgba(var(--rgb-accent-primary), 0.10), transparent 38%),
-        radial-gradient(circle at 84% 78%, rgba(var(--rgb-accent-secondary), 0.12), transparent 42%),
-        var(--bg-body);
-}
-
 .zeroContent {
-    width: min(520px, 100%);
+    width: min(560px, 100%);
     display: grid;
     grid-template-rows: auto auto;
-    gap: 0;
-    margin-top: -6vh;
+    gap: 12px;
     animation: zeroFadeUp 0.7s ease-out both;
 }
 
 .zeroHeader {
-    padding-bottom: 36px;
+    padding-bottom: 20px;
 }
 
 .zeroCards {
@@ -262,6 +277,7 @@
     font-weight: 600;
     padding: 6px 4px;
     cursor: pointer;
+    transition: color 0.2s ease;
 }
 
 .zeroEnter:hover {
@@ -279,30 +295,29 @@
 }
 
 .zeroSubtitle {
-    margin: 8px 0 0;
+    margin: 10px 0 0;
     color: var(--text-muted);
     font-size: 15px;
     line-height: 1.5;
 }
 
-/* ── Hero card (primary action) ─────────────────────────────── */
-
 .heroCard {
     display: flex;
     align-items: center;
-    gap: 16px;
+    gap: 18px;
     width: 100%;
+    min-height: 132px;
     padding: 24px 28px;
     border: 1px solid rgba(var(--rgb-accent-primary), 0.18);
-    border-radius: 16px;
+    border-radius: 18px;
     background:
         linear-gradient(135deg, rgba(var(--rgb-accent-primary), 0.06) 0%, rgba(var(--rgb-accent-tertiary), 0.04) 100%);
     cursor: pointer;
     text-align: left;
     font: inherit;
-    transition: all 0.25s ease;
     position: relative;
     overflow: hidden;
+    transition: border-color 0.25s ease, background 0.25s ease, box-shadow 0.25s ease, transform 0.25s ease;
 }
 
 .heroCard::before {
@@ -333,25 +348,25 @@
     flex: 1;
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 6px;
     min-width: 0;
 }
 
 .heroCardTitle {
-    font-size: 16px;
+    font-size: 18px;
     font-weight: 600;
     color: var(--text-primary);
     letter-spacing: -0.01em;
 }
 
 .heroCardDesc {
-    font-size: 13px;
+    font-size: 14px;
     color: var(--text-secondary);
-    line-height: 1.4;
+    line-height: 1.45;
 }
 
 .heroCardIcon {
-    font-size: 22px;
+    font-size: 24px;
     color: var(--accent-primary);
     flex-shrink: 0;
     transition: transform 0.25s ease;
@@ -360,8 +375,6 @@
 .heroCard:hover .heroCardIcon {
     transform: translateX(3px);
 }
-
-/* ── Secondary cards row ────────────────────────────────────── */
 
 .secondaryRow {
     display: grid;
@@ -373,16 +386,17 @@
     display: flex;
     flex-direction: column;
     align-items: flex-start;
-    gap: 6px;
+    gap: 8px;
+    min-height: 132px;
     padding: 22px 20px;
     border: 1px solid var(--glass-border);
-    border-radius: 14px;
+    border-radius: 16px;
     background: var(--glass-bg);
     backdrop-filter: blur(12px);
     cursor: pointer;
     text-align: left;
     font: inherit;
-    transition: all 0.25s ease;
+    transition: border-color 0.25s ease, background 0.25s ease, box-shadow 0.25s ease, transform 0.25s ease;
 }
 
 .secondaryCard:hover:not(:disabled) {
@@ -400,7 +414,7 @@
 .secondaryCardIcon {
     font-size: 22px;
     color: var(--accent-secondary);
-    margin-bottom: 4px;
+    margin-bottom: 2px;
 }
 
 .secondaryCardTitle {
@@ -413,10 +427,8 @@
 .secondaryCardDesc {
     font-size: 12px;
     color: var(--text-muted);
-    line-height: 1.4;
+    line-height: 1.45;
 }
-
-/* ── Errors ─────────────────────────────────────────────────── */
 
 .createError {
     color: var(--color-danger);
@@ -436,7 +448,7 @@
 }
 
 .migrationAlert {
-    margin: 12px 0 0;
+    margin: 0;
     padding: 10px 12px;
     border-radius: var(--radius-md);
     border: 1px solid var(--color-warning-border);
@@ -449,23 +461,6 @@
     justify-content: space-between;
     gap: 10px;
 }
-
-.migrationRetry {
-    border: 1px solid color-mix(in srgb, var(--accent-primary) 30%, transparent);
-    background: color-mix(in srgb, var(--accent-primary) 8%, white);
-    color: var(--text-primary);
-    border-radius: 8px;
-    font-size: 12px;
-    font-weight: 600;
-    padding: 6px 10px;
-    cursor: pointer;
-}
-
-.migrationRetry:hover {
-    background: color-mix(in srgb, var(--accent-primary) 14%, white);
-}
-
-/* ── Animations ─────────────────────────────────────────────── */
 
 @keyframes initFadeIn {
     from { opacity: 0; transform: translateY(10px); }
@@ -501,40 +496,150 @@
     }
 }
 
-/* ── Responsive ─────────────────────────────────────────────── */
+/* Mirrors COMPACT_MAX_WIDTH and PHONE_MAX_WIDTH in lib/mobile/breakpoints.ts. */
+@media (min-width: 768px) and (max-width: 1199px) {
+    .homeControlsBar {
+        flex-direction: row;
+        align-items: center;
+    }
 
-@media (max-width: 900px) {
     .headerArea {
-        padding: 0 16px;
+        padding: 0 var(--compact-page-gutter);
     }
 
     .scrollArea {
-        padding: 20px 16px calc(20px + var(--mobile-nav-offset));
+        --surface-bottom-offset: 28px;
+        padding-top: 4px;
+    }
+
+    .homeControlsRow {
+        flex: 1 1 auto;
+        align-items: flex-start;
+        gap: 12px;
+    }
+
+    .homeControlsAction {
+        flex: 1 1 280px;
+        justify-content: flex-end;
+    }
+
+    .homeSortButton {
+        flex: 0 0 auto;
+        justify-content: flex-start;
+    }
+
+    .resumeControl {
+        max-width: 100%;
+    }
+
+    .zeroContent {
+        width: min(680px, 100%);
+    }
+}
+
+@media (max-width: 767px) {
+    .page {
+        --surface-section-gap: 16px;
+    }
+
+    .headerArea {
+        gap: 12px;
+        padding: 0 var(--phone-page-gutter);
+    }
+
+    .homeControlsRow {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 12px;
+    }
+
+    .homeControlsAction {
+        margin-left: 0;
+        width: 100%;
+    }
+
+    .homeSortButton {
+        width: 100%;
+        justify-content: center;
+    }
+
+    .homeViewToggles {
+        align-self: flex-start;
+    }
+
+    .scrollArea {
+        --surface-bottom-offset: 20px;
+        padding-top: 0;
     }
 
     .resumeControl {
         width: 100%;
         max-width: none;
-        justify-content: center;
     }
 
-    .resumeControlLead {
-        font-size: 14px;
+    .resumeControlText {
+        white-space: normal;
+        line-height: 1.25;
     }
 
+    .resumeControlLead,
     .resumeControlProjectName {
         font-size: 13px;
     }
 
+    .initializingShell,
+    .zeroShell {
+        justify-content: flex-start;
+        padding-top: max(32px, var(--safe-area-top));
+        padding-bottom: 24px;
+    }
+
+    .initializingContent {
+        margin-top: clamp(48px, 12vh, 96px);
+    }
+
     .zeroContent {
+        width: 100%;
         gap: 16px;
+        margin-top: 0;
+    }
+
+    .zeroHeader {
+        padding-bottom: 12px;
+    }
+
+    .zeroTitle {
+        font-size: clamp(28px, 9vw, 36px);
+    }
+
+    .heroCard,
+    .secondaryCard {
+        min-height: 0;
     }
 
     .heroCard {
-        padding: 20px 22px;
+        padding: 20px;
+        align-items: flex-start;
+    }
+
+    .heroCardBody {
+        gap: 8px;
+    }
+
+    .heroCardTitle {
+        font-size: 17px;
+    }
+
+    .heroCardDesc {
+        font-size: 13px;
     }
 
     .secondaryRow {
         grid-template-columns: 1fr;
+    }
+
+    .migrationAlert {
+        align-items: flex-start;
+        flex-direction: column;
     }
 }

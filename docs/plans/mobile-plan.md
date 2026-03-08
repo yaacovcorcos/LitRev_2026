@@ -27,7 +27,8 @@ This plan is the long-term implementation contract for how LitRev adapts across 
 - Shared chat-runtime direction exists for `/ai` and project copilot via chat unification work; popup full runtime convergence remains pending (`U3` in chat unification plan).
 - Core route adoption of a long-term responsive contract is still incomplete:
   - app shell and sidebar now split `phone` vs `compact` behavior behind `NEXT_PUBLIC_MOBILE_SHELL_V2`, but wider route surfaces still need follow-up adoption
-  - home and login still use route-local viewport math
+  - home now adopts the shared route/shell responsive contract across loading, zero-state, and workspace states, but shared `TopBar` / `ControlsBar` primitives still retain transitional generic breakpoints outside home-specific modifiers
+  - login still uses route-local viewport math
   - protocol still uses route-local height ownership
   - telemetry now classifies viewport as `phone` / `compact` / `desktop`, but many live surfaces still consume the transitional `900px` query until later foundation waves retire it
 - Project shell hides the embedded copilot pane on narrower widths; conversation mode is already the primary mobile chat surface.
@@ -168,12 +169,6 @@ Primary KPI lenses:
 - Regression concentration by viewport class (`phone`, `compact`, `desktop`).
 
 ## Active Tasks (Mobile Foundation)
-- [ ] `MOB-FND-004` Home responsive entry experience:
-  - Adopt the shared responsive contract on home.
-  - Fix loading, zero-state, resume, and projects entry flows to behave intentionally in `phone` and `compact` tiers.
-  - Redesign the sample review card/project entry treatment so phone and compact widths are first-class layouts, not squeezed desktop cards.
-  - Add a dedicated public flag only if this wave proves too high-risk for direct rollout; otherwise treat rollback as revert/redeploy-only.
-  - Rollback: disable the dedicated flag if one is introduced in this wave; otherwise revert/redeploy.
 - [ ] `MOB-FND-005` Login/auth responsive shell:
   - Normalize login/auth viewport and keyboard behavior without forcing auth into the same visual shell as home or protocol.
   - Preserve auth-specific layout while adopting the shared responsive contract.
@@ -224,6 +219,10 @@ Primary KPI lenses:
   - Cover both phone and compact widths where behavior differs.
 
 ## Recently Completed
+- [x] `MOB-FND-004` Home responsive entry experience completed:
+  - Moved loading and zero-state to direct route-level surface ownership while keeping workspace offset ownership with the shell contract.
+  - Reworked home workspace entry behavior for `phone` vs `compact`, including tier-specific grid/list treatment and a structurally decoupled sample review card.
+  - Added isolated extension hooks to `ControlsBar` so home-specific responsive behavior does not force a global primitive rewrite.
 - [x] `MOB-FND-003` App shell + sidebar responsive adoption completed:
   - Added `NEXT_PUBLIC_MOBILE_SHELL_V2` and wired shell rollout safety through `next-app/lib/mobile/feature-flags.ts`.
   - Reclassified shell behavior into `phone` vs `compact` by moving bottom-nav visibility and shell bottom offset to the phone tier only.

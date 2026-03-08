@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { ProjectGrid } from "../ProjectGrid";
 
@@ -13,6 +13,24 @@ vi.mock("@/components/project/SampleReviewCard", () => ({
 }));
 
 describe("ProjectGrid", () => {
+  it("renders the create-new entry as a semantic button", () => {
+    const onNewProject = vi.fn();
+
+    render(
+      <ProjectGrid
+        projects={[]}
+        viewMode="grid"
+        onNewProject={onNewProject}
+        showSampleCard={false}
+      />,
+    );
+
+    const createButton = screen.getByRole("button", { name: "Create New Project" });
+    fireEvent.click(createButton);
+
+    expect(onNewProject).toHaveBeenCalledTimes(1);
+  });
+
   it("disables route prefetch on project cards", () => {
     render(
       <ProjectGrid

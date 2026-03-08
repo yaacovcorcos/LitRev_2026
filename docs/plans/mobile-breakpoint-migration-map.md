@@ -41,14 +41,14 @@ Rule meanings:
 | `next-app/components/PopupChat.module.css` | extra-tight popup density tweak | `500` | `tiny-phone` candidate | defer until popup redesign confirms semantics | `MOB-005` |
 | `next-app/components/AppShell.module.css` | shell mobile layout | `900` | split into `phone` bottom-nav behavior and `compact` collapsed-shell behavior | keep (migrated in `MOB-FND-003`) | completed |
 | `next-app/components/Sidebar.module.css` | sidebar collapse | `900` | `compact` collapsed sidebar, `phone` hidden sidebar | keep (migrated in `MOB-FND-003`) | completed |
-| `next-app/app/home.module.css` | home narrow layout | `900` | mixed compact + phone behavior | transitional | `MOB-FND-004` |
-| `next-app/components/ProjectGrid.module.css` | project grid collapse | `900` | mixed compact + phone behavior | transitional | `MOB-FND-004` |
+| `next-app/app/home.module.css` | home narrow layout | `900` | mixed compact + phone behavior | keep (migrated in `MOB-FND-004`) | completed |
+| `next-app/components/ProjectGrid.module.css` | project grid collapse | `900` | mixed compact + phone behavior | keep (migrated in `MOB-FND-004`) | completed |
 | `next-app/app/login/login.module.css` | login narrow layout / viewport math | `900` or route-local logic | mixed compact + phone behavior | transitional | `MOB-FND-005` |
 | `next-app/app/project/[id]/protocol/protocol.module.css` | protocol narrow layout | `900` | mixed compact + phone behavior | transitional | `MOB-FND-006` |
 | `next-app/components/MobileNav.module.css` | phone nav | `900` | phone-only shell navigation | keep (migrated in `MOB-FND-003`) | `MOB-FND-007` for touch-target follow-up |
-| `next-app/components/TopBar.module.css` | top-bar responsive changes | `900` | compact shell behavior | transitional | `MOB-FND-003` |
+| `next-app/components/TopBar.module.css` | top-bar responsive changes | `900` | compact shell behavior | transitional | relevant surface wave |
 | `next-app/components/UserMenu.module.css` | user menu responsive changes | `900` | compact shell behavior | transitional | `MOB-FND-003` |
-| `next-app/components/ControlsBar.module.css` | controls-bar responsive changes | `900` | compact behavior | transitional | relevant surface wave |
+| `next-app/components/ControlsBar.module.css` | controls-bar responsive changes | `900` | compact behavior | transitional; home now uses scoped modifiers from `MOB-FND-004` without rewriting shared default behavior | relevant surface wave |
 | `next-app/components/ProjectCopilot.module.css` | project copilot responsive changes | `900` | chat/compact transitional behavior | transitional | chat foundation |
 | `next-app/app/ai/ai-view.module.css` | `/ai` responsive changes | `900` | chat/compact transitional behavior | transitional | chat foundation |
 | `next-app/app/project/[id]/project-shell.module.css` | project shell responsive changes | `900` | compact shell behavior | transitional | `MOB-FND-003` |
