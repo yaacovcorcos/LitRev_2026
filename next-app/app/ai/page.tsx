@@ -43,6 +43,7 @@ import {
 } from "@/lib/ai/reasoning-visibility";
 import { resolveReasoningRequest } from "@/lib/ai/reasoning-request";
 import {
+  DEFAULT_SELECTABLE_MODEL_ID,
   USER_SELECTABLE_MODELS,
   getReasoningSupportTier,
   type ReasoningSupportTier,
@@ -260,7 +261,7 @@ export default function AIView() {
   const [, setPendingUserInput] = useState<UserInputRequest | null>(null);
   const [prefillCommand, setPrefillCommand] = useState<{ text: string; id: string } | null>(null);
   const [reasoningMode, setReasoningMode] = useState<ReasoningMode>(() => getReasoningModePreference());
-  const [selectedModel, setSelectedModelState] = useState<SelectableModelId>("grok-4-1-fast");
+  const [selectedModel, setSelectedModelState] = useState<SelectableModelId>(DEFAULT_SELECTABLE_MODEL_ID);
 
   const [timelineByConversation, setTimelineByConversation] = useState<Record<string, TimelineItem[]>>({});
   const [isConversationLoading, setIsConversationLoading] = useState(false);
