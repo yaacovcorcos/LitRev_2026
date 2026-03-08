@@ -30,6 +30,7 @@ import {
   shouldSuppressClientFallback,
 } from "@/lib/ai/stream-error-ui";
 import { createAiStreamRuntime } from "@/lib/ai/ai-stream-runtime";
+import type { SharedStreamIntent } from "@/lib/ai/shared-stream-reducer";
 import { generateChatUnificationRequestKey, recordChatUnificationMetric } from "@/lib/ai/chat-unification-telemetry";
 import { terminalReasonFromThrownError, type StreamTerminalReason } from "@/lib/ai/stream-lifecycle";
 import { recordReliabilityMetric } from "@/lib/ai/reliability-telemetry";
@@ -406,6 +407,12 @@ export default function AIView() {
     if (!url || !isNavigationSafe(url)) return;
     router.push(url);
   }, [router]);
+
+  const handleRunIntent = useCallback((intent: SharedStreamIntent) => {
+    if (intent.type === "run_set" && intent.runId) {
+      currentRunIdRef.current = intent.runId;
+    }
+  }, []);
 
   const emitMobileActionTap = useCallback((actionId: string, targetMinPx?: number) => {
     if (!isMobileTelemetryContext()) return;
@@ -1149,11 +1156,7 @@ export default function AIView() {
       upsertConversationTitle,
       setPendingChoices,
       setPendingUserInput,
-      onIntent: (intent) => {
-        if (intent.type === "run_set") {
-          currentRunIdRef.current = intent.runId;
-        }
-      },
+      onIntent: handleRunIntent,
       onNavigate: handleNavigate,
     });
 
@@ -1582,11 +1585,7 @@ export default function AIView() {
       upsertConversationTitle,
       setPendingChoices,
       setPendingUserInput,
-      onIntent: (intent) => {
-        if (intent.type === "run_set") {
-          currentRunIdRef.current = intent.runId;
-        }
-      },
+      onIntent: handleRunIntent,
       onPlanStepUpdate: updatePlanStepStatus,
       onNavigate: handleNavigate,
     });

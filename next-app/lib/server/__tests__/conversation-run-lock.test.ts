@@ -51,7 +51,9 @@ describe("conversation run lock guard", () => {
   it("replaces the named fresh run when replaceRunId matches", async () => {
     const now = new Date("2026-02-24T00:00:00.000Z");
     const store = {
-      listRunning: vi.fn(async () => [{ id: "run_live", startedAt: now }]),
+      listRunning: vi.fn()
+        .mockResolvedValueOnce([{ id: "run_live", startedAt: now }])
+        .mockResolvedValueOnce([]),
       cancelRuns: vi.fn(async () => 0),
       cancelRunIfActive: vi.fn(async () => true),
     };
@@ -107,6 +109,28 @@ describe("conversation run lock guard", () => {
       })
     ).rejects.toMatchObject({
       errorMeta: expect.objectContaining({ code: "REPLACE_TARGET_MISMATCH" }),
+    });
+  });
+
+  it("rejects replacement when another fresh run remains after cancelling the target", async () => {
+    const now = new Date("2026-02-24T00:00:00.000Z");
+    const store = {
+      listRunning: vi.fn()
+        .mockResolvedValueOnce([{ id: "run_live", startedAt: now }])
+        .mockResolvedValueOnce([{ id: "run_other", startedAt: now }]),
+      cancelRuns: vi.fn(async () => 0),
+      cancelRunIfActive: vi.fn(async () => true),
+    };
+
+    await expect(
+      ensureConversationRunAvailability("conv_1", {
+        store,
+        now,
+        staleMs: 60_000,
+        replaceRunId: "run_live",
+      })
+    ).rejects.toMatchObject({
+      errorMeta: expect.objectContaining({ code: "ACTIVE_RUN_EXISTS" }),
     });
   });
 });

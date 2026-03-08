@@ -99,6 +99,9 @@ export async function ensureConversationRunAvailability(
       const latestRunning = await store.listRunning(conversationId);
       const latestFresh = latestRunning.find((run) => run.startedAt >= cutoff);
       if (latestFresh) {
+        // The replace target disappeared before we could cancel it. If the same
+        // run is still active we surface the ordinary active-run conflict;
+        // otherwise a different run won the race and the replace target mismatched.
         throw new AIErrorWithEnvelope(
           createRunConflictErrorEnvelope({
             code: latestFresh.id === replaceRunId ? "ACTIVE_RUN_EXISTS" : "REPLACE_TARGET_MISMATCH",
@@ -108,6 +111,18 @@ export async function ensureConversationRunAvailability(
           }),
         );
       }
+    }
+
+    const remainingRunning = await store.listRunning(conversationId);
+    const remainingFresh = remainingRunning.find((run) => run.startedAt >= cutoff);
+    if (remainingFresh) {
+      throw new AIErrorWithEnvelope(
+        createRunConflictErrorEnvelope({
+          code: "ACTIVE_RUN_EXISTS",
+          conversationId,
+          activeRunId: remainingFresh.id,
+        }),
+      );
     }
 
     return { cancelledStaleRunCount, replacedRunId: replaceRunId };
