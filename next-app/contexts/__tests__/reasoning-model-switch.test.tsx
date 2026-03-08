@@ -85,7 +85,7 @@
      );
  }
  
- describe("Reasoning mode reset on model switch", () => {
+describe("Reasoning mode reset on model switch", () => {
      beforeEach(() => {
          // Clear localStorage before each test
          window.localStorage.clear();
@@ -95,39 +95,23 @@
          vi.clearAllMocks();
      });
  
-     it("forces reasoning mode to off when switching to a none-support model", async () => {
-         const { result } = renderHook(() => useProjectCopilot(), { wrapper });
- 
-         // Initial state: claude model (explicit support), full reasoning mode
-         expect(result.current.reasoningMode).toBe("full");
- 
-         // Switch to gpt-5-mini (none support)
-         await act(async () => {
-             result.current.setSelectedModel("gpt-5-mini");
-         });
- 
-         expect(result.current.selectedModel).toBe("gpt-5-mini");
-         expect(result.current.reasoningSupport).toBe("none");
-         expect(result.current.reasoningMode).toBe("off");
-     });
- 
-     it("preserves reasoning mode when switching to an explicit-support model", async () => {
-         const { result } = renderHook(() => useProjectCopilot(), { wrapper });
- 
-         // Set reasoning mode to summary first
-         await act(async () => {
-             result.current.setReasoningMode("summary");
-         });
- 
-         // Switch to claude (explicit support)
-         await act(async () => {
-             result.current.setSelectedModel("claude-haiku-4-5");
-         });
- 
-         expect(result.current.selectedModel).toBe("claude-haiku-4-5");
-         expect(result.current.reasoningSupport).toBe("explicit");
-         expect(result.current.reasoningMode).toBe("summary");
-     });
+    it("preserves reasoning mode when switching between best_effort models", async () => {
+        const { result } = renderHook(() => useProjectCopilot(), { wrapper });
+
+        // Set reasoning mode to summary first
+        await act(async () => {
+            result.current.setReasoningMode("summary");
+        });
+
+        // Switch to grok (best_effort support)
+        await act(async () => {
+            result.current.setSelectedModel("grok-4-1-fast");
+        });
+
+        expect(result.current.selectedModel).toBe("grok-4-1-fast");
+        expect(result.current.reasoningSupport).toBe("best_effort");
+        expect(result.current.reasoningMode).toBe("summary");
+    });
  
      it("preserves reasoning mode when switching to a best_effort model", async () => {
          const { result } = renderHook(() => useProjectCopilot(), { wrapper });
@@ -142,22 +126,17 @@
          expect(result.current.reasoningMode).toBe("full");
      });
  
-     it("returns correct reasoningSupport tier for each model", async () => {
-         const { result } = renderHook(() => useProjectCopilot(), { wrapper });
- 
-         await act(async () => {
-             result.current.setSelectedModel("claude-haiku-4-5");
-         });
-         expect(result.current.reasoningSupport).toBe("explicit");
- 
-         await act(async () => {
-             result.current.setSelectedModel("gpt-5.2");
-         });
-         expect(result.current.reasoningSupport).toBe("best_effort");
- 
-         await act(async () => {
-             result.current.setSelectedModel("gemini-3-flash-preview");
-         });
-         expect(result.current.reasoningSupport).toBe("none");
-     });
- });
+    it("returns correct reasoningSupport tier for selectable models", async () => {
+        const { result } = renderHook(() => useProjectCopilot(), { wrapper });
+
+        await act(async () => {
+            result.current.setSelectedModel("gpt-5.2");
+        });
+        expect(result.current.reasoningSupport).toBe("best_effort");
+
+        await act(async () => {
+            result.current.setSelectedModel("grok-4-1-fast");
+        });
+        expect(result.current.reasoningSupport).toBe("best_effort");
+    });
+});

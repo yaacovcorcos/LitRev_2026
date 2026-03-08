@@ -53,18 +53,11 @@
              }
          });
  
-         it("at least one model has explicit reasoning support", () => {
-             const hasExplicit = USER_SELECTABLE_MODELS.some(
-                 (m) => m.reasoningSupport === "explicit"
-             );
-             expect(hasExplicit).toBe(true);
-         });
- 
-         it("at least one model has no reasoning support", () => {
-             const hasNone = USER_SELECTABLE_MODELS.some(
-                 (m) => m.reasoningSupport === "none"
-             );
-             expect(hasNone).toBe(true);
-         });
-     });
- });
+        it("all selectable models currently support best_effort reasoning", () => {
+            const allBestEffort = USER_SELECTABLE_MODELS.every(
+                (m) => m.reasoningSupport === "best_effort"
+            );
+            expect(allBestEffort).toBe(true);
+        });
+    });
+});
