@@ -68,5 +68,6 @@ Rule meanings:
 
 ## Notes
 - `MOB-FND-001` intentionally introduces the new tier system without retargeting the legacy `900px` runtime query.
+- `MOB-FND-002` adds the shared layout contract in `docs/plans/mobile-layout-contract.md` plus global safe-area and surface-role utilities, but still does not retarget transitional `900px` consumers.
 - Shell, home, auth, protocol, and chat waves are responsible for retiring transitional `900px` behavior surface-by-surface.
 - No CSS rule should be mass-rewritten just because it contains `768`, `900`, or `500`; only semantically obvious rules are safe to migrate in the contract task.

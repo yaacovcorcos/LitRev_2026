@@ -21,7 +21,7 @@ Use this index to retrieve authoritative docs before editing high-risk domains.
 | Guided setup behavior | `docs/plans/plan-guided-setup.md` | Onboarding/setup activation flow changes |
 | Prompting/extraction logic | `docs/plans/plan-prompts.md` | Prompt text/schema/LLM extraction changes |
 | UI/UX architecture and roadmap | `docs/plans/plan-ux-ui.md` | Component and interaction model changes |
-| Mobile chat UX execution (`/project` conversation, `/ai`, popup) | `docs/plans/mobile-plan.md`, `docs/plans/plan-chat-unification-v2.md` | Any mobile chat layout, interaction, drawer/composer, or popup behavior change |
+| Responsive/mobile foundation and chat UX execution | `docs/plans/mobile-plan.md`, `docs/plans/mobile-layout-contract.md`, `docs/plans/plan-chat-unification-v2.md` | Any responsive tier, phone/compact layout contract, mobile chat layout, drawer/composer, or popup behavior change |
 | Chat unification rollout operations | `docs/plans/plan-chat-unification-v2.md`, `docs/runbooks/chat-unification-burn-in.md` | U1.6 canary setup, burn-in validation, and U3 unlock decisions |
 | GitHub branch/PR/review automation | `docs/runbooks/github-flow.md` | Any edits to `.github/workflows/**`, branch protections, CODEOWNERS, or agent git policy |
 | Repo-wide health reviews and recurring regression analysis | `docs/reviews/repo-health.md`, latest file under `docs/reviews/`, `docs/architecture/decision-log.md` | Any request to rerun a deep whole-repo analysis, compare against prior reviews, or assess repeated mistakes/drift |

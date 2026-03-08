@@ -1,0 +1,71 @@
+/* Shared responsive layout contract.
+   Routes should compose these roles instead of hand-authoring phone/compact
+   height, scroll, and sticky-footer behavior. */
+
+.surface-root {
+    --surface-inline-gutter: var(--compact-page-gutter);
+    --surface-section-gap: var(--compact-section-gap);
+    --surface-bottom-offset: var(--safe-area-bottom);
+    --surface-sticky-footer-bg: var(--bg-body);
+
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    gap: var(--surface-section-gap);
+}
+
+.surface-root[data-surface-height="phone"] {
+    min-height: var(--app-height, 100vh);
+}
+
+.surface-root[data-surface-height="phone-min"] {
+    min-height: var(--app-min-height, 100vh);
+}
+
+.surface-root[data-surface-height="shell"] {
+    min-height: var(--shell-content-min-height);
+}
+
+.surface-root[data-surface-gutters="responsive"] {
+    padding-left: var(--surface-inline-gutter);
+    padding-right: var(--surface-inline-gutter);
+}
+
+.surface-scroll-body {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+}
+
+.surface-scroll-body[data-surface-padding="responsive"] {
+    padding-left: var(--surface-inline-gutter);
+    padding-right: var(--surface-inline-gutter);
+    padding-bottom: var(--surface-bottom-offset);
+}
+
+.surface-scroll-body[data-surface-padding="block-end"] {
+    padding-bottom: var(--surface-bottom-offset);
+}
+
+.surface-sticky-footer {
+    position: sticky;
+    bottom: 0;
+    z-index: var(--z-content);
+    padding-bottom: var(--safe-area-bottom);
+    background: var(--surface-sticky-footer-bg);
+}
+
+.surface-sticky-footer[data-surface-footer-offset="surface"] {
+    padding-bottom: var(--surface-bottom-offset);
+}
+
+/* Mirrors PHONE_MAX_WIDTH in lib/mobile/breakpoints.ts. CSS custom properties
+   do not work reliably in media queries, so this stays as a documented sync point. */
+@media (max-width: 767px) {
+    .surface-root {
+        --surface-inline-gutter: var(--phone-page-gutter);
+        --surface-section-gap: var(--phone-section-gap);
+    }
+}
