@@ -27,7 +27,23 @@ vi.mock("next/dynamic", () => ({
       historyGroups?: Array<{ title: string; items: Array<{ id: string; title: string | null }> }>;
       onSelectConversation?: (conversationId: string) => void;
       isHistoryLoading?: boolean;
+      projects?: Array<{ id: string; name: string }>;
+      onSelectProject?: (projectId: string | null) => void;
     }) {
+      if (props.projects && props.onSelectProject) {
+        return (
+          <div>
+            <button type="button" onClick={() => props.onSelectProject?.(null)}>
+              Global scope
+            </button>
+            {props.projects.map((project) => (
+              <button key={project.id} type="button" onClick={() => props.onSelectProject?.(project.id)}>
+                {project.name}
+              </button>
+            ))}
+          </div>
+        );
+      }
       if (props.historyGroups) {
         return (
           <div>
@@ -173,5 +189,74 @@ describe("/ai page deferred hydration", () => {
     await waitFor(() => {
       expect(mockGetGlobalWorkspaceContextAction).toHaveBeenCalledTimes(1);
     }, { timeout: 1000 });
+  });
+
+  it("ignores stale conversation-list responses after a scope change", async () => {
+    vi.useFakeTimers();
+
+    let resolveGlobal: ((value: unknown) => void) | null = null;
+    let resolveProject: ((value: unknown) => void) | null = null;
+
+    mockListConversations
+      .mockImplementationOnce(() => new Promise((resolve) => {
+        resolveGlobal = resolve;
+      }))
+      .mockImplementationOnce(() => new Promise((resolve) => {
+        resolveProject = resolve;
+      }));
+
+    render(<AIView />);
+
+    fireEvent.click(screen.getByRole("button", { name: "composer ready" }));
+    await act(async () => {
+      vi.advanceTimersByTime(200);
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Beta" }));
+    await act(async () => {
+      vi.advanceTimersByTime(200);
+    });
+
+    expect(mockListConversations).toHaveBeenNthCalledWith(1, {
+      projectId: undefined,
+      page: "ai",
+    });
+    expect(mockListConversations).toHaveBeenNthCalledWith(2, {
+      projectId: "proj-2",
+      page: "ai",
+    });
+
+    await act(async () => {
+      resolveProject?.({
+        success: true,
+        data: [{
+          id: "project-conv",
+          title: "Beta chat",
+          projectId: "proj-2",
+          createdAt: "2026-03-01T00:00:00.000Z",
+          updatedAt: "2026-03-02T00:00:00.000Z",
+        }],
+      });
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      resolveGlobal?.({
+        success: true,
+        data: [{
+          id: "global-conv",
+          title: "Global chat",
+          projectId: null,
+          createdAt: "2026-03-01T00:00:00.000Z",
+          updatedAt: "2026-03-02T00:00:00.000Z",
+        }],
+      });
+      await Promise.resolve();
+    });
+
+    fireEvent.click(screen.getByLabelText("Open chat history"));
+
+    expect(screen.getByText("Beta chat")).toBeTruthy();
+    expect(screen.queryByText("Global chat")).toBeNull();
   });
 });

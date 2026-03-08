@@ -143,7 +143,10 @@ export function AiHistorySidebarContent({
           <button
             type="button"
             className={styles.contextMenuItem}
-            onClick={(event) => onDuplicateConversation(contextMenu.conversationId, event)}
+            onClick={(event) => {
+              onDismissContextMenu();
+              onDuplicateConversation(contextMenu.conversationId, event);
+            }}
           >
             <span className="material-icons-round">content_copy</span>
             Duplicate
@@ -151,7 +154,10 @@ export function AiHistorySidebarContent({
           <button
             type="button"
             className={`${styles.contextMenuItem} ${styles.contextMenuItemDanger}`}
-            onClick={(event) => onDeleteConversation(contextMenu.conversationId, event)}
+            onClick={(event) => {
+              onDismissContextMenu();
+              onDeleteConversation(contextMenu.conversationId, event);
+            }}
           >
             <span className="material-icons-round">delete_outline</span>
             Delete

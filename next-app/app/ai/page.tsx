@@ -270,6 +270,8 @@ export default function AIView() {
   const routePerfStartRef = useRef<number | null>(null);
   const measuredComposerConversationRef = useRef<string | null>(null);
   const measuredTimelineConversationRef = useRef<string | null>(null);
+  const currentHistoryScopeRef = useRef<string>(GLOBAL_HISTORY_SCOPE_KEY);
+  const historyRequestTokenRef = useRef(0);
   const historyLoadedScopeRef = useRef<string | null>(null);
   const historyLoadPromiseRef = useRef<Promise<void> | null>(null);
   const workspaceContextPromiseRef = useRef<Promise<string> | null>(null);
@@ -455,9 +457,16 @@ export default function AIView() {
 
   const historyScopeKey = selectedProjectId ?? GLOBAL_HISTORY_SCOPE_KEY;
 
+  useEffect(() => {
+    currentHistoryScopeRef.current = historyScopeKey;
+  }, [historyScopeKey]);
+
   const loadConversationList = useCallback(async (force = false) => {
     if (!force && historyLoadedScopeRef.current === historyScopeKey) return;
     if (historyLoadPromiseRef.current) return historyLoadPromiseRef.current;
+    const requestScopeKey = historyScopeKey;
+    const requestToken = historyRequestTokenRef.current + 1;
+    historyRequestTokenRef.current = requestToken;
 
     const loadPromise = (async () => {
       setIsHistoryLoading(true);
@@ -477,15 +486,20 @@ export default function AIView() {
         createdAt: s.createdAt,
         updatedAt: s.updatedAt,
       }));
+      if (currentHistoryScopeRef.current !== requestScopeKey) {
+        return;
+      }
       setConversations(mapped);
-      historyLoadedScopeRef.current = historyScopeKey;
+      historyLoadedScopeRef.current = requestScopeKey;
     })()
       .catch((err) => {
         console.error("Failed to load AI conversations", err);
       })
       .finally(() => {
-        historyLoadPromiseRef.current = null;
-        setIsHistoryLoading(false);
+        if (historyRequestTokenRef.current === requestToken) {
+          historyLoadPromiseRef.current = null;
+          setIsHistoryLoading(false);
+        }
       });
 
     historyLoadPromiseRef.current = loadPromise;
@@ -1801,18 +1815,15 @@ export default function AIView() {
     [conversations, activeConversationId]
   );
 
-  const exportBaseName = useMemo(() => {
-    return `${selectedProject?.name ?? "global"}\u0000${activeConversation?.title ?? "conversation"}`;
-  }, [selectedProject, activeConversation]);
-
   const handleExportMarkdown = useCallback(() => {
     if (activeTimeline.length === 0) return;
     const title = activeConversation?.title ?? "AI Conversation";
-    const [scopeName, conversationTitle] = exportBaseName.split("\u0000");
+    const scopeName = selectedProject?.name;
+    const conversationTitle = activeConversation?.title;
     void import("./ai-export").then(({ buildExportBaseName, exportTimelineMarkdown }) => {
       exportTimelineMarkdown(activeTimeline, title, buildExportBaseName(scopeName, conversationTitle));
     });
-  }, [activeTimeline, activeConversation, exportBaseName]);
+  }, [activeTimeline, activeConversation, selectedProject]);
 
   const handleExportPdf = useCallback(() => {
     if (activeTimeline.length === 0) return;
