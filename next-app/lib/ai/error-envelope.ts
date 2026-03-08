@@ -162,6 +162,33 @@ export function createAutonomyBlockedErrorEnvelope(params: {
     };
 }
 
+export function createRunConflictErrorEnvelope(params: {
+    code: "ACTIVE_RUN_EXISTS" | "REPLACE_TARGET_MISMATCH";
+    conversationId: string;
+    activeRunId: string;
+    replaceRunId?: string;
+}): AIErrorEnvelope {
+    if (params.code === "REPLACE_TARGET_MISMATCH") {
+        return {
+            kind: "run_conflict",
+            code: params.code,
+            retryable: false,
+            source: "conversation_run_lock",
+            message: params.replaceRunId
+                ? `Conversation ${params.conversationId} is running ${params.activeRunId}, so replace request ${params.replaceRunId} was rejected.`
+                : `Conversation ${params.conversationId} is running ${params.activeRunId}, so the replace request was rejected.`,
+        };
+    }
+
+    return {
+        kind: "run_conflict",
+        code: params.code,
+        retryable: false,
+        source: "conversation_run_lock",
+        message: `Conversation ${params.conversationId} already has an active run (${params.activeRunId}).`,
+    };
+}
+
 export function extractEnvelopeStatus(value: unknown): number | undefined {
     return asNumber(value);
 }

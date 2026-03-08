@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/server/prisma";
+import { AIErrorWithEnvelope, createRunConflictErrorEnvelope } from "@/lib/ai/error-envelope";
 
 export const DEFAULT_CONVERSATION_RUN_STALE_MS = 20 * 60 * 1000;
 
@@ -10,6 +11,7 @@ type RunningConversationRun = {
 export interface ConversationRunLockStore {
   listRunning(conversationId: string): Promise<RunningConversationRun[]>;
   cancelRuns(runIds: string[], completedAt: Date): Promise<number>;
+  cancelRunIfActive(runId: string, conversationId: string, completedAt: Date): Promise<boolean>;
 }
 
 const prismaConversationRunLockStore: ConversationRunLockStore = {
@@ -28,6 +30,13 @@ const prismaConversationRunLockStore: ConversationRunLockStore = {
     });
     return result.count;
   },
+  async cancelRunIfActive(runId: string, conversationId: string, completedAt: Date): Promise<boolean> {
+    const result = await prisma.agentRun.updateMany({
+      where: { id: runId, conversationId, status: "running" },
+      data: { status: "cancelled", completedAt },
+    });
+    return result.count > 0;
+  },
 };
 
 export async function ensureConversationRunAvailability(
@@ -36,16 +45,18 @@ export async function ensureConversationRunAvailability(
     now?: Date;
     staleMs?: number;
     store?: ConversationRunLockStore;
+    replaceRunId?: string;
   }
-): Promise<{ cancelledStaleRunCount: number }> {
+): Promise<{ cancelledStaleRunCount: number; replacedRunId: string | null }> {
   const now = options?.now ?? new Date();
   const staleMs = options?.staleMs ?? DEFAULT_CONVERSATION_RUN_STALE_MS;
   const store = options?.store ?? prismaConversationRunLockStore;
+  const replaceRunId = options?.replaceRunId?.trim() || undefined;
   const cutoff = new Date(now.getTime() - staleMs);
 
   const running = await store.listRunning(conversationId);
   if (running.length === 0) {
-    return { cancelledStaleRunCount: 0 };
+    return { cancelledStaleRunCount: 0, replacedRunId: null };
   }
 
   const staleRunIds: string[] = [];
@@ -61,11 +72,61 @@ export async function ensureConversationRunAvailability(
   }
 
   if (freshRunIds.length > 0) {
-    throw new Error(
-      `Conversation ${conversationId} already has an active run (${freshRunIds[0]}).`
-    );
+    const activeRunId = freshRunIds[0]!;
+    if (!replaceRunId) {
+      throw new AIErrorWithEnvelope(
+        createRunConflictErrorEnvelope({
+          code: "ACTIVE_RUN_EXISTS",
+          conversationId,
+          activeRunId,
+        }),
+      );
+    }
+
+    if (replaceRunId !== activeRunId) {
+      throw new AIErrorWithEnvelope(
+        createRunConflictErrorEnvelope({
+          code: "REPLACE_TARGET_MISMATCH",
+          conversationId,
+          activeRunId,
+          replaceRunId,
+        }),
+      );
+    }
+
+    const replaced = await store.cancelRunIfActive(replaceRunId, conversationId, now);
+    if (!replaced) {
+      const latestRunning = await store.listRunning(conversationId);
+      const latestFresh = latestRunning.find((run) => run.startedAt >= cutoff);
+      if (latestFresh) {
+        // The replace target disappeared before we could cancel it. If the same
+        // run is still active we surface the ordinary active-run conflict;
+        // otherwise a different run won the race and the replace target mismatched.
+        throw new AIErrorWithEnvelope(
+          createRunConflictErrorEnvelope({
+            code: latestFresh.id === replaceRunId ? "ACTIVE_RUN_EXISTS" : "REPLACE_TARGET_MISMATCH",
+            conversationId,
+            activeRunId: latestFresh.id,
+            replaceRunId,
+          }),
+        );
+      }
+    }
+
+    const remainingRunning = await store.listRunning(conversationId);
+    const remainingFresh = remainingRunning.find((run) => run.startedAt >= cutoff);
+    if (remainingFresh) {
+      throw new AIErrorWithEnvelope(
+        createRunConflictErrorEnvelope({
+          code: "ACTIVE_RUN_EXISTS",
+          conversationId,
+          activeRunId: remainingFresh.id,
+        }),
+      );
+    }
+
+    return { cancelledStaleRunCount, replacedRunId: replaceRunId };
   }
 
-  return { cancelledStaleRunCount };
+  return { cancelledStaleRunCount, replacedRunId: null };
 }
-

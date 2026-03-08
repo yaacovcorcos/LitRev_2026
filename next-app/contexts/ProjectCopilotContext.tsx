@@ -300,6 +300,7 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
         setCurrentRunId,
         setPendingChoices,
         setPendingUserInput,
+        currentRunId,
         setArtifacts,
         pendingAttachment,
         setPendingAttachment,

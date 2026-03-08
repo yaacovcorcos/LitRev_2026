@@ -109,6 +109,7 @@ Every fix entry must include:
 - **Protocol Mutation Uses Shared Field-Aware Normalization:** `update_protocol`, same-turn tool-call sanitization, and repeat detection now reuse the same field/value normalize-classify path so unambiguous wrapper shapes are repaired consistently, whitespace-only field mismatches no longer diverge between validation and execution, and normalization/hashing paths cap nested input depth safely.
 - **Tool Prerequisites Now Gate High-Risk Actions Before Execution:** tool metadata now declares project/study/protocol prerequisites in the shared pre-execution path, screening actions also gate on resolvable non-empty criteria, and blocked actions emit structured `missing_prerequisite` envelopes before a tool runs. Generic PDF file existence is still verified inside PDF tools rather than the shared prerequisite vocabulary.
 - **Run Recovery Semantics Are Structured On Timeline-Based Surfaces:** `/ai` and project copilot now preserve deterministic failure envelopes into client state, retry affordances are derived from structured metadata, and server finalization uses explicit run facts so failed no-answer runs no longer masquerade as `completed`. Popup now retains lightweight error metadata and annotates terminal failures inline, but it still does not have full timeline-style parity.
+- **Run Finalization Is Now Guarded End To End:** `startRun()` and `run_start` now live inside the guarded `streamChatWithArtifacts` lifecycle, and a final `finally` path force-finalizes any started run that would otherwise leak as `running` after early stream termination. Replace-safe admission, shared abnormal-end cleanup, and error dedupe remain tracked under `FIX-012`.
 - **Shared Failure Handling Still Needs One Owner:** shared stream reducers emit typed `stream_error` intents, but terminal failure presentation is not fully centralized yet; tracked under `FIX-011`.
 
 ## Verified Failure Classes
@@ -123,18 +124,20 @@ Every fix entry must include:
 - Delegated child work bypassing review boundaries or swallowing clarification requests.
 - Plan execution exceeding the tool surface or mode the user actually approved.
 - Popup implying mutation capability it cannot actually render or complete honestly.
+- Started runs leaking as `running` after stream termination or early generator close, causing fresh-send collisions on the same conversation.
 
 ## Active Fixes
 *Immediate remediation work for shipped behavior that is broken, misleading, or lower quality than the intended contract.*
 
-- [x] `FIX-001` Delegation safety and child clarification
+- [ ] `FIX-012` Run lifecycle integrity and interrupt/replace safety
   - Severity: `P0`
-  - Problem: delegated child runs could bypass review-only constraints and child `ask_user` requests did not surface correctly.
-  - Supporting detail: `docs/plans/agent-runtime-remediation/plan-delegation-safety.md`
+  - Problem: the runtime can leak started runs as `running`, project copilot and `/ai` still diverge on abnormal-end cleanup, and resend/cancel behavior is not yet replace-safe.
+  - Supporting detail: canonical plan only for now.
   - Exit criteria:
-    - delegated child runs cannot auto-apply changes that direct execution keeps review-only
-    - delegated child `ask_user` emits real `user_input_required` UI through the parent flow
-    - parent-visible artifact ownership and tracing remain intact
+    - no started run remains `running` after stream termination unless the request is genuinely still alive
+    - replace-safe admission requires explicit prior run identity rather than conversation-only cancellation
+    - `/ai` and project copilot share abnormal-end unfinished-tool cleanup
+    - one terminal failure renders once
 
 - [ ] `FIX-002` Plan execution confinement and approval integrity
   - Severity: `P0`
@@ -183,18 +186,27 @@ Every fix entry must include:
     - popup and shared adapters have dedicated regression coverage for terminal failure rendering
     - remaining popup limitations are documented explicitly instead of implied away
 
+- [ ] `FIX-012` Run lifecycle integrity and interrupt/replace safety
+  - Severity: `P1`
+  - Problem: active-run admission, abnormal end cleanup, and retry/replace flows are still not fully coordinated, so interrupted runs can still create avoidable lock conflicts, stuck tool state, or duplicated terminal failures.
+  - Supporting detail: canonical plan only for now.
+  - Exit criteria:
+    - no started run remains `running` after ordinary termination
+    - replace-safe admission requires explicit prior run identity instead of conversation-wide cancellation
+    - abnormal run endings fail unfinished tools consistently across `/ai` and project copilot
+    - a single terminal failure renders once
+
 ## Execution Order
 
 Work should proceed in this order unless a production incident forces reprioritization:
 
-1. `FIX-008` tool prerequisite gating and action eligibility
-2. `FIX-001` delegation safety
+1. `FIX-012` run lifecycle integrity and interrupt/replace safety
+2. `FIX-004` general-mode scoping and clarification cleanup
 3. `FIX-002` plan execution confinement
 4. `FIX-003` popup action-surface honesty
-5. `FIX-004` general-mode scoping and clarification cleanup
-6. `FIX-005` docs/evals/provenance hardening
-7. `FIX-011` shared failure handling and popup parity
-8. roadmap phases after the active fixes above are stable
+5. `FIX-005` docs/evals/provenance hardening
+6. `FIX-011` shared failure handling and popup parity
+7. roadmap phases after the active fixes above are stable
 
 ## End-to-End Delivery Program
 
@@ -340,7 +352,9 @@ These files are supporting documents. Status, priority, and closure rules live h
 
 ## Recently Completed
 
+- [x] Implemented `FIX-012a` run finalization guard: started runs now enter a top-level guarded lifecycle in `ai-service`, `run_start` occurs inside that guard, and exactly-once finalization prevents ordinary aborted streams from leaking fresh `running` rows.
 - [x] Implemented `FIX-004a` tool-surface honesty: `general` mode now uses explicit project/global allowlists instead of widening to all tools, main agentic tool assembly in `ai-service` is mode-aware through the contextual helper, and disabled/global delegation tools are removed from model-visible definitions before the model can call them.
+- [x] Implemented `FIX-012a` run finalization guard: started runs now enter the guarded `streamChatWithArtifacts` lifecycle, `run_start` is only emitted after that guard is active, and exactly-once finalization prevents ordinary aborted streams from leaking fresh `running` rows.
 - [x] Implemented `FIX-001` delegation safety and child clarification: delegated child runs now use the shared autonomy-aware execution/finalization core instead of direct tool execution, approval-required autonomy blocks surface as structured non-executed results, delegated proposal artifacts stay review-only unless direct policy allows auto-apply, and delegated `ask_user` requests bubble through the parent `user_input_required` path with parent-visible artifact metadata.
 - [x] Implemented `FIX-008` tool prerequisite gating: high-risk tools now declare project/study/protocol prerequisites in shared tool metadata, the shared pre-execution middleware/autonomy path blocks missing context before tool execution, screening actions also gate on non-empty criteria readiness, and blocked calls emit structured `missing_prerequisite` envelopes instead of generic tool failures.
 - [x] Hardened popup terminal-failure rendering under `FIX-011`: popup now keeps lightweight structured error metadata on assistant turns, annotates partial-output failures inline without persisting raw error text into transcript content, and has direct component coverage for deterministic and retryable terminal failure rendering.

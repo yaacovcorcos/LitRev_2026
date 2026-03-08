@@ -15,6 +15,7 @@ import { StreamCoalescer } from "@/lib/server/ai/stream-coalescer";
 import { runWithActorContext } from "@/lib/server/actor";
 import { requireApiSession } from "@/lib/server/auth/session";
 import { assertProjectAccess } from "@/lib/server/access";
+import { buildStreamErrorChunk, extractAIErrorEnvelope } from "@/lib/ai/error-envelope";
 import type { PopupChatContext } from "@/types/popup-chat";
 import { buildPopupSystemPrompt } from "@/lib/server/ai/popup-context";
 import { createPopupToolGuard, getAllowedPopupToolNames } from "@/lib/server/ai/popup-tool-contract";
@@ -70,6 +71,13 @@ export async function POST(request: NextRequest) {
             selectedSteps?: number[];
             popupContext?: PopupChatContext;
         };
+
+        if (options?.replaceRunId !== undefined && typeof options.replaceRunId !== "string") {
+            return new Response(
+                JSON.stringify({ error: "replaceRunId must be a string when provided" }),
+                { status: 400, headers: { "Content-Type": "application/json" } },
+            );
+        }
 
         // Validate project ownership before allowing any tool execution
         if (options?.projectId) {
@@ -274,8 +282,16 @@ export async function POST(request: NextRequest) {
                             await coalescer.push({ type: "error", error: "No messages provided" });
                         }
                     } catch (error) {
-                        const errorMessage = error instanceof Error ? error.message : "Unknown error";
-                        await coalescer.push({ type: "error", error: errorMessage });
+                        const envelope = extractAIErrorEnvelope(error);
+                        if (envelope) {
+                            const normalized = normalizeStreamChunk(buildStreamErrorChunk(envelope));
+                            if (normalized) {
+                                await coalescer.push(normalized);
+                            }
+                        } else {
+                            const errorMessage = error instanceof Error ? error.message : "Unknown error";
+                            await coalescer.push({ type: "error", error: errorMessage });
+                        }
                     } finally {
                         await coalescer.flushAll();
                         await maybeRecordRunEndMetric();

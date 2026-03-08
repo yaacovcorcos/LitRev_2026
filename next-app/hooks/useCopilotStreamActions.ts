@@ -52,6 +52,7 @@ export type CopilotStreamActionsDeps = {
     setCurrentRunId: React.Dispatch<React.SetStateAction<string | null>>;
     setPendingChoices: React.Dispatch<React.SetStateAction<ChoiceOption[]>>;
     setPendingUserInput: React.Dispatch<React.SetStateAction<UserInputRequest | null>>;
+    currentRunId: string | null;
     setArtifacts: React.Dispatch<React.SetStateAction<Map<string, ArtifactData>>>;
     pendingAttachment: PendingAttachment | null;
     setPendingAttachment: React.Dispatch<React.SetStateAction<PendingAttachment | null>>;
@@ -73,6 +74,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
         setCurrentRunId,
         setPendingChoices,
         setPendingUserInput,
+        currentRunId,
         setArtifacts,
         pendingAttachment,
         setPendingAttachment,
@@ -104,6 +106,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
         page: CopilotPage;
         section?: string;
         convId: string | null;
+        replaceRunId?: string | null;
         onPlanStepUpdate?: (planId: string, stepIndex: number, stepStatus: string) => void;
     }): Promise<{
         success: boolean;
@@ -117,7 +120,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
         runId: string | null;
         conversationId: string | null;
     }> => {
-        const { body, page, section, convId, onPlanStepUpdate } = params;
+        const { body, page, section, convId, replaceRunId, onPlanStepUpdate } = params;
         let effectiveConvId = convId;
 
         // Stream lifecycle guards
@@ -188,10 +191,20 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
         userCancelRequestedRef.current = false;
 
         try {
+            const requestBody = replaceRunId
+                ? {
+                    ...body,
+                    options: {
+                        ...(((body.options as Record<string, unknown> | undefined) ?? {})),
+                        replaceRunId,
+                    },
+                }
+                : body;
+
             const response = await fetch("/api/ai/stream", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(body),
+                body: JSON.stringify(requestBody),
                 signal: controller.signal,
             });
 
@@ -485,6 +498,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
             const trimmed = text.trim();
             const attachment = pendingAttachment;
             if (!trimmed && !attachment) return;
+            const replaceRunId = isLoadingRef.current ? currentRunId : null;
             if (isLoadingRef.current) cancelStream();
             setPendingChoices([]);
             setPendingUserInput(null);
@@ -613,12 +627,14 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                 page,
                 section,
                 convId,
+                replaceRunId,
             });
         },
-        [updateState, projectId, cancelStream, convo, pendingAttachment, reasoningMode, runStream, setPendingChoices, setPendingAttachment, isLoadingRef]
+        [updateState, projectId, cancelStream, convo, pendingAttachment, reasoningMode, runStream, setPendingChoices, setPendingAttachment, isLoadingRef, currentRunId]
     );
 
     const executePlanAction = useCallback(async (artifactId: string, selectedIndexes: number[]) => {
+        const replaceRunId = isLoadingRef.current ? currentRunId : null;
         if (isLoadingRef.current) cancelStream();
         setPendingChoices([]);
 
@@ -665,6 +681,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
             },
             page: executionPage,
             convId,
+            replaceRunId,
             onPlanStepUpdate: (planId, stepIndex, stepStatus) => {
                 // Update artifact payload step statuses
                 setArtifacts((prev) => {
@@ -731,7 +748,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                 messages: [...prev.messages, feedback],
             }));
         }
-    }, [cancelStream, convo, projectId, reasoningMode, runStream, updateState, setArtifacts, setPendingChoices, isLoadingRef, stateRef]);
+    }, [cancelStream, convo, currentRunId, projectId, reasoningMode, runStream, updateState, setArtifacts, setPendingChoices, isLoadingRef, stateRef]);
 
     const reviewArtifactActionLocal = useCallback(async (
         artifactId: string,

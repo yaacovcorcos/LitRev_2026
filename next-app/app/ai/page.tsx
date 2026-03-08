@@ -30,6 +30,7 @@ import {
   shouldSuppressClientFallback,
 } from "@/lib/ai/stream-error-ui";
 import { createAiStreamRuntime } from "@/lib/ai/ai-stream-runtime";
+import type { SharedStreamIntent } from "@/lib/ai/shared-stream-reducer";
 import { generateChatUnificationRequestKey, recordChatUnificationMetric } from "@/lib/ai/chat-unification-telemetry";
 import { terminalReasonFromThrownError, type StreamTerminalReason } from "@/lib/ai/stream-lifecycle";
 import { recordReliabilityMetric } from "@/lib/ai/reliability-telemetry";
@@ -271,6 +272,7 @@ export default function AIView() {
   const historyContentId = "chat-history-panel";
   const abortControllerRef = useRef<AbortController | null>(null);
   const streamGenRef = useRef(0);
+  const currentRunIdRef = useRef<string | null>(null);
   const sendLockRef = useRef(false);
   const activeConversationIdRef = useRef<string | null>(null);
   const routePerfStartRef = useRef<number | null>(null);
@@ -405,6 +407,12 @@ export default function AIView() {
     if (!url || !isNavigationSafe(url)) return;
     router.push(url);
   }, [router]);
+
+  const handleRunIntent = useCallback((intent: SharedStreamIntent) => {
+    if (intent.type === "run_set" && intent.runId) {
+      currentRunIdRef.current = intent.runId;
+    }
+  }, []);
 
   const emitMobileActionTap = useCallback((actionId: string, targetMinPx?: number) => {
     if (!isMobileTelemetryContext()) return;
@@ -1082,6 +1090,7 @@ export default function AIView() {
     );
 
     setPrefillCommand(null);
+    const replaceRunId = isTyping ? currentRunIdRef.current : null;
     setIsTyping(true);
     streamGenRef.current++;
     const myGen = streamGenRef.current;
@@ -1147,6 +1156,7 @@ export default function AIView() {
       upsertConversationTitle,
       setPendingChoices,
       setPendingUserInput,
+      onIntent: handleRunIntent,
       onNavigate: handleNavigate,
     });
 
@@ -1159,6 +1169,7 @@ export default function AIView() {
           context,
           options: {
             conversationId: convId,
+            replaceRunId: replaceRunId ?? undefined,
             projectId: selectedProjectId ?? undefined,
             model: effectiveModel,
             reasoningMode: reasoningRequest.reasoningMode,
@@ -1532,6 +1543,7 @@ export default function AIView() {
     };
 
     setPlanStatus("running");
+    const replaceRunId = isTyping ? currentRunIdRef.current : null;
     setIsTyping(true);
     streamGenRef.current++;
     const myGen = streamGenRef.current;
@@ -1573,6 +1585,7 @@ export default function AIView() {
       upsertConversationTitle,
       setPendingChoices,
       setPendingUserInput,
+      onIntent: handleRunIntent,
       onPlanStepUpdate: updatePlanStepStatus,
       onNavigate: handleNavigate,
     });
@@ -1616,6 +1629,7 @@ export default function AIView() {
           context: selectedProjectId ? "project" : "global",
           options: {
             conversationId: convId,
+            replaceRunId: replaceRunId ?? undefined,
             projectId: selectedProjectId ?? undefined,
             model: selectedModel,
             reasoningMode: reasoningRequest.reasoningMode,
