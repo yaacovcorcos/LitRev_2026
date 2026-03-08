@@ -14,7 +14,7 @@ export const AI_CONFIG = {
     defaultModel: (process.env.AI_DEFAULT_MODEL || "gpt-5.2").trim(),
     reasoningModel: (process.env.AI_REASONING_MODEL || "gpt-5.2").trim(),
     maxRequestsPerMinute: parseInt((process.env.AI_RATE_LIMIT || "20").trim(), 10),
-    maxTokensPerDay: parseInt((process.env.AI_DAILY_TOKEN_LIMIT || "500000").trim(), 10),
+    maxTokensPerDay: parseInt((process.env.AI_DAILY_TOKEN_LIMIT || "300000").trim(), 10),
     defaultTemperature: 0.7,
     defaultMaxTokens: 2048,
     requestTimeoutMs: 60000,

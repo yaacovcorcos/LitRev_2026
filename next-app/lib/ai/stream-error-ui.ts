@@ -4,9 +4,10 @@ import type { AIErrorEnvelope } from "@/types/ai";
 import type { StreamTerminalReason } from "@/lib/ai/stream-lifecycle";
 
 const CLAUDE_REASONING_BUDGET_PATTERN = /max_tokens.*greater than.*thinking\.budget_tokens/i;
+const DAILY_TOKEN_LIMIT_PATTERN = /daily token limit exceeded|maximum\s+\d+\s+tokens per day/i;
 const RATE_LIMIT_PATTERN = /rate.?limit|too many requests|overloaded|capacity/i;
 const AUTH_PATTERN = /unauthorized|forbidden|invalid.*api key|authentication/i;
-const CONTEXT_PATTERN = /context window|context length|too long|token limit|request.*too.*large|input.*too.*long/i;
+const CONTEXT_PATTERN = /context window|context length|too long|request.*too.*large|input.*too.*long|exceeded model token limit|token.*limit.*exceed/i;
 const NETWORK_PATTERN = /network|failed to fetch|econn|timeout|timed out|socket|offline/i;
 const RETRY_HINT_PATTERN = /retry|temporarily busy|try again/i;
 
@@ -66,13 +67,14 @@ function extractEmbeddedProviderMessage(rawMessage: string): string | null {
  * This is intentionally UI-focused and strips transport noise like "400 {...json...}".
  */
 export function formatStreamErrorForUI(error: unknown): string {
-    const raw = collapseWhitespace(extractRawErrorMessage(error));
-    const extracted = extractEmbeddedProviderMessage(raw);
-    const base = collapseWhitespace(extracted ?? raw);
+    const base = getBaseErrorMessage(error);
 
     if (!base) return "The request failed. Please try again.";
     if (CLAUDE_REASONING_BUDGET_PATTERN.test(base)) {
         return "Claude could not run this request with the current reasoning settings. Retry, or set reasoning to Off.";
+    }
+    if (DAILY_TOKEN_LIMIT_PATTERN.test(base)) {
+        return "Daily token limit reached for your workspace. Try again tomorrow.";
     }
     if (RATE_LIMIT_PATTERN.test(base)) {
         return "The model is temporarily busy. Please retry in a moment.";
@@ -85,6 +87,12 @@ export function formatStreamErrorForUI(error: unknown): string {
     }
 
     return base.length > 240 ? `${base.slice(0, 237)}...` : base;
+}
+
+function getBaseErrorMessage(error: unknown): string {
+    const raw = collapseWhitespace(extractRawErrorMessage(error));
+    const extracted = extractEmbeddedProviderMessage(raw);
+    return collapseWhitespace(extracted ?? raw);
 }
 
 function inferRetryableFromMessage(message: string): boolean {
@@ -206,8 +214,11 @@ export function matchesCanonicalFailureFallback(params: {
     if (assistantText === withoutMessageFallback) return true;
 
     const formattedError = collapseWhitespace(formatStreamErrorForUI(params.streamError));
-    if (!formattedError) return false;
+    const rawError = getBaseErrorMessage(params.streamError);
+    const candidates = [formattedError, rawError]
+        .map((message) => message.trim())
+        .filter(Boolean)
+        .map((message) => normalizedText(buildFailureFallbackMessage(message)));
 
-    const withMessageFallback = normalizedText(buildFailureFallbackMessage(formattedError));
-    return assistantText === withMessageFallback;
+    return candidates.includes(assistantText);
 }
