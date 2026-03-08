@@ -2,6 +2,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SampleReviewCard } from "../SampleReviewCard";
+import styles from "@/components/ProjectGrid.module.css";
 
 const {
   mockPush,
@@ -67,6 +68,14 @@ describe("SampleReviewCard", () => {
       expect(mockRefresh).toHaveBeenCalledTimes(1);
     });
     expect(mockPush).toHaveBeenCalledWith("/project/demo-project-id");
+  });
+
+  it("uses a dedicated sample entry structure instead of reusing the new-project card scaffold", () => {
+    render(<SampleReviewCard viewMode="grid" />);
+
+    const card = screen.getByRole("button", { name: "Open sample review" }).parentElement;
+    expect(card?.className).toContain(styles.sampleEntryCard);
+    expect(card?.className).not.toContain(styles.newProjectCard);
   });
 
   it("dismisses the card without triggering open behavior", () => {

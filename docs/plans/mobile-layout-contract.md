@@ -151,7 +151,7 @@ Only use this when the local surface truly needs to account for route-level navi
 
 ## Adoption Guidance By Wave
 - `MOB-FND-003`: app shell and sidebar now adopt shared shell-height and phone-only offset rules behind `NEXT_PUBLIC_MOBILE_SHELL_V2`; full shell scroll-owner normalization remains conservative until later route waves prove compatibility
-- `MOB-FND-004`: home should adopt `surface root` + `surface scroll body` and remove raw `100vh` zero-state ownership
+- `MOB-FND-004`: home now uses direct route-level `surface root` ownership for loading/zero-state and shell-owned offset consumption for workspace content; sample review entry is structurally decoupled from the create-new card scaffold
 - `MOB-FND-005`: login/auth should adopt the shared height and safe-area contract while keeping its own visual shell
 - `MOB-FND-006`: protocol should adopt shared root/body/footer roles for its contained-scroll layout
 - chat/mobile follow-up waves should use sticky footer roles for composer/action regions where applicable

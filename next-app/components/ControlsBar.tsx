@@ -12,9 +12,25 @@ type ControlsBarProps = {
   onSortChange: (mode: SortMode) => void;
   onViewChange: (mode: ViewMode) => void;
   rightAction?: React.ReactNode;
+  className?: string;
+  viewControlsClassName?: string;
+  rightActionClassName?: string;
+  sortButtonClassName?: string;
+  viewTogglesClassName?: string;
 };
 
-export function ControlsBar({ sortMode, viewMode, onSortChange, onViewChange, rightAction }: ControlsBarProps) {
+export function ControlsBar({
+  sortMode,
+  viewMode,
+  onSortChange,
+  onViewChange,
+  rightAction,
+  className = "",
+  viewControlsClassName = "",
+  rightActionClassName = "",
+  sortButtonClassName = "",
+  viewTogglesClassName = "",
+}: ControlsBarProps) {
   const [isSortOpen, setSortOpen] = useState(false);
   const [focusedIndex, setFocusedIndex] = useState(-1);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -96,12 +112,12 @@ export function ControlsBar({ sortMode, viewMode, onSortChange, onViewChange, ri
   );
 
   return (
-    <div className={styles.controlsBar}>
-      <div className={styles.viewControls}>
+    <div className={`${styles.controlsBar} ${className}`.trim()}>
+      <div className={`${styles.viewControls} ${viewControlsClassName}`.trim()}>
         <div className={styles.customSelect} ref={dropdownRef}>
           <button
             type="button"
-            className={styles.sortButton}
+            className={`${styles.sortButton} ${sortButtonClassName}`.trim()}
             id="sortBtn"
             aria-haspopup="listbox"
             aria-expanded={isSortOpen}
@@ -160,7 +176,7 @@ export function ControlsBar({ sortMode, viewMode, onSortChange, onViewChange, ri
           </div>
         </div>
 
-        <div className={styles.viewToggles}>
+        <div className={`${styles.viewToggles} ${viewTogglesClassName}`.trim()}>
           <button
             className={`${styles.iconButton} ${viewMode === "grid" ? styles.iconButtonActive : ""}`}
             id="gridViewBtn"
@@ -180,7 +196,9 @@ export function ControlsBar({ sortMode, viewMode, onSortChange, onViewChange, ri
             <span className="material-icons-round">view_list</span>
           </button>
         </div>
-        {rightAction ? <div className={styles.inlineAction}>{rightAction}</div> : null}
+        {rightAction ? (
+          <div className={`${styles.inlineAction} ${rightActionClassName}`.trim()}>{rightAction}</div>
+        ) : null}
       </div>
     </div>
   );

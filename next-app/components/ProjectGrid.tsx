@@ -16,19 +16,12 @@ export function ProjectGrid({ projects, viewMode, onNewProject, showSampleCard =
   const classes = (...tokens: Array<string | false>) => tokens.filter(Boolean).join(" ");
 
   return (
-    <div className={gridClass}>
-      <div
+    <div className={gridClass} data-view-mode={viewMode}>
+      <button
+        type="button"
         className={`${styles.card} ${styles.newProjectCard} ${viewMode === "list" ? styles.listViewNewCard : ""}`}
-        role="button"
-        tabIndex={0}
         aria-label="Create New Project"
         onClick={onNewProject}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            onNewProject();
-          }
-        }}
       >
         <div className={styles.newProjectContent}>
           <div className={styles.iconCircle}>
@@ -39,7 +32,7 @@ export function ProjectGrid({ projects, viewMode, onNewProject, showSampleCard =
             <p className={styles.newProjectCopy}>Start a new Literature Review</p>
           </div>
         </div>
-      </div>
+      </button>
 
       {projects.map((p) => {
         const isHarvesting = p.status === "harvesting";

@@ -57,13 +57,17 @@ export function SampleReviewCard({ viewMode }: SampleReviewCardProps) {
   const demoAlreadyExists = projects.some((project) => isDemoProjectId(project.id));
   if (dismissed || demoAlreadyExists) return null;
 
-  const cardClass = `${styles.card} ${styles.newProjectCard} ${styles.sampleCard} ${viewMode === "list" ? styles.listViewNewCard : ""}`;
+  const cardClass = [
+    styles.card,
+    styles.sampleEntryCard,
+    viewMode === "list" ? styles.sampleEntryListCard : styles.sampleEntryGridCard,
+  ].join(" ");
 
   return (
     <div className={cardClass}>
       <button
         type="button"
-        className={styles.sampleCardOpenBtn}
+        className={styles.sampleEntryOpenBtn}
         aria-label="Open sample review"
         aria-busy={isOpening || undefined}
         onClick={() => {
@@ -71,23 +75,24 @@ export function SampleReviewCard({ viewMode }: SampleReviewCardProps) {
           void handleOpen();
         }}
       >
-        <span className={styles.sampleBadge}>Sample</span>
-        <div className={styles.newProjectContent}>
-          <div className={styles.iconCircle}>
+        <span className={styles.sampleEntryBadge}>Sample</span>
+        <div className={styles.sampleEntryContent}>
+          <div className={styles.sampleEntryIcon}>
             <span className="material-icons-round" aria-hidden>
               science
             </span>
           </div>
-          <div>
-            <h3 className={styles.newProjectTitle}>{isOpening ? "Opening..." : "Explore Sample Review"}</h3>
-            <p className={styles.newProjectCopy}>Based on Cramer et al. (2018): Yoga for Anxiety</p>
+          <div className={styles.sampleEntryBody}>
+            <p className={styles.sampleEntryEyebrow}>Guided example</p>
+            <h3 className={styles.sampleEntryTitle}>{isOpening ? "Opening..." : "Explore Sample Review"}</h3>
+            <p className={styles.sampleEntryCopy}>Based on Cramer et al. (2018): Yoga for Anxiety</p>
           </div>
         </div>
-        {error ? <p className={styles.sampleCardError} role="alert">{error}</p> : null}
+        {error ? <p className={styles.sampleEntryError} role="alert">{error}</p> : null}
       </button>
       <button
         type="button"
-        className={styles.sampleCardDismissBtn}
+        className={styles.sampleEntryDismissBtn}
         aria-label="Dismiss sample review card"
         onClick={handleDismiss}
       >

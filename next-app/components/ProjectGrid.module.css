@@ -1,8 +1,7 @@
 .projectGrid {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 26px;
-    transition: all 0.3s ease;
 }
 
 .listView {
@@ -17,29 +16,16 @@
     padding: 20px;
     display: flex;
     flex-direction: column;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     position: relative;
     overflow: hidden;
-    height: 220px;
+    min-height: 220px;
     text-decoration: none;
     color: inherit;
-}
-
-.sampleBadge {
-    position: absolute;
-    top: 12px;
-    left: 12px;
-    z-index: var(--z-content);
-    display: inline-flex;
-    align-items: center;
-    padding: 4px 8px;
-    border-radius: 999px;
-    background: var(--color-info-bg-solid);
-    color: var(--color-info-text);
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    font-weight: 700;
+    transition:
+        border-color 0.28s ease,
+        box-shadow 0.28s ease,
+        transform 0.28s ease,
+        background 0.28s ease;
 }
 
 .card:focus-visible {
@@ -63,76 +49,7 @@
     align-items: center;
     text-align: center;
     cursor: pointer;
-}
-
-.sampleCard {
-    border-style: dashed;
-    border-color: color-mix(in srgb, var(--color-info-text) 35%, transparent);
-    background:
-        linear-gradient(
-            135deg,
-            color-mix(in srgb, var(--color-info-bg-solid) 18%, white 82%),
-            color-mix(in srgb, var(--color-info-bg-solid) 10%, white 90%)
-        );
-}
-
-.sampleCard:hover {
-    border-color: color-mix(in srgb, var(--color-info-text) 52%, transparent);
-    box-shadow: var(--shadow-xl);
-}
-
-.sampleCardOpenBtn {
-    position: absolute;
-    inset: 0;
-    z-index: 1;
-    border: none;
-    border-radius: inherit;
-    background: transparent;
-    cursor: pointer;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    text-align: center;
-    color: inherit;
     font: inherit;
-    padding: 20px;
-    transition: background 0.24s ease;
-}
-
-.sampleCardOpenBtn:focus-visible {
-    outline: 2px solid transparent;
-    outline-offset: 2px;
-    box-shadow: var(--shadow-focus-ring);
-}
-
-.sampleCardOpenBtn:hover {
-    background: color-mix(in srgb, var(--color-info-bg-solid) 16%, transparent);
-}
-
-.sampleCardOpenBtn .sampleBadge {
-    position: absolute;
-    top: 12px;
-    left: 12px;
-}
-
-.sampleCard .iconCircle {
-    color: var(--color-info-text);
-    background: color-mix(in srgb, var(--color-info-bg-solid) 26%, white 74%);
-    border-color: color-mix(in srgb, var(--color-info-text) 16%, transparent);
-    box-shadow: var(--shadow-md);
-}
-
-.sampleCard .iconCircle:hover {
-    background: color-mix(in srgb, var(--color-info-bg-solid) 72%, white 28%);
-    color: var(--color-info-text);
-    border-color: color-mix(in srgb, var(--color-info-text) 22%, transparent);
-    box-shadow: var(--shadow-xl);
-    transform: translateY(-1px) scale(1.06);
-}
-
-.sampleCard .newProjectTitle {
-    color: var(--color-info-text);
 }
 
 .newProjectContent {
@@ -153,6 +70,7 @@
     font-size: 13px;
     color: var(--text-secondary);
     margin: 0;
+    line-height: 1.45;
 }
 
 .iconCircle {
@@ -167,7 +85,12 @@
     justify-content: center;
     color: var(--accent-primary);
     margin-bottom: 4px;
-    transition: all 0.3s ease;
+    transition:
+        background 0.3s ease,
+        color 0.3s ease,
+        border-color 0.3s ease,
+        box-shadow 0.3s ease,
+        transform 0.3s ease;
 }
 
 .iconCircle:hover {
@@ -179,7 +102,7 @@
 }
 
 .plusIcon {
-    font-family: 'Lexend', sans-serif;
+    font-family: "Lexend", sans-serif;
     font-weight: 300;
     font-size: 36px;
     line-height: 1;
@@ -192,7 +115,6 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: auto;
     gap: 6px;
     padding: 8px 16px;
     border-radius: 0 var(--radius-lg) 0 var(--radius-md);
@@ -203,10 +125,6 @@
     margin-top: -20px;
     margin-right: -20px;
     margin-bottom: 20px;
-}
-
-.statusIcon {
-    font-size: 14px;
 }
 
 .statusHarvesting {
@@ -227,7 +145,7 @@
 .projectTitle {
     font-size: 18px;
     line-height: 1.3;
-    margin-bottom: 8px;
+    margin: 0 0 8px;
     display: -webkit-box;
     -webkit-line-clamp: 2;
     line-clamp: 2;
@@ -235,51 +153,23 @@
     overflow: hidden;
     color: var(--text-primary);
     font-weight: 600;
-    margin-top: 0;
 }
 
 .sampleProjectTitle {
     padding-inline-start: 0;
-    text-align: center;
-    margin-top: auto;
-    margin-bottom: auto;
-}
-
-.sampleProjectCard .paperCountBottom {
-    margin-top: 0;
-}
-
-.sampleProjectButton {
-    margin-top: 0;
-}
-
-.sampleProjectPaperCount {
-    margin-top: 0;
-}
-
-.cardSubtitle {
-    color: var(--text-secondary);
-    font-size: 14px;
-    margin-bottom: 12px;
-}
-
-.cardDescription {
-    color: var(--text-secondary);
-    font-size: 13px;
-    line-height: 1.5;
-    margin-bottom: 16px;
 }
 
 .progressSection {
     margin: 6px 20px 12px 20px;
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: 4px;
 }
 
 .progressText {
     display: flex;
     justify-content: space-between;
+    gap: 12px;
     font-size: 12px;
     color: var(--text-secondary);
 }
@@ -326,6 +216,12 @@
     white-space: nowrap;
 }
 
+.sampleProjectCard .paperCountBottom,
+.sampleProjectButton,
+.sampleProjectPaperCount {
+    margin-top: 0;
+}
+
 .viewProjectBtn {
     background: rgba(var(--rgb-ui-surface), 0.5);
     border: 1px solid var(--glass-border);
@@ -334,8 +230,6 @@
     font-size: 13px;
     font-weight: 600;
     border-radius: var(--radius-lg);
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    text-decoration: none;
     text-align: center;
     width: fit-content;
     display: inline-flex;
@@ -343,6 +237,12 @@
     justify-content: center;
     margin-top: auto;
     align-self: flex-start;
+    transition:
+        background 0.3s ease,
+        color 0.3s ease,
+        border-color 0.3s ease,
+        transform 0.3s ease,
+        box-shadow 0.3s ease;
 }
 
 .viewProjectBtn:hover {
@@ -360,9 +260,9 @@
 .listViewCard {
     flex-direction: row;
     align-items: center;
-    height: auto;
-    padding: 20px 32px;
-    gap: 32px;
+    gap: 24px;
+    min-height: 0;
+    padding: 20px 24px;
 }
 
 .listViewCardTitle {
@@ -370,17 +270,19 @@
     min-width: 0;
     font-size: 16px;
     margin: 0;
-    text-align: center;
+    text-align: left;
     -webkit-line-clamp: 1;
     line-clamp: 1;
 }
 
 .listViewStatus {
-    margin: 0 16px 0 0;
+    margin: 0;
     align-self: center;
     width: auto;
     flex-shrink: 0;
     white-space: nowrap;
+    border-radius: 999px;
+    padding: 6px 10px;
 }
 
 .listViewButton {
@@ -395,28 +297,28 @@
 .listViewNewCard {
     flex-direction: row;
     align-items: center;
-    height: auto !important;
-    min-height: 80px;
-    padding: 16px 24px;
+    justify-content: flex-start;
+    min-height: 92px;
+    padding: 18px 24px;
     gap: 16px;
 }
 
 .listViewNewCard .iconCircle {
-    width: 36px;
-    height: 36px;
-    min-width: 36px;
+    width: 40px;
+    height: 40px;
+    min-width: 40px;
+    margin-bottom: 0;
 }
 
 .listViewNewCard .plusIcon {
-    font-size: 24px;
-    margin-top: -2px;
+    font-size: 26px;
 }
 
 .listViewNewCard .newProjectContent {
     flex-direction: row;
+    align-items: center;
     gap: 16px;
     text-align: left;
-    align-items: center;
 }
 
 .listViewNewCard .newProjectTitle {
@@ -427,13 +329,146 @@
     display: none;
 }
 
-.sampleCardDismissBtn {
+.sampleEntryCard {
+    border-style: dashed;
+    border-color: color-mix(in srgb, var(--color-info-text) 35%, transparent);
+    background:
+        linear-gradient(
+            135deg,
+            color-mix(in srgb, var(--color-info-bg-solid) 18%, white 82%),
+            color-mix(in srgb, var(--color-info-bg-solid) 10%, white 90%)
+        );
+}
+
+.sampleEntryCard:hover {
+    border-color: color-mix(in srgb, var(--color-info-text) 52%, transparent);
+}
+
+.sampleEntryGridCard {
+    justify-content: center;
+}
+
+.sampleEntryListCard {
+    min-height: 0;
+    padding: 18px 20px;
+}
+
+.sampleEntryOpenBtn {
+    position: relative;
+    display: flex;
+    width: 100%;
+    height: 100%;
+    border: none;
+    border-radius: inherit;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    text-align: left;
+    font: inherit;
+    padding: 0;
+    transition: background 0.24s ease;
+}
+
+.sampleEntryOpenBtn:focus-visible {
+    outline: 2px solid transparent;
+    outline-offset: 2px;
+    box-shadow: var(--shadow-focus-ring);
+}
+
+.sampleEntryOpenBtn:hover {
+    background: color-mix(in srgb, var(--color-info-bg-solid) 16%, transparent);
+}
+
+.sampleEntryContent {
+    display: flex;
+    width: 100%;
+    gap: 16px;
+    align-items: center;
+}
+
+.sampleEntryGridCard .sampleEntryContent {
+    flex-direction: column;
+    justify-content: center;
+    text-align: center;
+    min-height: 100%;
+}
+
+.sampleEntryListCard .sampleEntryContent {
+    padding-right: 24px;
+}
+
+.sampleEntryIcon {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--color-info-bg-solid) 26%, white 74%);
+    border: 1px solid color-mix(in srgb, var(--color-info-text) 16%, transparent);
+    box-shadow: var(--shadow-md);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--color-info-text);
+    flex-shrink: 0;
+}
+
+.sampleEntryIcon .material-icons-round {
+    font-size: 28px;
+}
+
+.sampleEntryBody {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+
+.sampleEntryEyebrow {
+    margin: 0;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: color-mix(in srgb, var(--color-info-text) 78%, var(--text-secondary) 22%);
+}
+
+.sampleEntryTitle {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--color-info-text);
+}
+
+.sampleEntryCopy {
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.45;
+    color: color-mix(in srgb, var(--text-secondary) 70%, var(--color-info-text) 30%);
+}
+
+.sampleEntryBadge {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    z-index: var(--z-content);
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 8px;
+    border-radius: 999px;
+    background: var(--color-info-bg-solid);
+    color: var(--color-info-text);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-weight: 700;
+}
+
+.sampleEntryDismissBtn {
     position: absolute;
     top: 10px;
     right: 10px;
     z-index: var(--z-content);
-    width: 28px;
-    height: 28px;
+    width: 32px;
+    height: 32px;
     border-radius: 999px;
     border: 1px solid var(--glass-border);
     background: color-mix(in srgb, var(--bg-body) 75%, white 25%);
@@ -445,53 +480,148 @@
     transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
 }
 
-.sampleCardDismissBtn .material-icons-round {
+.sampleEntryDismissBtn .material-icons-round {
     font-size: 18px;
 }
 
-.sampleCardDismissBtn:hover {
+.sampleEntryDismissBtn:hover {
     color: var(--color-info-text);
     border-color: color-mix(in srgb, var(--color-info-text) 24%, transparent);
     background: color-mix(in srgb, var(--color-info-bg-solid) 30%, white 70%);
 }
 
-.sampleCardDismissBtn:focus-visible {
+.sampleEntryDismissBtn:focus-visible {
     outline: 2px solid transparent;
     outline-offset: 2px;
     box-shadow: var(--shadow-focus-ring);
 }
 
-.sampleCardError {
-    margin-top: 8px;
+.sampleEntryError {
+    margin: 12px 0 0;
     color: var(--color-danger);
     font-size: 12px;
     line-height: 1.35;
 }
 
-@media (max-width: 1200px) {
+/* Mirrors COMPACT_MAX_WIDTH and PHONE_MAX_WIDTH in lib/mobile/breakpoints.ts. */
+@media (min-width: 768px) and (max-width: 1199px) {
     .projectGrid {
-        grid-template-columns: repeat(2, 1fr);
-    }
-}
-
-@media (max-width: 900px) {
-    .projectGrid {
-        grid-template-columns: 1fr;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 20px;
     }
 
     .card {
-        height: auto;
-        padding: 20px;
+        min-height: 208px;
+    }
+
+    .listViewCard {
+        gap: 18px;
+    }
+
+    .listViewButton {
+        min-width: 112px;
+    }
+}
+
+@media (max-width: 767px) {
+    .projectGrid {
+        grid-template-columns: 1fr;
+        gap: 16px;
+    }
+
+    .card {
+        min-height: 0;
+        padding: 18px;
+    }
+
+    .cardStatus {
+        margin-top: 0;
+        margin-right: 0;
+        margin-bottom: 14px;
+        align-self: flex-start;
+        border-radius: 999px;
+        padding: 6px 10px;
     }
 
     .projectTitle {
-        font-size: 18px;
+        font-size: 17px;
         -webkit-line-clamp: 3;
         line-clamp: 3;
     }
 
-    .sampleCardDismissBtn {
-        top: 8px;
-        right: 8px;
+    .paperCountBottom {
+        margin-left: 0;
+        margin-top: 14px;
+        margin-bottom: 12px;
+    }
+
+    .viewProjectBtn {
+        width: 100%;
+        align-self: stretch;
+    }
+
+    .listViewCard,
+    .listViewNewCard,
+    .sampleEntryListCard {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 14px;
+        padding: 18px;
+    }
+
+    .listViewCardTitle {
+        font-size: 17px;
+        text-align: left;
+        -webkit-line-clamp: 2;
+        line-clamp: 2;
+    }
+
+    .listViewStatus {
+        align-self: flex-start;
+    }
+
+    .listViewButton {
+        width: 100%;
+        margin-left: 0;
+    }
+
+    .listViewNewCard .newProjectContent {
+        align-items: flex-start;
+    }
+
+    .listViewNewCard .newProjectCopy {
+        display: block;
+    }
+
+    .sampleEntryGridCard .sampleEntryContent,
+    .sampleEntryListCard .sampleEntryContent {
+        flex-direction: row;
+        align-items: flex-start;
+        text-align: left;
+        min-height: 0;
+        padding-right: 28px;
+    }
+
+    .sampleEntryIcon {
+        width: 48px;
+        height: 48px;
+    }
+
+    .sampleEntryIcon .material-icons-round {
+        font-size: 24px;
+    }
+
+    .sampleEntryTitle {
+        font-size: 17px;
+    }
+
+    .sampleEntryBadge {
+        top: 10px;
+        left: 10px;
+    }
+
+    .sampleEntryDismissBtn {
+        top: 10px;
+        right: 10px;
     }
 }

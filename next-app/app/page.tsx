@@ -212,7 +212,11 @@ function HomeContent() {
   }, [isInitialized, LOADING_STEPS.length]);
 
   const mainContent = !isInitialized ? (
-    <div className={layoutStyles.initializingShell}>
+    <div
+      className={`surface-root ${layoutStyles.initializingShell}`}
+      data-surface-height="phone-min"
+      data-surface-gutters="responsive"
+    >
       <div className={layoutStyles.initializingContent}>
         <div className={layoutStyles.initializingLogo} aria-hidden="true">
           <svg viewBox="0 0 48 48" className={layoutStyles.initializingLogoSvg} fill="none">
@@ -256,7 +260,11 @@ function HomeContent() {
       </div>
     </div>
   ) : isNewUser && !hasEnteredWorkspace ? (
-    <div className={layoutStyles.zeroShell}>
+    <div
+      className={`surface-root ${layoutStyles.zeroShell}`}
+      data-surface-height="phone-min"
+      data-surface-gutters="responsive"
+    >
       <div className={layoutStyles.zeroContent}>
         <header className={layoutStyles.zeroHeader}>
           <h1 className={layoutStyles.zeroTitle}>
@@ -348,7 +356,7 @@ function HomeContent() {
     </div>
   ) : (
     <AppShell activeNav="projects" onNewProject={openModal} mainClassName={layoutStyles.noSidePadding}>
-      <div className={layoutStyles.page}>
+      <div className={`surface-root ${layoutStyles.page}`} data-surface-height="shell">
         <div className={layoutStyles.headerArea}>
           {showMigrationAlert ? (
             <div className={layoutStyles.migrationAlert} role="alert">
@@ -367,6 +375,7 @@ function HomeContent() {
           <TopBar
             title="Your Projects"
             subtitle="Keep your literature reviews organized"
+            className={layoutStyles.homeTopBar}
           />
 
           <ControlsBar
@@ -374,6 +383,11 @@ function HomeContent() {
             viewMode={viewMode}
             onSortChange={handleSortChange}
             onViewChange={handleViewChange}
+            className={layoutStyles.homeControlsBar}
+            viewControlsClassName={layoutStyles.homeControlsRow}
+            rightActionClassName={layoutStyles.homeControlsAction}
+            sortButtonClassName={layoutStyles.homeSortButton}
+            viewTogglesClassName={layoutStyles.homeViewToggles}
             rightAction={
               !isNewUser && continueProject ? (
                 <Link
@@ -395,7 +409,10 @@ function HomeContent() {
           />
         </div>
 
-        <div className={layoutStyles.scrollArea}>
+        <div
+          className={`surface-scroll-body ${layoutStyles.scrollArea}`}
+          data-surface-padding="responsive"
+        >
           <ProjectGrid
             projects={sortedProjects}
             viewMode={viewMode}
