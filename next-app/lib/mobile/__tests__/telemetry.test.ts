@@ -6,7 +6,7 @@ import {
   isMobileTelemetryContext,
   recordMobileMetric,
 } from "../telemetry";
-import { COARSE_POINTER_MEDIA_QUERY, MOBILE_VIEWPORT_MEDIA_QUERY } from "../breakpoints";
+import { COARSE_POINTER_MEDIA_QUERY } from "../breakpoints";
 
 describe("mobile telemetry", () => {
   beforeEach(() => {
@@ -46,11 +46,16 @@ describe("mobile telemetry", () => {
     expect(getMobileMetricEvents()).toHaveLength(0);
   });
 
-  it("detects mobile telemetry context from viewport or coarse pointer", () => {
+  it("detects mobile telemetry context from phone-width viewport or coarse pointer", () => {
     const originalMatchMedia = window.matchMedia;
+    const originalInnerWidth = window.innerWidth;
     try {
+      Object.defineProperty(window, "innerWidth", {
+        value: 430,
+        configurable: true,
+      });
       window.matchMedia = ((query: string) => ({
-        matches: query === MOBILE_VIEWPORT_MEDIA_QUERY || query === COARSE_POINTER_MEDIA_QUERY,
+        matches: query === COARSE_POINTER_MEDIA_QUERY,
         media: query,
         onchange: null,
         addListener: () => {},
@@ -63,6 +68,10 @@ describe("mobile telemetry", () => {
       expect(isMobileTelemetryContext()).toBe(true);
     } finally {
       window.matchMedia = originalMatchMedia;
+      Object.defineProperty(window, "innerWidth", {
+        value: originalInnerWidth,
+        configurable: true,
+      });
     }
   });
 });

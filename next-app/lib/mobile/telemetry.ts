@@ -1,4 +1,5 @@
-import { COARSE_POINTER_MEDIA_QUERY, MOBILE_VIEWPORT_MEDIA_QUERY } from "./breakpoints";
+import { COARSE_POINTER_MEDIA_QUERY } from "./breakpoints";
+import { isPhoneViewport } from "./tiers";
 
 export type MobileMetricType =
   | "mobile_viewport_issue"
@@ -118,7 +119,7 @@ export function isMobileTelemetryContext(): boolean {
     return false;
   }
   return (
-    window.matchMedia(MOBILE_VIEWPORT_MEDIA_QUERY).matches
+    isPhoneViewport(window)
     || window.matchMedia(COARSE_POINTER_MEDIA_QUERY).matches
   );
 }

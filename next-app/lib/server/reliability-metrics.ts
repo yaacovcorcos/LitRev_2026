@@ -5,6 +5,7 @@ import type { Prisma } from "@prisma/client";
 import type { AuthContext } from "@/lib/server/auth/session";
 import { assertProjectAccess } from "@/lib/server/access";
 import { prisma } from "@/lib/server/prisma";
+import { RELIABILITY_VIEWPORT_VALUES } from "@/types/reliability-telemetry";
 
 const RELIABILITY_SURFACES = ["ai", "project", "popup", "shell"] as const;
 const RELIABILITY_TYPES = [
@@ -26,7 +27,7 @@ const ReliabilityMetricInputSchema = z.object({
   runId: z.string().trim().min(1).optional().nullable(),
   clientTimestamp: z.string().trim().min(1),
   dimensions: z.object({
-    viewport: z.enum(["mobile", "desktop", "unknown"]),
+    viewport: z.enum(RELIABILITY_VIEWPORT_VALUES),
     network: z.enum(["online", "offline", "slow", "unknown"]),
     flags: z.object({
       scrollOwnershipA1: z.boolean().nullable(),
