@@ -161,9 +161,69 @@ describe("delegation tools", () => {
         projectId: "p1",
         userId: "u1",
         parentRunId: "run-1",
+        conversationId: undefined,
         signal: controller.signal,
         systemContexts: { projectContext: "Project: liver fibrosis review" },
       }),
     );
+  });
+
+  it("delegate tools preserve delegated clarification and autonomy-blocked sentinels", async () => {
+    process.env.ENABLE_DELEGATION = "1";
+    mocks.executeSubAgent.mockResolvedValueOnce({
+      summary: "Need clarification",
+      stopReason: "paused_for_input",
+      iterations: 1,
+      totalToolCalls: 1,
+      toolLog: [],
+      requiresUserInput: true,
+      userInputRequest: {
+        callId: "tc-ask",
+        question: "Which study?",
+        questionType: "free_text",
+      },
+    });
+    mocks.executeSubAgent.mockResolvedValueOnce({
+      summary: "Blocked",
+      stopReason: "error",
+      iterations: 1,
+      totalToolCalls: 1,
+      toolLog: [],
+      error: 'Tool "update_protocol" requires direct approval before it can run.',
+      blockedByAutonomy: true,
+      blockedReason: "approval_required",
+      artifacts: [
+        {
+          artifactId: "artifact-1",
+          artifactType: "protocol_suggestion",
+          artifactTitle: "Protocol: researchQuestion",
+          artifactStatus: "proposed",
+        },
+      ],
+    });
+
+    const clarification = await delegateSearchTool.execute(
+      { task: "clarify search target" },
+      { projectId: "p1", userId: "u1", runId: "run-1", conversationId: "conv-1" },
+    );
+    const blocked = await delegateProtocolTool.execute(
+      { task: "update protocol" },
+      { projectId: "p1", userId: "u1", runId: "run-1", conversationId: "conv-1" },
+    );
+
+    expect(clarification.requiresUserInput).toBe(true);
+    expect(clarification.userInputRequest).toEqual({
+      callId: "tc-ask",
+      question: "Which study?",
+      questionType: "free_text",
+    });
+    expect(blocked.blockedByAutonomy).toBe(true);
+    expect(blocked.blockedReason).toBe("approval_required");
+    expect(blocked.artifacts).toEqual([
+      expect.objectContaining({
+        artifactId: "artifact-1",
+        artifactStatus: "proposed",
+      }),
+    ]);
   });
 });
