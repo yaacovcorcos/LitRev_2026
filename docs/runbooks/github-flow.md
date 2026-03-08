@@ -51,8 +51,10 @@ gh pr list --state open --json number,title,headRefName,baseRefName,reviewDecisi
 - Keep repo root `main` exactly in sync with `origin/main`.
 - If repo root is detached, dirty, ahead, or behind `origin/main`, stop and reconcile before starting new work.
 - Detached or rescue worktrees are never the `main` baseline.
+- Task worktrees are temporary by default and should exist only for active work.
 - Create task worktrees from repo root using `YY/<task>` branches.
 - After merge, fast-forward repo root `main`, then remove the merged task worktree and delete the merged branch.
+- If a task is abandoned, remove its worktree and either delete the branch or archive it intentionally.
 - Maintain a cleanup manifest before deleting or re-homing worktrees.
 - Do not remove a parent worktree directory while it still contains active nested child worktrees.
 - Keep PR scope narrow and merge frequently into `main`.
@@ -89,3 +91,9 @@ After merge:
 3. `git pull --ff-only origin main`
 4. `git worktree remove .worktrees/<task>`
 5. `git branch -d YY/<task>`
+
+Abandoned task:
+
+1. confirm the worktree is no longer needed
+2. `git worktree remove .worktrees/<task>`
+3. either `git branch -d YY/<task>` or rename/archive the branch intentionally

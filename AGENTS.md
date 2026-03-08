@@ -141,6 +141,8 @@ After any PR is merged into GitHub `main`:
 
 ### Worktree Cleanup Contract
 
+- Task worktrees are temporary by default.
+- Once a task is merged, abandoned, or intentionally archived, remove its worktree promptly.
 - Maintain a cleanup manifest before deleting or re-homing any worktree.
 - The manifest must record:
   - worktree path
@@ -149,6 +151,7 @@ After any PR is merged into GitHub `main`:
   - decision: `keep`, `rehome`, `review`, or `delete`
 - Do not remove a parent worktree directory while it still contains active nested child worktrees.
 - After merge, remove the merged task worktree and delete the merged local branch promptly.
+- Do not keep finished task worktrees around as passive history.
 - After rescue review, either promote the rescue work, archive it intentionally, or delete the worktree.
 
 ### Additional Rules
