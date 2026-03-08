@@ -692,6 +692,12 @@ class AIService {
     ): AsyncIterable<AIStreamChunk & { conversationId?: string }> {
         let projectId = options?.projectId;
         let studyId = options?.studyId;
+        let conversation;
+        let run: Awaited<ReturnType<typeof startRun>> | null = null;
+        let trace: ReturnType<typeof startRunTrace> | null = null;
+        let runFinalized = false;
+        let traceEnded = false;
+        let finalizedRunStatus: "completed" | "failed" | "cancelled" | "paused" | null = null;
         const identity = resolveAuthenticatedIdentity({
             userId: options?.userId,
             workspaceId: options?.workspaceId,
@@ -705,7 +711,6 @@ class AIService {
         // Get or create conversation (with summary for compaction)
         // When conversationId is provided, load by ID and treat its scope as canonical.
         // This prevents cross-conversation writes when client scope drifts from the actual thread.
-        let conversation;
         if (options?.conversationId) {
             const byId = await getConversationWithSummaryById(
                 options.conversationId,
@@ -736,33 +741,6 @@ class AIService {
             replaceRunId: options?.replaceRunId,
         });
 
-        // Start an agent run
-        const run = await startRun({
-            projectId: projectId || null,
-            conversationId: conversation.id,
-            userId,
-            trigger: "user_message",
-            agentMode,
-            model: options?.model,
-        });
-
-        // Start Langfuse trace for this run
-        const trace = startRunTrace(run.id, {
-            projectId: projectId ?? "global",
-            agentMode,
-            model: options?.model,
-            userId,
-            conversationId: conversation.id,
-        });
-
-        // Yield run_start event
-        yield { type: "run_start", runId: run.id, conversationId: conversation.id };
-
-        // Emit user message event (skip for plan execution — no user message to record)
-        if (!executionMode) {
-            await emitEvent(run.id, "message", { content: userMessage }, { messageRole: "user" });
-        }
-
         // Declared outside try so catch block can access them for plan finalization
         interface StepQueueEntry { originalIndex: number; toolName?: string; consumed: boolean; finalStatus: import("@/types/artifacts").PlanStep["status"] }
         let planData: { plan: import("@/types/artifacts").PlanPayload; selectedSteps: import("@/lib/server/agent/plan-execution").SelectedStep[] } | null = null;
@@ -789,8 +767,53 @@ class AIService {
             pausedForUserInput: false,
             cancelledByUser: false,
         };
+        const finalizeRunOnce = async (
+            status: "completed" | "failed" | "cancelled" | "paused",
+            costTokensIn?: number,
+            costTokensOut?: number,
+        ) => {
+            if (!run || runFinalized) return;
+            await endRun(run.id, status, costTokensIn, costTokensOut);
+            runFinalized = true;
+            finalizedRunStatus = status;
+        };
+        const closeTraceOnce = async (metadata: Record<string, unknown>) => {
+            if (!trace || traceEnded) return;
+            trace.update({ metadata }).end();
+            traceEnded = true;
+            await flushTracing();
+        };
 
         try {
+            // Start an agent run inside the guarded lifecycle so early stream
+            // termination still reaches exactly-one terminal finalization.
+            run = await startRun({
+                projectId: projectId || null,
+                conversationId: conversation.id,
+                userId,
+                trigger: "user_message",
+                agentMode,
+                model: options?.model,
+            });
+            const activeRun = run;
+
+            // Start Langfuse trace for this run.
+            trace = startRunTrace(activeRun.id, {
+                projectId: projectId ?? "global",
+                agentMode,
+                model: options?.model,
+                userId,
+                conversationId: conversation.id,
+            });
+
+            // Yield run_start event after the run is inside the guarded lifecycle.
+            yield { type: "run_start", runId: activeRun.id, conversationId: conversation.id };
+
+            // Emit user message event (skip for plan execution — no user message to record)
+            if (!executionMode) {
+                await emitEvent(activeRun.id, "message", { content: userMessage }, { messageRole: "user" });
+            }
+
             // Retrieve memories + project context in parallel
             const ctxSpan = startContextSpan(trace, "context-assembly");
             const shouldPushProtocolContext = !!projectId && PUSH_PROTOCOL_CONTEXT_MODES.has(agentMode);
@@ -799,7 +822,7 @@ class AIService {
             const needsFullLedgerSnapshot = shouldPushLedgerContext || needsLedgerSeedMetadata;
 
             const [retrievedMemories, protocolRow, studyLedger, autonomyConfig, studyRow, projectRow] = await Promise.all([
-                retrieveMemories({ userId, projectId, studyId, conversationId: conversation.id, query: userMessage, agentMode, runId: run.id }),
+                retrieveMemories({ userId, projectId, studyId, conversationId: conversation.id, query: userMessage, agentMode, runId: activeRun.id }),
                 projectId ? prisma.protocol.findFirst({ where: { projectId }, select: { data: true } }) : null,
                 projectId
                     ? (
@@ -1000,7 +1023,7 @@ class AIService {
                     includeRecommendations: modeToolNames.includes("recommend_studies"),
                 });
                 const artifact = await createArtifact({
-                    runId: run.id,
+                    runId: activeRun.id,
                     projectId: projectId || null,
                     conversationId: conversation.id,
                     userId,
@@ -1020,11 +1043,11 @@ class AIService {
                     conversationId: conversation.id,
                 };
 
-                await endRun(run.id, "completed");
+                await finalizeRunOnce("completed");
                 const runModelMeta = resolveRunActualModelMeta(options?.model, null, false);
                 yield {
                     type: "run_end",
-                    runId: run.id,
+                    runId: activeRun.id,
                     runStatus: "completed",
                     conversationId: conversation.id,
                     actualModel: runModelMeta.actualModel ?? undefined,
@@ -1050,7 +1073,7 @@ class AIService {
                     // If plan validation failed, skip plan artifact and continue normal chat
                     if (planPayload) {
                         const artifact = await createArtifact({
-                            runId: run.id,
+                            runId: activeRun.id,
                             projectId: projectId || null,
                             conversationId: conversation.id,
                             userId,
@@ -1070,11 +1093,11 @@ class AIService {
                             conversationId: conversation.id,
                         };
 
-                        await endRun(run.id, "completed");
+                        await finalizeRunOnce("completed");
                         const runModelMeta = resolveRunActualModelMeta(options?.model, null, false);
                         yield {
                             type: "run_end",
-                            runId: run.id,
+                            runId: activeRun.id,
                             runStatus: "completed",
                             conversationId: conversation.id,
                             actualModel: runModelMeta.actualModel ?? undefined,
@@ -1292,16 +1315,16 @@ class AIService {
                                 role: "assistant",
                                 content: fallbackContent,
                             });
-                            await emitEvent(run.id, "message", { content: fallbackContent }, { messageRole: "assistant" });
+                            await emitEvent(activeRun.id, "message", { content: fallbackContent }, { messageRole: "assistant" });
                             yield { type: "content", content: fallbackContent, conversationId: conversation.id };
                         }
                         loop.markStopped("error");
                         yield terminalErrorChunk;
-                        await endRun(run.id, "failed");
+                        await finalizeRunOnce("failed");
                         const runModelMeta = resolveRunActualModelMeta(chatOptions.model, observedRunModel, invokedModel);
                         yield {
                             type: "run_end",
-                            runId: run.id,
+                            runId: activeRun.id,
                             runStatus: "failed",
                             stopReason: "error",
                             conversationId: conversation.id,
@@ -1345,7 +1368,7 @@ class AIService {
                         projectId,
                         studyId,
                         userId,
-                        runId: run.id,
+                        runId: activeRun.id,
                         protocolData: (protocolRow?.data as ProtocolData | null) ?? null,
                     }),
                 })));
@@ -1395,7 +1418,7 @@ class AIService {
                     const gen = executeToolWithAutonomy(
                         this,
                         tc,
-                        run.id,
+                        activeRun.id,
                         projectId,
                         conversation.id,
                         userId,
@@ -1536,7 +1559,7 @@ class AIService {
                     role: "assistant",
                     content: fullContent,
                 });
-                await emitEvent(run.id, "message", { content: fullContent }, { messageRole: "assistant" });
+                await emitEvent(activeRun.id, "message", { content: fullContent }, { messageRole: "assistant" });
                 await markMemoriesUsedInAnswer(retrievedMemoriesForRun, fullContent).catch(() => {});
 
                 if (!executionMode) {
@@ -1563,7 +1586,7 @@ class AIService {
                     role: "assistant",
                     content: fullContent,
                 });
-                await emitEvent(run.id, "message", { content: fullContent }, { messageRole: "assistant" });
+                await emitEvent(activeRun.id, "message", { content: fullContent }, { messageRole: "assistant" });
                 yield { type: "content", content: fullContent, conversationId: conversation.id };
             }
 
@@ -1571,7 +1594,7 @@ class AIService {
                 const topic = scopingReportPayload.topic?.trim();
                 const title = topic ? `Scoping: ${topic}`.slice(0, 120) : "Scoping Report";
                 const artifact = await createArtifact({
-                    runId: run.id,
+                    runId: activeRun.id,
                     projectId: projectId || null,
                     conversationId: conversation.id,
                     userId,
@@ -1613,7 +1636,7 @@ class AIService {
             );
 
             // Finalize trace
-            trace.update({ metadata: {
+            await closeTraceOnce({
                 stopReason: finalStopReason,
                 iterations: loop.iterations,
                 toolCalls: loop.totalToolCalls,
@@ -1621,8 +1644,7 @@ class AIService {
                 totalTokensOut,
                 scopingSearchCalls: scopingSearchCallsThisRun,
                 protocolHandoffExecuted,
-            }}).end();
-            await flushTracing();
+            });
 
             const finalOutcome = deriveRunOutcome({
                 facts: runFacts,
@@ -1631,11 +1653,11 @@ class AIService {
             finalStopReason = finalOutcome.stopReason;
             const runStatus = finalOutcome.runStatus;
 
-            await endRun(run.id, runStatus, totalTokensIn, totalTokensOut);
+            await finalizeRunOnce(runStatus, totalTokensIn, totalTokensOut);
             const runModelMeta = resolveRunActualModelMeta(chatOptions.model, observedRunModel, invokedModel);
             yield {
                 type: "run_end",
-                runId: run.id,
+                runId: activeRun.id,
                 runStatus,
                 runCostTokensIn: totalTokensIn,
                 runCostTokensOut: totalTokensOut,
@@ -1654,26 +1676,30 @@ class AIService {
 
             if (isAbortError) {
                 runFacts.cancelledByUser = true;
+                const activeRunId = run?.id;
                 if (fullContent) {
                     await addMessageToConversation(conversation.id, {
                         role: "assistant",
                         content: fullContent,
                     });
-                    await emitEvent(run.id, "message", { content: fullContent }, { messageRole: "assistant" });
+                    if (activeRunId) {
+                        await emitEvent(activeRunId, "message", { content: fullContent }, { messageRole: "assistant" });
+                    }
                 }
 
-                trace.update({ metadata: { aborted: true } }).end();
-                await flushTracing();
-                await endRun(run.id, "cancelled");
+                await closeTraceOnce({ aborted: true });
+                await finalizeRunOnce("cancelled");
                 const runModelMeta = resolveRunActualModelMeta(options?.model, null, false);
-                yield {
-                    type: "run_end",
-                    runId: run.id,
-                    runStatus: "cancelled",
-                    conversationId: conversation.id,
-                    actualModel: runModelMeta.actualModel ?? undefined,
-                    actualModelSource: runModelMeta.actualModelSource,
-                };
+                if (activeRunId) {
+                    yield {
+                        type: "run_end",
+                        runId: activeRunId,
+                        runStatus: "cancelled",
+                        conversationId: conversation.id,
+                        actualModel: runModelMeta.actualModel ?? undefined,
+                        actualModelSource: runModelMeta.actualModelSource,
+                    };
+                }
                 return;
             }
 
@@ -1695,8 +1721,7 @@ class AIService {
             }
 
             // End trace + run with failure
-            trace.update({ metadata: { error: error instanceof Error ? error.message : "Unknown" } }).end();
-            await flushTracing();
+            await closeTraceOnce({ error: error instanceof Error ? error.message : "Unknown" });
 
             const classifiedError = classifyAIError(error);
             if (!classifiedError.retryable) {
@@ -1710,11 +1735,14 @@ class AIService {
                     role: "assistant",
                     content: fallbackContent,
                 });
-                await emitEvent(run.id, "message", { content: fallbackContent }, { messageRole: "assistant" });
+                const activeRunId = run?.id;
+                if (activeRunId) {
+                    await emitEvent(activeRunId, "message", { content: fallbackContent }, { messageRole: "assistant" });
+                }
                 yield { type: "content", content: fallbackContent, conversationId: conversation.id };
             }
 
-            await endRun(run.id, "failed");
+            await finalizeRunOnce("failed");
             yield buildStreamErrorChunk(
                 toAIErrorEnvelope(error, {
                     kind: "runtime",
@@ -1724,14 +1752,46 @@ class AIService {
                 { conversationId: conversation.id },
             );
             const runModelMeta = resolveRunActualModelMeta(options?.model, null, false);
-            yield {
-                type: "run_end",
-                runId: run.id,
-                runStatus: "failed",
-                conversationId: conversation.id,
-                actualModel: runModelMeta.actualModel ?? undefined,
-                actualModelSource: runModelMeta.actualModelSource,
-            };
+            if (run) {
+                yield {
+                    type: "run_end",
+                    runId: run.id,
+                    runStatus: "failed",
+                    conversationId: conversation.id,
+                    actualModel: runModelMeta.actualModel ?? undefined,
+                    actualModelSource: runModelMeta.actualModelSource,
+                };
+            }
+        } finally {
+            const fallbackStatus = runFacts.cancelledByUser || options?.signal?.aborted
+                ? "cancelled"
+                : runFacts.pausedForUserInput
+                    ? "paused"
+                    : "failed";
+            const forcedRunFinalization = Boolean(run && !runFinalized);
+            if (forcedRunFinalization && run) {
+                try {
+                    await finalizeRunOnce(fallbackStatus);
+                } catch (error) {
+                    console.error("[ai-service] Failed to finalize run in finally", {
+                        runId: run.id,
+                        error,
+                    });
+                }
+            }
+            if (trace && !traceEnded) {
+                try {
+                    await closeTraceOnce({
+                        forcedFinalization: forcedRunFinalization,
+                        finalRunStatus: finalizedRunStatus ?? fallbackStatus,
+                    });
+                } catch (error) {
+                    console.error("[ai-service] Failed to close trace in finally", {
+                        runId: run?.id,
+                        error,
+                    });
+                }
+            }
         }
     }
 
