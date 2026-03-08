@@ -922,7 +922,7 @@ class AIService {
             })
             // Scoped to streamChatWithArtifacts only — not in global BASE_PROMPT
             // so PopupChat (which reuses AGENT_MODE_PROMPTS) doesn't emit choices without rendering support
-            + `\n- When you ask a question that has a small number of clear options (2–5), or when suggesting specific next steps, end your response with a <choices> block. Each <choice> is a short actionable phrase the user can click. Only use this for genuine choices — not every response.\n  Format:\n  <choices>\n  <choice>Option text here</choice>\n  <choice icon="search">Search PubMed for related studies</choice>\n  </choices>\n  The optional icon attribute uses Material Icons names. The block must be the very last thing in your response.`;
+            + `\n- When suggesting optional next steps that the user can click for convenience, you may end your response with a <choices> block. Do not use <choices> for blocking questions or required decisions. If you need the user's answer before continuing, use ask_user instead.\n  Format:\n  <choices>\n  <choice>Option text here</choice>\n  <choice icon="search">Search PubMed for related studies</choice>\n  </choices>\n  The optional icon attribute uses Material Icons names. The block must be the very last thing in your response.`;
 
             // Add user message to conversation (skip for plan execution)
             let userMsg: AIMessage | null = null;

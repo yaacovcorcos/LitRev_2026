@@ -104,7 +104,7 @@ Every fix entry must include:
 - **Plan Heuristic Guardrails:** Plan-before-act heuristics now require explicit extraction/writing verbs for `extract_pdf` and `update_note`, reducing false execution plans for read-only PDF/section questions.
 - **Delegation Runtime Now Uses The Shared Safety Contract:** delegated child runs now reuse the same autonomy-aware execution/finalization core as direct execution, level-1 delegated actions fail as structured approval-required blocks instead of running, delegated proposal artifacts stay reviewable unless direct policy allows auto-apply, and delegated `ask_user` bubbles through the existing parent `user_input_required` flow.
 - **Popup Runtime Is Still Lighter Than Copilot:** popup remains on a non-artifact path, so protocol mutation capability is not yet honest there; tracked under `FIX-003`.
-- **General Mode Now Uses Explicit Honest Tool Surfaces:** normal agentic paths now assemble tools through contextual mode+scope filtering, `general` no longer widens to all tools, and disabled/global delegation tools are hidden before exposure. Clarification cleanup (`ask_user` vs `<choices>`) remains under `FIX-004`.
+- **General Mode And Clarification Now Use Explicit Honest Contracts:** normal agentic paths now assemble tools through contextual mode+scope filtering, `general` no longer widens to all tools, disabled/global delegation tools are hidden before exposure, `ask_user` remains the sole blocking clarification primitive in the global base prompt, and `<choices>` guidance is scoped to artifact/chat surfaces as optional suggestion-only output.
 - **Model Requests Now Use Per-Model Capability Policy:** one authoritative model capability registry now feeds a shared request-policy normalizer, OpenAI/xAI/Google/Anthropic all reuse it before send, fixed-default OpenAI models omit unsupported `temperature`, and unsupported explicit reasoning budgets fail locally as structured `model_capability` errors instead of raw provider 400s.
 - **Protocol Mutation Uses Shared Field-Aware Normalization:** `update_protocol`, same-turn tool-call sanitization, and repeat detection now reuse the same field/value normalize-classify path so unambiguous wrapper shapes are repaired consistently, whitespace-only field mismatches no longer diverge between validation and execution, and normalization/hashing paths cap nested input depth safely.
 - **Tool Prerequisites Now Gate High-Risk Actions Before Execution:** tool metadata now declares project/study/protocol prerequisites in the shared pre-execution path, screening actions also gate on resolvable non-empty criteria, and blocked actions emit structured `missing_prerequisite` envelopes before a tool runs. Generic PDF file existence is still verified inside PDF tools rather than the shared prerequisite vocabulary.
@@ -148,15 +148,6 @@ Every fix entry must include:
     - popup no longer claims to have created hidden protocol proposals
     - popup tool policy and UI capability match
 
-- [ ] `FIX-004` General-mode scoping and clarification cleanup
-  - Severity: `P1`
-  - Problem: clarification semantics still overlap unclearly, and future `general`-mode additions must stay within the new explicit scoped tool matrix.
-  - Supporting detail: `docs/plans/agent-runtime-remediation/plan-general-scope-and-clarification.md`
-  - Exit criteria:
-    - `general` mode remains explicitly scoped by default across main agentic paths
-    - disabled/global delegation tools remain absent from model-visible tool definitions
-    - `ask_user` is the required-decision path and `<choices>` is optional-only
-
 - [ ] `FIX-005` Agentic docs, executable evals, and search provenance
   - Severity: `P1`
   - Problem: the plan set drifted from shipped code, eval coverage is scaffold-level, and search provenance is not a normalized runtime contract.
@@ -180,12 +171,11 @@ Every fix entry must include:
 
 Work should proceed in this order unless a production incident forces reprioritization:
 
-1. `FIX-004` general-mode scoping and clarification cleanup
-2. `FIX-002` plan execution confinement
-3. `FIX-003` popup action-surface honesty
-4. `FIX-005` docs/evals/provenance hardening
-5. `FIX-011` shared failure handling and popup parity
-6. roadmap phases after the active fixes above are stable
+1. `FIX-002` plan execution confinement
+2. `FIX-003` popup action-surface honesty
+3. `FIX-005` docs/evals/provenance hardening
+4. `FIX-011` shared failure handling and popup parity
+5. roadmap phases after the active fixes above are stable
 
 ## End-to-End Delivery Program
 
@@ -202,7 +192,7 @@ Work should proceed in this order unless a production incident forces reprioriti
 
 ### Track C — Orchestration Safety and Approval Integrity
 
-- Once the request/tool boundary is stable, land `FIX-001`, `FIX-002`, and `FIX-004`.
+- Once the request/tool boundary is stable, land `FIX-001` and `FIX-002`.
 - This is the phase where delegation, approved-plan execution, and scoped `general` behavior become trustworthy instead of prompt-dependent.
 
 ### Track D — Surface Honesty, Evals, and Provenance
@@ -331,6 +321,7 @@ These files are supporting documents. Status, priority, and closure rules live h
 
 ## Recently Completed
 
+- [x] Implemented `FIX-004b` clarification contract cleanup, completing `FIX-004`: `ask_user` is now the only blocking clarification primitive taught in the global base prompt, while `<choices>` guidance is scoped to artifact/chat surfaces and explicitly limited to optional suggestion chips without changing the XML/event contract.
 - [x] Implemented `FIX-012c` abnormal-end cleanup and error dedupe, completing `FIX-012`: `/ai` and project copilot now reuse the shared runtime/error owners for abnormal-failure aftermath, unfinished tools are force-failed consistently, and one terminal failure renders once without regressing deterministic capability suppression.
 - [x] Implemented `FIX-012b` replace-safe admission: `/ai` and project copilot now send `replaceRunId` only for their own tracked active run, and the server only replaces when that explicit run identity matches the actual active run for the conversation.
 - [x] Implemented `FIX-012a` run finalization guard: started runs now enter the guarded `streamChatWithArtifacts` lifecycle, `run_start` is only emitted after that guard is active, and exactly-once finalization prevents ordinary aborted streams from leaking fresh `running` rows.

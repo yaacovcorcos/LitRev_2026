@@ -4,7 +4,7 @@
 >
 > Supports: `FIX-004`
 >
-> Retirement rule: when `FIX-004` is complete, either delete/archive this file or reduce it to a short historical note. Do not keep active status tracking here.
+> Historical note: `FIX-004` is complete. Keep this file only as supporting implementation history until it is deleted or archived. Do not keep active status tracking here.
 
 ## Overall Goal
 
