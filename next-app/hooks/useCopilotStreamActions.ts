@@ -493,7 +493,11 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
             if (abortControllerRef.current === controller) {
                 abortControllerRef.current = null;
             }
-            if (!aborted && shouldFailRunningToolsOnAbnormalEnd(terminalReason)) {
+            if (
+                streamGenRef.current === myGen
+                && !aborted
+                && shouldFailRunningToolsOnAbnormalEnd(terminalReason)
+            ) {
                 updateState((prev) => ({
                     ...prev,
                     messages: failRunningProjectToolActivityMessages(
