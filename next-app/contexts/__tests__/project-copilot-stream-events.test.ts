@@ -1,7 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import type { CopilotMessage } from "@/lib/projectCopilotStorage";
 import type { ArtifactData } from "@/types/artifacts";
-import { handleProjectCopilotStreamChunk, type StreamMutableState } from "@/contexts/project-copilot-stream-events";
+import {
+  failRunningProjectToolActivityMessages,
+  handleProjectCopilotStreamChunk,
+  type StreamMutableState,
+} from "@/contexts/project-copilot-stream-events";
 
 describe("project copilot stream event handlers", () => {
   function baseState(): StreamMutableState {
@@ -19,6 +23,51 @@ describe("project copilot stream event handlers", () => {
       effectiveConvId: null,
     };
   }
+
+  it("fails running tool activity messages with the shared abnormal-end summary", () => {
+    const messages: CopilotMessage[] = [
+      {
+        id: "tool-1",
+        sender: "ai",
+        text: "",
+        createdAt: "2026-03-08T00:00:00.000Z",
+        context: { page: "overview" },
+        toolActivity: {
+          callId: "call-1",
+          toolName: "bulk_screening",
+          status: "running",
+          startedAt: "2026-03-08T00:00:00.000Z",
+          updatedAt: "2026-03-08T00:00:00.000Z",
+        },
+      },
+      {
+        id: "tool-2",
+        sender: "ai",
+        text: "",
+        createdAt: "2026-03-08T00:00:00.000Z",
+        context: { page: "overview" },
+        toolActivity: {
+          callId: "call-2",
+          toolName: "read_protocol",
+          status: "done",
+          startedAt: "2026-03-08T00:00:00.000Z",
+          updatedAt: "2026-03-08T00:00:00.000Z",
+          completedAt: "2026-03-08T00:01:00.000Z",
+        },
+      },
+    ];
+
+    const next = failRunningProjectToolActivityMessages(messages);
+    expect(next[0]?.toolActivity).toMatchObject({
+      status: "failed",
+      summary: "Run ended before tool completion.",
+    });
+    expect(next[0]?.toolActivity?.completedAt).toBeTruthy();
+    expect(next[1]?.toolActivity).toMatchObject({
+      status: "done",
+      completedAt: "2026-03-08T00:01:00.000Z",
+    });
+  });
 
   it("creates and updates assistant message for content chunks", () => {
     const messages: CopilotMessage[] = [];

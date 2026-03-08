@@ -22,14 +22,18 @@ import { routeToAgent } from "@/lib/agent/router";
 import { dispatchProjectDataChanged, getChangedDomainsForAcceptedArtifact } from "@/lib/project-data-events";
 import { isNavigationSafe } from "@/lib/ai/navigation-safety";
 import {
+  buildUnexpectedTerminalErrorState,
   buildClientErrorState,
   formatStreamErrorForUI,
-  isRetryableTerminalReason,
-  isSameRenderedError,
-  matchesCanonicalFailureFallback,
+  hasCanonicalFailureFallbackText,
+  hasRenderedErrorMatch,
   shouldSuppressClientFallback,
 } from "@/lib/ai/stream-error-ui";
-import { createAiStreamRuntime } from "@/lib/ai/ai-stream-runtime";
+import {
+  ABNORMAL_END_TOOL_FAILURE_SUMMARY,
+  createAiStreamRuntime,
+  shouldFailRunningToolsOnAbnormalEnd,
+} from "@/lib/ai/ai-stream-runtime";
 import type { SharedStreamIntent } from "@/lib/ai/shared-stream-reducer";
 import { generateChatUnificationRequestKey, recordChatUnificationMetric } from "@/lib/ai/chat-unification-telemetry";
 import { terminalReasonFromThrownError, type StreamTerminalReason } from "@/lib/ai/stream-lifecycle";
@@ -1222,27 +1226,25 @@ export default function AIView() {
         terminalReason = terminalReasonFromThrownError(err);
         emitTerminalMetric(terminalReason, runStatus);
         convId = runtime.getConversationId();
-        runtime.failRunningTools("Run failed before tool completion.");
         const errorState = buildClientErrorState(err);
-        emittedTerminalError = true;
         updateConversationTimeline(convId, (items) => {
-          const hasAssistantContent = items.some((item) =>
-            item.type === "assistant_message" && matchesCanonicalFailureFallback({
-              assistantText: item.content,
-              streamError: errorState.errorMeta,
-            })
-          );
-          const hasRenderedError = items.some((item) =>
-            item.type === "error" && isSameRenderedError({
-              existingMessage: item.message,
-              existingMeta: item.errorMeta,
-              nextMessage: errorState.message,
-              nextMeta: errorState.errorMeta,
-            })
-          );
+          const hasAssistantContent = hasCanonicalFailureFallbackText({
+            items: items.filter((item) => item.type === "assistant_message"),
+            streamError: errorState.errorMeta,
+            getText: (item) => item.type === "assistant_message" ? item.content : null,
+          });
+          const hasRenderedError = hasRenderedErrorMatch({
+            items: items.filter((item) => item.type === "error"),
+            nextMessage: errorState.message,
+            nextMeta: errorState.errorMeta,
+            getMessage: (item) => item.type === "error" ? item.message : null,
+            getErrorMeta: (item) => item.type === "error" ? item.errorMeta : null,
+          });
           if (shouldSuppressClientFallback({ errorMeta: errorState.errorMeta, hasAssistantContent, hasRenderedError })) {
+            emittedTerminalError = true;
             return items;
           }
+          emittedTerminalError = true;
           return [
             ...items,
             {
@@ -1291,6 +1293,9 @@ export default function AIView() {
       if (abortControllerRef.current === controller) {
         abortControllerRef.current = null;
       }
+      if (!aborted && shouldFailRunningToolsOnAbnormalEnd(terminalReason)) {
+        runtime.failRunningTools(ABNORMAL_END_TOOL_FAILURE_SUMMARY);
+      }
       if (terminalReason && !aborted) {
         emitTerminalMetric(terminalReason, runStatus);
       }
@@ -1299,27 +1304,34 @@ export default function AIView() {
         && !aborted
         && !emittedTerminalError
         && terminalReason
-        && terminalReason !== "completed"
-        && terminalReason !== "cancelled_by_user"
+        && shouldFailRunningToolsOnAbnormalEnd(terminalReason)
       ) {
-        const terminalMessage = terminalReason === "timed_out"
-          ? "The response timed out. Retry to continue."
-          : "The stream ended unexpectedly. Retry to continue.";
-        const terminalErrorState = buildClientErrorState(terminalMessage);
-        updateConversationTimeline(convId, (items) => [
-          ...items,
-          {
-            type: "error",
-            id: makeId("terminal-error"),
-            message: terminalErrorState.message,
-            retryable: isRetryableTerminalReason(terminalReason),
-            errorMeta: {
-              ...terminalErrorState.errorMeta,
-              retryable: isRetryableTerminalReason(terminalReason),
+        const terminalErrorState = buildUnexpectedTerminalErrorState(terminalReason);
+        updateConversationTimeline(convId, (items) => {
+          const hasRenderedError = hasRenderedErrorMatch({
+            items: items.filter((item) => item.type === "error"),
+            nextMessage: terminalErrorState.message,
+            nextMeta: terminalErrorState.errorMeta,
+            getMessage: (item) => item.type === "error" ? item.message : null,
+            getErrorMeta: (item) => item.type === "error" ? item.errorMeta : null,
+          });
+          if (hasRenderedError) {
+            emittedTerminalError = true;
+            return items;
+          }
+          emittedTerminalError = true;
+          return [
+            ...items,
+            {
+              type: "error",
+              id: makeId("terminal-error"),
+              message: terminalErrorState.message,
+              retryable: terminalErrorState.retryable,
+              errorMeta: terminalErrorState.errorMeta,
+              createdAt: new Date().toISOString(),
             },
-            createdAt: new Date().toISOString(),
-          },
-        ]);
+          ];
+        });
       }
 
       if (isMobileTelemetryContext()) {
@@ -1567,6 +1579,7 @@ export default function AIView() {
     let stopReason: string | null = null;
     let errorMessage: string | null = null;
     let aborted = false;
+    let emittedTerminalError = false;
     let terminalEventEmitted = false;
     const reasoningRequest = resolveReasoningRequest({
       preferredMode: reasoningMode,
@@ -1678,7 +1691,6 @@ export default function AIView() {
         terminalReason = terminalReasonFromThrownError(err);
         emitTerminalMetric(terminalReason, runStatus);
         convId = runtime.getConversationId();
-        runtime.failRunningTools("Run ended before tool completion.");
         errorMessage = formatStreamErrorForUI(err);
       }
     } finally {
@@ -1716,6 +1728,9 @@ export default function AIView() {
       if (abortControllerRef.current === controller) {
         abortControllerRef.current = null;
       }
+      if (!aborted && shouldFailRunningToolsOnAbnormalEnd(terminalReason)) {
+        runtime.failRunningTools(ABNORMAL_END_TOOL_FAILURE_SUMMARY);
+      }
       if (terminalReason && !aborted) {
         emitTerminalMetric(terminalReason, runStatus);
       }
@@ -1725,23 +1740,37 @@ export default function AIView() {
     setPlanStatus(didComplete ? "accepted" : "proposed");
 
     if (!didComplete && streamGenRef.current === myGen) {
-      runtime.failRunningTools("Run ended before tool completion.");
       const reason = errorMessage ?? (stopReason ? `Execution stopped: ${stopReason}` : "Execution did not complete.");
       const errorState = buildClientErrorState(`Plan execution failed: ${reason}`);
-      updateConversationTimeline(convId, (items) => [
-        ...items,
-        {
-          type: "error",
-          id: `plan-error-${Date.now()}`,
-          message: errorState.message,
+      updateConversationTimeline(convId, (items) => {
+        const errorMeta = {
+          ...errorState.errorMeta,
           retryable: false,
-          errorMeta: {
-            ...errorState.errorMeta,
+        };
+        const hasRenderedError = hasRenderedErrorMatch({
+          items: items.filter((item) => item.type === "error"),
+          nextMessage: errorState.message,
+          nextMeta: errorMeta,
+          getMessage: (item) => item.type === "error" ? item.message : null,
+          getErrorMeta: (item) => item.type === "error" ? item.errorMeta : null,
+        });
+        if (hasRenderedError) {
+          emittedTerminalError = true;
+          return items;
+        }
+        emittedTerminalError = true;
+        return [
+          ...items,
+          {
+            type: "error",
+            id: `plan-error-${Date.now()}`,
+            message: errorState.message,
             retryable: false,
+            errorMeta,
+            createdAt: new Date().toISOString(),
           },
-          createdAt: new Date().toISOString(),
-        },
-      ]);
+        ];
+      });
     }
   }, [
     activeConversationId,
