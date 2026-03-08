@@ -9,17 +9,8 @@
  * - request-boundary capability policy
  */
 
-export const AI_CONFIG = {
-    defaultProvider: (process.env.AI_DEFAULT_PROVIDER || "openai").trim(),
-    defaultModel: (process.env.AI_DEFAULT_MODEL || "gpt-5.2").trim(),
-    reasoningModel: (process.env.AI_REASONING_MODEL || "gpt-5.2").trim(),
-    maxRequestsPerMinute: parseInt((process.env.AI_RATE_LIMIT || "20").trim(), 10),
-    maxTokensPerDay: parseInt((process.env.AI_DAILY_TOKEN_LIMIT || "300000").trim(), 10),
-    defaultTemperature: 0.7,
-    defaultMaxTokens: 2048,
-    requestTimeoutMs: 60000,
-    streamTimeoutMs: 120000,
-} as const;
+export const DEFAULT_SELECTABLE_MODEL_ID = "grok-4-1-fast" as const;
+export const DEFAULT_REASONING_MODEL_ID = "gpt-5.2" as const;
 
 export type ReasoningSupportTier = "explicit" | "best_effort" | "none";
 export type TemperatureSupportTier = "full" | "fixed_default_only";
@@ -199,6 +190,20 @@ export function getModelCapabilityRecord(modelId: string): ModelCapabilityRecord
 export function getProviderForModel(modelId: string): string | undefined {
     return getModelCapabilityRecord(modelId)?.provider;
 }
+
+const runtimeDefaultModel = (process.env.AI_DEFAULT_MODEL || DEFAULT_SELECTABLE_MODEL_ID).trim();
+
+export const AI_CONFIG = {
+    defaultProvider: (process.env.AI_DEFAULT_PROVIDER || getProviderForModel(runtimeDefaultModel) || "openai").trim(),
+    defaultModel: runtimeDefaultModel,
+    reasoningModel: (process.env.AI_REASONING_MODEL || DEFAULT_REASONING_MODEL_ID).trim(),
+    maxRequestsPerMinute: parseInt((process.env.AI_RATE_LIMIT || "20").trim(), 10),
+    maxTokensPerDay: parseInt((process.env.AI_DAILY_TOKEN_LIMIT || "500000").trim(), 10),
+    defaultTemperature: 0.7,
+    defaultMaxTokens: 2048,
+    requestTimeoutMs: 60000,
+    streamTimeoutMs: 120000,
+} as const;
 
 const DEFAULT_CONTEXT_BUDGET = 80_000;
 
