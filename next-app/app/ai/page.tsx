@@ -4,19 +4,7 @@ import { AppShell } from "@/components/AppShell";
 import { CopilotInputCoreClient } from "@/components/copilot/CopilotInputCoreClient";
 import { useProjects } from "@/contexts/ProjectsContext";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import dynamic from "next/dynamic";
-import {
-  listConversations,
-  createConversation,
-  getConversation,
-  archiveConversation,
-  branchConversation,
-  updateConversationTitle,
-} from "@/app/actions/conversations";
-import { reviewArtifactAction } from "@/app/actions/agent";
-import { getGlobalWorkspaceContextAction } from "@/app/actions/ai-assistant";
-import { summarizeConversationAction } from "@/app/actions/summarize-conversation";
 import type { AgentMode } from "@/types/agent";
 import type {
   ChoiceOption,
@@ -61,8 +49,11 @@ import styles from "./ai-view.module.css";
 const AiTimelineRenderer = dynamic(() =>
   import("@/components/copilot/TimelineRenderer").then((module) => module.TimelineRenderer)
 );
-const AiReasoningModeDropdown = dynamic(() =>
-  import("@/components/copilot/ReasoningModeDropdown").then((module) => module.ReasoningModeDropdown)
+const AiHistorySidebarContent = dynamic(() =>
+  import("./AiHistorySidebarContent").then((module) => module.AiHistorySidebarContent)
+);
+const AiChatHeader = dynamic(() =>
+  import("./AiChatHeader").then((module) => module.AiChatHeader)
 );
 
 const AI_ROUTE_MEASURE = "litrev-ai-route";
@@ -70,6 +61,13 @@ const AI_COMPOSER_MEASURE = "litrev-ai-composer-ready";
 const AI_TIMELINE_MEASURE = "litrev-ai-timeline-ready";
 const AI_VISIBLE_TIMELINE_INITIAL_COUNT = 80;
 const AI_VISIBLE_TIMELINE_STEP = 80;
+const AI_EMPTY_CONVERSATION_KEY = "__empty__";
+const GLOBAL_HISTORY_SCOPE_KEY = "__global__";
+
+const loadConversationActions = () => import("@/app/actions/conversations");
+const loadAgentActions = () => import("@/app/actions/agent");
+const loadAiAssistantActions = () => import("@/app/actions/ai-assistant");
+const loadSummarizeConversationActions = () => import("@/app/actions/summarize-conversation");
 
 declare global {
   interface Window {
@@ -226,181 +224,6 @@ function mapDbMessagesToTimeline(
   );
 }
 
-function slugifyFilename(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 64) || "conversation";
-}
-
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
-
-function buildTimelineMarkdown(items: TimelineItem[], title: string): string {
-  const lines: string[] = [`# ${title}`, "", `Exported: ${new Date().toISOString()}`, ""];
-
-  for (const item of items) {
-    if (item.type === "user_message") {
-      lines.push("## User");
-      lines.push(item.content);
-      lines.push("");
-      continue;
-    }
-    if (item.type === "assistant_message") {
-      lines.push("## Assistant");
-      lines.push(item.content);
-      lines.push("");
-      continue;
-    }
-    if (item.type === "artifact") {
-      lines.push(`## Artifact: ${item.title} (${item.artifactType}, ${item.status})`);
-      lines.push("```json");
-      lines.push(JSON.stringify(item.payload, null, 2));
-      lines.push("```");
-      lines.push("");
-      continue;
-    }
-    if (item.type === "tool_activity") {
-      const summary = item.summary ? ` — ${item.summary}` : "";
-      lines.push(`- Tool ${item.toolName}: ${item.status}${summary}`);
-      continue;
-    }
-    if (item.type === "progress") {
-      const progress = item.current !== undefined && item.total !== undefined
-        ? ` (${item.current}/${item.total})`
-        : "";
-      lines.push(`- Progress: ${item.message}${progress}`);
-      continue;
-    }
-    if (item.type === "checkpoint") {
-      lines.push(`- Checkpoint: ${item.label}`);
-      continue;
-    }
-    if (item.type === "error") {
-      lines.push(`- Error: ${item.message}`);
-      continue;
-    }
-  }
-
-  return lines.join("\n").trim() + "\n";
-}
-
-function formatMultilineHtml(text: string): string {
-  return escapeHtml(text).replace(/\n/g, "<br />");
-}
-
-function buildTimelinePrintHtml(items: TimelineItem[], title: string): string {
-  const blocks: string[] = [];
-
-  for (const item of items) {
-    if (item.type === "user_message") {
-      blocks.push(
-        `<section class="entry user"><h2>User</h2><p>${formatMultilineHtml(item.content)}</p></section>`
-      );
-      continue;
-    }
-    if (item.type === "assistant_message") {
-      blocks.push(
-        `<section class="entry assistant"><h2>Assistant</h2><p>${formatMultilineHtml(item.content)}</p></section>`
-      );
-      continue;
-    }
-    if (item.type === "artifact") {
-      blocks.push(
-        `<section class="entry artifact"><h2>Artifact: ${escapeHtml(item.title)}</h2><p class="meta">${escapeHtml(
-          `${item.artifactType} · ${item.status}`
-        )}</p><pre>${escapeHtml(JSON.stringify(item.payload, null, 2))}</pre></section>`
-      );
-      continue;
-    }
-    if (item.type === "tool_activity") {
-      const summary = item.summary ? ` · ${item.summary}` : "";
-      blocks.push(
-        `<section class="entry progress"><p>Tool: ${escapeHtml(`${item.toolName} · ${item.status}${summary}`)}</p></section>`
-      );
-      continue;
-    }
-    if (item.type === "progress") {
-      const progressText = item.current !== undefined && item.total !== undefined
-        ? `${item.message} (${item.current}/${item.total})`
-        : item.message;
-      blocks.push(`<section class="entry progress"><p>${escapeHtml(progressText)}</p></section>`);
-      continue;
-    }
-    if (item.type === "checkpoint") {
-      blocks.push(`<section class="entry checkpoint"><p>Checkpoint: ${escapeHtml(item.label)}</p></section>`);
-      continue;
-    }
-    if (item.type === "error") {
-      blocks.push(`<section class="entry error"><p>Error: ${escapeHtml(item.message)}</p></section>`);
-    }
-  }
-
-  return `<!doctype html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <title>${escapeHtml(title)}</title>
-    <style>
-      /* Export HTML is intentionally light-only for consistent print/PDF output. */
-      :root { color-scheme: light; }
-      body {
-        font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        margin: 0;
-        color: #1f2937;
-        background: #ffffff;
-      }
-      main {
-        max-width: 900px;
-        margin: 0 auto;
-        padding: 28px 24px 40px;
-      }
-      h1 { margin: 0 0 6px; font-size: 30px; line-height: 1.2; }
-      .meta { color: #6b7280; font-size: 13px; margin: 0 0 20px; }
-      .entry {
-        margin: 0 0 14px;
-        border: 1px solid #e5e7eb;
-        border-radius: 12px;
-        padding: 12px 14px;
-        break-inside: avoid;
-      }
-      .entry h2 { font-size: 13px; letter-spacing: 0.02em; text-transform: uppercase; color: #6b7280; margin: 0 0 8px; }
-      .entry p { margin: 0; line-height: 1.6; }
-      .entry.user { background: #f9fafb; }
-      .entry.assistant { background: #ffffff; }
-      .entry.artifact pre {
-        margin: 10px 0 0;
-        white-space: pre-wrap;
-        word-break: break-word;
-        background: #f8fafc;
-        border-radius: 10px;
-        padding: 10px;
-        font-size: 12px;
-        line-height: 1.5;
-      }
-      .entry.progress, .entry.checkpoint { background: #fefce8; border-color: #fde68a; color: #92400e; }
-      .entry.error { background: #fef2f2; border-color: #fecaca; color: #991b1b; }
-      @media print {
-        main { padding: 12mm; }
-        .entry { page-break-inside: avoid; }
-      }
-    </style>
-  </head>
-  <body>
-    <main>
-      <h1>${escapeHtml(title)}</h1>
-      <p class="meta">Exported: ${escapeHtml(new Date().toISOString())}</p>
-      ${blocks.join("\n")}
-    </main>
-  </body>
-</html>`;
-}
-
 export default function AIView() {
   const router = useRouter();
   const mobileAiV2Enabled = isMobileAiV2Enabled();
@@ -414,13 +237,13 @@ export default function AIView() {
   });
 
   const [conversations, setConversations] = useState<ChatConversation[]>([]);
+  const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
-  const [isProjectDropdownOpen, setProjectDropdownOpen] = useState(false);
   const [isMobileViewport, setIsMobileViewport] = useState(false);
+  const [isComposerReady, setComposerReady] = useState(false);
 
   const [workspaceContextText, setWorkspaceContextText] = useState("");
-  const [workspaceProjectCount, setWorkspaceProjectCount] = useState(0);
   const [isTyping, setIsTyping] = useState(false);
   const [isCompressing, setIsCompressing] = useState(false);
   const [branchingConversationId, setBranchingConversationId] = useState<string | null>(null);
@@ -440,7 +263,6 @@ export default function AIView() {
   const timelineLruRef = useRef<string[]>([]);
 
   const historyContentId = "chat-history-panel";
-  const projectDropdownRef = useRef<HTMLDivElement | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const streamGenRef = useRef(0);
   const sendLockRef = useRef(false);
@@ -448,6 +270,9 @@ export default function AIView() {
   const routePerfStartRef = useRef<number | null>(null);
   const measuredComposerConversationRef = useRef<string | null>(null);
   const measuredTimelineConversationRef = useRef<string | null>(null);
+  const historyLoadedScopeRef = useRef<string | null>(null);
+  const historyLoadPromiseRef = useRef<Promise<void> | null>(null);
+  const workspaceContextPromiseRef = useRef<Promise<string> | null>(null);
 
   const reasoningSupport: ReasoningSupportTier = useMemo(
     () => getReasoningSupportTier(selectedModel),
@@ -511,6 +336,7 @@ export default function AIView() {
     routePerfStartRef.current = performance.now();
     measuredComposerConversationRef.current = null;
     measuredTimelineConversationRef.current = null;
+    setComposerReady(false);
     performance.mark(`${AI_ROUTE_MEASURE}:start`);
     window.__litrevAiPerf = {
       activeConversationId: activeConversationId ?? null,
@@ -522,6 +348,7 @@ export default function AIView() {
     measuredComposerConversationRef.current = null;
     measuredTimelineConversationRef.current = null;
     routePerfStartRef.current = performance.now();
+    setComposerReady(false);
     performance.mark(`${AI_ROUTE_MEASURE}:start`);
     window.__litrevAiPerf = {
       ...(window.__litrevAiPerf ?? {}),
@@ -531,10 +358,12 @@ export default function AIView() {
 
   const markComposerReady = useCallback(() => {
     if (typeof window === "undefined") return;
-    if (measuredComposerConversationRef.current === activeConversationId) return;
-    measuredComposerConversationRef.current = activeConversationId;
+    const measureKey = activeConversationId ?? AI_EMPTY_CONVERSATION_KEY;
+    if (measuredComposerConversationRef.current === measureKey) return;
+    setComposerReady(true);
+    measuredComposerConversationRef.current = measureKey;
     const elapsed = routePerfStartRef.current !== null ? Math.round(performance.now() - routePerfStartRef.current) : undefined;
-    performance.mark(`${AI_COMPOSER_MEASURE}:${activeConversationId ?? "empty"}`);
+    performance.mark(`${AI_COMPOSER_MEASURE}:${measureKey}`);
     window.__litrevAiPerf = {
       ...(window.__litrevAiPerf ?? {}),
       activeConversationId: activeConversationId ?? null,
@@ -544,10 +373,11 @@ export default function AIView() {
 
   const handleTimelineReady = useCallback((details: { visibleItems: number; hiddenItems: number; totalItems: number }) => {
     if (typeof window === "undefined") return;
-    if (measuredTimelineConversationRef.current === activeConversationId) return;
-    measuredTimelineConversationRef.current = activeConversationId;
+    const measureKey = activeConversationId ?? AI_EMPTY_CONVERSATION_KEY;
+    if (measuredTimelineConversationRef.current === measureKey) return;
+    measuredTimelineConversationRef.current = measureKey;
     const elapsed = routePerfStartRef.current !== null ? Math.round(performance.now() - routePerfStartRef.current) : undefined;
-    performance.mark(`${AI_TIMELINE_MEASURE}:${activeConversationId ?? "empty"}`);
+    performance.mark(`${AI_TIMELINE_MEASURE}:${measureKey}`);
     window.__litrevAiPerf = {
       ...(window.__litrevAiPerf ?? {}),
       activeConversationId: activeConversationId ?? null,
@@ -601,63 +431,41 @@ export default function AIView() {
     });
   }, [emitMobileActionTap, isMobileViewport, mobileAiV2Enabled]);
 
-
-  useEffect(() => {
-    let active = true;
-
-    if (selectedProjectId) {
-      setWorkspaceContextText("");
-      setWorkspaceProjectCount(0);
-      return () => {
-        active = false;
-      };
-    }
-
-    getGlobalWorkspaceContextAction()
-      .then((result) => {
-        if (!active) return;
-        if (result.success) {
+  const ensureWorkspaceContextText = useCallback(async () => {
+    if (selectedProjectId) return "";
+    if (workspaceContextText) return workspaceContextText;
+    if (!workspaceContextPromiseRef.current) {
+      workspaceContextPromiseRef.current = loadAiAssistantActions()
+        .then(({ getGlobalWorkspaceContextAction }) => getGlobalWorkspaceContextAction())
+        .then((result) => {
+          if (!result.success) return "";
           setWorkspaceContextText(result.data.contextText);
-          setWorkspaceProjectCount(result.data.projectCount);
-        }
-      })
-      .catch((err) => {
-        console.error("Failed to load global workspace context", err);
-        if (!active) return;
-        setWorkspaceContextText("");
-        setWorkspaceProjectCount(0);
-      });
+          return result.data.contextText;
+        })
+        .catch((err) => {
+          console.error("Failed to load global workspace context", err);
+          return "";
+        })
+        .finally(() => {
+          workspaceContextPromiseRef.current = null;
+        });
+    }
+    return workspaceContextPromiseRef.current;
+  }, [selectedProjectId, workspaceContextText]);
 
-    return () => {
-      active = false;
-    };
-  }, [selectedProjectId]);
+  const historyScopeKey = selectedProjectId ?? GLOBAL_HISTORY_SCOPE_KEY;
 
-  useEffect(() => {
-    return () => {
-      abortControllerRef.current?.abort();
-    };
-  }, []);
+  const loadConversationList = useCallback(async (force = false) => {
+    if (!force && historyLoadedScopeRef.current === historyScopeKey) return;
+    if (historyLoadPromiseRef.current) return historyLoadPromiseRef.current;
 
-  useEffect(() => {
-    if (!isProjectDropdownOpen) return;
-    const handleClick = (e: MouseEvent) => {
-      if (projectDropdownRef.current && !projectDropdownRef.current.contains(e.target as Node)) {
-        setProjectDropdownOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, [isProjectDropdownOpen]);
-
-  useEffect(() => {
-    let isActive = true;
-    const load = async () => {
+    const loadPromise = (async () => {
+      setIsHistoryLoading(true);
+      const { listConversations } = await loadConversationActions();
       const listResult = await listConversations({
         projectId: selectedProjectId ?? undefined,
         page: "ai",
       });
-      if (!isActive) return;
       if (!listResult.success) {
         console.error("Failed to load AI conversations:", listResult.error);
         return;
@@ -670,30 +478,111 @@ export default function AIView() {
         updatedAt: s.updatedAt,
       }));
       setConversations(mapped);
-      setActiveConversationId(null);
-      setTimelineByConversation({});
-      timelineLruRef.current = [];   // reset LRU so eviction doesn't drift across scopes
-      setPendingChoices([]);
-      setPendingUserInput(null);
-      setPrefillCommand(null);
-    };
-    load().catch((err) => {
-      console.error("Failed to load AI conversations", err);
-    });
-    return () => {
-      isActive = false;
+      historyLoadedScopeRef.current = historyScopeKey;
+    })()
+      .catch((err) => {
+        console.error("Failed to load AI conversations", err);
+      })
+      .finally(() => {
+        historyLoadPromiseRef.current = null;
+        setIsHistoryLoading(false);
+      });
+
+    historyLoadPromiseRef.current = loadPromise;
+    return loadPromise;
+  }, [historyScopeKey, selectedProjectId]);
+
+  useEffect(() => {
+    if (selectedProjectId) {
+      setWorkspaceContextText("");
+      workspaceContextPromiseRef.current = null;
     };
   }, [selectedProjectId]);
+
+  useEffect(() => {
+    if (selectedProjectId || !isComposerReady || workspaceContextText) return;
+
+    let cancelled = false;
+    const run = () => {
+      if (cancelled) return;
+      void ensureWorkspaceContextText();
+    };
+
+    if (typeof window !== "undefined" && typeof window.requestIdleCallback === "function") {
+      const idleId = window.requestIdleCallback(run, { timeout: 1500 });
+      return () => {
+        cancelled = true;
+        window.cancelIdleCallback(idleId);
+      };
+    }
+
+    const timeoutId = window.setTimeout(run, 250);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeoutId);
+    };
+  }, [ensureWorkspaceContextText, isComposerReady, selectedProjectId, workspaceContextText]);
+
+  useEffect(() => {
+    if (!isComposerReady) return;
+    if (historyLoadedScopeRef.current === historyScopeKey) return;
+
+    let cancelled = false;
+    const run = () => {
+      if (cancelled) return;
+      void loadConversationList();
+    };
+
+    if (typeof window !== "undefined" && typeof window.requestIdleCallback === "function") {
+      const idleId = window.requestIdleCallback(run, { timeout: 1200 });
+      return () => {
+        cancelled = true;
+        window.cancelIdleCallback(idleId);
+      };
+    }
+
+    const timeoutId = window.setTimeout(run, 150);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeoutId);
+    };
+  }, [historyScopeKey, isComposerReady, loadConversationList]);
+
+  useEffect(() => {
+    return () => {
+      abortControllerRef.current?.abort();
+    };
+  }, []);
+
+  useEffect(() => {
+    setConversations([]);
+    historyLoadedScopeRef.current = null;
+    historyLoadPromiseRef.current = null;
+    setActiveConversationId(null);
+    setTimelineByConversation({});
+    timelineLruRef.current = [];   // reset LRU so eviction doesn't drift across scopes
+    setPendingChoices([]);
+    setPendingUserInput(null);
+    setPrefillCommand(null);
+  }, [selectedProjectId]);
+
+  useEffect(() => {
+    if (isHistoryCollapsed) return;
+    void loadConversationList();
+  }, [isHistoryCollapsed, loadConversationList]);
 
   const selectedProject = projects.find((p) => p.id === selectedProjectId);
   const selectedScopeLabel = selectedProject
     ? selectedProject.name
-    : `Global${workspaceProjectCount > 0 ? ` (${workspaceProjectCount} projects)` : ""}`;
+    : `Global${projects.length > 0 ? ` (${projects.length} projects)` : ""}`;
   const historyClass = useMemo(
     () => `${styles.historySidebar} ${isHistoryCollapsed ? styles.collapsed : ""}`,
     [isHistoryCollapsed]
   );
-  const historyGroups = useMemo(() => groupConversationsByDate(conversations), [conversations]);
+  const historyGroups = useMemo(
+    () => (isHistoryCollapsed ? [] : groupConversationsByDate(conversations)),
+    [conversations, isHistoryCollapsed]
+  );
   const activeTimeline = activeConversationId ? (timelineByConversation[activeConversationId] ?? []) : [];
 
   const sortConversationsByUpdatedAt = useCallback((items: ChatConversation[]) => {
@@ -768,6 +657,7 @@ export default function AIView() {
   const ensureConversation = useCallback(async (context: ConversationContext): Promise<string> => {
     if (activeConversationId) return activeConversationId;
 
+    const { createConversation } = await loadConversationActions();
     const convResult = await createConversation({
       context,
       projectId: selectedProjectId ?? undefined,
@@ -802,6 +692,7 @@ export default function AIView() {
     const alreadyCached = !!timelineByConversation[id];
     if (!alreadyCached) setIsConversationLoading(true);
     try {
+      const { getConversation } = await loadConversationActions();
       const convResult = await getConversation(id);
       const full = convResult.success ? convResult.data : null;
       if (!full) return;
@@ -823,6 +714,7 @@ export default function AIView() {
     e.stopPropagation();
     let archived = false;
     try {
+      const { archiveConversation } = await loadConversationActions();
       const result = await archiveConversation(id);
       if (!result.success) {
         console.error("Failed to archive conversation:", result.error);
@@ -870,6 +762,7 @@ export default function AIView() {
     if (isTyping) cancelStream();
     setBranchingConversationId(id);
     try {
+      const { branchConversation, getConversation } = await loadConversationActions();
       const branchResult = await branchConversation({ conversationId: id });
       if (!branchResult.success) { console.error("Failed to branch:", branchResult.error); return; }
       const fullResult = await getConversation(branchResult.data.id);
@@ -905,6 +798,7 @@ export default function AIView() {
     if (isTyping) cancelStream();
     setBranchingMessageId(messageId);
     try {
+      const { branchConversation, getConversation } = await loadConversationActions();
       const branchResult = await branchConversation({
         conversationId: sourceConversationId,
         upToMessageId: messageId,
@@ -966,6 +860,7 @@ export default function AIView() {
     const trimmed = renameValue.trim();
     if (trimmed) {
       try {
+        const { updateConversationTitle } = await loadConversationActions();
         const result = await updateConversationTitle(renamingId, trimmed);
         if (result.success) {
           setConversations((prev) => prev.map((c) => c.id === renamingId ? { ...c, title: trimmed } : c));
@@ -1016,6 +911,8 @@ export default function AIView() {
     if (isTyping) cancelStream();
     setIsCompressing(true);
     try {
+      const { summarizeConversationAction } = await loadSummarizeConversationActions();
+      const { getConversation } = await loadConversationActions();
       const result = await summarizeConversationAction(sourceId);
       if (!result.success) throw new Error(result.error);
 
@@ -1067,6 +964,7 @@ export default function AIView() {
   const handleNewChat = useCallback(async () => {
     emitMobileActionTap("ai_new_chat", 44);
     const context: ConversationContext = selectedProjectId ? "project" : "global";
+    const { createConversation } = await loadConversationActions();
     const convResult = await createConversation({
       context,
       projectId: selectedProjectId ?? undefined,
@@ -1248,7 +1146,9 @@ export default function AIView() {
             section,
             telemetryRequestKey: retryModelExpectation?.requestKey,
 
-            additionalContext: selectedProjectId ? undefined : (workspaceContextText || undefined),
+            additionalContext: selectedProjectId
+              ? undefined
+              : ((workspaceContextText || await ensureWorkspaceContextText()) || undefined),
           },
         }),
         signal: controller.signal,
@@ -1408,6 +1308,7 @@ export default function AIView() {
     handleNavigate,
 
     workspaceContextText,
+    ensureWorkspaceContextText,
     ensureConversation,
     ensureConversationTimeline,
     upsertConversationTitle,
@@ -1483,6 +1384,7 @@ export default function AIView() {
       })
     );
 
+    const { reviewArtifactAction } = await loadAgentActions();
     const result = await reviewArtifactAction(artifactId, status, note, editedPayload);
     if (!result.success || !result.artifact) {
       updateConversationTimeline(convId, (items) => ([
@@ -1692,7 +1594,9 @@ export default function AIView() {
             reasoningBudgetTokens: getReasoningBudgetTokens(requestReasoningMode),
             agentMode: "general",
             page: "ai",
-            additionalContext: selectedProjectId ? undefined : (workspaceContextText || undefined),
+            additionalContext: selectedProjectId
+              ? undefined
+              : ((workspaceContextText || await ensureWorkspaceContextText()) || undefined),
           },
         }),
         signal: controller.signal,
@@ -1806,6 +1710,7 @@ export default function AIView() {
     reasoningMode,
     handleNavigate,
     workspaceContextText,
+    ensureWorkspaceContextText,
     ensureConversationTimeline,
     upsertConversationTitle,
     sortConversationsByUpdatedAt,
@@ -1897,46 +1802,24 @@ export default function AIView() {
   );
 
   const exportBaseName = useMemo(() => {
-    const scopePart = selectedProject?.name ?? "global";
-    const titlePart = activeConversation?.title ?? "conversation";
-    return `${slugifyFilename(scopePart)}-${slugifyFilename(titlePart)}`;
+    return `${selectedProject?.name ?? "global"}\u0000${activeConversation?.title ?? "conversation"}`;
   }, [selectedProject, activeConversation]);
 
   const handleExportMarkdown = useCallback(() => {
     if (activeTimeline.length === 0) return;
     const title = activeConversation?.title ?? "AI Conversation";
-    const markdown = buildTimelineMarkdown(activeTimeline, title);
-    const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" });
-    const href = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = href;
-    link.download = `${exportBaseName}.md`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(href);
+    const [scopeName, conversationTitle] = exportBaseName.split("\u0000");
+    void import("./ai-export").then(({ buildExportBaseName, exportTimelineMarkdown }) => {
+      exportTimelineMarkdown(activeTimeline, title, buildExportBaseName(scopeName, conversationTitle));
+    });
   }, [activeTimeline, activeConversation, exportBaseName]);
 
   const handleExportPdf = useCallback(() => {
     if (activeTimeline.length === 0) return;
     const title = activeConversation?.title ?? "AI Conversation";
-    const html = buildTimelinePrintHtml(activeTimeline, title);
-    const printWindow = window.open("", "_blank", "noopener,noreferrer");
-    if (!printWindow) return;
-    printWindow.document.open();
-    printWindow.document.write(html);
-    printWindow.document.close();
-    let hasPrinted = false;
-    const triggerPrint = () => {
-      if (hasPrinted || printWindow.closed) return;
-      hasPrinted = true;
-      printWindow.focus();
-      printWindow.print();
-    };
-    printWindow.onload = () => {
-      triggerPrint();
-    };
-    window.setTimeout(triggerPrint, 180);
+    void import("./ai-export").then(({ exportTimelinePdf }) => {
+      exportTimelinePdf(activeTimeline, title);
+    });
   }, [activeTimeline, activeConversation]);
 
   return (
@@ -1971,60 +1854,27 @@ export default function AIView() {
             </button>
           </div>
 
-          <div id={historyContentId} aria-hidden={isHistoryCollapsed}>
-            <div className={styles.historyList}>
-              {historyGroups.map((group) => (
-                <div className={styles.historyGroup} key={group.title}>
-                  <h4 className={styles.historyHeading}>{group.title}</h4>
-                  {group.items.map((conv) => (
-                    <div
-                      key={conv.id}
-                      className={`${styles.historyItem} ${activeConversationId === conv.id ? styles.activeHistory : ""}`}
-                      onContextMenu={(e) => handleConversationContextMenu(e, conv.id)}
-                    >
-                      {renamingId === conv.id ? (
-                        <input
-                          className={styles.renameInput}
-                          value={renameValue}
-                          onChange={(e) => setRenameValue(e.target.value)}
-                          onBlur={handleCommitRename}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") handleCommitRename();
-                            if (e.key === "Escape") handleCancelRename();
-                          }}
-                          autoFocus
-                        />
-                      ) : (
-                        <button
-                          type="button"
-                          className={styles.historySelectBtn}
-                          onClick={() => handleSelectConversation(conv.id)}
-                          aria-current={activeConversationId === conv.id ? "true" : undefined}
-                        >
-                          <span className={styles.historyTitle}>{conv.title ?? "New conversation"}</span>
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        className={styles.moreBtn}
-                        onClick={(e) => handleConversationContextMenu(e, conv.id)}
-                        aria-label="More options"
-                      >
-                        <span className="material-icons-round">more_vert</span>
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              ))}
-
-              {conversations.length === 0 && (
-                <div className={styles.emptyHistory}>
-                  <span className="material-icons-round">forum</span>
-                  <p>No conversations yet</p>
-                </div>
-              )}
-            </div>
-          </div>
+          {!isHistoryCollapsed ? (
+            <AiHistorySidebarContent
+              historyContentId={historyContentId}
+              isHistoryLoading={isHistoryLoading}
+              conversations={conversations}
+              historyGroups={historyGroups}
+              activeConversationId={activeConversationId}
+              renamingId={renamingId}
+              renameValue={renameValue}
+              contextMenu={contextMenu}
+              setRenameValue={setRenameValue}
+              onSelectConversation={handleSelectConversation}
+              onConversationContextMenu={handleConversationContextMenu}
+              onCommitRename={handleCommitRename}
+              onCancelRename={handleCancelRename}
+              onDismissContextMenu={dismissContextMenu}
+              onStartRename={handleStartRename}
+              onDuplicateConversation={handleBranchConversation}
+              onDeleteConversation={handleDeleteConversation}
+            />
+          ) : null}
         </aside>
         {mobileAiV2Enabled && isMobileViewport && !isHistoryCollapsed ? (
           <button
@@ -2036,101 +1886,24 @@ export default function AIView() {
         ) : null}
 
         <section className={styles.chatInterface} role="region" aria-label="Chat interface">
-          <div className={styles.chatHeader}>
-            {mobileAiV2Enabled && isMobileViewport ? (
-              <button
-                type="button"
-                className={styles.mobileHistoryToggle}
-                aria-label={isHistoryCollapsed ? "Open chat history" : "Close chat history"}
-                aria-expanded={!isHistoryCollapsed}
-                aria-controls={historyContentId}
-                onClick={handleHistoryToggle}
-              >
-                <span className="material-icons-round">menu</span>
-                <span className={styles.mobileHistoryLabel}>Chats</span>
-              </button>
-            ) : null}
-            <div className={styles.projectSelector} ref={projectDropdownRef}>
-              <button
-                type="button"
-                className={styles.projectButton}
-                onClick={() => setProjectDropdownOpen((prev) => !prev)}
-                aria-expanded={isProjectDropdownOpen}
-              >
-                <span className="material-icons-round">{selectedProject ? "folder" : "public"}</span>
-                <span>{selectedScopeLabel}</span>
-                <span className="material-icons-round">expand_more</span>
-              </button>
-
-              {isProjectDropdownOpen && (
-                <div className={styles.projectDropdown}>
-                  <button
-                    className={`${styles.projectOption} ${!selectedProjectId ? styles.projectOptionActive : ""}`}
-                    onClick={() => {
-                      setSelectedProjectId(null);
-                      setProjectDropdownOpen(false);
-                    }}
-                  >
-                    Global
-                  </button>
-                  {projects.map((project) => (
-                    <button
-                      key={project.id}
-                      className={`${styles.projectOption} ${selectedProjectId === project.id ? styles.projectOptionActive : ""}`}
-                      onClick={() => {
-                        setSelectedProjectId(project.id);
-                        setProjectDropdownOpen(false);
-                      }}
-                    >
-                      {project.name}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className={styles.headerActions}>
-              {showReasoningControls && (
-                <AiReasoningModeDropdown
-                  reasoningMode={reasoningMode}
-                  onReasoningModeChange={updateReasoningMode}
-                  reasoningSupport={reasoningSupport}
-                >
-                  <button
-                    type="button"
-                    className={styles.reasoningModeBtn}
-                    data-state={reasoningMode}
-                    aria-label={`Reasoning visibility: ${reasoningMode}`}
-                    title={`Reasoning visibility: ${reasoningMode}`}
-                  >
-                    <span className="material-icons-round">psychology</span>
-                    <span className={styles.reasoningModeLabel}>
-                      {reasoningMode === "off" ? "Off" : reasoningMode === "summary" ? "Summary" : "Full"}
-                    </span>
-                    <span className="material-icons-round">expand_more</span>
-                  </button>
-                </AiReasoningModeDropdown>
-              )}
-              <button
-                type="button"
-                className={styles.exportBtn}
-                onClick={handleExportMarkdown}
-                disabled={activeTimeline.length === 0}
-              >
-                <span className="material-icons-round">download</span>
-                Export MD
-              </button>
-              <button
-                type="button"
-                className={styles.exportBtn}
-                onClick={handleExportPdf}
-                disabled={activeTimeline.length === 0}
-              >
-                <span className="material-icons-round">picture_as_pdf</span>
-                Export PDF
-              </button>
-            </div>
-          </div>
+          <AiChatHeader
+            mobileAiV2Enabled={mobileAiV2Enabled}
+            isMobileViewport={isMobileViewport}
+            isHistoryCollapsed={isHistoryCollapsed}
+            historyContentId={historyContentId}
+            selectedProjectId={selectedProjectId}
+            selectedScopeLabel={selectedScopeLabel}
+            projects={projects.map((project) => ({ id: project.id, name: project.name }))}
+            showReasoningControls={showReasoningControls}
+            reasoningMode={reasoningMode}
+            reasoningSupport={reasoningSupport}
+            activeTimelineLength={activeTimeline.length}
+            onHistoryToggle={handleHistoryToggle}
+            onSelectProject={setSelectedProjectId}
+            onReasoningModeChange={updateReasoningMode}
+            onExportMarkdown={handleExportMarkdown}
+            onExportPdf={handleExportPdf}
+          />
 
           <div className={styles.chatContent}>
             <AiTimelineRenderer
@@ -2190,42 +1963,7 @@ export default function AIView() {
           </div>
         </section>
       </div>
-
     </AppShell>
-
-    {contextMenu && createPortal(
-      <div
-        className={styles.contextMenu}
-        style={{ top: contextMenu.y, left: contextMenu.x }}
-        onClick={dismissContextMenu}
-      >
-        <button
-          type="button"
-          className={styles.contextMenuItem}
-          onClick={() => handleStartRename(contextMenu.conversationId)}
-        >
-          <span className="material-icons-round">edit</span>
-          Rename
-        </button>
-        <button
-          type="button"
-          className={styles.contextMenuItem}
-          onClick={(e) => handleBranchConversation(contextMenu.conversationId, e)}
-        >
-          <span className="material-icons-round">content_copy</span>
-          Duplicate
-        </button>
-        <button
-          type="button"
-          className={`${styles.contextMenuItem} ${styles.contextMenuItemDanger}`}
-          onClick={(e) => handleDeleteConversation(contextMenu.conversationId, e)}
-        >
-          <span className="material-icons-round">delete_outline</span>
-          Delete
-        </button>
-      </div>,
-      document.body,
-    )}
     </>
   );
 }
