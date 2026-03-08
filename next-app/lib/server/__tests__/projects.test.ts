@@ -26,6 +26,7 @@ describe("projects", () => {
     const createdAt = new Date("2026-02-25T10:00:00.000Z");
     mockCreateProject.mockResolvedValueOnce({
       id: "proj-1",
+      demoKey: null,
       name: "Test project",
       description: null,
       status: "ready",
@@ -66,6 +67,7 @@ describe("projects", () => {
     mockListProjects.mockResolvedValueOnce([
       {
         id: "proj-1",
+        demoKey: null,
         name: "Alpha Review",
         description: null,
         status: "ready",
@@ -83,6 +85,7 @@ describe("projects", () => {
       where: { workspaceId: LOCAL_SCOPE.workspaceId, ownerId: LOCAL_SCOPE.ownerId },
       select: {
         id: true,
+        demoKey: true,
         name: true,
         description: true,
         status: true,
@@ -97,6 +100,7 @@ describe("projects", () => {
     expect(projects).toEqual([
       {
         id: "proj-1",
+        demoKey: null,
         name: "Alpha Review",
         description: undefined,
         status: "ready",

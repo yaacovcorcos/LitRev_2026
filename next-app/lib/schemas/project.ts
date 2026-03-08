@@ -8,6 +8,7 @@ export const projectProgressSchema = z.object({
 
 export const projectSchema = z.object({
     id: z.string().min(1).max(128),
+    demoKey: z.string().min(1).max(128).nullable().optional(),
     name: z.string().min(1).max(500),
     description: z.string().max(5000).optional(),
     status: z.enum(["harvesting", "ready"]),

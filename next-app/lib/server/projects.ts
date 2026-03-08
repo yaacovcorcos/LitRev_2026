@@ -76,6 +76,7 @@ function normalizeProjectUpdates(updates: Partial<ProjectInput>): Partial<Projec
 
 const projectIndexSelect = {
   id: true,
+  demoKey: true,
   name: true,
   description: true,
   status: true,
@@ -92,6 +93,7 @@ function toProject(record: ProjectIndexRecord): Project {
   const status = parseProjectStatus(record.status.trim());
   return {
     id: record.id,
+    demoKey: record.demoKey,
     name: record.name,
     description: record.description ?? undefined,
     status,
@@ -137,6 +139,7 @@ export async function createProject(
       id: normalized.id ?? undefined,
       workspaceId: scope.workspaceId,
       ownerId: scope.ownerId,
+      demoKey: normalized.demoKey ?? undefined,
       name: normalized.name,
       description: normalized.description ?? undefined,
       status: normalized.status,
@@ -172,6 +175,7 @@ export async function updateProject(
     where: { id: projectId },
     data: {
       name: normalized.name ?? undefined,
+      demoKey: normalized.demoKey === null ? null : normalized.demoKey ?? undefined,
       description: normalized.description ?? undefined,
       status: normalized.status ?? undefined,
       statusText: normalized.statusText ?? undefined,

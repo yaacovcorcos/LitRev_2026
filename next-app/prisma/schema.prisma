@@ -126,6 +126,7 @@ model Project {
   id          String    @id @default(cuid())
   workspaceId String
   ownerId     String
+  demoKey     String?
   name        String
   description String?
   status      String
@@ -157,6 +158,7 @@ model Project {
 
   @@index([workspaceId])
   @@index([ownerId])
+  @@unique([ownerId, workspaceId, demoKey])
 }
 
 model Protocol {

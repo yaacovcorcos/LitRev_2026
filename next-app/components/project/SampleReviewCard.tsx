@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import styles from "@/components/ProjectGrid.module.css";
 import { openOrCreateDemoProjectAction } from "@/app/actions/demo";
 import { useProjects } from "@/contexts/ProjectsContext";
-import { DEMO_PROJECT_ID, isDemoProjectId } from "@/lib/demo/constants";
+import { isDemoProject } from "@/lib/demo/constants";
 import { dismissSampleCard, isSampleCardDismissed } from "@/lib/demo/sample-card";
 import { isAuthError, redirectToLogin } from "@/lib/action-client";
 
@@ -27,7 +27,7 @@ export function SampleReviewCard({ viewMode }: SampleReviewCardProps) {
       const result = await openOrCreateDemoProjectAction();
       if (!result.success) {
         if (isAuthError(result)) { redirectToLogin(); return; }
-        const existingSample = projects.find((project) => project.id === DEMO_PROJECT_ID);
+        const existingSample = projects.find((project) => isDemoProject(project));
         if (existingSample) {
           router.push(`/project/${existingSample.id}`);
           return;
@@ -38,7 +38,7 @@ export function SampleReviewCard({ viewMode }: SampleReviewCardProps) {
       await refresh();
       router.push(`/project/${result.data.id}`);
     } catch {
-      const existingSample = projects.find((project) => project.id === DEMO_PROJECT_ID);
+      const existingSample = projects.find((project) => isDemoProject(project));
       if (existingSample) {
         router.push(`/project/${existingSample.id}`);
         return;
@@ -54,7 +54,7 @@ export function SampleReviewCard({ viewMode }: SampleReviewCardProps) {
     setDismissed(true);
   }, []);
 
-  const demoAlreadyExists = projects.some((project) => isDemoProjectId(project.id));
+  const demoAlreadyExists = projects.some((project) => isDemoProject(project));
   if (dismissed || demoAlreadyExists) return null;
 
   const cardClass = [

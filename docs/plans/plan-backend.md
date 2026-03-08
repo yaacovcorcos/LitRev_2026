@@ -13,7 +13,7 @@
 - **Draft Versioning:** `DraftVersion` stores immutable per-section snapshots for auditing/recovery. The `draft_diff` artifact apply flow writes to `DraftVersion` (provenance) + `Draft` (display). Notes table is no longer used for draft backup.
 - **Auth & Identity Boundary:** Better Auth (Prisma adapter, DB sessions) is live with Google + magic link support, server-side `withAuth()`/`requireApiSession()` boundaries, and request-scoped actor context (`AsyncLocalStorage`) that feeds service scope resolution.
 - **Legacy Claim Path:** First authenticated session runs an idempotent transactional claim that reassigns `local-user`/`local-workspace` ownership, backfills denormalized workspace IDs, and removes obsolete placeholder principal rows.
-- **Demo Seed Lifecycle:** Sample-project creation/reset is now server-seeded from a single transactional service (`lib/server/demo-project.ts`) that repopulates project, protocol, ledger, draft, notes, memory, and scoped seed conversation rows.
+- **Demo Seed Lifecycle:** Sample-project creation/reset is server-seeded from a single transactional service (`lib/server/demo-project.ts`) that finds the current user's scoped demo by `Project.demoKey`, creates a generated project ID when missing, and repopulates project, protocol, ledger, draft, notes, memory, and scoped seed conversation rows without relying on a global fixed project ID.
 - **Onboarding State Persistence:** Guided-setup defaults now persist in `UserMemory` (`guided_setup_new_projects`) and per-project onboarding state persists in `Project.progress.onboarding` (`enabledOverride`, `completedAt`, `skippedAt`) so create-flow routing is backend-driven and auth-ready.
 - **AI Rate Limiting (Current):** Limit checks and usage writes now support authenticated user/workspace scope (with legacy project fallback), while cache-efficiency counters remain process-local instrumentation in `lib/server/ai/rate-limiter.ts`.
 
@@ -55,6 +55,7 @@
 ## Recently Completed
 *Finished work that might still be fragile or require monitoring. Prune oldest first.*
 
+- [x] Reworked sample-project identity to use scoped `Project.demoKey` lookup plus generated per-user project/child IDs, eliminating production collisions from the legacy shared `sample-yoga-anxiety` primary key while leaving old rows safely ignored.
 - [x] Phase 10 (build phases 1-4): landed Better Auth foundation + actor-context identity propagation, protected server actions/routes, replaced runtime placeholder scope usage, added transactional first-login claim, moved AI usage limiting toward user/workspace scope, and added auth hardening tests.
 - [x] Phase 12: Added `DraftVersion` table for immutable per-section draft history. `draft_diff` artifact now writes to `DraftVersion` instead of `Note`. Fixed `update_note` tool `append` action to read from Draft table.
 - [x] Hardened demo-seed integrity by typing transaction clients, scoping seeded conversation ownership to the active service scope, and aligning draft seed citations with linked evidence sections.

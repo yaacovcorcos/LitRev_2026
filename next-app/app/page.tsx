@@ -13,7 +13,7 @@ import Link from "next/link";
 import { useProjects } from "@/contexts/ProjectsContext";
 import { useRouter, useSearchParams } from "next/navigation";
 import { openOrCreateDemoProjectAction } from "@/app/actions/demo";
-import { DEMO_PROJECT_ID } from "@/lib/demo/constants";
+import { isDemoProject } from "@/lib/demo/constants";
 import { isAuthError, redirectToLogin } from "@/lib/action-client";
 import { authClient } from "@/lib/auth-client";
 import layoutStyles from "./home.module.css";
@@ -138,7 +138,7 @@ function HomeContent() {
       const result = await openOrCreateDemoProjectAction();
       if (!result.success) {
         if (isAuthError(result)) { redirectToLogin(); return; }
-        const existingSample = projects.find((project) => project.id === DEMO_PROJECT_ID);
+        const existingSample = projects.find((project) => isDemoProject(project));
         if (existingSample) {
           router.push(`/project/${existingSample.id}`);
           return;
@@ -150,7 +150,7 @@ function HomeContent() {
       router.push(`/project/${result.data.id}`);
     } catch (err) {
       console.error("Failed to open sample project", err);
-      const existingSample = projects.find((project) => project.id === DEMO_PROJECT_ID);
+      const existingSample = projects.find((project) => isDemoProject(project));
       if (existingSample) {
         router.push(`/project/${existingSample.id}`);
         return;

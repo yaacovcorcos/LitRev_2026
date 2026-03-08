@@ -1,7 +1,7 @@
 import { Project } from "@/types/project";
 import Link from "next/link";
 import styles from "@/components/ProjectGrid.module.css";
-import { isDemoProjectId } from "@/lib/demo/constants";
+import { isDemoProject } from "@/lib/demo/constants";
 import { SampleReviewCard } from "@/components/project/SampleReviewCard";
 
 type ProjectGridProps = {
@@ -37,7 +37,7 @@ export function ProjectGrid({ projects, viewMode, onNewProject, showSampleCard =
       {projects.map((p) => {
         const isHarvesting = p.status === "harvesting";
         const isList = viewMode === "list";
-        const isSample = isDemoProjectId(p.id);
+        const isSample = isDemoProject(p);
         const cardClass = classes(styles.card, isList && styles.listViewCard, isSample && isList && styles.sampleProjectCard);
         const titleClass = classes(styles.projectTitle, isList && styles.listViewCardTitle, isSample && isList && styles.sampleProjectTitle);
         const statusClass = classes(
