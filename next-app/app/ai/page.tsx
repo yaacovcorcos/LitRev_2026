@@ -21,7 +21,14 @@ import { processAIStream } from "@/lib/ai/stream-processor";
 import { routeToAgent } from "@/lib/agent/router";
 import { dispatchProjectDataChanged, getChangedDomainsForAcceptedArtifact } from "@/lib/project-data-events";
 import { isNavigationSafe } from "@/lib/ai/navigation-safety";
-import { buildClientErrorState, formatStreamErrorForUI, isRetryableTerminalReason, isSameRenderedError, shouldSuppressClientFallback } from "@/lib/ai/stream-error-ui";
+import {
+  buildClientErrorState,
+  formatStreamErrorForUI,
+  isRetryableTerminalReason,
+  isSameRenderedError,
+  matchesCanonicalFailureFallback,
+  shouldSuppressClientFallback,
+} from "@/lib/ai/stream-error-ui";
 import { createAiStreamRuntime } from "@/lib/ai/ai-stream-runtime";
 import { generateChatUnificationRequestKey, recordChatUnificationMetric } from "@/lib/ai/chat-unification-telemetry";
 import { terminalReasonFromThrownError, type StreamTerminalReason } from "@/lib/ai/stream-lifecycle";
@@ -31,12 +38,10 @@ import { isMobileAiV2Enabled } from "@/lib/mobile/feature-flags";
 import { MOBILE_VIEWPORT_MEDIA_QUERY } from "@/lib/mobile/breakpoints";
 import { isMobileTelemetryContext, recordMobileMetric } from "@/lib/mobile/telemetry";
 import {
-  getReasoningBudgetTokens,
   getReasoningModePreference,
-  resolveRequestReasoningMode,
   setReasoningModePreference,
-  shouldRequestReasoning,
 } from "@/lib/ai/reasoning-visibility";
+import { resolveReasoningRequest } from "@/lib/ai/reasoning-request";
 import {
   USER_SELECTABLE_MODELS,
   getReasoningSupportTier,
@@ -1029,7 +1034,10 @@ export default function AIView() {
     const context: ConversationContext = selectedProjectId ? "project" : "global";
     const effectiveAgentMode = agentMode ?? routeToAgent(msgText, "overview");
     const effectiveModel = model ?? selectedModel;
-    const requestReasoningMode = resolveRequestReasoningMode(reasoningMode, effectiveModel);
+    const reasoningRequest = resolveReasoningRequest({
+      preferredMode: reasoningMode,
+      modelId: effectiveModel,
+    });
 
     let convId = await ensureConversation(context);
     if (retryModelExpectation) {
@@ -1152,9 +1160,9 @@ export default function AIView() {
             conversationId: convId,
             projectId: selectedProjectId ?? undefined,
             model: effectiveModel,
-            reasoningMode: requestReasoningMode,
-            includeReasoning: shouldRequestReasoning(requestReasoningMode),
-            reasoningBudgetTokens: getReasoningBudgetTokens(requestReasoningMode),
+            reasoningMode: reasoningRequest.reasoningMode,
+            includeReasoning: reasoningRequest.includeReasoning,
+            reasoningBudgetTokens: reasoningRequest.reasoningBudgetTokens,
             agentMode: effectiveAgentMode,
             page: currentPage,
             section,
@@ -1206,8 +1214,11 @@ export default function AIView() {
         const errorState = buildClientErrorState(err);
         emittedTerminalError = true;
         updateConversationTimeline(convId, (items) => {
-          const hasAssistantContent = items.some(
-            (item) => item.type === "assistant_message" && item.content.trim().length > 0
+          const hasAssistantContent = items.some((item) =>
+            item.type === "assistant_message" && matchesCanonicalFailureFallback({
+              assistantText: item.content,
+              streamError: errorState.errorMeta,
+            })
           );
           const hasRenderedError = items.some((item) =>
             item.type === "error" && isSameRenderedError({
@@ -1544,7 +1555,10 @@ export default function AIView() {
     let errorMessage: string | null = null;
     let aborted = false;
     let terminalEventEmitted = false;
-    const requestReasoningMode = resolveRequestReasoningMode(reasoningMode, selectedModel);
+    const reasoningRequest = resolveReasoningRequest({
+      preferredMode: reasoningMode,
+      modelId: selectedModel,
+    });
     const runtime = createAiStreamRuntime({
       aiMessageId,
       page: "ai",
@@ -1603,9 +1617,9 @@ export default function AIView() {
             conversationId: convId,
             projectId: selectedProjectId ?? undefined,
             model: selectedModel,
-            reasoningMode: requestReasoningMode,
-            includeReasoning: shouldRequestReasoning(requestReasoningMode),
-            reasoningBudgetTokens: getReasoningBudgetTokens(requestReasoningMode),
+            reasoningMode: reasoningRequest.reasoningMode,
+            includeReasoning: reasoningRequest.includeReasoning,
+            reasoningBudgetTokens: reasoningRequest.reasoningBudgetTokens,
             agentMode: "general",
             page: "ai",
             additionalContext: selectedProjectId

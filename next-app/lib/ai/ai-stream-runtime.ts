@@ -2,7 +2,11 @@ import type { ArtifactStatus, ArtifactType } from "@/types/artifacts";
 import type { AIStreamChunk, ChoiceOption, CopilotPage, UserInputRequest } from "@/types/ai";
 import type { TimelineItem } from "@/types/timeline";
 import { dispatchProjectDataChanged } from "@/lib/project-data-events";
-import { buildClientErrorState } from "@/lib/ai/stream-error-ui";
+import {
+  buildClientErrorState,
+  isDeterministicCapabilityFailure,
+  matchesCanonicalFailureFallback,
+} from "@/lib/ai/stream-error-ui";
 import {
   createInitialSharedStreamState,
   reduceSharedStreamChunk,
@@ -203,17 +207,29 @@ export function createAiStreamRuntime(deps: AiStreamRuntimeDeps): AiStreamRuntim
 
   const appendStreamError = (intent: Extract<SharedStreamIntent, { type: "stream_error" }>) => {
     const errorState = buildClientErrorState(intent.errorMeta ?? intent.message);
-    updateCurrentTimeline((items) => [
-      ...items,
-      {
-        type: "error",
-        id: `error-${Date.now()}`,
-        message: errorState.message,
-        retryable: errorState.retryable,
-        errorMeta: errorState.errorMeta,
-        createdAt: now(),
-      },
-    ]);
+    updateCurrentTimeline((items) => {
+      const normalizedItems = isDeterministicCapabilityFailure(errorState.errorMeta)
+        ? items.filter((item) => (
+          !(item.type === "assistant_message"
+            && matchesCanonicalFailureFallback({
+              assistantText: item.content,
+              streamError: errorState.errorMeta,
+            }))
+        ))
+        : items;
+
+      return [
+        ...normalizedItems,
+        {
+          type: "error",
+          id: `error-${Date.now()}`,
+          message: errorState.message,
+          retryable: errorState.retryable,
+          errorMeta: errorState.errorMeta,
+          createdAt: now(),
+        },
+      ];
+    });
   };
 
   const appendUserInputRequest = (intent: Extract<SharedStreamIntent, { type: "user_input_append" }>) => {
