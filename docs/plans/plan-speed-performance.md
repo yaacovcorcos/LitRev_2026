@@ -35,9 +35,15 @@ Define the canonical implementation plan for app speed, responsiveness, and stab
 - `/ai` now has route-local readiness instrumentation and a build-artifact bundle report:
   - `next-app/app/ai/page.tsx` records composer-ready and timeline-ready markers into `window.__litrevAiPerf`
   - `next-app/scripts/report-ai-bundle.ts` reports `/ai` entry chunk count and total JS bytes from `.next/server/app/ai.html`
+- `/ai` closeout measurement is now reproducible from repo-local tooling:
+  - `next-app/scripts/capture-ai-closeout.ts` captures empty and populated `/ai` scenarios against a built app
+  - `next-app/scripts/compare-ai-closeout.ts` evaluates the pinned `SPD-005` thresholds against a baseline/head pair
 - `/ai` also now opts into route-local lazy boundaries without forking shared copilot infrastructure:
   - the shared composer lazy-loads attachment and autonomy controls behind dynamic feature islands
   - the shared `TimelineRenderer` supports an opt-in initial visible window and readiness callback, and `/ai` uses that opt-in path while project copilot/conversation keep the default full render behavior
+- `/ai` now also defers history/sidebar chrome and conversation-list hydration out of the initial route chunk:
+  - the history sidebar content and header chrome load behind route-local lazy boundaries
+  - global workspace context and the conversation list both preload only after composer-ready, so populated closeout runs no longer pay the full sidebar fetch on first open
 - Three consecutive warn-mode calibration notes are archived under `docs/reports/performance/`.
 - The gate now runs in `enforce` mode with no active waivers; `output/performance/baseline/waivers.json` remains checked in as the machine-readable exception contract.
 - Regression gating now requires both percentage regression and a minimum meaningful absolute delta before failing:
@@ -89,6 +95,9 @@ Route prefetch policy:
   - `/project/[id]/notes`
 - Profiles:
   - `slow-network`
+- Current interpretation:
+  - observational shell/web-vitals coverage only
+  - route-ready instrumentation for `protocol` / `notes` is a separate follow-up if needed
 
 ### Budget Table
 | Metric | Desktop Budget | Mobile Budget | Slow Network Budget |
@@ -273,12 +282,27 @@ Rules:
 
 ## Active Tasks
 - [ ] `SPD-005` Reduce `/ai` bundle and timeline cost.
-  - Canonical measurement sources now exist:
+  - Canonical measurement sources now exist and the first closeout run is recorded in `docs/reports/performance/ai-closeout-2026-03-07.md`:
     - `npm run perf:ai-bundle-report`
+    - `npm run perf:ai-closeout-capture`
+    - `npm run perf:ai-closeout-compare`
     - route-local `/ai` readiness markers in `window.__litrevAiPerf`
-  - Remaining closeout work is to capture authoritative before/after comparisons and confirm shared copilot non-regression after the first `/ai` route-local splitting wave.
+  - Pinned closeout thresholds:
+    - bundle bytes: `>= 5%` or `50 KB` improvement
+    - empty `/ai` composer-ready: `>= 10%` or `75 ms` improvement
+    - populated `/ai` timeline-ready: `>= 15%` or `150 ms` improvement
+  - Current measured status vs baseline commit `31d45033696c3c54d9b223bb6576fc933e22bc4c`:
+    - bundle bytes still regress by `5,601` bytes (`+0.4%`)
+    - empty `/ai` composer-ready remains unstable and the latest post-commit closeout run measured `518 ms` (`+160 ms`, `+44.7%`)
+    - populated `/ai` timeline-ready recovered to `67 ms` (`-3 ms`, `-4.3%`), so the long-history regression is no longer the dominant blocker
+  - Status:
+    - partial `/ai` cleanup wave merged in `#206`
+    - active implementation is paused pending stronger evidence from broader perf signals, including the nightly run
+  - If `/ai` becomes a priority again, the next narrow follow-up should target shared composer bundle cost, especially still-eager optional input features on `/ai`; do not fork the shared composer and do not expand shared timeline semantics again unless a later populated-route measurement shows a new regression there.
 - [ ] `SPD-006` Expand the probe matrix to nightly-only routes and slow-network coverage.
-  - Keep nightly-only routes (`/`, `/project/[id]/protocol`, `/project/[id]/notes`) and the slow-network profile out of the PR gate until their artifacts are stable.
+  - Nightly coverage must run from the separate `nightlyRoutes` / `nightlyProfiles` matrix contract and write to `output/performance/nightly/**`; do not overload the PR-gated mandatory matrix or `output/performance/results/results-<sha>.json`.
+  - Treat nightly `/`, `/project/[id]/protocol`, and `/project/[id]/notes` probes as shell/web-vitals observational coverage for now. Route-ready instrumentation is a separate follow-up if those surfaces become active optimization targets.
+  - Keep nightly-only routes and the `slow-network` profile out of the PR gate until their artifacts are stable across consecutive nightly runs.
 
 ## Recently Completed
 - [x] `SPD-004` Preload/prefetch policy is now tightened: home/workspace project links and the resume CTA disable default route prefetch, the workspace index query is narrowed at the Prisma layer to index fields only, and project-shell tab warming now removes focus/coarse-pointer speculative fetches while keeping only a provisional `protocol` / `ledger` hover allowlist.

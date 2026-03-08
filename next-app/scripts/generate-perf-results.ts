@@ -19,10 +19,12 @@ import {
   validatePerformanceProbeBaseUrl,
 } from "../lib/performance-probe-config";
 import {
+  PROBE_MATRIX_NAMES,
   PROBE_METRIC_NAMES,
   SUPPORTED_PROBE_PROFILES,
   buildProbeResultsArtifact,
-  findCoverageIssues,
+  findMatrixCoverageIssues,
+  type ProbeMatrixName,
   type ProbeMetricName,
   type ProbeProfile,
   type ProbeSample,
@@ -30,7 +32,10 @@ import {
 import type { PerformanceRouteTemplate } from "../types/performance-telemetry";
 
 const DEFAULT_BUDGET_PATH = "../output/performance/baseline/budget-thresholds.json";
-const DEFAULT_OUTPUT_PATH = "../output/performance/results/results-latest.json";
+const DEFAULT_OUTPUT_PATHS: Record<ProbeMatrixName, string> = {
+  mandatory: "../output/performance/results/results-latest.json",
+  nightly: "../output/performance/nightly/results-nightly-latest.json",
+};
 const DEFAULT_BASE_URL = process.env.PERF_PROBE_BASE_URL ?? "http://127.0.0.1:3201";
 const DEFAULT_RUNS = 9;
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 30;
@@ -77,6 +82,8 @@ function getBetterAuthSecret(): string {
 type BudgetContract = {
   mandatoryRoutes?: PerformanceRouteTemplate[];
   mandatoryProfiles?: string[];
+  nightlyRoutes?: PerformanceRouteTemplate[];
+  nightlyProfiles?: string[];
   samples?: {
     ci?: {
       minRunsPerRouteProfile?: number;
@@ -87,8 +94,9 @@ type BudgetContract = {
 type ScriptArgs = {
   baseUrl: string;
   budgetPath: string;
-  outputPath: string;
   commit: string;
+  matrix: ProbeMatrixName;
+  outputPath: string;
   source: string;
   runs: number;
 };
@@ -120,17 +128,32 @@ const PROFILE_CONFIGS: Record<ProbeProfile, BrowserContextOptions> = {
   "mobile-mid": {
     ...devices["Pixel 7"],
   },
+  "slow-network": {
+    viewport: { width: 1440, height: 900 },
+    screen: { width: 1440, height: 900 },
+    isMobile: false,
+    hasTouch: false,
+  },
+};
+
+const SLOW_NETWORK_PROFILE = {
+  downloadThroughputBytesPerSecond: 180_000,
+  uploadThroughputBytesPerSecond: 90_000,
+  latencyMs: 150,
 };
 
 function parseArgs(argv: string[]): ScriptArgs {
+  let rawBudgetPath = DEFAULT_BUDGET_PATH;
+  let rawOutputPath: string | null = null;
   const args: ScriptArgs = {
     baseUrl: validatePerformanceProbeBaseUrl(DEFAULT_BASE_URL, {
       allowedHosts: ALLOWED_PROBE_HOSTS,
       allowedOrigins: ALLOWED_PROBE_ORIGINS,
     }),
-    budgetPath: path.resolve(process.cwd(), DEFAULT_BUDGET_PATH),
-    outputPath: path.resolve(process.cwd(), DEFAULT_OUTPUT_PATH),
+    budgetPath: "",
     commit: process.env.GITHUB_SHA ?? "local",
+    matrix: "mandatory",
+    outputPath: "",
     source: "ci-probe-playwright",
     runs: DEFAULT_RUNS,
   };
@@ -148,23 +171,15 @@ function parseArgs(argv: string[]): ScriptArgs {
         allowedOrigins: ALLOWED_PROBE_ORIGINS,
       });
     }
-    if (rawKey === "budget" && next) {
-      args.budgetPath = resolvePathWithinRoots({
-        cwd: process.cwd(),
-        inputPath: next,
-        label: "budget",
-        allowedRoots: [ARTIFACT_ROOTS.baselineRoot],
-      });
-    }
-    if (rawKey === "output" && next) {
-      args.outputPath = resolvePathWithinRoots({
-        cwd: process.cwd(),
-        inputPath: next,
-        label: "output",
-        allowedRoots: [ARTIFACT_ROOTS.resultsRoot],
-      });
-    }
+    if (rawKey === "budget" && next) rawBudgetPath = next;
+    if (rawKey === "output" && next) rawOutputPath = next;
     if (rawKey === "commit" && next) args.commit = next;
+    if (rawKey === "matrix" && next) {
+      if (!PROBE_MATRIX_NAMES.includes(next as ProbeMatrixName)) {
+        throw new Error(`Invalid --matrix value: ${next}`);
+      }
+      args.matrix = next as ProbeMatrixName;
+    }
     if (rawKey === "source" && next) args.source = next;
     if (rawKey === "runs" && next) args.runs = Number.parseInt(next, 10);
   }
@@ -175,15 +190,17 @@ function parseArgs(argv: string[]): ScriptArgs {
 
   args.budgetPath = resolvePathWithinRoots({
     cwd: process.cwd(),
-    inputPath: args.budgetPath,
+    inputPath: rawBudgetPath,
     label: "budget",
     allowedRoots: [ARTIFACT_ROOTS.baselineRoot],
   });
   args.outputPath = resolvePathWithinRoots({
     cwd: process.cwd(),
-    inputPath: args.outputPath,
+    inputPath: rawOutputPath ?? DEFAULT_OUTPUT_PATHS[args.matrix],
     label: "output",
-    allowedRoots: [ARTIFACT_ROOTS.resultsRoot],
+    allowedRoots: args.matrix === "mandatory"
+      ? [ARTIFACT_ROOTS.resultsRoot]
+      : [ARTIFACT_ROOTS.nightlyRoot],
   });
 
   return args;
@@ -525,12 +542,24 @@ async function triggerInteraction(page: Page) {
 async function captureSample(args: {
   context: BrowserContext;
   baseUrl: string;
+  profile: ProbeProfile;
   routeTemplate: PerformanceRouteTemplate;
   routePath: string;
 }): Promise<Record<ProbeMetricName, number>> {
   const page = await args.context.newPage();
 
   try {
+    if (args.profile === "slow-network") {
+      const session = await args.context.newCDPSession(page);
+      await session.send("Network.enable");
+      await session.send("Network.emulateNetworkConditions", {
+        offline: false,
+        downloadThroughput: SLOW_NETWORK_PROFILE.downloadThroughputBytesPerSecond,
+        uploadThroughput: SLOW_NETWORK_PROFILE.uploadThroughputBytesPerSecond,
+        latency: SLOW_NETWORK_PROFILE.latencyMs,
+      });
+    }
+
     await page.goto(new URL(args.routePath, args.baseUrl).toString(), {
       waitUntil: "domcontentloaded",
     });
@@ -582,19 +611,51 @@ async function captureSample(args: {
   }
 }
 
-async function main() {
-  const args = parseArgs(process.argv);
-  const budget = readJson<BudgetContract>(args.budgetPath);
-  const mandatoryRoutes = budget.mandatoryRoutes ?? [];
-  const mandatoryProfiles = (budget.mandatoryProfiles ?? []) as ProbeProfile[];
-  const minSamples = budget.samples?.ci?.minRunsPerRouteProfile ?? args.runs;
+function resolveMatrix(args: {
+  budget: BudgetContract;
+  matrix: ProbeMatrixName;
+}): {
+  profiles: ProbeProfile[];
+  routes: PerformanceRouteTemplate[];
+} {
+  const routes = args.matrix === "mandatory"
+    ? args.budget.mandatoryRoutes ?? []
+    : args.budget.nightlyRoutes ?? [];
+  const profiles = (
+    args.matrix === "mandatory"
+      ? args.budget.mandatoryProfiles ?? []
+      : args.budget.nightlyProfiles ?? []
+  ) as ProbeProfile[];
 
-  const unsupportedProfiles = mandatoryProfiles.filter(
+  const unsupportedProfiles = profiles.filter(
     (profile) => !SUPPORTED_PROBE_PROFILES.includes(profile),
   );
   if (unsupportedProfiles.length > 0) {
-    throw new Error(`Unsupported mandatory profiles: ${unsupportedProfiles.join(", ")}`);
+    throw new Error(`Unsupported ${args.matrix} profiles: ${unsupportedProfiles.join(", ")}`);
   }
+
+  if (routes.length === 0) {
+    throw new Error(`No ${args.matrix} routes configured in the performance budget contract.`);
+  }
+
+  if (profiles.length === 0) {
+    throw new Error(`No ${args.matrix} profiles configured in the performance budget contract.`);
+  }
+
+  return {
+    profiles,
+    routes,
+  };
+}
+
+async function main() {
+  const args = parseArgs(process.argv);
+  const budget = readJson<BudgetContract>(args.budgetPath);
+  const minSamples = budget.samples?.ci?.minRunsPerRouteProfile ?? args.runs;
+  const matrix = resolveMatrix({
+    budget,
+    matrix: args.matrix,
+  });
 
   const { cookie, projectId } = await seedProbeFixture(args.baseUrl);
   let browser: Browser | null = null;
@@ -603,19 +664,20 @@ async function main() {
   try {
     browser = await chromium.launch({ headless: true });
 
-    for (const profile of mandatoryProfiles) {
+    for (const profile of matrix.profiles) {
       const context = await browser.newContext(PROFILE_CONFIGS[profile]);
       await context.addCookies([cookie]);
       await installBrowserProbe(context);
 
       try {
-        for (const routeTemplate of mandatoryRoutes) {
+        for (const routeTemplate of matrix.routes) {
           const routePath = routeTemplateToPath(routeTemplate, projectId);
           for (let run = 1; run <= args.runs; run += 1) {
             console.log(`[perf-probe] ${profile} ${routeTemplate} run ${run}/${args.runs}`);
             const metrics = await captureSample({
               context,
               baseUrl: args.baseUrl,
+              profile,
               routeTemplate,
               routePath,
             });
@@ -638,15 +700,16 @@ async function main() {
   const artifact = buildProbeResultsArtifact({
     capturedAt: new Date().toISOString(),
     commit: args.commit,
+    matrix: args.matrix,
     source: args.source,
     runId: `${args.commit}-${Date.now()}`,
     samples: collectedSamples,
   });
 
-  const coverageIssues = findCoverageIssues({
+  const coverageIssues = findMatrixCoverageIssues({
     results: artifact,
-    mandatoryRoutes,
-    mandatoryProfiles,
+    routes: matrix.routes,
+    profiles: matrix.profiles,
     minSamples,
   });
 
@@ -657,7 +720,10 @@ async function main() {
   fs.mkdirSync(path.dirname(args.outputPath), { recursive: true });
   fs.writeFileSync(args.outputPath, JSON.stringify(artifact, null, 2));
 
-  const latestOutputPath = path.join(path.dirname(args.outputPath), "results-latest.json");
+  const latestOutputPath = path.join(
+    path.dirname(args.outputPath),
+    args.matrix === "mandatory" ? "results-latest.json" : "results-nightly-latest.json",
+  );
   if (latestOutputPath !== args.outputPath) {
     fs.writeFileSync(latestOutputPath, JSON.stringify(artifact, null, 2));
   }

@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { formatStreamErrorForUI } from "@/lib/ai/stream-error-ui";
+import {
+    buildClientErrorState,
+    extractLegacyRecoveryError,
+    formatStreamErrorForUI,
+    isRetryableTerminalReason,
+    isSameRenderedError,
+    shouldSuppressClientFallback,
+} from "@/lib/ai/stream-error-ui";
 
 describe("formatStreamErrorForUI", () => {
     it("extracts and rewrites Anthropic thinking/max_tokens mismatch errors", () => {
@@ -30,5 +37,110 @@ describe("formatStreamErrorForUI", () => {
                 message: "The model returned invalid arguments for update_protocol, so the action was not run.",
             },
         })).toBe("The model returned invalid arguments for update_protocol, so the action was not run.");
+    });
+
+    it("preserves structured retryability in client error state", () => {
+        const state = buildClientErrorState({
+            errorMeta: {
+                kind: "tool_schema_validation",
+                code: "TOOL_VALIDATION_FAILED",
+                retryable: false,
+                source: "tool_validator",
+                message: "Protocol update failed validation.",
+                status: 400,
+            },
+        });
+
+        expect(state).toMatchObject({
+            message: "Protocol update failed validation.",
+            retryable: false,
+            errorMeta: {
+                code: "TOOL_VALIDATION_FAILED",
+                retryable: false,
+                status: 400,
+            },
+        });
+    });
+
+    it("marks plan execution recovery text as non-retryable", () => {
+        expect(extractLegacyRecoveryError("Plan execution failed: Step 2 could not complete.")).toEqual({
+            message: "Step 2 could not complete.",
+            retryable: false,
+        });
+    });
+
+    it("suppresses duplicate client fallback when a non-retryable error already has assistant content", () => {
+        expect(shouldSuppressClientFallback({
+            errorMeta: {
+                kind: "tool_call_parse",
+                code: "TOOL_CALL_ARGS_PARSE_FAILED",
+                retryable: false,
+                source: "provider_tool_call",
+                message: "Bad arguments",
+            },
+            hasAssistantContent: true,
+        })).toBe(true);
+    });
+
+    it("suppresses fallback when the same structured error is already rendered", () => {
+        expect(shouldSuppressClientFallback({
+            errorMeta: {
+                kind: "tool_call_parse",
+                code: "TOOL_CALL_ARGS_PARSE_FAILED",
+                retryable: false,
+                source: "provider_tool_call",
+                message: "Bad arguments",
+            },
+            hasAssistantContent: false,
+            hasRenderedError: true,
+        })).toBe(true);
+    });
+
+    it("matches rendered structured errors by code, source, and message", () => {
+        expect(isSameRenderedError({
+            existingMessage: "Bad arguments",
+            existingMeta: {
+                kind: "tool_call_parse",
+                code: "TOOL_CALL_ARGS_PARSE_FAILED",
+                retryable: false,
+                source: "provider_tool_call",
+                message: "Bad arguments",
+            },
+            nextMessage: "Bad arguments",
+            nextMeta: {
+                kind: "tool_call_parse",
+                code: "TOOL_CALL_ARGS_PARSE_FAILED",
+                retryable: false,
+                source: "provider_tool_call",
+                message: "Bad arguments",
+            },
+        })).toBe(true);
+    });
+
+    it("does not collapse different structured errors that only share a rendered message", () => {
+        expect(isSameRenderedError({
+            existingMessage: "The model is temporarily busy. Please retry in a moment.",
+            existingMeta: {
+                kind: "provider_request",
+                code: "RATE_LIMIT_A",
+                retryable: true,
+                source: "provider_request",
+                message: "429 provider A rate limit",
+            },
+            nextMessage: "The model is temporarily busy. Please retry in a moment.",
+            nextMeta: {
+                kind: "provider_request",
+                code: "RATE_LIMIT_B",
+                retryable: true,
+                source: "provider_request",
+                message: "429 provider B rate limit",
+            },
+        })).toBe(false);
+    });
+
+    it("marks only timed out and failed network terminal reasons as retryable", () => {
+        expect(isRetryableTerminalReason("timed_out")).toBe(true);
+        expect(isRetryableTerminalReason("failed_network")).toBe(true);
+        expect(isRetryableTerminalReason("failed_server")).toBe(false);
     });
 });

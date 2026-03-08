@@ -5,6 +5,7 @@ const LOOPBACK_HOSTS = ["127.0.0.1", "localhost", "::1"] as const;
 export type PerformanceArtifactRoots = {
   baselineRoot: string;
   resultsRoot: string;
+  nightlyRoot: string;
 };
 
 type ResolvePathArgs = {
@@ -40,6 +41,7 @@ export function createPerformanceArtifactRoots(repoRoot: string): PerformanceArt
   return {
     baselineRoot: path.resolve(repoRoot, "output", "performance", "baseline"),
     resultsRoot: path.resolve(repoRoot, "output", "performance", "results"),
+    nightlyRoot: path.resolve(repoRoot, "output", "performance", "nightly"),
   };
 }
 

@@ -13,6 +13,7 @@ import { AIErrorWithEnvelope, buildStreamErrorChunk } from "@/lib/ai/error-envel
 import { extractProviderErrorMetadata } from "./error-metadata";
 import { normalizeProviderMessages } from "./message-normalization";
 import { extractReasoningTextsFromDelta } from "./reasoning-delta";
+import { normalizeChatOptionsForModel } from "../request-policy";
 import { toAIErrorEnvelope } from "../error-classification";
 
 export class OpenAIProvider extends BaseAIProvider {
@@ -39,27 +40,11 @@ export class OpenAIProvider extends BaseAIProvider {
 
     async chat(messages: AIMessage[], options?: ChatOptions): Promise<AIResponse> {
         const client = this.getClient();
-        const model = options?.model || AI_CONFIG.defaultModel;
-
-        // Convert our messages to OpenAI format
-        const openaiMessages = this.convertMessages(messages, options?.systemPrompt);
-
-        const params: OpenAI.Chat.ChatCompletionCreateParams = {
-            model,
-            messages: openaiMessages,
-            temperature: options?.temperature ?? AI_CONFIG.defaultTemperature,
-            max_completion_tokens: options?.maxTokens ?? AI_CONFIG.defaultMaxTokens,
-        };
-
-        if (options?.tools?.length) {
-            params.tools = options.tools.map((t) => ({
-                type: "function" as const,
-                function: { name: t.name, description: t.description, parameters: t.parameters as OpenAI.FunctionParameters },
-            }));
-        }
+        const normalizedOptions = normalizeChatOptionsForModel(options);
+        const params = this.buildRequestParams(messages, normalizedOptions, false);
 
         // Pass AbortSignal through so callers can cancel in-flight requests.
-        const response = await client.chat.completions.create(params, { signal: options?.signal });
+        const response = await client.chat.completions.create(params, { signal: normalizedOptions.signal });
 
         const choice = response.choices[0];
 
@@ -98,34 +83,17 @@ export class OpenAIProvider extends BaseAIProvider {
         options?: ChatOptions
     ): AsyncIterable<AIStreamChunk> {
         const client = this.getClient();
-        const model = options?.model || AI_CONFIG.defaultModel;
-
-        const openaiMessages = this.convertMessages(messages, options?.systemPrompt);
-
-        const params: OpenAI.Chat.ChatCompletionCreateParams = {
-            model,
-            messages: openaiMessages,
-            temperature: options?.temperature ?? AI_CONFIG.defaultTemperature,
-            max_completion_tokens: options?.maxTokens ?? AI_CONFIG.defaultMaxTokens,
-            stream: true,
-            stream_options: { include_usage: true },
-        };
-
-        if (options?.tools?.length) {
-            params.tools = options.tools.map((t) => ({
-                type: "function" as const,
-                function: { name: t.name, description: t.description, parameters: t.parameters as OpenAI.FunctionParameters },
-            }));
-        }
+        const normalizedOptions = normalizeChatOptionsForModel(options);
+        const params = this.buildRequestParams(messages, normalizedOptions, true);
 
         // Pass AbortSignal through so callers can cancel in-flight streaming requests.
-        const stream = await client.chat.completions.create(params, { signal: options?.signal });
+        const stream = await client.chat.completions.create(params, { signal: normalizedOptions.signal });
 
         let totalContent = "";
         let usage: AIStreamChunk["usage"] | undefined;
         let observedModel: string | undefined;
         const pendingToolCalls = new Map<number, { id: string; name: string; arguments: string }>();
-        const includeReasoning = !!options?.includeReasoning;
+        const includeReasoning = normalizedOptions.includeReasoning;
         let activeReasoningId: string | null = null;
         let reasoningCounter = 0;
 
@@ -310,6 +278,42 @@ export class OpenAIProvider extends BaseAIProvider {
         }
 
         return result;
+    }
+
+    private buildRequestParams(
+        messages: AIMessage[],
+        options: ChatOptions & { model: string; maxTokens: number; includeReasoning: boolean },
+        stream: true,
+    ): OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming;
+    private buildRequestParams(
+        messages: AIMessage[],
+        options: ChatOptions & { model: string; maxTokens: number; includeReasoning: boolean },
+        stream: false,
+    ): OpenAI.Chat.ChatCompletionCreateParamsNonStreaming;
+    private buildRequestParams(
+        messages: AIMessage[],
+        options: ChatOptions & { model: string; maxTokens: number; includeReasoning: boolean },
+        stream: boolean,
+    ): OpenAI.Chat.ChatCompletionCreateParams {
+        const params: OpenAI.Chat.ChatCompletionCreateParams = {
+            model: options.model,
+            messages: this.convertMessages(messages, options.systemPrompt),
+            max_completion_tokens: options.maxTokens,
+            ...(stream ? { stream: true as const, stream_options: { include_usage: true } } : {}),
+        };
+
+        if (options.temperature !== undefined) {
+            params.temperature = options.temperature;
+        }
+
+        if (options.tools?.length) {
+            params.tools = options.tools.map((t) => ({
+                type: "function" as const,
+                function: { name: t.name, description: t.description, parameters: t.parameters as OpenAI.FunctionParameters },
+            }));
+        }
+
+        return params;
     }
 }
 

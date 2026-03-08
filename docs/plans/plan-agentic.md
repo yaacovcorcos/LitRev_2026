@@ -102,13 +102,14 @@ Every fix entry must include:
 - **Reasoning Stream Support (Current):** `reasoning_*` stream events are currently wired end-to-end for Anthropic responses. OpenAI/xAI models can run normally, but their provider adapters do not yet emit normalized reasoning stream parts in the same pipeline.
 - **Proposal-State Tool Context:** Proposal-style tool results now surface whether they are `proposed` vs `auto_applied` in the model-visible tool-message context, so assistant replies can distinguish review-only changes from already-applied ones.
 - **Plan Heuristic Guardrails:** Plan-before-act heuristics now require explicit extraction/writing verbs for `extract_pdf` and `update_note`, reducing false execution plans for read-only PDF/section questions.
-- **Delegation Runtime Exists But Is Not Yet Safe Enough:** specialist delegation is shipped behind flags, but child autonomy and child clarification still have correctness gaps tracked under `FIX-001`.
+- **Delegation Runtime Now Uses The Shared Safety Contract:** delegated child runs now reuse the same autonomy-aware execution/finalization core as direct execution, level-1 delegated actions fail as structured approval-required blocks instead of running, delegated proposal artifacts stay reviewable unless direct policy allows auto-apply, and delegated `ask_user` bubbles through the existing parent `user_input_required` flow.
 - **Popup Runtime Is Still Lighter Than Copilot:** popup remains on a non-artifact path, so protocol mutation capability is not yet honest there; tracked under `FIX-003`.
 - **General Mode Is Still Too Broad:** default `general` behavior can overexpose tools and rely on prompt-era clarification behavior; tracked under `FIX-004`.
-- **Model Request Capability Handling Is Under-Specified:** provider adapters still assume too much shared request compatibility across models; tracked under `FIX-010`.
+- **Model Requests Now Use Per-Model Capability Policy:** one authoritative model capability registry now feeds a shared request-policy normalizer, OpenAI/xAI/Google/Anthropic all reuse it before send, fixed-default OpenAI models omit unsupported `temperature`, and unsupported explicit reasoning budgets fail locally as structured `model_capability` errors instead of raw provider 400s.
 - **Protocol Mutation Uses Shared Field-Aware Normalization:** `update_protocol`, same-turn tool-call sanitization, and repeat detection now reuse the same field/value normalize-classify path so unambiguous wrapper shapes are repaired consistently, whitespace-only field mismatches no longer diverge between validation and execution, and normalization/hashing paths cap nested input depth safely.
-- **Tool Prerequisites Are Not First-Class:** the runtime still lacks a formal model for required project, study, criteria, or PDF context before tool execution; tracked under `FIX-008`.
-- **Run Recovery Semantics Are Still Misleading:** deterministic failures can still surface as retryable or leave runs looking more successful than they were; tracked under `FIX-009`.
+- **Tool Prerequisites Now Gate High-Risk Actions Before Execution:** tool metadata now declares project/study/protocol prerequisites in the shared pre-execution path, screening actions also gate on resolvable non-empty criteria, and blocked actions emit structured `missing_prerequisite` envelopes before a tool runs. Generic PDF file existence is still verified inside PDF tools rather than the shared prerequisite vocabulary.
+- **Run Recovery Semantics Are Structured On Timeline-Based Surfaces:** `/ai` and project copilot now preserve deterministic failure envelopes into client state, retry affordances are derived from structured metadata, and server finalization uses explicit run facts so failed no-answer runs no longer masquerade as `completed`. Popup now retains lightweight error metadata and annotates terminal failures inline, but it still does not have full timeline-style parity.
+- **Shared Failure Handling Still Needs One Owner:** shared stream reducers emit typed `stream_error` intents, but terminal failure presentation is not fully centralized yet; tracked under `FIX-011`.
 
 ## Verified Failure Classes
 *The concrete runtime failures this plan is intended to eliminate.*
@@ -126,42 +127,12 @@ Every fix entry must include:
 ## Active Fixes
 *Immediate remediation work for shipped behavior that is broken, misleading, or lower quality than the intended contract.*
 
-- [ ] `FIX-008` Tool prerequisite gating and action eligibility
+- [x] `FIX-001` Delegation safety and child clarification
   - Severity: `P0`
-  - Problem: the runtime still treats "tool allowed" as "tool appropriate" and can execute actions without required project, study, criteria, or PDF context.
-  - Supporting detail: canonical plan only for now.
-  - Exit criteria:
-    - tools can declare required context and blocking prerequisites
-    - missing prerequisites stop execution before the tool runs
-    - blocked tools route to `ask_user`, a read tool, or a clear user-facing explanation instead of blind action attempts
-    - `general` mode no longer performs obviously impossible actions before clarifying
-
-- [ ] `FIX-009` Recovery semantics and truthful run outcomes
-  - Severity: `P0`
-  - Problem: deterministic failures are still too noisy in the UI, and runs can still appear more successful than they were when the requested mutation failed.
-  - Supporting detail: canonical plan only for now.
-  - Exit criteria:
-    - deterministic request and validation failures remain non-retryable through the user-facing error path
-    - Retry/Resume affordances only appear for genuinely retryable failures
-    - runs with only deterministic tool failures and no useful completion do not look `completed`
-    - failed mutation runs produce a user-facing fallback explanation when no final assistant answer exists
-
-- [ ] `FIX-010` Model capability negotiation
-  - Severity: `P0`
-  - Problem: provider adapters still assume a uniform request contract and can pass unsupported params such as shared temperature defaults to models that reject them.
-  - Supporting detail: canonical plan only for now.
-  - Exit criteria:
-    - request normalization is policy-driven per provider/model
-    - unsupported params are omitted or coerced before the request is sent
-    - provider capability mismatches fail as classified runtime errors, not generic request failures
-    - tests cover known incompatible models
-
-- [ ] `FIX-001` Delegation safety and child clarification
-  - Severity: `P0`
-  - Problem: delegated child runs can bypass review-only constraints and child `ask_user` requests do not surface correctly.
+  - Problem: delegated child runs could bypass review-only constraints and child `ask_user` requests did not surface correctly.
   - Supporting detail: `docs/plans/agent-runtime-remediation/plan-delegation-safety.md`
   - Exit criteria:
-    - delegated child runs cannot auto-apply changes that direct execution would keep review-only
+    - delegated child runs cannot auto-apply changes that direct execution keeps review-only
     - delegated child `ask_user` emits real `user_input_required` UI through the parent flow
     - parent-visible artifact ownership and tracing remain intact
 
@@ -202,26 +173,36 @@ Every fix entry must include:
     - runtime evals assert real orchestration behavior
     - search turns emit normalized `source_receipt` data
 
+- [ ] `FIX-011` Shared failure handling and popup parity
+  - Severity: `P1`
+  - Problem: shared reducers now emit typed stream-error intents, but terminal failure rendering is still split across `/ai`, project copilot, and popup, and popup still lacks full timeline-style recovery parity.
+  - Supporting detail: canonical plan only for now.
+  - Exit criteria:
+    - shared stream-error intents are consumed consistently by timeline-based adapters
+    - popup retains structured error metadata for terminal failures
+    - popup and shared adapters have dedicated regression coverage for terminal failure rendering
+    - remaining popup limitations are documented explicitly instead of implied away
+
 ## Execution Order
 
 Work should proceed in this order unless a production incident forces reprioritization:
 
 1. `FIX-008` tool prerequisite gating and action eligibility
-2. `FIX-009` recovery semantics and truthful run outcomes
-3. `FIX-010` model capability negotiation
-4. `FIX-001` delegation safety
-5. `FIX-002` plan execution confinement
-6. `FIX-003` popup action-surface honesty
-7. `FIX-004` general-mode scoping and clarification cleanup
-8. `FIX-005` docs/evals/provenance hardening
-9. roadmap phases after the active fixes above are stable
+2. `FIX-001` delegation safety
+3. `FIX-002` plan execution confinement
+4. `FIX-003` popup action-surface honesty
+5. `FIX-004` general-mode scoping and clarification cleanup
+6. `FIX-005` docs/evals/provenance hardening
+7. `FIX-011` shared failure handling and popup parity
+8. roadmap phases after the active fixes above are stable
 
 ## End-to-End Delivery Program
 
 ### Track A — Request-Boundary Reliability and Truthful Failure Handling
 
 - `FIX-007` shipped the protocol-mutation normalization/suppression layer.
-- Land `FIX-009` and `FIX-010` next so deterministic failures become truthful and model-specific request mismatches stop failing before meaningful work begins.
+- `FIX-009` shipped truthful failure handling for timeline-based surfaces: structured error envelopes now survive processor/reducer/timeline state, non-retryable failures no longer default back to retryable UI affordances, and server finalization emits one fallback explanation for deterministic no-answer failures while deriving `runStatus` from explicit run facts. Popup remains a lighter path under `FIX-011`.
+- `FIX-010` shipped provider/model request-policy normalization: one authoritative model registry now drives temperature/reasoning capability handling, provider adapters reuse shared builders for `chat()` and `streamChat()`, and blocked reasoning-budget mismatches fail locally as structured capability errors instead of provider-side request failures.
 
 ### Track B — Action Eligibility and Honest Execution
 
@@ -235,8 +216,8 @@ Work should proceed in this order unless a production incident forces reprioriti
 
 ### Track D — Surface Honesty, Evals, and Provenance
 
-- Land `FIX-003` and `FIX-005` after the lower-level contracts are stable.
-- Popup honesty should match the real runtime surface, and evals/provenance should measure the behavior the runtime actually ships.
+- Land `FIX-003`, `FIX-005`, and `FIX-011` after the lower-level contracts are stable.
+- Popup honesty should match the real runtime surface, shared failure rendering should stop drifting per surface, and evals/provenance should measure the behavior the runtime actually ships.
 
 ## Active Roadmap
 *Durable capability and architecture work after the immediate fixes.*
@@ -359,17 +340,15 @@ These files are supporting documents. Status, priority, and closure rules live h
 
 ## Recently Completed
 
+- [x] Implemented `FIX-001` delegation safety and child clarification: delegated child runs now use the shared autonomy-aware execution/finalization core instead of direct tool execution, approval-required autonomy blocks surface as structured non-executed results, delegated proposal artifacts stay review-only unless direct policy allows auto-apply, and delegated `ask_user` requests bubble through the parent `user_input_required` path with parent-visible artifact metadata.
+- [x] Implemented `FIX-008` tool prerequisite gating: high-risk tools now declare project/study/protocol prerequisites in shared tool metadata, the shared pre-execution middleware/autonomy path blocks missing context before tool execution, screening actions also gate on non-empty criteria readiness, and blocked calls emit structured `missing_prerequisite` envelopes instead of generic tool failures.
+- [x] Hardened popup terminal-failure rendering under `FIX-011`: popup now keeps lightweight structured error metadata on assistant turns, annotates partial-output failures inline without persisting raw error text into transcript content, and has direct component coverage for deterministic and retryable terminal failure rendering.
+- [x] Implemented `FIX-010` model capability negotiation: one authoritative model registry now drives per-model request-policy normalization, OpenAI/xAI/Google/Anthropic all reuse shared request builders for `chat()` and `streamChat()`, fixed-default OpenAI models omit unsupported temperature params, and unsupported explicit reasoning budgets fail locally as structured `model_capability` errors.
+- [x] Added repo-review baseline indexing and shared failure follow-up hardening: deep review comparisons now have a durable runbook anchor, shared `stream_error` intents are consumed by both timeline adapters, and popup now retains lightweight structured error metadata even though it still lacks full timeline-style parity.
+- [x] Implemented `FIX-009` recovery semantics and truthful run outcomes for timeline-based surfaces: structured error envelopes now survive through stream processor, reducer, and timeline state; retryable UI affordances no longer default to true for deterministic failures; and server finalization derives `runStatus` from explicit run facts while emitting one fallback assistant explanation for deterministic no-answer failures.
 - [x] Implemented `FIX-007` protocol mutation hardening: `update_protocol`, same-turn tool-call sanitization, and repeat detection now share one field-aware normalize/classify path, trim whitespace-only field mismatches consistently at execution time, and cap nested normalization/hashing depth so malformed tool payloads cannot recurse indefinitely.
 - [x] Implemented FIX-006 request/tool-boundary hardening: malformed provider tool-call payloads no longer coerce to `{}` and execute, tool schema validation failures now emit structured error envelopes, and stream/timeline state preserves retryability metadata end-to-end.
 - [x] Hardened `update_protocol` proposal execution: the tool now advertises an explicit scalar/array `value` schema to providers, and the executor drops malformed sibling `update_protocol` calls when a valid proposal exists in the same turn.
-- [x] Tightened proposal-style assistant behavior so model-visible tool results distinguish `proposed` from `auto_applied`, and planner heuristics now require explicit extraction/writing verbs for `extract_pdf` and `update_note`.
-- [x] Added `search_openalex` tool with Search/Scoping/QA integration, OpenAlex normalization, and Crossref fallback enrichment for sparse DOI metadata.
-- [x] P10 mentioned-studies flow shipped: extraction pipeline (structured + fallback), chat chips, one-click add-to-ledger, idempotent duplicate protection, and chat provenance tagging.
-- [x] Added rollout flags for mention/scoping UX controls: `NEXT_PUBLIC_CHAT_STUDY_MENTIONS_V1` and `NEXT_PUBLIC_SCOPING_DECISION_CARD_V2`.
-- [x] Added validation coverage for P10: mention parser tests, add-to-ledger idempotency tests, timeline metadata stripping + mention-action UI tests, and scoping finalization tests.
-- [x] Implemented apply function for `evidence_table` artifacts (persists accepted table to project Notes).
-- [x] Implemented `delete_study` tool and registered it in `AVAILABLE_TOOLS` and screening mode.
-- [x] Wired `update_criteria` into tool registry and protocol-mode tool filtering.
 
 ## Deferred / Parking Lot
 

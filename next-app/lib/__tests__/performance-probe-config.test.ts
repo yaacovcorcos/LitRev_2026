@@ -47,6 +47,15 @@ describe("performance-probe-config", () => {
       }),
     ).toBe(path.join(roots.baselineRoot, "budget-thresholds.json"));
 
+    expect(
+      resolvePathWithinRoots({
+        cwd: "/tmp/litrev/next-app",
+        inputPath: "../output/performance/nightly/run-1/results-nightly.json",
+        label: "output",
+        allowedRoots: [roots.nightlyRoot],
+      }),
+    ).toBe(path.join(roots.nightlyRoot, "run-1", "results-nightly.json"));
+
     expect(() =>
       resolvePathWithinRoots({
         cwd: "/tmp/litrev/next-app",

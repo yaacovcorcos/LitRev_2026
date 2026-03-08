@@ -43,7 +43,7 @@ describe("messagesToTimeline", () => {
       type: "error",
       id: "error-a2",
       message: "Step 2 could not complete.",
-      retryable: true,
+      retryable: false,
     });
   });
 
@@ -137,6 +137,23 @@ describe("messagesToTimeline", () => {
       retryable: false,
       errorMeta: {
         kind: "tool_call_parse",
+      },
+    });
+  });
+
+  it("does not default direct streamed errors to retryable when metadata is absent", () => {
+    const timeline = reduceStreamChunk([], {
+      type: "error",
+      error: "Validation failed for update_protocol.",
+    }, "ai-2");
+
+    expect(timeline[0]).toMatchObject({
+      type: "error",
+      message: "Validation failed for update_protocol.",
+      retryable: false,
+      errorMeta: {
+        code: "CLIENT_STREAM_ERROR",
+        retryable: false,
       },
     });
   });

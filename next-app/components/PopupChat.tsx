@@ -10,7 +10,7 @@ import { useProjectCopilot } from "@/contexts/ProjectCopilotContext";
 import { createNoteAction } from "@/app/actions/notes";
 import { createConversation, addMessage } from "@/app/actions/conversations";
 import { processAIStream } from "@/lib/ai/stream-processor";
-import { formatStreamErrorForUI } from "@/lib/ai/stream-error-ui";
+import { buildClientErrorState, isRetryableTerminalReason } from "@/lib/ai/stream-error-ui";
 import { terminalReasonFromThrownError, type StreamTerminalReason } from "@/lib/ai/stream-lifecycle";
 import { recordReliabilityMetric } from "@/lib/ai/reliability-telemetry";
 import { markdownComponents } from "@/components/markdown/CodeBlock";
@@ -261,6 +261,43 @@ export function PopupChat({ projectId }: PopupChatProps) {
             });
         };
 
+        const upsertAssistantError = (params: {
+            message: string;
+            retryable: boolean;
+            errorMeta: NonNullable<PopupMessage["errorMeta"]>;
+        }) => {
+            const trimmedMessage = params.message.trim();
+            if (!trimmedMessage) return;
+
+            setMessages((prev) => {
+                const next = [...prev];
+                const existingIdx = next.findIndex((message) => message.id === aiMsgId);
+                if (existingIdx >= 0) {
+                    const existing = next[existingIdx];
+                    if (!existing || existing.role !== "assistant") return prev;
+
+                    next[existingIdx] = {
+                        ...existing,
+                        errorMessage: existing.errorMessage === trimmedMessage ? existing.errorMessage : trimmedMessage,
+                        retryable: params.retryable,
+                        errorMeta: params.errorMeta,
+                    };
+                    return next;
+                }
+
+                next.push({
+                    id: aiMsgId,
+                    role: "assistant",
+                    content: "",
+                    errorMessage: trimmedMessage,
+                    retryable: params.retryable,
+                    errorMeta: params.errorMeta,
+                    createdAt: new Date().toISOString(),
+                });
+                return next;
+            });
+        };
+
         const controller = new AbortController();
         abortRef.current = controller;
 
@@ -323,10 +360,16 @@ export function PopupChat({ projectId }: PopupChatProps) {
                 const fallbackError = terminalReason === "timed_out"
                     ? "The response timed out. Please retry."
                     : "The stream ended unexpectedly. Please retry.";
-                setMessages((prev) => [
-                    ...prev,
-                    { id: makeId("terminal"), role: "assistant", content: fallbackError, createdAt: new Date().toISOString() },
-                ]);
+                const isRetryable = isRetryableTerminalReason(terminalReason);
+                const errorState = buildClientErrorState(fallbackError);
+                upsertAssistantError({
+                    message: errorState.message,
+                    retryable: isRetryable,
+                    errorMeta: {
+                        ...errorState.errorMeta,
+                        retryable: isRetryable,
+                    },
+                });
             }
         } catch (error) {
             if (error instanceof DOMException && error.name === "AbortError") {
@@ -337,11 +380,12 @@ export function PopupChat({ projectId }: PopupChatProps) {
             terminalReason = terminalReasonFromThrownError(error);
             emitTerminalMetric(terminalReason);
 
-            const errorText = `Sorry, I encountered an error: ${formatStreamErrorForUI(error)}`;
-            setMessages((prev) => [
-                ...prev,
-                { id: aiMsgId, role: "assistant", content: fullContent ? fullContent + "\n\n" + errorText : errorText, createdAt: new Date().toISOString() },
-            ]);
+            const errorState = buildClientErrorState(error);
+            upsertAssistantError({
+                message: errorState.message,
+                retryable: errorState.retryable,
+                errorMeta: errorState.errorMeta,
+            });
         } finally {
             setIsStreaming(false);
             if (abortRef.current === controller) {
@@ -475,6 +519,7 @@ export function PopupChat({ projectId }: PopupChatProps) {
 
             // Insert messages sequentially
             for (const msg of messages) {
+                if (!msg.content.trim()) continue;
                 await addMessage({
                     conversationId: convId,
                     role: msg.role,
@@ -519,6 +564,7 @@ export function PopupChat({ projectId }: PopupChatProps) {
         if (messages.length === 0) return;
 
         const markdown = messages
+            .filter((m) => m.content.trim().length > 0)
             .map((m) => (m.role === "user" ? `**You:** ${m.content}` : `**AI:** ${m.content}`))
             .join("\n\n---\n\n");
 
@@ -582,7 +628,10 @@ export function PopupChat({ projectId }: PopupChatProps) {
                                     key={msg.id}
                                     className={`${styles.msgRow} ${msg.role === "user" ? styles.msgRowUser : styles.msgRowAi}`}
                                 >
-                                    <div className={styles.msgBubble}>
+                                    <div
+                                        className={`${styles.msgBubble} ${msg.errorMeta ? styles.msgBubbleError : ""}`}
+                                        data-popup-error={msg.errorMeta ? "1" : undefined}
+                                    >
                                         {msg.role === "assistant" ? (
                                             <div className={styles.msgText}>
                                                 <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
@@ -595,6 +644,14 @@ export function PopupChat({ projectId }: PopupChatProps) {
                                         ) : (
                                             <div className={styles.msgText}>{msg.content}</div>
                                         )}
+                                        {msg.errorMessage ? (
+                                            <div className={styles.msgErrorText}>{msg.errorMessage}</div>
+                                        ) : null}
+                                        {msg.errorMeta ? (
+                                            <div className={styles.msgStatus}>
+                                                {msg.retryable ? "Retry recommended" : "Request not completed"}
+                                            </div>
+                                        ) : null}
                                     </div>
                                 </div>
                             ))

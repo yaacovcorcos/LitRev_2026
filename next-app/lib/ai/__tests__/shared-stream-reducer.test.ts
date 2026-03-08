@@ -121,6 +121,36 @@ describe("shared stream reducer", () => {
     expect(reduced.state.runningToolCallIds).toEqual([]);
   });
 
+  it("preserves structured error metadata on stream_error intents", () => {
+    const reduced = reduceSharedStreamChunk(
+      createInitialSharedStreamState(),
+      {
+        type: "error",
+        error: "Validation failed.",
+        errorMeta: {
+          kind: "tool_schema_validation",
+          code: "TOOL_VALIDATION_FAILED",
+          retryable: false,
+          source: "tool_validator",
+          message: "Validation failed.",
+        },
+      },
+      meta,
+    );
+
+    expect(reduced.intents).toContainEqual({
+      type: "stream_error",
+      message: "Validation failed.",
+      errorMeta: {
+        kind: "tool_schema_validation",
+        code: "TOOL_VALIDATION_FAILED",
+        retryable: false,
+        source: "tool_validator",
+        message: "Validation failed.",
+      },
+    });
+  });
+
   it("fails all remaining running tools when calls interleave", () => {
     let state = createInitialSharedStreamState();
 

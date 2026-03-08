@@ -30,7 +30,7 @@ export const PERFORMANCE_ROUTE_TEMPLATES = [
 ] as const;
 export type PerformanceRouteTemplate = (typeof PERFORMANCE_ROUTE_TEMPLATES)[number];
 
-export const PERFORMANCE_VIEWPORT_VALUES = ["mobile", "desktop", "unknown"] as const;
+export const PERFORMANCE_VIEWPORT_VALUES = ["phone", "compact", "desktop", "unknown"] as const;
 export type PerformanceViewport = (typeof PERFORMANCE_VIEWPORT_VALUES)[number];
 
 export const PERFORMANCE_NETWORK_VALUES = [

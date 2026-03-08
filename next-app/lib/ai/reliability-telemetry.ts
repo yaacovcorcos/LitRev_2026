@@ -4,6 +4,7 @@ import {
   type ReliabilityMetricEvent,
   type ReliabilityMetricInput,
 } from "@/types/reliability-telemetry";
+import { getViewportClass } from "@/lib/mobile/tiers";
 
 const STORAGE_KEY = `litrev:reliability-metrics:v${RELIABILITY_METRIC_VERSION}`;
 const STORAGE_LIMIT = 2000;
@@ -23,7 +24,7 @@ export function getReliabilityDimensions(): ReliabilityDimensions {
   let network: ReliabilityDimensions["network"] = "unknown";
 
   if (typeof window !== "undefined") {
-    viewport = window.matchMedia("(max-width: 768px)").matches ? "mobile" : "desktop";
+    viewport = getViewportClass(window);
     if (typeof navigator !== "undefined" && "onLine" in navigator) {
       network = navigator.onLine ? "online" : "offline";
     }

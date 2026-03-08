@@ -26,7 +26,9 @@
     "perf:budget-check": "node scripts/perf-budget-check.mjs",
     "perf:generate-results": "tsx scripts/generate-perf-results.ts",
     "perf:baseline-report": "node scripts/perf-baseline-report.mjs",
-    "perf:ai-bundle-report": "tsx scripts/report-ai-bundle.ts"
+    "perf:ai-bundle-report": "tsx scripts/report-ai-bundle.ts",
+    "perf:ai-closeout-capture": "tsx scripts/capture-ai-closeout.ts",
+    "perf:ai-closeout-compare": "tsx scripts/compare-ai-closeout.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.73.0",

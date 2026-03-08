@@ -31,7 +31,18 @@ describe("processAIStream terminal lifecycle", () => {
 
   it("returns failed_server when stream emits error chunk", async () => {
     parseNDJSONStreamMock.mockImplementation(async function* () {
-      yield { type: "error", error: "upstream failed", errorStatus: 500 };
+      yield {
+        type: "error",
+        error: "upstream failed",
+        errorMeta: {
+          kind: "provider_request",
+          code: "UPSTREAM_FAILED",
+          retryable: true,
+          source: "provider_request",
+          message: "upstream failed",
+          status: 500,
+        },
+      };
     });
 
     const { processAIStream } = await import("@/lib/ai/stream-processor");
@@ -41,6 +52,11 @@ describe("processAIStream terminal lifecycle", () => {
     });
 
     expect(summary.errorMessage).toBe("upstream failed");
+    expect(summary.errorMeta).toMatchObject({
+      code: "UPSTREAM_FAILED",
+      status: 500,
+      retryable: true,
+    });
     expect(summary.terminalReason).toBe("failed_server");
   });
 

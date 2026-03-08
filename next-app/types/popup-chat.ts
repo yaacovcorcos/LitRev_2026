@@ -1,3 +1,5 @@
+import type { AIErrorEnvelope } from "@/types/ai";
+
 export type PopupChatContext =
     | { type: "study"; projectId: string; studyId: string; title: string; abstract?: string; authors?: string }
     | { type: "criterion"; projectId: string; text: string; criterionType: "inclusion" | "exclusion" }
@@ -8,5 +10,8 @@ export type PopupMessage = {
     id: string;
     role: "user" | "assistant";
     content: string;
+    errorMessage?: string;
+    retryable?: boolean;
+    errorMeta?: AIErrorEnvelope;
     createdAt: string;
 };

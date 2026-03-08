@@ -26,6 +26,7 @@ This directory contains the canonical, active plans for LitRev.
 - [**Diagnosis Report**](../reports/diagnosis-03-02.md): Canonical diagnosis and quality-tracking report; supersedes the removed `QUALITY_REPORT.md`.
 - [**Repo Health**](../reviews/repo-health.md): Living summary for whole-repo review findings, regressions, repeated mistakes, and improvements.
 - [**Architecture Decision Log**](../architecture/decision-log.md): Canonical record of intentional technical tradeoffs that reviewers should preserve unless assumptions change.
+- [**Repo Review Baseline**](../runbooks/repo-review-baseline.md): Canonical baseline for comparing repeated deep repo reviews against current in-repo findings and shipped review-driven fixes.
 - [**Admin Access Runbook**](../runbooks/admin-access.md): Platform admin bootstrap, guard boundaries, mutation safety, and audit/analytics incident procedures.
 - [**Chat Unification Burn-In Runbook**](../runbooks/chat-unification-burn-in.md): Operational U1.6 canary validation steps and sign-off procedure.
 - [**Reliability A3 Canary Runbook**](../runbooks/reliability-a3-canary.md): staged sample gates, pass/fail thresholds, rollback triggers, and flag interaction matrix.

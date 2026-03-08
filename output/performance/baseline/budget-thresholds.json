@@ -17,6 +17,9 @@
     "/project/[id]/protocol",
     "/project/[id]/notes"
   ],
+  "nightlyProfiles": [
+    "slow-network"
+  ],
   "samples": {
     "ci": {
       "minRunsPerRouteProfile": 9

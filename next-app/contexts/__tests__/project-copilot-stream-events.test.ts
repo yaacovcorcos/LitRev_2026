@@ -312,4 +312,54 @@ describe("project copilot stream event handlers", () => {
     expect(askMessage?.userInputRequest?.question).toBe("Continue?");
     expect(askMessage?.userInputRequest?.answered).toBe(false);
   });
+
+  it("appends structured stream errors from shared reducer intents", () => {
+    const messages: CopilotMessage[] = [];
+    const deps = {
+      aiMessageId: "m-1",
+      page: "overview" as const,
+      section: "protocol",
+      projectId: "p-1",
+      myGen: 1,
+      getCurrentGen: () => 1,
+      setCurrentRunId: vi.fn(),
+      syncConversationId: vi.fn(),
+      upsertConversationTitle: vi.fn(),
+      upsertArtifact: vi.fn(),
+      updateMessages: (updater: (msgs: CopilotMessage[]) => CopilotMessage[]) => {
+        const next = updater(messages);
+        messages.splice(0, messages.length, ...next);
+      },
+      emitLedgerChanged: vi.fn(),
+      setPendingChoices: vi.fn(),
+      onPlanStepUpdate: vi.fn(),
+      setPendingUserInput: vi.fn(),
+    };
+
+    handleProjectCopilotStreamChunk(
+      {
+        type: "error",
+        error: "The model returned invalid arguments for update_protocol.",
+        errorMeta: {
+          kind: "tool_call_parse",
+          code: "TOOL_CALL_ARGS_PARSE_FAILED",
+          retryable: false,
+          source: "provider_tool_call",
+          message: "The model returned invalid arguments for update_protocol.",
+        },
+      },
+      baseState(),
+      deps,
+    );
+
+    expect(messages.at(-1)).toMatchObject({
+      sender: "ai",
+      text: "The model returned invalid arguments for update_protocol.",
+      context: { page: "overview", section: "protocol" },
+      streamError: {
+        code: "TOOL_CALL_ARGS_PARSE_FAILED",
+        retryable: false,
+      },
+    });
+  });
 });

@@ -20,6 +20,7 @@ import { AIErrorWithEnvelope, buildStreamErrorChunk } from "@/lib/ai/error-envel
 import { extractProviderErrorMetadata } from "./error-metadata";
 import { normalizeProviderMessages } from "./message-normalization";
 import { toAIErrorEnvelope } from "../error-classification";
+import { normalizeChatOptionsForModel } from "../request-policy";
 const MAX_REASONING_BUDGET_TOKENS = 32768;
 
 export function computeAnthropicThinkingBudget(
@@ -63,34 +64,11 @@ export class AnthropicProvider extends BaseAIProvider {
 
     async chat(messages: AIMessage[], options?: ChatOptions): Promise<AIResponse> {
         const client = this.getClient();
-        const model = options?.model || AI_CONFIG.defaultModel;
-
-        const { system, messages: anthropicMessages } = this.convertMessages(messages, options?.systemPrompt);
-
-        const params: Anthropic.MessageCreateParams = {
-            model,
-            max_tokens: options?.maxTokens ?? AI_CONFIG.defaultMaxTokens,
-            messages: anthropicMessages,
-        };
-
-        if (system) {
-            params.system = system;
-        }
-
-        if (options?.temperature !== undefined) {
-            params.temperature = options.temperature;
-        }
-
-        if (options?.tools?.length) {
-            params.tools = options.tools.map((t) => ({
-                name: t.name,
-                description: t.description,
-                input_schema: t.parameters as Anthropic.Tool["input_schema"],
-            }));
-        }
+        const normalizedOptions = normalizeChatOptionsForModel(options);
+        const params = this.buildRequestParams(messages, normalizedOptions, false);
 
         // Pass AbortSignal through so callers can cancel in-flight requests.
-        const response = await client.messages.create(params, { signal: options?.signal } as any);
+        const response = await client.messages.create(params, { signal: normalizedOptions.signal } as any);
 
         let content = "";
         const toolCalls: ToolCall[] = [];
@@ -129,49 +107,8 @@ export class AnthropicProvider extends BaseAIProvider {
         options?: ChatOptions
     ): AsyncIterable<AIStreamChunk> {
         const client = this.getClient();
-        const model = options?.model || AI_CONFIG.defaultModel;
-        const maxTokens = options?.maxTokens ?? AI_CONFIG.defaultMaxTokens;
-
-        const { system, messages: anthropicMessages } = this.convertMessages(messages, options?.systemPrompt);
-
-        const params: Anthropic.MessageCreateParams = {
-            model,
-            max_tokens: maxTokens,
-            messages: anthropicMessages,
-            stream: true,
-        };
-
-        if (system) {
-            params.system = system;
-        }
-
-        if (options?.temperature !== undefined) {
-            params.temperature = options.temperature;
-        }
-
-        if (options?.tools?.length) {
-            params.tools = options.tools.map((t) => ({
-                name: t.name,
-                description: t.description,
-                input_schema: t.parameters as Anthropic.Tool["input_schema"],
-            }));
-        }
-
-        // Anthropic extended thinking is opt-in.
-        // Keep budget bounded to prevent runaway token spend.
-        if (options?.includeReasoning) {
-            const thinkingBudget = computeAnthropicThinkingBudget(
-                maxTokens,
-                options.reasoningBudgetTokens,
-                options.reasoningMode,
-            );
-            if (thinkingBudget && thinkingBudget > 0) {
-                params.thinking = {
-                    type: "enabled",
-                    budget_tokens: thinkingBudget,
-                } as Anthropic.ThinkingConfigParam;
-            }
-        }
+        const normalizedOptions = normalizeChatOptionsForModel(options);
+        const params = this.buildRequestParams(messages, normalizedOptions, true);
 
         let totalContent = "";
         let inputTokens = 0;
@@ -190,7 +127,7 @@ export class AnthropicProvider extends BaseAIProvider {
 
         try {
             // Pass AbortSignal through so callers can cancel in-flight streaming requests.
-            const stream = await client.messages.create(params, { signal: options?.signal } as any);
+            const stream = await client.messages.create(params, { signal: normalizedOptions.signal } as any);
 
             for await (const event of stream as AsyncIterable<Anthropic.MessageStreamEvent>) {
                 switch (event.type) {
@@ -377,6 +314,62 @@ export class AnthropicProvider extends BaseAIProvider {
             system: systemParts.length > 0 ? systemParts.join("\n\n") : undefined,
             messages: result,
         };
+    }
+
+    private buildRequestParams(
+        messages: AIMessage[],
+        options: ChatOptions & { model: string; maxTokens: number; includeReasoning: boolean },
+        stream: true,
+    ): Anthropic.MessageCreateParamsStreaming;
+    private buildRequestParams(
+        messages: AIMessage[],
+        options: ChatOptions & { model: string; maxTokens: number; includeReasoning: boolean },
+        stream: false,
+    ): Anthropic.MessageCreateParamsNonStreaming;
+    private buildRequestParams(
+        messages: AIMessage[],
+        options: ChatOptions & { model: string; maxTokens: number; includeReasoning: boolean },
+        stream: boolean,
+    ): Anthropic.MessageCreateParams {
+        const { system, messages: anthropicMessages } = this.convertMessages(messages, options.systemPrompt);
+        const params: Anthropic.MessageCreateParams = {
+            model: options.model,
+            max_tokens: options.maxTokens,
+            messages: anthropicMessages,
+            stream,
+        };
+
+        if (system) {
+            params.system = system;
+        }
+
+        if (options.temperature !== undefined) {
+            params.temperature = options.temperature;
+        }
+
+        if (options.tools?.length) {
+            params.tools = options.tools.map((t) => ({
+                name: t.name,
+                description: t.description,
+                input_schema: t.parameters as Anthropic.Tool["input_schema"],
+            }));
+        }
+
+        if (stream && options.includeReasoning) {
+            const thinkingBudget = computeAnthropicThinkingBudget(
+                options.maxTokens,
+                options.reasoningBudgetTokens,
+                options.reasoningMode,
+            );
+            if (thinkingBudget && thinkingBudget > 0) {
+                params.thinking = {
+                    type: "enabled",
+                    budget_tokens: thinkingBudget,
+                } as Anthropic.ThinkingConfigParam;
+            }
+        }
+
+        return params;
     }
 }
 

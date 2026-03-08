@@ -67,14 +67,20 @@ export type UserInputRequest = {
 
 export type AIErrorKind =
     | "provider_request"
+    | "model_capability"
     | "tool_call_parse"
     | "tool_schema_validation"
+    | "missing_prerequisite"
+    | "autonomy_blocked"
     | "runtime";
 
 export type AIErrorSource =
     | "provider_request"
+    | "request_policy"
     | "provider_tool_call"
     | "tool_validator"
+    | "tool_prerequisite_gate"
+    | "autonomy_policy"
     | "runtime";
 
 export type AIErrorEnvelope = {
@@ -87,15 +93,37 @@ export type AIErrorEnvelope = {
     headers?: Record<string, string>;
 };
 
+export type ToolResultArtifact = {
+    artifactId: string;
+    artifactType: string;
+    artifactTitle: string;
+    artifactStatus: string;
+    artifactPayload?: unknown;
+    artifactVersion?: number;
+    /**
+     * Internal visibility hint used by the parent loop when deciding whether to
+     * emit an artifact chunk for this result.
+     */
+    emitToClient?: boolean;
+};
+
+export type ToolBlockedReason = "disabled_by_autonomy" | "approval_required";
+
 export type ToolResult = {
     callId: string;
     result: unknown;
     error?: string;
     errorMeta?: AIErrorEnvelope;
+    /** Structured delegated/direct block signal for non-executed autonomy outcomes. */
+    blockedByAutonomy?: boolean;
+    /** Why execution was blocked by autonomy policy. */
+    blockedReason?: ToolBlockedReason;
     /** When true, the tool requires user input before the agent can continue. */
     requiresUserInput?: boolean;
     /** Structured request for user input (present when requiresUserInput is true). */
     userInputRequest?: UserInputRequest;
+    /** Canonical artifact metadata emitted by direct or delegated execution. */
+    artifacts?: ToolResultArtifact[];
 };
 
 // Clickable choice option (AI-generated quick replies)

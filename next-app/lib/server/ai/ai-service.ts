@@ -7,6 +7,7 @@
 import type { AIMessage, AIResponse, ChatOptions, AIStreamChunk, ConversationContext, ToolCall, ToolResult } from "@/types/ai";
 import type { AgentMode } from "@/types/agent";
 import { buildStreamErrorChunk, envelopeFromStreamChunk } from "@/lib/ai/error-envelope";
+import { buildFailureFallbackMessage, deriveRunOutcome, type RunFacts } from "@/lib/ai/run-outcome";
 import { BaseAIProvider, getOpenAIProvider, getAnthropicProvider, getXAIProvider, getGoogleProvider } from "./providers";
 import { getOrCreateConversation, addMessageToConversation, getConversationWithSummary, getConversationWithSummaryById, autoSummarizeIfNeeded } from "./memory";
 import { validateRateLimits, recordUsage } from "./rate-limiter";
@@ -51,6 +52,7 @@ import { classifyAIError, toAIErrorEnvelope } from "./error-classification";
 import { retryAsync, sleep } from "@/lib/server/utils/retry";
 import { resolveReasoningMode } from "@/lib/ai/reasoning-visibility";
 import { createIdempotencyMiddleware, executeWithToolMiddleware, type ToolExecutionRequest, type ToolMiddleware } from "./tool-middleware";
+import { createToolPrerequisiteMiddleware, evaluateToolPrerequisites } from "./tool-prerequisites";
 import { resolveAuthenticatedIdentity } from "@/lib/server/auth/identity";
 import { computeLedgerCounts, computeStudyLedger } from "@/lib/server/ledger-utils";
 import {
@@ -100,6 +102,24 @@ function resolveRunActualModelMeta(
     return { actualModel: null, actualModelSource: "unknown" };
 }
 
+async function resolveToolRepeatKey(
+    toolCall: ToolCall,
+    context: ToolExecutionRequest["context"],
+): Promise<string> {
+    const prerequisiteEvaluation = await evaluateToolPrerequisites({
+        name: toolCall.name,
+        args: toolCall.arguments,
+        callId: toolCall.id,
+        context,
+    });
+
+    if (!prerequisiteEvaluation.allowed) {
+        return prerequisiteEvaluation.repeatKey;
+    }
+
+    return getToolCallRepeatKey(toolCall);
+}
+
 export type ToolRuntimeContext = {
     signal?: AbortSignal;
     systemContexts?: {
@@ -110,6 +130,10 @@ export type ToolRuntimeContext = {
         autonomyContext?: string;
     };
     protocolData?: ProtocolData | null;
+    autonomyConfig?: {
+        preset: string;
+        toolOverrides: Record<string, unknown>;
+    };
 };
 
 class AIService {
@@ -414,6 +438,7 @@ class AIService {
         messages: AIMessage[],
         options?: ChatOptions
     ): AsyncIterable<AIStreamChunk> {
+        const identity = resolveAuthenticatedIdentity(options);
         const hasProjectScope = !!(options?.projectId && options.projectId !== null);
         const scope = hasProjectScope ? "project" as const : "global" as const;
         const toolDefs = getToolDefinitions(undefined, scope);
@@ -574,11 +599,17 @@ class AIService {
                 return;
             }
 
-            // Check for repeated tool calls
-            if (loop.recordToolCalls(collectedToolCalls.map((toolCall) => ({
+            const repeatKeyedToolCalls = await Promise.all(collectedToolCalls.map(async (toolCall) => ({
                 ...toolCall,
-                repeatKey: getToolCallRepeatKey(toolCall),
-            })))) {
+                repeatKey: await resolveToolRepeatKey(toolCall, {
+                    projectId: options?.projectId,
+                    studyId: options?.studyId,
+                    userId: identity.userId,
+                }),
+            })));
+
+            // Check for repeated tool calls
+            if (loop.recordToolCalls(repeatKeyedToolCalls)) {
                 yield {
                     type: "done",
                     content: stopReasonMessage("repeat_detected"),
@@ -601,6 +632,11 @@ class AIService {
                     name: tc.name,
                     args: tc.arguments,
                     callId: tc.id,
+                    context: {
+                        projectId: options?.projectId,
+                        studyId: options?.studyId,
+                        userId: identity.userId,
+                    },
                 });
                 yield { type: "tool_result", toolName: tc.name, toolResult: result };
 
@@ -738,6 +774,13 @@ class AIService {
         let protocolHandoffExecuted = false;
         let scopingReportPayload: ScopingReportPayload | null = null;
         let retrievedMemoriesForRun: RetrievedMemory[] = [];
+        const runFacts: RunFacts = {
+            hadFinalAssistantAnswer: false,
+            hadSuccessfulToolOrArtifact: false,
+            hadDeterministicNonRetryableFailure: false,
+            pausedForUserInput: false,
+            cancelledByUser: false,
+        };
 
         try {
             // Retrieve memories + project context in parallel
@@ -1109,11 +1152,12 @@ class AIService {
                 while (true) {
                     collectedToolCalls = [];
                     contentSoFar = "";
-                        let hadVisibleOutput = false;
-                        let retryAfterMs: number | undefined;
-                        let shouldRetry = false;
-                        let shouldRecoverOverflow = false;
-                        let terminalErrorChunk: AIStreamChunk | null = null;
+                    let hadVisibleOutput = false;
+                    let retryAfterMs: number | undefined;
+                    let shouldRetry = false;
+                    let shouldRecoverOverflow = false;
+                    let terminalErrorChunk: AIStreamChunk | null = null;
+                    let terminalClassifiedError: ReturnType<typeof classifyAIError> | null = null;
 
                     const genSpan = startLLMGeneration(trace, `llm-call-${loop.iterations}-attempt-${retryCount + 1}`, {
                         model: chatOptions.model,
@@ -1174,6 +1218,7 @@ class AIService {
                                     },
                                     { conversationId: conversation.id },
                                 );
+                                terminalClassifiedError = classified;
                                 break;
                             }
                         }
@@ -1193,6 +1238,7 @@ class AIService {
                                 }),
                                 { conversationId: conversation.id },
                             );
+                            terminalClassifiedError = classified;
                         }
                     }
                     genSpan.end();
@@ -1222,6 +1268,25 @@ class AIService {
                     }
 
                     if (terminalErrorChunk) {
+                        if (terminalClassifiedError && !terminalClassifiedError.retryable) {
+                            runFacts.hadDeterministicNonRetryableFailure = true;
+                        }
+                        if (
+                            terminalClassifiedError
+                            && !terminalClassifiedError.retryable
+                            && !fullContent.trim()
+                            && !runFacts.hadSuccessfulToolOrArtifact
+                        ) {
+                            const fallbackContent = buildFailureFallbackMessage(terminalClassifiedError.message);
+                            fullContent = fallbackContent;
+                            runFacts.hadFinalAssistantAnswer = true;
+                            await addMessageToConversation(conversation.id, {
+                                role: "assistant",
+                                content: fallbackContent,
+                            });
+                            await emitEvent(run.id, "message", { content: fallbackContent }, { messageRole: "assistant" });
+                            yield { type: "content", content: fallbackContent, conversationId: conversation.id };
+                        }
                         loop.markStopped("error");
                         yield terminalErrorChunk;
                         await endRun(run.id, "failed");
@@ -1266,11 +1331,19 @@ class AIService {
                     break;
                 }
 
-                // Check for repeated tool calls
-                if (loop.recordToolCalls(collectedToolCalls.map((toolCall) => ({
+                const repeatKeyedToolCalls = await Promise.all(collectedToolCalls.map(async (toolCall) => ({
                     ...toolCall,
-                    repeatKey: getToolCallRepeatKey(toolCall),
-                })))) {
+                    repeatKey: await resolveToolRepeatKey(toolCall, {
+                        projectId,
+                        studyId,
+                        userId,
+                        runId: run.id,
+                        protocolData: (protocolRow?.data as ProtocolData | null) ?? null,
+                    }),
+                })));
+
+                // Check for repeated tool calls
+                if (loop.recordToolCalls(repeatKeyedToolCalls)) {
                     break; // repeat_detected — shouldContinue will catch it next iteration
                 }
 
@@ -1352,10 +1425,20 @@ class AIService {
                         yield { type: "plan_step_update", planId: options!.planId!, stepIndex: matchedStep.originalIndex, stepStatus, conversationId: conversation.id };
                     }
 
+                    if (toolResult.error) {
+                        const classifiedToolError = classifyAIError(toolResult.errorMeta ?? toolResult.error);
+                        if (!classifiedToolError.retryable) {
+                            runFacts.hadDeterministicNonRetryableFailure = true;
+                        }
+                    } else {
+                        runFacts.hadSuccessfulToolOrArtifact = true;
+                    }
+
                     yield { type: "tool_result", toolName: tc.name, toolResult, conversationId: conversation.id };
 
                     // ask_user sentinel: emit user_input_required and stop the loop
                     if (toolResult.requiresUserInput && toolResult.userInputRequest) {
+                        runFacts.pausedForUserInput = true;
                         yield { type: "user_input_required", userInputRequest: toolResult.userInputRequest, conversationId: conversation.id };
                         loop.markStopped("paused_for_input");
                         break;
@@ -1386,10 +1469,6 @@ class AIService {
 
             // Determine final stop reason and run status
             let finalStopReason = loop.stopReason ?? "natural";
-            let runStatus: "completed" | "cancelled" | "failed" | "paused" =
-                finalStopReason === "cancelled" ? "cancelled"
-                    : finalStopReason === "paused_for_input" ? "paused"
-                        : "completed";
 
             // ── Plan execution finalization ──
             if (executionMode && options?.planId && planData) {
@@ -1419,11 +1498,12 @@ class AIService {
                             ? "Execution error"
                             : "Plan did not complete all selected steps";
                     await failPlanExecution(options.planId, finalSteps, reason);
-                    if (finalStopReason !== "cancelled") {
-                        runStatus = "failed";
+                    if (finalStopReason !== "cancelled" && finalStopReason !== "paused_for_input") {
+                        runFacts.hadDeterministicNonRetryableFailure = true;
                     }
                 } else {
                     await completePlanExecution(options.planId, finalSteps);
+                    runFacts.hadSuccessfulToolOrArtifact = true;
                 }
             }
 
@@ -1443,6 +1523,7 @@ class AIService {
 
             // Save final AI text response to conversation
             if (fullContent) {
+                runFacts.hadFinalAssistantAnswer = true;
                 await addMessageToConversation(conversation.id, {
                     role: "assistant",
                     content: fullContent,
@@ -1467,6 +1548,15 @@ class AIService {
                         };
                     }
                 }
+            } else if (runFacts.hadDeterministicNonRetryableFailure && !runFacts.hadSuccessfulToolOrArtifact) {
+                fullContent = buildFailureFallbackMessage(stopReasonMessage(finalStopReason as StopReason));
+                runFacts.hadFinalAssistantAnswer = true;
+                await addMessageToConversation(conversation.id, {
+                    role: "assistant",
+                    content: fullContent,
+                });
+                await emitEvent(run.id, "message", { content: fullContent }, { messageRole: "assistant" });
+                yield { type: "content", content: fullContent, conversationId: conversation.id };
             }
 
             if (scopingReportPayload) {
@@ -1501,6 +1591,7 @@ class AIService {
                     artifactVersion: artifact.version,
                     conversationId: conversation.id,
                 };
+                runFacts.hadSuccessfulToolOrArtifact = true;
             }
 
             // Trigger auto-summarization if conversation is growing large.
@@ -1525,6 +1616,13 @@ class AIService {
             }}).end();
             await flushTracing();
 
+            const finalOutcome = deriveRunOutcome({
+                facts: runFacts,
+                stopReason: finalStopReason,
+            });
+            finalStopReason = finalOutcome.stopReason;
+            const runStatus = finalOutcome.runStatus;
+
             await endRun(run.id, runStatus, totalTokensIn, totalTokensOut);
             const runModelMeta = resolveRunActualModelMeta(chatOptions.model, observedRunModel, invokedModel);
             yield {
@@ -1547,6 +1645,7 @@ class AIService {
                 (typeof DOMException !== "undefined" && error instanceof DOMException && error.name === "AbortError");
 
             if (isAbortError) {
+                runFacts.cancelledByUser = true;
                 if (fullContent) {
                     await addMessageToConversation(conversation.id, {
                         role: "assistant",
@@ -1590,6 +1689,22 @@ class AIService {
             // End trace + run with failure
             trace.update({ metadata: { error: error instanceof Error ? error.message : "Unknown" } }).end();
             await flushTracing();
+
+            const classifiedError = classifyAIError(error);
+            if (!classifiedError.retryable) {
+                runFacts.hadDeterministicNonRetryableFailure = true;
+            }
+            if (!classifiedError.retryable && !fullContent.trim() && !runFacts.hadSuccessfulToolOrArtifact) {
+                const fallbackContent = buildFailureFallbackMessage(classifiedError.message);
+                fullContent = fallbackContent;
+                runFacts.hadFinalAssistantAnswer = true;
+                await addMessageToConversation(conversation.id, {
+                    role: "assistant",
+                    content: fallbackContent,
+                });
+                await emitEvent(run.id, "message", { content: fallbackContent }, { messageRole: "assistant" });
+                yield { type: "content", content: fallbackContent, conversationId: conversation.id };
+            }
 
             await endRun(run.id, "failed");
             yield buildStreamErrorChunk(
@@ -1825,7 +1940,7 @@ let aiServiceInstance: AIService | null = null;
 export function getAIService(): AIService {
     if (!aiServiceInstance) {
         aiServiceInstance = new AIService({
-            toolMiddlewares: [createIdempotencyMiddleware()],
+            toolMiddlewares: [createToolPrerequisiteMiddleware(), createIdempotencyMiddleware()],
         });
     }
     return aiServiceInstance;

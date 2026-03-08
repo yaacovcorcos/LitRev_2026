@@ -19,18 +19,18 @@
 
 import "server-only";
 
-import type { AIMessage, ToolCall, ChatOptions } from "@/types/ai";
+import type { AIMessage, ToolBlockedReason, ToolCall, ToolResultArtifact, UserInputRequest, ChatOptions } from "@/types/ai";
 import type { AgentMode, RunStatus } from "@/types/agent";
-import type { ArtifactType } from "@/types/artifacts";
 import { LoopState, type LoopBudget, type StopReason } from "@/lib/agent/loop-controller";
-import { getToolDefinitions, executeTool } from "./tools/base";
+import { getToolDefinitions } from "./tools/base";
 import { buildModelVisibleToolResult, compactToolResult, type ToolResultWithArtifactState } from "@/lib/agent/compaction";
 import { assembleSystemPrompt } from "@/lib/ai/prompts/copilot-prompts";
 import { getAIService } from "./ai-service";
-import { createArtifact, applyArtifact } from "@/lib/server/agent/artifacts";
 import { startRun, endRun } from "@/lib/server/agent/run";
 import { emitEvent } from "@/lib/server/agent/events";
 import { dropShadowedInvalidToolCalls, getToolCallRepeatKey } from "./tool-helpers";
+import { evaluateToolPrerequisites } from "./tool-prerequisites";
+import { executeToolWithAutonomyCore } from "./tool-autonomy";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -47,6 +47,13 @@ export interface SubAgentParams {
     studyId?: string;
     /** Parent run ID for tracing lineage */
     parentRunId?: string;
+    /** Parent conversation ID for delegated artifact visibility */
+    conversationId?: string;
+    /** Cached autonomy configuration from the parent run. */
+    autonomyConfig?: {
+        preset: string;
+        toolOverrides: Record<string, unknown>;
+    };
     /** Pre-assembled context blocks for the system prompt */
     systemContexts?: {
         projectContext?: string;
@@ -76,64 +83,42 @@ export interface SubAgentResult {
     toolLog: { name: string; resultPreview: string }[];
     /** Error message if execution failed */
     error?: string;
+    /** The child needs user input before it can continue. */
+    requiresUserInput?: boolean;
+    /** Structured user input request to bubble back to the parent. */
+    userInputRequest?: UserInputRequest;
+    /** Delegated execution was blocked by autonomy policy. */
+    blockedByAutonomy?: boolean;
+    /** Why delegated execution was blocked. */
+    blockedReason?: ToolBlockedReason;
+    /** Parent-visible artifact metadata produced by the child. */
+    artifacts?: ToolResultArtifact[];
 }
 
-function mapToolToArtifactType(toolName: string): ArtifactType | null {
-    const mapping: Record<string, ArtifactType> = {
-        bulk_screening: "screening_batch",
-        update_protocol: "protocol_suggestion",
-        store_memory: "memory_proposal",
-        forget_memory: "memory_forget_proposal",
-        update_note: "draft_diff",
-        exclude_study: "study_proposal",
-        update_study: "study_update",
-    };
-    return mapping[toolName] ?? null;
-}
-
-function mapToolToArtifactTitle(toolName: string, args: Record<string, unknown>): string {
-    switch (toolName) {
-        case "bulk_screening":
-            return "Batch screening results";
-        case "update_protocol":
-            return `Protocol: ${args.field ?? "update"}`;
-        case "store_memory":
-            return `Remember: ${args.key ?? "preference"}`;
-        case "forget_memory":
-            return `Forget: ${args.key ?? "memory"}`;
-        case "update_note":
-            return `Draft: ${args.section ?? "section"}`;
-        case "exclude_study":
-            return `Exclude: ${args.reason ?? "study"}`;
-        case "update_study":
-            return "Study metadata update";
-        default:
-            return toolName;
-    }
-}
-
-async function maybeAutoApplyDelegatedArtifact(params: {
-    toolName: string;
-    toolArgs: Record<string, unknown>;
-    toolResult: unknown;
-    parentRunId?: string;
-    projectId?: string;
-    userId?: string;
-}): Promise<string | null> {
-    const artifactType = mapToolToArtifactType(params.toolName);
-    if (!artifactType) return null;
-    if (!params.parentRunId || !params.projectId || params.toolResult == null) return null;
-
-    const artifact = await createArtifact({
-        runId: params.parentRunId,
-        projectId: params.projectId,
-        userId: params.userId,
-        type: artifactType,
-        title: mapToolToArtifactTitle(params.toolName, params.toolArgs),
-        payload: params.toolResult,
+async function resolveToolRepeatKey(
+    toolCall: ToolCall,
+    context: {
+        projectId?: string;
+        studyId?: string;
+        userId?: string;
+        runId?: string;
+        parentRunId?: string;
+        systemContexts?: SubAgentParams["systemContexts"];
+        signal?: AbortSignal;
+    },
+): Promise<string> {
+    const prerequisiteEvaluation = await evaluateToolPrerequisites({
+        name: toolCall.name,
+        args: toolCall.arguments,
+        callId: toolCall.id,
+        context,
     });
-    await applyArtifact(artifact.id, "auto_applied");
-    return artifact.id;
+
+    if (!prerequisiteEvaluation.allowed) {
+        return prerequisiteEvaluation.repeatKey;
+    }
+
+    return getToolCallRepeatKey(toolCall);
 }
 
 // ── Default Budget ───────────────────────────────────────────────────────────
@@ -172,8 +157,11 @@ export async function executeSubAgent(params: SubAgentParams): Promise<SubAgentR
     const budget = { ...SUB_AGENT_DEFAULT_BUDGET, ...params.budget };
     const loop = new LoopState(budget);
     const toolLog: SubAgentResult["toolLog"] = [];
+    const delegatedArtifacts: ToolResultArtifact[] = [];
     let childRunId: string | null = null;
     let childRunStatus: Extract<RunStatus, "completed" | "failed" | "cancelled" | "paused"> = "completed";
+    let pendingUserInputRequest: UserInputRequest | undefined;
+    let blockedReason: ToolBlockedReason | undefined;
 
     // 1. Build system prompt for this mode
     const systemPrompt = assembleSystemPrompt({
@@ -306,11 +294,21 @@ export async function executeSubAgent(params: SubAgentParams): Promise<SubAgentR
                 break;
             }
 
-            // Check for doom loops
-            if (loop.recordToolCalls(collectedToolCalls.map((toolCall) => ({
+            const repeatKeyedToolCalls = await Promise.all(collectedToolCalls.map(async (toolCall) => ({
                 ...toolCall,
-                repeatKey: getToolCallRepeatKey(toolCall),
-            })))) {
+                repeatKey: await resolveToolRepeatKey(toolCall, {
+                    projectId: params.projectId,
+                    studyId: params.studyId,
+                    userId: params.userId,
+                    runId: childRunId ?? params.parentRunId,
+                    parentRunId: params.parentRunId,
+                    systemContexts: params.systemContexts,
+                    signal: params.signal,
+                }),
+            })));
+
+            // Check for doom loops
+            if (loop.recordToolCalls(repeatKeyedToolCalls)) {
                 lastContent = contentSoFar || "Repeat detected — stopping.";
                 break;
             }
@@ -335,76 +333,60 @@ export async function executeSubAgent(params: SubAgentParams): Promise<SubAgentR
 
             // Execute each tool call
             for (const tc of collectedToolCalls) {
-                if (childRunId) {
-                    try {
-                        await emitEvent(childRunId, "tool_call", { arguments: tc.arguments }, { toolName: tc.name });
-                    } catch (error) {
-                        logEventEmissionFailure("tool_call", childRunId, error);
-                    }
-                }
-                const result = await executeTool(tc.name, tc.arguments, tc.id, {
-                    projectId,
-                    studyId,
-                    userId,
-                    runId: childRunId ?? params.parentRunId,
+                const result = await executeToolWithAutonomyCore({
+                    service: aiService,
+                    toolCall: tc,
+                    runId: childRunId ?? params.parentRunId ?? "delegated-run",
                     parentRunId: params.parentRunId,
-                    signal,
-                    systemContexts,
+                    projectId,
+                    conversationId: params.conversationId,
+                    userId,
+                    agentMode: mode,
+                    studyId,
+                    cachedAutonomyConfig: params.autonomyConfig,
+                    runtimeContext: {
+                        signal,
+                        protocolData: null,
+                        autonomyConfig: params.autonomyConfig,
+                        systemContexts,
+                    },
+                    levelOneBehavior: "block",
+                    artifactRunId: params.parentRunId ?? childRunId ?? undefined,
                 });
-                let resultForModel: ToolResultWithArtifactState = result;
-                if (childRunId) {
-                    try {
-                        await emitEvent(childRunId, "tool_result", { success: !result.error, error: result.error ?? null }, { toolName: tc.name });
-                    } catch (error) {
-                        logEventEmissionFailure("tool_result", childRunId, error);
-                    }
+                const resultForModel: ToolResultWithArtifactState = result;
+                if (result.artifacts?.length) {
+                    delegatedArtifacts.push(...result.artifacts);
                 }
 
                 // If a tool requires user input, sub-agent can't handle that — stop
-                if (result.requiresUserInput) {
+                if (result.requiresUserInput && result.userInputRequest) {
                     lastContent = "Sub-agent paused: a tool requested user input.";
+                    pendingUserInputRequest = result.userInputRequest;
                     loop.markStopped("paused_for_input");
                     childRunStatus = "paused";
                     break;
                 }
 
-                if (!result.error) {
-                    try {
-                        const artifactId = await maybeAutoApplyDelegatedArtifact({
-                            toolName: tc.name,
-                            toolArgs: tc.arguments,
-                            toolResult: result.result,
-                            parentRunId: params.parentRunId,
-                            projectId,
-                            userId,
-                        });
-                        if (artifactId) {
-                            resultForModel = {
-                                ...result,
-                                artifactId,
-                                artifactType: mapToolToArtifactType(tc.name) ?? undefined,
-                                artifactTitle: mapToolToArtifactTitle(tc.name, tc.arguments),
-                                artifactStatus: "auto_applied",
-                            };
-                            toolLog.push({
-                                name: `${tc.name}:auto_applied`,
-                                resultPreview: `Applied delegated artifact ${artifactId}`,
-                            });
-                        }
-                    } catch (error) {
-                        const message = error instanceof Error
-                            ? error.message
-                            : "Failed to auto-apply delegated artifact";
-                        childRunStatus = "failed";
-                        return {
-                            summary: lastContent || "Sub-agent failed during delegated artifact application.",
-                            stopReason: "error",
-                            iterations: loop.iterations,
-                            totalToolCalls: loop.totalToolCalls,
-                            toolLog,
-                            error: message,
-                        };
-                    }
+                if (result.blockedByAutonomy) {
+                    lastContent = `Sub-agent blocked by autonomy while attempting ${tc.name}.`;
+                    blockedReason = result.blockedReason;
+                    loop.markStopped("error");
+                    childRunStatus = "failed";
+                    toolLog.push({
+                        name: `${tc.name}:blocked`,
+                        resultPreview: result.error ?? "Blocked by autonomy policy",
+                    });
+                    return {
+                        summary: lastContent,
+                        stopReason: "error",
+                        iterations: loop.iterations,
+                        totalToolCalls: loop.totalToolCalls,
+                        toolLog,
+                        error: result.error,
+                        blockedByAutonomy: true,
+                        blockedReason,
+                        artifacts: delegatedArtifacts,
+                    };
                 }
 
                 const preview = compactToolResult(
@@ -451,6 +433,11 @@ export async function executeSubAgent(params: SubAgentParams): Promise<SubAgentR
             iterations: loop.iterations,
             totalToolCalls: loop.totalToolCalls,
             toolLog,
+            requiresUserInput: Boolean(pendingUserInputRequest),
+            userInputRequest: pendingUserInputRequest,
+            blockedByAutonomy: Boolean(blockedReason),
+            blockedReason,
+            artifacts: delegatedArtifacts,
         };
     } catch (error) {
         childRunStatus = "failed";
@@ -461,6 +448,7 @@ export async function executeSubAgent(params: SubAgentParams): Promise<SubAgentR
             totalToolCalls: loop.totalToolCalls,
             toolLog,
             error: error instanceof Error ? error.message : "Unknown error",
+            artifacts: delegatedArtifacts,
         };
     } finally {
         if (childRunId) {

@@ -71,6 +71,8 @@ export const delegateProtocolTool: AITool = {
             projectId: context?.projectId,
             userId: context?.userId,
             parentRunId: context?.runId,
+            conversationId: context?.conversationId,
+            autonomyConfig: context?.autonomyConfig,
             systemContexts: context?.systemContexts,
             signal: context?.signal,
         });
@@ -84,6 +86,11 @@ export const delegateProtocolTool: AITool = {
                 stopReason: result.stopReason,
             },
             error: result.error,
+            blockedByAutonomy: result.blockedByAutonomy,
+            blockedReason: result.blockedReason,
+            requiresUserInput: result.requiresUserInput,
+            userInputRequest: result.userInputRequest,
+            artifacts: result.artifacts,
         };
     },
 };
