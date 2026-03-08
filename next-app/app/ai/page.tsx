@@ -1293,7 +1293,11 @@ export default function AIView() {
       if (abortControllerRef.current === controller) {
         abortControllerRef.current = null;
       }
-      if (!aborted && shouldFailRunningToolsOnAbnormalEnd(terminalReason)) {
+      if (
+        streamGenRef.current === myGen
+        && !aborted
+        && shouldFailRunningToolsOnAbnormalEnd(terminalReason)
+      ) {
         runtime.failRunningTools(ABNORMAL_END_TOOL_FAILURE_SUMMARY);
       }
       if (terminalReason && !aborted) {
@@ -1579,7 +1583,6 @@ export default function AIView() {
     let stopReason: string | null = null;
     let errorMessage: string | null = null;
     let aborted = false;
-    let emittedTerminalError = false;
     let terminalEventEmitted = false;
     const reasoningRequest = resolveReasoningRequest({
       preferredMode: reasoningMode,
@@ -1728,7 +1731,11 @@ export default function AIView() {
       if (abortControllerRef.current === controller) {
         abortControllerRef.current = null;
       }
-      if (!aborted && shouldFailRunningToolsOnAbnormalEnd(terminalReason)) {
+      if (
+        streamGenRef.current === myGen
+        && !aborted
+        && shouldFailRunningToolsOnAbnormalEnd(terminalReason)
+      ) {
         runtime.failRunningTools(ABNORMAL_END_TOOL_FAILURE_SUMMARY);
       }
       if (terminalReason && !aborted) {
@@ -1755,10 +1762,8 @@ export default function AIView() {
           getErrorMeta: (item) => item.type === "error" ? item.errorMeta : null,
         });
         if (hasRenderedError) {
-          emittedTerminalError = true;
           return items;
         }
-        emittedTerminalError = true;
         return [
           ...items,
           {
