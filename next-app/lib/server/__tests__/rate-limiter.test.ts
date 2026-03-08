@@ -16,7 +16,7 @@ vi.mock('@/lib/server/prisma', () => ({
 vi.mock('@/lib/ai/config', () => ({
   AI_CONFIG: {
     maxRequestsPerMinute: 20,
-    maxTokensPerDay: 100000,
+    maxTokensPerDay: 300000,
   },
 }))
 
@@ -125,26 +125,26 @@ describe('Rate Limiter', () => {
   describe('checkDailyTokenLimit', () => {
     it('allows request when under daily token limit', async () => {
       mockAggregate.mockResolvedValue({
-        _sum: { inputTokens: 30000, outputTokens: 20000 },
+        _sum: { inputTokens: 120000, outputTokens: 60000 },
       })
       const allowed = await checkDailyTokenLimit('project-1')
-      expect(allowed).toBe(true) // 50000 < 100000
+      expect(allowed).toBe(true) // 180000 < 300000
     })
 
     it('blocks request when at daily token limit', async () => {
       mockAggregate.mockResolvedValue({
-        _sum: { inputTokens: 60000, outputTokens: 40000 },
+        _sum: { inputTokens: 180000, outputTokens: 120000 },
       })
       const allowed = await checkDailyTokenLimit('project-1')
-      expect(allowed).toBe(false) // 100000 >= 100000
+      expect(allowed).toBe(false) // 300000 >= 300000
     })
 
     it('blocks request when over daily token limit', async () => {
       mockAggregate.mockResolvedValue({
-        _sum: { inputTokens: 80000, outputTokens: 50000 },
+        _sum: { inputTokens: 220000, outputTokens: 120000 },
       })
       const allowed = await checkDailyTokenLimit('project-1')
-      expect(allowed).toBe(false) // 130000 > 100000
+      expect(allowed).toBe(false) // 340000 > 300000
     })
 
     it('allows request when no usage exists (null sums)', async () => {
@@ -152,7 +152,7 @@ describe('Rate Limiter', () => {
         _sum: { inputTokens: null, outputTokens: null },
       })
       const allowed = await checkDailyTokenLimit('project-1')
-      expect(allowed).toBe(true) // 0 < 100000
+      expect(allowed).toBe(true) // 0 < 300000
     })
 
     it('queries from start of today', async () => {
@@ -172,10 +172,10 @@ describe('Rate Limiter', () => {
 
     it('handles partial null sums (only input or only output)', async () => {
       mockAggregate.mockResolvedValue({
-        _sum: { inputTokens: 50000, outputTokens: null },
+        _sum: { inputTokens: 120000, outputTokens: null },
       })
       const allowed = await checkDailyTokenLimit('project-1')
-      expect(allowed).toBe(true) // 50000 < 100000
+      expect(allowed).toBe(true) // 120000 < 300000
     })
 
     it('supports null projectId for global scope', async () => {
@@ -437,7 +437,7 @@ describe('Rate Limiter', () => {
     it('throws token limit error when daily limit exceeded', async () => {
       mockCount.mockResolvedValue(5)
       mockAggregate.mockResolvedValue({
-        _sum: { inputTokens: 80000, outputTokens: 50000 },
+        _sum: { inputTokens: 220000, outputTokens: 120000 },
       })
 
       await expect(validateRateLimits('project-1')).rejects.toThrow(

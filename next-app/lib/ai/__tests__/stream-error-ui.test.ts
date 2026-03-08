@@ -29,6 +29,12 @@ describe("formatStreamErrorForUI", () => {
         );
     });
 
+    it("renders daily token limits as quota errors instead of context overflow", () => {
+        expect(formatStreamErrorForUI("Daily token limit exceeded. Maximum 300000 tokens per day.")).toBe(
+            "Daily token limit reached for your workspace. Try again tomorrow.",
+        );
+    });
+
     it("uses structured envelope messages for tool-call parse failures", () => {
         expect(formatStreamErrorForUI({
             errorMeta: {
@@ -169,6 +175,13 @@ describe("formatStreamErrorForUI", () => {
                 source: "request_policy",
                 message: "",
             },
+        })).toBe(true);
+    });
+
+    it("matches canonical fallback when assistant content uses the raw daily-limit message", () => {
+        expect(matchesCanonicalFailureFallback({
+            assistantText: "I couldn't complete that request: Daily token limit exceeded. Maximum 300000 tokens per day.",
+            streamError: "Daily token limit exceeded. Maximum 300000 tokens per day.",
         })).toBe(true);
     });
 
