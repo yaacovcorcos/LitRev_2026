@@ -125,6 +125,11 @@ export const bulkScreeningTool: AITool = {
         hardCap: 2,
     },
 
+    prerequisites: {
+        required: ["project_required", "criteria_required"],
+        blockedHint: "stop_with_explanation",
+    },
+
     async execute(args: Record<string, unknown>, context?: ToolExecutionContext) {
         const projectId = (context?.projectId ?? args.projectId) as string;
         if (!projectId) {

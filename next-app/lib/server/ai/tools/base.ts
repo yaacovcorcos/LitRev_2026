@@ -54,9 +54,25 @@ export interface AITool {
     /** Autonomy metadata — determines approval behavior */
     autonomy?: ToolAutonomyMeta;
 
+    /** Declarative prerequisites required before the tool may execute. */
+    prerequisites?: ToolPrerequisiteConfig;
+
     /** Execute the tool with the given arguments */
     execute(args: Record<string, unknown>, context?: ToolExecutionContext): Promise<ToolResult>;
 }
+
+export type ToolPrerequisiteKind =
+    | "project_required"
+    | "study_required"
+    | "protocol_required"
+    | "criteria_required";
+
+export type ToolPrerequisiteBlockedHint = "ask_user" | "stop_with_explanation";
+
+export type ToolPrerequisiteConfig = {
+    required: ToolPrerequisiteKind[];
+    blockedHint?: ToolPrerequisiteBlockedHint;
+};
 
 /** Runtime context passed to tool execution */
 export interface ToolExecutionContext {
