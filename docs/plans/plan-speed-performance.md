@@ -41,6 +41,9 @@ Define the canonical implementation plan for app speed, responsiveness, and stab
 - `/ai` also now opts into route-local lazy boundaries without forking shared copilot infrastructure:
   - the shared composer lazy-loads attachment and autonomy controls behind dynamic feature islands
   - the shared `TimelineRenderer` supports an opt-in initial visible window and readiness callback, and `/ai` uses that opt-in path while project copilot/conversation keep the default full render behavior
+- `/ai` now also defers history/sidebar chrome and conversation-list hydration out of the initial route chunk:
+  - the history sidebar content and header chrome load behind route-local lazy boundaries
+  - global workspace context and the conversation list both preload only after composer-ready, so populated closeout runs no longer pay the full sidebar fetch on first open
 - Three consecutive warn-mode calibration notes are archived under `docs/reports/performance/`.
 - The gate now runs in `enforce` mode with no active waivers; `output/performance/baseline/waivers.json` remains checked in as the machine-readable exception contract.
 - Regression gating now requires both percentage regression and a minimum meaningful absolute delta before failing:
@@ -289,10 +292,10 @@ Rules:
     - empty `/ai` composer-ready: `>= 10%` or `75 ms` improvement
     - populated `/ai` timeline-ready: `>= 15%` or `150 ms` improvement
   - Current measured status vs baseline commit `31d45033696c3c54d9b223bb6576fc933e22bc4c`:
-    - bundle bytes improved only `0.1%`
-    - empty `/ai` composer-ready regressed by `111 ms`
-    - populated `/ai` timeline-ready regressed by `53 ms`
-  - Next narrow follow-up should target `/ai` initial route hydration and history/sidebar cost; do not fork the shared composer and do not expand shared timeline semantics until a new populated-route measurement shows that path is still dominant.
+    - bundle bytes still regress by `5,601` bytes (`+0.4%`)
+    - empty `/ai` composer-ready remains unstable and the latest post-commit closeout run measured `518 ms` (`+160 ms`, `+44.7%`)
+    - populated `/ai` timeline-ready recovered to `67 ms` (`-3 ms`, `-4.3%`), so the long-history regression is no longer the dominant blocker
+  - Next narrow follow-up should target shared composer bundle cost, especially still-eager optional input features on `/ai`; do not fork the shared composer and do not expand shared timeline semantics again unless a later populated-route measurement shows a new regression there.
 - [ ] `SPD-006` Expand the probe matrix to nightly-only routes and slow-network coverage.
   - Nightly coverage must run from the separate `nightlyRoutes` / `nightlyProfiles` matrix contract and write to `output/performance/nightly/**`; do not overload the PR-gated mandatory matrix or `output/performance/results/results-<sha>.json`.
   - Treat nightly `/`, `/project/[id]/protocol`, and `/project/[id]/notes` probes as shell/web-vitals observational coverage for now. Route-ready instrumentation is a separate follow-up if those surfaces become active optimization targets.

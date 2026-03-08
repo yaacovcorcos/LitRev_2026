@@ -3,7 +3,7 @@
 ## Scope
 - Task: `SPD-005`
 - Baseline commit: `31d45033696c3c54d9b223bb6576fc933e22bc4c`
-- Head commit measured: `93ed71896d46b119f272bac422095220d1534d2f`
+- Head commit measured: `63e5ca7a45d0d3c6b48b4b63df09f28ec6f76b2a`
 
 ## Procedure
 - Build command for both sides:
@@ -25,30 +25,30 @@
 
 ## Results
 - Bundle bytes:
-  - `1,435,355 -> 1,433,928`
-  - delta: `-1,427` (`-0.1%`)
+  - `1,435,355 -> 1,440,956`
+  - delta: `+5,601` (`+0.4%`)
 - Empty `/ai` composer-ready:
-  - `358 ms -> 469 ms`
-  - delta: `+111 ms` (`+31.0%`)
+  - `358 ms -> 518 ms`
+  - delta: `+160 ms` (`+44.7%`)
 - Populated `/ai` timeline-ready:
-  - `70 ms -> 123 ms`
-  - delta: `+53 ms` (`+75.7%`)
+  - `70 ms -> 67 ms`
+  - delta: `-3 ms` (`-4.3%`)
 
 ## Notes
 - Closeout result: `FAIL`
-- The empty-route `composerReady` route marker stayed `null`, so the external scripted timer remained the authoritative composer metric for this run.
-- The populated fixture still lands on `50` initially rendered messages, so the `/ai`-only timeline windowing path does not materially improve the first populated open path in this measurement.
+- The follow-up route-local wave deferred history/sidebar chrome and export helpers out of the initial `/ai` chunk, moved global workspace context behind composer-ready idle time, and restored populated closeout performance by preloading the conversation list after composer-ready.
+- The external empty-route composer metric remained noisier than the internal route marker, so the bundle/composer side is still the blocking path even though populated timeline readiness is back near baseline.
 - Shared non-regression checks remained green through:
   - full `npx vitest run`
   - `TimelineRenderer.windowing-defaults.test.tsx`
   - existing project copilot and project conversation tests already in the suite
 
 ## Conclusion
-`SPD-005` should remain open. The first `/ai` reduction wave established useful instrumentation and safe shared-surface guards, but it did not meet the closeout thresholds.
+`SPD-005` should remain open. The latest `/ai` route-local wave fixed the populated-conversation regression, but the canonical bundle metric still regresses and the external empty-route composer timing remains unstable above the pinned closeout bar.
 
 ## Next Narrow Follow-up
 - Keep the shared composer and shared timeline contracts as they are.
-- Focus the next `/ai` wave on the still-expensive initial route path:
-  - empty-route composer readiness
-  - conversation history/sidebar data and hydration cost on `/ai`
-- Treat any additional timeline work as out of scope unless a new populated-route measurement shows the populated open path, not the sidebar/history path, is the dominant remaining cost.
+- Focus the next `/ai` wave on shared composer bundle trimming:
+  - still-eager optional input features on the `/ai` entry path
+  - especially features that can become lazy islands without forking the shared composer contract
+- Treat additional timeline work as out of scope unless a later populated-route measurement shows a new regression there.
