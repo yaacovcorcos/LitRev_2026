@@ -4,6 +4,7 @@
  */
 
 import type { ContextCaptureTarget } from "./context-capture";
+import type { AgentMode } from "./agent";
 
 // Copilot page context (which project tab the user is on)
 export type CopilotPage = "draft" | "protocol" | "ledger" | "study" | "overview" | "notes" | "memory" | "ai";
@@ -155,6 +156,7 @@ export type StreamPhase = "idle" | "streaming" | "tool_running" | "completing";
 // Chat options
 export type ChatOptions = {
     model?: string;
+    agentMode?: AgentMode;
     temperature?: number;
     maxTokens?: number;
     /** User-facing reasoning visibility mode. */

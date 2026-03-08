@@ -22,7 +22,7 @@ import {
     formatSummaryAsMessage,
     repairConversationHistory,
 } from "@/lib/agent/compaction";
-import { AVAILABLE_TOOLS, getToolDefinitions, executeTool } from "./tools";
+import { AVAILABLE_TOOLS, executeTool } from "./tools";
 import { startRun, endRun } from "@/lib/server/agent/run";
 import { emitEvent } from "@/lib/server/agent/events";
 import { createArtifact } from "@/lib/server/agent/artifacts";
@@ -441,7 +441,13 @@ class AIService {
         const identity = resolveAuthenticatedIdentity(options);
         const hasProjectScope = !!(options?.projectId && options.projectId !== null);
         const scope = hasProjectScope ? "project" as const : "global" as const;
-        const toolDefs = getToolDefinitions(undefined, scope);
+        const requestedMode: AgentMode = options?.agentMode || "general";
+        const agentMode = normalizeAgentMode(requestedMode);
+        const toolDefs = options?.tools ?? getContextualToolDefinitions({
+            agentMode,
+            scope,
+            studyLedger: null,
+        });
         if (toolDefs.length === 0) {
             yield* this.streamChat(messages, options);
             return;

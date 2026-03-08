@@ -10,7 +10,8 @@ import { createToolSchemaValidationErrorEnvelope } from "@/lib/ai/error-envelope
 import type { ToolAutonomyMeta, AutonomyLevel, AgentMode } from "@/types/agent";
 import type { ProtocolData } from "@/types/protocol";
 import { HARD_CAPS } from "@/types/agent";
-import { getEffectiveAllowedTools } from "@/lib/agent/router";
+import { DELEGATION_TOOL_NAMES, getContextualAllowedTools } from "@/lib/agent/router";
+import { isDelegationEnabled } from "@/lib/agent/feature-flags";
 import { pubmedSearchTool } from "./pubmed-search";
 import { addToLedgerTool } from "./add-to-ledger";
 import { excludeStudyTool } from "./exclude-study";
@@ -155,14 +156,20 @@ const GLOBAL_SCOPE_TOOL_ALLOWLIST = new Set<string>([
     "open_project",
     "create_project",
     "ask_user",
-    "delegate_search",
-    "delegate_screening",
-    "delegate_protocol",
 ]);
+
+const DELEGATION_TOOL_NAME_SET = new Set<string>(DELEGATION_TOOL_NAMES);
 
 export function isToolAllowedInScope(toolName: string, scope: ToolScope): boolean {
     if (scope === "project") return true;
     return GLOBAL_SCOPE_TOOL_ALLOWLIST.has(toolName);
+}
+
+function isToolEnabledByFeatureFlags(toolName: string): boolean {
+    if (DELEGATION_TOOL_NAME_SET.has(toolName)) {
+        return isDelegationEnabled();
+    }
+    return true;
 }
 
 /**
@@ -172,10 +179,13 @@ export function isToolAllowedInScope(toolName: string, scope: ToolScope): boolea
  * Scope filtering is applied first.
  */
 export function getToolDefinitions(agentMode?: AgentMode, scope: ToolScope = "project"): ToolDefinition[] {
-    let tools = AVAILABLE_TOOLS.filter((t) => isToolAllowedInScope(t.definition.name, scope));
+    let tools = AVAILABLE_TOOLS.filter((t) =>
+        isToolAllowedInScope(t.definition.name, scope)
+        && isToolEnabledByFeatureFlags(t.definition.name),
+    );
 
     if (agentMode) {
-        const allowedInMode = getEffectiveAllowedTools(agentMode);
+        const allowedInMode = getContextualAllowedTools(agentMode, scope);
         if (allowedInMode && allowedInMode.length > 0) {
             tools = tools.filter((t) => allowedInMode.includes(t.definition.name));
         }
