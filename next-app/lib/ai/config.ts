@@ -64,7 +64,7 @@ export const MODEL_CAPABILITY_REGISTRY = [
         capabilities: ["chat", "vision", "tools"],
         reasoningSupport: "none",
         temperatureSupport: "fixed_default_only",
-        selectable: true,
+        selectable: false,
         ui: {
             description: "Fast and efficient for simpler tasks",
             icon: "bolt",
@@ -108,7 +108,7 @@ export const MODEL_CAPABILITY_REGISTRY = [
         capabilities: ["chat", "vision", "tools"],
         reasoningSupport: "explicit",
         temperatureSupport: "full",
-        selectable: true,
+        selectable: false,
         ui: {
             description: "Best writing quality per dollar",
             icon: "edit_note",
@@ -136,7 +136,7 @@ export const MODEL_CAPABILITY_REGISTRY = [
         capabilities: ["chat", "vision", "tools"],
         reasoningSupport: "none",
         temperatureSupport: "full",
-        selectable: true,
+        selectable: false,
         ui: {
             description: "Fast and cheap, 1M context",
             icon: "flash_on",

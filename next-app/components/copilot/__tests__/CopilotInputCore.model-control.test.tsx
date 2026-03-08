@@ -44,7 +44,7 @@ describe("CopilotInputCore model control", () => {
                 isLoading={false}
                 sendMessage={sendMessage}
                 cancelStream={vi.fn()}
-                selectedModel="claude-haiku-4-5"
+                selectedModel="grok-4-1-fast"
                 onModelChange={vi.fn()}
                 showVoice={false}
             />,
@@ -58,7 +58,7 @@ describe("CopilotInputCore model control", () => {
             "Test message",
             "overview",
             undefined,
-            "claude-haiku-4-5",
+            "grok-4-1-fast",
             "general",
             undefined,
             undefined,
