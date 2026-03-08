@@ -16,6 +16,10 @@
     overflow-x: hidden;
 }
 
+.content[data-scroll-owner="child"] {
+    overflow: hidden;
+}
+
 .resizeHandle {
     width: 1px;
     cursor: col-resize;
@@ -50,15 +54,28 @@
 }
 
 @media (max-width: 900px) {
-    .grid {
+    .grid:not([data-copilot-collapse-mode="phone-only"]) {
         grid-template-columns: 1fr !important;
     }
 
-    .resizeHandle {
+    .grid:not([data-copilot-collapse-mode="phone-only"]) .resizeHandle {
         display: none;
     }
 
-    .copilotPane {
+    .grid:not([data-copilot-collapse-mode="phone-only"]) .copilotPane {
         display: none;
     }
+}
+
+/* Mirrors PHONE_MAX_WIDTH in lib/mobile/breakpoints.ts. */
+.grid[data-copilot-collapse-mode="phone-only"][data-viewport-class="phone"] {
+    grid-template-columns: 1fr !important;
+}
+
+.grid[data-copilot-collapse-mode="phone-only"][data-viewport-class="phone"] .resizeHandle {
+    display: none;
+}
+
+.grid[data-copilot-collapse-mode="phone-only"][data-viewport-class="phone"] .copilotPane {
+    display: none;
 }

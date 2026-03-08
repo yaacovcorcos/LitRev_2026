@@ -203,39 +203,45 @@ function ProtocolPageContent() {
 
     if (isLoadingProjects) {
         return (
-            <ProjectPageLayout mainClassName={styles.appMainOverride}>
-                <EmptyStateSkeleton className={styles.notFound} />
+            <ProjectPageLayout noMainPadding mainClassName={styles.appMainOverride}>
+                <div className={`${styles.page} surface-root`} data-surface-height="shell">
+                    <EmptyStateSkeleton className={styles.notFound} />
+                </div>
             </ProjectPageLayout>
         );
     }
 
     if (projectsError) {
         return (
-            <ProjectPageLayout mainClassName={styles.appMainOverride}>
-                <EmptyState
-                    variant="error"
-                    icon="cloud_off"
-                    title="Unable to load project"
-                    description={projectsError}
-                    primaryAction={{ label: "Retry", onClick: () => window.location.reload() }}
-                    secondaryAction={{ label: "Back to Dashboard", href: "/" }}
-                    className={styles.notFound}
-                />
+            <ProjectPageLayout noMainPadding mainClassName={styles.appMainOverride}>
+                <div className={`${styles.page} surface-root`} data-surface-height="shell">
+                    <EmptyState
+                        variant="error"
+                        icon="cloud_off"
+                        title="Unable to load project"
+                        description={projectsError}
+                        primaryAction={{ label: "Retry", onClick: () => window.location.reload() }}
+                        secondaryAction={{ label: "Back to Dashboard", href: "/" }}
+                        className={styles.notFound}
+                    />
+                </div>
             </ProjectPageLayout>
         );
     }
 
     if (!project) {
         return (
-            <ProjectPageLayout mainClassName={styles.appMainOverride}>
-                <EmptyState
-                    variant="error"
-                    icon="folder_off"
-                    title="Project not found"
-                    description="This project may have been deleted or you don't have access."
-                    primaryAction={{ label: "Back to Dashboard", href: "/" }}
-                    className={styles.notFound}
-                />
+            <ProjectPageLayout noMainPadding mainClassName={styles.appMainOverride}>
+                <div className={`${styles.page} surface-root`} data-surface-height="shell">
+                    <EmptyState
+                        variant="error"
+                        icon="folder_off"
+                        title="Project not found"
+                        description="This project may have been deleted or you don't have access."
+                        primaryAction={{ label: "Back to Dashboard", href: "/" }}
+                        className={styles.notFound}
+                    />
+                </div>
             </ProjectPageLayout>
         );
     }
@@ -403,7 +409,10 @@ function ProtocolPageContent() {
 
     return (
         <ProjectPageLayout
+            noMainPadding
             mainClassName={styles.appMainOverride}
+            contentScrollMode="child"
+            copilotCollapseMode="phone-only"
             copilot={{
                 page: "protocol",
                 section: activeSectionLabel ?? undefined,
@@ -419,7 +428,9 @@ function ProtocolPageContent() {
                 onInsert: activeSection ? handleInsert : undefined,
             }}
         >
-            <div className={styles.page}>{mainContent}</div>
+            <div className={`${styles.page} surface-root`} data-surface-height="shell">
+                {mainContent}
+            </div>
         </ProjectPageLayout>
     );
 }

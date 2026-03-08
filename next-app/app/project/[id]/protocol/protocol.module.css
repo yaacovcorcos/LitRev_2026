@@ -1,5 +1,6 @@
 /* Page wrapper with full height */
 .page {
+    flex: 1;
     height: 100%;
     min-height: 0;
     display: flex;
@@ -7,57 +8,13 @@
     overflow: hidden;
 }
 
-/* Override AppShell main padding */
+/* Embedded and standalone protocol both consume shell offset once via the
+   shared shell contract. This class only establishes a contained flex root. */
 .appMainOverride {
-    padding: 0 !important;
-    padding-top: var(--header-height, 44px) !important;
+    display: flex;
+    flex-direction: column;
+    min-height: var(--shell-content-min-height);
     overflow: hidden !important;
-    height: calc(100vh - var(--mobile-nav-offset, 0px));
-}
-
-/* Main body grid with resizable copilot panel */
-.body {
-    flex: 1;
-    min-height: 0;
-    display: grid;
-    grid-template-columns: 1fr 1px var(--copilot-width, 360px);
-    overflow: hidden;
-}
-
-/* Resize handle */
-.resizeHandle {
-    cursor: col-resize;
-    position: relative;
-    z-index: var(--z-resize-handle);
-}
-
-.resizeHandleHidden {
-    pointer-events: none;
-    opacity: 0;
-}
-
-.resizeHandle::before {
-    content: "";
-    position: absolute;
-    left: 0;
-    top: 0;
-    bottom: 0;
-    width: 100%;
-    background: rgba(var(--rgb-ui-contrast), 0.07);
-}
-
-.resizeHandle::after {
-    content: "";
-    position: absolute;
-    left: -6px;
-    right: -6px;
-    top: 0;
-    bottom: 0;
-    background: transparent;
-}
-
-.resizeHandle:hover::before {
-    background: rgba(var(--rgb-ui-contrast), 0.15);
 }
 
 /* Main content area */
@@ -76,6 +33,7 @@
     gap: 20px;
     overflow-y: auto;
     flex: 1;
+    min-height: 0;
 }
 
 .notFound {
@@ -805,21 +763,8 @@
 }
 
 /* Responsive */
-@media (max-width: 900px) {
-    .body {
-        grid-template-columns: 1fr !important;
-    }
-
-    /* hide resize handle and copilot panel on mobile */
-    .body > *:nth-child(2),
-    .body > *:nth-child(3) {
-        display: none;
-    }
-
-    .resizeHandle {
-        display: none;
-    }
-
+/* Mirrors PHONE_MAX_WIDTH in lib/mobile/breakpoints.ts. */
+@media (max-width: 767px) {
     .mainContent {
         padding: 16px;
     }

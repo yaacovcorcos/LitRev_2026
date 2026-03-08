@@ -1,11 +1,12 @@
 "use client";
 
-import { CSSProperties, ReactNode, useMemo } from "react";
+import { CSSProperties, ReactNode, useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { ProjectCopilot, type ProjectCopilotProps } from "@/components/ProjectCopilot";
 import { ResizableSplitter } from "@/components/ui/ResizableSplitter";
 import { useProjectShell } from "@/contexts/ProjectShellContext";
 import { useProjectCopilot } from "@/contexts/ProjectCopilotContext";
+import { getViewportClass, type ResponsiveViewportClass } from "@/lib/mobile/tiers";
 import styles from "./ProjectPageLayout.module.css";
 
 const RAIL_WIDTH = 44;
@@ -21,6 +22,10 @@ export type ProjectPageLayoutProps = {
     initiallyCollapsed?: boolean;
     /** AppShell passthrough: extra class on the main element */
     mainClassName?: string;
+    /** Standalone copilot collapse threshold. Defaults to legacy <900 behavior. */
+    copilotCollapseMode?: "legacy-mobile" | "phone-only";
+    /** Standalone scroll ownership. Defaults to wrapper scroll. */
+    contentScrollMode?: "wrapper" | "child";
 };
 
 /**
@@ -43,6 +48,8 @@ export function ProjectPageLayout({
     noMainPadding,
     initiallyCollapsed,
     mainClassName,
+    copilotCollapseMode = "legacy-mobile",
+    contentScrollMode = "wrapper",
 }: ProjectPageLayoutProps) {
     const { isEmbeddedInProjectShell } = useProjectShell();
 
@@ -73,7 +80,11 @@ export function ProjectPageLayout({
             initiallyCollapsed={initiallyCollapsed}
             mainClassName={mainClassName}
         >
-            <StandaloneCopilotGrid copilot={copilot}>
+            <StandaloneCopilotGrid
+                copilot={copilot}
+                copilotCollapseMode={copilotCollapseMode}
+                contentScrollMode={contentScrollMode}
+            >
                 {children}
             </StandaloneCopilotGrid>
         </AppShell>
@@ -86,12 +97,40 @@ export function ProjectPageLayout({
 function StandaloneCopilotGrid({
     children,
     copilot,
+    copilotCollapseMode,
+    contentScrollMode,
 }: {
     children: ReactNode;
     copilot: ProjectCopilotProps;
+    copilotCollapseMode: "legacy-mobile" | "phone-only";
+    contentScrollMode: "wrapper" | "child";
 }) {
     const { isCollapsed, panelWidth, setPanelWidth } = useProjectCopilot();
+    const [viewportClass, setViewportClass] = useState<ResponsiveViewportClass>(() => {
+        if (typeof window === "undefined") return "unknown";
+        return getViewportClass(window);
+    });
     const boundedWidth = clamp(panelWidth, 300, 560);
+
+    useEffect(() => {
+        if (copilotCollapseMode !== "phone-only") {
+            setViewportClass("unknown");
+            return;
+        }
+
+        const updateViewportClass = () => {
+            setViewportClass(getViewportClass(window));
+        };
+
+        updateViewportClass();
+        window.addEventListener("resize", updateViewportClass, { passive: true });
+        window.addEventListener("orientationchange", updateViewportClass, { passive: true });
+
+        return () => {
+            window.removeEventListener("resize", updateViewportClass);
+            window.removeEventListener("orientationchange", updateViewportClass);
+        };
+    }, [copilotCollapseMode]);
 
     const panelVars = useMemo<CSSProperties>(() => {
         const w = isCollapsed ? RAIL_WIDTH : boundedWidth;
@@ -100,8 +139,20 @@ function StandaloneCopilotGrid({
     }, [boundedWidth, isCollapsed]);
 
     return (
-        <div className={styles.grid} style={panelVars}>
-            <div className={styles.content}>{children}</div>
+        <div
+            className={styles.grid}
+            style={panelVars}
+            data-copilot-collapse-mode={copilotCollapseMode}
+            data-viewport-class={viewportClass}
+            data-testid="project-page-layout-grid"
+        >
+            <div
+                className={styles.content}
+                data-scroll-owner={contentScrollMode}
+                data-testid="project-page-layout-content"
+            >
+                {children}
+            </div>
 
             <ResizableSplitter
                 className={`${styles.resizeHandle} ${isCollapsed ? styles.resizeHandleHidden : ""}`}
