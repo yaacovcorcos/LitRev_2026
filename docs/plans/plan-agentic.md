@@ -104,7 +104,7 @@ Every fix entry must include:
 - **Plan Heuristic Guardrails:** Plan-before-act heuristics now require explicit extraction/writing verbs for `extract_pdf` and `update_note`, reducing false execution plans for read-only PDF/section questions.
 - **Delegation Runtime Now Uses The Shared Safety Contract:** delegated child runs now reuse the same autonomy-aware execution/finalization core as direct execution, level-1 delegated actions fail as structured approval-required blocks instead of running, delegated proposal artifacts stay reviewable unless direct policy allows auto-apply, and delegated `ask_user` bubbles through the existing parent `user_input_required` flow.
 - **Popup Runtime Is Still Lighter Than Copilot:** popup remains on a non-artifact path, so protocol mutation capability is not yet honest there; tracked under `FIX-003`.
-- **General Mode Is Still Too Broad:** default `general` behavior can overexpose tools and rely on prompt-era clarification behavior; tracked under `FIX-004`.
+- **General Mode Now Uses Explicit Honest Tool Surfaces:** normal agentic paths now assemble tools through contextual mode+scope filtering, `general` no longer widens to all tools, and disabled/global delegation tools are hidden before exposure. Clarification cleanup (`ask_user` vs `<choices>`) remains under `FIX-004`.
 - **Model Requests Now Use Per-Model Capability Policy:** one authoritative model capability registry now feeds a shared request-policy normalizer, OpenAI/xAI/Google/Anthropic all reuse it before send, fixed-default OpenAI models omit unsupported `temperature`, and unsupported explicit reasoning budgets fail locally as structured `model_capability` errors instead of raw provider 400s.
 - **Protocol Mutation Uses Shared Field-Aware Normalization:** `update_protocol`, same-turn tool-call sanitization, and repeat detection now reuse the same field/value normalize-classify path so unambiguous wrapper shapes are repaired consistently, whitespace-only field mismatches no longer diverge between validation and execution, and normalization/hashing paths cap nested input depth safely.
 - **Tool Prerequisites Now Gate High-Risk Actions Before Execution:** tool metadata now declares project/study/protocol prerequisites in the shared pre-execution path, screening actions also gate on resolvable non-empty criteria, and blocked actions emit structured `missing_prerequisite` envelopes before a tool runs. Generic PDF file existence is still verified inside PDF tools rather than the shared prerequisite vocabulary.
@@ -157,11 +157,11 @@ Every fix entry must include:
 
 - [ ] `FIX-004` General-mode scoping and clarification cleanup
   - Severity: `P1`
-  - Problem: `general` mode is too broad by default and global delegation affordances are misleading; `ask_user` and `<choices>` still overlap unclearly.
+  - Problem: clarification semantics still overlap unclearly, and future `general`-mode additions must stay within the new explicit scoped tool matrix.
   - Supporting detail: `docs/plans/agent-runtime-remediation/plan-general-scope-and-clarification.md`
   - Exit criteria:
-    - `general` mode is explicitly scoped by default
-    - global scope no longer exposes misleading delegation tools
+    - `general` mode remains explicitly scoped by default across main agentic paths
+    - disabled/global delegation tools remain absent from model-visible tool definitions
     - `ask_user` is the required-decision path and `<choices>` is optional-only
 
 - [ ] `FIX-005` Agentic docs, executable evals, and search provenance
@@ -340,6 +340,7 @@ These files are supporting documents. Status, priority, and closure rules live h
 
 ## Recently Completed
 
+- [x] Implemented `FIX-004a` tool-surface honesty: `general` mode now uses explicit project/global allowlists instead of widening to all tools, main agentic tool assembly in `ai-service` is mode-aware through the contextual helper, and disabled/global delegation tools are removed from model-visible definitions before the model can call them.
 - [x] Implemented `FIX-001` delegation safety and child clarification: delegated child runs now use the shared autonomy-aware execution/finalization core instead of direct tool execution, approval-required autonomy blocks surface as structured non-executed results, delegated proposal artifacts stay review-only unless direct policy allows auto-apply, and delegated `ask_user` requests bubble through the parent `user_input_required` path with parent-visible artifact metadata.
 - [x] Implemented `FIX-008` tool prerequisite gating: high-risk tools now declare project/study/protocol prerequisites in shared tool metadata, the shared pre-execution middleware/autonomy path blocks missing context before tool execution, screening actions also gate on non-empty criteria readiness, and blocked calls emit structured `missing_prerequisite` envelopes instead of generic tool failures.
 - [x] Hardened popup terminal-failure rendering under `FIX-011`: popup now keeps lightweight structured error metadata on assistant turns, annotates partial-output failures inline without persisting raw error text into transcript content, and has direct component coverage for deterministic and retryable terminal failure rendering.

@@ -15,32 +15,16 @@ export type RouterProjectState = {
 
 export interface AgentModeConfig {
     systemPromptKey: AgentMode;
-    /** Tool names allowed in this mode. Empty array = all tools (no restriction). */
+    /** Tool names allowed in this mode. General-mode scoping is contextualized separately. */
     allowedTools: string[];
     memoryScope: "project" | "study" | "user";
     description: string;
 }
 
-export const AGENT_MODE_CONFIG: Record<AgentMode, AgentModeConfig> = {
-    protocol: { systemPromptKey: "protocol", allowedTools: ["update_protocol", "update_criteria", "update_study", "search_pubmed", "search_semantic_scholar", "search_openalex", "store_memory", "forget_memory", "inspect_memory", "ask_user"], memoryScope: "project", description: "Defining PICO and criteria" },
-    scoping: { systemPromptKey: "scoping", allowedTools: ["search_pubmed", "search_semantic_scholar", "search_openalex", "recommend_studies", "store_memory", "forget_memory", "inspect_memory", "list_projects", "open_project", "ask_user"], memoryScope: "project", description: "Exploring the literature landscape" },
-    search: { systemPromptKey: "search", allowedTools: ["search_pubmed", "search_semantic_scholar", "search_openalex", "add_to_ledger", "recommend_studies", "read_protocol", "update_study", "store_memory", "forget_memory", "inspect_memory", "ask_user"], memoryScope: "project", description: "Finding studies" },
-    screening: { systemPromptKey: "screening", allowedTools: ["bulk_screening", "exclude_study", "delete_study", "extract_pdf", "read_study_content", "update_study", "store_memory", "forget_memory", "inspect_memory", "ask_user"], memoryScope: "study", description: "Evaluating studies" },
-    drafting: { systemPromptKey: "drafting", allowedTools: ["update_note", "read_study_content", "read_protocol", "read_ledger", "update_study", "store_memory", "forget_memory", "inspect_memory", "ask_user"], memoryScope: "project", description: "Writing sections" },
-    qa: { systemPromptKey: "qa", allowedTools: ["search_pubmed", "search_semantic_scholar", "search_openalex", "read_study_content", "read_protocol", "read_ledger", "update_study", "store_memory", "forget_memory", "inspect_memory", "ask_user"], memoryScope: "project", description: "Checking citations" },
-    general: { systemPromptKey: "general", allowedTools: [], memoryScope: "project", description: "General conversation" },
-};
-
-/** Scoped tool list for general mode when delegation is enabled. */
-const GENERAL_MODE_DELEGATION_TOOLS: string[] = [
-    "delegate_search",
-    "delegate_screening",
-    "delegate_protocol",
+export const GENERAL_PROJECT_CORE_TOOLS: string[] = [
     "read_protocol",
     "read_ledger",
     "read_study_content",
-    "update_note",
-    "update_study",
     "inspect_memory",
     "store_memory",
     "forget_memory",
@@ -50,16 +34,65 @@ const GENERAL_MODE_DELEGATION_TOOLS: string[] = [
     "ask_user",
 ];
 
+export const DELEGATION_TOOL_NAMES = [
+    "delegate_search",
+    "delegate_screening",
+    "delegate_protocol",
+] as const;
+
+const GENERAL_PROJECT_DELEGATION_TOOLS: string[] = [...DELEGATION_TOOL_NAMES];
+
+export const GENERAL_GLOBAL_TOOLS: string[] = [
+    "search_pubmed",
+    "search_semantic_scholar",
+    "search_openalex",
+    "inspect_memory",
+    "store_memory",
+    "forget_memory",
+    "list_projects",
+    "open_project",
+    "create_project",
+    "ask_user",
+];
+
+export const AGENT_MODE_CONFIG: Record<AgentMode, AgentModeConfig> = {
+    protocol: { systemPromptKey: "protocol", allowedTools: ["update_protocol", "update_criteria", "update_study", "search_pubmed", "search_semantic_scholar", "search_openalex", "store_memory", "forget_memory", "inspect_memory", "ask_user"], memoryScope: "project", description: "Defining PICO and criteria" },
+    scoping: { systemPromptKey: "scoping", allowedTools: ["search_pubmed", "search_semantic_scholar", "search_openalex", "recommend_studies", "store_memory", "forget_memory", "inspect_memory", "list_projects", "open_project", "ask_user"], memoryScope: "project", description: "Exploring the literature landscape" },
+    search: { systemPromptKey: "search", allowedTools: ["search_pubmed", "search_semantic_scholar", "search_openalex", "add_to_ledger", "recommend_studies", "read_protocol", "update_study", "store_memory", "forget_memory", "inspect_memory", "ask_user"], memoryScope: "project", description: "Finding studies" },
+    screening: { systemPromptKey: "screening", allowedTools: ["bulk_screening", "exclude_study", "delete_study", "extract_pdf", "read_study_content", "update_study", "store_memory", "forget_memory", "inspect_memory", "ask_user"], memoryScope: "study", description: "Evaluating studies" },
+    drafting: { systemPromptKey: "drafting", allowedTools: ["update_note", "read_study_content", "read_protocol", "read_ledger", "update_study", "store_memory", "forget_memory", "inspect_memory", "ask_user"], memoryScope: "project", description: "Writing sections" },
+    qa: { systemPromptKey: "qa", allowedTools: ["search_pubmed", "search_semantic_scholar", "search_openalex", "read_study_content", "read_protocol", "read_ledger", "update_study", "store_memory", "forget_memory", "inspect_memory", "ask_user"], memoryScope: "project", description: "Checking citations" },
+    general: { systemPromptKey: "general", allowedTools: GENERAL_PROJECT_CORE_TOOLS, memoryScope: "project", description: "General conversation" },
+};
+
 /**
- * Get the effective allowed tools for a mode, respecting feature flags.
- * General mode returns the delegation-scoped list when the flag is enabled,
- * otherwise returns [] (all tools, legacy behavior).
+ * Get the effective allowed tools for a mode in a given scope.
+ * General mode is always explicitly scoped; it never falls back to "all tools".
+ */
+export function getContextualAllowedTools(
+    mode: AgentMode,
+    scope: "project" | "global",
+): string[] {
+    if (mode !== "general") {
+        return AGENT_MODE_CONFIG[mode].allowedTools;
+    }
+
+    if (scope === "global") {
+        return GENERAL_GLOBAL_TOOLS;
+    }
+
+    if (isDelegationEnabled()) {
+        return [...GENERAL_PROJECT_CORE_TOOLS, ...GENERAL_PROJECT_DELEGATION_TOOLS];
+    }
+
+    return GENERAL_PROJECT_CORE_TOOLS;
+}
+
+/**
+ * Backwards-compatible project-scope view of the allowed tool set.
  */
 export function getEffectiveAllowedTools(mode: AgentMode): string[] {
-    if (mode === "general" && isDelegationEnabled()) {
-        return GENERAL_MODE_DELEGATION_TOOLS;
-    }
-    return AGENT_MODE_CONFIG[mode].allowedTools;
+    return getContextualAllowedTools(mode, "project");
 }
 
 /**
