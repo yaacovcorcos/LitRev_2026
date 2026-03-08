@@ -31,6 +31,7 @@ import { createArtifact, applyArtifact } from "@/lib/server/agent/artifacts";
 import { startRun, endRun } from "@/lib/server/agent/run";
 import { emitEvent } from "@/lib/server/agent/events";
 import { dropShadowedInvalidToolCalls, getToolCallRepeatKey } from "./tool-helpers";
+import { evaluateToolPrerequisites } from "./tool-prerequisites";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -76,6 +77,32 @@ export interface SubAgentResult {
     toolLog: { name: string; resultPreview: string }[];
     /** Error message if execution failed */
     error?: string;
+}
+
+async function resolveToolRepeatKey(
+    toolCall: ToolCall,
+    context: {
+        projectId?: string;
+        studyId?: string;
+        userId?: string;
+        runId?: string;
+        parentRunId?: string;
+        systemContexts?: SubAgentParams["systemContexts"];
+        signal?: AbortSignal;
+    },
+): Promise<string> {
+    const prerequisiteEvaluation = await evaluateToolPrerequisites({
+        name: toolCall.name,
+        args: toolCall.arguments,
+        callId: toolCall.id,
+        context,
+    });
+
+    if (!prerequisiteEvaluation.allowed) {
+        return prerequisiteEvaluation.repeatKey;
+    }
+
+    return getToolCallRepeatKey(toolCall);
 }
 
 function mapToolToArtifactType(toolName: string): ArtifactType | null {
@@ -306,11 +333,21 @@ export async function executeSubAgent(params: SubAgentParams): Promise<SubAgentR
                 break;
             }
 
-            // Check for doom loops
-            if (loop.recordToolCalls(collectedToolCalls.map((toolCall) => ({
+            const repeatKeyedToolCalls = await Promise.all(collectedToolCalls.map(async (toolCall) => ({
                 ...toolCall,
-                repeatKey: getToolCallRepeatKey(toolCall),
-            })))) {
+                repeatKey: await resolveToolRepeatKey(toolCall, {
+                    projectId: params.projectId,
+                    studyId: params.studyId,
+                    userId: params.userId,
+                    runId: childRunId ?? params.parentRunId,
+                    parentRunId: params.parentRunId,
+                    systemContexts: params.systemContexts,
+                    signal: params.signal,
+                }),
+            })));
+
+            // Check for doom loops
+            if (loop.recordToolCalls(repeatKeyedToolCalls)) {
                 lastContent = contentSoFar || "Repeat detected — stopping.";
                 break;
             }

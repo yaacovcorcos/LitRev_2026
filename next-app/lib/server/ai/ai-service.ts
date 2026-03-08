@@ -52,7 +52,7 @@ import { classifyAIError, toAIErrorEnvelope } from "./error-classification";
 import { retryAsync, sleep } from "@/lib/server/utils/retry";
 import { resolveReasoningMode } from "@/lib/ai/reasoning-visibility";
 import { createIdempotencyMiddleware, executeWithToolMiddleware, type ToolExecutionRequest, type ToolMiddleware } from "./tool-middleware";
-import { createToolPrerequisiteMiddleware } from "./tool-prerequisites";
+import { createToolPrerequisiteMiddleware, evaluateToolPrerequisites } from "./tool-prerequisites";
 import { resolveAuthenticatedIdentity } from "@/lib/server/auth/identity";
 import { computeLedgerCounts, computeStudyLedger } from "@/lib/server/ledger-utils";
 import {
@@ -100,6 +100,24 @@ function resolveRunActualModelMeta(
         };
     }
     return { actualModel: null, actualModelSource: "unknown" };
+}
+
+async function resolveToolRepeatKey(
+    toolCall: ToolCall,
+    context: ToolExecutionRequest["context"],
+): Promise<string> {
+    const prerequisiteEvaluation = await evaluateToolPrerequisites({
+        name: toolCall.name,
+        args: toolCall.arguments,
+        callId: toolCall.id,
+        context,
+    });
+
+    if (!prerequisiteEvaluation.allowed) {
+        return prerequisiteEvaluation.repeatKey;
+    }
+
+    return getToolCallRepeatKey(toolCall);
 }
 
 export type ToolRuntimeContext = {
@@ -577,11 +595,17 @@ class AIService {
                 return;
             }
 
-            // Check for repeated tool calls
-            if (loop.recordToolCalls(collectedToolCalls.map((toolCall) => ({
+            const repeatKeyedToolCalls = await Promise.all(collectedToolCalls.map(async (toolCall) => ({
                 ...toolCall,
-                repeatKey: getToolCallRepeatKey(toolCall),
-            })))) {
+                repeatKey: await resolveToolRepeatKey(toolCall, {
+                    projectId: options?.projectId,
+                    studyId: options?.studyId,
+                    userId: identity.userId,
+                }),
+            })));
+
+            // Check for repeated tool calls
+            if (loop.recordToolCalls(repeatKeyedToolCalls)) {
                 yield {
                     type: "done",
                     content: stopReasonMessage("repeat_detected"),
@@ -1303,11 +1327,19 @@ class AIService {
                     break;
                 }
 
-                // Check for repeated tool calls
-                if (loop.recordToolCalls(collectedToolCalls.map((toolCall) => ({
+                const repeatKeyedToolCalls = await Promise.all(collectedToolCalls.map(async (toolCall) => ({
                     ...toolCall,
-                    repeatKey: getToolCallRepeatKey(toolCall),
-                })))) {
+                    repeatKey: await resolveToolRepeatKey(toolCall, {
+                        projectId,
+                        studyId,
+                        userId,
+                        runId: run.id,
+                        protocolData: (protocolRow?.data as ProtocolData | null) ?? null,
+                    }),
+                })));
+
+                // Check for repeated tool calls
+                if (loop.recordToolCalls(repeatKeyedToolCalls)) {
                     break; // repeat_detected — shouldContinue will catch it next iteration
                 }
 

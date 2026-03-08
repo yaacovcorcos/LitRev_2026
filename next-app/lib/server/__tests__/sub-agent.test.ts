@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   streamChat: vi.fn(),
   getToolDefinitions: vi.fn(),
+  getTool: vi.fn(),
   executeTool: vi.fn(),
   createArtifact: vi.fn(),
   applyArtifact: vi.fn(),
@@ -10,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   startRun: vi.fn(),
   endRun: vi.fn(),
   emitEvent: vi.fn(),
+  protocolFindUnique: vi.fn(),
 }));
 
 vi.mock("@/lib/server/ai/ai-service", () => ({
@@ -20,7 +22,16 @@ vi.mock("@/lib/server/ai/ai-service", () => ({
 
 vi.mock("@/lib/server/ai/tools/base", () => ({
   getToolDefinitions: mocks.getToolDefinitions,
+  getTool: mocks.getTool,
   executeTool: mocks.executeTool,
+}));
+
+vi.mock("@/lib/server/prisma", () => ({
+  prisma: {
+    protocol: {
+      findUnique: mocks.protocolFindUnique,
+    },
+  },
 }));
 
 vi.mock("@/lib/server/agent/artifacts", () => ({
@@ -49,6 +60,8 @@ describe("executeSubAgent", () => {
     mocks.getToolDefinitions.mockReturnValue([
       { name: "update_protocol", description: "d", parameters: {} },
     ]);
+    mocks.getTool.mockReturnValue(undefined);
+    mocks.protocolFindUnique.mockReset();
     mocks.startRun.mockResolvedValue({ id: "sub-run-1" });
     mocks.endRun.mockResolvedValue({ id: "sub-run-1" });
     mocks.emitEvent.mockResolvedValue({ id: "evt-1" });

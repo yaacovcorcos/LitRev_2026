@@ -61,6 +61,27 @@ describe("tool prerequisites", () => {
         expect(evaluation.envelope.code).toBe("STUDY_CONTEXT_REQUIRED");
     });
 
+    it("uses the same repeat key for blocked study actions even when args differ", async () => {
+        const first = await evaluateToolPrerequisites({
+            name: "exclude_study",
+            args: { reason: "Wrong population" },
+            callId: "c1",
+            context: { projectId: "project-1" },
+        });
+        const second = await evaluateToolPrerequisites({
+            name: "exclude_study",
+            args: { reason: "Outcome mismatch", confidence: "high" },
+            callId: "c2",
+            context: { projectId: "project-1" },
+        });
+
+        expect(first.allowed).toBe(false);
+        expect(second.allowed).toBe(false);
+        if (first.allowed || second.allowed) throw new Error("Expected blocked evaluations");
+        expect(first.repeatKey).toBe("exclude_study:STUDY_CONTEXT_REQUIRED");
+        expect(second.repeatKey).toBe(first.repeatKey);
+    });
+
     it("accepts criteria-required tools when protocol data already has criteria", async () => {
         const evaluation = await evaluateToolPrerequisites({
             name: "bulk_screening",
