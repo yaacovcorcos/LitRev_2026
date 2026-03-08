@@ -229,7 +229,7 @@ function parseAIJson(content: string): Record<string, unknown> | null {
 
 /**
  * Stage 1 AI: Quick extraction of bibliographic metadata + abstract
- * Uses grok-4-1-fast for speed and cost
+ * Uses a fast, cost-effective AI model for this stage
  */
 export async function quickExtractWithAI(
     text: string,
@@ -321,7 +321,7 @@ export async function quickExtractWithAI(
 
 /**
  * Stage 2 AI: Deep analysis — summary, study type, keywords, quality
- * Uses grok-4-1-fast for nuanced analysis
+ * Uses an AI model for nuanced analysis
  */
 export async function deepAnalyzeWithAI(
     text: string,
