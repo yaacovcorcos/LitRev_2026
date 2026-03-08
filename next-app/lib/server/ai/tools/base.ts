@@ -82,6 +82,13 @@ export interface ToolExecutionContext {
     runId?: string;
     /** Parent run ID when executing inside a sub-agent */
     parentRunId?: string;
+    /** Parent-visible conversation ID for artifact routing when available. */
+    conversationId?: string;
+    /** Cached autonomy configuration to avoid repeated DB reads across delegated tool calls. */
+    autonomyConfig?: {
+        preset: string;
+        toolOverrides: Record<string, unknown>;
+    };
     /**
      * Assembled system-context blocks from the parent loop.
      * Delegation tools pass these to sub-agents so they inherit grounded context.

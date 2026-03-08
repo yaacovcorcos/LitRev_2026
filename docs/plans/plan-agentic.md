@@ -102,7 +102,7 @@ Every fix entry must include:
 - **Reasoning Stream Support (Current):** `reasoning_*` stream events are currently wired end-to-end for Anthropic responses. OpenAI/xAI models can run normally, but their provider adapters do not yet emit normalized reasoning stream parts in the same pipeline.
 - **Proposal-State Tool Context:** Proposal-style tool results now surface whether they are `proposed` vs `auto_applied` in the model-visible tool-message context, so assistant replies can distinguish review-only changes from already-applied ones.
 - **Plan Heuristic Guardrails:** Plan-before-act heuristics now require explicit extraction/writing verbs for `extract_pdf` and `update_note`, reducing false execution plans for read-only PDF/section questions.
-- **Delegation Runtime Exists But Is Not Yet Safe Enough:** specialist delegation is shipped behind flags, but child autonomy and child clarification still have correctness gaps tracked under `FIX-001`.
+- **Delegation Runtime Now Uses The Shared Safety Contract:** delegated child runs now reuse the same autonomy-aware execution/finalization core as direct execution, level-1 delegated actions fail as structured approval-required blocks instead of running, delegated proposal artifacts stay reviewable unless direct policy allows auto-apply, and delegated `ask_user` bubbles through the existing parent `user_input_required` flow.
 - **Popup Runtime Is Still Lighter Than Copilot:** popup remains on a non-artifact path, so protocol mutation capability is not yet honest there; tracked under `FIX-003`.
 - **General Mode Is Still Too Broad:** default `general` behavior can overexpose tools and rely on prompt-era clarification behavior; tracked under `FIX-004`.
 - **Model Requests Now Use Per-Model Capability Policy:** one authoritative model capability registry now feeds a shared request-policy normalizer, OpenAI/xAI/Google/Anthropic all reuse it before send, fixed-default OpenAI models omit unsupported `temperature`, and unsupported explicit reasoning budgets fail locally as structured `model_capability` errors instead of raw provider 400s.
@@ -127,12 +127,12 @@ Every fix entry must include:
 ## Active Fixes
 *Immediate remediation work for shipped behavior that is broken, misleading, or lower quality than the intended contract.*
 
-- [ ] `FIX-001` Delegation safety and child clarification
+- [x] `FIX-001` Delegation safety and child clarification
   - Severity: `P0`
-  - Problem: delegated child runs can bypass review-only constraints and child `ask_user` requests do not surface correctly.
+  - Problem: delegated child runs could bypass review-only constraints and child `ask_user` requests did not surface correctly.
   - Supporting detail: `docs/plans/agent-runtime-remediation/plan-delegation-safety.md`
   - Exit criteria:
-    - delegated child runs cannot auto-apply changes that direct execution would keep review-only
+    - delegated child runs cannot auto-apply changes that direct execution keeps review-only
     - delegated child `ask_user` emits real `user_input_required` UI through the parent flow
     - parent-visible artifact ownership and tracing remain intact
 
@@ -340,6 +340,7 @@ These files are supporting documents. Status, priority, and closure rules live h
 
 ## Recently Completed
 
+- [x] Implemented `FIX-001` delegation safety and child clarification: delegated child runs now use the shared autonomy-aware execution/finalization core instead of direct tool execution, approval-required autonomy blocks surface as structured non-executed results, delegated proposal artifacts stay review-only unless direct policy allows auto-apply, and delegated `ask_user` requests bubble through the parent `user_input_required` path with parent-visible artifact metadata.
 - [x] Implemented `FIX-008` tool prerequisite gating: high-risk tools now declare project/study/protocol prerequisites in shared tool metadata, the shared pre-execution middleware/autonomy path blocks missing context before tool execution, screening actions also gate on non-empty criteria readiness, and blocked calls emit structured `missing_prerequisite` envelopes instead of generic tool failures.
 - [x] Hardened popup terminal-failure rendering under `FIX-011`: popup now keeps lightweight structured error metadata on assistant turns, annotates partial-output failures inline without persisting raw error text into transcript content, and has direct component coverage for deterministic and retryable terminal failure rendering.
 - [x] Implemented `FIX-010` model capability negotiation: one authoritative model registry now drives per-model request-policy normalization, OpenAI/xAI/Google/Anthropic all reuse shared request builders for `chat()` and `streamChat()`, fixed-default OpenAI models omit unsupported temperature params, and unsupported explicit reasoning budgets fail locally as structured `model_capability` errors.

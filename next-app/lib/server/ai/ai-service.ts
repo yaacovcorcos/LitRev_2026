@@ -130,6 +130,10 @@ export type ToolRuntimeContext = {
         autonomyContext?: string;
     };
     protocolData?: ProtocolData | null;
+    autonomyConfig?: {
+        preset: string;
+        toolOverrides: Record<string, unknown>;
+    };
 };
 
 class AIService {

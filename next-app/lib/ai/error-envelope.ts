@@ -145,6 +145,23 @@ export function createToolSchemaValidationErrorEnvelope(
     };
 }
 
+export function createAutonomyBlockedErrorEnvelope(params: {
+    toolName: string;
+    reason: "disabled_by_autonomy" | "approval_required";
+}): AIErrorEnvelope {
+    return {
+        kind: "autonomy_blocked",
+        code: params.reason === "disabled_by_autonomy"
+            ? "TOOL_DISABLED_BY_AUTONOMY"
+            : "TOOL_APPROVAL_REQUIRED",
+        retryable: false,
+        source: "autonomy_policy",
+        message: params.reason === "disabled_by_autonomy"
+            ? `Tool "${params.toolName}" is disabled by autonomy policy.`
+            : `Tool "${params.toolName}" requires direct approval before it can run.`,
+    };
+}
+
 export function extractEnvelopeStatus(value: unknown): number | undefined {
     return asNumber(value);
 }
