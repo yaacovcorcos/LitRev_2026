@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+    buildUnexpectedTerminalErrorState,
     buildClientErrorState,
     extractLegacyRecoveryError,
     formatStreamErrorForUI,
+    hasCanonicalFailureFallbackText,
+    hasRenderedErrorMatch,
     isDeterministicCapabilityFailure,
     isRetryableTerminalReason,
     isSameRenderedError,
@@ -110,6 +113,51 @@ describe("formatStreamErrorForUI", () => {
         })).toBe(true);
     });
 
+    it("matches equivalent rendered errors across generic item collections", () => {
+        const items = [{
+            text: "Bad arguments",
+            meta: {
+                kind: "tool_call_parse",
+                code: "TOOL_CALL_ARGS_PARSE_FAILED",
+                retryable: false,
+                source: "provider_tool_call",
+                message: "Bad arguments",
+            },
+        }];
+
+        expect(hasRenderedErrorMatch({
+            items,
+            nextMessage: "Bad arguments",
+            nextMeta: {
+                kind: "tool_call_parse",
+                code: "TOOL_CALL_ARGS_PARSE_FAILED",
+                retryable: false,
+                source: "provider_tool_call",
+                message: "Bad arguments",
+            },
+            getMessage: (item) => item.text,
+            getErrorMeta: (item) => item.meta,
+        })).toBe(true);
+    });
+
+    it("matches canonical fallback text across generic item collections", () => {
+        const items = [{
+            text: "I couldn't complete that request: GPT-5.2 does not support an explicit reasoning budget.",
+        }];
+
+        expect(hasCanonicalFailureFallbackText({
+            items,
+            streamError: {
+                kind: "model_capability",
+                code: "UNSUPPORTED_REASONING_CAPABILITY",
+                retryable: false,
+                source: "request_policy",
+                message: "GPT-5.2 does not support an explicit reasoning budget.",
+            },
+            getText: (item) => item.text,
+        })).toBe(true);
+    });
+
     it("matches rendered structured errors by code, source, and message", () => {
         expect(isSameRenderedError({
             existingMessage: "Bad arguments",
@@ -156,6 +204,24 @@ describe("formatStreamErrorForUI", () => {
         expect(isRetryableTerminalReason("timed_out")).toBe(true);
         expect(isRetryableTerminalReason("failed_network")).toBe(true);
         expect(isRetryableTerminalReason("failed_server")).toBe(false);
+    });
+
+    it("builds retryable unexpected terminal errors from terminal reason", () => {
+        expect(buildUnexpectedTerminalErrorState("timed_out")).toMatchObject({
+            message: "The response timed out. Retry to continue.",
+            retryable: true,
+            errorMeta: {
+                retryable: true,
+            },
+        });
+
+        expect(buildUnexpectedTerminalErrorState("failed_server")).toMatchObject({
+            message: "The stream ended unexpectedly. Retry to continue.",
+            retryable: false,
+            errorMeta: {
+                retryable: false,
+            },
+        });
     });
 
     it("matches canonical fallback with reason text from structured errors", () => {

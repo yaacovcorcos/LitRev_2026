@@ -1,8 +1,21 @@
 import { describe, expect, it, vi } from "vitest";
-import { createAiStreamRuntime } from "@/lib/ai/ai-stream-runtime";
+import {
+  ABNORMAL_END_TOOL_FAILURE_SUMMARY,
+  createAiStreamRuntime,
+  shouldFailRunningToolsOnAbnormalEnd,
+} from "@/lib/ai/ai-stream-runtime";
 import type { TimelineItem } from "@/types/timeline";
 
 describe("createAiStreamRuntime", () => {
+  it("flags only abnormal failure terminal reasons for unfinished-tool cleanup", () => {
+    expect(shouldFailRunningToolsOnAbnormalEnd("failed_network")).toBe(true);
+    expect(shouldFailRunningToolsOnAbnormalEnd("failed_server")).toBe(true);
+    expect(shouldFailRunningToolsOnAbnormalEnd("timed_out")).toBe(true);
+    expect(shouldFailRunningToolsOnAbnormalEnd("cancelled_by_user")).toBe(false);
+    expect(shouldFailRunningToolsOnAbnormalEnd("completed")).toBe(false);
+    expect(ABNORMAL_END_TOOL_FAILURE_SUMMARY).toBe("Run ended before tool completion.");
+  });
+
   it("appends structured error items for shared stream_error intents", () => {
     const timeline = new Map<string, TimelineItem[]>();
     const getItems = (conversationId: string) => timeline.get(conversationId) ?? [];

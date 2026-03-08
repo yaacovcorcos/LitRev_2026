@@ -2,6 +2,7 @@ import type { ArtifactStatus, ArtifactType } from "@/types/artifacts";
 import type { AIStreamChunk, ChoiceOption, CopilotPage, UserInputRequest } from "@/types/ai";
 import type { TimelineItem } from "@/types/timeline";
 import { dispatchProjectDataChanged } from "@/lib/project-data-events";
+import type { StreamTerminalReason } from "@/lib/ai/stream-lifecycle";
 import {
   buildClientErrorState,
   isDeterministicCapabilityFailure,
@@ -43,6 +44,16 @@ export type AiStreamRuntime = {
   getState: () => SharedStreamState;
   getLastRunEndToolCounts: () => { beforeClear: number; afterClear: number } | null;
 };
+
+export const ABNORMAL_END_TOOL_FAILURE_SUMMARY = "Run ended before tool completion.";
+
+export function shouldFailRunningToolsOnAbnormalEnd(
+  terminalReason: StreamTerminalReason | null,
+): boolean {
+  return terminalReason === "failed_network"
+    || terminalReason === "failed_server"
+    || terminalReason === "timed_out";
+}
 
 export function createAiStreamRuntime(deps: AiStreamRuntimeDeps): AiStreamRuntime {
   let currentConversationId = deps.initialConversationId;

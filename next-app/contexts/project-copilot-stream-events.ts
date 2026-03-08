@@ -13,6 +13,7 @@ import {
   isDeterministicCapabilityFailure,
   matchesCanonicalFailureFallback,
 } from "@/lib/ai/stream-error-ui";
+import { ABNORMAL_END_TOOL_FAILURE_SUMMARY } from "@/lib/ai/ai-stream-runtime";
 
 export type StreamMutableState = SharedStreamState;
 
@@ -40,6 +41,27 @@ export function createInitialProjectStreamState(
   overrides?: Partial<StreamMutableState>,
 ): StreamMutableState {
   return createInitialSharedStreamState(overrides);
+}
+
+export function failRunningProjectToolActivityMessages(
+  messages: CopilotMessage[],
+  summary = ABNORMAL_END_TOOL_FAILURE_SUMMARY,
+): CopilotMessage[] {
+  const completedAt = new Date().toISOString();
+  return messages.map((message) => (
+    message.toolActivity?.status === "running"
+      ? {
+          ...message,
+          toolActivity: {
+            ...message.toolActivity,
+            status: "failed",
+            summary,
+            updatedAt: completedAt,
+            completedAt,
+          },
+        }
+      : message
+  ));
 }
 
 function upsertAssistantMessage(

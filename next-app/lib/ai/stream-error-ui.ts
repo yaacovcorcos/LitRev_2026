@@ -106,6 +106,38 @@ function inferRetryableFromMessage(message: string): boolean {
     return false;
 }
 
+type GenericMessageExtractor<T> = (item: T) => string | null | undefined;
+type GenericMetaExtractor<T> = (item: T) => AIErrorEnvelope | null | undefined;
+
+export function hasRenderedErrorMatch<T>(params: {
+    items: T[];
+    nextMessage: string;
+    nextMeta?: AIErrorEnvelope | null;
+    getMessage: GenericMessageExtractor<T>;
+    getErrorMeta: GenericMetaExtractor<T>;
+}): boolean {
+    return params.items.some((item) => isSameRenderedError({
+        existingMessage: params.getMessage(item) ?? null,
+        existingMeta: params.getErrorMeta(item) ?? null,
+        nextMessage: params.nextMessage,
+        nextMeta: params.nextMeta ?? null,
+    }));
+}
+
+export function hasCanonicalFailureFallbackText<T>(params: {
+    items: T[];
+    streamError: unknown;
+    getText: GenericMessageExtractor<T>;
+}): boolean {
+    return params.items.some((item) => {
+        const text = params.getText(item);
+        return typeof text === "string" && matchesCanonicalFailureFallback({
+            assistantText: text,
+            streamError: params.streamError,
+        });
+    });
+}
+
 export function buildClientErrorState(error: unknown): {
     message: string;
     retryable: boolean;
@@ -192,6 +224,26 @@ export function isSameRenderedError(params: {
 
 export function isRetryableTerminalReason(reason: StreamTerminalReason | null): boolean {
     return reason === "failed_network" || reason === "timed_out";
+}
+
+export function buildUnexpectedTerminalErrorState(reason: StreamTerminalReason): {
+    message: string;
+    retryable: boolean;
+    errorMeta: AIErrorEnvelope;
+} {
+    const message = reason === "timed_out"
+        ? "The response timed out. Retry to continue."
+        : "The stream ended unexpectedly. Retry to continue.";
+    const retryable = isRetryableTerminalReason(reason);
+    const base = buildClientErrorState(message);
+    return {
+        message: base.message,
+        retryable,
+        errorMeta: {
+            ...base.errorMeta,
+            retryable,
+        },
+    };
 }
 
 export function isDeterministicCapabilityFailure(errorMeta: AIErrorEnvelope | null | undefined): boolean {

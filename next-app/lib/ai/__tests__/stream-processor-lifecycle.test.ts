@@ -90,12 +90,24 @@ describe("processAIStream terminal lifecycle", () => {
     });
 
     const { processAIStream } = await import("@/lib/ai/stream-processor");
+    const onChunk = vi.fn();
 
     await expect(processAIStream({
       reader: {} as ReadableStreamDefaultReader<Uint8Array>,
       throwOnErrorChunk: true,
-      onChunk: () => {},
+      onChunk,
     })).rejects.toBeInstanceOf(AIErrorWithEnvelope);
+    expect(onChunk).toHaveBeenCalledWith({
+      type: "error",
+      error: "The model returned invalid arguments for update_protocol.",
+      errorMeta: {
+        kind: "tool_call_parse",
+        code: "TOOL_CALL_ARGS_PARSE_FAILED",
+        retryable: false,
+        source: "provider_tool_call",
+        message: "The model returned invalid arguments for update_protocol.",
+      },
+    });
   });
 
   it("defaults legacy error chunks without metadata to retryable", async () => {

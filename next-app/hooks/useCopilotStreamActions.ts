@@ -22,20 +22,28 @@ import type { ArtifactData, ArtifactStatus } from "@/types/artifacts";
 import type { AgentMode } from "@/types/agent";
 import type { ChoiceOption, CopilotPage, ReasoningMode, StreamPhase, UserInputRequest } from "@/types/ai";
 import type { ContextCaptureTarget } from "@/types/context-capture";
-import { handleProjectCopilotStreamChunk } from "@/contexts/project-copilot-stream-events";
+import {
+    failRunningProjectToolActivityMessages,
+    handleProjectCopilotStreamChunk,
+} from "@/contexts/project-copilot-stream-events";
 import type { ArtifactActionContract } from "@/lib/artifacts/action-contract";
 import { resolveReasoningRequest } from "@/lib/ai/reasoning-request";
 import {
+    buildUnexpectedTerminalErrorState,
     buildClientErrorState,
     formatStreamErrorForUI,
-    isSameRenderedError,
-    matchesCanonicalFailureFallback,
+    hasCanonicalFailureFallbackText,
+    hasRenderedErrorMatch,
     shouldSuppressClientFallback,
 } from "@/lib/ai/stream-error-ui";
 import { recordChatUnificationMetric } from "@/lib/ai/chat-unification-telemetry";
 import { terminalReasonFromThrownError, type StreamTerminalReason } from "@/lib/ai/stream-lifecycle";
 import { recordReliabilityMetric } from "@/lib/ai/reliability-telemetry";
 import type { RetryModelExpectation } from "@/types/chat-unification";
+import {
+    ABNORMAL_END_TOOL_FAILURE_SUMMARY,
+    shouldFailRunningToolsOnAbnormalEnd,
+} from "@/lib/ai/ai-stream-runtime";
 import type { PendingAttachment, ApproveArtifactsBatchResult } from "@/types/copilot-context";
 import type { useCopilotConversations } from "@/hooks/useCopilotConversations";
 
@@ -148,6 +156,8 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
         let unresolvedCountBeforeClear: number | null = null;
         let unresolvedCountAfterClear: number | null = null;
         let terminalReason: StreamTerminalReason | null = null;
+        let emittedTerminalError = false;
+        let aborted = false;
         const requestKey = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
             ? crypto.randomUUID()
             : `project-stream-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -385,6 +395,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
         } catch (error) {
             // Silently ignore aborted requests
             if (error instanceof DOMException && error.name === "AbortError") {
+                aborted = true;
                 terminalReason = terminalReasonFromThrownError(error, {
                     isUserAbort: userCancelRequestedRef.current,
                 });
@@ -425,27 +436,29 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
             setPendingUserInput(null);
             const errorState = buildClientErrorState(error);
             updateState((prev) => {
-                const hasRenderedError = prev.messages.some((message) =>
-                    message.sender === "ai" && isSameRenderedError({
-                        existingMessage: message.text,
-                        existingMeta: message.streamError,
-                        nextMessage: errorState.message,
-                        nextMeta: errorState.errorMeta,
-                    })
-                );
+                const hasRenderedError = hasRenderedErrorMatch({
+                    items: prev.messages.filter((message) => message.sender === "ai"),
+                    nextMessage: errorState.message,
+                    nextMeta: errorState.errorMeta,
+                    getMessage: (message) => message.text,
+                    getErrorMeta: (message) => message.streamError,
+                });
                 const shouldSuppressFallback = shouldSuppressClientFallback({
                     errorMeta: errorState.errorMeta,
-                    hasAssistantContent: matchesCanonicalFailureFallback({
-                        assistantText: fullContent,
+                    hasAssistantContent: hasCanonicalFailureFallbackText({
+                        items: prev.messages.filter((message) => message.sender === "ai" && !message.streamError),
                         streamError: errorState.errorMeta,
+                        getText: (message) => message.text,
                     }),
                     hasRenderedError,
                 });
 
                 if (shouldSuppressFallback) {
+                    emittedTerminalError = true;
                     return prev;
                 }
 
+                emittedTerminalError = true;
                 const nextMessage: CopilotMessage = {
                     id: aiMessageCreated ? `error-${Date.now()}` : aiMessageId,
                     sender: "ai",
@@ -479,6 +492,44 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
             }
             if (abortControllerRef.current === controller) {
                 abortControllerRef.current = null;
+            }
+            if (!aborted && shouldFailRunningToolsOnAbnormalEnd(terminalReason)) {
+                updateState((prev) => ({
+                    ...prev,
+                    messages: failRunningProjectToolActivityMessages(
+                        prev.messages,
+                        ABNORMAL_END_TOOL_FAILURE_SUMMARY,
+                    ),
+                }));
+            }
+            if (!aborted && terminalReason && shouldFailRunningToolsOnAbnormalEnd(terminalReason) && !emittedTerminalError) {
+                const errorState = buildUnexpectedTerminalErrorState(terminalReason);
+                updateState((prev) => {
+                    const hasRenderedError = hasRenderedErrorMatch({
+                        items: prev.messages.filter((message) => message.sender === "ai"),
+                        nextMessage: errorState.message,
+                        nextMeta: errorState.errorMeta,
+                        getMessage: (message) => message.text,
+                        getErrorMeta: (message) => message.streamError,
+                    });
+                    if (hasRenderedError) {
+                        emittedTerminalError = true;
+                        return prev;
+                    }
+                    emittedTerminalError = true;
+                    const nextMessage: CopilotMessage = {
+                        id: aiMessageCreated ? `terminal-error-${Date.now()}` : aiMessageId,
+                        sender: "ai",
+                        text: errorState.message,
+                        streamError: errorState.errorMeta,
+                        createdAt: new Date().toISOString(),
+                        context: { page, section },
+                    };
+                    return {
+                        ...prev,
+                        messages: [...prev.messages, nextMessage],
+                    };
+                });
             }
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
