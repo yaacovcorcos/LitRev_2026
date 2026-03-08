@@ -293,8 +293,8 @@ Rules:
     - populated `/ai` timeline-ready: `>= 15%` or `150 ms` improvement
   - Current measured status vs baseline commit `31d45033696c3c54d9b223bb6576fc933e22bc4c`:
     - bundle bytes still regress by `5,601` bytes (`+0.4%`)
-    - empty `/ai` composer-ready improved to `342 ms` (`-16 ms`, `-4.5%`) but still misses the closeout threshold
-    - populated `/ai` timeline-ready improved to `58 ms` (`-12 ms`, `-17.1%`) and is now better than the pinned baseline
+    - empty `/ai` composer-ready remains unstable and the latest post-commit closeout run measured `518 ms` (`+160 ms`, `+44.7%`)
+    - populated `/ai` timeline-ready recovered to `67 ms` (`-3 ms`, `-4.3%`), so the long-history regression is no longer the dominant blocker
   - Next narrow follow-up should target shared composer bundle cost, especially still-eager optional input features on `/ai`; do not fork the shared composer and do not expand shared timeline semantics again unless a later populated-route measurement shows a new regression there.
 - [ ] `SPD-006` Expand the probe matrix to nightly-only routes and slow-network coverage.
   - Nightly coverage must run from the separate `nightlyRoutes` / `nightlyProfiles` matrix contract and write to `output/performance/nightly/**`; do not overload the PR-gated mandatory matrix or `output/performance/results/results-<sha>.json`.
