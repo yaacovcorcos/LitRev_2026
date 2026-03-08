@@ -9,7 +9,7 @@
 import type { AIStreamChunk, ToolCall, ToolResult, ToolResultArtifact } from "@/types/ai";
 import type { AgentMode } from "@/types/agent";
 import { isToolAllowedInScope, getTool, resolveAutonomyLevel } from "./tools";
-import { getEffectiveAllowedTools } from "@/lib/agent/router";
+import { getContextualAllowedTools } from "@/lib/agent/router";
 import type { ToolResultWithArtifactState } from "@/lib/agent/compaction";
 import { emitEvent } from "@/lib/server/agent/events";
 import { createArtifact, applyArtifact } from "@/lib/server/agent/artifacts";
@@ -144,7 +144,7 @@ export async function executeToolWithAutonomyCore(
     }
 
     if (agentMode) {
-        const allowed = getEffectiveAllowedTools(agentMode);
+        const allowed = getContextualAllowedTools(agentMode, scope);
         if (allowed && allowed.length > 0 && !allowed.includes(toolCall.name)) {
             const result = createScopeOrModeBlockedResult(
                 toolCall.id,

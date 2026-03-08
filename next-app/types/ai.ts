@@ -169,6 +169,8 @@ export type ChatOptions = {
     additionalContext?: string;
     systemPrompt?: string;
     tools?: ToolDefinition[];
+    /** Server-only escape hatch for explicitly curated tool-definition overrides. */
+    toolDefinitionsTrusted?: boolean;
     conversationId?: string;
     projectId?: string;
     studyId?: string;

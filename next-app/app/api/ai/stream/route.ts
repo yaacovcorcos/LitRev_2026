@@ -240,6 +240,7 @@ export async function POST(request: NextRequest) {
                                         {
                                             ...scopedOptions,
                                             tools: popupToolDefinitions,
+                                            toolDefinitionsTrusted: true,
                                             signal: request.signal,
                                         },
                                     )) {

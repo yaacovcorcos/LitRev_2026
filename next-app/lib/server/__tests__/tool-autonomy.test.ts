@@ -12,7 +12,7 @@ const mocks = vi.hoisted(() => {
     isToolAllowedInScope: vi.fn(),
     getTool: vi.fn(),
     resolveAutonomyLevel: vi.fn(),
-    getEffectiveAllowedTools: vi.fn(),
+    getContextualAllowedTools: vi.fn(),
     getAutonomyConfig: vi.fn(),
     getToolAutonomyLevel: vi.fn(),
     startToolSpan: vi.fn(() => span),
@@ -36,7 +36,7 @@ vi.mock("@/lib/server/ai/tools", () => ({
 }));
 
 vi.mock("@/lib/agent/router", () => ({
-  getEffectiveAllowedTools: mocks.getEffectiveAllowedTools,
+  getContextualAllowedTools: mocks.getContextualAllowedTools,
 }));
 
 vi.mock("@/lib/server/agent/autonomy", () => ({
@@ -58,7 +58,7 @@ describe("tool-autonomy", () => {
     mocks.createArtifact.mockResolvedValue(undefined);
     mocks.applyArtifact.mockResolvedValue(undefined);
     mocks.isToolAllowedInScope.mockReturnValue(true);
-    mocks.getEffectiveAllowedTools.mockReturnValue([]);
+    mocks.getContextualAllowedTools.mockReturnValue([]);
     mocks.getAutonomyConfig.mockResolvedValue({ preset: "assisted", toolOverrides: {} });
     mocks.getToolAutonomyLevel.mockReturnValue(3);
     mocks.resolveAutonomyLevel.mockImplementation((_toolName, level) => level);
@@ -159,5 +159,36 @@ describe("tool-autonomy", () => {
         retryable: false,
       }),
     );
+  });
+
+  it("uses global general mode allowances for global-scope execution checks", async () => {
+    mocks.getContextualAllowedTools.mockReturnValue(["search_pubmed"]);
+    mocks.getTool.mockReturnValue({
+      definition: { name: "search_pubmed", description: "d", parameters: {} },
+      autonomy: { defaultLevel: 3, allowedRange: [1, 4] },
+    });
+
+    const service = {
+      executeToolWithMiddleware: vi.fn().mockResolvedValue({
+        callId: "tc-global",
+        result: { ok: true },
+      }),
+    };
+
+    const result = await executeToolWithAutonomyCore({
+      service: service as never,
+      toolCall: {
+        id: "tc-global",
+        name: "search_pubmed",
+        arguments: { query: "glp-1" },
+      },
+      runId: "run-global",
+      userId: "user-1",
+      agentMode: "general",
+    });
+
+    expect(mocks.getContextualAllowedTools).toHaveBeenCalledWith("general", "global");
+    expect(service.executeToolWithMiddleware).toHaveBeenCalled();
+    expect(result.error).toBeUndefined();
   });
 });

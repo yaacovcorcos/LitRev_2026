@@ -443,7 +443,8 @@ class AIService {
         const scope = hasProjectScope ? "project" as const : "global" as const;
         const requestedMode: AgentMode = options?.agentMode || "general";
         const agentMode = normalizeAgentMode(requestedMode);
-        const toolDefs = options?.tools ?? getContextualToolDefinitions({
+        const trustedToolDefs = options?.toolDefinitionsTrusted ? options.tools : undefined;
+        const toolDefs = trustedToolDefs ?? getContextualToolDefinitions({
             agentMode,
             scope,
             studyLedger: null,

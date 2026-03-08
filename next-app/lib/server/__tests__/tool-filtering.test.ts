@@ -60,20 +60,9 @@ describe("getToolDefinitions", () => {
         withDelegationFlag(true);
         const defs = getToolDefinitions("general");
         expect(defs.map((d) => d.name).sort()).toEqual([
-            "ask_user",
-            "create_project",
-            "delegate_protocol",
-            "delegate_screening",
-            "delegate_search",
-            "forget_memory",
-            "inspect_memory",
-            "list_projects",
-            "open_project",
-            "read_ledger",
-            "read_protocol",
-            "read_study_content",
-            "store_memory",
-        ]);
+            ...GENERAL_PROJECT_CORE_TOOLS,
+            ...DELEGATION_TOOL_NAMES,
+        ].sort());
     });
 
     it("uses the same global general surface regardless of delegation flag", () => {
