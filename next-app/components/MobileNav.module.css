@@ -56,3 +56,15 @@
         display: flex;
     }
 }
+
+.mobileNav.responsiveV2 {
+    display: none;
+    padding: 12px 24px calc(12px + var(--safe-area-bottom));
+}
+
+/* Mirrors PHONE_MAX_WIDTH in lib/mobile/breakpoints.ts. */
+@media (max-width: 767px) {
+    .mobileNav.responsiveV2 {
+        display: flex;
+    }
+}

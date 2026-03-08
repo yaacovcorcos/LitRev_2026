@@ -7,6 +7,10 @@
     --mobile-nav-offset: 0px;
 }
 
+.shellV2 {
+    min-height: var(--shell-content-min-height);
+}
+
 .mainContent {
     flex: 1;
     padding: 56px var(--shell-gutter, 40px) 0;
@@ -17,11 +21,13 @@
         radial-gradient(circle at bottom left, rgba(var(--rgb-accent-secondary), 0.08), transparent 40%);
 }
 
+
 .mainContentNoPad {
     padding: 56px 0 0;
     min-height: calc(100vh - var(--header-height, 44px));
     height: auto;
 }
+
 
 @media (max-width: 900px) {
     .appContainer {
@@ -39,5 +45,36 @@
         padding: 56px 0 var(--mobile-nav-offset);
         min-height: calc(100vh - var(--header-height, 44px));
         height: auto;
+    }
+}
+
+@media (min-width: 768px) and (max-width: 1199px) {
+    .shellV2 {
+        padding-left: var(--shell-sidebar-width, 68px);
+        --mobile-nav-offset: 0px;
+    }
+
+    .shellV2 .mainContent {
+        padding: 56px var(--compact-page-gutter) 0 var(--compact-page-gutter);
+    }
+
+    .shellV2 .mainContentNoPad {
+        padding: 56px 0 0;
+    }
+}
+
+/* Mirrors PHONE_MAX_WIDTH in lib/mobile/breakpoints.ts. */
+@media (max-width: 767px) {
+    .shellV2 {
+        padding-left: 0;
+        --mobile-nav-offset: calc(var(--mobile-nav-height) + var(--safe-area-bottom));
+    }
+
+    .shellV2 .mainContent {
+        padding: 56px var(--phone-page-gutter) var(--mobile-nav-offset) var(--phone-page-gutter);
+    }
+
+    .shellV2 .mainContentNoPad {
+        padding: 56px 0 var(--mobile-nav-offset);
     }
 }

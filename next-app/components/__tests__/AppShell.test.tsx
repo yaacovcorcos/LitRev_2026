@@ -53,11 +53,13 @@ vi.mock("../MobileNav", () => ({
   MobileNav: ({
     onSignOut,
     links,
+    responsiveV2Enabled,
   }: {
     onSignOut?: () => void;
     links: Array<{ navKey: string }>;
+    responsiveV2Enabled?: boolean;
   }) => (
-    <div>
+    <div data-testid="mobile-nav" data-responsive-v2={responsiveV2Enabled ? "true" : "false"}>
       <button type="button" data-testid="mobile-signout" onClick={onSignOut}>
         Sign out
       </button>
@@ -72,20 +74,40 @@ vi.mock("../Sidebar", () => ({
   Sidebar: ({
     collapsed,
     mainLinks,
+    onToggle,
+    responsiveV2Enabled,
   }: {
     collapsed: boolean;
     mainLinks: Array<{ navKey: string }>;
+    onToggle?: () => void;
+    responsiveV2Enabled?: boolean;
   }) => (
-    <div
-      data-testid="sidebar"
-      data-collapsed={collapsed ? "true" : "false"}
-      data-has-admin={mainLinks.some((link) => link.navKey === "admin") ? "true" : "false"}
-    />
+    <div>
+      <div
+        data-testid="sidebar"
+        data-collapsed={collapsed ? "true" : "false"}
+        data-has-admin={mainLinks.some((link) => link.navKey === "admin") ? "true" : "false"}
+        data-responsive-v2={responsiveV2Enabled ? "true" : "false"}
+      />
+      <button type="button" data-testid="sidebar-toggle" onClick={onToggle}>
+        Toggle
+      </button>
+    </div>
   ),
 }));
 
+function setViewportWidth(width: number) {
+  Object.defineProperty(window, "innerWidth", {
+    configurable: true,
+    writable: true,
+    value: width,
+  });
+}
+
 describe("AppShell default sidebar collapse", () => {
   beforeEach(() => {
+    delete process.env.NEXT_PUBLIC_MOBILE_SHELL_V2;
+    setViewportWidth(1280);
     mockUsePathname.mockReset();
     mockRouterPush.mockReset();
     mockRouterReplace.mockReset();
@@ -106,7 +128,7 @@ describe("AppShell default sidebar collapse", () => {
     vi.unstubAllGlobals();
   });
 
-  it("defaults expanded on the projects homepage", () => {
+  it("defaults expanded on the projects homepage", async () => {
     mockUsePathname.mockReturnValue("/");
 
     render(
@@ -115,10 +137,13 @@ describe("AppShell default sidebar collapse", () => {
       </AppShell>,
     );
 
-    expect(screen.getByTestId("sidebar").getAttribute("data-collapsed")).toBe("false");
+    await waitFor(() => {
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      expect(screen.getByTestId("sidebar").getAttribute("data-collapsed")).toBe("false");
+    });
   });
 
-  it("defaults collapsed on non-home routes", () => {
+  it("defaults collapsed on non-home routes", async () => {
     mockUsePathname.mockReturnValue("/library");
 
     render(
@@ -127,10 +152,13 @@ describe("AppShell default sidebar collapse", () => {
       </AppShell>,
     );
 
-    expect(screen.getByTestId("sidebar").getAttribute("data-collapsed")).toBe("true");
+    await waitFor(() => {
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      expect(screen.getByTestId("sidebar").getAttribute("data-collapsed")).toBe("true");
+    });
   });
 
-  it("respects explicit initiallyCollapsed override", () => {
+  it("respects explicit initiallyCollapsed override", async () => {
     mockUsePathname.mockReturnValue("/library");
 
     render(
@@ -139,7 +167,93 @@ describe("AppShell default sidebar collapse", () => {
       </AppShell>,
     );
 
+    await waitFor(() => {
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      expect(screen.getByTestId("sidebar").getAttribute("data-collapsed")).toBe("false");
+    });
+  });
+
+  it("collapses by default at compact widths when shell v2 is enabled", async () => {
+    process.env.NEXT_PUBLIC_MOBILE_SHELL_V2 = "1";
+    setViewportWidth(900);
+    mockUsePathname.mockReturnValue("/");
+
+    render(
+      <AppShell activeNav="projects">
+        <div>content</div>
+      </AppShell>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("sidebar").getAttribute("data-collapsed")).toBe("true");
+      expect(screen.getByTestId("sidebar").getAttribute("data-responsive-v2")).toBe("true");
+      expect(screen.getByTestId("mobile-nav").getAttribute("data-responsive-v2")).toBe("true");
+    });
+  });
+
+  it("keeps the homepage expanded at wide widths when shell v2 is enabled", async () => {
+    process.env.NEXT_PUBLIC_MOBILE_SHELL_V2 = "1";
+    setViewportWidth(1280);
+    mockUsePathname.mockReturnValue("/");
+
+    render(
+      <AppShell activeNav="projects">
+        <div>content</div>
+      </AppShell>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("sidebar").getAttribute("data-collapsed")).toBe("false");
+    });
+  });
+
+  it("preserves manual sidebar toggles after compact-width sync", async () => {
+    process.env.NEXT_PUBLIC_MOBILE_SHELL_V2 = "1";
+    setViewportWidth(900);
+    mockUsePathname.mockReturnValue("/");
+
+    render(
+      <AppShell activeNav="projects">
+        <div>content</div>
+      </AppShell>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("sidebar").getAttribute("data-collapsed")).toBe("true");
+    });
+
+    fireEvent.click(screen.getByTestId("sidebar-toggle"));
     expect(screen.getByTestId("sidebar").getAttribute("data-collapsed")).toBe("false");
+
+    setViewportWidth(1024);
+    fireEvent(window, new Event("resize"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("sidebar").getAttribute("data-collapsed")).toBe("false");
+    });
+  });
+
+  it("updates the shell tier data attribute when the viewport changes under shell v2", async () => {
+    process.env.NEXT_PUBLIC_MOBILE_SHELL_V2 = "1";
+    setViewportWidth(1280);
+    mockUsePathname.mockReturnValue("/");
+
+    const { container } = render(
+      <AppShell activeNav="projects">
+        <div>content</div>
+      </AppShell>,
+    );
+
+    await waitFor(() => {
+      expect(container.querySelector('[data-shell-tier="desktop"]')).not.toBeNull();
+    });
+
+    setViewportWidth(390);
+    fireEvent(window, new Event("resize"));
+
+    await waitFor(() => {
+      expect(container.querySelector('[data-shell-tier="phone"]')).not.toBeNull();
+    });
   });
 
   it("handles mobile sign out and redirects to login", async () => {
