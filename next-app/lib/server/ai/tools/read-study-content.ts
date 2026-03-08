@@ -91,6 +91,11 @@ export const readStudyContentTool: AITool = {
         allowedRange: [3, 4],
     },
 
+    prerequisites: {
+        required: ["project_required", "study_required"],
+        blockedHint: "stop_with_explanation",
+    },
+
     async execute(args: Record<string, unknown>, context?: ToolExecutionContext) {
         const studyId = (args.studyId ?? context?.studyId) as string | undefined;
         const projectId = (context?.projectId ?? args.projectId) as string | undefined;

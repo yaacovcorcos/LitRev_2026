@@ -189,6 +189,11 @@ export const updateStudyTool: AITool = {
         hardCap: 2,
     },
 
+    prerequisites: {
+        required: ["project_required", "study_required"],
+        blockedHint: "stop_with_explanation",
+    },
+
     async execute(args: Record<string, unknown>, context?: ToolExecutionContext) {
         const studyId = (args.studyId ?? context?.studyId) as string | undefined;
         const projectId = (context?.projectId ?? args.projectId) as string | undefined;

@@ -70,6 +70,7 @@ export type AIErrorKind =
     | "model_capability"
     | "tool_call_parse"
     | "tool_schema_validation"
+    | "missing_prerequisite"
     | "runtime";
 
 export type AIErrorSource =
@@ -77,6 +78,7 @@ export type AIErrorSource =
     | "request_policy"
     | "provider_tool_call"
     | "tool_validator"
+    | "tool_prerequisite_gate"
     | "runtime";
 
 export type AIErrorEnvelope = {

@@ -19,6 +19,7 @@ import type { PopupChatContext } from "@/types/popup-chat";
 import { buildPopupSystemPrompt } from "@/lib/server/ai/popup-context";
 import { createPopupToolGuard, getAllowedPopupToolNames } from "@/lib/server/ai/popup-tool-contract";
 import { createIdempotencyMiddleware } from "@/lib/server/ai/tool-middleware";
+import { createToolPrerequisiteMiddleware } from "@/lib/server/ai/tool-prerequisites";
 import { getToolDefinitions } from "@/lib/server/ai/tools";
 import { isPopupToolsEnabled } from "@/lib/ai/popup-feature-flags";
 import { ingestChatUnificationMetric } from "@/lib/server/chat-unification-metrics";
@@ -228,8 +229,9 @@ export async function POST(request: NextRequest) {
                                         .filter((tool) => allowedToolNames.has(tool.name));
                                     const popupService = new AIService({
                                         toolMiddlewares: [
-                                            createIdempotencyMiddleware(),
                                             createPopupToolGuard({ popupContext, projectId: scopedOptions.projectId }),
+                                            createToolPrerequisiteMiddleware(),
+                                            createIdempotencyMiddleware(),
                                         ],
                                     });
 

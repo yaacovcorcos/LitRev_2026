@@ -52,6 +52,7 @@ import { classifyAIError, toAIErrorEnvelope } from "./error-classification";
 import { retryAsync, sleep } from "@/lib/server/utils/retry";
 import { resolveReasoningMode } from "@/lib/ai/reasoning-visibility";
 import { createIdempotencyMiddleware, executeWithToolMiddleware, type ToolExecutionRequest, type ToolMiddleware } from "./tool-middleware";
+import { createToolPrerequisiteMiddleware } from "./tool-prerequisites";
 import { resolveAuthenticatedIdentity } from "@/lib/server/auth/identity";
 import { computeLedgerCounts, computeStudyLedger } from "@/lib/server/ledger-utils";
 import {
@@ -415,6 +416,7 @@ class AIService {
         messages: AIMessage[],
         options?: ChatOptions
     ): AsyncIterable<AIStreamChunk> {
+        const identity = resolveAuthenticatedIdentity(options);
         const hasProjectScope = !!(options?.projectId && options.projectId !== null);
         const scope = hasProjectScope ? "project" as const : "global" as const;
         const toolDefs = getToolDefinitions(undefined, scope);
@@ -602,6 +604,11 @@ class AIService {
                     name: tc.name,
                     args: tc.arguments,
                     callId: tc.id,
+                    context: {
+                        projectId: options?.projectId,
+                        studyId: options?.studyId,
+                        userId: identity.userId,
+                    },
                 });
                 yield { type: "tool_result", toolName: tc.name, toolResult: result };
 
@@ -1897,7 +1904,7 @@ let aiServiceInstance: AIService | null = null;
 export function getAIService(): AIService {
     if (!aiServiceInstance) {
         aiServiceInstance = new AIService({
-            toolMiddlewares: [createIdempotencyMiddleware()],
+            toolMiddlewares: [createToolPrerequisiteMiddleware(), createIdempotencyMiddleware()],
         });
     }
     return aiServiceInstance;
