@@ -70,15 +70,15 @@ If no row matches, consult `docs/agents/cold-memory-index.md`, then pick the nea
 
 ## Git Workflow (Agent Auto-Commit/Push Policy)
 
-Rule: feature branches hold work; local `main` only mirrors merged work.
+Rule: feature branches hold work; repo root `main` only mirrors merged work.
 
-- `main` is the canonical local mirror of `origin/main`, not a normal working branch.
-- Use one designated clean `main` worktree for sync and branch creation.
-- Preferred path for new setups is `.worktrees/main`; if an existing clean `main` worktree is already designated for this repo, reuse it instead of creating another one.
-- Do not commit directly to local `main` except for an explicit emergency hotfix requested by the user.
-- All normal agent work must happen on named feature branches: `codex/<task>`.
-- Hotfix branches use `hotfix/<task>` and PR directly to `main`.
-- Avoid long-lived detached worktrees. Every active worktree should either track a named branch or be the designated clean `main` worktree.
+- Repo root is the canonical clean `main` checkout for this repository.
+- Repo root `main` must match `origin/main` exactly during normal workflow.
+- Do not commit directly to repo root `main` except for an explicit emergency hotfix requested by the user.
+- All normal agent work must happen on named feature branches.
+- Canonical agent branch prefix is `YY/`.
+- Emergency hotfix branches should also use the `YY/` prefix, for example `YY/hotfix-<task>`.
+- Avoid long-lived detached worktrees.
 - For code changes, validate with `npx tsc --noEmit` and `npx vitest run`.
 - If validation fails, fix first; do not commit failing code.
 - Stage only relevant files for the task.
@@ -88,29 +88,26 @@ Rule: feature branches hold work; local `main` only mirrors merged work.
 
 ### Main Mirror Contract
 
-- The designated local `main` worktree must match `origin/main` exactly during normal workflow.
-- Local `main` must not remain ahead of or behind `origin/main`.
-- If local `main` differs from `origin/main` in either direction, stop and reconcile before starting new work.
+- Repo root `main` must not remain ahead of or behind `origin/main`.
+- If repo root `main` differs from `origin/main` in either direction, stop and reconcile before starting new work.
 
 ### Worktree Preflight
 
 Before starting or syncing work:
 
-- Confirm which worktree is the designated clean `main` worktree.
-- If the current checkout is detached, dirty, or `main` is checked out in another worktree, do not blindly run `git switch main`.
-- Reconcile worktree ownership first, then run sync commands from the designated clean `main` worktree.
+- Confirm repo root is the canonical clean `main` checkout.
+- If repo root is detached, dirty, or not synced to `origin/main`, do not start new work from it.
+- If another worktree currently owns `main`, reconcile worktree ownership first.
+- Detached or rescue worktrees must not be treated as the `main` baseline.
 
 ### Required Branch Start Flow
 
-Run from the designated clean `main` worktree:
+Run from repo root:
 
 1. `git fetch origin --prune`
-2. `git pull --ff-only origin main`
-3. `git -C <repo-root> worktree add -b codex/<task> .worktrees/<task> origin/main`
-
-Notes:
-- `<repo-root>` is the repository root, not the clean `main` worktree path.
-- This keeps task worktrees as siblings under `<repo-root>/.worktrees/` instead of nesting them under `.worktrees/main/`.
+2. `git switch main`
+3. `git pull --ff-only origin main`
+4. `git worktree add -b YY/<task> .worktrees/<task> origin/main`
 
 If resuming an existing task branch, verify it is still intended work before reusing it. Prefer a fresh worktree/branch by default.
 
@@ -122,21 +119,37 @@ Run from the task worktree:
 2. `git diff --cached`
 3. `git status`
 4. `git commit -m "<type(scope): concise why-focused message>"`
-5. `git push -u origin <branch>`
-6. `gh pr create --base main --head <branch> ...` (or update an existing PR)
+5. `git push -u origin YY/<task>`
+6. `gh pr create --base main --head YY/<task> ...` (or update an existing PR)
 
 Notes:
-- Normal task branches use `codex/<task>`.
-- Emergency branches use `hotfix/<task>`.
+- Normal task branches use `YY/<task>`.
+- Emergency branches use `YY/hotfix-<task>`.
 
 ### Required Post-Merge Sync Flow
 
 After any PR is merged into GitHub `main`:
 
-1. `git -C <main-worktree> fetch origin --prune`
-2. `git -C <main-worktree> pull --ff-only origin main`
-3. `git -C <repo-root> worktree remove .worktrees/<task>`
-4. `git -C <main-worktree> branch -d <branch>`
+1. Run from repo root:
+   - `git fetch origin --prune`
+   - `git switch main`
+   - `git pull --ff-only origin main`
+2. Remove the merged task worktree:
+   - `git worktree remove .worktrees/<task>`
+3. Delete the merged local branch:
+   - `git branch -d YY/<task>`
+
+### Worktree Cleanup Contract
+
+- Maintain a cleanup manifest before deleting or re-homing any worktree.
+- The manifest must record:
+  - worktree path
+  - branch name or detached HEAD SHA
+  - status: `active`, `rescue`, `stale`, or `unknown`
+  - decision: `keep`, `rehome`, `review`, or `delete`
+- Do not remove a parent worktree directory while it still contains active nested child worktrees.
+- After merge, remove the merged task worktree and delete the merged local branch promptly.
+- After rescue review, either promote the rescue work, archive it intentionally, or delete the worktree.
 
 ### Additional Rules
 
