@@ -35,6 +35,12 @@ describe("formatStreamErrorForUI", () => {
         );
     });
 
+    it("keeps token-limit overflow phrasing mapped to the context-overflow UI", () => {
+        expect(formatStreamErrorForUI("Request failed because it exceeded model token limit.")).toBe(
+            "This request is too large for the selected model. Try a shorter prompt.",
+        );
+    });
+
     it("uses structured envelope messages for tool-call parse failures", () => {
         expect(formatStreamErrorForUI({
             errorMeta: {

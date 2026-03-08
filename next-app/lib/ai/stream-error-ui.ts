@@ -4,10 +4,10 @@ import type { AIErrorEnvelope } from "@/types/ai";
 import type { StreamTerminalReason } from "@/lib/ai/stream-lifecycle";
 
 const CLAUDE_REASONING_BUDGET_PATTERN = /max_tokens.*greater than.*thinking\.budget_tokens/i;
-const DAILY_TOKEN_LIMIT_PATTERN = /daily token limit exceeded|maximum\s+\d+\s+tokens per day|tokens per day/i;
+const DAILY_TOKEN_LIMIT_PATTERN = /daily token limit exceeded|maximum\s+\d+\s+tokens per day/i;
 const RATE_LIMIT_PATTERN = /rate.?limit|too many requests|overloaded|capacity/i;
 const AUTH_PATTERN = /unauthorized|forbidden|invalid.*api key|authentication/i;
-const CONTEXT_PATTERN = /context window|context length|too long|request.*too.*large|input.*too.*long/i;
+const CONTEXT_PATTERN = /context window|context length|too long|request.*too.*large|input.*too.*long|exceeded model token limit|token.*limit.*exceed/i;
 const NETWORK_PATTERN = /network|failed to fetch|econn|timeout|timed out|socket|offline/i;
 const RETRY_HINT_PATTERN = /retry|temporarily busy|try again/i;
 
@@ -67,9 +67,7 @@ function extractEmbeddedProviderMessage(rawMessage: string): string | null {
  * This is intentionally UI-focused and strips transport noise like "400 {...json...}".
  */
 export function formatStreamErrorForUI(error: unknown): string {
-    const raw = collapseWhitespace(extractRawErrorMessage(error));
-    const extracted = extractEmbeddedProviderMessage(raw);
-    const base = collapseWhitespace(extracted ?? raw);
+    const base = getBaseErrorMessage(error);
 
     if (!base) return "The request failed. Please try again.";
     if (CLAUDE_REASONING_BUDGET_PATTERN.test(base)) {
