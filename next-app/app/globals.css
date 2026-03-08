@@ -1,5 +1,6 @@
 @import "../styles/tokens.css";
 @import "../styles/base.css";
+@import "../styles/mobile-layout.css";
 @import "../styles/utilities.css";
 @import "../styles/modal.css";
 @import "../styles/project.css";

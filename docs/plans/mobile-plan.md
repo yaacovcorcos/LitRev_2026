@@ -14,6 +14,7 @@ This plan is the long-term implementation contract for how LitRev adapts across 
 - Shared breakpoint infrastructure now includes semantic tier exports in `next-app/lib/mobile/breakpoints.ts` and `next-app/lib/mobile/tiers.ts`; the legacy `900px` mobile query remains as an explicitly transitional contract for unmigrated shell/chat surfaces.
 - Shared mobile viewport runtime exists in `next-app/components/mobile/MobileViewportRuntime.tsx` and is mounted globally from `next-app/app/providers.tsx`.
 - Shared root scroll-lock policy exists in `next-app/lib/mobile/scroll-lock-policy.ts`.
+- Shared responsive layout contract is now codified in `docs/plans/mobile-layout-contract.md` and backed by global CSS artifacts in `next-app/styles/tokens.css`, `next-app/styles/base.css`, and `next-app/styles/mobile-layout.css`.
 - Some existing mobile-v2 surfaces are already flag-gated and default-off:
   - `NEXT_PUBLIC_MOBILE_VP_V2`
   - `NEXT_PUBLIC_MOBILE_AI_V2`
@@ -103,6 +104,9 @@ Definition of done:
 - Performance telemetry and reliability telemetry must migrate together; `PerformanceVitalsReporter.tsx` is part of the same classifier contract, not a separate follow-up.
 
 ## Viewport + Layout Contract
+Operational contract reference:
+- `docs/plans/mobile-layout-contract.md`
+
 1. Prefer `dvh`-backed runtime values through `--app-height` for phone-primary height containers.
 2. Keep `svh`/`vh` fallbacks for browser variance.
 3. No unallowlisted core route should use raw `100vh` as authored phone source-of-truth.
@@ -164,11 +168,6 @@ Primary KPI lenses:
 - Regression concentration by viewport class (`phone`, `compact`, `desktop`).
 
 ## Active Tasks (Mobile Foundation)
-- [ ] `MOB-FND-002` Shared responsive layout contract:
-  - Codify shared rules for `--app-height`, safe-area spacing, scroll-body ownership, touch-size tokens, mobile gutters, and compact-vs-phone composition.
-  - Add lightweight helpers or CSS utilities only if needed.
-  - Do not introduce a full reusable `MobileSurfaceFrame` abstraction until at least two route adoptions prove the shape.
-  - Rollback: revert/redeploy only.
 - [ ] `MOB-FND-003` App shell + sidebar responsive adoption:
   - Migrate app shell and sidebar away from raw `100vh` phone source-of-truth patterns.
   - Reclassify current `900px` shell behavior into `compact` vs `phone` behavior.
@@ -232,6 +231,10 @@ Primary KPI lenses:
   - Cover both phone and compact widths where behavior differs.
 
 ## Recently Completed
+- [x] `MOB-FND-002` Shared responsive layout contract completed:
+  - Added the durable operational contract in `docs/plans/mobile-layout-contract.md`.
+  - Added global safe-area aliases, shared phone/compact layout tokens, and reusable `surface root` / `surface scroll body` / `surface sticky footer` CSS roles in shared styles.
+  - Kept `MobileViewportRuntime` behavior unchanged so transitional `900px` runtime consumers can retire surface-by-surface in later waves.
 - [x] `MOB-FND-001` Responsive tier contract completed:
   - Added shared responsive tier exports/helpers in `next-app/lib/mobile/breakpoints.ts` and `next-app/lib/mobile/tiers.ts` while preserving the legacy `900px` mobile query as a transitional contract.
   - Migrated performance and reliability telemetry end-to-end to `phone` / `compact` / `desktop` viewport classes.
