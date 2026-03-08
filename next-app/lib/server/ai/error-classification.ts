@@ -5,6 +5,7 @@ import { normalizeHeaderRecord } from "@/lib/server/utils/header-record";
 
 export type AIErrorReason =
     | "rate_limit"
+    | "usage_limit"
     | "auth"
     | "billing"
     | "timeout"
@@ -50,12 +51,13 @@ const OVERFLOW_PATTERNS = [
     /exceeded model token limit/i,
     /context[_ ]length[_ ]exceeded/i,
     /request.?too.?large/i,
-    /token.*limit.*exceed/i,
     /input.*too.*long/i,
     // Observed in OpenCode provider adapters for Cerebras/Mistral style 400/413 empty-body failures.
     /^4(00|13)\s*(status code)?\s*\(no body\)/i,
     /请求.*超出.*上下文/i,
 ];
+
+const DAILY_TOKEN_LIMIT_PATTERN = /daily token limit exceeded|maximum\s+\d+\s+tokens per day|tokens per day/i;
 
 function extractMessage(error: unknown): string {
     if (typeof error === "string") return error;
@@ -112,9 +114,11 @@ function reasonFromEnvelope(envelope: AIErrorEnvelope, status?: number): AIError
     }
     const lowerCode = envelope.code.toLowerCase();
     if (lowerCode === "context_length_exceeded") return "context_overflow";
+    if (lowerCode === "daily_token_limit_exceeded") return "usage_limit";
     if (lowerCode === "insufficient_quota") return "billing";
     if (lowerCode === "model_not_found") return "model_not_found";
     if (lowerCode === "invalid_api_key") return "auth";
+    if (DAILY_TOKEN_LIMIT_PATTERN.test(envelope.message)) return "usage_limit";
     if (isContextOverflowMessage(envelope.message)) return "context_overflow";
     if (status === 401 || status === 403) return "auth";
     if (status === 402) return "billing";
@@ -180,10 +184,12 @@ export function classifyAIError(error: unknown): ClassifiedAIError {
         if (status === 408 || (status !== undefined && status >= 500)) return "timeout";
 
         if (lowerCode === "context_length_exceeded") return "context_overflow";
+        if (lowerCode === "daily_token_limit_exceeded") return "usage_limit";
         if (lowerCode === "insufficient_quota") return "billing";
         if (lowerCode === "model_not_found") return "model_not_found";
         if (lowerCode === "invalid_api_key") return "auth";
 
+        if (DAILY_TOKEN_LIMIT_PATTERN.test(message)) return "usage_limit";
         if (isContextOverflowMessage(message)) return "context_overflow";
 
         if (/rate.?limit|quota|too many requests|tpm|rpm|capacity|overloaded|529/i.test(message)) {

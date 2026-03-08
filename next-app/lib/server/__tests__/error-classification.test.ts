@@ -24,6 +24,12 @@ describe("classifyAIError", () => {
         expect(classified.retryable).toBe(false);
     });
 
+    it("classifies daily token limit failures separately from context overflow", () => {
+        const classified = classifyAIError({ message: "Daily token limit exceeded. Maximum 300000 tokens per day." });
+        expect(classified.reason).toBe("usage_limit");
+        expect(classified.retryable).toBe(false);
+    });
+
     it("classifies timeout and keeps retryable=true", () => {
         const classified = classifyAIError({ message: "gateway timeout", statusCode: 504 });
         expect(classified.reason).toBe("timeout");
@@ -65,6 +71,20 @@ describe("classifyAIError", () => {
             },
         });
         expect(classified.reason).toBe("context_overflow");
+        expect(classified.retryable).toBe(false);
+    });
+
+    it("preserves usage-limit classification for structured envelopes", () => {
+        const classified = classifyAIError({
+            errorMeta: {
+                kind: "runtime",
+                code: "DAILY_TOKEN_LIMIT_EXCEEDED",
+                retryable: false,
+                source: "runtime",
+                message: "Daily token limit exceeded. Maximum 300000 tokens per day.",
+            },
+        });
+        expect(classified.reason).toBe("usage_limit");
         expect(classified.retryable).toBe(false);
     });
 });
