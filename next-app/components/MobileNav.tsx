@@ -9,6 +9,7 @@ type MobileNavProps = {
   onSignOut?: () => void;
   signOutBusy?: boolean;
   signOutError?: string | null;
+  responsiveV2Enabled?: boolean;
 };
 
 export function MobileNav({
@@ -18,9 +19,12 @@ export function MobileNav({
   onSignOut,
   signOutBusy = false,
   signOutError = null,
+  responsiveV2Enabled = false,
 }: MobileNavProps) {
+  const navClassName = [styles.mobileNav, responsiveV2Enabled ? styles.responsiveV2 : ""].filter(Boolean).join(" ");
+
   return (
-    <nav className={styles.mobileNav} aria-label="Mobile">
+    <nav className={navClassName} aria-label="Mobile" data-responsive-v2={responsiveV2Enabled ? "true" : "false"}>
       {links.map((link) =>
         link.navKey === "new" && onNewProject ? (
           <button

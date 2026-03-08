@@ -11,11 +11,13 @@ import {
 } from "@/data/navLinks";
 import styles from "@/components/AppShell.module.css";
 import { usePathname, useRouter } from "next/navigation";
-import { CSSProperties, ReactNode, useEffect, useMemo, useState } from "react";
+import { CSSProperties, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SlimHeader } from "@/components/SlimHeader";
 import { useCommandPalette } from "@/contexts/CommandPaletteContext";
 import { authClient } from "@/lib/auth-client";
 import { clearAllContextCaptureHistory } from "@/lib/context-capture/history";
+import { isMobileShellV2Enabled } from "@/lib/mobile/feature-flags";
+import { getViewportClass, type ResponsiveViewportClass } from "@/lib/mobile/tiers";
 
 type AppShellProps = {
   activeNav: string;
@@ -28,6 +30,18 @@ type AppShellProps = {
   forceAdminNav?: boolean;
 };
 
+function resolveDefaultCollapse(
+  pathname: string,
+  viewportClass: ResponsiveViewportClass,
+  shellV2Enabled: boolean,
+): boolean {
+  if (shellV2Enabled && (viewportClass === "phone" || viewportClass === "compact")) {
+    return true;
+  }
+
+  return pathname !== "/";
+}
+
 export function AppShell({
   activeNav,
   children,
@@ -39,18 +53,61 @@ export function AppShell({
   forceAdminNav = false,
 }: AppShellProps) {
   const pathname = usePathname();
-  const shouldDefaultCollapse = pathname !== "/";
-  const [collapsed, setCollapsed] = useState(initiallyCollapsed ?? shouldDefaultCollapse);
+  const shellV2Enabled = isMobileShellV2Enabled();
   const [mobileSigningOut, setMobileSigningOut] = useState(false);
   const [mobileSignOutError, setMobileSignOutError] = useState<string | null>(null);
   const [isPlatformAdmin, setIsPlatformAdmin] = useState(forceAdminNav);
+  const [viewportClass, setViewportClass] = useState<ResponsiveViewportClass>("unknown");
+  const defaultCollapsed = useMemo(
+    () => resolveDefaultCollapse(pathname, viewportClass, shellV2Enabled),
+    [pathname, shellV2Enabled, viewportClass],
+  );
+  const [collapsed, setCollapsed] = useState(initiallyCollapsed ?? defaultCollapsed);
+  const hasManualToggleRef = useRef(false);
   const router = useRouter();
   const { registerSidebarToggle } = useCommandPalette();
 
   useEffect(() => {
-    registerSidebarToggle(() => setCollapsed((prev) => !prev));
+    if (!shellV2Enabled) {
+      setViewportClass("unknown");
+      return;
+    }
+
+    const updateViewportClass = () => {
+      setViewportClass(getViewportClass(window));
+    };
+
+    updateViewportClass();
+    window.addEventListener("resize", updateViewportClass, { passive: true });
+    window.addEventListener("orientationchange", updateViewportClass, { passive: true });
+
+    return () => {
+      window.removeEventListener("resize", updateViewportClass);
+      window.removeEventListener("orientationchange", updateViewportClass);
+    };
+  }, [shellV2Enabled]);
+
+  useEffect(() => {
+    if (initiallyCollapsed !== undefined) {
+      hasManualToggleRef.current = false;
+      setCollapsed(initiallyCollapsed);
+      return;
+    }
+
+    if (!hasManualToggleRef.current) {
+      setCollapsed(defaultCollapsed);
+    }
+  }, [defaultCollapsed, initiallyCollapsed]);
+
+  const toggleSidebar = useCallback(() => {
+    hasManualToggleRef.current = true;
+    setCollapsed((prev) => !prev);
+  }, []);
+
+  useEffect(() => {
+    registerSidebarToggle(toggleSidebar);
     return () => registerSidebarToggle(null);
-  }, [registerSidebarToggle]);
+  }, [registerSidebarToggle, toggleSidebar]);
 
   useEffect(() => {
     if (forceAdminNav) {
@@ -92,11 +149,15 @@ export function AppShell({
   }, [forceAdminNav]);
 
   const cssVars = useMemo(() => {
+    const shellSidebarWidth = shellV2Enabled && viewportClass === "phone"
+      ? "0px"
+      : collapsed ? "68px" : "200px";
+
     return {
       "--shell-gutter": collapsed ? "32px" : "50px",
-      "--shell-sidebar-width": collapsed ? "68px" : "200px",
+      "--shell-sidebar-width": shellSidebarWidth,
     } as CSSProperties;
-  }, [collapsed]);
+  }, [collapsed, shellV2Enabled, viewportClass]);
 
   const sidebarMainLinks = useMemo(
     () => (isPlatformAdmin ? [...mainNavLinks, adminMainNavLink] : mainNavLinks),
@@ -138,12 +199,26 @@ export function AppShell({
     }
   };
 
+  const containerClassName = [
+    styles.appContainer,
+    shellV2Enabled ? `surface-root ${styles.shellV2}` : "",
+  ].filter(Boolean).join(" ");
+
+  const mainClassNames = [
+    styles.mainContent,
+    noMainPadding ? styles.mainContentNoPad : "",
+    mainClassName,
+  ].filter(Boolean).join(" ");
+
   return (
     <>
       <SlimHeader ariaHidden />
       <div
-        className={styles.appContainer}
+        className={containerClassName}
         data-sidebar-collapsed={collapsed}
+        data-shell-tier={shellV2Enabled ? viewportClass : "legacy"}
+        data-shell-v2={shellV2Enabled ? "true" : "false"}
+        data-surface-height={shellV2Enabled ? "shell" : undefined}
         style={cssVars}
       >
         <Sidebar
@@ -151,10 +226,11 @@ export function AppShell({
           bottomLinks={bottomNavLinks}
           activeNav={activeNav}
           collapsed={collapsed}
-          onToggle={() => setCollapsed((prev) => !prev)}
+          onToggle={toggleSidebar}
+          responsiveV2Enabled={shellV2Enabled}
         />
         <main
-          className={`${styles.mainContent} ${noMainPadding ? styles.mainContentNoPad : ""} ${mainClassName}`.trim()}
+          className={mainClassNames}
           role="main"
         >
           {children}
@@ -167,6 +243,7 @@ export function AppShell({
             onSignOut={handleMobileSignOut}
             signOutBusy={mobileSigningOut}
             signOutError={mobileSignOutError}
+            responsiveV2Enabled={shellV2Enabled}
           />
         ) : null}
       </div>

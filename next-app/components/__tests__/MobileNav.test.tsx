@@ -49,4 +49,15 @@ describe("MobileNav", () => {
 
     expect(screen.getByRole("alert").textContent).toContain("Sign out failed. Try again.");
   });
+
+  it("marks the responsive v2 contract on the nav root", () => {
+    render(
+      <MobileNav
+        links={LINKS}
+        responsiveV2Enabled
+      />,
+    );
+
+    expect(screen.getByRole("navigation", { name: /mobile/i }).getAttribute("data-responsive-v2")).toBe("true");
+  });
 });

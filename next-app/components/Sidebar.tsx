@@ -9,17 +9,29 @@ type SidebarProps = {
   activeNav?: string;
   collapsed?: boolean;
   onToggle?: () => void;
+  responsiveV2Enabled?: boolean;
 };
 
-export function Sidebar({ mainLinks, bottomLinks, activeNav = "projects", collapsed = false, onToggle }: SidebarProps) {
+export function Sidebar({
+  mainLinks,
+  bottomLinks,
+  activeNav = "projects",
+  collapsed = false,
+  onToggle,
+  responsiveV2Enabled = false,
+}: SidebarProps) {
   const mainNavId = "sidebar-main-nav";
   const bottomNavId = "sidebar-bottom-nav";
-  const asideClass = collapsed ? `${styles.sidebar} ${styles.collapsed}` : styles.sidebar;
+  const asideClass = [
+    styles.sidebar,
+    collapsed ? styles.collapsed : "",
+    responsiveV2Enabled ? styles.responsiveV2 : "",
+  ].filter(Boolean).join(" ");
   const toggleLabel = collapsed ? "Expand Sidebar" : "Collapse Sidebar";
   const actionableBottomLinks = bottomLinks.filter((link) => !link.href.startsWith("#"));
 
   return (
-    <aside className={asideClass} aria-label="Primary">
+    <aside className={asideClass} aria-label="Primary" data-responsive-v2={responsiveV2Enabled ? "true" : "false"}>
       <div className={styles.logoArea}>
         <div className={styles.logoWrapper} aria-hidden={collapsed}>
           <span className={styles.logoText}>LitRev</span>

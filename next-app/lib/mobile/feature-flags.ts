@@ -17,7 +17,8 @@ type MobilePublicEnvName =
   | "NEXT_PUBLIC_MOBILE_NOTES_V2"
   | "NEXT_PUBLIC_MOBILE_DRAFT_V2"
   | "NEXT_PUBLIC_MOBILE_AI_V2"
-  | "NEXT_PUBLIC_MOBILE_POPUP_V2";
+  | "NEXT_PUBLIC_MOBILE_POPUP_V2"
+  | "NEXT_PUBLIC_MOBILE_SHELL_V2";
 
 function getPublicFlag(name: MobilePublicEnvName): boolean | null {
   switch (name) {
@@ -35,6 +36,8 @@ function getPublicFlag(name: MobilePublicEnvName): boolean | null {
       return readFlag(process.env.NEXT_PUBLIC_MOBILE_AI_V2);
     case "NEXT_PUBLIC_MOBILE_POPUP_V2":
       return readFlag(process.env.NEXT_PUBLIC_MOBILE_POPUP_V2);
+    case "NEXT_PUBLIC_MOBILE_SHELL_V2":
+      return readFlag(process.env.NEXT_PUBLIC_MOBILE_SHELL_V2);
     default:
       return null;
   }
@@ -47,7 +50,8 @@ export type MobileFeatureKey =
   | "notesV2"
   | "draftV2"
   | "aiV2"
-  | "popupV2";
+  | "popupV2"
+  | "shellV2";
 
 const DEFAULTS: Record<MobileFeatureKey, boolean> = {
   viewportV2: false,
@@ -57,6 +61,7 @@ const DEFAULTS: Record<MobileFeatureKey, boolean> = {
   draftV2: false,
   aiV2: false,
   popupV2: false,
+  shellV2: false,
 };
 
 function getFlag(name: MobilePublicEnvName, fallback: boolean): boolean {
@@ -93,6 +98,10 @@ export function isMobilePopupV2Enabled(): boolean {
   return getFlag("NEXT_PUBLIC_MOBILE_POPUP_V2", DEFAULTS.popupV2);
 }
 
+export function isMobileShellV2Enabled(): boolean {
+  return getFlag("NEXT_PUBLIC_MOBILE_SHELL_V2", DEFAULTS.shellV2);
+}
+
 export function getMobileFeatureSnapshot(): Record<MobileFeatureKey, boolean> {
   return {
     viewportV2: isMobileViewportV2Enabled(),
@@ -102,5 +111,6 @@ export function getMobileFeatureSnapshot(): Record<MobileFeatureKey, boolean> {
     draftV2: isMobileDraftV2Enabled(),
     aiV2: isMobileAiV2Enabled(),
     popupV2: isMobilePopupV2Enabled(),
+    shellV2: isMobileShellV2Enabled(),
   };
 }

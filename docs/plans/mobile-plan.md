@@ -23,10 +23,10 @@ This plan is the long-term implementation contract for how LitRev adapts across 
   - `NEXT_PUBLIC_MOBILE_LEDGER_V2`
   - `NEXT_PUBLIC_MOBILE_NOTES_V2`
   - `NEXT_PUBLIC_MOBILE_DRAFT_V2`
-- Shell, home, auth, protocol, and admin responsive-foundation waves are not yet organized behind dedicated public flags; each wave must either add a real flag as part of implementation or ship with revert/redeploy-only rollback semantics.
+- Shell responsive adoption is now gated behind `NEXT_PUBLIC_MOBILE_SHELL_V2`; home, auth, protocol, and admin follow-up waves are not yet organized behind dedicated public flags.
 - Shared chat-runtime direction exists for `/ai` and project copilot via chat unification work; popup full runtime convergence remains pending (`U3` in chat unification plan).
 - Core route adoption of a long-term responsive contract is still incomplete:
-  - app shell and sidebar still use raw `100vh` source-of-truth patterns
+  - app shell and sidebar now split `phone` vs `compact` behavior behind `NEXT_PUBLIC_MOBILE_SHELL_V2`, but wider route surfaces still need follow-up adoption
   - home and login still use route-local viewport math
   - protocol still uses route-local height ownership
   - telemetry now classifies viewport as `phone` / `compact` / `desktop`, but many live surfaces still consume the transitional `900px` query until later foundation waves retire it
@@ -168,13 +168,6 @@ Primary KPI lenses:
 - Regression concentration by viewport class (`phone`, `compact`, `desktop`).
 
 ## Active Tasks (Mobile Foundation)
-- [ ] `MOB-FND-003` App shell + sidebar responsive adoption:
-  - Migrate app shell and sidebar away from raw `100vh` phone source-of-truth patterns.
-  - Reclassify current `900px` shell behavior into `compact` vs `phone` behavior.
-  - Make sidebar collapse, pane hiding, safe-area behavior, and nav offset part of the shared shell contract.
-  - Preserve desktop behavior above `wide` thresholds.
-  - Add a dedicated public flag only if this wave proves too high-risk for direct rollout; otherwise treat rollback as revert/redeploy-only.
-  - Rollback: disable the dedicated flag if one is introduced in this wave; otherwise revert/redeploy.
 - [ ] `MOB-FND-004` Home responsive entry experience:
   - Adopt the shared responsive contract on home.
   - Fix loading, zero-state, resume, and projects entry flows to behave intentionally in `phone` and `compact` tiers.
@@ -231,6 +224,10 @@ Primary KPI lenses:
   - Cover both phone and compact widths where behavior differs.
 
 ## Recently Completed
+- [x] `MOB-FND-003` App shell + sidebar responsive adoption completed:
+  - Added `NEXT_PUBLIC_MOBILE_SHELL_V2` and wired shell rollout safety through `next-app/lib/mobile/feature-flags.ts`.
+  - Reclassified shell behavior into `phone` vs `compact` by moving bottom-nav visibility and shell bottom offset to the phone tier only.
+  - Adopted shared shell height semantics in `AppShell.module.css` and `Sidebar.module.css` while keeping scroll-owner changes conservative for mixed child-route compatibility.
 - [x] `MOB-FND-002` Shared responsive layout contract completed:
   - Added the durable operational contract in `docs/plans/mobile-layout-contract.md`.
   - Added global safe-area aliases, shared phone/compact layout tokens, and reusable `surface root` / `surface scroll body` / `surface sticky footer` CSS roles in shared styles.
