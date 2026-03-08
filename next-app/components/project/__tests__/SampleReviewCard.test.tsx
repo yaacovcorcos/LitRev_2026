@@ -102,4 +102,25 @@ describe("SampleReviewCard", () => {
     });
     expect(mockPush).not.toHaveBeenCalled();
   });
+
+  it("hides the entry card when a scoped demo project already exists", () => {
+    mockUseProjects.mockReturnValue({
+      projects: [
+        {
+          id: "demo-project-id",
+          demoKey: "sample-yoga-anxiety",
+          name: "Yoga for Anxiety",
+          status: "ready",
+          statusText: "Sample",
+          modified: "2026-03-09T00:00:00.000Z",
+          created: "2026-03-09T00:00:00.000Z",
+        },
+      ],
+      refresh: mockRefresh,
+    });
+
+    render(<SampleReviewCard viewMode="grid" />);
+
+    expect(screen.queryByRole("button", { name: "Open sample review" })).toBeNull();
+  });
 });

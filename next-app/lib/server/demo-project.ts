@@ -1,11 +1,13 @@
 import "server-only";
 
+import { createHash, randomUUID } from "node:crypto";
+
 import type { DraftState } from "@/lib/draftStorage";
 import { createDefaultDraftState } from "@/lib/draftStorage";
 import { prisma } from "@/lib/server/prisma";
 import { getProject } from "@/lib/server/projects";
 import { requireScope, type ServiceScope, type ScopeInput } from "@/lib/server/scope";
-import { DEMO_PROJECT_DESCRIPTION, DEMO_PROJECT_ID, DEMO_PROJECT_NAME, DEMO_PROJECT_PAPERS, DEMO_PROJECT_STATUS_TEXT } from "@/lib/demo/constants";
+import { DEMO_PROJECT_DESCRIPTION, DEMO_PROJECT_KEY, DEMO_PROJECT_NAME, DEMO_PROJECT_PAPERS, DEMO_PROJECT_STATUS_TEXT } from "@/lib/demo/constants";
 import type { Project } from "@/types/project";
 import type { ProtocolData } from "@/types/protocol";
 import type { Study, StudyDetails } from "@/types/ledger";
@@ -27,7 +29,7 @@ type DemoStudySeed = {
   details: StudyDetails;
 };
 
-const DEMO_CONVERSATION_ID = "demo-yoga-anxiety-welcome";
+const DEMO_CONVERSATION_KEY = "welcome";
 
 /* ---------------------------------------------------------------------------
  * PROTOCOL — enriched with PRISMA flow, per-database search, synthesis method
@@ -1271,6 +1273,53 @@ function buildDemoDraftState(): DraftState {
 
 const DEMO_DRAFT_STATE = buildDemoDraftState();
 
+function createDemoProjectId(): string {
+  return `demo-${randomUUID()}`;
+}
+
+function buildDemoScopedId(projectId: string, type: string, seedKey: string): string {
+  const digest = createHash("sha1").update(`${projectId}:${type}:${seedKey}`).digest("hex").slice(0, 20);
+  return `demo-${type}-${digest}`;
+}
+
+function remapDraftStateStudyIds(state: DraftState, studyIdMap: Map<string, string>): DraftState {
+  const nextState = structuredClone(state);
+  for (const [section, studyIds] of Object.entries(nextState.ledgerBySection)) {
+    nextState.ledgerBySection[section as keyof typeof nextState.ledgerBySection] = studyIds.map(
+      (studyId) => studyIdMap.get(studyId) ?? studyId,
+    );
+  }
+  return nextState;
+}
+
+function buildDemoSeedRows(projectId: string) {
+  const studyIdMap = new Map(
+    DEMO_STUDIES.map((study) => [study.id, buildDemoScopedId(projectId, "study", study.id)]),
+  );
+
+  return {
+    conversationId: buildDemoScopedId(projectId, "conversation", DEMO_CONVERSATION_KEY),
+    studies: DEMO_STUDIES.map((study) => ({
+      ...study,
+      id: studyIdMap.get(study.id)!,
+    })),
+    fileAssets: DEMO_FILE_ASSETS.map((asset) => ({
+      ...asset,
+      id: buildDemoScopedId(projectId, "file", asset.id),
+      studyId: asset.studyId ? studyIdMap.get(asset.studyId) ?? null : null,
+    })),
+    notes: DEMO_NOTES.map((note) => ({
+      ...note,
+      id: buildDemoScopedId(projectId, "note", note.id),
+    })),
+    projectMemories: DEMO_PROJECT_MEMORIES.map((memory) => ({
+      ...memory,
+      id: buildDemoScopedId(projectId, "memory", memory.id),
+    })),
+    draftState: remapDraftStateStudyIds(DEMO_DRAFT_STATE, studyIdMap),
+  };
+}
+
 /* ---------------------------------------------------------------------------
  * CONVERSATION SEED
  * -------------------------------------------------------------------------*/
@@ -1299,39 +1348,51 @@ function demoWelcomeMessage(): string {
  * SEED / RESET LOGIC (unchanged structure)
  * -------------------------------------------------------------------------*/
 
-async function deleteDemoProjectSideData(tx: Prisma.TransactionClient): Promise<void> {
+async function deleteDemoProjectSideData(
+  tx: Prisma.TransactionClient,
+  projectId: string,
+): Promise<void> {
   // AIConversation, AgentRun, MemoryRetrieval, MemoryEmbedding, AutonomyConfig
   // are now FK-cascaded from Project — no manual cleanup needed.
   // AIUsage uses SET NULL (preserves analytics), so delete explicitly for clean demo reset.
-  await tx.aIUsage.deleteMany({ where: { projectId: DEMO_PROJECT_ID } });
+  await tx.aIUsage.deleteMany({ where: { projectId } });
 }
 
-async function seedDemoProject(scope: ServiceScope, reset: boolean): Promise<void> {
-  await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-    const existingProject = await tx.project.findFirst({
-      where: {
-        id: DEMO_PROJECT_ID,
-        workspaceId: scope.workspaceId,
-        ownerId: scope.ownerId,
-      },
-      select: { id: true },
-    });
+async function findScopedDemoProject(
+  tx: Prisma.TransactionClient,
+  scope: ServiceScope,
+): Promise<{ id: string } | null> {
+  return tx.project.findFirst({
+    where: {
+      ownerId: scope.ownerId,
+      workspaceId: scope.workspaceId,
+      demoKey: DEMO_PROJECT_KEY,
+    },
+    select: { id: true },
+  });
+}
+
+async function seedDemoProject(scope: ServiceScope, reset: boolean): Promise<string> {
+  return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+    const existingProject = await findScopedDemoProject(tx, scope);
+    const projectId = existingProject?.id ?? createDemoProjectId();
+    const seedRows = buildDemoSeedRows(projectId);
 
     if (!reset && existingProject) {
-      return;
+      return existingProject.id;
     }
 
-    await deleteDemoProjectSideData(tx);
-
     if (existingProject) {
-      await tx.project.delete({ where: { id: DEMO_PROJECT_ID } });
+      await deleteDemoProjectSideData(tx, existingProject.id);
+      await tx.project.delete({ where: { id: existingProject.id } });
     }
 
     await tx.project.create({
       data: {
-        id: DEMO_PROJECT_ID,
+        id: projectId,
         workspaceId: scope.workspaceId,
         ownerId: scope.ownerId,
+        demoKey: DEMO_PROJECT_KEY,
         name: DEMO_PROJECT_NAME,
         description: DEMO_PROJECT_DESCRIPTION,
         status: "ready",
@@ -1342,22 +1403,22 @@ async function seedDemoProject(scope: ServiceScope, reset: boolean): Promise<voi
 
     await tx.protocol.create({
       data: {
-        projectId: DEMO_PROJECT_ID,
+        projectId,
         data: toJsonValue(DEMO_PROTOCOL),
       },
     });
 
     await tx.draft.create({
       data: {
-        projectId: DEMO_PROJECT_ID,
-        state: toJsonValue(DEMO_DRAFT_STATE),
+        projectId,
+        state: toJsonValue(seedRows.draftState),
       },
     });
 
     await tx.study.createMany({
-      data: DEMO_STUDIES.map((study) => ({
+      data: seedRows.studies.map((study) => ({
         id: study.id,
-        projectId: DEMO_PROJECT_ID,
+        projectId,
         workspaceId: scope.workspaceId,
         title: study.title,
         authors: study.authors,
@@ -1369,9 +1430,9 @@ async function seedDemoProject(scope: ServiceScope, reset: boolean): Promise<voi
     });
 
     await tx.fileAsset.createMany({
-      data: DEMO_FILE_ASSETS.map((asset) => ({
+      data: seedRows.fileAssets.map((asset) => ({
         id: asset.id,
-        projectId: DEMO_PROJECT_ID,
+        projectId,
         workspaceId: scope.workspaceId,
         studyId: asset.studyId,
         kind: "source",
@@ -1385,9 +1446,9 @@ async function seedDemoProject(scope: ServiceScope, reset: boolean): Promise<voi
     });
 
     await tx.note.createMany({
-      data: DEMO_NOTES.map((note) => ({
+      data: seedRows.notes.map((note) => ({
         id: note.id,
-        projectId: DEMO_PROJECT_ID,
+        projectId,
         title: note.title,
         content: toJsonValue(note.content),
         tags: note.tags,
@@ -1396,9 +1457,9 @@ async function seedDemoProject(scope: ServiceScope, reset: boolean): Promise<voi
     });
 
     await tx.projectMemory.createMany({
-      data: DEMO_PROJECT_MEMORIES.map((memory) => ({
+      data: seedRows.projectMemories.map((memory) => ({
         id: memory.id,
-        projectId: DEMO_PROJECT_ID,
+        projectId,
         type: memory.type,
         category: memory.category,
         statement: memory.statement,
@@ -1410,23 +1471,25 @@ async function seedDemoProject(scope: ServiceScope, reset: boolean): Promise<voi
 
     await tx.aIConversation.create({
       data: {
-        id: DEMO_CONVERSATION_ID,
+        id: seedRows.conversationId,
         userId: scope.ownerId,
         workspaceId: scope.workspaceId,
         title: "Sample walkthrough",
         context: "project",
         page: "overview",
-        projectId: DEMO_PROJECT_ID,
+        projectId,
       },
     });
 
     await tx.aIMessage.create({
       data: {
-        conversationId: DEMO_CONVERSATION_ID,
+        conversationId: seedRows.conversationId,
         role: "assistant",
         content: demoWelcomeMessage(),
       },
     });
+
+    return projectId;
   });
 }
 
@@ -1434,8 +1497,8 @@ export async function openOrCreateDemoProject(
   scopeInput: ScopeInput
 ): Promise<Project> {
   const scope = requireScope(scopeInput);
-  await seedDemoProject(scope, false);
-  const project = await getProject(scope, DEMO_PROJECT_ID);
+  const projectId = await seedDemoProject(scope, false);
+  const project = await getProject(scope, projectId);
   if (!project) {
     throw new Error("Failed to open sample project.");
   }
@@ -1444,14 +1507,10 @@ export async function openOrCreateDemoProject(
 
 export async function resetDemoProject(
   scopeInput: ScopeInput,
-  projectId: string
 ): Promise<Project> {
-  if (projectId.trim() !== DEMO_PROJECT_ID) {
-    throw new Error("Only the sample project can be reset via this action.");
-  }
   const scope = requireScope(scopeInput);
-  await seedDemoProject(scope, true);
-  const project = await getProject(scope, DEMO_PROJECT_ID);
+  const projectId = await seedDemoProject(scope, true);
+  const project = await getProject(scope, projectId);
   if (!project) {
     throw new Error("Failed to reset sample project.");
   }

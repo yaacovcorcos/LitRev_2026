@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { isDemoProjectId } from "@/lib/demo/constants";
+import { isDemoProject } from "@/lib/demo/constants";
+import { useProjects } from "@/contexts/ProjectsContext";
 import styles from "./DemoGuideCard.module.css";
 
 type DemoGuideCardProps = {
@@ -12,6 +13,8 @@ type DemoGuideCardProps = {
 };
 
 export function DemoGuideCard({ projectId, guideId, text, className }: DemoGuideCardProps) {
+  const { getProjectById } = useProjects();
+  const project = getProjectById(projectId);
   const [hasMounted, setHasMounted] = useState(false);
   const [dismissed, setDismissed] = useState(false);
   const storageKey = useMemo(
@@ -21,15 +24,15 @@ export function DemoGuideCard({ projectId, guideId, text, className }: DemoGuide
 
   useEffect(() => {
     setHasMounted(true);
-    if (!isDemoProjectId(projectId)) return;
+    if (!isDemoProject(project)) return;
     try {
       setDismissed(window.localStorage.getItem(storageKey) === "1");
     } catch {
       setDismissed(false);
     }
-  }, [projectId, storageKey]);
+  }, [project, storageKey]);
 
-  if (!hasMounted || dismissed || !isDemoProjectId(projectId)) {
+  if (!hasMounted || dismissed || !isDemoProject(project)) {
     return null;
   }
 

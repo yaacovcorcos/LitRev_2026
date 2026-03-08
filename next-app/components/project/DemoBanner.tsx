@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { resetDemoProjectAction } from "@/app/actions/demo";
-import { DEMO_PROJECT_ID, isDemoProjectId } from "@/lib/demo/constants";
+import { isDemoProject } from "@/lib/demo/constants";
 import { useProjects } from "@/contexts/ProjectsContext";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import styles from "./DemoBanner.module.css";
@@ -14,7 +14,8 @@ type DemoBannerProps = {
 
 export function DemoBanner({ projectId }: DemoBannerProps) {
   const router = useRouter();
-  const { deleteProject, refresh } = useProjects();
+  const { deleteProject, getProjectById, refresh } = useProjects();
+  const project = getProjectById(projectId);
   const [isResetting, setIsResetting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [resetError, setResetError] = useState<string | null>(null);
@@ -22,7 +23,7 @@ export function DemoBanner({ projectId }: DemoBannerProps) {
   const [confirmReset, setConfirmReset] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  if (!isDemoProjectId(projectId)) return null;
+  if (!isDemoProject(project)) return null;
 
   return (
     <>
@@ -72,14 +73,14 @@ export function DemoBanner({ projectId }: DemoBannerProps) {
           setConfirmReset(false);
           setResetError(null);
           setIsResetting(true);
-          resetDemoProjectAction(DEMO_PROJECT_ID)
+          resetDemoProjectAction()
             .then(async (result) => {
               if (!result.success) {
                 setResetError(result.error);
                 return;
               }
               await refresh();
-              window.location.assign(`/project/${DEMO_PROJECT_ID}`);
+              window.location.assign(`/project/${result.data.id}`);
             })
             .catch((err) => {
               console.error("Reset sample project failed", err);
@@ -101,7 +102,7 @@ export function DemoBanner({ projectId }: DemoBannerProps) {
           setConfirmDelete(false);
           setDeleteError(null);
           setIsDeleting(true);
-          deleteProject(DEMO_PROJECT_ID)
+          deleteProject(projectId)
             .then((success) => {
               if (success) {
                 router.push("/");

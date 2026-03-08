@@ -16,7 +16,7 @@ import { PopupChatProvider } from "@/contexts/PopupChatContext";
 import { getStudyAction } from "@/app/actions/ledger";
 import type { CopilotPage } from "@/types/ai";
 import { DemoBanner } from "@/components/project/DemoBanner";
-import { isDemoProjectId } from "@/lib/demo/constants";
+import { isDemoProject } from "@/lib/demo/constants";
 import { isScrollOwnershipA1Enabled } from "@/lib/feature-flags";
 import { shouldLockRootScroll } from "@/lib/mobile/scroll-lock-policy";
 import { MOBILE_VIEWPORT_MEDIA_QUERY } from "@/lib/mobile/breakpoints";
@@ -344,7 +344,7 @@ function ProjectShellInner({ projectId, initialShellState, children }: ProjectSh
             ? `${activeTab.charAt(0).toUpperCase() + activeTab.slice(1)}`
             : "Project";
     const isOnboardingRoute = pathname.endsWith("/onboarding");
-    const showDemoBanner = isDemoProjectId(projectId) && !isOnboardingRoute && focusMode === "conversation";
+    const showDemoBanner = isDemoProject(project) && !isOnboardingRoute && focusMode === "conversation";
 
     // Centralized scope ownership — driven by pathname, no cleanup return
     useEffect(() => {

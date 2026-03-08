@@ -8,6 +8,7 @@ export interface ProjectProgress {
 
 export interface Project {
   id: string;
+  demoKey?: string | null;
   name: string;
   description?: string;
   status: ProjectStatus;
