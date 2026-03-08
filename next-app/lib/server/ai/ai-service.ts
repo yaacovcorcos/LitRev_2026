@@ -732,7 +732,9 @@ class AIService {
 
         // Coarse conversation-level lock: block overlapping fresh runs and
         // auto-cancel stale "running" rows left behind by interrupted sessions.
-        await ensureConversationRunAvailability(conversation.id);
+        await ensureConversationRunAvailability(conversation.id, {
+            replaceRunId: options?.replaceRunId,
+        });
 
         // Start an agent run
         const run = await startRun({

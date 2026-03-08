@@ -109,6 +109,7 @@ Every fix entry must include:
 - **Protocol Mutation Uses Shared Field-Aware Normalization:** `update_protocol`, same-turn tool-call sanitization, and repeat detection now reuse the same field/value normalize-classify path so unambiguous wrapper shapes are repaired consistently, whitespace-only field mismatches no longer diverge between validation and execution, and normalization/hashing paths cap nested input depth safely.
 - **Tool Prerequisites Now Gate High-Risk Actions Before Execution:** tool metadata now declares project/study/protocol prerequisites in the shared pre-execution path, screening actions also gate on resolvable non-empty criteria, and blocked actions emit structured `missing_prerequisite` envelopes before a tool runs. Generic PDF file existence is still verified inside PDF tools rather than the shared prerequisite vocabulary.
 - **Run Recovery Semantics Are Structured On Timeline-Based Surfaces:** `/ai` and project copilot now preserve deterministic failure envelopes into client state, retry affordances are derived from structured metadata, and server finalization uses explicit run facts so failed no-answer runs no longer masquerade as `completed`. Popup now retains lightweight error metadata and annotates terminal failures inline, but it still does not have full timeline-style parity.
+- **Run Finalization Is Now Guarded End To End:** a started run now enters a top-level guarded lifecycle in `ai-service`, and exactly-once finalization prevents ordinary aborted/disconnected streams from leaking `agentRun.status = "running"` rows.
 - **Shared Failure Handling Still Needs One Owner:** shared stream reducers emit typed `stream_error` intents, but terminal failure presentation is not fully centralized yet; tracked under `FIX-011`.
 
 ## Verified Failure Classes
@@ -182,6 +183,16 @@ Every fix entry must include:
     - popup retains structured error metadata for terminal failures
     - popup and shared adapters have dedicated regression coverage for terminal failure rendering
     - remaining popup limitations are documented explicitly instead of implied away
+
+- [ ] `FIX-012` Run lifecycle integrity and interrupt/replace safety
+  - Severity: `P1`
+  - Problem: active-run admission, abnormal end cleanup, and retry/replace flows are still not fully coordinated, so interrupted runs can still create avoidable lock conflicts, stuck tool state, or duplicated terminal failures.
+  - Supporting detail: canonical plan only for now.
+  - Exit criteria:
+    - no started run remains `running` after ordinary termination
+    - replace-safe admission requires explicit prior run identity instead of conversation-wide cancellation
+    - abnormal run endings fail unfinished tools consistently across `/ai` and project copilot
+    - a single terminal failure renders once
 
 ## Execution Order
 
@@ -340,6 +351,7 @@ These files are supporting documents. Status, priority, and closure rules live h
 
 ## Recently Completed
 
+- [x] Implemented `FIX-012a` run finalization guard: started runs now enter a top-level guarded lifecycle in `ai-service`, `run_start` occurs inside that guard, and exactly-once finalization prevents ordinary aborted streams from leaking fresh `running` rows.
 - [x] Implemented `FIX-004a` tool-surface honesty: `general` mode now uses explicit project/global allowlists instead of widening to all tools, main agentic tool assembly in `ai-service` is mode-aware through the contextual helper, and disabled/global delegation tools are removed from model-visible definitions before the model can call them.
 - [x] Implemented `FIX-001` delegation safety and child clarification: delegated child runs now use the shared autonomy-aware execution/finalization core instead of direct tool execution, approval-required autonomy blocks surface as structured non-executed results, delegated proposal artifacts stay review-only unless direct policy allows auto-apply, and delegated `ask_user` requests bubble through the parent `user_input_required` path with parent-visible artifact metadata.
 - [x] Implemented `FIX-008` tool prerequisite gating: high-risk tools now declare project/study/protocol prerequisites in shared tool metadata, the shared pre-execution middleware/autonomy path blocks missing context before tool execution, screening actions also gate on non-empty criteria readiness, and blocked calls emit structured `missing_prerequisite` envelopes instead of generic tool failures.

@@ -271,6 +271,7 @@ export default function AIView() {
   const historyContentId = "chat-history-panel";
   const abortControllerRef = useRef<AbortController | null>(null);
   const streamGenRef = useRef(0);
+  const currentRunIdRef = useRef<string | null>(null);
   const sendLockRef = useRef(false);
   const activeConversationIdRef = useRef<string | null>(null);
   const routePerfStartRef = useRef<number | null>(null);
@@ -1082,6 +1083,7 @@ export default function AIView() {
     );
 
     setPrefillCommand(null);
+    const replaceRunId = isTyping ? currentRunIdRef.current : null;
     setIsTyping(true);
     streamGenRef.current++;
     const myGen = streamGenRef.current;
@@ -1147,6 +1149,11 @@ export default function AIView() {
       upsertConversationTitle,
       setPendingChoices,
       setPendingUserInput,
+      onIntent: (intent) => {
+        if (intent.type === "run_set") {
+          currentRunIdRef.current = intent.runId;
+        }
+      },
       onNavigate: handleNavigate,
     });
 
@@ -1159,6 +1166,7 @@ export default function AIView() {
           context,
           options: {
             conversationId: convId,
+            replaceRunId: replaceRunId ?? undefined,
             projectId: selectedProjectId ?? undefined,
             model: effectiveModel,
             reasoningMode: reasoningRequest.reasoningMode,
@@ -1532,6 +1540,7 @@ export default function AIView() {
     };
 
     setPlanStatus("running");
+    const replaceRunId = isTyping ? currentRunIdRef.current : null;
     setIsTyping(true);
     streamGenRef.current++;
     const myGen = streamGenRef.current;
@@ -1573,6 +1582,11 @@ export default function AIView() {
       upsertConversationTitle,
       setPendingChoices,
       setPendingUserInput,
+      onIntent: (intent) => {
+        if (intent.type === "run_set") {
+          currentRunIdRef.current = intent.runId;
+        }
+      },
       onPlanStepUpdate: updatePlanStepStatus,
       onNavigate: handleNavigate,
     });
@@ -1616,6 +1630,7 @@ export default function AIView() {
           context: selectedProjectId ? "project" : "global",
           options: {
             conversationId: convId,
+            replaceRunId: replaceRunId ?? undefined,
             projectId: selectedProjectId ?? undefined,
             model: selectedModel,
             reasoningMode: reasoningRequest.reasoningMode,

@@ -73,6 +73,7 @@ export type AIErrorKind =
     | "tool_schema_validation"
     | "missing_prerequisite"
     | "autonomy_blocked"
+    | "run_conflict"
     | "runtime";
 
 export type AIErrorSource =
@@ -82,6 +83,7 @@ export type AIErrorSource =
     | "tool_validator"
     | "tool_prerequisite_gate"
     | "autonomy_policy"
+    | "conversation_run_lock"
     | "runtime";
 
 export type AIErrorEnvelope = {
@@ -170,6 +172,8 @@ export type ChatOptions = {
     systemPrompt?: string;
     tools?: ToolDefinition[];
     conversationId?: string;
+    /** Explicit active run identity this request intends to replace. */
+    replaceRunId?: string;
     projectId?: string;
     studyId?: string;
     /**
