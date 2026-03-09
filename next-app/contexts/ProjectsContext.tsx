@@ -1,6 +1,6 @@
 "use client";
 
-import { createProjectAction, deleteProjectAction, listProjectsAction } from "@/app/actions/projects";
+import { createProjectAction, deleteProjectAction, getProjectAction, listProjectsAction } from "@/app/actions/projects";
 import {
   getLocalStorageMigrationStatus,
   migrateLocalStorageToBackend,
@@ -24,6 +24,7 @@ type ProjectsContextValue = {
   addProject: (project: Project) => Promise<Project | null>;
   deleteProject: (id: string) => Promise<boolean>;
   getProjectById: (id: string) => Project | undefined;
+  ensureProjectLoaded: (id: string) => Promise<Project | null>;
   refresh: () => Promise<void>;
 };
 
@@ -37,6 +38,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   const [migrationStatus, setMigrationStatus] = useState<MigrationStatus>("pending");
   const [migrationError, setMigrationError] = useState<string | null>(null);
   const migrationInFlightRef = useRef(false);
+  const retainedProjectIdsRef = useRef<Set<string>>(new Set());
   const { data: session, isPending: isSessionPending } = authClient.useSession();
 
   const refresh = useCallback(async () => {
@@ -53,7 +55,18 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
     try {
       const result = await listProjectsAction();
       if (result.success) {
-        setProjects(result.data);
+        const fetchedProjects = result.data;
+        setProjects((prev) => {
+          const retainedProjects = prev.filter(
+            (project) =>
+              retainedProjectIdsRef.current.has(project.id) &&
+              !fetchedProjects.some((candidate) => candidate.id === project.id),
+          );
+          for (const project of fetchedProjects) {
+            retainedProjectIdsRef.current.delete(project.id);
+          }
+          return [...retainedProjects, ...fetchedProjects];
+        });
         setProjectsError(null);
       } else if (isAuthError(result)) {
         redirectToLogin();
@@ -146,6 +159,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         console.error("Failed to create project:", result.error);
         return null;
       }
+      retainedProjectIdsRef.current.add(result.data.id);
       setProjects((prev) => [result.data, ...prev.filter((p) => p.id !== result.data.id)]);
       return result.data;
     } catch (err) {
@@ -161,6 +175,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         console.error("Failed to delete project:", result.error);
         return false;
       }
+      retainedProjectIdsRef.current.delete(id);
       setProjects((prev) => prev.filter((project) => project.id !== id));
       return true;
     } catch (err) {
@@ -174,6 +189,44 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
     [projects]
   );
 
+  const ensureProjectLoaded = useCallback(async (id: string): Promise<Project | null> => {
+    const existingProject = projects.find((project) => project.id === id);
+    if (existingProject) {
+      return existingProject;
+    }
+
+    try {
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        const result = await getProjectAction(id);
+        if (!result.success) {
+          if (isAuthError(result)) {
+            redirectToLogin();
+          } else {
+            console.error("Failed to load project from backend:", result.error);
+          }
+          return null;
+        }
+
+        if (result.data) {
+          retainedProjectIdsRef.current.add(result.data.id);
+          setProjects((prev) => {
+            const next = prev.filter((project) => project.id !== result.data!.id);
+            return [result.data!, ...next];
+          });
+          return result.data;
+        }
+
+        if (attempt < 2) {
+          await new Promise((resolve) => window.setTimeout(resolve, 250 * (attempt + 1)));
+        }
+      }
+      return null;
+    } catch (err) {
+      console.error("Failed to load project from backend", err);
+      return null;
+    }
+  }, [projects]);
+
   const value = useMemo(
     () => ({
       projects,
@@ -186,6 +239,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       addProject,
       deleteProject,
       getProjectById,
+      ensureProjectLoaded,
       refresh,
     }),
     [
@@ -199,6 +253,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       addProject,
       deleteProject,
       getProjectById,
+      ensureProjectLoaded,
       refresh,
     ]
   );

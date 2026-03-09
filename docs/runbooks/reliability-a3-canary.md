@@ -3,6 +3,9 @@
 ## Scope
 This runbook governs rollout of A2/A3 reliability changes using `reliability.v1.*` metrics.
 
+Responsive/mobile foundation certification is covered separately in
+`docs/runbooks/responsive-foundation-certification.md`.
+
 ## Rollout control model
 - Deployment-level gate: `NEXT_PUBLIC_STREAM_RELIABILITY_A2`
 - Optional runtime cohort gate: user/workspace allowlist from runtime config.

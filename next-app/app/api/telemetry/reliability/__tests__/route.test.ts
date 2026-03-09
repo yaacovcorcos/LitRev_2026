@@ -59,6 +59,29 @@ describe("POST /api/telemetry/reliability", () => {
     expect(mocks.ingestReliabilityMetric).toHaveBeenCalledWith(authContext, expect.any(Object));
   });
 
+  it("accepts responsive foundation route metrics", async () => {
+    mocks.ingestReliabilityMetric.mockResolvedValue({
+      deduped: false,
+      id: "metric-2",
+    });
+
+    const response = await POST(buildRequest({
+      eventId: "e2",
+      version: 1,
+      type: "reliability.v1.route.ready",
+      surface: "home",
+      payload: {
+        routeTemplate: "/",
+        state: "workspace",
+        layoutMode: null,
+      },
+    }) as never);
+
+    expect(response.status).toBe(202);
+    const json = await response.json();
+    expect(json.success).toBe(true);
+  });
+
   it("returns 400 for invalid telemetry payloads", async () => {
     mocks.ingestReliabilityMetric.mockRejectedValue(new z.ZodError([]));
 

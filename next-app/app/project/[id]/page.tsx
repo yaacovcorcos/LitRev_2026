@@ -10,6 +10,7 @@ import { EmptyState, EmptyStateSkeleton } from "@/components/ui/EmptyState";
 import Link from "next/link";
 import { RecentActivityPanel } from "@/components/project/RecentActivityPanel";
 import { DemoGuideCard } from "@/components/project/DemoGuideCard";
+import { useFoundationRouteReady } from "@/lib/mobile/foundation-reliability";
 import {
   getProjectOverviewStatsAction,
   type DraftStats,
@@ -153,9 +154,72 @@ function LedgerPreview({ stats }: { stats: LedgerStats }) {
 
 export default function ProjectDetail() {
   const { id } = useParams<{ id: string }>();
-  const { getProjectById, isLoadingProjects, projectsError } = useProjects();
+  const {
+    getProjectById,
+    ensureProjectLoaded,
+    isLoadingProjects,
+    projectsError,
+  } = useProjects();
   const { isEmbeddedInProjectShell } = useProjectShell();
-  const project = id ? getProjectById(id) : undefined;
+  const [resolvedProject, setResolvedProject] = useState<Project | null>(null);
+  const project = id ? getProjectById(id) ?? resolvedProject ?? undefined : undefined;
+  const [missingProjectResolveAttempt, setMissingProjectResolveAttempt] = useState(0);
+  const [isResolvingMissingProject, setIsResolvingMissingProject] = useState(false);
+
+  useEffect(() => {
+    setResolvedProject(null);
+    setMissingProjectResolveAttempt(0);
+    setIsResolvingMissingProject(false);
+  }, [id]);
+
+  useEffect(() => {
+    if (
+      !id ||
+      project ||
+      isLoadingProjects ||
+      projectsError ||
+      missingProjectResolveAttempt >= 5
+    ) return;
+    setIsResolvingMissingProject(true);
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      void ensureProjectLoaded(id)
+        .then((loadedProject) => {
+          if (cancelled) return;
+          if (loadedProject) {
+            setResolvedProject(loadedProject);
+            return;
+          }
+          setMissingProjectResolveAttempt((attempt) => attempt + 1);
+        })
+        .finally(() => {
+          if (!cancelled) {
+            setIsResolvingMissingProject(false);
+          }
+        });
+    }, missingProjectResolveAttempt === 0 ? 0 : 400);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [
+    ensureProjectLoaded,
+    id,
+    isLoadingProjects,
+    missingProjectResolveAttempt,
+    project,
+    projectsError,
+  ]);
+
+  useFoundationRouteReady({
+    enabled: Boolean(project) && !isLoadingProjects && !projectsError,
+    routeTemplate: "/project/[id]",
+    surface: "project",
+    state: "content",
+    layoutMode: isEmbeddedInProjectShell ? "embedded" : "standalone",
+    projectId: project?.id ?? null,
+  });
 
   const [draftStats, setDraftStats] = useState<DraftStats | null>(null);
   const [protocolStats, setProtocolStats] = useState<ProtocolStats | null>(null);
@@ -207,7 +271,12 @@ export default function ProjectDetail() {
   }, [project]);
 
   // Loading state: show skeleton while projects are being fetched
-  if (isLoadingProjects) {
+  const shouldHoldProjectLookup =
+    !project &&
+    !projectsError &&
+    (isLoadingProjects || isResolvingMissingProject || missingProjectResolveAttempt < 5);
+
+  if (shouldHoldProjectLookup) {
     const skeleton = <EmptyStateSkeleton className={styles.notFound} />;
     return isEmbeddedInProjectShell ? skeleton : <AppShell activeNav="projects">{skeleton}</AppShell>;
   }

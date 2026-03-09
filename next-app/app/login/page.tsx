@@ -9,7 +9,12 @@ export default function LoginPage() {
   return (
     <Suspense
       fallback={
-        <AuthShellFrame ariaLabel="Sign in loading" mode="signin">
+        <AuthShellFrame
+          ariaLabel="Sign in loading"
+          mode="signin"
+          telemetryRouteTemplate="/login"
+          telemetryState="loading"
+        >
           <div className={styles.authPanel}>
             <div className={styles.card}>
               <div className={styles.cardAccent} />

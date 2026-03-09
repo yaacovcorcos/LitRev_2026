@@ -2,10 +2,32 @@ import type { StreamTerminalReason } from "@/lib/ai/stream-lifecycle";
 
 export const RELIABILITY_METRIC_VERSION = 1 as const;
 
-export type ReliabilitySurface = "ai" | "project" | "popup" | "shell";
+export type ReliabilitySurface = "ai" | "project" | "popup" | "shell" | "home" | "auth" | "protocol";
 export const RELIABILITY_VIEWPORT_VALUES = ["phone", "compact", "desktop", "unknown"] as const;
 export type ReliabilityViewport = (typeof RELIABILITY_VIEWPORT_VALUES)[number];
 export type ReliabilityNetworkHint = "online" | "offline" | "slow" | "unknown";
+export const RELIABILITY_ROUTE_TEMPLATES = [
+  "/",
+  "/login",
+  "/signup",
+  "/project/[id]",
+  "/project/[id]/protocol",
+  "/ai",
+] as const;
+export type ReliabilityRouteTemplate = (typeof RELIABILITY_ROUTE_TEMPLATES)[number];
+export type ReliabilityRouteState =
+  | "loading"
+  | "zero_state"
+  | "workspace"
+  | "signin"
+  | "signup"
+  | "content";
+export type ReliabilityLayoutMode = "embedded" | "standalone" | null;
+export type ReliabilityFlowName =
+  | "enter_workspace"
+  | "open_sample_review"
+  | "create_project"
+  | "magic_link_requested";
 
 export type ReliabilityFlagsSnapshot = {
   scrollOwnershipA1: boolean | null;
@@ -25,7 +47,9 @@ export type ReliabilityMetricType =
   | "reliability.v1.stream.stuck_watchdog_fired"
   | "reliability.v1.retry.clicked"
   | "reliability.v1.shell.session_started"
-  | "reliability.v1.shell.session_ended";
+  | "reliability.v1.shell.session_ended"
+  | "reliability.v1.route.ready"
+  | "reliability.v1.route.flow_completed";
 
 export type ReliabilityMetricPayloadByType = {
   "reliability.v1.stream.started": {
@@ -52,6 +76,16 @@ export type ReliabilityMetricPayloadByType = {
   "reliability.v1.shell.session_ended": {
     sessionId: string;
     durationMs: number;
+  };
+  "reliability.v1.route.ready": {
+    routeTemplate: ReliabilityRouteTemplate;
+    state: ReliabilityRouteState;
+    layoutMode: ReliabilityLayoutMode;
+  };
+  "reliability.v1.route.flow_completed": {
+    routeTemplate: ReliabilityRouteTemplate;
+    flow: ReliabilityFlowName;
+    layoutMode: ReliabilityLayoutMode;
   };
 };
 

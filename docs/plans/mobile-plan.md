@@ -26,6 +26,7 @@ This plan is the long-term implementation contract for how LitRev adapts across 
 - Shell responsive adoption is now gated behind `NEXT_PUBLIC_MOBILE_SHELL_V2`; home, auth, protocol, and admin follow-up waves are not yet organized behind dedicated public flags.
 - Shared chat-runtime direction exists for `/ai` and project copilot via chat unification work; popup full runtime convergence remains pending (`U3` in chat unification plan).
 - Shared interaction ergonomics now use the existing `--touch-target-min` baseline across the highest-friction phone controls, including mobile nav, project tabs, toast dismiss, popup dismiss, study-file actions, export-history actions, and copilot remove/clear controls.
+- Responsive foundation certification is now codified in `docs/runbooks/responsive-foundation-certification.md`; route-level reliability telemetry covers home/auth/project/protocol readiness and behavior-level mobile e2e now certifies home, auth, project shell, and protocol across phone and compact widths.
 - Core route adoption of a long-term responsive contract is still incomplete:
   - app shell and sidebar now split `phone` vs `compact` behavior behind `NEXT_PUBLIC_MOBILE_SHELL_V2`, but wider route surfaces still need follow-up adoption
   - home now adopts the shared route/shell responsive contract across loading, zero-state, and workspace states, but shared `TopBar` / `ControlsBar` primitives still retain transitional generic breakpoints outside home-specific modifiers
@@ -170,11 +171,6 @@ Primary KPI lenses:
 - Regression concentration by viewport class (`phone`, `compact`, `desktop`).
 
 ## Active Tasks (Mobile Foundation)
-- [ ] `MOB-FND-008` Reliability telemetry + responsive e2e certification:
-  - Reuse reliability telemetry for responsive canary signals and normalize it to the tier contract.
-  - Expand e2e from smoke coverage to behavior-level coverage for home, login, project shell, and protocol across `phone` and `compact` widths.
-  - Keep local mobile telemetry as debug support.
-  - Rollback: telemetry code can be reverted independently; e2e changes require no rollback.
 - [ ] `MOB-FND-009` Admin/settings responsive audit:
   - Audit admin/settings for actual responsive contract drift and user-impacting defects.
   - Only bring admin/settings into this phase if the audit shows enough breakage to justify a dedicated rollout wave.
@@ -205,6 +201,10 @@ Primary KPI lenses:
   - Cover both phone and compact widths where behavior differs.
 
 ## Recently Completed
+- [x] `MOB-FND-008` Reliability telemetry + responsive e2e certification completed:
+  - Expanded the reliability schema beyond stream/shell events with route-level readiness and flow-completion signals for home, auth, project shell, and protocol.
+  - Added the first behavior-level responsive certification suite for home, auth, project shell, and protocol while keeping `/ai` as a required non-regression smoke surface.
+  - Added the dedicated operational runbook in `docs/runbooks/responsive-foundation-certification.md` so responsive certification no longer depends on the stream-focused A3 canary doc.
 - [x] `MOB-FND-007` Shared touch-target and density pass completed:
   - Reused the existing `--touch-target-min` baseline and hardened the highest-friction shared phone controls instead of inventing a second interaction token system.
   - Increased hit areas and focus treatment for mobile nav items, project tab controls, toast/popup dismiss buttons, study-file/export actions, and copilot remove/clear affordances.
