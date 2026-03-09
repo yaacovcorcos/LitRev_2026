@@ -135,7 +135,10 @@ function StandaloneCopilotGrid({
     const panelVars = useMemo<CSSProperties>(() => {
         const w = isCollapsed ? RAIL_WIDTH : boundedWidth;
         const cols = isCollapsed ? `1fr 0px ${RAIL_WIDTH}px` : `1fr 1px ${w}px`;
-        return { "--copilot-width": `${w}px`, gridTemplateColumns: cols } as CSSProperties;
+        return {
+            "--copilot-width": `${w}px`,
+            "--copilot-grid-template-columns": cols,
+        } as CSSProperties;
     }, [boundedWidth, isCollapsed]);
 
     return (

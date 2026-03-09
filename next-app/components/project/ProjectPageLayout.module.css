@@ -2,7 +2,7 @@
     flex: 1;
     min-height: 0;
     display: grid;
-    grid-template-columns: 1fr 1px var(--copilot-width, 360px);
+    grid-template-columns: var(--copilot-grid-template-columns, 1fr 1px var(--copilot-width, 360px));
     overflow: hidden;
     height: 100%;
 }
@@ -55,7 +55,7 @@
 
 @media (max-width: 900px) {
     .grid:not([data-copilot-collapse-mode="phone-only"]) {
-        grid-template-columns: 1fr !important;
+        grid-template-columns: 1fr;
     }
 
     .grid:not([data-copilot-collapse-mode="phone-only"]) .resizeHandle {
@@ -69,7 +69,7 @@
 
 /* Mirrors PHONE_MAX_WIDTH in lib/mobile/breakpoints.ts. */
 .grid[data-copilot-collapse-mode="phone-only"][data-viewport-class="phone"] {
-    grid-template-columns: 1fr !important;
+    grid-template-columns: 1fr;
 }
 
 .grid[data-copilot-collapse-mode="phone-only"][data-viewport-class="phone"] .resizeHandle {

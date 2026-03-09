@@ -18,6 +18,16 @@ import { ProtocolSections } from "./ProtocolSections";
 
 
 /** Inner component that uses the ProtocolContext */
+function ProtocolPageStatus({ children }: { children: React.ReactNode }) {
+    return (
+        <ProjectPageLayout noMainPadding mainClassName={styles.appMainOverride}>
+            <div className={`${styles.page} surface-root`} data-surface-height="shell">
+                {children}
+            </div>
+        </ProjectPageLayout>
+    );
+}
+
 function ProtocolPageContent() {
     const { id } = useParams<{ id: string }>();
     const { getProjectById, isLoadingProjects, projectsError } = useProjects();
@@ -203,46 +213,40 @@ function ProtocolPageContent() {
 
     if (isLoadingProjects) {
         return (
-            <ProjectPageLayout noMainPadding mainClassName={styles.appMainOverride}>
-                <div className={`${styles.page} surface-root`} data-surface-height="shell">
-                    <EmptyStateSkeleton className={styles.notFound} />
-                </div>
-            </ProjectPageLayout>
+            <ProtocolPageStatus>
+                <EmptyStateSkeleton className={styles.notFound} />
+            </ProtocolPageStatus>
         );
     }
 
     if (projectsError) {
         return (
-            <ProjectPageLayout noMainPadding mainClassName={styles.appMainOverride}>
-                <div className={`${styles.page} surface-root`} data-surface-height="shell">
-                    <EmptyState
-                        variant="error"
-                        icon="cloud_off"
-                        title="Unable to load project"
-                        description={projectsError}
-                        primaryAction={{ label: "Retry", onClick: () => window.location.reload() }}
-                        secondaryAction={{ label: "Back to Dashboard", href: "/" }}
-                        className={styles.notFound}
-                    />
-                </div>
-            </ProjectPageLayout>
+            <ProtocolPageStatus>
+                <EmptyState
+                    variant="error"
+                    icon="cloud_off"
+                    title="Unable to load project"
+                    description={projectsError}
+                    primaryAction={{ label: "Retry", onClick: () => window.location.reload() }}
+                    secondaryAction={{ label: "Back to Dashboard", href: "/" }}
+                    className={styles.notFound}
+                />
+            </ProtocolPageStatus>
         );
     }
 
     if (!project) {
         return (
-            <ProjectPageLayout noMainPadding mainClassName={styles.appMainOverride}>
-                <div className={`${styles.page} surface-root`} data-surface-height="shell">
-                    <EmptyState
-                        variant="error"
-                        icon="folder_off"
-                        title="Project not found"
-                        description="This project may have been deleted or you don't have access."
-                        primaryAction={{ label: "Back to Dashboard", href: "/" }}
-                        className={styles.notFound}
-                    />
-                </div>
-            </ProjectPageLayout>
+            <ProtocolPageStatus>
+                <EmptyState
+                    variant="error"
+                    icon="folder_off"
+                    title="Project not found"
+                    description="This project may have been deleted or you don't have access."
+                    primaryAction={{ label: "Back to Dashboard", href: "/" }}
+                    className={styles.notFound}
+                />
+            </ProtocolPageStatus>
         );
     }
 
