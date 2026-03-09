@@ -40,6 +40,16 @@ export function createTelemetryPostHandler<TResult>({
         );
       }
 
+      if (error instanceof SyntaxError) {
+        return Response.json(
+          {
+            success: false,
+            error: "Invalid JSON payload",
+          },
+          { status: 400 },
+        );
+      }
+
       if (
         error instanceof Error &&
         error.message.toLowerCase().includes("access denied")

@@ -95,6 +95,27 @@ describe("POST /api/telemetry/performance", () => {
     });
   });
 
+  it("returns 400 for invalid JSON bodies", async () => {
+    mocks.requireApiSession.mockResolvedValue({
+      ok: true,
+      context: { userId: "user-1", workspaceId: "ws-1", role: "owner" },
+    });
+
+    const request = {
+      headers: new Headers({ "Content-Type": "application/json" }),
+      json: vi.fn().mockRejectedValue(new SyntaxError("Unexpected end of JSON input")),
+    } as unknown as Request;
+
+    const response = await POST(request as never);
+    const json = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(json).toEqual({
+      success: false,
+      error: "Invalid JSON payload",
+    });
+  });
+
   it("returns opaque 500 errors and logs details server-side", async () => {
     mocks.requireApiSession.mockResolvedValue({
       ok: true,
