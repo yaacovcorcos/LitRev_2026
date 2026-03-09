@@ -1,6 +1,6 @@
 "use client";
 
-import { createProjectAction, deleteProjectAction, listProjectsAction } from "@/app/actions/projects";
+import { createProjectAction, deleteProjectAction, getProjectAction, listProjectsAction } from "@/app/actions/projects";
 import {
   getLocalStorageMigrationStatus,
   migrateLocalStorageToBackend,
@@ -24,6 +24,7 @@ type ProjectsContextValue = {
   addProject: (project: Project) => Promise<Project | null>;
   deleteProject: (id: string) => Promise<boolean>;
   getProjectById: (id: string) => Project | undefined;
+  ensureProjectLoaded: (id: string) => Promise<Project | null>;
   refresh: () => Promise<void>;
 };
 
@@ -174,6 +175,43 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
     [projects]
   );
 
+  const ensureProjectLoaded = useCallback(async (id: string): Promise<Project | null> => {
+    const existingProject = projects.find((project) => project.id === id);
+    if (existingProject) {
+      return existingProject;
+    }
+
+    try {
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        const result = await getProjectAction(id);
+        if (!result.success) {
+          if (isAuthError(result)) {
+            redirectToLogin();
+          } else {
+            console.error("Failed to load project from backend:", result.error);
+          }
+          return null;
+        }
+
+        if (result.data) {
+          setProjects((prev) => {
+            const next = prev.filter((project) => project.id !== result.data!.id);
+            return [result.data!, ...next];
+          });
+          return result.data;
+        }
+
+        if (attempt < 2) {
+          await new Promise((resolve) => window.setTimeout(resolve, 250 * (attempt + 1)));
+        }
+      }
+      return null;
+    } catch (err) {
+      console.error("Failed to load project from backend", err);
+      return null;
+    }
+  }, [projects]);
+
   const value = useMemo(
     () => ({
       projects,
@@ -186,6 +224,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       addProject,
       deleteProject,
       getProjectById,
+      ensureProjectLoaded,
       refresh,
     }),
     [
@@ -199,6 +238,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       addProject,
       deleteProject,
       getProjectById,
+      ensureProjectLoaded,
       refresh,
     ]
   );

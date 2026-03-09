@@ -7,7 +7,7 @@ import { assertProjectAccess } from "@/lib/server/access";
 import { prisma } from "@/lib/server/prisma";
 import { RELIABILITY_VIEWPORT_VALUES } from "@/types/reliability-telemetry";
 
-const RELIABILITY_SURFACES = ["ai", "project", "popup", "shell"] as const;
+const RELIABILITY_SURFACES = ["ai", "project", "popup", "shell", "home", "auth", "protocol"] as const;
 const RELIABILITY_TYPES = [
   "reliability.v1.stream.started",
   "reliability.v1.stream.terminal",
@@ -15,6 +15,8 @@ const RELIABILITY_TYPES = [
   "reliability.v1.retry.clicked",
   "reliability.v1.shell.session_started",
   "reliability.v1.shell.session_ended",
+  "reliability.v1.route.ready",
+  "reliability.v1.route.flow_completed",
 ] as const;
 
 const ReliabilityMetricInputSchema = z.object({

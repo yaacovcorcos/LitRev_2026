@@ -9,7 +9,12 @@ export default function SignupPage() {
   return (
     <Suspense
       fallback={
-        <AuthShellFrame ariaLabel="Create account loading" mode="signup">
+        <AuthShellFrame
+          ariaLabel="Create account loading"
+          mode="signup"
+          telemetryRouteTemplate="/signup"
+          telemetryState="loading"
+        >
           <div className={styles.authPanel}>
             <div className={styles.card}>
               <div className={styles.cardAccent} />
