@@ -199,6 +199,10 @@ export function createClientTelemetryStore<TEvent extends object, TInput>({
       }
     },
     async flushForTests() {
+      if (flushTimer) {
+        clearTimeout(flushTimer);
+        flushTimer = null;
+      }
       await flushPendingMetrics();
     },
     getEvents,
