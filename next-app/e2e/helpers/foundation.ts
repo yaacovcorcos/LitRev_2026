@@ -93,8 +93,21 @@ export async function enterHomeWorkspace(page: Page): Promise<void> {
     state = await waitForHomeReady(page);
   }
   if (state === "zero_state") {
-    await page.getByRole("button", { name: /enter workspace/i }).click();
-    await expect(page.getByRole("button", { name: /create new project/i })).toBeVisible();
+    const enterWorkspace = page.getByRole("button", { name: /enter workspace/i });
+    const createProject = page.getByRole("button", { name: /create new project/i });
+
+    await expect
+      .poll(async () => {
+        if (await createProject.isVisible().catch(() => false)) return "workspace";
+
+        if (await enterWorkspace.isVisible().catch(() => false)) {
+          await enterWorkspace.click({ force: true });
+          return "transitioning";
+        }
+
+        return "pending";
+      }, { timeout: 30_000 })
+      .toBe("workspace");
   }
 }
 
