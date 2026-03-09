@@ -112,33 +112,18 @@ export async function enterHomeWorkspace(page: Page): Promise<void> {
 }
 
 export async function createProjectFromHome(page: Page, name = "E2E Mobile Project"): Promise<string> {
-  await page.goto("/");
-  await page.waitForLoadState("domcontentloaded");
-  await enterHomeWorkspace(page);
-  await page.getByRole("button", { name: /create new project/i }).click();
+  const response = await postWithRetries(page, "/api/dev/test-project", {
+    name,
+  });
+  const payload = (await response.json()) as { projectId?: string };
+  expect(payload.projectId).toMatch(/^.+$/);
 
-  await expect(page.getByRole("heading", { name: /what are you researching/i })).toBeVisible();
-  await page.getByLabel(/project name/i).fill(name);
-  await page.getByRole("button", { name: /create blank/i }).click();
-
-  const createdProjectLink = page.getByRole("link", { name: new RegExp(`open project ${name}`, "i") });
-  await expect.poll(async () => {
-    if (/\/project\/[^/]+$/.test(page.url())) return "navigated";
-    if (await createdProjectLink.isVisible().catch(() => false)) return "linked";
-    if (await page.getByText(/failed to create the project/i).isVisible().catch(() => false)) return "failed";
-    return "pending";
-  }, { timeout: 30_000 }).toMatch(/navigated|linked/);
-
-  if (!/\/project\/[^/]+$/.test(page.url())) {
-    const projectHref = await createdProjectLink.getAttribute("href");
-    expect(projectHref).toMatch(/^\/project\/[^/]+$/);
-    await page.goto(projectHref!, { waitUntil: "domcontentloaded", timeout: 30_000 });
-    await page.waitForURL(/\/project\/[^/]+$/);
-  }
+  await page.goto(`/project/${payload.projectId}`, { waitUntil: "domcontentloaded", timeout: 30_000 });
+  await page.waitForURL(/\/project\/[^/]+$/);
+  await expect(page.getByRole("heading", { name: /project not found/i })).not.toBeVisible();
 
   const match = page.url().match(/\/project\/([^/]+)$/);
   expect(match).not.toBeNull();
-  await expect(page.getByRole("heading", { name: /project not found/i })).not.toBeVisible();
   return match![1];
 }
 
