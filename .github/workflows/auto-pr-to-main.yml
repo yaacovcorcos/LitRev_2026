@@ -3,7 +3,7 @@ name: Auto PR To Main
 on:
   push:
     branches:
-      - "codex/**"
+      - "YY/**"
 
 permissions:
   contents: read
