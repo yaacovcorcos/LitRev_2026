@@ -35,7 +35,7 @@ Rule meanings:
 ## CSS Breakpoint Audit
 | File | Rule | Current breakpoint | Target meaning | Decision | Follow-up owner |
 |---|---|---:|---|---|---|
-| `next-app/components/project/ProjectTabBar.module.css` | tab-bar compact layout tweaks | `768` | likely `compact` density/layout behavior | defer | `MOB-FND-003` |
+| `next-app/components/project/ProjectTabBar.module.css` | tab-bar phone touch-target and label-density behavior | `768` | `phone` interaction behavior | keep (migrated in `MOB-FND-007`) | completed |
 | `next-app/components/copilot/TimelineMessages.module.css` | message/timeline narrow-layout tweaks | `768` | likely `compact` or chat-specific behavior | defer | chat foundation |
 | `next-app/components/PopupChat.module.css` | popup narrow-mode layout | `900` | transitional compact-or-phone behavior | defer | `MOB-005` |
 | `next-app/components/PopupChat.module.css` | extra-tight popup density tweak | `500` | `tiny-phone` candidate | defer until popup redesign confirms semantics | `MOB-005` |
@@ -46,7 +46,7 @@ Rule meanings:
 | `next-app/app/login/login.module.css` | login narrow layout / viewport math | `900` or route-local logic | mixed compact + phone behavior | keep (migrated in `MOB-FND-005`) | completed |
 | `next-app/app/project/[id]/protocol/protocol.module.css` | protocol narrow layout | `900` | mixed compact + phone behavior | keep (migrated in `MOB-FND-006`) | completed |
 | `next-app/components/project/ProjectPageLayout.module.css` | standalone project wrapper copilot collapse | `900` | protocol-specific wrapper behavior now split to `phone` while generic wrapper stays transitional elsewhere | keep (protocol path migrated in `MOB-FND-006`) | completed |
-| `next-app/components/MobileNav.module.css` | phone nav | `900` | phone-only shell navigation | keep (migrated in `MOB-FND-003`) | `MOB-FND-007` for touch-target follow-up |
+| `next-app/components/MobileNav.module.css` | phone nav | `900` | phone-only shell navigation | keep (migrated in `MOB-FND-003`; touch-target follow-up completed in `MOB-FND-007`) | completed |
 | `next-app/components/TopBar.module.css` | top-bar responsive changes | `900` | compact shell behavior | transitional | relevant surface wave |
 | `next-app/components/UserMenu.module.css` | user menu responsive changes | `900` | compact shell behavior | transitional | `MOB-FND-003` |
 | `next-app/components/ControlsBar.module.css` | controls-bar responsive changes | `900` | compact behavior | transitional; home now uses scoped modifiers from `MOB-FND-004` without rewriting shared default behavior | relevant surface wave |

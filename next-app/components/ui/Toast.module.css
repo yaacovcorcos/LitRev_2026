@@ -107,11 +107,11 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
+  width: 32px;
+  height: 32px;
   border-radius: var(--radius-sm, 4px);
   color: var(--text-muted);
-  transition: color 150ms, background 150ms;
+  transition: color 150ms, background 150ms, box-shadow 150ms;
 }
 
 .dismiss:hover {
@@ -119,8 +119,21 @@
   background: rgba(var(--rgb-ui-contrast), 0.06);
 }
 
+.dismiss:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus-ring);
+}
+
 .dismiss .material-icons-round {
   font-size: 16px;
+}
+
+/* Mirrors PHONE_MAX_WIDTH in lib/mobile/breakpoints.ts. */
+@media (max-width: 767px) {
+  .dismiss {
+    width: var(--touch-target-min);
+    height: var(--touch-target-min);
+  }
 }
 
 /* ─── Screen Reader Only ──────────────────────────────────────── */
