@@ -85,12 +85,7 @@ Rule: feature branches hold work; repo root `main` only mirrors merged work.
 - Detached or rescue worktrees must not be treated as the `main` baseline.
 - Task worktrees are temporary by default.
 - Once a task is merged, abandoned, or intentionally archived, remove its worktree promptly.
-- Maintain a cleanup manifest before deleting or re-homing any worktree.
-- The manifest must record:
-  - worktree path
-  - branch name or detached HEAD SHA
-  - status: `active`, `rescue`, `stale`, or `unknown`
-  - decision: `keep`, `rehome`, `review`, or `delete`
+- Maintain a cleanup manifest before deleting or re-homing any worktree; follow the schema in `docs/runbooks/github-flow.md`.
 - Do not remove a parent worktree directory while it still contains active nested child worktrees.
 - After merge, remove the merged task worktree and delete the merged local branch promptly.
 - Do not keep finished task worktrees around as passive history.
