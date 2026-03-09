@@ -43,8 +43,20 @@ describe("citation preview telemetry", () => {
             },
         });
 
+        recordCitationPreviewMetric({
+            type: "metadata_request_completed",
+            surface: "project",
+            payload: {
+                citationKey: "pmid:12345678",
+                citationType: "PubMed",
+                fromCache: false,
+                latencyMs: 31,
+                upstreamSource: "icite",
+            },
+        });
+
         const events = getCitationPreviewMetricEvents();
-        expect(events).toHaveLength(2);
+        expect(events).toHaveLength(3);
         expect(events[0]).toMatchObject({
             version: 1,
             type: "hover_intent_started",
@@ -57,6 +69,14 @@ describe("citation preview telemetry", () => {
         });
         expect(typeof events[0].eventId).toBe("string");
         expect(typeof events[0].timestamp).toBe("string");
+        expect(events[2]).toMatchObject({
+            type: "metadata_request_completed",
+            payload: {
+                citationKey: "pmid:12345678",
+                citationType: "PubMed",
+                upstreamSource: "icite",
+            },
+        });
     });
 
     it("keeps server shipping disabled by default until explicitly enabled", async () => {

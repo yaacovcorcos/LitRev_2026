@@ -16,7 +16,7 @@ export type CitationPreviewMetricPayload = {
     trigger?: CitationPreviewTrigger;
     fromCache?: boolean;
     latencyMs?: number;
-    upstreamSource?: "crossref" | "pubmed" | "unknown";
+    upstreamSource?: "icite" | "crossref" | "pubmed" | "unknown";
     errorCode?: string | null;
 };
 

@@ -4,7 +4,7 @@ export interface CitationMetadata {
     year?: number;
     journal?: string;
     citationCount?: number;
-    citationCountSource?: "crossref";
+    citationCountSource?: "icite" | "crossref";
     citationCountFetchedAt?: string;
     canonicalUrl?: string;
     doi?: string;

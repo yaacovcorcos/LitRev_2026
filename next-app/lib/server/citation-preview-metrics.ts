@@ -38,7 +38,7 @@ const CitationPreviewMetricInputSchema: z.ZodType<CitationPreviewMetricInput> = 
         trigger: z.enum(METRIC_TRIGGERS).optional(),
         fromCache: z.boolean().optional(),
         latencyMs: z.number().finite().min(0).optional(),
-        upstreamSource: z.enum(["crossref", "pubmed", "unknown"]).optional(),
+        upstreamSource: z.enum(["icite", "crossref", "pubmed", "unknown"]).optional(),
         errorCode: z.string().trim().min(1).max(MAX_ERROR_CODE_LENGTH).nullable().optional(),
     }),
 });
