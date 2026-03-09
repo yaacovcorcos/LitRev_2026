@@ -26,7 +26,12 @@ This plan is the long-term implementation contract for how LitRev adapts across 
 - Shell responsive adoption is now gated behind `NEXT_PUBLIC_MOBILE_SHELL_V2`; home, auth, protocol, and admin follow-up waves are not yet organized behind dedicated public flags.
 - Shared chat-runtime direction exists for `/ai` and project copilot via chat unification work; popup full runtime convergence remains pending (`U3` in chat unification plan).
 - Shared interaction ergonomics now use the existing `--touch-target-min` baseline across the highest-friction phone controls, including mobile nav, project tabs, toast dismiss, popup dismiss, study-file actions, export-history actions, and copilot remove/clear controls.
+<<<<<<< HEAD
 - Responsive foundation certification is now codified in `docs/runbooks/responsive-foundation-certification.md`; route-level reliability telemetry covers home/auth/project/protocol readiness and behavior-level mobile e2e now certifies home, auth, project shell, and protocol across phone and compact widths.
+=======
+- Responsive foundation certification now exists as a real route-level contract for home, auth, project shell, protocol, and `/ai` entry, backed by reliability telemetry, `test:e2e:mobile:foundation`, and the responsive certification runbook.
+- The remaining weak point is mobile test architecture rather than product layout contract: the broader `test:e2e:mobile` suite still pays too much live setup cost, still depends on integrated route boot/login/project creation flows, and still needs explicit test-mode telemetry cleanup plus better fixture isolation before it can be considered an efficient long-term gate.
+>>>>>>> 6426e36 (docs(mobile): add post-certification harness follow-ups)
 - Core route adoption of a long-term responsive contract is still incomplete:
   - app shell and sidebar now split `phone` vs `compact` behavior behind `NEXT_PUBLIC_MOBILE_SHELL_V2`, but wider route surfaces still need follow-up adoption
   - home now adopts the shared route/shell responsive contract across loading, zero-state, and workspace states, but shared `TopBar` / `ControlsBar` primitives still retain transitional generic breakpoints outside home-specific modifiers
@@ -176,6 +181,21 @@ Primary KPI lenses:
   - Only bring admin/settings into this phase if the audit shows enough breakage to justify a dedicated rollout wave.
   - If implementation is justified, decide in that wave whether to add a dedicated public flag or keep revert/redeploy-only rollout semantics.
   - Rollback: disable the dedicated flag if one is introduced in this wave; otherwise revert/redeploy.
+- [ ] `MOB-FND-010` Mobile certification harness hardening:
+  - Keep `test:e2e:mobile:foundation` as the required blocking responsive foundation gate.
+  - Split the broader `test:e2e:mobile` suite from the minimum certification suite so CI can distinguish required route-certification from slower exploratory smoke coverage.
+  - Restore safe Playwright parallelism only after fixture isolation proves that mobile auth/home/project/protocol setup no longer races across workers.
+  - Rollback: test harness changes are revert-only and do not require product rollback levers.
+- [ ] `MOB-FND-011` Seeded responsive fixture + route-state contract:
+  - Add deterministic seeded entry paths for zero-state, workspace state, authenticated auth redirect, project shell, and protocol-ready flows.
+  - Reduce reliance on full live route boot, ad hoc project creation, and transient UI transitions inside every mobile certification test.
+  - Make phone/compact certification assert route usability directly instead of repeatedly paying setup cost.
+  - Rollback: fixture/test-only changes are revert-only and do not require product rollback levers.
+- [ ] `MOB-FND-012` Responsive telemetry test-mode cleanup:
+  - Eliminate noisy aborted telemetry requests and dev-server uncaught exceptions during Playwright and local certification runs.
+  - Define explicit test-mode behavior for reliability/performance/mobile telemetry so CI signal stays focused on route failures.
+  - Keep production telemetry shipping unchanged while making test/dev behavior deterministic and quiet.
+  - Rollback: telemetry test-mode changes can be reverted independently of product layout waves.
 
 ## Active Tasks (Chat Experience)
 - [ ] `MOB-002` Shared responsive chat shell contract:
@@ -202,9 +222,9 @@ Primary KPI lenses:
 
 ## Recently Completed
 - [x] `MOB-FND-008` Reliability telemetry + responsive e2e certification completed:
-  - Expanded the reliability schema beyond stream/shell events with route-level readiness and flow-completion signals for home, auth, project shell, and protocol.
-  - Added the first behavior-level responsive certification suite for home, auth, project shell, and protocol while keeping `/ai` as a required non-regression smoke surface.
-  - Added the dedicated operational runbook in `docs/runbooks/responsive-foundation-certification.md` so responsive certification no longer depends on the stream-focused A3 canary doc.
+  - Reused the reliability telemetry pipeline for responsive canary signals and normalized responsive route evidence to the shared tier contract.
+  - Added behavior-level responsive certification coverage for home, login/signup, project shell, protocol, and `/ai` entry, backed by the dedicated `test:e2e:mobile:foundation` gate and responsive certification runbook.
+  - Hardened project/home route resolution and the mobile certification helpers enough to make route-level mobile readiness observable and reproducible instead of ad hoc.
 - [x] `MOB-FND-007` Shared touch-target and density pass completed:
   - Reused the existing `--touch-target-min` baseline and hardened the highest-friction shared phone controls instead of inventing a second interaction token system.
   - Increased hit areas and focus treatment for mobile nav items, project tab controls, toast/popup dismiss buttons, study-file/export actions, and copilot remove/clear affordances.
@@ -248,8 +268,11 @@ Build in this order:
 7. `MOB-FND-006` protocol responsive adoption
 8. `MOB-FND-007` shared touch-target sweep
 9. `MOB-FND-008` reliability telemetry + responsive e2e certification
-10. optional admin/settings wave if `MOB-FND-009` audit justifies it
-11. chat foundation follow-up:
+10. `MOB-FND-010` mobile certification harness hardening
+11. `MOB-FND-011` seeded responsive fixture + route-state contract
+12. `MOB-FND-012` responsive telemetry test-mode cleanup
+13. optional admin/settings wave if `MOB-FND-009` audit justifies it
+14. chat foundation follow-up:
    - `MOB-002`
    - `MOB-004`
    - `MOB-005`
@@ -264,7 +287,8 @@ Enable in production one wave at a time:
 3. For `MOB-FND-003`, `MOB-FND-004`, `MOB-FND-005`, `MOB-FND-006`, and optional `MOB-FND-009`:
    - if that wave adds a dedicated public flag, canary it behind that real flag and use that flag for rollback
    - if that wave does not add a dedicated public flag, treat rollout as revert/redeploy-only
-4. Existing chat/mobile-v2 flags continue to roll out only after the foundation is stable:
+4. `MOB-FND-010`, `MOB-FND-011`, and `MOB-FND-012` are internal harness and observability hardening waves; they should land before broader chat/mobile follow-up work so certification is fast, deterministic, and quiet.
+5. Existing chat/mobile-v2 flags continue to roll out only after the foundation is stable:
    - `NEXT_PUBLIC_MOBILE_AI_V2`
    - `NEXT_PUBLIC_MOBILE_NOTES_V2`
    - `NEXT_PUBLIC_MOBILE_LEDGER_V2`
@@ -298,13 +322,14 @@ After changing any `NEXT_PUBLIC_*` value, redeploy to apply.
 Per rollout step and per significant responsive behavior change:
 1. `cd next-app && npx tsc --noEmit`
 2. `cd next-app && npx vitest run`
-3. `cd next-app && npm run test:e2e:mobile`
-4. Manual pass on iOS Safari + Chrome Android:
+3. `cd next-app && npm run test:e2e:mobile:foundation`
+4. `cd next-app && npm run test:e2e:mobile` for the broader mobile smoke suite when the wave affects shared mobile flows beyond the minimum certification routes
+5. Manual pass on iOS Safari + Chrome Android:
   - no dead/double scroll
   - keyboard does not hide primary actions
   - safe-area offsets are correct
   - home, login, shell, and protocol flows complete
-5. Manual responsive pass on desktop/tablet widths:
+6. Manual responsive pass on desktop/tablet widths:
   - compact layouts do not collapse into phone UI prematurely
   - multi-pane desktop layouts degrade progressively instead of abruptly
 
