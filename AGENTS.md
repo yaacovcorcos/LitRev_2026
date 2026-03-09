@@ -40,7 +40,8 @@ All run from `next-app/` except deploy.
 | Task | Command | Run from |
 |---|---|---|
 | Typecheck | `npx tsc --noEmit` | `next-app/` |
-| Build | `npx next build` | `next-app/` |
+| Lint | `npm run lint` | `next-app/` |
+| Build | `npm run build` | `next-app/` |
 | Test | `npx vitest run` | `next-app/` |
 | Deploy | `vercel --prod` | repo root |
 
@@ -62,7 +63,7 @@ All run from `next-app/` except deploy.
 | Production deploy request / Vercel production release | `release-deploy-specialist.md` | `docs/runbooks/db-ops.md` | `bash scripts/release-gate-prod.sh`, `npx prisma validate`, `npx prisma migrate status`, `npx tsc --noEmit`, `npx vitest run` |
 | UI changes under `next-app/app/project/[id]/...`, `next-app/components/...`, `next-app/styles/...` | `frontend-ui-specialist.md` | `docs/plans/plan-ux-ui.md` (or active UI plan), relevant route files | `npx tsc --noEmit`, `npx vitest run` |
 | Platform admin control-plane changes (`next-app/app/admin/**`, `next-app/app/api/admin/**`, `next-app/lib/server/admin/**`, `next-app/lib/server/auth/platform-admin.ts`) | `frontend-ui-specialist.md` | `docs/runbooks/admin-access.md`, `docs/plans/plan-backend.md` | `npx tsc --noEmit`, `npx vitest run` |
-| Agent runtime/orchestration files (`next-app/lib/agent/**`, `next-app/lib/server/agent/**`, `next-app/app/actions/agent.ts`, `next-app/lib/server/ai/sub-agent.ts`) | `agent-runtime-specialist.md` | `docs/plans/plan-agentic.md` and `docs/plans/plan-memory.md` if memory touched | `npx tsc --noEmit`, `npx vitest run` |
+| Agent runtime/orchestration files (`next-app/lib/agent/**`, `next-app/lib/server/agent/**`, `next-app/app/actions/agent.ts`, `next-app/lib/server/ai/sub-agent.ts`) | `agent-runtime-specialist.md` | `docs/plans/plan-agentic.md`; read `docs/plans/plan-memory.md` if memory is touched; use `docs/plans/README.md` to identify any additional active runtime plans. Do not use superseded source plans marked inactive in `docs/plans/README.md`. | `npx tsc --noEmit`, `npx vitest run` |
 | Plan/PRD/governance edits (`PRD.md`, `docs/plans/**`) | `planning-governance-specialist.md` | `docs/plans/README.md` and target plan file | If code is unchanged, no code gate required |
 | GitHub workflow/governance edits (`.github/workflows/**`, `.github/CODEOWNERS`, git policy in `AGENTS.md`) | `planning-governance-specialist.md` | `docs/runbooks/github-flow.md` | If code is unchanged, no code gate required |
 
@@ -79,68 +80,9 @@ Rule: feature branches hold work; repo root `main` only mirrors merged work.
 - Canonical agent branch prefix is `YY/`.
 - Emergency hotfix branches should also use the `YY/` prefix, for example `YY/hotfix-<task>`.
 - Avoid long-lived detached worktrees.
-- For code changes, validate with `npx tsc --noEmit` and `npx vitest run`.
-- If validation fails, fix first; do not commit failing code.
-- Stage only relevant files for the task.
-- Commit immediately after validation; do not batch completed tasks.
-- Before merge decisions, pull latest review feedback with `gh pr view <number> --json reviews,comments`.
-- Use conventional commit types: `feat`, `fix`, `refactor`, `test`, `chore`, `docs`.
-
-### Main Mirror Contract
-
 - Repo root `main` must not remain ahead of or behind `origin/main`.
 - If repo root `main` differs from `origin/main` in either direction, stop and reconcile before starting new work.
-
-### Worktree Preflight
-
-Before starting or syncing work:
-
-- Confirm repo root is the canonical clean `main` checkout.
-- If repo root is detached, dirty, or not synced to `origin/main`, do not start new work from it.
-- If another worktree currently owns `main`, reconcile worktree ownership first.
 - Detached or rescue worktrees must not be treated as the `main` baseline.
-
-### Required Branch Start Flow
-
-Run from repo root:
-
-1. `git fetch origin --prune`
-2. `git switch main`
-3. `git pull --ff-only origin main`
-4. `git worktree add -b YY/<task> .worktrees/<task> origin/main`
-
-If resuming an existing task branch, verify it is still intended work before reusing it. Prefer a fresh worktree/branch by default.
-
-### Required Local Commit Flow
-
-Run from the task worktree:
-
-1. `git add <changed-files-for-this-task>`
-2. `git diff --cached`
-3. `git status`
-4. `git commit -m "<type(scope): concise why-focused message>"`
-5. `git push -u origin YY/<task>`
-6. `gh pr create --base main --head YY/<task> ...` (or update an existing PR)
-
-Notes:
-- Normal task branches use `YY/<task>`.
-- Emergency branches use `YY/hotfix-<task>`.
-
-### Required Post-Merge Sync Flow
-
-After any PR is merged into GitHub `main`:
-
-1. Run from repo root:
-   - `git fetch origin --prune`
-   - `git switch main`
-   - `git pull --ff-only origin main`
-2. Remove the merged task worktree:
-   - `git worktree remove .worktrees/<task>`
-3. Delete the merged local branch:
-   - `git branch -d YY/<task>`
-
-### Worktree Cleanup Contract
-
 - Task worktrees are temporary by default.
 - Once a task is merged, abandoned, or intentionally archived, remove its worktree promptly.
 - Maintain a cleanup manifest before deleting or re-homing any worktree.
@@ -153,28 +95,30 @@ After any PR is merged into GitHub `main`:
 - After merge, remove the merged task worktree and delete the merged local branch promptly.
 - Do not keep finished task worktrees around as passive history.
 - After rescue review, either promote the rescue work, archive it intentionally, or delete the worktree.
-
-### Additional Rules
-
+- For code changes, validate with `npx tsc --noEmit` and `npx vitest run` before commit. If validation fails, fix first.
+- Stage only relevant files for the task.
 - One task = one atomic commit unless the task clearly requires a small series of coherent commits.
+- Commit immediately after validation; do not batch completed tasks.
+- Use conventional commit types: `feat`, `fix`, `refactor`, `test`, `chore`, `docs`.
+- Before merge decisions, pull latest review feedback with `gh pr view <number> --json reviews,comments`.
 - After validation passes, push by default and open/update a PR targeting `main`.
+- For the exact branch-start, push/PR, merge-sync, and worktree-cleanup procedure, follow `docs/runbooks/github-flow.md`.
 
 ## Database Contract (Non-Negotiable)
 
-- For DB incidents, use `bash scripts/db-ops.sh <command>` before ad-hoc fixes.
+- For DB incidents, start with `bash scripts/db-ops.sh diagnose` from `next-app/`.
 - If a PR changes `prisma/schema.prisma`, include a migration in `next-app/prisma/migrations/`.
 - Never deploy production code that references new columns before migrations are applied.
-- Production builds run `next-app/scripts/migrate-if-prod.sh` which runs `bash scripts/migrate-deploy-safe.sh`.
+- Production builds run `next-app/scripts/migrate-if-prod.sh`, which runs the migration safety path before building app code.
 - `DIRECT_URL` is mandatory for migration traffic in production.
 - `DATABASE_URL` is runtime only.
-- For Supabase production migrations, prefer a session-mode pooler host on `:5432` reachable from Vercel build containers.
+- Never use `prisma db push` for production remediation.
 - Local development may use localhost Postgres; deployed environments use Supabase Postgres.
+- Production migrations must target Supabase Postgres via production `DIRECT_URL` (non-localhost).
 - Primary deployed database is Supabase Postgres (accessed via Prisma).
 - Supabase Auth is not used; Better Auth is the sole identity authority in this project.
 - Supabase Storage is used for file upload/download.
 - Required file storage env vars: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`.
-- Local DB (localhost) is for development/testing only; it is never the target for production rollout decisions.
-- Production migrations must target Supabase Postgres via production `DIRECT_URL` (non-localhost).
 - A Git push does not migrate any database; migration occurs only when migration commands/deploy pipeline run against production environment variables.
 - Prisma tests are mocked by default; real DB tests require `RUN_DB_TESTS=1`.
 - Scoping feature flags:
@@ -182,19 +126,14 @@ After any PR is merged into GitHub `main`:
   - `ENABLE_SCOPING_MODE`
   - Default when unset is enabled; set both to `0` to disable.
 - Before `vercel --prod`, run from `next-app/`:
-  - `bash scripts/release-gate-prod.sh` (preferred)
-  - `bash scripts/migrate-deploy-safe.sh` (DB-only remediation path)
+  - `bash scripts/release-gate-prod.sh`
   - `npx prisma validate`
   - `npx prisma migrate status`
   - `npx tsc --noEmit`
   - `npx vitest run`
+- For DB-only remediation, use the migration-safe path documented in `docs/runbooks/db-ops.md` and `scripts/migrate-deploy-safe.sh`.
 - If production errors include `column does not exist` or `Invalid prisma.* invocation`, treat as schema drift first.
-
-If `prisma migrate deploy` fails with `RunEvent_runId_sequence_key` duplicates, do not edit applied migrations. Run:
-
-1. `node scripts/repair-run-event-sequences.mjs`
-2. `npx prisma migrate resolve --rolled-back 20260228180000_add_agent_run_lineage`
-3. `npx prisma migrate deploy`
+- For migration failure recovery, duplicate-sequence repair, and production DB remediation, follow `docs/runbooks/db-ops.md` and `docs/plans/db-production-runbook.md`.
 
 ## UI Delivery Contract (Strict)
 
@@ -211,6 +150,8 @@ If `prisma migrate deploy` fails with `RunEvent_runId_sequence_key` duplicates, 
 ## Plan Governance (Strict)
 
 Canonical plan index: `docs/plans/README.md`.
+
+Do not route work through superseded source plans when `docs/plans/README.md` marks them inactive.
 
 Prune and Migrate Policy when completing plan tasks:
 
