@@ -45,8 +45,8 @@ function buildPopupSpecificContext(popupContext: PopupChatContext): string {
     }
 }
 
-function buildPopupModeInstruction(): string {
-    return "\n\n[POPUP_MODE]\nThis is the mini-popup assistant. Keep answers concise and focused. For protocol edits, call update_protocol to propose one field change at a time; never assume direct auto-apply.";
+export function buildPopupModeInstruction(): string {
+    return "\n\n[POPUP_MODE]\nThis is the mini-popup assistant. Keep answers concise and focused. Do not call mutation tools here. If the user wants to change the protocol or apply an edit, explain the recommended change briefly and direct them to Continue in Copilot to review or apply it in the main copilot surface.";
 }
 
 export async function buildPopupSystemPrompt(params: {

@@ -103,7 +103,7 @@ Every fix entry must include:
 - **Proposal-State Tool Context:** Proposal-style tool results now surface whether they are `proposed` vs `auto_applied` in the model-visible tool-message context, so assistant replies can distinguish review-only changes from already-applied ones.
 - **Plan Heuristic Guardrails:** Plan-before-act heuristics now require explicit extraction/writing verbs for `extract_pdf` and `update_note`, reducing false execution plans for read-only PDF/section questions.
 - **Delegation Runtime Now Uses The Shared Safety Contract:** delegated child runs now reuse the same autonomy-aware execution/finalization core as direct execution, level-1 delegated actions fail as structured approval-required blocks instead of running, delegated proposal artifacts stay reviewable unless direct policy allows auto-apply, and delegated `ask_user` bubbles through the existing parent `user_input_required` flow.
-- **Popup Runtime Is Still Lighter Than Copilot:** popup remains on a non-artifact path, so protocol mutation capability is not yet honest there; tracked under `FIX-003`.
+- **Popup Runtime Is Now Honest About Edit Limits:** popup remains on a non-artifact path, but its tool contract is now explicitly read-only/advisory for edit intents. It no longer exposes invisible protocol-mutation flows and instead routes edit/application work to the main copilot surface.
 - **General Mode And Clarification Now Use Explicit Honest Contracts:** normal agentic paths now assemble tools through contextual mode+scope filtering, `general` no longer widens to all tools, disabled/global delegation tools are hidden before exposure, `ask_user` remains the sole blocking clarification primitive in the global base prompt, and `<choices>` guidance is scoped to artifact/chat surfaces as optional suggestion-only output.
 - **Model Requests Now Use Per-Model Capability Policy:** one authoritative model capability registry now feeds a shared request-policy normalizer, OpenAI/xAI/Google/Anthropic all reuse it before send, fixed-default OpenAI models omit unsupported `temperature`, and unsupported explicit reasoning budgets fail locally as structured `model_capability` errors instead of raw provider 400s.
 - **Protocol Mutation Uses Shared Field-Aware Normalization:** `update_protocol`, same-turn tool-call sanitization, and repeat detection now reuse the same field/value normalize-classify path so unambiguous wrapper shapes are repaired consistently, whitespace-only field mismatches no longer diverge between validation and execution, and normalization/hashing paths cap nested input depth safely.
@@ -139,15 +139,6 @@ Every fix entry must include:
     - step order is enforced for executable plans
     - advisory/non-executable plans cannot accidentally enter execution
 
-- [ ] `FIX-003` Popup action-surface honesty
-  - Severity: `P1`
-  - Problem: popup currently advertises tool-driven protocol editing that it cannot correctly render or complete.
-  - Supporting detail: `docs/plans/agent-runtime-remediation/plan-popup-action-surface.md`
-  - Exit criteria:
-    - popup is either explicitly read-only/advisory or fully artifact-aware
-    - popup no longer claims to have created hidden protocol proposals
-    - popup tool policy and UI capability match
-
 - [ ] `FIX-005a` Agentic docs authority and plan truth
   - Severity: `P2`
   - Problem: the canonical plans are much healthier now, but authority and active-truth cleanup are still mixed together with broader eval/provenance work.
@@ -181,11 +172,10 @@ Every fix entry must include:
 Work should proceed in this order unless a production incident forces reprioritization:
 
 1. `FIX-002` plan execution confinement
-2. `FIX-003` popup action-surface honesty
-3. `FIX-005a` docs authority and plan truth
-4. `FIX-005b` evals and provenance hardening
-5. `FIX-011` shared failure handling and popup parity
-6. roadmap phases after the active fixes above are stable
+2. `FIX-005a` docs authority and plan truth
+3. `FIX-005b` evals and provenance hardening
+4. `FIX-011` shared failure handling and popup parity
+5. roadmap phases after the active fixes above are stable
 
 ## End-to-End Delivery Program
 
@@ -207,7 +197,7 @@ Work should proceed in this order unless a production incident forces reprioriti
 
 ### Track D — Surface Honesty, Docs, Evals, and Provenance
 
-- Land `FIX-003`, `FIX-005a`, `FIX-005b`, and `FIX-011` after the lower-level contracts are stable.
+- Land `FIX-005a`, `FIX-005b`, and `FIX-011` after the lower-level contracts are stable.
 - Popup honesty should match the real runtime surface, plan/docs authority should stay truthful, shared failure rendering should stop drifting per surface, and evals/provenance should measure the behavior the runtime actually ships.
 
 ## Active Roadmap
@@ -323,7 +313,6 @@ Use these only as execution detail for the active fixes above:
 
 - `docs/plans/agent-runtime-remediation/plan-delegation-safety.md`
 - `docs/plans/agent-runtime-remediation/plan-plan-execution-confinement.md`
-- `docs/plans/agent-runtime-remediation/plan-popup-action-surface.md`
 - `docs/plans/agent-runtime-remediation/plan-general-scope-and-clarification.md`
 - `docs/plans/agent-runtime-remediation/plan-docs-evals-and-provenance.md`
 
@@ -331,6 +320,7 @@ These files are supporting documents. Status, priority, and closure rules live h
 
 ## Recently Completed
 
+- [x] Completed `FIX-003` with the smallest honest popup slice: popup is now explicitly read-only/advisory for edit intents, `update_protocol` is no longer exposed in popup mode, and popup guidance now routes edit/apply work to Continue in Copilot instead of implying hidden proposal creation.
 - [x] Pruned and clarified the remaining docs/evals backlog: `FIX-005` is now split into `FIX-005a` (docs authority and plan truth) and `FIX-005b` (executable evals and search provenance), so plan-governance cleanup can finish independently of the heavier runtime measurement work.
 
 - [x] Implemented `FIX-004b` clarification contract cleanup, completing `FIX-004`: `ask_user` is now the only blocking clarification primitive taught in the global base prompt, while `<choices>` guidance is scoped to artifact/chat surfaces and explicitly limited to optional suggestion chips without changing the XML/event contract.

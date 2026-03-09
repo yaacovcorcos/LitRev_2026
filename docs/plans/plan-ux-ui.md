@@ -24,7 +24,7 @@ Domain-specific execution plans remain canonical for their domains:
   - shared confirmation dialog path for destructive actions.
 - Shared scoped-context UI is active:
   - `ProjectCopilot` / `CopilotInputCore` now render typed context receipts and recent-context history chips owned by `docs/plans/plan-context-capture.md`.
-  - `PopupChat` shows compact context previews, and draft desktop quick actions are gated behind the dedicated context-toolbar flag rather than leaking into mobile flows.
+  - `PopupChat` shows compact context previews, keeps edit intents advisory-only via `Continue in Copilot`, and draft desktop quick actions are gated behind the dedicated context-toolbar flag rather than leaking into mobile flows.
 - Async feedback architecture is active:
   - `useAsyncAction` + `NotificationProvider` + toast live region.
 - Token system is active in `styles/tokens.css` and style linting is configured in `next-app/.stylelintrc.cjs` and `next-app/package.json` (`lint:styles`).
