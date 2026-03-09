@@ -6,12 +6,12 @@ Unify `/ai`, project copilot, and popup chat onto one shared chat engine while k
 ## Implementation Status
 1. Completed: U0.5 popup contract alignment.
 2. Completed: U1.1 shared pure reducer + intents (`shared-stream-reducer`).
-3. Completed: U1.2 project adapter migration.
+3. Completed: U1.2 project reducer adoption, but not full shared intent parity on the visible project surface.
 4. Completed: U1.3 and U1.4 `/ai` send and plan stream paths now run through the shared reducer runtime.
 5. Completed: U1.5 anti-duplication CI guard is now enforced in CI by default (`--mode=enforce`).
 6. In progress: U1.6 telemetry ingestion is implemented end-to-end (client metric emission + authenticated server sink + DB storage + run-end metric capture).
 7. In progress: U1.6 preflight hardening now requires explicit cohort scoping, canonical canary timestamp capture, and Day-0 runId-quality checks before the 7-day gate clock starts.
-8. In progress: U1.6 operational execution is codified in `docs/runbooks/chat-unification-burn-in.md` with reusable report template `docs/reports/u1-6-burn-in-template.md`; final 7-day sign-off evidence remains pending.
+8. In progress: U1.6 operational execution is codified in `docs/runbooks/chat-unification-burn-in.md` with reusable report template `docs/reports/u1-6-burn-in-template.md`; however, `docs/reports/u1-6-burn-in.md` still records `pending_canary_start`, so no production canary evidence exists yet and U1.6 is not closeable.
 9. Pending: U3 popup migration to shared runtime.
 
 ## Non-Negotiable Constraints
@@ -35,8 +35,8 @@ Shared engine:
 
 Shell adapters:
 1. `/ai`: global/project selector and advanced controls.
-2. Project copilot: route-aware project context.
-3. Popup: compact view + handoff, same contracts.
+2. Project copilot: route-aware project context, but still with adapter debt around progress/checkpoint presentation.
+3. Popup: compact view + handoff, still on a bespoke client runtime until U3.
 
 Hard rule:
 1. No new per-surface chunk handlers after U1 starts.
@@ -149,10 +149,14 @@ Exit criteria:
 1. Migrate project copilot stream handling to the shared reducer + intent executor.
 2. Preserve shell embedding and route context behavior.
 3. Keep existing project legacy path as shadow fallback behind unification flags.
+4. Remaining visible-surface debt after reducer adoption:
+   - `progress_upsert` still degrades into assistant text on the project surface.
+   - `checkpoint_append` is still not surfaced as a durable project runtime primitive.
 
 Exit criteria:
 1. Project copilot runs primarily on shared reducer.
 2. Feature parity and reliability blockers remain green.
+3. Full shared-runtime parity is not claimed until the remaining project adapter degradations above are removed or deliberately accepted.
 
 ### U1.3 - `/ai` Send Path Migration
 1. Migrate `/ai` standard send/stream flow to shared reducer + intents.
@@ -244,16 +248,18 @@ Exit criteria:
      - strict final gate (no short-window override, earliest at +7 days; paste output into `docs/reports/u1-6-burn-in.md` created from the report template):
        `cd next-app && npx tsx scripts/validate-chat-unification-burn-in.ts --since=<CANARY_SINCE_UTC> --metricVersion=3 --workspaceIds=<ws1,ws2> --userIds=<u1,u2> --requireScopedCohort=1 --requireRunEndPerSurface=1 --minRunIdCoveragePerSurface=0.95`
 7. Gate cleanup on parity + KPI pass.
+8. Burn-in scope for this phase is `/ai` + project only. Popup remains explicitly out of certification scope until U3 lands and has its own parity sign-off path.
 
 Exit criteria:
 1. Replay parity suite passes for shared stream fixtures.
 2. Burn-in KPIs meet numeric thresholds above.
 3. Owner for burn-in sign-off: AI runtime maintainers (Codex + designated reviewer).
 
-### U2 - Typed Tool Activity Contract
-1. Keep explicit `tool_activity` timeline types: `queued/running/done/failed`.
-2. Reuse existing run metadata (`toolName`, `durationMs`) and avoid parallel persistence.
-3. Define lane-specific latency targets:
+### U2 - Tool Activity Rendering and Metadata Parity
+1. Typed `tool_activity` lifecycle already exists in the shared reducer; this phase is about rendering parity and metadata completeness, not inventing the contract.
+2. Keep explicit `tool_activity` timeline types: `queued/running/done/failed`.
+3. Reuse existing run metadata (`toolName`, `durationMs`) and avoid parallel persistence.
+4. Define lane-specific latency targets:
    - control/tool transitions use low-latency path
    - reasoning/content deltas remain coalesced
 
@@ -262,13 +268,18 @@ Exit criteria:
 2. KPI matches coalescer realities by lane.
 
 ### U3 - Popup Migration to Shared Engine
-1. Move popup from bridge to shared reducer/event adapters.
-2. Preserve popup compact UX via capability gating, not custom runtime logic.
+1. Move popup from bespoke client stream handling to shared reducer/event adapters.
+2. Preserve popup compact UX via an explicit capability matrix, not ad hoc custom runtime logic.
 3. Preserve handoff to full copilot without loss of conversation context.
+4. Popup capability matrix must be frozen before implementation:
+   - Required shared intents: `content`, `error`, `done`, `choices`, `user_input_required`, compact `tool_activity`, compact `progress`, `run_start`, `run_end`.
+   - Intents that may be compacted: rich grouped receipts, expanded reasoning panels, dense timeline clustering.
+   - Intentionally unsupported until explicitly revisited: full `/ai` timeline density, heavy artifact-management controls, dense multi-panel debugging UI.
 
 Exit criteria:
-1. Popup uses same runtime contracts as other surfaces.
+1. Popup consumes the frozen shared-intent subset faithfully instead of bespoke local fallbacks.
 2. Popup remains lightweight with stable latency.
+3. Popup parity is evaluated against its capability matrix, not against a vague “same as `/ai`” claim.
 
 ### U4 - Shadow Validation + Cleanup
 1. Run burn-in with both legacy and unified paths in shadow validation mode.
@@ -285,7 +296,7 @@ Flags:
 1. Keep environment flags:
    - `NEXT_PUBLIC_ENABLE_CHAT_UNIFICATION_V2`
    - `ENABLE_CHAT_UNIFICATION_V2`
-2. Define and consume flags from a dedicated chat feature-flag module (not agent-only flag file).
+2. A dedicated chat feature-flag module is still a follow-up cleanup item; this plan does not yet pin a target module path because runtime parity and popup migration remain the higher-priority work.
 
 Rollout:
 1. Internal.
@@ -332,3 +343,4 @@ Regression tests:
 1. `CUX-D01` is the primary tracker and must remain active during this plan.
 2. `CUX-027` tracks adjacent copilot UX dependencies.
 3. `plan-thinking-v2.md` remains a dependent plan executed after U1.5 reliability blockers.
+4. `plan-thinking-v2.md` assumes `/ai` + project shared-runtime convergence first; richer execution-trace rollout should not be treated as independent of the remaining U1.6/U3/U4 work.

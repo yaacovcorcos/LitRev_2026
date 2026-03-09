@@ -148,14 +148,23 @@ Every fix entry must include:
     - popup no longer claims to have created hidden protocol proposals
     - popup tool policy and UI capability match
 
-- [ ] `FIX-005` Agentic docs, executable evals, and search provenance
-  - Severity: `P1`
-  - Problem: the plan set drifted from shipped code, eval coverage is scaffold-level, and search provenance is not a normalized runtime contract.
+- [ ] `FIX-005a` Agentic docs authority and plan truth
+  - Severity: `P2`
+  - Problem: the canonical plans are much healthier now, but authority and active-truth cleanup are still mixed together with broader eval/provenance work.
   - Supporting detail: `docs/plans/agent-runtime-remediation/plan-docs-evals-and-provenance.md`
   - Exit criteria:
-    - `plan-agentic.md` remains the single accurate authority
+    - `plan-agentic.md` remains the single accurate runtime authority
+    - overlapping supporting docs are either retired, demoted to supporting-only, or made explicitly historical
+    - active plan files do not overstate popup/shared-runtime parity or burn-in status
+
+- [ ] `FIX-005b` Executable evals and search provenance
+  - Severity: `P1`
+  - Problem: eval coverage is still scaffold-level and search provenance is not a normalized runtime contract.
+  - Supporting detail: `docs/plans/agent-runtime-remediation/plan-docs-evals-and-provenance.md`
+  - Exit criteria:
     - runtime evals assert real orchestration behavior
     - search turns emit normalized `source_receipt` data
+    - release confidence can rely on executable agent/runtime scenarios instead of catalog shape alone
 
 - [ ] `FIX-011` Shared failure handling and popup parity
   - Severity: `P1`
@@ -173,9 +182,10 @@ Work should proceed in this order unless a production incident forces reprioriti
 
 1. `FIX-002` plan execution confinement
 2. `FIX-003` popup action-surface honesty
-3. `FIX-005` docs/evals/provenance hardening
-4. `FIX-011` shared failure handling and popup parity
-5. roadmap phases after the active fixes above are stable
+3. `FIX-005a` docs authority and plan truth
+4. `FIX-005b` evals and provenance hardening
+5. `FIX-011` shared failure handling and popup parity
+6. roadmap phases after the active fixes above are stable
 
 ## End-to-End Delivery Program
 
@@ -195,10 +205,10 @@ Work should proceed in this order unless a production incident forces reprioriti
 - Once the request/tool boundary is stable, land `FIX-001` and `FIX-002`.
 - This is the phase where delegation, approved-plan execution, and scoped `general` behavior become trustworthy instead of prompt-dependent.
 
-### Track D — Surface Honesty, Evals, and Provenance
+### Track D — Surface Honesty, Docs, Evals, and Provenance
 
-- Land `FIX-003`, `FIX-005`, and `FIX-011` after the lower-level contracts are stable.
-- Popup honesty should match the real runtime surface, shared failure rendering should stop drifting per surface, and evals/provenance should measure the behavior the runtime actually ships.
+- Land `FIX-003`, `FIX-005a`, `FIX-005b`, and `FIX-011` after the lower-level contracts are stable.
+- Popup honesty should match the real runtime surface, plan/docs authority should stay truthful, shared failure rendering should stop drifting per surface, and evals/provenance should measure the behavior the runtime actually ships.
 
 ## Active Roadmap
 *Durable capability and architecture work after the immediate fixes.*
@@ -321,6 +331,8 @@ These files are supporting documents. Status, priority, and closure rules live h
 
 ## Recently Completed
 
+- [x] Pruned and clarified the remaining docs/evals backlog: `FIX-005` is now split into `FIX-005a` (docs authority and plan truth) and `FIX-005b` (executable evals and search provenance), so plan-governance cleanup can finish independently of the heavier runtime measurement work.
+
 - [x] Implemented `FIX-004b` clarification contract cleanup, completing `FIX-004`: `ask_user` is now the only blocking clarification primitive taught in the global base prompt, while `<choices>` guidance is scoped to artifact/chat surfaces and explicitly limited to optional suggestion chips without changing the XML/event contract.
 - [x] Implemented `FIX-012c` abnormal-end cleanup and error dedupe, completing `FIX-012`: `/ai` and project copilot now reuse the shared runtime/error owners for abnormal-failure aftermath, unfinished tools are force-failed consistently, and one terminal failure renders once without regressing deterministic capability suppression.
 - [x] Implemented `FIX-012b` replace-safe admission: `/ai` and project copilot now send `replaceRunId` only for their own tracked active run, and the server only replaces when that explicit run identity matches the actual active run for the conversation.
@@ -330,7 +342,6 @@ These files are supporting documents. Status, priority, and closure rules live h
 - [x] Implemented `FIX-008` tool prerequisite gating: high-risk tools now declare project/study/protocol prerequisites in shared tool metadata, the shared pre-execution middleware/autonomy path blocks missing context before tool execution, screening actions also gate on non-empty criteria readiness, and blocked calls emit structured `missing_prerequisite` envelopes instead of generic tool failures.
 - [x] Hardened popup terminal-failure rendering under `FIX-011`: popup now keeps lightweight structured error metadata on assistant turns, annotates partial-output failures inline without persisting raw error text into transcript content, and has direct component coverage for deterministic and retryable terminal failure rendering.
 - [x] Implemented `FIX-010` model capability negotiation: one authoritative model registry now drives per-model request-policy normalization, OpenAI/xAI/Google/Anthropic all reuse shared request builders for `chat()` and `streamChat()`, fixed-default OpenAI models omit unsupported temperature params, and unsupported explicit reasoning budgets fail locally as structured `model_capability` errors.
-- [x] Added repo-review baseline indexing and shared failure follow-up hardening: deep review comparisons now have a durable runbook anchor, shared `stream_error` intents are consumed by both timeline adapters, and popup now retains lightweight structured error metadata even though it still lacks full timeline-style parity.
 - [x] Implemented `FIX-009` recovery semantics and truthful run outcomes for timeline-based surfaces: structured error envelopes now survive through stream processor, reducer, and timeline state; retryable UI affordances no longer default to true for deterministic failures; and server finalization derives `runStatus` from explicit run facts while emitting one fallback assistant explanation for deterministic no-answer failures.
 
 ## Deferred / Parking Lot
