@@ -101,20 +101,8 @@ export async function enterHomeWorkspace(page: Page): Promise<void> {
 export async function createProjectFromHome(page: Page, name = "E2E Mobile Project"): Promise<string> {
   await page.goto("/");
   await page.waitForLoadState("domcontentloaded");
-  let state = await waitForHomeReady(page);
-  if (state === "loading") {
-    await expect.poll(async () => {
-      const nextState = await waitForHomeReady(page);
-      return nextState === "loading" ? "pending" : nextState;
-    }).toMatch(/zero_state|workspace/);
-    state = await waitForHomeReady(page);
-  }
-
-  if (state === "zero_state") {
-    await page.getByRole("button", { name: /start a new review/i }).click();
-  } else {
-    await page.getByRole("button", { name: /create new project/i }).click();
-  }
+  await enterHomeWorkspace(page);
+  await page.getByRole("button", { name: /create new project/i }).click();
 
   await expect(page.getByRole("heading", { name: /what are you researching/i })).toBeVisible();
   await page.getByLabel(/project name/i).fill(name);

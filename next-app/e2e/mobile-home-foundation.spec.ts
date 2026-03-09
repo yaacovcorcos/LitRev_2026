@@ -10,8 +10,9 @@ test("mobile home foundation: zero-state and workspace flows remain usable on ph
   if (state === "zero_state") {
     await expect(page.getByRole("button", { name: /start a new review/i })).toBeVisible();
     await expect(page.getByRole("button", { name: /explore sample/i })).toBeVisible();
-    await page.getByRole("button", { name: /enter workspace/i }).click();
   }
+
+  await enterHomeWorkspace(page);
 
   await expect(page.getByRole("button", { name: /create new project/i })).toBeVisible();
   await expect(page.getByRole("button", { name: /sort by/i })).toBeVisible();
