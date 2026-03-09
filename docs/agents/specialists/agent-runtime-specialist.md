@@ -14,7 +14,6 @@ Use for planner/executor/orchestrator behavior, sub-agent flows, routing, autono
 ## Required Tier 3 Reads
 
 - `docs/plans/plan-agentic.md`
-- `docs/plans/codex-agentic-plan.md`
 - `docs/plans/plan-memory.md` when memory/retrieval behavior is affected
 
 ## Guardrails

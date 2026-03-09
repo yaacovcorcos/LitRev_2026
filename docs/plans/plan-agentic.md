@@ -4,12 +4,6 @@
 
 This is the single canonical plan for LitRev's agent runtime.
 
-It supersedes the following as standalone authorities:
-
-- `docs/plans/codex-agentic-plan.md`
-- `docs/plans/claude-agentic-plan.md`
-- `docs/plans/agent-runtime-remediation/README.md`
-
 Use this file for:
 
 - current architecture truth
@@ -347,12 +341,12 @@ These files are supporting documents. Status, priority, and closure rules live h
 - [ ] Full command-palette orchestration UI
 - [ ] Cross-provider arbitration agent
 
-## Legacy Source Documents
+## Supporting Documents Governance
 
-These are no longer active trackers:
+This plan is the active runtime authority. The following supporting document
+is still useful for detailed remediation work, but it is not itself an active
+tracker:
 
-- `docs/plans/codex-agentic-plan.md`
-- `docs/plans/claude-agentic-plan.md`
 - `docs/plans/agent-runtime-remediation/README.md`
 
-They are retained only as superseded source material or supporting pointers. Update this file instead.
+Supporting detail should live under `docs/plans/agent-runtime-remediation/`. Update this file instead.
