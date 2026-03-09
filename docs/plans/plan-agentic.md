@@ -341,9 +341,11 @@ These files are supporting documents. Status, priority, and closure rules live h
 - [ ] Full command-palette orchestration UI
 - [ ] Cross-provider arbitration agent
 
-## Legacy Source Documents
+## Supporting Documents Governance
 
-These are no longer active trackers:
+This plan is the active runtime authority. The following supporting document
+is still useful for detailed remediation work, but it is not itself an active
+tracker:
 
 - `docs/plans/agent-runtime-remediation/README.md`
 
