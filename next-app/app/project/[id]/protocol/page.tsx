@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo } from "react";
 import { useParams } from "next/navigation";
 import { useProjects } from "@/contexts/ProjectsContext";
 import { useLedger } from "@/contexts/LedgerContext";
@@ -16,7 +16,7 @@ import { DemoGuideCard } from "@/components/project/DemoGuideCard";
 import { buildProtocolMarkdown, getProtocolSuggestions } from "./protocolExport";
 import { ProtocolSections } from "./ProtocolSections";
 import { useFoundationRouteReady } from "@/lib/mobile/foundation-reliability";
-import type { Project } from "@/types/project";
+import { useResolvedProject } from "@/hooks/useResolvedProject";
 
 
 /** Inner component that uses the ProtocolContext */
@@ -32,12 +32,7 @@ function ProtocolPageStatus({ children }: { children: React.ReactNode }) {
 
 function ProtocolPageContent() {
     const { id } = useParams<{ id: string }>();
-    const {
-        getProjectById,
-        ensureProjectLoaded,
-        isLoadingProjects,
-        projectsError,
-    } = useProjects();
+    const { isLoadingProjects, projectsError } = useProjects();
     const { isEmbeddedInProjectShell } = useProjectShell();
     const {
         protocol,
@@ -56,56 +51,7 @@ function ProtocolPageContent() {
         updateResearchQuestion,
     } = useProtocol();
 
-    const [resolvedProject, setResolvedProject] = useState<Project | null>(null);
-    const project = id ? getProjectById(id) ?? resolvedProject ?? undefined : undefined;
-    const [missingProjectResolveAttempt, setMissingProjectResolveAttempt] = useState(0);
-    const [isResolvingMissingProject, setIsResolvingMissingProject] = useState(false);
-
-    useEffect(() => {
-        setResolvedProject(null);
-        setMissingProjectResolveAttempt(0);
-        setIsResolvingMissingProject(false);
-    }, [id]);
-
-    useEffect(() => {
-        if (
-            !id ||
-            project ||
-            isLoadingProjects ||
-            projectsError ||
-            missingProjectResolveAttempt >= 5
-        ) return;
-        setIsResolvingMissingProject(true);
-        let cancelled = false;
-        const timer = window.setTimeout(() => {
-            void ensureProjectLoaded(id)
-                .then((loadedProject) => {
-                    if (cancelled) return;
-                    if (loadedProject) {
-                        setResolvedProject(loadedProject);
-                        return;
-                    }
-                    setMissingProjectResolveAttempt((attempt) => attempt + 1);
-                })
-                .finally(() => {
-                    if (!cancelled) {
-                        setIsResolvingMissingProject(false);
-                    }
-                });
-        }, missingProjectResolveAttempt === 0 ? 0 : 400);
-
-        return () => {
-            cancelled = true;
-            window.clearTimeout(timer);
-        };
-    }, [
-        ensureProjectLoaded,
-        id,
-        isLoadingProjects,
-        missingProjectResolveAttempt,
-        project,
-        projectsError,
-    ]);
+    const { project, isResolvingProject } = useResolvedProject(id);
 
     useFoundationRouteReady({
         enabled: Boolean(project) && !isLoadingProjects && !projectsError,
@@ -279,7 +225,7 @@ function ProtocolPageContent() {
     const shouldHoldProjectLookup =
         !project &&
         !projectsError &&
-        (isLoadingProjects || isResolvingMissingProject || missingProjectResolveAttempt < 5);
+        (isLoadingProjects || isResolvingProject);
 
     if (shouldHoldProjectLookup) {
         return (

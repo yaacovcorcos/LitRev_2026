@@ -38,7 +38,6 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   const [migrationStatus, setMigrationStatus] = useState<MigrationStatus>("pending");
   const [migrationError, setMigrationError] = useState<string | null>(null);
   const migrationInFlightRef = useRef(false);
-  const retainedProjectIdsRef = useRef<Set<string>>(new Set());
   const { data: session, isPending: isSessionPending } = authClient.useSession();
 
   const refresh = useCallback(async () => {
@@ -55,18 +54,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
     try {
       const result = await listProjectsAction();
       if (result.success) {
-        const fetchedProjects = result.data;
-        setProjects((prev) => {
-          const retainedProjects = prev.filter(
-            (project) =>
-              retainedProjectIdsRef.current.has(project.id) &&
-              !fetchedProjects.some((candidate) => candidate.id === project.id),
-          );
-          for (const project of fetchedProjects) {
-            retainedProjectIdsRef.current.delete(project.id);
-          }
-          return [...retainedProjects, ...fetchedProjects];
-        });
+        setProjects(result.data);
         setProjectsError(null);
       } else if (isAuthError(result)) {
         redirectToLogin();
@@ -159,7 +147,6 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         console.error("Failed to create project:", result.error);
         return null;
       }
-      retainedProjectIdsRef.current.add(result.data.id);
       setProjects((prev) => [result.data, ...prev.filter((p) => p.id !== result.data.id)]);
       return result.data;
     } catch (err) {
@@ -175,7 +162,6 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         console.error("Failed to delete project:", result.error);
         return false;
       }
-      retainedProjectIdsRef.current.delete(id);
       setProjects((prev) => prev.filter((project) => project.id !== id));
       return true;
     } catch (err) {
@@ -208,7 +194,6 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         }
 
         if (result.data) {
-          retainedProjectIdsRef.current.add(result.data.id);
           setProjects((prev) => {
             const next = prev.filter((project) => project.id !== result.data!.id);
             return [result.data!, ...next];

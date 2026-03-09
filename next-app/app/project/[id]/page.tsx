@@ -11,6 +11,7 @@ import Link from "next/link";
 import { RecentActivityPanel } from "@/components/project/RecentActivityPanel";
 import { DemoGuideCard } from "@/components/project/DemoGuideCard";
 import { useFoundationRouteReady } from "@/lib/mobile/foundation-reliability";
+import { useResolvedProject } from "@/hooks/useResolvedProject";
 import {
   getProjectOverviewStatsAction,
   type DraftStats,
@@ -154,63 +155,9 @@ function LedgerPreview({ stats }: { stats: LedgerStats }) {
 
 export default function ProjectDetail() {
   const { id } = useParams<{ id: string }>();
-  const {
-    getProjectById,
-    ensureProjectLoaded,
-    isLoadingProjects,
-    projectsError,
-  } = useProjects();
+  const { isLoadingProjects, projectsError } = useProjects();
   const { isEmbeddedInProjectShell } = useProjectShell();
-  const [resolvedProject, setResolvedProject] = useState<Project | null>(null);
-  const project = id ? getProjectById(id) ?? resolvedProject ?? undefined : undefined;
-  const [missingProjectResolveAttempt, setMissingProjectResolveAttempt] = useState(0);
-  const [isResolvingMissingProject, setIsResolvingMissingProject] = useState(false);
-
-  useEffect(() => {
-    setResolvedProject(null);
-    setMissingProjectResolveAttempt(0);
-    setIsResolvingMissingProject(false);
-  }, [id]);
-
-  useEffect(() => {
-    if (
-      !id ||
-      project ||
-      isLoadingProjects ||
-      projectsError ||
-      missingProjectResolveAttempt >= 5
-    ) return;
-    setIsResolvingMissingProject(true);
-    let cancelled = false;
-    const timer = window.setTimeout(() => {
-      void ensureProjectLoaded(id)
-        .then((loadedProject) => {
-          if (cancelled) return;
-          if (loadedProject) {
-            setResolvedProject(loadedProject);
-            return;
-          }
-          setMissingProjectResolveAttempt((attempt) => attempt + 1);
-        })
-        .finally(() => {
-          if (!cancelled) {
-            setIsResolvingMissingProject(false);
-          }
-        });
-    }, missingProjectResolveAttempt === 0 ? 0 : 400);
-
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
-    };
-  }, [
-    ensureProjectLoaded,
-    id,
-    isLoadingProjects,
-    missingProjectResolveAttempt,
-    project,
-    projectsError,
-  ]);
+  const { project, isResolvingProject } = useResolvedProject(id);
 
   useFoundationRouteReady({
     enabled: Boolean(project) && !isLoadingProjects && !projectsError,
@@ -274,7 +221,7 @@ export default function ProjectDetail() {
   const shouldHoldProjectLookup =
     !project &&
     !projectsError &&
-    (isLoadingProjects || isResolvingMissingProject || missingProjectResolveAttempt < 5);
+    (isLoadingProjects || isResolvingProject);
 
   if (shouldHoldProjectLookup) {
     const skeleton = <EmptyStateSkeleton className={styles.notFound} />;

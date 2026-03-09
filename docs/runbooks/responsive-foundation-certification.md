@@ -74,9 +74,9 @@ Required route templates:
 Run from `next-app/`:
 
 ```bash
-./node_modules/.bin/tsc --noEmit
-./node_modules/.bin/vitest run
-npm run test:e2e:mobile
+npx tsc --noEmit
+npx vitest run
+npm run test:e2e:mobile:foundation
 ```
 
 Required responsive behavior coverage:

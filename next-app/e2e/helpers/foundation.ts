@@ -48,6 +48,7 @@ export async function quickLogin(page: Page, callbackUrl = "/"): Promise<void> {
   await stubTelemetry(page);
   await postWithRetries(page, "/api/dev/quick-login", { callbackUrl });
 
+  const callbackTarget = new URL(callbackUrl, "http://localhost");
   await page.goto(callbackUrl);
   if (page.url().includes("/login")) {
     await page.goto(`/login?callbackUrl=${encodeURIComponent(callbackUrl)}`);
@@ -56,7 +57,10 @@ export async function quickLogin(page: Page, callbackUrl = "/"): Promise<void> {
     await devMode.click();
   }
 
-  await page.waitForURL((url) => url.pathname === callbackUrl || url.pathname.startsWith(callbackUrl));
+  await page.waitForURL((url) =>
+    url.pathname === callbackTarget.pathname &&
+    url.search === callbackTarget.search,
+  );
   await page.waitForLoadState("domcontentloaded");
 }
 
@@ -142,7 +146,7 @@ export async function openSampleProjectFromHome(page: Page): Promise<string> {
   const payload = (await response.json()) as { projectId?: string };
   expect(payload.projectId).toMatch(/^.+$/);
 
-  await page.goto(`/project/${payload.projectId}`);
+  await page.goto(`/project/${payload.projectId}`, { waitUntil: "domcontentloaded", timeout: 30_000 });
   await page.waitForURL(/\/project\/[^/]+$/);
   await expect(page.getByRole("heading", { name: /project not found/i })).not.toBeVisible();
 
