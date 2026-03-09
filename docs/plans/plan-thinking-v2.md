@@ -4,6 +4,7 @@
 Define the canonical architecture for a truthful execution trace so users can follow what the agent is doing, what it found, and what happens next without relying on raw chain-of-thought visibility.
 
 This plan is not just about a prettier reasoning lane. It is the architecture home for:
+- conditional task-outline visibility for complex work
 - live process visibility
 - tool receipts and result summaries
 - grounded checkpoints between tool calls and final answers
@@ -96,7 +97,27 @@ Rule:
 ## Core UX Architecture
 The chat should expose distinct but coordinated layers.
 
-### Layer A: Live phase
+### Layer A: Conditional task outline
+For substantial multi-step work, the UI may show a compact task outline that answers:
+- what major stages this task involves
+- how many major stages are done
+- which major stage is active now
+
+This layer is:
+- high-level
+- compact
+- optional
+- separate from tool receipts and reasoning
+
+It should appear only when the work is genuinely complex enough that the user benefits from a map.
+
+Rules:
+- do not show it for short or trivial runs
+- do not show it for fake boilerplate steps like "understand request" or "summarize result"
+- do not let repeated tool refinements masquerade as separate tasks
+- default to 3-7 meaningful stages at most
+
+### Layer B: Live phase
 One ephemeral current state, for example:
 - Searching PubMed
 - Analyzing PubMed results
@@ -107,7 +128,7 @@ One ephemeral current state, for example:
 
 This is process state, not assistant prose.
 
-### Layer B: Tool receipts
+### Layer C: Tool receipts
 Each meaningful tool call leaves a durable receipt with:
 - human-readable label
 - compact input preview
@@ -120,7 +141,7 @@ Search tools should also show:
 - returned count / total count
 - source badge where relevant
 
-### Layer C: Checkpoints
+### Layer D: Checkpoints
 After meaningful tool steps, the runtime should emit a short grounded checkpoint:
 - what happened
 - what was learned
@@ -128,21 +149,22 @@ After meaningful tool steps, the runtime should emit a short grounded checkpoint
 
 This is the missing “middle lane” between tool receipts and final answer.
 
-### Layer D: Optional reasoning
+### Layer E: Optional reasoning
 If provider-native reasoning exists and the user wants it, show it in a collapsible lane.
 If not, the user should still have a strong understanding of the process from phases + receipts + checkpoints.
 
-### Layer E: Blocking clarification
+### Layer F: Blocking clarification
 Required user input should continue using the existing `ask_user` / `user_input_required` path.
 Optional suggestions should remain `<choices>` only.
 
 ## Locked Product Decisions
 1. **Primary transparency is structured execution trace, not raw chain-of-thought.**
-2. **Progress is not assistant transcript content.**
-3. **Tool cards must become semantic receipts, not raw tool ids with status only.**
-4. **Checkpoints are first-class and should exist even when no provider reasoning is available.**
-5. **Reasoning display is optional and secondary.**
-6. **Cross-surface truth is mandatory:** the same runtime state should not look fundamentally different on `/ai` and project copilot.
+2. **Task outlines are conditional, not default.**
+3. **Progress is not assistant transcript content.**
+4. **Tool cards must become semantic receipts, not raw tool ids with status only.**
+5. **Checkpoints are first-class and should exist even when no provider reasoning is available.**
+6. **Reasoning display is optional and secondary.**
+7. **Cross-surface truth is mandatory:** the same runtime state should not look fundamentally different on `/ai` and project copilot.
 
 ## Runtime Architecture Decisions
 
@@ -171,6 +193,7 @@ The server/runtime path should eventually emit:
 - canonical receipt summaries
 - authoritative duration
 - checkpoint content
+- optional task-outline updates for complex work
 
 The client should not be inventing semantic meaning from raw tool ids.
 
@@ -183,8 +206,10 @@ The goal is not to show more boxes. The goal is to show the right information wi
 1. **One live thing at a time.**
    - At most one primary live-phase component should be visually emphasized.
    - Users should always know the current step without scanning a stack of simultaneous active cards.
+   - If a task outline exists, it should remain quiet and secondary to the current live phase.
 2. **Progressive disclosure over card sprawl.**
    - The default state should be compact:
+     - optional task outline
      - one live phase
      - compact receipts
      - short checkpoints
@@ -200,6 +225,28 @@ The goal is not to show more boxes. The goal is to show the right information wi
    - The transcript should not be cluttered with stale status messages.
 
 ### Recommended Visual Hierarchy
+
+#### 0. Conditional task-outline block
+This is a compact, high-level map for complex work only.
+
+Recommended visual form:
+- a slim checklist block
+- progress count (`2 of 4 steps`)
+- one active stage
+- quiet completed states
+
+Rules:
+- place it above the detailed execution trace, not attached to every tool step
+- do not show it for very short or single-step work
+- do not use it for repeated search refinements or other repeated calls within one strategy loop
+- completed items should feel calm, not celebratory
+- this layer is a map, not evidence
+
+Examples:
+- `Define cohort framing`
+- `Search and refine evidence`
+- `Compare candidate cohort boundaries`
+- `Propose final cohort options`
 
 #### 1. Live phase row
 This should be the main active process indicator.
@@ -266,10 +313,10 @@ Rules:
 ### Search-Specific Visual Rules
 Search is the first proving ground and needs extra discipline.
 
-For repeated search calls, the UI should not show a stack of nearly identical cards with no explanation.
+For repeated search calls, the UI should not show a stack of nearly identical cards with no explanation, and they should not appear as separate top-level tasks.
 
 Recommended pattern:
-- group contiguous search receipts into a compact “search sequence”
+- group contiguous search receipts into a compact in-chat “search sequence” card
 - show each query as a compact row inside the sequence
 - show one checkpoint after the sequence explaining the refinement
 
@@ -282,7 +329,7 @@ Expanded view:
 - result counts
 - durations
 
-This makes search look strategic instead of repetitive.
+This makes search look strategic instead of repetitive while keeping repeated refinements out of the high-level task outline.
 
 ### Motion and Layout Rules
 1. Use subtle transitions only:
@@ -300,6 +347,8 @@ This makes search look strategic instead of repetitive.
 
 ### Hard Anti-Patterns
 Do not ship these patterns:
+- task-outline blocks for short or trivial runs
+- repeated search refinements presented as separate top-level tasks
 - generic progress text rendered as assistant transcript content
 - one large card per microstep
 - raw tool ids as user-facing labels
@@ -355,6 +404,7 @@ What not to copy directly:
 
 ### `/ai`
 - full execution trace surface
+- conditional task outline for complex work
 - progress lane
 - receipts
 - checkpoints
@@ -363,6 +413,7 @@ What not to copy directly:
 ### Project copilot
 - same underlying trace contract as `/ai`
 - more compact layout allowed
+- conditional task outline allowed only when it stays quiet and compact
 - but no transcript-progress masquerade
 - no semantic downgrades that make process state look like assistant speech
 - compactness should come from denser spacing and lighter chrome, not from dropping meaning
@@ -403,6 +454,8 @@ Repeated search calls should either:
 or
 - be differentiated enough through receipts/checkpoints that repetition feels justified
 
+They should not be promoted into separate top-level task-outline items unless the search itself is one major stage within a larger complex task.
+
 ## Non-Goals
 This plan does not aim to:
 - expose raw chain-of-thought by default
@@ -415,11 +468,13 @@ This plan does not aim to:
 
 ### Phase V2.0 - Contract lock
 1. Freeze the execution-trace truth model:
+   - conditional task outline
    - live phase
    - tool receipts
    - checkpoints
    - optional reasoning
 2. Freeze the product rule that process state must not be rendered as assistant transcript content.
+3. Freeze the product rule that repeated search refinements belong inside search-sequence receipts, not the high-level task outline.
 
 Exit criteria:
 - One canonical transparency model exists.
