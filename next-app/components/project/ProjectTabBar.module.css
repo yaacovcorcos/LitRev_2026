@@ -3,7 +3,7 @@
     align-items: center;
     gap: 8px;
     padding: 0 16px;
-    height: 48px;
+    min-height: 52px;
     background: var(--glass-bg);
     border-bottom: 1px solid var(--glass-border);
     backdrop-filter: blur(12px);
@@ -25,8 +25,10 @@
 .modeBtn {
     display: flex;
     align-items: center;
+    justify-content: center;
     gap: 5px;
     padding: 5px 12px;
+    min-height: 36px;
     border: none;
     border-radius: 999px;
     background: transparent;
@@ -34,7 +36,7 @@
     font-size: 12px;
     font-weight: 500;
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
     white-space: nowrap;
 }
 
@@ -72,8 +74,10 @@
 .tab {
     display: flex;
     align-items: center;
+    justify-content: center;
     gap: 6px;
     padding: 6px 12px;
+    min-height: 36px;
     border: none;
     border-radius: var(--radius-sm);
     background: transparent;
@@ -81,7 +85,7 @@
     font-size: 13px;
     font-weight: 500;
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
     white-space: nowrap;
 }
 
@@ -115,8 +119,8 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 32px;
-    height: 32px;
+    width: 36px;
+    height: 36px;
     border: none;
     border-radius: var(--radius-sm);
     background: transparent;
@@ -140,7 +144,23 @@
     font-size: 18px;
 }
 
-@media (max-width: 768px) {
+/* Mirrors PHONE_MAX_WIDTH in lib/mobile/breakpoints.ts. */
+@media (max-width: 767px) {
+    .tabBar {
+        min-height: 56px;
+        padding: 4px 12px;
+    }
+
+    .modeBtn,
+    .tab,
+    .deleteBtn {
+        min-height: var(--touch-target-min);
+    }
+
+    .deleteBtn {
+        width: var(--touch-target-min);
+        height: var(--touch-target-min);
+    }
 
     .tabLabel,
     .btnLabel {

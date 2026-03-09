@@ -71,14 +71,24 @@
   border: none;
   color: var(--text-muted);
   cursor: pointer;
-  padding: 6px;
+  width: 36px;
+  height: 36px;
+  padding: 0;
   border-radius: 6px;
-  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .closeBtn:hover {
   background: rgba(var(--rgb-ui-contrast), 0.05);
   color: var(--text-primary);
+}
+
+.closeBtn:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus-ring);
 }
 
 .body {
@@ -287,8 +297,10 @@
 .downloadBtn {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
   padding: 8px 16px;
+  min-height: var(--touch-target-min);
   background: var(--accent-primary);
   color: var(--color-white);
   border: none;
@@ -297,7 +309,7 @@
   font-weight: 600;
   cursor: pointer;
   text-decoration: none;
-  transition: all 0.2s ease;
+  transition: background 0.2s ease, box-shadow 0.2s ease;
 }
 
 .downloadBtn:hover {
@@ -346,8 +358,10 @@
 .copyBtn {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
   padding: 10px 14px;
+  min-height: var(--touch-target-min);
   background: rgba(var(--rgb-ui-surface), 0.5);
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-sm);
@@ -355,13 +369,19 @@
   font-weight: 500;
   color: var(--text-primary);
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
   white-space: nowrap;
 }
 
 .copyBtn:hover {
   background: rgba(var(--rgb-ui-surface), 0.8);
   border-color: var(--accent-primary);
+}
+
+.copyBtn:focus-visible,
+.downloadBtn:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus-ring);
 }
 
 .copyBtn .material-icons-round {
@@ -452,9 +472,11 @@
   border: none;
   color: var(--text-muted);
   cursor: pointer;
-  padding: 6px;
+  width: 36px;
+  height: 36px;
+  padding: 0;
   border-radius: 4px;
-  transition: all 0.2s ease;
+  transition: background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
   text-decoration: none;
   display: flex;
   align-items: center;
@@ -464,6 +486,11 @@
 .historyBtn:hover {
   background: rgba(var(--rgb-ui-contrast), 0.05);
   color: var(--accent-primary);
+}
+
+.historyBtn:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus-ring);
 }
 
 .historyBtn .material-icons-round {
@@ -486,4 +513,13 @@
   margin: 12px 0 0;
   font-size: 13px;
   color: var(--color-danger);
+}
+
+/* Mirrors PHONE_MAX_WIDTH in lib/mobile/breakpoints.ts. */
+@media (max-width: 767px) {
+  .closeBtn,
+  .historyBtn {
+    width: var(--touch-target-min);
+    height: var(--touch-target-min);
+  }
 }

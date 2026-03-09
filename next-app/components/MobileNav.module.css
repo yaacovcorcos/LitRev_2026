@@ -19,12 +19,31 @@
     display: flex;
     flex-direction: column;
     align-items: center;
+    justify-content: center;
     gap: 4px;
+    min-width: 56px;
+    min-height: var(--touch-target-min);
+    padding: 6px 8px;
+    border: none;
+    border-radius: 12px;
+    background: transparent;
+    cursor: pointer;
     text-decoration: none;
     color: var(--text-secondary);
     font-size: 11px;
     font-weight: 500;
-    transition: all 0.2s;
+    line-height: 1.2;
+    transition: background 0.2s ease, color 0.2s ease;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.item:hover {
+    background: rgba(var(--rgb-ui-contrast), 0.04);
+}
+
+.item:focus-visible {
+    outline: none;
+    box-shadow: var(--shadow-focus-ring);
 }
 
 .itemIcon {
@@ -33,6 +52,7 @@
 
 .active {
     color: var(--accent-primary);
+    background: rgba(var(--rgb-accent-primary), 0.08);
 }
 
 .error {
