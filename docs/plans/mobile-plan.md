@@ -28,8 +28,8 @@ This plan is the long-term implementation contract for how LitRev adapts across 
 - Core route adoption of a long-term responsive contract is still incomplete:
   - app shell and sidebar now split `phone` vs `compact` behavior behind `NEXT_PUBLIC_MOBILE_SHELL_V2`, but wider route surfaces still need follow-up adoption
   - home now adopts the shared route/shell responsive contract across loading, zero-state, and workspace states, but shared `TopBar` / `ControlsBar` primitives still retain transitional generic breakpoints outside home-specific modifiers
-  - login still uses route-local viewport math
-  - protocol still uses route-local height ownership
+  - login and signup now share a standalone `AuthShellFrame` that owns route height once, keeps decorative layers fixed, and gives the auth panel one inner scroll owner on phone when the keyboard shrinks the viewport
+  - protocol now consumes shell height/offset once in both embedded and standalone paths; standalone `ProjectPageLayout` can switch to phone-only copilot collapse and child-owned scroll without changing the generic wrapper contract for other project pages
   - telemetry now classifies viewport as `phone` / `compact` / `desktop`, but many live surfaces still consume the transitional `900px` query until later foundation waves retire it
 - Project shell hides the embedded copilot pane on narrower widths; conversation mode is already the primary mobile chat surface.
 
@@ -169,16 +169,6 @@ Primary KPI lenses:
 - Regression concentration by viewport class (`phone`, `compact`, `desktop`).
 
 ## Active Tasks (Mobile Foundation)
-- [ ] `MOB-FND-005` Login/auth responsive shell:
-  - Normalize login/auth viewport and keyboard behavior without forcing auth into the same visual shell as home or protocol.
-  - Preserve auth-specific layout while adopting the shared responsive contract.
-  - Add a dedicated public flag only if this wave proves too high-risk for direct rollout; otherwise treat rollback as revert/redeploy-only.
-  - Rollback: disable the dedicated flag if one is introduced in this wave; otherwise revert/redeploy.
-- [ ] `MOB-FND-006` Protocol responsive adoption:
-  - Migrate protocol to the shared responsive layout contract.
-  - Align body height and scroll ownership with project shell rules across phone and compact tiers.
-  - Add a dedicated public flag only if this wave proves too high-risk for direct rollout; otherwise treat rollback as revert/redeploy-only.
-  - Rollback: disable the dedicated flag if one is introduced in this wave; otherwise revert/redeploy.
 - [ ] `MOB-FND-007` Shared touch-target and density pass:
   - Enforce `44px` minimum targets on shared phone/coarse-pointer controls.
   - Fix mobile nav items, tab controls, dismiss buttons, and shared icon-button patterns.
@@ -219,6 +209,14 @@ Primary KPI lenses:
   - Cover both phone and compact widths where behavior differs.
 
 ## Recently Completed
+- [x] `MOB-FND-006` Protocol responsive adoption completed:
+  - Removed protocol route-local `100vh` / shell-offset recomputation and moved embedded + standalone protocol onto one shell-consumption model.
+  - Added protocol-specific standalone wrapper controls so `ProjectPageLayout` can keep child-owned scroll and collapse the copilot only on the `phone` tier.
+  - Retired the broad `900px` protocol fallback in favor of explicit `phone` behavior for route padding and standalone copilot collapse.
+- [x] `MOB-FND-005` Login/auth responsive shell completed:
+  - Added shared `AuthShellFrame` so sign-in, sign-up, and loading fallback now use one standalone route contract.
+  - Replaced route-local `100vh` auth ownership with shared viewport-safe height handling and a single inner scroll owner on phone.
+  - Preserved auth-specific visual composition while hardening keyboard and safe-area behavior.
 - [x] `MOB-FND-004` Home responsive entry experience completed:
   - Moved loading and zero-state to direct route-level surface ownership while keeping workspace offset ownership with the shell contract.
   - Reworked home workspace entry behavior for `phone` vs `compact`, including tier-specific grid/list treatment and a structurally decoupled sample review card.

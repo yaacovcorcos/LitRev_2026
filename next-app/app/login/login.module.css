@@ -13,12 +13,29 @@
 
   position: relative;
   display: flex;
-  min-height: 100vh;
-  align-items: center;
-  justify-content: center;
+  min-height: var(--app-min-height, 100vh);
   overflow: hidden;
-  padding: 24px;
   background: var(--login-bg-page);
+}
+
+.scrollFrame {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding:
+    calc(24px + var(--safe-area-top))
+    max(24px, calc(24px + var(--safe-area-right)))
+    calc(24px + var(--safe-area-bottom))
+    max(24px, calc(24px + var(--safe-area-left)));
 }
 
 .shell::before,
@@ -60,14 +77,17 @@
 
 .content {
   position: relative;
-  z-index: 1;
   width: min(420px, 100%);
-  top: -16px;
+  margin: auto 0;
   animation: fadeUp 0.8s ease-out both;
 }
 
 .content[data-auth-mode="signup"] {
   width: min(440px, 100%);
+}
+
+.authPanel {
+  width: 100%;
 }
 
 .logoBlock {
@@ -501,14 +521,20 @@
   }
 }
 
-@media (max-width: 640px) {
-  .shell {
-    padding: 16px;
+/* Mirrors PHONE_MAX_WIDTH in lib/mobile/breakpoints.ts. */
+@media (max-width: 767px) {
+  .scrollFrame {
+    align-items: flex-start;
+    padding:
+      calc(16px + var(--safe-area-top))
+      max(16px, calc(16px + var(--safe-area-right)))
+      calc(16px + var(--safe-area-bottom))
+      max(16px, calc(16px + var(--safe-area-left)));
   }
 
   .content {
     width: 100%;
-    top: -8px;
+    margin: 0;
   }
 
   .logoBlock {

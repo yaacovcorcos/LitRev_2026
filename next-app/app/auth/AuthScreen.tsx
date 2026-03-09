@@ -5,6 +5,7 @@ import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
 import { useAsyncAction } from "@/hooks/useAsyncAction";
+import { AuthShellFrame } from "@/app/auth/AuthShellFrame";
 import styles from "@/app/login/login.module.css";
 
 type AuthMode = "signin" | "signup";
@@ -118,22 +119,8 @@ export function AuthScreen({ mode }: AuthScreenProps) {
   };
 
   return (
-    <main className={styles.shell}>
-      <div className={styles.grainOverlay} />
-      <section className={styles.content} aria-label={modeVerb} data-auth-mode={mode}>
-        <header className={styles.logoBlock}>
-          <div className={styles.logoMark} aria-hidden="true">
-            <svg viewBox="0 0 48 48" className={styles.logoSvg} fill="none">
-              <path
-                d="M24 6 L24 42 M12 14 Q24 4 36 14 M10 26 Q24 18 38 26 M14 36 Q24 30 34 36"
-                strokeLinecap="round"
-              />
-            </svg>
-          </div>
-          <p className={styles.brandName}>LitRev</p>
-          <p className={styles.brandSubtitle}>Literature Review Assistant</p>
-        </header>
-
+    <AuthShellFrame ariaLabel={modeVerb} mode={mode}>
+      <div className={styles.authPanel}>
         <div className={styles.card}>
           <div className={styles.cardAccent} />
 
@@ -293,7 +280,7 @@ export function AuthScreen({ mode }: AuthScreenProps) {
             </Link>
           </p>
         )}
-      </section>
-    </main>
+      </div>
+    </AuthShellFrame>
   );
 }

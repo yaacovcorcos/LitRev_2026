@@ -2,7 +2,7 @@
     flex: 1;
     min-height: 0;
     display: grid;
-    grid-template-columns: 1fr 1px var(--copilot-width, 360px);
+    grid-template-columns: var(--copilot-grid-template-columns, 1fr 1px var(--copilot-width, 360px));
     overflow: hidden;
     height: 100%;
 }
@@ -14,6 +14,10 @@
     flex-direction: column;
     overflow-y: auto;
     overflow-x: hidden;
+}
+
+.content[data-scroll-owner="child"] {
+    overflow: hidden;
 }
 
 .resizeHandle {
@@ -50,15 +54,28 @@
 }
 
 @media (max-width: 900px) {
-    .grid {
-        grid-template-columns: 1fr !important;
+    .grid:not([data-copilot-collapse-mode="phone-only"]) {
+        grid-template-columns: 1fr;
     }
 
-    .resizeHandle {
+    .grid:not([data-copilot-collapse-mode="phone-only"]) .resizeHandle {
         display: none;
     }
 
-    .copilotPane {
+    .grid:not([data-copilot-collapse-mode="phone-only"]) .copilotPane {
         display: none;
     }
+}
+
+/* Mirrors PHONE_MAX_WIDTH in lib/mobile/breakpoints.ts. */
+.grid[data-copilot-collapse-mode="phone-only"][data-viewport-class="phone"] {
+    grid-template-columns: 1fr;
+}
+
+.grid[data-copilot-collapse-mode="phone-only"][data-viewport-class="phone"] .resizeHandle {
+    display: none;
+}
+
+.grid[data-copilot-collapse-mode="phone-only"][data-viewport-class="phone"] .copilotPane {
+    display: none;
 }

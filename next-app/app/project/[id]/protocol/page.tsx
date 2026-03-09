@@ -18,6 +18,16 @@ import { ProtocolSections } from "./ProtocolSections";
 
 
 /** Inner component that uses the ProtocolContext */
+function ProtocolPageStatus({ children }: { children: React.ReactNode }) {
+    return (
+        <ProjectPageLayout noMainPadding mainClassName={styles.appMainOverride}>
+            <div className={`${styles.page} surface-root`} data-surface-height="shell">
+                {children}
+            </div>
+        </ProjectPageLayout>
+    );
+}
+
 function ProtocolPageContent() {
     const { id } = useParams<{ id: string }>();
     const { getProjectById, isLoadingProjects, projectsError } = useProjects();
@@ -203,15 +213,15 @@ function ProtocolPageContent() {
 
     if (isLoadingProjects) {
         return (
-            <ProjectPageLayout mainClassName={styles.appMainOverride}>
+            <ProtocolPageStatus>
                 <EmptyStateSkeleton className={styles.notFound} />
-            </ProjectPageLayout>
+            </ProtocolPageStatus>
         );
     }
 
     if (projectsError) {
         return (
-            <ProjectPageLayout mainClassName={styles.appMainOverride}>
+            <ProtocolPageStatus>
                 <EmptyState
                     variant="error"
                     icon="cloud_off"
@@ -221,13 +231,13 @@ function ProtocolPageContent() {
                     secondaryAction={{ label: "Back to Dashboard", href: "/" }}
                     className={styles.notFound}
                 />
-            </ProjectPageLayout>
+            </ProtocolPageStatus>
         );
     }
 
     if (!project) {
         return (
-            <ProjectPageLayout mainClassName={styles.appMainOverride}>
+            <ProtocolPageStatus>
                 <EmptyState
                     variant="error"
                     icon="folder_off"
@@ -236,7 +246,7 @@ function ProtocolPageContent() {
                     primaryAction={{ label: "Back to Dashboard", href: "/" }}
                     className={styles.notFound}
                 />
-            </ProjectPageLayout>
+            </ProtocolPageStatus>
         );
     }
 
@@ -403,7 +413,10 @@ function ProtocolPageContent() {
 
     return (
         <ProjectPageLayout
+            noMainPadding
             mainClassName={styles.appMainOverride}
+            contentScrollMode="child"
+            copilotCollapseMode="phone-only"
             copilot={{
                 page: "protocol",
                 section: activeSectionLabel ?? undefined,
@@ -419,7 +432,9 @@ function ProtocolPageContent() {
                 onInsert: activeSection ? handleInsert : undefined,
             }}
         >
-            <div className={styles.page}>{mainContent}</div>
+            <div className={`${styles.page} surface-root`} data-surface-height="shell">
+                {mainContent}
+            </div>
         </ProjectPageLayout>
     );
 }
