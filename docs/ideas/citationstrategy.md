@@ -6,14 +6,14 @@ This document captures product and architecture orientation for inline citations
 
 LitRev already has substantial draft-side citation infrastructure:
 
-- Draft has a real TipTap citation node in [next-app/app/project/[id]/draft/DraftEditors.tsx](/Users/yaacovcorcos/LitRev_2026/.worktrees/citation-strategy/next-app/app/project/[id]/draft/DraftEditors.tsx).
-- Draft compiles citation nodes into ordered references and validates ledger linkage in [next-app/lib/citation-compiler.ts](/Users/yaacovcorcos/LitRev_2026/.worktrees/citation-strategy/next-app/lib/citation-compiler.ts).
-- Draft auto-generates the references section from cited studies in [next-app/app/project/[id]/draft/page.tsx](/Users/yaacovcorcos/LitRev_2026/.worktrees/citation-strategy/next-app/app/project/[id]/draft/page.tsx).
-- Export already treats references as derived output rather than hand-authored content in [next-app/app/project/[id]/draft/useDraftExport.ts](/Users/yaacovcorcos/LitRev_2026/.worktrees/citation-strategy/next-app/app/project/[id]/draft/useDraftExport.ts).
+- Draft has a real TipTap citation node in [next-app/app/project/[id]/draft/DraftEditors.tsx](../../next-app/app/project/[id]/draft/DraftEditors.tsx).
+- Draft compiles citation nodes into ordered references and validates ledger linkage in [next-app/lib/citation-compiler.ts](../../next-app/lib/citation-compiler.ts).
+- Draft auto-generates the references section from cited studies in [next-app/app/project/[id]/draft/page.tsx](../../next-app/app/project/[id]/draft/page.tsx).
+- Export already treats references as derived output rather than hand-authored content in [next-app/app/project/[id]/draft/useDraftExport.ts](../../next-app/app/project/[id]/draft/useDraftExport.ts).
 
 The main gap is that chat does not share that same model:
 
-- Chat currently relies on prompt rules that force clickable DOI or PMID links at first mention in [next-app/lib/ai/prompts/copilot-prompts.ts](/Users/yaacovcorcos/LitRev_2026/.worktrees/citation-strategy/next-app/lib/ai/prompts/copilot-prompts.ts).
+- Chat currently relies on prompt rules that force clickable DOI or PMID links at first mention in [next-app/lib/ai/prompts/copilot-prompts.ts](../../next-app/lib/ai/prompts/copilot-prompts.ts).
 - Chat also has an optional hidden `MENTIONED_STUDIES` metadata comment, but that is still weaker than a true shared citation model.
 
 So the app is not missing citations entirely. It is missing one shared citation architecture that both draft and chat can use.
@@ -53,7 +53,7 @@ The likely best end-to-end shape is:
   - rendered-label caching if useful
 - Make chat messages carry structured citation metadata rather than only markdown links or `MENTIONED_STUDIES`.
 - Generate chat inline citations and the final references block from that structured metadata after the model produces its answer.
-- Let draft continue using TipTap citation nodes, but shift long-term bibliography rendering toward a CSL-based renderer instead of only the local string formatter in [next-app/lib/citations.ts](/Users/yaacovcorcos/LitRev_2026/.worktrees/citation-strategy/next-app/lib/citations.ts).
+- Let draft continue using TipTap citation nodes, but shift long-term bibliography rendering toward a CSL-based renderer instead of only the local string formatter in [next-app/lib/citations.ts](../../next-app/lib/citations.ts).
 - Keep the references section derived by default. Manual reference editing should not be the main model.
 
 This preserves the strongest existing asset in LitRev, which is that citations in draft already map to ledger studies structurally.
