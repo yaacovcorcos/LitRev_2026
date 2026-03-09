@@ -325,7 +325,7 @@ What not to copy directly:
 - developer-facing trace density and span terminology are too technical for LitRev’s default user surface
 
 ### LangGraph Studio
-Reference: [LangGraph Studio](https://github.com/anygrab-kick/langchain-ai-langgraph-studio)
+Reference: [LangGraph Studio](https://github.com/langchain-ai/langgraph-studio)
 
 Useful ideas:
 - explicit step/thread identity
@@ -339,7 +339,7 @@ What not to copy directly:
 - graph/node visualization is too developer-oriented for the main LitRev chat surface
 
 ### OpenCode
-Reference: local OSS repo analysis at `cloned_repos/opencode_repo`
+Reference: [OpenCode](https://github.com/sst/opencode)
 
 Useful ideas:
 - delegated work and visible progress should be separated
