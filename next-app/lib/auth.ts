@@ -69,7 +69,7 @@ function createAuth(): AuthInstance {
             from,
             to: email,
             subject: "Your LitRev sign-in link",
-            html: `<p>Click to sign in:</p><p><a href=\"${url}\">Sign in to LitRev</a></p><p>This link expires in 15 minutes.</p>`,
+            html: `<p>Click to sign in:</p><p><a href="${url}">Sign in to LitRev</a></p><p>This link expires in 15 minutes.</p>`,
           });
         },
       }),
