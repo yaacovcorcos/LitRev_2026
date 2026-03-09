@@ -1,346 +1,173 @@
 # Chat Unification V2 Plan
 
 ## Purpose
-Unify `/ai`, project copilot, and popup chat onto one shared chat engine while keeping `/ai` independently usable without a project and preserving popup as intentionally lightweight.
+Track the remaining work to keep `/ai`, project copilot, and popup on one shared chat/runtime contract while preserving surface-specific UX where it is intentional.
 
-## Implementation Status
-1. Completed: U0.5 popup contract alignment.
-2. Completed: U1.1 shared pure reducer + intents (`shared-stream-reducer`).
-3. Completed: U1.2 project reducer adoption, but not full shared intent parity on the visible project surface.
-4. Completed: U1.3 and U1.4 `/ai` send and plan stream paths now run through the shared reducer runtime.
-5. Completed: U1.5 anti-duplication CI guard is now enforced in CI by default (`--mode=enforce`).
-6. In progress: U1.6 telemetry ingestion is implemented end-to-end (client metric emission + authenticated server sink + DB storage + run-end metric capture).
-7. In progress: U1.6 preflight hardening now requires explicit cohort scoping, canonical canary timestamp capture, and Day-0 runId-quality checks before the 7-day gate clock starts.
-8. In progress: U1.6 operational execution is codified in `docs/runbooks/chat-unification-burn-in.md` with reusable report template `docs/reports/u1-6-burn-in-template.md`; however, `docs/reports/u1-6-burn-in.md` still records `pending_canary_start`, so no production canary evidence exists yet and U1.6 is not closeable.
-9. Pending: U3 popup migration to shared runtime.
+This file is not a migration diary. It records:
+- the current shared-runtime truth
+- the remaining unification blockers
+- the rules that future chat/trace work must preserve
+
+## Scope
+This plan owns:
+- shared stream/runtime contracts across `/ai`, project copilot, and popup
+- cross-surface reducer/runtime parity
+- popup migration onto the shared runtime
+- burn-in and cleanup for the unified path
+
+This plan does not own:
+- agent-runtime orchestration fixes in [plan-agentic.md](./plan-agentic.md)
+- truthful execution-trace design in [plan-thinking-v2.md](./plan-thinking-v2.md)
+- route-specific UI polish in [plan-ux-ui.md](./plan-ux-ui.md)
+
+## Current Architecture
+- `/ai` and project copilot already share the normalized stream event model through `shared-stream-reducer.ts` and shared runtime helpers in `lib/ai/`.
+- `/ai` standard send and plan paths already run through the shared reducer/runtime contract.
+- Project copilot already migrated off bespoke chunk accumulation onto the shared reducer/runtime path, but still carries a few surface adapter differences that matter for truthful progress/presentation.
+- Popup has canonical Context V2 payload alignment, but it still has not migrated fully onto the shared runtime engine.
+- The CI anti-duplication architecture guard is already enforced and should continue preventing new per-surface chunk parsers.
+- Chat/runtime work above this layer now depends on convergence here rather than inventing new per-surface semantics.
 
 ## Non-Negotiable Constraints
-1. No feature regression in any surface.
-2. `/ai` remains project-optional (`global` by default).
-3. `/ai` may attach to a project only when user-selected.
-4. Project copilot remains project-scoped and shell-embedded.
-5. Popup remains compact and fast, not a full mirror of `/ai`.
+1. `/ai` remains usable without a project.
+2. Project copilot remains project-scoped and shell-embedded.
+3. Popup remains compact and intentionally reduced unless/until it can honestly support the same runtime contract.
+4. No new per-surface chunk handlers or reducer forks may be added.
+5. Surface-specific differences should live in rendering and capability gating, not in stream parsing or core runtime state transitions.
 
-## Architecture Rule
-Use `one engine, multiple shells`.
+## Shared Runtime Contract
 
-Shared engine:
+### One Engine, Multiple Shells
+Shared engine responsibilities:
 1. Stream normalization.
-2. Single client reducer/state machine.
-3. Retry/resume + model continuity.
-4. Unified ask-user continuation contract.
-5. Typed tool lifecycle events.
-6. Error classification and rendering contract.
-7. Pure reducer output plus typed side-effect intents (no hidden side effects inside reducer).
+2. Shared reducer state transitions.
+3. Typed side-effect intents.
+4. Retry/model continuity contract.
+5. Ask-user continuation contract.
+6. Typed tool lifecycle events.
+7. Shared error and recovery semantics.
 
-Shell adapters:
-1. `/ai`: global/project selector and advanced controls.
-2. Project copilot: route-aware project context, but still with adapter debt around progress/checkpoint presentation.
-3. Popup: compact view + handoff, still on a bespoke client runtime until U3.
+Shell responsibilities:
+1. `/ai`: global/project attachment controls and richer presentation.
+2. Project copilot: project-scoped shell and compact presentation.
+3. Popup: compact shell, capability-gated presentation, handoff behavior.
 
-Hard rule:
-1. No new per-surface chunk handlers after U1 starts.
+### Ask-User Continuation Invariant
+1. Every `user_input_required` event must preserve `page` and optional `section`.
+2. Answering from timeline or input must continue the same contextual flow.
+3. Dismiss remains an explicit continuation action with deterministic fallback text.
+4. Cross-surface tests must continue validating this invariant.
 
-## Ask-User Continuation Invariant
-1. Every `user_input_required` item must carry origin context: `page` and optional `section`.
-2. Answering from timeline or input must continue the run using that same context.
-3. Dismiss must remain available as an explicit continuation action with deterministic fallback answer text.
-4. Parity tests must validate ask-user continuation context on both `/ai` and project surfaces.
-
-## Context Contract V2
-
+### Context Contract V2
 Canonical fields:
-1. `scope`: `global | project | study`.
-2. `projectId`: nullable.
-3. `studyId`: nullable.
-4. `page`: UI route context.
-5. `section`: optional route subsection.
-6. `origin`: `ai_page | project_copilot | popup`.
-7. `version`: `v2`.
+1. `scope`: `global | project | study`
+2. `projectId`: nullable
+3. `studyId`: nullable
+4. `page`: UI route context
+5. `section`: optional route subsection
+6. `origin`: `ai_page | project_copilot | popup`
+7. `version`: `v2`
 
 Rules:
-1. `/ai` default: `scope=global`, `projectId=null`.
-2. `/ai` attached: `scope=project`, `projectId` required.
-3. Project copilot: always `scope=project`, `projectId` required.
-4. Popup inherits opener scope and must transmit `origin=popup` and `version=v2`.
-5. Legacy payloads are adapted through a server/client compatibility adapter until U4 cleanup.
+1. `/ai` defaults to `scope=global`, `projectId=null`.
+2. `/ai` may attach to a project only when user-selected.
+3. Project copilot always runs with `scope=project`.
+4. Popup inherits opener context and transmits `origin=popup`, `version=v2`.
 
-## Feature Portability Matrix
+## Still-Relevant Portability Rules
 
-### 1) Must Port to All Surfaces (Core Runtime)
-1. Conversation lifecycle (create/select/delete/rename where available).
-2. Streaming message updates.
-3. Retry last message preserving model and reasoning settings.
-4. ask-user interruption and continuation.
-5. Tool lifecycle state visibility (at least compact form in popup).
-6. Error contract with actionable recovery.
-7. Context propagation (`scope/projectId/studyId/page/section`).
+### Must Stay Shared Across Surfaces
+1. Streaming message updates.
+2. Retry last message while preserving model/reasoning settings.
+3. Ask-user interruption and continuation.
+4. Tool lifecycle visibility.
+5. Error contract and actionable recovery.
+6. Context propagation.
 
-Acceptance criteria:
-1. Same input event sequence produces equivalent reducer state across all surfaces.
-2. Retry never drops selected model.
-3. ask-user renders exactly once per active prompt and resumes run.
-4. Tool lifecycle states are typed, not inferred from prose.
+### May Vary By Surface
+1. Timeline density.
+2. Receipt richness.
+3. Reasoning presentation depth.
+4. Advanced debug/provenance controls.
 
-### 2) Port Where UX Fits (Advanced, Non-Essential)
-1. Rich timeline grouping and receipts.
-2. Expanded reasoning panels.
-3. Advanced debug/provenance controls.
-4. Bulk artifact controls and deep plan management UI.
+### Must Remain Surface-Specific
+1. Popup does not mirror full-page timeline density.
+2. Project-only controls do not appear in `/ai` global mode.
+3. Compact shells may reduce presentation detail, but not alter the underlying runtime truth.
 
-Acceptance criteria:
-1. Advanced features stay optional by surface and do not alter core contracts.
-2. Disabling advanced UI does not break run execution, retry, or ask-user.
+## Active Tasks
 
-### 3) Do Not Port (Intentional Surface-Specific)
-1. Popup does not replicate full-page timeline density.
-2. Popup does not expose heavy multi-panel controls.
-3. Project-only controls do not appear in `/ai` global mode.
+- [ ] `U1.6` Cross-surface replay parity and burn-in sign-off
+  - Problem: the shared runtime is shipped, but the operational proof that it is stable enough to treat as canonical is still incomplete.
+  - Remaining work:
+    - finish canary evidence using `docs/runbooks/chat-unification-burn-in.md`
+    - complete replay parity confidence for `/ai` vs project adapters
+    - finish sign-off on the current metric contract and thresholds
+  - Exit criteria:
+    - burn-in evidence is complete and sign-offable
+    - replay parity is proven at reducer-state + intent level
+    - reliability thresholds are met for the shared runtime path
 
-Acceptance criteria:
-1. Popup remains compact with no regression in response latency.
-2. `/ai` remains independent of project context by default.
+- [ ] `U3` Popup migration to shared engine
+  - Problem: popup still does not use the same runtime path as `/ai` and project copilot, which blocks fully shared trace/error/tool semantics.
+  - Remaining work:
+    - move popup from bridge/special path onto shared reducer/runtime adapters
+    - keep popup compact through capability gating, not bespoke runtime logic
+    - preserve handoff to full copilot with no context loss
+  - Exit criteria:
+    - popup consumes the same runtime contracts as the other chat surfaces
+    - popup stays compact without semantic drift
 
-## Phase Order (Updated)
+- [ ] `U4` Shadow cleanup and legacy-path removal
+  - Problem: once burn-in and popup migration are complete, the remaining fallback/legacy branches become drift risks.
+  - Remaining work:
+    - remove obsolete handlers and adapters after the shared path is proven
+    - simplify rollback semantics around one canonical engine
+  - Exit criteria:
+    - no duplicate chat state machines remain
+    - the unified engine is the documented and enforced default
 
-### U0 - Parity Split + Governance Activation
-1. Split parity checklist into `core runtime parity` vs `surface UX parity`.
-2. Promote `CUX-D01` to active tracking in `plan-ux-ui.md` at kickoff.
-3. Capture baseline metrics by surface:
-   - first visible token latency
-   - retry success/model continuity
-   - ask-user completion
-   - tool state freshness
+## Execution Order
+1. Finish `U1.6` burn-in and sign-off.
+2. Land `U3` popup migration.
+3. Remove legacy/runtime duplication in `U4`.
 
-Exit criteria:
-1. Portability matrix is adopted and testable.
-2. `CUX-D01` is explicitly active.
-
-### U0.5 - Popup Contract Alignment (Blocker)
-1. Align popup payloads so `popupMode`/`popupContext` map into Context V2.
-2. Ensure popup path reaches popup runtime behavior intentionally (no silent bypass).
-3. Add Context V2 adapter tests for legacy and popup payloads.
-
-Exit criteria:
-1. Popup sends/receives canonical context fields with `origin=popup`.
-2. No popup runtime bypass due to contract mismatch.
-
-### U1.0 - Runtime Contract Freeze
-1. Freeze full `RuntimeStreamEvent` coverage (not subset): `content`, `reasoning_start`, `reasoning_delta`, `reasoning_end`, `tool_call`, `tool_result`, `done`, `error`, `artifact`, `progress`, `checkpoint`, `run_start`, `run_end`, `conversation_title`, `choices`, `plan_step_update`, `navigate`, `user_input_required`.
-2. Define canonical state transitions and intent outputs for each event.
-3. Add contract fixtures reused by both `/ai` and project adapter tests.
-
-Exit criteria:
-1. Event contract is explicit, exhaustive, and versioned.
-2. Fixtures cover all event variants and malformed-edge payloads.
-
-### U1.1 - Shared Pure Reducer + Intents
-1. Implement one pure reducer that returns:
-   - canonical chat state
-   - typed intents (`persist_conversation_title`, `navigate`, `set_pending_choices`, `set_pending_user_input`, `emit_domain_invalidation`, etc.)
-2. Keep side effects in per-surface adapters consuming intents.
-3. Ban direct side effects in reducer implementation.
-
-Exit criteria:
-1. Reducer is deterministic and side-effect free.
-2. Intent schema is shared and typed.
-
-### U1.2 - Project Adapter Migration First
-1. Migrate project copilot stream handling to the shared reducer + intent executor.
-2. Preserve shell embedding and route context behavior.
-3. Keep existing project legacy path as shadow fallback behind unification flags.
-4. Remaining visible-surface debt after reducer adoption:
-   - `progress_upsert` still degrades into assistant text on the project surface.
-   - `checkpoint_append` is still not surfaced as a durable project runtime primitive.
-
-Exit criteria:
-1. Project copilot runs primarily on shared reducer.
-2. Feature parity and reliability blockers remain green.
-3. Full shared-runtime parity is not claimed until the remaining project adapter degradations above are removed or deliberately accepted.
-
-### U1.3 - `/ai` Send Path Migration
-1. Migrate `/ai` standard send/stream flow to shared reducer + intents.
-2. Preserve `/ai` global mode and optional project attachment.
-
-Exit criteria:
-1. `/ai` send path no longer has bespoke chunk accumulation logic.
-
-### U1.4 - `/ai` Plan Path Migration
-1. Migrate `/ai` plan execution stream path to shared reducer + intents.
-2. Preserve plan progress and failure behavior.
-
-Exit criteria:
-1. `/ai` no longer has split send/plan reducer logic.
-
-### U1.5 - Shadow Fallback + Anti-Duplication CI
-1. Keep legacy handlers as shadow-only fallback while burn-in runs.
-2. Add scoped architecture checks in CI (client stream files only, allowlist based):
-   - no new per-surface stream chunk parsers outside approved adapter/reducer files
-   - no `reduceSharedStreamChunk()` usage outside approved shared adapters
-3. Guard is now enabled in `enforce` mode by default in CI.
-
-Exit criteria:
-1. CI guard passes in `enforce` mode with zero unexpected violations.
-2. Flag-off fallback remains available pre-cleanup.
-
-### U1.6 - Cross-Surface Replay Parity + Burn-In Gate
-1. Adapter extraction prerequisite: `/ai` runtime adapter must be test-separable (module export, not page-local function).
-2. Add replay tests: same chunk sequence -> same canonical reducer state + emitted intents across `/ai` and project adapters.
-   - fixtures source of truth: `next-app/lib/ai/stream-fixtures.ts` (`CHAT_STREAM_FIXTURES_V1`)
-3. Parity scope:
-   - strict parity target = reducer state + intents only
-   - surface rendering differences remain covered by per-surface UI tests
-4. Add burn-in telemetry metrics with explicit schema:
-   - `retry_model_continuity`
-   - `ask_user_context_mismatch`
-   - `stuck_running_tools_after_run_end`
-   - `run_end_observed`
-   - `retry_model_continuity` v2 contract is authoritative:
-     - client sends retry intent only (`requestKey`, `expectedModel`, `source=retry_action`)
-     - server emits run-completion truth (`requestKey`, `actualModel`, `runId`, `runStatus`, `source=run_completion`)
-     - analyzer computes `preserved` only from matched v2 intent/completion pairs
-5. Authoritative metric sink decision (ADR-brief):
-   - Use a dedicated `ChatUnificationMetric` table (instead of extending `RunEvent`) because U1.6 gate metrics include UI-level events that can occur without a valid `runId` (for example retry continuity and ask-user context mismatch checks), and we need one canonical store for both run-bound and non-run-bound evidence.
-   - Keep `RunEvent` as the agent execution timeline source; avoid cross-purpose overloading.
-6. Burn-in pass rule:
-   - preflight addendum (must complete before Day 0):
-     - merge the release PR to `main`, deploy production from `main`, and record the deployed commit SHA before starting burn-in measurement
-     - define canary cohort source of truth (`workspaceIds` and/or `userIds`) or enforce canary-only feature-flag exposure for full window
-     - choose sign-off environment (`production` default; `staging` is rehearsal only)
-     - capture one canonical UTC enable timestamp (`CANARY_SINCE_UTC`) at feature-flag enable time and reuse it in every command/report
-      - freeze burn-in metric contract version (current: `CHAT_UNIFICATION_METRIC_VERSION=3`) before canary starts; do not change during the 7-day window
-     - any metric schema/version change during burn-in invalidates comparability and resets the 7-day window from the new enable timestamp
-     - assign sign-off owner + backup reviewer
-     - use `docs/runbooks/chat-unification-burn-in.md` for the canonical operational checklist, inputs, metric-integrity rules, and sign-off flow
-   - rollout environment matrix:
-     - local development only: `npx prisma migrate dev`
-     - shared/staging/production: `bash scripts/db-ops.sh migrate`
-     - never run `migrate dev` against shared environments
-   - Day-0 data quality gate (run immediately after migration + enable):
-     - require `run_end_observed` rows for both `ai` and `project` surfaces
-     - validate run-end `runId` coverage per surface (non-null `runId` ratio)
-     - include sample rows for missing `runId` in report output
-   - window: 7 days internal canary, anchored from `CANARY_SINCE_UTC` (exact ISO in plan + report output)
-   - minimum sample size: 200 completed runs total, with at least 50 `/ai` and 50 project runs
-   - thresholds:
-     - `retry_model_continuity` >= 99% on matched + eligible retry pairs only (`run_end_observed` status `completed`)
-     - retry intent/completion match-rate >= 95% overall and >= 90% per surface
-     - `ask_user_context_mismatch` = 0
-     - `stuck_running_tools_after_run_end` = 0
-     - retry join match-rate >= 95% overall and >= 90% per surface
-   - non-vacuous denominator minimums:
-     - `retry_model_continuity` intent denominator >= 30 overall and >= 10 per surface
-     - `retry_model_continuity` matched denominator >= 30 overall and >= 10 per surface
-     - `ask_user_context_mismatch` denominator >= 30 overall and >= 10 per surface
-   - retry continuity truth contract (`metricVersion=3`):
-     - client emits retry intent with `requestKey + expectedModel` at retry click
-     - run completion is joined via `run_end_observed` using composite key (`requestKey + userId + workspaceId + surface`) and bounded join window
-     - continuity is computed server-side/analyzer-side only (no client-provided `preserved` truth)
-     - mixed metric versions in the same canary window fail validation unless explicit diagnostics override is used
-   - completed-run counting rule:
-     - count distinct `runId` where `run_end_observed.payload.runStatus === "completed"` and `runId` belongs to an authorized run
-   - execution docs:
-     - runbook: `docs/runbooks/chat-unification-burn-in.md`
-     - report template: `docs/reports/u1-6-burn-in-template.md`
-   - validation commands:
-     - daily progress (first 7 days only):  
-       `cd next-app && npx tsx scripts/validate-chat-unification-burn-in.ts --since=<CANARY_SINCE_UTC> --metricVersion=3 --workspaceIds=<ws1,ws2> --userIds=<u1,u2> --allowShortWindow=1`
-     - strict final gate (no short-window override, earliest at +7 days; paste output into `docs/reports/u1-6-burn-in.md` created from the report template):
-       `cd next-app && npx tsx scripts/validate-chat-unification-burn-in.ts --since=<CANARY_SINCE_UTC> --metricVersion=3 --workspaceIds=<ws1,ws2> --userIds=<u1,u2> --requireScopedCohort=1 --requireRunEndPerSurface=1 --minRunIdCoveragePerSurface=0.95`
-7. Gate cleanup on parity + KPI pass.
-8. Burn-in scope for this phase is `/ai` + project only. Popup remains explicitly out of certification scope until U3 lands and has its own parity sign-off path.
-
-Exit criteria:
-1. Replay parity suite passes for shared stream fixtures.
-2. Burn-in KPIs meet numeric thresholds above.
-3. Owner for burn-in sign-off: AI runtime maintainers (Codex + designated reviewer).
-
-### U2 - Tool Activity Rendering and Metadata Parity
-1. Typed `tool_activity` lifecycle already exists in the shared reducer; this phase is about rendering parity and metadata completeness, not inventing the contract.
-2. Keep explicit `tool_activity` timeline types: `queued/running/done/failed`.
-3. Reuse existing run metadata (`toolName`, `durationMs`) and avoid parallel persistence.
-4. Define lane-specific latency targets:
-   - control/tool transitions use low-latency path
-   - reasoning/content deltas remain coalesced
-
-Exit criteria:
-1. Tool states are typed and rendered consistently on `/ai` and project copilot.
-2. KPI matches coalescer realities by lane.
-
-### U3 - Popup Migration to Shared Engine
-1. Move popup from bespoke client stream handling to shared reducer/event adapters.
-2. Preserve popup compact UX via an explicit capability matrix, not ad hoc custom runtime logic.
-3. Preserve handoff to full copilot without loss of conversation context.
-4. Popup capability matrix must be frozen before implementation:
-   - Required shared intents: `content`, `error`, `done`, `choices`, `user_input_required`, compact `tool_activity`, compact `progress`, `run_start`, `run_end`.
-   - Intents that may be compacted: rich grouped receipts, expanded reasoning panels, dense timeline clustering.
-   - Intentionally unsupported until explicitly revisited: full `/ai` timeline density, heavy artifact-management controls, dense multi-panel debugging UI.
-
-Exit criteria:
-1. Popup consumes the frozen shared-intent subset faithfully instead of bespoke local fallbacks.
-2. Popup remains lightweight with stable latency.
-3. Popup parity is evaluated against its capability matrix, not against a vague “same as `/ai`” claim.
-
-### U4 - Shadow Validation + Cleanup
-1. Run burn-in with both legacy and unified paths in shadow validation mode.
-2. After burn-in, remove obsolete handlers and adapters.
-3. Update rollback semantics after cleanup.
-
-Exit criteria:
-1. No duplicate state machines remain.
-2. Unified path is canonical and documented.
-
-## Rollout + Rollback Semantics
-
+## Rollout and Rollback Semantics
 Flags:
-1. Keep environment flags:
-   - `NEXT_PUBLIC_ENABLE_CHAT_UNIFICATION_V2`
-   - `ENABLE_CHAT_UNIFICATION_V2`
-2. A dedicated chat feature-flag module is still a follow-up cleanup item; this plan does not yet pin a target module path because runtime parity and popup migration remain the higher-priority work.
+1. `NEXT_PUBLIC_ENABLE_CHAT_UNIFICATION_V2`
+2. `ENABLE_CHAT_UNIFICATION_V2`
 
-Rollout:
-1. Internal.
-2. Power users.
-3. Broad rollout after parity pass and reliability KPIs.
+Rules:
+1. Before `U4`, flag-off may still return traffic to the legacy runtime path where that fallback still exists.
+2. After `U4`, flag-off may disable newer UX layers, but the unified engine remains canonical and rollback becomes a version rollback rather than a path fork.
 
-Rollback policy by stage:
-1. U0-U3: flag-off may return to legacy runtime path.
-2. Post-U4 cleanup: flag-off disables new UX layers but keeps unified engine; emergency rollback is via git/version rollback, not resurrecting deleted runtime code.
+## Test and Guardrail Requirements
+Contract tests must continue covering:
+1. Context V2 compatibility.
+2. Shared reducer transition invariants.
+3. Intent emission invariants.
+4. Retry model continuity.
+5. Ask-user single-render and continuation-context invariants.
+6. Typed tool lifecycle transitions.
 
-## Test Plan
-
-Contract tests:
-1. Context V2 adapter compatibility (including popup legacy payloads).
-2. Full RuntimeStreamEvent normalization snapshots (all event types).
-3. Shared pure reducer transition invariants.
-4. Intent emission invariants (no missing/extra side effects).
-5. Retry model continuity.
-6. ask-user single-render invariant.
-7. ask-user continuation context invariant (`page`/`section` preserved).
-8. Typed tool lifecycle transitions.
-
-Integration tests:
+Integration tests must continue covering:
 1. `/ai` global roundtrip.
 2. `/ai` attached-to-project roundtrip.
-3. Project copilot route-scoped roundtrip.
-4. Popup roundtrip + handoff to full chat.
-5. Cross-surface replay parity (`/ai` adapter vs project adapter) for identical chunk sequences at reducer-state+intent layer.
+3. Project copilot roundtrip.
+4. Popup roundtrip once `U3` lands.
+5. Cross-surface replay parity at reducer-state + intent level.
 
-Regression tests:
-1. Artifact review/apply flows.
-2. Plan execution progress/failure.
-3. Error rendering and recovery actions.
-4. Conversation continuity across surface switches.
+Architecture guardrails:
+1. No new per-surface stream parsers.
+2. No new reducer forks.
+3. Shared runtime changes must preserve the CI architecture check in enforce mode.
 
-## Migration Safety Rules
-1. One phase = one atomic PR sequence.
-2. No mixed runtime refactor and major visual redesign in same PR.
-3. Shadow validation required before deleting legacy code.
-4. Keep `/ai` independence and project shell contracts intact during all phases.
-5. Replace comment-only guardrails with enforceable CI architecture checks before cleanup.
+## Dependency Notes
+- [plan-thinking-v2.md](./plan-thinking-v2.md) depends on this plan for shared runtime parity across `/ai` and project copilot before broader truthful execution-trace rollout.
+- [plan-agentic.md](./plan-agentic.md) depends on this plan whenever agent fixes require shared stream/runtime semantics instead of per-surface adapters.
 
-## Plan Alignment
-1. `CUX-D01` is the primary tracker and must remain active during this plan.
-2. `CUX-027` tracks adjacent copilot UX dependencies.
-3. `plan-thinking-v2.md` remains a dependent plan executed after U1.5 reliability blockers.
-4. `plan-thinking-v2.md` assumes `/ai` + project shared-runtime convergence first; richer execution-trace rollout should not be treated as independent of the remaining U1.6/U3/U4 work.
+## Recently Completed
+- Shared pure reducer + intents shipped and now back both `/ai` and project copilot.
+- `/ai` send and plan stream paths were migrated onto the shared reducer/runtime path.
+- Popup payloads were aligned to Context V2 so popup no longer silently bypasses the canonical context contract.
+- The anti-duplication architecture guard is enforced in CI, preventing new per-surface chunk-parser drift.
