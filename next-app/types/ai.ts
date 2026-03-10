@@ -72,6 +72,7 @@ export type AIErrorKind =
     | "tool_call_parse"
     | "tool_schema_validation"
     | "missing_prerequisite"
+    | "plan_execution"
     | "autonomy_blocked"
     | "run_conflict"
     | "runtime";
@@ -82,6 +83,7 @@ export type AIErrorSource =
     | "provider_tool_call"
     | "tool_validator"
     | "tool_prerequisite_gate"
+    | "plan_execution"
     | "autonomy_policy"
     | "conversation_run_lock"
     | "runtime";

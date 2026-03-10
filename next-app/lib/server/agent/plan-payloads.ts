@@ -7,6 +7,7 @@ type BuildExecutionMetadataInput = {
     originAgentMode: AgentMode;
     conversationId: string | null;
     projectId: string | null;
+    allowedToolNames: string[];
 };
 
 export function buildExecutablePlanPayload(
@@ -15,8 +16,8 @@ export function buildExecutablePlanPayload(
 ): PlanPayload {
     const allowedToolNames = Array.from(
         new Set(
-            basePlan.steps
-                .map((step) => step.toolName?.trim())
+            input.allowedToolNames
+                .map((toolName) => toolName.trim())
                 .filter((toolName): toolName is string => Boolean(toolName)),
         ),
     );
