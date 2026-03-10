@@ -9,5 +9,6 @@ export const POST = createTelemetryPostHandler({
   toAcceptedBody: (result) => ({
     success: true,
     deduped: result.deduped,
+    id: result.id,
   }),
 });

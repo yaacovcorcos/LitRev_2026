@@ -1,9 +1,24 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AuthContext } from "@/lib/server/auth/session";
-import {
-    __clearCitationPreviewMetricDedupeForTests,
-    ingestCitationPreviewMetric,
-} from "../citation-preview-metrics";
+
+const mocks = vi.hoisted(() => ({
+    chatMetricCreate: vi.fn(),
+    assertProjectAccess: vi.fn(),
+}));
+
+vi.mock("@/lib/server/prisma", () => ({
+    prisma: {
+        chatUnificationMetric: {
+            create: mocks.chatMetricCreate,
+        },
+    },
+}));
+
+vi.mock("@/lib/server/access", () => ({
+    assertProjectAccess: (...args: unknown[]) => mocks.assertProjectAccess(...args),
+}));
+
+const { ingestCitationPreviewMetric } = await import("../citation-preview-metrics");
 
 const AUTH_CONTEXT: AuthContext = {
     userId: "user-test",
@@ -31,49 +46,89 @@ function buildMetricInput(overrides: Record<string, unknown> = {}) {
 
 describe("citation-preview metrics ingestion", () => {
     beforeEach(() => {
-        __clearCitationPreviewMetricDedupeForTests();
+        vi.clearAllMocks();
     });
 
-    it("accepts valid metric input and dedupes repeated event ids", async () => {
-        const input = buildMetricInput();
+    it("persists valid metric input with scoped identity", async () => {
+        mocks.chatMetricCreate.mockResolvedValue({ id: "metric-1" });
 
-        const first = await ingestCitationPreviewMetric(AUTH_CONTEXT, input);
-        const second = await ingestCitationPreviewMetric(AUTH_CONTEXT, input);
+        const result = await ingestCitationPreviewMetric(
+            AUTH_CONTEXT,
+            buildMetricInput({
+                type: "metadata_request_completed",
+                payload: {
+                    citationKey: "pmid:12345678",
+                    citationType: "PubMed",
+                    latencyMs: 142,
+                    upstreamSource: "icite",
+                    resolutionPath: "pubmed_icite",
+                    reason: "count_resolved",
+                    resolvedWithCitationCount: true,
+                    hadDoiFallbackCandidate: false,
+                },
+            }),
+        );
 
-        expect(first).toEqual({ deduped: false });
-        expect(second).toEqual({ deduped: true });
+        expect(result).toEqual({ deduped: false, id: "metric-1" });
+        expect(mocks.chatMetricCreate).toHaveBeenCalledWith(
+            expect.objectContaining({
+                data: expect.objectContaining({
+                    type: "citation_preview.metadata_request_completed",
+                    surface: "project",
+                    userId: "user-test",
+                    workspaceId: "workspace-test",
+                }),
+            }),
+        );
+    });
+
+    it("validates project access when projectId is provided", async () => {
+        mocks.chatMetricCreate.mockResolvedValue({ id: "metric-2" });
+
+        await ingestCitationPreviewMetric(
+            AUTH_CONTEXT,
+            buildMetricInput({
+                projectId: "project-123",
+            }),
+        );
+
+        expect(mocks.assertProjectAccess).toHaveBeenCalledWith(
+            { ownerId: "user-test", workspaceId: "workspace-test" },
+            "project-123",
+        );
+    });
+
+    it("treats duplicate event ids as deduped success", async () => {
+        mocks.chatMetricCreate.mockRejectedValue({
+            code: "P2002",
+            meta: { target: ["eventId"] },
+        });
+
+        const result = await ingestCitationPreviewMetric(AUTH_CONTEXT, buildMetricInput());
+        expect(result).toEqual({ deduped: true, id: null });
     });
 
     it("rejects oversized event ids", async () => {
-        const input = buildMetricInput({ eventId: "x".repeat(129) });
-        await expect(ingestCitationPreviewMetric(AUTH_CONTEXT, input)).rejects.toThrow();
+        await expect(
+            ingestCitationPreviewMetric(
+                AUTH_CONTEXT,
+                buildMetricInput({ eventId: "x".repeat(129) }),
+            ),
+        ).rejects.toThrow();
     });
 
     it("rejects oversized citation keys", async () => {
-        const input = buildMetricInput({
-            payload: {
-                citationKey: "k".repeat(513),
-                citationType: "DOI",
-                trigger: "hover",
-            },
-        });
-
-        await expect(ingestCitationPreviewMetric(AUTH_CONTEXT, input)).rejects.toThrow();
-    });
-
-    it("accepts icite as an upstream source", async () => {
-        const input = buildMetricInput({
-            type: "metadata_request_completed",
-            payload: {
-                citationKey: "pmid:12345678",
-                citationType: "PubMed",
-                latencyMs: 142,
-                upstreamSource: "icite",
-            },
-        });
-
-        await expect(ingestCitationPreviewMetric(AUTH_CONTEXT, input)).resolves.toEqual({
-            deduped: false,
-        });
+        await expect(
+            ingestCitationPreviewMetric(
+                AUTH_CONTEXT,
+                buildMetricInput({
+                    payload: {
+                        citationKey: "k".repeat(513),
+                        citationType: "DOI",
+                        trigger: "hover",
+                    },
+                }),
+            ),
+        ).rejects.toThrow();
     });
 });

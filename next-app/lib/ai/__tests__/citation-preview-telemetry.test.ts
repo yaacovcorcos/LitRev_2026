@@ -52,6 +52,10 @@ describe("citation preview telemetry", () => {
                 fromCache: false,
                 latencyMs: 31,
                 upstreamSource: "icite",
+                resolutionPath: "pubmed_icite",
+                reason: "count_resolved",
+                resolvedWithCitationCount: true,
+                hadDoiFallbackCandidate: false,
             },
         });
 
@@ -75,6 +79,8 @@ describe("citation preview telemetry", () => {
                 citationKey: "pmid:12345678",
                 citationType: "PubMed",
                 upstreamSource: "icite",
+                resolutionPath: "pubmed_icite",
+                reason: "count_resolved",
             },
         });
     });

@@ -127,7 +127,11 @@ describe("citation-metadata utilities", () => {
 
             const [firstResult, secondResult] = await Promise.all([first, second]);
             expect(firstResult).toEqual(secondResult);
-            expect(firstResult?.title).toBe("Concurrent metadata");
+            expect(firstResult?.metadata.title).toBe("Concurrent metadata");
+            expect(firstResult?.diagnostics).toMatchObject({
+                resolutionPath: "doi_no_count",
+                reason: "crossref_no_count",
+            });
             expect(fetchMock).toHaveBeenCalledTimes(1);
         });
 
@@ -213,12 +217,18 @@ describe("citation-metadata utilities", () => {
             vi.stubGlobal("fetch", fetchMock);
 
             const result = await resolveCitationMetadataCached("https://pubmed.ncbi.nlm.nih.gov/12345678/");
-            expect(result).toMatchObject({
+            expect(result?.metadata).toMatchObject({
                 title: "PMID only study",
                 journal: "Journal of PMID",
                 pmid: "12345678",
                 citationCount: 17,
                 citationCountSource: "icite",
+            });
+            expect(result?.diagnostics).toMatchObject({
+                resolutionPath: "pubmed_icite",
+                reason: "count_resolved",
+                resolvedWithCitationCount: true,
+                hadDoiFallbackCandidate: false,
             });
         });
 
@@ -257,13 +267,19 @@ describe("citation-metadata utilities", () => {
             vi.stubGlobal("fetch", fetchMock);
 
             const result = await resolveCitationMetadataCached("https://pubmed.ncbi.nlm.nih.gov/22334455/");
-            expect(result).toMatchObject({
+            expect(result?.metadata).toMatchObject({
                 title: "PubMed with DOI",
                 journal: "PubMed Journal",
                 pmid: "22334455",
                 doi: "10.1000/fallback",
                 citationCount: 88,
                 citationCountSource: "crossref",
+            });
+            expect(result?.diagnostics).toMatchObject({
+                resolutionPath: "pubmed_crossref_fallback",
+                reason: "count_resolved",
+                resolvedWithCitationCount: true,
+                hadDoiFallbackCandidate: true,
             });
         });
 
@@ -296,7 +312,7 @@ describe("citation-metadata utilities", () => {
             vi.stubGlobal("fetch", fetchMock);
 
             const result = await resolveCitationMetadataCached("https://pubmed.ncbi.nlm.nih.gov/33445566/");
-            expect(result).toMatchObject({
+            expect(result?.metadata).toMatchObject({
                 title: "Zero citation study",
                 citationCount: 0,
                 citationCountSource: "icite",
@@ -340,7 +356,7 @@ describe("citation-metadata utilities", () => {
             vi.stubGlobal("fetch", fetchMock);
 
             const result = await resolveCitationMetadataCached("https://pubmed.ncbi.nlm.nih.gov/44556677/");
-            expect(result).toMatchObject({
+            expect(result?.metadata).toMatchObject({
                 title: "PubMed canonical title",
                 authors: "PubMed Author",
                 year: 2024,
@@ -380,13 +396,19 @@ describe("citation-metadata utilities", () => {
             vi.stubGlobal("fetch", fetchMock);
 
             const result = await resolveCitationMetadataCached("https://pubmed.ncbi.nlm.nih.gov/55667788/");
-            expect(result).toMatchObject({
+            expect(result?.metadata).toMatchObject({
                 title: "Bibliography only study",
                 pmid: "55667788",
                 doi: "10.1000/nocount",
             });
-            expect(result?.citationCount).toBeUndefined();
-            expect(result?.citationCountSource).toBeUndefined();
+            expect(result?.metadata.citationCount).toBeUndefined();
+            expect(result?.metadata.citationCountSource).toBeUndefined();
+            expect(result?.diagnostics).toMatchObject({
+                resolutionPath: "pubmed_bibliography_only",
+                reason: "crossref_no_count",
+                resolvedWithCitationCount: false,
+                hadDoiFallbackCandidate: true,
+            });
         });
 
         it("reuses the cached merged PubMed result on repeated lookups", async () => {
@@ -456,11 +478,17 @@ describe("citation-metadata utilities", () => {
             await vi.advanceTimersByTimeAsync(1000);
             const result = await resultPromise;
 
-            expect(result).toMatchObject({
+            expect(result?.metadata).toMatchObject({
                 title: "Timed enrichment study",
                 pmid: "77889900",
             });
-            expect(result?.citationCount).toBeUndefined();
+            expect(result?.metadata.citationCount).toBeUndefined();
+            expect(result?.diagnostics).toMatchObject({
+                resolutionPath: "pubmed_bibliography_only",
+                reason: "icite_timeout",
+                resolvedWithCitationCount: false,
+                hadDoiFallbackCandidate: false,
+            });
         });
     });
 

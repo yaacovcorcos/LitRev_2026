@@ -44,7 +44,7 @@ describe("POST /api/telemetry/citation-preview", () => {
             ok: true,
             context: { userId: "user-1", workspaceId: "ws-1", role: "owner" },
         });
-        mocks.ingestCitationPreviewMetric.mockResolvedValue({ deduped: false });
+        mocks.ingestCitationPreviewMetric.mockResolvedValue({ deduped: false, id: "metric-1" });
 
         const response = await POST(makeRequest({ eventId: "value" }) as never);
         const json = await response.json();
@@ -53,6 +53,7 @@ describe("POST /api/telemetry/citation-preview", () => {
         expect(json).toEqual({
             success: true,
             deduped: false,
+            id: "metric-1",
         });
     });
 

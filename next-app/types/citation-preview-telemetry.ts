@@ -1,3 +1,8 @@
+import type {
+    CitationResolutionPath,
+    CitationResolutionReason,
+} from "@/lib/citation-types";
+
 export type CitationPreviewSurface = "project" | "popup" | "ai" | "unknown";
 
 export type CitationPreviewMetricType =
@@ -17,6 +22,10 @@ export type CitationPreviewMetricPayload = {
     fromCache?: boolean;
     latencyMs?: number;
     upstreamSource?: "icite" | "crossref" | "pubmed" | "unknown";
+    resolutionPath?: CitationResolutionPath;
+    reason?: CitationResolutionReason;
+    resolvedWithCitationCount?: boolean;
+    hadDoiFallbackCandidate?: boolean;
     errorCode?: string | null;
 };
 

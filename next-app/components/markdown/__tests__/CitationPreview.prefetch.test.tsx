@@ -18,6 +18,14 @@ vi.mock("@/app/actions/citation", () => ({
             canonicalUrl: "https://doi.org/10.1000/xyz123",
             doi: "10.1000/xyz123",
         },
+        meta: {
+            diagnostics: {
+                resolutionPath: "doi_no_count",
+                reason: "crossref_no_count",
+                resolvedWithCitationCount: false,
+                hadDoiFallbackCandidate: false,
+            },
+        },
     }),
 }));
 
@@ -85,5 +93,31 @@ describe("CitationPreview prefetch behavior", () => {
             vi.advanceTimersByTime(200);
         });
         expect(vi.mocked(fetchCitationMetadata)).toHaveBeenCalledTimes(1);
+    });
+
+    it("records resolver diagnostics on successful metadata loads", async () => {
+        vi.mocked(isCitationHoverPrefetchEnabled).mockReturnValue(false);
+
+        render(
+            <CitationPreview href="https://doi.org/10.1000/xyz123" type="DOI">
+                DOI
+            </CitationPreview>
+        );
+
+        const link = screen.getByRole("link", { name: "DOI" });
+        fireEvent.mouseEnter(link);
+
+        await act(async () => {
+            vi.advanceTimersByTime(350);
+        });
+
+        expect(
+            vi.mocked(recordCitationPreviewMetric).mock.calls.some(
+                ([event]) =>
+                    event.type === "metadata_request_completed"
+                    && event.payload.resolutionPath === "doi_no_count"
+                    && event.payload.reason === "crossref_no_count"
+            )
+        ).toBe(true);
     });
 });

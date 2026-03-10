@@ -1,4 +1,7 @@
-import type { CitationMetadata } from "@/lib/citation-types";
+import type {
+    CitationMetadata,
+    CitationResolutionDiagnostics,
+} from "@/lib/citation-types";
 import {
     extractDoi,
     extractPmid,
@@ -6,9 +9,14 @@ import {
     resolveCitationKey,
 } from "@/lib/citation-key";
 
+export type CitationResolution = {
+    metadata: CitationMetadata;
+    diagnostics: CitationResolutionDiagnostics;
+};
+
 /** Cache for citation metadata (in-memory, per-process). */
-const metadataCache = new Map<string, CitationMetadata | null>();
-const inFlightRequests = new Map<string, Promise<CitationMetadata | null>>();
+const metadataCache = new Map<string, CitationResolution | null>();
+const inFlightRequests = new Map<string, Promise<CitationResolution | null>>();
 
 const SUCCESS_CACHE_TTL_MS = 1000 * 60 * 60; // 1 hour
 const FAILURE_CACHE_TTL_MS = 1000 * 60 * 5; // 5 minutes
@@ -18,7 +26,7 @@ const PUBMED_COUNT_ENRICHMENT_BUDGET_MS = 900;
 const CROSSREF_REQUEST_TIMEOUT_MS = 700;
 const ICITE_REQUEST_TIMEOUT_MS = 700;
 
-function getCached(key: string): CitationMetadata | null | undefined {
+function getCached(key: string): CitationResolution | null | undefined {
     const timestamp = cacheTimestamps.get(key);
     if (!timestamp) return undefined;
 
@@ -34,8 +42,7 @@ function getCached(key: string): CitationMetadata | null | undefined {
     return cachedValue;
 }
 
-function setCache(key: string, value: CitationMetadata | null): void {
-    // Refresh insertion order when rewriting an existing key.
+function setCache(key: string, value: CitationResolution | null): void {
     metadataCache.delete(key);
     cacheTimestamps.delete(key);
     metadataCache.set(key, value);
@@ -59,13 +66,33 @@ type CitationCountDetails = {
     citationCountFetchedAt?: string;
 };
 
+type CountLookupResult =
+    | {
+        status: "count";
+        details: CitationCountDetails;
+    }
+    | {
+        status: "no_count";
+    }
+    | {
+        status: "timeout";
+    }
+    | {
+        status: "provider_error";
+    };
+
+type CrossrefLookupResult = {
+    metadata: CitationMetadata | null;
+    status: "ok" | "timeout" | "provider_error";
+};
+
 function isUsableCitationCount(value: unknown): value is number {
     return typeof value === "number" && Number.isFinite(value) && value >= 0;
 }
 
 function mergeCitationCount(
     base: CitationMetadata,
-    incoming: CitationCountDetails | null,
+    incoming: CitationCountDetails | CitationMetadata | null,
 ): CitationMetadata {
     if (!incoming || !isUsableCitationCount(incoming.citationCount)) {
         return base;
@@ -87,8 +114,8 @@ async function fetchWithTimeout(
     input: RequestInfo | URL,
     init: RequestInit,
     timeoutMs: number,
-): Promise<Response | null> {
-    if (timeoutMs <= 0) return null;
+): Promise<{ response: Response | null; timedOut: boolean }> {
+    if (timeoutMs <= 0) return { response: null, timedOut: true };
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
@@ -98,15 +125,38 @@ async function fetchWithTimeout(
             ...init,
             signal: controller.signal,
         });
-        return response;
+        return { response, timedOut: false };
     } catch (error) {
         if (error instanceof Error && error.name === "AbortError") {
-            return null;
+            return { response: null, timedOut: true };
         }
         throw error;
     } finally {
         clearTimeout(timeoutId);
     }
+}
+
+function buildResolution(
+    metadata: CitationMetadata,
+    diagnostics: CitationResolutionDiagnostics,
+): CitationResolution {
+    return {
+        metadata,
+        diagnostics,
+    };
+}
+
+function buildPubMedBibliographyOnlyResolution(
+    bibliography: CitationMetadata,
+    reason: CitationResolutionDiagnostics["reason"],
+    hadDoiFallbackCandidate: boolean,
+): CitationResolution {
+    return buildResolution(bibliography, {
+        resolutionPath: "pubmed_bibliography_only",
+        reason,
+        resolvedWithCitationCount: false,
+        hadDoiFallbackCandidate,
+    });
 }
 
 /**
@@ -115,7 +165,7 @@ async function fetchWithTimeout(
  */
 export async function resolveCitationMetadata(
     url: string
-): Promise<CitationMetadata | null> {
+): Promise<CitationResolution | null> {
     const pmid = extractPmid(url);
     const doi = extractDoi(url);
 
@@ -123,7 +173,7 @@ export async function resolveCitationMetadata(
         return resolvePubMedMetadata(pmid);
     }
     if (doi) {
-        return fetchCrossrefMetadata(doi);
+        return resolveDoiMetadata(doi);
     }
 
     return null;
@@ -134,7 +184,7 @@ export async function resolveCitationMetadata(
  */
 export async function resolveCitationMetadataCached(
     url: string
-): Promise<CitationMetadata | null> {
+): Promise<CitationResolution | null> {
     const keyParts = resolveCitationKey(url);
     if (!keyParts) return null;
 
@@ -145,9 +195,9 @@ export async function resolveCitationMetadataCached(
     if (pending) return pending;
 
     const requestPromise = resolveCitationMetadata(url)
-        .then((metadata) => {
-            setCache(keyParts.cacheKey, metadata);
-            return metadata;
+        .then((resolution) => {
+            setCache(keyParts.cacheKey, resolution);
+            return resolution;
         })
         .finally(() => {
             inFlightRequests.delete(keyParts.cacheKey);
@@ -164,13 +214,9 @@ export function __clearCitationMetadataCacheForTests(): void {
     lastPubMedRequest = 0;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 // PubMed Fetcher
-// ─────────────────────────────────────────────────────────────────────────────
 
 const EUTILS_BASE = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils";
-
-// Module-level throttle (shared with pubmed.ts but lightweight here)
 let lastPubMedRequest = 0;
 
 function getThrottleInterval(): number {
@@ -185,10 +231,8 @@ async function throttledFetch(url: string): Promise<Response> {
         await new Promise((resolve) => setTimeout(resolve, interval - elapsed));
     }
     lastPubMedRequest = Date.now();
-    return fetch(url, { next: { revalidate: 3600 } }); // 1hr cache at fetch level
+    return fetch(url, { next: { revalidate: 3600 } });
 }
-
-type PubMedBibliography = CitationMetadata;
 
 type ICiteResponse = {
     citation_count?: unknown;
@@ -207,9 +251,6 @@ function buildPubMedParams(): URLSearchParams {
     return params;
 }
 
-/**
- * Fetch metadata for a single PMID from PubMed ESummary API.
- */
 export async function fetchPubMedMetadata(
     pmid: string
 ): Promise<CitationMetadata | null> {
@@ -227,19 +268,16 @@ export async function fetchPubMedMetadata(
         const doc = data?.result?.[pmid];
         if (!doc) return null;
 
-        // Authors - ESummary returns a compact format
         const authorList = doc.authors ?? [];
         const authors = authorList
             .map((a: { name?: string }) => a.name)
             .filter(Boolean)
             .join(", ") || "Unknown";
 
-        // Year from pubdate
         const pubdate = doc.pubdate ?? "";
         const yearMatch = pubdate.match(/(\d{4})/);
         const year = yearMatch ? parseInt(yearMatch[1], 10) : undefined;
 
-        // DOI from articleids
         const articleIds = doc.articleids ?? [];
         const doiEntry = articleIds.find((id: { idtype?: string }) => id.idtype === "doi");
         const doi = doiEntry?.value ?? undefined;
@@ -262,19 +300,25 @@ export async function fetchPubMedMetadata(
 async function fetchICiteCitationCount(
     pmid: string,
     timeoutMs = ICITE_REQUEST_TIMEOUT_MS,
-): Promise<CitationCountDetails | null> {
+): Promise<CountLookupResult> {
     try {
         const url = `https://icite.od.nih.gov/api/pubs/${encodeURIComponent(pmid)}`;
-        const res = await fetchWithTimeout(
+        const { response, timedOut } = await fetchWithTimeout(
             url,
             {
                 next: { revalidate: 3600 },
             },
             timeoutMs,
         );
-        if (!res?.ok) return null;
 
-        const data = await res.json() as ICiteResponse;
+        if (timedOut) {
+            return { status: "timeout" };
+        }
+        if (!response?.ok) {
+            return { status: "provider_error" };
+        }
+
+        const data = await response.json() as ICiteResponse;
         const citationCount = isUsableCitationCount(data.citation_count)
             ? data.citation_count
             : isUsableCitationCount(data.citedByPmidCount)
@@ -282,68 +326,113 @@ async function fetchICiteCitationCount(
                 : undefined;
 
         if (!isUsableCitationCount(citationCount)) {
-            return null;
+            return { status: "no_count" };
         }
 
         return {
-            citationCount,
-            citationCountSource: "icite",
-            citationCountFetchedAt: new Date().toISOString(),
+            status: "count",
+            details: {
+                citationCount,
+                citationCountSource: "icite",
+                citationCountFetchedAt: new Date().toISOString(),
+            },
         };
     } catch (error) {
         console.error("[citation-metadata] iCite fetch failed:", error);
-        return null;
+        return { status: "provider_error" };
     }
 }
 
-async function resolvePubMedMetadata(pmid: string): Promise<CitationMetadata | null> {
+async function resolvePubMedMetadata(pmid: string): Promise<CitationResolution | null> {
     const deadlineMs = Date.now() + PUBMED_COUNT_ENRICHMENT_BUDGET_MS;
     const bibliographyPromise = fetchPubMedMetadata(pmid);
-    const iCitePromise = fetchICiteCitationCount(pmid, Math.min(ICITE_REQUEST_TIMEOUT_MS, remainingBudgetMs(deadlineMs)));
+    const iCitePromise = fetchICiteCitationCount(
+        pmid,
+        Math.min(ICITE_REQUEST_TIMEOUT_MS, remainingBudgetMs(deadlineMs)),
+    );
 
     const bibliography = await bibliographyPromise;
     if (!bibliography) return null;
 
-    const iCiteCount = await iCitePromise;
-    if (isUsableCitationCount(iCiteCount?.citationCount)) {
-        return mergeCitationCount(bibliography, iCiteCount);
+    const hadDoiFallbackCandidate = Boolean(bibliography.doi);
+    const iCiteResult = await iCitePromise;
+
+    if (iCiteResult.status === "count") {
+        return buildResolution(
+            mergeCitationCount(bibliography, iCiteResult.details),
+            {
+                resolutionPath: "pubmed_icite",
+                reason: "count_resolved",
+                resolvedWithCitationCount: true,
+                hadDoiFallbackCandidate,
+            },
+        );
     }
 
     if (!bibliography.doi) {
-        return bibliography;
+        return buildPubMedBibliographyOnlyResolution(
+            bibliography,
+            iCiteResult.status === "timeout"
+                ? "icite_timeout"
+                : iCiteResult.status === "provider_error"
+                    ? "provider_error"
+                    : "no_doi_fallback",
+            false,
+        );
     }
 
     const crossrefTimeoutMs = Math.min(CROSSREF_REQUEST_TIMEOUT_MS, remainingBudgetMs(deadlineMs));
     if (crossrefTimeoutMs <= 0) {
-        return bibliography;
+        return buildPubMedBibliographyOnlyResolution(
+            bibliography,
+            "budget_exhausted",
+            hadDoiFallbackCandidate,
+        );
     }
 
-    const crossref = await fetchCrossrefMetadata(bibliography.doi, { timeoutMs: crossrefTimeoutMs });
-    return mergeCitationCount(bibliography, crossref);
+    const crossref = await fetchCrossrefMetadataWithStatus(bibliography.doi, {
+        timeoutMs: crossrefTimeoutMs,
+    });
+
+    if (crossref.status === "ok" && isUsableCitationCount(crossref.metadata?.citationCount)) {
+        return buildResolution(
+            mergeCitationCount(bibliography, crossref.metadata),
+            {
+                resolutionPath: "pubmed_crossref_fallback",
+                reason: "count_resolved",
+                resolvedWithCitationCount: true,
+                hadDoiFallbackCandidate,
+            },
+        );
+    }
+
+    return buildPubMedBibliographyOnlyResolution(
+        bibliography,
+        crossref.status === "timeout"
+            ? "crossref_timeout"
+            : crossref.status === "provider_error"
+                ? "provider_error"
+                : "crossref_no_count",
+        hadDoiFallbackCandidate,
+    );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Crossref Fetcher (for DOI resolution)
-// ─────────────────────────────────────────────────────────────────────────────
+// Crossref Fetcher
 
 const CROSSREF_API = "https://api.crossref.org/works";
 const CROSSREF_USER_AGENT = "LitRev/1.0 (mailto:support@litrev.app)";
 
-/**
- * Fetch metadata for a DOI from Crossref API.
- */
-export async function fetchCrossrefMetadata(
+async function fetchCrossrefMetadataWithStatus(
     doi: string,
     options?: {
         timeoutMs?: number;
     },
-): Promise<CitationMetadata | null> {
+): Promise<CrossrefLookupResult> {
     try {
         const normalizedDoi = normalizeDoi(doi);
         const url = `${CROSSREF_API}/${encodeURIComponent(normalizedDoi)}`;
 
-        const timeoutMs = options?.timeoutMs;
-        const res = typeof timeoutMs === "number"
+        const timedResponse = typeof options?.timeoutMs === "number"
             ? await fetchWithTimeout(
                 url,
                 {
@@ -352,26 +441,34 @@ export async function fetchCrossrefMetadata(
                     },
                     next: { revalidate: 3600 },
                 },
-                timeoutMs,
+                options.timeoutMs,
             )
-            : await fetch(url, {
-                headers: {
-                    "User-Agent": CROSSREF_USER_AGENT,
-                },
-                next: { revalidate: 3600 },
-            });
+            : {
+                response: await fetch(url, {
+                    headers: {
+                        "User-Agent": CROSSREF_USER_AGENT,
+                    },
+                    next: { revalidate: 3600 },
+                }),
+                timedOut: false,
+            };
 
-        if (!res?.ok) return null;
+        if (timedResponse.timedOut) {
+            return { metadata: null, status: "timeout" };
+        }
+        if (!timedResponse.response?.ok) {
+            return { metadata: null, status: "provider_error" };
+        }
 
-        const data = await res.json();
+        const data = await timedResponse.response.json();
         const work = data?.message;
-        if (!work) return null;
+        if (!work) {
+            return { metadata: null, status: "provider_error" };
+        }
 
-        // Title - may be array
         const titleArr = work.title ?? [];
         const title = Array.isArray(titleArr) ? titleArr[0] : titleArr;
 
-        // Authors
         const authorArr = work.author ?? [];
         const authors = authorArr
             .map((a: { family?: string; given?: string; name?: string }) => {
@@ -383,14 +480,12 @@ export async function fetchCrossrefMetadata(
             .filter(Boolean)
             .join(", ") || "Unknown";
 
-        // Year from published-print or published-online
         let year: number | undefined;
         const published = work["published-print"] ?? work["published-online"] ?? work["created"];
         if (published?.["date-parts"]?.[0]?.[0]) {
             year = published["date-parts"][0][0];
         }
 
-        // Journal
         const containerTitle = work["container-title"];
         const journal = Array.isArray(containerTitle) ? containerTitle[0] : containerTitle;
         const citationCountRaw = work["is-referenced-by-count"];
@@ -400,18 +495,45 @@ export async function fetchCrossrefMetadata(
                 : undefined;
 
         return {
-            title: title ?? "Untitled",
-            authors,
-            year,
-            journal: journal || undefined,
-            citationCount,
-            citationCountSource: citationCount !== undefined ? "crossref" : undefined,
-            citationCountFetchedAt: citationCount !== undefined ? new Date().toISOString() : undefined,
-            canonicalUrl: `https://doi.org/${normalizedDoi}`,
-            doi: normalizedDoi,
+            status: "ok",
+            metadata: {
+                title: title ?? "Untitled",
+                authors,
+                year,
+                journal: journal || undefined,
+                citationCount,
+                citationCountSource: citationCount !== undefined ? "crossref" : undefined,
+                citationCountFetchedAt: citationCount !== undefined ? new Date().toISOString() : undefined,
+                canonicalUrl: `https://doi.org/${normalizedDoi}`,
+                doi: normalizedDoi,
+            },
         };
     } catch (error) {
         console.error("[citation-metadata] Crossref fetch failed:", error);
+        return { metadata: null, status: "provider_error" };
+    }
+}
+
+export async function fetchCrossrefMetadata(
+    doi: string,
+    options?: {
+        timeoutMs?: number;
+    },
+): Promise<CitationMetadata | null> {
+    const result = await fetchCrossrefMetadataWithStatus(doi, options);
+    return result.status === "ok" ? result.metadata : null;
+}
+
+export async function resolveDoiMetadata(doi: string): Promise<CitationResolution | null> {
+    const result = await fetchCrossrefMetadataWithStatus(doi);
+    if (result.status !== "ok" || !result.metadata) {
         return null;
     }
+
+    return buildResolution(result.metadata, {
+        resolutionPath: result.metadata.citationCount !== undefined ? "doi_crossref" : "doi_no_count",
+        reason: result.metadata.citationCount !== undefined ? "count_resolved" : "crossref_no_count",
+        resolvedWithCitationCount: result.metadata.citationCount !== undefined,
+        hadDoiFallbackCandidate: false,
+    });
 }

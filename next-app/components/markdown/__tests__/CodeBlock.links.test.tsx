@@ -29,6 +29,14 @@ vi.mock("@/app/actions/citation", () => ({
             canonicalUrl: "https://doi.org/10.1000/xyz123",
             doi: "10.1000/xyz123",
         },
+        meta: {
+            diagnostics: {
+                resolutionPath: "doi_no_count",
+                reason: "crossref_no_count",
+                resolvedWithCitationCount: false,
+                hadDoiFallbackCandidate: false,
+            },
+        },
     }),
 }));
 

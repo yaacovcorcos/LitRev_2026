@@ -1,5 +1,5 @@
 import { resolveCitationKey } from "@/lib/citation-key";
-import type { CitationMetadata, CitationResult } from "@/lib/citation-types";
+import type { CitationResult, CitationSuccessResult } from "@/lib/citation-types";
 
 export type CitationMetadataLoader = (url: string) => Promise<CitationResult>;
 
@@ -10,7 +10,7 @@ export type CitationCacheLoadResult = {
     dedupedInFlight: boolean;
 };
 
-const metadataCache = new Map<string, CitationMetadata>();
+const metadataCache = new Map<string, CitationSuccessResult>();
 const inFlightRequests = new Map<string, Promise<CitationResult>>();
 
 function getCacheKey(url: string): string {
@@ -19,7 +19,7 @@ function getCacheKey(url: string): string {
     return `url:${url}`;
 }
 
-export function getCitationMetadataFromClientCache(url: string): CitationMetadata | null {
+export function getCitationMetadataFromClientCache(url: string): CitationSuccessResult | null {
     const cacheKey = getCacheKey(url);
     return metadataCache.get(cacheKey) ?? null;
 }
@@ -35,7 +35,7 @@ export async function loadCitationMetadataWithClientCache(
             cacheKey,
             fromCache: true,
             dedupedInFlight: false,
-            result: { success: true, data: cached },
+            result: cached,
         };
     }
 
@@ -53,7 +53,7 @@ export async function loadCitationMetadataWithClientCache(
     const requestPromise = loader(url)
         .then((result) => {
             if (result.success) {
-                metadataCache.set(cacheKey, result.data);
+                metadataCache.set(cacheKey, result);
             }
             return result;
         })

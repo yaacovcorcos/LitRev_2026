@@ -21,6 +21,14 @@ describe("citation preview client cache", () => {
                 year: 2024,
                 doi: "10.1000/xyz123",
             },
+            meta: {
+                diagnostics: {
+                    resolutionPath: "doi_no_count",
+                    reason: "crossref_no_count",
+                    resolvedWithCitationCount: false,
+                    hadDoiFallbackCandidate: false,
+                },
+            },
         } satisfies CitationResult);
 
         const first = await loadCitationMetadataWithClientCache(DOI_URL, loader);
@@ -28,6 +36,7 @@ describe("citation preview client cache", () => {
 
         expect(first.fromCache).toBe(false);
         expect(second.fromCache).toBe(true);
+        expect(second.result.success && second.result.meta.diagnostics.reason).toBe("crossref_no_count");
         expect(loader).toHaveBeenCalledTimes(1);
     });
 
@@ -51,6 +60,14 @@ describe("citation preview client cache", () => {
                 authors: "Smith A",
                 doi: "10.1000/xyz123",
             },
+            meta: {
+                diagnostics: {
+                    resolutionPath: "doi_no_count",
+                    reason: "crossref_no_count",
+                    resolvedWithCitationCount: false,
+                    hadDoiFallbackCandidate: false,
+                },
+            },
         });
 
         const [first, second] = await Promise.all([firstPromise, secondPromise]);
@@ -68,6 +85,14 @@ describe("citation preview client cache", () => {
                     title: "Recovered",
                     authors: "Brown K",
                     doi: "10.1000/xyz123",
+                },
+                meta: {
+                    diagnostics: {
+                        resolutionPath: "doi_no_count",
+                        reason: "crossref_no_count",
+                        resolvedWithCitationCount: false,
+                        hadDoiFallbackCandidate: false,
+                    },
                 },
             } satisfies CitationResult);
 

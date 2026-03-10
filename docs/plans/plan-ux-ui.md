@@ -28,6 +28,7 @@ Domain-specific execution plans remain canonical for their domains:
 - Citation hover previews now use source-aware server metadata assembly:
   - PubMed links keep PubMed-owned bibliography while resolving citation counts from NIH iCite/OCC first and Crossref second when a DOI fallback is available.
   - DOI links remain Crossref-backed, and citation preview telemetry records the actual upstream count source (`icite` or `crossref`).
+  - Successful hover loads now also carry server-classified resolution diagnostics so the calm bibliography-first card can be monitored without inferring provider failures client-side.
 - Async feedback architecture is active:
   - `useAsyncAction` + `NotificationProvider` + toast live region.
 - Token system is active in `styles/tokens.css` and style linting is configured in `next-app/.stylelintrc.cjs` and `next-app/package.json` (`lint:styles`).
@@ -85,6 +86,7 @@ Use this mapping for old PRs/comments referencing CLU IDs.
 - [ ] `CUX-A03` Expand async `aria-live` announcements coverage and consistency across remaining async UI states.
 
 ## Recently Completed
+- [x] Citation hover diagnostics and telemetry hardening: successful hover loads now retain resolver diagnostics in cache, persist completion/failure events for canary reporting, and ship repo-owned compatibility smoke/report scripts without changing the bibliography-first card UX.
 - [x] Citation hover enrichment now preserves PubMed bibliography while adding citation counts from NIH iCite/OCC with Crossref fallback and truthful telemetry provenance.
 - [x] Unified UI plan governance: this file is now the single canonical UI/UX tracker.
 - [x] `CUX-002` Project page shell parity via shared `ProjectPageLayout`.

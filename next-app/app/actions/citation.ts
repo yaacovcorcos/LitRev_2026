@@ -13,11 +13,17 @@ export async function fetchCitationMetadata(url: string): Promise<CitationResult
     }
 
     try {
-        const metadata = await resolveCitationMetadataCached(url);
-        if (!metadata) {
+        const resolution = await resolveCitationMetadataCached(url);
+        if (!resolution) {
             return { success: false, error: "Unable to resolve citation" };
         }
-        return { success: true, data: metadata };
+        return {
+            success: true,
+            data: resolution.metadata,
+            meta: {
+                diagnostics: resolution.diagnostics,
+            },
+        };
     } catch (error) {
         console.error("[fetchCitationMetadata] failed:", error);
         return { success: false, error: "Failed to fetch metadata" };

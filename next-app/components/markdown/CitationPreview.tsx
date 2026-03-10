@@ -78,7 +78,15 @@ export function CitationPreview({ href, type, children, anchorProps }: CitationP
                 | "metadata_request_failed",
             payload: Pick<
                 CitationPreviewMetricPayload,
-                "trigger" | "fromCache" | "latencyMs" | "upstreamSource" | "errorCode"
+                | "trigger"
+                | "fromCache"
+                | "latencyMs"
+                | "upstreamSource"
+                | "resolutionPath"
+                | "reason"
+                | "resolvedWithCitationCount"
+                | "hadDoiFallbackCandidate"
+                | "errorCode"
             > = {}
         ) => {
             recordCitationPreviewMetric({
@@ -130,6 +138,10 @@ export function CitationPreview({ href, type, children, anchorProps }: CitationP
                         : citationType === "DOI"
                             ? "crossref"
                             : "unknown"),
+                resolutionPath: result.meta.diagnostics.resolutionPath,
+                reason: result.meta.diagnostics.reason,
+                resolvedWithCitationCount: result.meta.diagnostics.resolvedWithCitationCount,
+                hadDoiFallbackCandidate: result.meta.diagnostics.hadDoiFallbackCandidate,
             });
         } else {
             setFetchState("error");
