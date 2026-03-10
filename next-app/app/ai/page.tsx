@@ -1961,7 +1961,7 @@ export default function AIView() {
         <section className={styles.chatInterface} role="region" aria-label="Chat interface">
           <AiChatHeader
             mobileAiV2Enabled={mobileAiV2Enabled}
-            isMobileViewport={isPhoneViewport}
+            isPhoneViewport={isPhoneViewport}
             isHistoryCollapsed={isHistoryCollapsed}
             historyContentId={historyContentId}
             selectedProjectId={selectedProjectId}
