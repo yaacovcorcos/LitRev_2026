@@ -18,6 +18,7 @@ type CitationMetricPayload = {
     reason?: string;
     resolvedWithCitationCount?: boolean;
     hadDoiFallbackCandidate?: boolean;
+    continuationRecoveredCount?: boolean;
 };
 
 type MetricReportFilters = {
@@ -114,7 +115,7 @@ function describeScope(filters: MetricReportFilters): string {
     return parts.length > 0 ? parts.join(" ") : "global";
 }
 
-async function main() {
+export async function main() {
     const since = parseDateArg("since", new Date(Date.now() - 24 * 60 * 60 * 1000));
     const until = parseDateArg("until", new Date());
     const filters = buildMetricReportFilters();
@@ -131,6 +132,9 @@ async function main() {
     }) as CitationMetricRow[];
 
     const completed = rows.filter((row) => row.type === "citation_preview.metadata_request_completed");
+    const continuationCompleted = rows.filter(
+        (row) => row.type === "citation_preview.continuation_completed",
+    );
     const uncachedLatencies = completed
         .map((row) => asPayload(row.payload))
         .filter((payload) => payload.fromCache === false && typeof payload.latencyMs === "number")
@@ -144,6 +148,13 @@ async function main() {
     let completedWithCount = 0;
     let pubmedDoiCandidates = 0;
     let pubmedDoiCandidatesBibliographyOnly = 0;
+    let continuationRecoveredCount = 0;
+
+    const continuationLatencies = continuationCompleted
+        .map((row) => asPayload(row.payload))
+        .filter((payload) => typeof payload.latencyMs === "number")
+        .map((payload) => payload.latencyMs as number)
+        .sort((a, b) => a - b);
 
     for (const row of completed) {
         const payload = asPayload(row.payload);
@@ -159,6 +170,13 @@ async function main() {
             if (payload.resolutionPath === "pubmed_bibliography_only") {
                 pubmedDoiCandidatesBibliographyOnly += 1;
             }
+        }
+    }
+
+    for (const row of continuationCompleted) {
+        const payload = asPayload(row.payload);
+        if (payload.continuationRecoveredCount) {
+            continuationRecoveredCount += 1;
         }
     }
 
@@ -198,6 +216,21 @@ async function main() {
         `PubMed DOI-bearing lookups ending bibliography-only: ${
             bibliographyOnlyRate === "n/a" ? "n/a" : `${bibliographyOnlyRate}%`
         } (${pubmedDoiCandidatesBibliographyOnly}/${pubmedDoiCandidates})`,
+    );
+    console.log(`Continuation attempts completed: ${continuationCompleted.length}`);
+    console.log(
+        `Continuation recovery rate: ${
+            continuationCompleted.length > 0
+                ? `${((continuationRecoveredCount / continuationCompleted.length) * 100).toFixed(1)}%`
+                : "n/a"
+        }`,
+    );
+    console.log(
+        `Continuation latency p50/p95: ${
+            continuationLatencies.length === 0
+                ? "n/a"
+                : `${percentile(continuationLatencies, 0.5)}ms / ${percentile(continuationLatencies, 0.95)}ms`
+        }`,
     );
 }
 

@@ -16,7 +16,8 @@
 - **Demo Seed Lifecycle:** Sample-project creation/reset is server-seeded from a single transactional service (`lib/server/demo-project.ts`) that finds the current user's scoped demo by `Project.demoKey`, creates a generated project ID when missing, and repopulates project, protocol, ledger, draft, notes, memory, and scoped seed conversation rows without relying on a global fixed project ID.
 - **Onboarding State Persistence:** Guided-setup defaults now persist in `UserMemory` (`guided_setup_new_projects`) and per-project onboarding state persists in `Project.progress.onboarding` (`enabledOverride`, `completedAt`, `skippedAt`) so create-flow routing is backend-driven and auth-ready.
 - **AI Rate Limiting (Current):** Limit checks and usage writes now support authenticated user/workspace scope (with legacy project fallback), while cache-efficiency counters remain process-local instrumentation in `lib/server/ai/rate-limiter.ts`.
-- **Citation Preview Diagnostics:** Citation hover resolution now returns server-owned diagnostics alongside `CitationMetadata`, caches successful diagnostics with the result, and persists terminal completion/failure telemetry into `ChatUnificationMetric` under the `citation_preview.*` namespace as a pragmatic v1 observability path for canary reporting and provider triage.
+- **Citation Preview Diagnostics:** Citation hover resolution returns server-owned diagnostics alongside `CitationMetadata`, caches successful diagnostics with the result, persists terminal completion/failure telemetry into `ChatUnificationMetric` under the `citation_preview.*` namespace, and ships repo-owned smoke/report/diagnose scripts for provider triage.
+- **Citation Hover Continuation:** Citation hover remains bibliography-first and budget-bounded on the initial request, but retryable `PubMed` bibliography-only successes can now trigger one server-authoritative continuation attempt. Continuation is gated by paired server/client flags, patches only count fields plus diagnostics into cached success records, and emits separate continuation terminal telemetry for recovery reporting.
 
 ## Active Tasks
 *Work that is entirely unimplemented or currently broken.*
@@ -52,10 +53,11 @@
   - Implement Prisma migration(s) and server write-path integration from `recordUsage`/provider usage metadata (`cached_tokens` when available).
   - Add read/query surface for monitoring (aggregate stats per project/workspace and date range).
   - Add tests covering migration-safe writes, aggregation correctness, and fallback behavior when providers omit cache fields.
-
 ## Recently Completed
 *Finished work that might still be fragile or require monitoring. Prune oldest first.*
 
+- [x] Shipped citation hover background continuation for retryable `PubMed` bibliography-only misses: the server now re-checks only server-owned cached success state, one continuation attempt can patch count fields plus diagnostics into server/client caches, paired client/server flags control rollout, and continuation terminal telemetry/reporting measure recovery separately from the initial request path.
+- [x] Tuned citation hover count enrichment to a larger bounded budget (`1500ms` overall, `1200ms` per provider) and added a repo-owned single-URL diagnosis script so live PubMed/DOI hover misses can be classified before building continuation.
 - [x] Hardened citation hover observability: resolver success paths now classify resolution diagnostics, client/server cache retain those diagnostics for truthful telemetry, only terminal citation preview completion/failure events persist to `ChatUnificationMetric`, and repo-owned compatibility smoke/report scripts document the first canary workflow.
 - [x] Reworked sample-project identity to use scoped `Project.demoKey` lookup plus generated per-user project/child IDs, eliminating production collisions from the legacy shared `sample-yoga-anxiety` primary key while leaving old rows safely ignored.
 - [x] Phase 10 (build phases 1-4): landed Better Auth foundation + actor-context identity propagation, protected server actions/routes, replaced runtime placeholder scope usage, added transactional first-login claim, moved AI usage limiting toward user/workspace scope, and added auth hardening tests.

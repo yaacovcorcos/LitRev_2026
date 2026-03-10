@@ -13,11 +13,25 @@ import {
     type AnchorHTMLAttributes,
 } from "react";
 import * as Popover from "@/components/ui/Popover";
-import { fetchCitationMetadata } from "@/app/actions/citation";
-import type { CitationMetadata } from "@/lib/citation-types";
-import { loadCitationMetadataWithClientCache } from "@/lib/citation-preview-cache";
+import {
+    continueCitationMetadata,
+    fetchCitationMetadata,
+} from "@/app/actions/citation";
+import type {
+    CitationSuccessResult,
+} from "@/lib/citation-types";
+import {
+    clearCitationContinuationAttemptForUrl,
+    loadCitationMetadataWithClientCache,
+    markCitationContinuationAttempted,
+    patchCitationMetadataInClientCache,
+    shouldAttemptCitationContinuation,
+} from "@/lib/citation-preview-cache";
 import { getCitationType, resolveCitationKey } from "@/lib/citation-key";
-import { isCitationHoverPrefetchEnabled } from "@/lib/citation-preview-feature-flags";
+import {
+    isCitationHoverContinuationEnabled,
+    isCitationHoverPrefetchEnabled,
+} from "@/lib/citation-preview-feature-flags";
 import { recordCitationPreviewMetric } from "@/lib/ai/citation-preview-telemetry";
 import type {
     CitationPreviewMetricPayload,
@@ -56,16 +70,19 @@ function inferSurfaceFromPathname(): CitationPreviewSurface {
 export function CitationPreview({ href, type, children, anchorProps }: CitationPreviewProps) {
     const [open, setOpen] = useState(false);
     const [fetchState, setFetchState] = useState<FetchState>("idle");
-    const [metadata, setMetadata] = useState<CitationMetadata | null>(null);
+    const [citationResult, setCitationResult] = useState<CitationSuccessResult | null>(null);
     const hoverOpenTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const hoverPrefetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const touchStartRef = useRef<number>(0);
     const isTouchDeviceRef = useRef(false);
     const fetchedRef = useRef(false);
+    const continuationRequestIdRef = useRef(0);
+    const currentHrefRef = useRef(href);
     const citationKey = resolveCitationKey(href)?.cacheKey ?? null;
     const citationType = getCitationType(href);
     const surface = inferSurfaceFromPathname();
     const prefetchEnabled = isCitationHoverPrefetchEnabled();
+    const continuationEnabled = isCitationHoverContinuationEnabled();
 
     const trackMetric = useCallback(
         (
@@ -75,7 +92,9 @@ export function CitationPreview({ href, type, children, anchorProps }: CitationP
                 | "popover_opened"
                 | "metadata_request_started"
                 | "metadata_request_completed"
-                | "metadata_request_failed",
+                | "metadata_request_failed"
+                | "continuation_completed"
+                | "continuation_failed",
             payload: Pick<
                 CitationPreviewMetricPayload,
                 | "trigger"
@@ -86,6 +105,7 @@ export function CitationPreview({ href, type, children, anchorProps }: CitationP
                 | "reason"
                 | "resolvedWithCitationCount"
                 | "hadDoiFallbackCandidate"
+                | "continuationRecoveredCount"
                 | "errorCode"
             > = {}
         ) => {
@@ -104,7 +124,13 @@ export function CitationPreview({ href, type, children, anchorProps }: CitationP
 
     // Cleanup timer on unmount
     useEffect(() => {
+        currentHrefRef.current = href;
+        continuationRequestIdRef.current += 1;
+    }, [href]);
+
+    useEffect(() => {
         return () => {
+            continuationRequestIdRef.current += 1;
             if (hoverOpenTimerRef.current) {
                 clearTimeout(hoverOpenTimerRef.current);
             }
@@ -124,9 +150,12 @@ export function CitationPreview({ href, type, children, anchorProps }: CitationP
         const latencyMs = Math.round(Math.max(0, performance.now() - startedAt));
 
         if (result.success) {
-            setMetadata(result.data);
+            setCitationResult(result);
             setFetchState("loaded");
             fetchedRef.current = true;
+            if (typeof result.data.citationCount === "number") {
+                clearCitationContinuationAttemptForUrl(href);
+            }
             trackMetric("metadata_request_completed", {
                 trigger,
                 fromCache,
@@ -161,9 +190,85 @@ export function CitationPreview({ href, type, children, anchorProps }: CitationP
         }
     }, [doFetch, fetchState, trackMetric]);
 
-    const closePreview = useCallback(() => {
-        setOpen(false);
+    const handleOpenChange = useCallback((nextOpen: boolean) => {
+        if (!nextOpen) {
+            continuationRequestIdRef.current += 1;
+        }
+        setOpen(nextOpen);
     }, []);
+
+    const closePreview = useCallback(() => {
+        handleOpenChange(false);
+    }, [handleOpenChange]);
+
+    useEffect(() => {
+        const diagnostics = citationResult?.meta.diagnostics;
+        const metadata = citationResult?.data;
+
+        if (!open || fetchState !== "loaded" || !citationResult || !metadata || !diagnostics) {
+            return;
+        }
+
+        if (typeof metadata.citationCount === "number") {
+            clearCitationContinuationAttemptForUrl(href);
+            return;
+        }
+
+        const isRetryable =
+            diagnostics.reason === "icite_timeout"
+            || diagnostics.reason === "crossref_timeout"
+            || diagnostics.reason === "budget_exhausted";
+
+        if (!continuationEnabled || !isRetryable) {
+            return;
+        }
+
+        if (!shouldAttemptCitationContinuation(href, diagnostics)) {
+            return;
+        }
+
+        markCitationContinuationAttempted(href, diagnostics);
+        const requestId = ++continuationRequestIdRef.current;
+        const startedAt = performance.now();
+
+        void continueCitationMetadata(href).then((result) => {
+            if (
+                continuationRequestIdRef.current !== requestId
+                || currentHrefRef.current !== href
+            ) {
+                return;
+            }
+
+            const latencyMs = Math.round(Math.max(0, performance.now() - startedAt));
+
+            if (!result.success) {
+                trackMetric("continuation_failed", {
+                    latencyMs,
+                    errorCode: result.error,
+                });
+                return;
+            }
+
+            const patched = patchCitationMetadataInClientCache(href, result);
+            const continuationRecoveredCount =
+                typeof patched.data.citationCount === "number"
+                && typeof metadata.citationCount !== "number";
+
+            if (continuationRecoveredCount) {
+                clearCitationContinuationAttemptForUrl(href);
+            }
+
+            setCitationResult(patched);
+            trackMetric("continuation_completed", {
+                latencyMs,
+                resolutionPath: patched.meta.diagnostics.resolutionPath,
+                reason: patched.meta.diagnostics.reason,
+                resolvedWithCitationCount: patched.meta.diagnostics.resolvedWithCitationCount,
+                hadDoiFallbackCandidate: patched.meta.diagnostics.hadDoiFallbackCandidate,
+                continuationRecoveredCount,
+            });
+        });
+    }, [citationResult, continuationEnabled, fetchState, href, open, trackMetric]);
 
     // ── Desktop: hover intent ────────────────────────────────────────────────
     const handleMouseEnter = useCallback(() => {
@@ -264,7 +369,7 @@ export function CitationPreview({ href, type, children, anchorProps }: CitationP
     };
 
     return (
-        <Popover.Root open={open} onOpenChange={setOpen}>
+        <Popover.Root open={open} onOpenChange={handleOpenChange}>
             <Popover.Trigger asChild>
                 <a
                     {...anchorProps}
@@ -316,29 +421,29 @@ export function CitationPreview({ href, type, children, anchorProps }: CitationP
                         </div>
                     )}
 
-                    {fetchState === "loaded" && metadata && (
+                    {fetchState === "loaded" && citationResult && (
                         <div className={styles.metadataContent}>
                             <div className={styles.metadataType}>
                                 <span className={styles.typeLabel}>{type}</span>
-                                {metadata.year && (
-                                    <span className={styles.year}>{metadata.year}</span>
+                                {citationResult.data.year && (
+                                    <span className={styles.year}>{citationResult.data.year}</span>
                                 )}
                             </div>
-                            <h4 className={styles.title}>{metadata.title}</h4>
+                            <h4 className={styles.title}>{citationResult.data.title}</h4>
                             <p className={styles.authors}>
-                                {formatAuthors(metadata.authors)}
+                                {formatAuthors(citationResult.data.authors)}
                             </p>
-                            {metadata.journal && (
-                                <p className={styles.journal}>{metadata.journal}</p>
+                            {citationResult.data.journal && (
+                                <p className={styles.journal}>{citationResult.data.journal}</p>
                             )}
-                            {typeof metadata.citationCount === "number" && (
+                            {typeof citationResult.data.citationCount === "number" && (
                                 <p className={styles.citationCount}>
-                                    Cited {formatCitationCount(metadata.citationCount)} times
+                                    Cited {formatCitationCount(citationResult.data.citationCount)} times
                                 </p>
                             )}
                             <div className={styles.footer}>
                                 <a
-                                    href={metadata.canonicalUrl ?? href}
+                                    href={citationResult.data.canonicalUrl ?? href}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     className={styles.openLink}

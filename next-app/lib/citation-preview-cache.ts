@@ -1,5 +1,6 @@
 import { resolveCitationKey } from "@/lib/citation-key";
 import type { CitationResult, CitationSuccessResult } from "@/lib/citation-types";
+import type { CitationResolutionDiagnostics } from "@/lib/citation-types";
 
 export type CitationMetadataLoader = (url: string) => Promise<CitationResult>;
 
@@ -12,6 +13,8 @@ export type CitationCacheLoadResult = {
 
 const metadataCache = new Map<string, CitationSuccessResult>();
 const inFlightRequests = new Map<string, Promise<CitationResult>>();
+const continuationAttemptCache = new Map<string, number>();
+const CONTINUATION_SUPPRESSION_TTL_MS = 1000 * 60 * 5;
 
 function getCacheKey(url: string): string {
     const key = resolveCitationKey(url)?.cacheKey;
@@ -22,6 +25,21 @@ function getCacheKey(url: string): string {
 export function getCitationMetadataFromClientCache(url: string): CitationSuccessResult | null {
     const cacheKey = getCacheKey(url);
     return metadataCache.get(cacheKey) ?? null;
+}
+
+function buildContinuationAttemptKey(
+    cacheKey: string,
+    diagnostics: CitationResolutionDiagnostics,
+): string {
+    return `${cacheKey}:${diagnostics.resolutionPath}:${diagnostics.reason}`;
+}
+
+function clearExpiredContinuationAttempt(key: string): void {
+    const timestamp = continuationAttemptCache.get(key);
+    if (typeof timestamp !== "number") return;
+    if (Date.now() - timestamp > CONTINUATION_SUPPRESSION_TTL_MS) {
+        continuationAttemptCache.delete(key);
+    }
 }
 
 export async function loadCitationMetadataWithClientCache(
@@ -74,4 +92,61 @@ export async function loadCitationMetadataWithClientCache(
 export function clearCitationMetadataClientCache(): void {
     metadataCache.clear();
     inFlightRequests.clear();
+    continuationAttemptCache.clear();
+}
+
+export function patchCitationMetadataInClientCache(
+    url: string,
+    nextResult: CitationSuccessResult,
+): CitationSuccessResult {
+    const cacheKey = getCacheKey(url);
+    const current = metadataCache.get(cacheKey);
+    const patched: CitationSuccessResult = current
+        ? {
+            success: true,
+            data: {
+                ...current.data,
+                citationCount: nextResult.data.citationCount,
+                citationCountSource: nextResult.data.citationCountSource,
+                citationCountFetchedAt: nextResult.data.citationCountFetchedAt,
+            },
+            meta: {
+                diagnostics: nextResult.meta.diagnostics,
+            },
+        }
+        : nextResult;
+
+    metadataCache.set(cacheKey, patched);
+
+    if (typeof patched.data.citationCount === "number") {
+        clearCitationContinuationAttemptForUrl(url);
+    }
+
+    return patched;
+}
+
+export function shouldAttemptCitationContinuation(
+    url: string,
+    diagnostics: CitationResolutionDiagnostics,
+): boolean {
+    const key = buildContinuationAttemptKey(getCacheKey(url), diagnostics);
+    clearExpiredContinuationAttempt(key);
+    return !continuationAttemptCache.has(key);
+}
+
+export function markCitationContinuationAttempted(
+    url: string,
+    diagnostics: CitationResolutionDiagnostics,
+): void {
+    const key = buildContinuationAttemptKey(getCacheKey(url), diagnostics);
+    continuationAttemptCache.set(key, Date.now());
+}
+
+export function clearCitationContinuationAttemptForUrl(url: string): void {
+    const cacheKey = getCacheKey(url);
+    for (const key of continuationAttemptCache.keys()) {
+        if (key.startsWith(`${cacheKey}:`)) {
+            continuationAttemptCache.delete(key);
+        }
+    }
 }

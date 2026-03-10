@@ -33,4 +33,27 @@ describe("citation preview feature flags", () => {
         const { isCitationHoverPrefetchEnabled } = await loadFlagsModule();
         expect(isCitationHoverPrefetchEnabled()).toBe(true);
     });
+
+    it("defaults citation continuation to disabled on the client", async () => {
+        vi.stubEnv("NEXT_PUBLIC_ENABLE_CITATION_CONTINUATION", undefined);
+
+        const { isCitationHoverContinuationEnabled } = await loadFlagsModule();
+        expect(isCitationHoverContinuationEnabled()).toBe(false);
+    });
+
+    it("reads the public continuation flag on the client", async () => {
+        vi.stubEnv("NEXT_PUBLIC_ENABLE_CITATION_CONTINUATION", "1");
+        vi.stubEnv("ENABLE_CITATION_CONTINUATION", "0");
+
+        const { isCitationHoverContinuationEnabled } = await loadFlagsModule();
+        expect(isCitationHoverContinuationEnabled()).toBe(true);
+    });
+
+    it("reads the server continuation flag independently", async () => {
+        vi.stubEnv("NEXT_PUBLIC_ENABLE_CITATION_CONTINUATION", undefined);
+        vi.stubEnv("ENABLE_CITATION_CONTINUATION", "1");
+
+        const { isCitationContinuationServerEnabled } = await loadFlagsModule();
+        expect(isCitationContinuationServerEnabled()).toBe(true);
+    });
 });
