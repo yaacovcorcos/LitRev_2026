@@ -120,10 +120,8 @@ function upsertProgressMessage(
     }
 
     const next = [...messages];
-    const existing = next[idx];
-    if (!existing) return messages;
     next[idx] = {
-      ...existing,
+      ...next[idx],
       progress: {
         message: payload.message,
         current: payload.current,
