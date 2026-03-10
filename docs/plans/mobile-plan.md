@@ -27,13 +27,22 @@ This plan is the long-term implementation contract for how LitRev adapts across 
 - Shared chat-runtime direction exists for `/ai` and project copilot via chat unification work; popup full runtime convergence remains pending (`U3` in chat unification plan).
 - Shared interaction ergonomics now use the existing `--touch-target-min` baseline across the highest-friction phone controls, including mobile nav, project tabs, toast dismiss, popup dismiss, study-file actions, export-history actions, and copilot remove/clear controls.
 - Responsive foundation certification now exists as a real route-level contract for home, auth, project shell, protocol, and `/ai` entry, backed by reliability telemetry, `test:e2e:mobile:foundation`, and the responsive certification runbook.
-- The remaining weak point is mobile test architecture rather than product layout contract: the broader `test:e2e:mobile` suite still pays too much live setup cost, still depends on integrated route boot/login/project creation flows, and still needs explicit test-mode telemetry cleanup plus better fixture isolation before it can be considered an efficient long-term gate.
+- Required foundation certification hardening is now shipped:
+  - `test:e2e:mobile:foundation` is the required blocking route-certification gate
+  - broader mobile smoke runs separately as `test:e2e:mobile:smoke`
+  - foundation Playwright setup uses seeded dev fixture routes for auth, home zero-state/workspace, sample/demo setup, blank project setup, and protocol-ready flows
+  - Playwright runs with explicit E2E telemetry mode so operational reliability/performance telemetry does not ship during certification runs, with ingest logging quieted as a backstop
+- Broader mobile smoke remains intentionally conservative and shallower than route-certification; the main remaining harness work is optimization and deeper coverage, not missing foundation infrastructure.
 - Core route adoption of a long-term responsive contract is still incomplete:
   - app shell and sidebar now split `phone` vs `compact` behavior behind `NEXT_PUBLIC_MOBILE_SHELL_V2`, but wider route surfaces still need follow-up adoption
   - home now adopts the shared route/shell responsive contract across loading, zero-state, and workspace states, but shared `TopBar` / `ControlsBar` primitives still retain transitional generic breakpoints outside home-specific modifiers
   - login and signup now share a standalone `AuthShellFrame` that owns route height once, keeps decorative layers fixed, and gives the auth panel one inner scroll owner on phone when the keyboard shrinks the viewport
   - protocol now consumes shell height/offset once in both embedded and standalone paths; standalone `ProjectPageLayout` can switch to phone-only copilot collapse and child-owned scroll without changing the generic wrapper contract for other project pages
   - telemetry now classifies viewport as `phone` / `compact` / `desktop`, but many live surfaces still consume the transitional `900px` query until later foundation waves retire it
+- The main remaining mobile debt is transitional responsive behavior in shared and chat surfaces: legacy `900px` breakpoint semantics, shared JS consumers of the old cutoff, and remaining authored raw `100vh` / `calc(100vh - …)` source-of-truth rules on core shells.
+- Shared responsive debt is now split into two categories:
+  - high-blast shared shell/layout debt that should be retired in one last foundation cleanup wave
+  - chat-shell-specific transitional debt that should be retired inside the chat follow-up contract work rather than forced into a separate fake “pre-chat” cleanup phase
 - `MOB-FND-009` audit closed without a dedicated implementation wave: the admin findings captured in `docs/plans/mobile-admin-audit.md` show transitional responsive debt, but not enough user impact to justify a standalone admin rollout, and there is still no standalone settings route in the current repo.
 - Project shell hides the embedded copilot pane on narrower widths; conversation mode is already the primary mobile chat surface.
 
@@ -71,7 +80,7 @@ Goal: replace the transitional single-cutoff mobile model with a long-term respo
 Definition of done:
 1. Shell, home, login/auth, and protocol use the same responsive tier model.
 2. Phone mode is reserved for actual phone-width layouts, not all narrow app windows.
-3. No unallowlisted core route uses raw `100vh` as the authored phone source-of-truth.
+3. No unallowlisted core route uses raw `100vh` or `calc(100vh - …)` as the authored phone source-of-truth.
 4. Core shared controls meet the `44px` touch-target rule on phone and coarse-pointer contexts.
 5. Mobile and responsive regressions are observable through reliability telemetry and behavior-level e2e.
 6. Chat and future surface work can build on this foundation instead of compensating for shell drift or breakpoint confusion.
@@ -80,6 +89,7 @@ Definition of done:
 - Surfaces: project conversation mode (`/project/[id]`), `/ai`, popup chat.
 - Goal: unify behavior and quality across history, timeline, composer, and handoff flows after the responsive foundation is stable.
 - Constraint: compact widths may simplify chat chrome, but true phone interaction patterns should only appear in the `phone` tier.
+- Execution note: `MOB-002` should absorb the remaining chat-shell-specific retirement of transitional `900px` and authored height behavior in `/ai`, project conversation shell, and popup where that cleanup is inseparable from the shared chat-shell contract itself.
 
 ## Principles (Non-Negotiable)
 1. One canonical responsive tier contract, not ad hoc breakpoint drift.
@@ -114,8 +124,8 @@ Operational contract reference:
 
 1. Prefer `dvh`-backed runtime values through `--app-height` for phone-primary height containers.
 2. Keep `svh`/`vh` fallbacks for browser variance.
-3. No unallowlisted core route should use raw `100vh` as authored phone source-of-truth.
-4. Fallback-only `100vh` use inside shared contracts such as `var(--app-height, 100vh)` is acceptable.
+3. No unallowlisted core route should use raw `100vh` or `calc(100vh - …)` as the authored phone source-of-truth.
+4. Fallback-only shared expressions such as `var(--app-height, 100vh)` and `var(--app-min-height, 100vh)` are acceptable.
 5. Safe-area top/bottom offsets must be part of the shared shell/layout contract, not copied per route.
 6. Surface-level scroll-body ownership must be explicit; route-local double-scroll patterns are defects.
 7. Compact layouts should not inherit phone viewport hacks unless the route truly uses phone-style composition.
@@ -125,7 +135,7 @@ When `NEXT_PUBLIC_MOBILE_VP_V2=1`:
 - Updates run on `resize`, `orientationchange`, `visualViewport.resize`, and responsive-tier changes.
 
 Allowlisted fallback uses of raw `100vh`:
-- CSS variable defaults and shared fallback expressions.
+- CSS variable defaults and shared fallback expressions such as `var(--app-height, 100vh)` and `var(--app-min-height, 100vh)`.
 - Desktop-only contexts where phone height is not the source-of-truth.
 
 ## Scroll Contract
@@ -173,21 +183,13 @@ Primary KPI lenses:
 - Regression concentration by viewport class (`phone`, `compact`, `desktop`).
 
 ## Active Tasks (Mobile Foundation)
-- [ ] `MOB-FND-010` Mobile certification harness hardening:
-  - Keep `test:e2e:mobile:foundation` as the required blocking responsive foundation gate.
-  - Split the broader `test:e2e:mobile` suite from the minimum certification suite so CI can distinguish required route-certification from slower exploratory smoke coverage.
-  - Restore safe Playwright parallelism only after fixture isolation proves that mobile auth/home/project/protocol setup no longer races across workers.
-  - Rollback: test harness changes are revert-only and do not require product rollback levers.
-- [ ] `MOB-FND-011` Seeded responsive fixture + route-state contract:
-  - Add deterministic seeded entry paths for zero-state, workspace state, authenticated auth redirect, project shell, and protocol-ready flows.
-  - Reduce reliance on full live route boot, ad hoc project creation, and transient UI transitions inside every mobile certification test.
-  - Make phone/compact certification assert route usability directly instead of repeatedly paying setup cost.
-  - Rollback: fixture/test-only changes are revert-only and do not require product rollback levers.
-- [ ] `MOB-FND-012` Responsive telemetry test-mode cleanup:
-  - Eliminate noisy aborted telemetry requests and dev-server uncaught exceptions during Playwright and local certification runs.
-  - Define explicit test-mode behavior for reliability/performance/mobile telemetry so CI signal stays focused on route failures.
-  - Keep production telemetry shipping unchanged while making test/dev behavior deterministic and quiet.
-  - Rollback: telemetry test-mode changes can be reverted independently of product layout waves.
+- [ ] `MOB-FND-013` Shared transitional responsive debt retirement:
+  - Retire the highest-risk shared legacy `900px` behavior still present in shell/layout primitives before deeper chat/mobile waves absorb more breakpoint cleanup than they should.
+  - Remove authored raw `100vh` / `calc(100vh - …)` phone source-of-truth rules from shared shell/layout surfaces where shared viewport-height variables already exist.
+  - Focus on shared/high-blast targets that are broadly correct across current consumers, with likely first targets including `AppShell`, `Sidebar`, `TopBar`, and `ControlsBar`.
+  - Only retire shared transitional debt when the resulting behavior is broadly correct across current consumers; route- or chat-specific responsive behavior stays with `MOB-002` and later chat tasks.
+  - Keep this wave limited to shared/high-blast responsive debt; do not expand it into full `/ai`, popup, or conversation redesign.
+  - Rollback: revert/redeploy only unless implementation proves a dedicated flag is necessary.
 
 ## Active Tasks (Chat Experience)
 - [ ] `MOB-002` Shared responsive chat shell contract:
@@ -213,6 +215,18 @@ Primary KPI lenses:
   - Cover both phone and compact widths where behavior differs.
 
 ## Recently Completed
+- [x] `MOB-FND-012` Responsive telemetry test-mode cleanup completed:
+  - Added explicit Playwright E2E telemetry mode through `next-app/lib/telemetry/e2e-mode.ts` and `next-app/playwright.config.ts`.
+  - Disabled operational reliability/performance telemetry shipping during certification runs and suppressed ingest error logging in E2E mode as a backstop.
+  - Narrowed shared Playwright helper stubbing to non-operational telemetry routes that remain outside the certification contract.
+- [x] `MOB-FND-011` Seeded responsive fixture + route-state contract completed:
+  - Added seeded auth, sample/demo project, blank project, and home-state setup through `next-app/e2e/helpers/foundation.ts` and dev fixture routes under `next-app/app/api/dev/`.
+  - Replaced ambient UI-state discovery as test setup with deterministic seeded route-state control for zero-state, workspace, project shell, and protocol-ready flows.
+  - Proved foundation setup isolation well enough to allow `test:e2e:mobile:foundation` to run with `--workers=2`.
+- [x] `MOB-FND-010` Mobile certification harness hardening completed:
+  - Split required route-certification from broader smoke in `next-app/package.json`, `.github/workflows/ci.yml`, and `.github/workflows/mobile-smoke.yml`.
+  - Kept `test:e2e:mobile:foundation` as the required blocking responsive foundation gate and moved broader mobile smoke to a separate workflow/status.
+  - Left broader mobile smoke intentionally conservative while the foundation certification path became seeded, parallel-safe, and operationally distinct.
 - [x] `MOB-FND-009` Admin/settings responsive audit completed:
   - Recorded the durable audit artifact in `docs/plans/mobile-admin-audit.md`.
   - Confirmed there is no standalone `app/settings` route in the current repo, so the present scope is admin-only.
@@ -241,17 +255,6 @@ Primary KPI lenses:
   - Added `NEXT_PUBLIC_MOBILE_SHELL_V2` and wired shell rollout safety through `next-app/lib/mobile/feature-flags.ts`.
   - Reclassified shell behavior into `phone` vs `compact` by moving bottom-nav visibility and shell bottom offset to the phone tier only.
   - Adopted shared shell height semantics in `AppShell.module.css` and `Sidebar.module.css` while keeping scroll-owner changes conservative for mixed child-route compatibility.
-- [x] `MOB-FND-002` Shared responsive layout contract completed:
-  - Added the durable operational contract in `docs/plans/mobile-layout-contract.md`.
-  - Added global safe-area aliases, shared phone/compact layout tokens, and reusable `surface root` / `surface scroll body` / `surface sticky footer` CSS roles in shared styles.
-  - Kept `MobileViewportRuntime` behavior unchanged so transitional `900px` runtime consumers can retire surface-by-surface in later waves.
-- [x] `MOB-FND-001` Responsive tier contract completed:
-  - Added shared responsive tier exports/helpers in `next-app/lib/mobile/breakpoints.ts` and `next-app/lib/mobile/tiers.ts` while preserving the legacy `900px` mobile query as a transitional contract.
-  - Migrated performance and reliability telemetry end-to-end to `phone` / `compact` / `desktop` viewport classes.
-  - Added the durable breakpoint audit in `docs/plans/mobile-breakpoint-migration-map.md` for later shell/home/chat retirement waves.
-- [x] `MOB-001` Transitional breakpoint unification to `900px` with shared JS/CSS alignment.
-- [x] `/ai` mobile-v2 history drawer behavior shipped behind `NEXT_PUBLIC_MOBILE_AI_V2`.
-- [x] Popup mobile-v2 responsive behavior expanded for narrower widths.
 
 ## Implementation Order
 Build in this order:
@@ -264,17 +267,15 @@ Build in this order:
 7. `MOB-FND-006` protocol responsive adoption
 8. `MOB-FND-007` shared touch-target sweep
 9. `MOB-FND-008` reliability telemetry + responsive e2e certification
-10. `MOB-FND-010` mobile certification harness hardening
-11. `MOB-FND-011` seeded responsive fixture + route-state contract
-12. `MOB-FND-012` responsive telemetry test-mode cleanup
-13. optional admin/settings wave if `MOB-FND-009` audit justifies it
-14. chat foundation follow-up:
+10. `MOB-FND-013` shared transitional responsive debt retirement
+11. chat foundation follow-up:
    - `MOB-002`
    - `MOB-004`
    - `MOB-005`
    - `MOB-006`
    - `MOB-007`
    - `MOB-008`
+12. optional admin/settings wave only if a future settings route or stronger admin mobile requirement justifies reopening that scope
 
 ## Rollout / Enablement Order
 Enable in production one wave at a time:
@@ -283,8 +284,9 @@ Enable in production one wave at a time:
 3. For `MOB-FND-003`, `MOB-FND-004`, `MOB-FND-005`, `MOB-FND-006`, and optional `MOB-FND-009`:
    - if that wave adds a dedicated public flag, canary it behind that real flag and use that flag for rollback
    - if that wave does not add a dedicated public flag, treat rollout as revert/redeploy-only
-4. `MOB-FND-010`, `MOB-FND-011`, and `MOB-FND-012` are internal harness and observability hardening waves; they should land before broader chat/mobile follow-up work so certification is fast, deterministic, and quiet.
-5. Existing chat/mobile-v2 flags continue to roll out only after the foundation is stable:
+4. `MOB-FND-010`, `MOB-FND-011`, and `MOB-FND-012` are already completed internal certification/observability work and are not remaining rollout steps.
+5. `MOB-FND-013` should land before or alongside the first shared chat-shell wave so remaining shared legacy breakpoint and height debt does not leak deeper into chat-specific redesign work.
+6. Existing chat/mobile-v2 flags continue to roll out only after the foundation is stable:
    - `NEXT_PUBLIC_MOBILE_AI_V2`
    - `NEXT_PUBLIC_MOBILE_NOTES_V2`
    - `NEXT_PUBLIC_MOBILE_LEDGER_V2`
