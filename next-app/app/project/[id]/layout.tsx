@@ -19,7 +19,7 @@ import { DemoBanner } from "@/components/project/DemoBanner";
 import { isDemoProject } from "@/lib/demo/constants";
 import { isScrollOwnershipA1Enabled } from "@/lib/feature-flags";
 import { shouldLockRootScroll } from "@/lib/mobile/scroll-lock-policy";
-import { MOBILE_VIEWPORT_MEDIA_QUERY } from "@/lib/mobile/breakpoints";
+import { MOBILE_VIEWPORT_MEDIA_QUERY, PHONE_MEDIA_QUERY } from "@/lib/mobile/breakpoints";
 import { isMobileScrollLockV2Enabled, isMobileViewportV2Enabled } from "@/lib/mobile/feature-flags";
 import { ProjectDataProvider } from "@/contexts/ProjectDataContext";
 import { recordReliabilityMetric } from "@/lib/ai/reliability-telemetry";
@@ -148,7 +148,9 @@ function ProjectShellInner({ projectId, initialShellState, children }: ProjectSh
             };
         }
 
-        const mobileQuery = window.matchMedia(MOBILE_VIEWPORT_MEDIA_QUERY);
+        const mobileQuery = window.matchMedia(
+            focusMode === "conversation" ? PHONE_MEDIA_QUERY : MOBILE_VIEWPORT_MEDIA_QUERY,
+        );
         const applyByViewport = () => {
             if (mobileQuery.matches) {
                 applyUnlockedRootScroll();
@@ -175,7 +177,7 @@ function ProjectShellInner({ projectId, initialShellState, children }: ProjectSh
             body.style.overflow = prevBodyOverflow;
             body.style.overscrollBehavior = prevBodyOverscroll;
         };
-    }, [mobileScrollLockV2Enabled, scrollOwnershipA1Enabled]);
+    }, [focusMode, mobileScrollLockV2Enabled, scrollOwnershipA1Enabled]);
 
     // Keep root scrolling scoped to shell owners (A1 truth table path).
     // - desktop + view mode => locked
@@ -206,7 +208,9 @@ function ProjectShellInner({ projectId, initialShellState, children }: ProjectSh
             body.style.overscrollBehavior = "";
         };
 
-        const mobileQuery = window.matchMedia(MOBILE_VIEWPORT_MEDIA_QUERY);
+        const mobileQuery = window.matchMedia(
+            focusMode === "conversation" ? PHONE_MEDIA_QUERY : MOBILE_VIEWPORT_MEDIA_QUERY,
+        );
         const applyByViewportAndMode = () => {
             const shouldLock = shouldLockRootScroll({
                 a1Enabled: scrollOwnershipA1Enabled,
@@ -355,7 +359,11 @@ function ProjectShellInner({ projectId, initialShellState, children }: ProjectSh
         <ProjectShellProvider value={shellValue}>
             <AppShell
                 activeNav="projects"
-                mainClassName={`${styles.shellMain} ${mobileViewportV2Enabled ? styles.shellMainViewportV2 : ""}`}
+                mainClassName={[
+                    styles.shellMain,
+                    mobileViewportV2Enabled ? styles.shellMainViewportV2 : "",
+                    focusMode === "conversation" ? styles.shellMainConversation : "",
+                ].filter(Boolean).join(" ")}
                 noMainPadding
                 initiallyCollapsed
             >

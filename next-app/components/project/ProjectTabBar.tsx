@@ -91,6 +91,7 @@ export function ProjectTabBar({
                         type="button"
                         role="radio"
                         aria-checked={focusMode === "conversation"}
+                        aria-label="Conversation mode"
                         className={`${styles.modeBtn} ${focusMode === "conversation" ? styles.modeBtnActive : ""}`}
                         onClick={() => {
                             recordNavigationTap("mode_conversation");
@@ -104,6 +105,7 @@ export function ProjectTabBar({
                         type="button"
                         role="radio"
                         aria-checked={focusMode === "view"}
+                        aria-label="Workspace mode"
                         className={`${styles.modeBtn} ${focusMode === "view" ? styles.modeBtnActive : ""}`}
                         onClick={() => {
                             recordNavigationTap("mode_workspace");
