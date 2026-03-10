@@ -1,10 +1,11 @@
 # Cold Memory Index (Tier 3)
 
 Use this index to retrieve authoritative docs before editing high-risk domains.
+Routing authority stays in `AGENTS.md`; this file only maps already-matched domains to canonical docs.
 
 ## Retrieval Protocol
 
-1. Identify subsystem by changed paths and task intent.
+1. Use `AGENTS.md` to identify the matched subsystem by changed paths and task intent.
 2. Read the listed canonical doc(s) before editing.
 3. If docs conflict with code, treat docs as stale and update docs in the same task.
 4. Record architecture-impacting changes in the correct plan file.

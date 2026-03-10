@@ -12,6 +12,7 @@ Use three tiers. Do not collapse everything into this file.
 3. Tier 3 (cold memory): runbooks, plans, and subsystem docs referenced via `docs/agents/cold-memory-index.md`.
 
 If work is domain-specific, route to Tier 2 and retrieve Tier 3 before editing code.
+Tier 1 owns routing and repo-wide rules, Tier 2 specialists refine matched-domain workflow, and Tier 3 docs provide the canonical subsystem context.
 
 ## Critical Directory and Path Rules
 
@@ -150,24 +151,9 @@ Rule: feature branches hold work; repo root `main` only mirrors merged work.
 
 Canonical plan index: `docs/plans/README.md`.
 
-Do not route work through superseded source plans when `docs/plans/README.md` marks them inactive.
-
-Prune and Migrate Policy when completing plan tasks:
-
-1. Remove item from `Active Tasks`.
-2. If architecture changed, add a 1-2 sentence factual update in `Current Architecture`.
-3. Move completed item to top of `Recently Completed`.
-4. Keep `Recently Completed` capped to 5-10 items.
-
-Memory routing rule:
-
+Use `docs/plans/README.md` to identify active canonical plans, ignore inactive/superseded plan docs, and follow the full plan-maintenance and PRD-vs-domain policy.
 - `docs/plans/plan-memory.md` is the only active memory tracker.
-
-PRD vs Domain Plans:
-
-- Edit `PRD.md` only when product WHAT/WHO/WHY changes.
-- Edit `docs/plans/*.md` when implementation HOW changes.
-- When writing an implementation plan, use the canonical prompt in `docs/agents/universal-planning-meta-prompt.md`.
+- When writing an implementation plan, use `docs/agents/universal-planning-meta-prompt.md`.
 
 ## Open-Source Adaptation Rules
 

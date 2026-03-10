@@ -13,6 +13,7 @@ Use for planner/executor/orchestrator behavior, sub-agent flows, routing, autono
 
 ## Required Tier 3 Reads
 
+- `docs/plans/README.md` to locate any additional active runtime plans
 - `docs/plans/plan-agentic.md`
 - `docs/plans/plan-memory.md` when memory/retrieval behavior is affected
 
