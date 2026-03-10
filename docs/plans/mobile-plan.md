@@ -26,18 +26,15 @@ This plan is the long-term implementation contract for how LitRev adapts across 
 - Shell responsive adoption is now gated behind `NEXT_PUBLIC_MOBILE_SHELL_V2`; home, auth, protocol, and admin follow-up waves are not yet organized behind dedicated public flags.
 - Shared chat-runtime direction exists for `/ai` and project copilot via chat unification work; popup full runtime convergence remains pending (`U3` in chat unification plan).
 - Shared interaction ergonomics now use the existing `--touch-target-min` baseline across the highest-friction phone controls, including mobile nav, project tabs, toast dismiss, popup dismiss, study-file actions, export-history actions, and copilot remove/clear controls.
-<<<<<<< HEAD
-- Responsive foundation certification is now codified in `docs/runbooks/responsive-foundation-certification.md`; route-level reliability telemetry covers home/auth/project/protocol readiness and behavior-level mobile e2e now certifies home, auth, project shell, and protocol across phone and compact widths.
-=======
 - Responsive foundation certification now exists as a real route-level contract for home, auth, project shell, protocol, and `/ai` entry, backed by reliability telemetry, `test:e2e:mobile:foundation`, and the responsive certification runbook.
 - The remaining weak point is mobile test architecture rather than product layout contract: the broader `test:e2e:mobile` suite still pays too much live setup cost, still depends on integrated route boot/login/project creation flows, and still needs explicit test-mode telemetry cleanup plus better fixture isolation before it can be considered an efficient long-term gate.
->>>>>>> 6426e36 (docs(mobile): add post-certification harness follow-ups)
 - Core route adoption of a long-term responsive contract is still incomplete:
   - app shell and sidebar now split `phone` vs `compact` behavior behind `NEXT_PUBLIC_MOBILE_SHELL_V2`, but wider route surfaces still need follow-up adoption
   - home now adopts the shared route/shell responsive contract across loading, zero-state, and workspace states, but shared `TopBar` / `ControlsBar` primitives still retain transitional generic breakpoints outside home-specific modifiers
   - login and signup now share a standalone `AuthShellFrame` that owns route height once, keeps decorative layers fixed, and gives the auth panel one inner scroll owner on phone when the keyboard shrinks the viewport
   - protocol now consumes shell height/offset once in both embedded and standalone paths; standalone `ProjectPageLayout` can switch to phone-only copilot collapse and child-owned scroll without changing the generic wrapper contract for other project pages
   - telemetry now classifies viewport as `phone` / `compact` / `desktop`, but many live surfaces still consume the transitional `900px` query until later foundation waves retire it
+- `MOB-FND-009` audit closed without a dedicated implementation wave: the admin findings captured in `docs/plans/mobile-admin-audit.md` show transitional responsive debt, but not enough user impact to justify a standalone admin rollout, and there is still no standalone settings route in the current repo.
 - Project shell hides the embedded copilot pane on narrower widths; conversation mode is already the primary mobile chat surface.
 
 ## Target Responsive Architecture
@@ -176,11 +173,6 @@ Primary KPI lenses:
 - Regression concentration by viewport class (`phone`, `compact`, `desktop`).
 
 ## Active Tasks (Mobile Foundation)
-- [ ] `MOB-FND-009` Admin/settings responsive audit:
-  - Audit admin/settings for actual responsive contract drift and user-impacting defects.
-  - Only bring admin/settings into this phase if the audit shows enough breakage to justify a dedicated rollout wave.
-  - If implementation is justified, decide in that wave whether to add a dedicated public flag or keep revert/redeploy-only rollout semantics.
-  - Rollback: disable the dedicated flag if one is introduced in this wave; otherwise revert/redeploy.
 - [ ] `MOB-FND-010` Mobile certification harness hardening:
   - Keep `test:e2e:mobile:foundation` as the required blocking responsive foundation gate.
   - Split the broader `test:e2e:mobile` suite from the minimum certification suite so CI can distinguish required route-certification from slower exploratory smoke coverage.
@@ -221,6 +213,10 @@ Primary KPI lenses:
   - Cover both phone and compact widths where behavior differs.
 
 ## Recently Completed
+- [x] `MOB-FND-009` Admin/settings responsive audit completed:
+  - Recorded the durable audit artifact in `docs/plans/mobile-admin-audit.md`.
+  - Confirmed there is no standalone `app/settings` route in the current repo, so the present scope is admin-only.
+  - Closed the task without a dedicated implementation wave because the current admin surfaces remain usable on transitional shell/layout semantics and did not show enough breakage to justify a standalone mobile rollout.
 - [x] `MOB-FND-008` Reliability telemetry + responsive e2e certification completed:
   - Reused the reliability telemetry pipeline for responsive canary signals and normalized responsive route evidence to the shared tier contract.
   - Added behavior-level responsive certification coverage for home, login/signup, project shell, protocol, and `/ai` entry, backed by the dedicated `test:e2e:mobile:foundation` gate and responsive certification runbook.
