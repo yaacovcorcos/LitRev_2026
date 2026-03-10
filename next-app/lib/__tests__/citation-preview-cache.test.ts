@@ -162,6 +162,56 @@ describe("citation preview client cache", () => {
         });
     });
 
+    it("keeps an existing count-bearing cached result when a stale no-count patch arrives", async () => {
+        const loader = vi.fn().mockResolvedValue({
+            success: true,
+            data: {
+                title: "Initial title",
+                authors: "Doe J",
+                year: 2024,
+                doi: "10.1000/xyz123",
+                citationCount: 44,
+                citationCountSource: "crossref",
+                citationCountFetchedAt: "2026-03-10T15:00:00.000Z",
+            },
+            meta: {
+                diagnostics: {
+                    resolutionPath: "doi_crossref",
+                    reason: "count_resolved",
+                    resolvedWithCitationCount: true,
+                    hadDoiFallbackCandidate: false,
+                },
+            },
+        } satisfies CitationResult);
+
+        await loadCitationMetadataWithClientCache(DOI_URL, loader);
+        const patched = patchCitationMetadataInClientCache(DOI_URL, {
+            success: true,
+            data: {
+                title: "Stale title",
+                authors: "Stale author",
+                year: 1999,
+                doi: "10.1000/xyz123",
+            },
+            meta: {
+                diagnostics: {
+                    resolutionPath: "doi_no_count",
+                    reason: "crossref_no_count",
+                    resolvedWithCitationCount: false,
+                    hadDoiFallbackCandidate: false,
+                },
+            },
+        });
+
+        expect(patched.data.citationCount).toBe(44);
+        expect(patched.data.citationCountSource).toBe("crossref");
+        expect(patched.meta.diagnostics).toMatchObject({
+            resolutionPath: "doi_crossref",
+            reason: "count_resolved",
+            resolvedWithCitationCount: true,
+        });
+    });
+
     it("suppresses repeated continuation attempts for the same unresolved retryable state", () => {
         const diagnostics = {
             resolutionPath: "pubmed_bibliography_only" as const,

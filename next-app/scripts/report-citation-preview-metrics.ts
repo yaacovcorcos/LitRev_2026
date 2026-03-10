@@ -135,6 +135,10 @@ export async function main() {
     const continuationCompleted = rows.filter(
         (row) => row.type === "citation_preview.continuation_completed",
     );
+    const continuationFailed = rows.filter(
+        (row) => row.type === "citation_preview.continuation_failed",
+    );
+    const continuationAttempts = [...continuationCompleted, ...continuationFailed];
     const uncachedLatencies = completed
         .map((row) => asPayload(row.payload))
         .filter((payload) => payload.fromCache === false && typeof payload.latencyMs === "number")
@@ -150,7 +154,7 @@ export async function main() {
     let pubmedDoiCandidatesBibliographyOnly = 0;
     let continuationRecoveredCount = 0;
 
-    const continuationLatencies = continuationCompleted
+    const continuationLatencies = continuationAttempts
         .map((row) => asPayload(row.payload))
         .filter((payload) => typeof payload.latencyMs === "number")
         .map((payload) => payload.latencyMs as number)
@@ -173,7 +177,7 @@ export async function main() {
         }
     }
 
-    for (const row of continuationCompleted) {
+    for (const row of continuationAttempts) {
         const payload = asPayload(row.payload);
         if (payload.continuationRecoveredCount) {
             continuationRecoveredCount += 1;
@@ -217,11 +221,14 @@ export async function main() {
             bibliographyOnlyRate === "n/a" ? "n/a" : `${bibliographyOnlyRate}%`
         } (${pubmedDoiCandidatesBibliographyOnly}/${pubmedDoiCandidates})`,
     );
+    console.log(`Continuation attempts total: ${continuationAttempts.length}`);
     console.log(`Continuation attempts completed: ${continuationCompleted.length}`);
+    console.log(`Continuation attempts failed: ${continuationFailed.length}`);
+    console.log(`Continuation recovered count: ${continuationRecoveredCount}`);
     console.log(
         `Continuation recovery rate: ${
-            continuationCompleted.length > 0
-                ? `${((continuationRecoveredCount / continuationCompleted.length) * 100).toFixed(1)}%`
+            continuationAttempts.length > 0
+                ? `${((continuationRecoveredCount / continuationAttempts.length) * 100).toFixed(1)}%`
                 : "n/a"
         }`,
     );

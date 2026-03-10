@@ -4,7 +4,7 @@ Use this runbook after shipping citation-provider changes or when citation hover
 
 ## Continuation Flags
 
-Citation continuation is live only when both flags are enabled:
+Citation continuation already uses these existing rollout flags and is live only when both are enabled:
 
 ```bash
 ENABLE_CITATION_CONTINUATION=1
@@ -81,7 +81,10 @@ The report prints:
 - count-bearing success rate
 - uncached latency p50/p95
 - percentage of PubMed DOI-bearing lookups that ended bibliography-only
+- continuation attempts total
 - continuation attempts completed
+- continuation attempts failed
+- continuation recovered count
 - continuation recovery rate
 - continuation latency p50/p95
 
@@ -93,6 +96,7 @@ Storage notes:
   - `citation_preview.continuation_completed`
   - `citation_preview.continuation_failed`
 - Non-terminal hover/prefetch/open/start events may still exist in the client event model, but they are not stored in the database.
+- Continuation recovery rate is `continuation recovered count / total continuation attempts`, where total attempts are `continuation_completed + continuation_failed`.
 
 ## First Triage
 

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
     __clearCitationMetadataCacheForTests,
     __getCitationMetadataCacheEntryForTests,
+    __setCitationMetadataCacheEntryForTests,
     continueCitationMetadataCached,
     fetchCrossrefMetadata,
     METADATA_CACHE_LIMIT,
@@ -714,6 +715,147 @@ describe("citation-metadata utilities", () => {
 
             expect(continued).toEqual(initial);
             expect(fetchMock).toHaveBeenCalledTimes(1);
+        });
+
+        it("dedupes concurrent continuation requests by citation key", async () => {
+            let resolveCrossref!: (value: Response) => void;
+            const fetchMock = vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
+                const url = typeof input === "string" ? input : input.toString();
+                if (url.includes("icite.od.nih.gov/api/pubs/77777777")) {
+                    return jsonResponse({});
+                }
+                if (url.includes("api.crossref.org/works/10.1000%2Fdedupe")) {
+                    return new Promise<Response>((resolve) => {
+                        resolveCrossref = resolve;
+                    });
+                }
+                throw new Error(`Unexpected URL: ${url}`);
+            });
+            vi.stubGlobal("fetch", fetchMock);
+
+            __setCitationMetadataCacheEntryForTests("https://pubmed.ncbi.nlm.nih.gov/77777777/", {
+                metadata: {
+                    title: "Concurrent continuation",
+                    authors: "Retry R",
+                    year: 2026,
+                    journal: "Continuation Journal",
+                    canonicalUrl: "https://pubmed.ncbi.nlm.nih.gov/77777777/",
+                    pmid: "77777777",
+                    doi: "10.1000/dedupe",
+                },
+                diagnostics: {
+                    resolutionPath: "pubmed_bibliography_only",
+                    reason: "crossref_timeout",
+                    resolvedWithCitationCount: false,
+                    hadDoiFallbackCandidate: true,
+                },
+            });
+
+            const firstPromise = continueCitationMetadataCached("https://pubmed.ncbi.nlm.nih.gov/77777777/");
+            const secondPromise = continueCitationMetadataCached("https://pubmed.ncbi.nlm.nih.gov/77777777/");
+            for (let index = 0; index < 10 && !resolveCrossref; index += 1) {
+                await Promise.resolve();
+            }
+            expect(typeof resolveCrossref).toBe("function");
+
+            resolveCrossref(jsonResponse({
+                message: {
+                    title: ["Crossref title"],
+                    author: [{ family: "Override", given: "Crossref" }],
+                    "container-title": ["Crossref Journal"],
+                    created: { "date-parts": [[1999]] },
+                    "is-referenced-by-count": 54,
+                },
+            }));
+
+            const [first, second] = await Promise.all([firstPromise, secondPromise]);
+
+            expect(first).toEqual(second);
+            expect(first?.metadata.citationCount).toBe(54);
+            expect(fetchMock).toHaveBeenCalledTimes(2);
+        });
+
+        it("re-reads the latest cached success before writing a slower no-count continuation result", async () => {
+            let resolveCrossref!: (value: Response) => void;
+            const fetchMock = vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
+                const url = typeof input === "string" ? input : input.toString();
+                if (url.includes("icite.od.nih.gov/api/pubs/88888888")) {
+                    return jsonResponse({});
+                }
+                if (url.includes("api.crossref.org/works/10.1000%2Fmonotonic")) {
+                    return new Promise<Response>((resolve) => {
+                        resolveCrossref = resolve;
+                    });
+                }
+                throw new Error(`Unexpected URL: ${url}`);
+            });
+            vi.stubGlobal("fetch", fetchMock);
+
+            const url = "https://pubmed.ncbi.nlm.nih.gov/88888888/";
+            __setCitationMetadataCacheEntryForTests(url, {
+                metadata: {
+                    title: "Monotonic continuation",
+                    authors: "Retry R",
+                    year: 2026,
+                    journal: "Continuation Journal",
+                    canonicalUrl: url,
+                    pmid: "88888888",
+                    doi: "10.1000/monotonic",
+                },
+                diagnostics: {
+                    resolutionPath: "pubmed_bibliography_only",
+                    reason: "crossref_timeout",
+                    resolvedWithCitationCount: false,
+                    hadDoiFallbackCandidate: true,
+                },
+            });
+
+            const continuationPromise = continueCitationMetadataCached(url);
+            for (let index = 0; index < 10 && !resolveCrossref; index += 1) {
+                await Promise.resolve();
+            }
+            expect(typeof resolveCrossref).toBe("function");
+
+            __setCitationMetadataCacheEntryForTests(url, {
+                metadata: {
+                    title: "Monotonic continuation",
+                    authors: "Retry R",
+                    year: 2026,
+                    journal: "Continuation Journal",
+                    canonicalUrl: url,
+                    pmid: "88888888",
+                    doi: "10.1000/monotonic",
+                    citationCount: 77,
+                    citationCountSource: "crossref",
+                    citationCountFetchedAt: "2026-03-10T16:00:00.000Z",
+                },
+                diagnostics: {
+                    resolutionPath: "pubmed_crossref_fallback",
+                    reason: "count_resolved",
+                    resolvedWithCitationCount: true,
+                    hadDoiFallbackCandidate: true,
+                },
+            });
+
+            resolveCrossref(jsonResponse({
+                message: {
+                    title: ["No count result"],
+                    author: [{ family: "Override", given: "Crossref" }],
+                    "container-title": ["Crossref Journal"],
+                    created: { "date-parts": [[1999]] },
+                },
+            }));
+
+            const continued = await continuationPromise;
+            const cached = __getCitationMetadataCacheEntryForTests(url);
+
+            expect(continued?.metadata.citationCount).toBe(77);
+            expect(continued?.diagnostics).toMatchObject({
+                resolutionPath: "pubmed_crossref_fallback",
+                reason: "count_resolved",
+                resolvedWithCitationCount: true,
+            });
+            expect(cached).toEqual(continued);
         });
     });
 

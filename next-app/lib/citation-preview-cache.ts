@@ -101,17 +101,27 @@ export function patchCitationMetadataInClientCache(
 ): CitationSuccessResult {
     const cacheKey = getCacheKey(url);
     const current = metadataCache.get(cacheKey);
+    const currentHasCount = typeof current?.data.citationCount === "number";
+    const nextHasCount = typeof nextResult.data.citationCount === "number";
     const patched: CitationSuccessResult = current
         ? {
             success: true,
             data: {
                 ...current.data,
-                citationCount: nextResult.data.citationCount,
-                citationCountSource: nextResult.data.citationCountSource,
-                citationCountFetchedAt: nextResult.data.citationCountFetchedAt,
+                citationCount: currentHasCount && !nextHasCount
+                    ? current.data.citationCount
+                    : nextResult.data.citationCount,
+                citationCountSource: currentHasCount && !nextHasCount
+                    ? current.data.citationCountSource
+                    : nextResult.data.citationCountSource,
+                citationCountFetchedAt: currentHasCount && !nextHasCount
+                    ? current.data.citationCountFetchedAt
+                    : nextResult.data.citationCountFetchedAt,
             },
             meta: {
-                diagnostics: nextResult.meta.diagnostics,
+                diagnostics: currentHasCount && !nextHasCount
+                    ? current.meta.diagnostics
+                    : nextResult.meta.diagnostics,
             },
         }
         : nextResult;

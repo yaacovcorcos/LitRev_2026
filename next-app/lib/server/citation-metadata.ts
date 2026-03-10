@@ -17,6 +17,7 @@ export type CitationResolution = {
 /** Cache for citation metadata (in-memory, per-process). */
 const metadataCache = new Map<string, CitationResolution | null>();
 const inFlightRequests = new Map<string, Promise<CitationResolution | null>>();
+const continuationInFlightRequests = new Map<string, Promise<CitationResolution | null>>();
 
 const SUCCESS_CACHE_TTL_MS = 1000 * 60 * 60; // 1 hour
 const FAILURE_CACHE_TTL_MS = 1000 * 60 * 5; // 5 minutes
@@ -182,6 +183,13 @@ function patchCitationResolutionCountOnly(
     incoming: CitationCountDetails | CitationMetadata | null,
     diagnostics: CitationResolutionDiagnostics,
 ): CitationResolution {
+    const currentHasCount = isUsableCitationCount(current.metadata.citationCount);
+    const incomingHasCount = isUsableCitationCount(incoming?.citationCount);
+
+    if (currentHasCount && !incomingHasCount) {
+        return current;
+    }
+
     return buildResolution(
         mergeCitationCount(current.metadata, incoming),
         diagnostics,
@@ -194,7 +202,9 @@ function patchCachedCitationResolution(
     incoming: CitationCountDetails | CitationMetadata | null,
     diagnostics: CitationResolutionDiagnostics,
 ): CitationResolution {
-    const patched = patchCitationResolutionCountOnly(current, incoming, diagnostics);
+    const latestCached = getCached(cacheKey);
+    const base = latestCached ?? current;
+    const patched = patchCitationResolutionCountOnly(base, incoming, diagnostics);
     setCache(cacheKey, patched);
     return patched;
 }
@@ -251,6 +261,7 @@ export function __clearCitationMetadataCacheForTests(): void {
     metadataCache.clear();
     cacheTimestamps.clear();
     inFlightRequests.clear();
+    continuationInFlightRequests.clear();
     lastPubMedRequest = 0;
 }
 
@@ -258,6 +269,17 @@ export function __getCitationMetadataCacheEntryForTests(url: string): CitationRe
     const key = resolveCitationKey(url)?.cacheKey;
     if (!key) return undefined;
     return getCached(key);
+}
+
+export function __setCitationMetadataCacheEntryForTests(
+    url: string,
+    resolution: CitationResolution | null,
+): void {
+    const key = resolveCitationKey(url)?.cacheKey;
+    if (!key) {
+        throw new Error(`Unable to resolve citation cache key for ${url}`);
+    }
+    setCache(key, resolution);
 }
 
 // PubMed Fetcher
@@ -680,14 +702,23 @@ export async function continueCitationMetadataCached(
         return current;
     }
 
+    const pending = continuationInFlightRequests.get(keyParts.cacheKey);
+    if (pending) return pending;
+
     if (current.metadata.pmid) {
-        const continued = await continuePubMedCitationResolution(current);
-        return patchCachedCitationResolution(
-            keyParts.cacheKey,
-            current,
-            continued.metadata,
-            continued.diagnostics,
-        );
+        const continuationPromise = continuePubMedCitationResolution(current)
+            .then((continued) => patchCachedCitationResolution(
+                keyParts.cacheKey,
+                current,
+                continued.metadata,
+                continued.diagnostics,
+            ))
+            .finally(() => {
+                continuationInFlightRequests.delete(keyParts.cacheKey);
+            });
+
+        continuationInFlightRequests.set(keyParts.cacheKey, continuationPromise);
+        return continuationPromise;
     }
 
     return current;
