@@ -112,13 +112,23 @@ describe("report-citation-preview-metrics", () => {
                         continuationRecoveredCount: true,
                     },
                 },
+                {
+                    type: "citation_preview.continuation_failed",
+                    payload: {
+                        citationType: "PubMed",
+                        latencyMs: 900,
+                    },
+                },
             ] as never);
 
-            const module = await import("../report-citation-preview-metrics");
-            await module.main();
+            const reportModule = await import("../report-citation-preview-metrics");
+            await reportModule.main();
 
+            expect(logSpy).toHaveBeenCalledWith("Continuation attempts total: 2");
             expect(logSpy).toHaveBeenCalledWith("Continuation attempts completed: 1");
-            expect(logSpy).toHaveBeenCalledWith("Continuation recovery rate: 100.0%");
+            expect(logSpy).toHaveBeenCalledWith("Continuation attempts failed: 1");
+            expect(logSpy).toHaveBeenCalledWith("Continuation recovered count: 1");
+            expect(logSpy).toHaveBeenCalledWith("Continuation recovery rate: 50.0%");
         } finally {
             logSpy.mockRestore();
         }

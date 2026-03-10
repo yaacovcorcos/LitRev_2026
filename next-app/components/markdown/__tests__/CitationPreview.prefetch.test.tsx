@@ -11,7 +11,10 @@ import {
     isCitationHoverPrefetchEnabled,
 } from "@/lib/citation-preview-feature-flags";
 import { recordCitationPreviewMetric } from "@/lib/ai/citation-preview-telemetry";
-import { clearCitationMetadataClientCache } from "@/lib/citation-preview-cache";
+import {
+    clearCitationMetadataClientCache,
+    getCitationMetadataFromClientCache,
+} from "@/lib/citation-preview-cache";
 
 vi.mock("@/app/actions/citation", () => ({
     fetchCitationMetadata: vi.fn().mockResolvedValue({
@@ -239,5 +242,246 @@ describe("CitationPreview prefetch behavior", () => {
         });
 
         expect(vi.mocked(continueCitationMetadata)).not.toHaveBeenCalled();
+    });
+
+    it("ignores a continuation result that resolves after the popover closes", async () => {
+        vi.mocked(isCitationHoverPrefetchEnabled).mockReturnValue(false);
+        vi.mocked(isCitationHoverContinuationEnabled).mockReturnValue(true);
+
+        let resolveContinuation!: (value: Awaited<ReturnType<typeof continueCitationMetadata>>) => void;
+        vi.mocked(fetchCitationMetadata).mockResolvedValueOnce({
+            success: true,
+            data: {
+                title: "Citation title",
+                authors: "Doe J",
+                year: 2024,
+                journal: "Journal of Tests",
+                canonicalUrl: "https://pubmed.ncbi.nlm.nih.gov/12345678/",
+                pmid: "12345678",
+                doi: "10.1000/xyz123",
+            },
+            meta: {
+                diagnostics: {
+                    resolutionPath: "pubmed_bibliography_only",
+                    reason: "budget_exhausted",
+                    resolvedWithCitationCount: false,
+                    hadDoiFallbackCandidate: true,
+                },
+            },
+        });
+        vi.mocked(continueCitationMetadata).mockImplementationOnce(
+            () => new Promise((resolve) => {
+                resolveContinuation = resolve;
+            }),
+        );
+
+        render(
+            <CitationPreview href="https://pubmed.ncbi.nlm.nih.gov/12345678/" type="PubMed">
+                PubMed
+            </CitationPreview>
+        );
+
+        const link = screen.getByRole("link", { name: "PubMed" });
+        fireEvent.mouseEnter(link);
+
+        await act(async () => {
+            vi.advanceTimersByTime(350);
+            await Promise.resolve();
+            await Promise.resolve();
+        });
+
+        fireEvent.keyDown(link, { key: "Escape" });
+
+        await act(async () => {
+            resolveContinuation({
+                success: true,
+                data: {
+                    title: "Citation title",
+                    authors: "Doe J",
+                    year: 2024,
+                    journal: "Journal of Tests",
+                    canonicalUrl: "https://pubmed.ncbi.nlm.nih.gov/12345678/",
+                    pmid: "12345678",
+                    doi: "10.1000/xyz123",
+                    citationCount: 21,
+                    citationCountSource: "crossref",
+                    citationCountFetchedAt: "2026-03-10T15:00:00.000Z",
+                },
+                meta: {
+                    diagnostics: {
+                        resolutionPath: "pubmed_crossref_fallback",
+                        reason: "count_resolved",
+                        resolvedWithCitationCount: true,
+                        hadDoiFallbackCandidate: true,
+                    },
+                },
+            });
+            await Promise.resolve();
+        });
+
+        expect(getCitationMetadataFromClientCache("https://pubmed.ncbi.nlm.nih.gov/12345678/")?.data.citationCount).toBeUndefined();
+        expect(
+            vi.mocked(recordCitationPreviewMetric).mock.calls.some(
+                ([event]) => event.type === "continuation_completed",
+            )
+        ).toBe(false);
+    });
+
+    it("ignores a continuation result that resolves after unmount", async () => {
+        vi.mocked(isCitationHoverPrefetchEnabled).mockReturnValue(false);
+        vi.mocked(isCitationHoverContinuationEnabled).mockReturnValue(true);
+
+        let resolveContinuation!: (value: Awaited<ReturnType<typeof continueCitationMetadata>>) => void;
+        vi.mocked(fetchCitationMetadata).mockResolvedValueOnce({
+            success: true,
+            data: {
+                title: "Citation title",
+                authors: "Doe J",
+                year: 2024,
+                journal: "Journal of Tests",
+                canonicalUrl: "https://pubmed.ncbi.nlm.nih.gov/12345678/",
+                pmid: "12345678",
+                doi: "10.1000/xyz123",
+            },
+            meta: {
+                diagnostics: {
+                    resolutionPath: "pubmed_bibliography_only",
+                    reason: "budget_exhausted",
+                    resolvedWithCitationCount: false,
+                    hadDoiFallbackCandidate: true,
+                },
+            },
+        });
+        vi.mocked(continueCitationMetadata).mockImplementationOnce(
+            () => new Promise((resolve) => {
+                resolveContinuation = resolve;
+            }),
+        );
+
+        const view = render(
+            <CitationPreview href="https://pubmed.ncbi.nlm.nih.gov/12345678/" type="PubMed">
+                PubMed
+            </CitationPreview>
+        );
+
+        fireEvent.mouseEnter(screen.getByRole("link", { name: "PubMed" }));
+
+        await act(async () => {
+            vi.advanceTimersByTime(350);
+            await Promise.resolve();
+            await Promise.resolve();
+        });
+
+        view.unmount();
+
+        await act(async () => {
+            resolveContinuation({
+                success: true,
+                data: {
+                    title: "Citation title",
+                    authors: "Doe J",
+                    year: 2024,
+                    journal: "Journal of Tests",
+                    canonicalUrl: "https://pubmed.ncbi.nlm.nih.gov/12345678/",
+                    pmid: "12345678",
+                    doi: "10.1000/xyz123",
+                    citationCount: 21,
+                    citationCountSource: "crossref",
+                    citationCountFetchedAt: "2026-03-10T15:00:00.000Z",
+                },
+                meta: {
+                    diagnostics: {
+                        resolutionPath: "pubmed_crossref_fallback",
+                        reason: "count_resolved",
+                        resolvedWithCitationCount: true,
+                        hadDoiFallbackCandidate: true,
+                    },
+                },
+            });
+            await Promise.resolve();
+        });
+
+        expect(getCitationMetadataFromClientCache("https://pubmed.ncbi.nlm.nih.gov/12345678/")?.data.citationCount).toBeUndefined();
+    });
+
+    it("ignores a continuation result that resolves after the href changes", async () => {
+        vi.mocked(isCitationHoverPrefetchEnabled).mockReturnValue(false);
+        vi.mocked(isCitationHoverContinuationEnabled).mockReturnValue(true);
+
+        let resolveContinuation!: (value: Awaited<ReturnType<typeof continueCitationMetadata>>) => void;
+        vi.mocked(fetchCitationMetadata).mockResolvedValueOnce({
+            success: true,
+            data: {
+                title: "Citation title",
+                authors: "Doe J",
+                year: 2024,
+                journal: "Journal of Tests",
+                canonicalUrl: "https://pubmed.ncbi.nlm.nih.gov/12345678/",
+                pmid: "12345678",
+                doi: "10.1000/xyz123",
+            },
+            meta: {
+                diagnostics: {
+                    resolutionPath: "pubmed_bibliography_only",
+                    reason: "budget_exhausted",
+                    resolvedWithCitationCount: false,
+                    hadDoiFallbackCandidate: true,
+                },
+            },
+        });
+        vi.mocked(continueCitationMetadata).mockImplementationOnce(
+            () => new Promise((resolve) => {
+                resolveContinuation = resolve;
+            }),
+        );
+
+        const view = render(
+            <CitationPreview href="https://pubmed.ncbi.nlm.nih.gov/12345678/" type="PubMed">
+                PubMed
+            </CitationPreview>
+        );
+
+        fireEvent.mouseEnter(screen.getByRole("link", { name: "PubMed" }));
+
+        await act(async () => {
+            vi.advanceTimersByTime(350);
+            await Promise.resolve();
+            await Promise.resolve();
+        });
+
+        view.rerender(
+            <CitationPreview href="https://pubmed.ncbi.nlm.nih.gov/87654321/" type="PubMed">
+                PubMed
+            </CitationPreview>
+        );
+
+        await act(async () => {
+            resolveContinuation({
+                success: true,
+                data: {
+                    title: "Citation title",
+                    authors: "Doe J",
+                    year: 2024,
+                    journal: "Journal of Tests",
+                    canonicalUrl: "https://pubmed.ncbi.nlm.nih.gov/12345678/",
+                    pmid: "12345678",
+                    doi: "10.1000/xyz123",
+                    citationCount: 21,
+                    citationCountSource: "crossref",
+                    citationCountFetchedAt: "2026-03-10T15:00:00.000Z",
+                },
+                meta: {
+                    diagnostics: {
+                        resolutionPath: "pubmed_crossref_fallback",
+                        reason: "count_resolved",
+                        resolvedWithCitationCount: true,
+                        hadDoiFallbackCandidate: true,
+                    },
+                },
+            });
+            await Promise.resolve();
+        });
+
+        expect(getCitationMetadataFromClientCache("https://pubmed.ncbi.nlm.nih.gov/12345678/")?.data.citationCount).toBeUndefined();
     });
 });
