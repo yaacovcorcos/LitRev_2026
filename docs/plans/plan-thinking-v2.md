@@ -66,6 +66,11 @@ That means the primary transparency layer should be grounded in:
 
 Raw/provider-native reasoning should remain optional and secondary.
 
+## Current Implementation Status
+- Project copilot now treats live progress as ephemeral process state instead of rendering it as assistant transcript text.
+- PubMed tool receipts now preserve compact factual metadata (`queryPreview`, `returnedCount`, `totalResults`) through the shared trace path.
+- Repeated adjacent PubMed searches are grouped in the renderer into one compact in-chat search sequence card; the canonical runtime record remains atomic.
+
 ## Truth Model
 Every visible process item should fall into one of these categories:
 

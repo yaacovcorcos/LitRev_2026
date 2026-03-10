@@ -76,6 +76,56 @@ describe("shared stream reducer", () => {
     expect(toolIntent.callId.startsWith("synthetic-tool-")).toBe(true);
   });
 
+  it("preserves factual PubMed metadata on tool activity intents", () => {
+    let state = createInitialSharedStreamState();
+
+    const toolCallReduced = reduceSharedStreamChunk(
+      state,
+      {
+        type: "tool_call",
+        toolCall: {
+          id: "pubmed-1",
+          name: "search_pubmed",
+          arguments: {
+            query: "\"retrospective cohort\" AND disposition decision AND physicians AND llm",
+          },
+        },
+      },
+      meta,
+    );
+    state = toolCallReduced.state;
+
+    const runningIntent = toolCallReduced.intents.find((intent) => intent.type === "tool_activity_upsert");
+    expect(runningIntent && runningIntent.type === "tool_activity_upsert").toBe(true);
+    if (!runningIntent || runningIntent.type !== "tool_activity_upsert") return;
+    expect(runningIntent.queryPreview).toContain("retrospective cohort");
+
+    const toolResultReduced = reduceSharedStreamChunk(
+      state,
+      {
+        type: "tool_result",
+        toolName: "search_pubmed",
+        toolResult: {
+          callId: "pubmed-1",
+          result: {
+            query: "\"retrospective cohort\" AND disposition decision AND physicians AND llm",
+            source: "pubmed",
+            totalResults: 42,
+            returnedCount: 10,
+            results: [],
+          },
+        },
+      },
+      meta,
+    );
+
+    const doneIntent = toolResultReduced.intents.find((intent) => intent.type === "tool_activity_upsert" && intent.status === "done");
+    expect(doneIntent && doneIntent.type === "tool_activity_upsert").toBe(true);
+    if (!doneIntent || doneIntent.type !== "tool_activity_upsert") return;
+    expect(doneIntent.returnedCount).toBe(10);
+    expect(doneIntent.totalResults).toBe(42);
+  });
+
   it("keeps user input context from reducer meta", () => {
     const reduced = reduceSharedStreamChunk(
       createInitialSharedStreamState(),
