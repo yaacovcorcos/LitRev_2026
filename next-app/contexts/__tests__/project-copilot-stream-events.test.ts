@@ -121,6 +121,77 @@ describe("project copilot stream event handlers", () => {
     expect(pendingChoices).toEqual([]);
   });
 
+  it("stores progress as structured state instead of assistant transcript text and clears it", () => {
+    const messages: CopilotMessage[] = [];
+    const deps = {
+      aiMessageId: "m-1",
+      page: "overview" as const,
+      section: undefined,
+      projectId: "p-1",
+      myGen: 1,
+      getCurrentGen: () => 1,
+      setCurrentRunId: vi.fn(),
+      syncConversationId: vi.fn(),
+      upsertConversationTitle: vi.fn(),
+      upsertArtifact: vi.fn(),
+      updateMessages: (updater: (msgs: CopilotMessage[]) => CopilotMessage[]) => {
+        const next = updater(messages);
+        messages.splice(0, messages.length, ...next);
+      },
+      emitLedgerChanged: vi.fn(),
+      setPendingChoices: vi.fn(),
+      onPlanStepUpdate: vi.fn(),
+      setPendingUserInput: vi.fn(),
+    };
+
+    let state = handleProjectCopilotStreamChunk(
+      { type: "progress", progressMessage: "Searching PubMed", progressCurrent: 1, progressTotal: 3 },
+      baseState(),
+      deps,
+    );
+
+    expect(state.fullContent).toBe("");
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).toMatchObject({
+      id: "progress-current",
+      sender: "ai",
+      text: "",
+      progress: {
+        message: "Searching PubMed",
+        current: 1,
+        total: 3,
+      },
+    });
+
+    state = handleProjectCopilotStreamChunk(
+      { type: "progress", progressMessage: "Analyzing search results", progressCurrent: 2, progressTotal: 3 },
+      state,
+      deps,
+    );
+
+    expect(messages).toHaveLength(1);
+    expect(messages[0]?.progress).toMatchObject({
+      message: "Analyzing search results",
+      current: 2,
+      total: 3,
+    });
+
+    state = handleProjectCopilotStreamChunk(
+      { type: "content", content: "Found relevant studies." },
+      state,
+      deps,
+    );
+
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).toMatchObject({
+      id: "m-1",
+      sender: "ai",
+      text: "Found relevant studies.",
+    });
+    expect(messages[0]?.progress).toBeUndefined();
+    expect(state.fullContent).toBe("Found relevant studies.");
+  });
+
   it("updates run and conversation identity on run_start", () => {
     const setCurrentRunId = vi.fn();
     const syncConversationId = vi.fn();

@@ -23,6 +23,16 @@ function isContextAttachment(
  */
 export function messagesToTimeline(messages: CopilotMessage[]): TimelineItem[] {
     return messages.map((msg) => {
+        if (msg.progress) {
+            return {
+                type: "progress" as const,
+                id: msg.id,
+                message: msg.progress.message,
+                current: msg.progress.current,
+                total: msg.progress.total,
+            };
+        }
+
         if (msg.toolActivity) {
             return {
                 type: "tool_activity" as const,

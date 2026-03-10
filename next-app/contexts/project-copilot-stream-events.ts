@@ -94,6 +94,50 @@ function upsertAssistantMessage(
   });
 }
 
+function upsertProgressMessage(
+  deps: StreamChunkDeps,
+  payload: Extract<SharedStreamIntent, { type: "progress_upsert" }>,
+) {
+  const messageId = "progress-current";
+  const now = new Date().toISOString();
+
+  deps.updateMessages((messages) => {
+    const idx = messages.findIndex((message) => message.id === messageId);
+    if (idx < 0) {
+      const nextMessage: CopilotMessage = {
+        id: messageId,
+        sender: "ai",
+        text: "",
+        createdAt: now,
+        context: { page: deps.page, section: deps.section },
+        progress: {
+          message: payload.message,
+          current: payload.current,
+          total: payload.total,
+        },
+      };
+      return [...messages, nextMessage];
+    }
+
+    const next = [...messages];
+    const existing = next[idx];
+    if (!existing) return messages;
+    next[idx] = {
+      ...existing,
+      progress: {
+        message: payload.message,
+        current: payload.current,
+        total: payload.total,
+      },
+    };
+    return next;
+  });
+}
+
+function clearProgressMessage(deps: StreamChunkDeps) {
+  deps.updateMessages((messages) => messages.filter((message) => !message.progress));
+}
+
 function upsertToolActivityMessage(
   deps: StreamChunkDeps,
   payload: Extract<SharedStreamIntent, { type: "tool_activity_upsert" }>,
@@ -256,17 +300,11 @@ function applyIntent(
       return;
     }
     case "progress_upsert": {
-      // Project copilot keeps progress lightweight inside assistant bubble to avoid
-      // introducing extra timeline item types in legacy message storage.
-      if (!state.fullContent) {
-        upsertAssistantMessage(deps, {
-          type: "assistant_upsert",
-          text: `*${intent.message}*`,
-        });
-      }
+      upsertProgressMessage(deps, intent);
       return;
     }
     case "progress_clear": {
+      clearProgressMessage(deps);
       return;
     }
     case "tool_activity_upsert": {
