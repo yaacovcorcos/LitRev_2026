@@ -40,7 +40,7 @@ import { terminalReasonFromThrownError, type StreamTerminalReason } from "@/lib/
 import { recordReliabilityMetric } from "@/lib/ai/reliability-telemetry";
 import type { RetryModelExpectation } from "@/types/chat-unification";
 import { isMobileAiV2Enabled } from "@/lib/mobile/feature-flags";
-import { MOBILE_VIEWPORT_MEDIA_QUERY } from "@/lib/mobile/breakpoints";
+import { PHONE_MEDIA_QUERY } from "@/lib/mobile/breakpoints";
 import { isMobileTelemetryContext, recordMobileMetric } from "@/lib/mobile/telemetry";
 import {
   getReasoningModePreference,
@@ -251,7 +251,7 @@ export default function AIView() {
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
-  const [isMobileViewport, setIsMobileViewport] = useState(false);
+  const [isPhoneViewport, setIsPhoneViewport] = useState(false);
   const [isComposerReady, setComposerReady] = useState(false);
 
   const [workspaceContextText, setWorkspaceContextText] = useState("");
@@ -322,8 +322,8 @@ export default function AIView() {
 
   useEffect(() => {
     if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
-    const mobileQuery = window.matchMedia(MOBILE_VIEWPORT_MEDIA_QUERY);
-    const apply = () => setIsMobileViewport(mobileQuery.matches);
+    const mobileQuery = window.matchMedia(PHONE_MEDIA_QUERY);
+    const apply = () => setIsPhoneViewport(mobileQuery.matches);
     apply();
 
     if (typeof mobileQuery.addEventListener === "function") {
@@ -436,7 +436,7 @@ export default function AIView() {
     emitMobileActionTap("ai_history_toggle", 32);
     setHistoryCollapsed((prev) => {
       const next = !prev;
-      if (mobileAiV2Enabled && isMobileViewport && prev && isMobileTelemetryContext()) {
+      if (mobileAiV2Enabled && isPhoneViewport && prev && isMobileTelemetryContext()) {
         recordMobileMetric({
           type: "mobile_drawer_opened",
           surface: "ai",
@@ -449,7 +449,7 @@ export default function AIView() {
       }
       return next;
     });
-  }, [emitMobileActionTap, isMobileViewport, mobileAiV2Enabled]);
+  }, [emitMobileActionTap, isPhoneViewport, mobileAiV2Enabled]);
 
   const ensureWorkspaceContextText = useCallback(async () => {
     if (selectedProjectId) return "";
@@ -714,7 +714,7 @@ export default function AIView() {
   }, [activeConversationId, selectedProjectId, sortConversationsByUpdatedAt, updateConversationTimeline]);
 
   const handleSelectConversation = useCallback(async (id: string) => {
-    if (mobileAiV2Enabled && isMobileViewport) {
+    if (mobileAiV2Enabled && isPhoneViewport) {
       setHistoryCollapsed(true);
     }
     setActiveConversationId(id);
@@ -740,7 +740,7 @@ export default function AIView() {
     } finally {
       setIsConversationLoading(false);
     }
-  }, [isMobileViewport, mobileAiV2Enabled, timelineByConversation, updateConversationTimeline]);
+  }, [isPhoneViewport, mobileAiV2Enabled, timelineByConversation, updateConversationTimeline]);
 
   const handleDeleteConversation = useCallback(async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -927,7 +927,7 @@ export default function AIView() {
   }, [contextMenu]);
 
   useEffect(() => {
-    if (!mobileAiV2Enabled || !isMobileViewport || isHistoryCollapsed) return;
+    if (!mobileAiV2Enabled || !isPhoneViewport || isHistoryCollapsed) return;
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setHistoryCollapsed(true);
@@ -935,7 +935,7 @@ export default function AIView() {
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [isHistoryCollapsed, isMobileViewport, mobileAiV2Enabled]);
+  }, [isHistoryCollapsed, isPhoneViewport, mobileAiV2Enabled]);
 
   const handleCompressHistory = useCallback(async () => {
     const sourceId = activeConversationId;
@@ -1017,13 +1017,13 @@ export default function AIView() {
     setConversations((prev) => sortConversationsByUpdatedAt([newConv, ...prev]));
     setActiveConversationId(id);
     updateConversationTimeline(id, () => []);
-    if (mobileAiV2Enabled && isMobileViewport) {
+    if (mobileAiV2Enabled && isPhoneViewport) {
       setHistoryCollapsed(true);
     }
     setPendingChoices([]);
     setPendingUserInput(null);
     setPrefillCommand(null);
-  }, [emitMobileActionTap, isMobileViewport, mobileAiV2Enabled, selectedProjectId, sortConversationsByUpdatedAt, updateConversationTimeline]);
+  }, [emitMobileActionTap, isPhoneViewport, mobileAiV2Enabled, selectedProjectId, sortConversationsByUpdatedAt, updateConversationTimeline]);
 
   const handleSend = useCallback(async (
     rawText: string,
@@ -1949,7 +1949,7 @@ export default function AIView() {
             />
           ) : null}
         </aside>
-        {mobileAiV2Enabled && isMobileViewport && !isHistoryCollapsed ? (
+        {mobileAiV2Enabled && isPhoneViewport && !isHistoryCollapsed ? (
           <button
             type="button"
             className={styles.mobileHistoryOverlay}
@@ -1961,7 +1961,7 @@ export default function AIView() {
         <section className={styles.chatInterface} role="region" aria-label="Chat interface">
           <AiChatHeader
             mobileAiV2Enabled={mobileAiV2Enabled}
-            isMobileViewport={isMobileViewport}
+            isPhoneViewport={isPhoneViewport}
             isHistoryCollapsed={isHistoryCollapsed}
             historyContentId={historyContentId}
             selectedProjectId={selectedProjectId}

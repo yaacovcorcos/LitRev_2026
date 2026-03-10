@@ -17,7 +17,7 @@ type ProjectOption = {
 
 type AiChatHeaderProps = {
   mobileAiV2Enabled: boolean;
-  isMobileViewport: boolean;
+  isPhoneViewport: boolean;
   isHistoryCollapsed: boolean;
   historyContentId: string;
   selectedProjectId: string | null;
@@ -36,7 +36,7 @@ type AiChatHeaderProps = {
 
 export function AiChatHeader({
   mobileAiV2Enabled,
-  isMobileViewport,
+  isPhoneViewport,
   isHistoryCollapsed,
   historyContentId,
   selectedProjectId,
@@ -71,7 +71,7 @@ export function AiChatHeader({
 
   return (
     <div className={styles.chatHeader}>
-      {mobileAiV2Enabled && isMobileViewport ? (
+      {mobileAiV2Enabled && isPhoneViewport ? (
         <button
           type="button"
           className={styles.mobileHistoryToggle}
