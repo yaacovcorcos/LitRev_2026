@@ -70,7 +70,7 @@ export function mapToolToArtifactTitle(toolName: string, args: Record<string, un
 /** Map tool name → progress message for streaming indicator */
 export function mapToolToProgressMessage(toolName: string): string {
     const messages: Record<string, string> = {
-        search_pubmed: "Searching PubMed...",
+        search_pubmed: "Searching PubMed",
         add_to_ledger: "Adding study to ledger...",
         exclude_study: "Excluding study...",
         delete_study: "Deleting study from ledger...",

@@ -78,6 +78,68 @@ export const CHAT_STREAM_FIXTURES_V1: ChatStreamFixture[] = [
     ],
   },
   {
+    id: "pubmed-refinement-trace",
+    description: "PubMed search/refinement emits shared progress, receipts, and checkpoints",
+    page: "overview",
+    chunks: [
+      { type: "run_start", runId: "run-pubmed", conversationId: "conv-pubmed" },
+      {
+        type: "tool_call",
+        toolCall: {
+          id: "pubmed-1",
+          name: "search_pubmed",
+          arguments: {
+            query: "\"retrospective cohort\" disposition decision",
+          },
+        },
+      },
+      {
+        type: "tool_result",
+        toolName: "search_pubmed",
+        toolResult: {
+          callId: "pubmed-1",
+          result: {
+            totalResults: 42,
+            returnedCount: 10,
+            results: [],
+          },
+        },
+      },
+      {
+        type: "tool_call",
+        toolCall: {
+          id: "pubmed-2",
+          name: "search_pubmed",
+          arguments: {
+            query: "\"retrospective cohort\" disposition decision physicians llm",
+          },
+        },
+      },
+      {
+        type: "tool_result",
+        toolName: "search_pubmed",
+        toolResult: {
+          callId: "pubmed-2",
+          result: {
+            totalResults: 18,
+            returnedCount: 6,
+            results: [],
+          },
+        },
+      },
+      {
+        type: "user_input_required",
+        userInputRequest: {
+          callId: "ask-pubmed-1",
+          question: "Which of these results should I inspect first?",
+          questionType: "single_choice",
+          options: [{ label: "Most recent" }, { label: "Highest cited" }],
+        },
+      },
+      { type: "run_end", runStatus: "paused" },
+    ],
+  },
+  {
     id: "error-and-done",
     description: "Explicit error and done events for contract coverage",
     page: "overview",

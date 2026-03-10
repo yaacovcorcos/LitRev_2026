@@ -21,6 +21,8 @@ describe("project copilot stream event handlers", () => {
       syntheticToolCounter: 0,
       localRunId: "",
       effectiveConvId: null,
+      completedPubmedSearchCount: 0,
+      lastPubmedSearchSize: null,
     };
   }
 
@@ -190,6 +192,45 @@ describe("project copilot stream event handlers", () => {
     });
     expect(messages[0]?.progress).toBeUndefined();
     expect(state.fullContent).toBe("Found relevant studies.");
+  });
+
+  it("stores checkpoint intents as structured project messages", () => {
+    const messages: CopilotMessage[] = [];
+    const deps = {
+      aiMessageId: "m-1",
+      page: "overview" as const,
+      section: undefined,
+      projectId: "p-1",
+      myGen: 1,
+      getCurrentGen: () => 1,
+      setCurrentRunId: vi.fn(),
+      syncConversationId: vi.fn(),
+      upsertConversationTitle: vi.fn(),
+      upsertArtifact: vi.fn(),
+      updateMessages: (updater: (msgs: CopilotMessage[]) => CopilotMessage[]) => {
+        const next = updater(messages);
+        messages.splice(0, messages.length, ...next);
+      },
+      emitLedgerChanged: vi.fn(),
+      setPendingChoices: vi.fn(),
+      onPlanStepUpdate: vi.fn(),
+      setPendingUserInput: vi.fn(),
+    };
+
+    handleProjectCopilotStreamChunk(
+      { type: "checkpoint", checkpointLabel: "PubMed returned 18 results. Reviewing the strongest matches now." },
+      baseState(),
+      deps,
+    );
+
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).toMatchObject({
+      sender: "ai",
+      text: "",
+      checkpoint: {
+        label: "PubMed returned 18 results. Reviewing the strongest matches now.",
+      },
+    });
   });
 
   it("scopes progress to the active generation and replaces stale progress rows", () => {

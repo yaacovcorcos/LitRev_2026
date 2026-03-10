@@ -99,6 +99,10 @@ describe("shared stream reducer", () => {
     expect(runningIntent && runningIntent.type === "tool_activity_upsert").toBe(true);
     if (!runningIntent || runningIntent.type !== "tool_activity_upsert") return;
     expect(runningIntent.queryPreview).toContain("retrospective cohort");
+    expect(toolCallReduced.intents).toContainEqual({
+      type: "progress_upsert",
+      message: "Searching PubMed",
+    });
 
     const toolResultReduced = reduceSharedStreamChunk(
       state,
@@ -124,6 +128,65 @@ describe("shared stream reducer", () => {
     if (!doneIntent || doneIntent.type !== "tool_activity_upsert") return;
     expect(doneIntent.returnedCount).toBe(10);
     expect(doneIntent.totalResults).toBe(42);
+    expect(doneIntent.summary).toBe("Found 10 of 42 PubMed results.");
+    expect(toolResultReduced.intents).toContainEqual({
+      type: "progress_upsert",
+      message: "Reviewing PubMed results",
+    });
+    expect(toolResultReduced.intents).toContainEqual({
+      type: "checkpoint_append",
+      label: "PubMed returned 42 results. The search is broad, so it is being narrowed next.",
+    });
+  });
+
+  it("emits refinement progress and narrowing checkpoint for repeated PubMed searches", () => {
+    let state = createInitialSharedStreamState({
+      completedPubmedSearchCount: 1,
+      lastPubmedSearchSize: 42,
+    });
+
+    const secondCall = reduceSharedStreamChunk(
+      state,
+      {
+        type: "tool_call",
+        toolCall: {
+          id: "pubmed-2",
+          name: "search_pubmed",
+          arguments: { query: "\"retrospective cohort\" AND llm admission discharge" },
+        },
+      },
+      meta,
+    );
+    state = secondCall.state;
+
+    expect(secondCall.intents).toContainEqual({
+      type: "progress_upsert",
+      message: "Refining the PubMed query",
+    });
+
+    const secondResult = reduceSharedStreamChunk(
+      state,
+      {
+        type: "tool_result",
+        toolName: "search_pubmed",
+        toolResult: {
+          callId: "pubmed-2",
+          result: {
+            totalResults: 9,
+            returnedCount: 4,
+            results: [],
+          },
+        },
+      },
+      meta,
+    );
+
+    expect(secondResult.intents).toContainEqual({
+      type: "checkpoint_append",
+      label: "The latest PubMed search narrowed the result set from 42 to 9 results. Reviewing the strongest matches now.",
+    });
+    expect(secondResult.state.completedPubmedSearchCount).toBe(2);
+    expect(secondResult.state.lastPubmedSearchSize).toBe(9);
   });
 
   it("keeps user input context from reducer meta", () => {
@@ -146,6 +209,14 @@ describe("shared stream reducer", () => {
     if (!appendIntent || appendIntent.type !== "user_input_append") return;
     expect(appendIntent.page).toBe("draft");
     expect(appendIntent.section).toBe("intro");
+    expect(reduced.intents).toContainEqual({
+      type: "progress_upsert",
+      message: "Waiting for your answer",
+    });
+    expect(reduced.intents).toContainEqual({
+      type: "checkpoint_append",
+      label: "Need your answer before continuing: Pick one",
+    });
   });
 
   it("fails dangling running tool when run ends", () => {

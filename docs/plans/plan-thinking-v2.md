@@ -32,27 +32,30 @@ The current runtime already has useful primitives, but the visible execution tra
   - why repeated calls happened
   - what changed between attempts
 
-### Progress is too generic
-- Generic progress labels are still derived from tool name only (for example `Searching PubMed...`).
-- They do not distinguish phases such as:
+### Progress is still too uneven outside the PubMed proving ground
+- PubMed now has stronger live progress semantics (`Searching`, `Refining`, `Reviewing`, `Waiting`).
+- Most other workflows still rely on generic tool-name-derived labels.
+- They still do not distinguish phases such as:
   - searching
   - analyzing results
-  - refining the query
+  - reading source material
+  - comparing candidates
   - drafting output
 
-### Project copilot still degrades progress into assistant text
-- `/ai` has a dedicated progress item.
-- project copilot still treats progress too much like assistant content.
-- This creates stale or misleading “it is still searching” moments even after the tool cards are done.
+### Cross-surface parity is improved but not complete
+- `/ai`, sidebar copilot, and the main project conversation now preserve the same core shared trace primitives for the shipped PubMed path.
+- Popup still lacks full timeline-style parity.
+- Some surfaces still achieve compactness through reduced presentation rather than fully mature semantic coverage.
 
 ### Reasoning visibility is optional but not dependable
 - The UI can display `reasoning_start|delta|end`.
 - In practice, provider/model support is inconsistent, so raw reasoning cannot be the primary transparency mechanism.
 
-### The middle layer is missing
-- There is still no durable checkpoint model that explains:
-  - what a tool result means
-  - what the agent concluded
+### The middle layer exists but only for the first proving ground
+- Shared checkpoints now exist as a real provider-independent narration layer.
+- Today they are meaningfully authored only for the PubMed workflow and blocking clarification states.
+- Most other workflows still have receipts without enough grounded explanation of:
+  - what the result means
   - why the next action is happening
 
 ## Strategic Position
@@ -69,8 +72,10 @@ Raw/provider-native reasoning should remain optional and secondary.
 ## Current Implementation Status
 - Project copilot now treats live progress as ephemeral process state instead of rendering it as assistant transcript text.
 - PubMed tool receipts now preserve compact factual metadata (`queryPreview`, `returnedCount`, `totalResults`) through the shared trace path.
+- Project copilot and the main project conversation now preserve shared checkpoint semantics through the structured message bridge instead of dropping them on project surfaces.
 - Repeated adjacent PubMed searches are grouped in the renderer into one compact in-chat search sequence card; the canonical runtime record remains atomic.
-- Grouped PubMed search sequences now support a renderer-local derived annotation based only on factual receipt metadata; the canonical `checkpoint_append` timeline lane remains unchanged in this slice.
+- Shared reducer semantics now derive PubMed-specific live progress (`Searching`, `Refining`, `Reviewing`) plus selective grounded checkpoints from runtime search facts alone; provider reasoning remains unnecessary for understanding the workflow.
+- Full provider-independent execution trace coverage is not done yet for non-PubMed search tools, read tools, proposal/mutation tools, popup parity, task-outline UX, or normalized provenance/source receipts.
 
 ## Truth Model
 Every visible process item should fall into one of these categories:
@@ -416,13 +421,22 @@ What not to copy directly:
 - checkpoints
 - optional reasoning lane
 
-### Project copilot
+### Project copilot sidebar
 - same underlying trace contract as `/ai`
 - more compact layout allowed
 - conditional task outline allowed only when it stays quiet and compact
 - but no transcript-progress masquerade
 - no semantic downgrades that make process state look like assistant speech
 - compactness should come from denser spacing and lighter chrome, not from dropping meaning
+
+### Main project conversation
+- same underlying semantic contract as `/ai` and sidebar copilot
+- layout can stay more transcript-forward, but it must still render:
+  - live progress
+  - durable receipts
+  - grounded checkpoints
+  - explicit blockers and failures
+- it must not silently drop structured trace items while preserving only assistant prose
 
 ### Popup
 - only opt in once popup can honestly render the relevant trace primitives
@@ -472,67 +486,156 @@ This plan does not aim to:
 
 ## Execution Sequence
 
-### Phase V2.0 - Contract lock
+### Phase V2.0 - Contract lock and shipped foundation
 1. Freeze the execution-trace truth model:
    - conditional task outline
-   - live phase
-   - tool receipts
-   - checkpoints
-   - optional reasoning
+   - live phase/progress
+   - durable receipts
+   - grounded checkpoints
+   - optional provider reasoning
 2. Freeze the product rule that process state must not be rendered as assistant transcript content.
 3. Freeze the product rule that repeated search refinements belong inside search-sequence receipts, not the high-level task outline.
+4. Treat the shipped PubMed work as the proving-ground baseline:
+   - shared PubMed progress semantics
+   - factual PubMed receipt summaries
+   - selective grounded PubMed checkpoints
+   - checkpoint preservation across `/ai`, sidebar copilot, and main project conversation
 
 Exit criteria:
 - One canonical transparency model exists.
-- No future work needs to guess whether “thinking” means reasoning, progress, or checkpoints.
+- The first provider-independent workflow is shipped and documented.
 
-### Phase V2.1 - Project progress convergence
-1. Remove transcript-style progress masquerade on project copilot.
-2. Converge project copilot upward toward the `/ai` ephemeral progress model.
-3. Keep project copilot on its current message-storage model for this slice; do not couple the change to a timeline-runtime migration.
-
-Exit criteria:
-- Current process state is honest and ephemeral on project copilot.
-- Project copilot no longer looks like the assistant is “saying” old progress labels.
-
-### Phase V2.2 - Tool receipt semantics
-1. Start with PubMed/search refinement as the proving ground.
-2. Preserve factual tool inputs/results needed for user-visible receipts.
-3. Humanize tool names and add compact input/output summaries.
-4. Prefer authoritative server duration over client-only deltas only if the shared tool-activity contract explicitly transports it.
+### Phase V2.1 - Cross-surface parity completion
+1. Audit all remaining adapter/storage loss between `/ai`, sidebar copilot, main project conversation, and popup.
+2. Preserve structured semantics end-to-end for:
+   - `progress`
+   - `tool_activity`
+   - `checkpoint`
+   - `stream_error`
+   - `artifact`
+   - `user_input_required`
+3. Finish parity for the main surfaces and document popup limits explicitly if it remains reduced.
 
 Exit criteria:
-- PubMed search receipts explain what actually happened, not just that something ran.
-- Repeated search refinement can be rendered compactly without inventing new runtime grouping metadata.
+- The same stream has the same semantic meaning on all supported main surfaces.
+- No supported surface silently degrades process state into assistant prose.
 
-### Phase V2.3 - Derived search annotations
-1. Extend the existing grouped PubMed renderer path with one compact derived annotation.
-2. Limit the annotation to conservative factual signals already present in receipts:
-   - result set narrowing or broadening
-   - repeated refinement without convergence
-   - the latest search becoming too narrow
-3. Keep this renderer-local in the grouped PubMed card; do not emit new canonical `checkpoint` items in this slice.
-
-Exit criteria:
-- Users can infer how the PubMed search is evolving without needing provider-native reasoning.
-- The canonical `checkpoint_append` lane remains available for future server-authored grounded checkpoints.
-
-### Phase V2.4 - Reasoning parity and refinement
-1. Improve reasoning-lane behavior where models/providers support it.
-2. Keep reasoning additive and user-controlled.
-3. Do not let reasoning become the only visible explanation layer.
-
-Exit criteria:
-- Reasoning is useful when present, but the system stays intelligible when absent.
-
-### Phase V2.5 - Guardrails and rollout
-1. Extend existing shared tests first.
-2. Keep architecture guard scripts enforced.
-3. Roll out by surface after parity confidence is high.
+### Phase V2.2 - Receipt expansion across core tools
+1. Expand semantic receipts beyond `search_pubmed`.
+2. Prioritize high-value provider-independent workflows:
+   - `search_openalex`
+   - `search_semantic_scholar`
+   - `read_protocol`
+   - `read_ledger`
+   - PDF read/extract tools
+   - selected proposal/mutation tools that create reviewable artifacts
+3. Keep the contract narrow and factual:
+   - display label
+   - compact input preview
+   - compact output summary
+   - authoritative duration/status
+4. Keep atomic trace facts canonical and leave grouping/compression in the renderer.
 
 Exit criteria:
-- Trace semantics are shared across supported surfaces.
-- Drift is caught by tests/guardrails rather than user reports.
+- Search, read, and proposal runs leave intelligible receipts without opening raw payloads.
+- Non-PubMed workflows no longer feel semantically blank.
+
+### Phase V2.3 - Checkpoint expansion across core workflows
+1. Extend selective grounded checkpoints beyond PubMed.
+2. Add checkpoint builders only where the runtime truly has enough facts:
+   - search refinement
+   - read complete
+   - blocked prerequisite / missing context
+   - proposal created / awaiting review
+   - clarification required
+3. Keep checkpoint authoring selective and factual, not mandatory per tool completion.
+
+Exit criteria:
+- Users can follow what changed and what happens next across the main workflows.
+- Checkpoints reduce confusion without becoming log spam.
+
+### Phase V2.4 - Stronger live phase vocabulary
+1. Expand the current `progress` vocabulary across the core workflows:
+   - searching
+   - reviewing results
+   - refining query
+   - reading source
+   - comparing candidates
+   - drafting answer
+   - drafting proposal
+   - waiting for input
+2. Re-evaluate whether the existing `progress` event shape is sufficient.
+3. Only if proven necessary, design a migration to a first-class `phase` event in a later slice.
+
+Exit criteria:
+- One active process state is always legible.
+- Generic tool-name progress no longer dominates the user-facing experience.
+
+### Phase V2.5 - Search/source provenance
+1. Add normalized source receipts and provenance aligned with runtime search behavior.
+2. Search turns should expose, where grounded:
+   - source searched
+   - query preview
+   - result counts
+   - selected/cited source identifiers when available
+3. Make final answers visibly consistent with prior search/read receipts.
+
+Exit criteria:
+- Users can trace answer claims back to observable retrieval steps.
+- Provenance is a runtime contract, not just narrative transcript text.
+
+### Phase V2.6 - Conditional task outlines for complex work
+1. Add a compact high-level task-outline layer for genuinely complex multi-step runs only.
+2. Source outlines from explicit runtime/task-state facts, not renderer guesses.
+3. Keep outlines above the detailed trace and prevent repeated refinement loops from becoming fake top-level steps.
+
+Exit criteria:
+- Complex runs get a clear high-level map.
+- Short runs stay clean and receipt/checkpoint-driven.
+
+### Phase V2.7 - Honest popup parity and unified interruption states
+1. Finish the popup contract honestly:
+   - active progress
+   - compact receipts where supported
+   - explicit blockers
+   - structured terminal failures
+2. Align interruption semantics across all surfaces:
+   - retryable vs non-retryable failure
+   - blocked-on-user
+   - degraded continuation
+   - resumed/retried runs
+3. Keep documented surface limits explicit instead of implying full parity.
+
+Exit criteria:
+- Popup is supportable and truthful.
+- Failure, blocker, and recovery semantics are consistent across surfaces.
+
+### Phase V2.8 - Evals, telemetry, and rollout hardening
+1. Build fixture/scenario coverage for:
+   - search refinement
+   - read-after-search
+   - blocked clarification
+   - proposal/review flow
+   - terminal failure flow
+2. Add telemetry for:
+   - missing receipt coverage
+   - missing checkpoint coverage
+   - stale progress incidents
+   - cross-surface semantic loss
+3. Keep architecture guards and rollout gates current.
+
+Exit criteria:
+- Trace regressions are caught by tests and telemetry instead of user reports.
+- Rollout decisions can rely on measurable signals.
+
+### Phase V2.9 - Optional provider reasoning
+1. Add provider reasoning summaries only after the provider-independent foundation is strong.
+2. Keep reasoning collapsible, user-controlled, and clearly secondary.
+3. Show reasoning controls only for models/providers that can actually return readable reasoning.
+
+Exit criteria:
+- Provider reasoning enriches the experience when available.
+- The core UX remains complete when no provider reasoning is present.
 
 ## Risks and Mitigations
 1. Risk: showing too much noise instead of clarity.
@@ -548,6 +651,8 @@ Exit criteria:
 Track implementation under existing governance items:
 - `CUX-027` (tool receipts / copilot UX)
 - `CUX-D01` (chat architecture unification)
+- `FIX-005b` / `CAG-009` (runtime provenance and source receipts)
+- `FIX-011` (shared failure handling and popup parity)
 
 This plan should also inform future agent-runtime work when execution-trace semantics cross the server/runtime boundary.
 
@@ -558,7 +663,7 @@ This plan should also inform future agent-runtime work when execution-trace sema
 4. Manual smoke:
    - search receipt clarity (`/ai` + project copilot)
    - progress lane truthfulness
-   - reasoning visibility (`off/summary/full`)
    - checkpoint readability
    - ask-user vs optional suggestion separation
    - compactness and visual stability during repeated search/refinement loops
+   - surface parity for blocking and terminal failure states

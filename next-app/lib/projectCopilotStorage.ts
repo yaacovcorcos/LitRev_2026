@@ -49,6 +49,10 @@ export type CopilotMessage = {
     answered?: boolean;
     answer?: string;
   });
+  /** Structured checkpoint emitted by the runtime */
+  checkpoint?: {
+    label: string;
+  };
   /** Structured tool activity metadata for timeline rendering */
   toolActivity?: {
     callId: string;
@@ -131,7 +135,9 @@ export function loadProjectCopilotState(projectId: string): ProjectCopilotState 
         const sender = msg.sender === "ai" ? "ai" : "user";
         const text = typeof msg.text === "string" ? msg.text : "";
         const createdAt = typeof msg.createdAt === "string" ? msg.createdAt : new Date().toISOString();
-        const hasStructuredPayload = Boolean(msg.progress || msg.userInputRequest || msg.toolActivity || msg.artifact);
+        const hasStructuredPayload = Boolean(
+          msg.progress || msg.userInputRequest || msg.toolActivity || msg.artifact || msg.checkpoint
+        );
         if (text.trim().length > 0 || hasStructuredPayload) {
           messages.push({
             id,
@@ -145,6 +151,7 @@ export function loadProjectCopilotState(projectId: string): ProjectCopilotState 
             artifact: msg.artifact,
             attachments: msg.attachments,
             userInputRequest: msg.userInputRequest,
+            checkpoint: msg.checkpoint,
             toolActivity: msg.toolActivity,
           });
         }

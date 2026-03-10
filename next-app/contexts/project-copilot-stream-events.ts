@@ -219,6 +219,26 @@ function appendUserInputMessage(
   });
 }
 
+function appendCheckpointMessage(
+  deps: StreamChunkDeps,
+  payload: Extract<SharedStreamIntent, { type: "checkpoint_append" }>,
+) {
+  deps.updateMessages((messages) => {
+    const messageId = `checkpoint-${Date.now()}`;
+    const nextMessage: CopilotMessage = {
+      id: messageId,
+      sender: "ai",
+      text: "",
+      createdAt: new Date().toISOString(),
+      context: { page: deps.page, section: deps.section },
+      checkpoint: {
+        label: payload.label,
+      },
+    };
+    return [...messages, nextMessage];
+  });
+}
+
 function appendStreamErrorMessage(
   deps: StreamChunkDeps,
   payload: Extract<SharedStreamIntent, { type: "stream_error" }>,
@@ -325,6 +345,7 @@ function applyIntent(
       return;
     }
     case "checkpoint_append": {
+      appendCheckpointMessage(deps, intent);
       return;
     }
     case "stream_error": {

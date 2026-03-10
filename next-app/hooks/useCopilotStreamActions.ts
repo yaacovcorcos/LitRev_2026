@@ -148,6 +148,8 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
         let lastToolCallId: string | null = null;
         let syntheticToolCounter = 0;
         let localRunId = "";
+        let completedPubmedSearchCount = 0;
+        let lastPubmedSearchSize: number | null = null;
         let runStatus: string | null = null;
         let stopReason: string | null = null;
         let streamErrorMessage: string | null = null;
@@ -278,6 +280,8 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                             syntheticToolCounter,
                             localRunId,
                             effectiveConvId,
+                            completedPubmedSearchCount,
+                            lastPubmedSearchSize,
                         },
                         {
                             aiMessageId,
@@ -317,6 +321,8 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                     syntheticToolCounter = nextState.syntheticToolCounter;
                     localRunId = nextState.localRunId;
                     effectiveConvId = nextState.effectiveConvId;
+                    completedPubmedSearchCount = nextState.completedPubmedSearchCount;
+                    lastPubmedSearchSize = nextState.lastPubmedSearchSize;
 
                     // Update stream phase based on chunk type
                     if (data.type === "tool_call") {

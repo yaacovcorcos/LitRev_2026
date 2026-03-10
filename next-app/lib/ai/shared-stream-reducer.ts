@@ -15,6 +15,8 @@ export type SharedStreamState = {
   syntheticToolCounter: number;
   localRunId: string;
   effectiveConvId: string | null;
+  completedPubmedSearchCount: number;
+  lastPubmedSearchSize: number | null;
 };
 
 export type SharedStreamIntent =
@@ -125,6 +127,8 @@ export function createInitialSharedStreamState(
     syntheticToolCounter: 0,
     localRunId: "",
     effectiveConvId: null,
+    completedPubmedSearchCount: 0,
+    lastPubmedSearchSize: null,
     ...overrides,
   };
 }
@@ -195,6 +199,56 @@ function getPubMedToolResultMetadata(chunk: AIStreamChunk): Pick<Extract<SharedS
     returnedCount: typeof record.returnedCount === "number" ? record.returnedCount : undefined,
     totalResults: typeof record.totalResults === "number" ? record.totalResults : undefined,
   };
+}
+
+function getPubMedSearchSize(metadata?: Pick<Extract<SharedStreamIntent, { type: "tool_activity_upsert" }>, "returnedCount" | "totalResults">): number | null {
+  if (typeof metadata?.totalResults === "number") return metadata.totalResults;
+  if (typeof metadata?.returnedCount === "number") return metadata.returnedCount;
+  return null;
+}
+
+function buildPubMedResultSummary(metadata?: Pick<Extract<SharedStreamIntent, { type: "tool_activity_upsert" }>, "returnedCount" | "totalResults">): string | undefined {
+  if (!metadata) return undefined;
+  if (typeof metadata.returnedCount === "number" && typeof metadata.totalResults === "number") {
+    return `Found ${metadata.returnedCount} of ${metadata.totalResults} PubMed results.`;
+  }
+  if (typeof metadata.returnedCount === "number") {
+    return `Found ${metadata.returnedCount} PubMed results.`;
+  }
+  if (typeof metadata.totalResults === "number") {
+    return `Found ${metadata.totalResults} PubMed results.`;
+  }
+  return undefined;
+}
+
+function buildPubMedCheckpoint(params: {
+  metadata?: Pick<Extract<SharedStreamIntent, { type: "tool_activity_upsert" }>, "returnedCount" | "totalResults">;
+  completedSearchCount: number;
+  previousSearchSize: number | null;
+}): string | null {
+  const size = getPubMedSearchSize(params.metadata);
+  if (size === null) return null;
+
+  if (size <= 2) {
+    return `PubMed returned ${size} results. The search may be too narrow, so broader terms may be needed next.`;
+  }
+
+  if (params.completedSearchCount === 0) {
+    if (size >= 25) {
+      return `PubMed returned ${size} results. The search is broad, so it is being narrowed next.`;
+    }
+    return `PubMed returned ${size} results. Reviewing the strongest matches now.`;
+  }
+
+  if (params.previousSearchSize !== null && size < params.previousSearchSize) {
+    return `The latest PubMed search narrowed the result set from ${params.previousSearchSize} to ${size} results. Reviewing the strongest matches now.`;
+  }
+
+  if (params.previousSearchSize !== null && size > params.previousSearchSize) {
+    return `The latest PubMed search broadened the result set from ${params.previousSearchSize} to ${size} results. Refinement may still be needed next.`;
+  }
+
+  return null;
 }
 
 export function reduceSharedStreamChunk(
@@ -284,6 +338,12 @@ export function reduceSharedStreamChunk(
         status: "running",
         ...metadata,
       });
+      if (toolName === "search_pubmed") {
+        intents.push({
+          type: "progress_upsert",
+          message: prev.completedPubmedSearchCount > 0 ? "Refining the PubMed query" : "Searching PubMed",
+        });
+      }
       return { state: next, intents };
     }
 
@@ -291,17 +351,35 @@ export function reduceSharedStreamChunk(
       const runningToolCallIds = prev.runningToolCallIds ?? [];
       const fallbackCallId = prev.lastToolCallId ?? runningToolCallIds[runningToolCallIds.length - 1] ?? null;
       const callId = chunk.toolResult?.callId ?? fallbackCallId;
+      const isPubMedResult = chunk.toolName === "search_pubmed";
+      const metadata = isPubMedResult ? getPubMedToolResultMetadata(chunk) : undefined;
       if (callId) {
-        const metadata = getPubMedToolResultMetadata(chunk);
         intents.push({
           type: "tool_activity_upsert",
           callId,
           toolName: chunk.toolName ?? "tool",
           status: chunk.toolResult?.error ? "failed" : "done",
-          summary: chunk.toolResult?.error ?? undefined,
+          summary: chunk.toolResult?.error ?? buildPubMedResultSummary(metadata),
           ...metadata,
           errorMeta: chunk.toolResult?.errorMeta,
         });
+      }
+      if (isPubMedResult && !chunk.toolResult?.error) {
+        intents.push({
+          type: "progress_upsert",
+          message: "Reviewing PubMed results",
+        });
+        const checkpoint = buildPubMedCheckpoint({
+          metadata,
+          completedSearchCount: prev.completedPubmedSearchCount,
+          previousSearchSize: prev.lastPubmedSearchSize,
+        });
+        if (checkpoint) {
+          intents.push({
+            type: "checkpoint_append",
+            label: checkpoint,
+          });
+        }
       }
       if (chunk.toolName === "add_to_ledger" || chunk.toolName === "exclude_study") {
         intents.push({ type: "ledger_changed" });
@@ -316,6 +394,12 @@ export function reduceSharedStreamChunk(
         ...prev,
         runningToolCallIds: nextRunningToolCallIds,
         lastToolCallId: nextLastToolCallId,
+        completedPubmedSearchCount: isPubMedResult && !chunk.toolResult?.error
+          ? prev.completedPubmedSearchCount + 1
+          : prev.completedPubmedSearchCount,
+        lastPubmedSearchSize: isPubMedResult && !chunk.toolResult?.error
+          ? getPubMedSearchSize(metadata)
+          : prev.lastPubmedSearchSize,
       };
       return { state: next, intents };
     }
@@ -428,6 +512,14 @@ export function reduceSharedStreamChunk(
 
     case "user_input_required": {
       if (!chunk.userInputRequest) return { state: prev, intents };
+      intents.push({
+        type: "progress_upsert",
+        message: "Waiting for your answer",
+      });
+      intents.push({
+        type: "checkpoint_append",
+        label: `Need your answer before continuing: ${chunk.userInputRequest.question}`,
+      });
       intents.push({
         type: "user_input_set",
         request: chunk.userInputRequest,
