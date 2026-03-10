@@ -452,7 +452,8 @@
     }
 }
 
-@media (max-width: 900px) {
+/* Keep the pseudo-sheet mobile-v2 bounds phone-only; compact stays anchored until MOB-005. */
+@media (max-width: 767px) {
     .popupChatMobileV2 {
         left: 12px;
         right: 12px;

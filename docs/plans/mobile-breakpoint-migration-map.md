@@ -50,7 +50,7 @@ Rule meanings:
 |---|---|---:|---|---|---|
 | `next-app/components/project/ProjectTabBar.module.css` | tab-bar phone touch-target and label-density behavior | `768` | `phone` interaction behavior | keep (migrated in `MOB-FND-007`) | completed |
 | `next-app/components/copilot/TimelineMessages.module.css` | message/timeline narrow-layout tweaks | `768` | likely `compact` or chat-specific behavior | defer | chat foundation |
-| `next-app/components/PopupChat.module.css` | popup narrow-mode layout | `900` | transitional compact-or-phone behavior | defer | `MOB-005` |
+| `next-app/components/PopupChat.module.css` | popup narrow-mode layout | `767` | phone popup compatibility behavior | keep (migrated in `MOB-002` PR 3) | completed |
 | `next-app/components/PopupChat.module.css` | extra-tight popup density tweak | `500` | `tiny-phone` candidate | defer until popup redesign confirms semantics | `MOB-005` |
 | `next-app/components/AppShell.module.css` | shell mobile layout | `900` | split into `phone` bottom-nav behavior and `compact` collapsed-shell behavior | keep; shared shell retirement finalized in `MOB-FND-013` while legacy `900px` remains confined to non-`shellV2` consumers | completed |
 | `next-app/components/Sidebar.module.css` | sidebar collapse | `900` | `compact` collapsed sidebar, `phone` hidden sidebar | keep; shared sidebar retirement finalized in `MOB-FND-013` while legacy `900px` remains confined to non-`responsiveV2` consumers | completed |
