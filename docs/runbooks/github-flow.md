@@ -40,7 +40,9 @@ gh pr list --state open --json number,title,headRefName,baseRefName,reviewDecisi
 
 ## CI Expectations
 
-- CI runs on pushes and PRs targeting `main`.
+- CI publishes the required `check` status on pushes to `main` and `YY/**`.
+- CI also runs on PRs targeting `main` when the PR event itself triggers workflows normally.
+- `YY/**` push CI is the branch-protection backstop for auto-created PRs, so the required `check` must not depend only on the PR event path.
 - Schema drift check uses a dedicated shadow database URL in CI.
 - Drift output is currently warning-mode (non-empty diff warns; command errors fail) until migration history is realigned.
 

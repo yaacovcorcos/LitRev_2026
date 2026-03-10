@@ -56,6 +56,18 @@ describe("formatStreamErrorForUI", () => {
         })).toBe("The model returned invalid arguments for update_protocol, so the action was not run.");
     });
 
+    it("renders structured database connection timeouts as database issues", () => {
+        expect(formatStreamErrorForUI({
+            errorMeta: {
+                kind: "database_connection",
+                code: "DATABASE_CONNECTION_TIMEOUT",
+                retryable: true,
+                source: "database_connection",
+                message: "Connection terminated due to connection timeout",
+            },
+        })).toBe("The app could not reach the database in time. Please retry.");
+    });
+
     it("preserves structured retryability in client error state", () => {
         const state = buildClientErrorState({
             errorMeta: {

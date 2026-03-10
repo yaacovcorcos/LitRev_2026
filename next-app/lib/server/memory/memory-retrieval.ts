@@ -639,6 +639,13 @@ export async function retrieveMemories(
             conversationId: context.conversationId,
             query: context.query || "context-based",
             memories: trimmed,
+        }).catch((error) => {
+            console.warn("[memory] retrieval audit logging failed", {
+                userId: context.userId,
+                projectId: context.projectId ?? null,
+                conversationId: context.conversationId ?? null,
+                error: error instanceof Error ? error.message : String(error),
+            });
         });
         await incrementRetrievalCounters(trimmed).catch(() => {});
         await runMemoryMaintenanceLoop({ projectId: context.projectId, userId: context.userId }).catch(() => null);

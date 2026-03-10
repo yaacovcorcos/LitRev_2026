@@ -21,6 +21,7 @@
 ## Recently Completed
 *Finished work that might still be fragile or require monitoring. Prune oldest first.*
 
+- [x] Retrieval-side audit logging is now best-effort: `logMemoryRetrieval(...)` no longer rejects the main retrieval path, so memory bookkeeping failures degrade silently with warning logs instead of taking down chat/context assembly.
 - [x] Memory Health dashboard shipped: retrieval + quality metrics and rollout status are visible in project memory UI (`Memory Health` tab).
 - [x] Quality metrics implemented server-side: proposal acceptance by source, retrieval hit rate (heuristic usage wiring), stale-memory usage rate, contradiction rate.
 - [x] Utility-based maintenance loop implemented: low-utility memories are archived based on usage/rejection/contradiction signals (not age-based decay).

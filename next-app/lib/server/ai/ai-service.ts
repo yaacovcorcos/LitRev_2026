@@ -4,7 +4,7 @@
  * Now with structured memory integration and tool execution loop
  */
 
-import type { AIMessage, AIResponse, ChatOptions, AIStreamChunk, ConversationContext, ToolCall, ToolResult } from "@/types/ai";
+import type { AIErrorEnvelope, AIMessage, AIResponse, ChatOptions, AIStreamChunk, ConversationContext, ToolCall, ToolResult } from "@/types/ai";
 import type { AgentMode } from "@/types/agent";
 import {
     AIErrorWithEnvelope,
@@ -94,6 +94,177 @@ const RETRY_JITTER = 0.15;
 
 const PUSH_PROTOCOL_CONTEXT_MODES = new Set<AgentMode>(["protocol", "screening", "drafting"]);
 const PUSH_LEDGER_CONTEXT_MODES = new Set<AgentMode>(["screening", "search"]);
+const CONTEXT_BRANCH_NAMES = [
+    "conversation",
+    "plan_execution",
+    "run_availability",
+    "autonomy_config",
+    "memories",
+    "protocol",
+    "ledger",
+    "study",
+    "project",
+] as const;
+const CONTEXT_DEGRADED_DATABASE_LABEL = "Continuing with reduced context due to a temporary database issue.";
+const CONTEXT_DEGRADED_GENERIC_LABEL = "Continuing with reduced context due to a temporary context-loading issue.";
+
+type ContextBranchName = typeof CONTEXT_BRANCH_NAMES[number];
+type ContextFailureClass =
+    | "database_connection_timeout"
+    | "database_connection_failed"
+    | "semantic_timeout"
+    | "unknown_context_failure";
+type ContextBranchRecord = {
+    branch: ContextBranchName;
+    critical: boolean;
+    durationMs: number;
+    success: boolean;
+    failureClass?: ContextFailureClass;
+    errorMeta?: AIErrorEnvelope;
+};
+
+function normalizeContextFailure(error: unknown): { failureClass: ContextFailureClass; errorMeta: AIErrorEnvelope } {
+    const fallbackMessage = error instanceof Error ? error.message : String(error);
+    const errorMeta = toAIErrorEnvelope(error, {
+        kind: "runtime",
+        source: "runtime",
+        message: fallbackMessage || "Context assembly failed.",
+    });
+
+    if (errorMeta.code === "DATABASE_CONNECTION_TIMEOUT") {
+        return { failureClass: "database_connection_timeout", errorMeta };
+    }
+    if (errorMeta.code === "DATABASE_CONNECTION_FAILED" || errorMeta.kind === "database_connection") {
+        return { failureClass: "database_connection_failed", errorMeta };
+    }
+    if (/semantic/i.test(errorMeta.message) && /timed?\s*out/i.test(errorMeta.message)) {
+        return { failureClass: "semantic_timeout", errorMeta };
+    }
+    return { failureClass: "unknown_context_failure", errorMeta };
+}
+
+function logContextBranch(record: ContextBranchRecord, meta: {
+    runId?: string | null;
+    conversationId?: string | null;
+    projectId?: string | null;
+    agentMode?: AgentMode;
+}) {
+    const payload = {
+        branch: record.branch,
+        critical: record.critical,
+        durationMs: record.durationMs,
+        success: record.success,
+        failureClass: record.failureClass ?? null,
+        errorCode: record.errorMeta?.code ?? null,
+        errorKind: record.errorMeta?.kind ?? null,
+        runId: meta.runId ?? null,
+        conversationId: meta.conversationId ?? null,
+        projectId: meta.projectId ?? null,
+        agentMode: meta.agentMode ?? null,
+    };
+    if (record.success) {
+        console.info("[ai][context-assembly] branch", payload);
+    } else {
+        console.warn("[ai][context-assembly] branch failed", payload);
+    }
+}
+
+function logContextSummary(params: {
+    records: ContextBranchRecord[];
+    degraded: boolean;
+    checkpointLabel?: string;
+    runId?: string | null;
+    conversationId?: string | null;
+    projectId?: string | null;
+    agentMode?: AgentMode;
+}) {
+    console.info("[ai][context-assembly] summary", {
+        degraded: params.degraded,
+        checkpointLabel: params.checkpointLabel ?? null,
+        successfulBranches: params.records.filter((record) => record.success).map((record) => record.branch),
+        failedBranches: params.records.filter((record) => !record.success).map((record) => ({
+            branch: record.branch,
+            failureClass: record.failureClass ?? null,
+            errorCode: record.errorMeta?.code ?? null,
+        })),
+        runId: params.runId ?? null,
+        conversationId: params.conversationId ?? null,
+        projectId: params.projectId ?? null,
+        agentMode: params.agentMode ?? null,
+    });
+}
+
+async function runCriticalContextBranch<T>(params: {
+    branch: ContextBranchName;
+    operation: () => Promise<T>;
+    meta: {
+        runId?: string | null;
+        conversationId?: string | null;
+        projectId?: string | null;
+        agentMode?: AgentMode;
+    };
+}): Promise<{ value: T; record: ContextBranchRecord }> {
+    const startedAt = Date.now();
+    try {
+        const value = await params.operation();
+        const record: ContextBranchRecord = {
+            branch: params.branch,
+            critical: true,
+            durationMs: Date.now() - startedAt,
+            success: true,
+        };
+        logContextBranch(record, params.meta);
+        return { value, record };
+    } catch (error) {
+        const normalized = normalizeContextFailure(error);
+        const record: ContextBranchRecord = {
+            branch: params.branch,
+            critical: true,
+            durationMs: Date.now() - startedAt,
+            success: false,
+            failureClass: normalized.failureClass,
+            errorMeta: normalized.errorMeta,
+        };
+        logContextBranch(record, params.meta);
+        throw error;
+    }
+}
+
+async function runOptionalContextBranch<T>(params: {
+    branch: ContextBranchName;
+    operation: () => Promise<T>;
+    meta: {
+        runId?: string | null;
+        conversationId?: string | null;
+        projectId?: string | null;
+        agentMode?: AgentMode;
+    };
+}): Promise<{ value: T; record: ContextBranchRecord } | { value: null; record: ContextBranchRecord }> {
+    const startedAt = Date.now();
+    try {
+        const value = await params.operation();
+        const record: ContextBranchRecord = {
+            branch: params.branch,
+            critical: false,
+            durationMs: Date.now() - startedAt,
+            success: true,
+        };
+        logContextBranch(record, params.meta);
+        return { value, record };
+    } catch (error) {
+        const normalized = normalizeContextFailure(error);
+        const record: ContextBranchRecord = {
+            branch: params.branch,
+            critical: false,
+            durationMs: Date.now() - startedAt,
+            success: false,
+            failureClass: normalized.failureClass,
+            errorMeta: normalized.errorMeta,
+        };
+        logContextBranch(record, params.meta);
+        return { value: null, record };
+    }
+}
 
 type RunActualModelMeta = {
     actualModel: string | null;
@@ -720,13 +891,22 @@ class AIService {
         const userId = identity.userId;
         const workspaceId = identity.workspaceId;
         const executionMode = !!(options?.planId && options?.selectedSteps?.length);
+        const contextBranchRecords: ContextBranchRecord[] = [];
         let preparedPlanExecution: PreparedPlanExecution | null = null;
         if (executionMode && options?.planId && options?.selectedSteps) {
-            preparedPlanExecution = await preparePlanExecution(
-                options.planId,
-                options.selectedSteps,
-                projectId,
-            );
+            const planExecutionResult = await runCriticalContextBranch({
+                    branch: "plan_execution",
+                    operation: () => preparePlanExecution(
+                        options.planId!,
+                        options.selectedSteps!,
+                        projectId,
+                    ),
+                    meta: {
+                        projectId: projectId ?? null,
+                    },
+                });
+            contextBranchRecords.push(planExecutionResult.record);
+            preparedPlanExecution = planExecutionResult.value;
             projectId = preparedPlanExecution.projectId ?? projectId;
         }
         const requestedMode: AgentMode = (
@@ -739,35 +919,53 @@ class AIService {
         // When conversationId is provided, load by ID and treat its scope as canonical.
         // This prevents cross-conversation writes when client scope drifts from the actual thread.
         const authoritativeConversationId = preparedPlanExecution?.conversationId ?? options?.conversationId;
-        if (authoritativeConversationId) {
-            const byId = await getConversationWithSummaryById(
-                authoritativeConversationId,
-                userId,
-                workspaceId,
-            );
-            if (byId) {
-                conversation = byId;
-                // Canonical ownership: conversation's stored scope is source of truth
-                projectId = byId.projectId;
-                studyId = byId.studyId;
-            } else {
-                throw new Error(`Invalid, archived, or inaccessible conversationId: ${authoritativeConversationId}`);
-            }
-        } else {
-            conversation = await getConversationWithSummary(
-                context,
-                projectId,
-                studyId,
-                workspaceId ? { userId, workspaceId } : undefined,
-            );
-        }
+        const conversationResult = await runCriticalContextBranch({
+                branch: "conversation",
+                operation: async () => {
+                    if (authoritativeConversationId) {
+                        const byId = await getConversationWithSummaryById(
+                            authoritativeConversationId,
+                            userId,
+                            workspaceId,
+                        );
+                        if (!byId) {
+                            throw new Error(`Invalid, archived, or inaccessible conversationId: ${authoritativeConversationId}`);
+                        }
+                        return byId;
+                    }
+                    return getConversationWithSummary(
+                        context,
+                        projectId,
+                        studyId,
+                        workspaceId ? { userId, workspaceId } : undefined,
+                    );
+                },
+                meta: {
+                    projectId: projectId ?? null,
+                    agentMode,
+                },
+            });
+        contextBranchRecords.push(conversationResult.record);
+        conversation = conversationResult.value;
+        // Canonical ownership: conversation's stored scope is source of truth
+        projectId = conversation.projectId;
+        studyId = conversation.studyId;
         const budget = getContextBudget(options?.model);
 
         // Coarse conversation-level lock: block overlapping fresh runs and
         // auto-cancel stale "running" rows left behind by interrupted sessions.
-        await ensureConversationRunAvailability(conversation.id, {
-            replaceRunId: options?.replaceRunId,
+        const runAvailabilityResult = await runCriticalContextBranch({
+            branch: "run_availability",
+            operation: () => ensureConversationRunAvailability(conversation.id, {
+                replaceRunId: options?.replaceRunId,
+            }),
+            meta: {
+                conversationId: conversation.id,
+                projectId: projectId ?? null,
+                agentMode,
+            },
         });
+        contextBranchRecords.push(runAvailabilityResult.record);
 
         // Declared outside try so catch block can access them for plan finalization
         let planData: PreparedPlanExecution | null = preparedPlanExecution;
@@ -841,31 +1039,101 @@ class AIService {
                 await emitEvent(activeRun.id, "message", { content: userMessage }, { messageRole: "user" });
             }
 
-            // Retrieve memories + project context in parallel
+            // Establish critical runtime authority, then load optional context.
             const ctxSpan = startContextSpan(trace, "context-assembly");
             const shouldPushProtocolContext = !!projectId && PUSH_PROTOCOL_CONTEXT_MODES.has(agentMode);
             const shouldPushLedgerContext = !!projectId && PUSH_LEDGER_CONTEXT_MODES.has(agentMode);
             const needsLedgerSeedMetadata = agentMode === "scoping";
             const needsFullLedgerSnapshot = shouldPushLedgerContext || needsLedgerSeedMetadata;
 
-            const [retrievedMemories, protocolRow, studyLedger, autonomyConfig, studyRow, projectRow] = await Promise.all([
-                retrieveMemories({ userId, projectId, studyId, conversationId: conversation.id, query: userMessage, agentMode, runId: activeRun.id }),
-                projectId ? prisma.protocol.findFirst({ where: { projectId }, select: { data: true } }) : null,
-                projectId
-                    ? (
-                        needsFullLedgerSnapshot
-                            ? computeStudyLedger(projectId)
-                            : computeLedgerCounts(projectId)
-                    )
-                    : null,
-                getAutonomyConfig(userId, projectId),
-                studyId ? prisma.study.findUnique({ where: { id: studyId }, select: { id: true, title: true, authors: true, year: true, quality: true, details: true } }) : null,
-                projectId ? prisma.project.findUnique({ where: { id: projectId }, select: { name: true } }) : null,
+            const contextMeta = {
+                runId: activeRun.id,
+                conversationId: conversation.id,
+                projectId: projectId ?? null,
+                agentMode,
+            };
+
+            const autonomyConfigResult = await runCriticalContextBranch({
+                branch: "autonomy_config",
+                operation: () => getAutonomyConfig(userId, projectId),
+                meta: contextMeta,
+            });
+            contextBranchRecords.push(autonomyConfigResult.record);
+            const autonomyConfig = autonomyConfigResult.value;
+
+            const optionalBranchResults = await Promise.all([
+                runOptionalContextBranch({
+                    branch: "memories",
+                    operation: () => retrieveMemories({
+                        userId,
+                        projectId,
+                        studyId,
+                        conversationId: conversation.id,
+                        query: userMessage,
+                        agentMode,
+                        runId: activeRun.id,
+                    }),
+                    meta: contextMeta,
+                }),
+                runOptionalContextBranch({
+                    branch: "protocol",
+                    operation: () => projectId
+                        ? prisma.protocol.findFirst({ where: { projectId }, select: { data: true } })
+                        : Promise.resolve(null),
+                    meta: contextMeta,
+                }),
+                runOptionalContextBranch({
+                    branch: "ledger",
+                    operation: async () => {
+                        if (!projectId) return null;
+                        if (needsFullLedgerSnapshot) {
+                            return computeStudyLedger(projectId);
+                        }
+                        return computeLedgerCounts(projectId);
+                    },
+                    meta: contextMeta,
+                }),
+                runOptionalContextBranch({
+                    branch: "study",
+                    operation: () => studyId
+                        ? prisma.study.findUnique({
+                            where: { id: studyId },
+                            select: { id: true, title: true, authors: true, year: true, quality: true, details: true },
+                        })
+                        : Promise.resolve(null),
+                    meta: contextMeta,
+                }),
+                runOptionalContextBranch({
+                    branch: "project",
+                    operation: () => projectId
+                        ? prisma.project.findUnique({ where: { id: projectId }, select: { name: true } })
+                        : Promise.resolve(null),
+                    meta: contextMeta,
+                }),
             ]);
+
+            const [memoriesResult, protocolResult, ledgerResult, studyResult, projectResult] = optionalBranchResults;
+            contextBranchRecords.push(...optionalBranchResults.map((result) => result.record));
+
+            const optionalFailures = optionalBranchResults.filter((result) => !result.record.success);
+            const degradedCheckpointLabel = optionalFailures.length === 0
+                ? null
+                : optionalFailures.some((result) =>
+                    result.record.failureClass === "database_connection_timeout"
+                    || result.record.failureClass === "database_connection_failed")
+                    ? CONTEXT_DEGRADED_DATABASE_LABEL
+                    : CONTEXT_DEGRADED_GENERIC_LABEL;
+
+            const retrievedMemories = memoriesResult.value ?? [];
+            const protocolRow = protocolResult.value;
+            const studyLedger = ledgerResult.value;
+            const studyRow = studyResult.value;
+            const projectRow = projectResult.value;
+
             retrievedMemoriesForRun = retrievedMemories;
             const memoriesContext = formatMemoriesForContext(retrievedMemories);
             const ledgerCounts = getLedgerCounts(studyLedger);
-            ctxSpan.update({ output: {
+            const ctxOutput = {
                 hasMemories: !!memoriesContext,
                 hasProtocol: protocolRow?.data
                     ? isProtocolPopulated(protocolRow.data as unknown as ProtocolData)
@@ -873,7 +1141,31 @@ class AIService {
                 hasStudy: !!studyRow,
                 studyLedger: ledgerCounts,
                 hasProject: !!projectRow,
-            }}).end();
+                degraded: degradedCheckpointLabel !== null,
+                checkpointLabel: degradedCheckpointLabel,
+                branches: contextBranchRecords.map((record) => ({
+                    branch: record.branch,
+                    critical: record.critical,
+                    success: record.success,
+                    durationMs: record.durationMs,
+                    failureClass: record.failureClass ?? null,
+                    errorCode: record.errorMeta?.code ?? null,
+                })),
+            };
+            ctxSpan.update({ output: ctxOutput }).end();
+            logContextSummary({
+                records: contextBranchRecords,
+                degraded: degradedCheckpointLabel !== null,
+                checkpointLabel: degradedCheckpointLabel ?? undefined,
+                ...contextMeta,
+            });
+            if (degradedCheckpointLabel) {
+                yield {
+                    type: "checkpoint",
+                    checkpointLabel: degradedCheckpointLabel,
+                    conversationId: conversation.id,
+                };
+            }
 
             // Assemble context-aware system prompt (Phase 4.3)
             const projectContext = projectRow && projectId

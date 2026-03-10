@@ -6,6 +6,26 @@ const mocks = vi.hoisted(() => {
     end: vi.fn(),
   };
   trace.update.mockImplementation(() => trace);
+  const provider = {
+    id: "mock-provider",
+    name: "Mock Provider",
+    models: [{ id: "gpt-5.2", name: "GPT-5.2", contextWindow: 128000, capabilities: ["chat"] as const }],
+    chat: vi.fn(async () => ({
+      id: "resp-1",
+      content: "provider content",
+      model: "gpt-5.2",
+      usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+    })),
+    streamChat: vi.fn(async function* () {
+      yield { type: "content", content: "provider content" };
+      yield {
+        type: "done",
+        usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+        actualModel: "gpt-5.2",
+      };
+    }),
+    isConfigured: vi.fn(() => true),
+  };
 
   return {
     ensureConversationRunAvailability: vi.fn(),
@@ -20,12 +40,13 @@ const mocks = vi.hoisted(() => {
     flushTracing: vi.fn(),
     resolveAuthenticatedIdentity: vi.fn(),
     trace,
+    provider,
   };
 });
 
 vi.mock("@/lib/server/ai/providers", () => ({
   BaseAIProvider: class {},
-  getOpenAIProvider: () => ({ isConfigured: () => false }),
+  getOpenAIProvider: () => mocks.provider,
   getAnthropicProvider: () => ({ isConfigured: () => false }),
   getXAIProvider: () => ({ isConfigured: () => false }),
   getGoogleProvider: () => ({ isConfigured: () => false }),
@@ -51,8 +72,8 @@ vi.mock("@/lib/server/memory", () => ({
 }));
 
 vi.mock("@/lib/ai/config", () => ({
-  AI_CONFIG: { defaultProvider: "mock", defaultModel: "gpt-5.2" },
-  getProviderForModel: vi.fn(() => null),
+  AI_CONFIG: { defaultProvider: "mock-provider", defaultModel: "gpt-5.2" },
+  getProviderForModel: vi.fn(() => "mock-provider"),
   getContextBudget: vi.fn(() => 8000),
 }));
 
@@ -122,6 +143,10 @@ vi.mock("@/lib/agent/loop-controller", () => ({
     totalToolCalls = 0;
     stopReason = "natural";
     shouldContinue() {
+      if (this.iterations === 0) {
+        this.iterations += 1;
+        return { continue: true, stopReason: "natural" };
+      }
       return { continue: false, stopReason: "natural" };
     }
     markStopped(reason: string) {
@@ -141,7 +166,7 @@ vi.mock("@/lib/server/ai/tracing", () => ({
 }));
 
 vi.mock("@/lib/server/ai/choices-extractor", () => ({
-  withChoicesExtraction: vi.fn(),
+  withChoicesExtraction: vi.fn((stream) => stream),
 }));
 
 vi.mock("@/lib/server/ai/title-generator", () => ({
@@ -172,11 +197,58 @@ vi.mock("@/lib/server/chat-runtime/conversation-run-lock", () => ({
 }));
 
 vi.mock("@/lib/server/ai/error-classification", () => ({
-  classifyAIError: vi.fn((error: unknown) => ({
-    message: error instanceof Error ? error.message : String(error),
-    retryable: false,
-  })),
-  toAIErrorEnvelope: vi.fn((_error: unknown, envelope: Record<string, unknown>) => envelope),
+  classifyAIError: vi.fn((error: unknown) => {
+    const message = error instanceof Error ? error.message : String(error);
+    if (/Connection terminated due to connection timeout/i.test(message)) {
+      return {
+        message,
+        retryable: true,
+        reason: "timeout",
+        kind: "database_connection",
+        source: "database_connection",
+        code: "DATABASE_CONNECTION_TIMEOUT",
+      };
+    }
+    if (/Can't reach database server|ECONNREFUSED|connection refused/i.test(message)) {
+      return {
+        message,
+        retryable: true,
+        reason: "timeout",
+        kind: "database_connection",
+        source: "database_connection",
+        code: "DATABASE_CONNECTION_FAILED",
+      };
+    }
+    return {
+      message,
+      retryable: false,
+      reason: "unknown",
+    };
+  }),
+  toAIErrorEnvelope: vi.fn((error: unknown, envelope: Record<string, unknown>) => {
+    const message = error instanceof Error ? error.message : String(error);
+    if (/Connection terminated due to connection timeout/i.test(message)) {
+      return {
+        ...envelope,
+        kind: "database_connection",
+        source: "database_connection",
+        code: "DATABASE_CONNECTION_TIMEOUT",
+        retryable: true,
+        message,
+      };
+    }
+    if (/Can't reach database server|ECONNREFUSED|connection refused/i.test(message)) {
+      return {
+        ...envelope,
+        kind: "database_connection",
+        source: "database_connection",
+        code: "DATABASE_CONNECTION_FAILED",
+        retryable: true,
+        message,
+      };
+    }
+    return envelope;
+  }),
 }));
 
 vi.mock("@/lib/server/utils/retry", () => ({
@@ -227,10 +299,30 @@ vi.mock("@/lib/server/ai/tool-autonomy", () => ({
 }));
 
 const { AIService } = await import("@/lib/server/ai/ai-service");
+const { retrieveMemories } = await import("@/lib/server/memory");
+const { getAutonomyConfig } = await import("@/lib/server/agent/autonomy");
+const { prisma } = await import("@/lib/server/prisma");
+const mockRetrieveMemories = vi.mocked(retrieveMemories);
+const mockGetAutonomyConfig = vi.mocked(getAutonomyConfig);
+const mockProtocolFindFirst = vi.mocked(prisma.protocol.findFirst);
 
 describe("AIService run finalization", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.provider.chat.mockResolvedValue({
+      id: "resp-1",
+      content: "provider content",
+      model: "gpt-5.2",
+      usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+    });
+    mocks.provider.streamChat.mockImplementation(async function* () {
+      yield { type: "content", content: "provider content" };
+      yield {
+        type: "done",
+        usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+        actualModel: "gpt-5.2",
+      };
+    });
     mocks.ensureConversationRunAvailability.mockResolvedValue({ cancelledStaleRunCount: 0 });
     mocks.getConversationWithSummary.mockResolvedValue({
       id: "conv-1",
@@ -252,6 +344,9 @@ describe("AIService run finalization", () => {
     mocks.resolveAuthenticatedIdentity.mockReturnValue({ userId: "user-1", workspaceId: undefined });
     mocks.startRun.mockResolvedValue({ id: "run-1" });
     mocks.endRun.mockResolvedValue({ id: "run-1", status: "failed" });
+    mockRetrieveMemories.mockResolvedValue([]);
+    mockGetAutonomyConfig.mockResolvedValue({ preset: "assisted", toolOverrides: {} } as never);
+    mockProtocolFindFirst.mockResolvedValue(null);
   });
 
   it("finalizes a started run when the stream is closed after run_start", async () => {
@@ -344,5 +439,109 @@ describe("AIService run finalization", () => {
     );
 
     await iterator.return?.(undefined);
+  });
+
+  it("continues with a checkpoint when memories degrade after authority succeeds", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const infoSpy = vi.spyOn(console, "info").mockImplementation(() => {});
+    mockRetrieveMemories.mockRejectedValueOnce(new Error("Connection terminated due to connection timeout"));
+
+    const service = new AIService();
+    const stream = service.streamChatWithArtifacts("hello", { page: "project" } as never, {
+      projectId: "project-1",
+      userId: "user-1",
+      agentMode: "general",
+      model: "gpt-5.2",
+    });
+
+    const chunks: Array<{ type?: string; checkpointLabel?: string; content?: string }> = [];
+    for await (const chunk of stream) {
+      chunks.push(chunk);
+      if (chunk.type === "run_end") break;
+    }
+
+    expect(chunks.map((chunk) => chunk.type)).toContain("checkpoint");
+    expect(chunks.find((chunk) => chunk.type === "checkpoint")).toMatchObject({
+      checkpointLabel: "Continuing with reduced context due to a temporary database issue.",
+    });
+    expect(chunks.findIndex((chunk) => chunk.type === "checkpoint")).toBeLessThan(
+      chunks.findIndex((chunk) => chunk.type === "content"),
+    );
+    expect(warnSpy).toHaveBeenCalledWith(
+      "[ai][context-assembly] branch failed",
+      expect.objectContaining({
+        branch: "memories",
+        critical: false,
+        failureClass: "database_connection_timeout",
+      }),
+    );
+    expect(infoSpy).toHaveBeenCalledWith(
+      "[ai][context-assembly] summary",
+      expect.objectContaining({
+        degraded: true,
+      }),
+    );
+
+    warnSpy.mockRestore();
+    infoSpy.mockRestore();
+  });
+
+  it("continues when protocol context fails after authority succeeds", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    mockProtocolFindFirst.mockRejectedValueOnce(new Error("Can't reach database server at localhost:5432"));
+
+    const service = new AIService();
+    const stream = service.streamChatWithArtifacts("hello", { page: "project" } as never, {
+      projectId: "project-1",
+      userId: "user-1",
+      agentMode: "general",
+      model: "gpt-5.2",
+    });
+
+    const chunks: Array<{ type?: string; checkpointLabel?: string }> = [];
+    for await (const chunk of stream) {
+      chunks.push(chunk);
+      if (chunk.type === "run_end") break;
+    }
+
+    expect(chunks.find((chunk) => chunk.type === "checkpoint")).toMatchObject({
+      checkpointLabel: "Continuing with reduced context due to a temporary database issue.",
+    });
+    expect(warnSpy).toHaveBeenCalledWith(
+      "[ai][context-assembly] branch failed",
+      expect.objectContaining({
+        branch: "protocol",
+        critical: false,
+        failureClass: "database_connection_failed",
+      }),
+    );
+
+    warnSpy.mockRestore();
+  });
+
+  it("fails when autonomy config cannot be loaded", async () => {
+    mockGetAutonomyConfig.mockRejectedValueOnce(new Error("Connection terminated due to connection timeout"));
+
+    const service = new AIService();
+    const stream = service.streamChatWithArtifacts("hello", { page: "project" } as never, {
+      projectId: "project-1",
+      userId: "user-1",
+      agentMode: "general",
+      model: "gpt-5.2",
+    });
+
+    const chunks: Array<{ type?: string; errorMeta?: { kind?: string; code?: string } }> = [];
+    for await (const chunk of stream) {
+      chunks.push(chunk);
+      if (chunk.type === "run_end") break;
+    }
+
+    expect(chunks.find((chunk) => chunk.type === "error")).toMatchObject({
+      errorMeta: {
+        kind: "database_connection",
+        source: "database_connection",
+        code: "DATABASE_CONNECTION_TIMEOUT",
+      },
+    });
   });
 });
