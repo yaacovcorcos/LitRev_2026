@@ -18,11 +18,12 @@ describe("buildExecutablePlanPayload", () => {
             originAgentMode: "search",
             conversationId: "conv-1",
             projectId: "proj-1",
+            allowedToolNames: ["search_pubmed", "bulk_screening", "ask_user"],
         });
 
         expect(payload.execution).toEqual({
             originAgentMode: "search",
-            allowedToolNames: ["search_pubmed", "bulk_screening"],
+            allowedToolNames: ["search_pubmed", "bulk_screening", "ask_user"],
             createdFromConversationId: "conv-1",
             createdFromProjectId: "proj-1",
             enforceOrder: true,
@@ -43,9 +44,10 @@ describe("buildExecutablePlanPayload", () => {
             originAgentMode: "general",
             conversationId: null,
             projectId: null,
+            allowedToolNames: ["search_pubmed", "search_pubmed", "bulk_screening", "ask_user"],
         });
 
-        expect(payload.execution?.allowedToolNames).toEqual(["search_pubmed", "bulk_screening"]);
+        expect(payload.execution?.allowedToolNames).toEqual(["search_pubmed", "bulk_screening", "ask_user"]);
     });
 
     it("can author execution metadata for non-planner scoping search-pack plans", () => {
@@ -55,11 +57,12 @@ describe("buildExecutablePlanPayload", () => {
             originAgentMode: "scoping",
             conversationId: "conv-scope",
             projectId: "proj-scope",
+            allowedToolNames: ["search_pubmed", "search_openalex", "recommend_studies", "ask_user"],
         });
 
         expect(payload.execution).toEqual({
             originAgentMode: "scoping",
-            allowedToolNames: ["search_pubmed", "search_openalex", "recommend_studies"],
+            allowedToolNames: ["search_pubmed", "search_openalex", "recommend_studies", "ask_user"],
             createdFromConversationId: "conv-scope",
             createdFromProjectId: "proj-scope",
             enforceOrder: true,
@@ -77,6 +80,7 @@ describe("isExecutablePlanPayload", () => {
             originAgentMode: "search",
             conversationId: "conv-1",
             projectId: "proj-1",
+            allowedToolNames: ["search_pubmed", "ask_user"],
         });
 
         expect(isExecutablePlanPayload(advisory)).toBe(false);

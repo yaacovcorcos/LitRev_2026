@@ -1651,7 +1651,6 @@ export default function AIView() {
             reasoningMode: reasoningRequest.reasoningMode,
             includeReasoning: reasoningRequest.includeReasoning,
             reasoningBudgetTokens: reasoningRequest.reasoningBudgetTokens,
-            agentMode: "general",
             page: "ai",
             additionalContext: selectedProjectId
               ? undefined

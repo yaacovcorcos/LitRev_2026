@@ -162,6 +162,19 @@ export function createAutonomyBlockedErrorEnvelope(params: {
     };
 }
 
+export function createPlanExecutionErrorEnvelope(params: {
+    code: string;
+    message: string;
+}): AIErrorEnvelope {
+    return {
+        kind: "plan_execution",
+        code: params.code,
+        retryable: false,
+        source: "plan_execution",
+        message: params.message,
+    };
+}
+
 export function createRunConflictErrorEnvelope(params: {
     code: "ACTIVE_RUN_EXISTS" | "REPLACE_TARGET_MISMATCH";
     conversationId: string;
