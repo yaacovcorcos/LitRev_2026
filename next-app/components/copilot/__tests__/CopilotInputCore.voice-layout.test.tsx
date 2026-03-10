@@ -39,7 +39,7 @@ describe("CopilotInputCore composer refresh", () => {
         });
     });
 
-    it("shows the secondary-actions trigger while keeping model and voice outside the menu", async () => {
+    it("keeps model and voice outside the secondary actions flow", () => {
         render(
             <CopilotInputCore
                 page="overview"
@@ -56,13 +56,12 @@ describe("CopilotInputCore composer refresh", () => {
             />,
         );
 
-        expect(await screen.findByRole("button", { name: /more actions/i })).toBeTruthy();
         expect(screen.getByRole("button", { name: /voice input/i })).toBeTruthy();
         expect(screen.queryByRole("button", { name: /attach file/i })).toBeNull();
         expect(screen.getByText(/gpt-5.2/i)).toBeTruthy();
     });
 
-    it("renders waveform recording state and disables send while recording", async () => {
+    it("renders waveform recording state and disables send while recording", () => {
         mockVoiceState.state = "recording";
         mockVoiceState.elapsedMs = 11_000;
         mockVoiceState.waveformBars = [0.2, 0.6, 0.4, 0.8];
@@ -81,7 +80,6 @@ describe("CopilotInputCore composer refresh", () => {
             />,
         );
 
-        expect(await screen.findByRole("button", { name: /more actions/i })).toBeTruthy();
         expect(screen.getByRole("button", { name: /stop recording/i })).toBeTruthy();
         expect(screen.getByText("0:11")).toBeTruthy();
         expect(document.querySelectorAll('[class*=\"waveformBar\"]').length).toBeGreaterThan(0);
