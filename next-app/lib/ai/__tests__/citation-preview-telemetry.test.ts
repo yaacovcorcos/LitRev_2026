@@ -59,8 +59,23 @@ describe("citation preview telemetry", () => {
             },
         });
 
+        recordCitationPreviewMetric({
+            type: "continuation_completed",
+            surface: "project",
+            payload: {
+                citationKey: "pmid:12345678",
+                citationType: "PubMed",
+                latencyMs: 300,
+                resolutionPath: "pubmed_crossref_fallback",
+                reason: "count_resolved",
+                resolvedWithCitationCount: true,
+                hadDoiFallbackCandidate: true,
+                continuationRecoveredCount: true,
+            },
+        });
+
         const events = getCitationPreviewMetricEvents();
-        expect(events).toHaveLength(3);
+        expect(events).toHaveLength(4);
         expect(events[0]).toMatchObject({
             version: 1,
             type: "hover_intent_started",
@@ -81,6 +96,13 @@ describe("citation preview telemetry", () => {
                 upstreamSource: "icite",
                 resolutionPath: "pubmed_icite",
                 reason: "count_resolved",
+            },
+        });
+        expect(events[3]).toMatchObject({
+            type: "continuation_completed",
+            payload: {
+                citationKey: "pmid:12345678",
+                continuationRecoveredCount: true,
             },
         });
     });

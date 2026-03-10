@@ -77,4 +77,50 @@ describe("report-citation-preview-metrics", () => {
             },
         });
     });
+
+    it("includes continuation metrics in the printed report", async () => {
+        const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+        try {
+            process.argv = [
+                "node",
+                "scripts/report-citation-preview-metrics.ts",
+                "--since=2026-03-10T00:00:00.000Z",
+                "--until=2026-03-11T00:00:00.000Z",
+            ];
+
+            vi.resetModules();
+            const { prisma } = await import("../../lib/server/prisma");
+            vi.mocked(prisma.chatUnificationMetric.findMany).mockResolvedValue([
+                {
+                    type: "citation_preview.metadata_request_completed",
+                    payload: {
+                        citationType: "PubMed",
+                        fromCache: false,
+                        latencyMs: 120,
+                        resolutionPath: "pubmed_bibliography_only",
+                        reason: "budget_exhausted",
+                        resolvedWithCitationCount: false,
+                        hadDoiFallbackCandidate: true,
+                    },
+                },
+                {
+                    type: "citation_preview.continuation_completed",
+                    payload: {
+                        citationType: "PubMed",
+                        latencyMs: 700,
+                        continuationRecoveredCount: true,
+                    },
+                },
+            ] as never);
+
+            const module = await import("../report-citation-preview-metrics");
+            await module.main();
+
+            expect(logSpy).toHaveBeenCalledWith("Continuation attempts completed: 1");
+            expect(logSpy).toHaveBeenCalledWith("Continuation recovery rate: 100.0%");
+        } finally {
+            logSpy.mockRestore();
+        }
+    });
 });
