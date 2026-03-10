@@ -98,11 +98,12 @@ function upsertProgressMessage(
   deps: StreamChunkDeps,
   payload: Extract<SharedStreamIntent, { type: "progress_upsert" }>,
 ) {
-  const messageId = "progress-current";
+  const messageId = `progress-${deps.myGen}`;
   const now = new Date().toISOString();
 
   deps.updateMessages((messages) => {
-    const idx = messages.findIndex((message) => message.id === messageId);
+    const scopedMessages = messages.filter((message) => !message.progress || message.id === messageId);
+    const idx = scopedMessages.findIndex((message) => message.id === messageId);
     if (idx < 0) {
       const nextMessage: CopilotMessage = {
         id: messageId,
@@ -116,10 +117,10 @@ function upsertProgressMessage(
           total: payload.total,
         },
       };
-      return [...messages, nextMessage];
+      return [...scopedMessages, nextMessage];
     }
 
-    const next = [...messages];
+    const next = [...scopedMessages];
     next[idx] = {
       ...next[idx],
       progress: {
