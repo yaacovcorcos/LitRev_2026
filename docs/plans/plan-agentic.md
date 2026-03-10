@@ -109,6 +109,7 @@ Every fix entry must include:
 - **Database Connectivity Failures Are Classified At The Shared Envelope Boundary:** Prisma/pg connection-establishment failures now surface as `database_connection` envelopes instead of generic `PROVIDER_REQUEST_FAILED`, preserving truthful runtime attribution through stream transport and UI rendering.
 - **Approved Plan Execution Is Now Server-Constrained:** executable plan artifacts now author and preserve `execution` metadata at artifact creation time, the server loads artifact-bound conversation/project/mode authority before normal run setup, approved tool exposure is the intersection of selected-step tools, the stored plan-authorized ceiling, and current safe mode/scope definitions, and off-plan, out-of-order, non-executable, or now-unavailable plan steps fail through the shared non-retryable `plan_execution` error envelope.
 - **Provider-Independent Search Trace Is Stronger Across Main Surfaces:** shared reducers now derive PubMed-specific live progress, factual receipt summaries, and selective grounded checkpoints from search tool facts alone, while the project message bridge preserves those checkpoint semantics so `/ai`, sidebar copilot, and the main project conversation can all expose the same search workflow meaning without depending on provider reasoning.
+- **Canonical Runtime Docs Authority Is Now Explicit:** this plan remains the single active truth source for shipped agent-runtime status, while supporting remediation plans are limited to fix-level implementation detail instead of parallel status tracking.
 
 ## Verified Failure Classes
 *The concrete runtime failures this plan is intended to eliminate.*
@@ -126,15 +127,6 @@ Every fix entry must include:
 
 ## Active Fixes
 *Immediate remediation work for shipped behavior that is broken, misleading, or lower quality than the intended contract.*
-
-- [ ] `FIX-005a` Agentic docs authority and plan truth
-  - Severity: `P2`
-  - Problem: the canonical plans are much healthier now, but authority and active-truth cleanup are still mixed together with broader eval/provenance work.
-  - Supporting detail: `docs/plans/agent-runtime-remediation/plan-docs-evals-and-provenance.md`
-  - Exit criteria:
-    - `plan-agentic.md` remains the single accurate runtime authority
-    - overlapping supporting docs are either retired, demoted to supporting-only, or made explicitly historical
-    - active plan files do not overstate popup/shared-runtime parity or burn-in status
 
 - [ ] `FIX-005b` Executable evals and search provenance
   - Severity: `P1`
@@ -159,10 +151,9 @@ Every fix entry must include:
 
 Work should proceed in this order unless a production incident forces reprioritization:
 
-1. `FIX-005a` docs authority and plan truth
-2. `FIX-005b` evals and provenance hardening
-3. `FIX-011` shared failure handling and popup parity
-4. roadmap phases after the active fixes above are stable
+1. `FIX-005b` evals and provenance hardening
+2. `FIX-011` shared failure handling and popup parity
+3. roadmap phases after the active fixes above are stable
 
 ## End-to-End Delivery Program
 
@@ -184,7 +175,7 @@ Work should proceed in this order unless a production incident forces reprioriti
 
 ### Track D — Surface Honesty, Docs, Evals, and Provenance
 
-- Land `FIX-005a`, `FIX-005b`, and `FIX-011` after the lower-level contracts are stable.
+- `FIX-005a` is complete, so the remaining work on this track is `FIX-005b` plus `FIX-011`.
 - Popup honesty should match the real runtime surface, plan/docs authority should stay truthful, shared failure rendering should stop drifting per surface, and evals/provenance should measure the behavior the runtime actually ships.
 
 ## Active Roadmap
@@ -306,6 +297,7 @@ These files are supporting documents. Status, priority, and closure rules live h
 
 ## Recently Completed
 
+- [x] Completed `FIX-005a` docs authority and plan truth: `plan-agentic.md` remains the single active runtime authority, stale split-era `FIX-005` wording was removed from the supporting remediation doc, and popup/shared-runtime/eval maturity claims now stay aligned with the canonical and adjacent active plans instead of drifting into parallel status trackers.
 - [x] Strengthened provider-independent PubMed execution trace: shared reducers now emit PubMed-specific live progress, factual receipt summaries, and selective grounded checkpoints from search results alone, and project surfaces preserve checkpoint semantics through the structured message bridge so the same search workflow remains legible across `/ai`, sidebar copilot, and the main project conversation.
 - [x] Completed `FIX-002` approved workflow trust: executable plans now author `execution` metadata at artifact creation, plan execution loads artifact-bound conversation/project/mode authority before normal run setup, approved tools are confined to selected-step tools intersected with the stored plan ceiling and current safe mode/scope definitions, strict order is enforced by original selected step index, and plan violations fail through the shared structured `plan_execution` error envelope.
 - [x] Landed `FIX-002` PR1 executable/advisory plan contract: runnable plan artifacts now persist `execution` metadata at creation time, plan lifecycle updates preserve it instead of dropping back to bare step payloads, and advisory/legacy plans fail closed in plan UI instead of looking runnable.
@@ -330,10 +322,14 @@ These files are supporting documents. Status, priority, and closure rules live h
 
 ## Supporting Documents Governance
 
-This plan is the active runtime authority. The following supporting document
-is still useful for detailed remediation work, but it is not itself an active
-tracker:
+This plan is the active runtime authority. Supporting remediation documents may
+hold fix-level implementation detail, but they are not parallel status
+trackers.
+
+Current supporting references:
 
 - `docs/plans/agent-runtime-remediation/README.md`
+- `docs/plans/agent-runtime-remediation/plan-docs-evals-and-provenance.md` for `FIX-005b`
 
-Supporting detail should live under `docs/plans/agent-runtime-remediation/`. Update this file instead.
+Supporting detail should live under `docs/plans/agent-runtime-remediation/`
+while status, priority, and completion rules stay in this file.
