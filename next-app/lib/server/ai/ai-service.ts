@@ -27,6 +27,7 @@ import { startRun, endRun } from "@/lib/server/agent/run";
 import { emitEvent } from "@/lib/server/agent/events";
 import { createArtifact } from "@/lib/server/agent/artifacts";
 import { getAutonomyConfig } from "@/lib/server/agent/autonomy";
+import { buildExecutablePlanPayload } from "@/lib/server/agent/plan-payloads";
 import {
     assembleSystemPrompt,
     buildProjectContext,
@@ -1019,8 +1020,12 @@ class AIService {
                 userMessage,
                 autonomyConfig,
             })) {
-                const planPayload = buildScopingSearchPackPlan({
+                const planPayload = buildExecutablePlanPayload(buildScopingSearchPackPlan({
                     includeRecommendations: modeToolNames.includes("recommend_studies"),
+                }), {
+                    originAgentMode: agentMode,
+                    conversationId: conversation.id,
+                    projectId: projectId ?? null,
                 });
                 const artifact = await createArtifact({
                     runId: activeRun.id,
@@ -1062,7 +1067,7 @@ class AIService {
                 if (detectMultiStepWorkflow(userMessage, modeToolNames)) {
                     yield { type: "progress", progressMessage: "Creating a plan...", conversationId: conversation.id };
 
-                    const planPayload = await generatePlan(userMessage, {
+                    const rawPlanPayload = await generatePlan(userMessage, {
                         projectId: projectId ?? "global",
                         hasProtocol: protocolRow?.data
                             ? isProtocolPopulated(protocolRow.data as unknown as ProtocolData)
@@ -1071,7 +1076,12 @@ class AIService {
                     }, modeToolNames);
 
                     // If plan validation failed, skip plan artifact and continue normal chat
-                    if (planPayload) {
+                    if (rawPlanPayload) {
+                        const planPayload = buildExecutablePlanPayload(rawPlanPayload, {
+                            originAgentMode: agentMode,
+                            conversationId: conversation.id,
+                            projectId: projectId ?? null,
+                        });
                         const artifact = await createArtifact({
                             runId: activeRun.id,
                             projectId: projectId || null,

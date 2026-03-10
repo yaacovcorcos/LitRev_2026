@@ -169,4 +169,76 @@ describe("TimelineRenderer action affordances", () => {
     expect(screen.queryByRole("button", { name: /retry/i })).toBeNull();
     expect(screen.queryByRole("button", { name: /resume/i })).toBeNull();
   });
+
+  it("fails closed for advisory plans without execution metadata", () => {
+    const items: TimelineItem[] = [
+      {
+        type: "artifact",
+        id: "plan-legacy",
+        artifactId: "plan-legacy",
+        artifactType: "plan",
+        status: "proposed",
+        title: "Legacy Plan",
+        payload: {
+          steps: [{ label: "Search PubMed", toolName: "search_pubmed", status: "pending" }],
+          estimatedActions: 1,
+        },
+        version: 1,
+        createdAt: "2026-03-10T00:00:00.000Z",
+      },
+    ];
+
+    render(
+      <TimelineRenderer
+        items={items}
+        isLoading={false}
+        emptyState={{ icon: "chat", title: "Empty", description: "Empty", suggestions: [] }}
+        onSuggestionClick={vi.fn()}
+        onExecutePlan={vi.fn()}
+        onReviewArtifact={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: /^run/i })).toBeNull();
+    expect(screen.getByText("Advisory plan. Review only.")).not.toBeNull();
+  });
+
+  it("renders run for executable plans with execution metadata", () => {
+    const items: TimelineItem[] = [
+      {
+        type: "artifact",
+        id: "plan-executable",
+        artifactId: "plan-executable",
+        artifactType: "plan",
+        status: "proposed",
+        title: "Executable Plan",
+        payload: {
+          steps: [{ label: "Search PubMed", toolName: "search_pubmed", status: "pending" }],
+          estimatedActions: 1,
+          execution: {
+            originAgentMode: "search",
+            allowedToolNames: ["search_pubmed"],
+            createdFromConversationId: "conv-1",
+            createdFromProjectId: "project-1",
+            enforceOrder: true,
+          },
+        },
+        version: 1,
+        createdAt: "2026-03-10T00:00:00.000Z",
+      },
+    ];
+
+    render(
+      <TimelineRenderer
+        items={items}
+        isLoading={false}
+        emptyState={{ icon: "chat", title: "Empty", description: "Empty", suggestions: [] }}
+        onSuggestionClick={vi.fn()}
+        onExecutePlan={vi.fn()}
+        onReviewArtifact={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: /^run/i })).not.toBeNull();
+  });
 });

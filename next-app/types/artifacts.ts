@@ -4,6 +4,7 @@
  */
 
 import { z } from "zod";
+import type { AgentMode } from "@/types/agent";
 
 // ── Artifact Types ───────────────────────────────────────────────────────────
 
@@ -153,6 +154,7 @@ export interface EvidenceTablePayload {
 export interface PlanPayload {
     steps: PlanStep[];
     estimatedActions: number;
+    execution?: PlanExecutionMetadata;
 }
 
 export interface PlanStep {
@@ -160,6 +162,14 @@ export interface PlanStep {
     toolName?: string;
     description?: string;
     status: "pending" | "running" | "completed" | "failed" | "skipped";
+}
+
+export interface PlanExecutionMetadata {
+    originAgentMode: AgentMode;
+    allowedToolNames: string[];
+    createdFromConversationId: string | null;
+    createdFromProjectId: string | null;
+    enforceOrder: true;
 }
 
 export interface MemoryProposalPayload {
@@ -316,9 +326,18 @@ export const PlanStepSchema = z.object({
     status: z.enum(["pending", "running", "completed", "failed", "skipped"]),
 });
 
+export const PlanExecutionMetadataSchema = z.object({
+    originAgentMode: z.enum(["protocol", "scoping", "search", "screening", "drafting", "qa", "general"]),
+    allowedToolNames: z.array(z.string().min(1)),
+    createdFromConversationId: z.string().nullable(),
+    createdFromProjectId: z.string().nullable(),
+    enforceOrder: z.literal(true),
+});
+
 export const PlanSchema = z.object({
     steps: z.array(PlanStepSchema),
     estimatedActions: z.number().int().nonnegative(),
+    execution: PlanExecutionMetadataSchema.optional(),
 });
 
 export const MemoryProposalSchema = z.object({

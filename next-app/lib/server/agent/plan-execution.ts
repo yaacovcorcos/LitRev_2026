@@ -9,6 +9,7 @@ import "server-only";
 import { prisma } from "@/lib/server/prisma";
 import type { Prisma } from "@prisma/client";
 import { PlanSchema, type PlanPayload, type PlanStep } from "@/types/artifacts";
+import { isExecutablePlanPayload } from "@/lib/server/agent/plan-payloads";
 
 export interface SelectedStep {
     originalIndex: number;
@@ -48,6 +49,10 @@ export async function startPlanExecution(
         throw new Error(`Invalid plan payload: ${parsed.error.issues.map(i => i.message).join("; ")}`);
     }
     const payload = parsed.data as PlanPayload;
+    if (!isExecutablePlanPayload(payload)) {
+        await prisma.artifact.update({ where: { id: planId }, data: { status: "proposed" } });
+        throw new Error("Plan is advisory-only and cannot be executed");
+    }
 
     const selectedSteps = selectedStepIndexes
         .filter(i => i >= 0 && i < payload.steps.length)
@@ -73,11 +78,18 @@ export async function completePlanExecution(
     planId: string,
     finalSteps: PlanStep[],
 ): Promise<void> {
+    const artifact = await prisma.artifact.findUniqueOrThrow({ where: { id: planId } });
+    const parsed = PlanSchema.safeParse(artifact.payload);
+    if (!parsed.success) {
+        throw new Error(`Invalid plan payload: ${parsed.error.issues.map(i => i.message).join("; ")}`);
+    }
+    const payload = parsed.data as PlanPayload;
+
     await prisma.artifact.update({
         where: { id: planId },
         data: {
             status: "accepted",
-            payload: { steps: finalSteps, estimatedActions: finalSteps.length } as unknown as Prisma.InputJsonValue,
+            payload: { ...payload, steps: finalSteps } as unknown as Prisma.InputJsonValue,
             reviewedAt: new Date(),
             appliedAt: new Date(),
         },
@@ -93,11 +105,18 @@ export async function failPlanExecution(
     finalSteps: PlanStep[],
     reason?: string,
 ): Promise<void> {
+    const artifact = await prisma.artifact.findUniqueOrThrow({ where: { id: planId } });
+    const parsed = PlanSchema.safeParse(artifact.payload);
+    if (!parsed.success) {
+        throw new Error(`Invalid plan payload: ${parsed.error.issues.map(i => i.message).join("; ")}`);
+    }
+    const payload = parsed.data as PlanPayload;
+
     await prisma.artifact.update({
         where: { id: planId },
         data: {
             status: "proposed",
-            payload: { steps: finalSteps, estimatedActions: finalSteps.length } as unknown as Prisma.InputJsonValue,
+            payload: { ...payload, steps: finalSteps } as unknown as Prisma.InputJsonValue,
             reviewNote: reason ? `Execution failed: ${reason}` : null,
         },
     });
