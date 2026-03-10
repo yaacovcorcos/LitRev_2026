@@ -1,7 +1,7 @@
 import "server-only";
 
 import type { AgentMode } from "@/types/agent";
-import type { PlanPayload } from "@/types/artifacts";
+import type { PlanExecutionMetadata, PlanPayload } from "@/types/artifacts";
 
 type BuildExecutionMetadataInput = {
     originAgentMode: AgentMode;
@@ -35,6 +35,6 @@ export function buildExecutablePlanPayload(
 
 export function isExecutablePlanPayload(
     payload: PlanPayload,
-): boolean {
+): payload is PlanPayload & { execution: PlanExecutionMetadata } {
     return Boolean(payload.execution);
 }

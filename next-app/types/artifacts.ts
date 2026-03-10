@@ -4,7 +4,7 @@
  */
 
 import { z } from "zod";
-import type { AgentMode } from "@/types/agent";
+import { AGENT_MODES, type AgentMode } from "@/types/agent";
 
 // ── Artifact Types ───────────────────────────────────────────────────────────
 
@@ -327,7 +327,7 @@ export const PlanStepSchema = z.object({
 });
 
 export const PlanExecutionMetadataSchema = z.object({
-    originAgentMode: z.enum(["protocol", "scoping", "search", "screening", "drafting", "qa", "general"]),
+    originAgentMode: z.enum(AGENT_MODES),
     allowedToolNames: z.array(z.string().min(1)),
     createdFromConversationId: z.string().nullable(),
     createdFromProjectId: z.string().nullable(),

@@ -31,21 +31,44 @@ describe("plan execution lifecycle", () => {
             estimatedActions: 1,
         };
 
-        mocks.updateMany.mockResolvedValue({ count: 1 });
         mocks.findUniqueOrThrow.mockResolvedValue({
             id: "plan-1",
+            type: "plan",
+            status: "proposed",
+            projectId: "project-1",
             payload: advisoryPlan,
             conversationId: "conv-1",
         });
-        mocks.update.mockResolvedValue({});
 
         await expect(startPlanExecution("plan-1", [0], "project-1")).rejects.toThrow(
             "Plan is advisory-only and cannot be executed",
         );
-        expect(mocks.update).toHaveBeenCalledWith({
-            where: { id: "plan-1" },
-            data: { status: "proposed" },
+        expect(mocks.updateMany).not.toHaveBeenCalled();
+    });
+
+    it("treats expectedProjectId as a consistency check instead of primary authority", async () => {
+        const executablePlan = buildExecutablePlanPayload({
+            steps: [{ label: "Search", toolName: "search_pubmed", status: "pending" }],
+            estimatedActions: 1,
+        }, {
+            originAgentMode: "search",
+            conversationId: "conv-1",
+            projectId: "project-1",
         });
+
+        mocks.findUniqueOrThrow.mockResolvedValue({
+            id: "plan-1",
+            type: "plan",
+            status: "proposed",
+            projectId: "project-1",
+            payload: executablePlan,
+            conversationId: "conv-1",
+        });
+
+        await expect(startPlanExecution("plan-1", [0], "project-2")).rejects.toThrow(
+            "Plan does not belong to the expected project",
+        );
+        expect(mocks.updateMany).not.toHaveBeenCalled();
     });
 
     it("preserves execution metadata when completing a plan", async () => {
@@ -61,6 +84,9 @@ describe("plan execution lifecycle", () => {
 
         mocks.findUniqueOrThrow.mockResolvedValue({
             id: "plan-1",
+            type: "plan",
+            status: "running",
+            projectId: "project-1",
             payload: executablePlan,
         });
         mocks.update.mockResolvedValue({});
@@ -94,6 +120,9 @@ describe("plan execution lifecycle", () => {
 
         mocks.findUniqueOrThrow.mockResolvedValue({
             id: "plan-1",
+            type: "plan",
+            status: "running",
+            projectId: "project-1",
             payload: executablePlan,
         });
         mocks.update.mockResolvedValue({});

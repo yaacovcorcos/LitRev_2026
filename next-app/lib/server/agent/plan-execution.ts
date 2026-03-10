@@ -8,7 +8,7 @@
 import "server-only";
 import { prisma } from "@/lib/server/prisma";
 import type { Prisma } from "@prisma/client";
-import { PlanSchema, type PlanPayload, type PlanStep } from "@/types/artifacts";
+import { PlanSchema, type PlanPayload, type PlanStep, type PlanExecutionMetadata } from "@/types/artifacts";
 import { isExecutablePlanPayload } from "@/lib/server/agent/plan-payloads";
 
 export interface SelectedStep {
@@ -16,6 +16,35 @@ export interface SelectedStep {
     label: string;
     toolName?: string;
     description?: string;
+}
+
+interface ParsedPlanArtifact {
+    artifact: {
+        id: string;
+        type: string;
+        status: string;
+        projectId: string | null;
+        conversationId: string | null;
+        payload: Prisma.JsonValue;
+    };
+    payload: PlanPayload;
+}
+
+async function loadParsedPlanArtifact(planId: string): Promise<ParsedPlanArtifact> {
+    const artifact = await prisma.artifact.findUniqueOrThrow({ where: { id: planId } });
+    if (artifact.type !== "plan") {
+        throw new Error("Artifact is not an executable plan");
+    }
+
+    const parsed = PlanSchema.safeParse(artifact.payload);
+    if (!parsed.success) {
+        throw new Error(`Invalid plan payload: ${parsed.error.issues.map(i => i.message).join("; ")}`);
+    }
+
+    return {
+        artifact,
+        payload: parsed.data as PlanPayload,
+    };
 }
 
 /**
@@ -28,30 +57,31 @@ export interface SelectedStep {
 export async function startPlanExecution(
     planId: string,
     selectedStepIndexes: number[],
-    expectedProjectId: string,
-): Promise<{ plan: PlanPayload; selectedSteps: SelectedStep[]; conversationId: string | null }> {
+    expectedProjectId?: string | null,
+): Promise<{
+    plan: PlanPayload;
+    selectedSteps: SelectedStep[];
+    conversationId: string | null;
+    projectId: string | null;
+    originAgentMode: PlanExecutionMetadata["originAgentMode"];
+    allowedToolNames: string[];
+}> {
+    const { artifact, payload } = await loadParsedPlanArtifact(planId);
+
+    if (expectedProjectId && artifact.projectId && artifact.projectId !== expectedProjectId) {
+        throw new Error("Plan does not belong to the expected project");
+    }
+    if (!isExecutablePlanPayload(payload)) {
+        throw new Error("Plan is advisory-only and cannot be executed");
+    }
+
     // Atomic conditional update: proposed → running
     const updated = await prisma.artifact.updateMany({
-        where: { id: planId, status: "proposed", type: "plan", projectId: expectedProjectId },
+        where: { id: planId, status: "proposed", type: "plan" },
         data: { status: "running" },
     });
     if (updated.count === 0) {
-        throw new Error("Plan not found, already running, or does not belong to this project");
-    }
-
-    const artifact = await prisma.artifact.findUniqueOrThrow({ where: { id: planId } });
-
-    // Validate payload with Zod (not raw cast)
-    const parsed = PlanSchema.safeParse(artifact.payload);
-    if (!parsed.success) {
-        // Revert status on validation failure
-        await prisma.artifact.update({ where: { id: planId }, data: { status: "proposed" } });
-        throw new Error(`Invalid plan payload: ${parsed.error.issues.map(i => i.message).join("; ")}`);
-    }
-    const payload = parsed.data as PlanPayload;
-    if (!isExecutablePlanPayload(payload)) {
-        await prisma.artifact.update({ where: { id: planId }, data: { status: "proposed" } });
-        throw new Error("Plan is advisory-only and cannot be executed");
+        throw new Error("Plan not found or already running");
     }
 
     const selectedSteps = selectedStepIndexes
@@ -67,7 +97,14 @@ export async function startPlanExecution(
         throw new Error("Selected plan includes non-executable step(s) without toolName");
     }
 
-    return { plan: payload, selectedSteps, conversationId: artifact.conversationId };
+    return {
+        plan: payload,
+        selectedSteps,
+        conversationId: artifact.conversationId,
+        projectId: artifact.projectId,
+        originAgentMode: payload.execution.originAgentMode,
+        allowedToolNames: payload.execution.allowedToolNames,
+    };
 }
 
 /**
@@ -78,12 +115,7 @@ export async function completePlanExecution(
     planId: string,
     finalSteps: PlanStep[],
 ): Promise<void> {
-    const artifact = await prisma.artifact.findUniqueOrThrow({ where: { id: planId } });
-    const parsed = PlanSchema.safeParse(artifact.payload);
-    if (!parsed.success) {
-        throw new Error(`Invalid plan payload: ${parsed.error.issues.map(i => i.message).join("; ")}`);
-    }
-    const payload = parsed.data as PlanPayload;
+    const { payload } = await loadParsedPlanArtifact(planId);
 
     await prisma.artifact.update({
         where: { id: planId },
@@ -105,12 +137,7 @@ export async function failPlanExecution(
     finalSteps: PlanStep[],
     reason?: string,
 ): Promise<void> {
-    const artifact = await prisma.artifact.findUniqueOrThrow({ where: { id: planId } });
-    const parsed = PlanSchema.safeParse(artifact.payload);
-    if (!parsed.success) {
-        throw new Error(`Invalid plan payload: ${parsed.error.issues.map(i => i.message).join("; ")}`);
-    }
-    const payload = parsed.data as PlanPayload;
+    const { payload } = await loadParsedPlanArtifact(planId);
 
     await prisma.artifact.update({
         where: { id: planId },
