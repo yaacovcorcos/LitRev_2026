@@ -1,14 +1,14 @@
-function readBooleanEnv(name: string): boolean {
-  const raw = process.env[name];
+const TRUE_VALUES = new Set(["1", "true", "yes", "on"]);
+
+function parseBooleanEnv(raw: string | undefined): boolean {
   if (raw == null) return false;
-  const normalized = raw.trim().toLowerCase();
-  return ["1", "true", "yes", "on"].includes(normalized);
+  return TRUE_VALUES.has(raw.trim().toLowerCase());
 }
 
 export function isOperationalTelemetryE2EMode(): boolean {
-  return readBooleanEnv("NEXT_PUBLIC_E2E_TEST_MODE");
+  return parseBooleanEnv(process.env.NEXT_PUBLIC_E2E_TEST_MODE);
 }
 
 export function isTelemetryIngestE2EMode(): boolean {
-  return readBooleanEnv("E2E_TEST_MODE");
+  return parseBooleanEnv(process.env.E2E_TEST_MODE);
 }
