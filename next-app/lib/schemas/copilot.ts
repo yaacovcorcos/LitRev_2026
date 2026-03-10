@@ -65,6 +65,11 @@ export const copilotMessageSchema = z.object({
             version: z.number(),
         })
         .optional(),
+    checkpoint: z
+        .object({
+            label: z.string(),
+        })
+        .optional(),
 });
 
 export const projectCopilotStateSchema = z.object({

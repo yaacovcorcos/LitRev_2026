@@ -108,6 +108,7 @@ Every fix entry must include:
 - **Shared Failure Handling Still Needs One Owner:** shared stream reducers emit typed `stream_error` intents, but terminal failure presentation is not fully centralized yet; tracked under `FIX-011`.
 - **Database Connectivity Failures Are Classified At The Shared Envelope Boundary:** Prisma/pg connection-establishment failures now surface as `database_connection` envelopes instead of generic `PROVIDER_REQUEST_FAILED`, preserving truthful runtime attribution through stream transport and UI rendering.
 - **Approved Plan Execution Is Now Server-Constrained:** executable plan artifacts now author and preserve `execution` metadata at artifact creation time, the server loads artifact-bound conversation/project/mode authority before normal run setup, approved tool exposure is the intersection of selected-step tools, the stored plan-authorized ceiling, and current safe mode/scope definitions, and off-plan, out-of-order, non-executable, or now-unavailable plan steps fail through the shared non-retryable `plan_execution` error envelope.
+- **Provider-Independent Search Trace Is Stronger Across Main Surfaces:** shared reducers now derive PubMed-specific live progress, factual receipt summaries, and selective grounded checkpoints from search tool facts alone, while the project message bridge preserves those checkpoint semantics so `/ai`, sidebar copilot, and the main project conversation can all expose the same search workflow meaning without depending on provider reasoning.
 
 ## Verified Failure Classes
 *The concrete runtime failures this plan is intended to eliminate.*
@@ -305,6 +306,7 @@ These files are supporting documents. Status, priority, and closure rules live h
 
 ## Recently Completed
 
+- [x] Strengthened provider-independent PubMed execution trace: shared reducers now emit PubMed-specific live progress, factual receipt summaries, and selective grounded checkpoints from search results alone, and project surfaces preserve checkpoint semantics through the structured message bridge so the same search workflow remains legible across `/ai`, sidebar copilot, and the main project conversation.
 - [x] Completed `FIX-002` approved workflow trust: executable plans now author `execution` metadata at artifact creation, plan execution loads artifact-bound conversation/project/mode authority before normal run setup, approved tools are confined to selected-step tools intersected with the stored plan ceiling and current safe mode/scope definitions, strict order is enforced by original selected step index, and plan violations fail through the shared structured `plan_execution` error envelope.
 - [x] Landed `FIX-002` PR1 executable/advisory plan contract: runnable plan artifacts now persist `execution` metadata at creation time, plan lifecycle updates preserve it instead of dropping back to bare step payloads, and advisory/legacy plans fail closed in plan UI instead of looking runnable.
 - [x] Completed `FIX-003` with the smallest honest popup slice: popup is now explicitly read-only/advisory for edit intents, `update_protocol` is no longer exposed in popup mode, and popup guidance now routes edit/apply work to Continue in Copilot instead of implying hidden proposal creation.
@@ -312,7 +314,6 @@ These files are supporting documents. Status, priority, and closure rules live h
 - [x] Implemented `FIX-004b` clarification contract cleanup, completing `FIX-004`: `ask_user` is now the only blocking clarification primitive taught in the global base prompt, while `<choices>` guidance is scoped to artifact/chat surfaces and explicitly limited to optional suggestion chips without changing the XML/event contract.
 - [x] Implemented `FIX-012c` abnormal-end cleanup and error dedupe, completing `FIX-012`: `/ai` and project copilot now reuse the shared runtime/error owners for abnormal-failure aftermath, unfinished tools are force-failed consistently, and one terminal failure renders once without regressing deterministic capability suppression.
 - [x] Implemented `FIX-012b` replace-safe admission: `/ai` and project copilot now send `replaceRunId` only for their own tracked active run, and the server only replaces when that explicit run identity matches the actual active run for the conversation.
-- [x] Implemented `FIX-012a` run finalization guard: started runs now enter the guarded `streamChatWithArtifacts` lifecycle, `run_start` is only emitted after that guard is active, and exactly-once finalization prevents ordinary aborted streams from leaking fresh `running` rows.
 
 ## Deferred / Parking Lot
 

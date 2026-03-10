@@ -52,6 +52,15 @@ export function messagesToTimeline(messages: CopilotMessage[]): TimelineItem[] {
             };
         }
 
+        if (msg.checkpoint) {
+            return {
+                type: "checkpoint" as const,
+                id: msg.id,
+                label: msg.checkpoint.label,
+                createdAt: msg.createdAt,
+            };
+        }
+
         if (msg.streamError) {
             return {
                 type: "error" as const,

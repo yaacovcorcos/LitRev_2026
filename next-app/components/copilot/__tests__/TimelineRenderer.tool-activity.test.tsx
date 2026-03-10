@@ -103,6 +103,7 @@ describe("TimelineRenderer tool activity cards", () => {
         callId: "call-pubmed-1",
         toolName: "search_pubmed",
         status: "done",
+        summary: "Found 10 of 42 PubMed results.",
         queryPreview: "\"retrospective cohort\" disposition decision",
         returnedCount: 10,
         totalResults: 42,
@@ -117,6 +118,7 @@ describe("TimelineRenderer tool activity cards", () => {
         callId: "call-pubmed-2",
         toolName: "search_pubmed",
         status: "done",
+        summary: "Found 6 of 18 PubMed results.",
         queryPreview: "\"retrospective cohort\" disposition decision physicians llm",
         returnedCount: 6,
         totalResults: 18,
@@ -131,6 +133,7 @@ describe("TimelineRenderer tool activity cards", () => {
         callId: "call-pubmed-3",
         toolName: "search_pubmed",
         status: "done",
+        summary: "Found 4 of 9 PubMed results.",
         queryPreview: "\"retrospective cohort\" disposition decision physicians llm admission discharge",
         returnedCount: 4,
         totalResults: 9,
@@ -153,6 +156,7 @@ describe("TimelineRenderer tool activity cards", () => {
     expect(screen.getByText("10 of 42 results")).not.toBeNull();
     expect(screen.getByText("6 of 18 results")).not.toBeNull();
     expect(screen.getByText("4 of 9 results")).not.toBeNull();
+    expect(screen.getByText("Found 10 of 42 PubMed results.")).not.toBeNull();
   });
 
   it("omits the grouped PubMed annotation when the refinement signal is weak", () => {
@@ -203,6 +207,7 @@ describe("TimelineRenderer tool activity cards", () => {
         callId: "call-pubmed-single",
         toolName: "search_pubmed",
         status: "done",
+        summary: "Found 10 of 42 PubMed results.",
         queryPreview: "\"retrospective cohort\" disposition decision",
         returnedCount: 10,
         totalResults: 42,
@@ -215,6 +220,7 @@ describe("TimelineRenderer tool activity cards", () => {
 
     expect(screen.getByText("PubMed search")).not.toBeNull();
     expect(screen.getByText("10 of 42 results")).not.toBeNull();
+    expect(screen.getByText("Found 10 of 42 PubMed results.")).not.toBeNull();
     expect(screen.queryByText("search_pubmed")).toBeNull();
   });
 });

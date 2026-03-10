@@ -69,8 +69,9 @@ Raw/provider-native reasoning should remain optional and secondary.
 ## Current Implementation Status
 - Project copilot now treats live progress as ephemeral process state instead of rendering it as assistant transcript text.
 - PubMed tool receipts now preserve compact factual metadata (`queryPreview`, `returnedCount`, `totalResults`) through the shared trace path.
+- Project copilot and the main project conversation now preserve shared checkpoint semantics through the structured message bridge instead of dropping them on project surfaces.
 - Repeated adjacent PubMed searches are grouped in the renderer into one compact in-chat search sequence card; the canonical runtime record remains atomic.
-- Grouped PubMed search sequences now support a renderer-local derived annotation based only on factual receipt metadata; the canonical `checkpoint_append` timeline lane remains unchanged in this slice.
+- Shared reducer semantics now derive PubMed-specific live progress (`Searching`, `Refining`, `Reviewing`) plus selective grounded checkpoints from runtime search facts alone; provider reasoning remains unnecessary for understanding the workflow.
 
 ## Truth Model
 Every visible process item should fall into one of these categories:

@@ -122,6 +122,27 @@ describe("messagesToTimeline", () => {
     });
   });
 
+  it("maps structured checkpoint messages to timeline checkpoint items", () => {
+    const messages: CopilotMessage[] = [
+      {
+        id: "checkpoint-current",
+        sender: "ai",
+        text: "",
+        createdAt: "2026-02-28T00:00:05.000Z",
+        checkpoint: {
+          label: "PubMed returned 18 results. Reviewing the strongest matches now.",
+        },
+      },
+    ];
+
+    const timeline = messagesToTimeline(messages);
+    expect(timeline[0]).toMatchObject({
+      type: "checkpoint",
+      id: "checkpoint-current",
+      label: "PubMed returned 18 results. Reviewing the strongest matches now.",
+    });
+  });
+
   it("maps structured persisted stream errors without forcing retryable=true", () => {
     const messages: CopilotMessage[] = [
       {
