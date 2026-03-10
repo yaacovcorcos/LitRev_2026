@@ -16,7 +16,7 @@
 - **Demo Seed Lifecycle:** Sample-project creation/reset is server-seeded from a single transactional service (`lib/server/demo-project.ts`) that finds the current user's scoped demo by `Project.demoKey`, creates a generated project ID when missing, and repopulates project, protocol, ledger, draft, notes, memory, and scoped seed conversation rows without relying on a global fixed project ID.
 - **Onboarding State Persistence:** Guided-setup defaults now persist in `UserMemory` (`guided_setup_new_projects`) and per-project onboarding state persists in `Project.progress.onboarding` (`enabledOverride`, `completedAt`, `skippedAt`) so create-flow routing is backend-driven and auth-ready.
 - **AI Rate Limiting (Current):** Limit checks and usage writes now support authenticated user/workspace scope (with legacy project fallback), while cache-efficiency counters remain process-local instrumentation in `lib/server/ai/rate-limiter.ts`.
-- **Citation Preview Diagnostics:** Citation hover resolution now returns server-owned diagnostics alongside `CitationMetadata`, caches successful diagnostics with the result, and persists completion/failure telemetry into `ChatUnificationMetric` under the `citation_preview.*` namespace for canary reporting and provider triage.
+- **Citation Preview Diagnostics:** Citation hover resolution now returns server-owned diagnostics alongside `CitationMetadata`, caches successful diagnostics with the result, and persists terminal completion/failure telemetry into `ChatUnificationMetric` under the `citation_preview.*` namespace as a pragmatic v1 observability path for canary reporting and provider triage.
 
 ## Active Tasks
 *Work that is entirely unimplemented or currently broken.*
@@ -56,7 +56,7 @@
 ## Recently Completed
 *Finished work that might still be fragile or require monitoring. Prune oldest first.*
 
-- [x] Hardened citation hover observability: resolver success paths now classify resolution diagnostics, client/server cache retain those diagnostics for truthful telemetry, citation preview completion/failure events persist to `ChatUnificationMetric`, and repo-owned smoke/report scripts document the first canary workflow.
+- [x] Hardened citation hover observability: resolver success paths now classify resolution diagnostics, client/server cache retain those diagnostics for truthful telemetry, only terminal citation preview completion/failure events persist to `ChatUnificationMetric`, and repo-owned compatibility smoke/report scripts document the first canary workflow.
 - [x] Reworked sample-project identity to use scoped `Project.demoKey` lookup plus generated per-user project/child IDs, eliminating production collisions from the legacy shared `sample-yoga-anxiety` primary key while leaving old rows safely ignored.
 - [x] Phase 10 (build phases 1-4): landed Better Auth foundation + actor-context identity propagation, protected server actions/routes, replaced runtime placeholder scope usage, added transactional first-login claim, moved AI usage limiting toward user/workspace scope, and added auth hardening tests.
 - [x] Phase 12: Added `DraftVersion` table for immutable per-section draft history. `draft_diff` artifact now writes to `DraftVersion` instead of `Note`. Fixed `update_note` tool `append` action to read from Draft table.

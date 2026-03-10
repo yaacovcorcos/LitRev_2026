@@ -527,6 +527,8 @@ export async function fetchCrossrefMetadata(
 export async function resolveDoiMetadata(doi: string): Promise<CitationResolution | null> {
     const result = await fetchCrossrefMetadataWithStatus(doi);
     if (result.status !== "ok" || !result.metadata) {
+        // Keep unresolved DOI failures as generic action failures unless Crossref already
+        // produced enough metadata to render a safe card.
         return null;
     }
 

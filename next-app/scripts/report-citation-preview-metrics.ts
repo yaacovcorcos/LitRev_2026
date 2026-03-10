@@ -2,6 +2,7 @@ import { config } from "dotenv";
 config({ path: ".env.local" });
 config();
 
+import { fileURLToPath } from "node:url";
 import { prisma } from "../lib/server/prisma";
 
 type CitationMetricRow = {
@@ -17,6 +18,11 @@ type CitationMetricPayload = {
     reason?: string;
     resolvedWithCitationCount?: boolean;
     hadDoiFallbackCandidate?: boolean;
+};
+
+type MetricReportFilters = {
+    workspaceIds: string[];
+    projectIds: string[];
 };
 
 function parseArg(name: string): string | undefined {
@@ -35,6 +41,16 @@ function parseDateArg(name: string, fallback: Date): Date {
     return new Date(timestamp);
 }
 
+export function parseCsvArg(name: string): string[] {
+    const raw = parseArg(name);
+    if (!raw) return [];
+
+    return raw
+        .split(",")
+        .map((value) => value.trim())
+        .filter(Boolean);
+}
+
 function asPayload(value: unknown): CitationMetricPayload {
     if (!value || typeof value !== "object") return {};
     return value as CitationMetricPayload;
@@ -50,20 +66,61 @@ function increment(map: Map<string, number>, key: string): void {
     map.set(key, (map.get(key) ?? 0) + 1);
 }
 
+export function buildMetricReportFilters(): MetricReportFilters {
+    return {
+        workspaceIds: parseCsvArg("workspaceIds"),
+        projectIds: parseCsvArg("projectIds"),
+    };
+}
+
+export function buildMetricReportWhereClause(
+    since: Date,
+    until: Date,
+    filters: MetricReportFilters,
+) {
+    return {
+        recordedAt: {
+            gte: since,
+            lte: until,
+        },
+        type: {
+            startsWith: "citation_preview.",
+        },
+        ...(filters.workspaceIds.length > 0
+            ? {
+                workspaceId: {
+                    in: filters.workspaceIds,
+                },
+            }
+            : {}),
+        ...(filters.projectIds.length > 0
+            ? {
+                projectId: {
+                    in: filters.projectIds,
+                },
+            }
+            : {}),
+    };
+}
+
+function describeScope(filters: MetricReportFilters): string {
+    const parts: string[] = [];
+    if (filters.workspaceIds.length > 0) {
+        parts.push(`workspaces=${filters.workspaceIds.join(",")}`);
+    }
+    if (filters.projectIds.length > 0) {
+        parts.push(`projects=${filters.projectIds.join(",")}`);
+    }
+    return parts.length > 0 ? parts.join(" ") : "global";
+}
+
 async function main() {
     const since = parseDateArg("since", new Date(Date.now() - 24 * 60 * 60 * 1000));
     const until = parseDateArg("until", new Date());
+    const filters = buildMetricReportFilters();
 
     const rows = await prisma.chatUnificationMetric.findMany({
-        where: {
-            recordedAt: {
-                gte: since,
-                lte: until,
-            },
-            type: {
-                startsWith: "citation_preview.",
-            },
-        },
+        where: buildMetricReportWhereClause(since, until, filters),
         select: {
             type: true,
             payload: true,
@@ -122,7 +179,9 @@ async function main() {
         ? ((pubmedDoiCandidatesBibliographyOnly / pubmedDoiCandidates) * 100).toFixed(1)
         : "n/a";
 
-    console.log(`Citation preview report (${since.toISOString()} -> ${until.toISOString()})`);
+    console.log(
+        `Citation preview report (${since.toISOString()} -> ${until.toISOString()}) [scope: ${describeScope(filters)}]`,
+    );
     console.log(`Total completed citation fetches: ${completed.length}`);
     console.log(`Citation type breakdown: ${typeBreakdown}`);
     console.log(`Resolution path counts: ${pathBreakdown}`);
@@ -142,11 +201,13 @@ async function main() {
     );
 }
 
-main()
-    .catch((error) => {
-        console.error("[report-citation-preview-metrics] failed", error);
-        process.exitCode = 1;
-    })
-    .finally(async () => {
-        await prisma.$disconnect();
-    });
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+    main()
+        .catch((error) => {
+            console.error("[report-citation-preview-metrics] failed", error);
+            process.exitCode = 1;
+        })
+        .finally(async () => {
+            await prisma.$disconnect();
+        });
+}

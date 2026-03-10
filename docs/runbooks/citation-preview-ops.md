@@ -32,6 +32,12 @@ Optional window override:
 npm run citation:report -- --since=2026-03-10T00:00:00.000Z --until=2026-03-11T00:00:00.000Z
 ```
 
+Optional workspace/project scope:
+
+```bash
+npm run citation:report -- --since=2026-03-10T00:00:00.000Z --workspaceIds=workspace-1 --projectIds=project-1,project-2
+```
+
 The report prints:
 - total completed citation fetches
 - PubMed vs DOI breakdown
@@ -40,6 +46,13 @@ The report prints:
 - count-bearing success rate
 - uncached latency p50/p95
 - percentage of PubMed DOI-bearing lookups that ended bibliography-only
+
+Storage notes:
+- Citation preview telemetry reuses `ChatUnificationMetric` as a pragmatic v1 storage home to avoid a schema change.
+- Only terminal citation events are persisted in this version:
+  - `citation_preview.metadata_request_completed`
+  - `citation_preview.metadata_request_failed`
+- Non-terminal hover/prefetch/open/start events may still exist in the client event model, but they are not stored in the database.
 
 ## First Triage
 

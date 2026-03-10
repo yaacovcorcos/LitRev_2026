@@ -490,6 +490,81 @@ describe("citation-metadata utilities", () => {
                 hadDoiFallbackCandidate: false,
             });
         });
+
+        it("returns classified DOI metadata with a citation count when Crossref resolves safely", async () => {
+            const fetchMock = vi.fn().mockResolvedValue(
+                jsonResponse({
+                    message: {
+                        title: ["DOI classified success"],
+                        author: [{ family: "Doe", given: "Jane" }],
+                        "container-title": ["Crossref Journal"],
+                        created: { "date-parts": [[2024]] },
+                        "is-referenced-by-count": 23,
+                    },
+                }),
+            );
+            vi.stubGlobal("fetch", fetchMock);
+
+            const result = await resolveCitationMetadataCached("https://doi.org/10.1000/classified-success");
+
+            expect(result?.metadata).toMatchObject({
+                title: "DOI classified success",
+                doi: "10.1000/classified-success",
+                citationCount: 23,
+                citationCountSource: "crossref",
+            });
+            expect(result?.diagnostics).toMatchObject({
+                resolutionPath: "doi_crossref",
+                reason: "count_resolved",
+                resolvedWithCitationCount: true,
+                hadDoiFallbackCandidate: false,
+            });
+        });
+
+        it("keeps a classified DOI no-count result stable on cache hits", async () => {
+            const fetchMock = vi.fn().mockResolvedValue(
+                jsonResponse({
+                    message: {
+                        title: ["Cached DOI no-count"],
+                        author: [{ family: "Smith", given: "Alex" }],
+                        "container-title": ["Stable Journal"],
+                        created: { "date-parts": [[2025]] },
+                    },
+                }),
+            );
+            vi.stubGlobal("fetch", fetchMock);
+
+            const first = await resolveCitationMetadataCached("https://doi.org/10.1000/cache-stable");
+            const second = await resolveCitationMetadataCached("https://doi.org/10.1000/cache-stable");
+
+            expect(first).toEqual(second);
+            expect(second?.diagnostics).toMatchObject({
+                resolutionPath: "doi_no_count",
+                reason: "crossref_no_count",
+                resolvedWithCitationCount: false,
+                hadDoiFallbackCandidate: false,
+            });
+            expect(fetchMock).toHaveBeenCalledTimes(1);
+        });
+
+        it("returns null for DOI timeouts when Crossref never yields safe metadata", async () => {
+            const abortError = new Error("aborted");
+            abortError.name = "AbortError";
+
+            const fetchMock = vi.fn().mockRejectedValue(abortError);
+            vi.stubGlobal("fetch", fetchMock);
+
+            const result = await resolveCitationMetadataCached("https://doi.org/10.1000/timeout");
+            expect(result).toBeNull();
+        });
+
+        it("returns null for DOI provider errors when Crossref never yields safe metadata", async () => {
+            const fetchMock = vi.fn().mockRejectedValue(new Error("crossref down"));
+            vi.stubGlobal("fetch", fetchMock);
+
+            const result = await resolveCitationMetadataCached("https://doi.org/10.1000/provider-error");
+            expect(result).toBeNull();
+        });
     });
 
     describe("fetchCrossrefMetadata", () => {

@@ -82,9 +82,19 @@ describe("citation-preview metrics ingestion", () => {
         );
     });
 
-    it("validates project access when projectId is provided", async () => {
-        mocks.chatMetricCreate.mockResolvedValue({ id: "metric-2" });
+    it("accepts non-terminal events without persisting them", async () => {
+        const result = await ingestCitationPreviewMetric(
+            AUTH_CONTEXT,
+            buildMetricInput({
+                type: "hover_intent_started",
+            }),
+        );
 
+        expect(result).toEqual({ deduped: false, id: null });
+        expect(mocks.chatMetricCreate).not.toHaveBeenCalled();
+    });
+
+    it("validates project access when projectId is provided", async () => {
         await ingestCitationPreviewMetric(
             AUTH_CONTEXT,
             buildMetricInput({
@@ -98,13 +108,56 @@ describe("citation-preview metrics ingestion", () => {
         );
     });
 
+    it("persists terminal failures", async () => {
+        mocks.chatMetricCreate.mockResolvedValue({ id: "metric-2" });
+
+        const result = await ingestCitationPreviewMetric(
+            AUTH_CONTEXT,
+            buildMetricInput({
+                type: "metadata_request_failed",
+                payload: {
+                    citationKey: "doi:10.1000/fail",
+                    citationType: "DOI",
+                    trigger: "hover",
+                    latencyMs: 450,
+                    errorCode: "Unable to resolve citation",
+                },
+            }),
+        );
+
+        expect(result).toEqual({ deduped: false, id: "metric-2" });
+        expect(mocks.chatMetricCreate).toHaveBeenCalledTimes(1);
+        expect(mocks.chatMetricCreate).toHaveBeenCalledWith(
+            expect.objectContaining({
+                data: expect.objectContaining({
+                    type: "citation_preview.metadata_request_failed",
+                }),
+            }),
+        );
+    });
+
     it("treats duplicate event ids as deduped success", async () => {
         mocks.chatMetricCreate.mockRejectedValue({
             code: "P2002",
             meta: { target: ["eventId"] },
         });
 
-        const result = await ingestCitationPreviewMetric(AUTH_CONTEXT, buildMetricInput());
+        const result = await ingestCitationPreviewMetric(
+            AUTH_CONTEXT,
+            buildMetricInput({
+                type: "metadata_request_completed",
+                payload: {
+                    citationKey: "pmid:12345678",
+                    citationType: "PubMed",
+                    latencyMs: 142,
+                    upstreamSource: "icite",
+                    resolutionPath: "pubmed_icite",
+                    reason: "count_resolved",
+                    resolvedWithCitationCount: true,
+                    hadDoiFallbackCandidate: false,
+                },
+            }),
+        );
         expect(result).toEqual({ deduped: true, id: null });
     });
 

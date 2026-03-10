@@ -68,6 +68,12 @@ function toStoredMetricType(type: CitationPreviewMetricInput["type"]): string {
     return `citation_preview.${type}`;
 }
 
+function shouldPersistMetric(
+    type: CitationPreviewMetricInput["type"],
+): type is "metadata_request_completed" | "metadata_request_failed" {
+    return type === "metadata_request_completed" || type === "metadata_request_failed";
+}
+
 function parseClientTimestamp(input: string): Date | null {
     const timestamp = Date.parse(input);
     return Number.isFinite(timestamp) ? new Date(timestamp) : null;
@@ -97,6 +103,13 @@ export async function ingestCitationPreviewMetric(
             { ownerId: auth.userId, workspaceId: auth.workspaceId },
             parsed.projectId
         );
+    }
+
+    if (!shouldPersistMetric(parsed.type)) {
+        return {
+            deduped: false,
+            id: null,
+        };
     }
 
     try {
