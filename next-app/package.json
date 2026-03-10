@@ -27,6 +27,7 @@
     "memory:validate": "tsx scripts/validate-memory-rollout.ts",
     "citation:report": "tsx scripts/report-citation-preview-metrics.ts",
     "citation:smoke": "tsx scripts/smoke-citation-providers.ts",
+    "citation:diagnose": "tsx scripts/diagnose-citation-url.ts",
     "perf:budget-check": "node scripts/perf-budget-check.mjs",
     "perf:generate-results": "tsx scripts/generate-perf-results.ts",
     "perf:baseline-report": "node scripts/perf-baseline-report.mjs",

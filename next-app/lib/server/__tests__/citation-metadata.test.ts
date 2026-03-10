@@ -475,7 +475,7 @@ describe("citation-metadata utilities", () => {
             vi.stubGlobal("fetch", fetchMock);
 
             const resultPromise = resolveCitationMetadataCached("https://pubmed.ncbi.nlm.nih.gov/77889900/");
-            await vi.advanceTimersByTimeAsync(1000);
+            await vi.advanceTimersByTimeAsync(1600);
             const result = await resultPromise;
 
             expect(result?.metadata).toMatchObject({
@@ -487,6 +487,55 @@ describe("citation-metadata utilities", () => {
                 resolutionPath: "pubmed_bibliography_only",
                 reason: "icite_timeout",
                 resolvedWithCitationCount: false,
+                hadDoiFallbackCandidate: false,
+            });
+        });
+
+        it("accepts a slower iCite response that still completes within the larger PubMed budget", async () => {
+            vi.useFakeTimers();
+
+            const fetchMock = vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
+                const url = typeof input === "string" ? input : input.toString();
+                if (url.includes("esummary.fcgi")) {
+                    return jsonResponse({
+                        result: {
+                            "88990011": {
+                                title: "Slow but successful enrichment",
+                                authors: [{ name: "Budget B" }],
+                                pubdate: "2026",
+                                fulljournalname: "Latency Journal",
+                                articleids: [],
+                            },
+                        },
+                    });
+                }
+                if (url.includes("icite.od.nih.gov/api/pubs/88990011")) {
+                    return new Promise<Response>((resolve) => {
+                        setTimeout(() => {
+                            resolve(jsonResponse({
+                                citation_count: 29,
+                            }));
+                        }, 1000);
+                    });
+                }
+                throw new Error(`Unexpected URL: ${url}`);
+            });
+            vi.stubGlobal("fetch", fetchMock);
+
+            const resultPromise = resolveCitationMetadataCached("https://pubmed.ncbi.nlm.nih.gov/88990011/");
+            await vi.advanceTimersByTimeAsync(1000);
+            const result = await resultPromise;
+
+            expect(result?.metadata).toMatchObject({
+                title: "Slow but successful enrichment",
+                pmid: "88990011",
+                citationCount: 29,
+                citationCountSource: "icite",
+            });
+            expect(result?.diagnostics).toMatchObject({
+                resolutionPath: "pubmed_icite",
+                reason: "count_resolved",
+                resolvedWithCitationCount: true,
                 hadDoiFallbackCandidate: false,
             });
         });

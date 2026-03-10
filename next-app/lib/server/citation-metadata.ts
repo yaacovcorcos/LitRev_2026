@@ -22,9 +22,9 @@ const SUCCESS_CACHE_TTL_MS = 1000 * 60 * 60; // 1 hour
 const FAILURE_CACHE_TTL_MS = 1000 * 60 * 5; // 5 minutes
 export const METADATA_CACHE_LIMIT = 2000;
 const cacheTimestamps = new Map<string, number>();
-const PUBMED_COUNT_ENRICHMENT_BUDGET_MS = 900;
-const CROSSREF_REQUEST_TIMEOUT_MS = 700;
-const ICITE_REQUEST_TIMEOUT_MS = 700;
+const PUBMED_COUNT_ENRICHMENT_BUDGET_MS = 1500;
+const CROSSREF_REQUEST_TIMEOUT_MS = 1200;
+const ICITE_REQUEST_TIMEOUT_MS = 1200;
 
 function getCached(key: string): CitationResolution | null | undefined {
     const timestamp = cacheTimestamps.get(key);
