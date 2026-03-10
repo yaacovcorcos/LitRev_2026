@@ -1,17 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createProject } from "@/lib/server/projects";
 import {
-  DEV_QUICK_LOGIN_USER_ID,
+  buildFixtureProjectDescription,
+  createDevFixtureProjectId,
+  ensureDevQuickLoginIdentity,
   isDevQuickLoginAllowed,
 } from "@/lib/server/auth/dev-quick-login";
-
-function generateProjectId(): string {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return crypto.randomUUID();
-  }
-
-  return `project-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-}
 
 export async function POST(request: NextRequest) {
   if (!isDevQuickLoginAllowed()) {
@@ -21,21 +15,22 @@ export async function POST(request: NextRequest) {
   const body = (await request.json().catch(() => ({}))) as {
     name?: string;
     description?: string;
+    seedKey?: string | null;
   };
 
   const name = body.name?.trim() || `E2E Project ${Date.now()}`;
-  const workspaceId = `workspace-${DEV_QUICK_LOGIN_USER_ID}`;
+  const identity = await ensureDevQuickLoginIdentity(body.seedKey);
   const now = new Date().toISOString();
 
   const project = await createProject(
     {
-      ownerId: DEV_QUICK_LOGIN_USER_ID,
-      workspaceId,
+      ownerId: identity.userId,
+      workspaceId: identity.workspaceId,
     },
     {
-      id: generateProjectId(),
+      id: createDevFixtureProjectId(),
       name,
-      description: body.description?.trim() || "E2E seeded test project",
+      description: buildFixtureProjectDescription(body.seedKey, body.description),
       status: "ready",
       statusText: "Ready for review",
       created: now,

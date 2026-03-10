@@ -1,4 +1,4 @@
-import { expect, type Page } from "@playwright/test";
+import { expect, type Page, type TestInfo } from "@playwright/test";
 
 const telemetryStubbedPages = new WeakSet<Page>();
 
@@ -44,17 +44,37 @@ async function postWithRetries(
   throw lastError instanceof Error ? lastError : new Error(`Request to ${url} failed`);
 }
 
-export async function quickLogin(page: Page, callbackUrl = "/"): Promise<void> {
+function normalizeSeedSegment(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48) || "fixture";
+}
+
+export function buildFoundationSeedKey(testInfo: Pick<TestInfo, "project" | "workerIndex" | "title">): string {
+  const projectName = normalizeSeedSegment(testInfo.project.name);
+  const title = normalizeSeedSegment(testInfo.title);
+  return `${projectName}-w${testInfo.workerIndex}-${title}`;
+}
+
+type QuickLoginOptions = {
+  callbackUrl?: string;
+  seedKey?: string;
+};
+
+export async function quickLoginWithSeed(
+  page: Page,
+  { callbackUrl = "/", seedKey }: QuickLoginOptions = {},
+): Promise<void> {
   await stubTelemetry(page);
-  await postWithRetries(page, "/api/dev/quick-login", { callbackUrl });
+  await postWithRetries(page, "/api/dev/quick-login", { callbackUrl, seedKey });
 
   const callbackTarget = new URL(callbackUrl, "http://localhost");
   await page.goto(callbackUrl);
   if (page.url().includes("/login")) {
-    await page.goto(`/login?callbackUrl=${encodeURIComponent(callbackUrl)}`);
-    const devMode = page.getByRole("button", { name: /dev mode/i });
-    await expect(devMode).toBeVisible();
-    await devMode.click();
+    await postWithRetries(page, "/api/dev/quick-login", { callbackUrl, seedKey });
+    await page.goto(callbackUrl);
   }
 
   await page.waitForURL((url) =>
@@ -62,6 +82,10 @@ export async function quickLogin(page: Page, callbackUrl = "/"): Promise<void> {
     url.search === callbackTarget.search,
   );
   await page.waitForLoadState("domcontentloaded");
+}
+
+export async function quickLogin(page: Page, callbackUrl = "/"): Promise<void> {
+  await quickLoginWithSeed(page, { callbackUrl });
 }
 
 export async function waitForHomeReady(page: Page): Promise<"loading" | "zero_state" | "workspace"> {
@@ -111,9 +135,43 @@ export async function enterHomeWorkspace(page: Page): Promise<void> {
   }
 }
 
-export async function createProjectFromHome(page: Page, name = "E2E Mobile Project"): Promise<string> {
+export async function setHomeState(
+  page: Page,
+  {
+    seedKey,
+    state,
+  }: {
+    seedKey: string;
+    state: "zero_state" | "workspace";
+  },
+): Promise<void> {
+  await postWithRetries(page, "/api/dev/test-home-state", {
+    seedKey,
+    state,
+  });
+
+  await page.goto("/", { waitUntil: "domcontentloaded", timeout: 30_000 });
+  await expect
+    .poll(async () => {
+      const current = await waitForHomeReady(page);
+      return current === "loading" ? "loading" : current;
+    }, { timeout: 30_000 })
+    .toBe(state);
+}
+
+export async function createProjectFromHome(
+  page: Page,
+  {
+    name = "E2E Mobile Project",
+    seedKey,
+  }: {
+    name?: string;
+    seedKey?: string;
+  } = {},
+): Promise<string> {
   const response = await postWithRetries(page, "/api/dev/test-project", {
     name,
+    seedKey,
   });
   const payload = (await response.json()) as { projectId?: string };
   expect(payload.projectId).toMatch(/^.+$/);
@@ -127,8 +185,11 @@ export async function createProjectFromHome(page: Page, name = "E2E Mobile Proje
   return match![1];
 }
 
-export async function openSampleProjectFromHome(page: Page): Promise<string> {
-  const response = await postWithRetries(page, "/api/dev/demo-project", undefined);
+export async function openSampleProjectFromHome(
+  page: Page,
+  { seedKey }: { seedKey?: string } = {},
+): Promise<string> {
+  const response = await postWithRetries(page, "/api/dev/demo-project", { seedKey });
   const payload = (await response.json()) as { projectId?: string };
   expect(payload.projectId).toMatch(/^.+$/);
 
