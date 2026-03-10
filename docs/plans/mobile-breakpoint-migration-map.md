@@ -32,7 +32,7 @@ Rule meanings:
 | File | Current breakpoint | Classification | Decision | Follow-up owner |
 |---|---:|---|---|---|
 | `next-app/components/mobile/MobileViewportRuntime.tsx` | `900` via `MOBILE_VIEWPORT_MEDIA_QUERY` | transitional legacy mobile cutoff | transitional | `MOB-FND-002` / shell adoption |
-| `next-app/app/ai/page.tsx` | `900` via `MOBILE_VIEWPORT_MEDIA_QUERY` | transitional compact-or-phone behavior | transitional | chat foundation |
+| `next-app/app/ai/page.tsx` | history overlay / drawer state query | `phone` via `PHONE_MEDIA_QUERY` | keep (migrated in `MOB-002` PR 2) | completed |
 | `next-app/app/project/[id]/layout.tsx` | conversation-mode root scroll-lock query | `phone` via `PHONE_MEDIA_QUERY` | keep (migrated in `MOB-002` PR 1) | completed |
 | `next-app/app/project/[id]/layout.tsx` | non-conversation root scroll-lock query | `900` via `MOBILE_VIEWPORT_MEDIA_QUERY` | transitional embedded/view-mode behavior | defer | route-specific workspace follow-up |
 | `next-app/app/project/[id]/draft/page.tsx` | `900` via `MOBILE_VIEWPORT_MEDIA_QUERY` | transitional draft toolbar behavior | transitional | chat/draft follow-up |
@@ -64,7 +64,8 @@ Rule meanings:
 | `next-app/components/UserMenu.module.css` | user menu responsive changes | `900` | compact shell behavior | transitional | `MOB-FND-003` |
 | `next-app/components/ControlsBar.module.css` | controls-bar responsive changes | `900` | compact behavior | transitional; home now uses scoped modifiers from `MOB-FND-004` without rewriting shared default behavior | relevant surface wave |
 | `next-app/components/ProjectCopilot.module.css` | project copilot responsive changes | `900` | chat/compact transitional behavior | transitional | chat foundation |
-| `next-app/app/ai/ai-view.module.css` | `/ai` responsive changes | `900` | chat/compact transitional behavior | transitional | chat foundation |
+| `next-app/app/ai/ai-view.module.css` | `/ai` history overlay / single-column shell behavior | `767` | phone shell behavior | keep (migrated in `MOB-002` PR 2) | completed |
+| `next-app/app/ai/ai-view.module.css` | `/ai` desktop/compact shell height contract | authored `100vh` route math | keep (migrated in `MOB-002` PR 2) | completed |
 | `next-app/app/project/[id]/project-shell.module.css` | conversation-mode bottom offset | `767` | phone shell behavior | keep (migrated in `MOB-002` PR 1) | completed |
 | `next-app/app/project/[id]/project-shell.module.css` | view-mode workspace/copilot collapse | `900` | route-specific workspace transitional behavior | defer | route-specific workspace follow-up |
 | `next-app/app/project/[id]/project-workspace.module.css` | workspace responsive changes | `900` | compact behavior | transitional | `MOB-FND-003` |
