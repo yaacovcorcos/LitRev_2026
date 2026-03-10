@@ -75,7 +75,8 @@ Raw/provider-native reasoning should remain optional and secondary.
 - Project copilot and the main project conversation now preserve shared checkpoint semantics through the structured message bridge instead of dropping them on project surfaces.
 - Repeated adjacent PubMed searches are grouped in the renderer into one compact in-chat search sequence card; the canonical runtime record remains atomic.
 - Shared reducer semantics now derive PubMed-specific live progress (`Searching`, `Refining`, `Reviewing`) plus selective grounded checkpoints from runtime search facts alone; provider reasoning remains unnecessary for understanding the workflow.
-- Full provider-independent execution trace coverage is not done yet for non-PubMed search tools, read tools, proposal/mutation tools, popup parity, task-outline UX, or normalized provenance/source receipts.
+- Popup now preserves a truthful reduced subset of the shared trace contract: live progress, checkpoints, blocking clarification, and structured terminal errors all flow through shared reducer semantics even though popup still hides full receipt/artifact density.
+- Full provider-independent execution trace coverage is not done yet for non-PubMed search tools, read tools, proposal/mutation tools, full popup parity, task-outline UX, or normalized provenance/source receipts.
 
 ## Truth Model
 Every visible process item should fall into one of these categories:
@@ -439,8 +440,13 @@ What not to copy directly:
 - it must not silently drop structured trace items while preserving only assistant prose
 
 ### Popup
-- only opt in once popup can honestly render the relevant trace primitives
-- otherwise keep popup out of scope rather than pretending to support the same transparency layer
+- popup supports a reduced but truthful subset:
+  - live progress
+  - grounded checkpoints
+  - blocking clarification
+  - structured terminal errors
+- popup still does not claim full receipt/artifact/timeline parity
+- compactness may reduce presentation density, but it must not falsify the underlying runtime state
 
 ## Phase Model
 The runtime should move toward phase-aware reporting instead of generic tool-name progress.

@@ -112,6 +112,17 @@ describe("PopupChat failure handling", () => {
     it("annotates the same assistant turn when a deterministic error happens after partial content", async () => {
         mockProcessAIStream.mockImplementationOnce(async ({ onChunk }) => {
             await onChunk({ type: "content", content: "Partial answer" });
+            await onChunk({
+                type: "error",
+                error: "Protocol update failed validation.",
+                errorMeta: {
+                    kind: "tool_schema_validation",
+                    code: "PROTOCOL_MUTATION_VALIDATION_FAILED",
+                    retryable: false,
+                    source: "tool_validator",
+                    message: "Protocol update failed validation.",
+                },
+            });
             throw new AIErrorWithEnvelope({
                 kind: "tool_schema_validation",
                 code: "PROTOCOL_MUTATION_VALIDATION_FAILED",
@@ -135,6 +146,60 @@ describe("PopupChat failure handling", () => {
         expect(screen.getByText("Partial answer")).toBeTruthy();
         expect(screen.getAllByText("Protocol update failed validation.")).toHaveLength(1);
         expect(screen.getByText("Request not completed")).toBeTruthy();
+    });
+
+    it("renders popup-supported progress, checkpoints, and blocking clarification from the shared reducer subset", async () => {
+        mockProcessAIStream.mockImplementationOnce(async ({ onChunk }) => {
+            await onChunk({
+                type: "tool_call",
+                toolCall: {
+                    id: "pubmed-1",
+                    name: "search_pubmed",
+                    arguments: { query: "\"retrospective cohort\" disposition decision" },
+                },
+            });
+            await onChunk({
+                type: "tool_result",
+                toolName: "search_pubmed",
+                toolResult: {
+                    callId: "pubmed-1",
+                    result: { totalResults: 18, returnedCount: 6, results: [] },
+                },
+            });
+            await onChunk({
+                type: "user_input_required",
+                userInputRequest: {
+                    callId: "ask-1",
+                    question: "Which of these results should I inspect first?",
+                    questionType: "single_choice",
+                },
+            });
+            return {
+                runStatus: "paused",
+                stopReason: null,
+                errorMessage: null,
+                errorMeta: null,
+                conversationId: "conv-1",
+                actualModel: null,
+                actualModelSource: "unknown",
+                terminalReason: "completed",
+            };
+        });
+
+        render(<PopupChat projectId="project-1" />);
+
+        fireEvent.change(screen.getByPlaceholderText("Ask a question about Eligibility..."), {
+            target: { value: "Search for matching studies" },
+        });
+        fireEvent.click(screen.getByRole("button", { name: "Send" }));
+
+        await waitFor(() => {
+            expect(screen.getByText("Waiting for your answer")).toBeTruthy();
+        });
+
+        expect(screen.getByText("PubMed returned 18 results. Reviewing the strongest matches now.")).toBeTruthy();
+        expect(screen.getByText("Which of these results should I inspect first?")).toBeTruthy();
+        expect(screen.getByRole("button", { name: "Continue in Copilot to answer" })).toBeTruthy();
     });
 
     it("renders one retryable terminal error message when the stream ends without assistant content", async () => {

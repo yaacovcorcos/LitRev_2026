@@ -28,6 +28,7 @@ const allowedChunkBranchFiles = new Set([
 const allowedReduceUsageFiles = new Set([
   path.normalize(path.join("contexts", "project-copilot-stream-events.ts")),
   path.normalize(path.join("lib", "ai", "ai-stream-runtime.ts")),
+  path.normalize(path.join("lib", "ai", "popup-stream-runtime.ts")),
   path.normalize(path.join("lib", "ai", "shared-stream-reducer.ts")),
 ]);
 

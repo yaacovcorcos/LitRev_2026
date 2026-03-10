@@ -24,7 +24,7 @@ This plan does not own:
 - `/ai` and project copilot already share the normalized stream event model through `shared-stream-reducer.ts` and shared runtime helpers in `lib/ai/`.
 - `/ai` standard send and plan paths already run through the shared reducer/runtime contract.
 - Project copilot already migrated off bespoke chunk accumulation onto the shared reducer/runtime path, but still carries a few surface adapter differences that matter for truthful progress/presentation.
-- Popup has canonical Context V2 payload alignment, but it still has not migrated fully onto the shared runtime engine.
+- Popup has canonical Context V2 payload alignment and now derives its supported progress/checkpoint/error/blocking subset through a shared reducer adapter, but it still has not migrated fully onto the shared runtime engine.
 - The CI anti-duplication architecture guard is already enforced and should continue preventing new per-surface chunk parsers.
 - Chat/runtime work above this layer now depends on convergence here rather than inventing new per-surface semantics.
 
@@ -167,6 +167,7 @@ Architecture guardrails:
 - [plan-agentic.md](./plan-agentic.md) depends on this plan whenever agent fixes require shared stream/runtime semantics instead of per-surface adapters.
 
 ## Recently Completed
+- Popup now preserves a truthful reduced shared-trace subset for live progress, grounded checkpoints, blocking clarification, and structured terminal failures through a shared reducer adapter while remaining compact.
 - Shared pure reducer + intents shipped and now back both `/ai` and project copilot.
 - `/ai` send and plan stream paths were migrated onto the shared reducer/runtime path.
 - Popup payloads were aligned to Context V2 so popup no longer silently bypasses the canonical context contract.
