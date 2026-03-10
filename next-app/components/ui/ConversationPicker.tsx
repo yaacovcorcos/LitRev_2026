@@ -52,12 +52,17 @@ export function ConversationPicker({
   groupOrder,
   variant = "panel",
 }: ConversationPickerProps) {
+  const [hasMounted, setHasMounted] = useState(false);
   const [query, setQuery] = useState("");
   const [titleOverrides, setTitleOverrides] = useState<Record<string, string>>({});
   const [renameTargetId, setRenameTargetId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [renameError, setRenameError] = useState<string | null>(null);
   const [renameSaving, setRenameSaving] = useState(false);
+
+  useEffect(() => {
+    setHasMounted(true);
+  }, []);
 
   useEffect(() => {
     if (!open) setQuery("");
@@ -174,6 +179,19 @@ export function ConversationPicker({
   }, [effectiveConversations, onRename, renameTargetId, renameValue]);
 
   const triggerClassName = `${styles.trigger} ${variant === "panel" ? styles.triggerPanel : styles.triggerPage}`;
+  const triggerButton = (
+    <button
+      type="button"
+      className={triggerClassName}
+      title={currentTitle}
+      aria-label="Select conversation"
+    >
+      <span className={styles.triggerTitle}>{currentTitle}</span>
+      <svg className={styles.chevronIcon} width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+        <polyline points="6 9 12 15 18 9" />
+      </svg>
+    </button>
+  );
 
   const onMenuRename = useCallback((conversationId: string) => {
     beginRename(conversationId);
@@ -194,43 +212,34 @@ export function ConversationPicker({
 
   return (
     <>
-      <Popover.Root open={open} onOpenChange={onOpenChange}>
-        <Popover.Trigger asChild>
-          <button
-            type="button"
-            className={triggerClassName}
-            title={currentTitle}
-            aria-label="Select conversation"
-          >
-            <span className={styles.triggerTitle}>{currentTitle}</span>
-            <svg className={styles.chevronIcon} width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="6 9 12 15 18 9" />
-            </svg>
-          </button>
-        </Popover.Trigger>
+      {!hasMounted ? triggerButton : (
+        <Popover.Root open={open} onOpenChange={onOpenChange}>
+          <Popover.Trigger asChild>
+            {triggerButton}
+          </Popover.Trigger>
 
-        <Popover.Portal>
-          <Popover.Content className={`${styles.dropdown} ${variant === "page" ? styles.dropdownPage : ""}`} side="bottom" align="start" sideOffset={4}>
-            <Command shouldFilter={false} className={styles.command}>
-              <div className={styles.searchWrapper}>
-                <Command.Input
-                  value={query}
-                  onValueChange={setQuery}
-                  placeholder={searchPlaceholder}
-                  className={styles.searchInput}
-                />
-              </div>
+          <Popover.Portal>
+            <Popover.Content className={`${styles.dropdown} ${variant === "page" ? styles.dropdownPage : ""}`} side="bottom" align="start" sideOffset={4}>
+              <Command shouldFilter={false} className={styles.command}>
+                <div className={styles.searchWrapper}>
+                  <Command.Input
+                    value={query}
+                    onValueChange={setQuery}
+                    placeholder={searchPlaceholder}
+                    className={styles.searchInput}
+                  />
+                </div>
 
-              <Command.List className={styles.list}>
-                <Command.Empty className={styles.empty}>{emptyLabel}</Command.Empty>
+                <Command.List className={styles.list}>
+                  <Command.Empty className={styles.empty}>{emptyLabel}</Command.Empty>
 
-                {grouped.map((group) => (
-                  <Command.Group
-                    key={group.label ?? DEFAULT_GROUP}
-                    heading={group.label ?? undefined}
-                    className={styles.group}
-                  >
-                    {group.items.map((conversation) => {
+                  {grouped.map((group) => (
+                    <Command.Group
+                      key={group.label ?? DEFAULT_GROUP}
+                      heading={group.label ?? undefined}
+                      className={styles.group}
+                    >
+                      {group.items.map((conversation) => {
                       const meta = renderMeta?.(conversation);
                       const isCurrent = currentConversationId === conversation.id;
                       const conversationTitle = conversation.title || "New conversation";
@@ -354,14 +363,15 @@ export function ConversationPicker({
                           )}
                         </ContextMenu.Root>
                       );
-                    })}
-                  </Command.Group>
-                ))}
-              </Command.List>
-            </Command>
-          </Popover.Content>
-        </Popover.Portal>
-      </Popover.Root>
+                      })}
+                    </Command.Group>
+                  ))}
+                </Command.List>
+              </Command>
+            </Popover.Content>
+          </Popover.Portal>
+        </Popover.Root>
+      )}
 
       <Dialog.Root open={renameTargetId !== null} onOpenChange={(nextOpen) => { if (!nextOpen) resetRenameState(); }}>
         <Dialog.Portal>
