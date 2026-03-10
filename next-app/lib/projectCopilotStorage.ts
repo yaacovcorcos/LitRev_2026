@@ -55,6 +55,9 @@ export type CopilotMessage = {
     toolName: string;
     status: "queued" | "running" | "done" | "failed";
     summary?: string;
+    queryPreview?: string;
+    returnedCount?: number;
+    totalResults?: number;
     errorMeta?: AIErrorEnvelope;
     startedAt: string;
     updatedAt: string;

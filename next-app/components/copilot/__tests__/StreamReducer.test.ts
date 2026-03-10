@@ -70,6 +70,9 @@ describe("messagesToTimeline", () => {
           callId: "tc-1",
           toolName: "search_openalex",
           status: "running",
+          queryPreview: "\"retrospective cohort\" AND disposition decision",
+          returnedCount: 10,
+          totalResults: 18,
           startedAt: "2026-02-28T00:00:04.000Z",
           updatedAt: "2026-02-28T00:00:04.000Z",
         },
@@ -88,6 +91,9 @@ describe("messagesToTimeline", () => {
       callId: "tc-1",
       toolName: "search_openalex",
       status: "running",
+      queryPreview: "\"retrospective cohort\" AND disposition decision",
+      returnedCount: 10,
+      totalResults: 18,
     });
   });
 

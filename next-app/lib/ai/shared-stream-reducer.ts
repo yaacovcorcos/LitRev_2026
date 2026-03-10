@@ -40,6 +40,9 @@ export type SharedStreamIntent =
       toolName: string;
       status: SharedToolStatus;
       summary?: string;
+      queryPreview?: string;
+      returnedCount?: number;
+      totalResults?: number;
       errorMeta?: AIErrorEnvelope;
     }
   | {
@@ -167,6 +170,33 @@ function removeCallId(callIds: string[], callId: string): string[] {
   return callIds.filter((id) => id !== callId);
 }
 
+function buildQueryPreview(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const normalized = value.replace(/\s+/g, " ").trim();
+  if (!normalized) return undefined;
+  const maxLength = 96;
+  if (normalized.length <= maxLength) return normalized;
+  return `${normalized.slice(0, maxLength - 1).trimEnd()}…`;
+}
+
+function getPubMedToolCallMetadata(chunk: AIStreamChunk): Pick<Extract<SharedStreamIntent, { type: "tool_activity_upsert" }>, "queryPreview"> | undefined {
+  if (chunk.toolCall?.name !== "search_pubmed") return undefined;
+  return {
+    queryPreview: buildQueryPreview(chunk.toolCall.arguments?.query),
+  };
+}
+
+function getPubMedToolResultMetadata(chunk: AIStreamChunk): Pick<Extract<SharedStreamIntent, { type: "tool_activity_upsert" }>, "returnedCount" | "totalResults"> | undefined {
+  if (chunk.toolName !== "search_pubmed") return undefined;
+  const result = chunk.toolResult?.result;
+  if (!result || typeof result !== "object") return undefined;
+  const record = result as Record<string, unknown>;
+  return {
+    returnedCount: typeof record.returnedCount === "number" ? record.returnedCount : undefined,
+    totalResults: typeof record.totalResults === "number" ? record.totalResults : undefined,
+  };
+}
+
 export function reduceSharedStreamChunk(
   prev: SharedStreamState,
   chunk: AIStreamChunk,
@@ -239,6 +269,7 @@ export function reduceSharedStreamChunk(
     case "tool_call": {
       const { callId, syntheticToolCounter } = resolveToolCallId(prev, chunk.toolCall?.id);
       const toolName = chunk.toolCall?.name ?? "tool";
+      const metadata = getPubMedToolCallMetadata(chunk);
       const runningToolCallIds = appendUniqueCallId(prev.runningToolCallIds ?? [], callId);
       next = {
         ...prev,
@@ -251,6 +282,7 @@ export function reduceSharedStreamChunk(
         callId,
         toolName,
         status: "running",
+        ...metadata,
       });
       return { state: next, intents };
     }
@@ -260,12 +292,14 @@ export function reduceSharedStreamChunk(
       const fallbackCallId = prev.lastToolCallId ?? runningToolCallIds[runningToolCallIds.length - 1] ?? null;
       const callId = chunk.toolResult?.callId ?? fallbackCallId;
       if (callId) {
+        const metadata = getPubMedToolResultMetadata(chunk);
         intents.push({
           type: "tool_activity_upsert",
           callId,
           toolName: chunk.toolName ?? "tool",
           status: chunk.toolResult?.error ? "failed" : "done",
           summary: chunk.toolResult?.error ?? undefined,
+          ...metadata,
           errorMeta: chunk.toolResult?.errorMeta,
         });
       }
