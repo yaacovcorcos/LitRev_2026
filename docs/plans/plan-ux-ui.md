@@ -25,6 +25,9 @@ Domain-specific execution plans remain canonical for their domains:
 - Shared scoped-context UI is active:
   - `ProjectCopilot` / `CopilotInputCore` now render typed context receipts and recent-context history chips owned by `docs/plans/plan-context-capture.md`.
   - `PopupChat` shows compact context previews, keeps edit intents advisory-only via `Continue in Copilot`, and draft desktop quick actions are gated behind the dedicated context-toolbar flag rather than leaking into mobile flows.
+- Shared composer action hierarchy is active across chat surfaces:
+  - `CopilotInputCore` now uses a left-edge `+` extension menu for secondary actions, keeps voice in the right-side primary action cluster beside send, and presents a real microphone-driven waveform/timer state while recording.
+  - Shared composer hover language stays token-based and calm, while recording/transcribing states preserve keyboard stop behavior without moving reasoning controls into the composer.
 - Citation hover previews now use source-aware server metadata assembly:
   - PubMed links keep PubMed-owned bibliography while resolving citation counts from NIH iCite/OCC first and Crossref second when a DOI fallback is available.
   - DOI links remain Crossref-backed, and citation preview telemetry records the actual upstream count source (`icite` or `crossref`).
@@ -86,6 +89,7 @@ Use this mapping for old PRs/comments referencing CLU IDs.
 - [ ] `CUX-A03` Expand async `aria-live` announcements coverage and consistency across remaining async UI states.
 
 ## Recently Completed
+- [x] Composer refresh shipped on the shared chat input: secondary actions now live behind a `+` menu, voice moved beside send, hover styling was unified, and live recording shows a real waveform/timer across shared chat surfaces.
 - [x] Citation hover diagnostics and telemetry hardening: successful hover loads now retain resolver diagnostics in cache, only terminal completion/failure events persist for canary reporting, and repo-owned compatibility smoke/report scripts ship without changing the bibliography-first card UX.
 - [x] Citation hover enrichment now preserves PubMed bibliography while adding citation counts from NIH iCite/OCC with Crossref fallback and truthful telemetry provenance.
 - [x] Unified UI plan governance: this file is now the single canonical UI/UX tracker.
@@ -96,7 +100,6 @@ Use this mapping for old PRs/comments referencing CLU IDs.
 - [x] `CUX-013` / `CUX-014` async feedback architecture (`useAsyncAction`, notifications, toasts).
 - [x] `CUX-015` / `CUX-036` / `CUX-037` error fallback, hydration polish, and demo guidance dedup.
 - [x] `CUX-016` / `CUX-A01` / `CUX-A02` token system and accessibility form/icon baseline.
-- [x] `CUX-035` decomposition wave delivered for previously oversized UI modules.
 
 ## Cross-Plan Dependencies (Authoritative Elsewhere)
 - Guided setup/onboarding UX execution: `docs/plans/plan-guided-setup.md`.
