@@ -1,8 +1,10 @@
 import "server-only";
 
+import type { Prisma } from "@prisma/client";
 import { z } from "zod";
 import type { AuthContext } from "@/lib/server/auth/session";
 import { assertProjectAccess } from "@/lib/server/access";
+import { prisma } from "@/lib/server/prisma";
 import type { CitationPreviewMetricInput } from "@/types/citation-preview-telemetry";
 
 const METRIC_TYPES = [
@@ -39,38 +41,56 @@ const CitationPreviewMetricInputSchema: z.ZodType<CitationPreviewMetricInput> = 
         fromCache: z.boolean().optional(),
         latencyMs: z.number().finite().min(0).optional(),
         upstreamSource: z.enum(["icite", "crossref", "pubmed", "unknown"]).optional(),
+        resolutionPath: z.enum([
+            "pubmed_icite",
+            "pubmed_crossref_fallback",
+            "pubmed_bibliography_only",
+            "doi_crossref",
+            "doi_no_count",
+        ]).optional(),
+        reason: z.enum([
+            "count_resolved",
+            "no_doi_fallback",
+            "icite_no_count",
+            "icite_timeout",
+            "crossref_no_count",
+            "crossref_timeout",
+            "budget_exhausted",
+            "provider_error",
+        ]).optional(),
+        resolvedWithCitationCount: z.boolean().optional(),
+        hadDoiFallbackCandidate: z.boolean().optional(),
         errorCode: z.string().trim().min(1).max(MAX_ERROR_CODE_LENGTH).nullable().optional(),
     }),
 });
 
-const EVENT_ID_TTL_MS = 1000 * 60 * 60 * 24;
-const EVENT_ID_LIMIT = 5000;
-const seenEventIds = new Map<string, number>();
-
-function pruneSeenEventIds(now: number): void {
-    for (const [eventId, timestamp] of seenEventIds) {
-        if (now - timestamp > EVENT_ID_TTL_MS) {
-            seenEventIds.delete(eventId);
-        }
-    }
-
-    while (seenEventIds.size > EVENT_ID_LIMIT) {
-        const oldestEventId = seenEventIds.keys().next().value;
-        if (!oldestEventId) return;
-        seenEventIds.delete(oldestEventId);
-    }
+function toStoredMetricType(type: CitationPreviewMetricInput["type"]): string {
+    return `citation_preview.${type}`;
 }
 
-function markEventId(eventId: string): { deduped: boolean } {
-    const now = Date.now();
-    pruneSeenEventIds(now);
-    if (seenEventIds.has(eventId)) return { deduped: true };
-    seenEventIds.set(eventId, now);
-    return { deduped: false };
+function shouldPersistMetric(
+    type: CitationPreviewMetricInput["type"],
+): type is "metadata_request_completed" | "metadata_request_failed" {
+    return type === "metadata_request_completed" || type === "metadata_request_failed";
+}
+
+function parseClientTimestamp(input: string): Date | null {
+    const timestamp = Date.parse(input);
+    return Number.isFinite(timestamp) ? new Date(timestamp) : null;
+}
+
+function isEventIdUniqueConflict(error: unknown): boolean {
+    if (!error || typeof error !== "object") return false;
+    const candidate = error as { code?: unknown; meta?: { target?: unknown } };
+    if (candidate.code !== "P2002") return false;
+    const target = candidate.meta?.target;
+    if (!Array.isArray(target)) return false;
+    return target.map((value) => String(value)).includes("eventId");
 }
 
 export type IngestCitationPreviewMetricResult = {
     deduped: boolean;
+    id: string | null;
 };
 
 export async function ingestCitationPreviewMetric(
@@ -85,12 +105,41 @@ export async function ingestCitationPreviewMetric(
         );
     }
 
-    const dedupeState = markEventId(parsed.eventId);
-    return {
-        deduped: dedupeState.deduped,
-    };
-}
+    if (!shouldPersistMetric(parsed.type)) {
+        return {
+            deduped: false,
+            id: null,
+        };
+    }
 
-export function __clearCitationPreviewMetricDedupeForTests(): void {
-    seenEventIds.clear();
+    try {
+        const created = await prisma.chatUnificationMetric.create({
+            data: {
+                eventId: parsed.eventId,
+                version: parsed.version,
+                type: toStoredMetricType(parsed.type),
+                surface: parsed.surface,
+                userId: auth.userId,
+                workspaceId: auth.workspaceId,
+                projectId: parsed.projectId ?? null,
+                conversationId: parsed.conversationId ?? null,
+                payload: parsed.payload as Prisma.InputJsonValue,
+                clientTimestamp: parseClientTimestamp(parsed.clientTimestamp),
+            },
+            select: { id: true },
+        });
+
+        return {
+            deduped: false,
+            id: created.id,
+        };
+    } catch (error) {
+        if (isEventIdUniqueConflict(error)) {
+            return {
+                deduped: true,
+                id: null,
+            };
+        }
+        throw error;
+    }
 }
