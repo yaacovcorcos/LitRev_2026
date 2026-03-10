@@ -73,6 +73,7 @@ If no row matches, consult `docs/agents/cold-memory-index.md`, then pick the nea
 
 Rule: feature branches hold work; repo root `main` only mirrors merged work.
 
+- Repo root `main` is the only canonical baseline; task worktrees may use other branches temporarily, but they must never be treated as the baseline or replace repo root `main`.
 - Repo root is the canonical clean `main` checkout for this repository.
 - Repo root `main` must match `origin/main` exactly during normal workflow.
 - Do not commit directly to repo root `main` except for an explicit emergency hotfix requested by the user.
