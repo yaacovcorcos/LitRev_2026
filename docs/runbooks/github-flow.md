@@ -50,10 +50,12 @@ gh pr list --state open --json number,title,headRefName,baseRefName,reviewDecisi
 - Repo root checkout is the canonical clean `main`.
 - Keep repo root `main` exactly in sync with `origin/main`.
 - If repo root is detached, dirty, ahead, or behind `origin/main`, stop and reconcile before starting new work.
+- Never use repo root as a task checkout, PR checkout, or scratch branch checkout.
+- Never run `gh pr checkout <number>` in repo root; create or use a task worktree for PR inspection or updates.
 - Detached or rescue worktrees are never the `main` baseline.
-- Task worktrees are temporary by default and should exist only for active work.
+- Task worktrees are temporary by default and should exist only while a task is being actively implemented, reviewed, or waiting to merge.
 - Create task worktrees from repo root using `YY/<task>` branches.
-- After merge, fast-forward repo root `main`, then remove the merged task worktree and delete the merged branch.
+- After merge, fast-forward repo root `main`, then remove the merged task worktree and delete the merged branch in the same cleanup flow.
 - If a task is abandoned, remove its worktree and either delete the branch or archive it intentionally.
 - Maintain a cleanup manifest before deleting or re-homing worktrees.
 - Do not remove a parent worktree directory while it still contains active nested child worktrees.
@@ -80,6 +82,7 @@ From repo root:
 
 Notes:
 - Repo root is the canonical `main` checkout.
+- Repo root is not a task worktree and should remain on `main`.
 - Task worktrees should be created as siblings under `<repo-root>/.worktrees/`.
 
 From the task worktree:
@@ -100,6 +103,9 @@ After merge:
 3. `git pull --ff-only origin main`
 4. `git worktree remove .worktrees/<task>`
 5. `git branch -d YY/<task>`
+
+Required cleanup rule:
+- steps 1-5 above are one cleanup sequence; do not leave merged task worktrees behind for later cleanup.
 
 Abandoned task:
 
