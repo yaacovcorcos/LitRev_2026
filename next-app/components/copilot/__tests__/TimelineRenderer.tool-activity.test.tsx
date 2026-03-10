@@ -143,6 +143,7 @@ describe("TimelineRenderer tool activity cards", () => {
 
     expect(screen.getByText("PubMed search")).not.toBeNull();
     expect(screen.getByText("3 searches")).not.toBeNull();
+    expect(screen.getByText("The search is narrowing toward a smaller result set.")).not.toBeNull();
     expect(screen.queryByText("search_pubmed")).toBeNull();
     expect(screen.queryByText("1.")).toBeNull();
 
@@ -152,6 +153,46 @@ describe("TimelineRenderer tool activity cards", () => {
     expect(screen.getByText("10 of 42 results")).not.toBeNull();
     expect(screen.getByText("6 of 18 results")).not.toBeNull();
     expect(screen.getByText("4 of 9 results")).not.toBeNull();
+  });
+
+  it("omits the grouped PubMed annotation when the refinement signal is weak", () => {
+    renderTimeline([
+      {
+        type: "tool_activity",
+        id: "pubmed-same-1",
+        callId: "call-pubmed-same-1",
+        toolName: "search_pubmed",
+        status: "done",
+        queryPreview: "\"retrospective cohort\" disposition decision",
+        returnedCount: 10,
+        totalResults: 42,
+        startedAt: "2026-03-02T12:00:00.000Z",
+        updatedAt: "2026-03-02T12:00:02.000Z",
+        completedAt: "2026-03-02T12:00:02.000Z",
+        createdAt: "2026-03-02T12:00:00.000Z",
+      },
+      {
+        type: "tool_activity",
+        id: "pubmed-same-2",
+        callId: "call-pubmed-same-2",
+        toolName: "search_pubmed",
+        status: "done",
+        queryPreview: "\"retrospective cohort\" disposition decision",
+        returnedCount: 10,
+        totalResults: 42,
+        startedAt: "2026-03-02T12:00:03.000Z",
+        updatedAt: "2026-03-02T12:00:05.000Z",
+        completedAt: "2026-03-02T12:00:05.000Z",
+        createdAt: "2026-03-02T12:00:03.000Z",
+      },
+    ]);
+
+    expect(screen.getByText("PubMed search")).not.toBeNull();
+    expect(screen.getByText("2 searches")).not.toBeNull();
+    expect(screen.queryByText("The search is narrowing toward a smaller result set.")).toBeNull();
+    expect(screen.queryByText("The search is broadening to explore a larger result set.")).toBeNull();
+    expect(screen.queryByText("The search is still broad and is being refined further.")).toBeNull();
+    expect(screen.queryByText("Multiple PubMed searches were used to refine the result set.")).toBeNull();
   });
 
   it("humanizes a single PubMed receipt without grouping", () => {

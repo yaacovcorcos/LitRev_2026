@@ -70,6 +70,7 @@ Raw/provider-native reasoning should remain optional and secondary.
 - Project copilot now treats live progress as ephemeral process state instead of rendering it as assistant transcript text.
 - PubMed tool receipts now preserve compact factual metadata (`queryPreview`, `returnedCount`, `totalResults`) through the shared trace path.
 - Repeated adjacent PubMed searches are grouped in the renderer into one compact in-chat search sequence card; the canonical runtime record remains atomic.
+- Grouped PubMed search sequences now support a renderer-local derived annotation based only on factual receipt metadata; the canonical `checkpoint_append` timeline lane remains unchanged in this slice.
 
 ## Truth Model
 Every visible process item should fall into one of these categories:
@@ -504,15 +505,17 @@ Exit criteria:
 - PubMed search receipts explain what actually happened, not just that something ran.
 - Repeated search refinement can be rendered compactly without inventing new runtime grouping metadata.
 
-### Phase V2.3 - Checkpoints
-1. Add grounded checkpoints after meaningful tool results.
-2. Use them to explain:
-   - what was found
-   - what changed
-   - what happens next
+### Phase V2.3 - Derived search annotations
+1. Extend the existing grouped PubMed renderer path with one compact derived annotation.
+2. Limit the annotation to conservative factual signals already present in receipts:
+   - result set narrowing or broadening
+   - repeated refinement without convergence
+   - the latest search becoming too narrow
+3. Keep this renderer-local in the grouped PubMed card; do not emit new canonical `checkpoint` items in this slice.
 
 Exit criteria:
-- Users can follow the process even without provider-native reasoning.
+- Users can infer how the PubMed search is evolving without needing provider-native reasoning.
+- The canonical `checkpoint_append` lane remains available for future server-authored grounded checkpoints.
 
 ### Phase V2.4 - Reasoning parity and refinement
 1. Improve reasoning-lane behavior where models/providers support it.
