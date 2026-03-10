@@ -1,19 +1,22 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { openOrCreateDemoProject } from "@/lib/server/demo-project";
 import {
-  DEV_QUICK_LOGIN_USER_ID,
+  ensureDevQuickLoginIdentity,
   isDevQuickLoginAllowed,
 } from "@/lib/server/auth/dev-quick-login";
 
-export async function POST() {
+export async function POST(request: NextRequest) {
   if (!isDevQuickLoginAllowed()) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  const workspaceId = `workspace-${DEV_QUICK_LOGIN_USER_ID}`;
+  const body = (await request.json().catch(() => ({}))) as {
+    seedKey?: string | null;
+  };
+  const identity = await ensureDevQuickLoginIdentity(body.seedKey);
   const project = await openOrCreateDemoProject({
-    ownerId: DEV_QUICK_LOGIN_USER_ID,
-    workspaceId,
+    ownerId: identity.userId,
+    workspaceId: identity.workspaceId,
   });
 
   return NextResponse.json({

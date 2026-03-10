@@ -14,7 +14,7 @@
     "test:run": "vitest run",
     "test:e2e": "playwright test",
     "test:e2e:mobile": "playwright test --project=mobile-chromium --workers=1",
-    "test:e2e:mobile:foundation": "playwright test --project=mobile-chromium --workers=1 mobile-home-foundation.spec.ts mobile-auth-foundation.spec.ts mobile-project-shell-foundation.spec.ts mobile-protocol-foundation.spec.ts mobile-ai-entry-smoke.spec.ts",
+    "test:e2e:mobile:foundation": "playwright test --project=mobile-chromium --workers=2 mobile-home-foundation.spec.ts mobile-auth-foundation.spec.ts mobile-project-shell-foundation.spec.ts mobile-protocol-foundation.spec.ts mobile-ai-entry-smoke.spec.ts",
     "test:e2e:mobile:smoke": "playwright test --project=mobile-chromium --workers=1 mobile-home-entry-smoke.spec.ts mobile-login-smoke.spec.ts",
     "db:doctor": "bash scripts/db-doctor.sh",
     "db:repair-run-events": "node scripts/repair-run-event-sequences.mjs",
@@ -75,14 +75,16 @@
     "@types/pg": "^8.16.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "babel-plugin-react-compiler": "1.0.0",
+    "autoprefixer": "^10.4.21",
     "eslint": "^9",
     "eslint-config-next": "16.1.4",
-    "jsdom": "^28.0.0",
-    "stylelint": "^17.4.0",
+    "jsdom": "^27.0.0",
+    "pgvector": "^0.3.5",
+    "postcss": "^8.5.6",
+    "stylelint": "^16.24.0",
+    "stylelint-config-standard": "^39.0.1",
     "tsx": "^4.20.6",
     "typescript": "^5",
-    "vitest": "^4.0.18",
-    "vitest-axe": "^0.1.0"
+    "vitest": "^4.0.18"
   }
 }

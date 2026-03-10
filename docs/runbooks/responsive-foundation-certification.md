@@ -102,6 +102,16 @@ GitHub automation contract:
   - `.github/workflows/**`
 - docs-only mobile plan/runbook changes do not trigger the broader smoke workflow by default
 
+Foundation Playwright setup now uses seeded dev fixture routes so auth, home, sample/demo project setup, blank project setup, and protocol-ready setup do not share one ambient workspace:
+- `/api/dev/quick-login`
+- `/api/dev/demo-project`
+- `/api/dev/test-project`
+- `/api/dev/test-home-state`
+
+Certification rule:
+- `test:e2e:mobile:foundation` is allowed to run with `--workers=2` because the fixture contract is seed-aware per worker/test.
+- Broader `test:e2e:mobile` smoke remains conservative until non-foundation mobile flows prove the same isolation guarantees.
+
 Required responsive behavior coverage:
 - home:
   - zero-state or workspace usable on phone

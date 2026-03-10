@@ -1,12 +1,18 @@
 import { expect, test } from "@playwright/test";
-import { createProjectFromHome, quickLogin } from "./helpers/foundation";
-
-test.describe.configure({ mode: "serial" });
+import {
+  buildFoundationSeedKey,
+  createProjectFromHome,
+  quickLoginWithSeed,
+} from "./helpers/foundation";
 test.setTimeout(60_000);
 
-test("mobile protocol foundation: protocol route remains usable on phone", async ({ page }) => {
-  await quickLogin(page, "/");
-  const projectId = await createProjectFromHome(page, "Mobile Protocol Foundation");
+test("mobile protocol foundation: protocol route remains usable on phone", async ({ page }, testInfo) => {
+  const seedKey = buildFoundationSeedKey(testInfo);
+  await quickLoginWithSeed(page, { callbackUrl: "/", seedKey });
+  const projectId = await createProjectFromHome(page, {
+    name: "Mobile Protocol Foundation",
+    seedKey,
+  });
   await page.goto(`/project/${projectId}/protocol`, { waitUntil: "domcontentloaded", timeout: 30_000 });
 
   await expect(page.getByRole("heading", { name: /project not found/i })).not.toBeVisible();
@@ -22,9 +28,13 @@ test.describe("compact protocol foundation", () => {
     hasTouch: false,
   });
 
-  test("protocol route remains usable at compact width", async ({ page }) => {
-    await quickLogin(page, "/");
-    const projectId = await createProjectFromHome(page, "Compact Protocol Foundation");
+  test("protocol route remains usable at compact width", async ({ page }, testInfo) => {
+    const seedKey = buildFoundationSeedKey(testInfo);
+    await quickLoginWithSeed(page, { callbackUrl: "/", seedKey });
+    const projectId = await createProjectFromHome(page, {
+      name: "Compact Protocol Foundation",
+      seedKey,
+    });
     await page.goto(`/project/${projectId}/protocol`, { waitUntil: "domcontentloaded", timeout: 30_000 });
 
     await expect(page.getByRole("heading", { name: /project not found/i })).not.toBeVisible();

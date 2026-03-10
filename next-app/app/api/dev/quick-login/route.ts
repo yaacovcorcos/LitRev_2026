@@ -7,9 +7,7 @@ import {
   extractClientIp,
 } from "@/lib/server/auth/auth-rate-limit";
 import {
-  DEV_QUICK_LOGIN_EMAIL,
-  DEV_QUICK_LOGIN_NAME,
-  DEV_QUICK_LOGIN_USER_ID,
+  ensureDevQuickLoginIdentity,
   isDevQuickLoginAllowed,
   normalizeCallbackUrl,
 } from "@/lib/server/auth/dev-quick-login";
@@ -49,54 +47,16 @@ export async function POST(request: NextRequest) {
 
   const body = (await request.json().catch(() => ({}))) as {
     callbackUrl?: string | null;
+    seedKey?: string | null;
   };
   const callbackUrl = normalizeCallbackUrl(body.callbackUrl);
-
-  const workspaceId = `workspace-${DEV_QUICK_LOGIN_USER_ID}`;
-  await prisma.user.upsert({
-    where: { id: DEV_QUICK_LOGIN_USER_ID },
-    update: {
-      email: DEV_QUICK_LOGIN_EMAIL,
-      name: DEV_QUICK_LOGIN_NAME,
-      emailVerified: true,
-    },
-    create: {
-      id: DEV_QUICK_LOGIN_USER_ID,
-      email: DEV_QUICK_LOGIN_EMAIL,
-      name: DEV_QUICK_LOGIN_NAME,
-      emailVerified: true,
-    },
-  });
-
-  await prisma.workspace.upsert({
-    where: { id: workspaceId },
-    update: { name: "Preview Dev Workspace" },
-    create: {
-      id: workspaceId,
-      name: "Preview Dev Workspace",
-    },
-  });
-
-  await prisma.workspaceMember.upsert({
-    where: {
-      workspaceId_userId: {
-        workspaceId,
-        userId: DEV_QUICK_LOGIN_USER_ID,
-      },
-    },
-    update: { role: "owner" },
-    create: {
-      workspaceId,
-      userId: DEV_QUICK_LOGIN_USER_ID,
-      role: "owner",
-    },
-  });
+  const identity = await ensureDevQuickLoginIdentity(body.seedKey);
 
   const token = randomBytes(32).toString("hex");
   const expiresAt = new Date(Date.now() + SESSION_TTL_SECONDS * 1000);
   await prisma.session.create({
     data: {
-      userId: DEV_QUICK_LOGIN_USER_ID,
+      userId: identity.userId,
       token,
       expiresAt,
       ipAddress: extractClientIp(request.headers),

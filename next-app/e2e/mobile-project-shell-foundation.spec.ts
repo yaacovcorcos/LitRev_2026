@@ -1,11 +1,14 @@
 import { expect, test } from "@playwright/test";
-import { openSampleProjectFromHome, quickLogin } from "./helpers/foundation";
+import {
+  buildFoundationSeedKey,
+  openSampleProjectFromHome,
+  quickLoginWithSeed,
+} from "./helpers/foundation";
 
-test.describe.configure({ mode: "serial" });
-
-test("mobile project shell foundation: project entry remains usable on phone", async ({ page }) => {
-  await quickLogin(page, "/");
-  await openSampleProjectFromHome(page);
+test("mobile project shell foundation: project entry remains usable on phone", async ({ page }, testInfo) => {
+  const seedKey = buildFoundationSeedKey(testInfo);
+  await quickLoginWithSeed(page, { callbackUrl: "/", seedKey });
+  await openSampleProjectFromHome(page, { seedKey });
 
   const conversationModeBtn = page.getByRole("radio", { name: /conversation|chat/i });
   const workspaceModeBtn = page.getByRole("radio", { name: /workspace|workspaces/i });
@@ -24,9 +27,10 @@ test.describe("compact project shell foundation", () => {
     hasTouch: false,
   });
 
-  test("project entry remains usable at compact width", async ({ page }) => {
-    await quickLogin(page, "/");
-    await openSampleProjectFromHome(page);
+  test("project entry remains usable at compact width", async ({ page }, testInfo) => {
+    const seedKey = buildFoundationSeedKey(testInfo);
+    await quickLoginWithSeed(page, { callbackUrl: "/", seedKey });
+    await openSampleProjectFromHome(page, { seedKey });
 
     const conversationModeBtn = page.getByRole("radio", { name: /conversation|chat/i });
     const workspaceModeBtn = page.getByRole("radio", { name: /workspace|workspaces/i });
