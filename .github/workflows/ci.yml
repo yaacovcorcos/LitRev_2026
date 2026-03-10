@@ -105,8 +105,8 @@ jobs:
       - name: Install Playwright browser
         run: cd next-app && npx playwright install --with-deps chromium
 
-      - name: Run mobile smoke e2e
-        run: cd next-app && npm run test:e2e:mobile
+      - name: Run mobile foundation certification
+        run: cd next-app && npm run test:e2e:mobile:foundation
 
       - name: Build production app for performance probe
         run: cd next-app && npx next build

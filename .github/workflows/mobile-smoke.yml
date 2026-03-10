@@ -1,0 +1,60 @@
+name: Mobile Smoke
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "next-app/app/**"
+      - "next-app/components/**"
+      - "next-app/styles/**"
+      - "next-app/e2e/**"
+      - "next-app/playwright.config.ts"
+      - "next-app/package.json"
+      - "next-app/package-lock.json"
+      - "next-app/lib/mobile/**"
+      - "next-app/lib/ai/reliability-telemetry.ts"
+      - "next-app/app/PerformanceVitalsReporter.tsx"
+      - ".github/workflows/**"
+  workflow_dispatch:
+
+jobs:
+  mobile-smoke:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: litrev_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://test:test@localhost:5432/litrev_test
+      DIRECT_URL: postgresql://test:test@localhost:5432/litrev_test
+      SHADOW_DATABASE_URL: postgresql://test:test@localhost:5432/litrev_shadow
+      BETTER_AUTH_SECRET: ci-mobile-smoke-secret-0123456789abcdef0123456789abcdef
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: next-app/package-lock.json
+      - run: cd next-app && npm ci
+
+      - name: Apply migrations
+        run: cd next-app && npx prisma migrate deploy
+
+      - name: Install Playwright browser
+        run: cd next-app && npx playwright install --with-deps chromium
+
+      - name: Run mobile smoke e2e
+        run: cd next-app && npm run test:e2e:mobile:smoke
