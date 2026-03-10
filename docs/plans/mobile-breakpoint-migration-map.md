@@ -16,6 +16,18 @@ Rule meanings:
 - `defer`: semantics are not yet stable enough to rewrite in `MOB-FND-001`
 - `keep`: intentional and already aligned with the new contract
 
+## `MOB-FND-013` Shared Debt Audit
+| File | Rule | Current behavior | Classification | Decision | Owner |
+|---|---|---|---|---|---|
+| `next-app/components/AppShell.module.css` | `.appContainer` authored `min-height: 100vh` | shared shell height source-of-truth | `migrate now` | replace with shared app-height contract in PR 1 | `MOB-FND-013` |
+| `next-app/components/AppShell.module.css` | `.mainContent` / `.mainContentNoPad` authored `calc(100vh - header)` | shared shell content height source-of-truth | `migrate now` | replace with shared shell-content height contract in PR 1 | `MOB-FND-013` |
+| `next-app/components/AppShell.module.css` | global `@media (max-width: 900px)` shell layout rules | mixed legacy `phone-or-compact` behavior | `migrate now` | confine legacy `900px` behavior to non-`shellV2` consumers in PR 1 | `MOB-FND-013` |
+| `next-app/components/Sidebar.module.css` | `.sidebar` authored `calc(100vh - header)` | shared sidebar height source-of-truth | `migrate now` | replace with shared shell-content height contract in PR 1 | `MOB-FND-013` |
+| `next-app/components/Sidebar.module.css` | global `@media (max-width: 900px)` hide rule | mixed legacy `phone-or-compact` behavior | `migrate now` | confine legacy `900px` behavior to non-`responsiveV2` consumers in PR 1 | `MOB-FND-013` |
+| `next-app/components/Sidebar.module.css` | `.responsiveV2` height override | duplicate shared-height branch | `migrate now` | remove once `.sidebar` consumes the shared height contract directly in PR 1 | `MOB-FND-013` |
+| `next-app/components/TopBar.module.css` | global `@media (max-width: 900px)` collapse | shared primitive with route-dependent consumers | `defer unless broadly correct` | only move in PR 2 if Slice A proves the behavior is correct across consumers; otherwise defer to `MOB-002+` | `MOB-FND-013` / `MOB-002+` |
+| `next-app/components/ControlsBar.module.css` | global `@media (max-width: 900px)` wrap/collapse | shared primitive with route-dependent consumers | `defer unless broadly correct` | only move in PR 2 if Slice A proves the behavior is correct across consumers; otherwise defer to `MOB-002+` | `MOB-FND-013` / `MOB-002+` |
+
 ## Transitional JS / Runtime Consumers
 | File | Current breakpoint | Classification | Decision | Follow-up owner |
 |---|---:|---|---|---|
@@ -39,8 +51,8 @@ Rule meanings:
 | `next-app/components/copilot/TimelineMessages.module.css` | message/timeline narrow-layout tweaks | `768` | likely `compact` or chat-specific behavior | defer | chat foundation |
 | `next-app/components/PopupChat.module.css` | popup narrow-mode layout | `900` | transitional compact-or-phone behavior | defer | `MOB-005` |
 | `next-app/components/PopupChat.module.css` | extra-tight popup density tweak | `500` | `tiny-phone` candidate | defer until popup redesign confirms semantics | `MOB-005` |
-| `next-app/components/AppShell.module.css` | shell mobile layout | `900` | split into `phone` bottom-nav behavior and `compact` collapsed-shell behavior | keep (migrated in `MOB-FND-003`) | completed |
-| `next-app/components/Sidebar.module.css` | sidebar collapse | `900` | `compact` collapsed sidebar, `phone` hidden sidebar | keep (migrated in `MOB-FND-003`) | completed |
+| `next-app/components/AppShell.module.css` | shell mobile layout | `900` | split into `phone` bottom-nav behavior and `compact` collapsed-shell behavior | keep; shared shell retirement finalized in `MOB-FND-013` while legacy `900px` remains confined to non-`shellV2` consumers | completed |
+| `next-app/components/Sidebar.module.css` | sidebar collapse | `900` | `compact` collapsed sidebar, `phone` hidden sidebar | keep; shared sidebar retirement finalized in `MOB-FND-013` while legacy `900px` remains confined to non-`responsiveV2` consumers | completed |
 | `next-app/app/home.module.css` | home narrow layout | `900` | mixed compact + phone behavior | keep (migrated in `MOB-FND-004`) | completed |
 | `next-app/components/ProjectGrid.module.css` | project grid collapse | `900` | mixed compact + phone behavior | keep (migrated in `MOB-FND-004`) | completed |
 | `next-app/app/login/login.module.css` | login narrow layout / viewport math | `900` or route-local logic | mixed compact + phone behavior | keep (migrated in `MOB-FND-005`) | completed |
