@@ -1,6 +1,7 @@
 # LitRev Plan Index
 
 This directory contains the canonical, active plans for LitRev.
+This file is the active plan registry and the canonical owner for plan-maintenance rules; `AGENTS.md` owns routing and repo-wide policy, and `docs/agents/cold-memory-index.md` owns Tier 3 retrieval mapping.
 
 ## Ownership Scopes
 - [**Architecture & Infrastructure**](plan-backend.md): DB schema changes, Auth, server-side actions, export generation logic.
@@ -30,6 +31,8 @@ This directory contains the canonical, active plans for LitRev.
 - [**Admin Access Runbook**](../runbooks/admin-access.md): Platform admin bootstrap, guard boundaries, mutation safety, and audit/analytics incident procedures.
 - [**Chat Unification Burn-In Runbook**](../runbooks/chat-unification-burn-in.md): Operational U1.6 canary validation steps and sign-off procedure.
 - [**Reliability A3 Canary Runbook**](../runbooks/reliability-a3-canary.md): staged sample gates, pass/fail thresholds, rollback triggers, and flag interaction matrix.
+
+Plans not listed here as active defaults should be treated as supporting detail, archive material, or superseded source plans rather than routing defaults.
 
 ---
 
