@@ -167,6 +167,56 @@ function getPubMedResultCountText(item: TimelineToolActivityItem): string | null
     return null;
 }
 
+function getPubMedSearchSize(item: TimelineToolActivityItem): number | null {
+    if (typeof item.totalResults === "number") return item.totalResults;
+    if (typeof item.returnedCount === "number") return item.returnedCount;
+    return null;
+}
+
+function normalizePubMedQueryPreview(value?: string): string | null {
+    const normalized = value?.replace(/\s+/g, " ").trim().toLowerCase();
+    return normalized ? normalized : null;
+}
+
+function derivePubMedSequenceAnnotation(items: TimelineToolActivityItem[]): string | null {
+    if (items.length < 2) return null;
+
+    const comparableQueries = items
+        .map((item) => normalizePubMedQueryPreview(item.queryPreview))
+        .filter((query): query is string => !!query);
+    const queryChanged = new Set(comparableQueries).size > 1;
+    const sizedItems = items
+        .map((item) => ({ item, size: getPubMedSearchSize(item) }))
+        .filter((entry): entry is { item: TimelineToolActivityItem; size: number } => entry.size !== null);
+
+    if (!queryChanged && sizedItems.length < 2) return null;
+
+    const firstSize = sizedItems[0]?.size ?? null;
+    const lastSize = sizedItems[sizedItems.length - 1]?.size ?? null;
+
+    if (queryChanged && lastSize !== null && lastSize <= 2) {
+        return "The latest search may be too narrow and may need broader terms.";
+    }
+
+    if (queryChanged && firstSize !== null && lastSize !== null) {
+        if (lastSize < firstSize) {
+            return "The search is narrowing toward a smaller result set.";
+        }
+        if (lastSize > firstSize) {
+            return "The search is broadening to explore a larger result set.";
+        }
+        if (lastSize >= 25) {
+            return "The search is still broad and is being refined further.";
+        }
+    }
+
+    if (queryChanged && comparableQueries.length >= 2) {
+        return "Multiple PubMed searches were used to refine the result set.";
+    }
+
+    return null;
+}
+
 function buildPresentedTimeline(items: TimelineItem[]): PresentedTimelineItem[] {
     const presented: PresentedTimelineItem[] = [];
 
@@ -1399,6 +1449,7 @@ export function TimelineRenderer({
         const meta = TOOL_ACTIVITY_META[status];
         const expanded = entry.items.length < 3 || !!expandedSequenceIds[entry.id];
         const toggleLabel = expanded ? "Collapse PubMed search sequence" : "Expand PubMed search sequence";
+        const sequenceAnnotation = derivePubMedSequenceAnnotation(entry.items);
 
         return (
             <div
@@ -1459,6 +1510,9 @@ export function TimelineRenderer({
                             );
                         })}
                     </ol>
+                ) : null}
+                {sequenceAnnotation ? (
+                    <p className={styles.toolSequenceAnnotation}>{sequenceAnnotation}</p>
                 ) : null}
             </div>
         );
