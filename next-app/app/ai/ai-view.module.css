@@ -3,16 +3,12 @@
     position: relative;
     display: flex;
     width: 100%;
-    height: calc(100vh - var(--header-height, 44px) - var(--content-top-offset, 12px) - var(--mobile-nav-offset, 0px));
+    height: calc(var(--app-height, 100vh) - var(--header-height, 44px) - var(--content-top-offset, 12px) - var(--mobile-nav-offset, 0px));
     min-height: 0;
     gap: 24px;
     padding-left: var(--history-width);
     transition: padding-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     overflow: hidden;
-}
-
-.layout[data-mobile-ai-v2="true"] {
-    height: calc(var(--app-height, 100vh) - var(--header-height, 44px) - var(--content-top-offset, 12px) - var(--mobile-nav-offset, 0px));
 }
 
 .layout[data-history-collapsed="true"] {
@@ -33,12 +29,8 @@
     position: fixed;
     top: var(--header-height, 44px);
     left: var(--shell-sidebar-width, 200px);
-    height: calc(100vh - var(--header-height, 44px));
-    z-index: var(--z-sidebar);
-}
-
-.layout[data-mobile-ai-v2="true"] .historySidebar {
     height: calc(var(--app-height, 100vh) - var(--header-height, 44px));
+    z-index: var(--z-sidebar);
 }
 
 .collapsed {
@@ -479,7 +471,7 @@
     color: var(--text-muted);
 }
 
-@media (max-width: 900px) {
+@media (max-width: 767px) {
     .layout {
         padding-left: 0;
         flex-direction: column;
