@@ -14,6 +14,9 @@ const SUCCESS_CACHE_TTL_MS = 1000 * 60 * 60; // 1 hour
 const FAILURE_CACHE_TTL_MS = 1000 * 60 * 5; // 5 minutes
 export const METADATA_CACHE_LIMIT = 2000;
 const cacheTimestamps = new Map<string, number>();
+const PUBMED_COUNT_ENRICHMENT_BUDGET_MS = 900;
+const CROSSREF_REQUEST_TIMEOUT_MS = 700;
+const ICITE_REQUEST_TIMEOUT_MS = 700;
 
 function getCached(key: string): CitationMetadata | null | undefined {
     const timestamp = cacheTimestamps.get(key);
@@ -48,6 +51,64 @@ function setCache(key: string, value: CitationMetadata | null): void {
 
 export { normalizeDoi, extractPmid, extractDoi };
 
+type CitationCountSource = NonNullable<CitationMetadata["citationCountSource"]>;
+
+type CitationCountDetails = {
+    citationCount?: number;
+    citationCountSource?: CitationCountSource;
+    citationCountFetchedAt?: string;
+};
+
+function isUsableCitationCount(value: unknown): value is number {
+    return typeof value === "number" && Number.isFinite(value) && value >= 0;
+}
+
+function mergeCitationCount(
+    base: CitationMetadata,
+    incoming: CitationCountDetails | null,
+): CitationMetadata {
+    if (!incoming || !isUsableCitationCount(incoming.citationCount)) {
+        return base;
+    }
+
+    return {
+        ...base,
+        citationCount: incoming.citationCount,
+        citationCountSource: incoming.citationCountSource,
+        citationCountFetchedAt: incoming.citationCountFetchedAt,
+    };
+}
+
+function remainingBudgetMs(deadlineMs: number): number {
+    return Math.max(0, deadlineMs - Date.now());
+}
+
+async function fetchWithTimeout(
+    input: RequestInfo | URL,
+    init: RequestInit,
+    timeoutMs: number,
+): Promise<Response | null> {
+    if (timeoutMs <= 0) return null;
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+        const response = await fetch(input, {
+            ...init,
+            signal: controller.signal,
+        });
+        return response;
+    } catch (error) {
+        if (error instanceof Error && error.name === "AbortError") {
+            return null;
+        }
+        throw error;
+    } finally {
+        clearTimeout(timeoutId);
+    }
+}
+
 /**
  * Resolve citation metadata from a PubMed or DOI URL.
  * Returns null if unable to fetch metadata.
@@ -59,7 +120,7 @@ export async function resolveCitationMetadata(
     const doi = extractDoi(url);
 
     if (pmid) {
-        return fetchPubMedMetadata(pmid);
+        return resolvePubMedMetadata(pmid);
     }
     if (doi) {
         return fetchCrossrefMetadata(doi);
@@ -100,6 +161,7 @@ export function __clearCitationMetadataCacheForTests(): void {
     metadataCache.clear();
     cacheTimestamps.clear();
     inFlightRequests.clear();
+    lastPubMedRequest = 0;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -125,6 +187,13 @@ async function throttledFetch(url: string): Promise<Response> {
     lastPubMedRequest = Date.now();
     return fetch(url, { next: { revalidate: 3600 } }); // 1hr cache at fetch level
 }
+
+type PubMedBibliography = CitationMetadata;
+
+type ICiteResponse = {
+    citation_count?: unknown;
+    citedByPmidCount?: unknown;
+};
 
 function buildPubMedParams(): URLSearchParams {
     const params = new URLSearchParams();
@@ -190,6 +259,69 @@ export async function fetchPubMedMetadata(
     }
 }
 
+async function fetchICiteCitationCount(
+    pmid: string,
+    timeoutMs = ICITE_REQUEST_TIMEOUT_MS,
+): Promise<CitationCountDetails | null> {
+    try {
+        const url = `https://icite.od.nih.gov/api/pubs/${encodeURIComponent(pmid)}`;
+        const res = await fetchWithTimeout(
+            url,
+            {
+                next: { revalidate: 3600 },
+            },
+            timeoutMs,
+        );
+        if (!res?.ok) return null;
+
+        const data = await res.json() as ICiteResponse;
+        const citationCount = isUsableCitationCount(data.citation_count)
+            ? data.citation_count
+            : isUsableCitationCount(data.citedByPmidCount)
+                ? data.citedByPmidCount
+                : undefined;
+
+        if (!isUsableCitationCount(citationCount)) {
+            return null;
+        }
+
+        return {
+            citationCount,
+            citationCountSource: "icite",
+            citationCountFetchedAt: new Date().toISOString(),
+        };
+    } catch (error) {
+        console.error("[citation-metadata] iCite fetch failed:", error);
+        return null;
+    }
+}
+
+async function resolvePubMedMetadata(pmid: string): Promise<CitationMetadata | null> {
+    const deadlineMs = Date.now() + PUBMED_COUNT_ENRICHMENT_BUDGET_MS;
+    const bibliographyPromise = fetchPubMedMetadata(pmid);
+    const iCitePromise = fetchICiteCitationCount(pmid, Math.min(ICITE_REQUEST_TIMEOUT_MS, remainingBudgetMs(deadlineMs)));
+
+    const bibliography = await bibliographyPromise;
+    if (!bibliography) return null;
+
+    const iCiteCount = await iCitePromise;
+    if (isUsableCitationCount(iCiteCount?.citationCount)) {
+        return mergeCitationCount(bibliography, iCiteCount);
+    }
+
+    if (!bibliography.doi) {
+        return bibliography;
+    }
+
+    const crossrefTimeoutMs = Math.min(CROSSREF_REQUEST_TIMEOUT_MS, remainingBudgetMs(deadlineMs));
+    if (crossrefTimeoutMs <= 0) {
+        return bibliography;
+    }
+
+    const crossref = await fetchCrossrefMetadata(bibliography.doi, { timeoutMs: crossrefTimeoutMs });
+    return mergeCitationCount(bibliography, crossref);
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Crossref Fetcher (for DOI resolution)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -201,20 +333,35 @@ const CROSSREF_USER_AGENT = "LitRev/1.0 (mailto:support@litrev.app)";
  * Fetch metadata for a DOI from Crossref API.
  */
 export async function fetchCrossrefMetadata(
-    doi: string
+    doi: string,
+    options?: {
+        timeoutMs?: number;
+    },
 ): Promise<CitationMetadata | null> {
     try {
         const normalizedDoi = normalizeDoi(doi);
         const url = `${CROSSREF_API}/${encodeURIComponent(normalizedDoi)}`;
 
-        const res = await fetch(url, {
-            headers: {
-                "User-Agent": CROSSREF_USER_AGENT,
-            },
-            next: { revalidate: 3600 },
-        });
+        const timeoutMs = options?.timeoutMs;
+        const res = typeof timeoutMs === "number"
+            ? await fetchWithTimeout(
+                url,
+                {
+                    headers: {
+                        "User-Agent": CROSSREF_USER_AGENT,
+                    },
+                    next: { revalidate: 3600 },
+                },
+                timeoutMs,
+            )
+            : await fetch(url, {
+                headers: {
+                    "User-Agent": CROSSREF_USER_AGENT,
+                },
+                next: { revalidate: 3600 },
+            });
 
-        if (!res.ok) return null;
+        if (!res?.ok) return null;
 
         const data = await res.json();
         const work = data?.message;

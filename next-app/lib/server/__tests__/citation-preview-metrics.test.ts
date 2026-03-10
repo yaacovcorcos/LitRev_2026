@@ -60,4 +60,20 @@ describe("citation-preview metrics ingestion", () => {
 
         await expect(ingestCitationPreviewMetric(AUTH_CONTEXT, input)).rejects.toThrow();
     });
+
+    it("accepts icite as an upstream source", async () => {
+        const input = buildMetricInput({
+            type: "metadata_request_completed",
+            payload: {
+                citationKey: "pmid:12345678",
+                citationType: "PubMed",
+                latencyMs: 142,
+                upstreamSource: "icite",
+            },
+        });
+
+        await expect(ingestCitationPreviewMetric(AUTH_CONTEXT, input)).resolves.toEqual({
+            deduped: false,
+        });
+    });
 });

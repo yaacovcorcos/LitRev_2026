@@ -19,7 +19,11 @@ import { loadCitationMetadataWithClientCache } from "@/lib/citation-preview-cach
 import { getCitationType, resolveCitationKey } from "@/lib/citation-key";
 import { isCitationHoverPrefetchEnabled } from "@/lib/citation-preview-feature-flags";
 import { recordCitationPreviewMetric } from "@/lib/ai/citation-preview-telemetry";
-import type { CitationPreviewSurface, CitationPreviewTrigger } from "@/types/citation-preview-telemetry";
+import type {
+    CitationPreviewMetricPayload,
+    CitationPreviewSurface,
+    CitationPreviewTrigger,
+} from "@/types/citation-preview-telemetry";
 import styles from "./CitationPreview.module.css";
 
 export type CitationType = "DOI" | "PubMed";
@@ -72,13 +76,10 @@ export function CitationPreview({ href, type, children, anchorProps }: CitationP
                 | "metadata_request_started"
                 | "metadata_request_completed"
                 | "metadata_request_failed",
-            payload: {
-                trigger?: CitationPreviewTrigger;
-                fromCache?: boolean;
-                latencyMs?: number;
-                upstreamSource?: "crossref" | "pubmed" | "unknown";
-                errorCode?: string | null;
-            } = {}
+            payload: Pick<
+                CitationPreviewMetricPayload,
+                "trigger" | "fromCache" | "latencyMs" | "upstreamSource" | "errorCode"
+            > = {}
         ) => {
             recordCitationPreviewMetric({
                 type,

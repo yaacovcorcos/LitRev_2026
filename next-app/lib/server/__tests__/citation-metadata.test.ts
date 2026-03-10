@@ -9,6 +9,13 @@ import {
     resolveCitationMetadataCached,
 } from "../citation-metadata";
 
+function jsonResponse(payload: unknown, ok = true): Response {
+    return {
+        ok,
+        json: async () => payload,
+    } as Response;
+}
+
 describe("citation-metadata utilities", () => {
     beforeEach(() => {
         __clearCitationMetadataCacheForTests();
@@ -178,6 +185,282 @@ describe("citation-metadata utilities", () => {
 
             await resolveCitationMetadataCached("https://doi.org/10.1000/cache-0");
             expect(fetchMock).toHaveBeenCalledTimes(METADATA_CACHE_LIMIT + 2);
+        });
+
+        it("enriches PMID-only PubMed metadata with an iCite citation count", async () => {
+            const fetchMock = vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
+                const url = typeof input === "string" ? input : input.toString();
+                if (url.includes("esummary.fcgi")) {
+                    return jsonResponse({
+                        result: {
+                            "12345678": {
+                                title: "PMID only study",
+                                authors: [{ name: "Doe J" }],
+                                pubdate: "2024 Jan",
+                                fulljournalname: "Journal of PMID",
+                                articleids: [],
+                            },
+                        },
+                    });
+                }
+                if (url.includes("icite.od.nih.gov/api/pubs/12345678")) {
+                    return jsonResponse({
+                        citation_count: 17,
+                    });
+                }
+                throw new Error(`Unexpected URL: ${url}`);
+            });
+            vi.stubGlobal("fetch", fetchMock);
+
+            const result = await resolveCitationMetadataCached("https://pubmed.ncbi.nlm.nih.gov/12345678/");
+            expect(result).toMatchObject({
+                title: "PMID only study",
+                journal: "Journal of PMID",
+                pmid: "12345678",
+                citationCount: 17,
+                citationCountSource: "icite",
+            });
+        });
+
+        it("falls back to Crossref when iCite does not return a count and PubMed provides a DOI", async () => {
+            const fetchMock = vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
+                const url = typeof input === "string" ? input : input.toString();
+                if (url.includes("esummary.fcgi")) {
+                    return jsonResponse({
+                        result: {
+                            "22334455": {
+                                title: "PubMed with DOI",
+                                authors: [{ name: "Smith A" }],
+                                pubdate: "2025",
+                                fulljournalname: "PubMed Journal",
+                                articleids: [{ idtype: "doi", value: "10.1000/fallback" }],
+                            },
+                        },
+                    });
+                }
+                if (url.includes("icite.od.nih.gov/api/pubs/22334455")) {
+                    return jsonResponse({});
+                }
+                if (url.includes("api.crossref.org/works/10.1000%2Ffallback")) {
+                    return jsonResponse({
+                        message: {
+                            title: ["Crossref title"],
+                            author: [{ family: "Fallback", given: "Casey" }],
+                            "container-title": ["Crossref Journal"],
+                            "published-online": { "date-parts": [[2023]] },
+                            "is-referenced-by-count": 88,
+                        },
+                    });
+                }
+                throw new Error(`Unexpected URL: ${url}`);
+            });
+            vi.stubGlobal("fetch", fetchMock);
+
+            const result = await resolveCitationMetadataCached("https://pubmed.ncbi.nlm.nih.gov/22334455/");
+            expect(result).toMatchObject({
+                title: "PubMed with DOI",
+                journal: "PubMed Journal",
+                pmid: "22334455",
+                doi: "10.1000/fallback",
+                citationCount: 88,
+                citationCountSource: "crossref",
+            });
+        });
+
+        it("treats an iCite zero count as valid and does not fall through to Crossref", async () => {
+            const fetchMock = vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
+                const url = typeof input === "string" ? input : input.toString();
+                if (url.includes("esummary.fcgi")) {
+                    return jsonResponse({
+                        result: {
+                            "33445566": {
+                                title: "Zero citation study",
+                                authors: [{ name: "Ng B" }],
+                                pubdate: "2026",
+                                fulljournalname: "Zero Journal",
+                                articleids: [{ idtype: "doi", value: "10.1000/zero" }],
+                            },
+                        },
+                    });
+                }
+                if (url.includes("icite.od.nih.gov/api/pubs/33445566")) {
+                    return jsonResponse({
+                        citation_count: 0,
+                    });
+                }
+                if (url.includes("api.crossref.org/works/10.1000%2Fzero")) {
+                    throw new Error("Crossref should not be called when iCite returns 0");
+                }
+                throw new Error(`Unexpected URL: ${url}`);
+            });
+            vi.stubGlobal("fetch", fetchMock);
+
+            const result = await resolveCitationMetadataCached("https://pubmed.ncbi.nlm.nih.gov/33445566/");
+            expect(result).toMatchObject({
+                title: "Zero citation study",
+                citationCount: 0,
+                citationCountSource: "icite",
+            });
+        });
+
+        it("keeps PubMed bibliography authoritative when Crossref adds only count fields", async () => {
+            const fetchMock = vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
+                const url = typeof input === "string" ? input : input.toString();
+                if (url.includes("esummary.fcgi")) {
+                    return jsonResponse({
+                        result: {
+                            "44556677": {
+                                title: "PubMed canonical title",
+                                authors: [{ name: "PubMed Author" }],
+                                pubdate: "2024 Jul",
+                                fulljournalname: "PubMed Canonical Journal",
+                                articleids: [{ idtype: "doi", value: "10.1000/owned" }],
+                            },
+                        },
+                    });
+                }
+                if (url.includes("icite.od.nih.gov/api/pubs/44556677")) {
+                    return jsonResponse({
+                        citation_count: null,
+                    });
+                }
+                if (url.includes("api.crossref.org/works/10.1000%2Fowned")) {
+                    return jsonResponse({
+                        message: {
+                            title: ["Crossref competing title"],
+                            author: [{ family: "Crossref", given: "Override" }],
+                            "container-title": ["Crossref Competing Journal"],
+                            "published-online": { "date-parts": [[1999]] },
+                            "is-referenced-by-count": 41,
+                        },
+                    });
+                }
+                throw new Error(`Unexpected URL: ${url}`);
+            });
+            vi.stubGlobal("fetch", fetchMock);
+
+            const result = await resolveCitationMetadataCached("https://pubmed.ncbi.nlm.nih.gov/44556677/");
+            expect(result).toMatchObject({
+                title: "PubMed canonical title",
+                authors: "PubMed Author",
+                year: 2024,
+                journal: "PubMed Canonical Journal",
+                canonicalUrl: "https://pubmed.ncbi.nlm.nih.gov/44556677/",
+                pmid: "44556677",
+                doi: "10.1000/owned",
+                citationCount: 41,
+                citationCountSource: "crossref",
+            });
+        });
+
+        it("soft-fails to bibliography only when iCite and Crossref do not provide a count", async () => {
+            const fetchMock = vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
+                const url = typeof input === "string" ? input : input.toString();
+                if (url.includes("esummary.fcgi")) {
+                    return jsonResponse({
+                        result: {
+                            "55667788": {
+                                title: "Bibliography only study",
+                                authors: [{ name: "Lee R" }],
+                                pubdate: "2023",
+                                fulljournalname: "Fallback Journal",
+                                articleids: [{ idtype: "doi", value: "10.1000/nocount" }],
+                            },
+                        },
+                    });
+                }
+                if (url.includes("icite.od.nih.gov/api/pubs/55667788")) {
+                    return jsonResponse({});
+                }
+                if (url.includes("api.crossref.org/works/10.1000%2Fnocount")) {
+                    return jsonResponse({ message: { title: ["No count"] } });
+                }
+                throw new Error(`Unexpected URL: ${url}`);
+            });
+            vi.stubGlobal("fetch", fetchMock);
+
+            const result = await resolveCitationMetadataCached("https://pubmed.ncbi.nlm.nih.gov/55667788/");
+            expect(result).toMatchObject({
+                title: "Bibliography only study",
+                pmid: "55667788",
+                doi: "10.1000/nocount",
+            });
+            expect(result?.citationCount).toBeUndefined();
+            expect(result?.citationCountSource).toBeUndefined();
+        });
+
+        it("reuses the cached merged PubMed result on repeated lookups", async () => {
+            const fetchMock = vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
+                const url = typeof input === "string" ? input : input.toString();
+                if (url.includes("esummary.fcgi")) {
+                    return jsonResponse({
+                        result: {
+                            "66778899": {
+                                title: "Cached PubMed study",
+                                authors: [{ name: "Cache T" }],
+                                pubdate: "2025",
+                                fulljournalname: "Cache Journal",
+                                articleids: [],
+                            },
+                        },
+                    });
+                }
+                if (url.includes("icite.od.nih.gov/api/pubs/66778899")) {
+                    return jsonResponse({
+                        citation_count: 12,
+                    });
+                }
+                throw new Error(`Unexpected URL: ${url}`);
+            });
+            vi.stubGlobal("fetch", fetchMock);
+
+            const first = await resolveCitationMetadataCached("https://pubmed.ncbi.nlm.nih.gov/66778899/");
+            const second = await resolveCitationMetadataCached("https://pubmed.ncbi.nlm.nih.gov/66778899/");
+
+            expect(first).toEqual(second);
+            expect(fetchMock).toHaveBeenCalledTimes(2);
+        });
+
+        it("returns bibliography without a count when iCite enrichment times out", async () => {
+            vi.useFakeTimers();
+
+            const fetchMock = vi.fn().mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+                const url = typeof input === "string" ? input : input.toString();
+                if (url.includes("esummary.fcgi")) {
+                    return jsonResponse({
+                        result: {
+                            "77889900": {
+                                title: "Timed enrichment study",
+                                authors: [{ name: "Timeout A" }],
+                                pubdate: "2026",
+                                fulljournalname: "Timeout Journal",
+                                articleids: [],
+                            },
+                        },
+                    });
+                }
+                if (url.includes("icite.od.nih.gov/api/pubs/77889900")) {
+                    return new Promise<Response>((_, reject) => {
+                        init?.signal?.addEventListener("abort", () => {
+                            const error = new Error("aborted");
+                            error.name = "AbortError";
+                            reject(error);
+                        });
+                    });
+                }
+                throw new Error(`Unexpected URL: ${url}`);
+            });
+            vi.stubGlobal("fetch", fetchMock);
+
+            const resultPromise = resolveCitationMetadataCached("https://pubmed.ncbi.nlm.nih.gov/77889900/");
+            await vi.advanceTimersByTimeAsync(1000);
+            const result = await resultPromise;
+
+            expect(result).toMatchObject({
+                title: "Timed enrichment study",
+                pmid: "77889900",
+            });
+            expect(result?.citationCount).toBeUndefined();
         });
     });
 

@@ -25,6 +25,9 @@ Domain-specific execution plans remain canonical for their domains:
 - Shared scoped-context UI is active:
   - `ProjectCopilot` / `CopilotInputCore` now render typed context receipts and recent-context history chips owned by `docs/plans/plan-context-capture.md`.
   - `PopupChat` shows compact context previews, keeps edit intents advisory-only via `Continue in Copilot`, and draft desktop quick actions are gated behind the dedicated context-toolbar flag rather than leaking into mobile flows.
+- Citation hover previews now use source-aware server metadata assembly:
+  - PubMed links keep PubMed-owned bibliography while resolving citation counts from NIH iCite/OCC first and Crossref second when a DOI fallback is available.
+  - DOI links remain Crossref-backed, and citation preview telemetry records the actual upstream count source (`icite` or `crossref`).
 - Async feedback architecture is active:
   - `useAsyncAction` + `NotificationProvider` + toast live region.
 - Token system is active in `styles/tokens.css` and style linting is configured in `next-app/.stylelintrc.cjs` and `next-app/package.json` (`lint:styles`).
@@ -82,6 +85,7 @@ Use this mapping for old PRs/comments referencing CLU IDs.
 - [ ] `CUX-A03` Expand async `aria-live` announcements coverage and consistency across remaining async UI states.
 
 ## Recently Completed
+- [x] Citation hover enrichment now preserves PubMed bibliography while adding citation counts from NIH iCite/OCC with Crossref fallback and truthful telemetry provenance.
 - [x] Unified UI plan governance: this file is now the single canonical UI/UX tracker.
 - [x] `CUX-002` Project page shell parity via shared `ProjectPageLayout`.
 - [x] `CUX-003` / `CUX-004` ConversationPicker overhaul and app-native rename/menu behavior.
