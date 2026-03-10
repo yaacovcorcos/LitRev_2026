@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type WheelEvent as ReactWheelEvent } from "react";
+import { useCallback, useRef, useState, type WheelEvent as ReactWheelEvent } from "react";
 import { useParams } from "next/navigation";
 import { useProjectCopilot } from "@/contexts/ProjectCopilotContext";
 import type { CopilotPage } from "@/types/ai";
@@ -94,10 +94,6 @@ export function ProjectCopilot({
 
     // Hide reasoning controls when model doesn't support reasoning
     const showReasoningControls = reasoningSupport !== "none";
-
-    // Defer Radix-heavy UI until after hydration to avoid ID mismatch warnings
-    const [hasMounted, setHasMounted] = useState(false);
-    useEffect(() => { setHasMounted(true); }, []);
 
     const [showConversationDropdown, setShowConversationDropdown] = useState(false);
     const [isBranching, setIsBranching] = useState(false);
@@ -241,10 +237,6 @@ export function ProjectCopilot({
     // Conversation management
     const currentConversation = conversations.find(c => c.id === currentConversationId);
     const currentTitle = currentConversation?.title || "New conversation";
-
-    if (!hasMounted) {
-        return <aside ref={panelRef} className={styles.copilot} aria-label="AI copilot" id={panelId} onWheelCapture={handleWheelCapture} />;
-    }
 
     return (
         <aside ref={panelRef} className={styles.copilot} aria-label="AI copilot" id={panelId} onWheelCapture={handleWheelCapture}>
