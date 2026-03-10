@@ -22,8 +22,8 @@ import { getContextTargetKey } from "@/lib/context-capture/targets";
 import { UserInputCard } from "../artifacts/UserInputCard";
 import styles from "./CopilotInput.module.css";
 
-const CopilotAttachmentButton = dynamic(() =>
-    import("./CopilotAttachmentButton").then((module) => module.CopilotAttachmentButton)
+const CopilotActionsMenuButton = dynamic(() =>
+    import("./CopilotActionsMenuButton").then((module) => module.CopilotActionsMenuButton)
 );
 const CopilotAutonomyPresetButton = dynamic(() =>
     import("./CopilotAutonomyPresetButton").then((module) => module.CopilotAutonomyPresetButton)
@@ -102,6 +102,13 @@ export type CopilotInputCoreProps = {
     onReady?: () => void;
 };
 
+function formatElapsedVoiceTime(elapsedMs: number): string {
+    const totalSeconds = Math.max(0, Math.floor(elapsedMs / 1000));
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+}
+
 export function CopilotInputCore({
     page,
     section,
@@ -151,8 +158,6 @@ export function CopilotInputCore({
         answer: string;
     } | null>(null);
 
-    // Radix generates runtime IDs; defer Radix-driven controls until after mount
-    // so server markup always matches the first client render.
     useEffect(() => {
         setHasMounted(true);
     }, []);
@@ -166,7 +171,6 @@ export function CopilotInputCore({
     const selectedModel = selectedModelProp ?? uncontrolledSelectedModel;
     const isModelControlled = typeof selectedModelProp !== "undefined";
 
-    // Sync model selection from localStorage after hydration for uncontrolled mode only
     useEffect(() => {
         if (isModelControlled) return;
         const stored = window.localStorage.getItem(modelStorageKey);
@@ -179,7 +183,6 @@ export function CopilotInputCore({
     const textareaRef = useRef<HTMLTextAreaElement | null>(null);
     const sendLockRef = useRef(false);
 
-    // Agent mode state
     const [currentMode, setCurrentMode] = useState<AgentMode>("general");
     const [modeOverride, setModeOverride] = useState<AgentMode | null>(null);
 
@@ -188,19 +191,14 @@ export function CopilotInputCore({
 
     const PROTOCOL_SWITCH_INTENT_RE = /\b(?:switch|move|go|start|enter)\b[\w\s]{0,24}\bprotocol\b|\bprotocol mode\b|\bupdate protocol\b/i;
 
-    // Debounced mode computation from input text
     useEffect(() => {
         const timer = setTimeout(() => {
             const trimmed = input.trim();
-            // Keep the last inferred mode when input is empty; avoids noisy
-            // reset-to-general and keeps scoping stable across turns.
             if (!trimmed) return;
 
             const routerPage: RouterPage = page === "ai" ? "overview" : (page as RouterPage);
             const nextMode = routeToAgent(trimmed, routerPage, { hasProtocol });
 
-            // Transition policy for scoping: don't silently jump into protocol
-            // from protocol-like phrasing; require explicit transition wording.
             if (
                 currentMode === "scoping" &&
                 nextMode === "protocol" &&
@@ -215,7 +213,6 @@ export function CopilotInputCore({
         return () => clearTimeout(timer);
     }, [input, page, hasProtocol, currentMode]);
 
-    // Voice input
     const handleTranscription = useCallback((text: string) => {
         setInput((prev) => {
             const separator = prev.trim() ? " " : "";
@@ -225,12 +222,13 @@ export function CopilotInputCore({
     const {
         state: voiceState,
         error: voiceError,
+        elapsedMs,
+        waveformBars,
         toggleRecording,
         stopRecording,
         clearError: clearVoiceError,
     } = useVoiceInput(handleTranscription);
 
-    // Persist model preference for uncontrolled mode only
     useEffect(() => {
         if (isModelControlled) return;
         if (typeof window !== "undefined") {
@@ -245,7 +243,6 @@ export function CopilotInputCore({
         }
     }, [isModelControlled, onModelChange]);
 
-    // Auto-resize textarea
     useEffect(() => {
         const el = textareaRef.current;
         if (!el) return;
@@ -253,7 +250,6 @@ export function CopilotInputCore({
         el.style.height = Math.min(el.scrollHeight, 200) + "px";
     }, [input]);
 
-    // Drop stale answered snapshots when a different ask_user request arrives.
     useEffect(() => {
         if (!pendingUserInput) return;
         if (!answeredUserInput) return;
@@ -262,7 +258,6 @@ export function CopilotInputCore({
         }
     }, [pendingUserInput, answeredUserInput]);
 
-    // Keep the answered state visible briefly for confirmation, then clear.
     const ANSWER_CONFIRMATION_MS = 1200;
     useEffect(() => {
         if (!answeredUserInput) return;
@@ -272,10 +267,6 @@ export function CopilotInputCore({
         return () => window.clearTimeout(timeout);
     }, [answeredUserInput]);
 
-    // Consume prefill command from parent (suggestion chips).
-    // Triggers on command ID change, so clicking the same suggestion twice always works.
-    // Guarded by sendLockRef to prevent a double-send when a chip click and
-    // the prefill effect race within the same React batching cycle.
     useEffect(() => {
         if (!prefillCommand) return;
         if (sendLockRef.current) return;
@@ -291,7 +282,6 @@ export function CopilotInputCore({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- trigger on command ID, not text
     }, [prefillCommand?.id]);
 
-    // Prevent double-sends within the same event loop before isLoading flips true.
     useEffect(() => {
         if (!isLoading) sendLockRef.current = false;
     }, [isLoading]);
@@ -302,10 +292,16 @@ export function CopilotInputCore({
     const canShowAttachments =
         (showAttachments ?? true) && !!projectId && !!attachFile && !!attachExistingFile && !!clearAttachment;
 
+    const hasSecondaryActions = canShowAttachments || !!onCompress;
+    const isVoiceBusy = voiceState === "recording" || voiceState === "transcribing";
+    const canSubmit = !isVoiceBusy && (!!input.trim() || !!pendingAttachment);
+    const showRecordingPresentation = showVoice && isVoiceBusy;
+
     const handleSend = useCallback(() => {
         if (sendLockRef.current) return;
         const text = input.trim();
         if (!text && !pendingAttachment) return;
+        if (voiceState === "recording" || voiceState === "transcribing") return;
         sendLockRef.current = true;
         const nextContextTargets = attachedContextTargets.length > 0 ? attachedContextTargets : undefined;
         sendMessage(text, page, section, selectedModel, effectiveMode, studyId, undefined, nextContextTargets);
@@ -326,6 +322,7 @@ export function CopilotInputCore({
         effectiveMode,
         attachedContextTargets,
         clearAttachedContextTargets,
+        voiceState,
     ]);
 
     const handleStop = useCallback(() => {
@@ -350,6 +347,108 @@ export function CopilotInputCore({
     const selectedModelInfo = USER_SELECTABLE_MODELS.find((m) => m.id === selectedModel);
     const ALL_MODES: AgentMode[] = getUserSelectableAgentModes();
 
+    const modelControl = hasMounted ? (
+        <DropdownMenu.Root>
+            <DropdownMenu.Trigger asChild>
+                <button type="button" className={styles.modelBtn}>
+                    {selectedModelInfo?.name || "GPT-5.2"}
+                    <span className="material-icons-round">expand_more</span>
+                </button>
+            </DropdownMenu.Trigger>
+            <DropdownMenu.Portal>
+                <DropdownMenu.Content className={styles.modelDropdown} side="top" align="start" sideOffset={4}>
+                    <DropdownMenu.RadioGroup
+                        value={selectedModel}
+                        onValueChange={(v) => setSelectedModel(v as SelectableModelId)}
+                    >
+                        {USER_SELECTABLE_MODELS.map((model) => (
+                            <DropdownMenu.RadioItem
+                                key={model.id}
+                                value={model.id}
+                                className={`${styles.modelItem} ${selectedModel === model.id ? styles.modelItemActive : ""}`}
+                            >
+                                <div className={styles.modelItemInner}>
+                                    <span className={`material-icons-round ${styles.modelItemIcon}`}>
+                                        {model.icon}
+                                    </span>
+                                    <span className={styles.modelItemName}>{model.name}</span>
+                                    <span className={styles.modelItemDesc}>{model.description}</span>
+                                </div>
+                            </DropdownMenu.RadioItem>
+                        ))}
+                    </DropdownMenu.RadioGroup>
+                </DropdownMenu.Content>
+            </DropdownMenu.Portal>
+        </DropdownMenu.Root>
+    ) : (
+        <button
+            type="button"
+            className={`${styles.modelBtn} ${styles.mountPlaceholder}`}
+            aria-hidden="true"
+            tabIndex={-1}
+        >
+            {selectedModelInfo?.name || "GPT-5.2"}
+            <span className="material-icons-round">expand_more</span>
+        </button>
+    );
+
+    const autonomyControl = canShowAutonomy ? (hasMounted ? (
+        <CopilotAutonomyPresetButton
+            autonomyPreset={autonomyPreset}
+            onUpdateAutonomyPreset={updateAutonomyPreset!}
+            onOpenAutonomySettings={() => setShowAutonomySettings?.(true)}
+        />
+    ) : (
+        <button
+            type="button"
+            className={`${styles.presetBtn} ${styles.mountPlaceholder}`}
+            aria-hidden="true"
+            tabIndex={-1}
+        >
+            <span className="material-icons-round" style={{ fontSize: 14 }}>
+                {autonomyPreset === "manual" ? "back_hand"
+                    : autonomyPreset === "autonomous" ? "smart_toy"
+                    : autonomyPreset === "custom" ? "tune"
+                    : "handshake"}
+            </span>
+            <span>
+                {autonomyPreset === "manual" ? "Manual"
+                    : autonomyPreset === "autonomous" ? "Auto"
+                    : autonomyPreset === "custom" ? "Custom"
+                    : "Assisted"}
+            </span>
+            <span className="material-icons-round" style={{ fontSize: 14 }}>expand_more</span>
+        </button>
+    )) : null;
+
+    const voiceControl = showVoice ? (
+        <>
+            <span
+                className="sr-only"
+                aria-live="polite"
+                aria-atomic="true"
+            >
+                {voiceState === "recording"
+                    ? "Recording in progress"
+                    : voiceState === "transcribing"
+                    ? "Transcribing..."
+                    : ""}
+            </span>
+            <button
+                type="button"
+                className={`${styles.actionBtn} ${styles.voiceActionBtn} ${voiceState === "recording" ? styles.actionBtnRecording : ""}`}
+                onClick={toggleRecording}
+                disabled={voiceState === "transcribing"}
+                aria-label={voiceState === "recording" ? "Stop recording" : voiceState === "transcribing" ? "Transcribing..." : "Voice input"}
+                title={voiceState === "recording" ? "Stop recording" : voiceState === "transcribing" ? "Transcribing..." : "Voice input"}
+            >
+                <span className="material-icons-round">
+                    {voiceState === "recording" ? "stop_circle" : voiceState === "transcribing" ? "hourglass_top" : "mic"}
+                </span>
+            </button>
+        </>
+    ) : null;
+
     return (
         <>
             <form
@@ -359,7 +458,6 @@ export function CopilotInputCore({
                     handleSend();
                 }}
             >
-                {/* Mode indicator pill — shown when input has text */}
                 {input.trim() && (
                     <div className={styles.modePill}>
                         <span className={`material-icons-round ${styles.modePillIcon}`}>
@@ -501,7 +599,6 @@ export function CopilotInputCore({
                     </div>
                 )}
 
-                {/* Structured ask_user overlay — appears above choices */}
                 {showUserInputOverlay && (() => {
                     const activeRequest = pendingUserInput ?? answeredUserInput?.request;
                     if (!activeRequest || isLoading) return null;
@@ -529,7 +626,6 @@ export function CopilotInputCore({
                     </div>
                     );
                 })()}
-                {/* AI-generated choice chips */}
                 <div
                     className={`${styles.choicesSlot} ${pendingChoices.length > 0 && !isLoading ? styles.choicesSlotOpen : ""}`}
                     role={pendingChoices.length > 0 ? "group" : undefined}
@@ -583,167 +679,86 @@ export function CopilotInputCore({
                     rows={1}
                 />
 
-                <div className={styles.inputBar}>
+                <div className={`${styles.inputBar} ${showRecordingPresentation ? styles.inputBarRecording : ""}`}>
                     <div className={styles.inputBarLeft}>
-                        {hasMounted ? (
-                            <DropdownMenu.Root>
-                                <DropdownMenu.Trigger asChild>
-                                    <button type="button" className={styles.modelBtn}>
-                                        {selectedModelInfo?.name || "GPT-5.2"}
-                                        <span className="material-icons-round">expand_more</span>
-                                    </button>
-                                </DropdownMenu.Trigger>
-                                <DropdownMenu.Portal>
-                                    <DropdownMenu.Content className={styles.modelDropdown} side="top" align="start" sideOffset={4}>
-                                        <DropdownMenu.RadioGroup
-                                            value={selectedModel}
-                                            onValueChange={(v) => setSelectedModel(v as SelectableModelId)}
-                                        >
-                                            {USER_SELECTABLE_MODELS.map((model) => (
-                                                <DropdownMenu.RadioItem
-                                                    key={model.id}
-                                                    value={model.id}
-                                                    className={`${styles.modelItem} ${selectedModel === model.id ? styles.modelItemActive : ""}`}
-                                                >
-                                                    <div className={styles.modelItemInner}>
-                                                        <span className={`material-icons-round ${styles.modelItemIcon}`}>
-                                                            {model.icon}
-                                                        </span>
-                                                        <span className={styles.modelItemName}>{model.name}</span>
-                                                        <span className={styles.modelItemDesc}>{model.description}</span>
-                                                    </div>
-                                                </DropdownMenu.RadioItem>
-                                            ))}
-                                        </DropdownMenu.RadioGroup>
-                                    </DropdownMenu.Content>
-                                </DropdownMenu.Portal>
-                            </DropdownMenu.Root>
-                        ) : (
-                            <button
-                                type="button"
-                                className={`${styles.modelBtn} ${styles.mountPlaceholder}`}
-                                aria-hidden="true"
-                                tabIndex={-1}
-                            >
-                                {selectedModelInfo?.name || "GPT-5.2"}
-                                <span className="material-icons-round">expand_more</span>
-                            </button>
-                        )}
-
-                        {showVoice && (
-                            <>
-                                <span
-                                    className="sr-only"
-                                    aria-live="polite"
-                                    aria-atomic="true"
-                                >
-                                    {voiceState === "recording"
-                                        ? "Recording in progress"
-                                        : voiceState === "transcribing"
-                                        ? "Transcribing..."
-                                        : ""}
-                                </span>
+                        {hasSecondaryActions ? (
+                            hasMounted ? (
+                                <CopilotActionsMenuButton
+                                    projectId={projectId}
+                                    studyId={studyId}
+                                    isAttaching={isAttaching}
+                                    onAttachFile={attachFile}
+                                    onAttachExistingFile={attachExistingFile}
+                                    onCompress={onCompress}
+                                    canCompress={canCompress}
+                                    isCompressing={isCompressing}
+                                    disabled={isVoiceBusy}
+                                />
+                            ) : (
                                 <button
                                     type="button"
-                                    className={`${styles.actionBtn} ${voiceState === "recording" ? styles.actionBtnRecording : ""}`}
-                                    onClick={toggleRecording}
-                                    disabled={voiceState === "transcribing"}
-                                    aria-label={voiceState === "recording" ? "Stop recording" : voiceState === "transcribing" ? "Transcribing..." : "Voice input"}
-                                    title={voiceState === "recording" ? "Stop recording" : voiceState === "transcribing" ? "Transcribing..." : "Voice input"}
+                                    className={`${styles.actionBtn} ${styles.actionMenuBtn} ${styles.mountPlaceholder}`}
+                                    aria-hidden="true"
+                                    tabIndex={-1}
                                 >
-                                    <span className="material-icons-round">
-                                        {voiceState === "recording" ? "stop_circle" : voiceState === "transcribing" ? "hourglass_top" : "mic"}
-                                    </span>
+                                    <span className="material-icons-round">add</span>
                                 </button>
+                            )
+                        ) : null}
+
+                        {!showRecordingPresentation ? (
+                            <>
+                                {modelControl}
+                                {autonomyControl}
                             </>
-                        )}
-
-                        {canShowAutonomy && (hasMounted ? (
-                            <CopilotAutonomyPresetButton
-                                autonomyPreset={autonomyPreset}
-                                onUpdateAutonomyPreset={updateAutonomyPreset!}
-                                onOpenAutonomySettings={() => setShowAutonomySettings?.(true)}
-                            />
                         ) : (
-                            <button
-                                type="button"
-                                className={`${styles.presetBtn} ${styles.mountPlaceholder}`}
-                                aria-hidden="true"
-                                tabIndex={-1}
-                            >
-                                <span className="material-icons-round" style={{ fontSize: 14 }}>
-                                    {autonomyPreset === "manual" ? "back_hand"
-                                        : autonomyPreset === "autonomous" ? "smart_toy"
-                                        : autonomyPreset === "custom" ? "tune"
-                                        : "handshake"}
-                                </span>
-                                <span>
-                                    {autonomyPreset === "manual" ? "Manual"
-                                        : autonomyPreset === "autonomous" ? "Auto"
-                                        : autonomyPreset === "custom" ? "Custom"
-                                        : "Assisted"}
-                                </span>
-                                <span className="material-icons-round" style={{ fontSize: 14 }}>expand_more</span>
-                            </button>
-                        ))}
-
-                        {canShowAttachments && (hasMounted ? (
-                            <CopilotAttachmentButton
-                                projectId={projectId!}
-                                studyId={studyId}
-                                isAttaching={isAttaching}
-                                onAttachFile={attachFile!}
-                                onAttachExistingFile={attachExistingFile!}
-                            />
-                        ) : (
-                            <button
-                                type="button"
-                                className={`${styles.actionBtn} ${styles.attachBtn}`}
-                                aria-label="Attach file"
-                                title="Attach file"
-                                disabled={isAttaching}
-                            >
-                                <span className="material-icons-round">
-                                    {isAttaching ? "hourglass_top" : "attach_file"}
-                                </span>
-                            </button>
-                        ))}
-
-                        {onCompress && (
-                            <button
-                                type="button"
-                                className={styles.compressBtn}
-                                onClick={() => { void onCompress(); }}
-                                disabled={!canCompress || isCompressing}
-                                aria-label="Compress history"
-                                title={canCompress ? "Compress" : "Compress (available after longer chats)"}
-                            >
-                                <span className="material-icons-round">
-                                    {isCompressing ? "hourglass_top" : "compress"}
-                                </span>
-                            </button>
+                            <div className={styles.recordingStatus} aria-live="polite" aria-atomic="true">
+                                {voiceState === "recording" ? (
+                                    <>
+                                        <div className={styles.waveformStrip} aria-hidden="true">
+                                            {waveformBars.map((bar, index) => (
+                                                <span
+                                                    key={`${index}-${bar}`}
+                                                    className={styles.waveformBar}
+                                                    style={{ height: `${Math.max(18, Math.round(bar * 42))}px` }}
+                                                />
+                                            ))}
+                                        </div>
+                                        <span className={styles.recordingTimer}>{formatElapsedVoiceTime(elapsedMs)}</span>
+                                    </>
+                                ) : (
+                                    <div className={styles.transcribingStatus}>
+                                        <span className="material-icons-round" aria-hidden="true">hourglass_top</span>
+                                        <span>Transcribing audio</span>
+                                        <span className={styles.recordingTimer}>{formatElapsedVoiceTime(elapsedMs)}</span>
+                                    </div>
+                                )}
+                            </div>
                         )}
                     </div>
 
-                    {isLoading ? (
-                        <button
-                            type="button"
-                            className={`${styles.sendBtn} ${styles.sendBtnStop}`}
-                            aria-label="Stop generating"
-                            onClick={handleStop}
-                        >
-                            <span className="material-icons-round">stop</span>
-                        </button>
-                    ) : (
-                        <button
-                            type="submit"
-                            className={`${styles.sendBtn} ${(input.trim() || pendingAttachment) ? styles.sendBtnActive : ""}`}
-                            aria-label={isLoading ? "Send and interrupt" : "Send"}
-                            disabled={!input.trim() && !pendingAttachment}
-                        >
-                            <span className="material-icons-round">arrow_upward</span>
-                        </button>
-                    )}
+                    <div className={styles.inputBarRight}>
+                        {voiceControl}
+                        {isLoading ? (
+                            <button
+                                type="button"
+                                className={`${styles.sendBtn} ${styles.sendBtnStop}`}
+                                aria-label="Stop generating"
+                                onClick={handleStop}
+                            >
+                                <span className="material-icons-round">stop</span>
+                            </button>
+                        ) : (
+                            <button
+                                type="submit"
+                                className={`${styles.sendBtn} ${canSubmit ? styles.sendBtnActive : ""}`}
+                                aria-label="Send"
+                                disabled={!canSubmit}
+                            >
+                                <span className="material-icons-round">arrow_upward</span>
+                            </button>
+                        )}
+                    </div>
                 </div>
 
                 {showVoice && voiceError && (

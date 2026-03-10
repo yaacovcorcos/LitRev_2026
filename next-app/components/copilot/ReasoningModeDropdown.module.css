@@ -28,7 +28,7 @@
 }
 
 .item:hover {
-    background: rgba(var(--rgb-ui-contrast), 0.04);
+    background: rgba(var(--rgb-ui-contrast), 0.055);
 }
 
 .item[data-active="true"] {
