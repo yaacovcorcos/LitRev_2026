@@ -91,6 +91,31 @@ describe("messagesToTimeline", () => {
     });
   });
 
+  it("maps structured progress messages to timeline progress items", () => {
+    const messages: CopilotMessage[] = [
+      {
+        id: "progress-current",
+        sender: "ai",
+        text: "",
+        createdAt: "2026-02-28T00:00:04.000Z",
+        progress: {
+          message: "Searching PubMed",
+          current: 1,
+          total: 3,
+        },
+      },
+    ];
+
+    const timeline = messagesToTimeline(messages);
+    expect(timeline[0]).toMatchObject({
+      type: "progress",
+      id: "progress-current",
+      message: "Searching PubMed",
+      current: 1,
+      total: 3,
+    });
+  });
+
   it("maps structured persisted stream errors without forcing retryable=true", () => {
     const messages: CopilotMessage[] = [
       {

@@ -16,6 +16,11 @@ export type CopilotMessage = {
   id: string;
   sender: CopilotSender;
   text: string;
+  progress?: {
+    message: string;
+    current?: number;
+    total?: number;
+  };
   streamError?: AIErrorEnvelope;
   reasoning?: {
     text: string;
@@ -123,7 +128,7 @@ export function loadProjectCopilotState(projectId: string): ProjectCopilotState 
         const sender = msg.sender === "ai" ? "ai" : "user";
         const text = typeof msg.text === "string" ? msg.text : "";
         const createdAt = typeof msg.createdAt === "string" ? msg.createdAt : new Date().toISOString();
-        const hasStructuredPayload = Boolean(msg.userInputRequest || msg.toolActivity || msg.artifact);
+        const hasStructuredPayload = Boolean(msg.progress || msg.userInputRequest || msg.toolActivity || msg.artifact);
         if (text.trim().length > 0 || hasStructuredPayload) {
           messages.push({
             id,
@@ -131,6 +136,7 @@ export function loadProjectCopilotState(projectId: string): ProjectCopilotState 
             text,
             createdAt,
             context: msg.context,
+            progress: msg.progress,
             reasoning: msg.reasoning,
             streamError: msg.streamError,
             artifact: msg.artifact,

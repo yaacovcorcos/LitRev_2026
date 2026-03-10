@@ -480,22 +480,24 @@ Exit criteria:
 - One canonical transparency model exists.
 - No future work needs to guess whether “thinking” means reasoning, progress, or checkpoints.
 
-### Phase V2.1 - Tool receipt semantics
-1. Preserve tool inputs/results needed for user-visible receipts.
-2. Humanize tool names and add compact input/output summaries.
-3. Prefer authoritative server duration over client-only deltas where possible.
+### Phase V2.1 - Project progress convergence
+1. Remove transcript-style progress masquerade on project copilot.
+2. Converge project copilot upward toward the `/ai` ephemeral progress model.
+3. Keep project copilot on its current message-storage model for this slice; do not couple the change to a timeline-runtime migration.
 
 Exit criteria:
-- Tool cards explain what actually happened, not just that something ran.
-
-### Phase V2.2 - Phase-aware progress
-1. Replace generic tool-name progress with phase-aware progress.
-2. Stop showing stale or misleading phase text after a tool already finished.
-3. Remove transcript-style progress masquerade on project copilot.
-
-Exit criteria:
-- Current process state is honest and ephemeral.
+- Current process state is honest and ephemeral on project copilot.
 - Project copilot no longer looks like the assistant is “saying” old progress labels.
+
+### Phase V2.2 - Tool receipt semantics
+1. Start with PubMed/search refinement as the proving ground.
+2. Preserve factual tool inputs/results needed for user-visible receipts.
+3. Humanize tool names and add compact input/output summaries.
+4. Prefer authoritative server duration over client-only deltas only if the shared tool-activity contract explicitly transports it.
+
+Exit criteria:
+- PubMed search receipts explain what actually happened, not just that something ran.
+- Repeated search refinement can be rendered compactly without inventing new runtime grouping metadata.
 
 ### Phase V2.3 - Checkpoints
 1. Add grounded checkpoints after meaningful tool results.
