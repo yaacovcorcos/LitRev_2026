@@ -9,6 +9,15 @@ const isLocalDb = DATABASE_URL.includes("localhost") || DATABASE_URL.includes("1
 const isSupabasePooler = DATABASE_URL.includes(".pooler.supabase.com");
 const allowInsecureDbTls = process.env.ALLOW_INSECURE_DB_TLS === "1";
 
+function readPositiveIntegerEnv(name: string): number | undefined {
+  const raw = process.env[name];
+  if (!raw) return undefined;
+  const parsed = Number.parseInt(raw, 10);
+  if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  console.warn(`[db] Ignoring invalid ${name} value: ${raw}`);
+  return undefined;
+}
+
 function withNoVerifySsl(url: string): string {
   if (url.includes("sslmode=no-verify")) return url;
   if (url.includes("sslmode=require")) return url.replace("sslmode=require", "sslmode=no-verify");
@@ -36,11 +45,15 @@ const poolConnectionString = (() => {
   return DATABASE_URL;
 })();
 
+const defaultConnectionTimeoutMs = isLocalDb ? 10000 : 30000;
+const defaultIdleTimeoutMs = 30000;
+const defaultPoolMax = 10;
+
 const pool = new Pool({
   connectionString: poolConnectionString,
-  connectionTimeoutMillis: isLocalDb ? 5000 : 30000,
-  idleTimeoutMillis: isLocalDb ? 10000 : 30000,
-  max: 10,
+  connectionTimeoutMillis: readPositiveIntegerEnv("PRISMA_POOL_CONNECTION_TIMEOUT_MS") ?? defaultConnectionTimeoutMs,
+  idleTimeoutMillis: readPositiveIntegerEnv("PRISMA_POOL_IDLE_TIMEOUT_MS") ?? defaultIdleTimeoutMs,
+  max: readPositiveIntegerEnv("PRISMA_POOL_MAX") ?? defaultPoolMax,
 });
 
 const adapter = new PrismaPg(pool);

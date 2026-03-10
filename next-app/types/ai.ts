@@ -75,6 +75,7 @@ export type AIErrorKind =
     | "plan_execution"
     | "autonomy_blocked"
     | "run_conflict"
+    | "database_connection"
     | "runtime";
 
 export type AIErrorSource =
@@ -86,6 +87,7 @@ export type AIErrorSource =
     | "plan_execution"
     | "autonomy_policy"
     | "conversation_run_lock"
+    | "database_connection"
     | "runtime";
 
 export type AIErrorEnvelope = {

@@ -3,6 +3,7 @@ import {
     classifyAIError,
     isContextOverflowMessage,
     isRetryableReason,
+    toAIErrorEnvelope,
 } from "@/lib/server/ai/error-classification";
 
 describe("classifyAIError", () => {
@@ -34,6 +35,26 @@ describe("classifyAIError", () => {
         const classified = classifyAIError({ message: "gateway timeout", statusCode: 504 });
         expect(classified.reason).toBe("timeout");
         expect(classified.retryable).toBe(true);
+    });
+
+    it("classifies prisma connection timeouts as database failures", () => {
+        const classified = classifyAIError({ message: "Connection terminated due to connection timeout" });
+        expect(classified.reason).toBe("timeout");
+        expect(classified.code).toBe("DATABASE_CONNECTION_TIMEOUT");
+        expect(classified.kind).toBe("database_connection");
+        expect(classified.source).toBe("database_connection");
+        expect(classified.retryable).toBe(true);
+    });
+
+    it("classifies prisma reachability failures as database failures", () => {
+        const classified = classifyAIError({
+            message: "Can't reach database server at localhost:5432",
+            code: "P1001",
+        });
+        expect(classified.reason).toBe("timeout");
+        expect(classified.code).toBe("DATABASE_CONNECTION_FAILED");
+        expect(classified.kind).toBe("database_connection");
+        expect(classified.source).toBe("database_connection");
     });
 
     it("extracts retry-after from headers", () => {
@@ -86,6 +107,23 @@ describe("classifyAIError", () => {
         });
         expect(classified.reason).toBe("usage_limit");
         expect(classified.retryable).toBe(false);
+    });
+
+    it("preserves shared database classification through toAIErrorEnvelope defaults", () => {
+        const envelope = toAIErrorEnvelope(
+            { message: "Connection terminated due to connection timeout" },
+            {
+                kind: "runtime",
+                source: "runtime",
+                message: "Connection terminated due to connection timeout",
+            },
+        );
+        expect(envelope).toMatchObject({
+            kind: "database_connection",
+            source: "database_connection",
+            code: "DATABASE_CONNECTION_TIMEOUT",
+            retryable: true,
+        });
     });
 });
 

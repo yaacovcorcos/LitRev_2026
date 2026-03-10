@@ -232,6 +232,28 @@ describe("retrieveMemories — deterministic scope rules", () => {
         expect(mockEmitEvent).not.toHaveBeenCalled();
     });
 
+    it("does not fail retrieval when audit logging fails", async () => {
+        const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+        mockGetUserMemories.mockResolvedValue([
+            { id: "um-1", type: "preference", key: "k", value: "v", rationale: null, tags: [], status: "active" },
+        ] as any);
+        mockMemoryRetrievalCreate.mockRejectedValueOnce(new Error("Connection terminated due to connection timeout"));
+
+        const result = await retrieveMemories({ userId: "u1" });
+
+        expect(result).toHaveLength(1);
+        expect(mockMemoryRetrievalCreate).toHaveBeenCalledTimes(1);
+        expect(warnSpy).toHaveBeenCalledWith(
+            "[memory] retrieval audit logging failed",
+            expect.objectContaining({
+                userId: "u1",
+                error: "Connection terminated due to connection timeout",
+            }),
+        );
+
+        warnSpy.mockRestore();
+    });
+
     it("empty project returns only user preferences", async () => {
         mockGetUserMemories.mockResolvedValue([
             { id: "um-1", type: "preference", key: "style", value: "formal", rationale: null, tags: [], status: "active" },

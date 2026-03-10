@@ -62,14 +62,30 @@ function extractEmbeddedProviderMessage(rawMessage: string): string | null {
     }
 }
 
+function isDatabaseConnectionError(errorMeta: AIErrorEnvelope | undefined, baseMessage: string): boolean {
+    if (errorMeta?.kind === "database_connection" || errorMeta?.source === "database_connection") {
+        return true;
+    }
+    if (errorMeta?.code === "DATABASE_CONNECTION_TIMEOUT" || errorMeta?.code === "DATABASE_CONNECTION_FAILED") {
+        return true;
+    }
+    return /connection terminated due to connection timeout|can't reach database server|connection refused|econnrefused/i.test(baseMessage);
+}
+
 /**
  * Convert provider/server error payloads into concise user-facing text.
  * This is intentionally UI-focused and strips transport noise like "400 {...json...}".
  */
 export function formatStreamErrorForUI(error: unknown): string {
     const base = getBaseErrorMessage(error);
+    const errorMeta = extractAIErrorEnvelope(error);
 
     if (!base) return "The request failed. Please try again.";
+    if (isDatabaseConnectionError(errorMeta, base)) {
+        return errorMeta?.code === "DATABASE_CONNECTION_FAILED"
+            ? "The app could not reach the database. Please retry."
+            : "The app could not reach the database in time. Please retry.";
+    }
     if (CLAUDE_REASONING_BUDGET_PATTERN.test(base)) {
         return "Claude could not run this request with the current reasoning settings. Retry, or set reasoning to Off.";
     }

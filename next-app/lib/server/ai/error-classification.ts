@@ -1,4 +1,4 @@
-import type { AIErrorEnvelope } from "@/types/ai";
+import type { AIErrorEnvelope, AIErrorKind, AIErrorSource } from "@/types/ai";
 import { extractAIErrorEnvelope } from "@/lib/ai/error-envelope";
 import { parseRetryAfterHeaderMs } from "@/lib/server/utils/retry";
 import { normalizeHeaderRecord } from "@/lib/server/utils/header-record";
@@ -19,6 +19,8 @@ export type ClassifiedAIError = {
     message: string;
     status?: number;
     code?: string;
+    kind?: AIErrorKind | string;
+    source?: AIErrorSource | string;
     retryAfterMs?: number;
     retryable: boolean;
 };
@@ -58,6 +60,66 @@ const OVERFLOW_PATTERNS = [
 ];
 
 const DAILY_TOKEN_LIMIT_PATTERN = /daily token limit exceeded|maximum\s+\d+\s+tokens per day|tokens per day/i;
+const DATABASE_CONNECTION_TIMEOUT_PATTERNS = [
+    /connection terminated due to connection timeout/i,
+    /timed out while trying to connect to the database/i,
+    /timeout while acquiring a new connection/i,
+    /connect etimedout/i,
+    /database connection timeout/i,
+];
+const DATABASE_CONNECTION_FAILURE_PATTERNS = [
+    /can't reach database server/i,
+    /server closed the connection unexpectedly/i,
+    /connection terminated unexpectedly/i,
+    /sorry, too many clients already/i,
+    /remaining connection slots are reserved/i,
+    /econnrefused/i,
+    /connection refused/i,
+    /database .* unavailable/i,
+];
+const DATABASE_CONNECTION_TIMEOUT_CODES = new Set(["P1002", "ETIMEDOUT"]);
+const DATABASE_CONNECTION_FAILURE_CODES = new Set(["P1001", "ECONNREFUSED", "57P01", "57P02", "57P03", "53300"]);
+
+function classifyDatabaseConnection(message: string, code?: string): Pick<ClassifiedAIError, "reason" | "code" | "kind" | "source" | "retryable"> | null {
+    const normalizedCode = code?.trim().toUpperCase();
+    if (normalizedCode && DATABASE_CONNECTION_TIMEOUT_CODES.has(normalizedCode)) {
+        return {
+            reason: "timeout",
+            code: "DATABASE_CONNECTION_TIMEOUT",
+            kind: "database_connection",
+            source: "database_connection",
+            retryable: true,
+        };
+    }
+    if (normalizedCode && DATABASE_CONNECTION_FAILURE_CODES.has(normalizedCode)) {
+        return {
+            reason: "timeout",
+            code: "DATABASE_CONNECTION_FAILED",
+            kind: "database_connection",
+            source: "database_connection",
+            retryable: true,
+        };
+    }
+    if (DATABASE_CONNECTION_TIMEOUT_PATTERNS.some((pattern) => pattern.test(message))) {
+        return {
+            reason: "timeout",
+            code: "DATABASE_CONNECTION_TIMEOUT",
+            kind: "database_connection",
+            source: "database_connection",
+            retryable: true,
+        };
+    }
+    if (DATABASE_CONNECTION_FAILURE_PATTERNS.some((pattern) => pattern.test(message))) {
+        return {
+            reason: "timeout",
+            code: "DATABASE_CONNECTION_FAILED",
+            kind: "database_connection",
+            source: "database_connection",
+            retryable: true,
+        };
+    }
+    return null;
+}
 
 function extractMessage(error: unknown): string {
     if (typeof error === "string") return error;
@@ -113,6 +175,9 @@ function reasonFromEnvelope(envelope: AIErrorEnvelope, status?: number): AIError
         return "format";
     }
     const lowerCode = envelope.code.toLowerCase();
+    if (envelope.kind === "database_connection" || lowerCode === "database_connection_timeout" || lowerCode === "database_connection_failed") {
+        return "timeout";
+    }
     if (lowerCode === "context_length_exceeded") return "context_overflow";
     if (lowerCode === "daily_token_limit_exceeded") return "usage_limit";
     if (lowerCode === "insufficient_quota") return "billing";
@@ -159,13 +224,16 @@ export function classifyAIError(error: unknown): ClassifiedAIError {
     if (envelope) {
         const status = envelope.status ?? extractStatus(error);
         const headers = envelope.headers ?? extractHeaders(error);
+        const dbClassification = classifyDatabaseConnection(envelope.message, envelope.code);
         return {
-            reason: reasonFromEnvelope(envelope, status),
+            reason: dbClassification?.reason ?? reasonFromEnvelope(envelope, status),
             message: envelope.message,
             status,
-            code: envelope.code,
+            code: dbClassification?.code ?? envelope.code,
+            kind: dbClassification?.kind ?? envelope.kind,
+            source: dbClassification?.source ?? envelope.source,
             retryAfterMs: parseRetryAfterHeaderMs(headers),
-            retryable: envelope.retryable,
+            retryable: dbClassification?.retryable ?? envelope.retryable,
         };
     }
 
@@ -176,7 +244,9 @@ export function classifyAIError(error: unknown): ClassifiedAIError {
     const retryAfterMs = parseRetryAfterHeaderMs(headers);
 
     const lowerCode = code?.toLowerCase();
+    const dbClassification = classifyDatabaseConnection(message, code);
     const reason: AIErrorReason = (() => {
+        if (dbClassification) return dbClassification.reason;
         if (status === 401 || status === 403) return "auth";
         if (status === 402) return "billing";
         if (status === 404) return "model_not_found";
@@ -217,9 +287,11 @@ export function classifyAIError(error: unknown): ClassifiedAIError {
         reason,
         message,
         status,
-        code,
+        code: dbClassification?.code ?? code,
+        kind: dbClassification?.kind,
+        source: dbClassification?.source,
         retryAfterMs,
-        retryable: isRetryableReason(reason),
+        retryable: dbClassification?.retryable ?? isRetryableReason(reason),
     };
 }
 
@@ -243,10 +315,10 @@ export function toAIErrorEnvelope(
     const headers = extractHeaders(error);
 
     return {
-        kind: overrides?.kind ?? "provider_request",
-        code: overrides?.code ?? classified.code ?? "PROVIDER_REQUEST_FAILED",
+        kind: classified.kind ?? overrides?.kind ?? "provider_request",
+        code: classified.code ?? overrides?.code ?? "PROVIDER_REQUEST_FAILED",
         retryable: overrides?.retryable ?? classified.retryable,
-        source: overrides?.source ?? "provider_request",
+        source: classified.source ?? overrides?.source ?? "provider_request",
         message: overrides?.message ?? classified.message ?? "The request failed.",
         status: classified.status,
         headers,
