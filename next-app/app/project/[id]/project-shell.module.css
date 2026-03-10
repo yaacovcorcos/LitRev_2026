@@ -13,6 +13,10 @@
     height: var(--app-height, 100vh);
 }
 
+.shellMainConversation {
+    padding-bottom: 0;
+}
+
 /* Conversation-centric mode: full-width chat */
 .conversationBody {
     flex: 1;
@@ -71,11 +75,15 @@
     width: 0;
 }
 
-@media (max-width: 900px) {
-    .shellMain {
+/* Conversation-mode bottom offset is phone-only. View-mode collapse stays transitional
+   until route-specific workspace follow-up waves retire the legacy 900px behavior. */
+@media (max-width: 767px) {
+    .shellMainConversation {
         padding-bottom: var(--mobile-nav-offset) !important;
     }
+}
 
+@media (max-width: 900px) {
     .viewBody {
         grid-template-columns: 1fr !important;
     }
