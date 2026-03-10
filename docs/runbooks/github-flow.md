@@ -47,6 +47,7 @@ gh pr list --state open --json number,title,headRefName,baseRefName,reviewDecisi
 ## Operational Notes
 
 - Rule: feature branches hold work; repo root `main` only mirrors merged work.
+- Repo root `main` is the only canonical baseline; task worktrees may use other branches temporarily, but they must never be treated as the baseline or replace repo root `main`.
 - Repo root checkout is the canonical clean `main`.
 - Keep repo root `main` exactly in sync with `origin/main`.
 - If repo root is detached, dirty, ahead, or behind `origin/main`, stop and reconcile before starting new work.
