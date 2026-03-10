@@ -392,6 +392,96 @@
     color: var(--text-muted);
 }
 
+.toolSequenceToggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    width: 100%;
+    padding: 0;
+    margin: 0;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    text-align: left;
+}
+
+.toolSequenceHeaderMeta {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+.toolSequenceChevron {
+    font-size: 16px;
+    color: var(--text-muted);
+}
+
+.toolSequenceList {
+    margin: 0;
+    padding: 2px 0 0 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.toolSequenceItem {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding-top: 8px;
+    border-top: 1px solid rgba(var(--rgb-ui-contrast), 0.06);
+}
+
+.toolSequenceItemHead {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    min-width: 0;
+}
+
+.toolSequenceIndex {
+    font-size: 12px;
+    color: var(--text-muted);
+    font-weight: 600;
+    flex-shrink: 0;
+}
+
+.toolSequenceQuery {
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--text-primary);
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.toolSequenceQueryMuted {
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--text-muted);
+}
+
+.toolSequenceMetaRow {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding-left: 20px;
+}
+
+.toolSequenceAnnotation {
+    margin: 8px 0 0;
+    padding-top: 8px;
+    border-top: 1px solid rgba(var(--rgb-ui-contrast), 0.06);
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--text-secondary);
+}
+
 .suggestRow {
     display: flex;
     gap: 8px;

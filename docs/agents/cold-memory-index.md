@@ -15,13 +15,13 @@ Use this index to retrieve authoritative docs before editing high-risk domains.
 |---|---|---|
 | Database operations, migrations, production drift | `docs/runbooks/db-ops.md`, `docs/plans/db-production-runbook.md` | Any Prisma schema change, migration issue, deploy DB gate, runtime schema errors |
 | Platform admin control plane (bootstrap, guards, mutations, audit, analytics) | `docs/runbooks/admin-access.md`, `docs/plans/plan-backend.md` | Changes under `next-app/app/admin/**`, `next-app/app/api/admin/**`, `next-app/lib/server/admin/**`, or admin guard logic |
-| Agent orchestration and execution loop | `docs/plans/plan-agentic.md`, `docs/plans/codex-agentic-plan.md`, `next-app/lib/agent/**`, `next-app/lib/server/agent/**` | Changes to planner/execution/router/sub-agent flow |
+| Agent orchestration and execution loop | `docs/plans/plan-agentic.md`; use `docs/plans/README.md` to locate any additional active runtime plans; `next-app/lib/agent/**`, `next-app/lib/server/agent/**` | Changes to planner/execution/router/sub-agent flow; use only active plans listed in `docs/plans/README.md` |
 | Memory and retrieval architecture | `docs/plans/plan-memory.md` | Any memory extraction, embedding, retrieval, or memory lifecycle work |
 | Backend and infrastructure decisions | `docs/plans/plan-backend.md` | Server action/service/DB contract changes |
 | Guided setup behavior | `docs/plans/plan-guided-setup.md` | Onboarding/setup activation flow changes |
 | Prompting/extraction logic | `docs/plans/plan-prompts.md` | Prompt text/schema/LLM extraction changes |
 | UI/UX architecture and roadmap | `docs/plans/plan-ux-ui.md` | Component and interaction model changes |
-| Responsive/mobile foundation and chat UX execution | `docs/plans/mobile-plan.md`, `docs/plans/mobile-layout-contract.md`, `docs/plans/plan-chat-unification-v2.md` | Any responsive tier, phone/compact layout contract, mobile chat layout, drawer/composer, or popup behavior change |
+| Responsive/mobile foundation and chat UX execution | `docs/plans/mobile-plan.md`, `docs/plans/mobile-layout-contract.md`, `docs/runbooks/responsive-foundation-certification.md`, `docs/plans/plan-chat-unification-v2.md` | Any responsive tier, phone/compact layout contract, mobile chat layout, drawer/composer, popup behavior, or responsive certification change |
 | Chat unification rollout operations | `docs/plans/plan-chat-unification-v2.md`, `docs/runbooks/chat-unification-burn-in.md` | U1.6 canary setup, burn-in validation, and U3 unlock decisions |
 | GitHub branch/PR/review automation | `docs/runbooks/github-flow.md` | Any edits to `.github/workflows/**`, branch protections, CODEOWNERS, or agent git policy |
 | Repo-wide health reviews and recurring regression analysis | `docs/reviews/repo-health.md`, latest file under `docs/reviews/`, `docs/architecture/decision-log.md` | Any request to rerun a deep whole-repo analysis, compare against prior reviews, or assess repeated mistakes/drift |

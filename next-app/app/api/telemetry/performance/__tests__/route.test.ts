@@ -26,6 +26,7 @@ function makeRequest(body: unknown): Request {
 
 describe("POST /api/telemetry/performance", () => {
   const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+  const originalE2ETestMode = process.env.E2E_TEST_MODE;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -33,9 +34,11 @@ describe("POST /api/telemetry/performance", () => {
     mocks.ingestPerformanceMetric.mockReset();
     consoleErrorSpy.mockClear();
     consoleErrorSpy.mockImplementation(() => {});
+    delete process.env.E2E_TEST_MODE;
   });
 
   afterAll(() => {
+    process.env.E2E_TEST_MODE = originalE2ETestMode;
     consoleErrorSpy.mockRestore();
   });
 
@@ -95,6 +98,27 @@ describe("POST /api/telemetry/performance", () => {
     });
   });
 
+  it("returns 400 for invalid JSON bodies", async () => {
+    mocks.requireApiSession.mockResolvedValue({
+      ok: true,
+      context: { userId: "user-1", workspaceId: "ws-1", role: "owner" },
+    });
+
+    const request = {
+      headers: new Headers({ "Content-Type": "application/json" }),
+      json: vi.fn().mockRejectedValue(new SyntaxError("Unexpected end of JSON input")),
+    } as unknown as Request;
+
+    const response = await POST(request as never);
+    const json = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(json).toEqual({
+      success: false,
+      error: "Invalid JSON payload",
+    });
+  });
+
   it("returns opaque 500 errors and logs details server-side", async () => {
     mocks.requireApiSession.mockResolvedValue({
       ok: true,
@@ -113,5 +137,24 @@ describe("POST /api/telemetry/performance", () => {
       error: "Telemetry ingestion failed",
     });
     expect(consoleErrorSpy).toHaveBeenCalled();
+  });
+
+  it("suppresses telemetry error logging in explicit E2E mode", async () => {
+    process.env.E2E_TEST_MODE = "1";
+    mocks.requireApiSession.mockResolvedValue({
+      ok: true,
+      context: { userId: "user-1", workspaceId: "ws-1", role: "owner" },
+    });
+    mocks.ingestPerformanceMetric.mockRejectedValue(new Error("aborted"));
+
+    const response = await POST(makeRequest({ eventId: "value" }) as never);
+    const json = await response.json();
+
+    expect(response.status).toBe(500);
+    expect(json).toEqual({
+      success: false,
+      error: "Telemetry ingestion failed",
+    });
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
   });
 });

@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { type FormEvent, useEffect, useMemo, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
 import { useAsyncAction } from "@/hooks/useAsyncAction";
 import { AuthShellFrame } from "@/app/auth/AuthShellFrame";
+import { recordFoundationRouteFlowCompleted } from "@/lib/mobile/foundation-reliability";
 import styles from "@/app/login/login.module.css";
 
 type AuthMode = "signin" | "signup";
@@ -33,6 +34,9 @@ export function AuthScreen({ mode }: AuthScreenProps) {
 
   const isCreateMode = mode === "signup";
   const modeVerb = isCreateMode ? "Create" : "Sign in";
+  const routeTemplate = isCreateMode ? "/signup" : "/login";
+  const readyState = isCreateMode ? "signup" : "signin";
+  const successTelemetryRef = useRef(false);
 
   const isDevRuntime = process.env.NODE_ENV !== "production";
   const devQuickLoginEnabled =
@@ -94,6 +98,16 @@ export function AuthScreen({ mode }: AuthScreenProps) {
     { errorMessage: "Quick access sign-in failed." },
   );
 
+  useEffect(() => {
+    if (magicLinkAction.status !== "success" || successTelemetryRef.current) return;
+    successTelemetryRef.current = true;
+    recordFoundationRouteFlowCompleted({
+      routeTemplate,
+      surface: "auth",
+      flow: "magic_link_requested",
+    });
+  }, [magicLinkAction.status, routeTemplate]);
+
   const anyBusy =
     googleAction.status === "loading" ||
     magicLinkAction.status === "loading" ||
@@ -119,7 +133,12 @@ export function AuthScreen({ mode }: AuthScreenProps) {
   };
 
   return (
-    <AuthShellFrame ariaLabel={modeVerb} mode={mode}>
+    <AuthShellFrame
+      ariaLabel={modeVerb}
+      mode={mode}
+      telemetryRouteTemplate={routeTemplate}
+      telemetryState={readyState}
+    >
       <div className={styles.authPanel}>
         <div className={styles.card}>
           <div className={styles.cardAccent} />

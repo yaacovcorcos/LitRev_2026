@@ -111,6 +111,12 @@ const TOOL_ACTIVITY_META: Record<"queued" | "running" | "done" | "failed", { ico
     failed: { icon: "error", label: "Failed" },
 };
 
+type TimelineToolActivityItem = Extract<TimelineItem, { type: "tool_activity" }>;
+
+type PresentedTimelineItem =
+    | { kind: "single"; item: TimelineItem }
+    | { kind: "pubmed_sequence"; id: string; items: TimelineToolActivityItem[] };
+
 function parseTimestampMs(value?: string): number | null {
     if (!value) return null;
     const parsed = Date.parse(value);
@@ -140,6 +146,117 @@ function getToolActivityTimingText(item: Extract<TimelineItem, { type: "tool_act
     if (item.status === "done") return "Completed";
     if (item.status === "failed") return "Failed";
     return "Pending";
+}
+
+function getToolActivityDisplayName(item: TimelineToolActivityItem): string {
+    if (item.toolName === "search_pubmed") return "PubMed search";
+    return item.toolName;
+}
+
+function getPubMedResultCountText(item: TimelineToolActivityItem): string | null {
+    if (item.toolName !== "search_pubmed") return null;
+    if (typeof item.returnedCount === "number" && typeof item.totalResults === "number") {
+        return `${item.returnedCount} of ${item.totalResults} results`;
+    }
+    if (typeof item.returnedCount === "number") {
+        return `${item.returnedCount} results`;
+    }
+    if (typeof item.totalResults === "number") {
+        return `${item.totalResults} results`;
+    }
+    return null;
+}
+
+function getPubMedSearchSize(item: TimelineToolActivityItem): number | null {
+    if (typeof item.totalResults === "number") return item.totalResults;
+    if (typeof item.returnedCount === "number") return item.returnedCount;
+    return null;
+}
+
+function normalizePubMedQueryPreview(value?: string): string | null {
+    const normalized = value?.replace(/\s+/g, " ").trim().toLowerCase();
+    return normalized ? normalized : null;
+}
+
+function derivePubMedSequenceAnnotation(items: TimelineToolActivityItem[]): string | null {
+    if (items.length < 2) return null;
+
+    const comparableQueries = items
+        .map((item) => normalizePubMedQueryPreview(item.queryPreview))
+        .filter((query): query is string => !!query);
+    const queryChanged = new Set(comparableQueries).size > 1;
+    const sizedItems = items
+        .map((item) => ({ item, size: getPubMedSearchSize(item) }))
+        .filter((entry): entry is { item: TimelineToolActivityItem; size: number } => entry.size !== null);
+
+    if (!queryChanged && sizedItems.length < 2) return null;
+
+    const firstSize = sizedItems[0]?.size ?? null;
+    const lastSize = sizedItems[sizedItems.length - 1]?.size ?? null;
+
+    if (queryChanged && lastSize !== null && lastSize <= 2) {
+        return "The latest search may be too narrow and may need broader terms.";
+    }
+
+    if (queryChanged && firstSize !== null && lastSize !== null) {
+        if (lastSize < firstSize) {
+            return "The search is narrowing toward a smaller result set.";
+        }
+        if (lastSize > firstSize) {
+            return "The search is broadening to explore a larger result set.";
+        }
+        if (lastSize >= 25) {
+            return "The search is still broad and is being refined further.";
+        }
+    }
+
+    if (queryChanged && comparableQueries.length >= 2) {
+        return "Multiple PubMed searches were used to refine the result set.";
+    }
+
+    return null;
+}
+
+function buildPresentedTimeline(items: TimelineItem[]): PresentedTimelineItem[] {
+    const presented: PresentedTimelineItem[] = [];
+
+    for (let index = 0; index < items.length; index += 1) {
+        const item = items[index];
+        if (item?.type !== "tool_activity" || item.toolName !== "search_pubmed") {
+            presented.push({ kind: "single", item });
+            continue;
+        }
+
+        const group: TimelineToolActivityItem[] = [item];
+        let cursor = index + 1;
+        while (cursor < items.length) {
+            const candidate = items[cursor];
+            if (candidate?.type !== "tool_activity" || candidate.toolName !== "search_pubmed") break;
+            group.push(candidate);
+            cursor += 1;
+        }
+
+        if (group.length === 1) {
+            presented.push({ kind: "single", item });
+        } else {
+            presented.push({
+                kind: "pubmed_sequence",
+                id: `pubmed-sequence-${group[0]?.id}-${group[group.length - 1]?.id}`,
+                items: group,
+            });
+        }
+
+        index = cursor - 1;
+    }
+
+    return presented;
+}
+
+function getPubMedSequenceStatus(items: TimelineToolActivityItem[]): keyof typeof TOOL_ACTIVITY_META {
+    if (items.some((item) => item.status === "failed")) return "failed";
+    if (items.some((item) => item.status === "running")) return "running";
+    if (items.every((item) => item.status === "done")) return "done";
+    return "queued";
 }
 
 function getJumpToProps(artifactType: string, projectId: string): { jumpToLink?: string; jumpToLabel?: string } {
@@ -713,7 +830,21 @@ export function TimelineRenderer({
     const effectiveVisibleCount = windowSize ? Math.min(visibleCount, timeline.length) : timeline.length;
     const hiddenItemCount = Math.max(0, timeline.length - effectiveVisibleCount);
     const visibleTimeline = hiddenItemCount > 0 ? timeline.slice(-effectiveVisibleCount) : timeline;
+    const presentedTimeline = useMemo(
+        () => buildPresentedTimeline(visibleTimeline),
+        [visibleTimeline],
+    );
     const visibleFirstTimelineId = visibleTimeline[0]?.id ?? null;
+    const [expandedSequenceIds, setExpandedSequenceIds] = useState<Record<string, boolean>>({});
+    const toggleSequenceExpanded = useCallback((sequenceId: string) => {
+        setExpandedSequenceIds((prev) => ({
+            ...prev,
+            [sequenceId]: !prev[sequenceId],
+        }));
+    }, []);
+    useEffect(() => {
+        setExpandedSequenceIds({});
+    }, [conversationId]);
     // ── Content change — schedule scroll if pinned ──────────────────────────
     useLayoutEffect(() => { notifyContentChanged(); }, [notifyContentChanged, timeline, visibleFirstTimelineId, effectiveVisibleCount]);
     useEffect(() => {
@@ -967,14 +1098,15 @@ export function TimelineRenderer({
 
         switch (item.artifactType) {
             case "plan": {
-                const canExecutePlan = !!onExecutePlan && canAct;
+                const planPayload = item.payload as PlanPayload;
+                const canExecutePlan = !!onExecutePlan && canAct && Boolean(planPayload.execution);
                 return (
                     <ArtifactWrapper
                         {...wrapperProps}
-                        summaryText={`Plan executed: ${(item.payload as PlanPayload)?.steps?.length ?? 0} steps`}
+                        summaryText={`Plan executed: ${planPayload?.steps?.length ?? 0} steps`}
                     >
                         <PlanCard
-                            payload={item.payload as PlanPayload}
+                            payload={planPayload}
                             status={item.status}
                             onRun={canExecutePlan ? (selectedIndexes) => onExecutePlan(item.artifactId, selectedIndexes) : undefined}
                             onCancel={() => handleReview("rejected")}
@@ -1220,6 +1352,8 @@ export function TimelineRenderer({
                 const meta = TOOL_ACTIVITY_META[item.status];
                 const timingText = getToolActivityTimingText(item);
                 const summary = item.summary?.trim();
+                const queryPreview = item.queryPreview?.trim();
+                const resultCountText = getPubMedResultCountText(item);
                 return (
                     <div
                         key={item.id}
@@ -1232,10 +1366,12 @@ export function TimelineRenderer({
                             <span className={`material-icons-round ${styles.toolActivityIcon}`}>
                                 {meta.icon}
                             </span>
-                            <span className={styles.toolActivityTitle}>{item.toolName}</span>
+                            <span className={styles.toolActivityTitle}>{getToolActivityDisplayName(item)}</span>
                             <span className={styles.toolActivityState}>{meta.label}</span>
                         </div>
                         <p className={styles.toolActivityMeta}>{timingText}</p>
+                        {queryPreview ? <p className={styles.toolActivitySummary}>{queryPreview}</p> : null}
+                        {resultCountText ? <p className={styles.toolActivityMeta}>{resultCountText}</p> : null}
                         {summary ? <p className={styles.toolActivitySummary}>{summary}</p> : null}
                     </div>
                 );
@@ -1305,6 +1441,84 @@ export function TimelineRenderer({
         }
     };
 
+    const renderPresentedTimelineItem = (entry: PresentedTimelineItem, index: number) => {
+        if (entry.kind === "single") {
+            return renderTimelineItem(entry.item, index);
+        }
+
+        const status = getPubMedSequenceStatus(entry.items);
+        const meta = TOOL_ACTIVITY_META[status];
+        const expanded = entry.items.length < 3 || !!expandedSequenceIds[entry.id];
+        const toggleLabel = expanded ? "Collapse PubMed search sequence" : "Expand PubMed search sequence";
+        const sequenceAnnotation = derivePubMedSequenceAnnotation(entry.items);
+
+        return (
+            <div
+                key={entry.id}
+                className={styles.toolActivityCard}
+                data-status={status}
+                role="status"
+                aria-live="polite"
+            >
+                <button
+                    type="button"
+                    className={styles.toolSequenceToggle}
+                    onClick={() => toggleSequenceExpanded(entry.id)}
+                    aria-expanded={expanded}
+                    aria-label={toggleLabel}
+                >
+                    <div className={styles.toolActivityHead}>
+                        <span className={`material-icons-round ${styles.toolActivityIcon}`}>
+                            {meta.icon}
+                        </span>
+                        <span className={styles.toolActivityTitle}>PubMed search</span>
+                        <span className={styles.toolActivityState}>{meta.label}</span>
+                    </div>
+                    <div className={styles.toolSequenceHeaderMeta}>
+                        <span className={styles.toolActivityMeta}>
+                            {entry.items.length} {entry.items.length === 1 ? "search" : "searches"}
+                        </span>
+                        <span className={`material-icons-round ${styles.toolSequenceChevron}`}>
+                            {expanded ? "expand_less" : "expand_more"}
+                        </span>
+                    </div>
+                </button>
+                {expanded ? (
+                    <ol className={styles.toolSequenceList}>
+                        {entry.items.map((item, itemIndex) => {
+                            const resultCountText = getPubMedResultCountText(item);
+                            const timingText = getToolActivityTimingText(item);
+                            return (
+                                <li key={item.id} className={styles.toolSequenceItem}>
+                                    <div className={styles.toolSequenceItemHead}>
+                                        <span className={styles.toolSequenceIndex}>{itemIndex + 1}.</span>
+                                        {item.queryPreview ? (
+                                            <span className={styles.toolSequenceQuery}>{item.queryPreview}</span>
+                                        ) : (
+                                            <span className={styles.toolSequenceQueryMuted}>Query unavailable</span>
+                                        )}
+                                    </div>
+                                    <div className={styles.toolSequenceMetaRow}>
+                                        {resultCountText ? (
+                                            <span className={styles.toolActivityMeta}>{resultCountText}</span>
+                                        ) : null}
+                                        <span className={styles.toolActivityMeta}>{timingText}</span>
+                                    </div>
+                                    {item.summary?.trim() ? (
+                                        <p className={styles.toolActivitySummary}>{item.summary.trim()}</p>
+                                    ) : null}
+                                </li>
+                            );
+                        })}
+                    </ol>
+                ) : null}
+                {sequenceAnnotation ? (
+                    <p className={styles.toolSequenceAnnotation}>{sequenceAnnotation}</p>
+                ) : null}
+            </div>
+        );
+    };
+
     return (
         <div className={`${styles.copilotBody} ${variant === "page" ? styles.pageLayout : ""}`} ref={setContainerRef} onScroll={onScroll}>
             <div className={styles.chatList}>
@@ -1341,11 +1555,12 @@ export function TimelineRenderer({
                         </button>
                     </div>
                 )}
-                {visibleTimeline.map((item, index) => {
-                    const rendered = renderTimelineItem(item, index);
+                {presentedTimeline.map((entry, index) => {
+                    const rendered = renderPresentedTimelineItem(entry, index);
+                    const firstId = entry.kind === "single" ? entry.item.id : entry.id;
                     if (index === 0) {
                         return (
-                            <div key={item.id} ref={(el) => { firstItemRef.current = el; }}>
+                            <div key={firstId} ref={(el) => { firstItemRef.current = el; }}>
                                 {rendered}
                             </div>
                         );

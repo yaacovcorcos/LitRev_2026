@@ -16,12 +16,23 @@ import { openOrCreateDemoProjectAction } from "@/app/actions/demo";
 import { isDemoProject } from "@/lib/demo/constants";
 import { isAuthError, redirectToLogin } from "@/lib/action-client";
 import { authClient } from "@/lib/auth-client";
+import {
+  recordFoundationRouteFlowCompleted,
+  useFoundationRouteReady,
+} from "@/lib/mobile/foundation-reliability";
 import layoutStyles from "./home.module.css";
 
 const VALID_SORTS: SortMode[] = ["name", "created", "modified"];
 const VALID_VIEWS: ViewMode[] = ["grid", "list"];
 const LAST_PROJECT_STORAGE_KEY = "litrev:lastProjectId";
 const HOME_ENTERED_WORKSPACE_KEY = "litrev:enteredWorkspaceFromWelcome";
+
+function generateProjectId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return `p-${crypto.randomUUID()}`;
+  }
+  return `p-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
 
 function buildProject(
   name: string,
@@ -30,7 +41,7 @@ function buildProject(
 ): Project {
   const now = new Date().toISOString();
   return {
-    id: options?.id ?? `p${Date.now()}`,
+    id: options?.id ?? generateProjectId(),
     name,
     description,
     status: "ready",
@@ -124,6 +135,11 @@ function HomeContent() {
       return;
     }
     closeModal();
+    recordFoundationRouteFlowCompleted({
+      routeTemplate: "/",
+      surface: "home",
+      flow: "create_project",
+    });
     if (guided) {
       router.push(`/project/${created.id}/onboarding`);
       return;
@@ -147,6 +163,11 @@ function HomeContent() {
         return;
       }
       await refresh();
+      recordFoundationRouteFlowCompleted({
+        routeTemplate: "/",
+        surface: "home",
+        flow: "open_sample_review",
+      });
       router.push(`/project/${result.data.id}`);
     } catch (err) {
       console.error("Failed to open sample project", err);
@@ -183,6 +204,11 @@ function HomeContent() {
   );
 
   const handleEnterWorkspace = useCallback(() => {
+    recordFoundationRouteFlowCompleted({
+      routeTemplate: "/",
+      surface: "home",
+      flow: "enter_workspace",
+    });
     setHasEnteredWorkspace(true);
     if (typeof window !== "undefined") {
       window.sessionStorage.setItem(HOME_ENTERED_WORKSPACE_KEY, "1");
@@ -198,6 +224,18 @@ function HomeContent() {
   ];
   const [loadingStep, setLoadingStep] = useState(0);
   const [isSlow, setIsSlow] = useState(false);
+
+  const homeState = !isInitialized
+    ? "loading"
+    : isNewUser && !hasEnteredWorkspace
+      ? "zero_state"
+      : "workspace";
+
+  useFoundationRouteReady({
+    routeTemplate: "/",
+    surface: "home",
+    state: homeState,
+  });
 
   useEffect(() => {
     if (isInitialized) return;

@@ -15,6 +15,8 @@ import { calculatePRISMACounts } from "@/lib/criteriaMatching";
 import { DemoGuideCard } from "@/components/project/DemoGuideCard";
 import { buildProtocolMarkdown, getProtocolSuggestions } from "./protocolExport";
 import { ProtocolSections } from "./ProtocolSections";
+import { useFoundationRouteReady } from "@/lib/mobile/foundation-reliability";
+import { useResolvedProject } from "@/hooks/useResolvedProject";
 
 
 /** Inner component that uses the ProtocolContext */
@@ -30,7 +32,7 @@ function ProtocolPageStatus({ children }: { children: React.ReactNode }) {
 
 function ProtocolPageContent() {
     const { id } = useParams<{ id: string }>();
-    const { getProjectById, isLoadingProjects, projectsError } = useProjects();
+    const { isLoadingProjects, projectsError } = useProjects();
     const { isEmbeddedInProjectShell } = useProjectShell();
     const {
         protocol,
@@ -49,7 +51,16 @@ function ProtocolPageContent() {
         updateResearchQuestion,
     } = useProtocol();
 
-    const project = id ? getProjectById(id) : undefined;
+    const { project, isResolvingProject } = useResolvedProject(id);
+
+    useFoundationRouteReady({
+        enabled: Boolean(project) && !isLoadingProjects && !projectsError,
+        routeTemplate: "/project/[id]/protocol",
+        surface: "protocol",
+        state: "content",
+        layoutMode: isEmbeddedInProjectShell ? "embedded" : "standalone",
+        projectId: project?.id ?? null,
+    });
 
     // Get studies from ledger for PRISMA counts
     const { getStudiesByProject } = useLedger();
@@ -211,7 +222,12 @@ function ProtocolPageContent() {
         };
     }, [pendingPatch, saveError, saveState]);
 
-    if (isLoadingProjects) {
+    const shouldHoldProjectLookup =
+        !project &&
+        !projectsError &&
+        (isLoadingProjects || isResolvingProject);
+
+    if (shouldHoldProjectLookup) {
         return (
             <ProtocolPageStatus>
                 <EmptyStateSkeleton className={styles.notFound} />

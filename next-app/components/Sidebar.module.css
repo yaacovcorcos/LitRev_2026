@@ -11,13 +11,9 @@
     position: fixed;
     top: var(--header-height, 44px);
     left: 0;
-    height: calc(100vh - var(--header-height, 44px));
-    z-index: var(--z-sidebar);
-}
-
-.responsiveV2 {
     height: var(--shell-content-min-height);
     min-height: var(--shell-content-min-height);
+    z-index: var(--z-sidebar);
 }
 
 .collapsed {
@@ -158,7 +154,7 @@
 }
 
 @media (max-width: 900px) {
-    .sidebar {
+    .sidebar:not(.responsiveV2) {
         display: none;
     }
 }

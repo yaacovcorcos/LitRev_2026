@@ -4,6 +4,7 @@ import { prisma } from "@/lib/server/prisma";
 
 const LEGACY_USER_ID = "local-user";
 const LEGACY_WORKSPACE_ID = "local-workspace";
+const LEGACY_CLAIM_TX_TIMEOUT_MS = 15_000;
 
 const claimedUsers = new Set<string>();
 
@@ -421,6 +422,8 @@ export async function claimLegacySingleUserData(params: {
         movedAutonomyByProject,
       },
     };
+  }, {
+    timeout: LEGACY_CLAIM_TX_TIMEOUT_MS,
   });
 
   if (result.claimed) {

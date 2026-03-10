@@ -5,14 +5,17 @@
 
 // ── Agent Modes ──────────────────────────────────────────────────────────────
 
-export type AgentMode =
-    | "protocol"
-    | "scoping"
-    | "search"
-    | "screening"
-    | "drafting"
-    | "qa"
-    | "general";
+export const AGENT_MODES = [
+    "protocol",
+    "scoping",
+    "search",
+    "screening",
+    "drafting",
+    "qa",
+    "general",
+] as const;
+
+export type AgentMode = (typeof AGENT_MODES)[number];
 
 export const AGENT_MODE_META: Record<AgentMode, { label: string; icon: string; description: string }> = {
     protocol: { label: "Protocol", icon: "description", description: "Defining PICO, criteria, and review protocol" },

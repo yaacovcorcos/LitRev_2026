@@ -1,6 +1,6 @@
 .appContainer {
     display: flex;
-    min-height: 100vh;
+    min-height: var(--app-min-height, 100vh);
     background: var(--bg-body);
     color: var(--text-primary);
     padding-left: var(--shell-sidebar-width, 200px);
@@ -14,7 +14,7 @@
 .mainContent {
     flex: 1;
     padding: 56px var(--shell-gutter, 40px) 0;
-    min-height: calc(100vh - var(--header-height, 44px));
+    min-height: var(--shell-content-min-height);
     height: auto;
     overflow: hidden;
     background: radial-gradient(circle at top right, rgba(var(--rgb-accent-primary-soft), 0.08), transparent 40%),
@@ -24,26 +24,24 @@
 
 .mainContentNoPad {
     padding: 56px 0 0;
-    min-height: calc(100vh - var(--header-height, 44px));
+    min-height: var(--shell-content-min-height);
     height: auto;
 }
 
 
 @media (max-width: 900px) {
-    .appContainer {
+    .appContainer:not(.shellV2) {
         padding-left: 0;
         --mobile-nav-offset: calc(var(--mobile-nav-height) + env(safe-area-inset-bottom));
     }
 
-    .mainContent {
+    .appContainer:not(.shellV2) .mainContent {
         padding: 56px 20px var(--mobile-nav-offset) 20px;
-        min-height: calc(100vh - var(--header-height, 44px));
         height: auto;
     }
 
-    .mainContentNoPad {
+    .appContainer:not(.shellV2) .mainContentNoPad {
         padding: 56px 0 var(--mobile-nav-offset);
-        min-height: calc(100vh - var(--header-height, 44px));
         height: auto;
     }
 }

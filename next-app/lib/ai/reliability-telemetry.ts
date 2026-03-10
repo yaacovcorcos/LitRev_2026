@@ -5,6 +5,7 @@ import {
   type ReliabilityMetricInput,
 } from "@/types/reliability-telemetry";
 import { getViewportClass } from "@/lib/mobile/tiers";
+import { isOperationalTelemetryE2EMode } from "@/lib/telemetry/e2e-mode";
 
 const STORAGE_KEY = `litrev:reliability-metrics:v${RELIABILITY_METRIC_VERSION}`;
 const STORAGE_LIMIT = 2000;
@@ -44,6 +45,7 @@ export function getReliabilityDimensions(): ReliabilityDimensions {
 function shouldShipToServer(): boolean {
   if (typeof window === "undefined") return false;
   if (typeof fetch !== "function") return false;
+  if (isOperationalTelemetryE2EMode()) return false;
   if (typeof process !== "undefined" && process.env.NODE_ENV === "test") return false;
   return true;
 }

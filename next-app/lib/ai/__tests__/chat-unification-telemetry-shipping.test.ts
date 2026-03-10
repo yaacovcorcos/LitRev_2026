@@ -65,4 +65,59 @@ describe("chat unification telemetry shipping", () => {
     expect(parsedBody.eventId).toMatch(UUID_V4_PATTERN);
     expect(parsedBody.clientTimestamp).toBeTruthy();
   });
+
+  it("flushes metrics enqueued while a flush is in progress", async () => {
+    vi.useFakeTimers();
+
+    try {
+      const firstPostState: { resolve?: () => void } = {};
+      globalThis.fetch = vi.fn().mockImplementation(() => {
+        if (!firstPostState.resolve) {
+          return new Promise((resolve) => {
+            firstPostState.resolve = () => resolve({ ok: true, status: 202 } as Response);
+          });
+        }
+        return Promise.resolve({ ok: true, status: 202 } as Response);
+      });
+
+      recordChatUnificationMetric({
+        type: "retry_model_continuity",
+        surface: "ai",
+        payload: {
+          requestKey: "7c76966b-84c6-4cf4-98c4-f6c68f7b5911",
+          expectedModel: "gpt-5.2",
+          source: "retry_action",
+        },
+      });
+
+      await vi.advanceTimersByTimeAsync(500);
+      expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+
+      recordChatUnificationMetric({
+        type: "run_end_observed",
+        surface: "ai",
+        payload: {
+          requestKey: "7c76966b-84c6-4cf4-98c4-f6c68f7b5911",
+          runStatus: "completed",
+          streamPhase: "send",
+          actualModel: "gpt-5.2",
+          actualModelSource: "provider",
+        },
+      });
+
+      await vi.advanceTimersByTimeAsync(500);
+      expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+
+      if (!firstPostState.resolve) {
+        throw new Error("First telemetry request was not started");
+      }
+      firstPostState.resolve();
+      await flushChatUnificationMetricsForTests();
+      await vi.advanceTimersByTimeAsync(500);
+
+      expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

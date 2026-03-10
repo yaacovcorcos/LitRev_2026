@@ -6,7 +6,6 @@ This directory contains the canonical, active plans for LitRev.
 - [**Architecture & Infrastructure**](plan-backend.md): DB schema changes, Auth, server-side actions, export generation logic.
 - [**Agentic Systems & AI Orchestration**](plan-agentic.md): Single canonical plan for agent runtime architecture, active fixes, roadmap phases, and maintenance/update rules.
   - Supporting execution detail for active fixes lives under [**agent-runtime-remediation/**](agent-runtime-remediation/README.md).
-  - `claude-agentic-plan.md` and `codex-agentic-plan.md` are superseded source documents and should not be used as active trackers.
 - [**Memory & Retrieval**](plan-memory.md): Memory extraction, lifecycle, pgvector embeddings, project state sync. (This is the **only** active memory tracker).
 - **UI, UX, components** — Canonical + archive:
   - [**UI/UX Canonical Plan**](plan-ux-ui.md): Single active tracker for UI/UX execution and remaining backlog.
@@ -15,7 +14,7 @@ This directory contains the canonical, active plans for LitRev.
   - [**Reliability A0 brief**](reliability-a0-brief.md): Deterministic repro + baseline threshold contract for Track A blocker reliability work.
   - [**Mobile plan**](mobile-plan.md): Canonical app-wide responsive foundation tracker, including mobile/chat follow-up waves.
   - [**Mobile layout contract**](mobile-layout-contract.md): Operational contract for shared phone/compact height, safe-area, and scroll-ownership rules.
-  - [**Thinking + Live Process UX V2**](plan-thinking-v2.md): Sequenced plan for live reasoning visibility, tool activity lane, and user-in-the-loop controls built on shared chat runtime/adapters.
+  - [**Thinking + Live Process UX V2**](plan-thinking-v2.md): Canonical architecture for truthful execution trace across chat surfaces: live phase, semantic tool receipts, grounded checkpoints, and optional reasoning visibility.
   - [**Chat Unification V2**](plan-chat-unification-v2.md): Full plan to unify `/ai`, project copilot, and popup under one chat engine while preserving feature parity and keeping `/ai` project-optional.
 - [**Guided Setup V2**](plan-guided-setup.md): Dedicated onboarding activation plan for visual redesign, AI-enhanced step flow, personalization, and setup-mode agent behavior.
 - [**Settings**](plan-settings.md): Canonical tracker for user-configurable behavior defaults and future Settings UI controls.

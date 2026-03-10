@@ -60,6 +60,15 @@ gh pr list --state open --json number,title,headRefName,baseRefName,reviewDecisi
 - Keep PR scope narrow and merge frequently into `main`.
 - Treat red CI on `main` PRs as release-blocking debt.
 
+## Cleanup Manifest Contract
+
+Before deleting or re-homing any worktree, record a cleanup manifest entry with:
+
+- worktree path
+- branch name or detached HEAD SHA
+- status: `active`, `rescue`, `stale`, or `unknown`
+- decision: `keep`, `rehome`, `review`, or `delete`
+
 ## Standard Flow
 
 From repo root:

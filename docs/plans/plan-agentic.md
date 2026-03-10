@@ -4,12 +4,6 @@
 
 This is the single canonical plan for LitRev's agent runtime.
 
-It supersedes the following as standalone authorities:
-
-- `docs/plans/codex-agentic-plan.md`
-- `docs/plans/claude-agentic-plan.md`
-- `docs/plans/agent-runtime-remediation/README.md`
-
 Use this file for:
 
 - current architecture truth
@@ -103,7 +97,7 @@ Every fix entry must include:
 - **Proposal-State Tool Context:** Proposal-style tool results now surface whether they are `proposed` vs `auto_applied` in the model-visible tool-message context, so assistant replies can distinguish review-only changes from already-applied ones.
 - **Plan Heuristic Guardrails:** Plan-before-act heuristics now require explicit extraction/writing verbs for `extract_pdf` and `update_note`, reducing false execution plans for read-only PDF/section questions.
 - **Delegation Runtime Now Uses The Shared Safety Contract:** delegated child runs now reuse the same autonomy-aware execution/finalization core as direct execution, level-1 delegated actions fail as structured approval-required blocks instead of running, delegated proposal artifacts stay reviewable unless direct policy allows auto-apply, and delegated `ask_user` bubbles through the existing parent `user_input_required` flow.
-- **Popup Runtime Is Still Lighter Than Copilot:** popup remains on a non-artifact path, so protocol mutation capability is not yet honest there; tracked under `FIX-003`.
+- **Popup Runtime Is Now Honest About Edit Limits:** popup remains on a non-artifact path, but its tool contract is now explicitly read-only/advisory for edit intents. It no longer exposes invisible protocol-mutation flows and instead routes edit/application work to the main copilot surface.
 - **General Mode And Clarification Now Use Explicit Honest Contracts:** normal agentic paths now assemble tools through contextual mode+scope filtering, `general` no longer widens to all tools, disabled/global delegation tools are hidden before exposure, `ask_user` remains the sole blocking clarification primitive in the global base prompt, and `<choices>` guidance is scoped to artifact/chat surfaces as optional suggestion-only output.
 - **Model Requests Now Use Per-Model Capability Policy:** one authoritative model capability registry now feeds a shared request-policy normalizer, OpenAI/xAI/Google/Anthropic all reuse it before send, fixed-default OpenAI models omit unsupported `temperature`, and unsupported explicit reasoning budgets fail locally as structured `model_capability` errors instead of raw provider 400s.
 - **Protocol Mutation Uses Shared Field-Aware Normalization:** `update_protocol`, same-turn tool-call sanitization, and repeat detection now reuse the same field/value normalize-classify path so unambiguous wrapper shapes are repaired consistently, whitespace-only field mismatches no longer diverge between validation and execution, and normalization/hashing paths cap nested input depth safely.
@@ -111,6 +105,7 @@ Every fix entry must include:
 - **Run Recovery Semantics Are Structured On Timeline-Based Surfaces:** `/ai` and project copilot now preserve deterministic failure envelopes into client state, retry affordances are derived from structured metadata, and server finalization uses explicit run facts so failed no-answer runs no longer masquerade as `completed`. Popup now retains lightweight error metadata and annotates terminal failures inline, but it still does not have full timeline-style parity.
 - **Run Lifecycle Integrity Is Now Enforced Across The Main Surfaces:** started runs now finalize exactly once, replace-safe admission requires explicit prior run identity instead of conversation-wide cancellation, and abnormal failure cleanup/dedupe now use the shared runtime/error owners so `/ai` and project copilot fail unfinished tools consistently and render one terminal failure.
 - **Shared Failure Handling Still Needs One Owner:** shared stream reducers emit typed `stream_error` intents, but terminal failure presentation is not fully centralized yet; tracked under `FIX-011`.
+- **Approved Plan Execution Is Now Server-Constrained:** executable plan artifacts now author and preserve `execution` metadata at artifact creation time, the server loads artifact-bound conversation/project/mode authority before normal run setup, approved tool exposure is the intersection of selected-step tools, the stored plan-authorized ceiling, and current safe mode/scope definitions, and off-plan, out-of-order, non-executable, or now-unavailable plan steps fail through the shared non-retryable `plan_execution` error envelope.
 
 ## Verified Failure Classes
 *The concrete runtime failures this plan is intended to eliminate.*
@@ -129,33 +124,23 @@ Every fix entry must include:
 ## Active Fixes
 *Immediate remediation work for shipped behavior that is broken, misleading, or lower quality than the intended contract.*
 
-- [ ] `FIX-002` Plan execution confinement and approval integrity
-  - Severity: `P0`
-  - Problem: approved plans can widen back to `general` and are not strictly constrained to approved steps/tools.
-  - Supporting detail: `docs/plans/agent-runtime-remediation/plan-plan-execution-confinement.md`
-  - Exit criteria:
-    - execution runs in the plan’s originating mode
-    - only approved step tools are executable
-    - step order is enforced for executable plans
-    - advisory/non-executable plans cannot accidentally enter execution
-
-- [ ] `FIX-003` Popup action-surface honesty
-  - Severity: `P1`
-  - Problem: popup currently advertises tool-driven protocol editing that it cannot correctly render or complete.
-  - Supporting detail: `docs/plans/agent-runtime-remediation/plan-popup-action-surface.md`
-  - Exit criteria:
-    - popup is either explicitly read-only/advisory or fully artifact-aware
-    - popup no longer claims to have created hidden protocol proposals
-    - popup tool policy and UI capability match
-
-- [ ] `FIX-005` Agentic docs, executable evals, and search provenance
-  - Severity: `P1`
-  - Problem: the plan set drifted from shipped code, eval coverage is scaffold-level, and search provenance is not a normalized runtime contract.
+- [ ] `FIX-005a` Agentic docs authority and plan truth
+  - Severity: `P2`
+  - Problem: the canonical plans are much healthier now, but authority and active-truth cleanup are still mixed together with broader eval/provenance work.
   - Supporting detail: `docs/plans/agent-runtime-remediation/plan-docs-evals-and-provenance.md`
   - Exit criteria:
-    - `plan-agentic.md` remains the single accurate authority
+    - `plan-agentic.md` remains the single accurate runtime authority
+    - overlapping supporting docs are either retired, demoted to supporting-only, or made explicitly historical
+    - active plan files do not overstate popup/shared-runtime parity or burn-in status
+
+- [ ] `FIX-005b` Executable evals and search provenance
+  - Severity: `P1`
+  - Problem: eval coverage is still scaffold-level and search provenance is not a normalized runtime contract.
+  - Supporting detail: `docs/plans/agent-runtime-remediation/plan-docs-evals-and-provenance.md`
+  - Exit criteria:
     - runtime evals assert real orchestration behavior
     - search turns emit normalized `source_receipt` data
+    - release confidence can rely on executable agent/runtime scenarios instead of catalog shape alone
 
 - [ ] `FIX-011` Shared failure handling and popup parity
   - Severity: `P1`
@@ -171,11 +156,10 @@ Every fix entry must include:
 
 Work should proceed in this order unless a production incident forces reprioritization:
 
-1. `FIX-002` plan execution confinement
-2. `FIX-003` popup action-surface honesty
-3. `FIX-005` docs/evals/provenance hardening
-4. `FIX-011` shared failure handling and popup parity
-5. roadmap phases after the active fixes above are stable
+1. `FIX-005a` docs authority and plan truth
+2. `FIX-005b` evals and provenance hardening
+3. `FIX-011` shared failure handling and popup parity
+4. roadmap phases after the active fixes above are stable
 
 ## End-to-End Delivery Program
 
@@ -192,13 +176,13 @@ Work should proceed in this order unless a production incident forces reprioriti
 
 ### Track C — Orchestration Safety and Approval Integrity
 
-- Once the request/tool boundary is stable, land `FIX-001` and `FIX-002`.
-- This is the phase where delegation, approved-plan execution, and scoped `general` behavior become trustworthy instead of prompt-dependent.
+- `FIX-001` and `FIX-002` are now shipped, so delegation and approved-plan execution no longer depend on prompt-only guardrails.
+- Continue treating this phase as the contract boundary for coordination safety: new orchestration changes should preserve scoped `general`, plan approval integrity, and explicit server-side enforcement.
 
-### Track D — Surface Honesty, Evals, and Provenance
+### Track D — Surface Honesty, Docs, Evals, and Provenance
 
-- Land `FIX-003`, `FIX-005`, and `FIX-011` after the lower-level contracts are stable.
-- Popup honesty should match the real runtime surface, shared failure rendering should stop drifting per surface, and evals/provenance should measure the behavior the runtime actually ships.
+- Land `FIX-005a`, `FIX-005b`, and `FIX-011` after the lower-level contracts are stable.
+- Popup honesty should match the real runtime surface, plan/docs authority should stay truthful, shared failure rendering should stop drifting per surface, and evals/provenance should measure the behavior the runtime actually ships.
 
 ## Active Roadmap
 *Durable capability and architecture work after the immediate fixes.*
@@ -312,8 +296,6 @@ Recommended collaboration pattern:
 Use these only as execution detail for the active fixes above:
 
 - `docs/plans/agent-runtime-remediation/plan-delegation-safety.md`
-- `docs/plans/agent-runtime-remediation/plan-plan-execution-confinement.md`
-- `docs/plans/agent-runtime-remediation/plan-popup-action-surface.md`
 - `docs/plans/agent-runtime-remediation/plan-general-scope-and-clarification.md`
 - `docs/plans/agent-runtime-remediation/plan-docs-evals-and-provenance.md`
 
@@ -321,17 +303,14 @@ These files are supporting documents. Status, priority, and closure rules live h
 
 ## Recently Completed
 
+- [x] Completed `FIX-002` approved workflow trust: executable plans now author `execution` metadata at artifact creation, plan execution loads artifact-bound conversation/project/mode authority before normal run setup, approved tools are confined to selected-step tools intersected with the stored plan ceiling and current safe mode/scope definitions, strict order is enforced by original selected step index, and plan violations fail through the shared structured `plan_execution` error envelope.
+- [x] Landed `FIX-002` PR1 executable/advisory plan contract: runnable plan artifacts now persist `execution` metadata at creation time, plan lifecycle updates preserve it instead of dropping back to bare step payloads, and advisory/legacy plans fail closed in plan UI instead of looking runnable.
+- [x] Completed `FIX-003` with the smallest honest popup slice: popup is now explicitly read-only/advisory for edit intents, `update_protocol` is no longer exposed in popup mode, and popup guidance now routes edit/apply work to Continue in Copilot instead of implying hidden proposal creation.
+- [x] Pruned and clarified the remaining docs/evals backlog: `FIX-005` is now split into `FIX-005a` (docs authority and plan truth) and `FIX-005b` (executable evals and search provenance), so plan-governance cleanup can finish independently of the heavier runtime measurement work.
 - [x] Implemented `FIX-004b` clarification contract cleanup, completing `FIX-004`: `ask_user` is now the only blocking clarification primitive taught in the global base prompt, while `<choices>` guidance is scoped to artifact/chat surfaces and explicitly limited to optional suggestion chips without changing the XML/event contract.
 - [x] Implemented `FIX-012c` abnormal-end cleanup and error dedupe, completing `FIX-012`: `/ai` and project copilot now reuse the shared runtime/error owners for abnormal-failure aftermath, unfinished tools are force-failed consistently, and one terminal failure renders once without regressing deterministic capability suppression.
 - [x] Implemented `FIX-012b` replace-safe admission: `/ai` and project copilot now send `replaceRunId` only for their own tracked active run, and the server only replaces when that explicit run identity matches the actual active run for the conversation.
 - [x] Implemented `FIX-012a` run finalization guard: started runs now enter the guarded `streamChatWithArtifacts` lifecycle, `run_start` is only emitted after that guard is active, and exactly-once finalization prevents ordinary aborted streams from leaking fresh `running` rows.
-- [x] Implemented `FIX-004a` tool-surface honesty: `general` mode now uses explicit project/global allowlists instead of widening to all tools, main agentic tool assembly in `ai-service` is mode-aware through the contextual helper, and disabled/global delegation tools are removed from model-visible definitions before the model can call them.
-- [x] Implemented `FIX-001` delegation safety and child clarification: delegated child runs now use the shared autonomy-aware execution/finalization core instead of direct tool execution, approval-required autonomy blocks surface as structured non-executed results, delegated proposal artifacts stay review-only unless direct policy allows auto-apply, and delegated `ask_user` requests bubble through the parent `user_input_required` path with parent-visible artifact metadata.
-- [x] Implemented `FIX-008` tool prerequisite gating: high-risk tools now declare project/study/protocol prerequisites in shared tool metadata, the shared pre-execution middleware/autonomy path blocks missing context before tool execution, screening actions also gate on non-empty criteria readiness, and blocked calls emit structured `missing_prerequisite` envelopes instead of generic tool failures.
-- [x] Hardened popup terminal-failure rendering under `FIX-011`: popup now keeps lightweight structured error metadata on assistant turns, annotates partial-output failures inline without persisting raw error text into transcript content, and has direct component coverage for deterministic and retryable terminal failure rendering.
-- [x] Implemented `FIX-010` model capability negotiation: one authoritative model registry now drives per-model request-policy normalization, OpenAI/xAI/Google/Anthropic all reuse shared request builders for `chat()` and `streamChat()`, fixed-default OpenAI models omit unsupported temperature params, and unsupported explicit reasoning budgets fail locally as structured `model_capability` errors.
-- [x] Added repo-review baseline indexing and shared failure follow-up hardening: deep review comparisons now have a durable runbook anchor, shared `stream_error` intents are consumed by both timeline adapters, and popup now retains lightweight structured error metadata even though it still lacks full timeline-style parity.
-- [x] Implemented `FIX-009` recovery semantics and truthful run outcomes for timeline-based surfaces: structured error envelopes now survive through stream processor, reducer, and timeline state; retryable UI affordances no longer default to true for deterministic failures; and server finalization derives `runStatus` from explicit run facts while emitting one fallback assistant explanation for deterministic no-answer failures.
 
 ## Deferred / Parking Lot
 
@@ -346,12 +325,12 @@ These files are supporting documents. Status, priority, and closure rules live h
 - [ ] Full command-palette orchestration UI
 - [ ] Cross-provider arbitration agent
 
-## Legacy Source Documents
+## Supporting Documents Governance
 
-These are no longer active trackers:
+This plan is the active runtime authority. The following supporting document
+is still useful for detailed remediation work, but it is not itself an active
+tracker:
 
-- `docs/plans/codex-agentic-plan.md`
-- `docs/plans/claude-agentic-plan.md`
 - `docs/plans/agent-runtime-remediation/README.md`
 
-They are retained only as superseded source material or supporting pointers. Update this file instead.
+Supporting detail should live under `docs/plans/agent-runtime-remediation/`. Update this file instead.

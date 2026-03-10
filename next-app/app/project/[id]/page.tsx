@@ -10,6 +10,8 @@ import { EmptyState, EmptyStateSkeleton } from "@/components/ui/EmptyState";
 import Link from "next/link";
 import { RecentActivityPanel } from "@/components/project/RecentActivityPanel";
 import { DemoGuideCard } from "@/components/project/DemoGuideCard";
+import { useFoundationRouteReady } from "@/lib/mobile/foundation-reliability";
+import { useResolvedProject } from "@/hooks/useResolvedProject";
 import {
   getProjectOverviewStatsAction,
   type DraftStats,
@@ -153,9 +155,18 @@ function LedgerPreview({ stats }: { stats: LedgerStats }) {
 
 export default function ProjectDetail() {
   const { id } = useParams<{ id: string }>();
-  const { getProjectById, isLoadingProjects, projectsError } = useProjects();
+  const { isLoadingProjects, projectsError } = useProjects();
   const { isEmbeddedInProjectShell } = useProjectShell();
-  const project = id ? getProjectById(id) : undefined;
+  const { project, isResolvingProject } = useResolvedProject(id);
+
+  useFoundationRouteReady({
+    enabled: Boolean(project) && !isLoadingProjects && !projectsError,
+    routeTemplate: "/project/[id]",
+    surface: "project",
+    state: "content",
+    layoutMode: isEmbeddedInProjectShell ? "embedded" : "standalone",
+    projectId: project?.id ?? null,
+  });
 
   const [draftStats, setDraftStats] = useState<DraftStats | null>(null);
   const [protocolStats, setProtocolStats] = useState<ProtocolStats | null>(null);
@@ -207,7 +218,12 @@ export default function ProjectDetail() {
   }, [project]);
 
   // Loading state: show skeleton while projects are being fetched
-  if (isLoadingProjects) {
+  const shouldHoldProjectLookup =
+    !project &&
+    !projectsError &&
+    (isLoadingProjects || isResolvingProject);
+
+  if (shouldHoldProjectLookup) {
     const skeleton = <EmptyStateSkeleton className={styles.notFound} />;
     return isEmbeddedInProjectShell ? skeleton : <AppShell activeNav="projects">{skeleton}</AppShell>;
   }

@@ -37,9 +37,10 @@ export function PlanCard({ payload, status, onRun, onCancel, canRun = true }: Pl
 
     const isProposed = status === "proposed";
     const isRunning = status === "running";
+    const isExecutable = Boolean(payload.execution);
 
     const toggleStep = (index: number) => {
-        if (!isProposed) return;
+        if (!isProposed || !isExecutable) return;
         setSelected((prev) => {
             const next = new Set(prev);
             if (next.has(index)) next.delete(index);
@@ -49,7 +50,7 @@ export function PlanCard({ payload, status, onRun, onCancel, canRun = true }: Pl
     };
 
     const handleRun = () => {
-        if (selected.size === 0 || !onRun || !canRun) return;
+        if (selected.size === 0 || !onRun || !canRun || !isExecutable) return;
         onRun([...selected].sort((a, b) => a - b));
     };
 
@@ -61,12 +62,12 @@ export function PlanCard({ payload, status, onRun, onCancel, canRun = true }: Pl
                     const stepClass = [
                         styles.planStep,
                         STEP_STYLES[step.status],
-                        !isSelected && isProposed ? styles.planStepDeselected : "",
+                        !isSelected && isProposed && isExecutable ? styles.planStepDeselected : "",
                     ].filter(Boolean).join(" ");
 
                     // When running/terminal, show execution status icon
                     // When proposed, show selection toggle
-                    const showToggle = isProposed;
+                    const showToggle = isProposed && isExecutable;
 
                     return (
                         <li key={i} className={stepClass}>
@@ -102,7 +103,7 @@ export function PlanCard({ payload, status, onRun, onCancel, canRun = true }: Pl
                     ~{payload.estimatedActions} action{payload.estimatedActions !== 1 ? "s" : ""}
                 </div>
             )}
-            {isProposed && (
+            {isProposed && isExecutable && (
                 <div className={styles.cardActions}>
                     <button type="button" className={styles.actionBtnGhost} onClick={onCancel}>
                         Cancel
@@ -117,6 +118,11 @@ export function PlanCard({ payload, status, onRun, onCancel, canRun = true }: Pl
                             Run{selected.size < payload.steps.length ? ` (${selected.size}/${payload.steps.length})` : ""}
                         </button>
                     )}
+                </div>
+            )}
+            {isProposed && !isExecutable && (
+                <div className={styles.planEstimate}>
+                    Advisory plan. Review only.
                 </div>
             )}
             {isRunning && (

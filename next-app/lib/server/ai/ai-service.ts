@@ -6,7 +6,12 @@
 
 import type { AIMessage, AIResponse, ChatOptions, AIStreamChunk, ConversationContext, ToolCall, ToolResult } from "@/types/ai";
 import type { AgentMode } from "@/types/agent";
-import { buildStreamErrorChunk, envelopeFromStreamChunk } from "@/lib/ai/error-envelope";
+import {
+    AIErrorWithEnvelope,
+    buildStreamErrorChunk,
+    createPlanExecutionErrorEnvelope,
+    envelopeFromStreamChunk,
+} from "@/lib/ai/error-envelope";
 import { buildFailureFallbackMessage, deriveRunOutcome, type RunFacts } from "@/lib/ai/run-outcome";
 import { BaseAIProvider, getOpenAIProvider, getAnthropicProvider, getXAIProvider, getGoogleProvider } from "./providers";
 import { getOrCreateConversation, addMessageToConversation, getConversationWithSummary, getConversationWithSummaryById, autoSummarizeIfNeeded } from "./memory";
@@ -27,6 +32,16 @@ import { startRun, endRun } from "@/lib/server/agent/run";
 import { emitEvent } from "@/lib/server/agent/events";
 import { createArtifact } from "@/lib/server/agent/artifacts";
 import { getAutonomyConfig } from "@/lib/server/agent/autonomy";
+import { buildExecutablePlanPayload } from "@/lib/server/agent/plan-payloads";
+import {
+    assertNextPlanToolCall,
+    failPlanExecution,
+    markPlanExecutionRunning,
+    preparePlanExecution,
+    resolvePlanExecutionToolNames,
+    type PlanExecutionStepState,
+    type PreparedPlanExecution,
+} from "@/lib/server/agent/plan-execution";
 import {
     assembleSystemPrompt,
     buildProjectContext,
@@ -704,16 +719,29 @@ class AIService {
         });
         const userId = identity.userId;
         const workspaceId = identity.workspaceId;
-        const requestedMode: AgentMode = (options?.agentMode as AgentMode) || "general";
-        const agentMode: AgentMode = normalizeAgentMode(requestedMode);
         const executionMode = !!(options?.planId && options?.selectedSteps?.length);
+        let preparedPlanExecution: PreparedPlanExecution | null = null;
+        if (executionMode && options?.planId && options?.selectedSteps) {
+            preparedPlanExecution = await preparePlanExecution(
+                options.planId,
+                options.selectedSteps,
+                projectId,
+            );
+            projectId = preparedPlanExecution.projectId ?? projectId;
+        }
+        const requestedMode: AgentMode = (
+            preparedPlanExecution?.originAgentMode
+            ?? (options?.agentMode as AgentMode)
+        ) || "general";
+        const agentMode: AgentMode = normalizeAgentMode(requestedMode);
 
         // Get or create conversation (with summary for compaction)
         // When conversationId is provided, load by ID and treat its scope as canonical.
         // This prevents cross-conversation writes when client scope drifts from the actual thread.
-        if (options?.conversationId) {
+        const authoritativeConversationId = preparedPlanExecution?.conversationId ?? options?.conversationId;
+        if (authoritativeConversationId) {
             const byId = await getConversationWithSummaryById(
-                options.conversationId,
+                authoritativeConversationId,
                 userId,
                 workspaceId,
             );
@@ -723,7 +751,7 @@ class AIService {
                 projectId = byId.projectId;
                 studyId = byId.studyId;
             } else {
-                throw new Error(`Invalid, archived, or inaccessible conversationId: ${options.conversationId}`);
+                throw new Error(`Invalid, archived, or inaccessible conversationId: ${authoritativeConversationId}`);
             }
         } else {
             conversation = await getConversationWithSummary(
@@ -742,9 +770,8 @@ class AIService {
         });
 
         // Declared outside try so catch block can access them for plan finalization
-        interface StepQueueEntry { originalIndex: number; toolName?: string; consumed: boolean; finalStatus: import("@/types/artifacts").PlanStep["status"] }
-        let planData: { plan: import("@/types/artifacts").PlanPayload; selectedSteps: import("@/lib/server/agent/plan-execution").SelectedStep[] } | null = null;
-        let stepQueue: StepQueueEntry[] = [];
+        let planData: PreparedPlanExecution | null = preparedPlanExecution;
+        let stepQueue: PlanExecutionStepState[] = [];
         let fullContent = "";
         const historicalAssistantCount = conversation.messages.filter((m) => m.role === "assistant").length;
         const firstPersistedUserMessage = conversation.messages.find((m) => m.role === "user")?.content ?? "";
@@ -1000,6 +1027,7 @@ class AIService {
                 studyLedger,
             });
             const modeToolNames = modeToolDefs.map((t) => t.name);
+            let executionToolDefs = modeToolDefs;
 
             if (effectiveHandoffSelection) {
                 historyMessages.push({
@@ -1019,8 +1047,13 @@ class AIService {
                 userMessage,
                 autonomyConfig,
             })) {
-                const planPayload = buildScopingSearchPackPlan({
+                const planPayload = buildExecutablePlanPayload(buildScopingSearchPackPlan({
                     includeRecommendations: modeToolNames.includes("recommend_studies"),
+                }), {
+                    originAgentMode: agentMode,
+                    conversationId: conversation.id,
+                    projectId: projectId ?? null,
+                    allowedToolNames: modeToolNames,
                 });
                 const artifact = await createArtifact({
                     runId: activeRun.id,
@@ -1062,7 +1095,7 @@ class AIService {
                 if (detectMultiStepWorkflow(userMessage, modeToolNames)) {
                     yield { type: "progress", progressMessage: "Creating a plan...", conversationId: conversation.id };
 
-                    const planPayload = await generatePlan(userMessage, {
+                    const rawPlanPayload = await generatePlan(userMessage, {
                         projectId: projectId ?? "global",
                         hasProtocol: protocolRow?.data
                             ? isProtocolPopulated(protocolRow.data as unknown as ProtocolData)
@@ -1071,7 +1104,13 @@ class AIService {
                     }, modeToolNames);
 
                     // If plan validation failed, skip plan artifact and continue normal chat
-                    if (planPayload) {
+                    if (rawPlanPayload) {
+                        const planPayload = buildExecutablePlanPayload(rawPlanPayload, {
+                            originAgentMode: agentMode,
+                            conversationId: conversation.id,
+                            projectId: projectId ?? null,
+                            allowedToolNames: modeToolNames,
+                        });
                         const artifact = await createArtifact({
                             runId: activeRun.id,
                             projectId: projectId || null,
@@ -1111,13 +1150,43 @@ class AIService {
 
             // ── Plan execution mode: load plan, inject execution instruction ──
             if (executionMode && options?.planId && options?.selectedSteps) {
-                const { startPlanExecution } = await import("@/lib/server/agent/plan-execution");
                 yield { type: "progress", progressMessage: "Starting plan execution...", conversationId: conversation.id };
 
                 if (!projectId) {
-                    throw new Error("Plan execution requires project context.");
+                    throw new AIErrorWithEnvelope(createPlanExecutionErrorEnvelope({
+                        code: "PLAN_PROJECT_REQUIRED",
+                        message: "Plan execution requires its original project context.",
+                    }));
                 }
-                planData = await startPlanExecution(options.planId, options.selectedSteps, projectId);
+                if (!planData) {
+                    throw new AIErrorWithEnvelope(createPlanExecutionErrorEnvelope({
+                        code: "PLAN_PREPARATION_MISSING",
+                        message: "Plan execution context could not be prepared.",
+                    }));
+                }
+                await markPlanExecutionRunning(options.planId);
+
+                const resolvedExecutionTools = resolvePlanExecutionToolNames({
+                    selectedSteps: planData.selectedSteps,
+                    storedAllowedToolNames: planData.allowedToolNames,
+                    currentAllowedToolNames: modeToolNames,
+                });
+                if (resolvedExecutionTools.unavailableToolNames.length > 0) {
+                    throw new AIErrorWithEnvelope(createPlanExecutionErrorEnvelope({
+                        code: "PLAN_SELECTED_TOOL_UNAVAILABLE",
+                        message: `The approved plan references tool(s) that are no longer available in this mode: ${resolvedExecutionTools.unavailableToolNames.join(", ")}.`,
+                    }));
+                }
+
+                executionToolDefs = modeToolDefs.filter((tool) =>
+                    resolvedExecutionTools.allowedToolNames.includes(tool.name),
+                );
+                if (executionToolDefs.length === 0) {
+                    throw new AIErrorWithEnvelope(createPlanExecutionErrorEnvelope({
+                        code: "PLAN_TOOLSET_EMPTY",
+                        message: "No approved executable tools remain available for this plan.",
+                    }));
+                }
 
                 // Build execution instruction
                 const stepList = planData.selectedSteps
@@ -1134,14 +1203,15 @@ class AIService {
                 // Initialize step queue for tracking
                 stepQueue = planData.selectedSteps.map(s => ({
                     originalIndex: s.originalIndex,
-                    toolName: s.toolName,
+                    label: s.label,
+                    toolName: s.toolName!,
                     consumed: false,
                     finalStatus: "pending" as const,
                 }));
             }
 
             // Run the tool execution loop with autonomy
-            const toolDefs = modeToolDefs;
+            const toolDefs = executionMode ? executionToolDefs : modeToolDefs;
             const chatOptions: ChatOptions = {
                 ...options,
                 projectId: projectId ?? undefined,
@@ -1399,14 +1469,12 @@ class AIService {
                     }
 
                     // Plan step tracking: match tool call to next unconsumed step
-                    let matchedStep: StepQueueEntry | undefined;
+                    let matchedStep: PlanExecutionStepState | undefined;
                     if (executionMode) {
-                        matchedStep = stepQueue.find(s => !s.consumed && s.toolName === tc.name);
-                        if (matchedStep) {
-                            matchedStep.consumed = true;
-                            matchedStep.finalStatus = "running";
-                            yield { type: "plan_step_update", planId: options!.planId!, stepIndex: matchedStep.originalIndex, stepStatus: "running", conversationId: conversation.id };
-                        }
+                        matchedStep = assertNextPlanToolCall(stepQueue, tc.name);
+                        matchedStep.consumed = true;
+                        matchedStep.finalStatus = "running";
+                        yield { type: "plan_step_update", planId: options!.planId!, stepIndex: matchedStep.originalIndex, stepStatus: "running", conversationId: conversation.id };
                     }
 
                     yield {
@@ -1503,7 +1571,7 @@ class AIService {
 
             // ── Plan execution finalization ──
             if (executionMode && options?.planId && planData) {
-                const { completePlanExecution, failPlanExecution } = await import("@/lib/server/agent/plan-execution");
+                const { completePlanExecution } = await import("@/lib/server/agent/plan-execution");
 
                 // Mark unconsumed selected steps based on stop reason
                 const terminalStatus = finalStopReason === "natural" ? "skipped" as const : "failed" as const;

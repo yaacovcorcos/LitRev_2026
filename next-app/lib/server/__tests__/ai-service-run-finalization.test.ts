@@ -11,6 +11,9 @@ const mocks = vi.hoisted(() => {
     ensureConversationRunAvailability: vi.fn(),
     getConversationWithSummary: vi.fn(),
     getConversationWithSummaryById: vi.fn(),
+    preparePlanExecution: vi.fn(),
+    markPlanExecutionRunning: vi.fn(),
+    failPlanExecution: vi.fn(),
     startRun: vi.fn(),
     endRun: vi.fn(),
     startRunTrace: vi.fn(() => trace),
@@ -80,6 +83,17 @@ vi.mock("@/lib/server/agent/events", () => ({
 
 vi.mock("@/lib/server/agent/artifacts", () => ({
   createArtifact: vi.fn(),
+}));
+
+vi.mock("@/lib/server/agent/plan-execution", () => ({
+  preparePlanExecution: mocks.preparePlanExecution,
+  markPlanExecutionRunning: mocks.markPlanExecutionRunning,
+  failPlanExecution: mocks.failPlanExecution,
+  resolvePlanExecutionToolNames: vi.fn(() => ({
+    allowedToolNames: ["search_pubmed"],
+    unavailableToolNames: [],
+  })),
+  assertNextPlanToolCall: vi.fn(),
 }));
 
 vi.mock("@/lib/server/agent/autonomy", () => ({
@@ -225,6 +239,16 @@ describe("AIService run finalization", () => {
       messages: [],
       summaryData: null,
     });
+    mocks.getConversationWithSummaryById.mockResolvedValue({
+      id: "conv-1",
+      projectId: "project-1",
+      studyId: null,
+      messages: [],
+      summaryData: null,
+    });
+    mocks.preparePlanExecution.mockResolvedValue(null);
+    mocks.markPlanExecutionRunning.mockResolvedValue(undefined);
+    mocks.failPlanExecution.mockResolvedValue(undefined);
     mocks.resolveAuthenticatedIdentity.mockReturnValue({ userId: "user-1", workspaceId: undefined });
     mocks.startRun.mockResolvedValue({ id: "run-1" });
     mocks.endRun.mockResolvedValue({ id: "run-1", status: "failed" });
@@ -263,5 +287,62 @@ describe("AIService run finalization", () => {
         finalRunStatus: "failed",
       }),
     });
+  });
+
+  it("uses plan metadata conversation and mode as the execution authority", async () => {
+    mocks.preparePlanExecution.mockResolvedValue({
+      plan: {
+        steps: [{ label: "Search", toolName: "search_pubmed", status: "pending" }],
+        estimatedActions: 1,
+        execution: {
+          originAgentMode: "search",
+          allowedToolNames: ["search_pubmed", "ask_user"],
+          createdFromConversationId: "conv-plan",
+          createdFromProjectId: "project-1",
+          enforceOrder: true,
+        },
+      },
+      selectedSteps: [{ originalIndex: 0, label: "Search", toolName: "search_pubmed" }],
+      conversationId: "conv-plan",
+      projectId: "project-1",
+      originAgentMode: "search",
+      allowedToolNames: ["search_pubmed", "ask_user"],
+    });
+    mocks.getConversationWithSummaryById.mockResolvedValue({
+      id: "conv-plan",
+      projectId: "project-1",
+      studyId: null,
+      messages: [],
+      summaryData: null,
+    });
+
+    const service = new AIService();
+    const stream = service.streamChatWithArtifacts("", { page: "project" } as never, {
+      planId: "plan-1",
+      selectedSteps: [0],
+      conversationId: "conv-client-stale",
+      projectId: "project-1",
+      userId: "user-1",
+      agentMode: "general",
+      model: "gpt-5.2",
+    });
+    const iterator = stream[Symbol.asyncIterator]();
+    const first = await iterator.next();
+
+    expect(first.done).toBe(false);
+    expect(first.value?.type).toBe("run_start");
+    expect(mocks.getConversationWithSummaryById).toHaveBeenCalledWith(
+      "conv-plan",
+      "user-1",
+      undefined,
+    );
+    expect(mocks.startRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agentMode: "search",
+        conversationId: "conv-plan",
+      }),
+    );
+
+    await iterator.return?.(undefined);
   });
 });

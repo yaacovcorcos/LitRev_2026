@@ -1,15 +1,32 @@
 "use client";
 
 import { ReactNode } from "react";
+import { useFoundationRouteReady } from "@/lib/mobile/foundation-reliability";
+import type { ReliabilityRouteState, ReliabilityRouteTemplate } from "@/types/reliability-telemetry";
 import styles from "@/app/login/login.module.css";
 
 type AuthShellFrameProps = {
   ariaLabel: string;
   mode?: "signin" | "signup";
+  telemetryRouteTemplate?: ReliabilityRouteTemplate;
+  telemetryState?: ReliabilityRouteState;
   children: ReactNode;
 };
 
-export function AuthShellFrame({ ariaLabel, mode, children }: AuthShellFrameProps) {
+export function AuthShellFrame({
+  ariaLabel,
+  mode,
+  telemetryRouteTemplate,
+  telemetryState,
+  children,
+}: AuthShellFrameProps) {
+  useFoundationRouteReady({
+    enabled: Boolean(telemetryRouteTemplate && telemetryState),
+    routeTemplate: telemetryRouteTemplate ?? "/login",
+    surface: "auth",
+    state: telemetryState ?? "signin",
+  });
+
   return (
     <main
       className={`${styles.shell} surface-root`}

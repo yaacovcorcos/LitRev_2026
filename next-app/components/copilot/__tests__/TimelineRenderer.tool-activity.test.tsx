@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { TimelineRenderer } from "../TimelineRenderer";
 import type { TimelineItem } from "@/types/timeline";
@@ -93,5 +93,128 @@ describe("TimelineRenderer tool activity cards", () => {
     expect(screen.getByText("Failed")).not.toBeNull();
     expect(screen.getByText("Failed after 3.0s")).not.toBeNull();
     expect(screen.getByText("PDF parsing failed.")).not.toBeNull();
+  });
+
+  it("groups adjacent PubMed searches into one compact search sequence card", () => {
+    renderTimeline([
+      {
+        type: "tool_activity",
+        id: "pubmed-1",
+        callId: "call-pubmed-1",
+        toolName: "search_pubmed",
+        status: "done",
+        queryPreview: "\"retrospective cohort\" disposition decision",
+        returnedCount: 10,
+        totalResults: 42,
+        startedAt: "2026-03-02T12:00:00.000Z",
+        updatedAt: "2026-03-02T12:00:02.000Z",
+        completedAt: "2026-03-02T12:00:02.000Z",
+        createdAt: "2026-03-02T12:00:00.000Z",
+      },
+      {
+        type: "tool_activity",
+        id: "pubmed-2",
+        callId: "call-pubmed-2",
+        toolName: "search_pubmed",
+        status: "done",
+        queryPreview: "\"retrospective cohort\" disposition decision physicians llm",
+        returnedCount: 6,
+        totalResults: 18,
+        startedAt: "2026-03-02T12:00:03.000Z",
+        updatedAt: "2026-03-02T12:00:05.000Z",
+        completedAt: "2026-03-02T12:00:05.000Z",
+        createdAt: "2026-03-02T12:00:03.000Z",
+      },
+      {
+        type: "tool_activity",
+        id: "pubmed-3",
+        callId: "call-pubmed-3",
+        toolName: "search_pubmed",
+        status: "done",
+        queryPreview: "\"retrospective cohort\" disposition decision physicians llm admission discharge",
+        returnedCount: 4,
+        totalResults: 9,
+        startedAt: "2026-03-02T12:00:06.000Z",
+        updatedAt: "2026-03-02T12:00:08.000Z",
+        completedAt: "2026-03-02T12:00:08.000Z",
+        createdAt: "2026-03-02T12:00:06.000Z",
+      },
+    ]);
+
+    expect(screen.getByText("PubMed search")).not.toBeNull();
+    expect(screen.getByText("3 searches")).not.toBeNull();
+    expect(screen.getByText("The search is narrowing toward a smaller result set.")).not.toBeNull();
+    expect(screen.queryByText("search_pubmed")).toBeNull();
+    expect(screen.queryByText("1.")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Expand PubMed search sequence" }));
+
+    expect(screen.getByText("1.")).not.toBeNull();
+    expect(screen.getByText("10 of 42 results")).not.toBeNull();
+    expect(screen.getByText("6 of 18 results")).not.toBeNull();
+    expect(screen.getByText("4 of 9 results")).not.toBeNull();
+  });
+
+  it("omits the grouped PubMed annotation when the refinement signal is weak", () => {
+    renderTimeline([
+      {
+        type: "tool_activity",
+        id: "pubmed-same-1",
+        callId: "call-pubmed-same-1",
+        toolName: "search_pubmed",
+        status: "done",
+        queryPreview: "\"retrospective cohort\" disposition decision",
+        returnedCount: 10,
+        totalResults: 42,
+        startedAt: "2026-03-02T12:00:00.000Z",
+        updatedAt: "2026-03-02T12:00:02.000Z",
+        completedAt: "2026-03-02T12:00:02.000Z",
+        createdAt: "2026-03-02T12:00:00.000Z",
+      },
+      {
+        type: "tool_activity",
+        id: "pubmed-same-2",
+        callId: "call-pubmed-same-2",
+        toolName: "search_pubmed",
+        status: "done",
+        queryPreview: "\"retrospective cohort\" disposition decision",
+        returnedCount: 10,
+        totalResults: 42,
+        startedAt: "2026-03-02T12:00:03.000Z",
+        updatedAt: "2026-03-02T12:00:05.000Z",
+        completedAt: "2026-03-02T12:00:05.000Z",
+        createdAt: "2026-03-02T12:00:03.000Z",
+      },
+    ]);
+
+    expect(screen.getByText("PubMed search")).not.toBeNull();
+    expect(screen.getByText("2 searches")).not.toBeNull();
+    expect(screen.queryByText("The search is narrowing toward a smaller result set.")).toBeNull();
+    expect(screen.queryByText("The search is broadening to explore a larger result set.")).toBeNull();
+    expect(screen.queryByText("The search is still broad and is being refined further.")).toBeNull();
+    expect(screen.queryByText("Multiple PubMed searches were used to refine the result set.")).toBeNull();
+  });
+
+  it("humanizes a single PubMed receipt without grouping", () => {
+    renderTimeline([
+      {
+        type: "tool_activity",
+        id: "pubmed-single",
+        callId: "call-pubmed-single",
+        toolName: "search_pubmed",
+        status: "done",
+        queryPreview: "\"retrospective cohort\" disposition decision",
+        returnedCount: 10,
+        totalResults: 42,
+        startedAt: "2026-03-02T12:00:00.000Z",
+        updatedAt: "2026-03-02T12:00:02.000Z",
+        completedAt: "2026-03-02T12:00:02.000Z",
+        createdAt: "2026-03-02T12:00:00.000Z",
+      },
+    ]);
+
+    expect(screen.getByText("PubMed search")).not.toBeNull();
+    expect(screen.getByText("10 of 42 results")).not.toBeNull();
+    expect(screen.queryByText("search_pubmed")).toBeNull();
   });
 });

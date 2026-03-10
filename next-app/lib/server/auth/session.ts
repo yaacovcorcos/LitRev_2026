@@ -1,7 +1,7 @@
 import "server-only";
 
 import { headers } from "next/headers";
-import { auth } from "@/lib/auth";
+import { getAuth } from "@/lib/auth";
 import { runWithActorContext } from "@/lib/server/actor";
 import {
   clearAuthFailures,
@@ -93,7 +93,7 @@ export async function getAuthContext(): Promise<AuthContext> {
   }
 
   const headerStore = await headers();
-  const session = await auth.api.getSession({ headers: headerStore });
+  const session = await getAuth().api.getSession({ headers: headerStore });
 
   if (!session) {
     throw new Error("Unauthorized");
@@ -117,7 +117,7 @@ export async function requireApiSession(
     return { ok: true, context: { ...TEST_FALLBACK_CONTEXT } };
   }
 
-  const session = await auth.api.getSession({ headers: request.headers });
+  const session = await getAuth().api.getSession({ headers: request.headers });
   const clientIp = extractClientIp(request.headers);
 
   if (!session) {

@@ -731,7 +731,6 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                     reasoningMode: reasoningRequest.reasoningMode,
                     includeReasoning: reasoningRequest.includeReasoning,
                     reasoningBudgetTokens: reasoningRequest.reasoningBudgetTokens,
-                    agentMode: "general",
                 },
             },
             page: executionPage,

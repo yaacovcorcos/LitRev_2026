@@ -74,4 +74,44 @@ describe("reliability-metrics", () => {
       }),
     );
   });
+
+  it("accepts responsive route-ready telemetry for auth without project access", async () => {
+    mocks.chatMetricCreate.mockResolvedValue({ id: "metric-2" });
+
+    const result = await ingestReliabilityMetric(AUTH, {
+      eventId: "evt-2",
+      version: 1,
+      type: "reliability.v1.route.ready",
+      surface: "auth",
+      clientTimestamp: "2026-03-09T08:00:00.000Z",
+      dimensions: {
+        viewport: "phone",
+        network: "online",
+        flags: {
+          scrollOwnershipA1: null,
+          streamReliabilityA2: null,
+          mobileScrollLockV2: true,
+        },
+      },
+      payload: {
+        routeTemplate: "/login",
+        state: "signin",
+        layoutMode: null,
+      },
+    });
+
+    expect(result).toEqual({ deduped: false, id: "metric-2" });
+    expect(mocks.assertProjectAccess).not.toHaveBeenCalled();
+    expect(mocks.chatMetricCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          type: "reliability.v1.route.ready",
+          surface: "auth",
+          userId: "user-1",
+          workspaceId: "ws-1",
+          projectId: null,
+        }),
+      }),
+    );
+  });
 });
