@@ -1098,14 +1098,15 @@ export function TimelineRenderer({
 
         switch (item.artifactType) {
             case "plan": {
-                const canExecutePlan = !!onExecutePlan && canAct;
+                const planPayload = item.payload as PlanPayload;
+                const canExecutePlan = !!onExecutePlan && canAct && Boolean(planPayload.execution);
                 return (
                     <ArtifactWrapper
                         {...wrapperProps}
-                        summaryText={`Plan executed: ${(item.payload as PlanPayload)?.steps?.length ?? 0} steps`}
+                        summaryText={`Plan executed: ${planPayload?.steps?.length ?? 0} steps`}
                     >
                         <PlanCard
-                            payload={item.payload as PlanPayload}
+                            payload={planPayload}
                             status={item.status}
                             onRun={canExecutePlan ? (selectedIndexes) => onExecutePlan(item.artifactId, selectedIndexes) : undefined}
                             onCancel={() => handleReview("rejected")}

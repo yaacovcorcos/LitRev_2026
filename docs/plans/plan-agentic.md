@@ -105,6 +105,7 @@ Every fix entry must include:
 - **Run Recovery Semantics Are Structured On Timeline-Based Surfaces:** `/ai` and project copilot now preserve deterministic failure envelopes into client state, retry affordances are derived from structured metadata, and server finalization uses explicit run facts so failed no-answer runs no longer masquerade as `completed`. Popup now retains lightweight error metadata and annotates terminal failures inline, but it still does not have full timeline-style parity.
 - **Run Lifecycle Integrity Is Now Enforced Across The Main Surfaces:** started runs now finalize exactly once, replace-safe admission requires explicit prior run identity instead of conversation-wide cancellation, and abnormal failure cleanup/dedupe now use the shared runtime/error owners so `/ai` and project copilot fail unfinished tools consistently and render one terminal failure.
 - **Shared Failure Handling Still Needs One Owner:** shared stream reducers emit typed `stream_error` intents, but terminal failure presentation is not fully centralized yet; tracked under `FIX-011`.
+- **Executable Plans Now Persist An Explicit Approval Contract:** runnable plan artifacts now carry `execution` metadata with origin mode, approved tool ceiling, and artifact-bound conversation/project context, plan lifecycle updates preserve that metadata on success/failure, and advisory or legacy plans fail closed in plan UI until strict runtime confinement lands fully under `FIX-002`.
 
 ## Verified Failure Classes
 *The concrete runtime failures this plan is intended to eliminate.*
@@ -314,9 +315,9 @@ These files are supporting documents. Status, priority, and closure rules live h
 
 ## Recently Completed
 
+- [x] Landed `FIX-002` PR1 executable/advisory plan contract: runnable plan artifacts now persist `execution` metadata at creation time, plan lifecycle updates preserve it instead of dropping back to bare step payloads, and advisory/legacy plans fail closed in plan UI instead of looking runnable.
 - [x] Completed `FIX-003` with the smallest honest popup slice: popup is now explicitly read-only/advisory for edit intents, `update_protocol` is no longer exposed in popup mode, and popup guidance now routes edit/apply work to Continue in Copilot instead of implying hidden proposal creation.
 - [x] Pruned and clarified the remaining docs/evals backlog: `FIX-005` is now split into `FIX-005a` (docs authority and plan truth) and `FIX-005b` (executable evals and search provenance), so plan-governance cleanup can finish independently of the heavier runtime measurement work.
-
 - [x] Implemented `FIX-004b` clarification contract cleanup, completing `FIX-004`: `ask_user` is now the only blocking clarification primitive taught in the global base prompt, while `<choices>` guidance is scoped to artifact/chat surfaces and explicitly limited to optional suggestion chips without changing the XML/event contract.
 - [x] Implemented `FIX-012c` abnormal-end cleanup and error dedupe, completing `FIX-012`: `/ai` and project copilot now reuse the shared runtime/error owners for abnormal-failure aftermath, unfinished tools are force-failed consistently, and one terminal failure renders once without regressing deterministic capability suppression.
 - [x] Implemented `FIX-012b` replace-safe admission: `/ai` and project copilot now send `replaceRunId` only for their own tracked active run, and the server only replaces when that explicit run identity matches the actual active run for the conversation.
