@@ -3,7 +3,7 @@
 ## Purpose
 Add a first-party semantic context capture layer across LitRev so users can point at the exact protocol field, study, study set, draft selection, note, or artifact they mean and launch scoped AI actions without restating context in prose.
 
-This plan is inspired by patterns observed in `cloned_repos/react_grab_repo`, but LitRev will borrow the interaction model and a few architectural ideas rather than importing the coding-tool implementation.
+This plan is inspired by patterns observed in [`aidenybai/react-grab`](https://github.com/aidenybai/react-grab), but LitRev will borrow the interaction model and a few architectural ideas rather than importing the coding-tool implementation. See `OPEN_SOURCE_REFERENCES.md` for the canonical external-reference index.
 
 ## Overall Goal
 The intended end state is a shared context-capture system that works across project surfaces and feeds both popup chat and the main copilot with typed, inspectable, reusable context bundles. Users should be able to capture context locally, see what will be sent to the model, remove or reuse captured context, and invoke surface-appropriate AI actions without relying on ad hoc per-page buttons or prompt stuffing.
@@ -65,10 +65,10 @@ The intended end state is a shared context-capture system that works across proj
 
 ### React Grab Pattern Extraction
 Steal:
-- Action/registry model from `cloned_repos/react_grab_repo/packages/react-grab/src/core/plugin-registry.ts`
-- Typed action/session contracts from `cloned_repos/react_grab_repo/packages/react-grab/src/types.ts`
-- Multi-target selection/history concepts from `cloned_repos/react_grab_repo/packages/react-grab/src/utils/get-elements-in-drag.ts` and `.../history-storage.ts`
-- Anchored follow-up/session model from `cloned_repos/react_grab_repo/packages/react-grab/src/core/agent/manager.ts`
+- Action/registry model from `packages/react-grab/src/core/plugin-registry.ts` in [`aidenybai/react-grab`](https://github.com/aidenybai/react-grab/tree/main/packages/react-grab/src/core)
+- Typed action/session contracts from `packages/react-grab/src/types.ts` in [`aidenybai/react-grab`](https://github.com/aidenybai/react-grab/blob/main/packages/react-grab/src/types.ts)
+- Multi-target selection/history concepts from `packages/react-grab/src/utils/get-elements-in-drag.ts` and `packages/react-grab/src/utils/history-storage.ts` in [`aidenybai/react-grab`](https://github.com/aidenybai/react-grab/tree/main/packages/react-grab/src/utils)
+- Anchored follow-up/session model from `packages/react-grab/src/core/agent/manager.ts` in [`aidenybai/react-grab`](https://github.com/aidenybai/react-grab/blob/main/packages/react-grab/src/core/agent/manager.ts)
 
 Adapt, not copy:
 - Multi-selection heuristics
@@ -76,7 +76,7 @@ Adapt, not copy:
 - Anchored action affordances
 
 Reject:
-- DOM-to-source/component symbolication in `cloned_repos/react_grab_repo/packages/react-grab/src/core/context.ts`
+- DOM-to-source/component symbolication in `packages/react-grab/src/core/context.ts` from [`aidenybai/react-grab`](https://github.com/aidenybai/react-grab/blob/main/packages/react-grab/src/core/context.ts)
 - File-opening/editor integration
 - MCP/relay/provider bridge packages
 - Overlay freeze/pointer management complexity
