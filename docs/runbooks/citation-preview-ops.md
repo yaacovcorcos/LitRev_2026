@@ -18,6 +18,30 @@ Notes:
   - `CITATION_SMOKE_DOI_URL`
 - The smoke passes when resolver output is stable enough to classify and render bibliography without crashing. It does not require exact citation counts or an exact provider branch.
 
+## Single-URL Diagnosis
+
+If a specific hover is loading bibliography but never shows a citation count, inspect the real resolver outcome directly:
+
+```bash
+npm run citation:diagnose -- https://pubmed.ncbi.nlm.nih.gov/31452104/
+```
+
+You can pass multiple URLs:
+
+```bash
+npm run citation:diagnose -- https://pubmed.ncbi.nlm.nih.gov/31452104/ https://pubmed.ncbi.nlm.nih.gov/2553535/
+```
+
+The script prints one JSON line per URL with:
+- `citationCount`
+- `citationCountSource`
+- `resolutionPath`
+- `reason`
+- `resolvedWithCitationCount`
+- `hadDoiFallbackCandidate`
+
+Use this when manual UI testing shows bibliography but no count, especially for PubMed links.
+
 ## Canary Report
 
 Run from `next-app/`:
