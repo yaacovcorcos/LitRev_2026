@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
     __clearCitationMetadataCacheForTests,
+    __getCitationMetadataCacheEntryForTests,
+    continueCitationMetadataCached,
     fetchCrossrefMetadata,
     METADATA_CACHE_LIMIT,
     normalizeDoi,
@@ -613,6 +615,105 @@ describe("citation-metadata utilities", () => {
 
             const result = await resolveCitationMetadataCached("https://doi.org/10.1000/provider-error");
             expect(result).toBeNull();
+        });
+
+        it("continues retryable PubMed misses and patches the cached success with count fields only", async () => {
+            let crossrefCallCount = 0;
+            const fetchMock = vi.fn().mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+                const url = typeof input === "string" ? input : input.toString();
+                if (url.includes("esummary.fcgi")) {
+                    return jsonResponse({
+                        result: {
+                            "99001122": {
+                                title: "Continuation study",
+                                authors: [{ name: "Retry R" }],
+                                pubdate: "2026",
+                                fulljournalname: "Continuation Journal",
+                                articleids: [{ idtype: "doi", value: "10.1000/retry" }],
+                            },
+                        },
+                    });
+                }
+                if (url.includes("icite.od.nih.gov/api/pubs/99001122")) {
+                    return jsonResponse({});
+                }
+                if (url.includes("api.crossref.org/works/10.1000%2Fretry")) {
+                    crossrefCallCount += 1;
+                    if (crossrefCallCount === 1) {
+                        return new Promise<Response>((_, reject) => {
+                            init?.signal?.addEventListener("abort", () => {
+                                const error = new Error("aborted");
+                                error.name = "AbortError";
+                                reject(error);
+                            });
+                        });
+                    }
+                    return jsonResponse({
+                        message: {
+                            title: ["Crossref competing title"],
+                            author: [{ family: "Override", given: "Crossref" }],
+                            "container-title": ["Crossref Journal"],
+                            created: { "date-parts": [[1999]] },
+                            "is-referenced-by-count": 88,
+                        },
+                    });
+                }
+                throw new Error(`Unexpected URL: ${url}`);
+            });
+            vi.stubGlobal("fetch", fetchMock);
+            vi.useFakeTimers();
+
+            const initialPromise = resolveCitationMetadataCached("https://pubmed.ncbi.nlm.nih.gov/99001122/");
+            await vi.advanceTimersByTimeAsync(1600);
+            const initial = await initialPromise;
+
+            expect(initial?.diagnostics).toMatchObject({
+                resolutionPath: "pubmed_bibliography_only",
+                reason: "crossref_timeout",
+            });
+            expect(initial?.metadata.citationCount).toBeUndefined();
+
+            vi.useRealTimers();
+            const continued = await continueCitationMetadataCached("https://pubmed.ncbi.nlm.nih.gov/99001122/");
+            const cached = __getCitationMetadataCacheEntryForTests("https://pubmed.ncbi.nlm.nih.gov/99001122/");
+
+            expect(continued?.metadata).toMatchObject({
+                title: "Continuation study",
+                journal: "Continuation Journal",
+                citationCount: 88,
+                citationCountSource: "crossref",
+            });
+            expect(continued?.diagnostics).toMatchObject({
+                resolutionPath: "pubmed_crossref_fallback",
+                reason: "count_resolved",
+                resolvedWithCitationCount: true,
+            });
+            expect(cached).toEqual(continued);
+        });
+
+        it("does not continue when there is no cached successful renderable result", async () => {
+            const result = await continueCitationMetadataCached("https://pubmed.ncbi.nlm.nih.gov/12345678/");
+            expect(result).toBeNull();
+        });
+
+        it("returns the cached non-retryable success unchanged", async () => {
+            const fetchMock = vi.fn().mockResolvedValue(
+                jsonResponse({
+                    message: {
+                        title: ["Cached DOI no-count"],
+                        author: [{ family: "Smith", given: "Alex" }],
+                        "container-title": ["Stable Journal"],
+                        created: { "date-parts": [[2025]] },
+                    },
+                }),
+            );
+            vi.stubGlobal("fetch", fetchMock);
+
+            const initial = await resolveCitationMetadataCached("https://doi.org/10.1000/no-retry");
+            const continued = await continueCitationMetadataCached("https://doi.org/10.1000/no-retry");
+
+            expect(continued).toEqual(initial);
+            expect(fetchMock).toHaveBeenCalledTimes(1);
         });
     });
 

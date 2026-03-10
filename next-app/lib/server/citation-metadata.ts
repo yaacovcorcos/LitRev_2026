@@ -86,6 +86,14 @@ type CrossrefLookupResult = {
     status: "ok" | "timeout" | "provider_error";
 };
 
+type RetryableContinuationReason = Extract<
+    CitationResolutionDiagnostics["reason"],
+    "icite_timeout" | "crossref_timeout" | "budget_exhausted"
+>;
+
+const CONTINUATION_BUDGET_MS = 2500;
+const CONTINUATION_PROVIDER_TIMEOUT_MS = 1800;
+
 function isUsableCitationCount(value: unknown): value is number {
     return typeof value === "number" && Number.isFinite(value) && value >= 0;
 }
@@ -159,6 +167,38 @@ function buildPubMedBibliographyOnlyResolution(
     });
 }
 
+function isRetryableContinuationReason(
+    reason: CitationResolutionDiagnostics["reason"],
+): reason is RetryableContinuationReason {
+    return (
+        reason === "icite_timeout"
+        || reason === "crossref_timeout"
+        || reason === "budget_exhausted"
+    );
+}
+
+function patchCitationResolutionCountOnly(
+    current: CitationResolution,
+    incoming: CitationCountDetails | CitationMetadata | null,
+    diagnostics: CitationResolutionDiagnostics,
+): CitationResolution {
+    return buildResolution(
+        mergeCitationCount(current.metadata, incoming),
+        diagnostics,
+    );
+}
+
+function patchCachedCitationResolution(
+    cacheKey: string,
+    current: CitationResolution,
+    incoming: CitationCountDetails | CitationMetadata | null,
+    diagnostics: CitationResolutionDiagnostics,
+): CitationResolution {
+    const patched = patchCitationResolutionCountOnly(current, incoming, diagnostics);
+    setCache(cacheKey, patched);
+    return patched;
+}
+
 /**
  * Resolve citation metadata from a PubMed or DOI URL.
  * Returns null if unable to fetch metadata.
@@ -212,6 +252,12 @@ export function __clearCitationMetadataCacheForTests(): void {
     cacheTimestamps.clear();
     inFlightRequests.clear();
     lastPubMedRequest = 0;
+}
+
+export function __getCitationMetadataCacheEntryForTests(url: string): CitationResolution | null | undefined {
+    const key = resolveCitationKey(url)?.cacheKey;
+    if (!key) return undefined;
+    return getCached(key);
 }
 
 // PubMed Fetcher
@@ -538,4 +584,111 @@ export async function resolveDoiMetadata(doi: string): Promise<CitationResolutio
         resolvedWithCitationCount: result.metadata.citationCount !== undefined,
         hadDoiFallbackCandidate: false,
     });
+}
+
+async function continuePubMedCitationResolution(
+    current: CitationResolution,
+): Promise<CitationResolution> {
+    const { metadata } = current;
+    const pmid = metadata.pmid;
+    if (!pmid) {
+        return current;
+    }
+
+    const deadlineMs = Date.now() + CONTINUATION_BUDGET_MS;
+    const hadDoiFallbackCandidate = Boolean(metadata.doi);
+
+    const iCiteResult = await fetchICiteCitationCount(
+        pmid,
+        Math.min(CONTINUATION_PROVIDER_TIMEOUT_MS, remainingBudgetMs(deadlineMs)),
+    );
+
+    if (iCiteResult.status === "count") {
+        return patchCitationResolutionCountOnly(current, iCiteResult.details, {
+            resolutionPath: "pubmed_icite",
+            reason: "count_resolved",
+            resolvedWithCitationCount: true,
+            hadDoiFallbackCandidate,
+        });
+    }
+
+    if (!metadata.doi) {
+        return patchCitationResolutionCountOnly(current, null, {
+            resolutionPath: "pubmed_bibliography_only",
+            reason: iCiteResult.status === "timeout"
+                ? "icite_timeout"
+                : iCiteResult.status === "provider_error"
+                    ? "provider_error"
+                    : "no_doi_fallback",
+            resolvedWithCitationCount: false,
+            hadDoiFallbackCandidate: false,
+        });
+    }
+
+    const crossrefTimeoutMs = Math.min(
+        CONTINUATION_PROVIDER_TIMEOUT_MS,
+        remainingBudgetMs(deadlineMs),
+    );
+    if (crossrefTimeoutMs <= 0) {
+        return patchCitationResolutionCountOnly(current, null, {
+            resolutionPath: "pubmed_bibliography_only",
+            reason: "budget_exhausted",
+            resolvedWithCitationCount: false,
+            hadDoiFallbackCandidate,
+        });
+    }
+
+    const crossref = await fetchCrossrefMetadataWithStatus(metadata.doi, {
+        timeoutMs: crossrefTimeoutMs,
+    });
+
+    if (crossref.status === "ok" && isUsableCitationCount(crossref.metadata?.citationCount)) {
+        return patchCitationResolutionCountOnly(current, crossref.metadata, {
+            resolutionPath: "pubmed_crossref_fallback",
+            reason: "count_resolved",
+            resolvedWithCitationCount: true,
+            hadDoiFallbackCandidate,
+        });
+    }
+
+    return patchCitationResolutionCountOnly(current, null, {
+        resolutionPath: "pubmed_bibliography_only",
+        reason: crossref.status === "timeout"
+            ? "crossref_timeout"
+            : crossref.status === "provider_error"
+                ? "provider_error"
+                : "crossref_no_count",
+        resolvedWithCitationCount: false,
+        hadDoiFallbackCandidate,
+    });
+}
+
+export async function continueCitationMetadataCached(
+    url: string,
+): Promise<CitationResolution | null> {
+    const keyParts = resolveCitationKey(url);
+    if (!keyParts) return null;
+
+    const current = getCached(keyParts.cacheKey);
+    if (!current) return null;
+
+    if (isUsableCitationCount(current.metadata.citationCount)) {
+        return current;
+    }
+
+    if (!isRetryableContinuationReason(current.diagnostics.reason)) {
+        return current;
+    }
+
+    if (current.metadata.pmid) {
+        const continued = await continuePubMedCitationResolution(current);
+        return patchCachedCitationResolution(
+            keyParts.cacheKey,
+            current,
+            continued.metadata,
+            continued.diagnostics,
+        );
+    }
+
+    return current;
 }

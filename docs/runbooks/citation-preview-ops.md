@@ -2,6 +2,17 @@
 
 Use this runbook after shipping citation-provider changes or when citation hover counts appear unreliable.
 
+## Continuation Flags
+
+Citation continuation is live only when both flags are enabled:
+
+```bash
+ENABLE_CITATION_CONTINUATION=1
+NEXT_PUBLIC_ENABLE_CITATION_CONTINUATION=1
+```
+
+If either flag is off, hover cards remain single-shot and bibliography-first.
+
 ## Provider Compatibility Smoke
 
 Run from `next-app/`:
@@ -70,12 +81,17 @@ The report prints:
 - count-bearing success rate
 - uncached latency p50/p95
 - percentage of PubMed DOI-bearing lookups that ended bibliography-only
+- continuation attempts completed
+- continuation recovery rate
+- continuation latency p50/p95
 
 Storage notes:
 - Citation preview telemetry reuses `ChatUnificationMetric` as a pragmatic v1 storage home to avoid a schema change.
 - Only terminal citation events are persisted in this version:
   - `citation_preview.metadata_request_completed`
   - `citation_preview.metadata_request_failed`
+  - `citation_preview.continuation_completed`
+  - `citation_preview.continuation_failed`
 - Non-terminal hover/prefetch/open/start events may still exist in the client event model, but they are not stored in the database.
 
 ## First Triage
@@ -88,3 +104,4 @@ Storage notes:
 2. If provider errors spike, run the compatibility smoke to detect gross upstream drift or outages.
 3. If bibliography-only outcomes rise mainly from timeout/budget reasons, consider a follow-up continuation path before changing the bibliography-first UI contract.
 4. If outcomes are mostly `crossref_no_count` or `no_doi_fallback`, the issue is likely data availability rather than transport reliability.
+5. If continuation attempts rise but continuation recovery stays low, keep the flags off or disable them while reassessing the continuation budgets.

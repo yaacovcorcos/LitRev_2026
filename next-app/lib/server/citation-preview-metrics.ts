@@ -14,6 +14,8 @@ const METRIC_TYPES = [
     "metadata_request_started",
     "metadata_request_completed",
     "metadata_request_failed",
+    "continuation_completed",
+    "continuation_failed",
 ] as const;
 
 const METRIC_SURFACES = ["project", "popup", "ai", "unknown"] as const;
@@ -60,6 +62,7 @@ const CitationPreviewMetricInputSchema: z.ZodType<CitationPreviewMetricInput> = 
         ]).optional(),
         resolvedWithCitationCount: z.boolean().optional(),
         hadDoiFallbackCandidate: z.boolean().optional(),
+        continuationRecoveredCount: z.boolean().optional(),
         errorCode: z.string().trim().min(1).max(MAX_ERROR_CODE_LENGTH).nullable().optional(),
     }),
 });
@@ -70,8 +73,17 @@ function toStoredMetricType(type: CitationPreviewMetricInput["type"]): string {
 
 function shouldPersistMetric(
     type: CitationPreviewMetricInput["type"],
-): type is "metadata_request_completed" | "metadata_request_failed" {
-    return type === "metadata_request_completed" || type === "metadata_request_failed";
+): type is
+    | "metadata_request_completed"
+    | "metadata_request_failed"
+    | "continuation_completed"
+    | "continuation_failed" {
+    return (
+        type === "metadata_request_completed"
+        || type === "metadata_request_failed"
+        || type === "continuation_completed"
+        || type === "continuation_failed"
+    );
 }
 
 function parseClientTimestamp(input: string): Date | null {

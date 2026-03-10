@@ -136,6 +136,62 @@ describe("citation-preview metrics ingestion", () => {
         );
     });
 
+    it("persists continuation completed events", async () => {
+        mocks.chatMetricCreate.mockResolvedValue({ id: "metric-3" });
+
+        const result = await ingestCitationPreviewMetric(
+            AUTH_CONTEXT,
+            buildMetricInput({
+                type: "continuation_completed",
+                payload: {
+                    citationKey: "pmid:12345678",
+                    citationType: "PubMed",
+                    latencyMs: 300,
+                    resolutionPath: "pubmed_crossref_fallback",
+                    reason: "count_resolved",
+                    resolvedWithCitationCount: true,
+                    hadDoiFallbackCandidate: true,
+                    continuationRecoveredCount: true,
+                },
+            }),
+        );
+
+        expect(result).toEqual({ deduped: false, id: "metric-3" });
+        expect(mocks.chatMetricCreate).toHaveBeenCalledWith(
+            expect.objectContaining({
+                data: expect.objectContaining({
+                    type: "citation_preview.continuation_completed",
+                }),
+            }),
+        );
+    });
+
+    it("persists continuation failures", async () => {
+        mocks.chatMetricCreate.mockResolvedValue({ id: "metric-4" });
+
+        const result = await ingestCitationPreviewMetric(
+            AUTH_CONTEXT,
+            buildMetricInput({
+                type: "continuation_failed",
+                payload: {
+                    citationKey: "pmid:12345678",
+                    citationType: "PubMed",
+                    latencyMs: 410,
+                    errorCode: "Citation continuation unavailable",
+                },
+            }),
+        );
+
+        expect(result).toEqual({ deduped: false, id: "metric-4" });
+        expect(mocks.chatMetricCreate).toHaveBeenCalledWith(
+            expect.objectContaining({
+                data: expect.objectContaining({
+                    type: "citation_preview.continuation_failed",
+                }),
+            }),
+        );
+    });
+
     it("treats duplicate event ids as deduped success", async () => {
         mocks.chatMetricCreate.mockRejectedValue({
             code: "P2002",

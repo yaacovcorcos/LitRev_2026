@@ -2,8 +2,14 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import { CitationPreview } from "../CitationPreview";
-import { fetchCitationMetadata } from "@/app/actions/citation";
-import { isCitationHoverPrefetchEnabled } from "@/lib/citation-preview-feature-flags";
+import {
+    continueCitationMetadata,
+    fetchCitationMetadata,
+} from "@/app/actions/citation";
+import {
+    isCitationHoverContinuationEnabled,
+    isCitationHoverPrefetchEnabled,
+} from "@/lib/citation-preview-feature-flags";
 import { recordCitationPreviewMetric } from "@/lib/ai/citation-preview-telemetry";
 import { clearCitationMetadataClientCache } from "@/lib/citation-preview-cache";
 
@@ -27,10 +33,33 @@ vi.mock("@/app/actions/citation", () => ({
             },
         },
     }),
+    continueCitationMetadata: vi.fn().mockResolvedValue({
+        success: true,
+        data: {
+            title: "Citation title",
+            authors: "Doe J",
+            year: 2024,
+            journal: "Journal of Tests",
+            canonicalUrl: "https://doi.org/10.1000/xyz123",
+            doi: "10.1000/xyz123",
+            citationCount: 21,
+            citationCountSource: "crossref",
+            citationCountFetchedAt: "2026-03-10T15:00:00.000Z",
+        },
+        meta: {
+            diagnostics: {
+                resolutionPath: "doi_crossref",
+                reason: "count_resolved",
+                resolvedWithCitationCount: true,
+                hadDoiFallbackCandidate: false,
+            },
+        },
+    }),
 }));
 
 vi.mock("@/lib/citation-preview-feature-flags", () => ({
     isCitationHoverPrefetchEnabled: vi.fn().mockReturnValue(false),
+    isCitationHoverContinuationEnabled: vi.fn().mockReturnValue(false),
 }));
 
 vi.mock("@/lib/ai/citation-preview-telemetry", () => ({
@@ -119,5 +148,96 @@ describe("CitationPreview prefetch behavior", () => {
                     && event.payload.reason === "crossref_no_count"
             )
         ).toBe(true);
+    });
+
+    it("continues in the background for retryable missing-count results and patches the card", async () => {
+        vi.mocked(isCitationHoverPrefetchEnabled).mockReturnValue(false);
+        vi.mocked(isCitationHoverContinuationEnabled).mockReturnValue(true);
+        vi.mocked(fetchCitationMetadata).mockResolvedValueOnce({
+            success: true,
+            data: {
+                title: "Citation title",
+                authors: "Doe J",
+                year: 2024,
+                journal: "Journal of Tests",
+                canonicalUrl: "https://pubmed.ncbi.nlm.nih.gov/12345678/",
+                pmid: "12345678",
+                doi: "10.1000/xyz123",
+            },
+            meta: {
+                diagnostics: {
+                    resolutionPath: "pubmed_bibliography_only",
+                    reason: "budget_exhausted",
+                    resolvedWithCitationCount: false,
+                    hadDoiFallbackCandidate: true,
+                },
+            },
+        });
+
+        render(
+            <CitationPreview href="https://pubmed.ncbi.nlm.nih.gov/12345678/" type="PubMed">
+                PubMed
+            </CitationPreview>
+        );
+
+        const link = screen.getByRole("link", { name: "PubMed" });
+        fireEvent.mouseEnter(link);
+
+        await act(async () => {
+            vi.advanceTimersByTime(350);
+            await Promise.resolve();
+            await Promise.resolve();
+        });
+
+        expect(vi.mocked(continueCitationMetadata)).toHaveBeenCalledTimes(1);
+        expect(screen.getByText("Cited 21 times")).toBeTruthy();
+        expect(
+            vi.mocked(recordCitationPreviewMetric).mock.calls.some(
+                ([event]) =>
+                    event.type === "continuation_completed"
+                    && event.payload.continuationRecoveredCount === true
+            )
+        ).toBe(true);
+    });
+
+    it("does not continue for non-retryable missing-count results", async () => {
+        vi.mocked(isCitationHoverPrefetchEnabled).mockReturnValue(false);
+        vi.mocked(isCitationHoverContinuationEnabled).mockReturnValue(true);
+        vi.mocked(fetchCitationMetadata).mockResolvedValueOnce({
+            success: true,
+            data: {
+                title: "Citation title",
+                authors: "Doe J",
+                year: 2024,
+                journal: "Journal of Tests",
+                canonicalUrl: "https://doi.org/10.1000/xyz123",
+                doi: "10.1000/xyz123",
+            },
+            meta: {
+                diagnostics: {
+                    resolutionPath: "doi_no_count",
+                    reason: "crossref_no_count",
+                    resolvedWithCitationCount: false,
+                    hadDoiFallbackCandidate: false,
+                },
+            },
+        });
+
+        render(
+            <CitationPreview href="https://doi.org/10.1000/xyz123" type="DOI">
+                DOI
+            </CitationPreview>
+        );
+
+        const link = screen.getByRole("link", { name: "DOI" });
+        fireEvent.mouseEnter(link);
+
+        await act(async () => {
+            vi.advanceTimersByTime(350);
+            await Promise.resolve();
+            await Promise.resolve();
+        });
+
+        expect(vi.mocked(continueCitationMetadata)).not.toHaveBeenCalled();
     });
 });

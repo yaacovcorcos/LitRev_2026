@@ -11,7 +11,9 @@ export type CitationPreviewMetricType =
     | "popover_opened"
     | "metadata_request_started"
     | "metadata_request_completed"
-    | "metadata_request_failed";
+    | "metadata_request_failed"
+    | "continuation_completed"
+    | "continuation_failed";
 
 export type CitationPreviewTrigger = "hover" | "focus" | "touch" | "prefetch";
 
@@ -26,6 +28,7 @@ export type CitationPreviewMetricPayload = {
     reason?: CitationResolutionReason;
     resolvedWithCitationCount?: boolean;
     hadDoiFallbackCandidate?: boolean;
+    continuationRecoveredCount?: boolean;
     errorCode?: string | null;
 };
 

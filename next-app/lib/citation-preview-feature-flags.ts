@@ -12,6 +12,7 @@ function readFlag(raw: string | undefined): boolean | null {
 
 const DEFAULT_CITATION_HOVER_PREFETCH_ENABLED = true;
 const DEFAULT_CITATION_PREVIEW_TELEMETRY_SHIPPING_ENABLED = false;
+const DEFAULT_CITATION_CONTINUATION_ENABLED = false;
 
 export function isCitationHoverPrefetchEnabled(): boolean {
     const publicFlag = readFlag(process.env.NEXT_PUBLIC_ENABLE_CITATION_HOVER_PREFETCH);
@@ -25,4 +26,16 @@ export function isCitationPreviewTelemetryShippingEnabled(): boolean {
     const serverFlag = readFlag(process.env.ENABLE_CITATION_PREVIEW_TELEMETRY_SHIPPING);
     if (serverFlag !== null) return serverFlag;
     return DEFAULT_CITATION_PREVIEW_TELEMETRY_SHIPPING_ENABLED;
+}
+
+export function isCitationHoverContinuationEnabled(): boolean {
+    const publicFlag = readFlag(process.env.NEXT_PUBLIC_ENABLE_CITATION_CONTINUATION);
+    if (publicFlag !== null) return publicFlag;
+    return DEFAULT_CITATION_CONTINUATION_ENABLED;
+}
+
+export function isCitationContinuationServerEnabled(): boolean {
+    const serverFlag = readFlag(process.env.ENABLE_CITATION_CONTINUATION);
+    if (serverFlag !== null) return serverFlag;
+    return DEFAULT_CITATION_CONTINUATION_ENABLED;
 }
