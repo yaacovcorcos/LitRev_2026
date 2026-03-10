@@ -200,6 +200,7 @@ describe("TimelineRenderer action affordances", () => {
     );
 
     expect(screen.queryByRole("button", { name: /^run/i })).toBeNull();
+    expect(screen.queryByLabelText(/select step 1/i)).toBeNull();
     expect(screen.getByText("Advisory plan. Review only.")).not.toBeNull();
   });
 

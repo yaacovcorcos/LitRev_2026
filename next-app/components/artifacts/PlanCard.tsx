@@ -40,7 +40,7 @@ export function PlanCard({ payload, status, onRun, onCancel, canRun = true }: Pl
     const isExecutable = Boolean(payload.execution);
 
     const toggleStep = (index: number) => {
-        if (!isProposed) return;
+        if (!isProposed || !isExecutable) return;
         setSelected((prev) => {
             const next = new Set(prev);
             if (next.has(index)) next.delete(index);
@@ -62,12 +62,12 @@ export function PlanCard({ payload, status, onRun, onCancel, canRun = true }: Pl
                     const stepClass = [
                         styles.planStep,
                         STEP_STYLES[step.status],
-                        !isSelected && isProposed ? styles.planStepDeselected : "",
+                        !isSelected && isProposed && isExecutable ? styles.planStepDeselected : "",
                     ].filter(Boolean).join(" ");
 
                     // When running/terminal, show execution status icon
                     // When proposed, show selection toggle
-                    const showToggle = isProposed;
+                    const showToggle = isProposed && isExecutable;
 
                     return (
                         <li key={i} className={stepClass}>
