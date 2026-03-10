@@ -183,7 +183,7 @@ Primary KPI lenses:
 - Regression concentration by viewport class (`phone`, `compact`, `desktop`).
 
 ## Active Tasks (Mobile Foundation)
-- [ ] `MOB-FND-013` Shared transitional responsive debt retirement:
+- [ ] `Phase 1 — MOB-FND-013` Shared transitional responsive debt retirement:
   - Retire the highest-risk shared legacy `900px` behavior still present in shell/layout primitives before deeper chat/mobile waves absorb more breakpoint cleanup than they should.
   - Remove authored raw `100vh` / `calc(100vh - …)` phone source-of-truth rules from shared shell/layout surfaces where shared viewport-height variables already exist.
   - Focus on shared/high-blast targets that are broadly correct across current consumers, with likely first targets including `AppShell`, `Sidebar`, `TopBar`, and `ControlsBar`.
@@ -192,24 +192,24 @@ Primary KPI lenses:
   - Rollback: revert/redeploy only unless implementation proves a dedicated flag is necessary.
 
 ## Active Tasks (Chat Experience)
-- [ ] `MOB-002` Shared responsive chat shell contract:
+- [ ] `Phase 2 — MOB-002` Shared responsive chat shell contract:
   - Define reusable shell contract for chat surfaces: top bar, history drawer, timeline body, sticky safe-area composer.
   - Apply in project conversation first, then `/ai`, then popup.
   - Keep `compact` behavior desktop-like where possible; reserve phone-only composition for the `phone` tier.
-- [ ] `MOB-004` Project conversation responsive hardening:
+- [ ] `Phase 3 — MOB-004` Project conversation responsive hardening:
   - Ensure header/composer actions meet touch-target rules.
   - Preserve conversation picker ergonomics on `phone` and `compact` widths.
-- [ ] `MOB-005` Popup responsive mode redesign:
+- [ ] `Phase 4 — MOB-005` Popup responsive mode redesign:
   - Phone viewports use sheet/full-height behavior.
   - Compact desktop popup remains anchored/desktop-like.
   - Keep one-tap `Continue in Copilot` handoff.
-- [ ] `MOB-006` Touch target and action density pass:
+- [ ] `Phase 5 — MOB-006` Touch target and action density pass:
   - Audit timeline/composer controls to `44px` minimum targets.
   - Move secondary actions to overflow where needed.
-- [ ] `MOB-007` Responsive telemetry completion:
+- [ ] `Phase 6 — MOB-007` Responsive telemetry completion:
   - Instrument project conversation drawer/send/retry flows.
   - Standardize `mobile_flow_completed` across send/retry/handoff paths.
-- [ ] `MOB-008` Responsive e2e expansion:
+- [ ] `Phase 7 — MOB-008` Responsive e2e expansion:
   - Add drawer open/close/select coverage.
   - Add send/stop/retry and popup-to-copilot behavior-level tests.
   - Cover both phone and compact widths where behavior differs.
@@ -267,15 +267,14 @@ Build in this order:
 7. `MOB-FND-006` protocol responsive adoption
 8. `MOB-FND-007` shared touch-target sweep
 9. `MOB-FND-008` reliability telemetry + responsive e2e certification
-10. `MOB-FND-013` shared transitional responsive debt retirement
-11. chat foundation follow-up:
-   - `MOB-002`
-   - `MOB-004`
-   - `MOB-005`
-   - `MOB-006`
-   - `MOB-007`
-   - `MOB-008`
-12. optional admin/settings wave only if a future settings route or stronger admin mobile requirement justifies reopening that scope
+10. `Phase 1 — MOB-FND-013` shared transitional responsive debt retirement
+11. `Phase 2 — MOB-002` shared responsive chat shell contract
+12. `Phase 3 — MOB-004` project conversation responsive hardening
+13. `Phase 4 — MOB-005` popup responsive mode redesign
+14. `Phase 5 — MOB-006` touch target and action density pass
+15. `Phase 6 — MOB-007` responsive telemetry completion
+16. `Phase 7 — MOB-008` responsive e2e expansion
+17. optional admin/settings wave only if a future settings route or stronger admin mobile requirement justifies reopening that scope
 
 ## Rollout / Enablement Order
 Enable in production one wave at a time:
