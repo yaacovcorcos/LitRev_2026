@@ -76,6 +76,8 @@ Rule: feature branches hold work; repo root `main` only mirrors merged work.
 - Repo root is the canonical clean `main` checkout for this repository.
 - Repo root `main` must match `origin/main` exactly during normal workflow.
 - Do not commit directly to repo root `main` except for an explicit emergency hotfix requested by the user.
+- Do not use repo root as a task checkout, PR checkout, or scratch branch checkout.
+- Do not run `gh pr checkout <number>` in repo root; inspect or update PR branches from a dedicated task worktree instead.
 - All normal agent work must happen on named feature branches.
 - Canonical agent branch prefix is `YY/`.
 - Emergency hotfix branches should also use the `YY/` prefix, for example `YY/hotfix-<task>`.
@@ -84,10 +86,11 @@ Rule: feature branches hold work; repo root `main` only mirrors merged work.
 - If repo root `main` differs from `origin/main` in either direction, stop and reconcile before starting new work.
 - Detached or rescue worktrees must not be treated as the `main` baseline.
 - Task worktrees are temporary by default.
-- Once a task is merged, abandoned, or intentionally archived, remove its worktree promptly.
+- A task worktree should exist only while that task is actively being implemented, reviewed, or waiting to merge.
+- Once a task is merged, abandoned, or intentionally archived, remove its worktree immediately as part of the same cleanup flow.
 - Maintain a cleanup manifest before deleting or re-homing any worktree; follow the schema in `docs/runbooks/github-flow.md`.
 - Do not remove a parent worktree directory while it still contains active nested child worktrees.
-- After merge, remove the merged task worktree and delete the merged local branch promptly.
+- After merge, sync repo root `main`, remove the merged task worktree, and delete the merged local branch in the same cleanup sequence.
 - Do not keep finished task worktrees around as passive history.
 - After rescue review, either promote the rescue work, archive it intentionally, or delete the worktree.
 - For code changes, validate with `npx tsc --noEmit` and `npx vitest run` before commit. If validation fails, fix first.
