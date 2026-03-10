@@ -19,7 +19,7 @@ export default defineConfig({
     trace: "on-first-retry",
   },
   webServer: {
-    command: `npm run dev -- --hostname 127.0.0.1 --port ${port}`,
+    command: `NEXT_PUBLIC_E2E_TEST_MODE=1 E2E_TEST_MODE=1 npm run dev -- --hostname 127.0.0.1 --port ${port}`,
     url: `${baseURL}/login`,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,

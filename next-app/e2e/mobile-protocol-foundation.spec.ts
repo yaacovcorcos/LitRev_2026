@@ -4,6 +4,7 @@ import {
   createProjectFromHome,
   quickLoginWithSeed,
 } from "./helpers/foundation";
+
 test.setTimeout(60_000);
 
 test("mobile protocol foundation: protocol route remains usable on phone", async ({ page }, testInfo) => {
@@ -12,6 +13,7 @@ test("mobile protocol foundation: protocol route remains usable on phone", async
   const projectId = await createProjectFromHome(page, {
     name: "Mobile Protocol Foundation",
     seedKey,
+    openProject: false,
   });
   await page.goto(`/project/${projectId}/protocol`, { waitUntil: "domcontentloaded", timeout: 30_000 });
 
@@ -34,6 +36,7 @@ test.describe("compact protocol foundation", () => {
     const projectId = await createProjectFromHome(page, {
       name: "Compact Protocol Foundation",
       seedKey,
+      openProject: false,
     });
     await page.goto(`/project/${projectId}/protocol`, { waitUntil: "domcontentloaded", timeout: 30_000 });
 

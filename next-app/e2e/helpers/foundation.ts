@@ -1,19 +1,28 @@
 import { expect, type Page, type TestInfo } from "@playwright/test";
 
-const telemetryStubbedPages = new WeakSet<Page>();
+const nonOperationalTelemetryStubbedPages = new WeakSet<Page>();
 
-async function stubTelemetry(page: Page): Promise<void> {
-  if (telemetryStubbedPages.has(page)) return;
+async function stubNonOperationalTelemetry(page: Page): Promise<void> {
+  if (nonOperationalTelemetryStubbedPages.has(page)) return;
 
-  await page.route("**/api/telemetry/**", async (route) => {
-    await route.fulfill({
-      status: 204,
-      contentType: "application/json",
-      body: "{}",
+  const endpointsToStub = {
+    "**/api/admin/status": JSON.stringify({ isPlatformAdmin: false }),
+    "**/api/telemetry/chat-unification": "{}",
+    "**/api/telemetry/citation-preview": "{}",
+    "**/api/telemetry/context-capture": "{}",
+  };
+
+  for (const [endpoint, body] of Object.entries(endpointsToStub)) {
+    await page.route(endpoint, async (route) => {
+      await route.fulfill({
+        status: 204,
+        contentType: "application/json",
+        body,
+      });
     });
-  });
+  }
 
-  telemetryStubbedPages.add(page);
+  nonOperationalTelemetryStubbedPages.add(page);
 }
 
 async function postWithRetries(
@@ -67,7 +76,7 @@ export async function quickLoginWithSeed(
   page: Page,
   { callbackUrl = "/", seedKey }: QuickLoginOptions = {},
 ): Promise<void> {
-  await stubTelemetry(page);
+  await stubNonOperationalTelemetry(page);
   await postWithRetries(page, "/api/dev/quick-login", { callbackUrl, seedKey });
 
   const callbackTarget = new URL(callbackUrl, "http://localhost");
@@ -164,9 +173,11 @@ export async function createProjectFromHome(
   {
     name = "E2E Mobile Project",
     seedKey,
+    openProject = true,
   }: {
     name?: string;
     seedKey?: string;
+    openProject?: boolean;
   } = {},
 ): Promise<string> {
   const response = await postWithRetries(page, "/api/dev/test-project", {
@@ -176,13 +187,13 @@ export async function createProjectFromHome(
   const payload = (await response.json()) as { projectId?: string };
   expect(payload.projectId).toMatch(/^.+$/);
 
-  await page.goto(`/project/${payload.projectId}`, { waitUntil: "domcontentloaded", timeout: 30_000 });
-  await page.waitForURL(/\/project\/[^/]+$/);
-  await expect(page.getByRole("heading", { name: /project not found/i })).not.toBeVisible();
+  if (openProject) {
+    await page.goto(`/project/${payload.projectId}`, { waitUntil: "domcontentloaded", timeout: 30_000 });
+    await page.waitForURL(/\/project\/[^/]+$/);
+    await expect(page.getByRole("heading", { name: /project not found/i })).not.toBeVisible();
+  }
 
-  const match = page.url().match(/\/project\/([^/]+)$/);
-  expect(match).not.toBeNull();
-  return match![1];
+  return payload.projectId!;
 }
 
 export async function openSampleProjectFromHome(
