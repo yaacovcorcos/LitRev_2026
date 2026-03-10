@@ -69,6 +69,23 @@ This file is a staging area for rough product ideas before they are promoted int
   - When the app should ask before writing to one or the other
   - How conflicts between remembered preferences and protocol state should be surfaced
 
+### Make Ledger Duplicate Detection Identifier-First
+- Status: exploring
+- Summary: When adding a study to the ledger, duplicate detection should rely primarily on stable identifiers like DOI and PMID rather than only the study title or name.
+- Why this matters:
+  - Title-based matching is too weak and can create false duplicates or missed duplicates.
+  - Scientific studies often have title variants, punctuation differences, abbreviations, or partial metadata.
+  - Ledger integrity depends on matching against the most specific identifiers available.
+- Direction:
+  - Prefer DOI, PMID, and similarly strong identifiers when deciding whether a study already exists in the ledger.
+  - Treat title or name matching as a weaker fallback rather than the main deduplication rule.
+  - Make duplicate handling more trustworthy when studies are added from chat, search, PDF extraction, or manual entry.
+- Open questions:
+  - Which identifier types should be considered canonical for duplicate detection
+  - What the fallback order should be when DOI or PMID is missing
+  - How to surface “possible duplicate” versus “confirmed duplicate”
+  - How merged or corrected identifiers should rewrite existing references in draft and chat
+
 ## Medium Priority
 
 ### Draft Rewrite Modes
