@@ -12,9 +12,19 @@ import { createConversation, addMessage } from "@/app/actions/conversations";
 import { processAIStream } from "@/lib/ai/stream-processor";
 import { buildClientErrorState, isRetryableTerminalReason } from "@/lib/ai/stream-error-ui";
 import { terminalReasonFromThrownError, type StreamTerminalReason } from "@/lib/ai/stream-lifecycle";
+import { AIErrorWithEnvelope } from "@/lib/ai/error-envelope";
+import {
+    appendPopupTerminalError,
+    appendPopupUserMessage,
+    createInitialPopupStreamRuntimeState,
+    getPopupTranscriptEntries,
+    reducePopupStreamChunk,
+    type PopupTimelineItem,
+    type PopupStreamRuntimeState,
+} from "@/lib/ai/popup-stream-runtime";
 import { recordReliabilityMetric } from "@/lib/ai/reliability-telemetry";
 import { markdownComponents } from "@/components/markdown/CodeBlock";
-import type { PopupChatContext, PopupMessage } from "@/types/popup-chat";
+import type { PopupChatContext } from "@/types/popup-chat";
 import type { CopilotPage } from "@/types/ai";
 import { COARSE_POINTER_MEDIA_QUERY } from "@/lib/mobile/breakpoints";
 import { isMobilePopupV2Enabled } from "@/lib/mobile/feature-flags";
@@ -88,6 +98,14 @@ function contextIcon(ctx: PopupChatContext): string {
     }
 }
 
+function isAssistantItem(item: PopupTimelineItem | undefined): item is Extract<PopupTimelineItem, { type: "assistant_message" }> {
+    return item?.type === "assistant_message";
+}
+
+function isErrorItem(item: PopupTimelineItem | undefined): item is Extract<PopupTimelineItem, { type: "error" }> {
+    return item?.type === "error";
+}
+
 type PopupChatProps = {
     projectId: string;
 };
@@ -97,12 +115,13 @@ export function PopupChat({ projectId }: PopupChatProps) {
     const { isOpen, context, closePopupChat } = usePopupChat();
     const { selectConversation, setCollapsed, refreshConversations } = useProjectCopilot();
 
-    const [messages, setMessages] = useState<PopupMessage[]>([]);
+    const [streamState, setStreamState] = useState<PopupStreamRuntimeState>(() => createInitialPopupStreamRuntimeState());
     const [input, setInput] = useState("");
     const [isStreaming, setIsStreaming] = useState(false);
     const [showTurnHint, setShowTurnHint] = useState(false);
     const [turnHintDismissed, setTurnHintDismissed] = useState(false);
     const [isDragEnabled, setIsDragEnabled] = useState(true);
+    const streamStateRef = useRef<PopupStreamRuntimeState>(createInitialPopupStreamRuntimeState());
 
     const abortRef = useRef<AbortController | null>(null);
     const userStopRequestedRef = useRef(false);
@@ -115,11 +134,21 @@ export function PopupChat({ projectId }: PopupChatProps) {
     const posRef = useRef<{ x: number; y: number } | null>(null);
 
     // Count user messages
-    const userTurnCount = messages.filter((m) => m.role === "user").length;
+    const userTurnCount = streamState.items.filter((item) => item.type === "user_message").length;
+
+    const updateStreamState = useCallback((updater: (prev: PopupStreamRuntimeState) => PopupStreamRuntimeState) => {
+        setStreamState((prev) => {
+            const next = updater(prev);
+            streamStateRef.current = next;
+            return next;
+        });
+    }, []);
 
     // Reset state when context changes or popup closes
     useEffect(() => {
-        setMessages([]);
+        const resetState = createInitialPopupStreamRuntimeState();
+        streamStateRef.current = resetState;
+        setStreamState(resetState);
         setInput("");
         setIsStreaming(false);
         setShowTurnHint(false);
@@ -152,7 +181,7 @@ export function PopupChat({ projectId }: PopupChatProps) {
         notifyContentChanged,
     } = useStableChatScroll();
 
-    useLayoutEffect(() => { notifyContentChanged(); }, [messages, notifyContentChanged]);
+    useLayoutEffect(() => { notifyContentChanged(); }, [streamState.items, notifyContentChanged]);
 
     // Focus textarea when popup opens
     useEffect(() => {
@@ -204,30 +233,29 @@ export function PopupChat({ projectId }: PopupChatProps) {
             });
         }
 
-        const userMsg: PopupMessage = {
-            id: makeId("pm"),
-            role: "user",
+        const userMsgId = makeId("pm");
+        const userMsgCreatedAt = new Date().toISOString();
+        updateStreamState((prev) => appendPopupUserMessage(prev, {
+            id: userMsgId,
             content: trimmed,
-            createdAt: new Date().toISOString(),
-        };
-
-        setMessages((prev) => [...prev, userMsg]);
+            createdAt: userMsgCreatedAt,
+        }));
         setInput("");
         setIsStreaming(true);
 
         // Build popup transcript payload for the server popup runtime (server owns system prompt).
+        const transcriptEntries = getPopupTranscriptEntries(streamStateRef.current.items);
         const apiMessages = [
-            ...messages.map((m) => ({
-                id: m.id,
-                role: m.role as "user" | "assistant",
-                content: m.content,
-                createdAt: m.createdAt,
+            ...transcriptEntries.map((entry, index) => ({
+                id: `popup-history-${index}`,
+                role: entry.role,
+                content: entry.content,
+                createdAt: new Date().toISOString(),
             })),
-            { id: userMsg.id, role: "user" as const, content: trimmed, createdAt: userMsg.createdAt },
+            { id: userMsgId, role: "user" as const, content: trimmed, createdAt: userMsgCreatedAt },
         ];
 
         const aiMsgId = makeId("pm");
-        let fullContent = "";
         let terminalReason: StreamTerminalReason | null = null;
         userStopRequestedRef.current = false;
         const requestKey = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
@@ -261,43 +289,6 @@ export function PopupChat({ projectId }: PopupChatProps) {
             });
         };
 
-        const upsertAssistantError = (params: {
-            message: string;
-            retryable: boolean;
-            errorMeta: NonNullable<PopupMessage["errorMeta"]>;
-        }) => {
-            const trimmedMessage = params.message.trim();
-            if (!trimmedMessage) return;
-
-            setMessages((prev) => {
-                const next = [...prev];
-                const existingIdx = next.findIndex((message) => message.id === aiMsgId);
-                if (existingIdx >= 0) {
-                    const existing = next[existingIdx];
-                    if (!existing || existing.role !== "assistant") return prev;
-
-                    next[existingIdx] = {
-                        ...existing,
-                        errorMessage: existing.errorMessage === trimmedMessage ? existing.errorMessage : trimmedMessage,
-                        retryable: params.retryable,
-                        errorMeta: params.errorMeta,
-                    };
-                    return next;
-                }
-
-                next.push({
-                    id: aiMsgId,
-                    role: "assistant",
-                    content: "",
-                    errorMessage: trimmedMessage,
-                    retryable: params.retryable,
-                    errorMeta: params.errorMeta,
-                    createdAt: new Date().toISOString(),
-                });
-                return next;
-            });
-        };
-
         const controller = new AbortController();
         abortRef.current = controller;
 
@@ -328,26 +319,19 @@ export function PopupChat({ projectId }: PopupChatProps) {
             const reader = response.body?.getReader();
             if (!reader) throw new Error("No response body");
 
-            let aiCreated = false;
             const summary = await processAIStream({
                 reader,
                 signal: controller.signal,
                 throwOnErrorChunk: true,
                 onChunk: (event) => {
-                    if (event.type !== "content" || !event.content) return;
-                    fullContent += event.content;
-                    if (!aiCreated) {
-                        aiCreated = true;
-                        setMessages((prev) => [
-                            ...prev,
-                            { id: aiMsgId, role: "assistant", content: fullContent, createdAt: new Date().toISOString() },
-                        ]);
-                        return;
-                    }
-                    const captured = fullContent;
-                    setMessages((prev) =>
-                        prev.map((m) => (m.id === aiMsgId ? { ...m, content: captured } : m)),
-                    );
+                    updateStreamState((prev) => reducePopupStreamChunk(prev, event, {
+                        aiMessageId: aiMsgId,
+                        page: contextToPage(context),
+                        section: context.type === "protocol_section" || context.type === "draft_selection"
+                            ? context.section
+                            : undefined,
+                        now: () => new Date().toISOString(),
+                    }));
                 },
             });
             terminalReason = summary.terminalReason;
@@ -362,14 +346,15 @@ export function PopupChat({ projectId }: PopupChatProps) {
                     : "The stream ended unexpectedly. Please retry.";
                 const isRetryable = isRetryableTerminalReason(terminalReason);
                 const errorState = buildClientErrorState(fallbackError);
-                upsertAssistantError({
+                updateStreamState((prev) => appendPopupTerminalError(prev, {
                     message: errorState.message,
                     retryable: isRetryable,
                     errorMeta: {
                         ...errorState.errorMeta,
                         retryable: isRetryable,
                     },
-                });
+                    createdAt: new Date().toISOString(),
+                }));
             }
         } catch (error) {
             if (error instanceof DOMException && error.name === "AbortError") {
@@ -380,12 +365,17 @@ export function PopupChat({ projectId }: PopupChatProps) {
             terminalReason = terminalReasonFromThrownError(error);
             emitTerminalMetric(terminalReason);
 
+            if (error instanceof AIErrorWithEnvelope) {
+                return;
+            }
+
             const errorState = buildClientErrorState(error);
-            upsertAssistantError({
+            updateStreamState((prev) => appendPopupTerminalError(prev, {
                 message: errorState.message,
                 retryable: errorState.retryable,
                 errorMeta: errorState.errorMeta,
-            });
+                createdAt: new Date().toISOString(),
+            }));
         } finally {
             setIsStreaming(false);
             if (abortRef.current === controller) {
@@ -404,7 +394,7 @@ export function PopupChat({ projectId }: PopupChatProps) {
                 });
             }
         }
-    }, [input, isStreaming, context, messages]);
+    }, [context, input, isStreaming, updateStreamState]);
 
     const handleStop = useCallback(() => {
         userStopRequestedRef.current = true;
@@ -474,7 +464,7 @@ export function PopupChat({ projectId }: PopupChatProps) {
     }, [isDragEnabled]);
 
     const handleContinueInCopilot = useCallback(async () => {
-        if (!context || messages.length === 0) return;
+        if (!context || streamState.items.length === 0) return;
         const startedAt = Date.now();
 
         if (isMobileTelemetryContext()) {
@@ -518,7 +508,7 @@ export function PopupChat({ projectId }: PopupChatProps) {
             const convId = convResult.data.id;
 
             // Insert messages sequentially
-            for (const msg of messages) {
+            for (const msg of getPopupTranscriptEntries(streamStateRef.current.items)) {
                 if (!msg.content.trim()) continue;
                 await addMessage({
                     conversationId: convId,
@@ -558,18 +548,18 @@ export function PopupChat({ projectId }: PopupChatProps) {
                 });
             }
         }
-    }, [context, messages, projectId, selectConversation, setCollapsed, refreshConversations, closePopupChat]);
+    }, [context, projectId, refreshConversations, selectConversation, setCollapsed, streamState.items.length, closePopupChat]);
 
     const handleSaveToNotes = useCallback(async () => {
-        if (messages.length === 0) return;
+        if (streamState.items.length === 0) return;
 
-        const markdown = messages
-            .filter((m) => m.content.trim().length > 0)
-            .map((m) => (m.role === "user" ? `**You:** ${m.content}` : `**AI:** ${m.content}`))
+        const markdown = getPopupTranscriptEntries(streamStateRef.current.items)
+            .filter((entry) => entry.content.trim().length > 0)
+            .map((entry) => (entry.role === "user" ? `**You:** ${entry.content}` : `**AI:** ${entry.content}`))
             .join("\n\n---\n\n");
 
         await createNoteAction(projectId, markdown, "conversation");
-    }, [messages, projectId]);
+    }, [projectId, streamState.items.length]);
 
     if (!context) return null;
 
@@ -578,6 +568,7 @@ export function PopupChat({ projectId }: PopupChatProps) {
     const icon = contextIcon(context);
     const canSend = input.trim().length > 0 && !isStreaming;
     const popupClassName = `${styles.popupChat} ${mobilePopupV2Enabled ? styles.popupChatMobileV2 : ""}`;
+    const renderedItems = streamState.items;
 
     return (
         <Dialog.Root open={isOpen} onOpenChange={(open) => { if (!open) closePopupChat(); }}>
@@ -620,41 +611,109 @@ export function PopupChat({ projectId }: PopupChatProps) {
 
                     {/* Messages */}
                     <div className={styles.messages} ref={messagesContainerRef} onScroll={onMessagesScroll}>
-                        {messages.length === 0 ? (
+                        {renderedItems.length === 0 ? (
                             <div className={styles.emptyMessages}>{getPlaceholder(context)}</div>
                         ) : (
-                            messages.map((msg, i) => (
-                                <div
-                                    key={msg.id}
-                                    className={`${styles.msgRow} ${msg.role === "user" ? styles.msgRowUser : styles.msgRowAi}`}
-                                >
+                            renderedItems.map((item, index) => {
+                                if (item.type === "error" && isAssistantItem(renderedItems[index - 1])) {
+                                    return null;
+                                }
+
+                                if (item.type === "progress") {
+                                    return (
+                                        <div key={item.id} className={styles.metaRow}>
+                                            <div className={styles.metaCard}>
+                                                <span className="material-icons-round">sync</span>
+                                                <span>{item.message}</span>
+                                            </div>
+                                        </div>
+                                    );
+                                }
+
+                                if (item.type === "checkpoint") {
+                                    return (
+                                        <div key={item.id} className={styles.metaRow}>
+                                            <div className={styles.checkpointCard}>{item.label}</div>
+                                        </div>
+                                    );
+                                }
+
+                                if (item.type === "user_input_request") {
+                                    return (
+                                        <div key={item.id} className={styles.metaRow}>
+                                            <div className={styles.blockerCard}>
+                                                {item.header ? <div className={styles.blockerHeader}>{item.header}</div> : null}
+                                                <div className={styles.blockerQuestion}>{item.question}</div>
+                                                {item.context ? <div className={styles.blockerContext}>{item.context}</div> : null}
+                                                <button
+                                                    type="button"
+                                                    className={styles.blockerAction}
+                                                    onClick={handleContinueInCopilot}
+                                                >
+                                                    Continue in Copilot to answer
+                                                </button>
+                                            </div>
+                                        </div>
+                                    );
+                                }
+
+                                if (item.type === "error") {
+                                    return (
+                                        <div key={item.id} className={styles.msgRow}>
+                                            <div className={`${styles.msgBubble} ${styles.msgBubbleError}`} data-popup-error="1">
+                                                <div className={styles.msgErrorText}>{item.message}</div>
+                                                <div className={styles.msgStatus}>
+                                                    {item.retryable ? "Retry recommended" : "Request not completed"}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                }
+
+                                if (item.type === "assistant_message") {
+                                    const nextItem = renderedItems[index + 1];
+                                    const adjacentError = isErrorItem(nextItem) ? nextItem : null;
+                                    return (
+                                        <div
+                                            key={item.id}
+                                            className={`${styles.msgRow} ${styles.msgRowAi}`}
+                                        >
+                                            <div
+                                                className={`${styles.msgBubble} ${adjacentError ? styles.msgBubbleError : ""}`}
+                                                data-popup-error={adjacentError ? "1" : undefined}
+                                            >
+                                                <div className={styles.msgText}>
+                                                    <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                                                        {item.content}
+                                                    </ReactMarkdown>
+                                                    {isStreaming && index === renderedItems.length - 1 && (
+                                                        <span className={styles.streamingCursor} aria-hidden="true">◎</span>
+                                                    )}
+                                                </div>
+                                                {adjacentError ? (
+                                                    <>
+                                                        <div className={styles.msgErrorText}>{adjacentError.message}</div>
+                                                        <div className={styles.msgStatus}>
+                                                            {adjacentError.retryable ? "Retry recommended" : "Request not completed"}
+                                                        </div>
+                                                    </>
+                                                ) : null}
+                                            </div>
+                                        </div>
+                                    );
+                                }
+
+                                return (
                                     <div
-                                        className={`${styles.msgBubble} ${msg.errorMeta ? styles.msgBubbleError : ""}`}
-                                        data-popup-error={msg.errorMeta ? "1" : undefined}
+                                        key={item.id}
+                                        className={`${styles.msgRow} ${styles.msgRowUser}`}
                                     >
-                                        {msg.role === "assistant" ? (
-                                            <div className={styles.msgText}>
-                                                <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-                                                    {msg.content}
-                                                </ReactMarkdown>
-                                                {isStreaming && i === messages.length - 1 && (
-                                                    <span className={styles.streamingCursor} aria-hidden="true">◎</span>
-                                                )}
-                                            </div>
-                                        ) : (
-                                            <div className={styles.msgText}>{msg.content}</div>
-                                        )}
-                                        {msg.errorMessage ? (
-                                            <div className={styles.msgErrorText}>{msg.errorMessage}</div>
-                                        ) : null}
-                                        {msg.errorMeta ? (
-                                            <div className={styles.msgStatus}>
-                                                {msg.retryable ? "Retry recommended" : "Request not completed"}
-                                            </div>
-                                        ) : null}
+                                        <div className={styles.msgBubble}>
+                                            <div className={styles.msgText}>{item.content}</div>
+                                        </div>
                                     </div>
-                                </div>
-                            ))
+                                );
+                            })
                         )}
                         <div ref={messagesBottomRef} style={{ height: 1 }} aria-hidden="true" />
                     </div>
@@ -718,7 +777,7 @@ export function PopupChat({ projectId }: PopupChatProps) {
                     </div>
 
                     {/* Footer */}
-                    {messages.length > 0 && (
+                    {renderedItems.length > 0 && (
                         <div className={styles.footer}>
                             <button type="button" className={styles.footerLink} onClick={handleSaveToNotes}>
                                 Save to Notes
