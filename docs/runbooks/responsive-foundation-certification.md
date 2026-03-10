@@ -27,6 +27,13 @@ Local-only debug path:
 - `next-app/lib/mobile/telemetry.ts`
 - use for local diagnosis only, not promotion decisions
 
+Playwright E2E mode:
+- Playwright starts Next with `NEXT_PUBLIC_E2E_TEST_MODE=1` and `E2E_TEST_MODE=1`
+- reliability and performance telemetry do not ship in that mode
+- telemetry ingest routes suppress error logging in that mode as a backstop
+- the shared foundation helper only stubs non-operational telemetry routes still outside this contract (`chat-unification`, `citation-preview`, `context-capture`)
+- local `next-app/lib/mobile/telemetry.ts` storage remains best-effort and is not the primary no-ship target
+
 ## Foundation certification surfaces
 Operational telemetry surfaces:
 - `home`

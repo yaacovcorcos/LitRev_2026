@@ -11,12 +11,14 @@ import {
 } from "@/types/performance-telemetry";
 import { resolvePerformanceRouteContext } from "@/lib/performance-route-context";
 import { getViewportClass } from "@/lib/mobile/tiers";
+import { isOperationalTelemetryE2EMode } from "@/lib/telemetry/e2e-mode";
 
 const TELEMETRY_ENDPOINT = "/api/telemetry/performance";
 
 function shouldShip(): boolean {
   if (typeof window === "undefined") return false;
   if (typeof fetch !== "function") return false;
+  if (isOperationalTelemetryE2EMode()) return false;
   if (typeof process !== "undefined" && process.env.NODE_ENV === "test") return false;
   const raw = process.env.NEXT_PUBLIC_ENABLE_PERFORMANCE_TELEMETRY;
   if (!raw) return true;

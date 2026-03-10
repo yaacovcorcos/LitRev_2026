@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { AuthContext } from "@/lib/server/auth/session";
 import { requireApiSession } from "@/lib/server/auth/session";
+import { isTelemetryIngestE2EMode } from "@/lib/telemetry/e2e-mode";
 
 type AcceptedResponseBody = {
   success: true;
@@ -63,7 +64,9 @@ export function createTelemetryPostHandler<TResult>({
         );
       }
 
-      console.error(`[telemetry/${logKey}] ingestion failed`, error);
+      if (!isTelemetryIngestE2EMode()) {
+        console.error(`[telemetry/${logKey}] ingestion failed`, error);
+      }
       return Response.json(
         {
           success: false,
