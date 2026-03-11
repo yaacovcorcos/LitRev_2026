@@ -25,6 +25,7 @@
     "chat:burnin:validate": "tsx scripts/validate-chat-unification-burn-in.ts",
     "memory:warmup": "tsx scripts/warmup-memory-embeddings.ts",
     "memory:validate": "tsx scripts/validate-memory-rollout.ts",
+    "governance:check": "node scripts/check-governance-docs.mjs --mode=${GOVERNANCE_CHECK_MODE:-enforce}",
     "citation:report": "tsx scripts/report-citation-preview-metrics.ts",
     "citation:smoke": "tsx scripts/smoke-citation-providers.ts",
     "citation:diagnose": "tsx scripts/diagnose-citation-url.ts",

@@ -94,6 +94,9 @@ jobs:
       - name: Type check
         run: cd next-app && npx tsc --noEmit
 
+      - name: Governance docs guard
+        run: cd next-app && npm run governance:check
+
       - name: Chat stream architecture guard
         run: cd next-app && node scripts/check-chat-stream-architecture.mjs --mode=${CHAT_STREAM_ARCH_GUARD_MODE:-enforce}
 
