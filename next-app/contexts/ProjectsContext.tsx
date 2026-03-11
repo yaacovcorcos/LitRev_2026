@@ -1,22 +1,40 @@
 "use client";
 
-import { createProjectAction, deleteProjectAction, getProjectAction, listProjectsAction } from "@/app/actions/projects";
+import { runLegacyClaimBootstrapAction, listHomeProjectsAction } from "@/app/actions/home";
+import {
+  createProjectAction,
+  deleteProjectAction,
+  getProjectAction,
+  listProjectsAction,
+} from "@/app/actions/projects";
+import { isAuthError, redirectToLogin } from "@/lib/action-client";
+import { authClient } from "@/lib/auth-client";
 import {
   getLocalStorageMigrationStatus,
   migrateLocalStorageToBackend,
   type MigrationStatus,
 } from "@/lib/migrateLocalStorage";
-import { authClient } from "@/lib/auth-client";
-import { isAuthError, redirectToLogin } from "@/lib/action-client";
-import { Project } from "@/types/project";
+import { usePathname } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import type { HomeAuthState, HomeBootstrapState, HomeWorkspaceBootstrap } from "@/types/home-bootstrap";
+import type { Project } from "@/types/project";
+
+const HOME_PROJECT_STALE_MS = 15_000;
+const LEGACY_CLAIM_SESSION_KEY = "litrev:legacyClaimBootstrap:v1";
+
+declare global {
+  interface Window {
+    __litrevHomeBootstrap?: HomeWorkspaceBootstrap;
+  }
+}
 
 type ProjectsContextValue = {
   projects: Project[];
+  authState: HomeAuthState;
+  homeBootstrapState: HomeBootstrapState;
+  usedSeededBootstrap: boolean;
   isInitialized: boolean;
-  /** True while the initial project list fetch is in-flight. */
   isLoadingProjects: boolean;
-  /** Non-null if the last project list fetch failed. */
   projectsError: string | null;
   migrationStatus: MigrationStatus;
   migrationError: string | null;
@@ -28,48 +46,113 @@ type ProjectsContextValue = {
   refresh: () => Promise<void>;
 };
 
+type ProjectsProviderProps = {
+  children: React.ReactNode;
+  initialBootstrap?: HomeWorkspaceBootstrap | null;
+};
+
 const ProjectsContext = createContext<ProjectsContextValue | undefined>(undefined);
 
-export function ProjectsProvider({ children }: { children: React.ReactNode }) {
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [isInitialized, setIsInitialized] = useState(false);
-  const [isLoadingProjects, setIsLoadingProjects] = useState(true);
-  const [projectsError, setProjectsError] = useState<string | null>(null);
+function readWindowHomeBootstrap(): HomeWorkspaceBootstrap | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  return window.__litrevHomeBootstrap ?? null;
+}
+
+function resolveInitialBootstrap(input?: HomeWorkspaceBootstrap | null): HomeWorkspaceBootstrap | null {
+  return input ?? readWindowHomeBootstrap();
+}
+
+function deriveHomeBootstrapState(
+  authState: HomeAuthState,
+  projects: Project[],
+  hasLoaded: boolean,
+): HomeBootstrapState {
+  if (authState === "unauthenticated") {
+    return "unauthenticated";
+  }
+  if (!hasLoaded) {
+    return "loading_unknown";
+  }
+  return projects.length > 0 ? "loaded_nonempty" : "loaded_empty";
+}
+
+function hasFreshHomeSeed(loadedAt: number | null): boolean {
+  return loadedAt !== null && Date.now() - loadedAt < HOME_PROJECT_STALE_MS;
+}
+
+export function ProjectsProvider({ children, initialBootstrap }: ProjectsProviderProps) {
+  const initialSeed = resolveInitialBootstrap(initialBootstrap);
+  const pathname = usePathname();
+  const [projects, setProjects] = useState<Project[]>(() => initialSeed?.initialProjects ?? []);
+  const [authState, setAuthState] = useState<HomeAuthState>(() => initialSeed?.authState ?? "unknown");
+  const [homeBootstrapState, setHomeBootstrapState] = useState<HomeBootstrapState>(
+    () => initialSeed?.homeBootstrapState ?? "loading_unknown",
+  );
+  const [usedSeededBootstrap] = useState<boolean>(() => Boolean(initialSeed));
+  const [isInitialized, setIsInitialized] = useState(() => initialSeed?.authState !== "unknown");
+  const [isLoadingProjects, setIsLoadingProjects] = useState(
+    () => !(initialSeed?.initialProjectsLoaded ?? false) && initialSeed?.authState !== "unauthenticated",
+  );
+  const [projectsError, setProjectsError] = useState<string | null>(() => initialSeed?.error ?? null);
   const [migrationStatus, setMigrationStatus] = useState<MigrationStatus>("pending");
   const [migrationError, setMigrationError] = useState<string | null>(null);
   const migrationInFlightRef = useRef(false);
+  const projectsLoadedAtRef = useRef<number | null>(initialSeed?.loadedAt ?? null);
+  const hasLoadedProjectsRef = useRef(Boolean(initialSeed?.initialProjectsLoaded));
+  const hasLocalMutationRef = useRef(false);
+  const claimBootstrapStartedRef = useRef(false);
   const { data: session, isPending: isSessionPending } = authClient.useSession();
 
   const refresh = useCallback(async () => {
     if (isSessionPending) return;
     if (!session) {
       setProjects([]);
+      setAuthState("unauthenticated");
+      setHomeBootstrapState("unauthenticated");
       setIsLoadingProjects(false);
+      setProjectsError(null);
+      setIsInitialized(true);
+      hasLoadedProjectsRef.current = false;
+      projectsLoadedAtRef.current = null;
       return;
     }
 
+    setAuthState("authenticated");
     setIsLoadingProjects(true);
     setProjectsError(null);
 
     try {
-      const result = await listProjectsAction();
+      const result = pathname === "/" ? await listHomeProjectsAction() : await listProjectsAction();
       if (result.success) {
         setProjects(result.data);
         setProjectsError(null);
+        hasLoadedProjectsRef.current = true;
+        projectsLoadedAtRef.current = Date.now();
+        hasLocalMutationRef.current = false;
+        setHomeBootstrapState(deriveHomeBootstrapState("authenticated", result.data, true));
       } else if (isAuthError(result)) {
         redirectToLogin();
       } else {
         console.error("Failed to load projects from backend:", result.error);
         setProjectsError(result.error);
+        if (!hasLoadedProjectsRef.current) {
+          setHomeBootstrapState("loading_unknown");
+        }
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to load projects";
       console.error("Failed to load projects from backend", err);
       setProjectsError(message);
+      if (!hasLoadedProjectsRef.current) {
+        setHomeBootstrapState("loading_unknown");
+      }
     } finally {
       setIsLoadingProjects(false);
+      setIsInitialized(true);
     }
-  }, [isSessionPending, session]);
+  }, [isSessionPending, pathname, session]);
 
   const runMigration = useCallback(
     async (force = false) => {
@@ -81,7 +164,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       const startedAt = Date.now();
 
       try {
-        const result = await migrateLocalStorageToBackend({ force, timeoutMs: 10000 });
+        const result = await migrateLocalStorageToBackend({ force, timeoutMs: 10_000 });
         setMigrationStatus(result.status);
 
         const durationMs = Date.now() - startedAt;
@@ -104,7 +187,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         migrationInFlightRef.current = false;
       }
     },
-    [isSessionPending, refresh, session]
+    [isSessionPending, refresh, session],
   );
 
   const retryMigration = useCallback(async () => {
@@ -113,32 +196,88 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (isSessionPending) {
-      // Never block app entry on a long/pending session lookup.
-      setIsInitialized(true);
+      if (usedSeededBootstrap || authState !== "unknown") {
+        setIsInitialized(true);
+      }
       return;
     }
 
     if (!session) {
       setProjects([]);
+      setAuthState("unauthenticated");
+      setHomeBootstrapState("unauthenticated");
       setIsLoadingProjects(false);
       setProjectsError(null);
       setMigrationStatus("pending");
       setMigrationError(null);
       setIsInitialized(true);
+      hasLoadedProjectsRef.current = false;
+      projectsLoadedAtRef.current = null;
       return;
     }
 
-    // Fast startup: render app immediately; migration runs in background.
+    setAuthState("authenticated");
     setIsInitialized(true);
-    void refresh();
+
+    const shouldRefreshFromSeed =
+      !hasLoadedProjectsRef.current ||
+      hasLocalMutationRef.current ||
+      !hasFreshHomeSeed(projectsLoadedAtRef.current);
+
+    if (shouldRefreshFromSeed) {
+      void refresh();
+    } else {
+      setIsLoadingProjects(false);
+    }
 
     const status = getLocalStorageMigrationStatus();
     setMigrationStatus(status);
-    if (status === "failed" || status === "done") {
+    if (status !== "failed" && status !== "done") {
+      void runMigration(false);
+    }
+  }, [authState, isSessionPending, refresh, runMigration, session, usedSeededBootstrap]);
+
+  useEffect(() => {
+    if (isSessionPending || !session || claimBootstrapStartedRef.current) {
       return;
     }
-    void runMigration(false);
-  }, [isSessionPending, refresh, runMigration, session]);
+
+    if (typeof window !== "undefined" && window.sessionStorage.getItem(LEGACY_CLAIM_SESSION_KEY) === "1") {
+      claimBootstrapStartedRef.current = true;
+      return;
+    }
+
+    claimBootstrapStartedRef.current = true;
+    let cancelled = false;
+
+    const schedule =
+      typeof window !== "undefined" && "requestIdleCallback" in window
+        ? window.requestIdleCallback(async () => {
+            if (cancelled) return;
+            const result = await runLegacyClaimBootstrapAction();
+            if (!cancelled && result.success) {
+              window.sessionStorage.setItem(LEGACY_CLAIM_SESSION_KEY, "1");
+            }
+          })
+        : globalThis.setTimeout(async () => {
+            if (cancelled) return;
+            const result = await runLegacyClaimBootstrapAction();
+            if (!cancelled && result.success) {
+              window.sessionStorage.setItem(LEGACY_CLAIM_SESSION_KEY, "1");
+            }
+          }, 0);
+
+    return () => {
+      cancelled = true;
+      if (typeof schedule === "number") {
+        if (typeof window !== "undefined" && "cancelIdleCallback" in window) {
+          window.cancelIdleCallback(schedule);
+        } else {
+          globalThis.clearTimeout(schedule);
+        }
+      }
+    };
+  }, [isSessionPending, session]);
 
   const addProject = useCallback(async (project: Project): Promise<Project | null> => {
     try {
@@ -147,7 +286,13 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         console.error("Failed to create project:", result.error);
         return null;
       }
+      hasLocalMutationRef.current = true;
+      hasLoadedProjectsRef.current = true;
+      projectsLoadedAtRef.current = Date.now();
+      setAuthState("authenticated");
+      setProjectsError(null);
       setProjects((prev) => [result.data, ...prev.filter((p) => p.id !== result.data.id)]);
+      setHomeBootstrapState("loaded_nonempty");
       return result.data;
     } catch (err) {
       console.error("Failed to create project", err);
@@ -162,7 +307,14 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         console.error("Failed to delete project:", result.error);
         return false;
       }
-      setProjects((prev) => prev.filter((project) => project.id !== id));
+      hasLocalMutationRef.current = true;
+      hasLoadedProjectsRef.current = true;
+      projectsLoadedAtRef.current = Date.now();
+      setProjects((prev) => {
+        const next = prev.filter((project) => project.id !== id);
+        setHomeBootstrapState(next.length > 0 ? "loaded_nonempty" : "loaded_empty");
+        return next;
+      });
       return true;
     } catch (err) {
       console.error("Failed to delete project", err);
@@ -171,8 +323,8 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const getProjectById = useMemo(
-    () => (id: string) => projects.find((p) => p.id === id),
-    [projects]
+    () => (id: string) => projects.find((project) => project.id === id),
+    [projects],
   );
 
   const ensureProjectLoaded = useCallback(async (id: string): Promise<Project | null> => {
@@ -194,10 +346,15 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         }
 
         if (result.data) {
+          hasLoadedProjectsRef.current = true;
+          projectsLoadedAtRef.current = Date.now();
           setProjects((prev) => {
             const next = prev.filter((project) => project.id !== result.data!.id);
             return [result.data!, ...next];
           });
+          setAuthState("authenticated");
+          setHomeBootstrapState("loaded_nonempty");
+          setProjectsError(null);
           return result.data;
         }
 
@@ -215,6 +372,9 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo(
     () => ({
       projects,
+      authState,
+      homeBootstrapState,
+      usedSeededBootstrap,
       isInitialized,
       isLoadingProjects,
       projectsError,
@@ -228,19 +388,22 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       refresh,
     }),
     [
-      projects,
+      addProject,
+      authState,
+      deleteProject,
+      ensureProjectLoaded,
+      getProjectById,
+      homeBootstrapState,
       isInitialized,
       isLoadingProjects,
-      projectsError,
-      migrationStatus,
       migrationError,
-      retryMigration,
-      addProject,
-      deleteProject,
-      getProjectById,
-      ensureProjectLoaded,
+      migrationStatus,
+      projects,
+      projectsError,
       refresh,
-    ]
+      retryMigration,
+      usedSeededBootstrap,
+    ],
   );
 
   return <ProjectsContext.Provider value={value}>{children}</ProjectsContext.Provider>;

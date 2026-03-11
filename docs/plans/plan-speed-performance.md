@@ -23,7 +23,10 @@ Define the canonical implementation plan for app speed, responsiveness, and stab
 - The committed baseline is probe-generated from the CI probe path:
   - `output/performance/baseline/baseline-latest.json` now mirrors the authoritative CI probe shape and provenance
   - a dated frozen copy also exists under `output/performance/baseline/`
-- The workspace index currently loads immediately after session resolution through `ProjectsContext`, using a client-side `listProjectsAction()` fetch after hydration.
+- The homepage workspace index now has a server-first boot path:
+  - `/` resolves authenticated workspace context and project-index rows on the server before first paint
+  - the home route hydrates the existing client shell from that bootstrap instead of waiting on a client-side empty-first project fetch
+  - `ProjectsContext` still owns post-hydration mutations and refreshes, but homepage refresh on `/` now uses the fast home-specific project-list path rather than the bootstrap-heavy auth helper
 - Project entry boot is now route-aware through the shared project shell boot contract:
   - root overview entry no longer boots provider data by default
   - `protocol` deep links boot protocol only, and `ledger` deep links boot studies only
@@ -246,7 +249,7 @@ Rules:
 
 ### Remaining Quick Wins
 - Remove the remote Material Icons stylesheet from the shared shell.
-- Remove the runtime admin-status fetch from the shared shell.
+- Keep shared-shell boot fetches off the first-paint path.
 
 ### Structural Refactors
 - Move route boot reads from client-side provider fetches to server-first rendering.
@@ -306,7 +309,7 @@ Rules:
 ### Compact Current-State Matrix
 | Route | Boot Trigger | Main Data Path | Local Durability / Cache | Current Warmup / Preload | Main Risk |
 |---|---|---|---|---|---|
-| `/` | App shell mount after session resolution | `ProjectsContext` -> `listProjectsAction()` | sort/view prefs, last project ID, workspace-entry session flag | project links use `prefetch={false}` | client-side auth -> workspace-index waterfall |
+| `/` | server homepage bootstrap, then hydrated client shell | server home bootstrap -> hydrated `ProjectsContext` -> `listHomeProjectsAction()` for home refresh | sort/view prefs, last project ID, workspace-entry session flag | project links use `prefetch={false}` | local post-hydration enhancements still reorder or decorate after first paint |
 | `/project/[id]` | project shell boot mode `overview` or `conversation` | `ProjectsContext` + overview stats action + optional `useProjectState()` bootstrap | project-entry restore state, project copilot provider state | recent activity defers until idle; no sibling-route prefetch | long-lived shell keeps project state resident across route changes |
 | `/project/[id]/protocol` | project shell eager-boots `protocol` slice | `ProjectDataContext.protocol` -> `ProtocolContext` | protocol local durability envelope in `localStorage` with sync metadata | active-surface boot only; hover warmup from tab bar may preload this domain | local-first edits plus async remote sync create staleness/conflict complexity |
 | `/project/[id]/ledger` | project shell eager-boots `ledger` slice | `ProjectDataContext.studies` seeds `LedgerContext`; page reads `LedgerContext` | in-memory `LedgerContext` cache only | tab-hover warmup may preload `ledger`; route warms `protocol` when criteria are needed | duplicated ledger state across two client caches |
