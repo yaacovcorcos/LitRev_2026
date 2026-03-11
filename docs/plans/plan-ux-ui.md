@@ -28,9 +28,8 @@ Domain-specific execution plans remain canonical for their domains:
 - Shared composer action hierarchy is active across chat surfaces:
   - `CopilotInputCore` now uses a left-edge `+` extension menu for secondary actions, keeps voice in the right-side primary action cluster beside send, and presents a real microphone-driven waveform/timer state while recording.
   - Shared composer hover language stays token-based and calm, while recording/transcribing states preserve keyboard stop behavior without moving reasoning controls into the composer.
-<<<<<<< HEAD
   - The three main chat surfaces now elevate the single live `progress` row into a compact composer-adjacent bar, suppress the matching inline progress row at render time only, and keep receipts/checkpoints/grouped PubMed sequences/errors inline in the timeline.
-  - Voice recording now uses a dedicated canvas-based amplitude-history visualizer with a frozen transcribing duration, explicit microphone-permission pending UI, short-recording feedback, and slower horizontal travel tuned with capped thin-bar geometry, quieter dot-like baseline marks instead of a fixed center line, slightly wider spacing, and slightly more responsive peaks.
+  - Voice recording now uses a dedicated canvas-based amplitude-history visualizer with a frozen transcribing duration, explicit microphone-permission pending UI, short-recording feedback, slower horizontal travel tuned with wider live-strip occupancy, capped thin-bar geometry, quieter dot-like baseline marks instead of a fixed center line, slightly wider spacing, slightly more responsive peaks, and a minimalist three-dot transcribing indicator.
 - Shared shell-contained scroll ownership is active for homepage and library workspace surfaces:
   - `AppShell` now provides a viewport-bounded shell parent, `surface-root[data-surface-height="shell"]` acts as the bounded route root, and `surface-scroll-body` remains the sole inner scroll owner.
   - Homepage workspace and library now use separate route-local layout modules on top of that shared contract, and homepage tall-list wheel scrolling is covered by a dedicated smoke test.

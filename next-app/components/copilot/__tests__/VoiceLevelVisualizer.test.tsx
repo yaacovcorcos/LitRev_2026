@@ -84,19 +84,19 @@ describe("VoiceLevelVisualizer", () => {
     });
 
     it("caps bar width and centers the denser strip geometry", () => {
-        const geometry = getBarGeometry(260, 88);
+        const geometry = getBarGeometry(420, 104);
 
         expect(geometry.barWidth).toBeLessThanOrEqual(1.6);
         expect(geometry.barWidth).toBeGreaterThanOrEqual(1);
         expect(geometry.offsetX).toBeGreaterThanOrEqual(0);
-        expect(geometry.gap).toBe(1.5);
-        expect(geometry.visibleCount).toBe(88);
+        expect(geometry.gap).toBe(2.25);
+        expect(geometry.visibleCount).toBe(104);
     });
 
     it("keeps the newest samples visible on narrow canvases", () => {
-        const geometry = getBarGeometry(120, 88);
+        const geometry = getBarGeometry(120, 104);
 
-        expect(geometry.visibleCount).toBeLessThan(88);
+        expect(geometry.visibleCount).toBeLessThan(104);
         expect(geometry.barWidth).toBeGreaterThanOrEqual(1);
         expect(geometry.offsetX).toBeGreaterThanOrEqual(0);
     });

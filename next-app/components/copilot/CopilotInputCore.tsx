@@ -748,7 +748,11 @@ export function CopilotInputCore({
                                     </div>
                                 ) : (
                                     <div className={styles.transcribingStatus}>
-                                        <span className="material-icons-round" aria-hidden="true">hourglass_top</span>
+                                        <span className={styles.transcribingDots} aria-hidden="true">
+                                            <span className={styles.transcribingDot} />
+                                            <span className={styles.transcribingDot} />
+                                            <span className={styles.transcribingDot} />
+                                        </span>
                                         <span>Transcribing audio</span>
                                         <span className={styles.recordingTimer}>{formatElapsedVoiceTime(elapsedMs)}</span>
                                     </div>

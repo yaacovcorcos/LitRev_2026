@@ -40,7 +40,7 @@ describe("CopilotInputCore composer refresh", () => {
     });
 
     it("keeps model and voice outside the secondary actions flow", () => {
-        render(
+        const { container } = render(
             <CopilotInputCore
                 page="overview"
                 inputPlaceholder="Ask"
@@ -69,7 +69,7 @@ describe("CopilotInputCore composer refresh", () => {
             getByteTimeDomainData: (buffer: Uint8Array) => buffer.fill(138),
         } as unknown as AnalyserNode;
 
-        render(
+        const { container } = render(
             <CopilotInputCore
                 page="overview"
                 inputPlaceholder="Ask"
@@ -92,7 +92,7 @@ describe("CopilotInputCore composer refresh", () => {
     it("renders a permission-pending state without a waveform", () => {
         mockVoiceState.state = "requesting_permission";
 
-        render(
+        const { container } = render(
             <CopilotInputCore
                 page="overview"
                 inputPlaceholder="Ask"
@@ -112,7 +112,7 @@ describe("CopilotInputCore composer refresh", () => {
         mockVoiceState.state = "transcribing";
         mockVoiceState.elapsedMs = 7_000;
 
-        render(
+        const { container } = render(
             <CopilotInputCore
                 page="overview"
                 inputPlaceholder="Ask"
@@ -125,5 +125,6 @@ describe("CopilotInputCore composer refresh", () => {
         expect(screen.getByText(/transcribing audio/i)).toBeTruthy();
         expect(screen.getByText("0:07")).toBeTruthy();
         expect(screen.queryByTestId("voice-level-visualizer")).toBeNull();
+        expect(container.querySelectorAll('[class*="transcribingDot"]:not([class*="transcribingDots"])').length).toBe(3);
     });
 });
