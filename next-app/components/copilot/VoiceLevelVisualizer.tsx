@@ -8,14 +8,17 @@ type VoiceLevelVisualizerProps = {
     isRecording: boolean;
 };
 
-const HISTORY_LENGTH = 56;
+const HISTORY_LENGTH = 88;
 const HISTORY_ADVANCE_MS = 50;
 const REDUCED_FRAME_MS = 1000 / 8;
 const SILENCE_DEAD_ZONE = 0.012;
 const SILENCE_FLOOR = 0.045;
-const ATTACK_FACTOR = 0.35;
+const ATTACK_FACTOR = 0.38;
 const RELEASE_FACTOR = 0.18;
-const NORMALIZATION_CEILING = 0.27;
+const NORMALIZATION_CEILING = 0.26;
+const BAR_GAP = 1;
+const MIN_BAR_WIDTH = 1;
+const MAX_BAR_WIDTH = 1.6;
 
 export function shouldAdvanceHistory(now: number, lastAdvanceAt: number) {
     return now - lastAdvanceAt >= HISTORY_ADVANCE_MS;
@@ -63,6 +66,17 @@ function getChannelValue(name: string, fallback: string) {
     return value || fallback;
 }
 
+export function getBarGeometry(width: number, barCount: number) {
+    const requestedCount = Math.max(1, barCount);
+    const maxVisibleCount = Math.max(1, Math.floor((width + BAR_GAP) / (MIN_BAR_WIDTH + BAR_GAP)));
+    const visibleCount = Math.min(requestedCount, maxVisibleCount);
+    const computedWidth = (width - BAR_GAP * (visibleCount - 1)) / visibleCount;
+    const barWidth = Math.min(MAX_BAR_WIDTH, Math.max(MIN_BAR_WIDTH, computedWidth));
+    const contentWidth = barWidth * visibleCount + BAR_GAP * (visibleCount - 1);
+    const offsetX = Math.max(0, (width - contentWidth) / 2);
+    return { barWidth, gap: BAR_GAP, offsetX, visibleCount };
+}
+
 function drawBars(canvas: HTMLCanvasElement, history: number[], contrast: string) {
     const context = canvas.getContext("2d");
     if (!context) return;
@@ -73,9 +87,9 @@ function drawBars(canvas: HTMLCanvasElement, history: number[], contrast: string
     context.scale(dpr, dpr);
 
     const centerY = height / 2;
-    const barCount = history.length;
-    const gap = 1;
-    const barWidth = Math.max(1, (width - gap * (barCount - 1)) / barCount);
+    const { barWidth, gap, offsetX, visibleCount } = getBarGeometry(width, history.length);
+    const visibleHistory = history.slice(-visibleCount);
+    const barCount = visibleHistory.length;
     const maxAmplitude = Math.max(6, height / 2 - 3);
 
     context.strokeStyle = `rgba(${contrast}, 0.18)`;
@@ -87,9 +101,9 @@ function drawBars(canvas: HTMLCanvasElement, history: number[], contrast: string
 
     context.fillStyle = `rgba(${contrast}, 0.78)`;
     for (let index = 0; index < barCount; index += 1) {
-        const value = history[index] ?? SILENCE_FLOOR;
+        const value = visibleHistory[index] ?? SILENCE_FLOOR;
         const amplitude = Math.max(1.25, value * maxAmplitude);
-        const x = index * (barWidth + gap);
+        const x = offsetX + index * (barWidth + gap);
         const y = centerY - amplitude;
         const barHeight = amplitude * 2;
         const radius = Math.min(barWidth / 2, 999);
