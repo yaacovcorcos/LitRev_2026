@@ -8,7 +8,7 @@ type VoiceLevelVisualizerProps = {
     isRecording: boolean;
 };
 
-const HISTORY_LENGTH = 88;
+const HISTORY_LENGTH = 104;
 const HISTORY_ADVANCE_MS = 50;
 const REDUCED_FRAME_MS = 1000 / 8;
 const SILENCE_DEAD_ZONE = 0.012;
@@ -16,7 +16,7 @@ const SILENCE_FLOOR = 0.045;
 const ATTACK_FACTOR = 0.38;
 const RELEASE_FACTOR = 0.18;
 const NORMALIZATION_CEILING = 0.26;
-const BAR_GAP = 1.5;
+const BAR_GAP = 2.25;
 const MIN_BAR_WIDTH = 1;
 const MAX_BAR_WIDTH = 1.6;
 const QUIET_BAR_THRESHOLD = 0.08;
