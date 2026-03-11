@@ -28,6 +28,9 @@ Define the canonical implementation plan for app speed, responsiveness, and stab
   - root overview entry no longer boots provider data by default
   - `protocol` deep links boot protocol only, and `ledger` deep links boot studies only
   - root conversation entry no longer uses provider eager boot; conversation state now bootstraps lazily from `useProjectState` with lightweight fallback counts and protocol-unknown routing until data settles
+- The project-shell boot contract is still partial rather than universal:
+  - eager boot is centralized only for `protocol` and `ledger`
+  - `draft`, `notes`, and `memory` still self-bootstrap from route-local page logic after mount
 - Project shell entry no longer prefetches sibling project routes on mount; project-shell tab warming is now limited to pointer hover on the provisional `protocol` / `ledger` allowlist, while keyboard focus and coarse-pointer/mobile contexts no longer trigger speculative domain warmup.
 - Workspace project entry links now disable default route prefetch, and the workspace index query is narrowed at the Prisma layer to index fields only before hydration consumes the result.
 - Root overview entry keeps the header, vital signs, and workstation shells immediate while deferring the recent-activity fetch until idle.
@@ -44,6 +47,42 @@ Define the canonical implementation plan for app speed, responsiveness, and stab
 - `/ai` now also defers history/sidebar chrome and conversation-list hydration out of the initial route chunk:
   - the history sidebar content and header chrome load behind route-local lazy boundaries
   - global workspace context and the conversation list both preload only after composer-ready, so populated closeout runs no longer pay the full sidebar fetch on first open
+- The app currently remains predominantly client-rendered:
+  - `15/16` route `page.tsx` files are client pages
+  - shared loading is driven primarily by client providers plus server actions, not server-component data cache primitives
+  - only one explicit `revalidatePath(...)` usage currently exists, in artifact review follow-up for ledger routes
+- The project shell is the main lifetime boundary for project work:
+  - `ProjectCopilotProvider`, `PopupChatProvider`, and `ProjectDataProvider` all persist for the lifetime of the shell under `next-app/app/project/[id]/layout.tsx`
+  - boot mode is route-derived (`conversation`, `overview`, `protocol`, `ledger`, `draft`, `memory`, `notes`) via `next-app/lib/project-entry-boot-mode.ts`
+- Shared project data now uses a domain-slice client cache in `next-app/contexts/ProjectDataContext.tsx`:
+  - domains: `protocol`, `ledger`, `draft`, `notes`, `memory`
+  - `warmDomain(...)` performs lazy first-load for idle slices
+  - `invalidateDomain(...)` eagerly refetches
+  - cross-surface coherence depends on the browser event bus in `next-app/lib/project-data-events.ts`
+- Several route surfaces layer additional local-first durability or secondary caches on top of `ProjectDataContext`:
+  - protocol: local durability envelope with `savedAtMs` / `lastSyncedAtMs`, debounced remote save, and conflict-safe incoming patch handling
+  - draft: localStorage-first paint, then server/preload upgrade
+  - notes: index-first sidebar seed, then full note payload fetch
+  - ledger: separate `LedgerContext` cache plus provider seeding from `ProjectDataContext`
+  - memory: `ProjectDataContext` preload plus route-local `ProjectMemoryContext` and lazy health-tab fetches
+- `/ai` currently has the most explicit route-local performance controls:
+  - dynamic imports for header/history/timeline-adjacent UI
+  - idle-deferred workspace context and conversation-list loading
+  - an explicit LRU timeline cache capped to the five most recently accessed conversations
+- Explicit route-ready instrumentation is currently uneven across the app:
+  - route-ready telemetry exists for `/`, auth entry, `/project/[id]`, and `/project/[id]/protocol`
+  - `/ai` also has route-local `composer-ready` and `timeline-ready` markers
+  - `ledger`, `draft`, `notes`, and `memory` still rely mainly on Web Vitals plus surface-local loading signals
+- Server-side in-memory caches exist, but they are process-local and opportunistic rather than canonical:
+  - citation metadata TTL cache + in-flight dedupe
+  - tool idempotency replay cache
+  - auth rate-limit map
+  - per-project AI cache-metric accumulator
+- Local browser persistence is substantial and currently doubles as durability for several surfaces:
+  - protocol storage
+  - draft storage
+  - project-entry restore state
+  - theme, workspace preferences, context-capture history/metrics, and chat panel preferences
 - Three consecutive warn-mode calibration notes are archived under `docs/reports/performance/`.
 - The gate now runs in `enforce` mode with no active waivers; `output/performance/baseline/waivers.json` remains checked in as the machine-readable exception contract.
 - Regression gating now requires both percentage regression and a minimum meaningful absolute delta before failing:
@@ -96,8 +135,8 @@ Route prefetch policy:
 - Profiles:
   - `slow-network`
 - Current interpretation:
-  - observational shell/web-vitals coverage only
-  - route-ready instrumentation for `protocol` / `notes` is a separate follow-up if needed
+  - `/project/[id]/protocol` already has explicit route-ready telemetry
+  - `/` and `/project/[id]/notes` are still primarily observational shell/web-vitals coverage
 
 ### Budget Table
 | Metric | Desktop Budget | Mobile Budget | Slow Network Budget |
@@ -203,13 +242,11 @@ Rules:
 - [x] `SPD-001d` CI switched to fail-on-regression with waiver policy active.
 - [x] First weekly performance review completed and documented.
 
-## Quick Wins vs Structural Refactors
+## Remaining Quick Wins vs Structural Refactors
 
-### Quick Wins
+### Remaining Quick Wins
 - Remove the remote Material Icons stylesheet from the shared shell.
 - Remove the runtime admin-status fetch from the shared shell.
-- Cap eager project-route prefetching and warmup behavior.
-- Reduce duplicate boot-time fetches on `/project/[id]`.
 
 ### Structural Refactors
 - Move route boot reads from client-side provider fetches to server-first rendering.
@@ -227,35 +264,7 @@ Rules:
   - blast radius
   - owner/escalation path
 
-## Wave Backlog
-
-### Wave 1: Project Entry Warmup Reduction
-- Target route:
-  - `/project/[id]`
-- Primary metric:
-  - initial-entry `LCP`
-- Target:
-  - reduce active-surface boot-time requests by at least `2`
-  - improve p75 by at least `8%` or `150ms`
-- Scope:
-  - `next-app/app/project/[id]/layout.tsx`
-  - `next-app/contexts/ProjectDataContext.tsx`
-- Rollback trigger:
-  - no meaningful gain or protected-metric regression over `5%`
-
-### Wave 2: Project Overview Fetch Dedupe
-- Target route:
-  - `/project/[id]`
-- Primary metric:
-  - overview preview-ready latency
-- Target:
-  - reduce root overview preview boot-time requests from `3` to `1`
-  - improve preview-ready latency once all three workstation cards settle to data/empty/error state
-- Scope:
-  - `next-app/app/project/[id]/page.tsx`
-  - `next-app/app/actions/stats.ts`
-- Rollback trigger:
-  - complexity grows beyond overview-only scope or mobile `LCP` regresses
+## Pending Wave Backlog
 
 ### Wave 3: Shared Shell Quick Wins
 - Target routes:
@@ -280,6 +289,77 @@ Rules:
   - `/ai` route bundle boundaries
   - shared timeline rendering surfaces used by `/ai`
 
+## Loading, Cache, and Memory Upgrade Program
+
+### Goal
+- Establish one canonical loading/cache model for the app so future work stops adding isolated local fixes and instead follows route-level freshness, preload, invalidation, and memory-retention rules.
+
+### Current Problem Statement
+- Loading policy is currently distributed across:
+  - client providers
+  - route-local `useEffect` fetches
+  - localStorage/sessionStorage durability layers
+  - process-local server `Map` caches
+  - browser event-bus invalidation
+- This is workable, but it means cache behavior is implicit, route-specific, and difficult to reason about as one system.
+
+### Compact Current-State Matrix
+| Route | Boot Trigger | Main Data Path | Local Durability / Cache | Current Warmup / Preload | Main Risk |
+|---|---|---|---|---|---|
+| `/` | App shell mount after session resolution | `ProjectsContext` -> `listProjectsAction()` | sort/view prefs, last project ID, workspace-entry session flag | project links use `prefetch={false}` | client-side auth -> workspace-index waterfall |
+| `/project/[id]` | project shell boot mode `overview` or `conversation` | `ProjectsContext` + overview stats action + optional `useProjectState()` bootstrap | project-entry restore state, project copilot provider state | recent activity defers until idle; no sibling-route prefetch | long-lived shell keeps project state resident across route changes |
+| `/project/[id]/protocol` | project shell eager-boots `protocol` slice | `ProjectDataContext.protocol` -> `ProtocolContext` | protocol local durability envelope in `localStorage` with sync metadata | active-surface boot only; hover warmup from tab bar may preload this domain | local-first edits plus async remote sync create staleness/conflict complexity |
+| `/project/[id]/ledger` | project shell eager-boots `ledger` slice | `ProjectDataContext.studies` seeds `LedgerContext`; page reads `LedgerContext` | in-memory `LedgerContext` cache only | tab-hover warmup may preload `ledger`; route warms `protocol` when criteria are needed | duplicated ledger state across two client caches |
+| `/project/[id]/draft` | route mount | local draft state paints first, then `ProjectDataContext.draft` via `warmDomain("draft")` | substantial draft `localStorage` durability | no shell eager boot; route-local warmup only | large local payloads and editor state can grow without central retention policy |
+| `/project/[id]/notes` | route mount | notes index from `ProjectDataContext` plus full note fetch in page | editor/save timers in memory; no full durable notes cache | index-first seed, then full fetch; no shell eager boot | mixed index/full-note loading path complicates freshness and loading UX |
+| `/project/[id]/memory` | route mount | optional `ProjectDataContext.memory` seed -> `ProjectMemoryContext` + lazy tab fetches | route-local tab state only | no shell eager boot; health/prisma/preferences tabs lazy-load on demand | memory state is split across provider preload, route context, and tab-local fetches |
+| `/ai` | route mount | route-local conversation/timeline state + server actions + stream API | history collapse + model prefs in `localStorage`; timeline cache in memory | dynamic imports; idle-deferred workspace context and conversation list; 5-entry LRU timeline cache | strongest local optimization, but still the heaviest long-session client state |
+
+### Required Deliverables
+- A route-by-route cache matrix covering:
+  - boot trigger
+  - source of truth
+  - preload source
+  - local cache layer
+  - server cache layer
+  - invalidation trigger
+  - acceptable staleness window
+- A freshness contract per domain:
+  - `must_be_fresh`
+  - `stale_while_revalidate`
+  - `local_first_with_sync`
+  - `session_only`
+- A preload contract per route family:
+  - never preload
+  - idle preload
+  - hover-intent preload
+  - explicit-navigation preload
+- A client memory-retention contract covering:
+  - project shell lifetime
+  - `/ai` conversation lifetime
+  - artifact/message retention caps
+  - localStorage/sessionStorage quotas and eviction rules
+- An instrumentation contract for proving improvements before wider rollout.
+
+### Sequenced Work
+1. `SPD-008a` Canonical inventory and cache matrix.
+   - Document the current loading and cache path for `/`, `/project/[id]`, `/project/[id]/protocol`, `/project/[id]/ledger`, `/project/[id]/draft`, `/project/[id]/notes`, `/project/[id]/memory`, and `/ai`.
+   - Output is documentation-first; no architectural changes yet.
+2. `SPD-008b` Freshness and invalidation contract.
+   - Define what data must be fresh vs allowed to be stale.
+   - Reduce duplicate invalidation paths where a single domain currently has multiple client caches.
+3. `SPD-008c` Preload and warmup policy.
+   - Convert current ad hoc warmup behavior into an explicit allowlist with route-specific rules.
+   - Every preload rule must name the expected follow-on navigation win and the metric that justifies it.
+4. `SPD-008d` Client memory-retention policy.
+   - Set retention caps for `/ai` timelines, project copilot conversation state, local durable drafts/protocols, and auxiliary local caches.
+   - Define which state survives navigation, tab lifetime, browser restart, and sign-out.
+5. `SPD-008e` Instrumentation and acceptance gates.
+   - Add the missing readiness and memory instrumentation required to verify the upgrade plan.
+   - Extend evidence beyond `/ai` so project surfaces can be optimized with the same rigor.
+6. `SPD-008f` Implementation waves.
+   - Only after the contracts above are written and accepted should implementation proceed in narrow route- or domain-specific waves.
+
 ## Active Tasks
 - [ ] `SPD-005` Reduce `/ai` bundle and timeline cost.
   - Canonical measurement sources now exist and the first closeout run is recorded in `docs/reports/performance/ai-closeout-2026-03-07.md`:
@@ -301,10 +381,34 @@ Rules:
   - If `/ai` becomes a priority again, the next narrow follow-up should target shared composer bundle cost, especially still-eager optional input features on `/ai`; do not fork the shared composer and do not expand shared timeline semantics again unless a later populated-route measurement shows a new regression there.
 - [ ] `SPD-006` Expand the probe matrix to nightly-only routes and slow-network coverage.
   - Nightly coverage must run from the separate `nightlyRoutes` / `nightlyProfiles` matrix contract and write to `output/performance/nightly/**`; do not overload the PR-gated mandatory matrix or `output/performance/results/results-<sha>.json`.
-  - Treat nightly `/`, `/project/[id]/protocol`, and `/project/[id]/notes` probes as shell/web-vitals observational coverage for now. Route-ready instrumentation is a separate follow-up if those surfaces become active optimization targets.
+  - Treat nightly `/` and `/project/[id]/notes` probes as shell/web-vitals observational coverage for now.
+  - `/project/[id]/protocol` already emits route-ready telemetry, but nightly still uses the same artifact path and does not yet promote route-ready timing to a gated signal.
   - Keep nightly-only routes and the `slow-network` profile out of the PR gate until their artifacts are stable across consecutive nightly runs.
+- [ ] `SPD-008` Create the canonical loading/cache/memory upgrade plan before implementation waves begin.
+  - This task owns the repo-wide current-state model for:
+    - route boot behavior
+    - preload triggers
+    - client/server cache layers
+    - invalidation semantics
+    - long-session memory retention
+  - Use `docs/plans/plan-speed-performance.md` as the canonical owner; do not create a parallel cache-plan file unless this plan becomes too broad to stay legible.
+  - The current code-verified findings to preserve as the starting baseline are:
+    - project-shell work is lifetime-scoped under `ProjectCopilotProvider` + `PopupChatProvider` + `ProjectDataProvider`
+    - shared project data uses client domain slices, not Next server-cache primitives
+    - route-local persistence is already significant for protocol, draft, project-entry restore, and chat/UI preferences
+    - `/ai` already has the strongest route-local performance instrumentation and an explicit LRU timeline cache
+    - server-side `Map` caches are process-local only and must not be treated as global truth
+  - Current checklist:
+    - [x] `SPD-008a` Canonical inventory and compact current-state cache matrix are now captured in this file.
+    - [ ] `SPD-008b` Freshness and invalidation contract.
+    - [ ] `SPD-008c` Preload and warmup policy.
+    - [ ] `SPD-008d` Client memory-retention policy.
+    - [ ] `SPD-008e` Instrumentation and acceptance gates.
+    - [ ] `SPD-008f` Implementation waves.
+  - `SPD-008` remains planning/governance-first. Implementation work should land under follow-up tasks only after the remaining contracts above are written.
 
 ## Recently Completed
+- [x] `SPD-008a` Initial loading/cache inventory is now codified directly in this file as the compact current-state matrix, so future cache work can iterate from one canonical baseline instead of ad hoc repo scans.
 - [x] `SPD-004` Preload/prefetch policy is now tightened: home/workspace project links and the resume CTA disable default route prefetch, the workspace index query is narrowed at the Prisma layer to index fields only, and project-shell tab warming now removes focus/coarse-pointer speculative fetches while keeping only a provisional `protocol` / `ledger` hover allowlist.
 - [x] `SPD-003` Root overview preview fetch dedupe is complete: workstation previews now load through one combined overview action with a single auth/validation boundary, and the page consumer keeps the same first-paint shell while reducing preview boot-time requests from `3` to `1`.
 - [x] `SPD-002` Project entry boot cleanup is complete: route-aware provider boot, lazy conversation bootstrap, and idle-deferred recent activity removed the avoidable non-active-surface root-entry work, so the remaining `/project/[id]` cost is now explicitly overview-owned and tracked under `SPD-003`.
@@ -314,4 +418,3 @@ Rules:
 - [x] `SPD-001g` The first weekly performance review is documented in `docs/reports/performance/weekly-review-2026-03-06.md`, covering the first real 7-day calendar window after perf-gate activation and calling out pre-activation no-run days explicitly.
 - [x] `SPD-007` Budget gate now runs in `enforce` mode, consumes `output/performance/baseline/waivers.json`, and currently has no active waivers.
 - [x] `SPD-001f` The `/project/[id]` desktop `CLS` alert was resolved through calibration, not a route fix: it did not reproduce in three authoritative CI cycles, so the baseline was refreshed to a CI-native artifact instead of waiving `CLS`.
-- [x] `SPD-001e` Three consecutive warn-mode CI calibration notes are archived and the numeric calibration rule is now applied from committed evidence.
