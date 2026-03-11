@@ -23,7 +23,16 @@
 }
 
 .surface-root[data-surface-height="shell"] {
-    min-height: var(--shell-content-min-height);
+    /* Shell-contained routes need a bounded child root so the inner scroll body
+       can own overflow instead of expanding with content. */
+    flex: 1;
+    min-height: 0;
+    height: calc(
+        var(--shell-content-min-height) -
+        var(--surface-shell-route-offset, var(--content-top-offset, 12px)) -
+        var(--mobile-nav-offset, 0px)
+    );
+    overflow: hidden;
 }
 
 .surface-root[data-surface-gutters="responsive"] {

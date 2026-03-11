@@ -104,7 +104,7 @@ describe("Home entry UX", () => {
   });
 
   it("shows a dedicated new-user welcome screen and can enter workspace", async () => {
-    render(<Home />);
+    const { container } = render(<Home />);
 
     expect(screen.queryByTestId("app-shell")).toBeNull();
     expect(screen.getByText("Start a new review")).toBeTruthy();
@@ -116,6 +116,8 @@ describe("Home entry UX", () => {
       expect(screen.getByTestId("app-shell")).toBeTruthy();
     });
     expect(screen.getByTestId("project-grid").textContent).toContain("sample:on");
+    expect(container.querySelector('.surface-root[data-surface-height="shell"]')).toBeTruthy();
+    expect(container.querySelector('.surface-scroll-body[data-surface-padding="responsive"]')).toBeTruthy();
   });
 
   it("shows a continue card for returning users with a valid last project", () => {

@@ -11,6 +11,8 @@ import {
 } from "@/lib/server/auth/dev-quick-login";
 
 type HomeState = "zero_state" | "workspace";
+const DEFAULT_WORKSPACE_PROJECT_COUNT = 1;
+const MAX_WORKSPACE_PROJECT_COUNT = 24;
 
 function isHomeState(value: string | undefined): value is HomeState {
   return value === "zero_state" || value === "workspace";
@@ -36,6 +38,7 @@ export async function POST(request: NextRequest) {
   const body = (await request.json().catch(() => ({}))) as {
     seedKey?: string | null;
     state?: string;
+    projectCount?: number;
   };
 
   const seedKey = body.seedKey?.trim();
@@ -45,6 +48,19 @@ export async function POST(request: NextRequest) {
 
   if (!isHomeState(body.state)) {
     return NextResponse.json({ error: "state must be zero_state or workspace" }, { status: 400 });
+  }
+
+  const requestedProjectCount =
+    typeof body.projectCount === "undefined" ? DEFAULT_WORKSPACE_PROJECT_COUNT : body.projectCount;
+
+  if (
+    !Number.isInteger(requestedProjectCount) ||
+    requestedProjectCount < 1 ||
+    requestedProjectCount > MAX_WORKSPACE_PROJECT_COUNT
+  ) {
+    return NextResponse.json({
+      error: `projectCount must be an integer between 1 and ${MAX_WORKSPACE_PROJECT_COUNT}`,
+    }, { status: 400 });
   }
 
   const identity = await ensureDevQuickLoginIdentity(seedKey);
@@ -62,44 +78,64 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  const existingProject = await prisma.project.findFirst({
+  const existingProjects = await prisma.project.findMany({
     where: fixtureWhere,
     select: { id: true },
+    orderBy: { modified: "desc" },
   });
 
-  if (existingProject) {
+  if (existingProjects.length === requestedProjectCount) {
     return NextResponse.json({
       ok: true,
       state: body.state,
-      projectId: existingProject.id,
+      projectId: existingProjects[0].id,
+      projectCount: existingProjects.length,
     });
   }
 
-  const now = new Date().toISOString();
-  const project = await createProject(
-    {
-      ownerId: identity.userId,
-      workspaceId: identity.workspaceId,
-    },
-    {
-      id: createDevFixtureProjectId("workspace"),
-      name: "E2E Workspace Project",
-      description: buildFixtureProjectDescription(seedKey, "E2E workspace state project"),
-      status: "ready",
-      statusText: "Ready for review",
-      created: now,
-      modified: now,
-      progress: {
-        phase: "ready",
-        percent: 100,
-        papers: 0,
-      },
-    },
+  if (existingProjects.length > 0) {
+    await prisma.project.deleteMany({
+      where: fixtureWhere,
+    });
+  }
+
+  const baseTime = Date.now();
+  const projects = await Promise.all(
+    Array.from({ length: requestedProjectCount }, (_, index) => {
+      const isoTimestamp = new Date(baseTime - index * 60_000).toISOString();
+      const label = requestedProjectCount === 1
+        ? "E2E workspace state project"
+        : `E2E workspace state project ${index + 1}`;
+
+      return createProject(
+        {
+          ownerId: identity.userId,
+          workspaceId: identity.workspaceId,
+        },
+        {
+          id: createDevFixtureProjectId(`workspace-${index + 1}`),
+          name: requestedProjectCount === 1
+            ? "E2E Workspace Project"
+            : `E2E Workspace Project ${index + 1}`,
+          description: buildFixtureProjectDescription(seedKey, label),
+          status: "ready",
+          statusText: "Ready for review",
+          created: isoTimestamp,
+          modified: isoTimestamp,
+          progress: {
+            phase: "ready",
+            percent: 100,
+            papers: 0,
+          },
+        },
+      );
+    }),
   );
 
   return NextResponse.json({
     ok: true,
     state: body.state,
-    projectId: project.id,
+    projectId: projects[0].id,
+    projectCount: projects.length,
   });
 }

@@ -10,7 +10,7 @@ const mocks = vi.hoisted(() => ({
   prisma: {
     project: {
       deleteMany: vi.fn(),
-      findFirst: vi.fn(),
+      findMany: vi.fn(),
     },
   },
 }));
@@ -42,7 +42,7 @@ describe("POST /api/dev/test-home-state", () => {
     mocks.createDevFixtureProjectId.mockReset();
     mocks.createProject.mockReset();
     mocks.prisma.project.deleteMany.mockReset();
-    mocks.prisma.project.findFirst.mockReset();
+    mocks.prisma.project.findMany.mockReset();
 
     mocks.isDevQuickLoginAllowed.mockReturnValue(true);
     mocks.ensureDevQuickLoginIdentity.mockResolvedValue({
@@ -57,7 +57,7 @@ describe("POST /api/dev/test-home-state", () => {
     mocks.buildFixtureProjectDescription.mockReturnValue("[e2e-fixture:seed] workspace");
     mocks.createDevFixtureProjectId.mockReturnValue("workspace-project");
     mocks.prisma.project.deleteMany.mockResolvedValue({ count: 2 });
-    mocks.prisma.project.findFirst.mockResolvedValue(null);
+    mocks.prisma.project.findMany.mockResolvedValue([]);
     mocks.createProject.mockResolvedValue({ id: "workspace-project" });
   });
 
@@ -109,6 +109,7 @@ describe("POST /api/dev/test-home-state", () => {
       ok: true,
       state: "workspace",
       projectId: "workspace-project",
+      projectCount: 1,
     });
     expect(mocks.createProject).toHaveBeenCalledWith(
       {
@@ -124,7 +125,7 @@ describe("POST /api/dev/test-home-state", () => {
   });
 
   it("reuses an existing workspace fixture", async () => {
-    mocks.prisma.project.findFirst.mockResolvedValue({ id: "existing-project" });
+    mocks.prisma.project.findMany.mockResolvedValue([{ id: "existing-project" }]);
 
     const response = await POST(new Request("http://localhost/api/dev/test-home-state", {
       method: "POST",
@@ -137,7 +138,43 @@ describe("POST /api/dev/test-home-state", () => {
       ok: true,
       state: "workspace",
       projectId: "existing-project",
+      projectCount: 1,
     });
     expect(mocks.createProject).not.toHaveBeenCalled();
+  });
+
+  it("rejects invalid projectCount values", async () => {
+    const response = await POST(new Request("http://localhost/api/dev/test-home-state", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ seedKey: "home-seed", state: "workspace", projectCount: 0 }),
+    }) as never);
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "projectCount must be an integer between 1 and 24",
+    });
+  });
+
+  it("re-seeds workspace fixtures when the requested projectCount changes", async () => {
+    mocks.prisma.project.findMany.mockResolvedValue([{ id: "existing-1" }]);
+    mocks.createProject.mockResolvedValueOnce({ id: "workspace-project-1" });
+    mocks.createProject.mockResolvedValueOnce({ id: "workspace-project-2" });
+
+    const response = await POST(new Request("http://localhost/api/dev/test-home-state", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ seedKey: "home-seed", state: "workspace", projectCount: 2 }),
+    }) as never);
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      ok: true,
+      state: "workspace",
+      projectId: "workspace-project-1",
+      projectCount: 2,
+    });
+    expect(mocks.prisma.project.deleteMany).toHaveBeenCalledTimes(1);
+    expect(mocks.createProject).toHaveBeenCalledTimes(2);
   });
 });
