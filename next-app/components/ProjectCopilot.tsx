@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { useProjectCopilot } from "@/contexts/ProjectCopilotContext";
 import type { CopilotPage } from "@/types/ai";
 import type { AgentMode } from "@/types/agent";
+import type { TimelineItem } from "@/types/timeline";
 import { createNoteAction } from "@/app/actions/notes";
 import { TimelineRenderer } from "./copilot/TimelineRenderer";
 import { CopilotInput } from "./copilot/CopilotInput";
@@ -196,19 +197,15 @@ export function ProjectCopilot({
         executePlan(planMessage.artifact.id, selectedIndexes);
     }, [executePlan, isLoading, messages]);
 
-    const latestRecoveryMeta = [...messages]
-        .reverse()
-        .find((message) => message.streamError?.recoveryRecommendation)?.streamError ?? null;
-
-    const reconnectActiveRun = useCallback(() => {
+    const reconnectActiveRun = useCallback((item: Extract<TimelineItem, { type: "error" }>) => {
         if (isLoading) return;
-        void reconnectRun(latestRecoveryMeta?.activeRunId ?? null);
-    }, [isLoading, latestRecoveryMeta?.activeRunId, reconnectRun]);
+        void reconnectRun(item.errorMeta?.activeRunId ?? null);
+    }, [isLoading, reconnectRun]);
 
-    const stopAndRetryRun = useCallback(() => {
+    const stopAndRetryRun = useCallback((item: Extract<TimelineItem, { type: "error" }>) => {
         if (isLoading) return;
-        retryLastMessage(latestRecoveryMeta?.activeRunId ?? null);
-    }, [isLoading, latestRecoveryMeta?.activeRunId, retryLastMessage]);
+        retryLastMessage(item.errorMeta?.activeRunId ?? null);
+    }, [isLoading, retryLastMessage]);
 
     const getConversationGroupLabel = useCallback((conversation: (typeof conversations)[number]) => {
         const date = new Date(conversation.updatedAt);

@@ -113,6 +113,7 @@ const TOOL_ACTIVITY_META: Record<"queued" | "running" | "done" | "failed" | "int
 };
 
 type TimelineToolActivityItem = Extract<TimelineItem, { type: "tool_activity" }>;
+type TimelineErrorItem = Extract<TimelineItem, { type: "error" }>;
 
 type PresentedTimelineItem =
     | { kind: "single"; item: TimelineItem }
@@ -694,9 +695,9 @@ export type TimelineRendererProps = {
     /** Optional retry callback for retryable error cards */
     onRetryLastMessage?: () => void;
     /** Optional reconnect callback for recovery-aware active runs. */
-    onReconnectRun?: () => void;
+    onReconnectRun?: (item: TimelineErrorItem) => void;
     /** Optional explicit replacement callback for live runs that should be replaced. */
-    onStopAndRetryRun?: () => void;
+    onStopAndRetryRun?: (item: TimelineErrorItem) => void;
     /** Optional resume callback for recoverable plan-run errors */
     onResumeRun?: () => void;
     /** Optional callback to branch conversation history up to a specific message */
@@ -1436,12 +1437,12 @@ export function TimelineRenderer({
                             </button>
                         )}
                         {showReconnect ? (
-                            <button type="button" className={artifactStyles.errorRetryBtn} onClick={onReconnectRun}>
+                            <button type="button" className={artifactStyles.errorRetryBtn} onClick={() => onReconnectRun(item)}>
                                 Reconnect
                             </button>
                         ) : null}
                         {showStopAndRetry ? (
-                            <button type="button" className={artifactStyles.errorRetryBtn} onClick={onStopAndRetryRun}>
+                            <button type="button" className={artifactStyles.errorRetryBtn} onClick={() => onStopAndRetryRun(item)}>
                                 Stop & Retry
                             </button>
                         ) : null}

@@ -225,6 +225,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
         recommendation: RunRecoveryRecommendation;
         activeRunId: string;
         lastActivityAt?: string | null;
+        runStatus?: string | null;
     }> => {
         const { aiMessageId, state: initialState } = buildProjectRecoverySeedState({
             messages: stateRef.current.messages,
@@ -314,6 +315,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
             recommendation: recoveryResult.response?.recoveryRecommendation ?? "retry",
             activeRunId: recoveryResult.response?.runId ?? params.runId,
             lastActivityAt: recoveryResult.response?.lastActivityAt ?? null,
+            runStatus: recoveryResult.response?.runStatus ?? null,
         };
     }, [buildProjectRecoverySeedState, convo, onNavigate, projectId, setArtifacts, setCurrentRunId, setPendingChoices, setPendingUserInput, stateRef, updateState]);
 
@@ -404,6 +406,16 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                     runStatus: status,
                 },
             });
+        };
+        const applyRecoveredTerminalState = (recoveredRunStatus: string | null | undefined) => {
+            if (recoveredRunStatus && recoveredRunStatus !== "missing") {
+                runStatus = recoveredRunStatus;
+            }
+            terminalReason = runStatus === "completed"
+                ? "completed"
+                : runStatus === "cancelled"
+                    ? "cancelled_by_user"
+                    : "failed_server";
         };
 
         // Cancel any in-flight stream
@@ -572,7 +584,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                 });
 
                 if (recoveryResult.outcome === "recovered") {
-                    terminalReason = runStatus === "completed" ? "completed" : "failed_server";
+                    applyRecoveredTerminalState(recoveryResult.response?.runStatus ?? runStatus);
                     return true;
                 }
 
@@ -738,7 +750,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                     onPlanStepUpdate,
                 });
                 if (recoveryResult.outcome === "recovered") {
-                    terminalReason = runStatus === "completed" ? "completed" : "failed_server";
+                    applyRecoveredTerminalState(recoveryResult.runStatus ?? runStatus);
                     emitTerminalMetric(terminalReason, runStatus);
                     return {
                         success: true,

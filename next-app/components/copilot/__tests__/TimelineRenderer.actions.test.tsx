@@ -135,7 +135,7 @@ describe("TimelineRenderer action affordances", () => {
     expect(screen.queryByRole("button", { name: /resume/i })).toBeNull();
   });
 
-  it("renders reconnect and stop-and-retry from recovery recommendations", () => {
+  it("routes reconnect and stop-and-retry actions to the clicked error card", () => {
     const onReconnectRun = vi.fn();
     const onStopAndRetryRun = vi.fn();
     const items: TimelineItem[] = [
@@ -151,8 +151,25 @@ describe("TimelineRenderer action affordances", () => {
           source: "runtime",
           message: "Connection lost and recovery timed out. Choose how to continue.",
           recoveryRecommendation: "reconnect",
+          activeRunId: "run-1",
         },
         createdAt: "2026-02-28T00:00:00.000Z",
+      },
+      {
+        type: "error",
+        id: "err-reconnect-2",
+        message: "Connection lost for a later run.",
+        retryable: false,
+        errorMeta: {
+          kind: "runtime",
+          code: "RUN_RECOVERY_TIMEOUT",
+          retryable: false,
+          source: "runtime",
+          message: "Connection lost for a later run.",
+          recoveryRecommendation: "reconnect",
+          activeRunId: "run-2",
+        },
+        createdAt: "2026-02-28T00:00:30.000Z",
       },
       {
         type: "error",
@@ -183,11 +200,19 @@ describe("TimelineRenderer action affordances", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /reconnect/i }));
+    fireEvent.click(screen.getAllByRole("button", { name: /reconnect/i })[0]!);
     fireEvent.click(screen.getByRole("button", { name: /stop & retry/i }));
 
     expect(onReconnectRun).toHaveBeenCalledTimes(1);
+    expect(onReconnectRun).toHaveBeenCalledWith(expect.objectContaining({
+      id: "err-reconnect",
+      errorMeta: expect.objectContaining({ activeRunId: "run-1" }),
+    }));
     expect(onStopAndRetryRun).toHaveBeenCalledTimes(1);
+    expect(onStopAndRetryRun).toHaveBeenCalledWith(expect.objectContaining({
+      id: "err-stop",
+      errorMeta: expect.objectContaining({ activeRunId: "run-1" }),
+    }));
     expect(screen.queryByRole("button", { name: /^retry$/i })).toBeNull();
   });
 

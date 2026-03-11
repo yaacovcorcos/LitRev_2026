@@ -1250,6 +1250,17 @@ export default function AIView() {
     let aborted = false;
     let emittedTerminalError = false;
     let terminalEventEmitted = false;
+    const applyRecoveredTerminalState = (recoveredRunStatus: string | null | undefined) => {
+      if (recoveredRunStatus && recoveredRunStatus !== "missing") {
+        runStatus = recoveredRunStatus;
+      }
+      sendSucceeded = runStatus === "completed";
+      terminalReason = runStatus === "completed"
+        ? "completed"
+        : runStatus === "cancelled"
+          ? "cancelled_by_user"
+          : "failed_server";
+    };
 
     recordReliabilityMetric({
       type: "reliability.v1.stream.started",
@@ -1321,7 +1332,7 @@ export default function AIView() {
       });
 
       if (recoveryResult.outcome === "recovered") {
-        terminalReason = runStatus === "completed" ? "completed" : "failed_server";
+        applyRecoveredTerminalState(recoveryResult.response?.runStatus ?? runStatus);
         return true;
       }
 
@@ -2004,12 +2015,6 @@ export default function AIView() {
     void handleSend(prompt, "overview", undefined, undefined, mode);
   }, [handleSend]);
 
-  const latestRecoveryMeta = [...activeTimeline]
-    .reverse()
-    .find((item): item is Extract<TimelineItem, { type: "error" }> => (
-      item.type === "error" && Boolean(item.errorMeta?.recoveryRecommendation)
-    ))?.errorMeta ?? null;
-
   const handleRetryLastMessage = useCallback((replaceRunId?: string | null) => {
     if (isTyping) return;
     const convId = activeConversationId;
@@ -2079,9 +2084,9 @@ export default function AIView() {
     );
   }, [isTyping, activeConversationId, timelineByConversation, handleSend, selectedModel, selectedProjectId]);
 
-  const handleReconnectRun = useCallback(() => {
+  const handleReconnectRun = useCallback((item: Extract<TimelineItem, { type: "error" }>) => {
     const convId = activeConversationId;
-    const runId = latestRecoveryMeta?.activeRunId ?? currentRunIdRef.current;
+    const runId = item.errorMeta?.activeRunId ?? null;
     if (isTyping || !convId || !runId) return;
 
     setIsTyping(true);
@@ -2148,14 +2153,13 @@ export default function AIView() {
     appendRecoveryCheckpoint,
     appendRecoveryTimelineError,
     isTyping,
-    latestRecoveryMeta?.activeRunId,
     recoverConversationRun,
     updateConversationTimeline,
   ]);
 
-  const handleStopAndRetryRun = useCallback(() => {
-    handleRetryLastMessage(latestRecoveryMeta?.activeRunId ?? null);
-  }, [handleRetryLastMessage, latestRecoveryMeta?.activeRunId]);
+  const handleStopAndRetryRun = useCallback((item: Extract<TimelineItem, { type: "error" }>) => {
+    handleRetryLastMessage(item.errorMeta?.activeRunId ?? null);
+  }, [handleRetryLastMessage]);
 
   const handlePrefillConsumed = useCallback(() => {
     setPrefillCommand(null);
