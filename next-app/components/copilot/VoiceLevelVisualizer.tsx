@@ -8,14 +8,14 @@ type VoiceLevelVisualizerProps = {
     isRecording: boolean;
 };
 
-const HISTORY_LENGTH = 40;
+const HISTORY_LENGTH = 56;
 const HISTORY_ADVANCE_MS = 50;
 const REDUCED_FRAME_MS = 1000 / 8;
 const SILENCE_DEAD_ZONE = 0.012;
 const SILENCE_FLOOR = 0.045;
 const ATTACK_FACTOR = 0.35;
 const RELEASE_FACTOR = 0.18;
-const NORMALIZATION_CEILING = 0.25;
+const NORMALIZATION_CEILING = 0.27;
 
 export function shouldAdvanceHistory(now: number, lastAdvanceAt: number) {
     return now - lastAdvanceAt >= HISTORY_ADVANCE_MS;
@@ -74,9 +74,9 @@ function drawBars(canvas: HTMLCanvasElement, history: number[], contrast: string
 
     const centerY = height / 2;
     const barCount = history.length;
-    const gap = 2;
-    const barWidth = Math.max(1.5, (width - gap * (barCount - 1)) / barCount);
-    const maxAmplitude = Math.max(6.5, height / 2 - 2);
+    const gap = 1;
+    const barWidth = Math.max(1, (width - gap * (barCount - 1)) / barCount);
+    const maxAmplitude = Math.max(6, height / 2 - 3);
 
     context.strokeStyle = `rgba(${contrast}, 0.18)`;
     context.lineWidth = 1;
