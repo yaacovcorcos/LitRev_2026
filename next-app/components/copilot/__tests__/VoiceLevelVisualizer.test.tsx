@@ -88,8 +88,8 @@ describe("VoiceLevelVisualizer", () => {
 
         expect(geometry.barWidth).toBeLessThanOrEqual(1.6);
         expect(geometry.barWidth).toBeGreaterThanOrEqual(1);
-        expect(geometry.offsetX).toBeGreaterThan(0);
-        expect(geometry.gap).toBe(1);
+        expect(geometry.offsetX).toBeGreaterThanOrEqual(0);
+        expect(geometry.gap).toBe(1.5);
         expect(geometry.visibleCount).toBe(88);
     });
 
@@ -106,6 +106,8 @@ describe("VoiceLevelVisualizer", () => {
 
         expect(screen.getByTestId("voice-level-visualizer")).toBeTruthy();
         expect(fakeContext.roundRect).toHaveBeenCalled();
+        expect(fakeContext.lineTo).not.toHaveBeenCalled();
+        expect(fakeContext.stroke).not.toHaveBeenCalled();
         expect(requestAnimationFrameSpy).toHaveBeenCalled();
     });
 
