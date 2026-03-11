@@ -70,6 +70,22 @@ export const copilotMessageSchema = z.object({
             label: z.string(),
         })
         .optional(),
+    toolActivity: z
+        .object({
+            callId: z.string(),
+            toolName: z.string(),
+            status: z.enum(["queued", "running", "done", "failed"]),
+            summary: z.string().optional(),
+            queryPreview: z.string().optional(),
+            returnedCount: z.number().optional(),
+            totalResults: z.number().optional(),
+            resultIdentifiers: z.array(z.string()).optional(),
+            errorMeta: z.record(z.string(), z.unknown()).optional(),
+            startedAt: z.string(),
+            updatedAt: z.string(),
+            completedAt: z.string().optional(),
+        })
+        .optional(),
 });
 
 export const projectCopilotStateSchema = z.object({

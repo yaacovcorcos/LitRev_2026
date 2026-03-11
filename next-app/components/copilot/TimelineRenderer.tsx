@@ -149,12 +149,20 @@ function getToolActivityTimingText(item: Extract<TimelineItem, { type: "tool_act
 }
 
 function getToolActivityDisplayName(item: TimelineToolActivityItem): string {
-    if (item.toolName === "search_pubmed") return "PubMed search";
+    if (item.toolName === "search_pubmed") return "PubMed";
+    if (item.toolName === "search_openalex") return "OpenAlex";
+    if (item.toolName === "search_semantic_scholar") return "Semantic Scholar";
     return item.toolName;
 }
 
-function getPubMedResultCountText(item: TimelineToolActivityItem): string | null {
-    if (item.toolName !== "search_pubmed") return null;
+function isSearchReceipt(item: TimelineToolActivityItem): boolean {
+    return item.toolName === "search_pubmed"
+        || item.toolName === "search_openalex"
+        || item.toolName === "search_semantic_scholar";
+}
+
+function getSearchResultCountText(item: TimelineToolActivityItem): string | null {
+    if (!isSearchReceipt(item)) return null;
     if (typeof item.returnedCount === "number" && typeof item.totalResults === "number") {
         return `${item.returnedCount} of ${item.totalResults} results`;
     }
@@ -165,6 +173,11 @@ function getPubMedResultCountText(item: TimelineToolActivityItem): string | null
         return `${item.totalResults} results`;
     }
     return null;
+}
+
+function getSearchIdentifierText(item: TimelineToolActivityItem): string | null {
+    if (!item.resultIdentifiers || item.resultIdentifiers.length === 0) return null;
+    return item.resultIdentifiers.join(" · ");
 }
 
 function getPubMedSearchSize(item: TimelineToolActivityItem): number | null {
@@ -1353,7 +1366,8 @@ export function TimelineRenderer({
                 const timingText = getToolActivityTimingText(item);
                 const summary = item.summary?.trim();
                 const queryPreview = item.queryPreview?.trim();
-                const resultCountText = getPubMedResultCountText(item);
+                const resultCountText = getSearchResultCountText(item);
+                const identifierText = getSearchIdentifierText(item);
                 return (
                     <div
                         key={item.id}
@@ -1372,6 +1386,7 @@ export function TimelineRenderer({
                         <p className={styles.toolActivityMeta}>{timingText}</p>
                         {queryPreview ? <p className={styles.toolActivitySummary}>{queryPreview}</p> : null}
                         {resultCountText ? <p className={styles.toolActivityMeta}>{resultCountText}</p> : null}
+                        {identifierText ? <p className={styles.toolActivityMeta}>{identifierText}</p> : null}
                         {summary ? <p className={styles.toolActivitySummary}>{summary}</p> : null}
                     </div>
                 );
@@ -1471,7 +1486,7 @@ export function TimelineRenderer({
                         <span className={`material-icons-round ${styles.toolActivityIcon}`}>
                             {meta.icon}
                         </span>
-                        <span className={styles.toolActivityTitle}>PubMed search</span>
+                        <span className={styles.toolActivityTitle}>PubMed</span>
                         <span className={styles.toolActivityState}>{meta.label}</span>
                     </div>
                     <div className={styles.toolSequenceHeaderMeta}>
@@ -1486,8 +1501,9 @@ export function TimelineRenderer({
                 {expanded ? (
                     <ol className={styles.toolSequenceList}>
                         {entry.items.map((item, itemIndex) => {
-                            const resultCountText = getPubMedResultCountText(item);
+                            const resultCountText = getSearchResultCountText(item);
                             const timingText = getToolActivityTimingText(item);
+                            const identifierText = getSearchIdentifierText(item);
                             return (
                                 <li key={item.id} className={styles.toolSequenceItem}>
                                     <div className={styles.toolSequenceItemHead}>
@@ -1501,6 +1517,9 @@ export function TimelineRenderer({
                                     <div className={styles.toolSequenceMetaRow}>
                                         {resultCountText ? (
                                             <span className={styles.toolActivityMeta}>{resultCountText}</span>
+                                        ) : null}
+                                        {identifierText ? (
+                                            <span className={styles.toolActivityMeta}>{identifierText}</span>
                                         ) : null}
                                         <span className={styles.toolActivityMeta}>{timingText}</span>
                                     </div>

@@ -164,6 +164,7 @@ export function createAiStreamRuntime(deps: AiStreamRuntimeDeps): AiStreamRuntim
             queryPreview: intent.queryPreview,
             returnedCount: intent.returnedCount,
             totalResults: intent.totalResults,
+            resultIdentifiers: intent.resultIdentifiers,
             errorMeta: intent.errorMeta,
             startedAt: ts,
             updatedAt: ts,
@@ -182,6 +183,7 @@ export function createAiStreamRuntime(deps: AiStreamRuntimeDeps): AiStreamRuntim
         queryPreview: intent.queryPreview ?? existing.queryPreview,
         returnedCount: intent.returnedCount ?? existing.returnedCount,
         totalResults: intent.totalResults ?? existing.totalResults,
+        resultIdentifiers: intent.resultIdentifiers ?? existing.resultIdentifiers,
         errorMeta: intent.errorMeta ?? existing.errorMeta,
         updatedAt: ts,
         completedAt:

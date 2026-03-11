@@ -62,6 +62,7 @@ export type CopilotMessage = {
     queryPreview?: string;
     returnedCount?: number;
     totalResults?: number;
+    resultIdentifiers?: string[];
     errorMeta?: AIErrorEnvelope;
     startedAt: string;
     updatedAt: string;

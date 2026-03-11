@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
   const trace = {
@@ -252,8 +252,8 @@ vi.mock("@/lib/server/ai/error-classification", () => ({
 }));
 
 vi.mock("@/lib/server/utils/retry", () => ({
-  retryAsync: vi.fn(),
-  sleep: vi.fn(),
+  retryAsync: vi.fn(async <T>(fn: () => Promise<T>) => fn()),
+  sleep: vi.fn(async () => {}),
 }));
 
 vi.mock("@/lib/ai/reasoning-visibility", () => ({
@@ -308,6 +308,7 @@ const mockProtocolFindFirst = vi.mocked(prisma.protocol.findFirst);
 
 describe("AIService run finalization", () => {
   beforeEach(() => {
+    vi.useRealTimers();
     vi.clearAllMocks();
     mocks.provider.chat.mockResolvedValue({
       id: "resp-1",
@@ -349,9 +350,13 @@ describe("AIService run finalization", () => {
     mockProtocolFindFirst.mockResolvedValue(null);
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("finalizes a started run when the stream is closed after run_start", async () => {
     const service = new AIService();
-    const stream = service.streamChatWithArtifacts("hello", { page: "project" } as never, {
+    const stream = service.streamChatWithArtifacts("hello", "project", {
       projectId: "project-1",
       userId: "user-1",
       agentMode: "general",
@@ -412,7 +417,7 @@ describe("AIService run finalization", () => {
     });
 
     const service = new AIService();
-    const stream = service.streamChatWithArtifacts("", { page: "project" } as never, {
+    const stream = service.streamChatWithArtifacts("", "project", {
       planId: "plan-1",
       selectedSteps: [0],
       conversationId: "conv-client-stale",
@@ -447,7 +452,7 @@ describe("AIService run finalization", () => {
     mockRetrieveMemories.mockRejectedValueOnce(new Error("Connection terminated due to connection timeout"));
 
     const service = new AIService();
-    const stream = service.streamChatWithArtifacts("hello", { page: "project" } as never, {
+    const stream = service.streamChatWithArtifacts("hello", "project", {
       projectId: "project-1",
       userId: "user-1",
       agentMode: "general",
@@ -491,7 +496,7 @@ describe("AIService run finalization", () => {
     mockProtocolFindFirst.mockRejectedValueOnce(new Error("Can't reach database server at localhost:5432"));
 
     const service = new AIService();
-    const stream = service.streamChatWithArtifacts("hello", { page: "project" } as never, {
+    const stream = service.streamChatWithArtifacts("hello", "project", {
       projectId: "project-1",
       userId: "user-1",
       agentMode: "general",
@@ -523,7 +528,7 @@ describe("AIService run finalization", () => {
     mockGetAutonomyConfig.mockRejectedValueOnce(new Error("Connection terminated due to connection timeout"));
 
     const service = new AIService();
-    const stream = service.streamChatWithArtifacts("hello", { page: "project" } as never, {
+    const stream = service.streamChatWithArtifacts("hello", "project", {
       projectId: "project-1",
       userId: "user-1",
       agentMode: "general",

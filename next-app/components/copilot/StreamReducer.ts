@@ -44,6 +44,7 @@ export function messagesToTimeline(messages: CopilotMessage[]): TimelineItem[] {
                 queryPreview: msg.toolActivity.queryPreview,
                 returnedCount: msg.toolActivity.returnedCount,
                 totalResults: msg.toolActivity.totalResults,
+                resultIdentifiers: msg.toolActivity.resultIdentifiers,
                 errorMeta: msg.toolActivity.errorMeta,
                 startedAt: msg.toolActivity.startedAt,
                 updatedAt: msg.toolActivity.updatedAt,
