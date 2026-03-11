@@ -21,6 +21,7 @@ import type { RetryModelExpectation } from "@/types/chat-unification";
 import { getContextTargetKey } from "@/lib/context-capture/targets";
 import { UserInputCard } from "../artifacts/UserInputCard";
 import styles from "./CopilotInput.module.css";
+import { VoiceLevelVisualizer } from "./VoiceLevelVisualizer";
 
 const CopilotActionsMenuButton = dynamic(() =>
     import("./CopilotActionsMenuButton").then((module) => module.CopilotActionsMenuButton)
@@ -223,7 +224,7 @@ export function CopilotInputCore({
         state: voiceState,
         error: voiceError,
         elapsedMs,
-        waveformBars,
+        visualizerAnalyser,
         toggleRecording,
         stopRecording,
         clearError: clearVoiceError,
@@ -436,7 +437,7 @@ export function CopilotInputCore({
             </span>
             <button
                 type="button"
-                className={`${styles.actionBtn} ${styles.voiceActionBtn} ${voiceState === "recording" ? styles.actionBtnRecording : ""}`}
+                className={`${styles.actionBtn} ${styles.voiceActionBtn} ${voiceState === "recording" ? styles.voiceActionBtnRecording : ""}`}
                 onClick={toggleRecording}
                 disabled={voiceState === "transcribing"}
                 aria-label={voiceState === "recording" ? "Stop recording" : voiceState === "transcribing" ? "Transcribing..." : "Voice input"}
@@ -715,15 +716,7 @@ export function CopilotInputCore({
                             <div className={styles.recordingStatus} aria-live="polite" aria-atomic="true">
                                 {voiceState === "recording" ? (
                                     <>
-                                        <div className={styles.waveformStrip} aria-hidden="true">
-                                            {waveformBars.map((bar, index) => (
-                                                <span
-                                                    key={`${index}-${bar}`}
-                                                    className={styles.waveformBar}
-                                                    style={{ height: `${Math.max(18, Math.round(bar * 42))}px` }}
-                                                />
-                                            ))}
-                                        </div>
+                                        <VoiceLevelVisualizer analyser={visualizerAnalyser} isRecording={true} />
                                         <span className={styles.recordingTimer}>{formatElapsedVoiceTime(elapsedMs)}</span>
                                     </>
                                 ) : (

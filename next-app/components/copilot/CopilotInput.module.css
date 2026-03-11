@@ -212,23 +212,18 @@
     flex: 1;
 }
 
-.waveformStrip {
+.visualizerShell {
     display: flex;
-    align-items: end;
-    gap: 3px;
+    align-items: center;
     min-width: 0;
     flex: 1;
-    height: 44px;
-    padding: 0 4px;
+    height: 32px;
 }
 
-.waveformBar {
-    width: 4px;
-    min-height: 10px;
-    border-radius: 999px;
-    background: rgba(var(--rgb-ui-contrast), 0.72);
-    flex: 1 1 0;
-    transition: height 0.12s ease;
+.visualizerCanvas {
+    width: 100%;
+    height: 32px;
+    display: block;
 }
 
 .recordingTimer {
@@ -417,6 +412,16 @@
     border-radius: 999px;
 }
 
+.voiceActionBtnRecording {
+    color: var(--color-danger);
+    background: rgba(var(--rgb-legacy-red-material), 0.08);
+}
+
+.voiceActionBtnRecording:hover {
+    color: var(--color-danger-hover);
+    background: rgba(var(--rgb-legacy-red-material), 0.12);
+}
+
 .actionBtn :global(.material-icons-round) {
     font-size: 18px;
 }
@@ -449,22 +454,6 @@
 
 .compressBtn :global(.material-icons-round) {
     font-size: 18px;
-}
-
-/* Voice recording active state */
-.actionBtnRecording {
-    color: var(--color-danger);
-    animation: recordingPulse 1.5s ease-in-out infinite;
-}
-
-.actionBtnRecording:hover {
-    color: var(--color-danger-hover);
-    background: rgba(var(--rgb-legacy-red-material), 0.08);
-}
-
-@keyframes recordingPulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.5; }
 }
 
 /* Voice error toast */
@@ -1019,16 +1008,6 @@
 @container inputBox (max-width: 340px) {
     .recordingTimer {
         display: none;
-    }
-}
-
-@media (prefers-reduced-motion: reduce) {
-    .waveformBar {
-        transition: none;
-    }
-
-    .actionBtnRecording {
-        animation: none;
     }
 }
 
