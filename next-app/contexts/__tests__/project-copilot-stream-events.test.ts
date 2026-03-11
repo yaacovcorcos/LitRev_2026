@@ -470,12 +470,30 @@ describe("project copilot stream event handlers", () => {
     };
 
     let state = handleProjectCopilotStreamChunk(
-      { type: "tool_call", toolCall: { id: "tc-1", name: "search_openalex", arguments: {} } },
+      {
+        type: "tool_call",
+        toolCall: {
+          id: "tc-1",
+          name: "search_openalex",
+          arguments: { query: "\"retrospective cohort\" AND disposition decision" },
+        },
+      },
       baseState(),
       deps
     );
     state = handleProjectCopilotStreamChunk(
-      { type: "tool_result", toolResult: { callId: "tc-1", result: { ok: true } }, toolName: "search_openalex" },
+      {
+        type: "tool_result",
+        toolResult: {
+          callId: "tc-1",
+          result: {
+            totalResults: 18,
+            returnedCount: 5,
+            results: [{ doi: "10.1000/example" }, { metadata: { openAlexId: "https://openalex.org/W123" } }],
+          },
+        },
+        toolName: "search_openalex",
+      },
       state,
       deps
     );
@@ -483,6 +501,10 @@ describe("project copilot stream event handlers", () => {
     const toolMessage = messages.find((m) => m.id === "tool-tc-1");
     expect(toolMessage?.toolActivity?.status).toBe("done");
     expect(toolMessage?.toolActivity?.toolName).toBe("search_openalex");
+    expect(toolMessage?.toolActivity?.queryPreview).toBe("\"retrospective cohort\" AND disposition decision");
+    expect(toolMessage?.toolActivity?.returnedCount).toBe(5);
+    expect(toolMessage?.toolActivity?.totalResults).toBe(18);
+    expect(toolMessage?.toolActivity?.resultIdentifiers).toEqual(["DOI 10.1000/example", "OpenAlex W123"]);
   });
 
   it("materializes user_input_required into a timeline-compatible message", () => {

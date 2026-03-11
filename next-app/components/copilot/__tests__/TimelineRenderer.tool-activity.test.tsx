@@ -40,7 +40,11 @@ describe("TimelineRenderer tool activity cards", () => {
         callId: "call-1",
         toolName: "search_openalex",
         status: "done",
-        summary: "Fetched 42 studies.",
+        summary: "Found 5 of 18 OpenAlex results.",
+        queryPreview: "\"retrospective cohort\" AND disposition decision",
+        returnedCount: 5,
+        totalResults: 18,
+        resultIdentifiers: ["DOI 10.1000/example", "OpenAlex W123"],
         startedAt: "2026-03-02T12:00:00.000Z",
         updatedAt: "2026-03-02T12:00:02.000Z",
         completedAt: "2026-03-02T12:00:02.000Z",
@@ -48,10 +52,13 @@ describe("TimelineRenderer tool activity cards", () => {
       },
     ]);
 
-    expect(screen.getByText("search_openalex")).not.toBeNull();
+    expect(screen.getByText("OpenAlex")).not.toBeNull();
     expect(screen.getByText("Done")).not.toBeNull();
     expect(screen.getByText("Completed in 2.0s")).not.toBeNull();
-    expect(screen.getByText("Fetched 42 studies.")).not.toBeNull();
+    expect(screen.getByText("\"retrospective cohort\" AND disposition decision")).not.toBeNull();
+    expect(screen.getByText("5 of 18 results")).not.toBeNull();
+    expect(screen.getByText("DOI 10.1000/example · OpenAlex W123")).not.toBeNull();
+    expect(screen.getByText("Found 5 of 18 OpenAlex results.")).not.toBeNull();
   });
 
   it("shows in-progress timing for running tools", () => {
@@ -107,6 +114,7 @@ describe("TimelineRenderer tool activity cards", () => {
         queryPreview: "\"retrospective cohort\" disposition decision",
         returnedCount: 10,
         totalResults: 42,
+        resultIdentifiers: ["PMID 40123456", "PMID 39887711"],
         startedAt: "2026-03-02T12:00:00.000Z",
         updatedAt: "2026-03-02T12:00:02.000Z",
         completedAt: "2026-03-02T12:00:02.000Z",
@@ -122,6 +130,7 @@ describe("TimelineRenderer tool activity cards", () => {
         queryPreview: "\"retrospective cohort\" disposition decision physicians llm",
         returnedCount: 6,
         totalResults: 18,
+        resultIdentifiers: ["PMID 39887711", "PMID 38990000"],
         startedAt: "2026-03-02T12:00:03.000Z",
         updatedAt: "2026-03-02T12:00:05.000Z",
         completedAt: "2026-03-02T12:00:05.000Z",
@@ -137,6 +146,7 @@ describe("TimelineRenderer tool activity cards", () => {
         queryPreview: "\"retrospective cohort\" disposition decision physicians llm admission discharge",
         returnedCount: 4,
         totalResults: 9,
+        resultIdentifiers: ["PMID 38990000", "PMID 37770000"],
         startedAt: "2026-03-02T12:00:06.000Z",
         updatedAt: "2026-03-02T12:00:08.000Z",
         completedAt: "2026-03-02T12:00:08.000Z",
@@ -144,7 +154,7 @@ describe("TimelineRenderer tool activity cards", () => {
       },
     ]);
 
-    expect(screen.getByText("PubMed search")).not.toBeNull();
+    expect(screen.getByText("PubMed")).not.toBeNull();
     expect(screen.getByText("3 searches")).not.toBeNull();
     expect(screen.getByText("The search is narrowing toward a smaller result set.")).not.toBeNull();
     expect(screen.queryByText("search_pubmed")).toBeNull();
@@ -191,7 +201,7 @@ describe("TimelineRenderer tool activity cards", () => {
       },
     ]);
 
-    expect(screen.getByText("PubMed search")).not.toBeNull();
+    expect(screen.getByText("PubMed")).not.toBeNull();
     expect(screen.getByText("2 searches")).not.toBeNull();
     expect(screen.queryByText("The search is narrowing toward a smaller result set.")).toBeNull();
     expect(screen.queryByText("The search is broadening to explore a larger result set.")).toBeNull();
@@ -211,6 +221,7 @@ describe("TimelineRenderer tool activity cards", () => {
         queryPreview: "\"retrospective cohort\" disposition decision",
         returnedCount: 10,
         totalResults: 42,
+        resultIdentifiers: ["PMID 40123456", "PMID 39887711"],
         startedAt: "2026-03-02T12:00:00.000Z",
         updatedAt: "2026-03-02T12:00:02.000Z",
         completedAt: "2026-03-02T12:00:02.000Z",
@@ -218,8 +229,9 @@ describe("TimelineRenderer tool activity cards", () => {
       },
     ]);
 
-    expect(screen.getByText("PubMed search")).not.toBeNull();
+    expect(screen.getByText("PubMed")).not.toBeNull();
     expect(screen.getByText("10 of 42 results")).not.toBeNull();
+    expect(screen.getByText("PMID 40123456 · PMID 39887711")).not.toBeNull();
     expect(screen.getByText("Found 10 of 42 PubMed results.")).not.toBeNull();
     expect(screen.queryByText("search_pubmed")).toBeNull();
   });

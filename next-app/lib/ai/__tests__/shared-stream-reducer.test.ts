@@ -116,7 +116,10 @@ describe("shared stream reducer", () => {
             source: "pubmed",
             totalResults: 42,
             returnedCount: 10,
-            results: [],
+            results: [
+              { pmid: "40123456", title: "A" },
+              { pmid: "39887711", title: "B" },
+            ],
           },
         },
       },
@@ -128,6 +131,7 @@ describe("shared stream reducer", () => {
     if (!doneIntent || doneIntent.type !== "tool_activity_upsert") return;
     expect(doneIntent.returnedCount).toBe(10);
     expect(doneIntent.totalResults).toBe(42);
+    expect(doneIntent.resultIdentifiers).toEqual(["PMID 40123456", "PMID 39887711"]);
     expect(doneIntent.summary).toBe("Found 10 of 42 PubMed results.");
     expect(toolResultReduced.intents).toContainEqual({
       type: "progress_upsert",
@@ -187,6 +191,102 @@ describe("shared stream reducer", () => {
     });
     expect(secondResult.state.completedPubmedSearchCount).toBe(2);
     expect(secondResult.state.lastPubmedSearchSize).toBe(9);
+  });
+
+  it("extends factual receipt metadata to OpenAlex search results", () => {
+    let state = createInitialSharedStreamState();
+
+    const toolCallReduced = reduceSharedStreamChunk(
+      state,
+      {
+        type: "tool_call",
+        toolCall: {
+          id: "openalex-1",
+          name: "search_openalex",
+          arguments: { query: "triage AI emergency department" },
+        },
+      },
+      meta,
+    );
+    state = toolCallReduced.state;
+
+    const runningIntent = toolCallReduced.intents.find((intent) => intent.type === "tool_activity_upsert");
+    expect(runningIntent && runningIntent.type === "tool_activity_upsert").toBe(true);
+    if (!runningIntent || runningIntent.type !== "tool_activity_upsert") return;
+    expect(runningIntent.queryPreview).toBe("triage AI emergency department");
+
+    const toolResultReduced = reduceSharedStreamChunk(
+      state,
+      {
+        type: "tool_result",
+        toolName: "search_openalex",
+        toolResult: {
+          callId: "openalex-1",
+          result: {
+            totalResults: 18,
+            returnedCount: 5,
+            results: [
+              { doi: "10.1000/openalex-1", metadata: { openAlexId: "https://openalex.org/W123" } },
+              { metadata: { openAlexId: "https://openalex.org/W456" } },
+            ],
+          },
+        },
+      },
+      meta,
+    );
+
+    const doneIntent = toolResultReduced.intents.find((intent) => intent.type === "tool_activity_upsert" && intent.status === "done");
+    expect(doneIntent && doneIntent.type === "tool_activity_upsert").toBe(true);
+    if (!doneIntent || doneIntent.type !== "tool_activity_upsert") return;
+    expect(doneIntent.returnedCount).toBe(5);
+    expect(doneIntent.totalResults).toBe(18);
+    expect(doneIntent.resultIdentifiers).toEqual(["DOI 10.1000/openalex-1", "OpenAlex W456"]);
+    expect(doneIntent.summary).toBe("Found 5 of 18 OpenAlex results.");
+  });
+
+  it("extends factual receipt metadata to Semantic Scholar search results", () => {
+    let state = createInitialSharedStreamState();
+
+    state = reduceSharedStreamChunk(
+      state,
+      {
+        type: "tool_call",
+        toolCall: {
+          id: "semantic-1",
+          name: "search_semantic_scholar",
+          arguments: { query: "llm triage emergency department" },
+        },
+      },
+      meta,
+    ).state;
+
+    const toolResultReduced = reduceSharedStreamChunk(
+      state,
+      {
+        type: "tool_result",
+        toolName: "search_semantic_scholar",
+        toolResult: {
+          callId: "semantic-1",
+          result: {
+            totalResults: 11,
+            returnedCount: 3,
+            results: [
+              { doi: "10.1000/s2-1", metadata: { s2PaperId: "abc123" } },
+              { metadata: { s2PaperId: "def456" } },
+            ],
+          },
+        },
+      },
+      meta,
+    );
+
+    const doneIntent = toolResultReduced.intents.find((intent) => intent.type === "tool_activity_upsert" && intent.status === "done");
+    expect(doneIntent && doneIntent.type === "tool_activity_upsert").toBe(true);
+    if (!doneIntent || doneIntent.type !== "tool_activity_upsert") return;
+    expect(doneIntent.returnedCount).toBe(3);
+    expect(doneIntent.totalResults).toBe(11);
+    expect(doneIntent.resultIdentifiers).toEqual(["DOI 10.1000/s2-1", "S2 def456"]);
+    expect(doneIntent.summary).toBe("Found 3 of 11 Semantic Scholar results.");
   });
 
   it("keeps user input context from reducer meta", () => {

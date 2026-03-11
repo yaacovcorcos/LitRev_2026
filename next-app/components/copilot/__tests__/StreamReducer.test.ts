@@ -73,6 +73,7 @@ describe("messagesToTimeline", () => {
           queryPreview: "\"retrospective cohort\" AND disposition decision",
           returnedCount: 10,
           totalResults: 18,
+          resultIdentifiers: ["DOI 10.1000/example", "OpenAlex W123"],
           startedAt: "2026-02-28T00:00:04.000Z",
           updatedAt: "2026-02-28T00:00:04.000Z",
         },
@@ -94,6 +95,7 @@ describe("messagesToTimeline", () => {
       queryPreview: "\"retrospective cohort\" AND disposition decision",
       returnedCount: 10,
       totalResults: 18,
+      resultIdentifiers: ["DOI 10.1000/example", "OpenAlex W123"],
     });
   });
 

@@ -161,6 +161,7 @@ function upsertToolActivityMessage(
           queryPreview: payload.queryPreview,
           returnedCount: payload.returnedCount,
           totalResults: payload.totalResults,
+          resultIdentifiers: payload.resultIdentifiers,
           errorMeta: payload.errorMeta,
           startedAt: now,
           updatedAt: now,
@@ -182,6 +183,7 @@ function upsertToolActivityMessage(
         queryPreview: payload.queryPreview ?? existing.toolActivity.queryPreview,
         returnedCount: payload.returnedCount ?? existing.toolActivity.returnedCount,
         totalResults: payload.totalResults ?? existing.toolActivity.totalResults,
+        resultIdentifiers: payload.resultIdentifiers ?? existing.toolActivity.resultIdentifiers,
         errorMeta: payload.errorMeta ?? existing.toolActivity.errorMeta,
         updatedAt: now,
         completedAt:
