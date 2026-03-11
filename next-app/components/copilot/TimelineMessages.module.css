@@ -60,6 +60,144 @@
     gap: 12px;
 }
 
+.executionTraceGroup {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.executionTraceContainer {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: 16px;
+    border: 1px solid rgba(var(--rgb-ui-contrast), 0.08);
+    background: rgba(var(--rgb-ui-contrast), 0.03);
+}
+
+.executionTraceHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.executionTraceHeaderText {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    min-width: 0;
+    flex-wrap: wrap;
+}
+
+.executionTraceHeaderLabel {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+}
+
+.executionTraceHeaderMeta {
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.executionTraceCollapseBtn {
+    width: 28px;
+    height: 28px;
+    border: none;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(var(--rgb-ui-contrast), 0.05);
+    color: var(--text-secondary);
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background 0.18s ease, color 0.18s ease, transform 0.18s ease;
+}
+
+.executionTraceCollapseBtn:hover {
+    background: rgba(var(--rgb-ui-contrast), 0.08);
+    color: var(--text-primary);
+}
+
+.executionTraceCollapseBtn:focus-visible {
+    outline: 2px solid rgba(var(--rgb-accent-primary), 0.5);
+    outline-offset: 2px;
+}
+
+.executionTraceCollapseBtn :global(.material-icons-round) {
+    font-size: 18px;
+}
+
+.executionTraceLiveBadge {
+    padding: 4px 8px;
+    border-radius: 999px;
+    background: rgba(var(--rgb-accent-primary), 0.08);
+    color: var(--accent-primary);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    flex-shrink: 0;
+}
+
+.executionTraceItems {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.executionTraceSummaryBar {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border: 1px solid rgba(var(--rgb-ui-contrast), 0.08);
+    border-radius: 14px;
+    background: rgba(var(--rgb-ui-surface), 0.78);
+    color: var(--text-secondary);
+    cursor: pointer;
+    text-align: left;
+    transition: border-color 0.18s ease, background 0.18s ease, transform 0.18s ease;
+}
+
+.executionTraceSummaryBar:hover {
+    background: rgba(var(--rgb-ui-surface), 0.9);
+    border-color: rgba(var(--rgb-ui-contrast), 0.12);
+}
+
+.executionTraceSummaryBar:focus-visible {
+    outline: 2px solid rgba(var(--rgb-accent-primary), 0.5);
+    outline-offset: 2px;
+}
+
+.executionTraceSummaryIcon,
+.executionTraceSummaryChevron {
+    color: var(--text-muted);
+    flex-shrink: 0;
+    font-size: 18px;
+}
+
+.executionTraceSummaryLabel {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+}
+
+.executionTraceSummaryMeta {
+    min-width: 0;
+    flex: 1;
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+
 .chatMsg {
     display: flex;
     min-width: 0;

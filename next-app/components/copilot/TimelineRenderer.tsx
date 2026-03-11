@@ -50,6 +50,7 @@ import { extractMentionedStudies, stripMentionedStudiesMarkup, type MentionedStu
 import { isChatStudyMentionsEnabled } from "@/lib/agent/feature-flags";
 import { getReasoningSummaryPreview } from "@/lib/ai/reasoning-visibility";
 import { getContextTargetKey } from "@/lib/context-capture/targets";
+import { buildExecutionTraceEntries, type ExecutionTraceEntry } from "./execution-trace-grouping";
 import styles from "./TimelineMessages.module.css";
 import artifactStyles from "@/styles/artifacts.module.css";
 import markdownStyles from "@/styles/markdown.module.css";
@@ -774,6 +775,7 @@ export function TimelineRenderer({
     const [approveAllState, setApproveAllState] = useState<"idle" | "approving" | "finished">("idle");
     const [approveAllProgress, setApproveAllProgress] = useState<{ completed: number; total: number }>({ completed: 0, total: 0 });
     const [approveAllSummary, setApproveAllSummary] = useState<{ approvedCount: number; failedArtifactIds: string[]; stopped: boolean } | null>(null);
+    const [collapsedTraceByAssistantId, setCollapsedTraceByAssistantId] = useState<Record<string, boolean>>({});
     const approveAllAbortRef = useRef(false);
     const approveAllDismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const prevConversationIdRef = useRef<string | undefined>(conversationId);
@@ -854,10 +856,6 @@ export function TimelineRenderer({
     const effectiveVisibleCount = windowSize ? Math.min(visibleCount, timeline.length) : timeline.length;
     const hiddenItemCount = Math.max(0, timeline.length - effectiveVisibleCount);
     const visibleTimeline = hiddenItemCount > 0 ? timeline.slice(-effectiveVisibleCount) : timeline;
-    const presentedTimeline = useMemo(
-        () => buildPresentedTimeline(visibleTimeline),
-        [visibleTimeline],
-    );
     const visibleFirstTimelineId = visibleTimeline[0]?.id ?? null;
     const [expandedSequenceIds, setExpandedSequenceIds] = useState<Record<string, boolean>>({});
     const toggleSequenceExpanded = useCallback((sequenceId: string) => {
@@ -868,6 +866,9 @@ export function TimelineRenderer({
     }, []);
     useEffect(() => {
         setExpandedSequenceIds({});
+    }, [conversationId]);
+    useEffect(() => {
+        setCollapsedTraceByAssistantId({});
     }, [conversationId]);
     // ── Content change — schedule scroll if pinned ──────────────────────────
     useLayoutEffect(() => { notifyContentChanged(); }, [notifyContentChanged, timeline, visibleFirstTimelineId, effectiveVisibleCount]);
@@ -1340,6 +1341,19 @@ export function TimelineRenderer({
         ? visibleTimeline.length - 1
         : -1;
     const isStreaming = isLoading && lastAssistantIndex >= 0;
+    const streamingAssistantMessageId = isStreaming
+        ? visibleTimeline[lastAssistantIndex]?.id ?? null
+        : null;
+    const renderEntries = useMemo(
+        () => buildExecutionTraceEntries(visibleTimeline, { streamingAssistantMessageId }),
+        [streamingAssistantMessageId, visibleTimeline],
+    );
+    const toggleCollapsedTrace = useCallback((assistantMessageId: string) => {
+        setCollapsedTraceByAssistantId((prev) => ({
+            ...prev,
+            [assistantMessageId]: !(prev[assistantMessageId] ?? true),
+        }));
+    }, []);
 
     const renderTimelineItem = (item: TimelineItem, index: number) => {
         switch (item.type) {
@@ -1569,6 +1583,110 @@ export function TimelineRenderer({
         );
     };
 
+    const renderExecutionTraceEntry = (entry: Extract<ExecutionTraceEntry, { kind: "execution_trace" }>) => {
+        const presentedTraceItems = buildPresentedTimeline(entry.traceItems);
+        const collapsed = collapsedTraceByAssistantId[entry.anchorAssistantMessageId] ?? entry.defaultCollapsed;
+
+        return (
+            <div key={entry.id} className={styles.executionTraceGroup}>
+                {collapsed ? (
+                    <button
+                        type="button"
+                        className={styles.executionTraceSummaryBar}
+                        onClick={() => toggleCollapsedTrace(entry.anchorAssistantMessageId)}
+                        aria-expanded="false"
+                        aria-label="Show process details"
+                    >
+                        <span className={`material-icons-round ${styles.executionTraceSummaryIcon}`}>toc</span>
+                        <span className={styles.executionTraceSummaryLabel}>Process details</span>
+                        <span className={styles.executionTraceSummaryMeta}>{entry.summaryText}</span>
+                        <span className={`material-icons-round ${styles.executionTraceSummaryChevron}`}>expand_more</span>
+                    </button>
+                ) : (
+                    <section className={styles.executionTraceContainer} aria-label="Process details">
+                        <div className={styles.executionTraceHeader}>
+                            <div className={styles.executionTraceHeaderText}>
+                                <span className={styles.executionTraceHeaderLabel}>Process details</span>
+                                <span className={styles.executionTraceHeaderMeta}>{entry.summaryText}</span>
+                            </div>
+                            {entry.canCollapse ? (
+                                <button
+                                    type="button"
+                                    className={styles.executionTraceCollapseBtn}
+                                    onClick={() => toggleCollapsedTrace(entry.anchorAssistantMessageId)}
+                                    aria-label="Hide process details"
+                                >
+                                    <span className="material-icons-round">expand_less</span>
+                                </button>
+                            ) : (
+                                <span className={styles.executionTraceLiveBadge}>Live</span>
+                            )}
+                        </div>
+                        <div className={styles.executionTraceItems}>
+                            {presentedTraceItems.map((traceEntry, traceIndex) => renderPresentedTimelineItem(traceEntry, traceIndex))}
+                        </div>
+                    </section>
+                )}
+                {entry.interstitialProgressItems.map((progressItem) => (
+                    <div key={progressItem.id}>
+                        <StreamingProgress
+                            message={progressItem.message}
+                            current={progressItem.current}
+                            total={progressItem.total}
+                        />
+                    </div>
+                ))}
+                <AssistantMessageRow
+                    item={entry.assistantMessage}
+                    projectId={projectId}
+                    reasoningMode={reasoningMode}
+                    isStreaming={streamingAssistantMessageId === entry.assistantMessage.id}
+                    isSaved={savedNoteId === entry.assistantMessage.id}
+                    isSaving={savingNoteId === entry.assistantMessage.id}
+                    onCopy={handleCopy}
+                    onSaveToNotes={onSaveToNotes ? handleSaveToNotes : undefined}
+                    onInsert={onInsert}
+                    onBranchFromMessage={onBranchFromMessage}
+                />
+            </div>
+        );
+    };
+
+    const renderTimelineEntries = useMemo(() => {
+        const rendered: Array<{ key: string; node: ReactNode }> = [];
+        let singleBuffer: TimelineItem[] = [];
+
+        const flushSingleBuffer = () => {
+            if (singleBuffer.length === 0) return;
+            const presentedSingles = buildPresentedTimeline(singleBuffer);
+            presentedSingles.forEach((presentedEntry, presentedIndex) => {
+                const key = presentedEntry.kind === "single"
+                    ? presentedEntry.item.id
+                    : presentedEntry.id;
+                rendered.push({
+                    key,
+                    node: renderPresentedTimelineItem(presentedEntry, presentedIndex),
+                });
+            });
+            singleBuffer = [];
+        };
+
+        renderEntries.forEach((entry) => {
+            if (entry.kind === "single") {
+                singleBuffer.push(entry.item);
+                return;
+            }
+            flushSingleBuffer();
+            rendered.push({
+                key: entry.id,
+                node: renderExecutionTraceEntry(entry),
+            });
+        });
+
+        flushSingleBuffer();
+        return rendered;
+    }, [renderEntries, renderPresentedTimelineItem, renderExecutionTraceEntry]);
+
     return (
         <div className={`${styles.copilotBody} ${variant === "page" ? styles.pageLayout : ""}`} ref={setContainerRef} onScroll={onScroll}>
             <div className={styles.chatList}>
@@ -1605,17 +1723,15 @@ export function TimelineRenderer({
                         </button>
                     </div>
                 )}
-                {presentedTimeline.map((entry, index) => {
-                    const rendered = renderPresentedTimelineItem(entry, index);
-                    const firstId = entry.kind === "single" ? entry.item.id : entry.id;
+                {renderTimelineEntries.map((entry, index) => {
                     if (index === 0) {
                         return (
-                            <div key={firstId} ref={(el) => { firstItemRef.current = el; }}>
-                                {rendered}
+                            <div key={entry.key} ref={(el) => { firstItemRef.current = el; }}>
+                                {entry.node}
                             </div>
                         );
                     }
-                    return rendered;
+                    return entry.node;
                 })}
                 {isLoading && visibleTimeline.length > 0 && visibleTimeline[visibleTimeline.length - 1].type === "user_message" && (
                     <div className={styles.loadingIndicator}>
