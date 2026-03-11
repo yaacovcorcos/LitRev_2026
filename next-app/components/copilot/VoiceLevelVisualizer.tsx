@@ -67,12 +67,14 @@ function getChannelValue(name: string, fallback: string) {
 }
 
 export function getBarGeometry(width: number, barCount: number) {
-    const clampedCount = Math.max(1, barCount);
-    const computedWidth = (width - BAR_GAP * (clampedCount - 1)) / clampedCount;
+    const requestedCount = Math.max(1, barCount);
+    const maxVisibleCount = Math.max(1, Math.floor((width + BAR_GAP) / (MIN_BAR_WIDTH + BAR_GAP)));
+    const visibleCount = Math.min(requestedCount, maxVisibleCount);
+    const computedWidth = (width - BAR_GAP * (visibleCount - 1)) / visibleCount;
     const barWidth = Math.min(MAX_BAR_WIDTH, Math.max(MIN_BAR_WIDTH, computedWidth));
-    const contentWidth = barWidth * clampedCount + BAR_GAP * (clampedCount - 1);
+    const contentWidth = barWidth * visibleCount + BAR_GAP * (visibleCount - 1);
     const offsetX = Math.max(0, (width - contentWidth) / 2);
-    return { barWidth, gap: BAR_GAP, offsetX };
+    return { barWidth, gap: BAR_GAP, offsetX, visibleCount };
 }
 
 function drawBars(canvas: HTMLCanvasElement, history: number[], contrast: string) {
@@ -85,8 +87,9 @@ function drawBars(canvas: HTMLCanvasElement, history: number[], contrast: string
     context.scale(dpr, dpr);
 
     const centerY = height / 2;
-    const barCount = history.length;
-    const { barWidth, gap, offsetX } = getBarGeometry(width, barCount);
+    const { barWidth, gap, offsetX, visibleCount } = getBarGeometry(width, history.length);
+    const visibleHistory = history.slice(-visibleCount);
+    const barCount = visibleHistory.length;
     const maxAmplitude = Math.max(6, height / 2 - 3);
 
     context.strokeStyle = `rgba(${contrast}, 0.18)`;
@@ -98,7 +101,7 @@ function drawBars(canvas: HTMLCanvasElement, history: number[], contrast: string
 
     context.fillStyle = `rgba(${contrast}, 0.78)`;
     for (let index = 0; index < barCount; index += 1) {
-        const value = history[index] ?? SILENCE_FLOOR;
+        const value = visibleHistory[index] ?? SILENCE_FLOOR;
         const amplitude = Math.max(1.25, value * maxAmplitude);
         const x = offsetX + index * (barWidth + gap);
         const y = centerY - amplitude;

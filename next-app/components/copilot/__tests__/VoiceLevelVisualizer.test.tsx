@@ -90,6 +90,15 @@ describe("VoiceLevelVisualizer", () => {
         expect(geometry.barWidth).toBeGreaterThanOrEqual(1);
         expect(geometry.offsetX).toBeGreaterThan(0);
         expect(geometry.gap).toBe(1);
+        expect(geometry.visibleCount).toBe(88);
+    });
+
+    it("keeps the newest samples visible on narrow canvases", () => {
+        const geometry = getBarGeometry(120, 88);
+
+        expect(geometry.visibleCount).toBeLessThan(88);
+        expect(geometry.barWidth).toBeGreaterThanOrEqual(1);
+        expect(geometry.offsetX).toBeGreaterThanOrEqual(0);
     });
 
     it("renders a canvas visualizer and drives drawing with requestAnimationFrame in normal mode", () => {
