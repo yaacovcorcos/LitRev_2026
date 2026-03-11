@@ -10,6 +10,8 @@ async function stubNonOperationalTelemetry(page: Page): Promise<void> {
     "**/api/telemetry/chat-unification": "{}",
     "**/api/telemetry/citation-preview": "{}",
     "**/api/telemetry/context-capture": "{}",
+    "**/api/telemetry/performance": "{}",
+    "**/api/telemetry/reliability": "{}",
   };
 
   for (const [endpoint, body] of Object.entries(endpointsToStub)) {
@@ -149,23 +151,25 @@ export async function setHomeState(
   {
     seedKey,
     state,
+    projectCount,
   }: {
     seedKey: string;
     state: "zero_state" | "workspace";
+    projectCount?: number;
   },
 ): Promise<void> {
   await postWithRetries(page, "/api/dev/test-home-state", {
     seedKey,
     state,
+    projectCount,
   });
 
   await page.goto("/", { waitUntil: "domcontentloaded", timeout: 30_000 });
-  await expect
-    .poll(async () => {
-      const current = await waitForHomeReady(page);
-      return current === "loading" ? "loading" : current;
-    }, { timeout: 30_000 })
-    .toBe(state);
+  if (state === "workspace") {
+    await enterHomeWorkspace(page);
+  }
+
+  await expect.poll(async () => waitForHomeReady(page), { timeout: 30_000 }).toBe(state);
 }
 
 export async function createProjectFromHome(

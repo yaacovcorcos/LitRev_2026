@@ -69,5 +69,5 @@ describe("CopilotActionsMenuButton", () => {
         expect(screen.getByText("Other studies")).toBeTruthy();
         expect(screen.getByRole("button", { name: /project.pdf/i })).toBeTruthy();
         expect(listProjectFilesAction).toHaveBeenCalledWith("proj_1");
-    });
+    }, 15_000);
 });

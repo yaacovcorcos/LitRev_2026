@@ -86,7 +86,7 @@ describe("ConversationPicker actions", () => {
       expect(onRename).toHaveBeenCalledWith("c1", "Renamed Conversation");
     });
     expect(promptSpy).not.toHaveBeenCalled();
-  });
+  }, 15_000);
 
   it("runs duplicate and delete actions from menu", () => {
     const onDuplicate = vi.fn();

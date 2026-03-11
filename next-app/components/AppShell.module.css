@@ -1,5 +1,6 @@
 .appContainer {
     display: flex;
+    height: var(--app-height, 100vh);
     min-height: var(--app-min-height, 100vh);
     background: var(--bg-body);
     color: var(--text-primary);
@@ -13,6 +14,9 @@
 
 .mainContent {
     flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
     padding: 56px var(--shell-gutter, 40px) 0;
     min-height: var(--shell-content-min-height);
     height: auto;
@@ -24,8 +28,6 @@
 
 .mainContentNoPad {
     padding: 56px 0 0;
-    min-height: var(--shell-content-min-height);
-    height: auto;
 }
 
 

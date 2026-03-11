@@ -5,7 +5,7 @@ import { AppShell } from "@/components/AppShell";
 import { TopBar } from "@/components/TopBar";
 import controlsStyles from "@/components/ControlsBar.module.css";
 import cardStyles from "@/components/ProjectGrid.module.css";
-import layoutStyles from "../home.module.css";
+import styles from "./library.module.css";
 
 type LibraryItem = {
   id: string;
@@ -80,8 +80,8 @@ export default function LibraryView() {
 
   return (
     <AppShell activeNav="library">
-      <div className={layoutStyles.page}>
-        <div className={layoutStyles.headerArea}>
+      <div className={`surface-root ${styles.page}`} data-surface-height="shell">
+        <div className={styles.headerArea}>
           <TopBar title="Library" subtitle="Recent resources across projects" />
 
           <div className={controlsStyles.controlsBar}>
@@ -146,7 +146,7 @@ export default function LibraryView() {
           </div>
         </div>
 
-        <div className={layoutStyles.scrollArea}>
+        <div className={`surface-scroll-body ${styles.scrollArea}`} data-surface-padding="responsive">
           {filtered.length === 0 ? (
             <div className="empty-state-large">
               <div className="icon-circle-large">
