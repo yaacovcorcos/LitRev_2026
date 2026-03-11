@@ -38,6 +38,7 @@ vi.mock("next/dynamic", () => ({
       projects?: Array<{ id: string; name: string }>;
       onSelectProject?: (projectId: string | null) => void;
       items?: Array<{ type: string; id: string; content?: string; message?: string; errorMeta?: { recoveryRecommendation?: string; activeRunId?: string } }>;
+      suppressedProgressId?: string | null;
       onReconnectRun?: (item: { type: string; id: string; errorMeta?: { activeRunId?: string } }) => void;
       onStopAndRetryRun?: (item: { type: string; id: string; errorMeta?: { activeRunId?: string } }) => void;
       onRetryLastMessage?: () => void;
@@ -73,9 +74,13 @@ vi.mock("next/dynamic", () => ({
       if (props.items) {
         return (
           <div>
+            <div data-testid="timeline-suppressed-progress">{props.suppressedProgressId ?? ""}</div>
             {props.items.map((item) => {
               if (item.type === "assistant_message") {
                 return <div key={item.id}>{item.content}</div>;
+              }
+              if (item.type === "progress" && item.id !== props.suppressedProgressId) {
+                return <div key={item.id}>{item.message}</div>;
               }
               if (item.type === "error") {
                 return (
@@ -405,5 +410,36 @@ describe("/ai page deferred hydration", () => {
 
     expect(screen.queryByText("The stream ended unexpectedly. Retry to continue.")).toBeNull();
     expect(screen.queryByText("Connection lost and recovery failed. You can retry safely now.")).toBeNull();
+  });
+
+  it("elevates live progress above the composer and suppresses the matching inline timeline row", async () => {
+    mockProcessAIStream.mockImplementation(async ({ onChunk }: {
+      onChunk: (chunk: unknown) => void | Promise<void>;
+    }) => {
+      await onChunk({ type: "progress", progressMessage: "Searching PubMed", progressCurrent: 1, progressTotal: 3 });
+      return {
+        runStatus: null,
+        stopReason: null,
+        terminalReason: "completed",
+        errorMessage: null,
+        errorMeta: null,
+        actualModel: null,
+        actualModelSource: "unknown",
+      };
+    });
+
+    render(<AIView />);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "send message" }));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Searching PubMed")).toBeTruthy();
+    });
+
+    expect(screen.getByTestId("timeline-suppressed-progress").textContent).toMatch(/^progress-/);
+    const timelineText = screen.getByTestId("timeline-suppressed-progress").parentElement?.textContent ?? "";
+    expect(timelineText).not.toContain("Searching PubMedSearching PubMed");
   });
 });

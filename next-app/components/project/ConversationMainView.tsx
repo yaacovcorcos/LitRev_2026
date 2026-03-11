@@ -7,11 +7,14 @@ import type { AgentMode } from "@/types/agent";
 import { useProjectState } from "@/hooks/useProjectState";
 import { getSuggestions } from "@/lib/agent/suggestions";
 import { createNoteAction } from "@/app/actions/notes";
+import { selectActiveProgress, normalizeTimelineProgressItems } from "@/lib/ai/active-progress";
 import { TimelineRenderer } from "../copilot/TimelineRenderer";
 import { CopilotInput } from "../copilot/CopilotInput";
+import { ComposerActiveProgressBar } from "../copilot/ComposerActiveProgressBar";
 import { AutonomySettings } from "../copilot/AutonomySettings";
 import { ConversationPicker } from "../ui/ConversationPicker";
 import { generateChatUnificationRequestKey } from "@/lib/ai/chat-unification-telemetry";
+import { messagesToTimeline } from "../copilot/StreamReducer";
 import styles from "./ConversationMainView.module.css";
 
 export type ConversationMainViewProps = {
@@ -167,6 +170,11 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
     }, [executePlan, isLoading, messages]);
 
     const hasMessages = messages.length > 0;
+    const timelineItems = useMemo(() => messagesToTimeline(messages), [messages]);
+    const { activeProgress, suppressedProgressId } = useMemo(
+        () => selectActiveProgress(normalizeTimelineProgressItems(timelineItems)),
+        [timelineItems],
+    );
 
     return (
         <div className={styles.conversationView}>
@@ -256,10 +264,12 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
                         hasMore={hasMore}
                         isLoadingOlder={isLoadingOlder}
                         onLoadOlder={loadOlderMessages}
+                        suppressedProgressId={suppressedProgressId}
                     />
 
                     {/* Input */}
                     <div className={styles.inputWrapper}>
+                        <ComposerActiveProgressBar activeProgress={activeProgress} />
                         <CopilotInput
                             page={"overview" as CopilotPage}
                             inputPlaceholder="Ask about your project..."

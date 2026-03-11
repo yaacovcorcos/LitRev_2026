@@ -728,6 +728,8 @@ export type TimelineRendererProps = {
     visibleStep?: number;
     /** Route-local readiness callback once the currently visible timeline settles. */
     onTimelineReady?: (details: { visibleItems: number; hiddenItems: number; totalItems: number }) => void;
+    /** Render-only suppression for a single progress row elevated above the composer. */
+    suppressedProgressId?: string | null;
 };
 
 export function TimelineRenderer({
@@ -760,6 +762,7 @@ export function TimelineRenderer({
     initialVisibleCount,
     visibleStep = 60,
     onTimelineReady,
+    suppressedProgressId = null,
 }: TimelineRendererProps) {
     const params = useParams();
     const routeProjectId = params && typeof params === "object" && "id" in params
@@ -1401,6 +1404,9 @@ export function TimelineRenderer({
             }
 
             case "progress":
+                if (item.id === suppressedProgressId) {
+                    return null;
+                }
                 return (
                     <div key={item.id}>
                         <StreamingProgress

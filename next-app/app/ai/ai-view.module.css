@@ -457,6 +457,11 @@
     flex-shrink: 0;
 }
 
+.chatInputStatus {
+    width: 100%;
+    max-width: 720px;
+}
+
 /* CopilotInputCore's .inputBox needs full width on the /ai page */
 .chatInputContainer form {
     width: 100%;

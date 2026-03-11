@@ -28,6 +28,8 @@ Domain-specific execution plans remain canonical for their domains:
 - Shared composer action hierarchy is active across chat surfaces:
   - `CopilotInputCore` now uses a left-edge `+` extension menu for secondary actions, keeps voice in the right-side primary action cluster beside send, and presents a real microphone-driven waveform/timer state while recording.
   - Shared composer hover language stays token-based and calm, while recording/transcribing states preserve keyboard stop behavior without moving reasoning controls into the composer.
+<<<<<<< HEAD
+  - The three main chat surfaces now elevate the single live `progress` row into a compact composer-adjacent bar, suppress the matching inline progress row at render time only, and keep receipts/checkpoints/grouped PubMed sequences/errors inline in the timeline.
   - Voice recording now uses a dedicated canvas-based amplitude-history visualizer with a frozen transcribing duration, explicit microphone-permission pending UI, short-recording feedback, and slower horizontal travel tuned with capped thin-bar geometry, quieter dot-like baseline marks instead of a fixed center line, slightly wider spacing, and slightly more responsive peaks.
 - Shared shell-contained scroll ownership is active for homepage and library workspace surfaces:
   - `AppShell` now provides a viewport-bounded shell parent, `surface-root[data-surface-height="shell"]` acts as the bounded route root, and `surface-scroll-body` remains the sole inner scroll owner.
@@ -93,6 +95,7 @@ Use this mapping for old PRs/comments referencing CLU IDs.
 - [ ] `CUX-A03` Expand async `aria-live` announcements coverage and consistency across remaining async UI states.
 
 ## Recently Completed
+- [x] Shared live progress relocation shipped: `/ai`, main project conversation, and embedded project copilot now show one composer-adjacent active progress bar, suppress only the matching inline progress row by local id at render time, and keep receipts/checkpoints/errors/grouped PubMed cards in the timeline.
 - [x] Voice recorder follow-up tuning shipped: the shared composer now shows an explicit microphone-permission pending state, surfaces too-short recordings as a calm dismissible error, preserves the frozen transcribing timer, and slows waveform travel with thinner capped bars, tighter spacing, and slightly easier-to-read peaks.
 - [x] Homepage/library shell scroll contract repair shipped: `AppShell` is now viewport-bounded for contained shell pages, homepage workspace scroll is owned by the inner `surface-scroll-body`, library no longer depends on `home.module.css`, and a dedicated homepage wheel-scroll smoke guards tall-card regressions.
 - [x] Composer refresh shipped on the shared chat input: secondary actions now live behind a `+` menu, voice moved beside send, hover styling was unified, and live recording shows a real waveform/timer across shared chat surfaces.
