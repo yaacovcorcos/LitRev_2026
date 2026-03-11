@@ -14,7 +14,7 @@ Routing authority stays in `AGENTS.md`; this file only maps already-matched doma
 
 | Subsystem | Primary docs | When to retrieve |
 |---|---|---|
-| Database operations, migrations, production drift | `docs/runbooks/db-ops.md`, `docs/plans/db-production-runbook.md` | Any Prisma schema change, migration issue, deploy DB gate, runtime schema errors |
+| Database schema, operations, and production drift | `docs/runbooks/db-architecture.md` for schema/domain structure and invariants; `docs/runbooks/db-ops.md` for diagnosis, migration state, connectivity, and repair; `docs/plans/db-production-runbook.md` for production migration/release/remediation | Any Prisma schema change, migration issue, deploy DB gate, runtime schema errors, or DB-structure explanation task |
 | Platform admin control plane (bootstrap, guards, mutations, audit, analytics) | `docs/runbooks/admin-access.md`, `docs/plans/plan-backend.md` | Changes under `next-app/app/admin/**`, `next-app/app/api/admin/**`, `next-app/lib/server/admin/**`, or admin guard logic |
 | Agent orchestration and execution loop | `docs/plans/plan-agentic.md`; use `docs/plans/README.md` to locate any additional active runtime plans; `next-app/lib/agent/**`, `next-app/lib/server/agent/**` | Changes to planner/execution/router/sub-agent flow; use only active plans listed in `docs/plans/README.md` |
 | Memory and retrieval architecture | `docs/plans/plan-memory.md` | Any memory extraction, embedding, retrieval, or memory lifecycle work |

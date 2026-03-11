@@ -13,9 +13,10 @@ Run this checklist before commit when the task affects DB schema, architecture, 
 
 1. If `prisma/schema.prisma` changed, verify a migration folder exists under `next-app/prisma/migrations/`.
 2. If deploy or DB scripts changed, re-check `docs/runbooks/db-ops.md` and `docs/plans/db-production-runbook.md` for accuracy.
-3. If UI behavior changed in `app/project/[id]/...`, confirm shell embedding and UI contract remain true.
-4. If plan files changed, apply prune-and-migrate policy (`docs/plans/README.md`).
-5. If memory behavior changed, update only `docs/plans/plan-memory.md` for memory tracking.
+3. If schema, migration, DB topology, auth/storage ownership, or DB scripts changed, check whether `docs/runbooks/db-architecture.md`, `docs/runbooks/db-ops.md`, and `docs/plans/db-production-runbook.md` need updates.
+4. If UI behavior changed in `app/project/[id]/...`, confirm shell embedding and UI contract remain true.
+5. If plan files changed, apply prune-and-migrate policy (`docs/plans/README.md`).
+6. If memory behavior changed, update only `docs/plans/plan-memory.md` for memory tracking.
 
 ## Validation and Commit Check
 

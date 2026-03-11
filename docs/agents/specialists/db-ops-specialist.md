@@ -13,12 +13,14 @@ Use for Prisma schema changes, migrations, production DB incidents, and runtime 
 
 ## Required Tier 3 Reads
 
+- `docs/runbooks/db-architecture.md` when schema/domain semantics are touched
 - `docs/runbooks/db-ops.md`
-- `docs/plans/db-production-runbook.md`
+- `docs/plans/db-production-runbook.md` when production migration/remediation posture is involved
 
 ## Guardrails
 
 - Run all commands from `next-app/`.
+- Structural DB changes are incomplete until `docs/runbooks/db-architecture.md` is updated.
 - Never use `prisma db push` for production remediation.
 - Never edit applied migration SQL.
 - Treat schema errors as migration state drift first.

@@ -60,8 +60,8 @@ All run from `next-app/` except deploy.
 
 | Trigger signal | Required Tier 2 specialist | Required Tier 3 retrieval before editing | Mandatory checks before done |
 |---|---|---|---|
-| Prisma schema/migrations, DB runtime errors (`column does not exist`, `Invalid prisma.* invocation`) | `db-ops-specialist.md` | `docs/runbooks/db-ops.md`, `docs/plans/db-production-runbook.md` | `bash scripts/db-ops.sh diagnose`, `npx prisma validate`, `npx prisma migrate status` |
-| Production deploy request / Vercel production release | `release-deploy-specialist.md` | `docs/runbooks/db-ops.md` | `bash scripts/release-gate-prod.sh`, `npx prisma validate`, `npx prisma migrate status`, `npx tsc --noEmit`, `npx vitest run` |
+| Prisma schema/migrations, DB runtime errors (`column does not exist`, `Invalid prisma.* invocation`) | `db-ops-specialist.md` | `docs/runbooks/db-architecture.md` for schema/domain semantics; `docs/runbooks/db-ops.md` for diagnosis/remediation; `docs/plans/db-production-runbook.md` when production migration/remediation posture is involved | `bash scripts/db-ops.sh diagnose`, `npx prisma validate`, `npx prisma migrate status` |
+| Production deploy request / Vercel production release | `release-deploy-specialist.md` | `docs/runbooks/db-ops.md`, `docs/plans/db-production-runbook.md` | `bash scripts/release-gate-prod.sh`, `npx prisma validate`, `npx prisma migrate status`, `npx tsc --noEmit`, `npx vitest run` |
 | UI changes under `next-app/app/project/[id]/...`, `next-app/components/...`, `next-app/styles/...` | `frontend-ui-specialist.md` | `docs/plans/plan-ux-ui.md` (or active UI plan), relevant route files | `npx tsc --noEmit`, `npx vitest run` |
 | Platform admin control-plane changes (`next-app/app/admin/**`, `next-app/app/api/admin/**`, `next-app/lib/server/admin/**`, `next-app/lib/server/auth/platform-admin.ts`) | `frontend-ui-specialist.md` | `docs/runbooks/admin-access.md`, `docs/plans/plan-backend.md` | `npx tsc --noEmit`, `npx vitest run` |
 | Agent runtime/orchestration files (`next-app/lib/agent/**`, `next-app/lib/server/agent/**`, `next-app/app/actions/agent.ts`, `next-app/lib/server/ai/sub-agent.ts`) | `agent-runtime-specialist.md` | `docs/plans/plan-agentic.md`; read `docs/plans/plan-memory.md` if memory is touched; use `docs/plans/README.md` to identify any additional active runtime plans. Do not use superseded source plans marked inactive in `docs/plans/README.md`. | `npx tsc --noEmit`, `npx vitest run` |
@@ -106,8 +106,10 @@ Rule: feature branches hold work; repo root `main` only mirrors merged work.
 
 ## Database Contract (Non-Negotiable)
 
+- `docs/runbooks/db-architecture.md` is the structural DB reference; `docs/runbooks/db-ops.md` is the operational triage/remediation guide.
 - For DB incidents, start with `bash scripts/db-ops.sh diagnose` from `next-app/`.
 - If a PR changes `prisma/schema.prisma`, include a migration in `next-app/prisma/migrations/`.
+- If schema/domain semantics change, update `docs/runbooks/db-architecture.md` in the same task.
 - Never deploy production code that references new columns before migrations are applied.
 - Production builds run `next-app/scripts/migrate-if-prod.sh`, which runs the migration safety path before building app code.
 - `DIRECT_URL` is mandatory for migration traffic in production.
