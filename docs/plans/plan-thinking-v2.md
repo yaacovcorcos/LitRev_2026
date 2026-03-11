@@ -75,8 +75,10 @@ Raw/provider-native reasoning should remain optional and secondary.
 - Project copilot and the main project conversation now preserve shared checkpoint semantics through the structured message bridge instead of dropping them on project surfaces.
 - Repeated adjacent PubMed searches are grouped in the renderer into one compact in-chat search sequence card; the canonical runtime record remains atomic.
 - Shared reducer semantics now derive PubMed-specific live progress (`Searching`, `Refining`, `Reviewing`) plus selective grounded checkpoints from runtime search facts alone; provider reasoning remains unnecessary for understanding the workflow.
+- Executable search evals now exercise the live chat/runtime orchestration path for direct, delegated, zero-result, and failed search scenarios instead of relying only on catalog-shape validation.
+- The shared search receipt path now extends beyond PubMed: OpenAlex and Semantic Scholar preserve source label, query preview, result counts, and compact identifiers through the reducer, renderer, and project message bridge on the main timeline surfaces.
 - Popup now preserves a truthful reduced subset of the shared trace contract: live progress, checkpoints, blocking clarification, and structured terminal errors all flow through shared reducer semantics even though popup still hides full receipt/artifact density.
-- Full provider-independent execution trace coverage is not done yet for non-PubMed search tools, read tools, proposal/mutation tools, full popup parity, task-outline UX, or normalized provenance/source receipts.
+- Full provider-independent execution trace coverage is not done yet for read tools, proposal/mutation tools, full popup parity, task-outline UX, or answer-level provenance follow-through. Core search provenance now exists for PubMed/OpenAlex/Semantic Scholar without changing the clean narrative answer style.
 
 ## Truth Model
 Every visible process item should fall into one of these categories:
@@ -526,11 +528,9 @@ Exit criteria:
 - The same stream has the same semantic meaning on all supported main surfaces.
 - No supported surface silently degrades process state into assistant prose.
 
-### Phase V2.2 - Receipt expansion across core tools
-1. Expand semantic receipts beyond `search_pubmed`.
+### Phase V2.2 - Receipt expansion beyond core search tools
+1. Preserve the shipped PubMed/OpenAlex/Semantic Scholar receipt contract and expand the same factual-receipt approach to the next workflow families.
 2. Prioritize high-value provider-independent workflows:
-   - `search_openalex`
-   - `search_semantic_scholar`
    - `read_protocol`
    - `read_ledger`
    - PDF read/extract tools
@@ -543,8 +543,8 @@ Exit criteria:
 4. Keep atomic trace facts canonical and leave grouping/compression in the renderer.
 
 Exit criteria:
-- Search, read, and proposal runs leave intelligible receipts without opening raw payloads.
-- Non-PubMed workflows no longer feel semantically blank.
+- Read and proposal runs leave intelligible receipts without opening raw payloads.
+- Search workflows remain consistent while additional workflow families stop feeling semantically blank.
 
 ### Phase V2.3 - Checkpoint expansion across core workflows
 1. Extend selective grounded checkpoints beyond PubMed.
@@ -577,18 +577,16 @@ Exit criteria:
 - One active process state is always legible.
 - Generic tool-name progress no longer dominates the user-facing experience.
 
-### Phase V2.5 - Search/source provenance
-1. Add normalized source receipts and provenance aligned with runtime search behavior.
-2. Search turns should expose, where grounded:
-   - source searched
-   - query preview
-   - result counts
-   - selected/cited source identifiers when available
-3. Make final answers visibly consistent with prior search/read receipts.
+### Phase V2.5 - Search/source provenance follow-through
+1. Preserve the shipped shared search receipt contract as the provenance source of truth.
+2. Extend carry-forward provenance beyond the initial search receipt where grounded:
+   - selected/cited source identifiers carried into later read/review steps
+   - stronger answer/read consistency with prior search receipts
+3. Keep answer-level `Based on` formatting deferred until it clearly improves trust without making the answer feel technical.
 
 Exit criteria:
-- Users can trace answer claims back to observable retrieval steps.
-- Provenance is a runtime contract, not just narrative transcript text.
+- Users can trace answer claims back to observable retrieval steps without relying on raw transcript narration.
+- Provenance remains a runtime contract, not just narrative transcript text.
 
 ### Phase V2.6 - Conditional task outlines for complex work
 1. Add a compact high-level task-outline layer for genuinely complex multi-step runs only.
@@ -657,7 +655,7 @@ Exit criteria:
 Track implementation under existing governance items:
 - `CUX-027` (tool receipts / copilot UX)
 - `CUX-D01` (chat architecture unification)
-- `FIX-005b` / `CAG-009` (runtime provenance and source receipts)
+- `CAG-009` follow-through (runtime provenance carry-forward and answer alignment)
 - `FIX-011` (shared failure handling and popup parity)
 
 This plan should also inform future agent-runtime work when execution-trace semantics cross the server/runtime boundary.

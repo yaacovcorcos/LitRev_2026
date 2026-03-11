@@ -109,6 +109,7 @@ Every fix entry must include:
 - **Database Connectivity Failures Are Classified At The Shared Envelope Boundary:** Prisma/pg connection-establishment failures now surface as `database_connection` envelopes instead of generic `PROVIDER_REQUEST_FAILED`, preserving truthful runtime attribution through stream transport and UI rendering.
 - **Approved Plan Execution Is Now Server-Constrained:** executable plan artifacts now author and preserve `execution` metadata at artifact creation time, the server loads artifact-bound conversation/project/mode authority before normal run setup, approved tool exposure is the intersection of selected-step tools, the stored plan-authorized ceiling, and current safe mode/scope definitions, and off-plan, out-of-order, non-executable, or now-unavailable plan steps fail through the shared non-retryable `plan_execution` error envelope.
 - **Provider-Independent Search Trace Is Stronger Across Main Surfaces:** shared reducers now derive PubMed-specific live progress, factual receipt summaries, and selective grounded checkpoints from search tool facts alone, while the project message bridge preserves those checkpoint semantics so `/ai`, sidebar copilot, and the main project conversation can all expose the same search workflow meaning without depending on provider reasoning.
+- **Executable Search Provenance Now Rides The Shared Receipt Path:** runtime evals now exercise the live `AIService.streamChatWithArtifacts()` orchestration path for direct, delegated, zero-result, and failed search scenarios, and the existing `tool_activity` receipt path now preserves compact source/query/count/identifier facts for PubMed, OpenAlex, and Semantic Scholar across `/ai`, sidebar copilot, and the main project conversation without changing final answer prose.
 - **Canonical Runtime Docs Authority Is Now Explicit:** this plan remains the single active truth source for shipped agent-runtime status, while supporting remediation plans are limited to fix-level implementation detail instead of parallel status tracking.
 - **Popup Now Preserves The Supported Shared Trace Subset:** popup now derives its supported progress, checkpoint, blocking-clarification, and structured terminal-error states through a shared reducer adapter instead of bespoke chunk-only rendering, while remaining intentionally compact and reduced.
 
@@ -129,15 +130,6 @@ Every fix entry must include:
 ## Active Fixes
 *Immediate remediation work for shipped behavior that is broken, misleading, or lower quality than the intended contract.*
 
-- [ ] `FIX-005b` Executable evals and search provenance
-  - Severity: `P1`
-  - Problem: eval coverage is still scaffold-level and search provenance is not a normalized runtime contract.
-  - Supporting detail: `docs/plans/agent-runtime-remediation/plan-docs-evals-and-provenance.md`
-  - Exit criteria:
-    - runtime evals assert real orchestration behavior
-    - search turns emit normalized `source_receipt` data
-    - release confidence can rely on executable agent/runtime scenarios instead of catalog shape alone
-
 - [ ] `FIX-011` Shared failure handling and popup parity
   - Severity: `P1`
   - Problem: shared reducers now emit typed stream-error intents, and popup now preserves the supported subset, but full popup receipt/artifact parity and terminal-failure ownership are still not fully unified across every surface.
@@ -152,9 +144,8 @@ Every fix entry must include:
 
 Work should proceed in this order unless a production incident forces reprioritization:
 
-1. `FIX-005b` evals and provenance hardening
-2. `FIX-011` shared failure handling and popup parity
-3. roadmap phases after the active fixes above are stable
+1. `FIX-011` shared failure handling and popup parity
+2. roadmap phases after the active fixes above are stable
 
 ## End-to-End Delivery Program
 
@@ -176,8 +167,8 @@ Work should proceed in this order unless a production incident forces reprioriti
 
 ### Track D — Surface Honesty, Docs, Evals, and Provenance
 
-- `FIX-005a` is complete, so the remaining work on this track is `FIX-005b` plus `FIX-011`.
-- Popup honesty should match the real runtime surface, plan/docs authority should stay truthful, shared failure rendering should stop drifting per surface, and evals/provenance should measure the behavior the runtime actually ships.
+- `FIX-005a` and `FIX-005b` are complete, so the remaining active work on this track is `FIX-011`.
+- Popup honesty should match the real runtime surface, plan/docs authority should stay truthful, and shared failure rendering should stop drifting per surface while the new executable provenance coverage stays current.
 
 ## Active Roadmap
 *Durable capability and architecture work after the immediate fixes.*
@@ -198,7 +189,7 @@ Work should proceed in this order unless a production incident forces reprioriti
 - [x] `CAG-007` OpenAlex search shipped
 - [x] `CAG-008` Baseline delegated search query planning shipped
 - [ ] `CAG-008b` Expand structured query planning and validation across broader search flows
-- [ ] `CAG-009` Add runtime search/source receipts and user-visible provenance
+- [x] `CAG-009` Runtime search/source receipts shipped for the core search tools via the shared `tool_activity` receipt path
 - [ ] `CAG-010` Implement centralized context budget policy
 
 ### Phase 2 — Specialist Delegation and Action-Space Discipline
@@ -292,12 +283,12 @@ Use these only as execution detail for the active fixes above:
 
 - `docs/plans/agent-runtime-remediation/plan-delegation-safety.md`
 - `docs/plans/agent-runtime-remediation/plan-general-scope-and-clarification.md`
-- `docs/plans/agent-runtime-remediation/plan-docs-evals-and-provenance.md`
 
 These files are supporting documents. Status, priority, and closure rules live here.
 
 ## Recently Completed
 
+- [x] Completed `FIX-005b` executable evals and search provenance: runtime evals now exercise the live chat orchestration path for direct/delegated/failed/zero-result search scenarios, and the shared `tool_activity` receipt contract now carries compact source/query/count/identifier facts for PubMed, OpenAlex, and Semantic Scholar without changing final answer prose.
 - [x] Strengthened popup parity without overstating migration: popup now preserves a truthful reduced shared-trace subset for live progress, grounded checkpoints, blocking clarification, and structured terminal failures via a shared reducer adapter, while remaining intentionally compact and reduced.
 - [x] Completed `FIX-005a` docs authority and plan truth: `plan-agentic.md` remains the single active runtime authority, stale split-era `FIX-005` wording was removed from the supporting remediation doc, and popup/shared-runtime/eval maturity claims now stay aligned with the canonical and adjacent active plans instead of drifting into parallel status trackers.
 - [x] Strengthened provider-independent PubMed execution trace: shared reducers now emit PubMed-specific live progress, factual receipt summaries, and selective grounded checkpoints from search results alone, and project surfaces preserve checkpoint semantics through the structured message bridge so the same search workflow remains legible across `/ai`, sidebar copilot, and the main project conversation.
@@ -307,7 +298,6 @@ These files are supporting documents. Status, priority, and closure rules live h
 - [x] Pruned and clarified the remaining docs/evals backlog: `FIX-005` is now split into `FIX-005a` (docs authority and plan truth) and `FIX-005b` (executable evals and search provenance), so plan-governance cleanup can finish independently of the heavier runtime measurement work.
 - [x] Implemented `FIX-004b` clarification contract cleanup, completing `FIX-004`: `ask_user` is now the only blocking clarification primitive taught in the global base prompt, while `<choices>` guidance is scoped to artifact/chat surfaces and explicitly limited to optional suggestion chips without changing the XML/event contract.
 - [x] Implemented `FIX-012c` abnormal-end cleanup and error dedupe, completing `FIX-012`: `/ai` and project copilot now reuse the shared runtime/error owners for abnormal-failure aftermath, unfinished tools are force-failed consistently, and one terminal failure renders once without regressing deterministic capability suppression.
-- [x] Implemented `FIX-012b` replace-safe admission: `/ai` and project copilot now send `replaceRunId` only for their own tracked active run, and the server only replaces when that explicit run identity matches the actual active run for the conversation.
 
 ## Deferred / Parking Lot
 
@@ -331,7 +321,6 @@ trackers.
 Current supporting references:
 
 - `docs/plans/agent-runtime-remediation/README.md`
-- `docs/plans/agent-runtime-remediation/plan-docs-evals-and-provenance.md` for `FIX-005b`
 
 Supporting detail should live under `docs/plans/agent-runtime-remediation/`
 while status, priority, and completion rules stay in this file.
