@@ -25,6 +25,9 @@ Domain-specific execution plans remain canonical for their domains:
 - Shared scoped-context UI is active:
   - `ProjectCopilot` / `CopilotInputCore` now render typed context receipts and recent-context history chips owned by `docs/plans/plan-context-capture.md`.
   - `PopupChat` shows compact context previews, keeps edit intents advisory-only via `Continue in Copilot`, and draft desktop quick actions are gated behind the dedicated context-toolbar flag rather than leaking into mobile flows.
+- Main timeline surfaces now support conservative completed-turn execution-trace compaction:
+  - contiguous pre-answer durable trace blocks (`tool_activity`, `checkpoint`, `artifact`) can collapse into a compact reopenable `Process details` summary above the final assistant answer.
+  - grouping is renderer-only, skips ambiguous/blocking/error cases, and leaves popup out of scope.
 - Shared composer action hierarchy is active across chat surfaces:
   - `CopilotInputCore` now uses a left-edge `+` extension menu for secondary actions, keeps voice in the right-side primary action cluster beside send, and presents a real microphone-driven waveform/timer state while recording.
   - Shared composer hover language stays token-based and calm, while recording/transcribing states preserve keyboard stop behavior without moving reasoning controls into the composer.
@@ -94,6 +97,7 @@ Use this mapping for old PRs/comments referencing CLU IDs.
 - [ ] `CUX-A03` Expand async `aria-live` announcements coverage and consistency across remaining async UI states.
 
 ## Recently Completed
+- [x] Completed-turn execution trace compaction shipped on the main timeline surfaces: eligible pre-answer tool/checkpoint/artifact blocks now collapse into a compact reopenable `Process details` summary above the final assistant answer while ambiguous, blocked, and visible failure cases stay inline.
 - [x] Shared live progress relocation shipped: `/ai`, main project conversation, and embedded project copilot now show one composer-adjacent active progress bar, suppress only the matching inline progress row by local id at render time, and keep receipts/checkpoints/errors/grouped PubMed cards in the timeline.
 - [x] Voice recorder follow-up tuning shipped: the shared composer now shows an explicit microphone-permission pending state, surfaces too-short recordings as a calm dismissible error, preserves the frozen transcribing timer, and slows waveform travel with thinner capped bars, tighter spacing, and slightly easier-to-read peaks.
 - [x] Homepage/library shell scroll contract repair shipped: `AppShell` is now viewport-bounded for contained shell pages, homepage workspace scroll is owned by the inner `surface-scroll-body`, library no longer depends on `home.module.css`, and a dedicated homepage wheel-scroll smoke guards tall-card regressions.

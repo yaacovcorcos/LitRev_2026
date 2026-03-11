@@ -77,6 +77,7 @@ Raw/provider-native reasoning should remain optional and secondary.
 - Shared reducer semantics now derive PubMed-specific live progress (`Searching`, `Refining`, `Reviewing`) plus selective grounded checkpoints from runtime search facts alone; provider reasoning remains unnecessary for understanding the workflow.
 - Executable search evals now exercise the live chat/runtime orchestration path for direct, delegated, zero-result, and failed search scenarios instead of relying only on catalog-shape validation.
 - The shared search receipt path now extends beyond PubMed: OpenAlex and Semantic Scholar preserve source label, query preview, result counts, and compact identifiers through the reducer, renderer, and project message bridge on the main timeline surfaces.
+- Completed answer turns can now collapse a conservative pre-answer durable trace block into a compact reopenable `Process details` summary placed above the final assistant answer. This renderer-only grouping is heuristic, ignores `progress`, skips ambiguous/blocking/error cases, and keeps the underlying timeline facts intact.
 - Popup now preserves a truthful reduced subset of the shared trace contract: live progress, checkpoints, blocking clarification, and structured terminal errors all flow through shared reducer semantics even though popup still hides full receipt/artifact density.
 - `/ai`, the main project conversation, and embedded project copilot now elevate the single live `progress` row into a composer-adjacent status bar while keeping receipts, checkpoints, grouped PubMed sequences, and terminal errors inline; suppression of the matching inline progress row is render-only and uses each surface's local progress id.
 - `/ai` and project copilot now reconcile known-run abnormal disconnects against persisted run truth: recovery is driven by `AgentRun` + authoritative replayable `RunEvent`s, unfinished live tool activity becomes explicitly interrupted instead of hanging indefinitely, and `Reconnect` / `Retry` / `Stop & Retry` come from structured recovery metadata instead of generic retry flags.
@@ -233,6 +234,7 @@ The goal is not to show more boxes. The goal is to show the right information wi
 3. **Receipts are durable, progress is ephemeral.**
    - Live phase/progress should shrink, transition, or disappear once the step ends.
    - Durable receipts should keep the audit trail without feeling like a second transcript.
+   - On completed answer turns, durable trace items may collapse into a compact summary above the answer instead of remaining fully expanded inline.
 4. **Checkpoints should read like calm narration, not logs.**
    - They should explain what changed in one or two short lines.
    - They should not look like debug output or raw JSON.
@@ -424,6 +426,7 @@ What not to copy directly:
 - progress lane
 - receipts
 - checkpoints
+- conservative turn-scoped `Process details` collapse for completed answer turns
 - optional reasoning lane
 
 ### Project copilot sidebar
@@ -433,6 +436,7 @@ What not to copy directly:
 - but no transcript-progress masquerade
 - no semantic downgrades that make process state look like assistant speech
 - compactness should come from denser spacing and lighter chrome, not from dropping meaning
+- supports the same conservative completed-turn trace collapse when the bridge preserves a safe pre-answer durable block
 
 ### Main project conversation
 - same underlying semantic contract as `/ai` and sidebar copilot
@@ -441,6 +445,7 @@ What not to copy directly:
   - durable receipts
   - grounded checkpoints
   - explicit blockers and failures
+- completed answer turns may collapse a safe pre-answer durable trace block above the answer
 - it must not silently drop structured trace items while preserving only assistant prose
 
 ### Popup
@@ -561,6 +566,18 @@ Exit criteria:
 Exit criteria:
 - Users can follow what changed and what happens next across the main workflows.
 - Checkpoints reduce confusion without becoming log spam.
+
+### Phase V2.3a - Durable trace compaction for completed turns
+1. Preserve the shipped renderer-only collapse of contiguous pre-answer durable trace blocks (`tool_activity`, `checkpoint`, `artifact`) above final assistant answers.
+2. Keep grouping conservative:
+   - ignore `progress`
+   - skip ambiguous/blocking/error turns
+   - rely on contiguous ordering only, not invented turn lineage
+3. Refine summary wording and artifact inclusion rules only when the output remains clearly supporting trace, not the turn's primary visible outcome.
+
+Exit criteria:
+- Completed turns stay clean without losing access to durable process details.
+- Ambiguous or actionable turns remain fully inline instead of collapsing unsafely.
 
 ### Phase V2.4 - Stronger live phase vocabulary
 1. Expand the current `progress` vocabulary across the core workflows:
