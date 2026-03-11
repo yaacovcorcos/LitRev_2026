@@ -55,8 +55,10 @@ gh pr list --state open --json number,title,headRefName,baseRefName,reviewDecisi
 - If repo root is detached, dirty, ahead, or behind `origin/main`, stop and reconcile before starting new work.
 - Never use repo root as a task checkout, PR checkout, or scratch branch checkout.
 - Never run `gh pr checkout <number>` in repo root; create or use a task worktree for PR inspection or updates.
+- Use repo root `main` for read-only work; enter a task worktree only for branch-specific execution such as edits, commits, pushes, rebases, or PR branch updates.
 - Detached or rescue worktrees are never the `main` baseline.
 - Task worktrees are temporary by default and should exist only while a task is being actively implemented, reviewed, or waiting to merge.
+- Before resuming an existing task worktree, `git fetch origin --prune` and confirm it is still the intended execution surface against current `origin/main`.
 - Create task worktrees from repo root using `YY/<task>` branches.
 - After merge, fast-forward repo root `main`, then remove the merged task worktree and delete the merged branch in the same cleanup flow.
 - If a task is abandoned, remove its worktree and either delete the branch or archive it intentionally.
