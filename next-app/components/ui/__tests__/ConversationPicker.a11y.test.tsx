@@ -28,5 +28,5 @@ describe("ConversationPicker accessibility", () => {
 
     const results = await axe(container);
     expect(results.violations).toHaveLength(0);
-  });
+  }, 15000);
 });

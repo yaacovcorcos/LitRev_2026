@@ -261,9 +261,9 @@ vi.mock("@/lib/server/ai/tool-autonomy", () => ({
 const { AIService } = await import("@/lib/server/ai/ai-service");
 const { executeSubAgent } = await import("@/lib/server/ai/sub-agent");
 
-async function collectChunks(stream: AsyncIterable<{ type?: string }>) {
-  const chunks: Array<Record<string, unknown>> = [];
-  for await (const chunk of stream as AsyncIterable<Record<string, unknown>>) {
+async function collectChunks<T extends { type?: string }>(stream: AsyncIterable<T>): Promise<T[]> {
+  const chunks: T[] = [];
+  for await (const chunk of stream) {
     chunks.push(chunk);
     if (chunk.type === "run_end") break;
   }
@@ -347,14 +347,14 @@ describe("executable runtime search scenarios", () => {
     });
 
     const service = new AIService();
-    const chunks = await collectChunks(service.streamChatWithArtifacts(scenario!.prompt, { page: "project" } as never, {
+    const chunks = await collectChunks(service.streamChatWithArtifacts(scenario!.prompt, "project", {
       projectId: "project-1",
       userId: "user-1",
       agentMode: "search",
       model: "gpt-5.2",
     }));
 
-    const receipts = collectSearchReceiptObservations(chunks as never, { page: "overview" });
+    const receipts = collectSearchReceiptObservations(chunks, { page: "overview" });
     expect(receipts).toContainEqual(expect.objectContaining({
       toolName: "search_pubmed",
       status: "done",
@@ -399,14 +399,14 @@ describe("executable runtime search scenarios", () => {
     });
 
     const service = new AIService();
-    const chunks = await collectChunks(service.streamChatWithArtifacts("Retry the PubMed search", { page: "project" } as never, {
+    const chunks = await collectChunks(service.streamChatWithArtifacts("Retry the PubMed search", "project", {
       projectId: "project-1",
       userId: "user-1",
       agentMode: "search",
       model: "gpt-5.2",
     }));
 
-    const receipts = collectSearchReceiptObservations(chunks as never, { page: "overview" });
+    const receipts = collectSearchReceiptObservations(chunks, { page: "overview" });
     expect(receipts).toContainEqual(expect.objectContaining({
       toolName: "search_pubmed",
       status: "failed",
@@ -454,14 +454,14 @@ describe("executable runtime search scenarios", () => {
     });
 
     const service = new AIService();
-    const chunks = await collectChunks(service.streamChatWithArtifacts("Search for a rare syndrome trial", { page: "project" } as never, {
+    const chunks = await collectChunks(service.streamChatWithArtifacts("Search for a rare syndrome trial", "project", {
       projectId: "project-1",
       userId: "user-1",
       agentMode: "search",
       model: "gpt-5.2",
     }));
 
-    const receipts = collectSearchReceiptObservations(chunks as never, { page: "overview" });
+    const receipts = collectSearchReceiptObservations(chunks, { page: "overview" });
     expect(receipts).toContainEqual(expect.objectContaining({
       toolName: "search_pubmed",
       status: "done",
@@ -514,14 +514,14 @@ describe("executable runtime search scenarios", () => {
     });
 
     const service = new AIService();
-    const chunks = await collectChunks(service.streamChatWithArtifacts(scenario!.prompt, { page: "project" } as never, {
+    const chunks = await collectChunks(service.streamChatWithArtifacts(scenario!.prompt, "project", {
       projectId: "project-1",
       userId: "user-1",
       agentMode: "search",
       model: "gpt-5.2",
     }));
 
-    const receipts = collectSearchReceiptObservations(chunks as never, { page: "overview" });
+    const receipts = collectSearchReceiptObservations(chunks, { page: "overview" });
     expect(receipts).toContainEqual(expect.objectContaining({
       toolName: "search_openalex",
       status: "done",
