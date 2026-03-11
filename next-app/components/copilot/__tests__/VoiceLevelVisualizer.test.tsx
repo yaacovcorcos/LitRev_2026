@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { VoiceLevelVisualizer } from "../VoiceLevelVisualizer";
+import { VoiceLevelVisualizer, shouldAdvanceHistory } from "../VoiceLevelVisualizer";
 
 type FakeContext = {
     setTransform: ReturnType<typeof vi.fn>;
@@ -76,6 +76,11 @@ describe("VoiceLevelVisualizer", () => {
     afterEach(() => {
         requestAnimationFrameSpy.mockRestore();
         cancelAnimationFrameSpy.mockRestore();
+    });
+
+    it("advances visible history on a slower cadence than the draw loop", () => {
+        expect(shouldAdvanceHistory(49, 0)).toBe(false);
+        expect(shouldAdvanceHistory(50, 0)).toBe(true);
     });
 
     it("renders a canvas visualizer and drives drawing with requestAnimationFrame in normal mode", () => {

@@ -9,11 +9,17 @@ type VoiceLevelVisualizerProps = {
 };
 
 const HISTORY_LENGTH = 40;
+const HISTORY_ADVANCE_MS = 50;
 const REDUCED_FRAME_MS = 1000 / 8;
 const SILENCE_DEAD_ZONE = 0.012;
 const SILENCE_FLOOR = 0.045;
 const ATTACK_FACTOR = 0.35;
 const RELEASE_FACTOR = 0.18;
+const NORMALIZATION_CEILING = 0.25;
+
+export function shouldAdvanceHistory(now: number, lastAdvanceAt: number) {
+    return now - lastAdvanceAt >= HISTORY_ADVANCE_MS;
+}
 
 function getTargetLevel(buffer: Uint8Array): number {
     if (buffer.length === 0) return SILENCE_FLOOR;
@@ -26,7 +32,7 @@ function getTargetLevel(buffer: Uint8Array): number {
     if (!Number.isFinite(rms) || rms <= SILENCE_DEAD_ZONE) {
         return SILENCE_FLOOR;
     }
-    const normalized = Math.min(1, (rms - SILENCE_DEAD_ZONE) / (0.28 - SILENCE_DEAD_ZONE));
+    const normalized = Math.min(1, (rms - SILENCE_DEAD_ZONE) / (NORMALIZATION_CEILING - SILENCE_DEAD_ZONE));
     return Math.max(SILENCE_FLOOR, normalized);
 }
 
@@ -57,7 +63,7 @@ function getChannelValue(name: string, fallback: string) {
     return value || fallback;
 }
 
-function drawBars(canvas: HTMLCanvasElement, history: number[]) {
+function drawBars(canvas: HTMLCanvasElement, history: number[], contrast: string) {
     const context = canvas.getContext("2d");
     if (!context) return;
 
@@ -70,8 +76,7 @@ function drawBars(canvas: HTMLCanvasElement, history: number[]) {
     const barCount = history.length;
     const gap = 2;
     const barWidth = Math.max(1.5, (width - gap * (barCount - 1)) / barCount);
-    const maxAmplitude = Math.max(6, height / 2 - 3);
-    const contrast = getChannelValue("--rgb-ui-contrast", "38, 38, 38");
+    const maxAmplitude = Math.max(6.5, height / 2 - 2);
 
     context.strokeStyle = `rgba(${contrast}, 0.18)`;
     context.lineWidth = 1;
@@ -98,6 +103,7 @@ export function VoiceLevelVisualizer({ analyser, isRecording }: VoiceLevelVisual
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
     const historyRef = useRef<number[]>(Array.from({ length: HISTORY_LENGTH }, () => SILENCE_FLOOR));
     const reducedMotionRef = useRef(false);
+    const contrastRef = useRef("38, 38, 38");
 
     const sampleBuffer = useMemo(() => {
         if (!analyser) return null;
@@ -118,6 +124,7 @@ export function VoiceLevelVisualizer({ analyser, isRecording }: VoiceLevelVisual
     useEffect(() => {
         const canvas = canvasRef.current;
         if (!canvas) return;
+        contrastRef.current = getChannelValue("--rgb-ui-contrast", "38, 38, 38");
         if (
             !isRecording
             || !analyser
@@ -125,19 +132,26 @@ export function VoiceLevelVisualizer({ analyser, isRecording }: VoiceLevelVisual
             || typeof analyser.getByteTimeDomainData !== "function"
         ) {
             historyRef.current = Array.from({ length: HISTORY_LENGTH }, () => SILENCE_FLOOR);
-            drawBars(canvas, historyRef.current);
+            drawBars(canvas, historyRef.current, contrastRef.current);
             return;
         }
 
         let frameId: number | null = null;
         let timeoutId: number | null = null;
         let lastLevel = historyRef.current[historyRef.current.length - 1] ?? SILENCE_FLOOR;
+        let lastAdvanceAt = typeof performance !== "undefined" ? performance.now() : Date.now();
 
         const tick = () => {
             analyser.getByteTimeDomainData(sampleBuffer);
             lastLevel = smoothLevel(lastLevel, getTargetLevel(sampleBuffer));
-            historyRef.current = [...historyRef.current.slice(1), lastLevel];
-            drawBars(canvas, historyRef.current);
+            historyRef.current[historyRef.current.length - 1] = lastLevel;
+            const now = typeof performance !== "undefined" ? performance.now() : Date.now();
+            if (shouldAdvanceHistory(now, lastAdvanceAt)) {
+                lastAdvanceAt = now;
+                historyRef.current.shift();
+                historyRef.current.push(lastLevel);
+            }
+            drawBars(canvas, historyRef.current, contrastRef.current);
 
             if (reducedMotionRef.current) {
                 timeoutId = window.setTimeout(tick, REDUCED_FRAME_MS);
@@ -146,7 +160,7 @@ export function VoiceLevelVisualizer({ analyser, isRecording }: VoiceLevelVisual
             frameId = window.requestAnimationFrame(tick);
         };
 
-        drawBars(canvas, historyRef.current);
+        drawBars(canvas, historyRef.current, contrastRef.current);
         tick();
 
         return () => {

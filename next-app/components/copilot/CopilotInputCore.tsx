@@ -294,9 +294,9 @@ export function CopilotInputCore({
         (showAttachments ?? true) && !!projectId && !!attachFile && !!attachExistingFile && !!clearAttachment;
 
     const hasSecondaryActions = canShowAttachments || !!onCompress;
-    const isVoiceBusy = voiceState === "recording" || voiceState === "transcribing";
+    const isVoiceBusy = voiceState !== "idle";
     const canSubmit = !isVoiceBusy && (!!input.trim() || !!pendingAttachment);
-    const showRecordingPresentation = showVoice && isVoiceBusy;
+    const showVoiceStatusPresentation = showVoice && isVoiceBusy;
 
     const handleSend = useCallback(() => {
         if (sendLockRef.current) return;
@@ -429,22 +429,44 @@ export function CopilotInputCore({
                 aria-live="polite"
                 aria-atomic="true"
             >
-                {voiceState === "recording"
-                    ? "Recording in progress"
-                    : voiceState === "transcribing"
-                    ? "Transcribing..."
-                    : ""}
+                    {voiceState === "recording"
+                        ? "Recording in progress"
+                        : voiceState === "requesting_permission"
+                        ? "Waiting for microphone permission"
+                        : voiceState === "transcribing"
+                        ? "Transcribing..."
+                        : ""}
             </span>
             <button
                 type="button"
                 className={`${styles.actionBtn} ${styles.voiceActionBtn} ${voiceState === "recording" ? styles.voiceActionBtnRecording : ""}`}
                 onClick={toggleRecording}
-                disabled={voiceState === "transcribing"}
-                aria-label={voiceState === "recording" ? "Stop recording" : voiceState === "transcribing" ? "Transcribing..." : "Voice input"}
-                title={voiceState === "recording" ? "Stop recording" : voiceState === "transcribing" ? "Transcribing..." : "Voice input"}
+                disabled={voiceState === "requesting_permission" || voiceState === "transcribing"}
+                aria-label={
+                    voiceState === "recording"
+                        ? "Stop recording"
+                        : voiceState === "requesting_permission"
+                        ? "Waiting for microphone permission"
+                        : voiceState === "transcribing"
+                        ? "Transcribing..."
+                        : "Voice input"
+                }
+                title={
+                    voiceState === "recording"
+                        ? "Stop recording"
+                        : voiceState === "requesting_permission"
+                        ? "Waiting for microphone permission"
+                        : voiceState === "transcribing"
+                        ? "Transcribing..."
+                        : "Voice input"
+                }
             >
                 <span className="material-icons-round">
-                    {voiceState === "recording" ? "stop_circle" : voiceState === "transcribing" ? "hourglass_top" : "mic"}
+                    {voiceState === "recording"
+                        ? "stop_circle"
+                        : voiceState === "requesting_permission" || voiceState === "transcribing"
+                        ? "hourglass_top"
+                        : "mic"}
                 </span>
             </button>
         </>
@@ -680,7 +702,7 @@ export function CopilotInputCore({
                     rows={1}
                 />
 
-                <div className={`${styles.inputBar} ${showRecordingPresentation ? styles.inputBarRecording : ""}`}>
+                <div className={`${styles.inputBar} ${showVoiceStatusPresentation ? styles.inputBarRecording : ""}`}>
                     <div className={styles.inputBarLeft}>
                         {hasSecondaryActions ? (
                             hasMounted ? (
@@ -707,7 +729,7 @@ export function CopilotInputCore({
                             )
                         ) : null}
 
-                        {!showRecordingPresentation ? (
+                        {!showVoiceStatusPresentation ? (
                             <>
                                 {modelControl}
                                 {autonomyControl}
@@ -719,6 +741,11 @@ export function CopilotInputCore({
                                         <VoiceLevelVisualizer analyser={visualizerAnalyser} isRecording={true} />
                                         <span className={styles.recordingTimer}>{formatElapsedVoiceTime(elapsedMs)}</span>
                                     </>
+                                ) : voiceState === "requesting_permission" ? (
+                                    <div className={styles.transcribingStatus}>
+                                        <span className="material-icons-round" aria-hidden="true">mic</span>
+                                        <span>Waiting for microphone permission</span>
+                                    </div>
                                 ) : (
                                     <div className={styles.transcribingStatus}>
                                         <span className="material-icons-round" aria-hidden="true">hourglass_top</span>

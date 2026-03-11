@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { CopilotInputCore } from "../CopilotInputCore";
 
 const mockVoiceState = {
-    state: "idle" as "idle" | "recording" | "transcribing",
+    state: "idle" as "idle" | "requesting_permission" | "recording" | "transcribing",
     error: null as string | null,
     elapsedMs: 0,
     visualizerAnalyser: null as AnalyserNode | null,
@@ -86,6 +86,25 @@ describe("CopilotInputCore composer refresh", () => {
         expect(screen.getByRole("button", { name: /stop recording/i })).toBeTruthy();
         expect(screen.getByText("0:11")).toBeTruthy();
         expect(screen.getByTestId("voice-level-visualizer")).toBeTruthy();
+        expect(screen.getByRole("button", { name: /^send$/i }).hasAttribute("disabled")).toBe(true);
+    });
+
+    it("renders a permission-pending state without a waveform", () => {
+        mockVoiceState.state = "requesting_permission";
+
+        render(
+            <CopilotInputCore
+                page="overview"
+                inputPlaceholder="Ask"
+                isLoading={false}
+                sendMessage={vi.fn()}
+                cancelStream={vi.fn()}
+            />,
+        );
+
+        expect(screen.getAllByText(/waiting for microphone permission/i).length).toBeGreaterThan(0);
+        expect(screen.queryByTestId("voice-level-visualizer")).toBeNull();
+        expect(screen.getByRole("button", { name: /waiting for microphone permission/i }).hasAttribute("disabled")).toBe(true);
         expect(screen.getByRole("button", { name: /^send$/i }).hasAttribute("disabled")).toBe(true);
     });
 
