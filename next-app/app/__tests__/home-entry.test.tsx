@@ -2,7 +2,8 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import Home from "../page";
+import HomeClient from "../HomeClient";
+import type { HomeWorkspaceBootstrap } from "@/types/home-bootstrap";
 
 const {
   mockReplace,
@@ -30,9 +31,6 @@ vi.mock("next/navigation", () => ({
     push: vi.fn(),
     replace: mockReplace,
     refresh: mockRefreshRouter,
-  }),
-  useSearchParams: () => ({
-    get: () => null,
   }),
 }));
 
@@ -94,8 +92,13 @@ describe("Home entry UX", () => {
 
     mockUseProjects.mockReturnValue({
       projects: [],
+      authState: "authenticated",
+      homeBootstrapState: "loaded_empty",
+      usedSeededBootstrap: true,
       addProject: vi.fn(async () => null),
       isInitialized: true,
+      isLoadingProjects: false,
+      projectsError: null,
       refresh: vi.fn(async () => {}),
       migrationStatus: "done",
       migrationError: null,
@@ -103,8 +106,19 @@ describe("Home entry UX", () => {
     });
   });
 
+  const makeBootstrap = (overrides: Partial<HomeWorkspaceBootstrap> = {}): HomeWorkspaceBootstrap => ({
+    authState: "authenticated",
+    homeBootstrapState: "loaded_empty",
+    initialProjects: [],
+    initialProjectsLoaded: true,
+    loadedAt: Date.now(),
+    userName: "Alex Doe",
+    error: null,
+    ...overrides,
+  });
+
   it("shows a dedicated new-user welcome screen and can enter workspace", async () => {
-    const { container } = render(<Home />);
+    const { container } = render(<HomeClient bootstrap={makeBootstrap()} shouldOpenFromQuery={false} />);
 
     expect(screen.queryByTestId("app-shell")).toBeNull();
     expect(screen.getByText("Start a new review")).toBeTruthy();
@@ -141,18 +155,96 @@ describe("Home entry UX", () => {
           created: "2026-02-21T00:00:00.000Z",
         },
       ],
+      authState: "authenticated",
+      homeBootstrapState: "loaded_nonempty",
+      usedSeededBootstrap: true,
       addProject: vi.fn(async () => null),
       isInitialized: true,
+      isLoadingProjects: false,
+      projectsError: null,
       refresh: vi.fn(async () => {}),
       migrationStatus: "done",
       migrationError: null,
       retryMigration: vi.fn(async () => {}),
     });
 
-    render(<Home />);
+    render(
+      <HomeClient
+        bootstrap={makeBootstrap({
+          homeBootstrapState: "loaded_nonempty",
+          initialProjects: [
+            {
+              id: "p1",
+              name: "First Project",
+              status: "ready",
+              statusText: "Status: Review Ready",
+              modified: "2026-02-20T00:00:00.000Z",
+              created: "2026-02-20T00:00:00.000Z",
+            },
+            {
+              id: "p2",
+              name: "Second Project",
+              status: "ready",
+              statusText: "Status: Review Ready",
+              modified: "2026-02-21T00:00:00.000Z",
+              created: "2026-02-21T00:00:00.000Z",
+            },
+          ],
+        })}
+        shouldOpenFromQuery={false}
+      />,
+    );
 
     const continueLink = screen.getByRole("link", { name: "Back to Second Project" });
     expect(continueLink.getAttribute("href")).toBe("/project/p2");
     expect(continueLink.getAttribute("data-prefetch")).toBe("false");
+  });
+
+  it("keeps existing users in the workspace state when seeded projects are available", () => {
+    mockUseProjects.mockReturnValue({
+      projects: [
+        {
+          id: "p-home",
+          name: "Server Seeded Project",
+          status: "ready",
+          statusText: "Status: Review Ready",
+          modified: "2026-02-21T00:00:00.000Z",
+          created: "2026-02-21T00:00:00.000Z",
+        },
+      ],
+      authState: "authenticated",
+      homeBootstrapState: "loaded_nonempty",
+      usedSeededBootstrap: true,
+      addProject: vi.fn(async () => null),
+      isInitialized: true,
+      isLoadingProjects: false,
+      projectsError: null,
+      refresh: vi.fn(async () => {}),
+      migrationStatus: "done",
+      migrationError: null,
+      retryMigration: vi.fn(async () => {}),
+    });
+
+    render(
+      <HomeClient
+        bootstrap={makeBootstrap({
+          homeBootstrapState: "loaded_nonempty",
+          initialProjects: [
+            {
+              id: "p-home",
+              name: "Server Seeded Project",
+              status: "ready",
+              statusText: "Status: Review Ready",
+              modified: "2026-02-21T00:00:00.000Z",
+              created: "2026-02-21T00:00:00.000Z",
+            },
+          ],
+        })}
+        shouldOpenFromQuery={false}
+      />,
+    );
+
+    expect(screen.queryByText("Start a new review")).toBeNull();
+    expect(screen.getByTestId("app-shell")).toBeTruthy();
   });
 });

@@ -10,6 +10,7 @@ import {
 } from "@/lib/server/auth/auth-rate-limit";
 import { claimLegacySingleUserData } from "@/lib/server/auth/claim";
 import { prisma } from "@/lib/server/prisma";
+import type { LegacyClaimResult } from "@/lib/server/auth/claim";
 
 const TEST_FALLBACK_CONTEXT = {
   userId: "local-user",
@@ -66,19 +67,27 @@ async function ensureDefaultWorkspaceMembership(userId: string, displayName?: st
   });
 }
 
-async function buildAuthContextFromSession(sessionUser: {
+type SessionUserInput = {
   id: string;
   name?: string | null;
-}): Promise<AuthContext> {
+};
+
+async function buildAuthContextFromSession(
+  sessionUser: SessionUserInput,
+  options: { runLegacyClaim?: boolean } = {},
+): Promise<AuthContext> {
+  const { runLegacyClaim = true } = options;
   const membership = await ensureDefaultWorkspaceMembership(
     sessionUser.id,
     sessionUser.name,
   );
 
-  await claimLegacySingleUserData({
-    userId: sessionUser.id,
-    workspaceId: membership.workspaceId,
-  });
+  if (runLegacyClaim) {
+    await claimLegacySingleUserData({
+      userId: sessionUser.id,
+      workspaceId: membership.workspaceId,
+    });
+  }
 
   return {
     userId: sessionUser.id,
@@ -87,22 +96,75 @@ async function buildAuthContextFromSession(sessionUser: {
   };
 }
 
+async function getOptionalSessionUserFromHeaders(
+  headerStore: Awaited<ReturnType<typeof headers>>,
+): Promise<SessionUserInput | null> {
+  const session = await getAuth().api.getSession({ headers: headerStore });
+  if (!session) {
+    return null;
+  }
+
+  return {
+    id: session.user.id,
+    name: session.user.name,
+  };
+}
+
+export async function getOptionalFastAuthSessionContext(): Promise<{
+  context: AuthContext;
+  sessionUser: SessionUserInput;
+} | null> {
+  if (isTestEnv) {
+    return {
+      context: { ...TEST_FALLBACK_CONTEXT },
+      sessionUser: { id: TEST_FALLBACK_CONTEXT.userId, name: "Test User" },
+    };
+  }
+
+  const headerStore = await headers();
+  const sessionUser = await getOptionalSessionUserFromHeaders(headerStore);
+  if (!sessionUser) {
+    return null;
+  }
+
+  const context = await buildAuthContextFromSession(sessionUser, {
+    runLegacyClaim: false,
+  });
+  return { context, sessionUser };
+}
+
+export async function getFastAuthContext(): Promise<AuthContext> {
+  const sessionContext = await getOptionalFastAuthSessionContext();
+  if (!sessionContext) {
+    throw new Error("Unauthorized");
+  }
+  return sessionContext.context;
+}
+
+export async function claimLegacyForCurrentSession(): Promise<LegacyClaimResult | null> {
+  const sessionContext = await getOptionalFastAuthSessionContext();
+  if (!sessionContext) {
+    return null;
+  }
+
+  return claimLegacySingleUserData({
+    userId: sessionContext.context.userId,
+    workspaceId: sessionContext.context.workspaceId,
+  });
+}
+
 export async function getAuthContext(): Promise<AuthContext> {
   if (isTestEnv) {
     return { ...TEST_FALLBACK_CONTEXT };
   }
 
   const headerStore = await headers();
-  const session = await getAuth().api.getSession({ headers: headerStore });
-
-  if (!session) {
+  const sessionUser = await getOptionalSessionUserFromHeaders(headerStore);
+  if (!sessionUser) {
     throw new Error("Unauthorized");
   }
 
-  return buildAuthContextFromSession({
-    id: session.user.id,
-    name: session.user.name,
-  });
+  return buildAuthContextFromSession(sessionUser);
 }
 
 export async function withAuth<T>(fn: (context: AuthContext) => Promise<T>): Promise<T> {

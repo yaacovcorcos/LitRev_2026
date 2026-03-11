@@ -140,10 +140,31 @@ export function AppShell({
       }
     };
 
-    void loadAdminStatus();
+    let idleHandle: number | null = null;
+    let timeoutHandle: ReturnType<typeof globalThis.setTimeout> | null = null;
+
+    if (typeof window !== "undefined" && "requestIdleCallback" in window) {
+      idleHandle = window.requestIdleCallback(() => {
+        if (!cancelled) {
+          void loadAdminStatus();
+        }
+      });
+    } else {
+      timeoutHandle = globalThis.setTimeout(() => {
+        if (!cancelled) {
+          void loadAdminStatus();
+        }
+      }, 0);
+    }
 
     return () => {
       cancelled = true;
+      if (idleHandle !== null && typeof window !== "undefined" && "cancelIdleCallback" in window) {
+        window.cancelIdleCallback(idleHandle);
+      }
+      if (timeoutHandle !== null) {
+        globalThis.clearTimeout(timeoutHandle);
+      }
       controller.abort();
     };
   }, [forceAdminNav]);
