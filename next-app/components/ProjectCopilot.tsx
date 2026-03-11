@@ -79,6 +79,7 @@ export function ProjectCopilot({
         handleReviewArtifact,
         approveArtifactsBatch,
         executePlan,
+        reconnectRun,
         selectedModel,
         // Autonomy settings (Phase 7)
         setShowAutonomySettings,
@@ -151,7 +152,7 @@ export function ProjectCopilot({
         }
     }, [currentConversationId, isBranching, isLoading, branchConversation]);
 
-    const retryLastMessage = useCallback(() => {
+    const retryLastMessage = useCallback((replaceRunId?: string | null) => {
         if (isLoading) return;
         const lastUserMessage = [...messages]
             .reverse()
@@ -169,6 +170,8 @@ export function ProjectCopilot({
                 expectedModel: selectedModel ?? null,
                 source: "retry_action",
             },
+            undefined,
+            replaceRunId ? { replaceRunId } : undefined,
         );
     }, [isLoading, messages, page, sendMessage, selectedModel, studyId]);
 
@@ -192,6 +195,20 @@ export function ProjectCopilot({
         if (selectedIndexes.length === 0) return;
         executePlan(planMessage.artifact.id, selectedIndexes);
     }, [executePlan, isLoading, messages]);
+
+    const latestRecoveryMeta = [...messages]
+        .reverse()
+        .find((message) => message.streamError?.recoveryRecommendation)?.streamError ?? null;
+
+    const reconnectActiveRun = useCallback(() => {
+        if (isLoading) return;
+        void reconnectRun(latestRecoveryMeta?.activeRunId ?? null);
+    }, [isLoading, latestRecoveryMeta?.activeRunId, reconnectRun]);
+
+    const stopAndRetryRun = useCallback(() => {
+        if (isLoading) return;
+        retryLastMessage(latestRecoveryMeta?.activeRunId ?? null);
+    }, [isLoading, latestRecoveryMeta?.activeRunId, retryLastMessage]);
 
     const getConversationGroupLabel = useCallback((conversation: (typeof conversations)[number]) => {
         const date = new Date(conversation.updatedAt);
@@ -365,6 +382,8 @@ export function ProjectCopilot({
                     onExecutePlan={executePlan}
                     onSaveToNotes={handleSaveToNotes}
                     onRetryLastMessage={retryLastMessage}
+                    onReconnectRun={reconnectActiveRun}
+                    onStopAndRetryRun={stopAndRetryRun}
                     onResumeRun={resumeFailedPlan}
                     onBranchFromMessage={handleBranchFromMessage}
                     onAnswerUserInput={answerUserInput}

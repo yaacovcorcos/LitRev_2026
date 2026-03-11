@@ -28,7 +28,7 @@ import {
     repairConversationHistory,
 } from "@/lib/agent/compaction";
 import { AVAILABLE_TOOLS, executeTool } from "./tools";
-import { startRun, endRun } from "@/lib/server/agent/run";
+import { startRun, endRun, startRunHeartbeat, type RunHeartbeatController } from "@/lib/server/agent/run";
 import { emitEvent } from "@/lib/server/agent/events";
 import { createArtifact } from "@/lib/server/agent/artifacts";
 import { getAutonomyConfig } from "@/lib/server/agent/autonomy";
@@ -880,6 +880,7 @@ class AIService {
         let studyId = options?.studyId;
         let conversation;
         let run: Awaited<ReturnType<typeof startRun>> | null = null;
+        let runHeartbeat: RunHeartbeatController | null = null;
         let trace: ReturnType<typeof startRunTrace> | null = null;
         let runFinalized = false;
         let traceEnded = false;
@@ -998,6 +999,8 @@ class AIService {
             costTokensOut?: number,
         ) => {
             if (!run || runFinalized) return;
+            runHeartbeat?.stop();
+            runHeartbeat = null;
             await endRun(run.id, status, costTokensIn, costTokensOut);
             runFinalized = true;
             finalizedRunStatus = status;
@@ -1021,6 +1024,14 @@ class AIService {
                 model: options?.model,
             });
             const activeRun = run;
+            runHeartbeat = startRunHeartbeat(activeRun.id, {
+                onError: (error) => {
+                    console.warn("[ai][run-heartbeat] failed", {
+                        runId: activeRun.id,
+                        error: error instanceof Error ? error.message : String(error),
+                    });
+                },
+            });
 
             // Start Langfuse trace for this run.
             trace = startRunTrace(activeRun.id, {
@@ -2123,6 +2134,8 @@ class AIService {
                 };
             }
         } finally {
+            runHeartbeat?.stop();
+            runHeartbeat = null;
             const fallbackStatus = runFacts.cancelledByUser || options?.signal?.aborted
                 ? "cancelled"
                 : runFacts.pausedForUserInput

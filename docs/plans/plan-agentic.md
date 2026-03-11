@@ -104,8 +104,9 @@ Every fix entry must include:
 - **Tool Prerequisites Now Gate High-Risk Actions Before Execution:** tool metadata now declares project/study/protocol prerequisites in the shared pre-execution path, screening actions also gate on resolvable non-empty criteria, and blocked actions emit structured `missing_prerequisite` envelopes before a tool runs. Generic PDF file existence is still verified inside PDF tools rather than the shared prerequisite vocabulary.
 - **Run Recovery Semantics Are Structured On Timeline-Based Surfaces:** `/ai` and project copilot now preserve deterministic failure envelopes into client state, retry affordances are derived from structured metadata, and server finalization uses explicit run facts so failed no-answer runs no longer masquerade as `completed`. Popup now preserves a truthful reduced subset of shared progress/checkpoint/error/blocking semantics, but it still does not claim full receipt/artifact parity.
 - **Run Lifecycle Integrity Is Now Enforced Across The Main Surfaces:** started runs now finalize exactly once, replace-safe admission requires explicit prior run identity instead of conversation-wide cancellation, and abnormal failure cleanup/dedupe now use the shared runtime/error owners so `/ai` and project copilot fail unfinished tools consistently and render one terminal failure.
+- **Abnormal-End Recovery Is Now Server-Authoritative On Main Timeline Surfaces:** `/ai` and project copilot now reconcile known-run broken streams against persisted `AgentRun` + replay-authoritative `RunEvent` truth, clear stale progress/tool activity into explicit recovery states, and drive `Reconnect` / `Retry` / `Stop & Retry` from structured recovery metadata instead of local loading heuristics.
 - **Context Assembly Now Degrades Optional DB-Backed Inputs Honestly:** critical authority still resolves before execution, but optional memory/protocol/ledger/study/project context now loads as best-effort after authority succeeds. When optional context fails, the run continues with a single pre-stream degraded-context checkpoint instead of aborting outright.
-- **Shared Failure Handling Still Needs One Owner:** shared stream reducers emit typed `stream_error` intents, but terminal failure presentation is not fully centralized yet; tracked under `FIX-011`.
+- **Running-Run Freshness Now Uses `lastActivityAt`:** `AgentRun.lastActivityAt` is now updated through centralized lifecycle/event helpers plus a quiet-run heartbeat, conversation admission uses it instead of `startedAt`, and stale `running` rows can be cancelled safely instead of poisoning future sends after disconnects.
 - **Database Connectivity Failures Are Classified At The Shared Envelope Boundary:** Prisma/pg connection-establishment failures now surface as `database_connection` envelopes instead of generic `PROVIDER_REQUEST_FAILED`, preserving truthful runtime attribution through stream transport and UI rendering.
 - **Approved Plan Execution Is Now Server-Constrained:** executable plan artifacts now author and preserve `execution` metadata at artifact creation time, the server loads artifact-bound conversation/project/mode authority before normal run setup, approved tool exposure is the intersection of selected-step tools, the stored plan-authorized ceiling, and current safe mode/scope definitions, and off-plan, out-of-order, non-executable, or now-unavailable plan steps fail through the shared non-retryable `plan_execution` error envelope.
 - **Provider-Independent Search Trace Is Stronger Across Main Surfaces:** shared reducers now derive PubMed-specific live progress, factual receipt summaries, and selective grounded checkpoints from search tool facts alone, while the project message bridge preserves those checkpoint semantics so `/ai`, sidebar copilot, and the main project conversation can all expose the same search workflow meaning without depending on provider reasoning.
@@ -125,27 +126,19 @@ Every fix entry must include:
 - Delegated child work bypassing review boundaries or swallowing clarification requests.
 - Plan execution exceeding the tool surface or mode the user actually approved.
 - Popup implying mutation capability it cannot actually render or complete honestly.
-- Started runs leaking as `running` after stream termination or early generator close, causing fresh-send collisions on the same conversation.
 
 ## Active Fixes
 *Immediate remediation work for shipped behavior that is broken, misleading, or lower quality than the intended contract.*
 
-- [ ] `FIX-011` Shared failure handling and popup parity
-  - Severity: `P1`
-  - Problem: shared reducers now emit typed stream-error intents, and popup now preserves the supported subset, but full popup receipt/artifact parity and terminal-failure ownership are still not fully unified across every surface.
-  - Supporting detail: canonical plan only for now.
-  - Exit criteria:
-    - shared stream-error intents are consumed consistently by timeline-based adapters
-    - popup retains structured error metadata for terminal failures plus honest blocking/progress/checkpoint support
-    - popup and shared adapters have dedicated regression coverage for terminal failure rendering
-    - remaining popup limitations are documented explicitly instead of implied away
+- No immediate runtime correctness fixes are open in the canonical tracker. Next work should proceed from the roadmap unless a new production incident reprioritizes the queue.
 
 ## Execution Order
 
 Work should proceed in this order unless a production incident forces reprioritization:
 
-1. `FIX-011` shared failure handling and popup parity
-2. roadmap phases after the active fixes above are stable
+1. `CAG-001` explicit run-phase state machine
+2. `CAG-003` checkpointed retry/resume recovery beyond the current abnormal-end reconciliation path
+3. remaining roadmap phases after those contracts are stable
 
 ## End-to-End Delivery Program
 
@@ -167,8 +160,8 @@ Work should proceed in this order unless a production incident forces reprioriti
 
 ### Track D — Surface Honesty, Docs, Evals, and Provenance
 
-- `FIX-005a` and `FIX-005b` are complete, so the remaining active work on this track is `FIX-011`.
-- Popup honesty should match the real runtime surface, plan/docs authority should stay truthful, and shared failure rendering should stop drifting per surface while the new executable provenance coverage stays current.
+- `FIX-005a`, `FIX-005b`, and `FIX-011` are complete, so this track now shifts back to roadmap work and ongoing truth-maintenance rather than active remediation.
+- Popup honesty should stay aligned with the reduced-parity runtime it actually supports, and future surface work should preserve the recovery/action truth model rather than reintroducing bespoke failure semantics.
 
 ## Active Roadmap
 *Durable capability and architecture work after the immediate fixes.*
@@ -288,6 +281,7 @@ These files are supporting documents. Status, priority, and closure rules live h
 
 ## Recently Completed
 
+- [x] Completed `FIX-011` shared failure handling and popup parity: `/ai` and project copilot now recover known-run abnormal disconnects against persisted run truth with structured `Reconnect` / `Retry` / `Stop & Retry` actions, popup keeps a truthful reduced recovery subset without fake `Resume`, and running-run freshness now uses `AgentRun.lastActivityAt` plus safe stale-run cleanup instead of conversation-wide cancellation heuristics.
 - [x] Completed `FIX-005b` executable evals and search provenance: runtime evals now exercise the live chat orchestration path for direct/delegated/failed/zero-result search scenarios, and the shared `tool_activity` receipt contract now carries compact source/query/count/identifier facts for PubMed, OpenAlex, and Semantic Scholar without changing final answer prose.
 - [x] Strengthened popup parity without overstating migration: popup now preserves a truthful reduced shared-trace subset for live progress, grounded checkpoints, blocking clarification, and structured terminal failures via a shared reducer adapter, while remaining intentionally compact and reduced.
 - [x] Completed `FIX-005a` docs authority and plan truth: `plan-agentic.md` remains the single active runtime authority, stale split-era `FIX-005` wording was removed from the supporting remediation doc, and popup/shared-runtime/eval maturity claims now stay aligned with the canonical and adjacent active plans instead of drifting into parallel status trackers.

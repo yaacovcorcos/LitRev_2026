@@ -26,7 +26,7 @@ import { getToolDefinitions } from "./tools/base";
 import { buildModelVisibleToolResult, compactToolResult, type ToolResultWithArtifactState } from "@/lib/agent/compaction";
 import { assembleSystemPrompt } from "@/lib/ai/prompts/copilot-prompts";
 import { getAIService } from "./ai-service";
-import { startRun, endRun } from "@/lib/server/agent/run";
+import { startRun, endRun, startRunHeartbeat, type RunHeartbeatController } from "@/lib/server/agent/run";
 import { emitEvent } from "@/lib/server/agent/events";
 import { dropShadowedInvalidToolCalls, getToolCallRepeatKey } from "./tool-helpers";
 import { evaluateToolPrerequisites } from "./tool-prerequisites";
@@ -159,6 +159,7 @@ export async function executeSubAgent(params: SubAgentParams): Promise<SubAgentR
     const toolLog: SubAgentResult["toolLog"] = [];
     const delegatedArtifacts: ToolResultArtifact[] = [];
     let childRunId: string | null = null;
+    let childRunHeartbeat: RunHeartbeatController | null = null;
     let childRunStatus: Extract<RunStatus, "completed" | "failed" | "cancelled" | "paused"> = "completed";
     let pendingUserInputRequest: UserInputRequest | undefined;
     let blockedReason: ToolBlockedReason | undefined;
@@ -198,6 +199,14 @@ export async function executeSubAgent(params: SubAgentParams): Promise<SubAgentR
             model: params.model,
         });
         childRunId = childRun.id;
+        childRunHeartbeat = startRunHeartbeat(childRun.id, {
+            onError: (error) => {
+                console.warn("[sub-agent][run-heartbeat] failed", {
+                    runId: childRun.id,
+                    error: error instanceof Error ? error.message : String(error),
+                });
+            },
+        });
         await emitEvent(childRun.id, "message", { content: task }, { messageRole: "user" });
     } catch (error) {
         return {
@@ -451,6 +460,8 @@ export async function executeSubAgent(params: SubAgentParams): Promise<SubAgentR
             artifacts: delegatedArtifacts,
         };
     } finally {
+        childRunHeartbeat?.stop();
+        childRunHeartbeat = null;
         if (childRunId) {
             try {
                 const stopReason = loop.stopReason;

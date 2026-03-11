@@ -26,6 +26,7 @@ const mocks = vi.hoisted(() => {
     getConversationWithSummaryById: vi.fn(),
     startRun: vi.fn(),
     endRun: vi.fn(),
+    startRunHeartbeat: vi.fn(() => ({ stop: vi.fn() })),
     startRunTrace: vi.fn(() => trace),
     flushTracing: vi.fn(),
     resolveAuthenticatedIdentity: vi.fn(),
@@ -95,6 +96,7 @@ vi.mock("@/lib/server/ai/tools", () => ({
 vi.mock("@/lib/server/agent/run", () => ({
   startRun: mocks.startRun,
   endRun: mocks.endRun,
+  startRunHeartbeat: mocks.startRunHeartbeat,
 }));
 
 vi.mock("@/lib/server/agent/events", () => ({

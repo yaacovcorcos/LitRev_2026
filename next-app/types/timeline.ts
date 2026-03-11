@@ -74,7 +74,7 @@ export interface TimelineToolActivity {
     id: string;
     callId: string;
     toolName: string;
-    status: "queued" | "running" | "done" | "failed";
+    status: "queued" | "running" | "done" | "failed" | "interrupted";
     summary?: string;
     queryPreview?: string;
     returnedCount?: number;

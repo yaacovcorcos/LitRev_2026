@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   assembleSystemPrompt: vi.fn(() => "SYSTEM"),
   startRun: vi.fn(),
   endRun: vi.fn(),
+  startRunHeartbeat: vi.fn(() => ({ stop: vi.fn() })),
   emitEvent: vi.fn(),
   protocolFindUnique: vi.fn(),
 }));
@@ -45,6 +46,7 @@ vi.mock("@/lib/ai/prompts/copilot-prompts", () => ({
 vi.mock("@/lib/server/agent/run", () => ({
   startRun: mocks.startRun,
   endRun: mocks.endRun,
+  startRunHeartbeat: mocks.startRunHeartbeat,
 }));
 
 vi.mock("@/lib/server/agent/events", () => ({

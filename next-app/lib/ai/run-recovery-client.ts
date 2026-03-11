@@ -1,0 +1,112 @@
+import type { AIErrorEnvelope, AIStreamChunk, RunRecoveryResponse } from "@/types/ai";
+
+export const RUN_RECOVERY_RECONNECT_SUMMARY = "Connection lost. Reconnecting to the active run…";
+export const RUN_RECOVERY_INTERRUPTED_TOOL_SUMMARY = "Connection lost while waiting for the run to finish.";
+export const RUN_RECOVERY_TIMEOUT_MESSAGE = "Connection lost and recovery timed out. Choose how to continue.";
+export const RUN_RECOVERY_FAILED_MESSAGE = "Connection lost and recovery failed. You can retry safely now.";
+
+export async function fetchRunRecovery(params: {
+    conversationId: string;
+    runId: string;
+    afterSequence: number;
+    signal?: AbortSignal;
+}): Promise<RunRecoveryResponse> {
+    const response = await fetch("/api/ai/recovery", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            conversationId: params.conversationId,
+            runId: params.runId,
+            afterSequence: params.afterSequence,
+        }),
+        signal: params.signal,
+    });
+    if (!response.ok) {
+        throw new Error(`Run recovery failed: ${response.statusText}`);
+    }
+    return response.json() as Promise<RunRecoveryResponse>;
+}
+
+export function createRecoveryErrorEnvelope(params: {
+    code: string;
+    message: string;
+    activeRunId?: string | null;
+    lastActivityAt?: string | null;
+    recoveryRecommendation: "reconnect" | "retry" | "stop_and_retry" | "terminal";
+    retryable: boolean;
+    kind?: AIErrorEnvelope["kind"];
+    source?: AIErrorEnvelope["source"];
+}): AIErrorEnvelope {
+    return {
+        kind: params.kind ?? "runtime",
+        code: params.code,
+        retryable: params.retryable,
+        source: params.source ?? "runtime",
+        message: params.message,
+        activeRunId: params.activeRunId ?? undefined,
+        lastActivityAt: params.lastActivityAt ?? undefined,
+        recoveryRecommendation: params.recoveryRecommendation,
+    };
+}
+
+export async function pollRunRecovery(params: {
+    conversationId: string;
+    runId: string;
+    afterSequence?: number;
+    signal?: AbortSignal;
+    timeoutMs?: number;
+    onReplay: (chunk: AIStreamChunk, sequence: number) => void | Promise<void>;
+    onTerminal: (chunk: AIStreamChunk) => void | Promise<void>;
+    sleep?: (ms: number) => Promise<void>;
+}): Promise<{
+    outcome: "recovered" | "needs_user_action" | "retry" | "aborted" | "timeout";
+    response: RunRecoveryResponse | null;
+    lastAppliedSequence: number;
+}> {
+    const timeoutMs = params.timeoutMs ?? 30_000;
+    const sleep = params.sleep ?? ((ms: number) => new Promise((resolve) => setTimeout(resolve, ms)));
+    const startedAt = Date.now();
+    let lastAppliedSequence = params.afterSequence ?? -1;
+    let attempt = 0;
+    let lastResponse: RunRecoveryResponse | null = null;
+
+    while (true) {
+        if (params.signal?.aborted) {
+            return { outcome: "aborted", response: lastResponse, lastAppliedSequence };
+        }
+
+        const response = await fetchRunRecovery({
+            conversationId: params.conversationId,
+            runId: params.runId,
+            afterSequence: lastAppliedSequence,
+            signal: params.signal,
+        });
+        lastResponse = response;
+
+        for (const replayableEvent of response.replayableEvents) {
+            if (replayableEvent.sequence <= lastAppliedSequence) continue;
+            await params.onReplay(replayableEvent.chunk, replayableEvent.sequence);
+            lastAppliedSequence = replayableEvent.sequence;
+        }
+
+        if (response.terminalEvent?.chunk) {
+            await params.onTerminal(response.terminalEvent.chunk);
+            return { outcome: "recovered", response, lastAppliedSequence };
+        }
+
+        if (response.recoveryRecommendation === "retry") {
+            return { outcome: "retry", response, lastAppliedSequence };
+        }
+
+        if (response.recoveryRecommendation === "stop_and_retry") {
+            return { outcome: "needs_user_action", response, lastAppliedSequence };
+        }
+
+        if (Date.now() - startedAt >= timeoutMs) {
+            return { outcome: "timeout", response, lastAppliedSequence };
+        }
+
+        attempt += 1;
+        await sleep(attempt < 10 ? 1_000 : 2_000);
+    }
+}

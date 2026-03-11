@@ -6,6 +6,7 @@
 import "server-only";
 import { prisma } from "@/lib/server/prisma";
 import type { RunEventType } from "@/types/agent";
+import { noteObservedRunActivity } from "@/lib/server/agent/run";
 
 export interface EmitEventExtras {
     toolName?: string;
@@ -40,29 +41,40 @@ export async function emitEvent(
     extras?: EmitEventExtras
 ) {
     for (let attempt = 0; attempt < MAX_SEQUENCE_RETRY_ATTEMPTS; attempt++) {
-        const lastEvent = await prisma.runEvent.findFirst({
-            where: { runId },
-            orderBy: { sequence: "desc" },
-            select: { sequence: true },
-        });
-        const sequence = (lastEvent?.sequence ?? -1) + 1;
-
         try {
-            return await prisma.runEvent.create({
-                data: {
-                    runId,
-                    sequence,
-                    type,
-                    payload: payload as object,
-                    toolName: extras?.toolName ?? null,
-                    artifactId: extras?.artifactId ?? null,
-                    messageRole: extras?.messageRole ?? null,
-                    tokensIn: extras?.tokensIn ?? null,
-                    tokensOut: extras?.tokensOut ?? null,
-                    errorCode: extras?.errorCode ?? null,
-                    durationMs: extras?.durationMs ?? null,
-                },
+            const created = await prisma.$transaction(async (tx) => {
+                const lastEvent = await tx.runEvent.findFirst({
+                    where: { runId },
+                    orderBy: { sequence: "desc" },
+                    select: { sequence: true },
+                });
+                const sequence = (lastEvent?.sequence ?? -1) + 1;
+
+                const event = await tx.runEvent.create({
+                    data: {
+                        runId,
+                        sequence,
+                        type,
+                        payload: payload as object,
+                        toolName: extras?.toolName ?? null,
+                        artifactId: extras?.artifactId ?? null,
+                        messageRole: extras?.messageRole ?? null,
+                        tokensIn: extras?.tokensIn ?? null,
+                        tokensOut: extras?.tokensOut ?? null,
+                        errorCode: extras?.errorCode ?? null,
+                        durationMs: extras?.durationMs ?? null,
+                    },
+                });
+
+                await tx.agentRun.updateMany({
+                    where: { id: runId, status: "running" },
+                    data: { lastActivityAt: event.createdAt },
+                });
+
+                return event;
             });
+            noteObservedRunActivity(runId, created.createdAt);
+            return created;
         } catch (error) {
             if (isRunSequenceConflict(error) && attempt < MAX_SEQUENCE_RETRY_ATTEMPTS - 1) {
                 continue;

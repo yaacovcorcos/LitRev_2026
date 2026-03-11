@@ -57,7 +57,7 @@ export type CopilotMessage = {
   toolActivity?: {
     callId: string;
     toolName: string;
-    status: "queued" | "running" | "done" | "failed";
+    status: "queued" | "running" | "done" | "failed" | "interrupted";
     summary?: string;
     queryPreview?: string;
     returnedCount?: number;

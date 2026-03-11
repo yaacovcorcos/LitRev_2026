@@ -482,6 +482,7 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             studyId?: string,
             retryModelExpectation?: RetryModelExpectation,
             contextTargets?: ContextCaptureTarget[],
+            runtimeOverrides?: { replaceRunId?: string | null },
         ) => {
             if (contextTargets?.length) {
                 recordContextHistory(contextTargets);
@@ -495,6 +496,7 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
                 studyId,
                 retryModelExpectation,
                 contextTargets,
+                runtimeOverrides,
             );
         },
         [recordContextHistory, stream],
@@ -556,6 +558,7 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             handleReviewArtifact: stream.handleReviewArtifact,
             approveArtifactsBatch: stream.approveArtifactsBatch,
             executePlan: stream.executePlan,
+            reconnectRun: stream.reconnectRun,
             // Summarize & fresh
             shouldOfferSummary,
             summarizeAndRefresh: convo.summarizeAndRefresh,

@@ -193,6 +193,87 @@ describe("shared stream reducer", () => {
     expect(secondResult.state.lastPubmedSearchSize).toBe(9);
   });
 
+  it("replaces assistant content snapshots during replay instead of appending duplicates", () => {
+    const initial = createInitialSharedStreamState({
+      aiMessageCreated: true,
+      fullContent: "Partial answer",
+      effectiveConvId: "conv-1",
+    });
+
+    const reduced = reduceSharedStreamChunk(
+      initial,
+      {
+        type: "content",
+        content: "Recovered full answer",
+        contentMode: "replace",
+        replay: true,
+      },
+      meta,
+    );
+
+    expect(reduced.state.fullContent).toBe("Recovered full answer");
+    expect(reduced.intents).toContainEqual({ type: "progress_clear" });
+    expect(reduced.intents).toContainEqual({
+      type: "assistant_upsert",
+      text: "Recovered full answer",
+      reasoning: undefined,
+    });
+  });
+
+  it("does not recreate ephemeral PubMed progress or checkpoints during replay", () => {
+    let state = createInitialSharedStreamState();
+
+    state = reduceSharedStreamChunk(
+      state,
+      {
+        type: "tool_call",
+        toolCall: {
+          id: "pubmed-1",
+          name: "search_pubmed",
+          arguments: { query: "omega 3 cognition" },
+        },
+      },
+      meta,
+    ).state;
+
+    const replayedCall = reduceSharedStreamChunk(
+      state,
+      {
+        type: "tool_call",
+        replay: true,
+        toolCall: {
+          id: "pubmed-1",
+          name: "search_pubmed",
+          arguments: { query: "omega 3 cognition" },
+        },
+      },
+      meta,
+    );
+    expect(replayedCall.intents.some((intent) => intent.type === "progress_upsert")).toBe(false);
+
+    const replayedResult = reduceSharedStreamChunk(
+      replayedCall.state,
+      {
+        type: "tool_result",
+        replay: true,
+        toolName: "search_pubmed",
+        toolResult: {
+          callId: "pubmed-1",
+          result: {
+            totalResults: 42,
+            returnedCount: 20,
+            results: [{ pmid: "1234", title: "Study" }],
+          },
+        },
+      },
+      meta,
+    );
+
+    expect(replayedResult.intents.some((intent) => intent.type === "progress_upsert")).toBe(false);
+    expect(replayedResult.intents.some((intent) => intent.type === "checkpoint_append")).toBe(false);
+    expect(replayedResult.intents.some((intent) => intent.type === "ledger_changed")).toBe(false);
+  });
+
   it("extends factual receipt metadata to OpenAlex search results", () => {
     let state = createInitialSharedStreamState();
 

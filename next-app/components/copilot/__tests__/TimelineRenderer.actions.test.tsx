@@ -106,9 +106,8 @@ describe("TimelineRenderer action affordances", () => {
     expect(screen.queryByRole("combobox")).toBeNull();
   });
 
-  it("renders retry/resume actions for recoverable error cards", () => {
+  it("renders retry for generic retryable error cards without offering resume", () => {
     const onRetryLastMessage = vi.fn();
-    const onResumeRun = vi.fn();
     const items: TimelineItem[] = [
       {
         type: "error",
@@ -126,18 +125,107 @@ describe("TimelineRenderer action affordances", () => {
         emptyState={{ icon: "chat", title: "Empty", description: "Empty", suggestions: [] }}
         onSuggestionClick={vi.fn()}
         onRetryLastMessage={onRetryLastMessage}
-        onResumeRun={onResumeRun}
+        onResumeRun={vi.fn()}
       />,
     );
 
     fireEvent.click(screen.getByRole("button", { name: /retry/i }));
-    fireEvent.click(screen.getByRole("button", { name: /resume/i }));
 
     expect(onRetryLastMessage).toHaveBeenCalledTimes(1);
-    expect(onResumeRun).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("button", { name: /resume/i })).toBeNull();
   });
 
-  it("does not render retry/resume actions for non-retryable error cards", () => {
+  it("renders reconnect and stop-and-retry from recovery recommendations", () => {
+    const onReconnectRun = vi.fn();
+    const onStopAndRetryRun = vi.fn();
+    const items: TimelineItem[] = [
+      {
+        type: "error",
+        id: "err-reconnect",
+        message: "Connection lost and recovery timed out. Choose how to continue.",
+        retryable: false,
+        errorMeta: {
+          kind: "runtime",
+          code: "RUN_RECOVERY_TIMEOUT",
+          retryable: false,
+          source: "runtime",
+          message: "Connection lost and recovery timed out. Choose how to continue.",
+          recoveryRecommendation: "reconnect",
+        },
+        createdAt: "2026-02-28T00:00:00.000Z",
+      },
+      {
+        type: "error",
+        id: "err-stop",
+        message: "The active run is still holding this conversation. Choose how to continue.",
+        retryable: false,
+        errorMeta: {
+          kind: "runtime",
+          code: "RUN_RECOVERY_REQUIRES_USER_ACTION",
+          retryable: false,
+          source: "runtime",
+          message: "The active run is still holding this conversation. Choose how to continue.",
+          recoveryRecommendation: "stop_and_retry",
+          activeRunId: "run-1",
+        },
+        createdAt: "2026-02-28T00:01:00.000Z",
+      },
+    ];
+
+    render(
+      <TimelineRenderer
+        items={items}
+        isLoading={false}
+        emptyState={{ icon: "chat", title: "Empty", description: "Empty", suggestions: [] }}
+        onSuggestionClick={vi.fn()}
+        onReconnectRun={onReconnectRun}
+        onStopAndRetryRun={onStopAndRetryRun}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /reconnect/i }));
+    fireEvent.click(screen.getByRole("button", { name: /stop & retry/i }));
+
+    expect(onReconnectRun).toHaveBeenCalledTimes(1);
+    expect(onStopAndRetryRun).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("button", { name: /^retry$/i })).toBeNull();
+  });
+
+  it("renders resume only for plan execution errors", () => {
+    const onResumeRun = vi.fn();
+    const items: TimelineItem[] = [
+      {
+        type: "error",
+        id: "err-plan",
+        message: "Plan execution failed",
+        retryable: false,
+        errorMeta: {
+          kind: "plan_execution",
+          code: "PLAN_EXECUTION_FAILED",
+          retryable: false,
+          source: "plan_execution",
+          message: "Plan execution failed",
+        },
+        createdAt: "2026-02-28T00:00:00.000Z",
+      },
+    ];
+
+    render(
+      <TimelineRenderer
+        items={items}
+        isLoading={false}
+        emptyState={{ icon: "chat", title: "Empty", description: "Empty", suggestions: [] }}
+        onSuggestionClick={vi.fn()}
+        onResumeRun={onResumeRun}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /resume/i }));
+    expect(onResumeRun).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("button", { name: /^retry$/i })).toBeNull();
+  });
+
+  it("does not render retry/resume actions for non-retryable non-plan error cards", () => {
     const items: TimelineItem[] = [
       {
         type: "error",
@@ -168,6 +256,8 @@ describe("TimelineRenderer action affordances", () => {
 
     expect(screen.queryByRole("button", { name: /retry/i })).toBeNull();
     expect(screen.queryByRole("button", { name: /resume/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /reconnect/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /stop & retry/i })).toBeNull();
   });
 
   it("fails closed for advisory plans without execution metadata", () => {
