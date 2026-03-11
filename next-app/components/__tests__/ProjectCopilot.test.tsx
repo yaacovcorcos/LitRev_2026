@@ -27,16 +27,23 @@ vi.mock("@radix-ui/react-popover", () => ({
   Content: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }));
 
+const { mockTimelineRenderer } = vi.hoisted(() => ({
+  mockTimelineRenderer: vi.fn(),
+}));
+
 vi.mock("../copilot/TimelineRenderer", () => ({
-  TimelineRenderer: ({ onSuggestionClick }: { onSuggestionClick: (prompt: string) => void }) => (
+  TimelineRenderer: (props: { onSuggestionClick: (prompt: string) => void }) => {
+    mockTimelineRenderer(props);
+    return (
     <button
       type="button"
       data-testid="panel-suggestion"
-      onClick={() => onSuggestionClick("Summarize my project progress")}
+      onClick={() => props.onSuggestionClick("Summarize my project progress")}
     >
       Suggest
     </button>
-  ),
+    );
+  },
 }));
 
 vi.mock("../copilot/CopilotInput", () => ({
@@ -63,7 +70,15 @@ vi.mock("../copilot/AutonomySettings", () => ({
 describe("ProjectCopilot suggestion wiring", () => {
   beforeEach(() => {
     mockUseProjectCopilot.mockReturnValue({
-      messages: [],
+      messages: [
+        {
+          id: "progress-1",
+          sender: "ai",
+          text: "",
+          createdAt: "2026-03-11T00:00:00.000Z",
+          progress: { message: "Reviewing PubMed results", current: 2, total: 3 },
+        },
+      ],
       isCollapsed: false,
       isLoading: false,
       reasoningMode: "full",
@@ -85,6 +100,7 @@ describe("ProjectCopilot suggestion wiring", () => {
       prefillCommand: null,
       consumePrefillCommand: vi.fn(),
     });
+    mockTimelineRenderer.mockReset();
   });
 
   it("prefills panel input when empty-state suggestion is clicked", async () => {
@@ -109,5 +125,25 @@ describe("ProjectCopilot suggestion wiring", () => {
 
     fireEvent.click(screen.getByTestId("consume-prefill"));
     expect(screen.getByTestId("copilot-prefill").textContent).toBe("");
+  });
+
+  it("renders elevated progress above the composer and suppresses the matching inline progress row", () => {
+    render(
+      <ProjectCopilot
+        page="overview"
+        contextDisplay="Overview"
+        emptyState={{
+          icon: "smart_toy",
+          title: "AI Copilot",
+          description: "Help text",
+          suggestions: [{ label: "Summarize", prompt: "Summarize my project progress" }],
+        }}
+        inputPlaceholder="Ask..."
+      />,
+    );
+
+    expect(screen.getByText("Reviewing PubMed results")).toBeTruthy();
+    const props = mockTimelineRenderer.mock.calls[0]?.[0] as { suppressedProgressId?: string | null };
+    expect(props.suppressedProgressId).toBe("progress-1");
   });
 });

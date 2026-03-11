@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import type { CopilotMessage } from "@/lib/projectCopilotStorage";
+import { selectActiveProgress, normalizeTimelineProgressItems } from "@/lib/ai/active-progress";
 import type { ArtifactData } from "@/types/artifacts";
+import { messagesToTimeline } from "@/components/copilot/StreamReducer";
 import {
   failRunningProjectToolActivityMessages,
   handleProjectCopilotStreamChunk,
@@ -231,6 +233,47 @@ describe("project copilot stream event handlers", () => {
         label: "PubMed returned 18 results. Reviewing the strongest matches now.",
       },
     });
+  });
+
+  it("preserves a suppressible local progress id through the project bridge timeline conversion", () => {
+    const messages: CopilotMessage[] = [];
+    const deps = {
+      aiMessageId: "m-1",
+      page: "overview" as const,
+      section: undefined,
+      projectId: "p-1",
+      myGen: 7,
+      getCurrentGen: () => 7,
+      setCurrentRunId: vi.fn(),
+      syncConversationId: vi.fn(),
+      upsertConversationTitle: vi.fn(),
+      upsertArtifact: vi.fn(),
+      updateMessages: (updater: (msgs: CopilotMessage[]) => CopilotMessage[]) => {
+        const next = updater(messages);
+        messages.splice(0, messages.length, ...next);
+      },
+      emitLedgerChanged: vi.fn(),
+      setPendingChoices: vi.fn(),
+      onPlanStepUpdate: vi.fn(),
+      setPendingUserInput: vi.fn(),
+    };
+
+    handleProjectCopilotStreamChunk(
+      { type: "progress", progressMessage: "Reviewing PubMed results", progressCurrent: 2, progressTotal: 3 },
+      baseState(),
+      deps,
+    );
+
+    const timeline = messagesToTimeline(messages);
+    const { activeProgress, suppressedProgressId } = selectActiveProgress(normalizeTimelineProgressItems(timeline));
+
+    expect(activeProgress).toMatchObject({
+      id: "progress-7",
+      message: "Reviewing PubMed results",
+      current: 2,
+      total: 3,
+    });
+    expect(suppressedProgressId).toBe("progress-7");
   });
 
   it("scopes progress to the active generation and replaces stale progress rows", () => {

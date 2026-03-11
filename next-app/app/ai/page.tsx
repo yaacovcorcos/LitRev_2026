@@ -2,6 +2,7 @@
 
 import { AppShell } from "@/components/AppShell";
 import { CopilotInputCoreClient } from "@/components/copilot/CopilotInputCoreClient";
+import { ComposerActiveProgressBar } from "@/components/copilot/ComposerActiveProgressBar";
 import { useProjects } from "@/contexts/ProjectsContext";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
@@ -37,6 +38,7 @@ import {
   shouldFailRunningToolsOnAbnormalEnd,
 } from "@/lib/ai/ai-stream-runtime";
 import { createInitialSharedStreamState, type SharedStreamIntent } from "@/lib/ai/shared-stream-reducer";
+import { normalizeTimelineProgressItems, selectActiveProgress } from "@/lib/ai/active-progress";
 import { generateChatUnificationRequestKey, recordChatUnificationMetric } from "@/lib/ai/chat-unification-telemetry";
 import { terminalReasonFromThrownError, type StreamTerminalReason } from "@/lib/ai/stream-lifecycle";
 import { recordReliabilityMetric } from "@/lib/ai/reliability-telemetry";
@@ -631,6 +633,10 @@ export default function AIView() {
     [conversations, isHistoryCollapsed]
   );
   const activeTimeline = activeConversationId ? (timelineByConversation[activeConversationId] ?? []) : [];
+  const { activeProgress, suppressedProgressId } = useMemo(
+    () => selectActiveProgress(normalizeTimelineProgressItems(activeTimeline)),
+    [activeTimeline],
+  );
 
   const sortConversationsByUpdatedAt = useCallback((items: ChatConversation[]) => {
     return [...items].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
@@ -2302,9 +2308,13 @@ export default function AIView() {
               onApproveArtifactsBatch={handleApproveArtifactsBatch}
               onExecutePlan={handleExecutePlan}
               onAnswerUserInput={handleAnswerUserInput}
+              suppressedProgressId={suppressedProgressId}
             />
 
             <div className={styles.chatInputContainer}>
+              <div className={styles.chatInputStatus}>
+                <ComposerActiveProgressBar activeProgress={activeProgress} />
+              </div>
               <CopilotInputCoreClient
                 page="ai"
                 inputPlaceholder="Ask anything about your research..."

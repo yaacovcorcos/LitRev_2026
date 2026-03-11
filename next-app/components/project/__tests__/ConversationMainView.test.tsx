@@ -116,9 +116,11 @@ describe("ConversationMainView parity", () => {
     render(<ConversationMainView projectId="project-1" />);
 
     expect(screen.getByTestId("timeline-renderer")).toBeTruthy();
+    expect(screen.getByText("Waiting for your answer")).toBeTruthy();
     expect(mockTimelineRenderer).toHaveBeenCalledTimes(1);
-    const props = mockTimelineRenderer.mock.calls[0]?.[0] as { messages: unknown[] };
+    const props = mockTimelineRenderer.mock.calls[0]?.[0] as { messages: unknown[]; suppressedProgressId?: string | null };
     expect(props.messages).toHaveLength(4);
     expect(props.messages).toEqual(mockUseProjectCopilot.mock.results[0]?.value.messages);
+    expect(props.suppressedProgressId).toBe("progress-1");
   });
 });

@@ -1,19 +1,22 @@
 "use client";
 
-import { useCallback, useRef, useState, type WheelEvent as ReactWheelEvent } from "react";
+import { useCallback, useMemo, useRef, useState, type WheelEvent as ReactWheelEvent } from "react";
 import { useParams } from "next/navigation";
 import { useProjectCopilot } from "@/contexts/ProjectCopilotContext";
 import type { CopilotPage } from "@/types/ai";
 import type { AgentMode } from "@/types/agent";
 import type { TimelineItem } from "@/types/timeline";
 import { createNoteAction } from "@/app/actions/notes";
+import { selectActiveProgress, normalizeTimelineProgressItems } from "@/lib/ai/active-progress";
 import { TimelineRenderer } from "./copilot/TimelineRenderer";
 import { CopilotInput } from "./copilot/CopilotInput";
+import { ComposerActiveProgressBar } from "./copilot/ComposerActiveProgressBar";
 import { AutonomySettings } from "./copilot/AutonomySettings";
 import { ReasoningModeDropdown } from "./copilot/ReasoningModeDropdown";
 import { ConversationPicker } from "./ui/ConversationPicker";
 import { decideCopilotWheelContainment } from "./copilot/scrollContainment";
 import { generateChatUnificationRequestKey } from "@/lib/ai/chat-unification-telemetry";
+import { messagesToTimeline } from "./copilot/StreamReducer";
 import styles from "./ProjectCopilot.module.css";
 
 export type SuggestionConfig = {
@@ -216,6 +219,11 @@ export function ProjectCopilot({
         if (days === 1) return "Yesterday";
         return "Older";
     }, []);
+    const timelineItems = useMemo(() => messagesToTimeline(messages), [messages]);
+    const { activeProgress, suppressedProgressId } = useMemo(
+        () => selectActiveProgress(normalizeTimelineProgressItems(timelineItems)),
+        [timelineItems],
+    );
 
     if (isCollapsed) {
         return (
@@ -389,17 +397,21 @@ export function ProjectCopilot({
                     isLoadingOlder={isLoadingOlder}
                     onLoadOlder={loadOlderMessages}
                     onContainerElementChange={handleTimelineContainerElement}
+                    suppressedProgressId={suppressedProgressId}
                 />
 
                 {/* Input area */}
-                <CopilotInput
-                page={page}
-                section={section}
-                studyId={studyId}
-                inputPlaceholder={inputPlaceholder}
-                prefillCommand={activePrefillCommand}
-                onPrefillConsumed={handlePrefillConsumed}
-            />
+                <div className={styles.composerHost}>
+                    <ComposerActiveProgressBar activeProgress={activeProgress} />
+                    <CopilotInput
+                        page={page}
+                        section={section}
+                        studyId={studyId}
+                        inputPlaceholder={inputPlaceholder}
+                        prefillCommand={activePrefillCommand}
+                        onPrefillConsumed={handlePrefillConsumed}
+                    />
+                </div>
             </div>
             <AutonomySettings />
         </aside>

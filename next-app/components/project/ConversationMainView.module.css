@@ -233,6 +233,10 @@
     max-width: 720px;
 }
 
+.inputWrapper > :first-child[aria-hidden="true"] {
+    max-width: 720px;
+}
+
 .contentAreaEmpty {
     overflow-y: auto;
 }
