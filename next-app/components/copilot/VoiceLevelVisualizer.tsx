@@ -16,9 +16,11 @@ const SILENCE_FLOOR = 0.045;
 const ATTACK_FACTOR = 0.38;
 const RELEASE_FACTOR = 0.18;
 const NORMALIZATION_CEILING = 0.26;
-const BAR_GAP = 1;
+const BAR_GAP = 1.5;
 const MIN_BAR_WIDTH = 1;
 const MAX_BAR_WIDTH = 1.6;
+const QUIET_BAR_THRESHOLD = 0.08;
+const QUIET_BAR_AMPLITUDE = 0.7;
 
 export function shouldAdvanceHistory(now: number, lastAdvanceAt: number) {
     return now - lastAdvanceAt >= HISTORY_ADVANCE_MS;
@@ -92,17 +94,12 @@ function drawBars(canvas: HTMLCanvasElement, history: number[], contrast: string
     const barCount = visibleHistory.length;
     const maxAmplitude = Math.max(6, height / 2 - 3);
 
-    context.strokeStyle = `rgba(${contrast}, 0.18)`;
-    context.lineWidth = 1;
-    context.beginPath();
-    context.moveTo(0, centerY + 0.5);
-    context.lineTo(width, centerY + 0.5);
-    context.stroke();
-
     context.fillStyle = `rgba(${contrast}, 0.78)`;
     for (let index = 0; index < barCount; index += 1) {
         const value = visibleHistory[index] ?? SILENCE_FLOOR;
-        const amplitude = Math.max(1.25, value * maxAmplitude);
+        const amplitude = value <= QUIET_BAR_THRESHOLD
+            ? QUIET_BAR_AMPLITUDE
+            : Math.max(1.25, value * maxAmplitude);
         const x = offsetX + index * (barWidth + gap);
         const y = centerY - amplitude;
         const barHeight = amplitude * 2;
