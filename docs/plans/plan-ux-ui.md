@@ -28,7 +28,7 @@ Domain-specific execution plans remain canonical for their domains:
 - Shared composer action hierarchy is active across chat surfaces:
   - `CopilotInputCore` now uses a left-edge `+` extension menu for secondary actions, keeps voice in the right-side primary action cluster beside send, and presents a real microphone-driven waveform/timer state while recording.
   - Shared composer hover language stays token-based and calm, while recording/transcribing states preserve keyboard stop behavior without moving reasoning controls into the composer.
-  - Voice recording now uses a dedicated canvas-based amplitude-history visualizer with a frozen transcribing duration, removing the prior per-frame React equalizer bar path and pulsing recorder icon treatment.
+  - Voice recording now uses a dedicated canvas-based amplitude-history visualizer with a frozen transcribing duration, explicit microphone-permission pending UI, short-recording feedback, and slower horizontal travel with slightly more responsive peaks.
 - Shared shell-contained scroll ownership is active for homepage and library workspace surfaces:
   - `AppShell` now provides a viewport-bounded shell parent, `surface-root[data-surface-height="shell"]` acts as the bounded route root, and `surface-scroll-body` remains the sole inner scroll owner.
   - Homepage workspace and library now use separate route-local layout modules on top of that shared contract, and homepage tall-list wheel scrolling is covered by a dedicated smoke test.
@@ -93,6 +93,7 @@ Use this mapping for old PRs/comments referencing CLU IDs.
 - [ ] `CUX-A03` Expand async `aria-live` announcements coverage and consistency across remaining async UI states.
 
 ## Recently Completed
+- [x] Voice recorder follow-up tuning shipped: the shared composer now shows an explicit microphone-permission pending state, surfaces too-short recordings as a calm dismissible error, preserves the frozen transcribing timer, and slows waveform travel while making peaks slightly easier to read.
 - [x] Homepage/library shell scroll contract repair shipped: `AppShell` is now viewport-bounded for contained shell pages, homepage workspace scroll is owned by the inner `surface-scroll-body`, library no longer depends on `home.module.css`, and a dedicated homepage wheel-scroll smoke guards tall-card regressions.
 - [x] Composer refresh shipped on the shared chat input: secondary actions now live behind a `+` menu, voice moved beside send, hover styling was unified, and live recording shows a real waveform/timer across shared chat surfaces.
 - [x] Voice recorder visualizer redesign shipped: shared chat inputs now use a premium amplitude-history canvas visualizer, keep recorded duration frozen during transcription, and no longer push waveform animation through per-frame React state.
@@ -103,10 +104,6 @@ Use this mapping for old PRs/comments referencing CLU IDs.
 - [x] `CUX-002` Project page shell parity via shared `ProjectPageLayout`.
 - [x] `CUX-003` / `CUX-004` ConversationPicker overhaul and app-native rename/menu behavior.
 - [x] `CUX-005` / `CUX-006` / `CUX-007` streaming gate, prefill reliability, and failure recovery foundation.
-- [x] `CUX-008` / `CUX-009` / `CUX-010` / `CUX-011` semantic primitives and accessibility baseline.
-- [x] `CUX-013` / `CUX-014` async feedback architecture (`useAsyncAction`, notifications, toasts).
-- [x] `CUX-015` / `CUX-036` / `CUX-037` error fallback, hydration polish, and demo guidance dedup.
-- [x] `CUX-016` / `CUX-A01` / `CUX-A02` token system and accessibility form/icon baseline.
 
 ## Cross-Plan Dependencies (Authoritative Elsewhere)
 - Guided setup/onboarding UX execution: `docs/plans/plan-guided-setup.md`.

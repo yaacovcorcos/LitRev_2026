@@ -2,7 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect } from "react";
 
-export type VoiceInputState = "idle" | "recording" | "transcribing";
+export type VoiceInputState = "idle" | "requesting_permission" | "recording" | "transcribing";
 
 type AudioRuntime = {
     audioContext: AudioContext;
@@ -106,6 +106,7 @@ export function useVoiceInput(onTranscription: (text: string) => void) {
         chunksRef.current = [];
 
         if (blob.size < 1000) {
+            setError("Recording was too short. Try speaking a little longer.");
             setState("idle");
             resetElapsedTracking();
             return;
@@ -152,6 +153,7 @@ export function useVoiceInput(onTranscription: (text: string) => void) {
     const startRecording = useCallback(async () => {
         setError(null);
         resetElapsedTracking();
+        setState("requesting_permission");
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             streamRef.current = stream;
@@ -184,6 +186,7 @@ export function useVoiceInput(onTranscription: (text: string) => void) {
             stopMediaTracks();
             await stopAudioRuntime();
             resetElapsedTracking();
+            setState("idle");
             if (err instanceof DOMException && err.name === "NotAllowedError") {
                 setError("Microphone access denied. Please allow mic access in browser settings.");
             } else {

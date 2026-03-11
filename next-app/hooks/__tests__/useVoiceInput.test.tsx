@@ -11,6 +11,7 @@ describe("useVoiceInput", () => {
     let requestAnimationFrameSpy: ReturnType<typeof vi.spyOn>;
     let getUserMediaMock: ReturnType<typeof vi.fn>;
     let fetchMock: ReturnType<typeof vi.fn>;
+    let recordingBlobSize = 1600;
 
     class MediaRecorderMock {
         static isTypeSupported = vi.fn(() => true);
@@ -21,7 +22,7 @@ describe("useVoiceInput", () => {
 
         start() {
             this.state = "recording";
-            this.ondataavailable?.({ data: new Blob(["a".repeat(1600)], { type: this.mimeType }) });
+            this.ondataavailable?.({ data: new Blob(["a".repeat(recordingBlobSize)], { type: this.mimeType }) });
         }
 
         stop() {
@@ -33,6 +34,7 @@ describe("useVoiceInput", () => {
     beforeEach(() => {
         vi.useFakeTimers();
         vi.setSystemTime(new Date("2026-03-11T10:00:00Z"));
+        recordingBlobSize = 1600;
 
         track = { stop: vi.fn() };
         getUserMediaMock = vi.fn(async () => ({ getTracks: () => [track] }));
@@ -104,6 +106,49 @@ describe("useVoiceInput", () => {
         expect(result.current.elapsedMs).toBe(250);
     });
 
+    it("shows requesting_permission before recording starts", async () => {
+        let resolveStream: ((value: { getTracks: () => TrackMock[] }) => void) | null = null;
+        getUserMediaMock.mockImplementation(
+            () =>
+                new Promise((resolve) => {
+                    resolveStream = resolve;
+                }),
+        );
+
+        const { result } = renderHook(() => useVoiceInput(vi.fn()));
+
+        await act(async () => {
+            result.current.toggleRecording();
+            await Promise.resolve();
+        });
+
+        expect(result.current.state).toBe("requesting_permission");
+        expect(result.current.visualizerAnalyser).toBeNull();
+
+        await act(async () => {
+            resolveStream?.({ getTracks: () => [track] });
+            await Promise.resolve();
+        });
+
+        expect(result.current.state).toBe("recording");
+        expect(result.current.visualizerAnalyser).toBeTruthy();
+    });
+
+    it("returns to idle with an error when microphone permission is denied", async () => {
+        getUserMediaMock.mockRejectedValueOnce(new DOMException("denied", "NotAllowedError"));
+
+        const { result } = renderHook(() => useVoiceInput(vi.fn()));
+
+        await act(async () => {
+            result.current.toggleRecording();
+            await Promise.resolve();
+            await Promise.resolve();
+        });
+
+        expect(result.current.state).toBe("idle");
+        expect(result.current.error).toMatch(/microphone access denied/i);
+    });
+
     it("freezes the recorded duration during transcribing and resets after completion", async () => {
         let resolveFetch: ((value: unknown) => void) | null = null;
         fetchMock.mockImplementation(
@@ -150,6 +195,26 @@ describe("useVoiceInput", () => {
 
         expect(result.current.state).toBe("idle");
         expect(result.current.elapsedMs).toBe(0);
+    });
+
+    it("shows a short-recording error and skips transcription for tiny blobs", async () => {
+        recordingBlobSize = 10;
+        const { result } = renderHook(() => useVoiceInput(vi.fn()));
+
+        await act(async () => {
+            result.current.toggleRecording();
+            await Promise.resolve();
+        });
+
+        await act(async () => {
+            result.current.stopRecording();
+            await Promise.resolve();
+            await Promise.resolve();
+        });
+
+        expect(fetchMock).not.toHaveBeenCalled();
+        expect(result.current.state).toBe("idle");
+        expect(result.current.error).toMatch(/too short/i);
     });
 
     it("releases media tracks and audio runtime on unmount", async () => {
