@@ -857,6 +857,23 @@ export function TimelineRenderer({
     const hiddenItemCount = Math.max(0, timeline.length - effectiveVisibleCount);
     const visibleTimeline = hiddenItemCount > 0 ? timeline.slice(-effectiveVisibleCount) : timeline;
     const visibleFirstTimelineId = visibleTimeline[0]?.id ?? null;
+    const lastAssistantIndex = visibleTimeline.length > 0 && visibleTimeline[visibleTimeline.length - 1].type === "assistant_message"
+        ? visibleTimeline.length - 1
+        : -1;
+    const isStreaming = isLoading && lastAssistantIndex >= 0;
+    const streamingAssistantMessageId = isStreaming
+        ? visibleTimeline[lastAssistantIndex]?.id ?? null
+        : null;
+    const renderEntries = useMemo(
+        () => buildExecutionTraceEntries(visibleTimeline, { streamingAssistantMessageId }),
+        [streamingAssistantMessageId, visibleTimeline],
+    );
+    const toggleCollapsedTrace = useCallback((assistantMessageId: string) => {
+        setCollapsedTraceByAssistantId((prev) => ({
+            ...prev,
+            [assistantMessageId]: !(prev[assistantMessageId] ?? true),
+        }));
+    }, []);
     const [expandedSequenceIds, setExpandedSequenceIds] = useState<Record<string, boolean>>({});
     const toggleSequenceExpanded = useCallback((sequenceId: string) => {
         setExpandedSequenceIds((prev) => ({
@@ -1037,71 +1054,6 @@ export function TimelineRenderer({
             setApproveAllState("finished");
         }
     }, [approveAllState, conversationId, onApproveArtifactsBatch, onReviewArtifact, pendingApprovable]);
-
-    // Skeleton while a conversation is being fetched from the server
-    if (isConversationLoading && timeline.length === 0) {
-        return (
-            <div className={`${styles.copilotBody} ${variant === "page" ? styles.pageLayout : ""}`} ref={setContainerRef} onScroll={onScroll}>
-                <div className={styles.skeletonList} aria-busy="true" aria-label="Loading conversation">
-                    <div className={styles.skeletonRow}>
-                        <div className={`${styles.skeletonBubble} ${styles.skeletonBubbleUser}`} />
-                    </div>
-                    <div className={styles.skeletonRow}>
-                        <div className={`${styles.skeletonBubble} ${styles.skeletonBubbleLong}`} />
-                        <div className={`${styles.skeletonBubble} ${styles.skeletonBubbleMid}`} />
-                        <div className={`${styles.skeletonBubble} ${styles.skeletonBubbleShort}`} />
-                    </div>
-                    <div className={styles.skeletonRow}>
-                        <div className={`${styles.skeletonBubble} ${styles.skeletonBubbleUser}`} />
-                    </div>
-                    <div className={styles.skeletonRow}>
-                        <div className={`${styles.skeletonBubble} ${styles.skeletonBubbleMid}`} />
-                        <div className={`${styles.skeletonBubble} ${styles.skeletonBubbleShort}`} />
-                    </div>
-                </div>
-                <div ref={bottomRef} style={{ height: 1, flexShrink: 0 }} aria-hidden="true" />
-            </div>
-        );
-    }
-
-    // Empty state
-    if (timeline.length === 0) {
-        return (
-            <div className={`${styles.copilotBody} ${variant === "page" ? styles.pageLayout : ""}`} ref={setContainerRef} onScroll={onScroll}>
-                <div className={styles.emptyPanel}>
-                    <div className={styles.emptyIcon}>
-                        <span className="material-icons-round">{emptyState.icon}</span>
-                    </div>
-                    <h3>{emptyState.title}</h3>
-                    <p>{emptyState.description}</p>
-                    <div className={styles.suggestRow}>
-                        {emptyState.suggestions.map((suggestion) => (
-                            <button
-                                key={suggestion.label}
-                                type="button"
-                                className={suggestion.description ? styles.suggestCard : styles.suggestChip}
-                                onClick={() => onSuggestionClick(suggestion.prompt)}
-                                disabled={isLoading}
-                            >
-                                {suggestion.icon ? (
-                                    <span className={`material-icons-round ${styles.suggestCardIcon}`} aria-hidden="true">
-                                        {suggestion.icon}
-                                    </span>
-                                ) : null}
-                                <span className={styles.suggestCardBody}>
-                                    <span className={styles.suggestCardLabel}>{suggestion.label}</span>
-                                    {suggestion.description ? (
-                                        <span className={styles.suggestCardDescription}>{suggestion.description}</span>
-                                    ) : null}
-                                </span>
-                            </button>
-                        ))}
-                    </div>
-                </div>
-                <div ref={bottomRef} style={{ height: 1, flexShrink: 0 }} aria-hidden="true" />
-            </div>
-        );
-    }
 
     const renderArtifactContent = (item: TimelineArtifact) => {
         const handleReview = (status: "accepted" | "rejected", note?: string, editedPayload?: Record<string, unknown>) => {
@@ -1335,25 +1287,6 @@ export function TimelineRenderer({
                 );
         }
     };
-
-    // Streaming cursor: which assistant message is actively receiving tokens
-    const lastAssistantIndex = visibleTimeline.length > 0 && visibleTimeline[visibleTimeline.length - 1].type === "assistant_message"
-        ? visibleTimeline.length - 1
-        : -1;
-    const isStreaming = isLoading && lastAssistantIndex >= 0;
-    const streamingAssistantMessageId = isStreaming
-        ? visibleTimeline[lastAssistantIndex]?.id ?? null
-        : null;
-    const renderEntries = useMemo(
-        () => buildExecutionTraceEntries(visibleTimeline, { streamingAssistantMessageId }),
-        [streamingAssistantMessageId, visibleTimeline],
-    );
-    const toggleCollapsedTrace = useCallback((assistantMessageId: string) => {
-        setCollapsedTraceByAssistantId((prev) => ({
-            ...prev,
-            [assistantMessageId]: !(prev[assistantMessageId] ?? true),
-        }));
-    }, []);
 
     const renderTimelineItem = (item: TimelineItem, index: number) => {
         switch (item.type) {
@@ -1686,6 +1619,71 @@ export function TimelineRenderer({
         flushSingleBuffer();
         return rendered;
     }, [renderEntries, renderPresentedTimelineItem, renderExecutionTraceEntry]);
+
+    // Skeleton while a conversation is being fetched from the server
+    if (isConversationLoading && timeline.length === 0) {
+        return (
+            <div className={`${styles.copilotBody} ${variant === "page" ? styles.pageLayout : ""}`} ref={setContainerRef} onScroll={onScroll}>
+                <div className={styles.skeletonList} aria-busy="true" aria-label="Loading conversation">
+                    <div className={styles.skeletonRow}>
+                        <div className={`${styles.skeletonBubble} ${styles.skeletonBubbleUser}`} />
+                    </div>
+                    <div className={styles.skeletonRow}>
+                        <div className={`${styles.skeletonBubble} ${styles.skeletonBubbleLong}`} />
+                        <div className={`${styles.skeletonBubble} ${styles.skeletonBubbleMid}`} />
+                        <div className={`${styles.skeletonBubble} ${styles.skeletonBubbleShort}`} />
+                    </div>
+                    <div className={styles.skeletonRow}>
+                        <div className={`${styles.skeletonBubble} ${styles.skeletonBubbleUser}`} />
+                    </div>
+                    <div className={styles.skeletonRow}>
+                        <div className={`${styles.skeletonBubble} ${styles.skeletonBubbleMid}`} />
+                        <div className={`${styles.skeletonBubble} ${styles.skeletonBubbleShort}`} />
+                    </div>
+                </div>
+                <div ref={bottomRef} style={{ height: 1, flexShrink: 0 }} aria-hidden="true" />
+            </div>
+        );
+    }
+
+    // Empty state
+    if (timeline.length === 0) {
+        return (
+            <div className={`${styles.copilotBody} ${variant === "page" ? styles.pageLayout : ""}`} ref={setContainerRef} onScroll={onScroll}>
+                <div className={styles.emptyPanel}>
+                    <div className={styles.emptyIcon}>
+                        <span className="material-icons-round">{emptyState.icon}</span>
+                    </div>
+                    <h3>{emptyState.title}</h3>
+                    <p>{emptyState.description}</p>
+                    <div className={styles.suggestRow}>
+                        {emptyState.suggestions.map((suggestion) => (
+                            <button
+                                key={suggestion.label}
+                                type="button"
+                                className={suggestion.description ? styles.suggestCard : styles.suggestChip}
+                                onClick={() => onSuggestionClick(suggestion.prompt)}
+                                disabled={isLoading}
+                            >
+                                {suggestion.icon ? (
+                                    <span className={`material-icons-round ${styles.suggestCardIcon}`} aria-hidden="true">
+                                        {suggestion.icon}
+                                    </span>
+                                ) : null}
+                                <span className={styles.suggestCardBody}>
+                                    <span className={styles.suggestCardLabel}>{suggestion.label}</span>
+                                    {suggestion.description ? (
+                                        <span className={styles.suggestCardDescription}>{suggestion.description}</span>
+                                    ) : null}
+                                </span>
+                            </button>
+                        ))}
+                    </div>
+                </div>
+                <div ref={bottomRef} style={{ height: 1, flexShrink: 0 }} aria-hidden="true" />
+            </div>
+        );
+    }
 
     return (
         <div className={`${styles.copilotBody} ${variant === "page" ? styles.pageLayout : ""}`} ref={setContainerRef} onScroll={onScroll}>
