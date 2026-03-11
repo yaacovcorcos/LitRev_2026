@@ -52,6 +52,7 @@ const requiredIndexes = new Set([
   "AgentRun_parentRunId_startedAt_idx",
   "AgentRun_rootRunId_startedAt_idx",
   "AgentRun_conversationId_startedAt_idx",
+  "AgentRun_conversationId_lastActivityAt_idx",
 ]);
 
 (async () => {

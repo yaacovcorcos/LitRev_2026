@@ -180,6 +180,8 @@ export function createRunConflictErrorEnvelope(params: {
     conversationId: string;
     activeRunId: string;
     replaceRunId?: string;
+    lastActivityAt?: string;
+    recoveryRecommendation?: "reconnect" | "retry" | "stop_and_retry" | "terminal";
 }): AIErrorEnvelope {
     if (params.code === "REPLACE_TARGET_MISMATCH") {
         return {
@@ -187,6 +189,10 @@ export function createRunConflictErrorEnvelope(params: {
             code: params.code,
             retryable: false,
             source: "conversation_run_lock",
+            activeRunId: params.activeRunId,
+            replaceRunId: params.replaceRunId,
+            lastActivityAt: params.lastActivityAt,
+            recoveryRecommendation: params.recoveryRecommendation ?? "stop_and_retry",
             message: params.replaceRunId
                 ? `Conversation ${params.conversationId} is running ${params.activeRunId}, so replace request ${params.replaceRunId} was rejected.`
                 : `Conversation ${params.conversationId} is running ${params.activeRunId}, so the replace request was rejected.`,
@@ -198,6 +204,10 @@ export function createRunConflictErrorEnvelope(params: {
         code: params.code,
         retryable: false,
         source: "conversation_run_lock",
+        activeRunId: params.activeRunId,
+        replaceRunId: params.replaceRunId,
+        lastActivityAt: params.lastActivityAt,
+        recoveryRecommendation: params.recoveryRecommendation ?? "reconnect",
         message: `Conversation ${params.conversationId} already has an active run (${params.activeRunId}).`,
     };
 }

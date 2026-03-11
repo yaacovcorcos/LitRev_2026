@@ -107,6 +107,10 @@ Track trend lines daily:
 3. Retry join health: matched pairs, unmatched intents/completions, and match-rate.
 4. Ask-user mismatch rate and denominator.
 5. Stuck-running violations.
+6. Manual abnormal-end recovery spot check on `/ai` and project copilot:
+   - known-run disconnect clears stale progress
+   - live run offers `Reconnect` or `Stop & Retry` instead of a dead-end conflict
+   - terminal reconciliation does not duplicate the final assistant/error state
 
 ## Phase 4 - Final Strict Gate (Earliest at +7 Days)
 
@@ -132,6 +136,7 @@ Pass criteria:
 5. Burn-in window is v2-clean for `retry_model_continuity` (mixed v1+v2 window is a fail).
 6. Ask-user mismatch: `= 0`, with denominator `>= 30` overall and `>= 10` per surface.
 7. Stuck-running violations: `= 0`.
+8. Manual abnormal-end recovery spot check passes on `/ai` and project copilot with no dead-end `ACTIVE_RUN_EXISTS` path after a reconnectable disconnect.
 
 ## Metric Integrity Rules
 

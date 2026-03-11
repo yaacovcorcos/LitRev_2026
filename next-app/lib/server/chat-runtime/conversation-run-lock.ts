@@ -1,11 +1,12 @@
 import { prisma } from "@/lib/server/prisma";
 import { AIErrorWithEnvelope, createRunConflictErrorEnvelope } from "@/lib/ai/error-envelope";
 
-export const DEFAULT_CONVERSATION_RUN_STALE_MS = 20 * 60 * 1000;
+export const DEFAULT_CONVERSATION_RUN_STALE_MS = 90_000;
 
 type RunningConversationRun = {
   id: string;
   startedAt: Date;
+  lastActivityAt: Date;
 };
 
 export interface ConversationRunLockStore {
@@ -18,22 +19,22 @@ const prismaConversationRunLockStore: ConversationRunLockStore = {
   async listRunning(conversationId: string): Promise<RunningConversationRun[]> {
     return prisma.agentRun.findMany({
       where: { conversationId, status: "running" },
-      select: { id: true, startedAt: true },
-      orderBy: { startedAt: "asc" },
+      select: { id: true, startedAt: true, lastActivityAt: true },
+      orderBy: { lastActivityAt: "asc" },
     });
   },
   async cancelRuns(runIds: string[], completedAt: Date): Promise<number> {
     if (runIds.length === 0) return 0;
     const result = await prisma.agentRun.updateMany({
-      where: { id: { in: runIds }, status: "running" },
-      data: { status: "cancelled", completedAt },
+      where: { id: { in: runIds }, status: "running", completedAt: null },
+      data: { status: "cancelled", completedAt, lastActivityAt: completedAt },
     });
     return result.count;
   },
   async cancelRunIfActive(runId: string, conversationId: string, completedAt: Date): Promise<boolean> {
     const result = await prisma.agentRun.updateMany({
-      where: { id: runId, conversationId, status: "running" },
-      data: { status: "cancelled", completedAt },
+      where: { id: runId, conversationId, status: "running", completedAt: null },
+      data: { status: "cancelled", completedAt, lastActivityAt: completedAt },
     });
     return result.count > 0;
   },
@@ -62,7 +63,7 @@ export async function ensureConversationRunAvailability(
   const staleRunIds: string[] = [];
   const freshRunIds: string[] = [];
   for (const run of running) {
-    if (run.startedAt < cutoff) staleRunIds.push(run.id);
+    if (run.lastActivityAt < cutoff) staleRunIds.push(run.id);
     else freshRunIds.push(run.id);
   }
 
@@ -79,6 +80,8 @@ export async function ensureConversationRunAvailability(
           code: "ACTIVE_RUN_EXISTS",
           conversationId,
           activeRunId,
+          lastActivityAt: running.find((run) => run.id === activeRunId)?.lastActivityAt.toISOString(),
+          recoveryRecommendation: "reconnect",
         }),
       );
     }
@@ -90,6 +93,8 @@ export async function ensureConversationRunAvailability(
           conversationId,
           activeRunId,
           replaceRunId,
+          lastActivityAt: running.find((run) => run.id === activeRunId)?.lastActivityAt.toISOString(),
+          recoveryRecommendation: "stop_and_retry",
         }),
       );
     }
@@ -97,7 +102,7 @@ export async function ensureConversationRunAvailability(
     const replaced = await store.cancelRunIfActive(replaceRunId, conversationId, now);
     if (!replaced) {
       const latestRunning = await store.listRunning(conversationId);
-      const latestFresh = latestRunning.find((run) => run.startedAt >= cutoff);
+      const latestFresh = latestRunning.find((run) => run.lastActivityAt >= cutoff);
       if (latestFresh) {
         // The replace target disappeared before we could cancel it. If the same
         // run is still active we surface the ordinary active-run conflict;
@@ -108,19 +113,23 @@ export async function ensureConversationRunAvailability(
             conversationId,
             activeRunId: latestFresh.id,
             replaceRunId,
+            lastActivityAt: latestFresh.lastActivityAt.toISOString(),
+            recoveryRecommendation: latestFresh.id === replaceRunId ? "reconnect" : "stop_and_retry",
           }),
         );
       }
     }
 
     const remainingRunning = await store.listRunning(conversationId);
-    const remainingFresh = remainingRunning.find((run) => run.startedAt >= cutoff);
+    const remainingFresh = remainingRunning.find((run) => run.lastActivityAt >= cutoff);
     if (remainingFresh) {
       throw new AIErrorWithEnvelope(
         createRunConflictErrorEnvelope({
           code: "ACTIVE_RUN_EXISTS",
           conversationId,
           activeRunId: remainingFresh.id,
+          lastActivityAt: remainingFresh.lastActivityAt.toISOString(),
+          recoveryRecommendation: "reconnect",
         }),
       );
     }

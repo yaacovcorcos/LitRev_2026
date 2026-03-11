@@ -104,11 +104,12 @@ const BATCH_APPROVABLE_TYPES: ReadonlySet<ArtifactType> = new Set<ArtifactType>(
     "memory_forget_proposal",
 ]);
 
-const TOOL_ACTIVITY_META: Record<"queued" | "running" | "done" | "failed", { icon: string; label: string }> = {
+const TOOL_ACTIVITY_META: Record<"queued" | "running" | "done" | "failed" | "interrupted", { icon: string; label: string }> = {
     queued: { icon: "schedule", label: "Queued" },
     running: { icon: "sync", label: "Running" },
     done: { icon: "check_circle", label: "Done" },
     failed: { icon: "error", label: "Failed" },
+    interrupted: { icon: "wifi_off", label: "Interrupted" },
 };
 
 type TimelineToolActivityItem = Extract<TimelineItem, { type: "tool_activity" }>;
@@ -692,6 +693,10 @@ export type TimelineRendererProps = {
     onSaveToNotes?: (content: string, messageId: string) => void | Promise<void>;
     /** Optional retry callback for retryable error cards */
     onRetryLastMessage?: () => void;
+    /** Optional reconnect callback for recovery-aware active runs. */
+    onReconnectRun?: () => void;
+    /** Optional explicit replacement callback for live runs that should be replaced. */
+    onStopAndRetryRun?: () => void;
     /** Optional resume callback for recoverable plan-run errors */
     onResumeRun?: () => void;
     /** Optional callback to branch conversation history up to a specific message */
@@ -737,6 +742,8 @@ export function TimelineRenderer({
     onExecutePlan,
     onSaveToNotes,
     onRetryLastMessage,
+    onReconnectRun,
+    onStopAndRetryRun,
     onResumeRun,
     onBranchFromMessage,
     variant = "panel",
@@ -1412,23 +1419,40 @@ export function TimelineRenderer({
                     </div>
                 );
 
-            case "error":
+            case "error": {
+                const recommendation = item.errorMeta?.recoveryRecommendation;
+                const showReconnect = recommendation === "reconnect" && onReconnectRun;
+                const showStopAndRetry = recommendation === "stop_and_retry" && onStopAndRetryRun;
+                const showRetry = (!recommendation && item.retryable && onRetryLastMessage)
+                    || ((recommendation === "retry" || recommendation === "terminal") && onRetryLastMessage);
+                const showResume = item.errorMeta?.kind === "plan_execution" && onResumeRun;
                 return (
                     <div key={item.id} className={artifactStyles.errorCard}>
                         <span className="material-icons-round">error_outline</span>
                         <span className={artifactStyles.errorMessage}>{item.message}</span>
-                        {item.retryable && onRetryLastMessage && (
+                        {showRetry && (
                             <button type="button" className={artifactStyles.errorRetryBtn} onClick={onRetryLastMessage}>
                                 Retry
                             </button>
                         )}
-                        {item.retryable && onResumeRun && (
+                        {showReconnect ? (
+                            <button type="button" className={artifactStyles.errorRetryBtn} onClick={onReconnectRun}>
+                                Reconnect
+                            </button>
+                        ) : null}
+                        {showStopAndRetry ? (
+                            <button type="button" className={artifactStyles.errorRetryBtn} onClick={onStopAndRetryRun}>
+                                Stop & Retry
+                            </button>
+                        ) : null}
+                        {showResume ? (
                             <button type="button" className={artifactStyles.errorRetryBtn} onClick={onResumeRun}>
                                 Resume
                             </button>
-                        )}
+                        ) : null}
                     </div>
                 );
+            }
 
             case "user_input_request":
                 return (

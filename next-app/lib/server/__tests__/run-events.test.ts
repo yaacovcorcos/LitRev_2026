@@ -4,16 +4,37 @@ const mocks = vi.hoisted(() => ({
   runEventFindFirst: vi.fn(),
   runEventCreate: vi.fn(),
   runEventFindMany: vi.fn(),
+  agentRunUpdateMany: vi.fn(),
+  transaction: vi.fn(),
+  noteObservedRunActivity: vi.fn(),
 }));
+
+const txMock = {
+  runEvent: {
+    findFirst: (...args: unknown[]) => mocks.runEventFindFirst(...args),
+    create: (...args: unknown[]) => mocks.runEventCreate(...args),
+  },
+  agentRun: {
+    updateMany: (...args: unknown[]) => mocks.agentRunUpdateMany(...args),
+  },
+};
 
 vi.mock("@/lib/server/prisma", () => ({
   prisma: {
+    $transaction: mocks.transaction,
     runEvent: {
       findFirst: mocks.runEventFindFirst,
       create: mocks.runEventCreate,
       findMany: mocks.runEventFindMany,
     },
+    agentRun: {
+      updateMany: mocks.agentRunUpdateMany,
+    },
   },
+}));
+
+vi.mock("@/lib/server/agent/run", () => ({
+  noteObservedRunActivity: mocks.noteObservedRunActivity,
 }));
 
 const { emitEvent, getRunTimeline } = await import("@/lib/server/agent/events");
@@ -21,15 +42,21 @@ const { emitEvent, getRunTimeline } = await import("@/lib/server/agent/events");
 describe("run events", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.transaction.mockImplementation(async (callback: (tx: typeof txMock) => Promise<unknown>) => callback(txMock));
+    mocks.agentRunUpdateMany.mockResolvedValue({ count: 1 });
   });
 
   it("emits event with next sequence", async () => {
     mocks.runEventFindFirst.mockResolvedValue({ sequence: 2 });
-    mocks.runEventCreate.mockResolvedValue({ id: "evt-3", sequence: 3 });
+    mocks.runEventCreate.mockResolvedValue({
+      id: "evt-3",
+      sequence: 3,
+      createdAt: new Date("2026-03-11T11:35:00.000Z"),
+    });
 
     const result = await emitEvent("run-1", "message", { hello: "world" }, { messageRole: "assistant" });
 
-    expect(result).toEqual({ id: "evt-3", sequence: 3 });
+    expect(result).toMatchObject({ id: "evt-3", sequence: 3 });
     expect(mocks.runEventCreate).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -40,6 +67,11 @@ describe("run events", () => {
         }),
       }),
     );
+    expect(mocks.agentRunUpdateMany).toHaveBeenCalledWith({
+      where: { id: "run-1", status: "running" },
+      data: { lastActivityAt: expect.any(Date) },
+    });
+    expect(mocks.noteObservedRunActivity).toHaveBeenCalledWith("run-1", expect.any(Date));
   });
 
   it("retries on runId+sequence uniqueness conflicts", async () => {

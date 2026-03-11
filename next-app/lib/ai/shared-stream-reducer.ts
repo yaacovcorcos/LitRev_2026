@@ -1,7 +1,7 @@
 import { appendReasoningRaw } from "@/lib/ai/reasoning-visibility";
 import type { AIErrorEnvelope, AIStreamChunk, ChoiceOption, CopilotPage, UserInputRequest } from "@/types/ai";
 
-export type SharedToolStatus = "queued" | "running" | "done" | "failed";
+export type SharedToolStatus = "queued" | "running" | "done" | "failed" | "interrupted";
 
 export type SharedStreamState = {
   aiMessageCreated: boolean;
@@ -351,13 +351,15 @@ export function reduceSharedStreamChunk(
   const intents: SharedStreamIntent[] = [];
   let next = prev;
 
-  switch (chunk.type) {
+    switch (chunk.type) {
     case "content": {
-      const delta = chunk.content ?? "";
+      const nextContent = chunk.content ?? "";
       next = {
         ...prev,
         aiMessageCreated: true,
-        fullContent: `${prev.fullContent}${delta}`,
+        fullContent: chunk.contentMode === "replace"
+          ? nextContent
+          : `${prev.fullContent}${nextContent}`,
       };
       intents.push({ type: "progress_clear" });
       intents.push(assistantIntentFromState(next));
@@ -430,7 +432,7 @@ export function reduceSharedStreamChunk(
         status: "running",
         ...metadata,
       });
-      if (toolName === "search_pubmed") {
+      if (!chunk.replay && toolName === "search_pubmed") {
         intents.push({
           type: "progress_upsert",
           message: prev.completedPubmedSearchCount > 0 ? "Refining the PubMed query" : "Searching PubMed",
@@ -456,7 +458,7 @@ export function reduceSharedStreamChunk(
           errorMeta: chunk.toolResult?.errorMeta,
         });
       }
-      if (isPubMedResult && !chunk.toolResult?.error) {
+      if (!chunk.replay && isPubMedResult && !chunk.toolResult?.error) {
         intents.push({
           type: "progress_upsert",
           message: "Reviewing PubMed results",
@@ -473,7 +475,7 @@ export function reduceSharedStreamChunk(
           });
         }
       }
-      if (chunk.toolName === "add_to_ledger" || chunk.toolName === "exclude_study") {
+      if (!chunk.replay && (chunk.toolName === "add_to_ledger" || chunk.toolName === "exclude_study")) {
         intents.push({ type: "ledger_changed" });
       }
       const nextRunningToolCallIds = callId

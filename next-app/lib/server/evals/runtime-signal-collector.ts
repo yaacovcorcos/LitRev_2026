@@ -14,7 +14,7 @@ const SEARCH_TOOL_NAMES = new Set([
 export type SearchReceiptObservation = {
   callId: string;
   toolName: string;
-  status: "queued" | "running" | "done" | "failed";
+  status: "queued" | "running" | "done" | "failed" | "interrupted";
   queryPreview?: string;
   returnedCount?: number;
   totalResults?: number;

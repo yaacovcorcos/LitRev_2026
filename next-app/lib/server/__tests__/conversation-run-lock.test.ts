@@ -18,7 +18,11 @@ describe("conversation run lock guard", () => {
   it("cancels stale runs and allows new execution", async () => {
     const now = new Date("2026-02-24T00:00:00.000Z");
     const store = {
-      listRunning: vi.fn(async () => [{ id: "run_old", startedAt: new Date("2026-02-23T00:00:00.000Z") }]),
+      listRunning: vi.fn(async () => [{
+        id: "run_old",
+        startedAt: new Date("2026-02-23T00:00:00.000Z"),
+        lastActivityAt: new Date("2026-02-23T00:00:00.000Z"),
+      }]),
       cancelRuns: vi.fn(async () => 1),
       cancelRunIfActive: vi.fn(async () => false),
     };
@@ -32,7 +36,11 @@ describe("conversation run lock guard", () => {
   it("throws when a fresh running run exists", async () => {
     const now = new Date("2026-02-24T00:00:00.000Z");
     const store = {
-      listRunning: vi.fn(async () => [{ id: "run_live", startedAt: new Date("2026-02-24T00:00:00.000Z") }]),
+      listRunning: vi.fn(async () => [{
+        id: "run_live",
+        startedAt: new Date("2026-02-24T00:00:00.000Z"),
+        lastActivityAt: new Date("2026-02-24T00:00:00.000Z"),
+      }]),
       cancelRuns: vi.fn(async () => 0),
       cancelRunIfActive: vi.fn(async () => false),
     };
@@ -52,7 +60,7 @@ describe("conversation run lock guard", () => {
     const now = new Date("2026-02-24T00:00:00.000Z");
     const store = {
       listRunning: vi.fn()
-        .mockResolvedValueOnce([{ id: "run_live", startedAt: now }])
+        .mockResolvedValueOnce([{ id: "run_live", startedAt: now, lastActivityAt: now }])
         .mockResolvedValueOnce([]),
       cancelRuns: vi.fn(async () => 0),
       cancelRunIfActive: vi.fn(async () => true),
@@ -72,7 +80,7 @@ describe("conversation run lock guard", () => {
   it("rejects mismatched replaceRunId without cancelling the active run", async () => {
     const now = new Date("2026-02-24T00:00:00.000Z");
     const store = {
-      listRunning: vi.fn(async () => [{ id: "run_live", startedAt: now }]),
+      listRunning: vi.fn(async () => [{ id: "run_live", startedAt: now, lastActivityAt: now }]),
       cancelRuns: vi.fn(async () => 0),
       cancelRunIfActive: vi.fn(async () => false),
     };
@@ -94,8 +102,8 @@ describe("conversation run lock guard", () => {
     const now = new Date("2026-02-24T00:00:00.000Z");
     const store = {
       listRunning: vi.fn()
-        .mockResolvedValueOnce([{ id: "run_live", startedAt: now }])
-        .mockResolvedValueOnce([{ id: "run_newer", startedAt: now }]),
+        .mockResolvedValueOnce([{ id: "run_live", startedAt: now, lastActivityAt: now }])
+        .mockResolvedValueOnce([{ id: "run_newer", startedAt: now, lastActivityAt: now }]),
       cancelRuns: vi.fn(async () => 0),
       cancelRunIfActive: vi.fn(async () => false),
     };
@@ -116,8 +124,8 @@ describe("conversation run lock guard", () => {
     const now = new Date("2026-02-24T00:00:00.000Z");
     const store = {
       listRunning: vi.fn()
-        .mockResolvedValueOnce([{ id: "run_live", startedAt: now }])
-        .mockResolvedValueOnce([{ id: "run_other", startedAt: now }]),
+        .mockResolvedValueOnce([{ id: "run_live", startedAt: now, lastActivityAt: now }])
+        .mockResolvedValueOnce([{ id: "run_other", startedAt: now, lastActivityAt: now }]),
       cancelRuns: vi.fn(async () => 0),
       cancelRunIfActive: vi.fn(async () => true),
     };
@@ -132,5 +140,25 @@ describe("conversation run lock guard", () => {
     ).rejects.toMatchObject({
       errorMeta: expect.objectContaining({ code: "ACTIVE_RUN_EXISTS" }),
     });
+  });
+
+  it("treats old startedAt but recent lastActivityAt as fresh", async () => {
+    const now = new Date("2026-02-24T00:00:00.000Z");
+    const store = {
+      listRunning: vi.fn(async () => [{
+        id: "run_live",
+        startedAt: new Date("2026-02-23T00:00:00.000Z"),
+        lastActivityAt: new Date("2026-02-23T23:59:30.000Z"),
+      }]),
+      cancelRuns: vi.fn(async () => 0),
+      cancelRunIfActive: vi.fn(async () => false),
+    };
+
+    await expect(
+      ensureConversationRunAvailability("conv_1", { store, now, staleMs: 60_000 })
+    ).rejects.toMatchObject({
+      errorMeta: expect.objectContaining({ code: "ACTIVE_RUN_EXISTS" }),
+    });
+    expect(store.cancelRuns).not.toHaveBeenCalled();
   });
 });

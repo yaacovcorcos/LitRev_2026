@@ -36,6 +36,7 @@ npm aliases: `npm run db:ops -- <subcommand>`, `npm run db:doctor`, `npm run db:
 | `Invalid prisma.* invocation` | `db-ops.sh status` — check for unapplied migrations | `db-ops.sh diagnose` to verify connectivity |
 | `RunEvent_runId_sequence_key` | `db-ops.sh repair` then `db-ops.sh migrate` | Manual: see "RunEvent Recovery" below |
 | Migration marked "failed" | `db-ops.sh diagnose` to inspect `_prisma_migrations` | See "Failed Migration Recovery" below |
+| `ACTIVE_RUN_EXISTS` after a disconnect | `db-ops.sh diagnose` — confirm `AgentRun.lastActivityAt` migration/index and DB health first | If DB health is clean, inspect app-layer recovery handling rather than cancelling runs manually |
 | Connection refused / timeout | `db-ops.sh diagnose` — checks both pooled and direct URLs | Check Supabase status, DNS, firewall. Main chat can now degrade optional context for some DB timeouts, but DB health still needs explicit diagnosis. |
 | Pooler works but direct fails | Inspect TLS/SSL settings in connection URL | Verify `sslmode=require` on DIRECT_URL |
 | Direct works but pooler fails | PgBouncer config or connection limit issue | Check Supabase dashboard for connection saturation |
@@ -89,7 +90,7 @@ npm aliases: `npm run db:ops -- <subcommand>`, `npm run db:doctor`, `npm run db:
    └── Run: db-ops.sh gate
 ```
 
-## Critical Indexes (8 total)
+## Critical Indexes (9 total)
 
 These must exist in production. The gate script verifies all of them.
 
@@ -102,6 +103,7 @@ MemoryEmbedding_embedding_hnsw_idx
 AgentRun_parentRunId_startedAt_idx
 AgentRun_rootRunId_startedAt_idx
 AgentRun_conversationId_startedAt_idx
+AgentRun_conversationId_lastActivityAt_idx
 ```
 
 ## Hardcoded References

@@ -7,6 +7,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import type { AgentMode } from "@/types/agent";
 import type {
+  AIErrorEnvelope,
+  AIStreamChunk,
   ChoiceOption,
   ConversationContext,
   ConversationContextAttachment,
@@ -34,11 +36,19 @@ import {
   createAiStreamRuntime,
   shouldFailRunningToolsOnAbnormalEnd,
 } from "@/lib/ai/ai-stream-runtime";
-import type { SharedStreamIntent } from "@/lib/ai/shared-stream-reducer";
+import { createInitialSharedStreamState, type SharedStreamIntent } from "@/lib/ai/shared-stream-reducer";
 import { generateChatUnificationRequestKey, recordChatUnificationMetric } from "@/lib/ai/chat-unification-telemetry";
 import { terminalReasonFromThrownError, type StreamTerminalReason } from "@/lib/ai/stream-lifecycle";
 import { recordReliabilityMetric } from "@/lib/ai/reliability-telemetry";
 import type { RetryModelExpectation } from "@/types/chat-unification";
+import {
+  createRecoveryErrorEnvelope,
+  pollRunRecovery,
+  RUN_RECOVERY_FAILED_MESSAGE,
+  RUN_RECOVERY_INTERRUPTED_TOOL_SUMMARY,
+  RUN_RECOVERY_RECONNECT_SUMMARY,
+  RUN_RECOVERY_TIMEOUT_MESSAGE,
+} from "@/lib/ai/run-recovery-client";
 import { isMobileAiV2Enabled } from "@/lib/mobile/feature-flags";
 import { PHONE_MEDIA_QUERY } from "@/lib/mobile/breakpoints";
 import { isMobileTelemetryContext, recordMobileMetric } from "@/lib/mobile/telemetry";
@@ -272,6 +282,7 @@ export default function AIView() {
   const [isConversationLoading, setIsConversationLoading] = useState(false);
   // LRU order: tracks up to 5 recently accessed conversation IDs so we evict old timelines
   const timelineLruRef = useRef<string[]>([]);
+  const timelineByConversationRef = useRef<Record<string, TimelineItem[]>>({});
 
   const historyContentId = "chat-history-panel";
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -294,6 +305,10 @@ export default function AIView() {
   );
 
   const showReasoningControls = reasoningSupport !== "none";
+
+  useEffect(() => {
+    timelineByConversationRef.current = timelineByConversation;
+  }, [timelineByConversation]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -413,7 +428,7 @@ export default function AIView() {
   }, [router]);
 
   const handleRunIntent = useCallback((intent: SharedStreamIntent) => {
-    if (intent.type === "run_set" && intent.runId) {
+    if (intent.type === "run_set") {
       currentRunIdRef.current = intent.runId;
     }
   }, []);
@@ -674,6 +689,121 @@ export default function AIView() {
       );
     });
   }, [selectedProjectId, sortConversationsByUpdatedAt]);
+
+  const appendRecoveryTimelineError = useCallback((params: {
+    conversationId: string;
+    message: string;
+    errorMeta: AIErrorEnvelope;
+  }) => {
+    updateConversationTimeline(params.conversationId, (items) => {
+      const hasRenderedError = hasRenderedErrorMatch({
+        items: items.filter((item) => item.type === "error"),
+        nextMessage: params.message,
+        nextMeta: params.errorMeta,
+        getMessage: (item) => item.type === "error" ? item.message : null,
+        getErrorMeta: (item) => item.type === "error" ? item.errorMeta : null,
+      });
+      if (hasRenderedError) return items;
+      return [
+        ...items.filter((item) => item.type !== "progress"),
+        {
+          type: "error",
+          id: makeId("recovery-error"),
+          message: params.message,
+          retryable: params.errorMeta.retryable,
+          errorMeta: params.errorMeta,
+          createdAt: new Date().toISOString(),
+        },
+      ];
+    });
+  }, [updateConversationTimeline]);
+
+  const appendRecoveryCheckpoint = useCallback((conversationId: string, label: string) => {
+    updateConversationTimeline(conversationId, (items) => ([
+      ...items.filter((item) => !(item.type === "checkpoint" && item.label === label)),
+      {
+        type: "checkpoint",
+        id: makeId("recovery-checkpoint"),
+        label,
+        createdAt: new Date().toISOString(),
+      },
+    ]));
+  }, [updateConversationTimeline]);
+
+  const buildAiRecoverySeed = useCallback((items: TimelineItem[], conversationId: string, runId: string) => {
+    const latestAssistant = [...items].reverse().find((item) => item.type === "assistant_message") ?? null;
+    const runningToolCallIds = items.reduce<string[]>((acc, item) => {
+      if (item.type === "tool_activity" && (item.status === "running" || item.status === "interrupted")) {
+        acc.push(item.callId);
+      }
+      return acc;
+    }, []);
+
+    return {
+      aiMessageId: latestAssistant?.id ?? makeId("assistant"),
+      initialStreamState: createInitialSharedStreamState({
+        aiMessageCreated: Boolean(latestAssistant),
+        fullContent: latestAssistant?.type === "assistant_message" ? latestAssistant.content : "",
+        reasoningContent: latestAssistant?.type === "assistant_message" ? latestAssistant.reasoning?.text ?? "" : "",
+        reasoningState: latestAssistant?.type === "assistant_message" ? latestAssistant.reasoning?.state ?? "done" : "done",
+        reasoningTruncated: latestAssistant?.type === "assistant_message" ? latestAssistant.reasoning?.truncated ?? false : false,
+        runningToolCallIds,
+        lastToolCallId: runningToolCallIds.at(-1) ?? null,
+        localRunId: runId,
+        effectiveConvId: conversationId,
+      }),
+    };
+  }, []);
+
+  const recoverConversationRun = useCallback(async (params: {
+    conversationId: string;
+    runId: string;
+    page: CopilotPage;
+    section?: string;
+  }) => {
+    const currentItems = timelineByConversationRef.current[params.conversationId] ?? [];
+    const { aiMessageId, initialStreamState } = buildAiRecoverySeed(
+      currentItems,
+      params.conversationId,
+      params.runId,
+    );
+    const recoveryRuntime = createAiStreamRuntime({
+      aiMessageId,
+      page: params.page,
+      section: params.section,
+      initialConversationId: params.conversationId,
+      initialStreamState,
+      selectedProjectId,
+      myGen: streamGenRef.current,
+      getCurrentGen: () => streamGenRef.current,
+      updateConversationTimeline,
+      ensureConversationTimeline,
+      setActiveConversationId,
+      upsertConversationTitle,
+      setPendingChoices,
+      setPendingUserInput,
+      onIntent: handleRunIntent,
+      onNavigate: handleNavigate,
+    });
+
+    return pollRunRecovery({
+      conversationId: params.conversationId,
+      runId: params.runId,
+      onReplay: async (chunk) => recoveryRuntime.handleChunk(chunk),
+      onTerminal: async (chunk) => recoveryRuntime.handleChunk(chunk),
+    });
+  }, [
+    buildAiRecoverySeed,
+    ensureConversationTimeline,
+    handleNavigate,
+    handleRunIntent,
+    selectedProjectId,
+    setActiveConversationId,
+    setPendingChoices,
+    setPendingUserInput,
+    updateConversationTimeline,
+    upsertConversationTitle,
+  ]);
 
   const cancelStream = useCallback(() => {
     streamGenRef.current++;
@@ -1033,6 +1163,8 @@ export default function AIView() {
     agentMode?: AgentMode,
     _studyId?: string,
     retryModelExpectation?: RetryModelExpectation,
+    _contextTargets?: unknown,
+    replaceRunIdOverride?: string,
   ) => {
     const msgText = rawText.trim();
     if (!msgText || sendLockRef.current) return;
@@ -1094,7 +1226,7 @@ export default function AIView() {
     );
 
     setPrefillCommand(null);
-    const replaceRunId = isTyping ? currentRunIdRef.current : null;
+    const replaceRunId = replaceRunIdOverride ?? (isTyping ? currentRunIdRef.current : null);
     setIsTyping(true);
     streamGenRef.current++;
     const myGen = streamGenRef.current;
@@ -1164,6 +1296,64 @@ export default function AIView() {
       onNavigate: handleNavigate,
     });
 
+    const attemptRecoveryFromAbnormalEnd = async (): Promise<boolean> => {
+      if (!terminalReason || !shouldFailRunningToolsOnAbnormalEnd(terminalReason)) {
+        return false;
+      }
+      const runtimeState = runtime.getState();
+      const activeRunId = runtimeState.localRunId || currentRunIdRef.current;
+      const activeConversationId = runtime.getConversationId();
+      if (!activeRunId || !activeConversationId) {
+        return false;
+      }
+
+      currentRunIdRef.current = activeRunId;
+      runtime.clearProgress();
+      runtime.interruptRunningTools(RUN_RECOVERY_INTERRUPTED_TOOL_SUMMARY);
+      appendRecoveryCheckpoint(activeConversationId, RUN_RECOVERY_RECONNECT_SUMMARY);
+
+      const recoveryResult = await pollRunRecovery({
+        conversationId: activeConversationId,
+        runId: activeRunId,
+        signal: controller.signal,
+        onReplay: async (chunk) => runtime.handleChunk(chunk),
+        onTerminal: async (chunk) => runtime.handleChunk(chunk),
+      });
+
+      if (recoveryResult.outcome === "recovered") {
+        terminalReason = runStatus === "completed" ? "completed" : "failed_server";
+        return true;
+      }
+
+      const recoveryMessage = recoveryResult.outcome === "timeout"
+        ? RUN_RECOVERY_TIMEOUT_MESSAGE
+        : recoveryResult.outcome === "needs_user_action"
+          ? "The active run is still holding this conversation. Choose how to continue."
+          : RUN_RECOVERY_FAILED_MESSAGE;
+      appendRecoveryTimelineError({
+        conversationId: activeConversationId,
+        message: recoveryMessage,
+        errorMeta: createRecoveryErrorEnvelope({
+          code: recoveryResult.outcome === "timeout"
+            ? "RUN_RECOVERY_TIMEOUT"
+            : recoveryResult.outcome === "needs_user_action"
+              ? "RUN_RECOVERY_REQUIRES_USER_ACTION"
+              : "RUN_RECOVERY_FAILED",
+          message: recoveryMessage,
+          activeRunId: recoveryResult.response?.runId ?? activeRunId,
+          lastActivityAt: recoveryResult.response?.lastActivityAt ?? undefined,
+          recoveryRecommendation: recoveryResult.response?.recoveryRecommendation
+            ?? (recoveryResult.outcome === "needs_user_action" ? "stop_and_retry" : "retry"),
+          retryable: (recoveryResult.response?.recoveryRecommendation ?? "retry") === "retry",
+        }),
+      });
+      emittedTerminalError = true;
+      currentRunIdRef.current = recoveryResult.response?.recoveryRecommendation === "retry"
+        ? null
+        : (recoveryResult.response?.runId ?? activeRunId);
+      return false;
+    };
+
     try {
       const response = await fetch("/api/ai/stream", {
         method: "POST",
@@ -1217,6 +1407,10 @@ export default function AIView() {
       unresolvedCountBeforeClear = runEndToolCounts?.beforeClear ?? null;
       unresolvedCountAfterClear = runEndToolCounts?.afterClear ?? null;
       convId = runtime.getConversationId();
+      const recovered = await attemptRecoveryFromAbnormalEnd();
+      if (!recovered && shouldFailRunningToolsOnAbnormalEnd(terminalReason)) {
+        return;
+      }
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") {
         aborted = true;
@@ -1224,6 +1418,14 @@ export default function AIView() {
         emitTerminalMetric(terminalReason, runStatus);
       } else {
         terminalReason = terminalReasonFromThrownError(err);
+        if (await attemptRecoveryFromAbnormalEnd()) {
+          emitTerminalMetric(terminalReason ?? "completed", runStatus);
+          return;
+        }
+        if (emittedTerminalError) {
+          emitTerminalMetric(terminalReason, runStatus);
+          return;
+        }
         emitTerminalMetric(terminalReason, runStatus);
         convId = runtime.getConversationId();
         const errorState = buildClientErrorState(err);
@@ -1297,6 +1499,7 @@ export default function AIView() {
         streamGenRef.current === myGen
         && !aborted
         && shouldFailRunningToolsOnAbnormalEnd(terminalReason)
+        && !emittedTerminalError
       ) {
         runtime.failRunningTools(ABNORMAL_END_TOOL_FAILURE_SUMMARY);
       }
@@ -1801,7 +2004,13 @@ export default function AIView() {
     void handleSend(prompt, "overview", undefined, undefined, mode);
   }, [handleSend]);
 
-  const handleRetryLastMessage = useCallback(() => {
+  const latestRecoveryMeta = [...activeTimeline]
+    .reverse()
+    .find((item): item is Extract<TimelineItem, { type: "error" }> => (
+      item.type === "error" && Boolean(item.errorMeta?.recoveryRecommendation)
+    ))?.errorMeta ?? null;
+
+  const handleRetryLastMessage = useCallback((replaceRunId?: string | null) => {
     if (isTyping) return;
     const convId = activeConversationId;
     if (!convId) return;
@@ -1865,8 +2074,88 @@ export default function AIView() {
         expectedModel: selectedModel ?? null,
         source: "retry_action",
       },
+      undefined,
+      replaceRunId ?? undefined,
     );
   }, [isTyping, activeConversationId, timelineByConversation, handleSend, selectedModel, selectedProjectId]);
+
+  const handleReconnectRun = useCallback(() => {
+    const convId = activeConversationId;
+    const runId = latestRecoveryMeta?.activeRunId ?? currentRunIdRef.current;
+    if (isTyping || !convId || !runId) return;
+
+    setIsTyping(true);
+    streamGenRef.current += 1;
+    const myGen = streamGenRef.current;
+    currentRunIdRef.current = runId;
+    updateConversationTimeline(convId, (items) => {
+      const updatedAt = new Date().toISOString();
+      return items
+        .filter((item) => item.type !== "progress")
+        .map((item) => (
+          item.type === "tool_activity" && item.status === "running"
+            ? {
+                ...item,
+                status: "interrupted",
+                summary: RUN_RECOVERY_INTERRUPTED_TOOL_SUMMARY,
+                updatedAt,
+              }
+            : item
+        ));
+    });
+    appendRecoveryCheckpoint(convId, RUN_RECOVERY_RECONNECT_SUMMARY);
+
+    void recoverConversationRun({
+      conversationId: convId,
+      runId,
+      page: "ai",
+    }).then((recoveryResult) => {
+      if (recoveryResult.outcome === "recovered") {
+        return;
+      }
+      const recoveryMessage = recoveryResult.outcome === "timeout"
+        ? RUN_RECOVERY_TIMEOUT_MESSAGE
+        : recoveryResult.outcome === "needs_user_action"
+          ? "The active run is still holding this conversation. Choose how to continue."
+          : RUN_RECOVERY_FAILED_MESSAGE;
+      appendRecoveryTimelineError({
+        conversationId: convId,
+        message: recoveryMessage,
+        errorMeta: createRecoveryErrorEnvelope({
+          code: recoveryResult.outcome === "timeout"
+            ? "RUN_RECOVERY_TIMEOUT"
+            : recoveryResult.outcome === "needs_user_action"
+              ? "RUN_RECOVERY_REQUIRES_USER_ACTION"
+              : "RUN_RECOVERY_FAILED",
+          message: recoveryMessage,
+          activeRunId: recoveryResult.response?.runId ?? runId,
+          lastActivityAt: recoveryResult.response?.lastActivityAt ?? undefined,
+          recoveryRecommendation: recoveryResult.response?.recoveryRecommendation
+            ?? (recoveryResult.outcome === "needs_user_action" ? "stop_and_retry" : "retry"),
+          retryable: (recoveryResult.response?.recoveryRecommendation ?? "retry") === "retry",
+        }),
+      });
+      currentRunIdRef.current = recoveryResult.response?.recoveryRecommendation === "retry"
+        ? null
+        : (recoveryResult.response?.runId ?? runId);
+    }).finally(() => {
+      if (streamGenRef.current === myGen) {
+        setIsTyping(false);
+      }
+    });
+  }, [
+    activeConversationId,
+    appendRecoveryCheckpoint,
+    appendRecoveryTimelineError,
+    isTyping,
+    latestRecoveryMeta?.activeRunId,
+    recoverConversationRun,
+    updateConversationTimeline,
+  ]);
+
+  const handleStopAndRetryRun = useCallback(() => {
+    handleRetryLastMessage(latestRecoveryMeta?.activeRunId ?? null);
+  }, [handleRetryLastMessage, latestRecoveryMeta?.activeRunId]);
 
   const handlePrefillConsumed = useCallback(() => {
     setPrefillCommand(null);
@@ -2002,6 +2291,8 @@ export default function AIView() {
               onSuggestionClick={handleSuggestionClick}
               onActionPrompt={handleActionPrompt}
               onRetryLastMessage={handleRetryLastMessage}
+              onReconnectRun={handleReconnectRun}
+              onStopAndRetryRun={handleStopAndRetryRun}
               onBranchFromMessage={handleBranchFromMessage}
               onReviewArtifact={handleReviewArtifact}
               onApproveArtifactsBatch={handleApproveArtifactsBatch}

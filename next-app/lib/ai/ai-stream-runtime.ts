@@ -20,6 +20,7 @@ export type AiStreamRuntimeDeps = {
   page: CopilotPage;
   section?: string;
   initialConversationId: string;
+  initialStreamState?: SharedStreamState;
   selectedProjectId: string | null;
   myGen: number;
   getCurrentGen: () => number;
@@ -40,6 +41,7 @@ export type AiStreamRuntime = {
   handleChunk: (chunk: AIStreamChunk) => void;
   clearProgress: () => void;
   failRunningTools: (summary: string) => void;
+  interruptRunningTools: (summary: string) => void;
   getConversationId: () => string;
   getState: () => SharedStreamState;
   getLastRunEndToolCounts: () => { beforeClear: number; afterClear: number } | null;
@@ -59,7 +61,7 @@ export function createAiStreamRuntime(deps: AiStreamRuntimeDeps): AiStreamRuntim
   let currentConversationId = deps.initialConversationId;
   let progressItemId: string | null = null;
   let lastRunEndToolCounts: { beforeClear: number; afterClear: number } | null = null;
-  let streamState = createInitialSharedStreamState({
+  let streamState = deps.initialStreamState ?? createInitialSharedStreamState({
     effectiveConvId: deps.initialConversationId,
   });
 
@@ -380,6 +382,22 @@ export function createAiStreamRuntime(deps: AiStreamRuntimeDeps): AiStreamRuntim
     );
   };
 
+  const interruptRunningTools = (summary: string) => {
+    const ts = now();
+    updateCurrentTimeline((items) =>
+      items.map((item) =>
+        item.type === "tool_activity" && item.status === "running"
+          ? {
+              ...item,
+              status: "interrupted",
+              summary,
+              updatedAt: ts,
+            }
+          : item
+      )
+    );
+  };
+
   return {
     handleChunk: (chunk: AIStreamChunk) => {
       const runningToolCallsBeforeChunk = streamState.runningToolCallIds.length;
@@ -400,6 +418,7 @@ export function createAiStreamRuntime(deps: AiStreamRuntimeDeps): AiStreamRuntim
     },
     clearProgress,
     failRunningTools,
+    interruptRunningTools,
     getConversationId: () => currentConversationId,
     getState: () => streamState,
     getLastRunEndToolCounts: () => lastRunEndToolCounts,

@@ -64,6 +64,26 @@ export function failRunningProjectToolActivityMessages(
   ));
 }
 
+export function interruptRunningProjectToolActivityMessages(
+  messages: CopilotMessage[],
+  summary = "Connection lost while the run was still active.",
+): CopilotMessage[] {
+  const updatedAt = new Date().toISOString();
+  return messages.map((message) => (
+    message.toolActivity?.status === "running"
+      ? {
+          ...message,
+          toolActivity: {
+            ...message.toolActivity,
+            status: "interrupted",
+            summary,
+            updatedAt,
+          },
+        }
+      : message
+  ));
+}
+
 function upsertAssistantMessage(
   deps: StreamChunkDeps,
   payload: Extract<SharedStreamIntent, { type: "assistant_upsert" }>,

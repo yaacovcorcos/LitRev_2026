@@ -20,11 +20,22 @@ import { createConversation } from "@/app/actions/conversations";
 import { reviewArtifactAction } from "@/app/actions/agent";
 import type { ArtifactData, ArtifactStatus } from "@/types/artifacts";
 import type { AgentMode } from "@/types/agent";
-import type { ChoiceOption, CopilotPage, ReasoningMode, StreamPhase, UserInputRequest } from "@/types/ai";
+import type {
+    AIErrorEnvelope,
+    AIStreamChunk,
+    ChoiceOption,
+    CopilotPage,
+    ReasoningMode,
+    RunRecoveryRecommendation,
+    StreamPhase,
+    UserInputRequest,
+} from "@/types/ai";
 import type { ContextCaptureTarget } from "@/types/context-capture";
 import {
+    createInitialProjectStreamState,
     failRunningProjectToolActivityMessages,
     handleProjectCopilotStreamChunk,
+    interruptRunningProjectToolActivityMessages,
 } from "@/contexts/project-copilot-stream-events";
 import type { ArtifactActionContract } from "@/lib/artifacts/action-contract";
 import { resolveReasoningRequest } from "@/lib/ai/reasoning-request";
@@ -44,6 +55,14 @@ import {
     ABNORMAL_END_TOOL_FAILURE_SUMMARY,
     shouldFailRunningToolsOnAbnormalEnd,
 } from "@/lib/ai/ai-stream-runtime";
+import {
+    createRecoveryErrorEnvelope,
+    pollRunRecovery,
+    RUN_RECOVERY_FAILED_MESSAGE,
+    RUN_RECOVERY_INTERRUPTED_TOOL_SUMMARY,
+    RUN_RECOVERY_RECONNECT_SUMMARY,
+    RUN_RECOVERY_TIMEOUT_MESSAGE,
+} from "@/lib/ai/run-recovery-client";
 import type { PendingAttachment, ApproveArtifactsBatchResult } from "@/types/copilot-context";
 import type { useCopilotConversations } from "@/hooks/useCopilotConversations";
 
@@ -104,6 +123,199 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
         setPendingChoices([]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+
+    const buildProjectRecoverySeedState = useCallback((params: {
+        messages: CopilotMessage[];
+        conversationId: string | null;
+        runId: string;
+    }) => {
+        const assistantMessages = params.messages.filter((message) => (
+            message.sender === "ai"
+            && !message.progress
+            && !message.toolActivity
+            && !message.streamError
+            && !message.artifact
+            && !message.userInputRequest
+            && !message.checkpoint
+        ));
+        const latestAssistant = assistantMessages.at(-1) ?? null;
+        const runningToolIds = params.messages
+            .filter((message) => {
+                const status = message.toolActivity?.status;
+                return status === "running" || status === "interrupted";
+            })
+            .map((message) => message.toolActivity?.callId)
+            .filter((callId): callId is string => Boolean(callId));
+
+        return {
+            aiMessageId: latestAssistant?.id ?? `m-${Date.now() + 1}`,
+            state: createInitialProjectStreamState({
+                aiMessageCreated: Boolean(latestAssistant),
+                fullContent: latestAssistant?.text ?? "",
+                reasoningContent: latestAssistant?.reasoning?.text ?? "",
+                reasoningState: latestAssistant?.reasoning?.state ?? "done",
+                reasoningTruncated: latestAssistant?.reasoning?.truncated ?? false,
+                runningToolCallIds: runningToolIds,
+                lastToolCallId: runningToolIds.at(-1) ?? null,
+                localRunId: params.runId,
+                effectiveConvId: params.conversationId,
+            }),
+        };
+    }, []);
+
+    const appendProjectRecoveryCheckpoint = useCallback((page: CopilotPage, section: string | undefined, label: string) => {
+        updateState((prev) => ({
+            ...prev,
+            messages: [
+                ...prev.messages.filter((message) => message.checkpoint?.label !== label),
+                {
+                    id: `recovery-checkpoint-${Date.now()}`,
+                    sender: "ai",
+                    text: "",
+                    createdAt: new Date().toISOString(),
+                    context: { page, section },
+                    checkpoint: { label },
+                },
+            ],
+        }));
+    }, [updateState]);
+
+    const appendProjectRecoveryError = useCallback((params: {
+        page: CopilotPage;
+        section?: string;
+        message: string;
+        errorMeta: AIErrorEnvelope;
+    }) => {
+        updateState((prev) => {
+            const aiMessages = prev.messages.filter((message) => message.sender === "ai");
+            const hasRenderedError = hasRenderedErrorMatch({
+                items: aiMessages,
+                nextMessage: params.message,
+                nextMeta: params.errorMeta,
+                getMessage: (message) => message.text,
+                getErrorMeta: (message) => message.streamError,
+            });
+            if (hasRenderedError) return prev;
+            return {
+                ...prev,
+                messages: [
+                    ...prev.messages.filter((message) => !message.progress),
+                    {
+                        id: `recovery-error-${Date.now()}`,
+                        sender: "ai",
+                        text: params.message,
+                        streamError: params.errorMeta,
+                        createdAt: new Date().toISOString(),
+                        context: { page: params.page, section: params.section },
+                    },
+                ],
+            };
+        });
+    }, [updateState]);
+
+    const runProjectRecovery = useCallback(async (params: {
+        conversationId: string;
+        runId: string;
+        page: CopilotPage;
+        section?: string;
+        signal?: AbortSignal;
+        onPlanStepUpdate?: (planId: string, stepIndex: number, stepStatus: string) => void;
+    }): Promise<{
+        outcome: "recovered" | "needs_user_action" | "retry" | "aborted" | "timeout";
+        recommendation: RunRecoveryRecommendation;
+        activeRunId: string;
+        lastActivityAt?: string | null;
+    }> => {
+        const { aiMessageId, state: initialState } = buildProjectRecoverySeedState({
+            messages: stateRef.current.messages,
+            conversationId: params.conversationId,
+            runId: params.runId,
+        });
+        let replayState = initialState;
+        let recoveredConversationId = params.conversationId;
+
+        const applyRecoveryChunk = async (chunk: AIStreamChunk) => {
+            const nextState = handleProjectCopilotStreamChunk(
+                chunk,
+                replayState,
+                {
+                    aiMessageId,
+                    page: params.page,
+                    section: params.section,
+                    projectId,
+                    myGen: streamGenRef.current,
+                    getCurrentGen: () => streamGenRef.current,
+                    setCurrentRunId,
+                    syncConversationId: (conversationId) => {
+                        recoveredConversationId = conversationId;
+                        if (convo.currentConversationIdRef.current !== conversationId) {
+                            convo.setCurrentConversationId(conversationId);
+                        }
+                    },
+                    upsertConversationTitle: (conversationId, title) => {
+                        convo.setConversations((prev) => {
+                            const existing = prev.find((conversation) => conversation.id === conversationId);
+                            if (!existing) {
+                                return [{
+                                    id: conversationId,
+                                    title,
+                                    messageCount: 0,
+                                    updatedAt: new Date().toISOString(),
+                                }, ...prev];
+                            }
+                            return prev.map((conversation) => (
+                                conversation.id === conversationId
+                                    ? { ...conversation, title }
+                                    : conversation
+                            ));
+                        });
+                    },
+                    upsertArtifact: (artifactData) => {
+                        setArtifacts((prev) => {
+                            const next = new Map(prev);
+                            next.set(artifactData.id, artifactData);
+                            return next;
+                        });
+                    },
+                    updateMessages: (updater) => {
+                        updateState((prev) => ({
+                            ...prev,
+                            messages: updater(prev.messages),
+                        }));
+                    },
+                    emitLedgerChanged: () => {
+                        window.dispatchEvent(
+                            new CustomEvent("litrev:ledger-changed", { detail: { projectId } }),
+                        );
+                    },
+                    setPendingChoices,
+                    setPendingUserInput,
+                    onPlanStepUpdate: params.onPlanStepUpdate,
+                    onNavigate,
+                },
+            );
+            replayState = nextState;
+        };
+
+        const recoveryResult = await pollRunRecovery({
+            conversationId: params.conversationId,
+            runId: params.runId,
+            signal: params.signal,
+            onReplay: async (chunk) => applyRecoveryChunk(chunk),
+            onTerminal: async (chunk) => applyRecoveryChunk(chunk),
+        });
+
+        if (recoveredConversationId && convo.currentConversationId === recoveredConversationId) {
+            convo.markConversationActivity(recoveredConversationId);
+        }
+
+        return {
+            outcome: recoveryResult.outcome,
+            recommendation: recoveryResult.response?.recoveryRecommendation ?? "retry",
+            activeRunId: recoveryResult.response?.runId ?? params.runId,
+            lastActivityAt: recoveryResult.response?.lastActivityAt ?? null,
+        };
+    }, [buildProjectRecoverySeedState, convo, onNavigate, projectId, setArtifacts, setCurrentRunId, setPendingChoices, setPendingUserInput, stateRef, updateState]);
 
     /**
      * Core stream lifecycle: fetch → parse → dispatch chunks.
@@ -259,82 +471,148 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                 });
             };
 
+            const applyChunk = (data: import("@/types/ai").AIStreamChunk) => {
+                const runningToolCallIdsBeforeChunk = runningToolCallIds;
+                const nextState = handleProjectCopilotStreamChunk(
+                    data,
+                    {
+                        aiMessageCreated,
+                        fullContent,
+                        reasoningContent,
+                        reasoningState,
+                        reasoningTruncated,
+                        activeReasoningId,
+                        runningToolCallIds,
+                        lastToolCallId,
+                        syntheticToolCounter,
+                        localRunId,
+                        effectiveConvId,
+                        completedPubmedSearchCount,
+                        lastPubmedSearchSize,
+                    },
+                    {
+                        aiMessageId,
+                        page,
+                        section,
+                        projectId,
+                        myGen,
+                        getCurrentGen: () => streamGenRef.current,
+                        setCurrentRunId,
+                        syncConversationId: (conversationId) => {
+                            if (convo.currentConversationIdRef.current !== conversationId) {
+                                convo.setCurrentConversationId(conversationId);
+                            }
+                        },
+                        upsertConversationTitle,
+                        upsertArtifact,
+                        updateMessages,
+                        emitLedgerChanged: () => {
+                            window.dispatchEvent(
+                                new CustomEvent("litrev:ledger-changed", { detail: { projectId } })
+                            );
+                        },
+                        setPendingChoices,
+                        setPendingUserInput,
+                        onPlanStepUpdate,
+                        onNavigate,
+                    }
+                );
+                aiMessageCreated = nextState.aiMessageCreated;
+                fullContent = nextState.fullContent;
+                reasoningContent = nextState.reasoningContent;
+                reasoningState = nextState.reasoningState;
+                reasoningTruncated = nextState.reasoningTruncated;
+                activeReasoningId = nextState.activeReasoningId;
+                runningToolCallIds = nextState.runningToolCallIds;
+                lastToolCallId = nextState.lastToolCallId;
+                syntheticToolCounter = nextState.syntheticToolCounter;
+                localRunId = nextState.localRunId;
+                effectiveConvId = nextState.effectiveConvId;
+                completedPubmedSearchCount = nextState.completedPubmedSearchCount;
+                lastPubmedSearchSize = nextState.lastPubmedSearchSize;
+
+                if (data.type === "tool_call") {
+                    setStreamPhase("tool_running");
+                } else if (data.type === "content" || data.type === "reasoning_start" || data.type === "reasoning_delta") {
+                    setStreamPhase("streaming");
+                } else if (data.type === "run_end") {
+                    unresolvedCountBeforeClear = runningToolCallIdsBeforeChunk.length;
+                    unresolvedCountAfterClear = nextState.runningToolCallIds.length;
+                    runStatus = data.runStatus ?? runStatus;
+                    actualModel = data.actualModel ?? actualModel;
+                    actualModelSource = data.actualModelSource ?? actualModelSource;
+                    setStreamPhase("completing");
+                }
+            };
+
+            const attemptRecoveryFromAbnormalEnd = async (): Promise<boolean> => {
+                if (!terminalReason || !shouldFailRunningToolsOnAbnormalEnd(terminalReason)) {
+                    return false;
+                }
+                if (!localRunId || !effectiveConvId) {
+                    return false;
+                }
+
+                setCurrentRunId(localRunId);
+                updateState((prev) => ({
+                    ...prev,
+                    messages: interruptRunningProjectToolActivityMessages(
+                        prev.messages.filter((message) => !message.progress),
+                        RUN_RECOVERY_INTERRUPTED_TOOL_SUMMARY,
+                    ),
+                }));
+                appendProjectRecoveryCheckpoint(page, section, RUN_RECOVERY_RECONNECT_SUMMARY);
+
+                const recoveryResult = await pollRunRecovery({
+                    conversationId: effectiveConvId,
+                    runId: localRunId,
+                    signal: controller.signal,
+                    onReplay: async (chunk) => applyChunk(chunk),
+                    onTerminal: async (chunk) => applyChunk(chunk),
+                });
+
+                if (recoveryResult.outcome === "recovered") {
+                    terminalReason = runStatus === "completed" ? "completed" : "failed_server";
+                    return true;
+                }
+
+                const recommendation = recoveryResult.response?.recoveryRecommendation
+                    ?? (recoveryResult.outcome === "needs_user_action" ? "stop_and_retry" : "retry");
+                const recoveryMessage = recoveryResult.outcome === "timeout"
+                    ? RUN_RECOVERY_TIMEOUT_MESSAGE
+                    : recoveryResult.outcome === "needs_user_action"
+                        ? "The active run is still holding this conversation. Choose how to continue."
+                        : RUN_RECOVERY_FAILED_MESSAGE;
+                const errorMeta = createRecoveryErrorEnvelope({
+                    code: recoveryResult.outcome === "timeout"
+                        ? "RUN_RECOVERY_TIMEOUT"
+                        : recoveryResult.outcome === "needs_user_action"
+                            ? "RUN_RECOVERY_REQUIRES_USER_ACTION"
+                            : "RUN_RECOVERY_FAILED",
+                    message: recoveryMessage,
+                    activeRunId: recoveryResult.response?.runId ?? localRunId,
+                    lastActivityAt: recoveryResult.response?.lastActivityAt ?? undefined,
+                    recoveryRecommendation: recommendation,
+                    retryable: recommendation === "retry",
+                });
+                appendProjectRecoveryError({
+                    page,
+                    section,
+                    message: recoveryMessage,
+                    errorMeta,
+                });
+                emittedTerminalError = true;
+                setCurrentRunId(recommendation === "retry" ? null : (recoveryResult.response?.runId ?? localRunId));
+                terminalReason = recoveryResult.outcome === "timeout" ? "timed_out" : "failed_network";
+                return false;
+            };
+
             const summary = await processAIStream({
                 reader,
                 signal: controller.signal,
                 shouldContinue: () => streamGenRef.current === myGen,
                 throwOnErrorChunk: true,
-                onChunk: (data) => {
-                    const runningToolCallIdsBeforeChunk = runningToolCallIds;
-                    const nextState = handleProjectCopilotStreamChunk(
-                        data,
-                        {
-                            aiMessageCreated,
-                            fullContent,
-                            reasoningContent,
-                            reasoningState,
-                            reasoningTruncated,
-                            activeReasoningId,
-                            runningToolCallIds,
-                            lastToolCallId,
-                            syntheticToolCounter,
-                            localRunId,
-                            effectiveConvId,
-                            completedPubmedSearchCount,
-                            lastPubmedSearchSize,
-                        },
-                        {
-                            aiMessageId,
-                            page,
-                            section,
-                            projectId,
-                            myGen,
-                            getCurrentGen: () => streamGenRef.current,
-                            setCurrentRunId,
-                            syncConversationId: (conversationId) => {
-                                if (convo.currentConversationIdRef.current !== conversationId) {
-                                    convo.setCurrentConversationId(conversationId);
-                                }
-                            },
-                            upsertConversationTitle,
-                            upsertArtifact,
-                            updateMessages,
-                            emitLedgerChanged: () => {
-                                window.dispatchEvent(
-                                    new CustomEvent("litrev:ledger-changed", { detail: { projectId } })
-                                );
-                            },
-                            setPendingChoices,
-                            setPendingUserInput,
-                            onPlanStepUpdate,
-                            onNavigate,
-                        }
-                    );
-                    aiMessageCreated = nextState.aiMessageCreated;
-                    fullContent = nextState.fullContent;
-                    reasoningContent = nextState.reasoningContent;
-                    reasoningState = nextState.reasoningState;
-                    reasoningTruncated = nextState.reasoningTruncated;
-                    activeReasoningId = nextState.activeReasoningId;
-                    runningToolCallIds = nextState.runningToolCallIds;
-                    lastToolCallId = nextState.lastToolCallId;
-                    syntheticToolCounter = nextState.syntheticToolCounter;
-                    localRunId = nextState.localRunId;
-                    effectiveConvId = nextState.effectiveConvId;
-                    completedPubmedSearchCount = nextState.completedPubmedSearchCount;
-                    lastPubmedSearchSize = nextState.lastPubmedSearchSize;
-
-                    // Update stream phase based on chunk type
-                    if (data.type === "tool_call") {
-                        setStreamPhase("tool_running");
-                    } else if (data.type === "content" || data.type === "reasoning_start" || data.type === "reasoning_delta") {
-                        setStreamPhase("streaming");
-                    } else if (data.type === "run_end") {
-                        unresolvedCountBeforeClear = runningToolCallIdsBeforeChunk.length;
-                        unresolvedCountAfterClear = nextState.runningToolCallIds.length;
-                        setStreamPhase("completing");
-                    }
-                },
+                onChunk: applyChunk,
             });
             runStatus = summary.runStatus;
             stopReason = summary.stopReason;
@@ -342,6 +620,22 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
             actualModel = summary.actualModel;
             actualModelSource = summary.actualModelSource;
             terminalReason = summary.terminalReason;
+
+            const recovered = await attemptRecoveryFromAbnormalEnd();
+            if (!recovered && shouldFailRunningToolsOnAbnormalEnd(terminalReason)) {
+                return {
+                    success: false,
+                    aborted: false,
+                    runStatus,
+                    stopReason,
+                    errorMessage: streamErrorMessage,
+                    actualModel,
+                    actualModelSource,
+                    terminalReason,
+                    runId: localRunId || null,
+                    conversationId: effectiveConvId,
+                };
+            }
 
             // Stale generation — skip refresh
             if (streamGenRef.current !== myGen) {
@@ -420,6 +714,83 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                 };
             }
             terminalReason = terminalReasonFromThrownError(error);
+            if (
+                terminalReason
+                && shouldFailRunningToolsOnAbnormalEnd(terminalReason)
+                && localRunId
+                && effectiveConvId
+            ) {
+                setCurrentRunId(localRunId);
+                updateState((prev) => ({
+                    ...prev,
+                    messages: interruptRunningProjectToolActivityMessages(
+                        prev.messages.filter((message) => !message.progress),
+                        RUN_RECOVERY_INTERRUPTED_TOOL_SUMMARY,
+                    ),
+                }));
+                appendProjectRecoveryCheckpoint(page, section, RUN_RECOVERY_RECONNECT_SUMMARY);
+                const recoveryResult = await runProjectRecovery({
+                    conversationId: effectiveConvId,
+                    runId: localRunId,
+                    page,
+                    section,
+                    signal: controller.signal,
+                    onPlanStepUpdate,
+                });
+                if (recoveryResult.outcome === "recovered") {
+                    terminalReason = runStatus === "completed" ? "completed" : "failed_server";
+                    emitTerminalMetric(terminalReason, runStatus);
+                    return {
+                        success: true,
+                        aborted: false,
+                        runStatus,
+                        stopReason,
+                        errorMessage: streamErrorMessage,
+                        actualModel,
+                        actualModelSource,
+                        terminalReason,
+                        runId: localRunId || null,
+                        conversationId: effectiveConvId,
+                    };
+                }
+                const recoveryMessage = recoveryResult.outcome === "timeout"
+                    ? RUN_RECOVERY_TIMEOUT_MESSAGE
+                    : recoveryResult.outcome === "needs_user_action"
+                        ? "The active run is still holding this conversation. Choose how to continue."
+                        : RUN_RECOVERY_FAILED_MESSAGE;
+                const recoveryError = createRecoveryErrorEnvelope({
+                    code: recoveryResult.outcome === "timeout"
+                        ? "RUN_RECOVERY_TIMEOUT"
+                        : recoveryResult.outcome === "needs_user_action"
+                            ? "RUN_RECOVERY_REQUIRES_USER_ACTION"
+                            : "RUN_RECOVERY_FAILED",
+                    message: recoveryMessage,
+                    activeRunId: recoveryResult.activeRunId,
+                    lastActivityAt: recoveryResult.lastActivityAt ?? undefined,
+                    recoveryRecommendation: recoveryResult.recommendation,
+                    retryable: recoveryResult.recommendation === "retry",
+                });
+                appendProjectRecoveryError({
+                    page,
+                    section,
+                    message: recoveryMessage,
+                    errorMeta: recoveryError,
+                });
+                emittedTerminalError = true;
+                setCurrentRunId(recoveryResult.recommendation === "retry" ? null : recoveryResult.activeRunId);
+                return {
+                    success: false,
+                    aborted: false,
+                    runStatus,
+                    stopReason,
+                    errorMessage: recoveryMessage,
+                    actualModel,
+                    actualModelSource,
+                    terminalReason,
+                    runId: localRunId || null,
+                    conversationId: effectiveConvId,
+                };
+            }
             emitTerminalMetric(terminalReason, runStatus);
 
             recordChatUnificationMetric({
@@ -503,6 +874,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                 streamGenRef.current === myGen
                 && !aborted
                 && shouldFailRunningToolsOnAbnormalEnd(terminalReason)
+                && !emittedTerminalError
             ) {
                 updateState((prev) => ({
                     ...prev,
@@ -555,11 +927,13 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
             studyId?: string,
             retryModelExpectation?: RetryModelExpectation,
             contextTargets?: ContextCaptureTarget[],
+            runtimeOverrides?: { replaceRunId?: string | null },
         ) => {
             const trimmed = text.trim();
             const attachment = pendingAttachment;
             if (!trimmed && !attachment) return;
-            const replaceRunId = isLoadingRef.current ? currentRunId : null;
+            const replaceRunId = runtimeOverrides?.replaceRunId
+                ?? (isLoadingRef.current ? currentRunId : null);
             if (isLoadingRef.current) cancelStream();
             setPendingChoices([]);
             setPendingUserInput(null);
@@ -948,6 +1322,84 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
         return { approvedCount, failedArtifactIds, stopped: false };
     }, [reviewArtifactActionLocal, convo]);
 
+    const reconnectRun = useCallback(async (runId?: string | null) => {
+        const conversationId = convo.currentConversationIdRef.current ?? null;
+        const activeRunId = runId ?? currentRunId ?? null;
+        if (!conversationId || !activeRunId) return;
+
+        const contextMessage = [...stateRef.current.messages]
+            .reverse()
+            .find((message) => message.context?.page);
+        const recoveryPage = contextMessage?.context?.page ?? "overview";
+        const recoverySection = contextMessage?.context?.section;
+
+        setIsLoading(true);
+        setStreamPhase("streaming");
+        setCurrentRunId(activeRunId);
+        streamGenRef.current += 1;
+        const myGen = streamGenRef.current;
+
+        updateState((prev) => ({
+            ...prev,
+            messages: interruptRunningProjectToolActivityMessages(
+                prev.messages.filter((message) => !message.progress),
+                RUN_RECOVERY_INTERRUPTED_TOOL_SUMMARY,
+            ),
+        }));
+        appendProjectRecoveryCheckpoint(recoveryPage, recoverySection, RUN_RECOVERY_RECONNECT_SUMMARY);
+
+        try {
+            const recoveryResult = await runProjectRecovery({
+                conversationId,
+                runId: activeRunId,
+                page: recoveryPage,
+                section: recoverySection,
+            });
+            if (recoveryResult.outcome === "recovered") {
+                return;
+            }
+            const recoveryMessage = recoveryResult.outcome === "timeout"
+                ? RUN_RECOVERY_TIMEOUT_MESSAGE
+                : recoveryResult.outcome === "needs_user_action"
+                    ? "The active run is still holding this conversation. Choose how to continue."
+                    : RUN_RECOVERY_FAILED_MESSAGE;
+            appendProjectRecoveryError({
+                page: recoveryPage,
+                section: recoverySection,
+                message: recoveryMessage,
+                errorMeta: createRecoveryErrorEnvelope({
+                    code: recoveryResult.outcome === "timeout"
+                        ? "RUN_RECOVERY_TIMEOUT"
+                        : recoveryResult.outcome === "needs_user_action"
+                            ? "RUN_RECOVERY_REQUIRES_USER_ACTION"
+                            : "RUN_RECOVERY_FAILED",
+                    message: recoveryMessage,
+                    activeRunId: recoveryResult.activeRunId,
+                    lastActivityAt: recoveryResult.lastActivityAt ?? undefined,
+                    recoveryRecommendation: recoveryResult.recommendation,
+                    retryable: recoveryResult.recommendation === "retry",
+                }),
+            });
+            setCurrentRunId(recoveryResult.recommendation === "retry" ? null : recoveryResult.activeRunId);
+        } finally {
+            if (streamGenRef.current === myGen) {
+                setIsLoading(false);
+                setStreamPhase("idle");
+            }
+        }
+    }, [
+        appendProjectRecoveryCheckpoint,
+        appendProjectRecoveryError,
+        convo,
+        currentRunId,
+        runProjectRecovery,
+        setCurrentRunId,
+        setIsLoading,
+        setStreamPhase,
+        stateRef,
+        updateState,
+    ]);
+
     return {
         cancelStream,
         runStream,
@@ -958,5 +1410,6 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
         executePlan,
         handleReviewArtifact,
         approveArtifactsBatch,
+        reconnectRun,
     };
 }

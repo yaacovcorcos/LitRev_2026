@@ -4,7 +4,7 @@
  */
 
 import type { ContextCaptureTarget } from "./context-capture";
-import type { AgentMode } from "./agent";
+import type { AgentMode, RunStatus } from "./agent";
 
 // Copilot page context (which project tab the user is on)
 export type CopilotPage = "draft" | "protocol" | "ledger" | "study" | "overview" | "notes" | "memory" | "ai";
@@ -98,6 +98,34 @@ export type AIErrorEnvelope = {
     message: string;
     status?: number;
     headers?: Record<string, string>;
+    activeRunId?: string;
+    replaceRunId?: string;
+    lastActivityAt?: string;
+    recoveryRecommendation?: RunRecoveryRecommendation;
+};
+
+export type RunRecoveryRecommendation = "reconnect" | "retry" | "stop_and_retry" | "terminal";
+
+export type RunRecoveryReplayableChunk = {
+    sequence: number;
+    chunk: AIStreamChunk;
+};
+
+export type SyntheticTerminalReconciliationEvent = {
+    chunk: AIStreamChunk;
+};
+
+export type RunRecoveryResponse = {
+    conversationId: string;
+    runId: string;
+    runStatus: RunStatus | "missing";
+    isActive: boolean;
+    lastActivityAt: string | null;
+    lastSequence: number | null;
+    replayableEvents: RunRecoveryReplayableChunk[];
+    terminalEvent: SyntheticTerminalReconciliationEvent | null;
+    recoveryRecommendation: RunRecoveryRecommendation;
+    abnormalEndClassification?: string | null;
 };
 
 export type ToolResultArtifact = {
@@ -222,6 +250,13 @@ export type AIStreamChunk = {
         | "navigate"
         | "user_input_required";
     content?: string;
+    /**
+     * Recovery replay may restore authoritative assistant content as a full
+     * snapshot rather than an append-only live delta.
+     */
+    contentMode?: "append" | "replace";
+    /** True when this chunk came from recovery replay rather than the live stream. */
+    replay?: boolean;
     error?: string;
     errorStatus?: number;
     errorCode?: string;

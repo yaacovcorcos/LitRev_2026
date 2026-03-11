@@ -37,10 +37,113 @@ export interface RunLineageNode {
     children: RunLineageNode[];
 }
 
+export const RUN_HEARTBEAT_INTERVAL_MS = 15_000;
+
+type RunActivityListener = (at: Date) => void;
+
+const runActivityListeners = new Map<string, Set<RunActivityListener>>();
+
+function notifyRunActivity(runId: string, at: Date) {
+    const listeners = runActivityListeners.get(runId);
+    if (!listeners || listeners.size === 0) return;
+    for (const listener of listeners) {
+        listener(at);
+    }
+}
+
+export function noteObservedRunActivity(runId: string, at: Date) {
+    notifyRunActivity(runId, at);
+}
+
+function subscribeRunActivity(runId: string, listener: RunActivityListener) {
+    const listeners = runActivityListeners.get(runId) ?? new Set<RunActivityListener>();
+    listeners.add(listener);
+    runActivityListeners.set(runId, listeners);
+
+    return () => {
+        const activeListeners = runActivityListeners.get(runId);
+        if (!activeListeners) return;
+        activeListeners.delete(listener);
+        if (activeListeners.size === 0) {
+            runActivityListeners.delete(runId);
+        }
+    };
+}
+
+export async function touchRunActivity(runId: string, at = new Date()) {
+    const result = await prisma.agentRun.updateMany({
+        where: { id: runId, status: "running" },
+        data: { lastActivityAt: at },
+    });
+    if (result.count > 0) {
+        notifyRunActivity(runId, at);
+    }
+    return result.count;
+}
+
+export interface RunHeartbeatController {
+    stop(): void;
+}
+
+export function startRunHeartbeat(
+    runId: string,
+    options?: {
+        intervalMs?: number;
+        now?: () => Date;
+        touch?: typeof touchRunActivity;
+        onError?: (error: unknown) => void;
+        schedule?: typeof setInterval;
+        cancel?: typeof clearInterval;
+    },
+): RunHeartbeatController {
+    const intervalMs = options?.intervalMs ?? RUN_HEARTBEAT_INTERVAL_MS;
+    const getNow = options?.now ?? (() => new Date());
+    const heartbeatTouch = options?.touch ?? touchRunActivity;
+    const schedule = options?.schedule ?? setInterval;
+    const cancel = options?.cancel ?? clearInterval;
+    let lastObservedActivityAt = getNow().getTime();
+    let stopped = false;
+    let inFlight = false;
+
+    const unsubscribe = subscribeRunActivity(runId, (at) => {
+        lastObservedActivityAt = at.getTime();
+    });
+
+    const timer = schedule(async () => {
+        if (stopped || inFlight) return;
+        const now = getNow();
+        if (now.getTime() - lastObservedActivityAt < intervalMs) return;
+        inFlight = true;
+        try {
+            const updatedCount = await heartbeatTouch(runId, now);
+            if (updatedCount > 0) {
+                lastObservedActivityAt = now.getTime();
+            }
+        } catch (error) {
+            options?.onError?.(error);
+        } finally {
+            inFlight = false;
+        }
+    }, intervalMs);
+    if (typeof (timer as { unref?: () => void }).unref === "function") {
+        (timer as { unref: () => void }).unref();
+    }
+
+    return {
+        stop() {
+            if (stopped) return;
+            stopped = true;
+            unsubscribe();
+            cancel(timer);
+        },
+    };
+}
+
 /**
  * Start a new agent run
  */
 export async function startRun(input: StartRunInput) {
+    const startedAt = new Date();
     let lineageRootRunId = input.rootRunId ?? null;
 
     if (input.parentRunId && !lineageRootRunId) {
@@ -70,6 +173,8 @@ export async function startRun(input: StartRunInput) {
             agentMode: input.agentMode,
             status: "running",
             model: input.model ?? undefined,
+            startedAt,
+            lastActivityAt: startedAt,
         },
     });
 }
@@ -83,15 +188,18 @@ export async function endRun(
     costTokensIn?: number,
     costTokensOut?: number
 ) {
+    const completedAt = new Date();
     const run = await prisma.agentRun.update({
         where: { id: runId },
         data: {
             status,
-            completedAt: new Date(),
+            completedAt,
+            lastActivityAt: completedAt,
             ...(costTokensIn !== undefined ? { costTokensIn } : {}),
             ...(costTokensOut !== undefined ? { costTokensOut } : {}),
         },
     });
+    notifyRunActivity(runId, completedAt);
 
     // Fire-and-forget: extract memories from completed conversations
     if (status === "completed" && run.conversationId && run.projectId) {

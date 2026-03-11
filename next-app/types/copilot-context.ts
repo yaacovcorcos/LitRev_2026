@@ -77,6 +77,7 @@ export type ProjectCopilotContextValue = {
         studyId?: string,
         retryModelExpectation?: RetryModelExpectation,
         contextTargets?: ContextCaptureTarget[],
+        runtimeOverrides?: { replaceRunId?: string | null },
     ) => void;
     /** Update global reasoning visibility mode */
     setReasoningMode: (mode: ReasoningMode) => void;
@@ -163,6 +164,8 @@ export type ProjectCopilotContextValue = {
     ) => Promise<ApproveArtifactsBatchResult>;
     /** Execute a plan artifact (run selected steps) */
     executePlan: (artifactId: string, selectedIndexes: number[]) => void;
+    /** Reconnect to a still-active run using the recovery API. */
+    reconnectRun: (runId?: string | null) => Promise<void>;
 
     // Summarize & fresh
     /** Whether the conversation is long enough to offer summarization */

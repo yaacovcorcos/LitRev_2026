@@ -69,7 +69,8 @@ WHERE schemaname='public'
     'MemoryEmbedding_embedding_hnsw_idx',
     'AgentRun_parentRunId_startedAt_idx',
     'AgentRun_rootRunId_startedAt_idx',
-    'AgentRun_conversationId_startedAt_idx'
+    'AgentRun_conversationId_startedAt_idx',
+    'AgentRun_conversationId_lastActivityAt_idx'
   )
 ORDER BY indexname;
 ```
