@@ -8,6 +8,19 @@ Local localhost databases are development-only; this runbook applies to producti
 - In scope: Prisma migration execution, schema/index verification, DB health checks.
 - Out of scope: auth schema work, application code changes, feature redesign.
 
+## Scope Boundary
+
+This file owns production migration/release procedure only.
+For schema/table semantics, environment topology, and DB invariants, use `docs/runbooks/db-architecture.md`.
+
+## When To Update This Doc
+
+- Production preflight changes
+- Verification SQL changes
+- Smoke-test changes
+- Rollback posture changes
+- Production target wiring changes
+
 ## Preconditions
 1. Run in a low-traffic release window.
 2. Confirm Supabase backup/PITR is available.

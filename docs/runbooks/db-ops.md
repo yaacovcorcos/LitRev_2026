@@ -2,6 +2,19 @@
 
 All commands run from `next-app/`.
 
+## Scope Boundary
+
+This file owns operational diagnosis, connectivity, migration state checks, drift handling, and repair flows.
+For schema/table semantics, environment topology, and DB invariants, use `docs/runbooks/db-architecture.md`.
+
+## When To Update This Doc
+
+- Command changes in DB scripts or npm aliases
+- New failure modes or remediation rules
+- Critical index gate changes
+- Migration/repair flow changes
+- Connection-policy changes
+
 ## Quick Reference
 
 | Command | What it does |

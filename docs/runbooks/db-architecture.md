@@ -1,0 +1,129 @@
+# Database Architecture Reference
+
+This file is the canonical structural DB reference for LitRev.
+It explains environment topology, table/domain semantics, invariants, and DB-doc update obligations.
+
+This file is not the owner of operational repair procedures or production migration steps.
+For diagnosis/remediation, use `docs/runbooks/db-ops.md`.
+For production migration/release procedure, use `docs/plans/db-production-runbook.md`.
+
+## When Agents Must Read This Doc
+
+- Before changing `next-app/prisma/schema.prisma`.
+- Before adding or changing migrations when table semantics, ownership, scoping, nullability, or invariants matter.
+- Before explaining table/domain structure, auth persistence, memory storage, agent runtime persistence, or storage metadata.
+- Before making DB-related feature changes that repurpose existing schema.
+
+## When This Doc Must Be Updated
+
+- Any schema change in `next-app/prisma/schema.prisma`.
+- Any migration that changes table purpose, ownership/scoping, nullable meaning, soft-delete behavior, important uniqueness/index assumptions, or domain invariants.
+- Any change to local vs Supabase DB topology, `DATABASE_URL` / `DIRECT_URL` roles, Better Auth ownership, or Supabase Storage responsibility.
+- Any task where an agent had to inspect schema or migrations to answer a DB-structure question this doc should already answer directly.
+
+## Environment Topology
+
+- Local development/test database: localhost Postgres only.
+- Active online database: Supabase Postgres.
+- An archived Supabase project may exist for history/reference, but it is not an active migration or runtime target.
+- `DATABASE_URL` is the runtime connection string. In deployed environments this is the pooled/pooler-facing path.
+- `DIRECT_URL` is the direct migration connection string and is required for production migration traffic.
+- Supabase Storage stores uploaded file blobs.
+- `FileAsset` rows store file metadata and storage paths, not file contents.
+- Better Auth is the identity authority. Supabase Auth is not used in this project.
+
+## Domain Map
+
+| Domain | Tables | Structural role |
+|---|---|---|
+| Auth and admin | `User`, `Session`, `Account`, `Verification`, `AdminAuditLog` | Identity, sessions, provider links, verification flows, admin audit trail |
+| Workspace and project core | `Workspace`, `WorkspaceMember`, `Project`, `Protocol`, `Draft`, `DraftVersion`, `Study`, `Note`, `FileAsset` | Collaboration scope, project state, studies, notes, file metadata |
+| AI chat and telemetry | `AIConversation`, `AIMessage`, `AIUsage`, `ChatUnificationMetric` | Conversation storage, message timeline, token/cost attribution, chat surface telemetry |
+| Memory and retrieval | `UserMemory`, `ProjectMemory`, `StudyMemory`, `ConversationSummary`, `MemoryRetrieval`, `MemoryEmbedding` | Durable memory, summarization, retrieval audit trail, vector search |
+| Agent runtime | `AgentRun`, `RunEvent`, `Artifact`, `AutonomyConfig` | Event-sourced runs, run lineage, reviewable artifacts, autonomy presets |
+
+## Table Glossary
+
+| Table | Purpose | Main FKs | Important unique/index constraints | Important nullable semantics | Soft delete |
+|---|---|---|---|---|---|
+| `User` | Primary identity record | None | `email` unique; indexes on `createdAt`, `isPlatformAdmin + createdAt` | `image` optional profile asset | No |
+| `AdminAuditLog` | Admin action audit trail | `actorUserId -> User`, `targetUserId -> User` | Indexes on actor/target + `createdAt` | `reason`, `requestId`, `before`, `after` are optional metadata | No |
+| `Session` | Better Auth session store | `userId -> User` | `token` unique; indexes on `userId`, `userId + updatedAt` | `ipAddress`, `userAgent` optional | No |
+| `Account` | External auth provider link | `userId -> User` | Unique on `providerId + accountId`; index on `userId` | Token fields and `password` are optional provider-specific data | No |
+| `Verification` | Verification and magic-link tokens | None | Indexes on `identifier + createdAt`, `expiresAt` | No nullable business fields | No |
+| `Workspace` | Top-level collaboration scope | None | No special unique beyond PK | None | No |
+| `WorkspaceMember` | User membership in workspace | `workspaceId -> Workspace`, `userId -> User` | Unique on `workspaceId + userId`; index on `userId` | None | No |
+| `Project` | Main application hub | `workspaceId -> Workspace`, `ownerId -> User` | Indexes on `workspaceId`, `ownerId`; unique on `ownerId + workspaceId + demoKey` | `demoKey`, `description`, `papers`, `progress`, `projectCopilot` optional | No |
+| `Protocol` | Canonical protocol JSON for a project | `projectId -> Project` | `projectId` unique | None | No |
+| `Draft` | Current draft state for a project | `projectId -> Project` | `projectId` unique | None | No |
+| `DraftVersion` | Versioned draft snapshots by section | `projectId -> Project` | Unique on `projectId + section + version`; indexes on `projectId + section`, `projectId + createdAt` | `contentText`, `artifactId`, `conversationId` optional linkage/context | No |
+| `Study` | Study records under a project | `projectId -> Project` | Indexes on `projectId`, `projectId + deletedAt`, `workspaceId` | `workspaceId` is denormalized optional scope; `details`, `deletedAt` optional | `deletedAt` |
+| `FileAsset` | File metadata and storage pointer | `projectId -> Project`, `studyId -> Study` | Indexes on `projectId`, `workspaceId`, `studyId` | `workspaceId` denormalized optional scope; `studyId`, `format`, `publicUrl`, `metadata` optional | No |
+| `AIConversation` | Chat container for global/project/study contexts | `projectId -> Project` | Indexes on `userId + context`, `userId + projectId`, `workspaceId`, `workspaceId + context`, `projectId`, `studyId`, `context` | `userId`, `workspaceId`, `title`, `page`, `projectId`, `studyId` are optional to support global and scoped chats | No |
+| `AIMessage` | Ordered messages within a conversation | `conversationId -> AIConversation` | Indexes on `conversationId`, `conversationId + createdAt + id` | `toolCalls`, `toolResultId`, `attachments` optional for tool/attachment flows | No |
+| `AIUsage` | Token/cost attribution records | `conversationId -> AIConversation`, `projectId -> Project` | Indexes on user/workspace/project/conversation/source/contextPage + `createdAt` | `userId`, `workspaceId`, `projectId`, `conversationId` are optional because attribution can vary by surface/context | No |
+| `UserMemory` | User-level preferences and workflow memory | `userId -> User` | Unique on `userId + key`; indexes on `userId + status`, `userId + type`, `userId + pinned` | `rationale`, `archivedAt` optional | No |
+| `ProjectMemory` | Project-level goals, criteria, definitions, decisions | `projectId -> Project` | Indexes on `projectId + status`, `projectId + type`, `projectId + importance`, `projectId + pinned` | `category`, `rationale`, `context`, `supersededBy`, `archivedAt` optional | No |
+| `StudyMemory` | Study-level extracted facts and summaries | `studyId -> Study`, `projectId -> Project` | Indexes on `studyId + type`, `projectId + type`, `studyId + status`, `projectId + pinned` | `category`, `source`, `confidence` optional | No |
+| `ConversationSummary` | Compressed summary of a long conversation | `conversationId -> AIConversation` | `conversationId` unique; index on `conversationId` | None | No |
+| `MemoryRetrieval` | Audit trail of memory retrieval attempts | `projectId -> Project` | Indexes on `conversationId`, `projectId`, `createdAt` | `conversationId`, `userId`, `projectId` optional because retrieval can happen in different scopes | No |
+| `MemoryEmbedding` | Vector index backing semantic memory retrieval | `projectId -> Project` | Unique on `memoryType + memoryId + model`; indexes on `projectId + memoryType`, `userId + memoryType`, `studyId + memoryType` | `userId`, `projectId`, `studyId` optional because embeddings can belong to different memory scopes | No |
+| `AgentRun` | Top-level agent execution trace | `projectId -> Project`, `parentRunId -> AgentRun` | Indexes on `projectId + startedAt`, `conversationId`, `conversationId + startedAt`, `userId`, `parentRunId + startedAt`, `rootRunId + startedAt` | `projectId`, `conversationId`, `userId`, `parentRunId`, `rootRunId`, `model`, `completedAt` are intentionally nullable | No |
+| `RunEvent` | Event stream within a run | `runId -> AgentRun` | Unique on `runId + sequence`; indexes on `runId + sequence`, `runId + type`, `artifactId` | Tool/artifact/error/timing fields are optional because event payloads vary by type | No |
+| `ChatUnificationMetric` | Chat-surface telemetry event record | `projectId -> Project` | `eventId` unique; indexes on `recordedAt`, `type + recordedAt`, `surface + recordedAt`, workspace/run/conversation/project + `recordedAt` | `userId`, `workspaceId`, `projectId`, `runId`, `conversationId`, `clientTimestamp` optional | No |
+| `Artifact` | Reviewable outputs produced by agent runs | `runId -> AgentRun`, `projectId -> Project` | `applyId` unique; indexes on `runId`, `projectId + status`, `conversationId`, `type + status` | `projectId`, `conversationId`, `userId`, snapshot/review/apply fields optional because artifacts can be proposed before acceptance/application | No |
+| `AutonomyConfig` | Autonomy preset and tool override config | `projectId -> Project` | Unique on `userId + projectId`; indexes on `userId`, `projectId` | `userId`, `projectId` optional to support global and project-scoped config | No |
+| `Note` | Rich project notes | `projectId -> Project` | Indexes on `projectId`, `projectId + deletedAt`, `projectId + source` | `userId`, `title`, `contentText`, `linkedStudyId`, `linkedSection`, source linkage fields, `deletedAt` optional | `deletedAt` |
+
+## Core Invariants
+
+- `Project` is the main application hub. Most DB-domain features eventually attach to project scope.
+- `FileAsset` stores metadata and storage paths only. Blob storage lives in Supabase Storage.
+- `RunEvent` must remain unique on `(runId, sequence)`. Sequence repair is an operational concern documented in `docs/runbooks/db-ops.md`.
+- `MemoryEmbedding` depends on the `vector` extension and the embedding index path documented in the DB ops docs.
+- `Study.deletedAt` and `Note.deletedAt` are soft-delete markers, not archival tables.
+- Nullable `projectId` in runtime-oriented tables such as `AgentRun`, `Artifact`, and attribution tables is intentional and supports global or not-yet-project-bound flows.
+- Workspace/user scoping columns are part of the multi-user-ready schema shape and should only be changed with explicit intent.
+- Better Auth owns identity/session semantics. Do not model Supabase Auth as a source of truth in DB changes.
+
+## Critical Indexes: Structural Context
+
+These indexes protect major runtime paths. The operational gate owner and verification source of truth remains `docs/runbooks/db-ops.md`.
+
+| Index | Runtime path protected |
+|---|---|
+| `AIMessage_conversationId_createdAt_id_idx` | Stable conversation timeline pagination and cursor loading |
+| `UserMemory_userId_pinned_idx` | Fast pinned user-memory retrieval |
+| `ProjectMemory_projectId_pinned_idx` | Fast pinned project-memory retrieval |
+| `StudyMemory_projectId_pinned_idx` | Fast pinned study-memory retrieval within project scope |
+| `MemoryEmbedding_embedding_hnsw_idx` | Vector similarity retrieval performance |
+| `AgentRun_parentRunId_startedAt_idx` | Child-run lineage lookups |
+| `AgentRun_rootRunId_startedAt_idx` | Root-run trace aggregation |
+| `AgentRun_conversationId_startedAt_idx` | Conversation-linked run history queries |
+
+## Migration Themes
+
+- Core app foundation: initial workspace/project/protocol/draft/study/file schema.
+- Memory and embeddings: pgvector support, memory tables, retrieval audit, summaries, and memory lifecycle metadata.
+- Draft history: section-scoped draft versioning.
+- Project FK hardening: project relations added across AI, memory, and runtime tables.
+- Auth foundation: Better Auth session/account/verification support plus later auth/admin indexes.
+- Agent runtime hardening: run lineage fields, uniqueness guarantees, and runtime-supporting indexes.
+- Wave/core cleanup: soft-delete and text-search support for notes and studies.
+- Telemetry and admin: chat unification metrics, platform admin flag, and admin audit log.
+- Latest project-keying tweaks: `demoKey` support on `Project`.
+
+## Safe Schema Change Checklist
+
+1. Update `next-app/prisma/schema.prisma`.
+2. Add a migration under `next-app/prisma/migrations/`.
+3. Evaluate nullability, backfill, and data-cleanup needs before finalizing the migration.
+4. Evaluate production drift risk before code ships against new schema.
+5. Update `docs/runbooks/db-architecture.md` and any affected DB ops/runbook docs in the same task.
+6. Never edit applied migration SQL.
+
+## Related Docs
+
+- `docs/runbooks/db-ops.md` — operational diagnosis, migration state, connectivity, and repair
+- `docs/plans/db-production-runbook.md` — production migration/release/remediation procedure
+- `docs/plans/plan-backend.md` — broader backend and infrastructure context
