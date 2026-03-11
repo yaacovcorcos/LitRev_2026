@@ -6,14 +6,22 @@ import AIView from "../page";
 
 const {
   mockListConversations,
+  mockCreateConversation,
   mockGetGlobalWorkspaceContextAction,
   mockUseProjects,
   mockPush,
+  mockProcessAIStream,
+  mockPollRunRecovery,
+  mockFetch,
 } = vi.hoisted(() => ({
   mockListConversations: vi.fn(),
+  mockCreateConversation: vi.fn(),
   mockGetGlobalWorkspaceContextAction: vi.fn(),
   mockUseProjects: vi.fn(),
   mockPush: vi.fn(),
+  mockProcessAIStream: vi.fn(),
+  mockPollRunRecovery: vi.fn(),
+  mockFetch: vi.fn(),
 }));
 
 vi.mock("next/navigation", () => ({
@@ -29,6 +37,10 @@ vi.mock("next/dynamic", () => ({
       isHistoryLoading?: boolean;
       projects?: Array<{ id: string; name: string }>;
       onSelectProject?: (projectId: string | null) => void;
+      items?: Array<{ type: string; id: string; content?: string; message?: string; errorMeta?: { recoveryRecommendation?: string; activeRunId?: string } }>;
+      onReconnectRun?: (item: { type: string; id: string; errorMeta?: { activeRunId?: string } }) => void;
+      onStopAndRetryRun?: (item: { type: string; id: string; errorMeta?: { activeRunId?: string } }) => void;
+      onRetryLastMessage?: () => void;
     }) {
       if (props.projects && props.onSelectProject) {
         return (
@@ -58,6 +70,40 @@ vi.mock("next/dynamic", () => ({
           </div>
         );
       }
+      if (props.items) {
+        return (
+          <div>
+            {props.items.map((item) => {
+              if (item.type === "assistant_message") {
+                return <div key={item.id}>{item.content}</div>;
+              }
+              if (item.type === "error") {
+                return (
+                  <div key={item.id}>
+                    <span>{item.message}</span>
+                    {item.errorMeta?.recoveryRecommendation === "reconnect" ? (
+                      <button type="button" onClick={() => props.onReconnectRun?.(item)}>
+                        Reconnect
+                      </button>
+                    ) : null}
+                    {item.errorMeta?.recoveryRecommendation === "stop_and_retry" ? (
+                      <button type="button" onClick={() => props.onStopAndRetryRun?.(item)}>
+                        Stop & Retry
+                      </button>
+                    ) : null}
+                    {item.errorMeta?.recoveryRecommendation === "retry" ? (
+                      <button type="button" onClick={() => props.onRetryLastMessage?.()}>
+                        Retry
+                      </button>
+                    ) : null}
+                  </div>
+                );
+              }
+              return null;
+            })}
+          </div>
+        );
+      }
       return props.children ?? null;
     };
   },
@@ -68,10 +114,21 @@ vi.mock("@/components/AppShell", () => ({
 }));
 
 vi.mock("@/components/copilot/CopilotInputCoreClient", () => ({
-  CopilotInputCoreClient: ({ onReady }: { onReady?: () => void }) => (
-    <button type="button" onClick={() => onReady?.()}>
-      composer ready
-    </button>
+  CopilotInputCoreClient: ({
+    onReady,
+    sendMessage,
+  }: {
+    onReady?: () => void;
+    sendMessage?: (text: string, page: "ai") => void | Promise<void>;
+  }) => (
+    <div>
+      <button type="button" onClick={() => onReady?.()}>
+        composer ready
+      </button>
+      <button type="button" onClick={() => void sendMessage?.("Recover this run", "ai")}>
+        send message
+      </button>
+    </div>
   ),
 }));
 
@@ -81,7 +138,7 @@ vi.mock("@/contexts/ProjectsContext", () => ({
 
 vi.mock("@/app/actions/conversations", () => ({
   listConversations: (...args: unknown[]) => mockListConversations(...args),
-  createConversation: vi.fn(),
+  createConversation: (...args: unknown[]) => mockCreateConversation(...args),
   getConversation: vi.fn(),
   archiveConversation: vi.fn(),
   branchConversation: vi.fn(),
@@ -109,6 +166,18 @@ vi.mock("@/lib/mobile/telemetry", () => ({
   recordMobileMetric: vi.fn(),
 }));
 
+vi.mock("@/lib/ai/stream-processor", () => ({
+  processAIStream: (...args: unknown[]) => mockProcessAIStream(...args),
+}));
+
+vi.mock("@/lib/ai/run-recovery-client", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/ai/run-recovery-client")>("@/lib/ai/run-recovery-client");
+  return {
+    ...actual,
+    pollRunRecovery: (...args: unknown[]) => mockPollRunRecovery(...args),
+  };
+});
+
 function installMatchMedia() {
   Object.defineProperty(window, "matchMedia", {
     writable: true,
@@ -127,6 +196,7 @@ describe("/ai page deferred hydration", () => {
     vi.clearAllMocks();
     installMatchMedia();
     window.localStorage.clear();
+    vi.stubGlobal("fetch", mockFetch);
     mockUseProjects.mockReturnValue({
       projects: [
         { id: "proj-1", name: "Alpha" },
@@ -152,10 +222,35 @@ describe("/ai page deferred hydration", () => {
         projectCount: 2,
       },
     });
+    mockCreateConversation.mockResolvedValue({
+      success: true,
+      data: { id: "conv-new" },
+    });
+    mockFetch.mockResolvedValue({
+      ok: true,
+      body: {
+        getReader: () => ({ read: vi.fn(), cancel: vi.fn() }),
+      },
+    });
+    mockProcessAIStream.mockResolvedValue({
+      runStatus: null,
+      stopReason: null,
+      terminalReason: "failed_network",
+      errorMessage: null,
+      errorMeta: null,
+      actualModel: null,
+      actualModelSource: "unknown",
+    });
+    mockPollRunRecovery.mockResolvedValue({
+      outcome: "retry",
+      response: null,
+      lastAppliedSequence: -1,
+    });
   });
 
   afterEach(() => {
     vi.useRealTimers();
+    vi.unstubAllGlobals();
   });
 
   it("does not load conversations until the history sidebar is opened", async () => {
@@ -258,5 +353,57 @@ describe("/ai page deferred hydration", () => {
 
     expect(screen.getByText("Beta chat")).toBeTruthy();
     expect(screen.queryByText("Global chat")).toBeNull();
+  });
+
+  it("does not append a false terminal failure after a recovered completed run", async () => {
+    mockProcessAIStream.mockImplementation(async ({ onChunk }: {
+      onChunk: (chunk: unknown) => void | Promise<void>;
+    }) => {
+      await onChunk({ type: "run_start", runId: "run-1", conversationId: "conv-new" });
+      return {
+        runStatus: null,
+        stopReason: null,
+        terminalReason: "failed_network",
+        errorMessage: null,
+        errorMeta: null,
+        actualModel: null,
+        actualModelSource: "unknown",
+      };
+    });
+    mockPollRunRecovery.mockImplementation(async ({ onTerminal }: {
+      onTerminal: (chunk: unknown) => Promise<void>;
+    }) => {
+      await onTerminal({ type: "content", content: "Recovered answer." });
+      await onTerminal({ type: "run_end", runStatus: "completed", stopReason: null });
+      return {
+        outcome: "recovered",
+        response: {
+          conversationId: "conv-new",
+          runId: "run-1",
+          runStatus: "completed",
+          isActive: false,
+          lastActivityAt: "2026-03-11T11:20:00.000Z",
+          lastSequence: 2,
+          replayableEvents: [],
+          terminalEvent: {
+            chunk: { type: "run_end", runStatus: "completed", stopReason: null },
+          },
+          recoveryRecommendation: "terminal",
+          abnormalEndClassification: null,
+        },
+        lastAppliedSequence: 2,
+      };
+    });
+
+    render(<AIView />);
+
+    fireEvent.click(screen.getByRole("button", { name: "send message" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Recovered answer.")).toBeTruthy();
+    });
+
+    expect(screen.queryByText("The stream ended unexpectedly. Retry to continue.")).toBeNull();
+    expect(screen.queryByText("Connection lost and recovery failed. You can retry safely now.")).toBeNull();
   });
 });
