@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { VoiceLevelVisualizer, shouldAdvanceHistory } from "../VoiceLevelVisualizer";
+import { VoiceLevelVisualizer, getBarGeometry, shouldAdvanceHistory } from "../VoiceLevelVisualizer";
 
 type FakeContext = {
     setTransform: ReturnType<typeof vi.fn>;
@@ -81,6 +81,15 @@ describe("VoiceLevelVisualizer", () => {
     it("advances visible history on a slower cadence than the draw loop", () => {
         expect(shouldAdvanceHistory(49, 0)).toBe(false);
         expect(shouldAdvanceHistory(50, 0)).toBe(true);
+    });
+
+    it("caps bar width and centers the denser strip geometry", () => {
+        const geometry = getBarGeometry(260, 88);
+
+        expect(geometry.barWidth).toBeLessThanOrEqual(1.6);
+        expect(geometry.barWidth).toBeGreaterThanOrEqual(1);
+        expect(geometry.offsetX).toBeGreaterThan(0);
+        expect(geometry.gap).toBe(1);
     });
 
     it("renders a canvas visualizer and drives drawing with requestAnimationFrame in normal mode", () => {
