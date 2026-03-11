@@ -7,7 +7,7 @@ const mockVoiceState = {
     state: "idle" as "idle" | "recording" | "transcribing",
     error: null as string | null,
     elapsedMs: 0,
-    waveformBars: [] as number[],
+    visualizerAnalyser: null as AnalyserNode | null,
     toggleRecording: vi.fn(),
     stopRecording: vi.fn(),
     clearError: vi.fn(),
@@ -26,7 +26,7 @@ describe("CopilotInputCore composer refresh", () => {
         mockVoiceState.state = "idle";
         mockVoiceState.error = null;
         mockVoiceState.elapsedMs = 0;
-        mockVoiceState.waveformBars = [];
+        mockVoiceState.visualizerAnalyser = null;
         vi.clearAllMocks();
         Object.defineProperty(window, "matchMedia", {
             writable: true,
@@ -64,7 +64,10 @@ describe("CopilotInputCore composer refresh", () => {
     it("renders waveform recording state and disables send while recording", () => {
         mockVoiceState.state = "recording";
         mockVoiceState.elapsedMs = 11_000;
-        mockVoiceState.waveformBars = [0.2, 0.6, 0.4, 0.8];
+        mockVoiceState.visualizerAnalyser = {
+            fftSize: 256,
+            getByteTimeDomainData: (buffer: Uint8Array) => buffer.fill(138),
+        } as unknown as AnalyserNode;
 
         render(
             <CopilotInputCore
@@ -82,7 +85,26 @@ describe("CopilotInputCore composer refresh", () => {
 
         expect(screen.getByRole("button", { name: /stop recording/i })).toBeTruthy();
         expect(screen.getByText("0:11")).toBeTruthy();
-        expect(document.querySelectorAll('[class*=\"waveformBar\"]').length).toBeGreaterThan(0);
+        expect(screen.getByTestId("voice-level-visualizer")).toBeTruthy();
         expect(screen.getByRole("button", { name: /^send$/i }).hasAttribute("disabled")).toBe(true);
+    });
+
+    it("keeps the frozen recorded duration visible during transcribing without a live visualizer", () => {
+        mockVoiceState.state = "transcribing";
+        mockVoiceState.elapsedMs = 7_000;
+
+        render(
+            <CopilotInputCore
+                page="overview"
+                inputPlaceholder="Ask"
+                isLoading={false}
+                sendMessage={vi.fn()}
+                cancelStream={vi.fn()}
+            />,
+        );
+
+        expect(screen.getByText(/transcribing audio/i)).toBeTruthy();
+        expect(screen.getByText("0:07")).toBeTruthy();
+        expect(screen.queryByTestId("voice-level-visualizer")).toBeNull();
     });
 });

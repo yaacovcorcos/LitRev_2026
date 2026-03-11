@@ -8,7 +8,7 @@ vi.mock("@/hooks/useVoiceInput", () => ({
         state: "idle",
         error: null,
         elapsedMs: 0,
-        waveformBars: [],
+        visualizerAnalyser: null,
         toggleRecording: vi.fn(),
         stopRecording: vi.fn(),
         clearError: vi.fn(),

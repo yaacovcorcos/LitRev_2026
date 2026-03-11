@@ -28,6 +28,7 @@ Domain-specific execution plans remain canonical for their domains:
 - Shared composer action hierarchy is active across chat surfaces:
   - `CopilotInputCore` now uses a left-edge `+` extension menu for secondary actions, keeps voice in the right-side primary action cluster beside send, and presents a real microphone-driven waveform/timer state while recording.
   - Shared composer hover language stays token-based and calm, while recording/transcribing states preserve keyboard stop behavior without moving reasoning controls into the composer.
+  - Voice recording now uses a dedicated canvas-based amplitude-history visualizer with a frozen transcribing duration, removing the prior per-frame React equalizer bar path and pulsing recorder icon treatment.
 - Shared shell-contained scroll ownership is active for homepage and library workspace surfaces:
   - `AppShell` now provides a viewport-bounded shell parent, `surface-root[data-surface-height="shell"]` acts as the bounded route root, and `surface-scroll-body` remains the sole inner scroll owner.
   - Homepage workspace and library now use separate route-local layout modules on top of that shared contract, and homepage tall-list wheel scrolling is covered by a dedicated smoke test.
@@ -94,6 +95,7 @@ Use this mapping for old PRs/comments referencing CLU IDs.
 ## Recently Completed
 - [x] Homepage/library shell scroll contract repair shipped: `AppShell` is now viewport-bounded for contained shell pages, homepage workspace scroll is owned by the inner `surface-scroll-body`, library no longer depends on `home.module.css`, and a dedicated homepage wheel-scroll smoke guards tall-card regressions.
 - [x] Composer refresh shipped on the shared chat input: secondary actions now live behind a `+` menu, voice moved beside send, hover styling was unified, and live recording shows a real waveform/timer across shared chat surfaces.
+- [x] Voice recorder visualizer redesign shipped: shared chat inputs now use a premium amplitude-history canvas visualizer, keep recorded duration frozen during transcription, and no longer push waveform animation through per-frame React state.
 - [x] Citation hover diagnostics and telemetry hardening: successful hover loads now retain resolver diagnostics in cache, only terminal completion/failure events persist for canary reporting, and repo-owned compatibility smoke/report scripts ship without changing the bibliography-first card UX.
 - [x] Citation hover continuation now allows retryable `PubMed` bibliography-only hovers to backfill count fields after initial render while keeping the card calm and bibliography-first.
 - [x] Citation hover enrichment now preserves PubMed bibliography while adding citation counts from NIH iCite/OCC with Crossref fallback and truthful telemetry provenance.
