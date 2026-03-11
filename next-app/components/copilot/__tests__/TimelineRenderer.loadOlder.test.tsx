@@ -167,6 +167,29 @@ describe("TimelineRenderer load-older messages", () => {
     expect(screen.queryByRole("button", { name: /load older messages/i })).toBeNull();
   });
 
+  it("keeps hook order stable when rerendering from empty state to populated timeline", () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const { rerender } = render(
+      <TimelineRenderer
+        {...defaultProps}
+        items={[]}
+      />,
+    );
+
+    rerender(
+      <TimelineRenderer
+        {...defaultProps}
+        items={makeItems(2)}
+      />,
+    );
+
+    expect(screen.getByText("Message 1")).toBeTruthy();
+    expect(errorSpy).not.toHaveBeenCalled();
+
+    errorSpy.mockRestore();
+  });
+
   it("collapses older already-loaded messages when initialVisibleCount is provided", () => {
     render(
       <TimelineRenderer
