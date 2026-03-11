@@ -34,11 +34,25 @@ export const CORE_EVAL_SCENARIOS: EvalScenario[] = [
         expectedSignals: ["tool_call:delegate_search"],
     },
     {
-        id: "search-source-provenance",
+        id: "search-direct-pubmed-receipt",
         suite: "search",
-        title: "Search run emits provenance/source receipt",
+        title: "Direct PubMed search emits factual search receipt",
         prompt: "Find RCTs for yoga and hypertension.",
-        expectedSignals: ["source_receipt"],
+        expectedSignals: ["tool_activity:search_pubmed"],
+    },
+    {
+        id: "search-delegated-pubmed-runtime",
+        suite: "search",
+        title: "Delegated search executes the real child search path",
+        prompt: "Delegate a PubMed search for recent COPD treatment trials.",
+        expectedSignals: ["tool_result:search_pubmed"],
+    },
+    {
+        id: "search-direct-openalex-runtime",
+        suite: "search",
+        title: "Direct OpenAlex search emits the shared receipt path",
+        prompt: "Search OpenAlex for cross-disciplinary AI triage studies.",
+        expectedSignals: ["tool_activity:search_openalex"],
     },
     {
         id: "screening-decision-audit",
@@ -66,4 +80,3 @@ export function assertUniqueScenarioIds(scenarios: EvalScenario[]): void {
 export function listSuites(scenarios: EvalScenario[]): EvalSuite[] {
     return Array.from(new Set(scenarios.map((scenario) => scenario.suite)));
 }
-
