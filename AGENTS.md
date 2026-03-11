@@ -80,6 +80,7 @@ Rule: feature branches hold work; repo root `main` only mirrors merged work.
 - Do not commit directly to repo root `main` except for an explicit emergency hotfix requested by the user.
 - Do not use repo root as a task checkout, PR checkout, or scratch branch checkout.
 - Do not run `gh pr checkout <number>` in repo root; inspect or update PR branches from a dedicated task worktree instead.
+- Use repo root `main` for read-only work; enter a task worktree only for branch-specific execution such as edits, commits, pushes, rebases, or PR branch updates.
 - All normal agent work must happen on named feature branches.
 - Canonical agent branch prefix is `YY/`.
 - Emergency hotfix branches should also use the `YY/` prefix, for example `YY/hotfix-<task>`.
@@ -89,6 +90,7 @@ Rule: feature branches hold work; repo root `main` only mirrors merged work.
 - Detached or rescue worktrees must not be treated as the `main` baseline.
 - Task worktrees are temporary by default.
 - A task worktree should exist only while that task is actively being implemented, reviewed, or waiting to merge.
+- Before resuming an existing task worktree, `git fetch origin --prune` and confirm it is still the intended execution surface against current `origin/main`.
 - Once a task is merged, abandoned, or intentionally archived, remove its worktree immediately as part of the same cleanup flow.
 - Maintain a cleanup manifest before deleting or re-homing any worktree; follow the schema in `docs/runbooks/github-flow.md`.
 - Do not remove a parent worktree directory while it still contains active nested child worktrees.
