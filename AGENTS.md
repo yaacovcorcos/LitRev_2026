@@ -102,6 +102,10 @@ Rule: feature branches hold work; repo root `main` only mirrors merged work.
 - One task = one atomic commit unless the task clearly requires a small series of coherent commits.
 - Commit immediately after validation; do not batch completed tasks.
 - Use conventional commit types: `feat`, `fix`, `refactor`, `test`, `chore`, `docs`.
+- Do not infer GitHub auth state from `GH_TOKEN` or other shell env vars; this environment may authenticate `gh` via the GitHub CLI keyring.
+- Before declaring GitHub access unavailable, verify `gh auth status`, `gh auth token`, and `gh api user`.
+- Never run bare interactive `gh pr create` in agent flows; always pass explicit `--base`, `--head`, `--title`, and `--body` flags.
+- If `gh pr create` appears to hang, suspect an interactive prompt or editor wait before blaming the GitHub API.
 - Before merge decisions, pull latest review feedback with `gh pr view <number> --json reviews,comments`.
 - After validation passes, push by default and open/update a PR targeting `main`.
 - For the exact branch-start, push/PR, merge-sync, and worktree-cleanup procedure, follow `docs/runbooks/github-flow.md`.

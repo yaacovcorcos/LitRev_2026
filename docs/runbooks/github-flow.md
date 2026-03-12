@@ -28,6 +28,15 @@ gh pr view <number> --json reviews,comments
 gh pr list --state open --json number,title,headRefName,baseRefName,reviewDecision,url
 ```
 
+## GitHub CLI Guardrails
+
+- Do not use `GH_TOKEN` presence or absence as the GitHub auth check.
+- GitHub CLI auth in this environment may come from the local keyring rather than shell env vars.
+- Before escalating GitHub auth problems, verify `gh auth status`, `gh auth token`, and `gh api user`.
+- PR creation in agent flows must be non-interactive:
+  - `gh pr create --base main --head YY/<task> --title "<title>" --body "<body>"`
+- If `gh pr create` appears to hang, first assume it is waiting for interactive input unless the auth verification commands fail.
+
 ## Branch Protection Baseline
 
 - `main`:
@@ -95,7 +104,7 @@ From the task worktree:
 1. implement and validate
 2. `git commit`
 3. `git push -u origin YY/<task>`
-4. open PR to `main`
+4. open PR to `main` with explicit non-interactive `gh pr create` flags
 
 Notes:
 - Normal task branches use `YY/<task>`.
