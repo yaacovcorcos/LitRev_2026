@@ -76,10 +76,14 @@ jobs:
             }
 
             if (created) {
-              await github.rest.issues.createComment({
-                owner,
-                repo,
-                issue_number: pr.number,
-                body: "@codex review",
-              });
+              try {
+                await github.rest.issues.createComment({
+                  owner,
+                  repo,
+                  issue_number: pr.number,
+                  body: "@codex review",
+                });
+              } catch (error) {
+                core.warning(`Skipping @codex review comment: ${error.message}`);
+              }
             }
