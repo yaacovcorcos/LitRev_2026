@@ -10,8 +10,13 @@ import { useProjectCopilot } from "@/contexts/ProjectCopilotContext";
 import { createNoteAction } from "@/app/actions/notes";
 import { createConversation, addMessage } from "@/app/actions/conversations";
 import { processAIStream } from "@/lib/ai/stream-processor";
-import { buildClientErrorState, isRetryableTerminalReason } from "@/lib/ai/stream-error-ui";
-import { terminalReasonFromThrownError, type StreamTerminalReason } from "@/lib/ai/stream-lifecycle";
+import { buildUnexpectedTerminalErrorState, buildClientErrorState } from "@/lib/ai/stream-error-ui";
+import {
+    isFailureTerminalReason,
+    isSuccessfulTerminalReason,
+    terminalReasonFromThrownError,
+    type StreamTerminalReason,
+} from "@/lib/ai/stream-lifecycle";
 import { AIErrorWithEnvelope } from "@/lib/ai/error-envelope";
 import {
     appendPopupTerminalError,
@@ -276,6 +281,13 @@ export function PopupChat({ projectId }: PopupChatProps) {
         const emitTerminalMetric = (reason: StreamTerminalReason) => {
             if (terminalEventEmitted) return;
             terminalEventEmitted = true;
+            const runStatus = reason === "completed"
+                ? "completed"
+                : reason === "paused_for_input"
+                    ? "paused"
+                    : reason === "cancelled_by_user"
+                        ? "cancelled"
+                        : "failed";
             recordReliabilityMetric({
                 type: "reliability.v1.stream.terminal",
                 surface: "popup",
@@ -284,7 +296,7 @@ export function PopupChat({ projectId }: PopupChatProps) {
                     requestKey,
                     phase: "popup_stream",
                     reason,
-                    runStatus: reason === "completed" ? "completed" : "failed",
+                    runStatus,
                 },
             });
         };
@@ -338,20 +350,15 @@ export function PopupChat({ projectId }: PopupChatProps) {
             if (userStopRequestedRef.current && terminalReason === "failed_network") {
                 terminalReason = "cancelled_by_user";
             }
-            sendSucceeded = terminalReason === "completed";
+            sendSucceeded = isSuccessfulTerminalReason(terminalReason);
             if (terminalReason) emitTerminalMetric(terminalReason);
-            if (terminalReason && terminalReason !== "completed" && terminalReason !== "cancelled_by_user") {
-                const fallbackError = terminalReason === "timed_out"
-                    ? "The response timed out. Please retry."
-                    : "The stream ended unexpectedly. Please retry.";
-                const isRetryable = isRetryableTerminalReason(terminalReason);
-                const errorState = buildClientErrorState(fallbackError);
+            if (terminalReason && isFailureTerminalReason(terminalReason)) {
+                const errorState = buildUnexpectedTerminalErrorState(terminalReason);
                 updateStreamState((prev) => appendPopupTerminalError(prev, {
                     message: errorState.message,
-                    retryable: isRetryable,
+                    retryable: errorState.retryable,
                     errorMeta: {
                         ...errorState.errorMeta,
-                        retryable: isRetryable,
                     },
                     createdAt: new Date().toISOString(),
                 }));

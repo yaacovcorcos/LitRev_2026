@@ -42,13 +42,20 @@ import { resolveReasoningRequest } from "@/lib/ai/reasoning-request";
 import {
     buildUnexpectedTerminalErrorState,
     buildClientErrorState,
+    clearRunScopedRenderedErrors,
     formatStreamErrorForUI,
     hasCanonicalFailureFallbackText,
     hasRenderedErrorMatch,
+    reconcileRunScopedRenderedErrors,
     shouldSuppressClientFallback,
 } from "@/lib/ai/stream-error-ui";
 import { recordChatUnificationMetric } from "@/lib/ai/chat-unification-telemetry";
-import { terminalReasonFromThrownError, type StreamTerminalReason } from "@/lib/ai/stream-lifecycle";
+import {
+    isSuccessfulTerminalReason,
+    terminalReasonFromRunEnd,
+    terminalReasonFromThrownError,
+    type StreamTerminalReason,
+} from "@/lib/ai/stream-lifecycle";
 import { recordReliabilityMetric } from "@/lib/ai/reliability-telemetry";
 import type { RetryModelExpectation } from "@/types/chat-unification";
 import {
@@ -188,18 +195,26 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
     }) => {
         updateState((prev) => {
             const aiMessages = prev.messages.filter((message) => message.sender === "ai");
-            const hasRenderedError = hasRenderedErrorMatch({
+            const reconciled = reconcileRunScopedRenderedErrors({
                 items: aiMessages,
                 nextMessage: params.message,
                 nextMeta: params.errorMeta,
                 getMessage: (message) => message.text,
                 getErrorMeta: (message) => message.streamError,
             });
-            if (hasRenderedError) return prev;
+            const retainedMessageIds = new Set(reconciled.items.map((message) => message.id));
+            if (!reconciled.shouldAppend) {
+                return {
+                    ...prev,
+                    messages: prev.messages.filter((message) => message.sender !== "ai" || retainedMessageIds.has(message.id)),
+                };
+            }
             return {
                 ...prev,
                 messages: [
-                    ...prev.messages.filter((message) => !message.progress),
+                    ...prev.messages.filter((message) =>
+                        !message.progress && (message.sender !== "ai" || retainedMessageIds.has(message.id))
+                    ),
                     {
                         id: `recovery-error-${Date.now()}`,
                         sender: "ai",
@@ -411,11 +426,21 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
             if (recoveredRunStatus && recoveredRunStatus !== "missing") {
                 runStatus = recoveredRunStatus;
             }
-            terminalReason = runStatus === "completed"
-                ? "completed"
-                : runStatus === "cancelled"
-                    ? "cancelled_by_user"
-                    : "failed_server";
+            terminalReason = terminalReasonFromRunEnd({
+                runStatus,
+                stopReason: runStatus === "paused" ? "paused_for_input" : null,
+            });
+            const recoveredRunId = localRunId || currentRunId;
+            if (recoveredRunId) {
+                updateState((prev) => ({
+                    ...prev,
+                    messages: clearRunScopedRenderedErrors({
+                        items: prev.messages,
+                        runId: recoveredRunId,
+                        getErrorMeta: (message) => message.streamError,
+                    }),
+                }));
+            }
         };
 
         // Cancel any in-flight stream
@@ -602,6 +627,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                             ? "RUN_RECOVERY_REQUIRES_USER_ACTION"
                             : "RUN_RECOVERY_FAILED",
                     message: recoveryMessage,
+                    runId: recoveryResult.response?.runId ?? localRunId,
                     activeRunId: recoveryResult.response?.runId ?? localRunId,
                     lastActivityAt: recoveryResult.response?.lastActivityAt ?? undefined,
                     recoveryRecommendation: recommendation,
@@ -753,7 +779,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                     applyRecoveredTerminalState(recoveryResult.runStatus ?? runStatus);
                     emitTerminalMetric(terminalReason, runStatus);
                     return {
-                        success: true,
+                        success: isSuccessfulTerminalReason(terminalReason),
                         aborted: false,
                         runStatus,
                         stopReason,
@@ -777,6 +803,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                             ? "RUN_RECOVERY_REQUIRES_USER_ACTION"
                             : "RUN_RECOVERY_FAILED",
                     message: recoveryMessage,
+                    runId: recoveryResult.activeRunId,
                     activeRunId: recoveryResult.activeRunId,
                     lastActivityAt: recoveryResult.lastActivityAt ?? undefined,
                     recoveryRecommendation: recoveryResult.recommendation,
@@ -825,18 +852,23 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
             setPendingUserInput(null);
             const errorState = buildClientErrorState(error);
             updateState((prev) => {
-                const hasRenderedError = hasRenderedErrorMatch({
+                const errorMeta = {
+                    ...errorState.errorMeta,
+                    runId: localRunId ?? errorState.errorMeta.runId,
+                };
+                const reconciled = reconcileRunScopedRenderedErrors({
                     items: prev.messages.filter((message) => message.sender === "ai"),
                     nextMessage: errorState.message,
-                    nextMeta: errorState.errorMeta,
+                    nextMeta: errorMeta,
                     getMessage: (message) => message.text,
                     getErrorMeta: (message) => message.streamError,
                 });
+                const hasRenderedError = !reconciled.shouldAppend;
                 const shouldSuppressFallback = shouldSuppressClientFallback({
-                    errorMeta: errorState.errorMeta,
+                    errorMeta: errorMeta,
                     hasAssistantContent: hasCanonicalFailureFallbackText({
                         items: prev.messages.filter((message) => message.sender === "ai" && !message.streamError),
-                        streamError: errorState.errorMeta,
+                        streamError: errorMeta,
                         getText: (message) => message.text,
                     }),
                     hasRenderedError,
@@ -844,7 +876,12 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
 
                 if (shouldSuppressFallback) {
                     emittedTerminalError = true;
-                    return prev;
+                    return {
+                        ...prev,
+                        messages: prev.messages.filter((message) =>
+                            message.sender !== "ai" || reconciled.items.some((retained) => retained.id === message.id)
+                        ),
+                    };
                 }
 
                 emittedTerminalError = true;
@@ -852,14 +889,19 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                     id: aiMessageCreated ? `error-${Date.now()}` : aiMessageId,
                     sender: "ai",
                     text: errorState.message,
-                    streamError: errorState.errorMeta,
+                    streamError: errorMeta,
                     createdAt: new Date().toISOString(),
                     context: { page, section },
                 };
 
                 return {
                     ...prev,
-                    messages: [...prev.messages, nextMessage],
+                    messages: [
+                        ...prev.messages.filter((message) =>
+                            message.sender !== "ai" || reconciled.items.some((retained) => retained.id === message.id)
+                        ),
+                        nextMessage,
+                    ],
                 };
             });
             return {
@@ -899,29 +941,40 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
             if (!aborted && terminalReason && shouldFailRunningToolsOnAbnormalEnd(terminalReason) && !emittedTerminalError) {
                 const errorState = buildUnexpectedTerminalErrorState(terminalReason);
                 updateState((prev) => {
-                    const hasRenderedError = hasRenderedErrorMatch({
+                    const nextStreamError: AIErrorEnvelope = {
+                        ...errorState.errorMeta,
+                        runId: localRunId ?? undefined,
+                    };
+                    const reconciled = reconcileRunScopedRenderedErrors({
                         items: prev.messages.filter((message) => message.sender === "ai"),
                         nextMessage: errorState.message,
-                        nextMeta: errorState.errorMeta,
+                        nextMeta: nextStreamError,
                         getMessage: (message) => message.text,
                         getErrorMeta: (message) => message.streamError,
                     });
-                    if (hasRenderedError) {
+                    const retainedMessageIds = new Set(reconciled.items.map((message) => message.id));
+                    if (!reconciled.shouldAppend) {
                         emittedTerminalError = true;
-                        return prev;
+                        return {
+                            ...prev,
+                            messages: prev.messages.filter((message) => message.sender !== "ai" || retainedMessageIds.has(message.id)),
+                        };
                     }
                     emittedTerminalError = true;
                     const nextMessage: CopilotMessage = {
                         id: aiMessageCreated ? `terminal-error-${Date.now()}` : aiMessageId,
                         sender: "ai",
                         text: errorState.message,
-                        streamError: errorState.errorMeta,
+                        streamError: nextStreamError,
                         createdAt: new Date().toISOString(),
                         context: { page, section },
                     };
                     return {
                         ...prev,
-                        messages: [...prev.messages, nextMessage],
+                        messages: [
+                            ...prev.messages.filter((message) => message.sender !== "ai" || retainedMessageIds.has(message.id)),
+                            nextMessage,
+                        ],
                     };
                 });
             }
@@ -1386,6 +1439,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                             ? "RUN_RECOVERY_REQUIRES_USER_ACTION"
                             : "RUN_RECOVERY_FAILED",
                     message: recoveryMessage,
+                    runId: recoveryResult.activeRunId,
                     activeRunId: recoveryResult.activeRunId,
                     lastActivityAt: recoveryResult.lastActivityAt ?? undefined,
                     recoveryRecommendation: recoveryResult.recommendation,

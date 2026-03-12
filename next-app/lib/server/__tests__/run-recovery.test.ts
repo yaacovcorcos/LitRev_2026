@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   agentRunFindFirst: vi.fn(),
   runEventFindMany: vi.fn(),
   runEventFindFirst: vi.fn(),
+  artifactFindMany: vi.fn(),
 }));
 
 vi.mock("@/lib/server/prisma", () => ({
@@ -14,6 +15,9 @@ vi.mock("@/lib/server/prisma", () => ({
     runEvent: {
       findMany: mocks.runEventFindMany,
       findFirst: mocks.runEventFindFirst,
+    },
+    artifact: {
+      findMany: mocks.artifactFindMany,
     },
   },
 }));
@@ -43,7 +47,7 @@ describe("run recovery", () => {
     });
   });
 
-  it("replays only assistant messages and tool receipts after the requested sequence", async () => {
+  it("replays the audited recovery-authoritative event set after the requested sequence", async () => {
     mocks.agentRunFindFirst.mockResolvedValue({
       id: "run-1",
       conversationId: "conv-1",
@@ -66,17 +70,77 @@ describe("run recovery", () => {
         type: "tool_result",
         payload: { callId: "call-1", result: { ok: true } },
         toolName: "search_pubmed",
+        artifactId: null,
         messageRole: null,
       },
       {
         sequence: 5,
+        type: "user_input_required",
+        payload: {
+          callId: "ask-1",
+          question: "Which study should I inspect first?",
+          questionType: "single_choice",
+        },
+        toolName: null,
+        artifactId: null,
+        messageRole: null,
+      },
+      {
+        sequence: 6,
+        type: "checkpoint",
+        payload: { checkpointLabel: "PubMed returned 18 results. Reviewing the strongest matches now." },
+        toolName: null,
+        artifactId: null,
+        messageRole: null,
+      },
+      {
+        sequence: 7,
+        type: "artifact_proposed",
+        payload: { artifactId: "artifact-1" },
+        toolName: null,
+        artifactId: "artifact-1",
+        messageRole: null,
+      },
+      {
+        sequence: 8,
+        type: "error",
+        payload: {
+          error: "The active run is still holding this conversation. Choose how to continue.",
+          errorMeta: {
+            kind: "run_conflict",
+            code: "ACTIVE_RUN_EXISTS",
+            retryable: false,
+            source: "conversation_run_lock",
+            message: "The active run is still holding this conversation. Choose how to continue.",
+            runId: "run-1",
+            activeRunId: "run-1",
+            recoveryRecommendation: "stop_and_retry",
+          },
+        },
+        toolName: null,
+        artifactId: null,
+        messageRole: null,
+      },
+      {
+        sequence: 9,
         type: "message",
         payload: { content: "user echo" },
         toolName: null,
+        artifactId: null,
         messageRole: "user",
       },
     ]);
-    mocks.runEventFindFirst.mockResolvedValue({ sequence: 5 });
+    mocks.runEventFindFirst.mockResolvedValue({ sequence: 9 });
+    mocks.artifactFindMany.mockResolvedValue([
+      {
+        id: "artifact-1",
+        type: "plan",
+        status: "proposed",
+        title: "Scoping complete",
+        payload: { steps: [{ id: "step-1" }] },
+        version: 3,
+      },
+    ]);
 
     const result = await buildRunRecoveryResponse({
       conversationId: "conv-1",
@@ -84,12 +148,32 @@ describe("run recovery", () => {
       afterSequence: 2,
     });
 
-    expect(REPLAY_AUTHORITATIVE_RUN_EVENT_TYPES).toEqual(["message", "tool_call", "tool_result"]);
+    expect(REPLAY_AUTHORITATIVE_RUN_EVENT_TYPES).toEqual([
+      "message",
+      "tool_call",
+      "tool_result",
+      "user_input_required",
+      "artifact_proposed",
+      "artifact_reviewed",
+      "checkpoint",
+      "error",
+    ]);
     expect(mocks.runEventFindMany).toHaveBeenCalledWith({
       where: {
         runId: "run-1",
         sequence: { gt: 2 },
-        type: { in: ["message", "tool_call", "tool_result"] },
+        type: {
+          in: [
+            "message",
+            "tool_call",
+            "tool_result",
+            "user_input_required",
+            "artifact_proposed",
+            "artifact_reviewed",
+            "checkpoint",
+            "error",
+          ],
+        },
       },
       orderBy: { sequence: "asc" },
       select: {
@@ -97,7 +181,19 @@ describe("run recovery", () => {
         type: true,
         payload: true,
         toolName: true,
+        artifactId: true,
         messageRole: true,
+      },
+    });
+    expect(mocks.artifactFindMany).toHaveBeenCalledWith({
+      where: { id: { in: ["artifact-1"] } },
+      select: {
+        id: true,
+        type: true,
+        status: true,
+        title: true,
+        payload: true,
+        version: true,
       },
     });
     expect(result.replayableEvents).toEqual([
@@ -121,6 +217,62 @@ describe("run recovery", () => {
           conversationId: "conv-1",
         },
       },
+      {
+        sequence: 5,
+        chunk: {
+          type: "user_input_required",
+          userInputRequest: {
+            callId: "ask-1",
+            question: "Which study should I inspect first?",
+            questionType: "single_choice",
+          },
+          replay: true,
+          conversationId: "conv-1",
+        },
+      },
+      {
+        sequence: 6,
+        chunk: {
+          type: "checkpoint",
+          checkpointLabel: "PubMed returned 18 results. Reviewing the strongest matches now.",
+          replay: true,
+          conversationId: "conv-1",
+        },
+      },
+      {
+        sequence: 7,
+        chunk: {
+          type: "artifact",
+          artifactId: "artifact-1",
+          artifactType: "plan",
+          artifactStatus: "proposed",
+          artifactTitle: "Scoping complete",
+          artifactPayload: { steps: [{ id: "step-1" }] },
+          artifactVersion: 3,
+          replay: true,
+          conversationId: "conv-1",
+        },
+      },
+      {
+        sequence: 8,
+        chunk: {
+          type: "error",
+          error: "The active run is still holding this conversation. Choose how to continue.",
+          errorMeta: {
+            kind: "run_conflict",
+            code: "ACTIVE_RUN_EXISTS",
+            retryable: false,
+            source: "conversation_run_lock",
+            message: "The active run is still holding this conversation. Choose how to continue.",
+            runId: "run-1",
+            activeRunId: "run-1",
+            recoveryRecommendation: "stop_and_retry",
+          },
+          errorCode: "ACTIVE_RUN_EXISTS",
+          replay: true,
+          conversationId: "conv-1",
+        },
+      },
     ]);
     expect(result.terminalEvent).toMatchObject({
       chunk: {
@@ -134,6 +286,7 @@ describe("run recovery", () => {
   it("recommends reconnect for fresh running runs and stop-and-retry for stale ones", async () => {
     mocks.runEventFindMany.mockResolvedValue([]);
     mocks.runEventFindFirst.mockResolvedValue(null);
+    mocks.artifactFindMany.mockResolvedValue([]);
 
     mocks.agentRunFindFirst.mockResolvedValueOnce({
       id: "run-live",

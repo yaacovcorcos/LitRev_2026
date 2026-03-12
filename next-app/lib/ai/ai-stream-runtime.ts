@@ -5,6 +5,7 @@ import { dispatchProjectDataChanged } from "@/lib/project-data-events";
 import type { StreamTerminalReason } from "@/lib/ai/stream-lifecycle";
 import {
   buildClientErrorState,
+  reconcileRunScopedRenderedErrors,
   isDeterministicCapabilityFailure,
   matchesCanonicalFailureFallback,
 } from "@/lib/ai/stream-error-ui";
@@ -48,6 +49,10 @@ export type AiStreamRuntime = {
 };
 
 export const ABNORMAL_END_TOOL_FAILURE_SUMMARY = "Run ended before tool completion.";
+
+function buildRuntimeItemId(prefix: string, seed: string | number): string {
+  return `${prefix}-${seed}`;
+}
 
 export function shouldFailRunningToolsOnAbnormalEnd(
   terminalReason: StreamTerminalReason | null,
@@ -109,9 +114,10 @@ export function createAiStreamRuntime(deps: AiStreamRuntimeDeps): AiStreamRuntim
   };
 
   const upsertProgress = (intent: Extract<SharedStreamIntent, { type: "progress_upsert" }>) => {
+    const createdAt = now();
     updateCurrentTimeline((items) => {
       if (!progressItemId) {
-        progressItemId = `progress-${Date.now()}`;
+        progressItemId = buildRuntimeItemId("progress", `${createdAt}-${items.length}`);
         return [
           ...items,
           {
@@ -198,32 +204,57 @@ export function createAiStreamRuntime(deps: AiStreamRuntimeDeps): AiStreamRuntim
   };
 
   const appendArtifact = (intent: Extract<SharedStreamIntent, { type: "artifact_emit" }>) => {
-    updateCurrentTimeline((items) => [
-      ...items,
-      {
-        type: "artifact",
-        id: `artifact-${intent.artifactId ?? Date.now()}`,
-        artifactId: intent.artifactId ?? "",
-        artifactType: (intent.artifactType ?? "plan") as ArtifactType,
-        status: (intent.artifactStatus ?? "proposed") as ArtifactStatus,
-        title: intent.artifactTitle ?? "Artifact",
-        payload: intent.artifactPayload ?? {},
-        version: intent.artifactVersion ?? 1,
-        createdAt: now(),
-      },
-    ]);
+    updateCurrentTimeline((items) => {
+      if (intent.artifactId) {
+        const idx = items.findIndex((item) => item.type === "artifact" && item.artifactId === intent.artifactId);
+        if (idx >= 0) {
+          const next = [...items];
+          const existing = next[idx];
+          if (!existing || existing.type !== "artifact") return items;
+          next[idx] = {
+            ...existing,
+            artifactType: (intent.artifactType ?? existing.artifactType) as ArtifactType,
+            status: (intent.artifactStatus ?? existing.status) as ArtifactStatus,
+            title: intent.artifactTitle ?? existing.title,
+            payload: intent.artifactPayload ?? existing.payload,
+            version: intent.artifactVersion ?? existing.version,
+          };
+          return next;
+        }
+      }
+
+      return [
+        ...items,
+        {
+          type: "artifact",
+          id: buildRuntimeItemId("artifact", intent.artifactId ?? `${now()}-${items.length}`),
+          artifactId: intent.artifactId ?? "",
+          artifactType: (intent.artifactType ?? "plan") as ArtifactType,
+          status: (intent.artifactStatus ?? "proposed") as ArtifactStatus,
+          title: intent.artifactTitle ?? "Artifact",
+          payload: intent.artifactPayload ?? {},
+          version: intent.artifactVersion ?? 1,
+          createdAt: now(),
+        },
+      ];
+    });
   };
 
   const appendCheckpoint = (intent: Extract<SharedStreamIntent, { type: "checkpoint_append" }>) => {
-    updateCurrentTimeline((items) => [
-      ...items,
-      {
-        type: "checkpoint",
-        id: `checkpoint-${Date.now()}`,
-        label: intent.label,
-        createdAt: now(),
-      },
-    ]);
+    updateCurrentTimeline((items) => {
+      if (items.some((item) => item.type === "checkpoint" && item.label === intent.label)) {
+        return items;
+      }
+      return [
+        ...items,
+        {
+          type: "checkpoint",
+          id: buildRuntimeItemId("checkpoint", `${now()}-${items.length}`),
+          label: intent.label,
+          createdAt: now(),
+        },
+      ];
+    });
   };
 
   const appendStreamError = (intent: Extract<SharedStreamIntent, { type: "stream_error" }>) => {
@@ -239,11 +270,26 @@ export function createAiStreamRuntime(deps: AiStreamRuntimeDeps): AiStreamRuntim
         ))
         : items;
 
+      const reconciled = reconcileRunScopedRenderedErrors({
+        items: normalizedItems.filter((item) => item.type === "error"),
+        nextMessage: errorState.message,
+        nextMeta: errorState.errorMeta,
+        getMessage: (item) => item.type === "error" ? item.message : null,
+        getErrorMeta: (item) => item.type === "error" ? item.errorMeta : null,
+      });
+
+      if (!reconciled.shouldAppend) {
+        const errorIds = new Set(reconciled.items.map((item) => item.id));
+        return normalizedItems.filter((item) => item.type !== "error" || errorIds.has(item.id));
+      }
+
+      const retainedErrorIds = new Set(reconciled.items.map((item) => item.id));
+
       return [
-        ...normalizedItems,
+        ...normalizedItems.filter((item) => item.type !== "error" || retainedErrorIds.has(item.id)),
         {
           type: "error",
-          id: `error-${Date.now()}`,
+          id: buildRuntimeItemId("error", `${now()}-${normalizedItems.length}`),
           message: errorState.message,
           retryable: errorState.retryable,
           errorMeta: errorState.errorMeta,

@@ -50,8 +50,18 @@ vi.mock("../../ui/ConversationPicker", () => ({
 describe("ConversationMainView parity", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    const sendMessage = vi.fn();
+    const reconnectRun = vi.fn();
     mockUseProjectCopilot.mockReturnValue({
+      reconnectRun,
       messages: [
+        {
+          id: "user-1",
+          sender: "user",
+          text: "Recover this search",
+          createdAt: "2026-03-09T23:59:59.000Z",
+          context: { page: "overview" },
+        },
         {
           id: "progress-1",
           sender: "ai",
@@ -88,6 +98,8 @@ describe("ConversationMainView parity", () => {
             retryable: false,
             source: "tool_validator",
             message: "Protocol update failed validation.",
+            runId: "run-1",
+            recoveryRecommendation: "reconnect",
           },
         },
       ],
@@ -100,7 +112,7 @@ describe("ConversationMainView parity", () => {
       branchConversation: vi.fn(),
       deleteConversation: vi.fn(),
       renameConversation: vi.fn(),
-      sendMessage: vi.fn(),
+      sendMessage,
       handleReviewArtifact: vi.fn(),
       approveArtifactsBatch: vi.fn(),
       executePlan: vi.fn(),
@@ -119,8 +131,46 @@ describe("ConversationMainView parity", () => {
     expect(screen.getByText("Waiting for your answer")).toBeTruthy();
     expect(mockTimelineRenderer).toHaveBeenCalledTimes(1);
     const props = mockTimelineRenderer.mock.calls[0]?.[0] as { messages: unknown[]; suppressedProgressId?: string | null };
-    expect(props.messages).toHaveLength(4);
+    expect(props.messages).toHaveLength(5);
     expect(props.messages).toEqual(mockUseProjectCopilot.mock.results[0]?.value.messages);
     expect(props.suppressedProgressId).toBe("progress-1");
+  });
+
+  it("targets reconnect and stop-and-retry actions to the clicked run", () => {
+    render(<ConversationMainView projectId="project-1" />);
+
+    const props = mockTimelineRenderer.mock.calls[0]?.[0] as {
+      onReconnectRun?: (item: { type: "error"; errorMeta?: { runId?: string | null; activeRunId?: string | null } }) => void;
+      onStopAndRetryRun?: (item: { type: "error"; errorMeta?: { runId?: string | null; activeRunId?: string | null } }) => void;
+    };
+
+    props.onReconnectRun?.({
+      type: "error",
+      errorMeta: { runId: "run-clicked", activeRunId: "run-newer" },
+    });
+    props.onStopAndRetryRun?.({
+      type: "error",
+      errorMeta: { runId: "run-clicked", activeRunId: "run-newer" },
+    });
+
+    const contextValue = mockUseProjectCopilot.mock.results[0]?.value as {
+      reconnectRun: ReturnType<typeof vi.fn>;
+      sendMessage: ReturnType<typeof vi.fn>;
+    };
+
+    expect(contextValue.reconnectRun).toHaveBeenCalledWith("run-clicked");
+    expect(contextValue.sendMessage).toHaveBeenCalledWith(
+      "Recover this search",
+      "overview",
+      undefined,
+      "gpt-5.2",
+      undefined,
+      undefined,
+      expect.objectContaining({
+        source: "retry_action",
+      }),
+      undefined,
+      { replaceRunId: "run-clicked" },
+    );
   });
 });

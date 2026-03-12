@@ -37,10 +37,18 @@ vi.mock("next/dynamic", () => ({
       isHistoryLoading?: boolean;
       projects?: Array<{ id: string; name: string }>;
       onSelectProject?: (projectId: string | null) => void;
-      items?: Array<{ type: string; id: string; content?: string; message?: string; errorMeta?: { recoveryRecommendation?: string; activeRunId?: string } }>;
+      items?: Array<{
+        type: string;
+        id: string;
+        content?: string;
+        message?: string;
+        label?: string;
+        question?: string;
+        errorMeta?: { recoveryRecommendation?: string; activeRunId?: string; runId?: string };
+      }>;
       suppressedProgressId?: string | null;
-      onReconnectRun?: (item: { type: string; id: string; errorMeta?: { activeRunId?: string } }) => void;
-      onStopAndRetryRun?: (item: { type: string; id: string; errorMeta?: { activeRunId?: string } }) => void;
+      onReconnectRun?: (item: { type: string; id: string; errorMeta?: { activeRunId?: string; runId?: string } }) => void;
+      onStopAndRetryRun?: (item: { type: string; id: string; errorMeta?: { activeRunId?: string; runId?: string } }) => void;
       onRetryLastMessage?: () => void;
     }) {
       if (props.projects && props.onSelectProject) {
@@ -81,6 +89,12 @@ vi.mock("next/dynamic", () => ({
               }
               if (item.type === "progress" && item.id !== props.suppressedProgressId) {
                 return <div key={item.id}>{item.message}</div>;
+              }
+              if (item.type === "checkpoint") {
+                return <div key={item.id}>{item.label}</div>;
+              }
+              if (item.type === "user_input_request") {
+                return <div key={item.id}>{item.question}</div>;
               }
               if (item.type === "error") {
                 return (
@@ -408,6 +422,71 @@ describe("/ai page deferred hydration", () => {
       expect(screen.getByText("Recovered answer.")).toBeTruthy();
     });
 
+    expect(screen.queryByText("The stream ended unexpectedly. Retry to continue.")).toBeNull();
+    expect(screen.queryByText("Connection lost and recovery failed. You can retry safely now.")).toBeNull();
+  });
+
+  it("keeps recovered paused runs in a question state without a red failure", async () => {
+    mockProcessAIStream.mockImplementation(async ({ onChunk }: {
+      onChunk: (chunk: unknown) => void | Promise<void>;
+    }) => {
+      await onChunk({ type: "run_start", runId: "run-2", conversationId: "conv-new" });
+      return {
+        runStatus: null,
+        stopReason: null,
+        terminalReason: "failed_network",
+        errorMessage: null,
+        errorMeta: null,
+        actualModel: null,
+        actualModelSource: "unknown",
+      };
+    });
+    mockPollRunRecovery.mockImplementation(async ({ onReplay, onTerminal }: {
+      onReplay: (chunk: unknown) => Promise<void>;
+      onTerminal: (chunk: unknown) => Promise<void>;
+    }) => {
+      await onReplay({
+        type: "checkpoint",
+        checkpointLabel: "PubMed returned 18 results. Reviewing the strongest matches now.",
+      });
+      await onReplay({
+        type: "user_input_required",
+        userInputRequest: {
+          callId: "ask-1",
+          question: "Which study should I inspect first?",
+          questionType: "single_choice",
+        },
+      });
+      await onTerminal({ type: "run_end", runStatus: "paused", stopReason: "paused_for_input" });
+      return {
+        outcome: "recovered",
+        response: {
+          conversationId: "conv-new",
+          runId: "run-2",
+          runStatus: "paused",
+          isActive: false,
+          lastActivityAt: "2026-03-11T11:25:00.000Z",
+          lastSequence: 3,
+          replayableEvents: [],
+          terminalEvent: {
+            chunk: { type: "run_end", runStatus: "paused", stopReason: "paused_for_input" },
+          },
+          recoveryRecommendation: "terminal",
+          abnormalEndClassification: null,
+        },
+        lastAppliedSequence: 3,
+      };
+    });
+
+    render(<AIView />);
+
+    fireEvent.click(screen.getByRole("button", { name: "send message" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Which study should I inspect first?")).toBeTruthy();
+    });
+
+    expect(screen.getByText("PubMed returned 18 results. Reviewing the strongest matches now.")).toBeTruthy();
     expect(screen.queryByText("The stream ended unexpectedly. Retry to continue.")).toBeNull();
     expect(screen.queryByText("Connection lost and recovery failed. You can retry safely now.")).toBeNull();
   });

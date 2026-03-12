@@ -176,13 +176,13 @@ describe("PopupChat failure handling", () => {
             });
             return {
                 runStatus: "paused",
-                stopReason: null,
+                stopReason: "paused_for_input",
                 errorMessage: null,
                 errorMeta: null,
                 conversationId: "conv-1",
                 actualModel: null,
                 actualModelSource: "unknown",
-                terminalReason: "completed",
+                terminalReason: "paused_for_input",
             };
         });
 
@@ -200,6 +200,7 @@ describe("PopupChat failure handling", () => {
         expect(screen.getByText("PubMed returned 18 results. Reviewing the strongest matches now.")).toBeTruthy();
         expect(screen.getByText("Which of these results should I inspect first?")).toBeTruthy();
         expect(screen.getByRole("button", { name: "Continue in Copilot to answer" })).toBeTruthy();
+        expect(screen.queryByText("The stream ended unexpectedly. Retry to continue.")).toBeNull();
     });
 
     it("renders one retryable terminal error message when the stream ends without assistant content", async () => {
@@ -222,10 +223,10 @@ describe("PopupChat failure handling", () => {
         fireEvent.click(screen.getByRole("button", { name: "Send" }));
 
         await waitFor(() => {
-            expect(screen.getByText("The response timed out. Please retry.")).toBeTruthy();
+            expect(screen.getByText("The response timed out. Retry to continue.")).toBeTruthy();
         });
 
         expect(screen.getByText("Retry recommended")).toBeTruthy();
-        expect(screen.getAllByText("The response timed out. Please retry.")).toHaveLength(1);
+        expect(screen.getAllByText("The response timed out. Retry to continue.")).toHaveLength(1);
     });
 });

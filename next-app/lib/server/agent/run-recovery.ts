@@ -4,11 +4,13 @@ import { prisma } from "@/lib/server/prisma";
 import { DEFAULT_CONVERSATION_RUN_STALE_MS } from "@/lib/server/chat-runtime/conversation-run-lock";
 import type {
     AIStreamChunk,
+    AIErrorEnvelope,
     RunRecoveryRecommendation,
     RunRecoveryReplayableChunk,
     RunRecoveryResponse,
     ToolCall,
     ToolResult,
+    UserInputRequest,
 } from "@/types/ai";
 import type { RunEventType, RunStatus } from "@/types/agent";
 
@@ -16,6 +18,11 @@ export const REPLAY_AUTHORITATIVE_RUN_EVENT_TYPES = [
     "message",
     "tool_call",
     "tool_result",
+    "user_input_required",
+    "artifact_proposed",
+    "artifact_reviewed",
+    "checkpoint",
+    "error",
 ] as const satisfies readonly RunEventType[];
 
 type ReplayAuthoritativeRunEventType = (typeof REPLAY_AUTHORITATIVE_RUN_EVENT_TYPES)[number];
@@ -35,7 +42,17 @@ type RecoveryRunEventRecord = {
     type: ReplayAuthoritativeRunEventType;
     payload: unknown;
     toolName: string | null;
+    artifactId: string | null;
     messageRole: string | null;
+};
+
+type RecoveryArtifactRecord = {
+    id: string;
+    type: string;
+    status: string;
+    title: string;
+    payload: unknown;
+    version: number;
 };
 
 function asObject(value: unknown): Record<string, unknown> | null {
@@ -57,9 +74,14 @@ function buildSyntheticTerminalReconciliationChunk(run: RecoveryRunRecord): AISt
     };
 }
 
+function asString(value: unknown): string | null {
+    return typeof value === "string" && value.length > 0 ? value : null;
+}
+
 function toReplayableChunk(
     run: RecoveryRunRecord,
     event: RecoveryRunEventRecord,
+    artifactsById: Map<string, RecoveryArtifactRecord>,
 ): RunRecoveryReplayableChunk | null {
     switch (event.type) {
         case "message": {
@@ -100,6 +122,73 @@ function toReplayableChunk(
                     type: "tool_result",
                     toolResult: payload,
                     toolName: event.toolName ?? undefined,
+                    replay: true,
+                    conversationId: run.conversationId ?? undefined,
+                },
+            };
+        }
+        case "user_input_required": {
+            const payload = asObject(event.payload) as UserInputRequest | null;
+            if (!payload?.callId) return null;
+            return {
+                sequence: event.sequence,
+                chunk: {
+                    type: "user_input_required",
+                    userInputRequest: payload,
+                    replay: true,
+                    conversationId: run.conversationId ?? undefined,
+                },
+            };
+        }
+        case "artifact_proposed":
+        case "artifact_reviewed": {
+            const artifactId = event.artifactId ?? asString(asObject(event.payload)?.artifactId);
+            if (!artifactId) return null;
+            const artifact = artifactsById.get(artifactId);
+            if (!artifact) return null;
+            return {
+                sequence: event.sequence,
+                chunk: {
+                    type: "artifact",
+                    artifactId: artifact.id,
+                    artifactType: artifact.type,
+                    artifactStatus: artifact.status,
+                    artifactTitle: artifact.title,
+                    artifactPayload: artifact.payload,
+                    artifactVersion: artifact.version,
+                    replay: true,
+                    conversationId: run.conversationId ?? undefined,
+                },
+            };
+        }
+        case "checkpoint": {
+            const payload = asObject(event.payload);
+            const checkpointLabel = asString(payload?.checkpointLabel) ?? asString(payload?.label);
+            if (!checkpointLabel) return null;
+            return {
+                sequence: event.sequence,
+                chunk: {
+                    type: "checkpoint",
+                    checkpointLabel,
+                    replay: true,
+                    conversationId: run.conversationId ?? undefined,
+                },
+            };
+        }
+        case "error": {
+            const payload = asObject(event.payload);
+            const errorMessage = asString(payload?.error);
+            const errorMeta = asObject(payload?.errorMeta) as AIErrorEnvelope | null;
+            if (!errorMessage && !errorMeta?.message) return null;
+            return {
+                sequence: event.sequence,
+                chunk: {
+                    type: "error",
+                    error: errorMessage ?? errorMeta?.message ?? "Unknown error",
+                    errorMeta: errorMeta ?? undefined,
+                    errorStatus: errorMeta?.status,
+                    errorCode: errorMeta?.code,
+                    errorHeaders: errorMeta?.headers,
                     replay: true,
                     conversationId: run.conversationId ?? undefined,
                 },
@@ -179,6 +268,7 @@ export async function buildRunRecoveryResponse(params: {
                 type: true,
                 payload: true,
                 toolName: true,
+                artifactId: true,
                 messageRole: true,
             },
         }) as Promise<RecoveryRunEventRecord[]>,
@@ -189,8 +279,24 @@ export async function buildRunRecoveryResponse(params: {
         }),
     ]);
 
+    const artifactIds = [...new Set(events.map((event) => event.artifactId).filter((value): value is string => Boolean(value)))];
+    const artifacts = artifactIds.length === 0
+        ? []
+        : await prisma.artifact.findMany({
+            where: { id: { in: artifactIds } },
+            select: {
+                id: true,
+                type: true,
+                status: true,
+                title: true,
+                payload: true,
+                version: true,
+            },
+        }) as RecoveryArtifactRecord[];
+    const artifactsById = new Map(artifacts.map((artifact) => [artifact.id, artifact]));
+
     const replayableEvents = events
-        .map((event) => toReplayableChunk(run, event))
+        .map((event) => toReplayableChunk(run, event, artifactsById))
         .filter((event): event is RunRecoveryReplayableChunk => event !== null);
     const recoveryRecommendation = deriveRecoveryRecommendation(run, now, staleMs);
 
