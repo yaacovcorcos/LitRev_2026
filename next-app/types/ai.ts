@@ -98,6 +98,7 @@ export type AIErrorEnvelope = {
     message: string;
     status?: number;
     headers?: Record<string, string>;
+    runId?: string;
     activeRunId?: string;
     replaceRunId?: string;
     lastActivityAt?: string;

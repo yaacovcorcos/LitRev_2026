@@ -11,6 +11,10 @@ import type { AIStreamChunk, ConversationContextAttachment, ConversationMessageA
 import type { ArtifactType, ArtifactStatus } from "@/types/artifacts";
 import { buildClientErrorState, extractLegacyRecoveryError } from "@/lib/ai/stream-error-ui";
 
+function buildReducerItemId(prefix: string, seed: string | number): string {
+    return `${prefix}-${seed}`;
+}
+
 function isContextAttachment(
     attachment: ConversationMessageAttachment,
 ): attachment is ConversationContextAttachment {
@@ -252,7 +256,7 @@ export function reduceStreamChunk(
                 ...timeline,
                 {
                     type: "artifact",
-                    id: `artifact-${chunk.artifactId ?? Date.now()}`,
+                    id: buildReducerItemId("artifact", chunk.artifactId ?? `${Date.now()}-${timeline.length}`),
                     artifactId: chunk.artifactId ?? "",
                     artifactType: (chunk.artifactType ?? "plan") as ArtifactType,
                     status: (chunk.artifactStatus ?? "proposed") as ArtifactStatus,
@@ -284,7 +288,7 @@ export function reduceStreamChunk(
                 ...timeline,
                 {
                     type: "progress",
-                    id: `progress-${Date.now()}`,
+                    id: buildReducerItemId("progress", `${Date.now()}-${timeline.length}`),
                     message: chunk.progressMessage ?? "Working...",
                     current: chunk.progressCurrent,
                     total: chunk.progressTotal,
@@ -297,7 +301,7 @@ export function reduceStreamChunk(
                 ...timeline,
                 {
                     type: "checkpoint",
-                    id: `checkpoint-${Date.now()}`,
+                    id: buildReducerItemId("checkpoint", `${Date.now()}-${timeline.length}`),
                     label: chunk.checkpointLabel ?? "Checkpoint",
                     createdAt: new Date().toISOString(),
                 },
@@ -310,7 +314,7 @@ export function reduceStreamChunk(
                 ...timeline,
                 {
                     type: "error",
-                    id: `error-${Date.now()}`,
+                    id: buildReducerItemId("error", `${Date.now()}-${timeline.length}`),
                     message: errorState.message,
                     retryable: errorState.retryable,
                     errorMeta: errorState.errorMeta,
@@ -321,7 +325,7 @@ export function reduceStreamChunk(
 
         case "tool_call": {
             if (!chunk.toolCall?.name) return timeline;
-            const callId = chunk.toolCall.id || `tool-${Date.now()}`;
+            const callId = chunk.toolCall.id || buildReducerItemId("tool", `${Date.now()}-${timeline.length}`);
             const createdAt = new Date().toISOString();
             return [
                 ...timeline,

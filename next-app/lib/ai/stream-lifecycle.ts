@@ -2,6 +2,7 @@ import type { AIStreamChunk } from "@/types/ai";
 
 export type StreamTerminalReason =
   | "completed"
+  | "paused_for_input"
   | "cancelled_by_user"
   | "failed_network"
   | "failed_server"
@@ -48,8 +49,17 @@ export function terminalReasonFromRunEnd(params: {
   const stopReason = params.stopReason?.toLowerCase() ?? null;
 
   if (runStatus === "completed") return "completed";
+  if (runStatus === "paused" || stopReason === "paused_for_input") return "paused_for_input";
   if (stopReason === "cancelled" || stopReason === "aborted") return "cancelled_by_user";
   return "failed_server";
+}
+
+export function isSuccessfulTerminalReason(reason: StreamTerminalReason | null): boolean {
+  return reason === "completed" || reason === "paused_for_input";
+}
+
+export function isFailureTerminalReason(reason: StreamTerminalReason | null): boolean {
+  return reason === "failed_network" || reason === "failed_server" || reason === "timed_out";
 }
 
 export function terminalReasonFromErrorChunk(chunk: AIStreamChunk): StreamTerminalReason {

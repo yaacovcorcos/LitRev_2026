@@ -39,6 +39,7 @@ export type RunEventType =
     | "message"
     | "tool_call"
     | "tool_result"
+    | "user_input_required"
     | "artifact_proposed"
     | "artifact_reviewed"
     | "memory_retrieval"

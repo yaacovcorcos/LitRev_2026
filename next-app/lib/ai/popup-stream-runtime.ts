@@ -1,6 +1,6 @@
 import type { TimelineAssistantMessage, TimelineError, TimelineItem, TimelineProgress, TimelineUserInputRequest, TimelineUserMessage } from "@/types/timeline";
 import type { AIErrorEnvelope, AIStreamChunk, CopilotPage } from "@/types/ai";
-import { buildClientErrorState } from "@/lib/ai/stream-error-ui";
+import { buildClientErrorState, reconcileRunScopedRenderedErrors } from "@/lib/ai/stream-error-ui";
 import {
   createInitialSharedStreamState,
   reduceSharedStreamChunk,
@@ -68,6 +68,21 @@ export function appendPopupTerminalError(
     createdAt: string;
   },
 ): PopupStreamRuntimeState {
+  const reconciled = reconcileRunScopedRenderedErrors({
+    items: state.items.filter((item) => item.type === "error"),
+    nextMessage: params.message,
+    nextMeta: params.errorMeta,
+    getMessage: (item) => item.type === "error" ? item.message : null,
+    getErrorMeta: (item) => item.type === "error" ? item.errorMeta : null,
+  });
+  if (!reconciled.shouldAppend) {
+    const retainedErrorIds = new Set(reconciled.items.map((item) => item.id));
+    return {
+      ...state,
+      items: state.items.filter((item) => item.type !== "error" || retainedErrorIds.has(item.id)),
+    };
+  }
+
   const item: TimelineError = {
     type: "error",
     id: `popup-error-${params.createdAt}-${state.items.length}`,
@@ -76,9 +91,10 @@ export function appendPopupTerminalError(
     errorMeta: params.errorMeta,
     createdAt: params.createdAt,
   };
+  const retainedErrorIds = new Set(reconciled.items.map((item) => item.id));
   return {
     ...state,
-    items: [...state.items, item],
+    items: [...state.items.filter((entry) => entry.type !== "error" || retainedErrorIds.has(entry.id)), item],
   };
 }
 
@@ -146,6 +162,9 @@ function appendCheckpoint(
   createdAt: string,
   intent: Extract<SharedStreamIntent, { type: "checkpoint_append" }>,
 ): PopupStreamRuntimeState {
+  if (state.items.some((item) => item.type === "checkpoint" && item.label === intent.label)) {
+    return state;
+  }
   return {
     ...state,
     items: [
@@ -166,10 +185,25 @@ function appendStreamError(
   intent: Extract<SharedStreamIntent, { type: "stream_error" }>,
 ): PopupStreamRuntimeState {
   const errorState = buildClientErrorState(intent.errorMeta ?? intent.message);
+  const reconciled = reconcileRunScopedRenderedErrors({
+    items: state.items.filter((item) => item.type === "error"),
+    nextMessage: errorState.message,
+    nextMeta: errorState.errorMeta,
+    getMessage: (item) => item.type === "error" ? item.message : null,
+    getErrorMeta: (item) => item.type === "error" ? item.errorMeta : null,
+  });
+  if (!reconciled.shouldAppend) {
+    const retainedErrorIds = new Set(reconciled.items.map((item) => item.id));
+    return {
+      ...state,
+      items: state.items.filter((item) => item.type !== "error" || retainedErrorIds.has(item.id)),
+    };
+  }
+  const retainedErrorIds = new Set(reconciled.items.map((item) => item.id));
   return {
     ...state,
     items: [
-      ...state.items,
+      ...state.items.filter((item) => item.type !== "error" || retainedErrorIds.has(item.id)),
       {
         type: "error",
         id: `popup-error-${createdAt}-${state.items.length}`,

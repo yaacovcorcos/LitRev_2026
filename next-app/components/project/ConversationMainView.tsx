@@ -4,6 +4,7 @@ import { useCallback, useMemo, useState } from "react";
 import { useProjectCopilot } from "@/contexts/ProjectCopilotContext";
 import type { CopilotPage } from "@/types/ai";
 import type { AgentMode } from "@/types/agent";
+import type { TimelineItem } from "@/types/timeline";
 import { useProjectState } from "@/hooks/useProjectState";
 import { getSuggestions } from "@/lib/agent/suggestions";
 import { createNoteAction } from "@/app/actions/notes";
@@ -58,6 +59,7 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
         handleReviewArtifact,
         approveArtifactsBatch,
         executePlan,
+        reconnectRun,
         answerUserInput,
         selectedModel,
         hasMore,
@@ -127,7 +129,7 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
         }
     }, [currentConversationId, isBranching, isLoading, branchConversation]);
 
-    const retryLastMessage = useCallback(() => {
+    const retryLastMessage = useCallback((replaceRunId?: string | null) => {
         if (isLoading) return;
         const lastUserMessage = [...messages]
             .reverse()
@@ -145,6 +147,8 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
                 expectedModel: selectedModel ?? null,
                 source: "retry_action",
             },
+            undefined,
+            replaceRunId ? { replaceRunId } : undefined,
         );
     }, [isLoading, messages, sendMessage, selectedModel]);
 
@@ -168,6 +172,16 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
         if (selectedIndexes.length === 0) return;
         executePlan(planMessage.artifact.id, selectedIndexes);
     }, [executePlan, isLoading, messages]);
+
+    const reconnectActiveRun = useCallback((item: Extract<TimelineItem, { type: "error" }>) => {
+        if (isLoading) return;
+        void reconnectRun(item.errorMeta?.runId ?? item.errorMeta?.activeRunId ?? null);
+    }, [isLoading, reconnectRun]);
+
+    const stopAndRetryRun = useCallback((item: Extract<TimelineItem, { type: "error" }>) => {
+        if (isLoading) return;
+        retryLastMessage(item.errorMeta?.runId ?? item.errorMeta?.activeRunId ?? null);
+    }, [isLoading, retryLastMessage]);
 
     const hasMessages = messages.length > 0;
     const timelineItems = useMemo(() => messagesToTimeline(messages), [messages]);
@@ -259,6 +273,8 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
                         onAnswerUserInput={answerUserInput}
                         onSaveToNotes={handleSaveToNotes}
                         onRetryLastMessage={retryLastMessage}
+                        onReconnectRun={reconnectActiveRun}
+                        onStopAndRetryRun={stopAndRetryRun}
                         onResumeRun={resumeFailedPlan}
                         onBranchFromMessage={handleBranchFromMessage}
                         hasMore={hasMore}

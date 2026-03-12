@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
     buildUnexpectedTerminalErrorState,
     buildClientErrorState,
+    clearRunScopedRenderedErrors,
     extractLegacyRecoveryError,
     formatStreamErrorForUI,
     hasCanonicalFailureFallbackText,
@@ -10,6 +11,7 @@ import {
     isRetryableTerminalReason,
     isSameRenderedError,
     matchesCanonicalFailureFallback,
+    reconcileRunScopedRenderedErrors,
     shouldSuppressClientFallback,
 } from "@/lib/ai/stream-error-ui";
 
@@ -284,5 +286,117 @@ describe("formatStreamErrorForUI", () => {
             source: "request_policy",
             message: "Unsupported budget",
         })).toBe(false);
+    });
+
+    it("replaces a weaker same-run timeout with an active-run conflict", () => {
+        const reconciled = reconcileRunScopedRenderedErrors({
+            items: [{
+                id: "error-timeout",
+                message: "Connection lost and recovery timed out. Choose how to continue.",
+                errorMeta: {
+                    kind: "runtime",
+                    code: "RUN_RECOVERY_TIMEOUT",
+                    retryable: true,
+                    source: "runtime",
+                    message: "Connection lost and recovery timed out. Choose how to continue.",
+                    runId: "run-1",
+                    recoveryRecommendation: "retry" as const,
+                },
+            }],
+            nextMessage: "The active run is still holding this conversation. Choose how to continue.",
+            nextMeta: {
+                kind: "run_conflict",
+                code: "ACTIVE_RUN_EXISTS",
+                retryable: false,
+                source: "conversation_run_lock",
+                message: "The active run is still holding this conversation. Choose how to continue.",
+                runId: "run-1",
+                activeRunId: "run-1",
+                recoveryRecommendation: "stop_and_retry",
+            },
+            getMessage: (item) => item.message,
+            getErrorMeta: (item) => item.errorMeta,
+        });
+
+        expect(reconciled.items).toEqual([]);
+        expect(reconciled.shouldAppend).toBe(true);
+    });
+
+    it("suppresses a weaker same-run fallback when stronger recovery truth exists", () => {
+        const reconciled = reconcileRunScopedRenderedErrors({
+            items: [{
+                id: "error-conflict",
+                message: "The active run is still holding this conversation. Choose how to continue.",
+                errorMeta: {
+                    kind: "run_conflict",
+                    code: "ACTIVE_RUN_EXISTS",
+                    retryable: false,
+                    source: "conversation_run_lock",
+                    message: "The active run is still holding this conversation. Choose how to continue.",
+                    runId: "run-1",
+                    activeRunId: "run-1",
+                    recoveryRecommendation: "stop_and_retry" as const,
+                },
+            }],
+            nextMessage: "The stream ended unexpectedly. Retry to continue.",
+            nextMeta: {
+                kind: "runtime",
+                code: "RUN_STREAM_UNEXPECTED_END",
+                retryable: false,
+                source: "runtime",
+                message: "The stream ended unexpectedly. Retry to continue.",
+                runId: "run-1",
+            },
+            getMessage: (item) => item.message,
+            getErrorMeta: (item) => item.errorMeta,
+        });
+
+        expect(reconciled.items).toHaveLength(1);
+        expect(reconciled.shouldAppend).toBe(false);
+    });
+
+    it("clears prior same-run errors after terminal reconciliation", () => {
+        const remaining = clearRunScopedRenderedErrors({
+            items: [
+                {
+                    id: "error-run-1",
+                    errorMeta: {
+                        kind: "runtime",
+                        code: "RUN_RECOVERY_TIMEOUT",
+                        retryable: true,
+                        source: "runtime",
+                        message: "timeout",
+                        runId: "run-1",
+                    },
+                },
+                {
+                    id: "error-run-2",
+                    errorMeta: {
+                        kind: "runtime",
+                        code: "RUN_RECOVERY_TIMEOUT",
+                        retryable: true,
+                        source: "runtime",
+                        message: "timeout",
+                        runId: "run-2",
+                    },
+                },
+            ],
+            runId: "run-1",
+            getErrorMeta: (item) => item.errorMeta,
+        });
+
+        expect(remaining).toEqual([
+            {
+                id: "error-run-2",
+                errorMeta: {
+                    kind: "runtime",
+                    code: "RUN_RECOVERY_TIMEOUT",
+                    retryable: true,
+                    source: "runtime",
+                    message: "timeout",
+                    runId: "run-2",
+                },
+            },
+        ]);
     });
 });

@@ -1,7 +1,7 @@
 import { extractAIErrorEnvelope } from "@/lib/ai/error-envelope";
 import { buildFailureFallbackMessage } from "@/lib/ai/run-outcome";
 import type { AIErrorEnvelope } from "@/types/ai";
-import type { StreamTerminalReason } from "@/lib/ai/stream-lifecycle";
+import { isFailureTerminalReason, type StreamTerminalReason } from "@/lib/ai/stream-lifecycle";
 
 const CLAUDE_REASONING_BUDGET_PATTERN = /max_tokens.*greater than.*thinking\.budget_tokens/i;
 const DAILY_TOKEN_LIMIT_PATTERN = /daily token limit exceeded|maximum\s+\d+\s+tokens per day/i;
@@ -238,6 +238,84 @@ export function isSameRenderedError(params: {
     return true;
 }
 
+export function getErrorRunId(errorMeta: AIErrorEnvelope | null | undefined): string | null {
+    return errorMeta?.runId ?? errorMeta?.activeRunId ?? null;
+}
+
+function getSameRunErrorAuthority(errorMeta: AIErrorEnvelope | null | undefined): number {
+    if (!errorMeta) return 0;
+
+    if (
+        errorMeta.kind === "run_conflict"
+        || errorMeta.code === "RUN_RECOVERY_REQUIRES_USER_ACTION"
+        || errorMeta.recoveryRecommendation === "stop_and_retry"
+        || errorMeta.recoveryRecommendation === "reconnect"
+    ) {
+        return 3;
+    }
+
+    if (errorMeta.code === "RUN_RECOVERY_TIMEOUT" || errorMeta.code === "RUN_RECOVERY_FAILED") {
+        return 2;
+    }
+
+    return 1;
+}
+
+export function reconcileRunScopedRenderedErrors<T>(params: {
+    items: T[];
+    nextMessage: string;
+    nextMeta?: AIErrorEnvelope | null;
+    getMessage: GenericMessageExtractor<T>;
+    getErrorMeta: GenericMetaExtractor<T>;
+}): {
+    items: T[];
+    shouldAppend: boolean;
+} {
+    const nextMeta = params.nextMeta ?? null;
+    const nextRunId = getErrorRunId(nextMeta);
+    const nextAuthority = getSameRunErrorAuthority(nextMeta);
+    let shouldAppend = true;
+
+    const items = params.items.filter((item) => {
+        const existingMeta = params.getErrorMeta(item) ?? null;
+        if (!existingMeta) return true;
+
+        if (isSameRenderedError({
+            existingMessage: params.getMessage(item) ?? null,
+            existingMeta,
+            nextMessage: params.nextMessage,
+            nextMeta,
+        })) {
+            shouldAppend = false;
+            return true;
+        }
+
+        if (!nextRunId) return true;
+
+        const existingRunId = getErrorRunId(existingMeta);
+        if (!existingRunId || existingRunId !== nextRunId) return true;
+
+        const existingAuthority = getSameRunErrorAuthority(existingMeta);
+        if (existingAuthority > nextAuthority) {
+            shouldAppend = false;
+            return true;
+        }
+
+        return false;
+    });
+
+    return { items, shouldAppend };
+}
+
+export function clearRunScopedRenderedErrors<T>(params: {
+    items: T[];
+    runId?: string | null;
+    getErrorMeta: GenericMetaExtractor<T>;
+}): T[] {
+    if (!params.runId) return params.items;
+    return params.items.filter((item) => getErrorRunId(params.getErrorMeta(item) ?? null) !== params.runId);
+}
+
 export function isRetryableTerminalReason(reason: StreamTerminalReason | null): boolean {
     return reason === "failed_network" || reason === "timed_out";
 }
@@ -247,6 +325,9 @@ export function buildUnexpectedTerminalErrorState(reason: StreamTerminalReason):
     retryable: boolean;
     errorMeta: AIErrorEnvelope;
 } {
+    if (!isFailureTerminalReason(reason)) {
+        throw new Error(`Unexpected non-failure terminal reason: ${reason}`);
+    }
     const message = reason === "timed_out"
         ? "The response timed out. Retry to continue."
         : "The stream ended unexpectedly. Retry to continue.";
@@ -257,6 +338,7 @@ export function buildUnexpectedTerminalErrorState(reason: StreamTerminalReason):
         retryable,
         errorMeta: {
             ...base.errorMeta,
+            code: reason === "timed_out" ? "RUN_STREAM_TIMEOUT" : "RUN_STREAM_UNEXPECTED_END",
             retryable,
         },
     };

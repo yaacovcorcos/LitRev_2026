@@ -27,9 +27,11 @@ import { isNavigationSafe } from "@/lib/ai/navigation-safety";
 import {
   buildUnexpectedTerminalErrorState,
   buildClientErrorState,
+  clearRunScopedRenderedErrors,
   formatStreamErrorForUI,
   hasCanonicalFailureFallbackText,
   hasRenderedErrorMatch,
+  reconcileRunScopedRenderedErrors,
   shouldSuppressClientFallback,
 } from "@/lib/ai/stream-error-ui";
 import {
@@ -40,7 +42,12 @@ import {
 import { createInitialSharedStreamState, type SharedStreamIntent } from "@/lib/ai/shared-stream-reducer";
 import { normalizeTimelineProgressItems, selectActiveProgress } from "@/lib/ai/active-progress";
 import { generateChatUnificationRequestKey, recordChatUnificationMetric } from "@/lib/ai/chat-unification-telemetry";
-import { terminalReasonFromThrownError, type StreamTerminalReason } from "@/lib/ai/stream-lifecycle";
+import {
+  isSuccessfulTerminalReason,
+  terminalReasonFromRunEnd,
+  terminalReasonFromThrownError,
+  type StreamTerminalReason,
+} from "@/lib/ai/stream-lifecycle";
 import { recordReliabilityMetric } from "@/lib/ai/reliability-telemetry";
 import type { RetryModelExpectation } from "@/types/chat-unification";
 import {
@@ -702,16 +709,21 @@ export default function AIView() {
     errorMeta: AIErrorEnvelope;
   }) => {
     updateConversationTimeline(params.conversationId, (items) => {
-      const hasRenderedError = hasRenderedErrorMatch({
+      const reconciled = reconcileRunScopedRenderedErrors({
         items: items.filter((item) => item.type === "error"),
         nextMessage: params.message,
         nextMeta: params.errorMeta,
         getMessage: (item) => item.type === "error" ? item.message : null,
         getErrorMeta: (item) => item.type === "error" ? item.errorMeta : null,
       });
-      if (hasRenderedError) return items;
+      const retainedErrorIds = new Set(reconciled.items.map((item) => item.id));
+      if (!reconciled.shouldAppend) {
+        return items.filter((item) => item.type !== "error" || retainedErrorIds.has(item.id));
+      }
       return [
-        ...items.filter((item) => item.type !== "progress"),
+        ...items.filter((item) =>
+          item.type !== "progress" && (item.type !== "error" || retainedErrorIds.has(item.id))
+        ),
         {
           type: "error",
           id: makeId("recovery-error"),
@@ -1260,12 +1272,21 @@ export default function AIView() {
       if (recoveredRunStatus && recoveredRunStatus !== "missing") {
         runStatus = recoveredRunStatus;
       }
-      sendSucceeded = runStatus === "completed";
-      terminalReason = runStatus === "completed"
-        ? "completed"
-        : runStatus === "cancelled"
-          ? "cancelled_by_user"
-          : "failed_server";
+      terminalReason = terminalReasonFromRunEnd({
+        runStatus,
+        stopReason: runStatus === "paused" ? "paused_for_input" : null,
+      });
+      sendSucceeded = isSuccessfulTerminalReason(terminalReason);
+      const recoveredRunId = runtime.getState().localRunId || currentRunIdRef.current;
+      if (recoveredRunId) {
+        updateConversationTimeline(convId, (items) =>
+          clearRunScopedRenderedErrors({
+            items,
+            runId: recoveredRunId,
+            getErrorMeta: (item) => item.type === "error" ? item.errorMeta : null,
+          })
+        );
+      }
     };
 
     recordReliabilityMetric({
@@ -1357,6 +1378,7 @@ export default function AIView() {
               ? "RUN_RECOVERY_REQUIRES_USER_ACTION"
               : "RUN_RECOVERY_FAILED",
           message: recoveryMessage,
+          runId: recoveryResult.response?.runId ?? activeRunId,
           activeRunId: recoveryResult.response?.runId ?? activeRunId,
           lastActivityAt: recoveryResult.response?.lastActivityAt ?? undefined,
           recoveryRecommendation: recoveryResult.response?.recoveryRecommendation
@@ -1418,6 +1440,9 @@ export default function AIView() {
       runStatus = summary.runStatus;
       terminalReason = summary.terminalReason;
       sendSucceeded = summary.terminalReason === "completed";
+      if (summary.terminalReason === "paused_for_input") {
+        sendSucceeded = true;
+      }
       actualModel = summary.actualModel;
       actualModelSource = summary.actualModelSource;
       const runEndToolCounts = runtime.getLastRunEndToolCounts();
@@ -1447,31 +1472,36 @@ export default function AIView() {
         convId = runtime.getConversationId();
         const errorState = buildClientErrorState(err);
         updateConversationTimeline(convId, (items) => {
+          const errorMeta = {
+            ...errorState.errorMeta,
+            runId: runtime.getState().localRunId || currentRunIdRef.current || errorState.errorMeta.runId,
+          };
           const hasAssistantContent = hasCanonicalFailureFallbackText({
             items: items.filter((item) => item.type === "assistant_message"),
-            streamError: errorState.errorMeta,
+            streamError: errorMeta,
             getText: (item) => item.type === "assistant_message" ? item.content : null,
           });
-          const hasRenderedError = hasRenderedErrorMatch({
+          const reconciled = reconcileRunScopedRenderedErrors({
             items: items.filter((item) => item.type === "error"),
             nextMessage: errorState.message,
-            nextMeta: errorState.errorMeta,
+            nextMeta: errorMeta,
             getMessage: (item) => item.type === "error" ? item.message : null,
             getErrorMeta: (item) => item.type === "error" ? item.errorMeta : null,
           });
-          if (shouldSuppressClientFallback({ errorMeta: errorState.errorMeta, hasAssistantContent, hasRenderedError })) {
+          const hasRenderedError = !reconciled.shouldAppend;
+          if (shouldSuppressClientFallback({ errorMeta: errorMeta, hasAssistantContent, hasRenderedError })) {
             emittedTerminalError = true;
-            return items;
+            return items.filter((item) => item.type !== "error" || reconciled.items.some((retained) => retained.id === item.id));
           }
           emittedTerminalError = true;
           return [
-            ...items,
+            ...items.filter((item) => item.type !== "error" || reconciled.items.some((retained) => retained.id === item.id)),
             {
               type: "error",
               id: `error-${Date.now()}`,
               message: errorState.message,
               retryable: errorState.retryable,
-              errorMeta: errorState.errorMeta,
+              errorMeta,
               createdAt: new Date().toISOString(),
             },
           ];
@@ -1532,26 +1562,31 @@ export default function AIView() {
       ) {
         const terminalErrorState = buildUnexpectedTerminalErrorState(terminalReason);
         updateConversationTimeline(convId, (items) => {
-          const hasRenderedError = hasRenderedErrorMatch({
+          const errorMeta = {
+            ...terminalErrorState.errorMeta,
+            runId: runtime.getState().localRunId || currentRunIdRef.current || undefined,
+          };
+          const reconciled = reconcileRunScopedRenderedErrors({
             items: items.filter((item) => item.type === "error"),
             nextMessage: terminalErrorState.message,
-            nextMeta: terminalErrorState.errorMeta,
+            nextMeta: errorMeta,
             getMessage: (item) => item.type === "error" ? item.message : null,
             getErrorMeta: (item) => item.type === "error" ? item.errorMeta : null,
           });
-          if (hasRenderedError) {
+          const retainedErrorIds = new Set(reconciled.items.map((item) => item.id));
+          if (!reconciled.shouldAppend) {
             emittedTerminalError = true;
-            return items;
+            return items.filter((item) => item.type !== "error" || retainedErrorIds.has(item.id));
           }
           emittedTerminalError = true;
           return [
-            ...items,
+            ...items.filter((item) => item.type !== "error" || retainedErrorIds.has(item.id)),
             {
               type: "error",
               id: makeId("terminal-error"),
               message: terminalErrorState.message,
               retryable: terminalErrorState.retryable,
-              errorMeta: terminalErrorState.errorMeta,
+              errorMeta,
               createdAt: new Date().toISOString(),
             },
           ];
@@ -2092,7 +2127,7 @@ export default function AIView() {
 
   const handleReconnectRun = useCallback((item: Extract<TimelineItem, { type: "error" }>) => {
     const convId = activeConversationId;
-    const runId = item.errorMeta?.activeRunId ?? null;
+    const runId = item.errorMeta?.runId ?? item.errorMeta?.activeRunId ?? null;
     if (isTyping || !convId || !runId) return;
 
     setIsTyping(true);
@@ -2139,6 +2174,7 @@ export default function AIView() {
               ? "RUN_RECOVERY_REQUIRES_USER_ACTION"
               : "RUN_RECOVERY_FAILED",
           message: recoveryMessage,
+          runId: recoveryResult.response?.runId ?? runId,
           activeRunId: recoveryResult.response?.runId ?? runId,
           lastActivityAt: recoveryResult.response?.lastActivityAt ?? undefined,
           recoveryRecommendation: recoveryResult.response?.recoveryRecommendation
@@ -2164,7 +2200,7 @@ export default function AIView() {
   ]);
 
   const handleStopAndRetryRun = useCallback((item: Extract<TimelineItem, { type: "error" }>) => {
-    handleRetryLastMessage(item.errorMeta?.activeRunId ?? null);
+    handleRetryLastMessage(item.errorMeta?.runId ?? item.errorMeta?.activeRunId ?? null);
   }, [handleRetryLastMessage]);
 
   const handlePrefillConsumed = useCallback(() => {

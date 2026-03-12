@@ -106,6 +106,7 @@ Every fix entry must include:
 - **Run Lifecycle Integrity Is Now Enforced Across The Main Surfaces:** started runs now finalize exactly once, replace-safe admission requires explicit prior run identity instead of conversation-wide cancellation, and abnormal failure cleanup/dedupe now use the shared runtime/error owners so `/ai` and project copilot fail unfinished tools consistently and render one terminal failure.
 - **Abnormal-End Recovery Is Now Server-Authoritative On Main Timeline Surfaces:** `/ai` and project copilot now reconcile known-run broken streams against persisted `AgentRun` + replay-authoritative `RunEvent` truth, clear stale progress/tool activity into explicit recovery states, and drive `Reconnect` / `Retry` / `Stop & Retry` from structured recovery metadata instead of local loading heuristics.
 - **Recovery Reconciliation Now Commits The Recovered Terminal Truth End-To-End:** recovered `/ai` and project-copilot runs now promote the replayed terminal `runStatus` back into outer completion/failure handling before fallback cleanup and telemetry fire, and recovery actions are bound to the clicked error item instead of a global “latest recovery” guess.
+- **Paused-Input Recovery Truth Now Survives Disconnects:** the existing recovery foundation now treats `paused_for_input` as a first-class non-error terminal outcome, persists and replays the missing durable question/checkpoint/artifact/error states needed to keep current surfaces truthful after disconnects, reconciles same-run timeout/conflict/fallback errors through one shared `runId` authority, and closes the remaining main-conversation reconnect / stop-and-retry wiring gap without claiming new popup parity.
 - **Context Assembly Now Degrades Optional DB-Backed Inputs Honestly:** critical authority still resolves before execution, but optional memory/protocol/ledger/study/project context now loads as best-effort after authority succeeds. When optional context fails, the run continues with a single pre-stream degraded-context checkpoint instead of aborting outright.
 - **Running-Run Freshness Now Uses `lastActivityAt`:** `AgentRun.lastActivityAt` is now updated through centralized lifecycle/event helpers plus a quiet-run heartbeat, conversation admission uses it instead of `startedAt`, and stale `running` rows can be cancelled safely instead of poisoning future sends after disconnects.
 - **Database Connectivity Failures Are Classified At The Shared Envelope Boundary:** Prisma/pg connection-establishment failures now surface as `database_connection` envelopes instead of generic `PROVIDER_REQUEST_FAILED`, preserving truthful runtime attribution through stream transport and UI rendering.
@@ -131,7 +132,7 @@ Every fix entry must include:
 ## Active Fixes
 *Immediate remediation work for shipped behavior that is broken, misleading, or lower quality than the intended contract.*
 
-- No immediate runtime correctness fixes are open in the canonical tracker. Next work should proceed from the roadmap unless a new production incident reprioritizes the queue.
+- No immediate runtime correctness fixes are currently queued after `FIX-011a`. New incidents should reopen this section instead of being treated as roadmap work by default.
 
 ## Execution Order
 
@@ -161,7 +162,7 @@ Work should proceed in this order unless a production incident forces reprioriti
 
 ### Track D — Surface Honesty, Docs, Evals, and Provenance
 
-- `FIX-005a`, `FIX-005b`, and `FIX-011` are complete, so this track now shifts back to roadmap work and ongoing truth-maintenance rather than active remediation.
+- `FIX-005a`, `FIX-005b`, `FIX-011`, and the immediate `FIX-011a` reconciliation follow-up are complete, so this track now shifts back to roadmap work and ongoing truth-maintenance rather than active remediation.
 - Popup honesty should stay aligned with the reduced-parity runtime it actually supports, and future surface work should preserve the recovery/action truth model rather than reintroducing bespoke failure semantics.
 
 ## Active Roadmap

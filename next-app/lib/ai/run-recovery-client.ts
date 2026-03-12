@@ -30,6 +30,7 @@ export async function fetchRunRecovery(params: {
 export function createRecoveryErrorEnvelope(params: {
     code: string;
     message: string;
+    runId?: string | null;
     activeRunId?: string | null;
     lastActivityAt?: string | null;
     recoveryRecommendation: "reconnect" | "retry" | "stop_and_retry" | "terminal";
@@ -43,6 +44,7 @@ export function createRecoveryErrorEnvelope(params: {
         retryable: params.retryable,
         source: params.source ?? "runtime",
         message: params.message,
+        runId: params.runId ?? params.activeRunId ?? undefined,
         activeRunId: params.activeRunId ?? undefined,
         lastActivityAt: params.lastActivityAt ?? undefined,
         recoveryRecommendation: params.recoveryRecommendation,

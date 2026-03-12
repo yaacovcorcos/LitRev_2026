@@ -202,12 +202,12 @@ export function ProjectCopilot({
 
     const reconnectActiveRun = useCallback((item: Extract<TimelineItem, { type: "error" }>) => {
         if (isLoading) return;
-        void reconnectRun(item.errorMeta?.activeRunId ?? null);
+        void reconnectRun(item.errorMeta?.runId ?? item.errorMeta?.activeRunId ?? null);
     }, [isLoading, reconnectRun]);
 
     const stopAndRetryRun = useCallback((item: Extract<TimelineItem, { type: "error" }>) => {
         if (isLoading) return;
-        retryLastMessage(item.errorMeta?.activeRunId ?? null);
+        retryLastMessage(item.errorMeta?.runId ?? item.errorMeta?.activeRunId ?? null);
     }, [isLoading, retryLastMessage]);
 
     const getConversationGroupLabel = useCallback((conversation: (typeof conversations)[number]) => {
