@@ -433,15 +433,17 @@ export function CitationPreview({ href, type, children, anchorProps }: CitationP
                             <p className={styles.authors}>
                                 {formatAuthors(citationResult.data.authors)}
                             </p>
-                            {citationResult.data.journal && (
-                                <p className={styles.journal}>{citationResult.data.journal}</p>
-                            )}
                             {typeof citationResult.data.citationCount === "number" && (
                                 <p className={styles.citationCount}>
                                     Cited {formatCitationCount(citationResult.data.citationCount)} times
                                 </p>
                             )}
                             <div className={styles.footer}>
+                                <div className={styles.footerMeta}>
+                                    {citationResult.data.journal ? (
+                                        <p className={styles.journal}>{citationResult.data.journal}</p>
+                                    ) : null}
+                                </div>
                                 <a
                                     href={citationResult.data.canonicalUrl ?? href}
                                     target="_blank"
