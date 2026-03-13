@@ -2,12 +2,12 @@ import "server-only";
 
 import { prisma } from "@/lib/server/prisma";
 import { assertProjectAccess } from "@/lib/server/access";
-import type { DraftState } from "@/lib/draftStorage";
+import { normalizeDraftState, type DraftState, type DraftStateInput } from "@/lib/draftStorage";
 import type { Prisma } from "@prisma/client";
 import type { ScopeInput } from "@/lib/server/scope";
 
-function toJsonValue(value: DraftState): Prisma.InputJsonValue {
-  return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
+function toJsonValue(value: DraftStateInput): Prisma.InputJsonValue {
+  return JSON.parse(JSON.stringify(normalizeDraftState(value))) as Prisma.InputJsonValue;
 }
 
 export async function getDraft(
@@ -16,13 +16,13 @@ export async function getDraft(
 ): Promise<DraftState | null> {
   await assertProjectAccess(scopeInput, projectId);
   const draft = await prisma.draft.findUnique({ where: { projectId } });
-  return (draft?.state as DraftState) ?? null;
+  return draft?.state ? normalizeDraftState(draft.state) : null;
 }
 
 export async function saveDraft(
   scopeInput: ScopeInput,
   projectId: string,
-  state: DraftState
+  state: DraftStateInput
 ): Promise<DraftState> {
   await assertProjectAccess(scopeInput, projectId);
   const normalizedState = toJsonValue(state);
@@ -31,5 +31,5 @@ export async function saveDraft(
     create: { projectId, state: normalizedState },
     update: { state: normalizedState },
   });
-  return saved.state as DraftState;
+  return normalizeDraftState(saved.state);
 }

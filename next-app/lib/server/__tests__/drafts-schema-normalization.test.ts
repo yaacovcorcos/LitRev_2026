@@ -22,8 +22,10 @@ describe("draft save schema normalization", () => {
       state,
     });
 
+    expect(parsed.state.version).toBe(2);
+    expect(parsed.state.manuscript.schemaVersion).toBe(1);
     const parsedNode = (parsed.state.contentBySection.abstract as { content?: Array<{ attrs?: unknown }> }).content?.[0];
-    expect(parsedNode?.attrs).toBeUndefined();
+    expect(parsedNode?.attrs).toEqual({ blockId: expect.any(String) });
   });
 
   it("preserves valid attrs objects", () => {
@@ -38,8 +40,9 @@ describe("draft save schema normalization", () => {
       state,
     });
 
+    expect(parsed.state.version).toBe(2);
+    expect(parsed.state.manuscript.schemaVersion).toBe(1);
     const parsedNode = (parsed.state.contentBySection.abstract as { content?: Array<{ attrs?: unknown }> }).content?.[0];
-    expect(parsedNode?.attrs).toEqual({ dir: "rtl" });
+    expect(parsedNode?.attrs).toMatchObject({ dir: "rtl", blockId: expect.any(String) });
   });
 });
-

@@ -10,6 +10,7 @@ describe("loadDraftState citation migration", () => {
   it("migrates legacy citation attrs to canonical studyId/uid shape", () => {
     const projectId = "proj-citation-migration";
     const state = createDefaultDraftState();
+    expect(state.version).toBe(2);
     state.contentBySection.abstract = {
       type: "doc",
       content: [
@@ -23,6 +24,8 @@ describe("loadDraftState citation migration", () => {
     window.localStorage.setItem(`litrev_draft_v1:${projectId}`, JSON.stringify(state));
 
     const migrated = loadDraftState(projectId);
+    expect(migrated.version).toBe(2);
+    expect(migrated.manuscript.schemaVersion).toBe(1);
     const node = migrated.contentBySection.abstract.content?.[0]?.content?.[0];
     expect(node?.type).toBe("citation");
     expect(node?.attrs?.studyId).toBe("study-1");
@@ -30,5 +33,10 @@ describe("loadDraftState citation migration", () => {
     expect(node?.attrs).not.toHaveProperty("id");
     expect(node?.attrs).not.toHaveProperty("label");
     expect(node?.attrs).not.toHaveProperty("number");
+    const paragraph = migrated.contentBySection.abstract.content?.[0];
+    expect(paragraph?.attrs).toMatchObject({
+      blockId: expect.any(String),
+    });
+    expect(migrated.manuscript.sections.map((section) => section.sectionId)).toContain("abstract");
   });
 });

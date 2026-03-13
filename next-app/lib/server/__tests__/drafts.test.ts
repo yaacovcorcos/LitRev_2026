@@ -41,7 +41,9 @@ describe("draft service", () => {
   it("normalizes draft state to JSON-safe payload before upsert", async () => {
     const state = createDefaultDraftState();
     state.customSections["custom-1"] = { label: "Custom", placeholder: undefined };
-    (state.contentBySection.abstract as { attrs?: Record<string, unknown> }).attrs = {
+    (
+      state.contentBySection.abstract.content?.[0] as { attrs?: Record<string, unknown> } | undefined
+    )!.attrs = {
       keep: "value",
       drop: undefined,
     };
@@ -57,9 +59,19 @@ describe("draft service", () => {
     };
 
     expect(args.create.state).toEqual(args.update.state);
+    expect(args.create.state.version).toBe(2);
+    expect(args.create.state.manuscript).toMatchObject({ schemaVersion: 1 });
     expect((args.create.state.customSections as Record<string, { label: string; placeholder?: string }>)["custom-1"])
       .toEqual({ label: "Custom" });
-    expect(((args.create.state.contentBySection as Record<string, { attrs?: Record<string, unknown> }>).abstract.attrs))
-      .toEqual({ keep: "value" });
+    expect(
+      (
+        (
+          args.create.state.contentBySection as Record<
+            string,
+            { content?: Array<{ attrs?: Record<string, unknown> }> }
+          >
+        ).abstract.content?.[0]?.attrs
+      ),
+    ).toMatchObject({ keep: "value", blockId: expect.any(String) });
   });
 });
