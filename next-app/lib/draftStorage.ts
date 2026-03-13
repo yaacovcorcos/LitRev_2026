@@ -1,6 +1,13 @@
 import { DEFAULT_SECTION_ORDER, DRAFT_SECTIONS, DraftMode, DraftSectionId, DraftSectionKey } from "@/types/draft";
 import type { JSONContent } from "@tiptap/core";
 import { compileDraftCitations } from "@/lib/citation-compiler";
+import type { ManuscriptDocument } from "@/types/manuscript";
+import {
+  buildCompatContentBySection,
+  coerceManuscriptDocument,
+  createDefaultManuscriptDocument,
+  createManuscriptDocument,
+} from "@/lib/manuscript/schema";
 
 const DRAFT_KEY_PREFIX = "litrev_draft_v1";
 
@@ -34,8 +41,7 @@ export const DEFAULT_SECTION_FORMAT: DraftSectionFormat = {
   fontFamily: "Georgia, 'Times New Roman', serif",
 };
 
-export type DraftState = {
-  version: 1;
+type DraftStateBase = {
   mode: DraftMode;
   activeSection: DraftSectionId;
   sectionOrder: DraftSectionId[];
@@ -47,8 +53,23 @@ export type DraftState = {
   copilotBySection: Record<DraftSectionId, CopilotMessage[]>;
 };
 
+export type LegacyDraftState = DraftStateBase & {
+  version: 1;
+};
+
+export type DraftState = DraftStateBase & {
+  version: 2;
+  manuscript: ManuscriptDocument;
+};
+
+export type DraftStateInput = DraftState | LegacyDraftState;
+
 function isBrowser() {
   return typeof window !== "undefined";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }
 
 function storageKey(projectId: string) {
@@ -76,8 +97,9 @@ function buildSectionRecord<T>(ids: DraftSectionId[], factory: (key: DraftSectio
 export function createDefaultDraftState(): DraftState {
   const defaultOrder = [...DEFAULT_SECTION_ORDER];
   const activeSection = defaultOrder[0] ?? "abstract";
+  const manuscript = createDefaultManuscriptDocument();
   return {
-    version: 1,
+    version: 2,
     mode: "section",
     activeSection,
     sectionOrder: defaultOrder,
@@ -89,9 +111,10 @@ export function createDefaultDraftState(): DraftState {
       ledgerCollapsed: true,
       copilotCollapsed: false,
     },
-    contentBySection: buildSectionRecord(BASE_SECTION_IDS, () => emptyDoc()),
+    contentBySection: buildCompatContentBySection(manuscript),
     ledgerBySection: buildSectionRecord(BASE_SECTION_IDS, () => []),
     copilotBySection: buildSectionRecord(BASE_SECTION_IDS, () => []),
+    manuscript,
   };
 }
 
@@ -174,6 +197,132 @@ function coerceSectionOrder(value: unknown, knownIds: Set<DraftSectionId>): Draf
   return ordered.length ? ordered : null;
 }
 
+function normalizeCopilotMessage(value: unknown): CopilotMessage | null {
+  if (!isRecord(value)) return null;
+  const text = typeof value.text === "string" ? value.text : "";
+  if (!text.trim()) return null;
+  return {
+    id: typeof value.id === "string" ? value.id : `m-${Date.now()}`,
+    sender: value.sender === "ai" ? "ai" : "user",
+    text,
+    createdAt: typeof value.createdAt === "string" ? value.createdAt : new Date().toISOString(),
+  };
+}
+
+export function normalizeDraftState(input: unknown): DraftState {
+  const fallback = createDefaultDraftState();
+  if (!isRecord(input)) return fallback;
+
+  const parsed = input as Partial<DraftStateInput> & { manuscript?: unknown };
+  const mode = coerceDraftMode(parsed.mode) ?? fallback.mode;
+  const customSections = coerceCustomSections(parsed.customSections);
+  const knownIds = new Set<DraftSectionId>([...BASE_SECTION_IDS, ...Object.keys(customSections)]);
+  let storedOrder = coerceSectionOrder(parsed.sectionOrder, knownIds) ?? fallback.sectionOrder;
+  const missingCustom = Object.keys(customSections).filter((id) => !storedOrder.includes(id));
+  if (missingCustom.length) {
+    storedOrder = [...storedOrder, ...missingCustom];
+  }
+  const activeSection =
+    coerceSectionId(parsed.activeSection) && storedOrder.includes(parsed.activeSection as DraftSectionId)
+      ? (parsed.activeSection as DraftSectionId)
+      : storedOrder[0] ?? fallback.activeSection;
+
+  const panels: DraftPanelsState = {
+    ledgerWidth: typeof parsed.panels?.ledgerWidth === "number" ? parsed.panels.ledgerWidth : fallback.panels.ledgerWidth,
+    copilotWidth:
+      typeof parsed.panels?.copilotWidth === "number" ? parsed.panels.copilotWidth : fallback.panels.copilotWidth,
+    ledgerCollapsed:
+      typeof parsed.panels?.ledgerCollapsed === "boolean"
+        ? parsed.panels.ledgerCollapsed
+        : fallback.panels.ledgerCollapsed,
+    copilotCollapsed:
+      typeof parsed.panels?.copilotCollapsed === "boolean"
+        ? parsed.panels.copilotCollapsed
+        : fallback.panels.copilotCollapsed,
+  };
+
+  const manuscript = coerceManuscriptDocument(parsed.manuscript);
+  const compatFromManuscript = manuscript ? buildCompatContentBySection(manuscript) : null;
+  const rawContentSource =
+    isRecord(parsed.contentBySection)
+      ? (parsed.contentBySection as Record<DraftSectionId, JSONContent>)
+      : compatFromManuscript ?? {};
+
+  const baseContent = buildSectionRecord(BASE_SECTION_IDS, (key) => {
+    const maybe = rawContentSource[key];
+    if (maybe && typeof maybe === "object") return maybe as JSONContent;
+    return fallback.contentBySection[key];
+  });
+  const customIds = Object.keys(customSections);
+  const customContent = buildSectionRecord(customIds, (key) => {
+    const maybe = rawContentSource[key];
+    if (maybe && typeof maybe === "object") return maybe as JSONContent;
+    return emptyDoc();
+  });
+  const contentBySection = { ...baseContent, ...customContent };
+
+  const baseFormatting = buildSectionRecord(BASE_SECTION_IDS, (key) => {
+    const maybe = parsed.formattingBySection?.[key];
+    return coerceSectionFormat(maybe) ?? createDefaultFormat();
+  });
+  const customFormatting = buildSectionRecord(customIds, (key) => {
+    const maybe = parsed.formattingBySection?.[key];
+    return coerceSectionFormat(maybe) ?? createDefaultFormat();
+  });
+  const formattingBySection = { ...baseFormatting, ...customFormatting };
+
+  const baseLedger = buildSectionRecord(BASE_SECTION_IDS, (key) => {
+    const maybe = parsed.ledgerBySection?.[key];
+    return Array.isArray(maybe) ? maybe.filter((x) => typeof x === "string") : fallback.ledgerBySection[key];
+  });
+  const customLedger = buildSectionRecord(customIds, (key) => {
+    const maybe = parsed.ledgerBySection?.[key];
+    return Array.isArray(maybe) ? maybe.filter((x) => typeof x === "string") : [];
+  });
+  const ledgerBySection = { ...baseLedger, ...customLedger };
+
+  const baseCopilot = buildSectionRecord(BASE_SECTION_IDS, (key) => {
+    const maybe = parsed.copilotBySection?.[key];
+    if (!Array.isArray(maybe)) return fallback.copilotBySection[key];
+    return maybe.map(normalizeCopilotMessage).filter((message): message is CopilotMessage => Boolean(message));
+  });
+  const customCopilot = buildSectionRecord(customIds, (key) => {
+    const maybe = parsed.copilotBySection?.[key];
+    if (!Array.isArray(maybe)) return [];
+    return maybe.map(normalizeCopilotMessage).filter((message): message is CopilotMessage => Boolean(message));
+  });
+  const copilotBySection = { ...baseCopilot, ...customCopilot };
+
+  const compiled = compileDraftCitations({
+    contentBySection,
+    sectionOrder: storedOrder,
+    includeNumberInNodes: false,
+  });
+  const nextManuscript = createManuscriptDocument({
+    sectionOrder: storedOrder,
+    customSections,
+    contentBySection: compiled.normalizedContentBySection,
+  });
+
+  return {
+    version: 2,
+    mode,
+    activeSection,
+    sectionOrder: storedOrder,
+    customSections,
+    formattingBySection,
+    panels,
+    contentBySection: buildCompatContentBySection(nextManuscript),
+    ledgerBySection,
+    copilotBySection,
+    manuscript: nextManuscript,
+  };
+}
+
+export function migrateLegacyDraftStateToV2(input: LegacyDraftState): DraftState {
+  return normalizeDraftState(input);
+}
+
 export function loadDraftState(projectId: string): DraftState {
   const fallback = createDefaultDraftState();
   if (!isBrowser()) return fallback;
@@ -183,126 +332,8 @@ export function loadDraftState(projectId: string): DraftState {
       window.localStorage.setItem(storageKey(projectId), JSON.stringify(fallback));
       return fallback;
     }
-    const parsed = JSON.parse(stored) as Partial<DraftState> | null;
-    if (!parsed || typeof parsed !== "object") return fallback;
-
-    const mode = coerceDraftMode(parsed.mode) ?? fallback.mode;
-    const customSections = coerceCustomSections(parsed.customSections);
-    const knownIds = new Set<DraftSectionId>([...BASE_SECTION_IDS, ...Object.keys(customSections)]);
-    let storedOrder = coerceSectionOrder(parsed.sectionOrder, knownIds) ?? fallback.sectionOrder;
-    const missingCustom = Object.keys(customSections).filter((id) => !storedOrder.includes(id));
-    if (missingCustom.length) {
-      storedOrder = [...storedOrder, ...missingCustom];
-    }
-    const activeSection =
-      coerceSectionId(parsed.activeSection) && storedOrder.includes(parsed.activeSection as DraftSectionId)
-        ? (parsed.activeSection as DraftSectionId)
-        : storedOrder[0] ?? fallback.activeSection;
-
-    const panels: DraftPanelsState = {
-      ledgerWidth: typeof parsed.panels?.ledgerWidth === "number" ? parsed.panels.ledgerWidth : fallback.panels.ledgerWidth,
-      copilotWidth:
-        typeof parsed.panels?.copilotWidth === "number" ? parsed.panels.copilotWidth : fallback.panels.copilotWidth,
-      ledgerCollapsed:
-        typeof parsed.panels?.ledgerCollapsed === "boolean"
-          ? parsed.panels.ledgerCollapsed
-          : fallback.panels.ledgerCollapsed,
-      copilotCollapsed:
-        typeof parsed.panels?.copilotCollapsed === "boolean"
-          ? parsed.panels.copilotCollapsed
-          : fallback.panels.copilotCollapsed,
-    };
-
-    const baseContent = buildSectionRecord(BASE_SECTION_IDS, (key) => {
-      const maybe = parsed.contentBySection?.[key];
-      if (maybe && typeof maybe === "object") return maybe as JSONContent;
-      return fallback.contentBySection[key];
-    });
-
-    const customIds = Object.keys(customSections);
-    const baseFormatting = buildSectionRecord(BASE_SECTION_IDS, (key) => {
-      const maybe = parsed.formattingBySection?.[key];
-      return coerceSectionFormat(maybe) ?? createDefaultFormat();
-    });
-    const customFormatting = buildSectionRecord(customIds, (key) => {
-      const maybe = parsed.formattingBySection?.[key];
-      return coerceSectionFormat(maybe) ?? createDefaultFormat();
-    });
-    const formattingBySection = { ...baseFormatting, ...customFormatting };
-    const customContent = buildSectionRecord(customIds, (key) => {
-      const maybe = parsed.contentBySection?.[key];
-      if (maybe && typeof maybe === "object") return maybe as JSONContent;
-      return emptyDoc();
-    });
-
-    const contentBySection = { ...baseContent, ...customContent };
-
-    const baseLedger = buildSectionRecord(BASE_SECTION_IDS, (key) => {
-      const maybe = parsed.ledgerBySection?.[key];
-      return Array.isArray(maybe) ? maybe.filter((x) => typeof x === "string") : fallback.ledgerBySection[key];
-    });
-    const customLedger = buildSectionRecord(customIds, (key) => {
-      const maybe = parsed.ledgerBySection?.[key];
-      return Array.isArray(maybe) ? maybe.filter((x) => typeof x === "string") : [];
-    });
-    const ledgerBySection = { ...baseLedger, ...customLedger };
-
-    const baseCopilot = buildSectionRecord(BASE_SECTION_IDS, (key) => {
-      const maybe = parsed.copilotBySection?.[key];
-      if (!Array.isArray(maybe)) return fallback.copilotBySection[key];
-      return maybe
-        .filter((m) => m && typeof m === "object")
-        .map((m) => {
-          const msg = m as Partial<CopilotMessage>;
-          return {
-            id: typeof msg.id === "string" ? msg.id : `m-${Date.now()}`,
-            sender: msg.sender === "ai" ? "ai" : "user",
-            text: typeof msg.text === "string" ? msg.text : "",
-            createdAt: typeof msg.createdAt === "string" ? msg.createdAt : new Date().toISOString(),
-          } satisfies CopilotMessage;
-        })
-        .filter((m) => m.text.trim().length > 0);
-    });
-    const customCopilot = buildSectionRecord(customIds, (key) => {
-      const maybe = parsed.copilotBySection?.[key];
-      if (!Array.isArray(maybe)) return [];
-      return maybe
-        .filter((m) => m && typeof m === "object")
-        .map((m) => {
-          const msg = m as Partial<CopilotMessage>;
-          return {
-            id: typeof msg.id === "string" ? msg.id : `m-${Date.now()}`,
-            sender: msg.sender === "ai" ? "ai" : "user",
-            text: typeof msg.text === "string" ? msg.text : "",
-            createdAt: typeof msg.createdAt === "string" ? msg.createdAt : new Date().toISOString(),
-          } satisfies CopilotMessage;
-        })
-        .filter((m) => m.text.trim().length > 0);
-    });
-    const copilotBySection = { ...baseCopilot, ...customCopilot };
-
-    const state: DraftState = {
-      version: 1,
-      mode,
-      activeSection,
-      sectionOrder: storedOrder,
-      customSections,
-      formattingBySection,
-      panels,
-      contentBySection,
-      ledgerBySection,
-      copilotBySection,
-    };
-    const normalized = compileDraftCitations({
-      contentBySection: state.contentBySection,
-      sectionOrder: state.sectionOrder,
-      includeNumberInNodes: false,
-    });
-    const normalizedState: DraftState = {
-      ...state,
-      contentBySection: normalized.normalizedContentBySection,
-    };
-    if (JSON.stringify(state.contentBySection) !== JSON.stringify(normalizedState.contentBySection)) {
+    const normalizedState = normalizeDraftState(JSON.parse(stored));
+    if (stored !== JSON.stringify(normalizedState)) {
       try {
         window.localStorage.setItem(storageKey(projectId), JSON.stringify(normalizedState));
       } catch {
@@ -321,10 +352,10 @@ export function loadDraftState(projectId: string): DraftState {
   }
 }
 
-export function saveDraftState(projectId: string, state: DraftState) {
+export function saveDraftState(projectId: string, state: DraftStateInput) {
   if (!isBrowser()) return;
   try {
-    window.localStorage.setItem(storageKey(projectId), JSON.stringify(state));
+    window.localStorage.setItem(storageKey(projectId), JSON.stringify(normalizeDraftState(state)));
   } catch (err) {
     console.warn("saveDraftState failed", err);
   }

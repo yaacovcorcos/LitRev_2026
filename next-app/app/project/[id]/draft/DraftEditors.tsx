@@ -77,6 +77,29 @@ export const ParagraphDirection = Extension.create({
   },
 });
 
+export const BlockIdentity = Extension.create({
+  name: "blockIdentity",
+  addGlobalAttributes() {
+    return [
+      {
+        types: ["paragraph", "heading", "bulletList", "orderedList", "listItem", "blockquote"],
+        attributes: {
+          blockId: {
+            default: null,
+            parseHTML: (element) => element.getAttribute("data-block-id"),
+            renderHTML: (attributes) => {
+              if (!attributes.blockId) return {};
+              return {
+                "data-block-id": attributes.blockId,
+              };
+            },
+          },
+        },
+      },
+    ];
+  },
+});
+
 type ToolbarProps = {
   editor: Editor | null;
   dir?: "ltr" | "rtl";
@@ -220,6 +243,7 @@ export function FullSectionEditor({
         Underline,
         Citation,
         ParagraphDirection,
+        BlockIdentity,
         Placeholder.configure({
           placeholder: placeholderText ?? "Start writing…",
         }),

@@ -174,5 +174,8 @@ describe("ledger dedupe v2", () => {
     const rewrittenCitation =
       draftUpdatePayload.contentBySection.abstract.content[0].content[0].attrs.studyId;
     expect(rewrittenCitation).toBe("study-a");
+    const rewrittenManuscriptCitation =
+      draftUpdatePayload.manuscript.doc.content[0].content[0].content[0].attrs.studyId;
+    expect(rewrittenManuscriptCitation).toBe("study-a");
   });
 });

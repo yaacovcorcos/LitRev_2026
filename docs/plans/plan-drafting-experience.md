@@ -536,8 +536,10 @@ These are implementation tracks for one target state, not separate product versi
 - The current Tiptap foundation remains the default unless a future implementation spike proves a direct BlockNote adoption materially better without compromising semantics.
 - Journal-specific export rules are profile-driven and additive; the manuscript model itself should stay journal-agnostic.
 
+## Recently Completed
+- [x] `DRX-001` Defined the canonical manuscript schema, stable block identity, and `DraftState v2` migration contract. Draft save/load now normalize legacy payloads into a canonical manuscript document plus `contentBySection` compatibility projection, and direct draft writers use the same normalizer.
+
 ## Active Tasks
-- [ ] `DRX-001` Define the canonical manuscript schema, anchors, and migration contract.
 - [ ] `DRX-002` Rebuild the draft route around a continuous canvas and structure rail.
 - [ ] `DRX-003` Add first-class comments, suggestion mode, checkpoints, and compare/restore.
 - [ ] `DRX-004` Add citation palette, evidence coverage, claim support diagnostics, and repair flows.

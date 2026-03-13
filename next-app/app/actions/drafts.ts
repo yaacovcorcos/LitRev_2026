@@ -1,7 +1,7 @@
 "use server";
 
 import { z } from "zod";
-import type { DraftState } from "@/lib/draftStorage";
+import type { DraftState, DraftStateInput } from "@/lib/draftStorage";
 import { getDraft, saveDraft } from "@/lib/server/drafts";
 import { withValidatedAction, type ActionResult } from "@/lib/server/action-utils";
 import { withAuth } from "@/lib/server/auth/session";
@@ -21,10 +21,10 @@ const saveDraftInput = z.object({
   state: z.preprocess(normalizeDraftStateInput, draftStateSchema),
 });
 
-export async function saveDraftAction(projectId: string, state: DraftState): Promise<ActionResult<DraftState>> {
+export async function saveDraftAction(projectId: string, state: DraftStateInput): Promise<ActionResult<DraftState>> {
   return withValidatedAction(saveDraftInput, { projectId, state }, (v) =>
     withAuth(({ userId, workspaceId }) =>
-      saveDraft({ ownerId: userId, workspaceId }, v.projectId, v.state as DraftState),
+      saveDraft({ ownerId: userId, workspaceId }, v.projectId, v.state as DraftStateInput),
     ),
   );
 }

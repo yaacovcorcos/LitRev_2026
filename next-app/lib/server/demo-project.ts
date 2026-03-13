@@ -2,8 +2,7 @@ import "server-only";
 
 import { createHash, randomUUID } from "node:crypto";
 
-import type { DraftState } from "@/lib/draftStorage";
-import { createDefaultDraftState } from "@/lib/draftStorage";
+import { createDefaultDraftState, normalizeDraftState, type DraftState } from "@/lib/draftStorage";
 import { prisma } from "@/lib/server/prisma";
 import { getProject } from "@/lib/server/projects";
 import { requireScope, type ServiceScope, type ScopeInput } from "@/lib/server/scope";
@@ -1268,7 +1267,7 @@ function buildDemoDraftState(): DraftState {
     "supplement",
   ];
 
-  return state;
+  return normalizeDraftState(state);
 }
 
 const DEMO_DRAFT_STATE = buildDemoDraftState();

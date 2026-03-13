@@ -11,6 +11,7 @@ import {
   type StudyDuplicatePairConfidence,
 } from "@/lib/server/search/dedup";
 import { rewriteCitationStudyIdsInContentBySection } from "@/lib/citation-compiler";
+import { normalizeDraftState } from "@/lib/draftStorage";
 import type { ScopeInput } from "@/lib/server/scope";
 import type { Study, StudyDetails } from "@/types/ledger";
 
@@ -276,8 +277,8 @@ async function rewriteDraftCitationsForMergedStudies(
   });
   if (!draft || typeof draft.state !== "object" || draft.state === null) return;
 
-  const currentState = draft.state as Record<string, unknown>;
-  const contentBySection = currentState.contentBySection as Record<string, unknown> | undefined;
+  const normalizedState = normalizeDraftState(draft.state);
+  const contentBySection = normalizedState.contentBySection as Record<string, unknown> | undefined;
   if (!contentBySection || typeof contentBySection !== "object") return;
 
   const rewritten = rewriteCitationStudyIdsInContentBySection(
@@ -289,10 +290,10 @@ async function rewriteDraftCitationsForMergedStudies(
   await tx.draft.update({
     where: { projectId },
     data: {
-      state: {
-        ...currentState,
+      state: normalizeDraftState({
+        ...normalizedState,
         contentBySection: rewritten.contentBySection,
-      } as any,
+      }) as any,
     },
   });
 }
