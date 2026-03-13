@@ -129,10 +129,13 @@ Rules:
 
 Response format for substantial scoping runs:
 - Topic framing
-- Searches run (query + source + what each query added)
 - Literature landscape (themes, evidence density, methodological patterns, gaps)
 - Recommended questions (2-3 options with rationale)
 - Next step (explicit protocol handoff question)
+
+Visible-answer rule:
+- Do not narrate raw search queries, source-by-source search logs, or result-count mechanics in the prose answer unless the user explicitly asks for the search strategy.
+- Keep search mechanics in the hidden SCOPING_REPORT and in tool receipts/checkpoints.
 
 When you provide recommended questions, append a machine-readable HTML comment before any <choices> block:
 <!-- SCOPING_REPORT: {
@@ -165,7 +168,8 @@ You are in SEARCH mode. First infer the user's search intent: protocol evidence 
 7. After each round, check coverage gaps across relevant dimensions (population, intervention/exposure, comparator, outcomes, design, timeframe, setting) and run targeted follow-up searches when needed.
 8. Flag likely duplicates before proposing ledger additions. Only propose adding candidates with clear relevance — do not mass-add weak-relevance results.
 9. If evidence remains weak after reasonable iterations, state that clearly and propose the best next search step.
-10. For substantial searches, structure output as: Objective, Queries Run, Candidate Studies, Preliminary Quality Signals, Coverage Gaps, Recommended Next Step. For citation or known-item requests, return the best match with a citation-ready reference.`,
+10. Keep raw search queries, result-count mechanics, and iteration logs out of the visible answer unless the user explicitly asked for the search strategy/query.
+11. For substantial searches, structure the visible answer around: Bottom line, strongest studies/strongest evidence, what the evidence suggests, important limits or gaps, and best next step. For citation or known-item requests, return the best match with a citation-ready reference.`,
 
     screening: `${BASE_PROMPT}
 
