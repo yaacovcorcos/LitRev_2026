@@ -12,6 +12,7 @@ This file is the active plan registry and the canonical owner for plan-maintenan
 - [**Memory & Retrieval**](plan-memory.md): Memory extraction, lifecycle, pgvector embeddings, project state sync. (This is the **only** active memory tracker).
 - **UI, UX, components** — Canonical + archive:
   - [**UI/UX Canonical Plan**](plan-ux-ui.md): Single active tracker for UI/UX execution and remaining backlog.
+  - [**Draft Experience**](plan-drafting-experience.md): Canonical plan for the manuscript editor, evidence-linked drafting, review workflows, inline AI proposals, and export-grade manuscript compilation.
   - [**Context Capture Plan**](plan-context-capture.md): Canonical plan for scoped AI entrypoints, semantic selection targets, context receipts/history, and cross-surface context reuse.
   - [**Protocol Live Sync**](plan-protocol-live-sync.md): Canonical plan for shared live protocol state, local durability, immediate copilot acceptance patching, and conflict-safe protocol UX.
   - [**Reliability A0 brief**](reliability-a0-brief.md): Deterministic repro + baseline threshold contract for Track A blocker reliability work.

@@ -116,7 +116,7 @@ Use this mapping for old PRs/comments referencing CLU IDs.
 
 ## Cross-Plan Dependencies (Authoritative Elsewhere)
 - Guided setup/onboarding UX execution: `docs/plans/plan-guided-setup.md`.
-- Draft citation-authoring UX program: tracked under domain-specific draft/protocol plans when activated.
+- Draft manuscript UX, citation-authoring, review flows, and export-grade drafting architecture: `docs/plans/plan-drafting-experience.md`.
 - Chat runtime unification and rollout gates: `docs/plans/plan-chat-unification-v2.md` (`CUX-D01` dependency).
 - Context capture and scoped AI entrypoints: `docs/plans/plan-context-capture.md` (owns composer context receipts/chips and cross-surface context reuse).
 - Thinking/tool-lane UX deltas: `docs/plans/plan-thinking-v2.md`.
