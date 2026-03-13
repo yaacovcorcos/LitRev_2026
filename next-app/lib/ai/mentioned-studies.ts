@@ -21,6 +21,14 @@ const QUOTED_TITLE_YEAR_RE = /["“]([^"”\n]{8,500})["”]\s*\((19\d{2}|20\d{2
 const COMMENT_RE = /<!--\s*MENTIONED_STUDIES:\s*([\s\S]*?)\s*-->/i;
 const XML_RE = /<mentioned_studies>\s*([\s\S]*?)\s*<\/mentioned_studies>/i;
 const FENCED_RE = /```(?:mentioned_studies|json)\s*([\s\S]*?)```/gi;
+const PLACEHOLDER_MARKDOWN_LABELS = new Set([
+    "doi",
+    "pubmed",
+    "pmid",
+    "link",
+    "source",
+    "full text",
+]);
 
 const MentionedStudySchema = z.object({
     title: z.string().optional(),
@@ -53,6 +61,12 @@ function cleanTitle(value: string | undefined): string | undefined {
         .trim();
     if (!cleaned) return undefined;
     return cleaned.length > 500 ? cleaned.slice(0, 500).trim() : cleaned;
+}
+
+function isPlaceholderMarkdownLabel(value: string | undefined): boolean {
+    if (!value) return false;
+    const normalized = value.trim().toLowerCase().replace(/\s+/g, " ");
+    return PLACEHOLDER_MARKDOWN_LABELS.has(normalized);
 }
 
 function extractYear(value: string | undefined): number | undefined {
@@ -162,7 +176,8 @@ function parseFallbackStudies(text: string): MentionedStudy[] {
     const candidates: MentionedStudy[] = [];
 
     for (const match of text.matchAll(LINK_RE)) {
-        const label = cleanTitle(match[1]);
+        const rawLabel = cleanTitle(match[1]);
+        const label = isPlaceholderMarkdownLabel(rawLabel) ? undefined : rawLabel;
         const url = match[2];
         const doi = normalizeDoi(url);
         const pubmedUrl = url.match(/pubmed\.ncbi\.nlm\.nih\.gov\/(\d{6,9})/i);

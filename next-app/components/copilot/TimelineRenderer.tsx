@@ -47,6 +47,7 @@ import { UserInputCard } from "../artifacts/UserInputCard";
 import { StreamingProgress } from "./StreamingProgress";
 import { addMentionedStudyAction } from "@/app/actions/ledger";
 import { extractMentionedStudies, stripMentionedStudiesMarkup, type MentionedStudy } from "@/lib/ai/mentioned-studies";
+import { useMentionedStudyTitles } from "@/lib/ai/use-mentioned-study-titles";
 import { isChatStudyMentionsEnabled } from "@/lib/agent/feature-flags";
 import { getReasoningSummaryPreview } from "@/lib/ai/reasoning-visibility";
 import { getContextTargetKey } from "@/lib/context-capture/targets";
@@ -407,8 +408,9 @@ type AssistantMessageRowProps = {
 
 type MentionAddState = "idle" | "adding" | "added" | "exists" | "error";
 
-function mentionDisplayTitle(study: MentionedStudy): string {
+function mentionDisplayTitle(study: MentionedStudy, hydratedTitle?: string): string {
     if (study.title) return study.title;
+    if (hydratedTitle) return hydratedTitle;
     if (study.doi) return study.doi;
     if (study.pmid) return `PMID ${study.pmid}`;
     if (study.s2PaperId) return `S2 ${study.s2PaperId}`;
@@ -451,6 +453,7 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
         () => (CHAT_STUDY_MENTIONS_ENABLED ? extractMentionedStudies(item.content) : []),
         [item.content]
     );
+    const hydratedMentionTitles = useMentionedStudyTitles(mentions);
     const [mentionStates, setMentionStates] = useState<Record<string, MentionAddState>>({});
     const [showReasoning, setShowReasoning] = useState(reasoningMode !== "off" && isReasoningStreaming);
 
@@ -569,9 +572,10 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
                             {mentions.map((study) => {
                                 const state = mentionStates[study.key] ?? "idle";
                                 const disabled = !projectId || state === "adding" || state === "added" || state === "exists";
+                                const displayTitle = mentionDisplayTitle(study, hydratedMentionTitles[study.key]);
                                 return (
                                     <div key={study.key} className={styles.mentionedStudyChip}>
-                                        <span className={styles.mentionedStudyTitle}>{mentionDisplayTitle(study)}</span>
+                                        <span className={styles.mentionedStudyTitle}>{displayTitle}</span>
                                         {study.year && <span className={styles.mentionedStudyYear}>{study.year}</span>}
                                         {study.sourceUrl && (
                                             <a
@@ -579,7 +583,7 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
                                                 target="_blank"
                                                 rel="noreferrer"
                                                 className={styles.mentionedStudyLink}
-                                                aria-label={`Open source for ${mentionDisplayTitle(study)}`}
+                                                aria-label={`Open source for ${displayTitle}`}
                                                 title="Open source"
                                             >
                                                 <span className="material-icons-round">open_in_new</span>
