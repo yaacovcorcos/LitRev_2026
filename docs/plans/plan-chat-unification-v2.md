@@ -163,8 +163,11 @@ Architecture guardrails:
 3. Shared runtime changes must preserve the CI architecture check in enforce mode.
 
 ## Dependency Notes
+- [plan-agentic.md](./plan-agentic.md) now owns the active runtime stabilization program (`FIX-011b`) for disconnect classification, run convergence, durable continuation, and same-run recovery truth. This plan should treat that stabilization work as an upstream dependency rather than a competing runtime owner.
 - [plan-thinking-v2.md](./plan-thinking-v2.md) depends on this plan for shared runtime parity across `/ai` and project copilot before broader truthful execution-trace rollout.
 - [plan-agentic.md](./plan-agentic.md) depends on this plan whenever agent fixes require shared stream/runtime semantics instead of per-surface adapters.
+
+Popup parity remains intentionally staged: until `U3` lands, popup should be reviewed only against a truthful reduced subset of the shared runtime contract, not full reconnect/replay chrome parity.
 
 ## Recently Completed
 - Popup now preserves a truthful reduced shared-trace subset for live progress, grounded checkpoints, blocking clarification, and structured terminal failures through a shared reducer adapter while remaining compact.
