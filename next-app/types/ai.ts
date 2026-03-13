@@ -7,6 +7,7 @@ import type { ContextCaptureTarget } from "./context-capture";
 import type {
     AgentMode,
     RunAbnormalEndClassification,
+    RunDurabilityState,
     RunFinalizationState,
     RunStatus,
 } from "./agent";
@@ -128,6 +129,8 @@ export type RunRecoveryResponse = {
     isActive: boolean;
     lastActivityAt: string | null;
     lastDurableProgressAt?: string | null;
+    durabilityState?: RunDurabilityState | null;
+    durabilityDegradedReason?: string | null;
     finalizationState?: RunFinalizationState | null;
     lastSequence: number | null;
     replayableEvents: RunRecoveryReplayableChunk[];

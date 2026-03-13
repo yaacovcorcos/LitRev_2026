@@ -530,6 +530,8 @@ model AgentRun {
   startedAt       DateTime  @default(now())
   lastActivityAt  DateTime  @default(now())
   lastDurableProgressAt DateTime @default(now())
+  durabilityState      String   @default("durable") // "durable" | "degraded"
+  durabilityDegradedReason String?
   finalizationState     String   @default("not_started") // "not_started" | "in_progress" | "completed" | "failed"
   abnormalEndClassification String?
   completedAt     DateTime?

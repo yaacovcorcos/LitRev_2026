@@ -1,56 +1,64 @@
 import "server-only";
 
 import type { RuntimeStreamEvent } from "@/lib/server/chat-runtime/events";
-import type { RuntimeThreadContext } from "@/lib/server/chat-runtime/thread";
-import { emitEvent } from "@/lib/server/agent/events";
+import {
+  recordRunEvent,
+  type RunEventFailureMode,
+} from "@/lib/server/agent/run-event-recorder";
 
 export async function persistRecoveryAuthoritativeRuntimeEvent(params: {
+  runId: string;
   event: RuntimeStreamEvent;
-  thread: RuntimeThreadContext;
+  failureMode?: RunEventFailureMode;
 }): Promise<void> {
-  const runId = params.thread.snapshot().runId;
-  if (!runId) return;
-
   switch (params.event.type) {
     case "user_input_required":
-      await emitEvent(runId, "user_input_required", params.event.userInputRequest);
-      return;
-    case "checkpoint":
-      await emitEvent(runId, "checkpoint", {
-        checkpointLabel: params.event.checkpointLabel,
+      await recordRunEvent({
+        runId: params.runId,
+        type: "user_input_required",
+        payload: params.event.userInputRequest,
+        failureMode: params.failureMode ?? "strict",
+        degradationReason: "user_input_required_persistence_failed",
+        logContext: "user_input_required",
       });
       return;
-    case "artifact":
-      if (!params.event.artifactId) return;
-      await emitEvent(
-        runId,
-        "artifact_proposed",
-        {
-          artifactId: params.event.artifactId,
-          artifactType: params.event.artifactType,
-          artifactStatus: params.event.artifactStatus,
-          artifactTitle: params.event.artifactTitle,
+    case "checkpoint":
+      await recordRunEvent({
+        runId: params.runId,
+        type: "checkpoint",
+        payload: {
+          checkpointLabel: params.event.checkpointLabel,
         },
-        { artifactId: params.event.artifactId },
-      );
+        failureMode: params.failureMode ?? "degrade",
+        degradationReason: "checkpoint_persistence_failed",
+        logContext: "checkpoint",
+      });
       return;
     case "error":
       {
         const errorMeta = params.event.errorMeta
-          ? { ...params.event.errorMeta, runId: params.event.errorMeta.runId ?? runId }
+          ? { ...params.event.errorMeta, runId: params.event.errorMeta.runId ?? params.runId }
           : {
               kind: "runtime",
               code: "STREAM_ERROR",
               retryable: true,
               source: "runtime",
               message: params.event.error,
-              runId,
+              runId: params.runId,
             };
-        await emitEvent(runId, "error", {
+        await recordRunEvent({
+          runId: params.runId,
+          type: "error",
+          payload: {
           error: params.event.error,
           errorMeta,
-        }, {
-          errorCode: params.event.errorMeta?.code,
+          },
+          extras: {
+            errorCode: params.event.errorMeta?.code,
+          },
+          failureMode: params.failureMode ?? "degrade",
+          degradationReason: "error_persistence_failed",
+          logContext: "terminal_error",
         });
       }
       return;

@@ -13,6 +13,8 @@ describe("run convergence", () => {
           status: "running",
           lastActivityAt: new Date("2026-03-13T11:59:40.000Z"),
           lastDurableProgressAt: new Date("2026-03-13T11:59:35.000Z"),
+          durabilityState: "durable",
+          durabilityDegradedReason: null,
           finalizationState: "not_started",
           abnormalEndClassification: null,
         },
@@ -33,6 +35,8 @@ describe("run convergence", () => {
           status: "running",
           lastActivityAt: new Date("2026-03-13T11:59:50.000Z"),
           lastDurableProgressAt: new Date("2026-03-13T11:58:00.000Z"),
+          durabilityState: "durable",
+          durabilityDegradedReason: null,
           finalizationState: "not_started",
           abnormalEndClassification: null,
         },
@@ -53,6 +57,8 @@ describe("run convergence", () => {
           status: "running",
           lastActivityAt: new Date("2026-03-13T11:59:50.000Z"),
           lastDurableProgressAt: new Date("2026-03-13T11:58:00.000Z"),
+          durabilityState: "durable",
+          durabilityDegradedReason: null,
           finalizationState: "in_progress",
           abnormalEndClassification: null,
         },
@@ -72,6 +78,8 @@ describe("run convergence", () => {
           status: "running",
           lastActivityAt: new Date("2026-03-13T11:59:55.000Z"),
           lastDurableProgressAt: new Date("2026-03-13T11:59:50.000Z"),
+          durabilityState: "durable",
+          durabilityDegradedReason: null,
           finalizationState: "failed",
           abnormalEndClassification: "finalization_failed",
         },
@@ -81,6 +89,28 @@ describe("run convergence", () => {
     ).toMatchObject({
       recoveryRecommendation: "stop_and_retry",
       abnormalEndClassification: "finalization_failed",
+    });
+  });
+
+  it("recommends stop-and-retry when durability has already degraded", () => {
+    expect(
+      assessRunConvergence(
+        {
+          status: "running",
+          lastActivityAt: new Date("2026-03-13T11:59:55.000Z"),
+          lastDurableProgressAt: new Date("2026-03-13T11:59:50.000Z"),
+          durabilityState: "degraded",
+          durabilityDegradedReason: "tool_result_persistence_failed",
+          finalizationState: "not_started",
+          abnormalEndClassification: null,
+        },
+        now,
+        staleMs,
+      ),
+    ).toMatchObject({
+      durabilityDegraded: true,
+      recoveryRecommendation: "stop_and_retry",
+      abnormalEndClassification: "recovery_required_persistence_failed",
     });
   });
 });

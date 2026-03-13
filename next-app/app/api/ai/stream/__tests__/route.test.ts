@@ -4,7 +4,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   requireApiSession: vi.fn(),
   assertProjectAccess: vi.fn(),
-  persistRecoveryAuthoritativeRuntimeEvent: vi.fn(),
   ingestChatUnificationMetric: vi.fn(),
   streamChatWithArtifacts: vi.fn(),
 }));
@@ -15,10 +14,6 @@ vi.mock("@/lib/server/auth/session", () => ({
 
 vi.mock("@/lib/server/access", () => ({
   assertProjectAccess: mocks.assertProjectAccess,
-}));
-
-vi.mock("@/lib/server/chat-runtime/persist-recovery-events", () => ({
-  persistRecoveryAuthoritativeRuntimeEvent: mocks.persistRecoveryAuthoritativeRuntimeEvent,
 }));
 
 vi.mock("@/lib/server/chat-unification-metrics", () => ({
@@ -55,10 +50,9 @@ describe("/api/ai/stream route", () => {
     });
     mocks.assertProjectAccess.mockResolvedValue(undefined);
     mocks.ingestChatUnificationMetric.mockResolvedValue(undefined);
-    mocks.persistRecoveryAuthoritativeRuntimeEvent.mockResolvedValue(undefined);
   });
 
-  it("persists checkpoint and user-input events at the stream emission boundary", async () => {
+  it("streams checkpoint and user-input events without route-side persistence authorship", async () => {
     mocks.streamChatWithArtifacts.mockImplementation(async function* () {
       yield { type: "run_start", runId: "run-1", conversationId: "conv-1" };
       yield { type: "checkpoint", checkpointLabel: "PubMed returned 18 results. Reviewing the strongest matches now." };
@@ -102,11 +96,6 @@ describe("/api/ai/stream route", () => {
       "user_input_required",
       "run_end",
     ]);
-
-    expect(mocks.persistRecoveryAuthoritativeRuntimeEvent).toHaveBeenCalledTimes(2);
-    expect(
-      mocks.persistRecoveryAuthoritativeRuntimeEvent.mock.calls.map(([params]) => params.event.type),
-    ).toEqual(["checkpoint", "user_input_required"]);
   });
 
   it("emits an error chunk when the stream fails after run_start", async () => {

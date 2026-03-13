@@ -57,6 +57,8 @@ describe("run recovery", () => {
       costTokensOut: 34,
       lastActivityAt: new Date("2026-03-11T11:00:00.000Z"),
       lastDurableProgressAt: new Date("2026-03-11T11:00:00.000Z"),
+      durabilityState: "durable",
+      durabilityDegradedReason: null,
       finalizationState: "completed",
       abnormalEndClassification: null,
     });
@@ -300,6 +302,8 @@ describe("run recovery", () => {
       costTokensOut: 0,
       lastActivityAt: new Date("2026-03-11T11:59:30.000Z"),
       lastDurableProgressAt: new Date("2026-03-11T11:59:30.000Z"),
+      durabilityState: "durable",
+      durabilityDegradedReason: null,
       finalizationState: "not_started",
       abnormalEndClassification: null,
     });
@@ -322,6 +326,8 @@ describe("run recovery", () => {
       costTokensOut: 0,
       lastActivityAt: new Date("2026-03-11T11:58:00.000Z"),
       lastDurableProgressAt: new Date("2026-03-11T11:58:00.000Z"),
+      durabilityState: "durable",
+      durabilityDegradedReason: null,
       finalizationState: "not_started",
       abnormalEndClassification: null,
     });
@@ -348,6 +354,8 @@ describe("run recovery", () => {
       costTokensOut: 0,
       lastActivityAt: new Date("2026-03-11T11:59:50.000Z"),
       lastDurableProgressAt: new Date("2026-03-11T11:58:00.000Z"),
+      durabilityState: "durable",
+      durabilityDegradedReason: null,
       finalizationState: "not_started",
       abnormalEndClassification: null,
     });
@@ -362,6 +370,7 @@ describe("run recovery", () => {
     expect(result.recoveryRecommendation).toBe("stop_and_retry");
     expect(result.abnormalEndClassification).toBe("no_forward_durable_progress");
     expect(result.lastDurableProgressAt).toBe("2026-03-11T11:58:00.000Z");
+    expect(result.durabilityState).toBe("durable");
     expect(result.finalizationState).toBe("not_started");
   });
 
@@ -378,6 +387,8 @@ describe("run recovery", () => {
       costTokensOut: 0,
       lastActivityAt: new Date("2026-03-11T11:59:50.000Z"),
       lastDurableProgressAt: new Date("2026-03-11T11:59:45.000Z"),
+      durabilityState: "durable",
+      durabilityDegradedReason: null,
       finalizationState: "failed",
       abnormalEndClassification: "finalization_failed",
     });
@@ -391,6 +402,39 @@ describe("run recovery", () => {
 
     expect(result.recoveryRecommendation).toBe("stop_and_retry");
     expect(result.abnormalEndClassification).toBe("finalization_failed");
+    expect(result.durabilityState).toBe("durable");
     expect(result.finalizationState).toBe("failed");
+  });
+
+  it("surfaces degraded durability as stop-and-retry recovery truth", async () => {
+    mocks.runEventFindMany.mockResolvedValue([]);
+    mocks.runEventFindFirst.mockResolvedValue(null);
+    mocks.artifactFindMany.mockResolvedValue([]);
+    mocks.agentRunFindFirst.mockResolvedValue({
+      id: "run-degraded",
+      conversationId: "conv-1",
+      status: "running",
+      model: null,
+      costTokensIn: 0,
+      costTokensOut: 0,
+      lastActivityAt: new Date("2026-03-11T11:59:55.000Z"),
+      lastDurableProgressAt: new Date("2026-03-11T11:59:50.000Z"),
+      durabilityState: "degraded",
+      durabilityDegradedReason: "tool_result_persistence_failed",
+      finalizationState: "not_started",
+      abnormalEndClassification: "recovery_required_persistence_failed",
+    });
+
+    const result = await buildRunRecoveryResponse({
+      conversationId: "conv-1",
+      runId: "run-degraded",
+      now: new Date("2026-03-11T12:00:00.000Z"),
+      staleMs: 90_000,
+    });
+
+    expect(result.recoveryRecommendation).toBe("stop_and_retry");
+    expect(result.abnormalEndClassification).toBe("recovery_required_persistence_failed");
+    expect(result.durabilityState).toBe("degraded");
+    expect(result.durabilityDegradedReason).toBe("tool_result_persistence_failed");
   });
 });
