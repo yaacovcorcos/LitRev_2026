@@ -26,6 +26,7 @@ import type {
     ChoiceOption,
     CopilotPage,
     ReasoningMode,
+    RunRecoveryResponse,
     RunRecoveryRecommendation,
     StreamPhase,
     UserInputRequest,
@@ -43,10 +44,12 @@ import {
     buildUnexpectedTerminalErrorState,
     buildClientErrorState,
     clearRunScopedRenderedErrors,
+    clearRunScopedRecoveryState,
     formatStreamErrorForUI,
     hasCanonicalFailureFallbackText,
     hasRenderedErrorMatch,
     reconcileRunScopedRenderedErrors,
+    reconcileRunScopedRecoveryState,
     shouldSuppressClientFallback,
 } from "@/lib/ai/stream-error-ui";
 import { recordChatUnificationMetric } from "@/lib/ai/chat-unification-telemetry";
@@ -64,11 +67,10 @@ import {
 } from "@/lib/ai/ai-stream-runtime";
 import {
     createRecoveryErrorEnvelope,
+    getRunRecoveryMessage,
     pollRunRecovery,
-    RUN_RECOVERY_FAILED_MESSAGE,
     RUN_RECOVERY_INTERRUPTED_TOOL_SUMMARY,
     RUN_RECOVERY_RECONNECT_SUMMARY,
-    RUN_RECOVERY_TIMEOUT_MESSAGE,
 } from "@/lib/ai/run-recovery-client";
 import type { PendingAttachment, ApproveArtifactsBatchResult } from "@/types/copilot-context";
 import type { useCopilotConversations } from "@/hooks/useCopilotConversations";
@@ -170,21 +172,51 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
         };
     }, []);
 
-    const appendProjectRecoveryCheckpoint = useCallback((page: CopilotPage, section: string | undefined, label: string) => {
-        updateState((prev) => ({
-            ...prev,
-            messages: [
-                ...prev.messages.filter((message) => message.checkpoint?.label !== label),
-                {
-                    id: `recovery-checkpoint-${Date.now()}`,
-                    sender: "ai",
-                    text: "",
-                    createdAt: new Date().toISOString(),
-                    context: { page, section },
-                    checkpoint: { label },
+    const appendProjectRecoveryCheckpoint = useCallback((
+        page: CopilotPage,
+        section: string | undefined,
+        runId: string,
+        label: string,
+    ) => {
+        updateState((prev) => {
+            const reconciled = reconcileRunScopedRecoveryState({
+                items: prev.messages,
+                nextCheckpoint: {
+                    runId,
+                    checkpointKind: "recovery",
+                    label,
                 },
-            ],
-        }));
+                getMessage: (message) => message.text,
+                getErrorMeta: (message) => message.streamError,
+                getCheckpointMeta: (message) => message.checkpoint
+                    ? {
+                        runId: message.checkpoint.runId ?? null,
+                        checkpointKind: message.checkpoint.checkpointKind ?? "standard",
+                        label: message.checkpoint.label,
+                    }
+                    : null,
+            });
+            if (!reconciled.shouldAppend) {
+                return {
+                    ...prev,
+                    messages: reconciled.items,
+                };
+            }
+            return {
+                ...prev,
+                messages: [
+                    ...reconciled.items,
+                    {
+                        id: `recovery-checkpoint-${Date.now()}`,
+                        sender: "ai",
+                        text: "",
+                        createdAt: new Date().toISOString(),
+                        context: { page, section },
+                        checkpoint: { label, runId, checkpointKind: "recovery" },
+                    },
+                ],
+            };
+        });
     }, [updateState]);
 
     const appendProjectRecoveryError = useCallback((params: {
@@ -194,27 +226,30 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
         errorMeta: AIErrorEnvelope;
     }) => {
         updateState((prev) => {
-            const aiMessages = prev.messages.filter((message) => message.sender === "ai");
-            const reconciled = reconcileRunScopedRenderedErrors({
-                items: aiMessages,
+            const reconciled = reconcileRunScopedRecoveryState({
+                items: prev.messages,
                 nextMessage: params.message,
                 nextMeta: params.errorMeta,
                 getMessage: (message) => message.text,
                 getErrorMeta: (message) => message.streamError,
+                getCheckpointMeta: (message) => message.checkpoint
+                    ? {
+                        runId: message.checkpoint.runId ?? null,
+                        checkpointKind: message.checkpoint.checkpointKind ?? "standard",
+                        label: message.checkpoint.label,
+                    }
+                    : null,
             });
-            const retainedMessageIds = new Set(reconciled.items.map((message) => message.id));
             if (!reconciled.shouldAppend) {
                 return {
                     ...prev,
-                    messages: prev.messages.filter((message) => message.sender !== "ai" || retainedMessageIds.has(message.id)),
+                    messages: reconciled.items,
                 };
             }
             return {
                 ...prev,
                 messages: [
-                    ...prev.messages.filter((message) =>
-                        !message.progress && (message.sender !== "ai" || retainedMessageIds.has(message.id))
-                    ),
+                    ...reconciled.items.filter((message) => !message.progress),
                     {
                         id: `recovery-error-${Date.now()}`,
                         sender: "ai",
@@ -241,6 +276,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
         activeRunId: string;
         lastActivityAt?: string | null;
         runStatus?: string | null;
+        abnormalEndClassification?: RunRecoveryResponse["abnormalEndClassification"];
     }> => {
         const { aiMessageId, state: initialState } = buildProjectRecoverySeedState({
             messages: stateRef.current.messages,
@@ -331,6 +367,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
             activeRunId: recoveryResult.response?.runId ?? params.runId,
             lastActivityAt: recoveryResult.response?.lastActivityAt ?? null,
             runStatus: recoveryResult.response?.runStatus ?? null,
+            abnormalEndClassification: recoveryResult.response?.abnormalEndClassification ?? null,
         };
     }, [buildProjectRecoverySeedState, convo, onNavigate, projectId, setArtifacts, setCurrentRunId, setPendingChoices, setPendingUserInput, stateRef, updateState]);
 
@@ -434,10 +471,17 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
             if (recoveredRunId) {
                 updateState((prev) => ({
                     ...prev,
-                    messages: clearRunScopedRenderedErrors({
+                    messages: clearRunScopedRecoveryState({
                         items: prev.messages,
                         runId: recoveredRunId,
                         getErrorMeta: (message) => message.streamError,
+                        getCheckpointMeta: (message) => message.checkpoint
+                            ? {
+                                runId: message.checkpoint.runId ?? null,
+                                checkpointKind: message.checkpoint.checkpointKind ?? "standard",
+                                label: message.checkpoint.label,
+                            }
+                            : null,
                     }),
                 }));
             }
@@ -598,7 +642,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                         RUN_RECOVERY_INTERRUPTED_TOOL_SUMMARY,
                     ),
                 }));
-                appendProjectRecoveryCheckpoint(page, section, RUN_RECOVERY_RECONNECT_SUMMARY);
+                appendProjectRecoveryCheckpoint(page, section, localRunId, RUN_RECOVERY_RECONNECT_SUMMARY);
 
                 const recoveryResult = await pollRunRecovery({
                     conversationId: effectiveConvId,
@@ -615,11 +659,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
 
                 const recommendation = recoveryResult.response?.recoveryRecommendation
                     ?? (recoveryResult.outcome === "needs_user_action" ? "stop_and_retry" : "retry");
-                const recoveryMessage = recoveryResult.outcome === "timeout"
-                    ? RUN_RECOVERY_TIMEOUT_MESSAGE
-                    : recoveryResult.outcome === "needs_user_action"
-                        ? "The active run is still holding this conversation. Choose how to continue."
-                        : RUN_RECOVERY_FAILED_MESSAGE;
+                const recoveryMessage = getRunRecoveryMessage(recoveryResult);
                 const errorMeta = createRecoveryErrorEnvelope({
                     code: recoveryResult.outcome === "timeout"
                         ? "RUN_RECOVERY_TIMEOUT"
@@ -766,7 +806,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                         RUN_RECOVERY_INTERRUPTED_TOOL_SUMMARY,
                     ),
                 }));
-                appendProjectRecoveryCheckpoint(page, section, RUN_RECOVERY_RECONNECT_SUMMARY);
+                appendProjectRecoveryCheckpoint(page, section, localRunId, RUN_RECOVERY_RECONNECT_SUMMARY);
                 const recoveryResult = await runProjectRecovery({
                     conversationId: effectiveConvId,
                     runId: localRunId,
@@ -791,11 +831,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                         conversationId: effectiveConvId,
                     };
                 }
-                const recoveryMessage = recoveryResult.outcome === "timeout"
-                    ? RUN_RECOVERY_TIMEOUT_MESSAGE
-                    : recoveryResult.outcome === "needs_user_action"
-                        ? "The active run is still holding this conversation. Choose how to continue."
-                        : RUN_RECOVERY_FAILED_MESSAGE;
+                const recoveryMessage = getRunRecoveryMessage(recoveryResult);
                 const recoveryError = createRecoveryErrorEnvelope({
                     code: recoveryResult.outcome === "timeout"
                         ? "RUN_RECOVERY_TIMEOUT"
@@ -1411,7 +1447,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                 RUN_RECOVERY_INTERRUPTED_TOOL_SUMMARY,
             ),
         }));
-        appendProjectRecoveryCheckpoint(recoveryPage, recoverySection, RUN_RECOVERY_RECONNECT_SUMMARY);
+        appendProjectRecoveryCheckpoint(recoveryPage, recoverySection, activeRunId, RUN_RECOVERY_RECONNECT_SUMMARY);
 
         try {
             const recoveryResult = await runProjectRecovery({
@@ -1423,11 +1459,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
             if (recoveryResult.outcome === "recovered") {
                 return;
             }
-            const recoveryMessage = recoveryResult.outcome === "timeout"
-                ? RUN_RECOVERY_TIMEOUT_MESSAGE
-                : recoveryResult.outcome === "needs_user_action"
-                    ? "The active run is still holding this conversation. Choose how to continue."
-                    : RUN_RECOVERY_FAILED_MESSAGE;
+            const recoveryMessage = getRunRecoveryMessage(recoveryResult);
             appendProjectRecoveryError({
                 page: recoveryPage,
                 section: recoverySection,

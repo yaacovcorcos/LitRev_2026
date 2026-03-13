@@ -52,6 +52,8 @@ export type CopilotMessage = {
   /** Structured checkpoint emitted by the runtime */
   checkpoint?: {
     label: string;
+    runId?: string;
+    checkpointKind?: "standard" | "recovery";
   };
   /** Structured tool activity metadata for timeline rendering */
   toolActivity?: {

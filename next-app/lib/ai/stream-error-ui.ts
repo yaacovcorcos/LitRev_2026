@@ -124,6 +124,9 @@ function inferRetryableFromMessage(message: string): boolean {
 
 type GenericMessageExtractor<T> = (item: T) => string | null | undefined;
 type GenericMetaExtractor<T> = (item: T) => AIErrorEnvelope | null | undefined;
+type GenericCheckpointMetaExtractor<T> = (
+    item: T,
+) => { runId?: string | null; checkpointKind?: "standard" | "recovery" | null; label?: string | null } | null | undefined;
 
 export function hasRenderedErrorMatch<T>(params: {
     items: T[];
@@ -261,6 +264,48 @@ function getSameRunErrorAuthority(errorMeta: AIErrorEnvelope | null | undefined)
     return 1;
 }
 
+function getCheckpointRunId(
+    checkpointMeta:
+        | { runId?: string | null; checkpointKind?: "standard" | "recovery" | null; label?: string | null }
+        | null
+        | undefined,
+): string | null {
+    if (!checkpointMeta || checkpointMeta.checkpointKind !== "recovery") {
+        return null;
+    }
+    return checkpointMeta.runId ?? null;
+}
+
+function getSameRunCheckpointAuthority(
+    checkpointMeta:
+        | { runId?: string | null; checkpointKind?: "standard" | "recovery" | null; label?: string | null }
+        | null
+        | undefined,
+): number {
+    return getCheckpointRunId(checkpointMeta) ? 0 : -1;
+}
+
+function isSameRunScopedRecoveryCheckpoint(params: {
+    existingCheckpointMeta:
+        | { runId?: string | null; checkpointKind?: "standard" | "recovery" | null; label?: string | null }
+        | null
+        | undefined;
+    nextCheckpointMeta:
+        | { runId?: string | null; checkpointKind?: "standard" | "recovery" | null; label?: string | null }
+        | null
+        | undefined;
+}): boolean {
+    const existingRunId = getCheckpointRunId(params.existingCheckpointMeta);
+    const nextRunId = getCheckpointRunId(params.nextCheckpointMeta);
+    if (!existingRunId || !nextRunId || existingRunId !== nextRunId) {
+        return false;
+    }
+
+    const existingLabel = collapseWhitespace(params.existingCheckpointMeta?.label ?? "");
+    const nextLabel = collapseWhitespace(params.nextCheckpointMeta?.label ?? "");
+    return Boolean(existingLabel && existingLabel === nextLabel);
+}
+
 export function reconcileRunScopedRenderedErrors<T>(params: {
     items: T[];
     nextMessage: string;
@@ -307,6 +352,87 @@ export function reconcileRunScopedRenderedErrors<T>(params: {
     return { items, shouldAppend };
 }
 
+export function reconcileRunScopedRecoveryState<T>(params: {
+    items: T[];
+    nextMessage?: string | null;
+    nextMeta?: AIErrorEnvelope | null;
+    nextCheckpoint?:
+        | { runId?: string | null; checkpointKind?: "standard" | "recovery" | null; label?: string | null }
+        | null;
+    getMessage: GenericMessageExtractor<T>;
+    getErrorMeta: GenericMetaExtractor<T>;
+    getCheckpointMeta: GenericCheckpointMetaExtractor<T>;
+}): {
+    items: T[];
+    shouldAppend: boolean;
+} {
+    const nextMeta = params.nextMeta ?? null;
+    const nextCheckpoint = params.nextCheckpoint ?? null;
+    const nextRunId = getErrorRunId(nextMeta) ?? getCheckpointRunId(nextCheckpoint);
+    const nextAuthority = nextMeta
+        ? getSameRunErrorAuthority(nextMeta)
+        : getSameRunCheckpointAuthority(nextCheckpoint);
+    let shouldAppend = true;
+
+    const items = params.items.filter((item) => {
+        const existingMeta = params.getErrorMeta(item) ?? null;
+        const existingCheckpoint = params.getCheckpointMeta(item) ?? null;
+
+        if (existingMeta) {
+            if (
+                params.nextMessage
+                && isSameRenderedError({
+                    existingMessage: params.getMessage(item) ?? null,
+                    existingMeta,
+                    nextMessage: params.nextMessage,
+                    nextMeta,
+                })
+            ) {
+                shouldAppend = false;
+                return true;
+            }
+
+            if (!nextRunId) return true;
+
+            const existingRunId = getErrorRunId(existingMeta);
+            if (!existingRunId || existingRunId !== nextRunId) return true;
+
+            const existingAuthority = getSameRunErrorAuthority(existingMeta);
+            if (existingAuthority > nextAuthority) {
+                shouldAppend = false;
+                return true;
+            }
+
+            return false;
+        }
+
+        if (!existingCheckpoint) return true;
+
+        if (isSameRunScopedRecoveryCheckpoint({
+            existingCheckpointMeta: existingCheckpoint,
+            nextCheckpointMeta: nextCheckpoint,
+        })) {
+            shouldAppend = false;
+            return true;
+        }
+
+        if (!nextRunId) return true;
+
+        const existingRunId = getCheckpointRunId(existingCheckpoint);
+        if (!existingRunId || existingRunId !== nextRunId) return true;
+
+        const existingAuthority = getSameRunCheckpointAuthority(existingCheckpoint);
+        if (existingAuthority > nextAuthority) {
+            shouldAppend = false;
+            return true;
+        }
+
+        return false;
+    });
+
+    return { items, shouldAppend };
+}
+
 export function clearRunScopedRenderedErrors<T>(params: {
     items: T[];
     runId?: string | null;
@@ -314,6 +440,23 @@ export function clearRunScopedRenderedErrors<T>(params: {
 }): T[] {
     if (!params.runId) return params.items;
     return params.items.filter((item) => getErrorRunId(params.getErrorMeta(item) ?? null) !== params.runId);
+}
+
+export function clearRunScopedRecoveryState<T>(params: {
+    items: T[];
+    runId?: string | null;
+    getErrorMeta: GenericMetaExtractor<T>;
+    getCheckpointMeta: GenericCheckpointMetaExtractor<T>;
+}): T[] {
+    if (!params.runId) return params.items;
+    return params.items.filter((item) => {
+        const errorRunId = getErrorRunId(params.getErrorMeta(item) ?? null);
+        if (errorRunId === params.runId) {
+            return false;
+        }
+        const checkpointRunId = getCheckpointRunId(params.getCheckpointMeta(item) ?? null);
+        return checkpointRunId !== params.runId;
+    });
 }
 
 export function isRetryableTerminalReason(reason: StreamTerminalReason | null): boolean {

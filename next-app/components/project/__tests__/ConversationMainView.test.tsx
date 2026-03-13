@@ -74,7 +74,11 @@ describe("ConversationMainView parity", () => {
           sender: "ai",
           text: "",
           createdAt: "2026-03-10T00:00:01.000Z",
-          checkpoint: { label: "PubMed returned 18 results. Reviewing the strongest matches now." },
+          checkpoint: {
+            label: "PubMed returned 18 results. Reviewing the strongest matches now.",
+            runId: "run-1",
+            checkpointKind: "recovery",
+          },
         },
         {
           id: "user-input-1",
@@ -138,6 +142,10 @@ describe("ConversationMainView parity", () => {
     expect(props.messages).toHaveLength(5);
     expect(props.messages).toEqual(mockUseProjectCopilot.mock.results[0]?.value.messages);
     expect(props.suppressedProgressId).toBe("progress-1");
+    const checkpoint = props.messages.find((message) => (message as { checkpoint?: unknown }).checkpoint) as {
+      checkpoint?: { runId?: string; checkpointKind?: string };
+    };
+    expect(checkpoint.checkpoint).toMatchObject({ runId: "run-1", checkpointKind: "recovery" });
   });
 
   it("targets reconnect and stop-and-retry actions to the clicked run", () => {

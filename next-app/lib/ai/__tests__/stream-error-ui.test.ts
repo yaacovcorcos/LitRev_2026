@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
+import type { AIErrorEnvelope } from "@/types/ai";
 import {
     buildUnexpectedTerminalErrorState,
     buildClientErrorState,
     clearRunScopedRenderedErrors,
+    clearRunScopedRecoveryState,
     extractLegacyRecoveryError,
     formatStreamErrorForUI,
     hasCanonicalFailureFallbackText,
@@ -11,9 +13,21 @@ import {
     isRetryableTerminalReason,
     isSameRenderedError,
     matchesCanonicalFailureFallback,
+    reconcileRunScopedRecoveryState,
     reconcileRunScopedRenderedErrors,
     shouldSuppressClientFallback,
 } from "@/lib/ai/stream-error-ui";
+
+type RecoveryStateTestItem = {
+    id: string;
+    message?: string;
+    errorMeta?: AIErrorEnvelope;
+    checkpoint?: {
+        label: string;
+        runId?: string | null;
+        checkpointKind?: "standard" | "recovery" | null;
+    };
+};
 
 describe("formatStreamErrorForUI", () => {
     it("extracts and rewrites Anthropic thinking/max_tokens mismatch errors", () => {
@@ -395,6 +409,114 @@ describe("formatStreamErrorForUI", () => {
                     source: "runtime",
                     message: "timeout",
                     runId: "run-2",
+                },
+            },
+        ]);
+    });
+
+    it("replaces a same-run reconnect checkpoint with stronger recovery truth", () => {
+        const reconciled = reconcileRunScopedRecoveryState({
+            items: [{
+                id: "checkpoint-run-1",
+                checkpoint: {
+                    label: "Connection lost. Reconnecting to the active run…",
+                    runId: "run-1",
+                    checkpointKind: "recovery" as const,
+                },
+            }] satisfies RecoveryStateTestItem[],
+            nextMessage: "The active run stopped making durable progress. Choose how to continue.",
+            nextMeta: {
+                kind: "runtime",
+                code: "RUN_RECOVERY_REQUIRES_USER_ACTION",
+                retryable: false,
+                source: "runtime",
+                message: "The active run stopped making durable progress. Choose how to continue.",
+                runId: "run-1",
+                activeRunId: "run-1",
+                recoveryRecommendation: "stop_and_retry" as const,
+            },
+            getMessage: (item: RecoveryStateTestItem) => item.message ?? null,
+            getErrorMeta: (item: RecoveryStateTestItem) => item.errorMeta ?? null,
+            getCheckpointMeta: (item: RecoveryStateTestItem) => item.checkpoint ?? null,
+        });
+
+        expect(reconciled.items).toEqual([]);
+        expect(reconciled.shouldAppend).toBe(true);
+    });
+
+    it("suppresses a same-run reconnect checkpoint when stronger recovery truth already exists", () => {
+        const reconciled = reconcileRunScopedRecoveryState({
+            items: [{
+                id: "error-run-1",
+                message: "The active run stopped making durable progress. Choose how to continue.",
+                errorMeta: {
+                    kind: "runtime",
+                    code: "RUN_RECOVERY_REQUIRES_USER_ACTION",
+                    retryable: false,
+                    source: "runtime",
+                    message: "The active run stopped making durable progress. Choose how to continue.",
+                    runId: "run-1",
+                    activeRunId: "run-1",
+                    recoveryRecommendation: "stop_and_retry" as const,
+                },
+            }] satisfies RecoveryStateTestItem[],
+            nextCheckpoint: {
+                label: "Connection lost. Reconnecting to the active run…",
+                runId: "run-1",
+                checkpointKind: "recovery" as const,
+            },
+            getMessage: (item: RecoveryStateTestItem) => item.message ?? null,
+            getErrorMeta: (item: RecoveryStateTestItem) => item.errorMeta ?? null,
+            getCheckpointMeta: (item: RecoveryStateTestItem) => item.checkpoint ?? null,
+        });
+
+        expect(reconciled.items).toHaveLength(1);
+        expect(reconciled.shouldAppend).toBe(false);
+    });
+
+    it("clears same-run recovery checkpoints and errors after terminal reconciliation", () => {
+        const remaining = clearRunScopedRecoveryState({
+            items: [
+                {
+                    id: "checkpoint-run-1",
+                    checkpoint: {
+                        label: "Connection lost. Reconnecting to the active run…",
+                        runId: "run-1",
+                        checkpointKind: "recovery" as const,
+                    },
+                },
+                {
+                    id: "error-run-1",
+                    errorMeta: {
+                        kind: "runtime",
+                        code: "RUN_RECOVERY_TIMEOUT",
+                        retryable: true,
+                        source: "runtime",
+                        message: "timeout",
+                        runId: "run-1",
+                    },
+                },
+                {
+                    id: "checkpoint-run-2",
+                    checkpoint: {
+                        label: "Connection lost. Reconnecting to the active run…",
+                        runId: "run-2",
+                        checkpointKind: "recovery" as const,
+                    },
+                },
+            ] satisfies RecoveryStateTestItem[],
+            runId: "run-1",
+            getErrorMeta: (item: RecoveryStateTestItem) => item.errorMeta ?? null,
+            getCheckpointMeta: (item: RecoveryStateTestItem) => item.checkpoint ?? null,
+        });
+
+        expect(remaining).toEqual([
+            {
+                id: "checkpoint-run-2",
+                checkpoint: {
+                    label: "Connection lost. Reconnecting to the active run…",
+                    runId: "run-2",
+                    checkpointKind: "recovery",
                 },
             },
         ]);

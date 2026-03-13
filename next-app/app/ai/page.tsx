@@ -28,10 +28,12 @@ import {
   buildUnexpectedTerminalErrorState,
   buildClientErrorState,
   clearRunScopedRenderedErrors,
+  clearRunScopedRecoveryState,
   formatStreamErrorForUI,
   hasCanonicalFailureFallbackText,
   hasRenderedErrorMatch,
   reconcileRunScopedRenderedErrors,
+  reconcileRunScopedRecoveryState,
   shouldSuppressClientFallback,
 } from "@/lib/ai/stream-error-ui";
 import {
@@ -52,11 +54,10 @@ import { recordReliabilityMetric } from "@/lib/ai/reliability-telemetry";
 import type { RetryModelExpectation } from "@/types/chat-unification";
 import {
   createRecoveryErrorEnvelope,
+  getRunRecoveryMessage,
   pollRunRecovery,
-  RUN_RECOVERY_FAILED_MESSAGE,
   RUN_RECOVERY_INTERRUPTED_TOOL_SUMMARY,
   RUN_RECOVERY_RECONNECT_SUMMARY,
-  RUN_RECOVERY_TIMEOUT_MESSAGE,
 } from "@/lib/ai/run-recovery-client";
 import { isMobileAiV2Enabled } from "@/lib/mobile/feature-flags";
 import { PHONE_MEDIA_QUERY } from "@/lib/mobile/breakpoints";
@@ -709,21 +710,25 @@ export default function AIView() {
     errorMeta: AIErrorEnvelope;
   }) => {
     updateConversationTimeline(params.conversationId, (items) => {
-      const reconciled = reconcileRunScopedRenderedErrors({
-        items: items.filter((item) => item.type === "error"),
+      const reconciled = reconcileRunScopedRecoveryState({
+        items,
         nextMessage: params.message,
         nextMeta: params.errorMeta,
         getMessage: (item) => item.type === "error" ? item.message : null,
         getErrorMeta: (item) => item.type === "error" ? item.errorMeta : null,
+        getCheckpointMeta: (item) => item.type === "checkpoint"
+          ? {
+              runId: item.runId ?? null,
+              checkpointKind: item.checkpointKind ?? "standard",
+              label: item.label,
+            }
+          : null,
       });
-      const retainedErrorIds = new Set(reconciled.items.map((item) => item.id));
       if (!reconciled.shouldAppend) {
-        return items.filter((item) => item.type !== "error" || retainedErrorIds.has(item.id));
+        return reconciled.items;
       }
       return [
-        ...items.filter((item) =>
-          item.type !== "progress" && (item.type !== "error" || retainedErrorIds.has(item.id))
-        ),
+        ...reconciled.items.filter((item) => item.type !== "progress"),
         {
           type: "error",
           id: makeId("recovery-error"),
@@ -736,16 +741,40 @@ export default function AIView() {
     });
   }, [updateConversationTimeline]);
 
-  const appendRecoveryCheckpoint = useCallback((conversationId: string, label: string) => {
-    updateConversationTimeline(conversationId, (items) => ([
-      ...items.filter((item) => !(item.type === "checkpoint" && item.label === label)),
-      {
-        type: "checkpoint",
-        id: makeId("recovery-checkpoint"),
-        label,
-        createdAt: new Date().toISOString(),
-      },
-    ]));
+  const appendRecoveryCheckpoint = useCallback((conversationId: string, runId: string, label: string) => {
+    updateConversationTimeline(conversationId, (items) => {
+      const reconciled = reconcileRunScopedRecoveryState({
+        items,
+        nextCheckpoint: {
+          runId,
+          checkpointKind: "recovery",
+          label,
+        },
+        getMessage: (item) => item.type === "error" ? item.message : null,
+        getErrorMeta: (item) => item.type === "error" ? item.errorMeta : null,
+        getCheckpointMeta: (item) => item.type === "checkpoint"
+          ? {
+              runId: item.runId ?? null,
+              checkpointKind: item.checkpointKind ?? "standard",
+              label: item.label,
+            }
+          : null,
+      });
+      if (!reconciled.shouldAppend) {
+        return reconciled.items;
+      }
+      return [
+        ...reconciled.items,
+        {
+          type: "checkpoint",
+          id: makeId("recovery-checkpoint"),
+          label,
+          runId,
+          checkpointKind: "recovery",
+          createdAt: new Date().toISOString(),
+        },
+      ];
+    });
   }, [updateConversationTimeline]);
 
   const buildAiRecoverySeed = useCallback((items: TimelineItem[], conversationId: string, runId: string) => {
@@ -1280,10 +1309,17 @@ export default function AIView() {
       const recoveredRunId = runtime.getState().localRunId || currentRunIdRef.current;
       if (recoveredRunId) {
         updateConversationTimeline(convId, (items) =>
-          clearRunScopedRenderedErrors({
+          clearRunScopedRecoveryState({
             items,
             runId: recoveredRunId,
             getErrorMeta: (item) => item.type === "error" ? item.errorMeta : null,
+            getCheckpointMeta: (item) => item.type === "checkpoint"
+              ? {
+                  runId: item.runId ?? null,
+                  checkpointKind: item.checkpointKind ?? "standard",
+                  label: item.label,
+                }
+              : null,
           })
         );
       }
@@ -1348,7 +1384,7 @@ export default function AIView() {
       currentRunIdRef.current = activeRunId;
       runtime.clearProgress();
       runtime.interruptRunningTools(RUN_RECOVERY_INTERRUPTED_TOOL_SUMMARY);
-      appendRecoveryCheckpoint(activeConversationId, RUN_RECOVERY_RECONNECT_SUMMARY);
+      appendRecoveryCheckpoint(activeConversationId, activeRunId, RUN_RECOVERY_RECONNECT_SUMMARY);
 
       const recoveryResult = await pollRunRecovery({
         conversationId: activeConversationId,
@@ -1363,11 +1399,7 @@ export default function AIView() {
         return true;
       }
 
-      const recoveryMessage = recoveryResult.outcome === "timeout"
-        ? RUN_RECOVERY_TIMEOUT_MESSAGE
-        : recoveryResult.outcome === "needs_user_action"
-          ? "The active run is still holding this conversation. Choose how to continue."
-          : RUN_RECOVERY_FAILED_MESSAGE;
+      const recoveryMessage = getRunRecoveryMessage(recoveryResult);
       appendRecoveryTimelineError({
         conversationId: activeConversationId,
         message: recoveryMessage,
@@ -2149,7 +2181,7 @@ export default function AIView() {
             : item
         ));
     });
-    appendRecoveryCheckpoint(convId, RUN_RECOVERY_RECONNECT_SUMMARY);
+    appendRecoveryCheckpoint(convId, runId, RUN_RECOVERY_RECONNECT_SUMMARY);
 
     void recoverConversationRun({
       conversationId: convId,
@@ -2159,11 +2191,7 @@ export default function AIView() {
       if (recoveryResult.outcome === "recovered") {
         return;
       }
-      const recoveryMessage = recoveryResult.outcome === "timeout"
-        ? RUN_RECOVERY_TIMEOUT_MESSAGE
-        : recoveryResult.outcome === "needs_user_action"
-          ? "The active run is still holding this conversation. Choose how to continue."
-          : RUN_RECOVERY_FAILED_MESSAGE;
+      const recoveryMessage = getRunRecoveryMessage(recoveryResult);
       appendRecoveryTimelineError({
         conversationId: convId,
         message: recoveryMessage,
