@@ -142,7 +142,12 @@ describe("ProjectCopilot suggestion wiring", () => {
       />,
     );
 
+    const status = screen.getByRole("status");
+    const input = screen.getByTestId("copilot-prefill");
     expect(screen.getByText("Reviewing PubMed results")).toBeTruthy();
+    expect(screen.getByText("2 of 3")).toBeTruthy();
+    expect(screen.getByRole("progressbar")).toBeTruthy();
+    expect(status.compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     const props = mockTimelineRenderer.mock.calls[0]?.[0] as { suppressedProgressId?: string | null };
     expect(props.suppressedProgressId).toBe("progress-1");
   });

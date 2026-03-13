@@ -112,11 +112,17 @@
     padding: 0 12px 12px;
     display: flex;
     flex-direction: column;
+    gap: 0;
     flex-shrink: 0;
 }
 
 .composerHost > * {
     width: 100%;
+}
+
+.composerHost > :last-child {
+    position: relative;
+    z-index: 1;
 }
 
 .subValue {

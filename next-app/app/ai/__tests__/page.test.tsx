@@ -374,6 +374,45 @@ describe("/ai page deferred hydration", () => {
     expect(screen.queryByText("Global chat")).toBeNull();
   });
 
+  it("renders attached live progress above the composer without duplicating the inline progress row", async () => {
+    mockProcessAIStream.mockImplementationOnce(async ({ onChunk }: {
+      onChunk: (chunk: unknown) => void | Promise<void>;
+    }) => {
+      await onChunk({
+        type: "progress",
+        progressMessage: "Reviewing PubMed results",
+        progressCurrent: 2,
+        progressTotal: 3,
+      });
+      return {
+        runStatus: null,
+        stopReason: null,
+        terminalReason: "failed_network",
+        errorMessage: null,
+        errorMeta: null,
+        actualModel: null,
+        actualModelSource: "unknown",
+      };
+    });
+
+    render(<AIView />);
+
+    fireEvent.click(screen.getByRole("button", { name: "send message" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("status")).toBeTruthy();
+    });
+
+    const status = screen.getByRole("status");
+    const sendButton = screen.getByRole("button", { name: "send message" });
+    expect(screen.getByText("Reviewing PubMed results")).toBeTruthy();
+    expect(screen.getByText("2 of 3")).toBeTruthy();
+    expect(screen.getByRole("progressbar")).toBeTruthy();
+    expect(status.compareDocumentPosition(sendButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByTestId("timeline-suppressed-progress").textContent).not.toBe("");
+    expect(screen.queryAllByText("Reviewing PubMed results")).toHaveLength(1);
+  });
+
   it("does not append a false terminal failure after a recovered completed run", async () => {
     mockProcessAIStream.mockImplementation(async ({ onChunk }: {
       onChunk: (chunk: unknown) => void | Promise<void>;
