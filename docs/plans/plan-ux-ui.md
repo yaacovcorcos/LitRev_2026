@@ -27,6 +27,8 @@ Domain-specific execution plans remain canonical for their domains:
   - `PopupChat` shows compact context previews, keeps edit intents advisory-only via `Continue in Copilot`, and draft desktop quick actions are gated behind the dedicated context-toolbar flag rather than leaking into mobile flows.
 - Main timeline surfaces now support conservative completed-turn execution-trace compaction:
   - contiguous pre-answer durable trace blocks (`tool_activity`, `checkpoint`, `artifact`) can collapse into a compact reopenable `Process details` summary above the final assistant answer.
+  - the latest durable trace suffix now opens immediately inside a live `Process details` container before the assistant answer exists, then transitions into the anchored answer-level trace and auto-collapses once the answer is no longer streaming.
+  - checkpoints wrap inside the chat column and use a quieter wrapped narration style inside grouped `Process details` blocks instead of the standalone divider treatment.
   - grouping is renderer-only, skips ambiguous/blocking/error cases, and leaves popup out of scope.
 - Shared composer action hierarchy is active across chat surfaces:
   - `CopilotInputCore` now uses a left-edge `+` extension menu for secondary actions, keeps voice in the right-side primary action cluster beside send, and presents a real microphone-driven waveform/timer state while recording.
@@ -97,6 +99,7 @@ Use this mapping for old PRs/comments referencing CLU IDs.
 - [ ] `CUX-A03` Expand async `aria-live` announcements coverage and consistency across remaining async UI states.
 
 ## Recently Completed
+- [x] Live `Process details` trace groups now appear from the start of durable process activity, stay open while the run is active or the answer is still streaming, then collapse automatically after the answer completes; grouped checkpoints now wrap correctly and render as quiet narration blocks inside the trace.
 - [x] Completed-turn execution trace compaction shipped on the main timeline surfaces: eligible pre-answer tool/checkpoint/artifact blocks now collapse into a compact reopenable `Process details` summary above the final assistant answer while ambiguous, blocked, and visible failure cases stay inline.
 - [x] Shared live progress relocation shipped: `/ai`, main project conversation, and embedded project copilot now show one composer-adjacent active progress bar, suppress only the matching inline progress row by local id at render time, and keep receipts/checkpoints/errors/grouped PubMed cards in the timeline.
 - [x] Voice recorder follow-up tuning shipped: the shared composer now shows an explicit microphone-permission pending state, surfaces too-short recordings as a calm dismissible error, preserves the frozen transcribing timer, and slows waveform travel with thinner capped bars, tighter spacing, and slightly easier-to-read peaks.

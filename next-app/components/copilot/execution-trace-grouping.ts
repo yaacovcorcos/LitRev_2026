@@ -17,13 +17,14 @@ export type ExecutionTraceEntry =
     | {
         kind: "execution_trace";
         id: string;
-        anchorAssistantMessageId: string;
+        mode: "live" | "anchored";
         traceItems: DurableExecutionTraceItem[];
         interstitialProgressItems: TimelineProgress[];
-        assistantMessage: TimelineAssistantMessage;
         canCollapse: boolean;
         defaultCollapsed: boolean;
         summaryText: string;
+        anchorAssistantMessageId?: string;
+        assistantMessage?: TimelineAssistantMessage;
     };
 
 function isDurableExecutionTraceItem(item: TimelineItem | undefined): item is DurableExecutionTraceItem {
@@ -68,12 +69,22 @@ function buildExecutionTraceSummary(traceItems: DurableExecutionTraceItem[]): st
     return parts.join(", ");
 }
 
+function canCreateLiveExecutionTrace(items: TimelineItem[], liveTraceStart: number): boolean {
+    for (let index = liveTraceStart - 1; index >= 0; index -= 1) {
+        const item = items[index];
+        if (!item) continue;
+        if (item.type === "user_message") return true;
+        if (item.type === "assistant_message") return false;
+    }
+    return true;
+}
+
 export function buildExecutionTraceEntries(
     items: TimelineItem[],
     options?: { streamingAssistantMessageId?: string | null },
 ): ExecutionTraceEntry[] {
     const streamingAssistantMessageId = options?.streamingAssistantMessageId ?? null;
-    const groupByStartIndex = new Map<number, Extract<ExecutionTraceEntry, { kind: "execution_trace" }> & { assistantIndex: number }>();
+    const groupByStartIndex = new Map<number, Extract<ExecutionTraceEntry, { kind: "execution_trace" }> & { endIndex: number }>();
 
     for (let index = 0; index < items.length; index += 1) {
         const item = items[index];
@@ -98,6 +109,7 @@ export function buildExecutionTraceEntries(
         const interstitialProgressItems = traceRangeItems.filter(isProgressItem);
         groupByStartIndex.set(traceStartIndex, {
             kind: "execution_trace",
+            mode: "anchored",
             id: `trace-${item.id}`,
             anchorAssistantMessageId: item.id,
             traceItems,
@@ -106,8 +118,35 @@ export function buildExecutionTraceEntries(
             canCollapse: item.id !== streamingAssistantMessageId,
             defaultCollapsed: item.id !== streamingAssistantMessageId,
             summaryText: buildExecutionTraceSummary(traceItems),
-            assistantIndex: index,
+            endIndex: index,
         });
+    }
+
+    let liveTraceStart = items.length;
+    const liveTraceRangeItems: TimelineItem[] = [];
+    let liveCursor = items.length - 1;
+    while (liveCursor >= 0 && (isDurableExecutionTraceItem(items[liveCursor]) || isProgressItem(items[liveCursor]))) {
+        liveTraceRangeItems.unshift(items[liveCursor]!);
+        liveCursor -= 1;
+    }
+    if (liveTraceRangeItems.length > 0) {
+        const liveTraceItems = liveTraceRangeItems.filter(isDurableExecutionTraceItem);
+        if (liveTraceItems.length > 0) {
+            liveTraceStart = items.length - liveTraceRangeItems.length;
+            if (canCreateLiveExecutionTrace(items, liveTraceStart)) {
+                groupByStartIndex.set(liveTraceStart, {
+                    kind: "execution_trace",
+                    mode: "live",
+                    id: `trace-live-${liveTraceStart}`,
+                    traceItems: liveTraceItems,
+                    interstitialProgressItems: liveTraceRangeItems.filter(isProgressItem),
+                    canCollapse: false,
+                    defaultCollapsed: false,
+                    summaryText: buildExecutionTraceSummary(liveTraceItems),
+                    endIndex: items.length - 1,
+                });
+            }
+        }
     }
 
     const entries: ExecutionTraceEntry[] = [];
@@ -115,7 +154,7 @@ export function buildExecutionTraceEntries(
         const groupedEntry = groupByStartIndex.get(index);
         if (groupedEntry) {
             entries.push(groupedEntry);
-            index = groupedEntry.assistantIndex;
+            index = groupedEntry.endIndex;
             continue;
         }
         entries.push({ kind: "single", item: items[index]! });

@@ -3,6 +3,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { CopilotMessage } from "@/lib/projectCopilotStorage";
 import type { TimelineItem } from "@/types/timeline";
+import artifactStyles from "@/styles/artifacts.module.css";
 import { TimelineRenderer } from "../TimelineRenderer";
 
 vi.mock("next/navigation", () => ({
@@ -34,6 +35,40 @@ function renderTimeline(items?: TimelineItem[], messages?: CopilotMessage[], isL
 }
 
 describe("TimelineRenderer execution trace collapse", () => {
+  it("renders an open live process details group before the final assistant answer exists", () => {
+    renderTimeline([
+      {
+        type: "user_message",
+        id: "user-1",
+        content: "Find strong PubMed studies.",
+        createdAt: "2026-03-11T00:00:00.000Z",
+      },
+      {
+        type: "tool_activity",
+        id: "tool-live-1",
+        callId: "call-live-1",
+        toolName: "search_pubmed",
+        status: "done",
+        summary: "Found 10 of 10 PubMed results.",
+        startedAt: "2026-03-11T00:00:01.000Z",
+        updatedAt: "2026-03-11T00:00:02.000Z",
+        completedAt: "2026-03-11T00:00:02.000Z",
+        createdAt: "2026-03-11T00:00:01.000Z",
+      },
+      {
+        type: "checkpoint",
+        id: "checkpoint-live-1",
+        label: "PubMed returned 10 results and the strongest matches are being reviewed now for relevance and outcome fit.",
+        createdAt: "2026-03-11T00:00:03.000Z",
+      },
+    ]);
+
+    expect(screen.queryByRole("button", { name: "Show process details" })).toBeNull();
+    expect(screen.getByLabelText("Process details")).not.toBeNull();
+    expect(screen.getByText("Found 10 of 10 PubMed results.")).not.toBeNull();
+    expect(screen.getByText("PubMed returned 10 results and the strongest matches are being reviewed now for relevance and outcome fit.")).not.toBeNull();
+  });
+
   it("renders a collapsed process summary above the final assistant answer", () => {
     renderTimeline([
       {
@@ -138,6 +173,41 @@ describe("TimelineRenderer execution trace collapse", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Hide process details" }));
     expect(screen.queryByLabelText("Process details")).toBeNull();
+  });
+
+  it("renders grouped checkpoints without the standalone divider lines inside process details", () => {
+    const { container } = renderTimeline([
+      {
+        type: "tool_activity",
+        id: "tool-standalone-checkpoint-1",
+        callId: "call-standalone-checkpoint-1",
+        toolName: "search_pubmed",
+        status: "done",
+        summary: "Found 10 of 10 PubMed results.",
+        startedAt: "2026-03-11T00:00:00.000Z",
+        updatedAt: "2026-03-11T00:00:02.000Z",
+        completedAt: "2026-03-11T00:00:02.000Z",
+        createdAt: "2026-03-11T00:00:00.000Z",
+      },
+      {
+        type: "checkpoint",
+        id: "checkpoint-grouped-1",
+        label: "PubMed returned 10 results and the strongest matches are being reviewed now for relevance and outcome fit.",
+        createdAt: "2026-03-11T00:00:03.000Z",
+      },
+      {
+        type: "assistant_message",
+        id: "assistant-grouped-1",
+        content: "I found 10 strong studies on this topic.",
+        createdAt: "2026-03-11T00:00:04.000Z",
+      },
+    ]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Show process details" }));
+    const processDetails = screen.getByLabelText("Process details");
+    expect(processDetails.textContent).toContain("PubMed returned 10 results");
+    expect(processDetails.querySelector(`.${artifactStyles.checkpointLine}`)).toBeNull();
+    expect(container.querySelectorAll(`.${artifactStyles.checkpointLine}`)).toHaveLength(0);
   });
 
   it("keeps ambiguous project-bridge turns fully inline", () => {

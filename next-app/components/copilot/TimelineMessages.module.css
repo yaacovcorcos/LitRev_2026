@@ -151,6 +151,25 @@
     gap: 10px;
 }
 
+.groupedCheckpoint {
+    padding: 8px 10px;
+    border-radius: 12px;
+    background: rgba(var(--rgb-ui-contrast), 0.03);
+    border: 1px solid rgba(var(--rgb-ui-contrast), 0.05);
+    min-width: 0;
+}
+
+.groupedCheckpointLabel {
+    display: block;
+    margin: 0;
+    min-width: 0;
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--text-secondary);
+    overflow-wrap: break-word;
+    word-break: break-word;
+}
+
 .executionTraceSummaryBar {
     width: 100%;
     display: flex;
