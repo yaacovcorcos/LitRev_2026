@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import type { AIMessage } from "@/types/ai";
 import {
+    buildModelVisibleToolResultForTool,
     buildModelVisibleToolResult,
     estimateTokens,
     estimateMessagesTokens,
@@ -117,6 +118,52 @@ describe("isOversizedForSummary", () => {
 // ── compactToolResult ────────────────────────────────────────────────────────
 
 describe("compactToolResult", () => {
+    it("shapes search results for synthesis instead of raw query-log restatement", () => {
+        const visible = buildModelVisibleToolResultForTool("search_pubmed", {
+            callId: "tc-search",
+            result: {
+                query: "\"omega-3\"[tiab] AND cognition[tiab]",
+                source: "pubmed",
+                totalResults: 55,
+                returnedCount: 20,
+                results: [
+                    {
+                        title: "Study 1",
+                        authors: "Smith J",
+                        year: 2024,
+                        doi: "10.1000/example",
+                        pmid: "12345678",
+                        abstract: "should not survive into the model-visible payload",
+                    },
+                ],
+            },
+        });
+
+        expect(visible).toEqual({
+            processDetailsAlreadyShown: true,
+            visibleAnswerContract:
+                "Process details already show search queries, result counts, and refinement steps. In the final answer, synthesize findings instead of repeating the search log unless the user explicitly asked for the search strategy.",
+            searchSummary: {
+                source: "pubmed",
+                queryUsedForReasoning: "\"omega-3\"[tiab] AND cognition[tiab]",
+                totalResults: 55,
+                returnedCount: 20,
+                nextCursor: null,
+            },
+            candidateStudies: [
+                {
+                    title: "Study 1",
+                    authors: "Smith J",
+                    year: 2024,
+                    doi: "10.1000/example",
+                    pmid: "12345678",
+                    paperId: null,
+                    sourceUrl: null,
+                },
+            ],
+        });
+    });
+
     it("wraps proposed artifact results with explicit review state for the model", () => {
         const visible = buildModelVisibleToolResult({
             callId: "tc1",

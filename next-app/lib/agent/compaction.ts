@@ -32,6 +32,8 @@ const TOOL_RESULT_STATUS_NOTES = {
     proposed: "Created a proposal for user review. The change is not applied until the user accepts it.",
     auto_applied: "The change was applied automatically in the current flow.",
 } as const;
+const SEARCH_VISIBLE_ANSWER_GUIDANCE =
+    "Process details already show search queries, result counts, and refinement steps. In the final answer, synthesize findings instead of repeating the search log unless the user explicitly asked for the search strategy.";
 
 export type ToolResultWithArtifactState = ToolResult & {
     artifactId?: string;
@@ -130,6 +132,20 @@ export function compactToolResult(
  */
 export function buildModelVisibleToolResult(toolResult: ToolResultWithArtifactState): unknown {
     if (toolResult.error) return toolResult.error;
+    return buildModelVisibleToolResultForTool("", toolResult);
+}
+
+export function buildModelVisibleToolResultForTool(
+    toolName: string,
+    toolResult: ToolResultWithArtifactState
+): unknown {
+    if (toolResult.error) return toolResult.error;
+
+    const searchVisiblePayload = buildSearchModelVisiblePayload(toolName, toolResult.result);
+    if (searchVisiblePayload) {
+        return searchVisiblePayload;
+    }
+
     if (!toolResult.artifactStatus) {
         return toolResult.result ?? "";
     }
@@ -157,6 +173,58 @@ export function buildModelVisibleToolResult(toolResult: ToolResultWithArtifactSt
         `Artifact title: ${toolResult.artifactTitle ?? "Artifact"}`,
         `Result: ${payload}`,
     ].join("\n");
+}
+
+function buildSearchModelVisiblePayload(toolName: string, value: unknown): Record<string, unknown> | null {
+    if (!isSearchToolName(toolName) || !value || typeof value !== "object") {
+        return null;
+    }
+
+    const payload = value as Record<string, unknown>;
+    const candidateStudies = Array.isArray(payload.results)
+        ? payload.results.slice(0, 5).map((candidate) => summarizeSearchCandidate(candidate))
+        : [];
+
+    return {
+        processDetailsAlreadyShown: true,
+        visibleAnswerContract: SEARCH_VISIBLE_ANSWER_GUIDANCE,
+        searchSummary: {
+            source: typeof payload.source === "string" ? payload.source : null,
+            queryUsedForReasoning: typeof payload.query === "string" ? payload.query : null,
+            totalResults: typeof payload.totalResults === "number" ? payload.totalResults : null,
+            returnedCount: typeof payload.returnedCount === "number"
+                ? payload.returnedCount
+                : candidateStudies.length || null,
+            nextCursor: typeof payload.nextCursor === "string" ? payload.nextCursor : null,
+        },
+        candidateStudies,
+    };
+}
+
+function isSearchToolName(toolName: string): boolean {
+    return toolName === "search_pubmed"
+        || toolName === "search_openalex"
+        || toolName === "search_semantic_scholar";
+}
+
+function summarizeSearchCandidate(candidate: unknown): Record<string, unknown> {
+    const row = candidate && typeof candidate === "object"
+        ? candidate as Record<string, unknown>
+        : {};
+
+    return {
+        title: typeof row.title === "string" ? row.title : null,
+        authors: typeof row.authors === "string" ? row.authors : null,
+        year: typeof row.year === "number" ? row.year : null,
+        doi: typeof row.doi === "string" ? row.doi : null,
+        pmid: typeof row.pmid === "string" ? row.pmid : null,
+        paperId: typeof row.paperId === "string" ? row.paperId : null,
+        sourceUrl: typeof row.sourceUrl === "string"
+            ? row.sourceUrl
+            : typeof row.url === "string"
+                ? row.url
+                : null,
+    };
 }
 
 /** Tool-specific compaction for known tools */

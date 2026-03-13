@@ -19,7 +19,7 @@ import { validateRateLimits, recordUsage } from "./rate-limiter";
 import { retrieveMemories, formatMemoriesForContext, markMemoriesUsedInAnswer, type RetrievedMemory } from "@/lib/server/memory";
 import { AI_CONFIG, getProviderForModel, getContextBudget } from "@/lib/ai/config";
 import {
-    buildModelVisibleToolResult,
+    buildModelVisibleToolResultForTool,
     compactToolResult,
     compactLoopMessages,
     buildCompactedHistory,
@@ -850,7 +850,7 @@ class AIService {
                 const toolMsg: AIMessage = {
                     id: `tool-result-${tc.id}`,
                     role: "tool",
-                    content: compactToolResult(tc.name, buildModelVisibleToolResult(result)),
+                    content: compactToolResult(tc.name, buildModelVisibleToolResultForTool(tc.name, result)),
                     toolResultId: tc.id,
                     createdAt: new Date().toISOString(),
                 };
@@ -1877,7 +1877,7 @@ class AIService {
                     const toolMsg: AIMessage = {
                         id: `tool-result-${tc.id}`,
                         role: "tool",
-                        content: compactToolResult(tc.name, buildModelVisibleToolResult(toolResult)),
+                        content: compactToolResult(tc.name, buildModelVisibleToolResultForTool(tc.name, toolResult)),
                         toolResultId: tc.id,
                         createdAt: new Date().toISOString(),
                     };

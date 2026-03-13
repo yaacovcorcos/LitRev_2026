@@ -23,7 +23,7 @@ import type { AIMessage, ToolBlockedReason, ToolCall, ToolResultArtifact, UserIn
 import type { AgentMode, RunStatus } from "@/types/agent";
 import { LoopState, type LoopBudget, type StopReason } from "@/lib/agent/loop-controller";
 import { getToolDefinitions } from "./tools/base";
-import { buildModelVisibleToolResult, compactToolResult, type ToolResultWithArtifactState } from "@/lib/agent/compaction";
+import { buildModelVisibleToolResultForTool, compactToolResult, type ToolResultWithArtifactState } from "@/lib/agent/compaction";
 import { assembleSystemPrompt } from "@/lib/ai/prompts/copilot-prompts";
 import { getAIService } from "./ai-service";
 import { startRun, endRun, startRunHeartbeat, type RunHeartbeatController } from "@/lib/server/agent/run";
@@ -400,7 +400,7 @@ export async function executeSubAgent(params: SubAgentParams): Promise<SubAgentR
 
                 const preview = compactToolResult(
                     tc.name,
-                    buildModelVisibleToolResult(resultForModel),
+                    buildModelVisibleToolResultForTool(tc.name, resultForModel),
                     500, // shorter preview for sub-agent log
                 );
                 toolLog.push({ name: tc.name, resultPreview: preview });
@@ -408,7 +408,7 @@ export async function executeSubAgent(params: SubAgentParams): Promise<SubAgentR
                 const toolMsg: AIMessage = {
                     id: `sub-agent-tool-${tc.id}`,
                     role: "tool",
-                    content: compactToolResult(tc.name, buildModelVisibleToolResult(resultForModel)),
+                    content: compactToolResult(tc.name, buildModelVisibleToolResultForTool(tc.name, resultForModel)),
                     toolResultId: tc.id,
                     createdAt: new Date().toISOString(),
                 };
