@@ -1,5 +1,7 @@
-name: Mobile Smoke
+name: Mobile Foundation
 on:
+  push:
+    branches: [main]
   pull_request:
     branches: [main]
     paths:
@@ -17,7 +19,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  mobile-smoke:
+  mobile-foundation:
     runs-on: ubuntu-latest
 
     services:
@@ -56,5 +58,5 @@ jobs:
       - name: Install Playwright browser
         run: cd next-app && npx playwright install --with-deps chromium
 
-      - name: Run mobile smoke e2e
-        run: cd next-app && npm run test:e2e:mobile:smoke
+      - name: Run mobile foundation e2e
+        run: cd next-app && npm run test:e2e:mobile:foundation

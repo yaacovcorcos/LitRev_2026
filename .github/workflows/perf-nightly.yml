@@ -1,12 +1,14 @@
-name: Performance Nightly
+name: Performance Certification
 
 on:
+  push:
+    branches: [main]
   schedule:
     - cron: "0 2 * * *"
   workflow_dispatch:
 
 jobs:
-  nightly-probe:
+  perf-certification:
     runs-on: ubuntu-latest
 
     services:
