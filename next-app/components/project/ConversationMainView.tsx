@@ -12,6 +12,7 @@ import { selectActiveProgress, normalizeTimelineProgressItems } from "@/lib/ai/a
 import { TimelineRenderer } from "../copilot/TimelineRenderer";
 import { CopilotInput } from "../copilot/CopilotInput";
 import { ComposerActiveProgressBar } from "../copilot/ComposerActiveProgressBar";
+import { ComposerQueuedFollowUpBar } from "../copilot/ComposerQueuedFollowUpBar";
 import { AutonomySettings } from "../copilot/AutonomySettings";
 import { ConversationPicker } from "../ui/ConversationPicker";
 import { generateChatUnificationRequestKey } from "@/lib/ai/chat-unification-telemetry";
@@ -50,6 +51,8 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
         isConversationLoading,
         conversations,
         currentConversationId,
+        queuedFollowUp,
+        clearQueuedFollowUp,
         selectConversation,
         newConversation,
         branchConversation,
@@ -106,6 +109,12 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
     const handleSuggestionClick = useCallback((prompt: string) => {
         setPrefillCommand({ text: prompt, id: crypto.randomUUID() });
     }, []);
+
+    const handleEditQueuedFollowUp = useCallback(() => {
+        if (!queuedFollowUp) return;
+        clearQueuedFollowUp();
+        setPrefillCommand({ text: queuedFollowUp.text, id: crypto.randomUUID() });
+    }, [clearQueuedFollowUp, queuedFollowUp]);
 
     const handleActionPrompt = useCallback((prompt: string, mode?: AgentMode) => {
         sendMessage(prompt, "overview" as CopilotPage, undefined, undefined, mode);
@@ -286,6 +295,11 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
                     {/* Input */}
                     <div className={styles.inputWrapper}>
                         <ComposerActiveProgressBar activeProgress={activeProgress} />
+                        <ComposerQueuedFollowUpBar
+                            queuedFollowUp={queuedFollowUp}
+                            onEdit={handleEditQueuedFollowUp}
+                            onRemove={clearQueuedFollowUp}
+                        />
                         <CopilotInput
                             page={"overview" as CopilotPage}
                             inputPlaceholder="Ask about your project..."

@@ -7,6 +7,7 @@
 
 import { useProjectCopilot } from "@/contexts/ProjectCopilotContext";
 import { useProjectState } from "@/hooks/useProjectState";
+import { createQueuedFollowUp } from "@/lib/ai/queued-followup";
 import type { CopilotPage } from "@/types/ai";
 import { CopilotInputCoreClient } from "./CopilotInputCoreClient";
 
@@ -47,6 +48,9 @@ export function CopilotInput({ page, section, studyId, inputPlaceholder, prefill
         isSummarizing,
         selectedModel,
         setSelectedModel,
+        currentConversationId,
+        queuedFollowUp,
+        queueQueuedFollowUp,
     } = useProjectCopilot();
     const projectState = useProjectState(projectId);
 
@@ -61,6 +65,15 @@ export function CopilotInput({ page, section, studyId, inputPlaceholder, prefill
             isLoading={isLoading}
             sendMessage={sendMessage}
             cancelStream={cancelStream}
+            hasQueuedFollowUp={queuedFollowUp !== null}
+            onQueueFollowUp={(payload) => {
+                if (!currentConversationId) return;
+                queueQueuedFollowUp(createQueuedFollowUp({
+                    ...payload,
+                    conversationId: currentConversationId,
+                    source: "draft",
+                }));
+            }}
             pendingAttachment={pendingAttachment}
             isAttaching={isAttaching}
             attachFile={attachFile}

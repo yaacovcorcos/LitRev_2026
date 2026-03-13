@@ -11,6 +11,7 @@ import { selectActiveProgress, normalizeTimelineProgressItems } from "@/lib/ai/a
 import { TimelineRenderer } from "./copilot/TimelineRenderer";
 import { CopilotInput } from "./copilot/CopilotInput";
 import { ComposerActiveProgressBar } from "./copilot/ComposerActiveProgressBar";
+import { ComposerQueuedFollowUpBar } from "./copilot/ComposerQueuedFollowUpBar";
 import { AutonomySettings } from "./copilot/AutonomySettings";
 import { ReasoningModeDropdown } from "./copilot/ReasoningModeDropdown";
 import { ConversationPicker } from "./ui/ConversationPicker";
@@ -95,6 +96,8 @@ export function ProjectCopilot({
         loadOlderMessages,
         prefillCommand: sharedPrefillCommand,
         consumePrefillCommand,
+        queuedFollowUp,
+        clearQueuedFollowUp,
     } = useProjectCopilot();
 
     // Hide reasoning controls when model doesn't support reasoning
@@ -109,6 +112,12 @@ export function ProjectCopilot({
     }, []);
 
     const activePrefillCommand = sharedPrefillCommand ?? prefillCommand;
+
+    const handleEditQueuedFollowUp = useCallback(() => {
+        if (!queuedFollowUp) return;
+        clearQueuedFollowUp();
+        setPrefillCommand({ text: queuedFollowUp.text, id: crypto.randomUUID() });
+    }, [clearQueuedFollowUp, queuedFollowUp]);
 
     const handlePrefillConsumed = useCallback(() => {
         if (sharedPrefillCommand) {
@@ -403,6 +412,11 @@ export function ProjectCopilot({
                 {/* Input area */}
                 <div className={styles.composerHost}>
                     <ComposerActiveProgressBar activeProgress={activeProgress} />
+                    <ComposerQueuedFollowUpBar
+                        queuedFollowUp={queuedFollowUp}
+                        onEdit={handleEditQueuedFollowUp}
+                        onRemove={clearQueuedFollowUp}
+                    />
                     <CopilotInput
                         page={page}
                         section={section}
