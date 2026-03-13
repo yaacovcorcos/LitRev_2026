@@ -132,15 +132,25 @@ Every fix entry must include:
 ## Active Fixes
 *Immediate remediation work for shipped behavior that is broken, misleading, or lower quality than the intended contract.*
 
-- No immediate runtime correctness fixes are currently queued after `FIX-011a`. New incidents should reopen this section instead of being treated as roadmap work by default.
+- **`FIX-011b` Runtime stabilization, convergence, and durable continuation**
+  - **Severity:** P0 trust/reliability
+  - **Symptom:** broken streams can still leave runs stuck in reconnecting or partially recovered states; durable user-facing state can still be lost or only partially restorable after disconnect; successful tool/model work can still be undermined by persistence/finalization seams; one run can still require retry-from-zero when durable work already exists.
+  - **Desired end state:** the runtime converges from abnormal ends through one persisted run lifecycle, every user-visible actionable state is durably reconstructable, disconnects are classified rather than guessed, and users/agents can continue from durable completed work instead of restarting unnecessarily.
+  - **Supporting plans:** `docs/plans/plan-thinking-v2.md` for durable execution-trace truth and `docs/plans/plan-chat-unification-v2.md` for cross-surface runtime parity and popup boundary honesty.
+  - **Exit criteria:**
+    - no indefinite reconnect state on main chat surfaces
+    - durable recovery restores authoritative user-facing truth without duplicating or inventing ephemeral progress
+    - same-run recovery/failure state converges to one authoritative outcome
+    - feature-freeze burn-in signs off the stabilized runtime before new agent/chat capability work resumes
 
 ## Execution Order
 
 Work should proceed in this order unless a production incident forces reprioritization:
 
-1. `CAG-001` explicit run-phase state machine
-2. `CAG-003` checkpointed retry/resume recovery beyond the current abnormal-end reconciliation path
-3. remaining roadmap phases after those contracts are stable
+1. `FIX-011b` runtime stabilization, convergence, and durable continuation
+2. `CAG-001` explicit run-phase state machine
+3. `CAG-003` checkpointed retry/resume recovery beyond the stabilized abnormal-end continuation contract
+4. remaining roadmap phases after those contracts are stable
 
 ## End-to-End Delivery Program
 
@@ -162,8 +172,8 @@ Work should proceed in this order unless a production incident forces reprioriti
 
 ### Track D — Surface Honesty, Docs, Evals, and Provenance
 
-- `FIX-005a`, `FIX-005b`, `FIX-011`, and the immediate `FIX-011a` reconciliation follow-up are complete, so this track now shifts back to roadmap work and ongoing truth-maintenance rather than active remediation.
-- Popup honesty should stay aligned with the reduced-parity runtime it actually supports, and future surface work should preserve the recovery/action truth model rather than reintroducing bespoke failure semantics.
+- `FIX-005a`, `FIX-005b`, `FIX-011`, and the immediate `FIX-011a` reconciliation follow-up are complete, but runtime stabilization remains active under `FIX-011b` because convergence, durable continuation, and disconnect handling are not yet trustworthy enough to treat as finished.
+- Popup honesty should stay aligned with the reduced-parity runtime it actually supports, and future surface work should preserve the recovery/action truth model rather than reintroducing bespoke failure semantics or overclaiming parity while `FIX-011b` is active.
 
 ## Active Roadmap
 *Durable capability and architecture work after the immediate fixes.*
