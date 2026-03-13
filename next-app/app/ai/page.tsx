@@ -67,6 +67,7 @@ import {
   setReasoningModePreference,
 } from "@/lib/ai/reasoning-visibility";
 import { resolveReasoningRequest } from "@/lib/ai/reasoning-request";
+import { isQueuedFollowUpDispatchReady } from "@/lib/ai/queued-followup";
 import {
   DEFAULT_SELECTABLE_MODEL_ID,
   USER_SELECTABLE_MODELS,
@@ -75,6 +76,7 @@ import {
   type SelectableModelId,
 } from "@/lib/ai/config";
 import { useRouter } from "next/navigation";
+import type { QueuedFollowUp } from "@/types/queued-followup";
 import styles from "./ai-view.module.css";
 
 const AiTimelineRenderer = dynamic(() =>
@@ -283,8 +285,9 @@ export default function AIView() {
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [pendingChoices, setPendingChoices] = useState<ChoiceOption[]>([]);
-  const [, setPendingUserInput] = useState<UserInputRequest | null>(null);
+  const [pendingUserInput, setPendingUserInput] = useState<UserInputRequest | null>(null);
   const [prefillCommand, setPrefillCommand] = useState<{ text: string; id: string } | null>(null);
+  const [queuedFollowUp, setQueuedFollowUp] = useState<QueuedFollowUp | null>(null);
   const [reasoningMode, setReasoningMode] = useState<ReasoningMode>(() => getReasoningModePreference());
   const [selectedModel, setSelectedModelState] = useState<SelectableModelId>(DEFAULT_SELECTABLE_MODEL_ID);
 
@@ -300,6 +303,8 @@ export default function AIView() {
   const currentRunIdRef = useRef<string | null>(null);
   const sendLockRef = useRef(false);
   const activeConversationIdRef = useRef<string | null>(null);
+  const queuedFollowUpDispatchRef = useRef<string | null>(null);
+  const queuedFollowUpScopeRef = useRef<string | null>(null);
   const routePerfStartRef = useRef<number | null>(null);
   const measuredComposerConversationRef = useRef<string | null>(null);
   const measuredTimelineConversationRef = useRef<string | null>(null);
@@ -369,6 +374,24 @@ export default function AIView() {
   useEffect(() => {
     activeConversationIdRef.current = activeConversationId;
   }, [activeConversationId]);
+
+  useEffect(() => {
+    const nextScopeKey = `${selectedProjectId ?? "__global__"}:${activeConversationId ?? "__new__"}`;
+    const previousScopeKey = queuedFollowUpScopeRef.current;
+    if (previousScopeKey === null) {
+      queuedFollowUpScopeRef.current = nextScopeKey;
+      return;
+    }
+
+    if (previousScopeKey !== nextScopeKey) {
+      queuedFollowUpDispatchRef.current = null;
+      setQueuedFollowUp(null);
+      queuedFollowUpScopeRef.current = nextScopeKey;
+      return;
+    }
+
+    queuedFollowUpScopeRef.current = nextScopeKey;
+  }, [activeConversationId, selectedProjectId]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -2078,6 +2101,46 @@ export default function AIView() {
     upsertConversationTitle,
     sortConversationsByUpdatedAt,
     updateConversationTimeline,
+  ]);
+
+  useEffect(() => {
+    const ready = isQueuedFollowUpDispatchReady({
+      queuedFollowUp,
+      isLoading: isTyping,
+      hasPendingChoices: pendingChoices.length > 0,
+      hasPendingUserInput: pendingUserInput !== null,
+      sendLocked: sendLockRef.current,
+      currentConversationId: activeConversationId,
+    });
+
+    if (!ready || !queuedFollowUp) {
+      if (!queuedFollowUp) {
+        queuedFollowUpDispatchRef.current = null;
+      }
+      return;
+    }
+
+    if (queuedFollowUpDispatchRef.current === queuedFollowUp.id) {
+      return;
+    }
+
+    queuedFollowUpDispatchRef.current = queuedFollowUp.id;
+    setQueuedFollowUp(null);
+    void handleSend(
+      queuedFollowUp.text,
+      queuedFollowUp.page,
+      queuedFollowUp.section,
+      queuedFollowUp.model,
+      queuedFollowUp.agentMode,
+      queuedFollowUp.studyId,
+    );
+  }, [
+    activeConversationId,
+    handleSend,
+    isTyping,
+    pendingChoices.length,
+    pendingUserInput,
+    queuedFollowUp,
   ]);
 
   const handleSuggestionClick = useCallback((prompt: string) => {

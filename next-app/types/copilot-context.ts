@@ -10,6 +10,7 @@ import type { ChoiceOption, CopilotPage, ReasoningMode, StreamPhase, UserInputRe
 import type { SelectableModelId, ReasoningSupportTier } from "@/lib/ai/config";
 import type { RetryModelExpectation } from "@/types/chat-unification";
 import type { ContextCaptureHistoryEntry, ContextCaptureTarget } from "@/types/context-capture";
+import type { QueuedFollowUp } from "@/types/queued-followup";
 
 export type PendingAttachment = {
     fileAssetId: string;
@@ -145,6 +146,12 @@ export type ProjectCopilotContextValue = {
     queuePrefillCommand: (text: string) => void;
     /** Mark the queued prefill command as consumed */
     consumePrefillCommand: () => void;
+    /** Explicit queued next message for auto-dispatch after the current run settles */
+    queuedFollowUp: QueuedFollowUp | null;
+    /** Queue the next message for automatic dispatch once the current run is truly idle */
+    queueQueuedFollowUp: (queuedFollowUp: QueuedFollowUp) => void;
+    /** Clear the queued next message without dispatching it */
+    clearQueuedFollowUp: () => void;
 
     // Agent run state (planC Phase 2)
     /** Current active run ID (null when no agent is running) */
