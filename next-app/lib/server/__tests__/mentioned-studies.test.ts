@@ -33,6 +33,24 @@ describe("mentioned-studies parsing", () => {
         expect(studies[0]?.title).toContain("Turner");
     });
 
+    it("does not treat generic DOI labels as study titles", () => {
+        const text = "Key trial [DOI](https://doi.org/10.1000/example-study).";
+        const studies = extractMentionedStudies(text);
+
+        expect(studies).toHaveLength(1);
+        expect(studies[0]?.doi).toBe("10.1000/example-study");
+        expect(studies[0]?.title).toBeUndefined();
+    });
+
+    it("does not treat generic PubMed labels as study titles", () => {
+        const text = "See [PubMed](https://pubmed.ncbi.nlm.nih.gov/40010103/).";
+        const studies = extractMentionedStudies(text);
+
+        expect(studies).toHaveLength(1);
+        expect(studies[0]?.pmid).toBe("40010103");
+        expect(studies[0]?.title).toBeUndefined();
+    });
+
     it("extracts PMID from pubmed links", () => {
         const text = "See https://pubmed.ncbi.nlm.nih.gov/40010103/ for details.";
         const studies = extractMentionedStudies(text);
