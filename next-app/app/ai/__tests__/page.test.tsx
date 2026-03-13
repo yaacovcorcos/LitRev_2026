@@ -7,6 +7,7 @@ import AIView from "../page";
 const {
   mockListConversations,
   mockCreateConversation,
+  mockGetConversation,
   mockGetGlobalWorkspaceContextAction,
   mockUseProjects,
   mockPush,
@@ -16,6 +17,7 @@ const {
 } = vi.hoisted(() => ({
   mockListConversations: vi.fn(),
   mockCreateConversation: vi.fn(),
+  mockGetConversation: vi.fn(),
   mockGetGlobalWorkspaceContextAction: vi.fn(),
   mockUseProjects: vi.fn(),
   mockPush: vi.fn(),
@@ -136,9 +138,13 @@ vi.mock("@/components/copilot/CopilotInputCoreClient", () => ({
   CopilotInputCoreClient: ({
     onReady,
     sendMessage,
+    onQueueFollowUp,
+    hasQueuedFollowUp,
   }: {
     onReady?: () => void;
     sendMessage?: (text: string, page: "ai") => void | Promise<void>;
+    onQueueFollowUp?: (payload: { text: string; page: "ai" }) => void | Promise<void>;
+    hasQueuedFollowUp?: boolean;
   }) => (
     <div>
       <button type="button" onClick={() => onReady?.()}>
@@ -147,6 +153,10 @@ vi.mock("@/components/copilot/CopilotInputCoreClient", () => ({
       <button type="button" onClick={() => void sendMessage?.("Recover this run", "ai")}>
         send message
       </button>
+      <button type="button" onClick={() => void onQueueFollowUp?.({ text: "Queue this next", page: "ai" })}>
+        queue next
+      </button>
+      <div data-testid="ai-has-queued">{hasQueuedFollowUp ? "yes" : "no"}</div>
     </div>
   ),
 }));
@@ -158,7 +168,7 @@ vi.mock("@/contexts/ProjectsContext", () => ({
 vi.mock("@/app/actions/conversations", () => ({
   listConversations: (...args: unknown[]) => mockListConversations(...args),
   createConversation: (...args: unknown[]) => mockCreateConversation(...args),
-  getConversation: vi.fn(),
+  getConversation: (...args: unknown[]) => mockGetConversation(...args),
   archiveConversation: vi.fn(),
   branchConversation: vi.fn(),
   updateConversationTitle: vi.fn(),
@@ -244,6 +254,14 @@ describe("/ai page deferred hydration", () => {
     mockCreateConversation.mockResolvedValue({
       success: true,
       data: { id: "conv-new" },
+    });
+    mockGetConversation.mockResolvedValue({
+      success: true,
+      data: {
+        id: "conv-1",
+        title: "First chat",
+        messages: [],
+      },
     });
     mockFetch.mockResolvedValue({
       ok: true,
@@ -613,5 +631,34 @@ describe("/ai page deferred hydration", () => {
     expect(screen.getByTestId("timeline-suppressed-progress").textContent).toMatch(/^progress-/);
     const timelineText = screen.getByTestId("timeline-suppressed-progress").parentElement?.textContent ?? "";
     expect(timelineText).not.toContain("Searching PubMedSearching PubMed");
+  });
+
+  it("renders a queued follow-up cap between live progress and the composer", async () => {
+    render(<AIView />);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "composer ready" }));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "send message" }));
+      await Promise.resolve();
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "queue next" }));
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("ai-has-queued").textContent).toBe("yes");
+      expect(screen.getByText("Queued next message")).toBeTruthy();
+      expect(screen.getByText("Queue this next")).toBeTruthy();
+    });
+
+    const progress = screen.getByRole("status");
+    const queued = screen.getByText("Queued next message");
+    const composerState = screen.getByTestId("ai-has-queued");
+
+    expect(progress.compareDocumentPosition(queued) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(queued.compareDocumentPosition(composerState) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });

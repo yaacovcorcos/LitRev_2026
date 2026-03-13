@@ -3,6 +3,7 @@
 import { AppShell } from "@/components/AppShell";
 import { CopilotInputCoreClient } from "@/components/copilot/CopilotInputCoreClient";
 import { ComposerActiveProgressBar } from "@/components/copilot/ComposerActiveProgressBar";
+import { ComposerQueuedFollowUpBar } from "@/components/copilot/ComposerQueuedFollowUpBar";
 import { useProjects } from "@/contexts/ProjectsContext";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
@@ -67,7 +68,7 @@ import {
   setReasoningModePreference,
 } from "@/lib/ai/reasoning-visibility";
 import { resolveReasoningRequest } from "@/lib/ai/reasoning-request";
-import { isQueuedFollowUpDispatchReady } from "@/lib/ai/queued-followup";
+import { createQueuedFollowUp, isQueuedFollowUpDispatchReady } from "@/lib/ai/queued-followup";
 import {
   DEFAULT_SELECTABLE_MODEL_ID,
   USER_SELECTABLE_MODELS,
@@ -2147,6 +2148,37 @@ export default function AIView() {
     setPrefillCommand({ text: prompt, id: crypto.randomUUID() });
   }, []);
 
+  const handleQueueFollowUp = useCallback((payload: {
+    text: string;
+    page: CopilotPage;
+    section?: string;
+    studyId?: string;
+    model?: SelectableModelId | null;
+    agentMode?: AgentMode;
+  }) => {
+    if (!activeConversationId) return;
+    setQueuedFollowUp(
+      createQueuedFollowUp({
+        ...payload,
+        model: payload.model ?? undefined,
+        conversationId: activeConversationId,
+        source: "draft",
+      })
+    );
+  }, [activeConversationId]);
+
+  const handleEditQueuedFollowUp = useCallback(() => {
+    if (!queuedFollowUp) return;
+    setQueuedFollowUp(null);
+    queuedFollowUpDispatchRef.current = null;
+    setPrefillCommand({ text: queuedFollowUp.text, id: crypto.randomUUID() });
+  }, [queuedFollowUp]);
+
+  const handleRemoveQueuedFollowUp = useCallback(() => {
+    setQueuedFollowUp(null);
+    queuedFollowUpDispatchRef.current = null;
+  }, []);
+
   const handleActionPrompt = useCallback((prompt: string, mode?: AgentMode) => {
     void handleSend(prompt, "overview", undefined, undefined, mode);
   }, [handleSend]);
@@ -2441,6 +2473,11 @@ export default function AIView() {
             <div className={styles.chatInputContainer}>
               <div className={styles.chatInputStatus}>
                 <ComposerActiveProgressBar activeProgress={activeProgress} />
+                <ComposerQueuedFollowUpBar
+                  queuedFollowUp={queuedFollowUp}
+                  onEdit={handleEditQueuedFollowUp}
+                  onRemove={handleRemoveQueuedFollowUp}
+                />
               </div>
               <CopilotInputCoreClient
                 page="ai"
@@ -2450,6 +2487,8 @@ export default function AIView() {
                 isLoading={isTyping}
                 sendMessage={handleSend}
                 cancelStream={cancelStream}
+                hasQueuedFollowUp={queuedFollowUp !== null}
+                onQueueFollowUp={handleQueueFollowUp}
                 pendingChoices={pendingChoices}
                 clearChoices={() => { setPendingChoices([]); setPendingUserInput(null); }}
                 selectedModel={selectedModel}

@@ -59,6 +59,15 @@ export type CopilotInputCoreProps = {
         contextTargets?: ContextCaptureTarget[],
     ) => void | Promise<void>;
     cancelStream: () => void;
+    hasQueuedFollowUp?: boolean;
+    onQueueFollowUp?: (payload: {
+        text: string;
+        page: CopilotPage;
+        section?: string;
+        studyId?: string;
+        model?: SelectableModelId;
+        agentMode?: AgentMode;
+    }) => void | Promise<void>;
 
     pendingAttachment?: InputAttachment | null;
     isAttaching?: boolean;
@@ -120,6 +129,8 @@ export function CopilotInputCore({
     isLoading,
     sendMessage,
     cancelStream,
+    hasQueuedFollowUp = false,
+    onQueueFollowUp,
     pendingAttachment = null,
     isAttaching = false,
     attachFile,
@@ -297,6 +308,12 @@ export function CopilotInputCore({
     const isVoiceBusy = voiceState !== "idle";
     const canSubmit = !isVoiceBusy && (!!input.trim() || !!pendingAttachment);
     const showVoiceStatusPresentation = showVoice && isVoiceBusy;
+    const canQueueNext = isLoading
+        && !!input.trim()
+        && !pendingAttachment
+        && !isVoiceBusy
+        && !hasQueuedFollowUp
+        && !!onQueueFollowUp;
 
     const handleSend = useCallback(() => {
         if (sendLockRef.current) return;
@@ -332,6 +349,22 @@ export function CopilotInputCore({
         }
         cancelStream();
     }, [cancelStream, voiceState, stopRecording]);
+
+    const handleQueueNext = useCallback(() => {
+        const text = input.trim();
+        if (!text || !onQueueFollowUp) return;
+        void onQueueFollowUp({
+            text,
+            page,
+            section,
+            studyId,
+            model: selectedModel,
+            agentMode: effectiveMode,
+        });
+        setInput("");
+        setModeOverride(null);
+        requestAnimationFrame(() => textareaRef.current?.focus());
+    }, [effectiveMode, input, onQueueFollowUp, page, section, selectedModel, studyId]);
 
     useEffect(() => {
         if (!isLoading && voiceState !== "recording" && voiceState !== "transcribing") return;
@@ -762,6 +795,15 @@ export function CopilotInputCore({
                     </div>
 
                     <div className={styles.inputBarRight}>
+                        {canQueueNext ? (
+                            <button
+                                type="button"
+                                className={styles.queueNextBtn}
+                                onClick={handleQueueNext}
+                            >
+                                Queue next
+                            </button>
+                        ) : null}
                         {voiceControl}
                         {isLoading ? (
                             <button

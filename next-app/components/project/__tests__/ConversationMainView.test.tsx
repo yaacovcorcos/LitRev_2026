@@ -36,7 +36,9 @@ vi.mock("../../copilot/TimelineRenderer", () => ({
 }));
 
 vi.mock("../../copilot/CopilotInput", () => ({
-  CopilotInput: () => <div data-testid="copilot-input" />,
+  CopilotInput: ({ hasQueuedFollowUp }: { hasQueuedFollowUp?: boolean }) => (
+    <div data-testid="copilot-input" data-has-queued={hasQueuedFollowUp ? "yes" : "no"} />
+  ),
 }));
 
 vi.mock("../../copilot/AutonomySettings", () => ({
@@ -48,11 +50,13 @@ vi.mock("../../ui/ConversationPicker", () => ({
 }));
 
 describe("ConversationMainView parity", () => {
+  let baseContextValue: Record<string, unknown>;
+
   beforeEach(() => {
     vi.clearAllMocks();
     const sendMessage = vi.fn();
     const reconnectRun = vi.fn();
-    mockUseProjectCopilot.mockReturnValue({
+    baseContextValue = {
       reconnectRun,
       messages: [
         {
@@ -111,6 +115,8 @@ describe("ConversationMainView parity", () => {
       isConversationLoading: false,
       conversations: [],
       currentConversationId: "conv-1",
+      queuedFollowUp: null,
+      clearQueuedFollowUp: vi.fn(),
       selectConversation: vi.fn(),
       newConversation: vi.fn(),
       branchConversation: vi.fn(),
@@ -125,7 +131,8 @@ describe("ConversationMainView parity", () => {
       hasMore: false,
       isLoadingOlder: false,
       loadOlderMessages: vi.fn(),
-    });
+    };
+    mockUseProjectCopilot.mockReturnValue(baseContextValue);
   });
 
   it("passes structured timeline-capable messages through to the shared renderer unchanged", () => {
@@ -184,5 +191,27 @@ describe("ConversationMainView parity", () => {
       undefined,
       { replaceRunId: "run-clicked" },
     );
+  });
+
+  it("renders a queued follow-up cap above the composer when one is present", () => {
+    mockUseProjectCopilot.mockReturnValue({
+      ...baseContextValue,
+      queuedFollowUp: {
+        id: "queue-1",
+        text: "Please compare the strongest papers next.",
+        createdAt: Date.now(),
+        conversationId: "conv-1",
+        page: "overview",
+        source: "draft",
+      },
+      clearQueuedFollowUp: vi.fn(),
+    });
+
+    render(<ConversationMainView projectId="project-1" />);
+
+    const queued = screen.getByText("Queued next message");
+    const input = screen.getByTestId("copilot-input");
+    expect(screen.getByText("Please compare the strongest papers next.")).toBeTruthy();
+    expect(queued.compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });

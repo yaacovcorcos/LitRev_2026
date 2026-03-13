@@ -24,6 +24,7 @@ This plan does not own:
 - `/ai` and project copilot already share the normalized stream event model through `shared-stream-reducer.ts` and shared runtime helpers in `lib/ai/`.
 - `/ai` standard send and plan paths already run through the shared reducer/runtime contract.
 - Project copilot already migrated off bespoke chunk accumulation onto the shared reducer/runtime path, but still carries a few surface adapter differences that matter for truthful progress/presentation.
+- `/ai`, main conversation, and side-panel copilot now also share the queued-follow-up contract on top of that runtime: one explicit text-only next message may be queued while a run is active, rendered as an attached composer cap, and auto-dispatched only after the surface returns to true idle/sendable state.
 - Popup has canonical Context V2 payload alignment and now derives its supported progress/checkpoint/error/blocking subset through a shared reducer adapter, but it still has not migrated fully onto the shared runtime engine.
 - The CI anti-duplication architecture guard is already enforced and should continue preventing new per-surface chunk parsers.
 - Chat/runtime work above this layer now depends on convergence here rather than inventing new per-surface semantics.
@@ -172,6 +173,8 @@ Architecture guardrails:
 - [plan-agentic.md](./plan-agentic.md) depends on this plan whenever agent fixes require shared stream/runtime semantics instead of per-surface adapters.
 
 Popup remains a truthful reduced subset only: until `U3` lands, popup should be reviewed against the shared runtime contract's honest reduced subset, not full reconnect/replay chrome or continuation parity.
+
+Queued follow-up parity is currently limited to `/ai`, main conversation, and side-panel copilot. Popup support is intentionally deferred until `U3` because the popup shell has not yet converged on the same shared runtime/composer contract.
 
 ## Recently Completed
 - Popup now preserves a truthful reduced shared-trace subset for live progress, grounded checkpoints, blocking clarification, and structured terminal failures through a shared reducer adapter while remaining compact.
