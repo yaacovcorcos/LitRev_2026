@@ -81,6 +81,7 @@ vi.mock("@/lib/ai/config", () => ({
 }));
 
 vi.mock("@/lib/agent/compaction", () => ({
+  buildModelVisibleToolResultForTool: vi.fn((_, value) => value),
   buildModelVisibleToolResult: vi.fn((value) => value),
   compactToolResult: vi.fn((_, value) => JSON.stringify(value)),
   compactLoopMessages: vi.fn((messages) => ({ messages, removed: 0 })),
