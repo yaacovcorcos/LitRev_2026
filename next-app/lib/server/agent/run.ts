@@ -123,6 +123,26 @@ export async function markRunAbnormalEndClassification(
     return result.count;
 }
 
+export async function markRunDurabilityDegraded(
+    runId: string,
+    reason: string,
+    at = new Date(),
+) {
+    const result = await prisma.agentRun.updateMany({
+        where: { id: runId },
+        data: {
+            durabilityState: "degraded",
+            durabilityDegradedReason: reason,
+            abnormalEndClassification: "recovery_required_persistence_failed",
+            lastActivityAt: at,
+        },
+    });
+    if (result.count > 0) {
+        notifyRunActivity(runId, at);
+    }
+    return result.count;
+}
+
 export async function markRunFinalizationFailed(runId: string, at = new Date()) {
     const result = await prisma.agentRun.updateMany({
         where: { id: runId },
@@ -233,6 +253,8 @@ export async function startRun(input: StartRunInput) {
             startedAt,
             lastActivityAt: startedAt,
             lastDurableProgressAt: startedAt,
+            durabilityState: "durable",
+            durabilityDegradedReason: null,
             finalizationState: "not_started",
         },
     });
@@ -248,6 +270,12 @@ export async function endRun(
     costTokensOut?: number
 ) {
     const completedAt = new Date();
+    const existing = await prisma.agentRun.findUnique({
+        where: { id: runId },
+        select: { durabilityState: true },
+    });
+    const preserveAbnormalClassification =
+        existing?.durabilityState === "degraded";
     const run = await prisma.agentRun.update({
         where: { id: runId },
         data: {
@@ -256,7 +284,9 @@ export async function endRun(
             lastActivityAt: completedAt,
             lastDurableProgressAt: completedAt,
             finalizationState: "completed",
-            ...(status === "completed" ? { abnormalEndClassification: null } : {}),
+            ...(status === "completed" && !preserveAbnormalClassification
+                ? { abnormalEndClassification: null }
+                : {}),
             ...(costTokensIn !== undefined ? { costTokensIn } : {}),
             ...(costTokensOut !== undefined ? { costTokensOut } : {}),
         },

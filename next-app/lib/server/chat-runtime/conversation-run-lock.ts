@@ -3,6 +3,7 @@ import { AIErrorWithEnvelope, createRunConflictErrorEnvelope } from "@/lib/ai/er
 import { assessRunConvergence } from "@/lib/server/agent/run-convergence";
 import type {
   RunAbnormalEndClassification,
+  RunDurabilityState,
   RunFinalizationState,
 } from "@/types/agent";
 
@@ -14,6 +15,8 @@ type RunningConversationRun = {
   startedAt: Date;
   lastActivityAt: Date;
   lastDurableProgressAt: Date;
+  durabilityState: RunDurabilityState;
+  durabilityDegradedReason: string | null;
   finalizationState: RunFinalizationState;
   abnormalEndClassification: RunAbnormalEndClassification | null;
 };
@@ -34,6 +37,8 @@ const prismaConversationRunLockStore: ConversationRunLockStore = {
         startedAt: true,
         lastActivityAt: true,
         lastDurableProgressAt: true,
+        durabilityState: true,
+        durabilityDegradedReason: true,
         finalizationState: true,
         abnormalEndClassification: true,
       },
@@ -42,6 +47,8 @@ const prismaConversationRunLockStore: ConversationRunLockStore = {
     return rows.map((row) => ({
       ...row,
       status: "running",
+      durabilityState: row.durabilityState as RunDurabilityState,
+      durabilityDegradedReason: row.durabilityDegradedReason,
       finalizationState: row.finalizationState as RunFinalizationState,
       abnormalEndClassification: row.abnormalEndClassification as RunAbnormalEndClassification | null,
     }));
@@ -55,6 +62,8 @@ const prismaConversationRunLockStore: ConversationRunLockStore = {
         completedAt,
         lastActivityAt: completedAt,
         lastDurableProgressAt: completedAt,
+        durabilityState: "durable",
+        durabilityDegradedReason: null,
         finalizationState: "completed",
       },
     });
@@ -68,6 +77,8 @@ const prismaConversationRunLockStore: ConversationRunLockStore = {
         completedAt,
         lastActivityAt: completedAt,
         lastDurableProgressAt: completedAt,
+        durabilityState: "durable",
+        durabilityDegradedReason: null,
         finalizationState: "completed",
       },
     });

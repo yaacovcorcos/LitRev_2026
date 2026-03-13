@@ -9,7 +9,7 @@ import { Prisma } from "@prisma/client";
 import type { ArtifactType, ArtifactStatus, CriteriaCardPayload, ProtocolSuggestionPayload, MemoryProposalPayload, MemoryForgetProposalPayload, StudyProposalPayload, StudyUpdatePayload, DraftDiffPayload, ScreeningBatchPayload, EvidenceTablePayload } from "@/types/artifacts";
 import type { StudyType, StudySource, StudyDetails } from "@/types/ledger";
 import { ARTIFACT_PAYLOAD_SCHEMAS } from "@/types/artifacts";
-import { emitEvent } from "./events";
+import { recordRunEvent } from "./run-event-recorder";
 import { onStudyAccepted, onStudyExcluded, onDraftAccepted, onArtifactEdited } from "@/lib/server/memory/decision-extractor";
 import { syncProtocolToMemory } from "@/lib/server/memory/protocol-sync";
 import { ensureProtocol } from "@/lib/server/protocols";
@@ -80,7 +80,7 @@ export async function createArtifact(input: CreateArtifactInput) {
         }
     }
 
-    return prisma.artifact.create({
+    const artifact = await prisma.artifact.create({
         data: {
             runId: input.runId,
             projectId: input.projectId || null,
@@ -93,6 +93,23 @@ export async function createArtifact(input: CreateArtifactInput) {
             sourceEventId: input.sourceEventId ?? null,
         },
     });
+
+    await recordRunEvent({
+        runId: input.runId,
+        type: "artifact_proposed",
+        payload: {
+            artifactId: artifact.id,
+            artifactType: artifact.type,
+            artifactStatus: artifact.status,
+            artifactTitle: artifact.title,
+        },
+        extras: { artifactId: artifact.id },
+        failureMode: "degrade",
+        degradationReason: "artifact_proposed_persistence_failed",
+        logContext: "artifact_proposed",
+    });
+
+    return artifact;
 }
 
 /**
@@ -227,11 +244,19 @@ export async function applyArtifact(
 
     // Emit event
     if (artifact.runId) {
-        await emitEvent(artifact.runId, "artifact_reviewed", {
-            artifactId: artifact.id,
-            status: "applied",
-            type: artifact.type,
-        }, { artifactId: artifact.id });
+        await recordRunEvent({
+            runId: artifact.runId,
+            type: "artifact_reviewed",
+            payload: {
+                artifactId: artifact.id,
+                status: "applied",
+                type: artifact.type,
+            },
+            extras: { artifactId: artifact.id },
+            failureMode: "degrade",
+            degradationReason: "artifact_reviewed_persistence_failed",
+            logContext: "artifact_reviewed",
+        });
     }
 
     return applied;

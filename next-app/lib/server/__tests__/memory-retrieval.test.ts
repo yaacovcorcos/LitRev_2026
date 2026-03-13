@@ -14,8 +14,8 @@ vi.mock("@/lib/server/prisma", () => ({
     },
 }));
 
-vi.mock("@/lib/server/agent/events", () => ({
-    emitEvent: vi.fn().mockResolvedValue({}),
+vi.mock("@/lib/server/agent/run-event-recorder", () => ({
+    recordRunEvent: vi.fn().mockResolvedValue({ persisted: true, degraded: false }),
 }));
 
 vi.mock("@/lib/server/memory/user-memory", () => ({
@@ -40,7 +40,7 @@ const { getUserMemories } = await import("@/lib/server/memory/user-memory");
 const { getProjectMemories, searchProjectMemories } = await import("@/lib/server/memory/project-memory");
 const { getStudyMemories, searchStudyMemories } = await import("@/lib/server/memory/study-memory");
 const { searchSemanticMemories } = await import("@/lib/server/memory/semantic-memory");
-const { emitEvent } = await import("@/lib/server/agent/events");
+const { recordRunEvent } = await import("@/lib/server/agent/run-event-recorder");
 const { prisma } = await import("@/lib/server/prisma");
 
 const mockGetUserMemories = vi.mocked(getUserMemories);
@@ -49,7 +49,7 @@ const mockSearchProjectMemories = vi.mocked(searchProjectMemories);
 const mockGetStudyMemories = vi.mocked(getStudyMemories);
 const mockSearchStudyMemories = vi.mocked(searchStudyMemories);
 const mockSearchSemanticMemories = vi.mocked(searchSemanticMemories);
-const mockEmitEvent = vi.mocked(emitEvent);
+const mockRecordRunEvent = vi.mocked(recordRunEvent);
 const mockMemoryRetrievalCreate = vi.mocked(prisma.memoryRetrieval.create);
 const mockExecuteRaw = vi.mocked(prisma.$executeRaw);
 const originalAdvancedRerankFlag = process.env.ENABLE_MEMORY_ADVANCED_RERANKING;
@@ -210,14 +210,17 @@ describe("retrieveMemories — deterministic scope rules", () => {
             runId: "run-123",
         });
 
-        expect(mockEmitEvent).toHaveBeenCalledWith(
-            "run-123",
-            "context_assembly",
+        expect(mockRecordRunEvent).toHaveBeenCalledWith(
             expect.objectContaining({
-                deterministicCount: expect.any(Number),
-                keywordCount: expect.any(Number),
-                finalCount: expect.any(Number),
-                budget: 2000,
+                runId: "run-123",
+                type: "context_assembly",
+                payload: expect.objectContaining({
+                    deterministicCount: expect.any(Number),
+                    keywordCount: expect.any(Number),
+                    finalCount: expect.any(Number),
+                    budget: 2000,
+                }),
+                logContext: "memory_context_assembly",
             }),
         );
     });
@@ -229,7 +232,7 @@ describe("retrieveMemories — deterministic scope rules", () => {
 
         await retrieveMemories({ userId: "u1" });
 
-        expect(mockEmitEvent).not.toHaveBeenCalled();
+        expect(mockRecordRunEvent).not.toHaveBeenCalled();
     });
 
     it("does not fail retrieval when audit logging fails", async () => {

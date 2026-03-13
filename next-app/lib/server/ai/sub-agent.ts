@@ -27,7 +27,7 @@ import { buildModelVisibleToolResultForTool, compactToolResult, type ToolResultW
 import { assembleSystemPrompt } from "@/lib/ai/prompts/copilot-prompts";
 import { getAIService } from "./ai-service";
 import { startRun, endRun, startRunHeartbeat, type RunHeartbeatController } from "@/lib/server/agent/run";
-import { emitEvent } from "@/lib/server/agent/events";
+import { recordRunEvent } from "@/lib/server/agent/run-event-recorder";
 import { dropShadowedInvalidToolCalls, getToolCallRepeatKey } from "./tool-helpers";
 import { evaluateToolPrerequisites } from "./tool-prerequisites";
 import { executeToolWithAutonomyCore } from "./tool-autonomy";
@@ -207,7 +207,14 @@ export async function executeSubAgent(params: SubAgentParams): Promise<SubAgentR
                 });
             },
         });
-        await emitEvent(childRun.id, "message", { content: task }, { messageRole: "user" });
+        await recordRunEvent({
+            runId: childRun.id,
+            type: "message",
+            payload: { content: task },
+            extras: { messageRole: "user" },
+            durabilityClass: "observability_only",
+            logContext: "sub_agent_user_message",
+        });
     } catch (error) {
         return {
             summary: "Sub-agent failed to initialize run state.",
@@ -333,7 +340,15 @@ export async function executeSubAgent(params: SubAgentParams): Promise<SubAgentR
             currentMessages.push(assistantMsg);
             if (childRunId && contentSoFar.trim().length > 0) {
                 try {
-                    await emitEvent(childRunId, "message", { content: contentSoFar }, { messageRole: "assistant" });
+                    await recordRunEvent({
+                        runId: childRunId,
+                        type: "message",
+                        payload: { content: contentSoFar },
+                        extras: { messageRole: "assistant" },
+                        failureMode: "degrade",
+                        degradationReason: "sub_agent_assistant_message_persistence_failed",
+                        logContext: "sub_agent_assistant_message",
+                    });
                 } catch (error) {
                     // Event writes are best-effort: telemetry failures should not fail delegated work.
                     logEventEmissionFailure("message", childRunId, error);

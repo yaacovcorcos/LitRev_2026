@@ -11,7 +11,7 @@ import type { AgentMode } from "@/types/agent";
 import { isToolAllowedInScope, getTool, resolveAutonomyLevel } from "./tools";
 import { getEffectiveAllowedTools } from "@/lib/agent/router";
 import type { ToolResultWithArtifactState } from "@/lib/agent/compaction";
-import { emitEvent } from "@/lib/server/agent/events";
+import { recordRunEvent } from "@/lib/server/agent/run-event-recorder";
 import { createArtifact, applyArtifact } from "@/lib/server/agent/artifacts";
 import { getAutonomyConfig, getToolAutonomyLevel } from "@/lib/server/agent/autonomy";
 import { startToolSpan, NOOP_SPAN } from "./tracing";
@@ -139,7 +139,15 @@ export async function executeToolWithAutonomyCore(
             toolCall.id,
             `Tool "${toolCall.name}" is not available in ${scope} scope.`,
         );
-        await emitEvent(runId, "tool_result", { error: result.error }, { toolName: toolCall.name });
+        await recordRunEvent({
+            runId,
+            type: "tool_result",
+            payload: result,
+            extras: { toolName: toolCall.name },
+            failureMode: "degrade",
+            degradationReason: "tool_result_persistence_failed",
+            logContext: `tool_result:${toolCall.name}`,
+        });
         return result;
     }
 
@@ -150,7 +158,15 @@ export async function executeToolWithAutonomyCore(
                 toolCall.id,
                 `Tool "${toolCall.name}" is not available in ${agentMode} mode.`,
             );
-            await emitEvent(runId, "tool_result", { error: result.error }, { toolName: toolCall.name });
+            await recordRunEvent({
+                runId,
+                type: "tool_result",
+                payload: result,
+                extras: { toolName: toolCall.name },
+                failureMode: "degrade",
+                degradationReason: "tool_result_persistence_failed",
+                logContext: `tool_result:${toolCall.name}`,
+            });
             return result;
         }
     }
@@ -167,20 +183,31 @@ export async function executeToolWithAutonomyCore(
     });
     const level = resolveAutonomyLevel(toolCall.name, configuredLevel, tool?.autonomy);
 
-    await emitEvent(runId, "tool_call", {
-        toolName: toolCall.name,
-        arguments: toolCall.arguments,
-        autonomyLevel: level,
-    }, { toolName: toolCall.name });
+    await recordRunEvent({
+        runId,
+        type: "tool_call",
+        payload: {
+            id: toolCall.id,
+            name: toolCall.name,
+            arguments: toolCall.arguments,
+            autonomyLevel: level,
+        },
+        extras: { toolName: toolCall.name },
+        failureMode: "strict",
+        logContext: `tool_call:${toolCall.name}`,
+    });
 
     if (level === 0) {
         const result = createAutonomyBlockedResult(toolCall.id, toolCall.name, "disabled_by_autonomy");
-        await emitEvent(
+        await recordRunEvent({
             runId,
-            "tool_result",
-            { success: false, error: result.error, blockedByAutonomy: true, blockedReason: result.blockedReason },
-            { toolName: toolCall.name },
-        );
+            type: "tool_result",
+            payload: result,
+            extras: { toolName: toolCall.name },
+            failureMode: "degrade",
+            degradationReason: "tool_result_persistence_failed",
+            logContext: `tool_result:${toolCall.name}`,
+        });
         return result;
     }
 
@@ -188,14 +215,15 @@ export async function executeToolWithAutonomyCore(
         const result = levelOneBehavior === "suggest"
             ? buildAutonomySuggestion(toolCall)
             : createAutonomyBlockedResult(toolCall.id, toolCall.name, "approval_required");
-        await emitEvent(
+        await recordRunEvent({
             runId,
-            "tool_result",
-            levelOneBehavior === "suggest"
-                ? { suggestion: true }
-                : { success: false, error: result.error, blockedByAutonomy: true, blockedReason: result.blockedReason },
-            { toolName: toolCall.name },
-        );
+            type: "tool_result",
+            payload: result,
+            extras: { toolName: toolCall.name },
+            failureMode: "degrade",
+            degradationReason: "tool_result_persistence_failed",
+            logContext: `tool_result:${toolCall.name}`,
+        });
         return result;
     }
 
@@ -222,12 +250,15 @@ export async function executeToolWithAutonomyCore(
     const durationMs = Date.now() - startTime;
     toolSpan.update({ output: { success: !result.error, durationMs } }).end();
 
-    await emitEvent(runId, "tool_result", {
-        success: !result.error,
-        error: result.error,
-        blockedByAutonomy: result.blockedByAutonomy ?? false,
-        blockedReason: result.blockedReason ?? null,
-    }, { toolName: toolCall.name, durationMs });
+    await recordRunEvent({
+        runId,
+        type: "tool_result",
+        payload: result,
+        extras: { toolName: toolCall.name, durationMs },
+        failureMode: "degrade",
+        degradationReason: "tool_result_persistence_failed",
+        logContext: `tool_result:${toolCall.name}`,
+    });
 
     if (result.error || result.requiresUserInput || result.blockedByAutonomy) {
         return result as ToolResultWithArtifactState;

@@ -18,6 +18,7 @@ import type {
 } from "@/types/ai";
 import type {
     RunAbnormalEndClassification,
+    RunDurabilityState,
     RunFinalizationState,
     RunStatus,
 } from "@/types/agent";
@@ -31,6 +32,8 @@ type RecoveryRunRecord = {
     costTokensOut: number;
     lastActivityAt: Date;
     lastDurableProgressAt: Date;
+    durabilityState: RunDurabilityState;
+    durabilityDegradedReason: string | null;
     finalizationState: RunFinalizationState;
     abnormalEndClassification: RunAbnormalEndClassification | null;
 };
@@ -222,6 +225,8 @@ export async function buildRunRecoveryResponse(params: {
             costTokensOut: true,
             lastActivityAt: true,
             lastDurableProgressAt: true,
+            durabilityState: true,
+            durabilityDegradedReason: true,
             finalizationState: true,
             abnormalEndClassification: true,
         },
@@ -235,6 +240,8 @@ export async function buildRunRecoveryResponse(params: {
             isActive: false,
             lastActivityAt: null,
             lastDurableProgressAt: null,
+            durabilityState: null,
+            durabilityDegradedReason: null,
             finalizationState: null,
             lastSequence: null,
             replayableEvents: [],
@@ -296,6 +303,8 @@ export async function buildRunRecoveryResponse(params: {
         isActive: run.status === "running",
         lastActivityAt: run.lastActivityAt.toISOString(),
         lastDurableProgressAt: run.lastDurableProgressAt.toISOString(),
+        durabilityState: run.durabilityState,
+        durabilityDegradedReason: run.durabilityDegradedReason,
         finalizationState: run.finalizationState,
         lastSequence: lastEvent?.sequence ?? null,
         replayableEvents,

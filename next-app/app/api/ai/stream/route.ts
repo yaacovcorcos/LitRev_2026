@@ -11,7 +11,6 @@ import type { AgentMode } from "@/types/agent";
 import { normalizeStreamChunk, toWireChunk, type RuntimeStreamEvent } from "@/lib/server/chat-runtime/events";
 import { ChatRuntime } from "@/lib/server/chat-runtime/runtime";
 import { RuntimeThreadContext } from "@/lib/server/chat-runtime/thread";
-import { persistRecoveryAuthoritativeRuntimeEvent } from "@/lib/server/chat-runtime/persist-recovery-events";
 import { StreamCoalescer } from "@/lib/server/ai/stream-coalescer";
 import { runWithActorContext } from "@/lib/server/actor";
 import { requireApiSession } from "@/lib/server/auth/session";
@@ -190,11 +189,6 @@ export async function POST(request: NextRequest) {
                         await next();
                         if (event.type === "run_end") runtimeThread.bindRun(undefined);
                     });
-                    for (const eventType of ["artifact", "checkpoint", "error", "user_input_required"] as const) {
-                        runtimeRouter.on(eventType, async ({ event, thread: runtimeThread }) => {
-                            await persistRecoveryAuthoritativeRuntimeEvent({ event, thread: runtimeThread });
-                        });
-                    }
                     for (const eventType of STREAM_EVENT_TYPES) {
                         runtimeRouter.on(eventType, async ({ event, thread: runtimeThread }) => {
                             await runtimeThread.emit(event);

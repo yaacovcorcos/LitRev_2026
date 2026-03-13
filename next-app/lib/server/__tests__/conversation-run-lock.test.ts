@@ -1,13 +1,19 @@
 import { describe, expect, it, vi } from "vitest";
 import { ensureConversationRunAvailability } from "@/lib/server/chat-runtime/conversation-run-lock";
 import { AIErrorWithEnvelope } from "@/lib/ai/error-envelope";
-import type { RunAbnormalEndClassification, RunFinalizationState } from "@/types/agent";
+import type {
+  RunAbnormalEndClassification,
+  RunDurabilityState,
+  RunFinalizationState,
+} from "@/types/agent";
 
 function makeRunningRun(overrides?: Partial<{
   id: string;
   startedAt: Date;
   lastActivityAt: Date;
   lastDurableProgressAt: Date;
+  durabilityState: RunDurabilityState;
+  durabilityDegradedReason: string | null;
   finalizationState: RunFinalizationState;
   abnormalEndClassification: RunAbnormalEndClassification | null;
 }>) {
@@ -18,6 +24,8 @@ function makeRunningRun(overrides?: Partial<{
     startedAt: overrides?.startedAt ?? now,
     lastActivityAt: overrides?.lastActivityAt ?? now,
     lastDurableProgressAt: overrides?.lastDurableProgressAt ?? now,
+    durabilityState: overrides?.durabilityState ?? "durable",
+    durabilityDegradedReason: overrides?.durabilityDegradedReason ?? null,
     finalizationState: overrides?.finalizationState ?? "not_started",
     abnormalEndClassification: overrides?.abnormalEndClassification ?? null,
   };

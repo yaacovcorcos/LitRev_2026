@@ -39,6 +39,10 @@ export type RunFinalizationState =
     | "completed"
     | "failed";
 
+export type RunDurabilityState =
+    | "durable"
+    | "degraded";
+
 export type RunAbnormalEndClassification =
     | "client_abort"
     | "network_disconnect"
@@ -82,6 +86,8 @@ export interface AgentRunData {
     startedAt: string;
     lastActivityAt: string;
     lastDurableProgressAt: string;
+    durabilityState: RunDurabilityState;
+    durabilityDegradedReason: string | null;
     finalizationState: RunFinalizationState;
     abnormalEndClassification: RunAbnormalEndClassification | null;
     completedAt: string | null;

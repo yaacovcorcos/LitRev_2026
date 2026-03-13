@@ -35,9 +35,13 @@ vi.mock("@/lib/server/ai/tools", () => ({
   resolveAutonomyLevel: mocks.resolveAutonomyLevel,
 }));
 
-vi.mock("@/lib/agent/router", () => ({
-  getEffectiveAllowedTools: mocks.getEffectiveAllowedTools,
-}));
+vi.mock("@/lib/agent/router", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@/lib/agent/router")>();
+  return {
+    ...original,
+    getEffectiveAllowedTools: mocks.getEffectiveAllowedTools,
+  };
+});
 
 vi.mock("@/lib/server/agent/autonomy", () => ({
   getAutonomyConfig: mocks.getAutonomyConfig,

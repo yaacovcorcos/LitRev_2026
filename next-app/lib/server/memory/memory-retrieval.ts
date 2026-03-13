@@ -10,7 +10,7 @@ import { getProjectMemories, searchProjectMemories } from "./project-memory";
 import { getStudyMemories, searchStudyMemories } from "./study-memory";
 import { searchSemanticMemories } from "./semantic-memory";
 import { runMemoryMaintenanceLoop } from "./maintenance";
-import { emitEvent } from "@/lib/server/agent/events";
+import { recordRunEvent } from "@/lib/server/agent/run-event-recorder";
 import type { AgentMode } from "@/types/agent";
 
 export interface MemoryContext {
@@ -615,7 +615,10 @@ export async function retrieveMemories(
         const tokensByLayer = (type: string) =>
             trimmed.filter((m) => m.type === type).reduce((sum, m) => sum + estimateTokens(m.content), 0);
 
-        await emitEvent(context.runId, "context_assembly", {
+        await recordRunEvent({
+            runId: context.runId,
+            type: "context_assembly",
+            payload: {
             deterministicCount: deterministic.length,
             keywordCount: keyword.length,
             semanticCount: semantic.length,
@@ -628,6 +631,8 @@ export async function retrieveMemories(
                 study: tokensByLayer("study"),
             },
             excluded,
+            },
+            logContext: "memory_context_assembly",
         }).catch(() => {}); // Non-critical — don't fail retrieval
     }
 

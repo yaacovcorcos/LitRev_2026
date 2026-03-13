@@ -37,7 +37,7 @@ import {
     markRunFinalizationState,
     type RunHeartbeatController,
 } from "@/lib/server/agent/run";
-import { emitEvent } from "@/lib/server/agent/events";
+import { recordRunEvent } from "@/lib/server/agent/run-event-recorder";
 import { createArtifact } from "@/lib/server/agent/artifacts";
 import { getAutonomyConfig } from "@/lib/server/agent/autonomy";
 import { buildExecutablePlanPayload } from "@/lib/server/agent/plan-payloads";
@@ -71,6 +71,7 @@ import { prisma } from "@/lib/server/prisma";
 import { isProtocolPopulated, type ProtocolData } from "@/types/protocol";
 import type { ScopingReportPayload } from "@/types/artifacts";
 import { ensureConversationRunAvailability } from "@/lib/server/chat-runtime/conversation-run-lock";
+import { persistRecoveryAuthoritativeRuntimeEvent } from "@/lib/server/chat-runtime/persist-recovery-events";
 import { classifyAIError, toAIErrorEnvelope } from "./error-classification";
 import { retryAsync, sleep } from "@/lib/server/utils/retry";
 import { resolveReasoningMode } from "@/lib/ai/reasoning-visibility";
@@ -1031,6 +1032,43 @@ class AIService {
             traceEnded = true;
             await flushTracing();
         };
+        const persistRecoveryCheckpoint = async (checkpointLabel: string) => {
+            if (!run?.id) return;
+            await persistRecoveryAuthoritativeRuntimeEvent({
+                runId: run.id,
+                event: {
+                    type: "checkpoint",
+                    checkpointLabel,
+                    conversationId: conversation.id,
+                },
+                failureMode: "degrade",
+            });
+        };
+        const persistRecoveryUserInputRequest = async (userInputRequest: NonNullable<ToolResult["userInputRequest"]>) => {
+            if (!run?.id) return;
+            await persistRecoveryAuthoritativeRuntimeEvent({
+                runId: run.id,
+                event: {
+                    type: "user_input_required",
+                    userInputRequest,
+                    conversationId: conversation.id,
+                },
+                failureMode: "strict",
+            });
+        };
+        const persistRecoveryErrorChunk = async (chunk: AIStreamChunk) => {
+            if (!run?.id || chunk.type !== "error") return;
+            await persistRecoveryAuthoritativeRuntimeEvent({
+                runId: run.id,
+                event: {
+                    type: "error",
+                    error: chunk.error ?? "Unknown error",
+                    errorMeta: chunk.errorMeta,
+                    conversationId: conversation.id,
+                },
+                failureMode: "degrade",
+            });
+        };
 
         try {
             // Start an agent run inside the guarded lifecycle so early stream
@@ -1067,7 +1105,14 @@ class AIService {
 
             // Emit user message event (skip for plan execution — no user message to record)
             if (!executionMode) {
-                await emitEvent(activeRun.id, "message", { content: userMessage }, { messageRole: "user" });
+                await recordRunEvent({
+                    runId: activeRun.id,
+                    type: "message",
+                    payload: { content: userMessage },
+                    extras: { messageRole: "user" },
+                    durabilityClass: "observability_only",
+                    logContext: "user_message",
+                });
             }
 
             // Establish critical runtime authority, then load optional context.
@@ -1191,6 +1236,7 @@ class AIService {
                 ...contextMeta,
             });
             if (degradedCheckpointLabel) {
+                await persistRecoveryCheckpoint(degradedCheckpointLabel);
                 yield {
                     type: "checkpoint",
                     checkpointLabel: degradedCheckpointLabel,
@@ -1565,6 +1611,7 @@ class AIService {
                     currentMessages.length = 0;
                     currentMessages.push(...compacted.messages);
                     if (compacted.removed > 0) {
+                        await persistRecoveryCheckpoint(`Compacted ${compacted.removed} messages`);
                         yield { type: "checkpoint", checkpointLabel: `Compacted ${compacted.removed} messages`, conversationId: conversation.id };
                     }
                 }
@@ -1673,6 +1720,7 @@ class AIService {
                         const compactedMessages = compactMessagesForOverflowRetry(currentMessages, budget);
                         currentMessages.length = 0;
                         currentMessages.push(...compactedMessages);
+                        await persistRecoveryCheckpoint(`Recovered context overflow (attempt ${overflowRecoveryCount})`);
                         yield {
                             type: "checkpoint",
                             checkpointLabel: `Recovered context overflow (attempt ${overflowRecoveryCount})`,
@@ -1709,10 +1757,19 @@ class AIService {
                                 role: "assistant",
                                 content: fallbackContent,
                             });
-                            await emitEvent(activeRun.id, "message", { content: fallbackContent }, { messageRole: "assistant" });
+                            await recordRunEvent({
+                                runId: activeRun.id,
+                                type: "message",
+                                payload: { content: fallbackContent },
+                                extras: { messageRole: "assistant" },
+                                failureMode: "degrade",
+                                degradationReason: "assistant_message_persistence_failed",
+                                logContext: "assistant_message_fallback",
+                            });
                             yield { type: "content", content: fallbackContent, conversationId: conversation.id };
                         }
                         loop.markStopped("error");
+                        await persistRecoveryErrorChunk(terminalErrorChunk);
                         yield terminalErrorChunk;
                         await finalizeRunOnce("failed");
                         const runModelMeta = resolveRunActualModelMeta(chatOptions.model, observedRunModel, invokedModel);
@@ -1862,6 +1919,7 @@ class AIService {
                     // ask_user sentinel: emit user_input_required and stop the loop
                     if (toolResult.requiresUserInput && toolResult.userInputRequest) {
                         runFacts.pausedForUserInput = true;
+                        await persistRecoveryUserInputRequest(toolResult.userInputRequest);
                         yield { type: "user_input_required", userInputRequest: toolResult.userInputRequest, conversationId: conversation.id };
                         loop.markStopped("paused_for_input");
                         break;
@@ -1951,7 +2009,15 @@ class AIService {
                     role: "assistant",
                     content: fullContent,
                 });
-                await emitEvent(activeRun.id, "message", { content: fullContent }, { messageRole: "assistant" });
+                await recordRunEvent({
+                    runId: activeRun.id,
+                    type: "message",
+                    payload: { content: fullContent },
+                    extras: { messageRole: "assistant" },
+                    failureMode: "degrade",
+                    degradationReason: "assistant_message_persistence_failed",
+                    logContext: "assistant_message_final",
+                });
                 await markMemoriesUsedInAnswer(retrievedMemoriesForRun, fullContent).catch(() => {});
 
                 if (!executionMode) {
@@ -1978,7 +2044,15 @@ class AIService {
                     role: "assistant",
                     content: fullContent,
                 });
-                await emitEvent(activeRun.id, "message", { content: fullContent }, { messageRole: "assistant" });
+                await recordRunEvent({
+                    runId: activeRun.id,
+                    type: "message",
+                    payload: { content: fullContent },
+                    extras: { messageRole: "assistant" },
+                    failureMode: "degrade",
+                    degradationReason: "assistant_message_persistence_failed",
+                    logContext: "assistant_message_failure_fallback",
+                });
                 yield { type: "content", content: fullContent, conversationId: conversation.id };
             }
 
@@ -2075,7 +2149,15 @@ class AIService {
                         content: fullContent,
                     });
                     if (activeRunId) {
-                        await emitEvent(activeRunId, "message", { content: fullContent }, { messageRole: "assistant" });
+                        await recordRunEvent({
+                            runId: activeRunId,
+                            type: "message",
+                            payload: { content: fullContent },
+                            extras: { messageRole: "assistant" },
+                            failureMode: "degrade",
+                            degradationReason: "assistant_message_persistence_failed",
+                            logContext: "assistant_message_plan_failure",
+                        });
                     }
                 }
 
@@ -2146,13 +2228,21 @@ class AIService {
                 });
                 const activeRunId = run?.id;
                 if (activeRunId) {
-                    await emitEvent(activeRunId, "message", { content: fallbackContent }, { messageRole: "assistant" });
+                    await recordRunEvent({
+                        runId: activeRunId,
+                        type: "message",
+                        payload: { content: fallbackContent },
+                        extras: { messageRole: "assistant" },
+                        failureMode: "degrade",
+                        degradationReason: "assistant_message_persistence_failed",
+                        logContext: "assistant_message_catch_fallback",
+                    });
                 }
                 yield { type: "content", content: fallbackContent, conversationId: conversation.id };
             }
 
             await finalizeRunOnce("failed");
-            yield buildStreamErrorChunk(
+            const terminalErrorChunk = buildStreamErrorChunk(
                 toAIErrorEnvelope(error, {
                     kind: "runtime",
                     source: "runtime",
@@ -2160,6 +2250,8 @@ class AIService {
                 }),
                 { conversationId: conversation.id },
             );
+            await persistRecoveryErrorChunk(terminalErrorChunk);
+            yield terminalErrorChunk;
             const runModelMeta = resolveRunActualModelMeta(options?.model, null, false);
             if (run) {
                 yield {

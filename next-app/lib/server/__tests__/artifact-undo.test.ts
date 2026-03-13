@@ -63,10 +63,14 @@ vi.mock("@/lib/server/protocols", () => ({
     }),
 }));
 
-vi.mock("@/lib/protocol-fields", () => ({
-    validateFieldValue: vi.fn().mockReturnValue({ valid: true, value: "new value" }),
-    isValidFieldPath: vi.fn().mockReturnValue(true),
-}));
+vi.mock("@/lib/protocol-fields", async (importOriginal) => {
+    const original = await importOriginal<typeof import("@/lib/protocol-fields")>();
+    return {
+        ...original,
+        validateFieldValue: vi.fn().mockReturnValue({ valid: true, value: "new value" }),
+        isValidFieldPath: vi.fn().mockReturnValue(true),
+    };
+});
 
 vi.mock("@/lib/server/actor", () => ({
     requireActorContext: vi.fn().mockReturnValue({ userId: "u1", workspaceId: "w1" }),
