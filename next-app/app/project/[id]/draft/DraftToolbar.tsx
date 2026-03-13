@@ -1,85 +1,33 @@
-import { type DragEvent, type KeyboardEvent as ReactKeyboardEvent, type RefObject } from "react";
-import type { DraftMode, DraftSectionId } from "@/types/draft";
+import { type RefObject } from "react";
+import type { DraftSectionId } from "@/types/draft";
 import type { DraftSectionFormat } from "@/lib/draftStorage";
 import {
   FONT_FAMILY_OPTIONS,
   FONT_SIZE_OPTIONS,
   LINE_HEIGHT_OPTIONS,
   PARAGRAPH_SPACING_OPTIONS,
-  type SectionMeta,
 } from "./draft-helpers";
 import styles from "./draft-studio.module.css";
 
-/* ------------------------------------------------------------------ */
-/*  Section Tabs + Mode Toggle + Export + Save Badge                   */
-/* ------------------------------------------------------------------ */
-
-export type DraftTopBarProps = {
+export type DraftWorkspaceHeaderProps = {
   projectName: string;
-  activeSection: DraftSectionId;
-  mode: DraftMode;
-  orderedSections: SectionMeta[];
-  availableSections: SectionMeta[];
-  // Drag state
-  draggingKey: DraftSectionId | null;
-  dragOverKey: DraftSectionId | null;
-  dragOverPosition: "before" | "after" | null;
-  // Refs
-  sectionTabRefs: RefObject<Record<DraftSectionId, HTMLButtonElement | null>>;
-  addSectionRef: RefObject<HTMLDivElement | null>;
-  addSectionInputRef: RefObject<HTMLInputElement | null>;
-  // Add section state
-  isAddSectionOpen: boolean;
-  setAddSectionOpen: (open: boolean | ((prev: boolean) => boolean)) => void;
-  customSectionName: string;
-  setCustomSectionName: (name: string) => void;
-  // Callbacks
-  onSelectSection: (key: DraftSectionId) => void;
-  onSectionKeyDown: (event: ReactKeyboardEvent<HTMLButtonElement>, index: number) => void;
-  onToggleMode: (mode: DraftMode) => void;
-  onAddSection: (key: DraftSectionId) => void;
-  onAddCustomSection: () => void;
-  onRemoveSection: (key: DraftSectionId) => void;
-  onDragStart: (event: DragEvent<HTMLButtonElement>, key: DraftSectionId) => void;
-  onDragOver: (event: DragEvent<HTMLButtonElement>, key: DraftSectionId) => void;
-  onDrop: (event: DragEvent<HTMLButtonElement>, key: DraftSectionId) => void;
-  onDragEnd: () => void;
-  // Export
   hasDraftContent: boolean;
   onExportClick: () => void;
   saveStatus: "saved" | "saving" | "error";
+  showCompactControls: boolean;
+  onToggleStructureRail: () => void;
+  onToggleContextRail: () => void;
 };
 
-export function DraftTopBar({
-  activeSection,
-  mode,
-  orderedSections,
-  availableSections,
-  draggingKey,
-  dragOverKey,
-  dragOverPosition,
-  sectionTabRefs,
-  addSectionRef,
-  addSectionInputRef,
-  isAddSectionOpen,
-  setAddSectionOpen,
-  customSectionName,
-  setCustomSectionName,
-  onSelectSection,
-  onSectionKeyDown,
-  onToggleMode,
-  onAddSection,
-  onAddCustomSection,
-  onRemoveSection,
-  onDragStart,
-  onDragOver,
-  onDrop,
-  onDragEnd,
+export function DraftWorkspaceHeader({
+  projectName,
   hasDraftContent,
   onExportClick,
   saveStatus,
-  projectName,
-}: DraftTopBarProps) {
+  showCompactControls,
+  onToggleStructureRail,
+  onToggleContextRail,
+}: DraftWorkspaceHeaderProps) {
   return (
     <div className={styles.top}>
       <div className={styles.topLeft}>
@@ -89,134 +37,32 @@ export function DraftTopBar({
       </div>
 
       <div className={styles.topCenter}>
-        <div className={styles.sectionTabsWrap}>
-          <div className={styles.sectionTabs} role="tablist" aria-label="Draft sections" aria-orientation="horizontal">
-            {orderedSections.map((section, index) => {
-              const isDragging = draggingKey === section.id;
-              const isDragOver = dragOverKey === section.id && draggingKey && draggingKey !== section.id;
-              const dropClass =
-                isDragOver && dragOverPosition === "after"
-                  ? styles.sectionTabDropAfter
-                  : isDragOver && dragOverPosition === "before"
-                    ? styles.sectionTabDropBefore
-                    : "";
-              const canRemove = orderedSections.length > 1;
-              return (
-                <button
-                  key={section.id}
-                  type="button"
-                  role="tab"
-                  draggable
-                  aria-grabbed={isDragging}
-                  aria-selected={activeSection === section.id}
-                  aria-controls={mode === "section" ? "draft-section-panel" : undefined}
-                  id={`draft-tab-${section.id}`}
-                  className={`${styles.sectionTab} ${activeSection === section.id ? styles.sectionTabActive : ""} ${isDragging ? styles.sectionTabDragging : ""
-                    } ${dropClass}`}
-                  onClick={() => onSelectSection(section.id)}
-                  onDoubleClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    if (canRemove) onRemoveSection(section.id);
-                  }}
-                  onKeyDown={(event) => onSectionKeyDown(event, index)}
-                  onDragStart={(event) => onDragStart(event, section.id)}
-                  onDragOver={(event) => onDragOver(event, section.id)}
-                  onDrop={(event) => onDrop(event, section.id)}
-                  onDragEnd={onDragEnd}
-                  tabIndex={activeSection === section.id ? 0 : -1}
-                  title={canRemove ? "Double-click to remove" : ""}
-                  ref={(el) => {
-                    sectionTabRefs.current[section.id] = el;
-                  }}
-                >
-                  {section.label}
-                </button>
-              );
-            })}
-          </div>
-          <div className={styles.addSection} ref={addSectionRef}>
-            <button
-              type="button"
-              className={styles.addSectionButton}
-              onClick={() => setAddSectionOpen((prev: boolean) => !prev)}
-              aria-haspopup="menu"
-              aria-expanded={isAddSectionOpen}
-              aria-label="Add section"
-            >
-              <span className="material-icons-round">add</span>
-              Add
-            </button>
-            {isAddSectionOpen ? (
-              <div className={styles.sectionMenu} role="menu" aria-label="Add section">
-                <div className={styles.customSectionInput}>
-                  <input
-                    ref={addSectionInputRef}
-                    type="text"
-                    placeholder="New section name..."
-                    value={customSectionName}
-                    onChange={(e) => setCustomSectionName(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        onAddCustomSection();
-                      }
-                    }}
-                    className={styles.customSectionField}
-                  />
-                  <button
-                    type="button"
-                    className={styles.customSectionBtn}
-                    onClick={onAddCustomSection}
-                    disabled={!customSectionName.trim()}
-                  >
-                    <span className="material-icons-round">add</span>
-                  </button>
-                </div>
-                {availableSections.length > 0 && (
-                  <div className={styles.sectionMenuDivider} />
-                )}
-                {availableSections.map((section) => (
-                  <button
-                    key={section.id}
-                    type="button"
-                    role="menuitem"
-                    className={styles.sectionMenuItem}
-                    onClick={() => onAddSection(section.id)}
-                  >
-                    <span>{section.label}</span>
-                    <span className="material-icons-round">add</span>
-                  </button>
-                ))}
-              </div>
-            ) : null}
-          </div>
-        </div>
+        <div className={styles.workspaceSummary}>Continuous manuscript workspace</div>
       </div>
 
       <div className={styles.topRight}>
-        <div className={styles.modeToggle} role="group" aria-label="Draft mode">
-          <button
-            type="button"
-            className={`${styles.modeOption} ${mode === "section" ? styles.modeActive : ""}`}
-            onClick={() => onToggleMode("section")}
-            aria-pressed={mode === "section"}
-          >
-            Section
-          </button>
-          <button
-            type="button"
-            className={`${styles.modeOption} ${mode === "full" ? styles.modeActive : ""}`}
-            onClick={() => onToggleMode("full")}
-            aria-pressed={mode === "full"}
-          >
-            Full Draft
-          </button>
-          <div
-            className={`${styles.modeSlider} ${mode === "full" ? styles.modeSliderRight : ""}`}
-            aria-hidden="true"
-          />
-        </div>
+        {showCompactControls ? (
+          <>
+            <button
+              type="button"
+              className={styles.exportBtn}
+              onClick={onToggleStructureRail}
+              aria-label="Open structure drawer"
+            >
+              <span className="material-icons-round">toc</span>
+              Outline
+            </button>
+            <button
+              type="button"
+              className={styles.exportBtn}
+              onClick={onToggleContextRail}
+              aria-label="Open context drawer"
+            >
+              <span className="material-icons-round">menu_book</span>
+              Context
+            </button>
+          </>
+        ) : null}
 
         <button
           type="button"
@@ -237,10 +83,6 @@ export function DraftTopBar({
     </div>
   );
 }
-
-/* ------------------------------------------------------------------ */
-/*  Formatting Panel                                                   */
-/* ------------------------------------------------------------------ */
 
 export type DraftFormattingPanelProps = {
   isOpen: boolean;

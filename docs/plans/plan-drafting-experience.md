@@ -409,6 +409,7 @@ These are implementation tracks for one target state, not separate product versi
 - Add block selection, drag/reorder, fold/unfold, section completion states, and jump navigation.
 - Preserve project-shell embedding and mobile-safe layout contracts.
 - Blast radius: high UI change concentrated in the draft route.
+- Implementation note (March 13, 2026): the draft route now runs on a single manuscript editor with a structure rail, a context rail, section-aware mobile drawers, references locked in-flow, and block-level selection/reorder controls while preserving `DraftState v2` compatibility and project-shell embedding.
 
 ### `DRX-003` Comments, suggestions, and checkpoints
 - Introduce review entities, anchor model, review rail, suggestion mode, and compare/restore UI.
@@ -540,7 +541,7 @@ These are implementation tracks for one target state, not separate product versi
 - [x] `DRX-001` Defined the canonical manuscript schema, stable block identity, and `DraftState v2` migration contract. Draft save/load now normalize legacy payloads into a canonical manuscript document plus `contentBySection` compatibility projection, and direct draft writers use the same normalizer.
 
 ## Active Tasks
-- [ ] `DRX-002` Rebuild the draft route around a continuous canvas and structure rail.
+- [x] `DRX-002` Rebuild the draft route around a continuous canvas and structure rail.
 - [ ] `DRX-003` Add first-class comments, suggestion mode, checkpoints, and compare/restore.
 - [ ] `DRX-004` Add citation palette, evidence coverage, claim support diagnostics, and repair flows.
 - [ ] `DRX-005` Move AI drafting actions into inline proposal/review flows.

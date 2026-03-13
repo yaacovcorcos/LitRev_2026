@@ -32,3 +32,40 @@ export type ManuscriptAnchor = {
   to?: number;
   quote?: string;
 };
+
+export type ManuscriptOutlineHeading = {
+  id: string;
+  sectionId: DraftSectionId;
+  blockId?: string;
+  label: string;
+  level: number;
+};
+
+export type ManuscriptOutlineEntry = ManuscriptSectionMeta & {
+  isGenerated: boolean;
+  headings: ManuscriptOutlineHeading[];
+};
+
+export type ManuscriptSectionTransform =
+  | {
+      type: "insert";
+      section: ManuscriptSectionMeta;
+      afterSectionId?: DraftSectionId;
+      content?: JSONContent;
+    }
+  | {
+      type: "remove";
+      sectionId: DraftSectionId;
+    }
+  | {
+      type: "reorder";
+      sectionId: DraftSectionId;
+      targetSectionId: DraftSectionId;
+      position: "before" | "after";
+    };
+
+export type ManuscriptBlockMove = {
+  sectionId: DraftSectionId;
+  blockId: string;
+  direction: "up" | "down";
+};

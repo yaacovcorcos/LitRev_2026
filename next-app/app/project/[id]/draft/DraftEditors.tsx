@@ -8,6 +8,7 @@ import Underline from "@tiptap/extension-underline";
 import { Extension, Node as TiptapNode, mergeAttributes } from "@tiptap/core";
 import type { JSONContent } from "@tiptap/core";
 import type { DraftSectionId } from "@/types/draft";
+import { MANUSCRIPT_SECTION_NODE_TYPE } from "@/types/manuscript";
 import styles from "./draft-studio.module.css";
 
 const formatCitationLabel = (number: unknown) => {
@@ -100,6 +101,94 @@ export const BlockIdentity = Extension.create({
   },
 });
 
+export function sectionIdAtPosition(editor: Editor, position: number): DraftSectionId | null {
+  const docSize = editor.state.doc.content.size;
+  const safePosition = Math.max(0, Math.min(position, docSize));
+  const $pos = editor.state.doc.resolve(safePosition);
+  for (let depth = $pos.depth; depth >= 0; depth -= 1) {
+    const node = $pos.node(depth);
+    if (node.type.name !== MANUSCRIPT_SECTION_NODE_TYPE) continue;
+    const sectionId = node.attrs.sectionId;
+    return typeof sectionId === "string" && sectionId.trim().length > 0 ? sectionId : null;
+  }
+  return null;
+}
+
+export const ManuscriptSection = TiptapNode.create({
+  name: MANUSCRIPT_SECTION_NODE_TYPE,
+  group: "block",
+  content: "block+",
+  defining: true,
+  isolating: true,
+  selectable: false,
+
+  addAttributes() {
+    return {
+      sectionId: { default: null },
+      sectionNodeId: { default: null },
+      kind: { default: "base" },
+      label: { default: "" },
+      placeholder: { default: null },
+    };
+  },
+
+  parseHTML() {
+    return [
+      {
+        tag: "section[data-manuscript-section]",
+        contentElement: "div[data-manuscript-section-content]",
+      },
+    ];
+  },
+
+  renderHTML({ node, HTMLAttributes }) {
+    const sectionId = typeof node.attrs.sectionId === "string" ? node.attrs.sectionId : "";
+    const label = typeof node.attrs.label === "string" && node.attrs.label ? node.attrs.label : sectionId;
+    const sectionNodeId = typeof node.attrs.sectionNodeId === "string" ? node.attrs.sectionNodeId : "";
+    const readOnly = sectionId === "references";
+    return [
+      "section",
+      mergeAttributes(HTMLAttributes, {
+        "data-manuscript-section": "true",
+        "data-section-id": sectionId,
+        "data-section-node-id": sectionNodeId,
+        "data-read-only-section": readOnly ? "true" : "false",
+        class: styles.manuscriptSectionNode,
+      }),
+      [
+        "div",
+        {
+          class: styles.manuscriptSectionChrome,
+          contenteditable: "false",
+        },
+        ["div", { class: styles.manuscriptSectionEyebrow }, readOnly ? "Generated section" : "Manuscript section"],
+        ["h2", { class: styles.manuscriptSectionNodeTitle }, label],
+      ],
+      ["div", { class: styles.manuscriptSectionContent, "data-manuscript-section-content": "true" }, 0],
+    ];
+  },
+});
+
+type BuildDraftEditorExtensionsParams = {
+  placeholderText?: string;
+  manuscript?: boolean;
+};
+
+export function buildDraftEditorExtensions(params: BuildDraftEditorExtensionsParams = {}) {
+  const { placeholderText, manuscript = false } = params;
+  return [
+    StarterKit,
+    Underline,
+    Citation,
+    ParagraphDirection,
+    BlockIdentity,
+    ...(manuscript ? [ManuscriptSection] : []),
+    Placeholder.configure({
+      placeholder: placeholderText ?? "Start writing…",
+    }),
+  ];
+}
+
 type ToolbarProps = {
   editor: Editor | null;
   dir?: "ltr" | "rtl";
@@ -136,6 +225,25 @@ export function EditorToolbar({ editor, dir = "ltr", onAskAi }: ToolbarProps) {
         onClick={() => editor.chain().focus().toggleUnderline().run()}
       >
         <span className="material-icons-round">format_underlined</span>
+      </button>
+      <div className={styles.toolbarDivider} aria-hidden="true" />
+      <button
+        type="button"
+        className={styles.toolbarButton}
+        aria-label="Heading 2"
+        aria-pressed={editor.isActive("heading", { level: 2 })}
+        onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
+      >
+        H2
+      </button>
+      <button
+        type="button"
+        className={styles.toolbarButton}
+        aria-label="Heading 3"
+        aria-pressed={editor.isActive("heading", { level: 3 })}
+        onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
+      >
+        H3
       </button>
       <div className={styles.toolbarDivider} aria-hidden="true" />
       <button
@@ -238,16 +346,7 @@ export function FullSectionEditor({
   const editor = useEditor(
     {
       immediatelyRender: false,
-      extensions: [
-        StarterKit,
-        Underline,
-        Citation,
-        ParagraphDirection,
-        BlockIdentity,
-        Placeholder.configure({
-          placeholder: placeholderText ?? "Start writing…",
-        }),
-      ],
+      extensions: buildDraftEditorExtensions({ placeholderText }),
       content,
       editorProps: {
         attributes: {
