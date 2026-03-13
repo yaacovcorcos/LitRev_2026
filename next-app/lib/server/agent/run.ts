@@ -5,7 +5,13 @@
 
 import "server-only";
 import { prisma } from "@/lib/server/prisma";
-import type { AgentMode, RunStatus, RunTrigger } from "@/types/agent";
+import type {
+    AgentMode,
+    RunAbnormalEndClassification,
+    RunFinalizationState,
+    RunStatus,
+    RunTrigger,
+} from "@/types/agent";
 import { extractMemoriesFromConversation } from "@/lib/server/memory/conversation-extractor";
 
 export interface StartRunInput {
@@ -74,6 +80,57 @@ export async function touchRunActivity(runId: string, at = new Date()) {
     const result = await prisma.agentRun.updateMany({
         where: { id: runId, status: "running" },
         data: { lastActivityAt: at },
+    });
+    if (result.count > 0) {
+        notifyRunActivity(runId, at);
+    }
+    return result.count;
+}
+
+export async function markRunFinalizationState(
+    runId: string,
+    state: RunFinalizationState,
+    at = new Date(),
+) {
+    const result = await prisma.agentRun.updateMany({
+        where: { id: runId },
+        data: {
+            finalizationState: state,
+            lastActivityAt: at,
+        },
+    });
+    if (result.count > 0) {
+        notifyRunActivity(runId, at);
+    }
+    return result.count;
+}
+
+export async function markRunAbnormalEndClassification(
+    runId: string,
+    classification: RunAbnormalEndClassification,
+    at = new Date(),
+) {
+    const result = await prisma.agentRun.updateMany({
+        where: { id: runId },
+        data: {
+            abnormalEndClassification: classification,
+            lastActivityAt: at,
+        },
+    });
+    if (result.count > 0) {
+        notifyRunActivity(runId, at);
+    }
+    return result.count;
+}
+
+export async function markRunFinalizationFailed(runId: string, at = new Date()) {
+    const result = await prisma.agentRun.updateMany({
+        where: { id: runId },
+        data: {
+            finalizationState: "failed",
+            abnormalEndClassification: "finalization_failed",
+            lastActivityAt: at,
+        },
     });
     if (result.count > 0) {
         notifyRunActivity(runId, at);
@@ -175,6 +232,8 @@ export async function startRun(input: StartRunInput) {
             model: input.model ?? undefined,
             startedAt,
             lastActivityAt: startedAt,
+            lastDurableProgressAt: startedAt,
+            finalizationState: "not_started",
         },
     });
 }
@@ -195,6 +254,9 @@ export async function endRun(
             status,
             completedAt,
             lastActivityAt: completedAt,
+            lastDurableProgressAt: completedAt,
+            finalizationState: "completed",
+            ...(status === "completed" ? { abnormalEndClassification: null } : {}),
             ...(costTokensIn !== undefined ? { costTokensIn } : {}),
             ...(costTokensOut !== undefined ? { costTokensOut } : {}),
         },

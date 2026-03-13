@@ -4,7 +4,12 @@
  */
 
 import type { ContextCaptureTarget } from "./context-capture";
-import type { AgentMode, RunStatus } from "./agent";
+import type {
+    AgentMode,
+    RunAbnormalEndClassification,
+    RunFinalizationState,
+    RunStatus,
+} from "./agent";
 
 // Copilot page context (which project tab the user is on)
 export type CopilotPage = "draft" | "protocol" | "ledger" | "study" | "overview" | "notes" | "memory" | "ai";
@@ -122,11 +127,13 @@ export type RunRecoveryResponse = {
     runStatus: RunStatus | "missing";
     isActive: boolean;
     lastActivityAt: string | null;
+    lastDurableProgressAt?: string | null;
+    finalizationState?: RunFinalizationState | null;
     lastSequence: number | null;
     replayableEvents: RunRecoveryReplayableChunk[];
     terminalEvent: SyntheticTerminalReconciliationEvent | null;
     recoveryRecommendation: RunRecoveryRecommendation;
-    abnormalEndClassification?: string | null;
+    abnormalEndClassification?: RunAbnormalEndClassification | null;
 };
 
 export type ToolResultArtifact = {

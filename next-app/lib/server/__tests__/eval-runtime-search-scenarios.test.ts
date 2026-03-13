@@ -26,6 +26,9 @@ const mocks = vi.hoisted(() => {
     getConversationWithSummaryById: vi.fn(),
     startRun: vi.fn(),
     endRun: vi.fn(),
+    markRunFinalizationState: vi.fn(),
+    markRunFinalizationFailed: vi.fn(),
+    markRunAbnormalEndClassification: vi.fn(),
     startRunHeartbeat: vi.fn(() => ({ stop: vi.fn() })),
     startRunTrace: vi.fn(() => trace),
     flushTracing: vi.fn(),
@@ -96,6 +99,9 @@ vi.mock("@/lib/server/ai/tools", () => ({
 vi.mock("@/lib/server/agent/run", () => ({
   startRun: mocks.startRun,
   endRun: mocks.endRun,
+  markRunFinalizationState: mocks.markRunFinalizationState,
+  markRunFinalizationFailed: mocks.markRunFinalizationFailed,
+  markRunAbnormalEndClassification: mocks.markRunAbnormalEndClassification,
   startRunHeartbeat: mocks.startRunHeartbeat,
 }));
 

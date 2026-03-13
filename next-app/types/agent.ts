@@ -33,6 +33,21 @@ export type RunStatus = "running" | "completed" | "failed" | "cancelled" | "paus
 
 export type RunTrigger = "user_message" | "proactive" | "event";
 
+export type RunFinalizationState =
+    | "not_started"
+    | "in_progress"
+    | "completed"
+    | "failed";
+
+export type RunAbnormalEndClassification =
+    | "client_abort"
+    | "network_disconnect"
+    | "terminal_generated_but_not_observed"
+    | "finalization_failed"
+    | "recovery_required_persistence_failed"
+    | "no_forward_durable_progress"
+    | "unknown";
+
 // ── Run Event Types ──────────────────────────────────────────────────────────
 
 export type RunEventType =
@@ -65,6 +80,10 @@ export interface AgentRunData {
     costTokensIn: number;
     costTokensOut: number;
     startedAt: string;
+    lastActivityAt: string;
+    lastDurableProgressAt: string;
+    finalizationState: RunFinalizationState;
+    abnormalEndClassification: RunAbnormalEndClassification | null;
     completedAt: string | null;
 }
 

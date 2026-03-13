@@ -108,4 +108,37 @@ describe("/api/ai/stream route", () => {
       mocks.persistRecoveryAuthoritativeRuntimeEvent.mock.calls.map(([params]) => params.event.type),
     ).toEqual(["checkpoint", "user_input_required"]);
   });
+
+  it("emits an error chunk when the stream fails after run_start", async () => {
+    mocks.streamChatWithArtifacts.mockImplementation(async function* () {
+      yield { type: "run_start", runId: "run-1", conversationId: "conv-1" };
+      throw new Error("simulated disconnect after run start");
+    });
+
+    const request = new NextRequest("http://localhost/api/ai/stream", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        userMessage: "hello",
+        context: "global",
+        options: {
+          conversationId: "conv-1",
+          agentMode: "general",
+          page: "ai",
+        },
+      }),
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(200);
+
+    const body = await response.text();
+    const chunks = body
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as { type: string; error?: string });
+
+    expect(chunks.map((chunk) => chunk.type)).toEqual(["run_start", "error"]);
+    expect(chunks[1]?.error).toBe("simulated disconnect after run start");
+  });
 });

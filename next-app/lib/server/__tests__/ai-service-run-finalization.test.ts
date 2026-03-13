@@ -37,6 +37,9 @@ const mocks = vi.hoisted(() => {
     startRun: vi.fn(),
     endRun: vi.fn(),
     startRunHeartbeat: vi.fn(() => ({ stop: vi.fn() })),
+    markRunFinalizationState: vi.fn(),
+    markRunFinalizationFailed: vi.fn(),
+    markRunAbnormalEndClassification: vi.fn(),
     startRunTrace: vi.fn(() => trace),
     flushTracing: vi.fn(),
     resolveAuthenticatedIdentity: vi.fn(),
@@ -98,6 +101,9 @@ vi.mock("@/lib/server/agent/run", () => ({
   startRun: mocks.startRun,
   endRun: mocks.endRun,
   startRunHeartbeat: mocks.startRunHeartbeat,
+  markRunFinalizationState: mocks.markRunFinalizationState,
+  markRunFinalizationFailed: mocks.markRunFinalizationFailed,
+  markRunAbnormalEndClassification: mocks.markRunAbnormalEndClassification,
 }));
 
 vi.mock("@/lib/server/agent/events", () => ({
@@ -347,6 +353,9 @@ describe("AIService run finalization", () => {
     mocks.resolveAuthenticatedIdentity.mockReturnValue({ userId: "user-1", workspaceId: undefined });
     mocks.startRun.mockResolvedValue({ id: "run-1" });
     mocks.endRun.mockResolvedValue({ id: "run-1", status: "failed" });
+    mocks.markRunFinalizationState.mockResolvedValue(1);
+    mocks.markRunFinalizationFailed.mockResolvedValue(1);
+    mocks.markRunAbnormalEndClassification.mockResolvedValue(1);
     mockRetrieveMemories.mockResolvedValue([]);
     mockGetAutonomyConfig.mockResolvedValue({ preset: "assisted", toolOverrides: {} } as never);
     mockProtocolFindFirst.mockResolvedValue(null);
@@ -381,6 +390,7 @@ describe("AIService run finalization", () => {
     await iterator.return?.(undefined);
 
     expect(mocks.endRun).toHaveBeenCalledTimes(1);
+    expect(mocks.markRunFinalizationState).toHaveBeenCalledWith("run-1", "in_progress");
     expect(mocks.endRun).toHaveBeenCalledWith("run-1", "failed", undefined, undefined);
     expect(mocks.trace.end).toHaveBeenCalledTimes(1);
     expect(mocks.trace.update).toHaveBeenCalledWith({
@@ -550,5 +560,26 @@ describe("AIService run finalization", () => {
         code: "DATABASE_CONNECTION_TIMEOUT",
       },
     });
+    expect(mocks.markRunAbnormalEndClassification).toHaveBeenCalledWith("run-1", "unknown");
+  });
+
+  it("marks finalization as failed when endRun throws during forced cleanup", async () => {
+    mocks.endRun.mockRejectedValueOnce(new Error("finalization write failed"));
+
+    const service = new AIService();
+    const stream = service.streamChatWithArtifacts("hello", "project", {
+      projectId: "project-1",
+      userId: "user-1",
+      agentMode: "general",
+      model: "gpt-5.2",
+    });
+    const iterator = stream[Symbol.asyncIterator]();
+
+    const first = await iterator.next();
+    expect(first.value?.type).toBe("run_start");
+
+    await expect(iterator.return?.(undefined)).resolves.toEqual({ value: undefined, done: true });
+    expect(mocks.markRunFinalizationState).toHaveBeenCalledWith("run-1", "in_progress");
+    expect(mocks.markRunFinalizationFailed).toHaveBeenCalledWith("run-1");
   });
 });
