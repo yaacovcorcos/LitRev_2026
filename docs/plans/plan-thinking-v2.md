@@ -82,6 +82,7 @@ Raw/provider-native reasoning should remain optional and secondary.
 - `/ai`, the main project conversation, and embedded project copilot now elevate the single live `progress` row into a composer-adjacent status bar while keeping receipts, checkpoints, grouped PubMed sequences, and terminal errors inline; suppression of the matching inline progress row is render-only and uses each surface's local progress id.
 - `/ai` and project copilot now reconcile known-run abnormal disconnects against persisted run truth: recovery is driven by `AgentRun` + authoritative replayable `RunEvent`s, unfinished live tool activity becomes explicitly interrupted instead of hanging indefinitely, `Reconnect` / `Retry` / `Stop & Retry` come from structured recovery metadata instead of generic retry flags, paused-for-input is treated as a successful terminal handoff rather than a failure, and replay restores only persisted authoritative truth rather than ephemeral live progress.
 - The current stabilization program in [plan-agentic.md](./plan-agentic.md) is now about durable convergence of those existing recovery primitives: disconnect classification, durable continuation from completed work, and elimination of stuck/partial recovery states. This plan should stay focused on truthful execution-trace UX and must not imply that ephemeral progress or non-persisted intermediate semantics are replayable.
+- The current stabilization program is about durable convergence and continuation, not decorative execution-trace expansion. New trace work should prefer durable truth and explicit degraded-state honesty over denser presentation.
 - Full provider-independent execution trace coverage is not done yet for read tools, proposal/mutation tools, full popup parity, task-outline UX, or answer-level provenance follow-through. Core search provenance now exists for PubMed/OpenAlex/Semantic Scholar without changing the clean narrative answer style.
 
 ## Truth Model
@@ -111,6 +112,13 @@ Examples:
 
 Rule:
 - provider reasoning is additive, never the only transparency layer
+
+### Recovery Truth Contract
+- replay restores authoritative persisted truth only
+- ephemeral progress is not replayed
+- checkpoints shown after recovery must be persisted checkpoints, not reconstructed narration
+- paused-for-input is a successful handoff state, not a failure
+- if continuation is degraded, the trace must say so explicitly rather than pretending full replay parity
 
 ## Core UX Architecture
 The chat should expose distinct but coordinated layers.
