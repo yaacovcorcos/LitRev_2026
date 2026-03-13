@@ -62,6 +62,8 @@ export function messagesToTimeline(messages: CopilotMessage[]): TimelineItem[] {
                 type: "checkpoint" as const,
                 id: msg.id,
                 label: msg.checkpoint.label,
+                runId: msg.checkpoint.runId,
+                checkpointKind: msg.checkpoint.checkpointKind,
                 createdAt: msg.createdAt,
             };
         }

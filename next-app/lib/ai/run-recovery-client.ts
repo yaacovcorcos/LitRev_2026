@@ -4,6 +4,9 @@ export const RUN_RECOVERY_RECONNECT_SUMMARY = "Connection lost. Reconnecting to 
 export const RUN_RECOVERY_INTERRUPTED_TOOL_SUMMARY = "Connection lost while waiting for the run to finish.";
 export const RUN_RECOVERY_TIMEOUT_MESSAGE = "Connection lost and recovery timed out. Choose how to continue.";
 export const RUN_RECOVERY_FAILED_MESSAGE = "Connection lost and recovery failed. You can retry safely now.";
+export const RUN_RECOVERY_STALLED_PROGRESS_MESSAGE = "The active run stopped making durable progress. Choose how to continue.";
+export const RUN_RECOVERY_FINALIZATION_FAILED_MESSAGE = "The run could not finalize cleanly. Choose how to continue.";
+export const RUN_RECOVERY_ACTIVE_RUN_HELD_MESSAGE = "The active run is still holding this conversation. Choose how to continue.";
 
 export async function fetchRunRecovery(params: {
     conversationId: string;
@@ -49,6 +52,30 @@ export function createRecoveryErrorEnvelope(params: {
         lastActivityAt: params.lastActivityAt ?? undefined,
         recoveryRecommendation: params.recoveryRecommendation,
     };
+}
+
+export function getRunRecoveryMessage(params: {
+    outcome: "recovered" | "needs_user_action" | "retry" | "aborted" | "timeout";
+    response?: RunRecoveryResponse | null;
+    abnormalEndClassification?: RunRecoveryResponse["abnormalEndClassification"];
+}): string {
+    if (params.outcome === "timeout") {
+        return RUN_RECOVERY_TIMEOUT_MESSAGE;
+    }
+
+    if (params.outcome === "needs_user_action") {
+        const abnormalEndClassification =
+            params.response?.abnormalEndClassification ?? params.abnormalEndClassification ?? null;
+        if (abnormalEndClassification === "no_forward_durable_progress") {
+            return RUN_RECOVERY_STALLED_PROGRESS_MESSAGE;
+        }
+        if (abnormalEndClassification === "finalization_failed") {
+            return RUN_RECOVERY_FINALIZATION_FAILED_MESSAGE;
+        }
+        return RUN_RECOVERY_ACTIVE_RUN_HELD_MESSAGE;
+    }
+
+    return RUN_RECOVERY_FAILED_MESSAGE;
 }
 
 export async function pollRunRecovery(params: {

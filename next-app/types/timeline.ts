@@ -99,6 +99,8 @@ export interface TimelineCheckpoint {
     type: "checkpoint";
     id: string;
     label: string;
+    runId?: string;
+    checkpointKind?: "standard" | "recovery";
     createdAt: string;
 }
 

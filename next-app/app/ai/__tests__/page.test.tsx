@@ -461,6 +461,7 @@ describe("/ai page deferred hydration", () => {
       expect(screen.getByText("Recovered answer.")).toBeTruthy();
     });
 
+    expect(screen.queryByText("Connection lost. Reconnecting to the active run…")).toBeNull();
     expect(screen.queryByText("The stream ended unexpectedly. Retry to continue.")).toBeNull();
     expect(screen.queryByText("Connection lost and recovery failed. You can retry safely now.")).toBeNull();
   });
@@ -526,8 +527,61 @@ describe("/ai page deferred hydration", () => {
     });
 
     expect(screen.getByText("PubMed returned 18 results. Reviewing the strongest matches now.")).toBeTruthy();
+    expect(screen.queryByText("Connection lost. Reconnecting to the active run…")).toBeNull();
     expect(screen.queryByText("The stream ended unexpectedly. Retry to continue.")).toBeNull();
     expect(screen.queryByText("Connection lost and recovery failed. You can retry safely now.")).toBeNull();
+  });
+
+  it("replaces a reconnect checkpoint with stronger same-run stop-and-retry truth", async () => {
+    mockProcessAIStream.mockImplementation(async ({ onChunk }: {
+      onChunk: (chunk: unknown) => void | Promise<void>;
+    }) => {
+      await onChunk({ type: "run_start", runId: "run-3", conversationId: "conv-new" });
+      await onChunk({
+        type: "tool_result",
+        toolName: "pubmed_search",
+        toolResult: { callId: "tool-1", result: { ok: true } },
+      });
+      return {
+        runStatus: null,
+        stopReason: null,
+        terminalReason: "failed_network",
+        errorMessage: null,
+        errorMeta: null,
+        actualModel: null,
+        actualModelSource: "unknown",
+      };
+    });
+    mockPollRunRecovery.mockResolvedValue({
+      outcome: "needs_user_action",
+      response: {
+        conversationId: "conv-new",
+        runId: "run-3",
+        runStatus: "running",
+        isActive: true,
+        lastActivityAt: "2026-03-13T11:25:00.000Z",
+        lastDurableProgressAt: "2026-03-13T11:20:00.000Z",
+        finalizationState: "not_started",
+        lastSequence: 2,
+        replayableEvents: [],
+        terminalEvent: null,
+        recoveryRecommendation: "stop_and_retry",
+        abnormalEndClassification: "no_forward_durable_progress",
+      },
+      lastAppliedSequence: 2,
+    });
+
+    render(<AIView />);
+
+    fireEvent.click(screen.getByRole("button", { name: "send message" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("The active run stopped making durable progress. Choose how to continue.")).toBeTruthy();
+    });
+
+    expect(screen.queryByText("Connection lost. Reconnecting to the active run…")).toBeNull();
+    expect(screen.queryByText("The stream ended unexpectedly. Retry to continue.")).toBeNull();
+    expect(screen.queryAllByText("The active run stopped making durable progress. Choose how to continue.")).toHaveLength(1);
   });
 
   it("elevates live progress above the composer and suppresses the matching inline timeline row", async () => {
