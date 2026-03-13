@@ -1288,7 +1288,25 @@ export function TimelineRenderer({
         }
     };
 
-    const renderTimelineItem = (item: TimelineItem, index: number) => {
+    const renderCheckpoint = (item: Extract<TimelineItem, { type: "checkpoint" }>, options?: { grouped?: boolean }) => {
+        if (options?.grouped) {
+            return (
+                <div key={item.id} className={styles.groupedCheckpoint}>
+                    <span className={styles.groupedCheckpointLabel}>{item.label}</span>
+                </div>
+            );
+        }
+
+        return (
+            <div key={item.id} className={artifactStyles.checkpoint}>
+                <div className={artifactStyles.checkpointLine} />
+                <span className={artifactStyles.checkpointLabel}>{item.label}</span>
+                <div className={artifactStyles.checkpointLine} />
+            </div>
+        );
+    };
+
+    const renderTimelineItem = (item: TimelineItem, index: number, options?: { grouped?: boolean }) => {
         switch (item.type) {
             case "user_message":
                 return <UserMessageRow key={item.id} item={item} onCopy={handleCopy} onBranchFromMessage={onBranchFromMessage} />;
@@ -1365,13 +1383,7 @@ export function TimelineRenderer({
                 );
 
             case "checkpoint":
-                return (
-                    <div key={item.id} className={artifactStyles.checkpoint}>
-                        <div className={artifactStyles.checkpointLine} />
-                        <span className={artifactStyles.checkpointLabel}>{item.label}</span>
-                        <div className={artifactStyles.checkpointLine} />
-                    </div>
-                );
+                return renderCheckpoint(item, options);
 
             case "error": {
                 const recommendation = item.errorMeta?.recoveryRecommendation;
@@ -1434,9 +1446,9 @@ export function TimelineRenderer({
         }
     };
 
-    const renderPresentedTimelineItem = (entry: PresentedTimelineItem, index: number) => {
+    const renderPresentedTimelineItem = (entry: PresentedTimelineItem, index: number, options?: { grouped?: boolean }) => {
         if (entry.kind === "single") {
-            return renderTimelineItem(entry.item, index);
+            return renderTimelineItem(entry.item, index, options);
         }
 
         const status = getPubMedSequenceStatus(entry.items);
@@ -1518,7 +1530,12 @@ export function TimelineRenderer({
 
     const renderExecutionTraceEntry = (entry: Extract<ExecutionTraceEntry, { kind: "execution_trace" }>) => {
         const presentedTraceItems = buildPresentedTimeline(entry.traceItems);
-        const collapsed = collapsedTraceByAssistantId[entry.anchorAssistantMessageId] ?? entry.defaultCollapsed;
+        const collapsed = entry.mode === "anchored"
+            ? collapsedTraceByAssistantId[entry.anchorAssistantMessageId ?? ""] ?? entry.defaultCollapsed
+            : false;
+        const isLiveTrace = entry.mode === "live";
+        const canToggleCollapse = entry.mode === "anchored" && entry.canCollapse && !!entry.anchorAssistantMessageId;
+        const showLiveBadge = isLiveTrace || (!!entry.assistantMessage && entry.assistantMessage.id === streamingAssistantMessageId);
 
         return (
             <div key={entry.id} className={styles.executionTraceGroup}>
@@ -1526,7 +1543,9 @@ export function TimelineRenderer({
                     <button
                         type="button"
                         className={styles.executionTraceSummaryBar}
-                        onClick={() => toggleCollapsedTrace(entry.anchorAssistantMessageId)}
+                        onClick={() => {
+                            if (entry.anchorAssistantMessageId) toggleCollapsedTrace(entry.anchorAssistantMessageId);
+                        }}
                         aria-expanded="false"
                         aria-label="Show process details"
                     >
@@ -1542,45 +1561,54 @@ export function TimelineRenderer({
                                 <span className={styles.executionTraceHeaderLabel}>Process details</span>
                                 <span className={styles.executionTraceHeaderMeta}>{entry.summaryText}</span>
                             </div>
-                            {entry.canCollapse ? (
+                            {canToggleCollapse ? (
                                 <button
                                     type="button"
                                     className={styles.executionTraceCollapseBtn}
-                                    onClick={() => toggleCollapsedTrace(entry.anchorAssistantMessageId)}
+                                    onClick={() => {
+                                        if (entry.anchorAssistantMessageId) toggleCollapsedTrace(entry.anchorAssistantMessageId);
+                                    }}
                                     aria-label="Hide process details"
                                 >
                                     <span className="material-icons-round">expand_less</span>
                                 </button>
                             ) : (
-                                <span className={styles.executionTraceLiveBadge}>Live</span>
+                                <span className={styles.executionTraceLiveBadge}>{showLiveBadge ? "Live" : "Open"}</span>
                             )}
                         </div>
                         <div className={styles.executionTraceItems}>
-                            {presentedTraceItems.map((traceEntry, traceIndex) => renderPresentedTimelineItem(traceEntry, traceIndex))}
+                            {presentedTraceItems.map((traceEntry, traceIndex) => renderPresentedTimelineItem(traceEntry, traceIndex, { grouped: true }))}
                         </div>
                     </section>
                 )}
-                {entry.interstitialProgressItems.map((progressItem) => (
-                    <div key={progressItem.id}>
-                        <StreamingProgress
-                            message={progressItem.message}
-                            current={progressItem.current}
-                            total={progressItem.total}
-                        />
-                    </div>
-                ))}
-                <AssistantMessageRow
-                    item={entry.assistantMessage}
-                    projectId={projectId}
-                    reasoningMode={reasoningMode}
-                    isStreaming={streamingAssistantMessageId === entry.assistantMessage.id}
-                    isSaved={savedNoteId === entry.assistantMessage.id}
-                    isSaving={savingNoteId === entry.assistantMessage.id}
-                    onCopy={handleCopy}
-                    onSaveToNotes={onSaveToNotes ? handleSaveToNotes : undefined}
-                    onInsert={onInsert}
-                    onBranchFromMessage={onBranchFromMessage}
-                />
+                {entry.interstitialProgressItems.map((progressItem) => {
+                    if (progressItem.id === suppressedProgressId) {
+                        return null;
+                    }
+                    return (
+                        <div key={progressItem.id}>
+                            <StreamingProgress
+                                message={progressItem.message}
+                                current={progressItem.current}
+                                total={progressItem.total}
+                            />
+                        </div>
+                    );
+                })}
+                {entry.assistantMessage ? (
+                    <AssistantMessageRow
+                        item={entry.assistantMessage}
+                        projectId={projectId}
+                        reasoningMode={reasoningMode}
+                        isStreaming={streamingAssistantMessageId === entry.assistantMessage.id}
+                        isSaved={savedNoteId === entry.assistantMessage.id}
+                        isSaving={savingNoteId === entry.assistantMessage.id}
+                        onCopy={handleCopy}
+                        onSaveToNotes={onSaveToNotes ? handleSaveToNotes : undefined}
+                        onInsert={onInsert}
+                        onBranchFromMessage={onBranchFromMessage}
+                    />
+                ) : null}
             </div>
         );
     };

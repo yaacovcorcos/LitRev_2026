@@ -73,8 +73,50 @@ describe("buildExecutionTraceEntries", () => {
 
     const entries = buildExecutionTraceEntries(items, { streamingAssistantMessageId: "assistant-2" });
     if (entries[0]?.kind !== "execution_trace") throw new Error("expected execution trace");
+    expect(entries[0].mode).toBe("anchored");
     expect(entries[0].canCollapse).toBe(false);
     expect(entries[0].defaultCollapsed).toBe(false);
+  });
+
+  it("groups the latest durable suffix into a live execution trace before an assistant answer exists", () => {
+    const items: TimelineItem[] = [
+      {
+        type: "user_message",
+        id: "user-1",
+        content: "Find the strongest PubMed studies.",
+        createdAt: "2026-03-11T00:00:00.000Z",
+      },
+      {
+        type: "tool_activity",
+        id: "tool-live-1",
+        callId: "call-live-1",
+        toolName: "search_pubmed",
+        status: "done",
+        summary: "Found 10 of 10 PubMed results.",
+        startedAt: "2026-03-11T00:00:01.000Z",
+        updatedAt: "2026-03-11T00:00:02.000Z",
+        completedAt: "2026-03-11T00:00:02.000Z",
+        createdAt: "2026-03-11T00:00:01.000Z",
+      },
+      {
+        type: "checkpoint",
+        id: "checkpoint-live-1",
+        label: "PubMed returned 10 results and the strongest matches are being reviewed now for relevance and outcome fit.",
+        createdAt: "2026-03-11T00:00:03.000Z",
+      },
+    ];
+
+    const entries = buildExecutionTraceEntries(items);
+    expect(entries).toHaveLength(2);
+    expect(entries[0]).toMatchObject({
+      kind: "single",
+      item: expect.objectContaining({ id: "user-1", type: "user_message" }),
+    });
+    if (entries[1]?.kind !== "execution_trace") throw new Error("expected execution trace");
+    expect(entries[1].mode).toBe("live");
+    expect(entries[1].canCollapse).toBe(false);
+    expect(entries[1].defaultCollapsed).toBe(false);
+    expect(entries[1].traceItems).toHaveLength(2);
   });
 
   it("skips collapse when an answer is immediately followed by a blocking prompt", () => {
@@ -142,6 +184,7 @@ describe("buildExecutionTraceEntries", () => {
     const entries = buildExecutionTraceEntries(items);
     expect(entries).toHaveLength(2);
     if (entries[0]?.kind !== "execution_trace") throw new Error("expected execution trace");
+    expect(entries[0].mode).toBe("anchored");
     expect(entries[0].traceItems).toHaveLength(1);
     expect(entries[1]).toMatchObject({
       kind: "single",
