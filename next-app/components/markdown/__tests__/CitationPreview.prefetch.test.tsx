@@ -2,6 +2,7 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import { CitationPreview } from "../CitationPreview";
+import styles from "../CitationPreview.module.css";
 import {
     continueCitationMetadata,
     fetchCitationMetadata,
@@ -151,6 +152,74 @@ describe("CitationPreview prefetch behavior", () => {
                     && event.payload.reason === "crossref_no_count"
             )
         ).toBe(true);
+    });
+
+    it("renders journal metadata in the footer next to the open action", async () => {
+        vi.mocked(isCitationHoverPrefetchEnabled).mockReturnValue(false);
+
+        render(
+            <CitationPreview href="https://doi.org/10.1000/xyz123" type="DOI">
+                DOI
+            </CitationPreview>
+        );
+
+        const link = screen.getByRole("link", { name: "DOI" });
+        fireEvent.mouseEnter(link);
+
+        await act(async () => {
+            vi.advanceTimersByTime(350);
+            await Promise.resolve();
+        });
+
+        const footer = document.body.querySelector(`.${styles.footer}`);
+        const footerMeta = document.body.querySelector(`.${styles.footerMeta}`);
+
+        expect(footer).toBeTruthy();
+        expect(footerMeta?.textContent).toContain("Journal of Tests");
+        expect(screen.getByRole("link", { name: "Open" })).toBeTruthy();
+    });
+
+    it("keeps the footer layout stable when journal metadata is absent", async () => {
+        vi.mocked(isCitationHoverPrefetchEnabled).mockReturnValue(false);
+        vi.mocked(fetchCitationMetadata).mockResolvedValueOnce({
+            success: true,
+            data: {
+                title: "Citation title",
+                authors: "Doe J",
+                year: 2024,
+                canonicalUrl: "https://doi.org/10.1000/xyz123",
+                doi: "10.1000/xyz123",
+            },
+            meta: {
+                diagnostics: {
+                    resolutionPath: "doi_no_count",
+                    reason: "crossref_no_count",
+                    resolvedWithCitationCount: false,
+                    hadDoiFallbackCandidate: false,
+                },
+            },
+        });
+
+        render(
+            <CitationPreview href="https://doi.org/10.1000/xyz123" type="DOI">
+                DOI
+            </CitationPreview>
+        );
+
+        const link = screen.getByRole("link", { name: "DOI" });
+        fireEvent.mouseEnter(link);
+
+        await act(async () => {
+            vi.advanceTimersByTime(350);
+            await Promise.resolve();
+        });
+
+        const footer = document.body.querySelector(`.${styles.footer}`);
+        const footerMeta = document.body.querySelector(`.${styles.footerMeta}`);
+
+        expect(footer).toBeTruthy();
+        expect(footerMeta?.textContent).toBe("");
+        expect(screen.getByRole("link", { name: "Open" })).toBeTruthy();
     });
 
     it("continues in the background for retryable missing-count results and patches the card", async () => {
