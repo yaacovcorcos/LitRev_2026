@@ -30,6 +30,7 @@
 ## Recently Completed
 *Finished work that might still be fragile or require monitoring. Prune oldest first.*
 
+- [x] Search/scoping visible-answer prompts now explicitly keep raw query logs and search-iteration mechanics in receipts/checkpoints/process details by default; visible prose should synthesize findings unless the user explicitly asks for the search strategy.
 - [x] Tightened the hidden `MENTIONED_STUDIES` response contract so study-naming answers are expected to emit machine-readable metadata, while keeping graceful parser fallback behavior when the model still omits it.
 - [x] Initial Prompts Map analysis completed (2026-02-07).
 - [x] Prompt assembly order stabilized for caching and grounding (Mode/Scope/Project/Protocol/Autonomy before variable context blocks).

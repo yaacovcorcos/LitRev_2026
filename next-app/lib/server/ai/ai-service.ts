@@ -1270,6 +1270,7 @@ class AIService {
                 additionalContext: options?.additionalContext,
                 additionalContextMaxChars,
             })
+            + `\n- Process details such as search queries, result counts, and search refinement steps already have their own cards/checkpoints in the UI. In the visible answer, synthesize findings instead of repeating the process log. Only include exact queries or search-strategy details when the user explicitly asks for them.`
             // Scoped to streamChatWithArtifacts only — not in global BASE_PROMPT
             // so PopupChat (which reuses AGENT_MODE_PROMPTS) doesn't emit choices without rendering support
             + `\n- When suggesting optional next steps that the user can click for convenience, you may end your response with a <choices> block. Do not use <choices> for blocking questions or required decisions. If you need the user's answer before continuing, use ask_user instead.\n  Format:\n  <choices>\n  <choice>Option text here</choice>\n  <choice icon="search">Search PubMed for related studies</choice>\n  </choices>\n  The optional icon attribute uses Material Icons names. The block must be the very last thing in your response.`;
