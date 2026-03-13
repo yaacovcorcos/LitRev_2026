@@ -28,7 +28,16 @@ vi.mock("@/lib/server/memory/conversation-extractor", () => ({
   extractMemoriesFromConversation: vi.fn(),
 }));
 
-const { startRun, endRun, startRunHeartbeat, RUN_HEARTBEAT_INTERVAL_MS, getRunLineage } = await import("@/lib/server/agent/run");
+const {
+  startRun,
+  endRun,
+  startRunHeartbeat,
+  RUN_HEARTBEAT_INTERVAL_MS,
+  getRunLineage,
+  markRunAbnormalEndClassification,
+  markRunFinalizationFailed,
+  markRunFinalizationState,
+} = await import("@/lib/server/agent/run");
 
 describe("startRun lineage", () => {
   beforeEach(() => {
@@ -55,6 +64,8 @@ describe("startRun lineage", () => {
           parentRunId: undefined,
           rootRunId: undefined,
           lastActivityAt: expect.any(Date),
+          lastDurableProgressAt: expect.any(Date),
+          finalizationState: "not_started",
           startedAt: expect.any(Date),
         }),
       }),
@@ -170,9 +181,41 @@ describe("run freshness lifecycle", () => {
         status: "completed",
         completedAt: expect.any(Date),
         lastActivityAt: expect.any(Date),
+        lastDurableProgressAt: expect.any(Date),
+        finalizationState: "completed",
+        abnormalEndClassification: null,
         costTokensIn: 10,
         costTokensOut: 20,
       }),
+    });
+  });
+
+  it("marks finalization state and abnormal-end classification through centralized helpers", async () => {
+    await markRunFinalizationState("run-1", "in_progress");
+    await markRunAbnormalEndClassification("run-1", "unknown");
+    await markRunFinalizationFailed("run-1");
+
+    expect(mocks.agentRunUpdateMany).toHaveBeenNthCalledWith(1, {
+      where: { id: "run-1" },
+      data: {
+        finalizationState: "in_progress",
+        lastActivityAt: expect.any(Date),
+      },
+    });
+    expect(mocks.agentRunUpdateMany).toHaveBeenNthCalledWith(2, {
+      where: { id: "run-1" },
+      data: {
+        abnormalEndClassification: "unknown",
+        lastActivityAt: expect.any(Date),
+      },
+    });
+    expect(mocks.agentRunUpdateMany).toHaveBeenNthCalledWith(3, {
+      where: { id: "run-1" },
+      data: {
+        finalizationState: "failed",
+        abnormalEndClassification: "finalization_failed",
+        lastActivityAt: expect.any(Date),
+      },
     });
   });
 

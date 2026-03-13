@@ -69,9 +69,28 @@ describe("run events", () => {
     );
     expect(mocks.agentRunUpdateMany).toHaveBeenCalledWith({
       where: { id: "run-1", status: "running" },
-      data: { lastActivityAt: expect.any(Date) },
+      data: {
+        lastActivityAt: expect.any(Date),
+        lastDurableProgressAt: expect.any(Date),
+      },
     });
     expect(mocks.noteObservedRunActivity).toHaveBeenCalledWith("run-1", expect.any(Date));
+  });
+
+  it("keeps durable progress unchanged for observability-only events", async () => {
+    mocks.runEventFindFirst.mockResolvedValue({ sequence: 0 });
+    mocks.runEventCreate.mockResolvedValue({
+      id: "evt-1",
+      sequence: 1,
+      createdAt: new Date("2026-03-11T11:35:10.000Z"),
+    });
+
+    await emitEvent("run-1", "context_assembly", { branch: "memories" });
+
+    expect(mocks.agentRunUpdateMany).toHaveBeenCalledWith({
+      where: { id: "run-1", status: "running" },
+      data: { lastActivityAt: expect.any(Date) },
+    });
   });
 
   it("retries on runId+sequence uniqueness conflicts", async () => {

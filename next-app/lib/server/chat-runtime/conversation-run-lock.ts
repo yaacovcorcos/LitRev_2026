@@ -1,12 +1,21 @@
 import { prisma } from "@/lib/server/prisma";
 import { AIErrorWithEnvelope, createRunConflictErrorEnvelope } from "@/lib/ai/error-envelope";
+import { assessRunConvergence } from "@/lib/server/agent/run-convergence";
+import type {
+  RunAbnormalEndClassification,
+  RunFinalizationState,
+} from "@/types/agent";
 
 export const DEFAULT_CONVERSATION_RUN_STALE_MS = 90_000;
 
 type RunningConversationRun = {
   id: string;
+  status: "running";
   startedAt: Date;
   lastActivityAt: Date;
+  lastDurableProgressAt: Date;
+  finalizationState: RunFinalizationState;
+  abnormalEndClassification: RunAbnormalEndClassification | null;
 };
 
 export interface ConversationRunLockStore {
@@ -17,24 +26,50 @@ export interface ConversationRunLockStore {
 
 const prismaConversationRunLockStore: ConversationRunLockStore = {
   async listRunning(conversationId: string): Promise<RunningConversationRun[]> {
-    return prisma.agentRun.findMany({
+    const rows = await prisma.agentRun.findMany({
       where: { conversationId, status: "running" },
-      select: { id: true, startedAt: true, lastActivityAt: true },
+      select: {
+        id: true,
+        status: true,
+        startedAt: true,
+        lastActivityAt: true,
+        lastDurableProgressAt: true,
+        finalizationState: true,
+        abnormalEndClassification: true,
+      },
       orderBy: { lastActivityAt: "asc" },
     });
+    return rows.map((row) => ({
+      ...row,
+      status: "running",
+      finalizationState: row.finalizationState as RunFinalizationState,
+      abnormalEndClassification: row.abnormalEndClassification as RunAbnormalEndClassification | null,
+    }));
   },
   async cancelRuns(runIds: string[], completedAt: Date): Promise<number> {
     if (runIds.length === 0) return 0;
     const result = await prisma.agentRun.updateMany({
       where: { id: { in: runIds }, status: "running", completedAt: null },
-      data: { status: "cancelled", completedAt, lastActivityAt: completedAt },
+      data: {
+        status: "cancelled",
+        completedAt,
+        lastActivityAt: completedAt,
+        lastDurableProgressAt: completedAt,
+        finalizationState: "completed",
+      },
     });
     return result.count;
   },
   async cancelRunIfActive(runId: string, conversationId: string, completedAt: Date): Promise<boolean> {
     const result = await prisma.agentRun.updateMany({
       where: { id: runId, conversationId, status: "running", completedAt: null },
-      data: { status: "cancelled", completedAt, lastActivityAt: completedAt },
+      data: {
+        status: "cancelled",
+        completedAt,
+        lastActivityAt: completedAt,
+        lastDurableProgressAt: completedAt,
+        finalizationState: "completed",
+      },
     });
     return result.count > 0;
   },
@@ -74,14 +109,16 @@ export async function ensureConversationRunAvailability(
 
   if (freshRunIds.length > 0) {
     const activeRunId = freshRunIds[0]!;
+    const activeRun = running.find((run) => run.id === activeRunId)!;
+    const activeAssessment = assessRunConvergence(activeRun, now, staleMs);
     if (!replaceRunId) {
       throw new AIErrorWithEnvelope(
         createRunConflictErrorEnvelope({
           code: "ACTIVE_RUN_EXISTS",
           conversationId,
           activeRunId,
-          lastActivityAt: running.find((run) => run.id === activeRunId)?.lastActivityAt.toISOString(),
-          recoveryRecommendation: "reconnect",
+          lastActivityAt: activeRun.lastActivityAt.toISOString(),
+          recoveryRecommendation: activeAssessment.recoveryRecommendation,
         }),
       );
     }
@@ -93,7 +130,7 @@ export async function ensureConversationRunAvailability(
           conversationId,
           activeRunId,
           replaceRunId,
-          lastActivityAt: running.find((run) => run.id === activeRunId)?.lastActivityAt.toISOString(),
+          lastActivityAt: activeRun.lastActivityAt.toISOString(),
           recoveryRecommendation: "stop_and_retry",
         }),
       );
@@ -104,6 +141,7 @@ export async function ensureConversationRunAvailability(
       const latestRunning = await store.listRunning(conversationId);
       const latestFresh = latestRunning.find((run) => run.lastActivityAt >= cutoff);
       if (latestFresh) {
+        const latestAssessment = assessRunConvergence(latestFresh, now, staleMs);
         // The replace target disappeared before we could cancel it. If the same
         // run is still active we surface the ordinary active-run conflict;
         // otherwise a different run won the race and the replace target mismatched.
@@ -114,7 +152,9 @@ export async function ensureConversationRunAvailability(
             activeRunId: latestFresh.id,
             replaceRunId,
             lastActivityAt: latestFresh.lastActivityAt.toISOString(),
-            recoveryRecommendation: latestFresh.id === replaceRunId ? "reconnect" : "stop_and_retry",
+            recoveryRecommendation: latestFresh.id === replaceRunId
+              ? latestAssessment.recoveryRecommendation
+              : "stop_and_retry",
           }),
         );
       }
@@ -123,13 +163,14 @@ export async function ensureConversationRunAvailability(
     const remainingRunning = await store.listRunning(conversationId);
     const remainingFresh = remainingRunning.find((run) => run.lastActivityAt >= cutoff);
     if (remainingFresh) {
+      const remainingAssessment = assessRunConvergence(remainingFresh, now, staleMs);
       throw new AIErrorWithEnvelope(
         createRunConflictErrorEnvelope({
           code: "ACTIVE_RUN_EXISTS",
           conversationId,
           activeRunId: remainingFresh.id,
           lastActivityAt: remainingFresh.lastActivityAt.toISOString(),
-          recoveryRecommendation: "reconnect",
+          recoveryRecommendation: remainingAssessment.recoveryRecommendation,
         }),
       );
     }

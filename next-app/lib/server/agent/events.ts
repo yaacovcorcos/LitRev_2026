@@ -7,6 +7,7 @@ import "server-only";
 import { prisma } from "@/lib/server/prisma";
 import type { RunEventType } from "@/types/agent";
 import { noteObservedRunActivity } from "@/lib/server/agent/run";
+import { isDurableProgressRunEventType } from "@/lib/server/agent/run-event-authority";
 
 export interface EmitEventExtras {
     toolName?: string;
@@ -68,7 +69,12 @@ export async function emitEvent(
 
                 await tx.agentRun.updateMany({
                     where: { id: runId, status: "running" },
-                    data: { lastActivityAt: event.createdAt },
+                    data: {
+                        lastActivityAt: event.createdAt,
+                        ...(isDurableProgressRunEventType(type)
+                            ? { lastDurableProgressAt: event.createdAt }
+                            : {}),
+                    },
                 });
 
                 return event;

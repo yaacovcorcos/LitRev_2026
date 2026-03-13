@@ -56,6 +56,9 @@ describe("run recovery", () => {
       costTokensIn: 12,
       costTokensOut: 34,
       lastActivityAt: new Date("2026-03-11T11:00:00.000Z"),
+      lastDurableProgressAt: new Date("2026-03-11T11:00:00.000Z"),
+      finalizationState: "completed",
+      abnormalEndClassification: null,
     });
     mocks.runEventFindMany.mockResolvedValue([
       {
@@ -296,6 +299,9 @@ describe("run recovery", () => {
       costTokensIn: 0,
       costTokensOut: 0,
       lastActivityAt: new Date("2026-03-11T11:59:30.000Z"),
+      lastDurableProgressAt: new Date("2026-03-11T11:59:30.000Z"),
+      finalizationState: "not_started",
+      abnormalEndClassification: null,
     });
 
     const reconnect = await buildRunRecoveryResponse({
@@ -315,6 +321,9 @@ describe("run recovery", () => {
       costTokensIn: 0,
       costTokensOut: 0,
       lastActivityAt: new Date("2026-03-11T11:58:00.000Z"),
+      lastDurableProgressAt: new Date("2026-03-11T11:58:00.000Z"),
+      finalizationState: "not_started",
+      abnormalEndClassification: null,
     });
 
     const stale = await buildRunRecoveryResponse({
@@ -324,5 +333,64 @@ describe("run recovery", () => {
       staleMs: 90_000,
     });
     expect(stale.recoveryRecommendation).toBe("stop_and_retry");
+  });
+
+  it("treats stale durable progress as no-forward-progress even when the heartbeat is fresh", async () => {
+    mocks.runEventFindMany.mockResolvedValue([]);
+    mocks.runEventFindFirst.mockResolvedValue(null);
+    mocks.artifactFindMany.mockResolvedValue([]);
+    mocks.agentRunFindFirst.mockResolvedValue({
+      id: "run-stalled",
+      conversationId: "conv-1",
+      status: "running",
+      model: null,
+      costTokensIn: 0,
+      costTokensOut: 0,
+      lastActivityAt: new Date("2026-03-11T11:59:50.000Z"),
+      lastDurableProgressAt: new Date("2026-03-11T11:58:00.000Z"),
+      finalizationState: "not_started",
+      abnormalEndClassification: null,
+    });
+
+    const result = await buildRunRecoveryResponse({
+      conversationId: "conv-1",
+      runId: "run-stalled",
+      now: new Date("2026-03-11T12:00:00.000Z"),
+      staleMs: 90_000,
+    });
+
+    expect(result.recoveryRecommendation).toBe("stop_and_retry");
+    expect(result.abnormalEndClassification).toBe("no_forward_durable_progress");
+    expect(result.lastDurableProgressAt).toBe("2026-03-11T11:58:00.000Z");
+    expect(result.finalizationState).toBe("not_started");
+  });
+
+  it("treats failed finalization as stop-and-retry instead of reconnect", async () => {
+    mocks.runEventFindMany.mockResolvedValue([]);
+    mocks.runEventFindFirst.mockResolvedValue(null);
+    mocks.artifactFindMany.mockResolvedValue([]);
+    mocks.agentRunFindFirst.mockResolvedValue({
+      id: "run-finalize-failed",
+      conversationId: "conv-1",
+      status: "running",
+      model: null,
+      costTokensIn: 0,
+      costTokensOut: 0,
+      lastActivityAt: new Date("2026-03-11T11:59:50.000Z"),
+      lastDurableProgressAt: new Date("2026-03-11T11:59:45.000Z"),
+      finalizationState: "failed",
+      abnormalEndClassification: "finalization_failed",
+    });
+
+    const result = await buildRunRecoveryResponse({
+      conversationId: "conv-1",
+      runId: "run-finalize-failed",
+      now: new Date("2026-03-11T12:00:00.000Z"),
+      staleMs: 90_000,
+    });
+
+    expect(result.recoveryRecommendation).toBe("stop_and_retry");
+    expect(result.abnormalEndClassification).toBe("finalization_failed");
+    expect(result.finalizationState).toBe("failed");
   });
 });

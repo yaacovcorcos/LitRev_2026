@@ -28,7 +28,15 @@ import {
     repairConversationHistory,
 } from "@/lib/agent/compaction";
 import { AVAILABLE_TOOLS, executeTool } from "./tools";
-import { startRun, endRun, startRunHeartbeat, type RunHeartbeatController } from "@/lib/server/agent/run";
+import {
+    startRun,
+    endRun,
+    startRunHeartbeat,
+    markRunAbnormalEndClassification,
+    markRunFinalizationFailed,
+    markRunFinalizationState,
+    type RunHeartbeatController,
+} from "@/lib/server/agent/run";
 import { emitEvent } from "@/lib/server/agent/events";
 import { createArtifact } from "@/lib/server/agent/artifacts";
 import { getAutonomyConfig } from "@/lib/server/agent/autonomy";
@@ -1001,7 +1009,19 @@ class AIService {
             if (!run || runFinalized) return;
             runHeartbeat?.stop();
             runHeartbeat = null;
-            await endRun(run.id, status, costTokensIn, costTokensOut);
+            await markRunFinalizationState(run.id, "in_progress");
+            try {
+                await endRun(run.id, status, costTokensIn, costTokensOut);
+            } catch (error) {
+                const activeRunId = run.id;
+                await markRunFinalizationFailed(run.id).catch((markError) => {
+                    console.error("[ai-service] Failed to persist finalization failure", {
+                        runId: activeRunId,
+                        error: markError,
+                    });
+                });
+                throw error;
+            }
             runFinalized = true;
             finalizedRunStatus = status;
         };
@@ -2059,6 +2079,14 @@ class AIService {
                 }
 
                 await closeTraceOnce({ aborted: true });
+                if (activeRunId) {
+                    await markRunAbnormalEndClassification(activeRunId, "client_abort").catch((markError) => {
+                        console.error("[ai-service] Failed to persist client abort classification", {
+                            runId: activeRunId,
+                            error: markError,
+                        });
+                    });
+                }
                 await finalizeRunOnce("cancelled");
                 const runModelMeta = resolveRunActualModelMeta(options?.model, null, false);
                 if (activeRunId) {
@@ -2093,6 +2121,15 @@ class AIService {
 
             // End trace + run with failure
             await closeTraceOnce({ error: error instanceof Error ? error.message : "Unknown" });
+            if (run?.id) {
+                const activeRunId = run.id;
+                await markRunAbnormalEndClassification(run.id, "unknown").catch((markError) => {
+                    console.error("[ai-service] Failed to persist abnormal end classification", {
+                        runId: activeRunId,
+                        error: markError,
+                    });
+                });
+            }
 
             const classifiedError = classifyAIError(error);
             if (!classifiedError.retryable) {

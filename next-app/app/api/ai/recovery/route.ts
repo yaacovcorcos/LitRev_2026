@@ -12,6 +12,8 @@ function buildSafeMissingResponse(conversationId: string, runId: string) {
         runStatus: "missing",
         isActive: false,
         lastActivityAt: null,
+        lastDurableProgressAt: null,
+        finalizationState: null,
         lastSequence: null,
         replayableEvents: [],
         terminalEvent: null,

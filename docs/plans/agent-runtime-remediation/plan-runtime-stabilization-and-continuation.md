@@ -14,6 +14,7 @@ Use this file for detailed execution thinking about stabilization and continuati
 - A recovery API already exists and main timeline surfaces already use it to reconcile known-run abnormal disconnects.
 - A replay adapter already exists and can restore persisted authoritative run events after disconnect.
 - Paused-for-input truth and same-run reconciliation are stronger than before: paused handoff no longer defaults to generic failure and recovery actions are structured on the main timeline surfaces.
+- The first `FIX-011b` stabilization slice now persists `lastDurableProgressAt`, `finalizationState`, and `abnormalEndClassification` on `AgentRun`, so recovery/readmission can separate liveness from durable forward progress instead of treating fresh heartbeats as sufficient evidence that the run is still converging.
 - The remaining problem is not first-time recovery architecture. It is durable convergence: disconnect classification is still too weak, durable user-facing state can still fall through persistence/finalization seams, and the runtime still lacks a trustworthy continuation contract from durable completed work.
 - Popup still remains a truthful reduced subset only; it should not claim full recovery/continuation parity until shared-engine convergence is explicitly finished.
 

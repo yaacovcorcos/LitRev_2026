@@ -2,30 +2,25 @@ import "server-only";
 
 import { prisma } from "@/lib/server/prisma";
 import { DEFAULT_CONVERSATION_RUN_STALE_MS } from "@/lib/server/chat-runtime/conversation-run-lock";
+import { assessRunConvergence } from "@/lib/server/agent/run-convergence";
+import {
+    RECOVERY_AUTHORITATIVE_RUN_EVENT_TYPES,
+    type RecoveryAuthoritativeRunEventType,
+} from "@/lib/server/agent/run-event-authority";
 import type {
     AIStreamChunk,
     AIErrorEnvelope,
-    RunRecoveryRecommendation,
     RunRecoveryReplayableChunk,
     RunRecoveryResponse,
     ToolCall,
     ToolResult,
     UserInputRequest,
 } from "@/types/ai";
-import type { RunEventType, RunStatus } from "@/types/agent";
-
-export const REPLAY_AUTHORITATIVE_RUN_EVENT_TYPES = [
-    "message",
-    "tool_call",
-    "tool_result",
-    "user_input_required",
-    "artifact_proposed",
-    "artifact_reviewed",
-    "checkpoint",
-    "error",
-] as const satisfies readonly RunEventType[];
-
-type ReplayAuthoritativeRunEventType = (typeof REPLAY_AUTHORITATIVE_RUN_EVENT_TYPES)[number];
+import type {
+    RunAbnormalEndClassification,
+    RunFinalizationState,
+    RunStatus,
+} from "@/types/agent";
 
 type RecoveryRunRecord = {
     id: string;
@@ -35,11 +30,14 @@ type RecoveryRunRecord = {
     costTokensIn: number;
     costTokensOut: number;
     lastActivityAt: Date;
+    lastDurableProgressAt: Date;
+    finalizationState: RunFinalizationState;
+    abnormalEndClassification: RunAbnormalEndClassification | null;
 };
 
 type RecoveryRunEventRecord = {
     sequence: number;
-    type: ReplayAuthoritativeRunEventType;
+    type: RecoveryAuthoritativeRunEventType;
     payload: unknown;
     toolName: string | null;
     artifactId: string | null;
@@ -199,20 +197,6 @@ function toReplayableChunk(
     }
 }
 
-function deriveRecoveryRecommendation(
-    run: RecoveryRunRecord | null,
-    now: Date,
-    staleMs: number,
-): RunRecoveryRecommendation {
-    if (!run) return "retry";
-    if (run.status !== "running") return "retry";
-    const staleCutoff = now.getTime() - staleMs;
-    if (run.lastActivityAt.getTime() < staleCutoff) {
-        return "stop_and_retry";
-    }
-    return "reconnect";
-}
-
 export async function buildRunRecoveryResponse(params: {
     conversationId: string;
     runId: string;
@@ -237,6 +221,9 @@ export async function buildRunRecoveryResponse(params: {
             costTokensIn: true,
             costTokensOut: true,
             lastActivityAt: true,
+            lastDurableProgressAt: true,
+            finalizationState: true,
+            abnormalEndClassification: true,
         },
     }) as RecoveryRunRecord | null;
 
@@ -247,6 +234,8 @@ export async function buildRunRecoveryResponse(params: {
             runStatus: "missing",
             isActive: false,
             lastActivityAt: null,
+            lastDurableProgressAt: null,
+            finalizationState: null,
             lastSequence: null,
             replayableEvents: [],
             terminalEvent: null,
@@ -260,7 +249,7 @@ export async function buildRunRecoveryResponse(params: {
             where: {
                 runId: run.id,
                 sequence: { gt: afterSequence },
-                type: { in: [...REPLAY_AUTHORITATIVE_RUN_EVENT_TYPES] },
+                type: { in: [...RECOVERY_AUTHORITATIVE_RUN_EVENT_TYPES] },
             },
             orderBy: { sequence: "asc" },
             select: {
@@ -298,7 +287,7 @@ export async function buildRunRecoveryResponse(params: {
     const replayableEvents = events
         .map((event) => toReplayableChunk(run, event, artifactsById))
         .filter((event): event is RunRecoveryReplayableChunk => event !== null);
-    const recoveryRecommendation = deriveRecoveryRecommendation(run, now, staleMs);
+    const convergence = assessRunConvergence(run, now, staleMs);
 
     return {
         conversationId: params.conversationId,
@@ -306,12 +295,16 @@ export async function buildRunRecoveryResponse(params: {
         runStatus: run.status,
         isActive: run.status === "running",
         lastActivityAt: run.lastActivityAt.toISOString(),
+        lastDurableProgressAt: run.lastDurableProgressAt.toISOString(),
+        finalizationState: run.finalizationState,
         lastSequence: lastEvent?.sequence ?? null,
         replayableEvents,
         terminalEvent: run.status === "running"
             ? null
             : { chunk: buildSyntheticTerminalReconciliationChunk(run) },
-        recoveryRecommendation,
-        abnormalEndClassification: null,
+        recoveryRecommendation: convergence.recoveryRecommendation,
+        abnormalEndClassification: convergence.abnormalEndClassification,
     };
 }
+
+export { RECOVERY_AUTHORITATIVE_RUN_EVENT_TYPES as REPLAY_AUTHORITATIVE_RUN_EVENT_TYPES };

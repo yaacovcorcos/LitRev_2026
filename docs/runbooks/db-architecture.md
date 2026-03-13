@@ -68,7 +68,7 @@ For production migration/release procedure, use `docs/plans/db-production-runboo
 | `ConversationSummary` | Compressed summary of a long conversation | `conversationId -> AIConversation` | `conversationId` unique; index on `conversationId` | None | No |
 | `MemoryRetrieval` | Audit trail of memory retrieval attempts | `projectId -> Project` | Indexes on `conversationId`, `projectId`, `createdAt` | `conversationId`, `userId`, `projectId` optional because retrieval can happen in different scopes | No |
 | `MemoryEmbedding` | Vector index backing semantic memory retrieval | `projectId -> Project` | Unique on `memoryType + memoryId + model`; indexes on `projectId + memoryType`, `userId + memoryType`, `studyId + memoryType` | `userId`, `projectId`, `studyId` optional because embeddings can belong to different memory scopes | No |
-| `AgentRun` | Top-level agent execution trace | `projectId -> Project`, `parentRunId -> AgentRun` | Indexes on `projectId + startedAt`, `conversationId`, `conversationId + startedAt`, `conversationId + lastActivityAt`, `userId`, `parentRunId + startedAt`, `rootRunId + startedAt` | `projectId`, `conversationId`, `userId`, `parentRunId`, `rootRunId`, `model`, `completedAt` are intentionally nullable; `lastActivityAt` is required and is the freshness authority for `running` runs | No |
+| `AgentRun` | Top-level agent execution trace | `projectId -> Project`, `parentRunId -> AgentRun` | Indexes on `projectId + startedAt`, `conversationId`, `conversationId + startedAt`, `conversationId + lastActivityAt`, `conversationId + lastDurableProgressAt`, `userId`, `parentRunId + startedAt`, `rootRunId + startedAt` | `projectId`, `conversationId`, `userId`, `parentRunId`, `rootRunId`, `model`, `completedAt` are intentionally nullable; `lastActivityAt` tracks liveness, `lastDurableProgressAt` tracks recovery-authoritative forward progress, `finalizationState` records durable finalize truth, and `abnormalEndClassification` records the latest known abnormal exit class | No |
 | `RunEvent` | Event stream within a run | `runId -> AgentRun` | Unique on `runId + sequence`; indexes on `runId + sequence`, `runId + type`, `artifactId` | Tool/artifact/error/timing fields are optional because event payloads vary by type | No |
 | `ChatUnificationMetric` | Chat-surface telemetry event record | `projectId -> Project` | `eventId` unique; indexes on `recordedAt`, `type + recordedAt`, `surface + recordedAt`, workspace/run/conversation/project + `recordedAt` | `userId`, `workspaceId`, `projectId`, `runId`, `conversationId`, `clientTimestamp` optional | No |
 | `Artifact` | Reviewable outputs produced by agent runs | `runId -> AgentRun`, `projectId -> Project` | `applyId` unique; indexes on `runId`, `projectId + status`, `conversationId`, `type + status` | `projectId`, `conversationId`, `userId`, snapshot/review/apply fields optional because artifacts can be proposed before acceptance/application | No |
@@ -80,7 +80,10 @@ For production migration/release procedure, use `docs/plans/db-production-runboo
 - `Project` is the main application hub. Most DB-domain features eventually attach to project scope.
 - `FileAsset` stores metadata and storage paths only. Blob storage lives in Supabase Storage.
 - `RunEvent` must remain unique on `(runId, sequence)`. Sequence repair is an operational concern documented in `docs/runbooks/db-ops.md`.
-- `AgentRun.lastActivityAt` is the authoritative freshness field for `running` runs. Admission/recovery logic should not fall back to `startedAt` freshness once the field exists.
+- `AgentRun.lastActivityAt` is the authoritative liveness field for `running` runs. Admission/recovery logic should not fall back to `startedAt` freshness once the field exists.
+- `AgentRun.lastDurableProgressAt` is the authoritative durable-progress field for convergence decisions; a fresh heartbeat alone must not imply the run is still making forward recovery-authoritative progress.
+- `AgentRun.finalizationState` makes finalize truth explicit (`not_started`, `in_progress`, `completed`, `failed`) so readmission and recovery do not guess from `status` alone.
+- `AgentRun.abnormalEndClassification` stores the latest durable explanation for abnormal exits and must be treated as runtime truth rather than UI-only telemetry.
 - `MemoryEmbedding` depends on the `vector` extension and the embedding index path documented in the DB ops docs.
 - `Study.deletedAt` and `Note.deletedAt` are soft-delete markers, not archival tables.
 - Nullable `projectId` in runtime-oriented tables such as `AgentRun`, `Artifact`, and attribution tables is intentional and supports global or not-yet-project-bound flows.
@@ -102,6 +105,7 @@ These indexes protect major runtime paths. The operational gate owner and verifi
 | `AgentRun_rootRunId_startedAt_idx` | Root-run trace aggregation |
 | `AgentRun_conversationId_startedAt_idx` | Conversation-linked run history queries |
 | `AgentRun_conversationId_lastActivityAt_idx` | Active-run freshness checks and recovery admission |
+| `AgentRun_conversationId_lastDurableProgressAt_idx` | Durable-progress checks for stalled-run convergence |
 
 ## Migration Themes
 

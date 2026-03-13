@@ -1,6 +1,27 @@
 import { describe, expect, it, vi } from "vitest";
 import { ensureConversationRunAvailability } from "@/lib/server/chat-runtime/conversation-run-lock";
 import { AIErrorWithEnvelope } from "@/lib/ai/error-envelope";
+import type { RunAbnormalEndClassification, RunFinalizationState } from "@/types/agent";
+
+function makeRunningRun(overrides?: Partial<{
+  id: string;
+  startedAt: Date;
+  lastActivityAt: Date;
+  lastDurableProgressAt: Date;
+  finalizationState: RunFinalizationState;
+  abnormalEndClassification: RunAbnormalEndClassification | null;
+}>) {
+  const now = new Date("2026-02-24T00:00:00.000Z");
+  return {
+    id: overrides?.id ?? "run_live",
+    status: "running" as const,
+    startedAt: overrides?.startedAt ?? now,
+    lastActivityAt: overrides?.lastActivityAt ?? now,
+    lastDurableProgressAt: overrides?.lastDurableProgressAt ?? now,
+    finalizationState: overrides?.finalizationState ?? "not_started",
+    abnormalEndClassification: overrides?.abnormalEndClassification ?? null,
+  };
+}
 
 describe("conversation run lock guard", () => {
   it("passes when no running runs exist", async () => {
@@ -18,11 +39,12 @@ describe("conversation run lock guard", () => {
   it("cancels stale runs and allows new execution", async () => {
     const now = new Date("2026-02-24T00:00:00.000Z");
     const store = {
-      listRunning: vi.fn(async () => [{
+      listRunning: vi.fn(async () => [makeRunningRun({
         id: "run_old",
         startedAt: new Date("2026-02-23T00:00:00.000Z"),
         lastActivityAt: new Date("2026-02-23T00:00:00.000Z"),
-      }]),
+        lastDurableProgressAt: new Date("2026-02-23T00:00:00.000Z"),
+      })]),
       cancelRuns: vi.fn(async () => 1),
       cancelRunIfActive: vi.fn(async () => false),
     };
@@ -36,11 +58,7 @@ describe("conversation run lock guard", () => {
   it("throws when a fresh running run exists", async () => {
     const now = new Date("2026-02-24T00:00:00.000Z");
     const store = {
-      listRunning: vi.fn(async () => [{
-        id: "run_live",
-        startedAt: new Date("2026-02-24T00:00:00.000Z"),
-        lastActivityAt: new Date("2026-02-24T00:00:00.000Z"),
-      }]),
+      listRunning: vi.fn(async () => [makeRunningRun()]),
       cancelRuns: vi.fn(async () => 0),
       cancelRunIfActive: vi.fn(async () => false),
     };
@@ -51,7 +69,10 @@ describe("conversation run lock guard", () => {
     } catch (error) {
       expect(error).toBeInstanceOf(AIErrorWithEnvelope);
       expect(error).toMatchObject({
-        errorMeta: expect.objectContaining({ code: "ACTIVE_RUN_EXISTS" }),
+        errorMeta: expect.objectContaining({
+          code: "ACTIVE_RUN_EXISTS",
+          recoveryRecommendation: "reconnect",
+        }),
       });
     }
   });
@@ -60,7 +81,7 @@ describe("conversation run lock guard", () => {
     const now = new Date("2026-02-24T00:00:00.000Z");
     const store = {
       listRunning: vi.fn()
-        .mockResolvedValueOnce([{ id: "run_live", startedAt: now, lastActivityAt: now }])
+        .mockResolvedValueOnce([makeRunningRun()])
         .mockResolvedValueOnce([]),
       cancelRuns: vi.fn(async () => 0),
       cancelRunIfActive: vi.fn(async () => true),
@@ -80,7 +101,7 @@ describe("conversation run lock guard", () => {
   it("rejects mismatched replaceRunId without cancelling the active run", async () => {
     const now = new Date("2026-02-24T00:00:00.000Z");
     const store = {
-      listRunning: vi.fn(async () => [{ id: "run_live", startedAt: now, lastActivityAt: now }]),
+      listRunning: vi.fn(async () => [makeRunningRun()]),
       cancelRuns: vi.fn(async () => 0),
       cancelRunIfActive: vi.fn(async () => false),
     };
@@ -102,8 +123,8 @@ describe("conversation run lock guard", () => {
     const now = new Date("2026-02-24T00:00:00.000Z");
     const store = {
       listRunning: vi.fn()
-        .mockResolvedValueOnce([{ id: "run_live", startedAt: now, lastActivityAt: now }])
-        .mockResolvedValueOnce([{ id: "run_newer", startedAt: now, lastActivityAt: now }]),
+        .mockResolvedValueOnce([makeRunningRun()])
+        .mockResolvedValueOnce([makeRunningRun({ id: "run_newer" })]),
       cancelRuns: vi.fn(async () => 0),
       cancelRunIfActive: vi.fn(async () => false),
     };
@@ -124,8 +145,8 @@ describe("conversation run lock guard", () => {
     const now = new Date("2026-02-24T00:00:00.000Z");
     const store = {
       listRunning: vi.fn()
-        .mockResolvedValueOnce([{ id: "run_live", startedAt: now, lastActivityAt: now }])
-        .mockResolvedValueOnce([{ id: "run_other", startedAt: now, lastActivityAt: now }]),
+        .mockResolvedValueOnce([makeRunningRun()])
+        .mockResolvedValueOnce([makeRunningRun({ id: "run_other" })]),
       cancelRuns: vi.fn(async () => 0),
       cancelRunIfActive: vi.fn(async () => true),
     };
@@ -145,11 +166,11 @@ describe("conversation run lock guard", () => {
   it("treats old startedAt but recent lastActivityAt as fresh", async () => {
     const now = new Date("2026-02-24T00:00:00.000Z");
     const store = {
-      listRunning: vi.fn(async () => [{
-        id: "run_live",
+      listRunning: vi.fn(async () => [makeRunningRun({
         startedAt: new Date("2026-02-23T00:00:00.000Z"),
         lastActivityAt: new Date("2026-02-23T23:59:30.000Z"),
-      }]),
+        lastDurableProgressAt: new Date("2026-02-23T23:59:30.000Z"),
+      })]),
       cancelRuns: vi.fn(async () => 0),
       cancelRunIfActive: vi.fn(async () => false),
     };
@@ -160,5 +181,28 @@ describe("conversation run lock guard", () => {
       errorMeta: expect.objectContaining({ code: "ACTIVE_RUN_EXISTS" }),
     });
     expect(store.cancelRuns).not.toHaveBeenCalled();
+  });
+
+  it("treats fresh heartbeat but stale durable progress as stop-and-retry", async () => {
+    const now = new Date("2026-02-24T00:00:00.000Z");
+    const store = {
+      listRunning: vi.fn(async () => [makeRunningRun({
+        id: "run_stalled",
+        startedAt: new Date("2026-02-23T00:00:00.000Z"),
+        lastActivityAt: new Date("2026-02-23T23:59:45.000Z"),
+        lastDurableProgressAt: new Date("2026-02-23T23:57:00.000Z"),
+      })]),
+      cancelRuns: vi.fn(async () => 0),
+      cancelRunIfActive: vi.fn(async () => false),
+    };
+
+    await expect(
+      ensureConversationRunAvailability("conv_1", { store, now, staleMs: 60_000 })
+    ).rejects.toMatchObject({
+      errorMeta: expect.objectContaining({
+        code: "ACTIVE_RUN_EXISTS",
+        recoveryRecommendation: "stop_and_retry",
+      }),
+    });
   });
 });
