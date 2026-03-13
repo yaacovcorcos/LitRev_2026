@@ -102,6 +102,8 @@ Rules:
   - Remaining work:
     - finish canary evidence using `docs/runbooks/chat-unification-burn-in.md`
     - complete replay parity confidence for `/ai` vs project adapters
+    - prove parity for durable recovery truth, not only reducer-state parity
+    - add burn-in checks for no indefinite reconnect loops, no contradictory same-run states, and truthful degraded continuation behavior
     - finish sign-off on the current metric contract and thresholds
   - Exit criteria:
     - burn-in evidence is complete and sign-offable
@@ -111,12 +113,13 @@ Rules:
 - [ ] `U3` Popup migration to shared engine
   - Problem: popup still does not use the same runtime path as `/ai` and project copilot, which blocks fully shared trace/error/tool semantics.
   - Remaining work:
+    - wait for stabilized durable runtime truth before claiming broader recovery/continuation parity
     - move popup from bridge/special path onto shared reducer/runtime adapters
     - keep popup compact through capability gating, not bespoke runtime logic
     - preserve handoff to full copilot with no context loss
   - Exit criteria:
     - popup consumes the same runtime contracts as the other chat surfaces
-    - popup stays compact without semantic drift
+    - popup remains a truthful reduced subset only until shared-engine convergence is complete
 
 - [ ] `U4` Shadow cleanup and legacy-path removal
   - Problem: once burn-in and popup migration are complete, the remaining fallback/legacy branches become drift risks.
@@ -164,10 +167,11 @@ Architecture guardrails:
 
 ## Dependency Notes
 - [plan-agentic.md](./plan-agentic.md) now owns the active runtime stabilization program (`FIX-011b`) for disconnect classification, run convergence, durable continuation, and same-run recovery truth. This plan should treat that stabilization work as an upstream dependency rather than a competing runtime owner.
+- [agent-runtime-remediation/plan-runtime-stabilization-and-continuation.md](./agent-runtime-remediation/plan-runtime-stabilization-and-continuation.md) defines the durable recovery/continuation contract that chat unification must consume rather than reinterpret per surface.
 - [plan-thinking-v2.md](./plan-thinking-v2.md) depends on this plan for shared runtime parity across `/ai` and project copilot before broader truthful execution-trace rollout.
 - [plan-agentic.md](./plan-agentic.md) depends on this plan whenever agent fixes require shared stream/runtime semantics instead of per-surface adapters.
 
-Popup parity remains intentionally staged: until `U3` lands, popup should be reviewed only against a truthful reduced subset of the shared runtime contract, not full reconnect/replay chrome parity.
+Popup remains a truthful reduced subset only: until `U3` lands, popup should be reviewed against the shared runtime contract's honest reduced subset, not full reconnect/replay chrome or continuation parity.
 
 ## Recently Completed
 - Popup now preserves a truthful reduced shared-trace subset for live progress, grounded checkpoints, blocking clarification, and structured terminal failures through a shared reducer adapter while remaining compact.

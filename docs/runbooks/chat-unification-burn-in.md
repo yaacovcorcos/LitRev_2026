@@ -109,7 +109,14 @@ Track trend lines daily:
 5. Stuck-running violations.
 6. Manual abnormal-end recovery spot check on `/ai` and project copilot:
    - known-run disconnect clears stale progress
+   - disconnect after tool result converges without losing durable user-facing truth
+   - disconnect before a paused question reaches the client restores the durable paused/question state cleanly
    - live run offers `Reconnect` or `Stop & Retry` instead of a dead-end conflict
+   - recovery-required persistence failures surface truthfully and do not masquerade as clean replay parity
+   - no-forward-progress detection converges to a bounded next step instead of indefinite reconnecting
+   - degraded continuation is explicit and truthful when full durable recovery is unavailable
+   - no contradictory same-run recovery/error states are visible on the same surface
+   - reconnect behavior stays bounded rather than spinning indefinitely
    - terminal reconciliation does not duplicate the final assistant/error state
 
 ## Phase 4 - Final Strict Gate (Earliest at +7 Days)
@@ -137,6 +144,8 @@ Pass criteria:
 6. Ask-user mismatch: `= 0`, with denominator `>= 30` overall and `>= 10` per surface.
 7. Stuck-running violations: `= 0`.
 8. Manual abnormal-end recovery spot check passes on `/ai` and project copilot with no dead-end `ACTIVE_RUN_EXISTS` path after a reconnectable disconnect.
+9. Recovery-required persistence failure behavior is truthful under the burn-in spot checks and does not invent full replay parity.
+10. No-forward-progress detection and degraded continuation behavior both converge to one bounded user-visible next step with no contradictory same-run states.
 
 ## Metric Integrity Rules
 

@@ -134,13 +134,14 @@ Every fix entry must include:
 
 - **`FIX-011b` Runtime stabilization, convergence, and durable continuation**
   - **Severity:** P0 trust/reliability
-  - **Symptom:** broken streams can still leave runs stuck in reconnecting or partially recovered states; durable user-facing state can still be lost or only partially restorable after disconnect; successful tool/model work can still be undermined by persistence/finalization seams; one run can still require retry-from-zero when durable work already exists.
-  - **Desired end state:** the runtime converges from abnormal ends through one persisted run lifecycle, every user-visible actionable state is durably reconstructable, disconnects are classified rather than guessed, and users/agents can continue from durable completed work instead of restarting unnecessarily.
-  - **Supporting plans:** `docs/plans/plan-thinking-v2.md` for durable execution-trace truth and `docs/plans/plan-chat-unification-v2.md` for cross-surface runtime parity and popup boundary honesty.
+  - **Symptom:** recovery still relies too much on stream delivery and coarse `running + lastActivityAt` inference; durable user-facing state is not yet guaranteed to survive disconnect/finalization/persistence seams; successful tool/model work can still be undermined by recovery-critical persistence failures; the runtime still lacks trustworthy convergence and continuation from durable completed work; abnormal disconnects are not yet classified durably enough to drive evidence-based hardening.
+  - **Desired end state:** one persisted run lifecycle is authoritative for recovery, retry/replace/continue decisions, UI state, telemetry, and burn-in sign-off; the runtime converges from abnormal ends through that lifecycle; durable user-facing recovery truth survives disconnects without inventing ephemeral progress; and users/agents can continue from durable completed work instead of restarting unnecessarily.
+  - **Supporting plans:** `docs/plans/agent-runtime-remediation/plan-runtime-stabilization-and-continuation.md` for detailed execution thinking, `docs/plans/plan-thinking-v2.md` for durable execution-trace truth, and `docs/plans/plan-chat-unification-v2.md` for cross-surface runtime parity and popup boundary honesty.
   - **Exit criteria:**
-    - no indefinite reconnect state on main chat surfaces
+    - persisted lifecycle truth is authoritative enough to eliminate indefinite reconnect states on main chat surfaces
     - durable recovery restores authoritative user-facing truth without duplicating or inventing ephemeral progress
     - same-run recovery/failure state converges to one authoritative outcome
+    - continuation prefers durable completed work over restart where the runtime can prove that safely
     - feature-freeze burn-in signs off the stabilized runtime before new agent/chat capability work resumes
 
 ## Execution Order
@@ -149,7 +150,7 @@ Work should proceed in this order unless a production incident forces reprioriti
 
 1. `FIX-011b` runtime stabilization, convergence, and durable continuation
 2. `CAG-001` explicit run-phase state machine
-3. `CAG-003` checkpointed retry/resume recovery beyond the stabilized abnormal-end continuation contract
+3. `CAG-003` checkpointed retry/resume from durable state
 4. remaining roadmap phases after those contracts are stable
 
 ## End-to-End Delivery Program
@@ -180,10 +181,10 @@ Work should proceed in this order unless a production incident forces reprioriti
 
 ### Phase 0 — Control-Flow Safety and Human Interrupts
 
-- [ ] `CAG-001` Implement explicit run-phase state machine: `plan -> ask -> act -> verify -> finalize`
+- [ ] `CAG-001` Implement persisted run-phase authority for `plan -> ask -> act -> verify -> finalize`, so run lock, recovery, and UI derive from phase state rather than stream heuristics alone
 - [x] `CAG-002` Baseline `ask_user` tool and typed UI contract shipped
 - [x] `CAG-002a` Stateless turn-based clarification flow shipped
-- [ ] `CAG-003` Add retry/resume capability with checkpointed failed-step recovery
+- [ ] `CAG-003` Add checkpointed continuation from durable work so reconnect / continue / replace / retry semantics never restart from zero when durable work already exists
 - [ ] `CAG-004` Standardize idempotency envelopes for mutating tools
 - [ ] `CAG-005` Complete provider-native reasoning stream parity for OpenAI/xAI
 
@@ -211,7 +212,7 @@ Work should proceed in this order unless a production incident forces reprioriti
 - [ ] `CAG-017` Unify decision-memory schema across summary and extraction paths
 - [ ] `CAG-018` Add negative-memory extraction with confidence and importance
 - [ ] `CAG-019` Render a user-visible run board for tasks, blockers, and clarifications
-- [ ] `CAG-020` Add crash-safe long-loop continuation tokens
+- [ ] `CAG-020` Add crash-safe long-loop continuation tokens tied to durable state snapshots/continuation tokens, transport/runtime recovery, and no-forward-progress detection
 
 ### Phase 4 — Evaluation, Rollout, and Operations
 
