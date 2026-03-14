@@ -6,11 +6,14 @@ const mocks = vi.hoisted(() => ({
   agentRunFindMany: vi.fn(),
   agentRunUpdate: vi.fn(),
   agentRunUpdateMany: vi.fn(),
+  transaction: vi.fn(),
   aiMessageCount: vi.fn(),
+  transitionRunPhaseInTransaction: vi.fn(),
 }));
 
 vi.mock("@/lib/server/prisma", () => ({
   prisma: {
+    $transaction: mocks.transaction,
     agentRun: {
       create: mocks.agentRunCreate,
       findUnique: mocks.agentRunFindUnique,
@@ -26,6 +29,10 @@ vi.mock("@/lib/server/prisma", () => ({
 
 vi.mock("@/lib/server/memory/conversation-extractor", () => ({
   extractMemoriesFromConversation: vi.fn(),
+}));
+
+vi.mock("@/lib/server/agent/run-phase", () => ({
+  transitionRunPhaseInTransaction: mocks.transitionRunPhaseInTransaction,
 }));
 
 const {
@@ -45,6 +52,12 @@ describe("startRun lineage", () => {
     mocks.agentRunCreate.mockResolvedValue({ id: "run-new" });
     mocks.agentRunUpdate.mockResolvedValue({ id: "run-new", conversationId: null, projectId: null, userId: null });
     mocks.agentRunUpdateMany.mockResolvedValue({ count: 1 });
+    mocks.transaction.mockImplementation(async (callback: (tx: { agentRun: { updateMany: typeof mocks.agentRunUpdateMany } }) => Promise<unknown>) => callback({
+      agentRun: {
+        updateMany: mocks.agentRunUpdateMany,
+      },
+    }));
+    mocks.transitionRunPhaseInTransaction.mockResolvedValue({ changed: true, phaseEnteredAt: new Date("2026-03-14T12:00:00.000Z") });
   });
 
   it("creates a root run without lineage when no parent is provided", async () => {
@@ -193,6 +206,12 @@ describe("run freshness lifecycle", () => {
     });
     mocks.aiMessageCount.mockResolvedValue(0);
     mocks.agentRunUpdateMany.mockResolvedValue({ count: 1 });
+    mocks.transaction.mockImplementation(async (callback: (tx: { agentRun: { updateMany: typeof mocks.agentRunUpdateMany } }) => Promise<unknown>) => callback({
+      agentRun: {
+        updateMany: mocks.agentRunUpdateMany,
+      },
+    }));
+    mocks.transitionRunPhaseInTransaction.mockResolvedValue({ changed: true, phaseEnteredAt: new Date("2026-03-14T12:00:00.000Z") });
   });
 
   it("updates lastActivityAt when ending a run", async () => {
@@ -218,6 +237,16 @@ describe("run freshness lifecycle", () => {
     await markRunAbnormalEndClassification("run-1", "unknown");
     await markRunFinalizationFailed("run-1");
 
+    expect(mocks.transitionRunPhaseInTransaction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agentRun: expect.objectContaining({
+          updateMany: mocks.agentRunUpdateMany,
+        }),
+      }),
+      "run-1",
+      "finalize",
+      expect.any(Date),
+    );
     expect(mocks.agentRunUpdateMany).toHaveBeenNthCalledWith(1, {
       where: { id: "run-1" },
       data: {

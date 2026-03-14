@@ -6,9 +6,10 @@
 import "server-only";
 import { prisma } from "@/lib/server/prisma";
 import type { Prisma } from "@prisma/client";
-import type { RunEventType } from "@/types/agent";
+import type { RunEventType, RunPhase } from "@/types/agent";
 import { noteObservedRunActivity } from "@/lib/server/agent/run";
 import { isDurableProgressRunEventType } from "@/lib/server/agent/run-event-authority";
+import { transitionRunPhaseInTransaction } from "@/lib/server/agent/run-phase";
 
 export interface EmitEventExtras {
     toolName?: string;
@@ -23,6 +24,21 @@ export interface EmitEventExtras {
 const MAX_SEQUENCE_RETRY_ATTEMPTS = 5;
 
 type RunEventTransactionClient = Prisma.TransactionClient;
+
+function getRunPhaseForEventType(type: RunEventType): RunPhase | null {
+    switch (type) {
+        case "tool_call":
+            return "act";
+        case "tool_result":
+        case "artifact_proposed":
+        case "artifact_reviewed":
+            return "verify";
+        case "user_input_required":
+            return "ask";
+        default:
+            return null;
+    }
+}
 
 function isRunSequenceConflict(error: unknown): boolean {
     if (!error || typeof error !== "object") return false;
@@ -67,6 +83,11 @@ export async function emitEventWithinTransaction(
             durationMs: extras?.durationMs ?? null,
         },
     });
+
+    const nextPhase = getRunPhaseForEventType(type);
+    if (nextPhase) {
+        await transitionRunPhaseInTransaction(tx, runId, nextPhase, event.createdAt);
+    }
 
     await tx.agentRun.updateMany({
         where: { id: runId, status: "running" },

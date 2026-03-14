@@ -1089,6 +1089,7 @@ class AIService {
                 trigger: "user_message",
                 agentMode,
                 model: options?.model,
+                initialPhase: options?.continuationContext ? "verify" : "plan",
             });
             const activeRun = run;
             runHeartbeat = startRunHeartbeat(activeRun.id, {
