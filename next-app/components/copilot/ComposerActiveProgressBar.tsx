@@ -5,9 +5,13 @@ import styles from "./ComposerActiveProgressBar.module.css";
 
 export type ComposerActiveProgressBarProps = {
     activeProgress?: NormalizedProgressItem | null;
+    stackPosition?: "top" | "middle";
 };
 
-export function ComposerActiveProgressBar({ activeProgress = null }: ComposerActiveProgressBarProps) {
+export function ComposerActiveProgressBar({
+    activeProgress = null,
+    stackPosition = "top",
+}: ComposerActiveProgressBarProps) {
     const hasProgress = Boolean(activeProgress);
     const showProgressCount = activeProgress
         && activeProgress.current != null
@@ -23,7 +27,13 @@ export function ComposerActiveProgressBar({ activeProgress = null }: ComposerAct
             aria-hidden={!hasProgress}
         >
             {activeProgress ? (
-                <div className={styles.progressCard} role="status" aria-live="polite" aria-atomic="true">
+                <div
+                    className={styles.progressCard}
+                    data-stack-position={stackPosition}
+                    role="status"
+                    aria-live="polite"
+                    aria-atomic="true"
+                >
                     <div className={styles.headerRow}>
                         <div className={styles.spinner} aria-hidden="true" />
                         <div className={styles.content}>

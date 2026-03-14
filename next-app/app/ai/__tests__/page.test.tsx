@@ -149,13 +149,15 @@ vi.mock("@/components/copilot/CopilotInputCoreClient", () => ({
     sendMessage,
     onQueueFollowUp,
     hasQueuedFollowUp,
+    attachedStack,
   }: {
     onReady?: () => void;
     sendMessage?: (text: string, page: "ai") => void | Promise<void>;
     onQueueFollowUp?: (payload: { text: string; page: "ai" }) => void | Promise<void>;
     hasQueuedFollowUp?: boolean;
+    attachedStack?: "none" | "attached";
   }) => (
-    <div>
+    <div data-testid="ai-composer" data-attached-stack={attachedStack ?? "none"}>
       <button type="button" onClick={() => onReady?.()}>
         composer ready
       </button>
@@ -432,6 +434,8 @@ describe("/ai page deferred hydration", () => {
 
     const status = screen.getByRole("status");
     const sendButton = screen.getByRole("button", { name: "send message" });
+    expect(status.getAttribute("data-stack-position")).toBe("top");
+    expect(screen.getByTestId("ai-composer").getAttribute("data-attached-stack")).toBe("attached");
     expect(screen.getByText("Reviewing PubMed results")).toBeTruthy();
     expect(screen.getByText("2 of 3")).toBeTruthy();
     expect(screen.getByRole("progressbar")).toBeTruthy();
@@ -722,6 +726,26 @@ describe("/ai page deferred hydration", () => {
   });
 
   it("renders a queued follow-up cap between live progress and the composer", async () => {
+    mockProcessAIStream.mockImplementationOnce(async ({ onChunk }: {
+      onChunk: (chunk: unknown) => void | Promise<void>;
+    }) => {
+      await onChunk({
+        type: "progress",
+        progressMessage: "Reading protocol...",
+        progressCurrent: 1,
+        progressTotal: 2,
+      });
+      return {
+        runStatus: null,
+        stopReason: null,
+        terminalReason: "failed_network",
+        errorMessage: null,
+        errorMeta: null,
+        actualModel: null,
+        actualModelSource: "unknown",
+      };
+    });
+
     render(<AIView />);
 
     await act(async () => {
@@ -738,16 +762,22 @@ describe("/ai page deferred hydration", () => {
 
     await waitFor(() => {
       expect(screen.getByTestId("ai-has-queued").textContent).toBe("yes");
+      expect(screen.getByText("Reading protocol...")).toBeTruthy();
       expect(screen.getByText("Queued next message")).toBeTruthy();
       expect(screen.getByText("Queue this next")).toBeTruthy();
     });
 
-    const progress = screen.getByRole("status");
-    const queued = screen.getByText("Queued next message");
-    const composerState = screen.getByTestId("ai-has-queued");
+    const progress = screen.getByText("Reading protocol...").closest("[data-stack-position]");
+    const queued = screen.getByText("Queued next message").closest("[data-stack-position]");
+    const composerState = screen.getByTestId("ai-composer");
 
-    expect(progress.compareDocumentPosition(queued) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(queued.compareDocumentPosition(composerState) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(progress?.getAttribute("data-stack-position")).toBe("top");
+    expect(queued?.getAttribute("data-stack-position")).toBe("middle");
+    expect(composerState.getAttribute("data-attached-stack")).toBe("attached");
+    expect(progress).toBeTruthy();
+    expect(queued).toBeTruthy();
+    expect(progress!.compareDocumentPosition(queued!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(queued!.compareDocumentPosition(composerState) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it("allows queueing before the first conversation id exists", async () => {
@@ -763,5 +793,15 @@ describe("/ai page deferred hydration", () => {
       expect(screen.getByText("Queued next message")).toBeTruthy();
       expect(screen.getByText("Queue this next")).toBeTruthy();
     });
+
+    expect(screen.getByText("Queued next message").closest("[data-stack-position]")?.getAttribute("data-stack-position")).toBe("top");
+    expect(screen.getByTestId("ai-composer").getAttribute("data-attached-stack")).toBe("attached");
+  });
+
+  it("keeps the composer standalone when no attached caps are present", () => {
+    render(<AIView />);
+
+    expect(screen.getByTestId("ai-composer").getAttribute("data-attached-stack")).toBe("none");
+    expect(screen.queryByText("Queued next message")).toBeNull();
   });
 });

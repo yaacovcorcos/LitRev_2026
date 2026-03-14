@@ -258,6 +258,10 @@ export function ProjectCopilot({
         () => selectActiveProgress(normalizeTimelineProgressItems(timelineItems)),
         [timelineItems],
     );
+    const hasAttachedProgress = Boolean(activeProgress);
+    const hasAttachedQueue = Boolean(queuedFollowUp);
+    const composerAttachedStack = hasAttachedProgress || hasAttachedQueue ? "attached" : "none";
+    const queuedStackPosition = hasAttachedQueue ? (hasAttachedProgress ? "middle" : "top") : undefined;
 
     if (isCollapsed) {
         return (
@@ -437,9 +441,10 @@ export function ProjectCopilot({
 
                 {/* Input area */}
                 <div className={styles.composerHost}>
-                    <ComposerActiveProgressBar activeProgress={activeProgress} />
+                    <ComposerActiveProgressBar activeProgress={activeProgress} stackPosition="top" />
                     <ComposerQueuedFollowUpBar
                         queuedFollowUp={queuedFollowUp}
+                        stackPosition={queuedStackPosition}
                         onEdit={handleEditQueuedFollowUp}
                         onRemove={clearQueuedFollowUp}
                     />
@@ -450,6 +455,7 @@ export function ProjectCopilot({
                         inputPlaceholder={inputPlaceholder}
                         prefillCommand={activePrefillCommand}
                         onPrefillConsumed={handlePrefillConsumed}
+                        attachedStack={composerAttachedStack}
                     />
                 </div>
             </div>

@@ -61,6 +61,7 @@ export type CopilotInputCoreProps = {
     ) => void | Promise<void>;
     cancelStream: () => void;
     hasQueuedFollowUp?: boolean;
+    attachedStack?: "none" | "attached";
     onQueueFollowUp?: (payload: {
         text: string;
         page: CopilotPage;
@@ -131,6 +132,7 @@ export function CopilotInputCore({
     sendMessage,
     cancelStream,
     hasQueuedFollowUp = false,
+    attachedStack = "none",
     onQueueFollowUp,
     pendingAttachment = null,
     isAttaching = false,
@@ -661,6 +663,7 @@ export function CopilotInputCore({
             <form
                 ref={inputBoxRef}
                 className={styles.inputBox}
+                data-attached-stack={attachedStack}
                 onSubmit={(e) => {
                     e.preventDefault();
                     handleSend();

@@ -227,6 +227,10 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
         () => selectActiveProgress(normalizeTimelineProgressItems(timelineItems)),
         [timelineItems],
     );
+    const hasAttachedProgress = Boolean(activeProgress);
+    const hasAttachedQueue = Boolean(queuedFollowUp);
+    const composerAttachedStack = hasAttachedProgress || hasAttachedQueue ? "attached" : "none";
+    const queuedStackPosition = hasAttachedQueue ? (hasAttachedProgress ? "middle" : "top") : undefined;
 
     return (
         <div className={styles.conversationView}>
@@ -324,9 +328,10 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
 
                     {/* Input */}
                     <div className={styles.inputWrapper}>
-                        <ComposerActiveProgressBar activeProgress={activeProgress} />
+                        <ComposerActiveProgressBar activeProgress={activeProgress} stackPosition="top" />
                         <ComposerQueuedFollowUpBar
                             queuedFollowUp={queuedFollowUp}
+                            stackPosition={queuedStackPosition}
                             onEdit={handleEditQueuedFollowUp}
                             onRemove={clearQueuedFollowUp}
                         />
@@ -335,6 +340,7 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
                             inputPlaceholder="Ask about your project..."
                             prefillCommand={prefillCommand}
                             onPrefillConsumed={handlePrefillConsumed}
+                            attachedStack={composerAttachedStack}
                         />
                     </div>
                 </div>

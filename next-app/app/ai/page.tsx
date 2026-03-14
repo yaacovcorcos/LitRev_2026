@@ -688,6 +688,10 @@ export default function AIView() {
     () => selectActiveProgress(normalizeTimelineProgressItems(activeTimeline)),
     [activeTimeline],
   );
+  const hasAttachedProgress = Boolean(activeProgress);
+  const hasAttachedQueue = Boolean(queuedFollowUp);
+  const composerAttachedStack = hasAttachedProgress || hasAttachedQueue ? "attached" : "none";
+  const queuedStackPosition = hasAttachedQueue ? (hasAttachedProgress ? "middle" : "top") : undefined;
 
   const sortConversationsByUpdatedAt = useCallback((items: ChatConversation[]) => {
     return [...items].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
@@ -2538,9 +2542,10 @@ export default function AIView() {
 
             <div className={styles.chatInputContainer}>
               <div className={styles.chatInputStatus}>
-                <ComposerActiveProgressBar activeProgress={activeProgress} />
+                <ComposerActiveProgressBar activeProgress={activeProgress} stackPosition="top" />
                 <ComposerQueuedFollowUpBar
                   queuedFollowUp={queuedFollowUp}
+                  stackPosition={queuedStackPosition}
                   onEdit={handleEditQueuedFollowUp}
                   onRemove={handleRemoveQueuedFollowUp}
                 />
@@ -2554,6 +2559,7 @@ export default function AIView() {
                 sendMessage={handleSend}
                 cancelStream={cancelStream}
                 hasQueuedFollowUp={queuedFollowUp !== null}
+                attachedStack={composerAttachedStack}
                 onQueueFollowUp={handleQueueFollowUp}
                 pendingChoices={pendingChoices}
                 clearChoices={() => { setPendingChoices([]); setPendingUserInput(null); }}

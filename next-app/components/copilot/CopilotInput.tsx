@@ -18,9 +18,18 @@ export type CopilotInputProps = {
     inputPlaceholder: string;
     prefillCommand?: { text: string; id: string } | null;
     onPrefillConsumed?: () => void;
+    attachedStack?: "none" | "attached";
 };
 
-export function CopilotInput({ page, section, studyId, inputPlaceholder, prefillCommand, onPrefillConsumed }: CopilotInputProps) {
+export function CopilotInput({
+    page,
+    section,
+    studyId,
+    inputPlaceholder,
+    prefillCommand,
+    onPrefillConsumed,
+    attachedStack = "none",
+}: CopilotInputProps) {
     const {
         isLoading,
         sendMessage,
@@ -66,6 +75,7 @@ export function CopilotInput({ page, section, studyId, inputPlaceholder, prefill
             sendMessage={sendMessage}
             cancelStream={cancelStream}
             hasQueuedFollowUp={queuedFollowUp !== null}
+            attachedStack={attachedStack}
             onQueueFollowUp={(payload) => {
                 queueQueuedFollowUp(createQueuedFollowUp({
                     ...payload,
