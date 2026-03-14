@@ -5,6 +5,7 @@ import type {
   RunAbnormalEndClassification,
   RunDurabilityState,
   RunFinalizationState,
+  RunPhase,
 } from "@/types/agent";
 
 function makeRunningRun(overrides?: Partial<{
@@ -12,6 +13,8 @@ function makeRunningRun(overrides?: Partial<{
   startedAt: Date;
   lastActivityAt: Date;
   lastDurableProgressAt: Date;
+  runPhase: RunPhase;
+  phaseEnteredAt: Date;
   durabilityState: RunDurabilityState;
   durabilityDegradedReason: string | null;
   finalizationState: RunFinalizationState;
@@ -21,6 +24,8 @@ function makeRunningRun(overrides?: Partial<{
   return {
     id: overrides?.id ?? "run_live",
     status: "running" as const,
+    runPhase: overrides?.runPhase ?? "act",
+    phaseEnteredAt: overrides?.phaseEnteredAt ?? now,
     startedAt: overrides?.startedAt ?? now,
     lastActivityAt: overrides?.lastActivityAt ?? now,
     lastDurableProgressAt: overrides?.lastDurableProgressAt ?? now,
@@ -35,6 +40,7 @@ describe("conversation run lock guard", () => {
   it("passes when no running runs exist", async () => {
     const store = {
       listRunning: vi.fn(async () => []),
+      pauseRunIfAwaitingInput: vi.fn(async () => false),
       cancelRuns: vi.fn(async () => 0),
       cancelRunIfActive: vi.fn(async () => false),
     };
@@ -53,6 +59,7 @@ describe("conversation run lock guard", () => {
         lastActivityAt: new Date("2026-02-23T00:00:00.000Z"),
         lastDurableProgressAt: new Date("2026-02-23T00:00:00.000Z"),
       })]),
+      pauseRunIfAwaitingInput: vi.fn(async () => false),
       cancelRuns: vi.fn(async () => 1),
       cancelRunIfActive: vi.fn(async () => false),
     };
@@ -67,6 +74,7 @@ describe("conversation run lock guard", () => {
     const now = new Date("2026-02-24T00:00:00.000Z");
     const store = {
       listRunning: vi.fn(async () => [makeRunningRun()]),
+      pauseRunIfAwaitingInput: vi.fn(async () => false),
       cancelRuns: vi.fn(async () => 0),
       cancelRunIfActive: vi.fn(async () => false),
     };
@@ -91,6 +99,7 @@ describe("conversation run lock guard", () => {
       listRunning: vi.fn()
         .mockResolvedValueOnce([makeRunningRun()])
         .mockResolvedValueOnce([]),
+      pauseRunIfAwaitingInput: vi.fn(async () => false),
       cancelRuns: vi.fn(async () => 0),
       cancelRunIfActive: vi.fn(async () => true),
     };
@@ -110,6 +119,7 @@ describe("conversation run lock guard", () => {
     const now = new Date("2026-02-24T00:00:00.000Z");
     const store = {
       listRunning: vi.fn(async () => [makeRunningRun()]),
+      pauseRunIfAwaitingInput: vi.fn(async () => false),
       cancelRuns: vi.fn(async () => 0),
       cancelRunIfActive: vi.fn(async () => false),
     };
@@ -133,6 +143,7 @@ describe("conversation run lock guard", () => {
       listRunning: vi.fn()
         .mockResolvedValueOnce([makeRunningRun()])
         .mockResolvedValueOnce([makeRunningRun({ id: "run_newer" })]),
+      pauseRunIfAwaitingInput: vi.fn(async () => false),
       cancelRuns: vi.fn(async () => 0),
       cancelRunIfActive: vi.fn(async () => false),
     };
@@ -155,6 +166,7 @@ describe("conversation run lock guard", () => {
       listRunning: vi.fn()
         .mockResolvedValueOnce([makeRunningRun()])
         .mockResolvedValueOnce([makeRunningRun({ id: "run_other" })]),
+      pauseRunIfAwaitingInput: vi.fn(async () => false),
       cancelRuns: vi.fn(async () => 0),
       cancelRunIfActive: vi.fn(async () => true),
     };
@@ -179,6 +191,7 @@ describe("conversation run lock guard", () => {
         lastActivityAt: new Date("2026-02-23T23:59:30.000Z"),
         lastDurableProgressAt: new Date("2026-02-23T23:59:30.000Z"),
       })]),
+      pauseRunIfAwaitingInput: vi.fn(async () => false),
       cancelRuns: vi.fn(async () => 0),
       cancelRunIfActive: vi.fn(async () => false),
     };
@@ -200,6 +213,55 @@ describe("conversation run lock guard", () => {
         lastActivityAt: new Date("2026-02-23T23:59:45.000Z"),
         lastDurableProgressAt: new Date("2026-02-23T23:57:00.000Z"),
       })]),
+      pauseRunIfAwaitingInput: vi.fn(async () => false),
+      cancelRuns: vi.fn(async () => 0),
+      cancelRunIfActive: vi.fn(async () => false),
+    };
+
+    await expect(
+      ensureConversationRunAvailability("conv_1", { store, now, staleMs: 60_000 })
+    ).rejects.toMatchObject({
+      errorMeta: expect.objectContaining({
+        code: "ACTIVE_RUN_EXISTS",
+        recoveryRecommendation: "stop_and_retry",
+      }),
+    });
+  });
+
+  it("terminalizes fresh ask-phase runs to paused and allows a new send", async () => {
+    const now = new Date("2026-02-24T00:00:00.000Z");
+    const store = {
+      listRunning: vi.fn()
+        .mockResolvedValueOnce([makeRunningRun({
+          id: "run_ask",
+          runPhase: "ask",
+          lastActivityAt: new Date("2026-02-23T23:59:45.000Z"),
+          lastDurableProgressAt: new Date("2026-02-23T23:59:40.000Z"),
+        })])
+        .mockResolvedValueOnce([]),
+      pauseRunIfAwaitingInput: vi.fn(async () => true),
+      cancelRuns: vi.fn(async () => 0),
+      cancelRunIfActive: vi.fn(async () => false),
+    };
+
+    await expect(
+      ensureConversationRunAvailability("conv_1", { store, now, staleMs: 60_000 })
+    ).resolves.toEqual({ cancelledStaleRunCount: 0, replacedRunId: null });
+    expect(store.pauseRunIfAwaitingInput).toHaveBeenCalledWith("run_ask", "conv_1", now);
+  });
+
+  it("treats stale finalize-phase runs as bounded conflicts instead of reconnectable ones", async () => {
+    const now = new Date("2026-02-24T00:00:00.000Z");
+    const store = {
+      listRunning: vi.fn(async () => [makeRunningRun({
+        id: "run_finalize",
+        runPhase: "finalize",
+        phaseEnteredAt: new Date("2026-02-23T23:57:00.000Z"),
+        lastActivityAt: new Date("2026-02-23T23:59:45.000Z"),
+        lastDurableProgressAt: new Date("2026-02-23T23:59:40.000Z"),
+        finalizationState: "in_progress",
+      })]),
+      pauseRunIfAwaitingInput: vi.fn(async () => false),
       cancelRuns: vi.fn(async () => 0),
       cancelRunIfActive: vi.fn(async () => false),
     };

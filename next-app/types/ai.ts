@@ -9,6 +9,7 @@ import type {
     RunAbnormalEndClassification,
     RunDurabilityState,
     RunFinalizationState,
+    RunPhase,
     RunStatus,
 } from "./agent";
 
@@ -133,6 +134,8 @@ export type RunRecoveryResponse = {
     runId: string;
     runStatus: RunStatus | "missing";
     isActive: boolean;
+    runPhase?: RunPhase | null;
+    phaseEnteredAt?: string | null;
     lastActivityAt: string | null;
     lastDurableProgressAt?: string | null;
     durabilityState?: RunDurabilityState | null;
