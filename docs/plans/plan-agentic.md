@@ -184,6 +184,8 @@ Work should proceed in this order unless a production incident forces reprioriti
 ### Phase 0 — Control-Flow Safety and Human Interrupts
 
 - [ ] `CAG-001` Implement persisted run-phase authority for `plan -> ask -> act -> verify -> finalize`, so run lock, recovery, and UI derive from phase state rather than stream heuristics alone
+  - V1 active contract: `AgentRun` gains coarse `runPhase` + `phaseEnteredAt` lifecycle truth, `status="paused"` pairs with `runPhase="ask"`, continuation runs begin from `verify`, and the phase contract stays macro-lifecycle only until the persisted boundary writes and phase-aware recovery/readmission consumers are fully shipped.
+  - Supporting execution detail continues in `docs/plans/agent-runtime-remediation/plan-runtime-stabilization-and-continuation.md`.
 - [x] `CAG-002` Baseline `ask_user` tool and typed UI contract shipped
 - [x] `CAG-002a` Stateless turn-based clarification flow shipped
 - [ ] `CAG-003` Add checkpointed continuation from durable work so reconnect / continue / replace / retry semantics never restart from zero when durable work already exists

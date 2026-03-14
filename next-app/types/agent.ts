@@ -33,6 +33,13 @@ export type RunStatus = "running" | "completed" | "failed" | "cancelled" | "paus
 
 export type RunTrigger = "user_message" | "proactive" | "event";
 
+export type RunPhase =
+    | "plan"
+    | "ask"
+    | "act"
+    | "verify"
+    | "finalize";
+
 export type RunFinalizationState =
     | "not_started"
     | "in_progress"
@@ -92,6 +99,8 @@ export interface AgentRunData {
     costTokensIn: number;
     costTokensOut: number;
     startedAt: string;
+    runPhase: RunPhase;
+    phaseEnteredAt: string;
     lastActivityAt: string;
     lastDurableProgressAt: string;
     durabilityState: RunDurabilityState;

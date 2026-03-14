@@ -63,6 +63,8 @@ describe("startRun lineage", () => {
         data: expect.objectContaining({
           parentRunId: undefined,
           rootRunId: undefined,
+          runPhase: "plan",
+          phaseEnteredAt: expect.any(Date),
           lastActivityAt: expect.any(Date),
           lastDurableProgressAt: expect.any(Date),
           finalizationState: "not_started",
@@ -122,6 +124,27 @@ describe("startRun lineage", () => {
         data: expect.objectContaining({
           parentRunId: "run-parent",
           rootRunId: "run-parent",
+          runPhase: "plan",
+        }),
+      }),
+    );
+  });
+
+  it("accepts an explicit initial phase", async () => {
+    await startRun({
+      projectId: "p1",
+      conversationId: "c1",
+      userId: "u1",
+      trigger: "user_message",
+      agentMode: "general",
+      initialPhase: "verify",
+    });
+
+    expect(mocks.agentRunCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          runPhase: "verify",
+          phaseEnteredAt: expect.any(Date),
         }),
       }),
     );
