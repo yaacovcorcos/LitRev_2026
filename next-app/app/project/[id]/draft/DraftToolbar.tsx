@@ -14,9 +14,6 @@ export type DraftWorkspaceHeaderProps = {
   hasDraftContent: boolean;
   onExportClick: () => void;
   saveStatus: "saved" | "saving" | "error";
-  showCompactControls: boolean;
-  onToggleStructureRail: () => void;
-  onToggleContextRail: () => void;
 };
 
 export function DraftWorkspaceHeader({
@@ -24,46 +21,19 @@ export function DraftWorkspaceHeader({
   hasDraftContent,
   onExportClick,
   saveStatus,
-  showCompactControls,
-  onToggleStructureRail,
-  onToggleContextRail,
 }: DraftWorkspaceHeaderProps) {
   return (
     <div className={styles.top}>
       <div className={styles.topLeft}>
-        <div className={styles.projectName} title={projectName}>
-          {projectName}
+        <div className={styles.projectMeta}>
+          <div className={styles.projectEyebrow}>Draft</div>
+          <div className={styles.projectName} title={projectName}>
+            {projectName}
+          </div>
         </div>
       </div>
 
-      <div className={styles.topCenter}>
-        <div className={styles.workspaceSummary}>Continuous manuscript workspace</div>
-      </div>
-
       <div className={styles.topRight}>
-        {showCompactControls ? (
-          <>
-            <button
-              type="button"
-              className={styles.exportBtn}
-              onClick={onToggleStructureRail}
-              aria-label="Open structure drawer"
-            >
-              <span className="material-icons-round">toc</span>
-              Outline
-            </button>
-            <button
-              type="button"
-              className={styles.exportBtn}
-              onClick={onToggleContextRail}
-              aria-label="Open context drawer"
-            >
-              <span className="material-icons-round">menu_book</span>
-              Context
-            </button>
-          </>
-        ) : null}
-
         <button
           type="button"
           className={styles.exportBtn}
