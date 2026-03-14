@@ -40,6 +40,10 @@ import {
     buildDurableContinuationContext,
     resolveDurableContinuationSource,
 } from "@/lib/server/agent/durable-continuation";
+import {
+    buildCheckpointContinuationContext,
+    resolveLatestValidRunCheckpoint,
+} from "@/lib/server/agent/run-checkpoints";
 
 // Force Node runtime for Prisma compatibility
 export const runtime = "nodejs";
@@ -236,6 +240,14 @@ export async function POST(request: NextRequest) {
                     try {
                         const continuationContext = scopedOptions.continueFromRunId
                             ? await (async () => {
+                                const checkpointSource = await resolveLatestValidRunCheckpoint({
+                                    runId: scopedOptions.continueFromRunId!,
+                                    conversationId: scopedOptions.conversationId ?? null,
+                                });
+                                if (checkpointSource) {
+                                    return buildCheckpointContinuationContext(checkpointSource);
+                                }
+
                                 const source = await resolveDurableContinuationSource({
                                     runId: scopedOptions.continueFromRunId!,
                                     conversationId: scopedOptions.conversationId ?? null,

@@ -116,7 +116,8 @@ vi.mock("next/dynamic", () => ({
                         Stop & Retry
                       </button>
                     ) : null}
-                    {item.errorMeta?.recoveryRecommendation === "continue_from_durable_state" ? (
+                    {item.errorMeta?.recoveryRecommendation === "continue_from_durable_state"
+                      || item.errorMeta?.recoveryRecommendation === "continue_from_checkpoint" ? (
                       <button type="button" onClick={() => props.onContinueFromDurableStateRun?.(item)}>
                         Continue
                       </button>
@@ -691,6 +692,81 @@ describe("/ai page deferred hydration", () => {
       persistedUserMessageContent: "Recover this run",
     });
     expect(screen.getAllByText("Recover this run")).toHaveLength(1);
+  });
+
+  it("continues from the latest checkpoint without appending a duplicate user message", async () => {
+    mockProcessAIStream
+      .mockImplementationOnce(async ({ onChunk }: {
+        onChunk: (chunk: unknown) => void | Promise<void>;
+      }) => {
+        await onChunk({ type: "run_start", runId: "run-5", conversationId: "conv-new" });
+        return {
+          runStatus: null,
+          stopReason: null,
+          terminalReason: "failed_network",
+          errorMessage: null,
+          errorMeta: null,
+          actualModel: null,
+          actualModelSource: "unknown",
+        };
+      })
+      .mockImplementationOnce(async () => ({
+        runStatus: null,
+        stopReason: null,
+        terminalReason: "completed",
+        errorMessage: null,
+        errorMeta: null,
+        actualModel: null,
+        actualModelSource: "unknown",
+      }));
+    mockPollRunRecovery.mockResolvedValueOnce({
+      outcome: "needs_user_action",
+      response: {
+        conversationId: "conv-new",
+        runId: "run-5",
+        runStatus: "running",
+        isActive: true,
+        lastActivityAt: "2026-03-14T10:25:00.000Z",
+        lastDurableProgressAt: "2026-03-14T10:20:00.000Z",
+        finalizationState: "failed",
+        lastSequence: 2,
+        replayableEvents: [],
+        terminalEvent: null,
+        recoveryRecommendation: "continue_from_checkpoint",
+        abnormalEndClassification: "finalization_failed",
+      },
+      lastAppliedSequence: 2,
+    });
+
+    render(<AIView />);
+
+    fireEvent.click(screen.getByRole("button", { name: "send message" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Continue" })).toBeTruthy();
+    });
+
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 0));
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+    });
+
+    const secondRequest = mockFetch.mock.calls[1]?.[1] as { body?: string };
+    const parsedBody = JSON.parse(secondRequest.body ?? "{}");
+    expect(parsedBody.options).toMatchObject({
+      continueFromRunId: "run-5",
+      replaceRunId: "run-5",
+      persistUserMessage: false,
+      persistedUserMessageContent: "Recover this run",
+    });
   });
 
   it("elevates live progress above the composer and suppresses the matching inline timeline row", async () => {

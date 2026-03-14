@@ -11,8 +11,12 @@ import type { AgentMode } from "@/types/agent";
 import { isToolAllowedInScope, getTool, resolveAutonomyLevel } from "./tools";
 import { getEffectiveAllowedTools } from "@/lib/agent/router";
 import type { ToolResultWithArtifactState } from "@/lib/agent/compaction";
+import { prisma } from "@/lib/server/prisma";
 import { recordRunEvent } from "@/lib/server/agent/run-event-recorder";
+import { emitEventWithinTransaction } from "@/lib/server/agent/events";
 import { createArtifact, applyArtifact } from "@/lib/server/agent/artifacts";
+import { noteObservedRunActivity, markRunDurabilityDegraded } from "@/lib/server/agent/run";
+import { createToolResultCheckpointInTransaction, isCheckpointEligibleToolResult } from "@/lib/server/agent/run-checkpoints";
 import { getAutonomyConfig, getToolAutonomyLevel } from "@/lib/server/agent/autonomy";
 import { startToolSpan, NOOP_SPAN } from "./tracing";
 import type { TracingSpan } from "./tracing";
@@ -111,6 +115,71 @@ function buildArtifactMetadata(params: {
         artifactVersion: params.artifact.version ?? 1,
         emitToClient: params.emitToClient,
     };
+}
+
+function formatError(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
+}
+
+async function persistToolResultBoundary(params: {
+    runId: string;
+    conversationId?: string;
+    toolName: string;
+    toolResult: ToolResult;
+    durationMs?: number;
+}) {
+    if (!isCheckpointEligibleToolResult({
+        toolName: params.toolName,
+        toolResult: params.toolResult,
+    })) {
+        await recordRunEvent({
+            runId: params.runId,
+            type: "tool_result",
+            payload: params.toolResult,
+            extras: { toolName: params.toolName, durationMs: params.durationMs },
+            failureMode: "degrade",
+            degradationReason: "tool_result_persistence_failed",
+            logContext: `tool_result:${params.toolName}`,
+        });
+        return;
+    }
+
+    try {
+        const event = await prisma.$transaction(async (tx) => {
+            const created = await emitEventWithinTransaction(
+                tx,
+                params.runId,
+                "tool_result",
+                params.toolResult,
+                { toolName: params.toolName, durationMs: params.durationMs },
+            );
+            await createToolResultCheckpointInTransaction(tx, {
+                runId: params.runId,
+                conversationId: params.conversationId ?? null,
+                eventSequence: created.sequence,
+                toolName: params.toolName,
+                toolResult: params.toolResult,
+            });
+            return created;
+        });
+        noteObservedRunActivity(params.runId, event.createdAt);
+    } catch (error) {
+        await markRunDurabilityDegraded(
+            params.runId,
+            "tool_result_checkpoint_persistence_failed",
+        ).catch((markError) => {
+            console.error("[tool-autonomy] Failed to persist degraded durability state", {
+                runId: params.runId,
+                toolName: params.toolName,
+                error: formatError(markError),
+            });
+        });
+        console.error("[tool-autonomy] Failed to persist tool-result checkpoint boundary", {
+            runId: params.runId,
+            toolName: params.toolName,
+            error: formatError(error),
+        });
+    }
 }
 
 export async function executeToolWithAutonomyCore(
@@ -250,14 +319,12 @@ export async function executeToolWithAutonomyCore(
     const durationMs = Date.now() - startTime;
     toolSpan.update({ output: { success: !result.error, durationMs } }).end();
 
-    await recordRunEvent({
+    await persistToolResultBoundary({
         runId,
-        type: "tool_result",
-        payload: result,
-        extras: { toolName: toolCall.name, durationMs },
-        failureMode: "degrade",
-        degradationReason: "tool_result_persistence_failed",
-        logContext: `tool_result:${toolCall.name}`,
+        conversationId,
+        toolName: toolCall.name,
+        toolResult: result,
+        durationMs,
     });
 
     if (result.error || result.requiresUserInput || result.blockedByAutonomy) {

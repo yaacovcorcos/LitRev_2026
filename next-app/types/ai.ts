@@ -113,6 +113,7 @@ export type AIErrorEnvelope = {
 
 export type RunRecoveryRecommendation =
     | "reconnect"
+    | "continue_from_checkpoint"
     | "continue_from_durable_state"
     | "retry"
     | "stop_and_retry"

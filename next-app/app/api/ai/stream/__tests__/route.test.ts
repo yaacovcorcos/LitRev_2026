@@ -7,6 +7,8 @@ const mocks = vi.hoisted(() => ({
   ingestChatUnificationMetric: vi.fn(),
   streamChatWithArtifacts: vi.fn(),
   streamChat: vi.fn(),
+  resolveLatestValidRunCheckpoint: vi.fn(),
+  buildCheckpointContinuationContext: vi.fn(),
   resolveDurableContinuationSource: vi.fn(),
   buildDurableContinuationContext: vi.fn(),
 }));
@@ -44,6 +46,11 @@ vi.mock("@/lib/server/agent/durable-continuation", () => ({
   buildDurableContinuationContext: mocks.buildDurableContinuationContext,
 }));
 
+vi.mock("@/lib/server/agent/run-checkpoints", () => ({
+  resolveLatestValidRunCheckpoint: mocks.resolveLatestValidRunCheckpoint,
+  buildCheckpointContinuationContext: mocks.buildCheckpointContinuationContext,
+}));
+
 const { POST } = await import("../route");
 
 describe("/api/ai/stream route", () => {
@@ -58,7 +65,9 @@ describe("/api/ai/stream route", () => {
     });
     mocks.assertProjectAccess.mockResolvedValue(undefined);
     mocks.ingestChatUnificationMetric.mockResolvedValue(undefined);
+    mocks.resolveLatestValidRunCheckpoint.mockResolvedValue(null);
     mocks.resolveDurableContinuationSource.mockResolvedValue(null);
+    mocks.buildCheckpointContinuationContext.mockReturnValue("[CONTINUATION_CONTEXT]\nPersisted checkpoint");
     mocks.buildDurableContinuationContext.mockReturnValue("[CONTINUATION_CONTEXT]\nPersisted tool result");
   });
 
@@ -141,7 +150,59 @@ describe("/api/ai/stream route", () => {
     expect(chunks[1]?.error).toBe("simulated disconnect after run start");
   });
 
-  it("resolves a valid continuation source into stream runtime options", async () => {
+  it("prefers a valid checkpoint continuation source into stream runtime options", async () => {
+    mocks.resolveLatestValidRunCheckpoint.mockResolvedValue({
+      checkpointId: "checkpoint-1",
+      kind: "tool_result_ready",
+      conversationId: "conv-1",
+      nextStep: "reason_from_tool_result",
+      sourceRunId: "run-old",
+      sourceEventSequence: 7,
+      toolCallId: "call-1",
+      toolName: "search_pubmed",
+      toolResult: {
+        callId: "call-1",
+        result: { studies: [{ title: "Study A" }] },
+      },
+    });
+    mocks.streamChatWithArtifacts.mockImplementation(async function* () {
+      yield { type: "run_start", runId: "run-continued", conversationId: "conv-1" };
+      yield { type: "run_end", runId: "run-continued", conversationId: "conv-1", runStatus: "completed", stopReason: null };
+    });
+
+    const request = new NextRequest("http://localhost/api/ai/stream", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        userMessage: "Continue from the saved work",
+        context: "global",
+        options: {
+          conversationId: "conv-1",
+          continueFromRunId: "run-old",
+          agentMode: "general",
+          page: "ai",
+        },
+      }),
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(200);
+    await response.text();
+    expect(mocks.resolveLatestValidRunCheckpoint).toHaveBeenCalledWith({
+      runId: "run-old",
+      conversationId: "conv-1",
+    });
+    expect(mocks.buildCheckpointContinuationContext).toHaveBeenCalledTimes(1);
+    expect(mocks.resolveDurableContinuationSource).not.toHaveBeenCalled();
+    expect(mocks.streamChatWithArtifacts.mock.calls[0]?.[2]).toMatchObject({
+      conversationId: "conv-1",
+      continueFromRunId: "run-old",
+      replaceRunId: "run-old",
+      continuationContext: "[CONTINUATION_CONTEXT]\nPersisted checkpoint",
+    });
+  });
+
+  it("falls back to a valid durable continuation source when no checkpoint exists", async () => {
     mocks.resolveDurableContinuationSource.mockResolvedValue({
       kind: "tool_result",
       sourceRunId: "run-old",
@@ -177,6 +238,10 @@ describe("/api/ai/stream route", () => {
     const response = await POST(request);
     expect(response.status).toBe(200);
     await response.text();
+    expect(mocks.resolveLatestValidRunCheckpoint).toHaveBeenCalledWith({
+      runId: "run-old",
+      conversationId: "conv-1",
+    });
     expect(mocks.resolveDurableContinuationSource).toHaveBeenCalledWith({
       runId: "run-old",
       conversationId: "conv-1",
@@ -192,6 +257,7 @@ describe("/api/ai/stream route", () => {
   });
 
   it("emits a typed continuation-unavailable error chunk when the source is no longer valid", async () => {
+    mocks.resolveLatestValidRunCheckpoint.mockResolvedValue(null);
     mocks.resolveDurableContinuationSource.mockResolvedValue(null);
 
     const request = new NextRequest("http://localhost/api/ai/stream", {

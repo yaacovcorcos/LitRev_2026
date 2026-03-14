@@ -12,6 +12,7 @@ export const RUN_RECOVERY_FAILED_MESSAGE = "Connection lost and recovery failed.
 export const RUN_RECOVERY_STALLED_PROGRESS_MESSAGE = "The active run stopped making durable progress. Choose how to continue.";
 export const RUN_RECOVERY_FINALIZATION_FAILED_MESSAGE = "The run could not finalize cleanly. Choose how to continue.";
 export const RUN_RECOVERY_ACTIVE_RUN_HELD_MESSAGE = "The active run is still holding this conversation. Choose how to continue.";
+export const RUN_RECOVERY_CONTINUE_FROM_CHECKPOINT_MESSAGE = "Saved progress is available. Continue from the latest checkpoint.";
 export const RUN_RECOVERY_CONTINUE_FROM_DURABLE_STATE_MESSAGE = "Saved work is available. Continue from the latest durable state.";
 
 export async function fetchRunRecovery(params: {
@@ -70,6 +71,9 @@ export function getRunRecoveryMessage(params: {
     }
 
     if (params.outcome === "needs_user_action") {
+        if (params.response?.recoveryRecommendation === "continue_from_checkpoint") {
+            return RUN_RECOVERY_CONTINUE_FROM_CHECKPOINT_MESSAGE;
+        }
         if (params.response?.recoveryRecommendation === "continue_from_durable_state") {
             return RUN_RECOVERY_CONTINUE_FROM_DURABLE_STATE_MESSAGE;
         }
@@ -141,6 +145,10 @@ export async function pollRunRecovery(params: {
         }
 
         if (response.recoveryRecommendation === "continue_from_durable_state") {
+            return { outcome: "needs_user_action", response, lastAppliedSequence };
+        }
+
+        if (response.recoveryRecommendation === "continue_from_checkpoint") {
             return { outcome: "needs_user_action", response, lastAppliedSequence };
         }
 

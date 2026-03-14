@@ -252,6 +252,7 @@ function getSameRunErrorAuthority(errorMeta: AIErrorEnvelope | null | undefined)
         errorMeta.kind === "run_conflict"
         || errorMeta.code === "RUN_RECOVERY_REQUIRES_USER_ACTION"
         || errorMeta.recoveryRecommendation === "stop_and_retry"
+        || errorMeta.recoveryRecommendation === "continue_from_checkpoint"
         || errorMeta.recoveryRecommendation === "continue_from_durable_state"
         || errorMeta.recoveryRecommendation === "reconnect"
     ) {

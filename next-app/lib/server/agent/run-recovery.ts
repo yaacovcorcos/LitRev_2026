@@ -4,6 +4,7 @@ import { prisma } from "@/lib/server/prisma";
 import { DEFAULT_CONVERSATION_RUN_STALE_MS } from "@/lib/server/chat-runtime/conversation-run-lock";
 import { assessRunConvergence } from "@/lib/server/agent/run-convergence";
 import { resolveDurableContinuationSource } from "@/lib/server/agent/durable-continuation";
+import { resolveLatestValidRunCheckpoint } from "@/lib/server/agent/run-checkpoints";
 import {
     RECOVERY_AUTHORITATIVE_RUN_EVENT_TYPES,
     type RecoveryAuthoritativeRunEventType,
@@ -296,15 +297,23 @@ export async function buildRunRecoveryResponse(params: {
         .map((event) => toReplayableChunk(run, event, artifactsById))
         .filter((event): event is RunRecoveryReplayableChunk => event !== null);
     const convergence = assessRunConvergence(run, now, staleMs);
-    const durableContinuationSource = convergence.recoveryRecommendation === "reconnect"
+    const checkpointContinuationSource = convergence.recoveryRecommendation === "reconnect"
+        ? null
+        : await resolveLatestValidRunCheckpoint({
+            runId: run.id,
+            conversationId: params.conversationId,
+        });
+    const durableContinuationSource = (checkpointContinuationSource || convergence.recoveryRecommendation === "reconnect")
         ? null
         : await resolveDurableContinuationSource({
             runId: run.id,
             conversationId: params.conversationId,
         });
-    const recoveryRecommendation = durableContinuationSource
-        ? "continue_from_durable_state"
-        : convergence.recoveryRecommendation;
+    const recoveryRecommendation = checkpointContinuationSource
+        ? "continue_from_checkpoint"
+        : durableContinuationSource
+            ? "continue_from_durable_state"
+            : convergence.recoveryRecommendation;
 
     return {
         conversationId: params.conversationId,
