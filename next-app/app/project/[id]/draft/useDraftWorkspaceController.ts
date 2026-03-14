@@ -34,11 +34,12 @@ import {
 import { useProjects } from "@/contexts/ProjectsContext";
 import { useLedger } from "@/contexts/LedgerContext";
 import { useProjectShell } from "@/contexts/ProjectShellContext";
+import { useProjectCopilotSafe } from "@/contexts/ProjectCopilotContext";
 import { usePopupChat } from "@/contexts/PopupChatContext";
 import { useContextCaptureActions } from "@/hooks/useContextCaptureActions";
 import { buildDraftSelectionTarget } from "@/lib/context-capture/targets";
 import { getContextCaptureAction } from "@/lib/context-capture/actions";
-import { COARSE_POINTER_MEDIA_QUERY, MOBILE_VIEWPORT_MEDIA_QUERY } from "@/lib/mobile/breakpoints";
+import { COMPACT_MEDIA_QUERY, PHONE_MEDIA_QUERY } from "@/lib/mobile/breakpoints";
 import { isMobileDraftV2Enabled } from "@/lib/mobile/feature-flags";
 import { isContextToolbarV1Enabled } from "@/lib/context-capture/feature-flags";
 import { useDraftExport } from "./useDraftExport";
@@ -68,6 +69,7 @@ import {
 } from "./workspace-view-model";
 import { OPTIONAL_SECTION_KEYS, type DraftSectionId } from "@/types/draft";
 import type { ManuscriptDocument } from "@/types/manuscript";
+import type { UtilityPaneMode } from "./DraftUtilityDock";
 
 type ControllerParams = {
   projectId: string;
@@ -94,6 +96,7 @@ export function useDraftWorkspaceController({ projectId }: ControllerParams) {
   const { getProjectById, isLoadingProjects, projectsError } = useProjects();
   const { getStudiesByProject } = useLedger();
   const { isEmbeddedInProjectShell } = useProjectShell();
+  const projectCopilot = useProjectCopilotSafe();
   const { openPopupChat } = usePopupChat();
   const { captureEnabled, openPopupForTarget, runAction } = useContextCaptureActions();
   const contextToolbarEnabled = isContextToolbarV1Enabled();
@@ -118,9 +121,9 @@ export function useDraftWorkspaceController({ projectId }: ControllerParams) {
     activeBlockId: null,
   });
   const [editorMap, setEditorMap] = useState<DraftEditorMap | null>(null);
+  const [isPhoneWorkspace, setPhoneWorkspace] = useState(false);
   const [isCompactWorkspace, setCompactWorkspace] = useState(false);
-  const [isStructureDrawerOpen, setStructureDrawerOpen] = useState(false);
-  const [isContextDrawerOpen, setContextDrawerOpen] = useState(false);
+  const [utilityPaneMode, setUtilityPaneMode] = useState<UtilityPaneMode>("closed");
   const [collapsedSectionIds, setCollapsedSectionIds] = useState<Set<DraftSectionId>>(new Set());
   const [draggingSectionId, setDraggingSectionId] = useState<DraftSectionId | null>(null);
   const [dragOverSectionId, setDragOverSectionId] = useState<DraftSectionId | null>(null);
@@ -135,6 +138,7 @@ export function useDraftWorkspaceController({ projectId }: ControllerParams) {
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSyncedUrlRef = useRef("");
   const initialJumpSectionRef = useRef<DraftSectionId | null>(querySection?.trim() ? querySection : null);
+  const restoreCopilotAfterDrawerRef = useRef(false);
 
   const { draft: cachedDraft, warmDomain } = useProjectData();
   const appliedCachedRef = useRef(false);
@@ -235,28 +239,51 @@ export function useDraftWorkspaceController({ projectId }: ControllerParams) {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const viewportQuery = window.matchMedia(MOBILE_VIEWPORT_MEDIA_QUERY);
-    const pointerQuery = window.matchMedia(COARSE_POINTER_MEDIA_QUERY);
+    const phoneQuery = window.matchMedia(PHONE_MEDIA_QUERY);
+    const compactQuery = window.matchMedia(COMPACT_MEDIA_QUERY);
     const updateWorkspaceMode = () => {
-      setCompactWorkspace(viewportQuery.matches || pointerQuery.matches);
-      setShowDesktopContextToolbar(!viewportQuery.matches && !pointerQuery.matches && contextToolbarEnabled);
+      const isPhone = phoneQuery.matches;
+      const isCompact = compactQuery.matches;
+      setPhoneWorkspace(isPhone);
+      setCompactWorkspace(isPhone || isCompact);
+      setShowDesktopContextToolbar(!isPhone && !isCompact && contextToolbarEnabled);
     };
     updateWorkspaceMode();
-    if (typeof viewportQuery.addEventListener === "function") {
-      viewportQuery.addEventListener("change", updateWorkspaceMode);
-      pointerQuery.addEventListener("change", updateWorkspaceMode);
+    if (typeof phoneQuery.addEventListener === "function") {
+      phoneQuery.addEventListener("change", updateWorkspaceMode);
+      compactQuery.addEventListener("change", updateWorkspaceMode);
       return () => {
-        viewportQuery.removeEventListener("change", updateWorkspaceMode);
-        pointerQuery.removeEventListener("change", updateWorkspaceMode);
+        phoneQuery.removeEventListener("change", updateWorkspaceMode);
+        compactQuery.removeEventListener("change", updateWorkspaceMode);
       };
     }
-    viewportQuery.addListener(updateWorkspaceMode);
-    pointerQuery.addListener(updateWorkspaceMode);
+    phoneQuery.addListener(updateWorkspaceMode);
+    compactQuery.addListener(updateWorkspaceMode);
     return () => {
-      viewportQuery.removeListener(updateWorkspaceMode);
-      pointerQuery.removeListener(updateWorkspaceMode);
+      phoneQuery.removeListener(updateWorkspaceMode);
+      compactQuery.removeListener(updateWorkspaceMode);
     };
   }, [contextToolbarEnabled]);
+
+  useEffect(() => {
+    if (!projectCopilot || isEmbeddedInProjectShell) return;
+    const shouldCollapseCopilot = utilityPaneMode !== "closed" && isCompactWorkspace && !isPhoneWorkspace;
+    if (shouldCollapseCopilot && !projectCopilot.isCollapsed) {
+      restoreCopilotAfterDrawerRef.current = true;
+      projectCopilot.setCollapsed(true);
+      return;
+    }
+    if (!shouldCollapseCopilot && restoreCopilotAfterDrawerRef.current) {
+      restoreCopilotAfterDrawerRef.current = false;
+      projectCopilot.setCollapsed(false);
+    }
+  }, [isCompactWorkspace, isEmbeddedInProjectShell, isPhoneWorkspace, projectCopilot, utilityPaneMode]);
+
+  useEffect(() => () => {
+    if (!restoreCopilotAfterDrawerRef.current) return;
+    projectCopilot?.setCollapsed(false);
+    restoreCopilotAfterDrawerRef.current = false;
+  }, [projectCopilot]);
 
   useEffect(() => {
     if (!isFormatOpen) return;
@@ -278,6 +305,25 @@ export function useDraftWorkspaceController({ projectId }: ControllerParams) {
       document.removeEventListener("keydown", onKeyDown);
     };
   }, [isFormatOpen]);
+
+  const closeUtilityPane = useCallback(() => {
+    setUtilityPaneMode("closed");
+  }, []);
+
+  const toggleUtilityPane = useCallback((mode: Exclude<UtilityPaneMode, "closed">) => {
+    setUtilityPaneMode((prev) => (prev === mode ? "closed" : mode));
+  }, []);
+
+  useEffect(() => {
+    if (utilityPaneMode === "closed") return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setUtilityPaneMode("closed");
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [utilityPaneMode]);
 
   useEffect(() => {
     if (!projectId) return;
@@ -450,17 +496,16 @@ export function useDraftWorkspaceController({ projectId }: ControllerParams) {
     const focusPosition = getSectionFocusPosition(editorMap, sectionId);
     if (focusPosition == null) return;
     editorRef.current.chain().focus(focusPosition).run();
-    setStructureDrawerOpen(false);
-    setContextDrawerOpen(false);
-  }, [editorMap]);
+    closeUtilityPane();
+  }, [closeUtilityPane, editorMap]);
 
   const focusHeading = useCallback((sectionId: DraftSectionId, headingId: string) => {
     if (!editorRef.current || !editorMap) return;
     const focusPosition = getHeadingFocusPosition(editorMap, sectionId, headingId);
     if (focusPosition == null) return;
     editorRef.current.chain().focus(focusPosition).run();
-    setStructureDrawerOpen(false);
-  }, [editorMap]);
+    closeUtilityPane();
+  }, [closeUtilityPane, editorMap]);
 
   const focusBlock = useCallback((blockId: string) => {
     if (!editorRef.current || !editorMap) return;
@@ -848,14 +893,14 @@ export function useDraftWorkspaceController({ projectId }: ControllerParams) {
     insertCopilotText,
     isAddEvidenceOpen,
     isCompactWorkspace,
-    isContextDrawerOpen,
     isEmbeddedInProjectShell,
     isExportModalOpen,
     isFormatOpen,
     isLoadingProjects,
     isMobileDraftV2Enabled: mobileDraftV2Enabled,
+    isPhoneWorkspace,
     isReferencesSection,
-    isStructureDrawerOpen,
+    isUtilityPaneOpen: utilityPaneMode !== "closed",
     latestExport,
     openPopupForTarget,
     orderedSections,
@@ -867,12 +912,10 @@ export function useDraftWorkspaceController({ projectId }: ControllerParams) {
     selectionState,
     sendToCopilotAction,
     setAddEvidenceOpen,
-    setContextDrawerOpen,
     setCustomSectionName,
     setExportModalOpen,
     setExportMode,
     setFormatOpen,
-    setStructureDrawerOpen,
     showDesktopContextToolbar,
     showResultsGuide,
     statusLabelByKey,
@@ -887,9 +930,12 @@ export function useDraftWorkspaceController({ projectId }: ControllerParams) {
     focusHeading,
     focusSection,
     addOptionalSection,
+    closeUtilityPane,
     removeSection,
     moveSelectedBlock,
     rewriteSelectionAction,
     sectionMetaById,
+    toggleUtilityPane,
+    utilityPaneMode,
   };
 }

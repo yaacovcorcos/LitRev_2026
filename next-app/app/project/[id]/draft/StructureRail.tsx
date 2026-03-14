@@ -34,7 +34,7 @@ function isRemovableSection(sectionId: DraftSectionId, kind: "base" | "custom") 
   return kind === "custom" || OPTIONAL_SECTION_KEYS.includes(sectionId as (typeof OPTIONAL_SECTION_KEYS)[number]);
 }
 
-export function StructureRail({
+export function OutlinePane({
   outline,
   activeSection,
   collapsedSectionIds,
@@ -58,11 +58,11 @@ export function StructureRail({
   onDragEnd,
 }: StructureRailProps) {
   return (
-    <aside className={styles.structureRail} aria-label="Draft outline">
-      <div className={styles.railHeader}>
+    <div className={styles.outlinePane} data-testid="outline-pane">
+      <div className={styles.utilityPaneHeader}>
         <div>
-          <div className={styles.railEyebrow}>Structure</div>
-          <h2 className={styles.railTitle}>Manuscript</h2>
+          <div className={styles.utilityPaneEyebrow}>Navigate</div>
+          <h2 className={styles.utilityPaneTitle}>Outline</h2>
         </div>
       </div>
 
@@ -150,7 +150,7 @@ export function StructureRail({
 
       <div className={styles.structureFooter}>
         <div className={styles.structureAddCard}>
-          <div className={styles.railEyebrow}>Add section</div>
+          <div className={styles.utilityPaneEyebrow}>Add section</div>
           <div className={styles.structureAddRow}>
             <input
               type="text"
@@ -185,6 +185,6 @@ export function StructureRail({
           ) : null}
         </div>
       </div>
-    </aside>
+    </div>
   );
 }

@@ -411,6 +411,16 @@ These are implementation tracks for one target state, not separate product versi
 - Blast radius: high UI change concentrated in the draft route.
 - Implementation note (March 13, 2026): the draft route now runs on a single manuscript editor with a structure rail, a context rail, section-aware mobile drawers, references locked in-flow, and block-level selection/reorder controls while preserving `DraftState v2` compatibility and project-shell embedding.
 
+### `DRX-002R` Draft visual reset with one left utility drawer
+- Correct the first `DRX-002` shell implementation so the manuscript becomes visually primary again.
+- Replace the permanent draft-owned structure and context rails with one host-owned left utility drawer.
+- Reserve the right side exclusively for the existing project copilot shell; draft does not add a second right-side panel.
+- Share the left drawer between `Outline` and `Evidence` modes.
+- Keep the drawer closed by default and anchor it to the draft workspace host instead of the global page shell.
+- Preserve all current manuscript, citation, export, and evidence behaviors while resetting the visual hierarchy.
+- Blast radius: medium/high UI change concentrated in the draft route and its host layout contract.
+- Implementation note (March 14, 2026): the draft route now uses a single left utility dock and overlay drawer, a quieter manuscript header, compact outline and evidence panes, a centered manuscript measure around `820px`, and no draft-owned right-side panel.
+
 ### `DRX-003` Comments, suggestions, and checkpoints
 - Introduce review entities, anchor model, review rail, suggestion mode, and compare/restore UI.
 - Generalize history from backend-only `DraftVersion` to first-class draft UX.
@@ -538,6 +548,7 @@ These are implementation tracks for one target state, not separate product versi
 - Journal-specific export rules are profile-driven and additive; the manuscript model itself should stay journal-agnostic.
 
 ## Recently Completed
+- `DRX-002R` shipped the one-left-drawer manuscript shell and removed the draft-owned right panel from the route.
 - [x] `DRX-001` Defined the canonical manuscript schema, stable block identity, and `DraftState v2` migration contract. Draft save/load now normalize legacy payloads into a canonical manuscript document plus `contentBySection` compatibility projection, and direct draft writers use the same normalizer.
 
 ## Active Tasks

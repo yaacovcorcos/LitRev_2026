@@ -13,7 +13,7 @@ type DraftContextRailProps = {
   studyLabel: (study: Study) => string;
 };
 
-export function DraftContextRail({
+export function EvidencePane({
   activeSectionLabel,
   isReferencesSection,
   usedEvidence,
@@ -23,11 +23,12 @@ export function DraftContextRail({
   studyLabel,
 }: DraftContextRailProps) {
   return (
-    <aside className={styles.contextRail} aria-label="Draft context">
-      <div className={styles.railHeader}>
+    <div className={styles.evidencePane} data-testid="evidence-pane">
+      <div className={styles.utilityPaneHeader}>
         <div>
-          <div className={styles.railEyebrow}>Context</div>
-          <h2 className={styles.railTitle}>Evidence Ledger</h2>
+          <div className={styles.utilityPaneEyebrow}>Context</div>
+          <h2 className={styles.utilityPaneTitle}>Evidence</h2>
+          <div className={styles.utilityPaneMeta}>For {activeSectionLabel}</div>
         </div>
         {!isReferencesSection ? (
           <button
@@ -41,28 +42,17 @@ export function DraftContextRail({
         ) : null}
       </div>
 
-      <div className={styles.railContextLine}>
-        <span className={styles.railContextLabel}>For</span>
-        <span className={styles.railContextValue}>{activeSectionLabel}</span>
-      </div>
-
       <div className={styles.panelBody}>
         {isReferencesSection ? (
           <div className={styles.emptyPanel}>
-            <div className={styles.emptyIcon}>
-              <span className="material-icons-round">auto_awesome</span>
-            </div>
-            <h3>Auto-generated section</h3>
-            <p>References are generated from citation nodes in the manuscript.</p>
+            <div className={styles.emptyPanelTitle}>Auto-generated section</div>
+            <p>References are generated from citations in the manuscript.</p>
           </div>
         ) : usedEvidence.length === 0 ? (
           <div className={styles.emptyPanel}>
-            <div className={styles.emptyIcon}>
-              <span className="material-icons-round">library_add</span>
-            </div>
-            <h3>No evidence yet</h3>
-            <p>Add papers you’ll cite for this section.</p>
-            <button type="button" className="header-btn header-btn-primary" onClick={onAddEvidence}>
+            <div className={styles.emptyPanelTitle}>No evidence yet</div>
+            <p>Add papers you will cite for this section.</p>
+            <button type="button" className={styles.smallBtn} onClick={onAddEvidence}>
               Add evidence
             </button>
           </div>
@@ -87,6 +77,6 @@ export function DraftContextRail({
           </div>
         )}
       </div>
-    </aside>
+    </div>
   );
 }

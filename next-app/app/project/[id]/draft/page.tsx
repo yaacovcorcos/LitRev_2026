@@ -3,16 +3,17 @@
 import { Suspense } from "react";
 import { useParams } from "next/navigation";
 import dynamic from "next/dynamic";
-import { BaseBackButton } from "@/components/BaseBackButton";
 import { ProjectPageLayout } from "@/components/project/ProjectPageLayout";
 import { DemoGuideCard } from "@/components/project/DemoGuideCard";
 import { EmptyState, EmptyStateSkeleton } from "@/components/ui/EmptyState";
 import { AddEvidenceModal } from "./AddEvidenceModal";
-import { DraftContextRail } from "./DraftContextRail";
+import { EvidencePane } from "./DraftContextRail";
 import { EditorToolbar } from "./DraftEditors";
 import { DraftFormattingPanel, DraftWorkspaceHeader as WorkspaceHeader } from "./DraftToolbar";
+import { DraftUtilityDock } from "./DraftUtilityDock";
+import { DraftUtilityDrawer } from "./DraftUtilityDrawer";
 import { ManuscriptCanvas } from "./ManuscriptCanvas";
-import { StructureRail } from "./StructureRail";
+import { OutlinePane } from "./StructureRail";
 import { useDraftWorkspaceController } from "./useDraftWorkspaceController";
 import styles from "./draft-studio.module.css";
 
@@ -70,8 +71,8 @@ function DraftContent() {
     );
   }
 
-  const structureRail = (
-    <StructureRail
+  const outlinePane = (
+    <OutlinePane
       outline={controller.outlineView}
       activeSection={controller.draft.activeSection}
       collapsedSectionIds={controller.collapsedSectionIds}
@@ -96,8 +97,8 @@ function DraftContent() {
     />
   );
 
-  const contextRail = (
-    <DraftContextRail
+  const evidencePane = (
+    <EvidencePane
       activeSectionLabel={controller.activeSectionLabel}
       isReferencesSection={controller.isReferencesSection}
       usedEvidence={controller.usedEvidence}
@@ -116,9 +117,6 @@ function DraftContent() {
           hasDraftContent={controller.hasDraftContent}
           onExportClick={() => controller.setExportModalOpen(true)}
           saveStatus={controller.saveStatus}
-          showCompactControls={controller.isCompactWorkspace}
-          onToggleStructureRail={() => controller.setStructureDrawerOpen((prev) => !prev)}
-          onToggleContextRail={() => controller.setContextDrawerOpen((prev) => !prev)}
         />
 
         <DemoGuideCard
@@ -137,142 +135,114 @@ function DraftContent() {
         ) : null}
 
         <div className={styles.workspaceBody}>
-          {!controller.isCompactWorkspace ? structureRail : null}
+          <div className={styles.workspaceHost}>
+            <DraftUtilityDock
+              activeMode={controller.utilityPaneMode}
+              evidenceCount={controller.usedEvidence.length}
+              onToggleMode={controller.toggleUtilityPane}
+            />
 
-          <section className={styles.center} aria-label="Draft editor">
-            <div className={styles.centerHeader}>
-              <div className={styles.centerTitle}>
-                {!controller.isEmbeddedInProjectShell ? (
-                  <BaseBackButton
-                    href={`/project/${id}`}
-                    label="Back to project"
-                    className={styles.draftBackBtn}
-                  />
+            {controller.utilityPaneMode !== "closed" ? (
+              <DraftUtilityDrawer
+                mode={controller.utilityPaneMode}
+                isPhone={controller.isPhoneWorkspace}
+                onClose={controller.closeUtilityPane}
+              >
+                {controller.utilityPaneMode === "outline" ? outlinePane : evidencePane}
+              </DraftUtilityDrawer>
+            ) : null}
+
+            <section className={styles.center} aria-label="Draft editor">
+              <div className={styles.toolbarRow}>
+                <EditorToolbar
+                  editor={controller.editor}
+                  dir={controller.paragraphDir}
+                  onAskAi={controller.handleAskAi}
+                />
+
+                {showDraftContextToolbar ? (
+                  <div className={styles.contextActionStrip} role="group" aria-label="Draft context actions">
+                    <div className={styles.contextActionMeta}>Draft context</div>
+                    <button
+                      type="button"
+                      className={styles.contextActionPrimary}
+                      onClick={() => controller.handleDraftContextAction(
+                        "send_to_copilot",
+                        controller.sendToCopilotAction.defaultPrompt ?? "Use this context in your answer.",
+                      )}
+                      disabled={!controller.canRunDraftContextActions}
+                      title={controller.canRunDraftContextActions ? "Attach this draft context to the copilot composer." : "Add draft text to enable context actions."}
+                    >
+                      <span className="material-icons-round">{controller.sendToCopilotAction.icon}</span>
+                      {controller.sendToCopilotAction.label}
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.contextActionButton}
+                      onClick={() => controller.handleDraftContextAction(
+                        "rewrite_selection",
+                        controller.rewriteSelectionAction.defaultPrompt ?? "Rewrite this text for clarity while preserving the meaning and staying conservative.",
+                      )}
+                      disabled={!controller.canRunDraftContextActions}
+                    >
+                      <span className="material-icons-round">{controller.rewriteSelectionAction.icon}</span>
+                      {controller.rewriteSelectionAction.label}
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.contextActionButton}
+                      onClick={() => controller.handleDraftContextAction(
+                        "check_claim_support",
+                        controller.checkClaimSupportAction.defaultPrompt ?? "Check whether this claim is supported and point out any missing or weak evidence.",
+                      )}
+                      disabled={!controller.canRunDraftContextActions}
+                    >
+                      <span className="material-icons-round">{controller.checkClaimSupportAction.icon}</span>
+                      {controller.checkClaimSupportAction.label}
+                    </button>
+                  </div>
                 ) : null}
-                <span className="material-icons-round">edit</span>
-                {controller.activeSectionLabel}
+
+                <DraftFormattingPanel
+                  isOpen={controller.isFormatOpen}
+                  setOpen={controller.setFormatOpen}
+                  formatRef={controller.formatRef}
+                  activeSection={controller.draft.activeSection}
+                  activeFormat={controller.activeFormat}
+                  activeFontFamily={controller.activeFontFamily}
+                  onUpdateFormat={controller.updateSectionFormat}
+                />
               </div>
-            </div>
 
-            <div className={styles.toolbarRow}>
-              <EditorToolbar
-                editor={controller.editor}
-                dir={controller.paragraphDir}
-                onAskAi={controller.handleAskAi}
-              />
-
-              {showDraftContextToolbar ? (
-                <div className={styles.contextActionStrip} role="group" aria-label="Draft context actions">
-                  <div className={styles.contextActionMeta}>Draft context</div>
-                  <button
-                    type="button"
-                    className={styles.contextActionPrimary}
-                    onClick={() => controller.handleDraftContextAction(
-                      "send_to_copilot",
-                      controller.sendToCopilotAction.defaultPrompt ?? "Use this context in your answer.",
-                    )}
-                    disabled={!controller.canRunDraftContextActions}
-                    title={controller.canRunDraftContextActions ? "Attach this draft context to the copilot composer." : "Add draft text to enable context actions."}
-                  >
-                    <span className="material-icons-round">{controller.sendToCopilotAction.icon}</span>
-                    {controller.sendToCopilotAction.label}
-                  </button>
-                  <button
-                    type="button"
-                    className={styles.contextActionButton}
-                    onClick={() => controller.handleDraftContextAction(
-                      "rewrite_selection",
-                      controller.rewriteSelectionAction.defaultPrompt ?? "Rewrite this text for clarity while preserving the meaning and staying conservative.",
-                    )}
-                    disabled={!controller.canRunDraftContextActions}
-                  >
-                    <span className="material-icons-round">{controller.rewriteSelectionAction.icon}</span>
-                    {controller.rewriteSelectionAction.label}
-                  </button>
-                  <button
-                    type="button"
-                    className={styles.contextActionButton}
-                    onClick={() => controller.handleDraftContextAction(
-                      "check_claim_support",
-                      controller.checkClaimSupportAction.defaultPrompt ?? "Check whether this claim is supported and point out any missing or weak evidence.",
-                    )}
-                    disabled={!controller.canRunDraftContextActions}
-                  >
-                    <span className="material-icons-round">{controller.checkClaimSupportAction.icon}</span>
-                    {controller.checkClaimSupportAction.label}
-                  </button>
+              {controller.citationIssues.length > 0 ? (
+                <div className={styles.citationIssues} role="status" aria-live="polite">
+                  <div className={styles.citationIssuesTitle}>
+                    <span className="material-icons-round">warning</span>
+                    {controller.citationIssues.length} citation issue{controller.citationIssues.length === 1 ? "" : "s"} detected
+                  </div>
+                  <ul className={styles.citationIssuesList}>
+                    {controller.citationIssues.slice(0, 3).map((issue) => (
+                      <li key={`${issue.uid}-${issue.type}`}>{issue.message}</li>
+                    ))}
+                  </ul>
                 </div>
               ) : null}
 
-              <DraftFormattingPanel
-                isOpen={controller.isFormatOpen}
-                setOpen={controller.setFormatOpen}
-                formatRef={controller.formatRef}
-                activeSection={controller.draft.activeSection}
-                activeFormat={controller.activeFormat}
-                activeFontFamily={controller.activeFontFamily}
-                onUpdateFormat={controller.updateSectionFormat}
+              <ManuscriptCanvas
+                manuscriptDoc={controller.draft.manuscript.doc}
+                formatVarsById={controller.formatVarsById}
+                activeBlockId={controller.selectionState.activeBlockId}
+                selectedBlockEntry={controller.activeBlockEntry}
+                onEditorReady={controller.handleEditorReady}
+                onManuscriptChange={controller.handleManuscriptChange}
+                onEditorMapChange={controller.handleEditorMapChange}
+                onSelectionUpdate={controller.handleSelectionUpdate}
+                onEditorSignalsChange={controller.syncFormattingFromEditor}
+                onMoveSelectedBlock={controller.moveSelectedBlock}
               />
-            </div>
-
-            {controller.citationIssues.length > 0 ? (
-              <div className={styles.citationIssues} role="status" aria-live="polite">
-                <div className={styles.citationIssuesTitle}>
-                  <span className="material-icons-round">warning</span>
-                  {controller.citationIssues.length} citation issue{controller.citationIssues.length === 1 ? "" : "s"} detected
-                </div>
-                <ul className={styles.citationIssuesList}>
-                  {controller.citationIssues.slice(0, 3).map((issue) => (
-                    <li key={`${issue.uid}-${issue.type}`}>{issue.message}</li>
-                  ))}
-                </ul>
-              </div>
-            ) : null}
-
-            <ManuscriptCanvas
-              manuscriptDoc={controller.draft.manuscript.doc}
-              formatVarsById={controller.formatVarsById}
-              activeBlockId={controller.selectionState.activeBlockId}
-              selectedBlockEntry={controller.activeBlockEntry}
-              onEditorReady={controller.handleEditorReady}
-              onManuscriptChange={controller.handleManuscriptChange}
-              onEditorMapChange={controller.handleEditorMapChange}
-              onSelectionUpdate={controller.handleSelectionUpdate}
-              onEditorSignalsChange={controller.syncFormattingFromEditor}
-              onMoveSelectedBlock={controller.moveSelectedBlock}
-            />
-          </section>
-
-          {!controller.isCompactWorkspace ? contextRail : null}
+            </section>
+          </div>
         </div>
-
-        {controller.isCompactWorkspace && controller.isStructureDrawerOpen ? (
-          <div className={styles.drawerOverlay} role="presentation">
-            <button
-              type="button"
-              className={styles.drawerBackdrop}
-              aria-label="Close structure drawer"
-              onClick={() => controller.setStructureDrawerOpen(false)}
-            />
-            <div className={`${styles.drawerPanel} ${styles.drawerPanelLeft}`}>
-              {structureRail}
-            </div>
-          </div>
-        ) : null}
-
-        {controller.isCompactWorkspace && controller.isContextDrawerOpen ? (
-          <div className={styles.drawerOverlay} role="presentation">
-            <button
-              type="button"
-              className={styles.drawerBackdrop}
-              aria-label="Close context drawer"
-              onClick={() => controller.setContextDrawerOpen(false)}
-            />
-            <div className={`${styles.drawerPanel} ${styles.drawerPanelRight}`}>
-              {contextRail}
-            </div>
-          </div>
-        ) : null}
       </div>
 
       <AddEvidenceModal

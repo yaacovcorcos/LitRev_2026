@@ -146,6 +146,7 @@ export const ManuscriptSection = TiptapNode.create({
     const label = typeof node.attrs.label === "string" && node.attrs.label ? node.attrs.label : sectionId;
     const sectionNodeId = typeof node.attrs.sectionNodeId === "string" ? node.attrs.sectionNodeId : "";
     const readOnly = sectionId === "references";
+    const eyebrow = readOnly ? "Generated references" : "";
     return [
       "section",
       mergeAttributes(HTMLAttributes, {
@@ -161,7 +162,7 @@ export const ManuscriptSection = TiptapNode.create({
           class: styles.manuscriptSectionChrome,
           contenteditable: "false",
         },
-        ["div", { class: styles.manuscriptSectionEyebrow }, readOnly ? "Generated section" : "Manuscript section"],
+        ["div", { class: styles.manuscriptSectionEyebrow }, eyebrow],
         ["h2", { class: styles.manuscriptSectionNodeTitle }, label],
       ],
       ["div", { class: styles.manuscriptSectionContent, "data-manuscript-section-content": "true" }, 0],

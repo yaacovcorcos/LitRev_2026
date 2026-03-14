@@ -44,11 +44,19 @@ vi.mock("@/components/ExportModal", () => ({
 }));
 
 vi.mock("../DraftContextRail", () => ({
-  DraftContextRail: () => <div data-testid="draft-context-rail" />,
+  EvidencePane: () => <div data-testid="evidence-pane" />,
 }));
 
 vi.mock("../StructureRail", () => ({
-  StructureRail: () => <div data-testid="structure-rail" />,
+  OutlinePane: () => <div data-testid="outline-pane" />,
+}));
+
+vi.mock("../DraftUtilityDock", () => ({
+  DraftUtilityDock: () => <div data-testid="utility-dock" />,
+}));
+
+vi.mock("../DraftUtilityDrawer", () => ({
+  DraftUtilityDrawer: ({ children }: { children: ReactNode }) => <div data-testid="utility-drawer">{children}</div>,
 }));
 
 vi.mock("../ManuscriptCanvas", () => ({
@@ -60,18 +68,10 @@ vi.mock("../DraftEditors", () => ({
 }));
 
 vi.mock("../DraftToolbar", () => ({
-  DraftWorkspaceHeader: ({
-    projectName,
-    showCompactControls,
-  }: {
-    projectName: string;
-    showCompactControls: boolean;
-  }) => (
+  DraftWorkspaceHeader: ({ projectName }: { projectName: string }) => (
     <div>
       <div>{projectName}</div>
-      <div>Continuous manuscript workspace</div>
-      {showCompactControls ? <button type="button">Outline</button> : null}
-      {showCompactControls ? <button type="button">Context</button> : null}
+      <div>Draft</div>
     </div>
   ),
   DraftFormattingPanel: () => <div data-testid="formatting-panel" />,
@@ -95,8 +95,11 @@ function createController(overrides: Partial<ReturnType<typeof mockUseDraftWorks
     hasDraftContent: true,
     saveStatus: "saved" as const,
     isCompactWorkspace: false,
-    setStructureDrawerOpen: vi.fn(),
-    setContextDrawerOpen: vi.fn(),
+    isPhoneWorkspace: false,
+    utilityPaneMode: "closed" as const,
+    isUtilityPaneOpen: false,
+    toggleUtilityPane: vi.fn(),
+    closeUtilityPane: vi.fn(),
     showResultsGuide: false,
     outlineView: [],
     draft: {
@@ -186,26 +189,27 @@ describe("Draft page", () => {
   it("renders the continuous manuscript workspace shell", () => {
     render(<DraftPage />);
 
-    expect(screen.getByText("Continuous manuscript workspace")).toBeTruthy();
-    expect(screen.getByTestId("structure-rail")).toBeTruthy();
-    expect(screen.getByTestId("draft-context-rail")).toBeTruthy();
+    expect(screen.getByText("Alpha Draft")).toBeTruthy();
+    expect(screen.getByTestId("utility-dock")).toBeTruthy();
     expect(screen.getByTestId("manuscript-canvas")).toBeTruthy();
+    expect(screen.queryByTestId("utility-drawer")).toBeNull();
     expect(screen.queryByText("Full Draft")).toBeNull();
     expect(screen.queryByText("Section")).toBeNull();
   });
 
-  it("shows compact drawer controls and suppresses standalone copilot when embedded", () => {
+  it("opens the shared utility drawer and suppresses standalone copilot when embedded", () => {
     mockUseDraftWorkspaceController.mockReturnValue(
       createController({
-        isCompactWorkspace: true,
+        utilityPaneMode: "outline",
+        isUtilityPaneOpen: true,
         isEmbeddedInProjectShell: true,
       }),
     );
 
     render(<DraftPage />);
 
-    expect(screen.getByText("Outline")).toBeTruthy();
-    expect(screen.getByText("Context")).toBeTruthy();
+    expect(screen.getByTestId("utility-drawer")).toBeTruthy();
+    expect(screen.getByTestId("outline-pane")).toBeTruthy();
     expect(screen.getByTestId("project-page-layout").getAttribute("data-has-copilot")).toBe("0");
   });
 });
