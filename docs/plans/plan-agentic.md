@@ -109,6 +109,7 @@ Every fix entry must include:
 - **Recovery Reconciliation Now Commits The Recovered Terminal Truth End-To-End:** recovered `/ai` and project-copilot runs now promote the replayed terminal `runStatus` back into outer completion/failure handling before fallback cleanup and telemetry fire, and recovery actions are bound to the clicked error item instead of a global “latest recovery” guess.
 - **Paused-Input Recovery Truth Now Survives Disconnects:** the existing recovery foundation now treats `paused_for_input` as a first-class non-error terminal outcome, persists and replays the missing durable question/checkpoint/artifact/error states needed to keep current surfaces truthful after disconnects, reconciles same-run timeout/conflict/fallback errors through one shared `runId` authority, and closes the remaining main-conversation reconnect / stop-and-retry wiring gap without claiming new popup parity.
 - **Recovery-Critical Persistence Now Uses An Explicit Durability Policy:** recovery-required runtime truth is now authored at the business event boundary instead of relying on the stream route as the first durable owner, observability-only event persistence failures soft-fail without breaking successful runs, and `AgentRun` now records degraded durability explicitly when recovery-critical persistence fails after useful work has already succeeded.
+- **Persisted Run Phase Now Anchors Recovery And Admission:** `AgentRun` now persists coarse `runPhase` and `phaseEnteredAt` lifecycle truth, authoritative phase writes happen only at durable tool/user-input/artifact/finalization boundaries, running ask-phase recovery re-surfaces as paused input instead of an active conflict, and stale finalize-phase runs stop masquerading as healthy reconnectable work while popup remains a truthful reduced subset only.
 - **Durable Continuation Now Starts Only From Proven Persisted State:** recovery can now recommend `continue_from_durable_state` for audited tool-result and artifact-state cases where the server can prove the next step from current persistence alone, and continuation starts a new run from explicit persisted inputs instead of transcript reconstruction or in-place pseudo-resume behavior.
 - **Context Assembly Now Degrades Optional DB-Backed Inputs Honestly:** critical authority still resolves before execution, but optional memory/protocol/ledger/study/project context now loads as best-effort after authority succeeds. When optional context fails, the run continues with a single pre-stream degraded-context checkpoint instead of aborting outright.
 - **Running-Run Freshness Now Uses `lastActivityAt`:** `AgentRun.lastActivityAt` is now updated through centralized lifecycle/event helpers plus a quiet-run heartbeat, conversation admission uses it instead of `startedAt`, and stale `running` rows can be cancelled safely instead of poisoning future sends after disconnects.
@@ -152,9 +153,8 @@ Every fix entry must include:
 Work should proceed in this order unless a production incident forces reprioritization:
 
 1. `FIX-011b` runtime stabilization, convergence, and durable continuation
-2. `CAG-001` explicit run-phase state machine
-3. `CAG-003` checkpointed retry/resume from durable state
-4. remaining roadmap phases after those contracts are stable
+2. `CAG-003` checkpointed retry/resume from durable state
+3. remaining roadmap phases after those contracts are stable
 
 ## End-to-End Delivery Program
 
@@ -184,9 +184,6 @@ Work should proceed in this order unless a production incident forces reprioriti
 
 ### Phase 0 — Control-Flow Safety and Human Interrupts
 
-- [ ] `CAG-001` Implement persisted run-phase authority for `plan -> ask -> act -> verify -> finalize`, so run lock, recovery, and UI derive from phase state rather than stream heuristics alone
-  - V1 active contract: `AgentRun` gains coarse `runPhase` + `phaseEnteredAt` lifecycle truth, `status="paused"` pairs with `runPhase="ask"`, continuation runs begin from `verify`, and the phase contract stays macro-lifecycle only until the persisted boundary writes and phase-aware recovery/readmission consumers are fully shipped.
-  - Supporting execution detail continues in `docs/plans/agent-runtime-remediation/plan-runtime-stabilization-and-continuation.md`.
 - [x] `CAG-002` Baseline `ask_user` tool and typed UI contract shipped
 - [x] `CAG-002a` Stateless turn-based clarification flow shipped
 - [ ] `CAG-003` Add checkpointed continuation from durable work so reconnect / continue / replace / retry semantics never restart from zero when durable work already exists
@@ -300,6 +297,7 @@ These files are supporting documents. Status, priority, and closure rules live h
 ## Recently Completed
 
 - [x] Landed explicit shared-composer mode control: `/ai`, side-panel copilot, and main conversation now expose `Auto` plus sticky manual mode selection on the shared composer, composer-originated sends/queues resolve their concrete mode at send time instead of trusting stale preview state, and non-composer operational sends remain one-shot without mutating the composer selection.
+- [x] Landed `CAG-001` persisted run-phase authority: `AgentRun` now records coarse `runPhase` + `phaseEnteredAt`, authoritative boundaries write `plan -> ask -> act -> verify -> finalize` transitions, ask-phase recovery/readmission now resolves to paused-input truth instead of active-run conflict, and stale finalize-phase runs no longer look like healthy reconnect candidates.
 - [x] Landed the fifth `FIX-011b` continuation slice: the runtime now persists narrow `RunCheckpoint` continuation seeds only at explicit `tool_result_ready` and `artifact_ready` boundaries, recovery can prefer `continue_from_checkpoint` over weaker replay-order heuristics, and `continueFromRunId` remains the only public continuation selector while popup stays a truthful reduced subset only.
 - [x] Landed the fourth `FIX-011b` continuation slice: recovery now upgrades only audited proven-state cases to `continue_from_durable_state`, the stream entrypoint can start a fresh run from explicit persisted tool-result or artifact-state inputs without duplicating the prior user turn, and main timeline surfaces expose a truthful `Continue` action while popup stays a status-only reduced subset.
 - [x] Landed scoping equilibrium enforcement: scoping now uses a runtime-owned clarification budget and phase contract, first-pass low-autonomy search-pack planning is preview-only instead of blocking, no-protocol deliverable requests enter scoping as `draft_bootstrap`, and natural-language handoff replies/default carry-forward stop repeated clarification loops.
@@ -308,7 +306,6 @@ These files are supporting documents. Status, priority, and closure rules live h
 - [x] Landed the first `FIX-011b` convergence slice: `AgentRun` now persists `lastDurableProgressAt`, `finalizationState`, and `abnormalEndClassification`, recovery/readmission distinguishes heartbeat freshness from durable forward progress, and route-level regression coverage now includes disconnect-before-terminal and finalization-failure harnesses instead of relying only on optimistic active-run inference.
 - [x] Patched the immediate `FIX-011` follow-up regressions: recovered-completed runs now stop before false terminal fallback/error telemetry is emitted, and reconnect / stop-and-retry actions now target the specific timeline error card the user clicked instead of whichever recovery error happened to be newest.
 - [x] Completed `FIX-011` shared failure handling and popup parity: `/ai` and project copilot now recover known-run abnormal disconnects against persisted run truth with structured `Reconnect` / `Retry` / `Stop & Retry` actions, popup keeps a truthful reduced recovery subset without fake `Resume`, and running-run freshness now uses `AgentRun.lastActivityAt` plus safe stale-run cleanup instead of conversation-wide cancellation heuristics.
-- [x] Completed `FIX-005b` executable evals and search provenance: runtime evals now exercise the live chat orchestration path for direct/delegated/failed/zero-result search scenarios, and the shared `tool_activity` receipt contract now carries compact source/query/count/identifier facts for PubMed, OpenAlex, and Semantic Scholar without changing final answer prose.
 
 ## Deferred / Parking Lot
 

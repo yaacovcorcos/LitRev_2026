@@ -80,6 +80,13 @@ describe("ProjectCopilot suggestion wiring", () => {
     baseContextValue = {
       messages: [
         {
+          id: "user-1",
+          sender: "user",
+          text: "Recover this search",
+          createdAt: "2026-03-10T23:59:59.000Z",
+          context: { page: "overview" },
+        },
+        {
           id: "progress-1",
           sender: "ai",
           text: "",
@@ -98,6 +105,7 @@ describe("ProjectCopilot suggestion wiring", () => {
       selectConversation: vi.fn(),
       newConversation: vi.fn(),
       branchConversation: vi.fn(),
+      reconnectRun: vi.fn(),
       sendMessage: vi.fn(),
       handleReviewArtifact: vi.fn(),
       executePlan: vi.fn(),
@@ -105,6 +113,7 @@ describe("ProjectCopilot suggestion wiring", () => {
       summarizeAndRefresh: vi.fn(),
       isSummarizing: false,
       setShowAutonomySettings: vi.fn(),
+      selectedModel: "gpt-5.2",
       prefillCommand: null,
       consumePrefillCommand: vi.fn(),
       queuedFollowUp: null,
@@ -163,6 +172,76 @@ describe("ProjectCopilot suggestion wiring", () => {
     expect(status.compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     const props = mockTimelineRenderer.mock.calls[0]?.[0] as { suppressedProgressId?: string | null };
     expect(props.suppressedProgressId).toBe("progress-1");
+  });
+
+  it("targets reconnect, continue, and stop-and-retry actions to the clicked run", () => {
+    render(
+      <ProjectCopilot
+        page="overview"
+        contextDisplay="Overview"
+        emptyState={{
+          icon: "smart_toy",
+          title: "AI Copilot",
+          description: "Help text",
+          suggestions: [{ label: "Summarize", prompt: "Summarize my project progress" }],
+        }}
+        inputPlaceholder="Ask..."
+      />,
+    );
+
+    const props = mockTimelineRenderer.mock.calls[0]?.[0] as {
+      onReconnectRun?: (item: { type: "error"; errorMeta?: { runId?: string | null; activeRunId?: string | null } }) => void;
+      onContinueFromDurableStateRun?: (item: { type: "error"; errorMeta?: { runId?: string | null; activeRunId?: string | null } }) => void;
+      onStopAndRetryRun?: (item: { type: "error"; errorMeta?: { runId?: string | null; activeRunId?: string | null } }) => void;
+    };
+
+    props.onReconnectRun?.({
+      type: "error",
+      errorMeta: { runId: "run-clicked", activeRunId: "run-newer" },
+    });
+    props.onContinueFromDurableStateRun?.({
+      type: "error",
+      errorMeta: { runId: "run-clicked", activeRunId: "run-newer" },
+    });
+    props.onStopAndRetryRun?.({
+      type: "error",
+      errorMeta: { runId: "run-clicked", activeRunId: "run-newer" },
+    });
+
+    const contextValue = baseContextValue as {
+      reconnectRun: ReturnType<typeof vi.fn>;
+      sendMessage: ReturnType<typeof vi.fn>;
+    };
+
+    expect(contextValue.reconnectRun).toHaveBeenCalledWith("run-clicked");
+    expect(contextValue.sendMessage).toHaveBeenCalledWith(
+      "Recover this search",
+      "overview",
+      undefined,
+      "gpt-5.2",
+      undefined,
+      undefined,
+      expect.objectContaining({
+        source: "retry_action",
+      }),
+      undefined,
+      { replaceRunId: "run-clicked" },
+    );
+    expect(contextValue.sendMessage).toHaveBeenCalledWith(
+      "Recover this search",
+      "overview",
+      undefined,
+      "gpt-5.2",
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      {
+        replaceRunId: "run-clicked",
+        continueFromRunId: "run-clicked",
+        suppressUserMessageAppend: true,
+      },
+    );
   });
 
   it("renders a queued follow-up cap between live progress and the composer", () => {
