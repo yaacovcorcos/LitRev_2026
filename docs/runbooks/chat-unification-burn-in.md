@@ -22,6 +22,11 @@ Provide a deterministic, auditable process for chat-unification canary validatio
 6. Sign-off owner and backup reviewer are assigned.
 7. One canonical `CANARY_SINCE_UTC` timestamp is captured at flag enable time immediately after production deploy/enable.
 
+Current repo/runtime note:
+- No active `NEXT_PUBLIC_ENABLE_CHAT_UNIFICATION_V2` / `ENABLE_CHAT_UNIFICATION_V2` runtime gate is wired in committed code today.
+- Until such a gate is explicitly reintroduced and documented, treat U1.6 burn-in as a deployment-level canary.
+- `workspaceIds` / `userIds` remain the evidence scope filters for validation and sign-off, not a live rollout gate.
+
 ## Required Inputs
 
 - `CANARY_SINCE_UTC`
@@ -57,11 +62,12 @@ Record command outputs in the run report.
 
 ## Phase 1 - Canary Enable
 
-1. Enable `NEXT_PUBLIC_ENABLE_CHAT_UNIFICATION_V2=1` and `ENABLE_CHAT_UNIFICATION_V2=1` for the canary cohort.
+1. Use the chosen production deployment as the canary baseline.
 2. Immediately capture timestamp:
-   - `CANARY_SINCE_UTC=<ISO8601 UTC at enable time>`
+   - `CANARY_SINCE_UTC=<ISO8601 UTC deployment/enable time>`
 3. Owner confirms cohort scope + captured `CANARY_SINCE_UTC` before Day-0 validation.
 4. Reuse exactly that timestamp for all daily and final commands.
+5. If a live runtime cohort gate is reintroduced later, record it explicitly in the report before using it operationally.
 
 ## Phase 2 - Day-0 Data Quality Gate
 

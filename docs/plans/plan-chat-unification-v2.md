@@ -139,13 +139,14 @@ Rules:
 3. Remove legacy/runtime duplication in `U4`.
 
 ## Rollout and Rollback Semantics
-Flags:
-1. `NEXT_PUBLIC_ENABLE_CHAT_UNIFICATION_V2`
-2. `ENABLE_CHAT_UNIFICATION_V2`
+Current rollout control:
+1. `U1.6` burn-in currently uses a production deployment baseline plus `CANARY_SINCE_UTC` and scoped `workspaceIds` / `userIds` evidence filters.
+2. No active `CHAT_UNIFICATION_V2` runtime flag is currently wired in committed code; do not assume a live cohort-toggle path exists unless this plan and the burn-in runbook are updated first.
 
 Rules:
-1. Before `U4`, flag-off may still return traffic to the legacy runtime path where that fallback still exists.
-2. After `U4`, flag-off may disable newer UX layers, but the unified engine remains canonical and rollback becomes a version rollback rather than a path fork.
+1. Before `U4`, rollback should be treated as a deploy/version rollback unless a documented runtime cohort gate is explicitly reintroduced.
+2. After `U4`, rollback remains a version rollback rather than a path fork.
+3. If a runtime cohort gate is reintroduced later, document the exact control surface and reset the burn-in runbook/report before using it operationally.
 
 ## Test and Guardrail Requirements
 Contract tests must continue covering:
