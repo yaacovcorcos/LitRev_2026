@@ -18,9 +18,10 @@ Then paste the terminal output into the section below.
 - `CANARY_SINCE_UTC`: `<ISO8601>`
 - Cohort workspace IDs: `<ws1,ws2 or n/a>`
 - Cohort user IDs: `<u1,u2 or n/a>`
-- Flags:
-  - `NEXT_PUBLIC_ENABLE_CHAT_UNIFICATION_V2=<0|1>`
-  - `ENABLE_CHAT_UNIFICATION_V2=<0|1>`
+- Rollout gate:
+  - `<deployment-level canary | documented runtime cohort gate>`
+- Notes:
+  - `<if deployment-level, note that workspace/user ids are evidence filters only>`
 
 ## Day-0 Preflight
 
