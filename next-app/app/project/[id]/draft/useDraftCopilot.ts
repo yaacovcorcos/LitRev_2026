@@ -5,6 +5,7 @@
 import { useEffect, useRef, useState } from "react";
 import { CopilotMessage, DraftState } from "@/lib/draftStorage";
 import type { Editor } from "@tiptap/react";
+import { UNSECTIONED_DRAFT_ID } from "@/types/draft";
 
 type UseDraftCopilotDeps = {
   draft: DraftState;
@@ -45,13 +46,14 @@ export function useDraftCopilot(deps: UseDraftCopilotDeps) {
     const now = new Date().toISOString();
     const userMsg: CopilotMessage = { id: `u-${Date.now()}`, sender: "user", text, createdAt: now };
 
+    const targetSectionId = draft.activeSection ?? UNSECTIONED_DRAFT_ID;
     updateDraft((prev) => {
-      const list = prev.copilotBySection[prev.activeSection] ?? [];
+      const list = prev.copilotBySection[targetSectionId] ?? [];
       return {
         ...prev,
         copilotBySection: {
           ...prev.copilotBySection,
-          [prev.activeSection]: [...list, userMsg],
+          [targetSectionId]: [...list, userMsg],
         },
       };
     });
@@ -61,12 +63,12 @@ export function useDraftCopilot(deps: UseDraftCopilotDeps) {
     await new Promise((resolve) => setTimeout(resolve, 700));
     const aiMsg: CopilotMessage = { id: `a-${Date.now()}`, sender: "ai", text: aiText, createdAt: new Date().toISOString() };
     updateDraft((prev) => {
-      const list = prev.copilotBySection[prev.activeSection] ?? [];
+      const list = prev.copilotBySection[targetSectionId] ?? [];
       return {
         ...prev,
         copilotBySection: {
           ...prev.copilotBySection,
-          [prev.activeSection]: [...list, aiMsg],
+          [targetSectionId]: [...list, aiMsg],
         },
       };
     });

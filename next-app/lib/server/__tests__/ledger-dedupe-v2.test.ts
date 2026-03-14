@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { StudyDuplicateCluster } from "@/lib/server/search/dedup";
+import { createDefaultDraftState, normalizeDraftState } from "@/lib/draftStorage";
 
 const mockStudyFindFirst = vi.fn();
 const mockStudyFindMany = vi.fn();
@@ -136,21 +137,21 @@ describe("ledger dedupe v2", () => {
       },
     ]);
     mockFileAssetFindMany.mockResolvedValue([{ studyId: "study-b" }]);
+    const draftState = createDefaultDraftState();
+    draftState.sectionOrder = ["abstract"];
+    draftState.activeSection = "abstract";
+    draftState.contentBySection.abstract = {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [{ type: "citation", attrs: { studyId: "study-b", uid: "u1" } }],
+        },
+      ],
+    };
     mockDraftFindUnique.mockResolvedValue({
       projectId: PROJECT_ID,
-      state: {
-        contentBySection: {
-          abstract: {
-            type: "doc",
-            content: [
-              {
-                type: "paragraph",
-                content: [{ type: "citation", attrs: { studyId: "study-b", uid: "u1" } }],
-              },
-            ],
-          },
-        },
-      },
+      state: normalizeDraftState(draftState),
     });
     mockStudyUpdate.mockResolvedValue({});
     mockFileAssetUpdateMany.mockResolvedValue({ count: 1 });

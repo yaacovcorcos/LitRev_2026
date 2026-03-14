@@ -329,9 +329,11 @@ type FullSectionEditorProps = {
   onFocusSection: (key: DraftSectionId, editor: Editor) => void;
   onUpdateSection: (key: DraftSectionId, json: JSONContent) => void;
   registerEditor: (key: DraftSectionId, editor: Editor | null) => void;
+  onSelectionChange?: (key: DraftSectionId, editor: Editor) => void;
   placeholderText?: string;
   surfaceClassName?: string;
   surfaceStyle?: CSSProperties;
+  editable?: boolean;
 };
 
 export function FullSectionEditor({
@@ -340,15 +342,18 @@ export function FullSectionEditor({
   onFocusSection,
   onUpdateSection,
   registerEditor,
+  onSelectionChange,
   placeholderText,
   surfaceClassName,
   surfaceStyle,
+  editable = true,
 }: FullSectionEditorProps) {
   const editor = useEditor(
     {
       immediatelyRender: false,
       extensions: buildDraftEditorExtensions({ placeholderText }),
       content,
+      editable,
       editorProps: {
         attributes: {
           class: styles.proseMirror,
@@ -356,6 +361,7 @@ export function FullSectionEditor({
       },
       onFocus: ({ editor }) => onFocusSection(sectionId, editor),
       onUpdate: ({ editor }) => onUpdateSection(sectionId, editor.getJSON()),
+      onSelectionUpdate: ({ editor }) => onSelectionChange?.(sectionId, editor),
     },
     []
   );
@@ -364,6 +370,11 @@ export function FullSectionEditor({
     registerEditor(sectionId, editor);
     return () => registerEditor(sectionId, null);
   }, [editor, registerEditor, sectionId]);
+
+  useEffect(() => {
+    if (!editor) return;
+    editor.setEditable(editable);
+  }, [editable, editor]);
 
   useEffect(() => {
     if (!editor) return;

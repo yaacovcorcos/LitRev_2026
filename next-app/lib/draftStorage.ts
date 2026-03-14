@@ -1,4 +1,4 @@
-import { DEFAULT_SECTION_ORDER, DRAFT_SECTIONS, DraftMode, DraftSectionId, DraftSectionKey } from "@/types/draft";
+import { DRAFT_SECTIONS, DraftMode, DraftSectionId, DraftSectionKey, UNSECTIONED_DRAFT_ID } from "@/types/draft";
 import type { JSONContent } from "@tiptap/core";
 import { compileDraftCitations } from "@/lib/citation-compiler";
 import type { ManuscriptDocument } from "@/types/manuscript";
@@ -43,7 +43,7 @@ export const DEFAULT_SECTION_FORMAT: DraftSectionFormat = {
 
 type DraftStateBase = {
   mode: DraftMode;
-  activeSection: DraftSectionId;
+  activeSection: DraftSectionId | null;
   sectionOrder: DraftSectionId[];
   customSections: Record<DraftSectionId, { label: string; placeholder?: string }>;
   formattingBySection: Record<DraftSectionId, DraftSectionFormat>;
@@ -94,26 +94,34 @@ function buildSectionRecord<T>(ids: DraftSectionId[], factory: (key: DraftSectio
   return record;
 }
 
+function buildKnownSectionIds(customSections: Record<DraftSectionId, { label: string; placeholder?: string }>) {
+  return [UNSECTIONED_DRAFT_ID, ...BASE_SECTION_IDS, ...Object.keys(customSections)] as DraftSectionId[];
+}
+
+function createPanelsState(): DraftPanelsState {
+  return {
+    ledgerWidth: 320,
+    copilotWidth: 360,
+    ledgerCollapsed: false,
+    copilotCollapsed: false,
+  };
+}
+
 export function createDefaultDraftState(): DraftState {
-  const defaultOrder = [...DEFAULT_SECTION_ORDER];
-  const activeSection = defaultOrder[0] ?? "abstract";
+  const customSections = {};
+  const knownSectionIds = buildKnownSectionIds(customSections);
   const manuscript = createDefaultManuscriptDocument();
   return {
     version: 2,
-    mode: "section",
-    activeSection,
-    sectionOrder: defaultOrder,
-    customSections: {},
-    formattingBySection: buildSectionRecord(BASE_SECTION_IDS, () => createDefaultFormat()),
-    panels: {
-      ledgerWidth: 320,
-      copilotWidth: 360,
-      ledgerCollapsed: true,
-      copilotCollapsed: false,
-    },
-    contentBySection: buildCompatContentBySection(manuscript),
-    ledgerBySection: buildSectionRecord(BASE_SECTION_IDS, () => []),
-    copilotBySection: buildSectionRecord(BASE_SECTION_IDS, () => []),
+    mode: "full",
+    activeSection: null,
+    sectionOrder: [],
+    customSections,
+    formattingBySection: buildSectionRecord(knownSectionIds, () => createDefaultFormat()),
+    panels: createPanelsState(),
+    contentBySection: buildSectionRecord(knownSectionIds, (key) => buildCompatContentBySection(manuscript)[key] ?? emptyDoc()),
+    ledgerBySection: buildSectionRecord(knownSectionIds, () => []),
+    copilotBySection: buildSectionRecord(knownSectionIds, () => []),
     manuscript,
   };
 }
@@ -164,13 +172,13 @@ function coerceSectionFormat(value: unknown): DraftSectionFormat | null {
 }
 
 function coerceCustomSections(
-  value: unknown
+  value: unknown,
 ): Record<DraftSectionId, { label: string; placeholder?: string }> {
   if (!value || typeof value !== "object") return {};
   const record: Record<DraftSectionId, { label: string; placeholder?: string }> = {};
   for (const [id, meta] of Object.entries(value)) {
     if (!id || typeof id !== "string") continue;
-    if (isBaseSectionKey(id)) continue;
+    if (isBaseSectionKey(id) || id === UNSECTIONED_DRAFT_ID) continue;
     if (!meta || typeof meta !== "object") continue;
     const rawLabel = (meta as { label?: unknown }).label;
     const label = typeof rawLabel === "string" ? rawLabel.trim() : "";
@@ -190,11 +198,11 @@ function coerceSectionOrder(value: unknown, knownIds: Set<DraftSectionId>): Draf
   const ordered: DraftSectionId[] = [];
   for (const entry of value) {
     const id = coerceSectionId(entry);
-    if (!id || seen.has(id) || !knownIds.has(id)) continue;
+    if (!id || id === UNSECTIONED_DRAFT_ID || seen.has(id) || !knownIds.has(id)) continue;
     seen.add(id);
     ordered.push(id);
   }
-  return ordered.length ? ordered : null;
+  return ordered;
 }
 
 function normalizeCopilotMessage(value: unknown): CopilotMessage | null {
@@ -209,23 +217,58 @@ function normalizeCopilotMessage(value: unknown): CopilotMessage | null {
   };
 }
 
+function createContentRecord(
+  source: Record<DraftSectionId, JSONContent>,
+  knownIds: DraftSectionId[],
+): Record<DraftSectionId, JSONContent> {
+  return buildSectionRecord(knownIds, (key) => {
+    const maybe = source[key];
+    return maybe && typeof maybe === "object" ? (maybe as JSONContent) : emptyDoc();
+  });
+}
+
 export function normalizeDraftState(input: unknown): DraftState {
   const fallback = createDefaultDraftState();
   if (!isRecord(input)) return fallback;
 
   const parsed = input as Partial<DraftStateInput> & { manuscript?: unknown };
-  const mode = coerceDraftMode(parsed.mode) ?? fallback.mode;
-  const customSections = coerceCustomSections(parsed.customSections);
-  const knownIds = new Set<DraftSectionId>([...BASE_SECTION_IDS, ...Object.keys(customSections)]);
-  let storedOrder = coerceSectionOrder(parsed.sectionOrder, knownIds) ?? fallback.sectionOrder;
+  const manuscript = coerceManuscriptDocument(parsed.manuscript);
+  const derivedCustomSections = manuscript
+    ? Object.fromEntries(
+        manuscript.sections
+          .filter((section) => section.kind === "custom")
+          .map((section) => [
+            section.sectionId,
+            section.placeholder ? { label: section.label, placeholder: section.placeholder } : { label: section.label },
+          ]),
+      )
+    : {};
+  const customSections = {
+    ...derivedCustomSections,
+    ...coerceCustomSections(parsed.customSections),
+  };
+  const knownSectionIds = buildKnownSectionIds(customSections);
+  const knownIds = new Set<DraftSectionId>(knownSectionIds);
+  const manuscriptSectionOrder = manuscript
+    ? manuscript.sections
+        .map((section) => section.sectionId)
+        .filter((sectionId) => sectionId !== UNSECTIONED_DRAFT_ID)
+    : null;
+  let storedOrder =
+    coerceSectionOrder(parsed.sectionOrder, knownIds)
+    ?? (manuscriptSectionOrder ? manuscriptSectionOrder.filter((id) => knownIds.has(id)) : null)
+    ?? fallback.sectionOrder;
   const missingCustom = Object.keys(customSections).filter((id) => !storedOrder.includes(id));
-  if (missingCustom.length) {
+  if (missingCustom.length > 0) {
     storedOrder = [...storedOrder, ...missingCustom];
   }
-  const activeSection =
-    coerceSectionId(parsed.activeSection) && storedOrder.includes(parsed.activeSection as DraftSectionId)
-      ? (parsed.activeSection as DraftSectionId)
-      : storedOrder[0] ?? fallback.activeSection;
+
+  const rawMode = coerceDraftMode(parsed.mode) ?? fallback.mode;
+  const rawActiveSection = coerceSectionId(parsed.activeSection);
+  const activeSectionCandidate =
+    rawActiveSection && rawActiveSection !== UNSECTIONED_DRAFT_ID && storedOrder.includes(rawActiveSection)
+      ? rawActiveSection
+      : null;
 
   const panels: DraftPanelsState = {
     ledgerWidth: typeof parsed.panels?.ledgerWidth === "number" ? parsed.panels.ledgerWidth : fallback.panels.ledgerWidth,
@@ -241,57 +284,28 @@ export function normalizeDraftState(input: unknown): DraftState {
         : fallback.panels.copilotCollapsed,
   };
 
-  const manuscript = coerceManuscriptDocument(parsed.manuscript);
   const compatFromManuscript = manuscript ? buildCompatContentBySection(manuscript) : null;
   const rawContentSource =
     isRecord(parsed.contentBySection)
       ? (parsed.contentBySection as Record<DraftSectionId, JSONContent>)
       : compatFromManuscript ?? {};
+  const contentBySection = createContentRecord(rawContentSource, knownSectionIds);
 
-  const baseContent = buildSectionRecord(BASE_SECTION_IDS, (key) => {
-    const maybe = rawContentSource[key];
-    if (maybe && typeof maybe === "object") return maybe as JSONContent;
-    return fallback.contentBySection[key];
-  });
-  const customIds = Object.keys(customSections);
-  const customContent = buildSectionRecord(customIds, (key) => {
-    const maybe = rawContentSource[key];
-    if (maybe && typeof maybe === "object") return maybe as JSONContent;
-    return emptyDoc();
-  });
-  const contentBySection = { ...baseContent, ...customContent };
-
-  const baseFormatting = buildSectionRecord(BASE_SECTION_IDS, (key) => {
+  const formattingBySection = buildSectionRecord(knownSectionIds, (key) => {
     const maybe = parsed.formattingBySection?.[key];
     return coerceSectionFormat(maybe) ?? createDefaultFormat();
   });
-  const customFormatting = buildSectionRecord(customIds, (key) => {
-    const maybe = parsed.formattingBySection?.[key];
-    return coerceSectionFormat(maybe) ?? createDefaultFormat();
-  });
-  const formattingBySection = { ...baseFormatting, ...customFormatting };
 
-  const baseLedger = buildSectionRecord(BASE_SECTION_IDS, (key) => {
-    const maybe = parsed.ledgerBySection?.[key];
-    return Array.isArray(maybe) ? maybe.filter((x) => typeof x === "string") : fallback.ledgerBySection[key];
-  });
-  const customLedger = buildSectionRecord(customIds, (key) => {
+  const ledgerBySection = buildSectionRecord(knownSectionIds, (key) => {
     const maybe = parsed.ledgerBySection?.[key];
     return Array.isArray(maybe) ? maybe.filter((x) => typeof x === "string") : [];
   });
-  const ledgerBySection = { ...baseLedger, ...customLedger };
 
-  const baseCopilot = buildSectionRecord(BASE_SECTION_IDS, (key) => {
-    const maybe = parsed.copilotBySection?.[key];
-    if (!Array.isArray(maybe)) return fallback.copilotBySection[key];
-    return maybe.map(normalizeCopilotMessage).filter((message): message is CopilotMessage => Boolean(message));
-  });
-  const customCopilot = buildSectionRecord(customIds, (key) => {
+  const copilotBySection = buildSectionRecord(knownSectionIds, (key) => {
     const maybe = parsed.copilotBySection?.[key];
     if (!Array.isArray(maybe)) return [];
     return maybe.map(normalizeCopilotMessage).filter((message): message is CopilotMessage => Boolean(message));
   });
-  const copilotBySection = { ...baseCopilot, ...customCopilot };
 
   const compiled = compileDraftCitations({
     contentBySection,
@@ -303,16 +317,24 @@ export function normalizeDraftState(input: unknown): DraftState {
     customSections,
     contentBySection: compiled.normalizedContentBySection,
   });
+  const nextCompat = buildCompatContentBySection(nextManuscript);
+  const nextSectionOrder = nextManuscript.sections
+    .map((section) => section.sectionId)
+    .filter((sectionId) => sectionId !== UNSECTIONED_DRAFT_ID);
+  const mode = rawMode === "section" && nextSectionOrder.length === 0 ? "full" : rawMode;
+  const activeSection = mode === "section"
+    ? activeSectionCandidate ?? nextSectionOrder[0] ?? null
+    : activeSectionCandidate;
 
   return {
     version: 2,
     mode,
     activeSection,
-    sectionOrder: storedOrder,
+    sectionOrder: nextSectionOrder,
     customSections,
     formattingBySection,
     panels,
-    contentBySection: buildCompatContentBySection(nextManuscript),
+    contentBySection: buildSectionRecord(knownSectionIds, (key) => nextCompat[key] ?? emptyDoc()),
     ledgerBySection,
     copilotBySection,
     manuscript: nextManuscript,

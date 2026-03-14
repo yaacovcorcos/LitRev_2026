@@ -3,7 +3,7 @@
  * for the Draft Studio page. Extracted from page.tsx (D-4).
  */
 import { useCallback, useEffect, useRef, useState, type DragEvent as ReactDragEvent } from "react";
-import { DraftSectionId } from "@/types/draft";
+import { DraftSectionId, UNSECTIONED_DRAFT_ID } from "@/types/draft";
 import { DEFAULT_SECTION_FORMAT, type DraftSectionFormat, DraftState, emptyDoc } from "@/lib/draftStorage";
 import { createCustomSectionId, customSectionPlaceholder } from "./draft-helpers";
 import type { Editor } from "@tiptap/react";
@@ -11,7 +11,7 @@ import type { JSONContent } from "@tiptap/core";
 
 type UseDraftSectionsDeps = {
   updateDraft: (updater: (prev: DraftState) => DraftState) => void;
-  activeSectionRef: React.MutableRefObject<DraftSectionId>;
+  activeSectionRef: React.MutableRefObject<DraftSectionId | null>;
   activeEditorRef: React.MutableRefObject<Editor | null>;
   queueContentUpdate: (key: DraftSectionId, json: JSONContent) => void;
   flushContentCommit: () => void;
@@ -46,7 +46,7 @@ export function useDraftSections(deps: UseDraftSectionsDeps) {
   const openSectionInSectionMode = useCallback((key: DraftSectionId) => {
     const editor = activeEditorRef.current;
     if (editor) {
-      queueContentUpdate(activeSectionRef.current, editor.getJSON());
+      queueContentUpdate(activeSectionRef.current ?? UNSECTIONED_DRAFT_ID, editor.getJSON());
     }
     flushContentCommit();
     updateDraft((prev) => {
@@ -69,7 +69,7 @@ export function useDraftSections(deps: UseDraftSectionsDeps) {
     updateDraft((prev) => {
       if (prev.sectionOrder.includes(key)) return prev;
       const next = [...prev.sectionOrder];
-      const activeIndex = next.indexOf(prev.activeSection);
+      const activeIndex = prev.activeSection ? next.indexOf(prev.activeSection) : -1;
       const insertIndex = activeIndex >= 0 ? activeIndex + 1 : next.length;
       next.splice(insertIndex, 0, key);
       return {
@@ -90,7 +90,7 @@ export function useDraftSections(deps: UseDraftSectionsDeps) {
     const id = createCustomSectionId(name);
     updateDraft((prev) => {
       const next = [...prev.sectionOrder];
-      const activeIndex = next.indexOf(prev.activeSection);
+      const activeIndex = prev.activeSection ? next.indexOf(prev.activeSection) : -1;
       const insertIndex = activeIndex >= 0 ? activeIndex + 1 : next.length;
       next.splice(insertIndex, 0, id);
       return {

@@ -40,6 +40,8 @@ describe("draft service", () => {
 
   it("normalizes draft state to JSON-safe payload before upsert", async () => {
     const state = createDefaultDraftState();
+    state.sectionOrder = ["abstract"];
+    state.activeSection = "abstract";
     state.customSections["custom-1"] = { label: "Custom", placeholder: undefined };
     (
       state.contentBySection.abstract.content?.[0] as { attrs?: Record<string, unknown> } | undefined
@@ -60,7 +62,7 @@ describe("draft service", () => {
 
     expect(args.create.state).toEqual(args.update.state);
     expect(args.create.state.version).toBe(2);
-    expect(args.create.state.manuscript).toMatchObject({ schemaVersion: 1 });
+    expect(args.create.state.manuscript).toMatchObject({ schemaVersion: 2 });
     expect((args.create.state.customSections as Record<string, { label: string; placeholder?: string }>)["custom-1"])
       .toEqual({ label: "Custom" });
     expect(

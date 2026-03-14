@@ -3,7 +3,7 @@
  * Extracted from page.tsx for maintainability.
  */
 import { CSSProperties } from "react";
-import { DRAFT_SECTIONS, DraftMode, DraftSectionId, DraftSectionKey } from "@/types/draft";
+import { DRAFT_SECTIONS, DraftMode, DraftSectionId, DraftSectionKey, UNSECTIONED_DRAFT_ID } from "@/types/draft";
 import { DraftSectionFormat } from "@/lib/draftStorage";
 import type { JSONContent } from "@tiptap/core";
 import type { Study } from "@/types/ledger";
@@ -50,6 +50,7 @@ export type SectionMeta = {
   label: string;
   placeholder?: string;
   isCustom?: boolean;
+  isWholeDraft?: boolean;
 };
 
 export const BASE_SECTION_META: SectionMeta[] = DRAFT_SECTIONS.map((section) => ({
@@ -62,6 +63,13 @@ export const BASE_SECTION_META: SectionMeta[] = DRAFT_SECTIONS.map((section) => 
 export const BASE_SECTION_MAP = new Map<DraftSectionId, SectionMeta>(
   BASE_SECTION_META.map((section) => [section.id, section])
 );
+
+export const WHOLE_DRAFT_META: SectionMeta = {
+  id: UNSECTIONED_DRAFT_ID,
+  label: "Whole draft",
+  placeholder: "Start writing...",
+  isWholeDraft: true,
+};
 
 export const slugify = (value: string) =>
   value
