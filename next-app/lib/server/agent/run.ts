@@ -14,6 +14,7 @@ import type {
     RunTrigger,
 } from "@/types/agent";
 import { extractMemoriesFromConversation } from "@/lib/server/memory/conversation-extractor";
+import { transitionRunPhaseInTransaction } from "@/lib/server/agent/run-phase";
 
 export interface StartRunInput {
     projectId?: string | null;
@@ -94,13 +95,24 @@ export async function markRunFinalizationState(
     state: RunFinalizationState,
     at = new Date(),
 ) {
-    const result = await prisma.agentRun.updateMany({
-        where: { id: runId },
-        data: {
-            finalizationState: state,
-            lastActivityAt: at,
-        },
-    });
+    const result = state === "in_progress"
+        ? await prisma.$transaction(async (tx) => {
+            await transitionRunPhaseInTransaction(tx, runId, "finalize", at);
+            return tx.agentRun.updateMany({
+                where: { id: runId },
+                data: {
+                    finalizationState: state,
+                    lastActivityAt: at,
+                },
+            });
+        })
+        : await prisma.agentRun.updateMany({
+            where: { id: runId },
+            data: {
+                finalizationState: state,
+                lastActivityAt: at,
+            },
+        });
     if (result.count > 0) {
         notifyRunActivity(runId, at);
     }

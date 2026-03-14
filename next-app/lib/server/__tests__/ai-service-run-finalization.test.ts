@@ -458,6 +458,32 @@ describe("AIService run finalization", () => {
     await iterator.return?.(undefined);
   });
 
+  it("starts continuation runs in verify phase", async () => {
+    const service = new AIService();
+    const stream = service.streamChatWithArtifacts("Continue", "project", {
+      projectId: "project-1",
+      userId: "user-1",
+      agentMode: "general",
+      model: "gpt-5.2",
+      continuationContext: "[CONTINUATION_CONTEXT]\nPersisted checkpoint",
+    });
+    const iterator = stream[Symbol.asyncIterator]();
+
+    const first = await iterator.next();
+
+    expect(first.done).toBe(false);
+    expect(first.value?.type).toBe("run_start");
+    expect(mocks.startRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationId: "conv-1",
+        projectId: "project-1",
+        initialPhase: "verify",
+      }),
+    );
+
+    await iterator.return?.(undefined);
+  });
+
   it("continues with a checkpoint when memories degrade after authority succeeds", async () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     const infoSpy = vi.spyOn(console, "info").mockImplementation(() => {});
