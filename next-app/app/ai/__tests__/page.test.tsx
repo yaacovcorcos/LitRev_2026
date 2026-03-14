@@ -435,6 +435,9 @@ describe("/ai page deferred hydration", () => {
 
     const status = screen.getByRole("status");
     const sendButton = screen.getByRole("button", { name: "send message" });
+    const lane = document.querySelector('[data-composer-stack-lane="true"]');
+    expect(lane?.contains(status)).toBe(true);
+    expect(lane?.contains(screen.getByTestId("ai-composer"))).toBe(true);
     expect(status.getAttribute("data-stack-position")).toBe("top");
     expect(screen.getByTestId("ai-composer").getAttribute("data-attached-stack")).toBe("attached");
     expect(screen.getByText("Reviewing PubMed results")).toBeTruthy();
@@ -857,7 +860,11 @@ describe("/ai page deferred hydration", () => {
     const progress = screen.getByText("Reading protocol...").closest("[data-stack-position]");
     const queued = screen.getByText("Queued next message").closest("[data-stack-position]");
     const composerState = screen.getByTestId("ai-composer");
+    const lane = document.querySelector('[data-composer-stack-lane="true"]');
 
+    expect(lane?.contains(progress!)).toBe(true);
+    expect(lane?.contains(queued!)).toBe(true);
+    expect(lane?.contains(composerState)).toBe(true);
     expect(progress?.getAttribute("data-stack-position")).toBe("top");
     expect(queued?.getAttribute("data-stack-position")).toBe("middle");
     expect(composerState.getAttribute("data-attached-stack")).toBe("attached");
@@ -881,6 +888,9 @@ describe("/ai page deferred hydration", () => {
       expect(screen.getByText("Queue this next")).toBeTruthy();
     });
 
+    const lane = document.querySelector('[data-composer-stack-lane="true"]');
+    expect(lane?.contains(screen.getByText("Queued next message"))).toBe(true);
+    expect(lane?.contains(screen.getByTestId("ai-composer"))).toBe(true);
     expect(screen.getByText("Queued next message").closest("[data-stack-position]")?.getAttribute("data-stack-position")).toBe("top");
     expect(screen.getByTestId("ai-composer").getAttribute("data-attached-stack")).toBe("attached");
   });
@@ -888,6 +898,8 @@ describe("/ai page deferred hydration", () => {
   it("keeps the composer standalone when no attached caps are present", () => {
     render(<AIView />);
 
+    const lane = document.querySelector('[data-composer-stack-lane="true"]');
+    expect(lane?.contains(screen.getByTestId("ai-composer"))).toBe(true);
     expect(screen.getByTestId("ai-composer").getAttribute("data-attached-stack")).toBe("none");
     expect(screen.queryByText("Queued next message")).toBeNull();
   });

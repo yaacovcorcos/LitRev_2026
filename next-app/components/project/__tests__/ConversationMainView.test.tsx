@@ -151,6 +151,9 @@ describe("ConversationMainView parity", () => {
     expect(screen.getByTestId("timeline-renderer")).toBeTruthy();
     const status = screen.getByRole("status");
     const input = screen.getByTestId("copilot-input");
+    const lane = document.querySelector('[data-composer-stack-lane="true"]');
+    expect(lane?.contains(status)).toBe(true);
+    expect(lane?.contains(input)).toBe(true);
     expect(status.getAttribute("data-stack-position")).toBe("top");
     expect(input.getAttribute("data-attached-stack")).toBe("attached");
     expect(screen.getByText("Waiting for your answer")).toBeTruthy();
@@ -246,7 +249,10 @@ describe("ConversationMainView parity", () => {
 
     const queued = screen.getByText("Queued next message").closest("[data-stack-position]");
     const input = screen.getByTestId("copilot-input");
+    const lane = document.querySelector('[data-composer-stack-lane="true"]');
     expect(screen.getByText("Please compare the strongest papers next.")).toBeTruthy();
+    expect(lane?.contains(queued!)).toBe(true);
+    expect(lane?.contains(input)).toBe(true);
     expect(queued?.getAttribute("data-stack-position")).toBe("top");
     expect(input.getAttribute("data-attached-stack")).toBe("attached");
     expect(queued).toBeTruthy();
@@ -261,6 +267,8 @@ describe("ConversationMainView parity", () => {
 
     render(<ConversationMainView projectId="project-1" />);
 
+    const lane = document.querySelector('[data-composer-stack-lane="true"]');
+    expect(lane?.contains(screen.getByTestId("copilot-input"))).toBe(true);
     expect(screen.getByTestId("copilot-input").getAttribute("data-attached-stack")).toBe("none");
     expect(screen.queryByText("Queued next message")).toBeNull();
     expect(screen.queryByRole("status")).toBeNull();

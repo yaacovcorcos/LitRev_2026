@@ -116,11 +116,14 @@
     flex-shrink: 0;
 }
 
-.composerHost > * {
+.composerStackLane {
     width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
 }
 
-.composerHost > :last-child {
+.composerStackLane > :last-child {
     position: relative;
     z-index: 1;
 }

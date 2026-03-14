@@ -328,20 +328,22 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
 
                     {/* Input */}
                     <div className={styles.inputWrapper}>
-                        <ComposerActiveProgressBar activeProgress={activeProgress} stackPosition="top" />
-                        <ComposerQueuedFollowUpBar
-                            queuedFollowUp={queuedFollowUp}
-                            stackPosition={queuedStackPosition}
-                            onEdit={handleEditQueuedFollowUp}
-                            onRemove={clearQueuedFollowUp}
-                        />
-                        <CopilotInput
-                            page={"overview" as CopilotPage}
-                            inputPlaceholder="Ask about your project..."
-                            prefillCommand={prefillCommand}
-                            onPrefillConsumed={handlePrefillConsumed}
-                            attachedStack={composerAttachedStack}
-                        />
+                        <div className={styles.composerStackLane} data-composer-stack-lane="true">
+                            <ComposerActiveProgressBar activeProgress={activeProgress} stackPosition="top" />
+                            <ComposerQueuedFollowUpBar
+                                queuedFollowUp={queuedFollowUp}
+                                stackPosition={queuedStackPosition}
+                                onEdit={handleEditQueuedFollowUp}
+                                onRemove={clearQueuedFollowUp}
+                            />
+                            <CopilotInput
+                                page={"overview" as CopilotPage}
+                                inputPlaceholder="Ask about your project..."
+                                prefillCommand={prefillCommand}
+                                onPrefillConsumed={handlePrefillConsumed}
+                                attachedStack={composerAttachedStack}
+                            />
+                        </div>
                     </div>
                 </div>
             </div>

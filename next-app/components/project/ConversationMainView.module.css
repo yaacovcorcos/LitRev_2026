@@ -229,18 +229,17 @@
     pointer-events: none;
 }
 
-.inputWrapper > * {
+.composerStackLane {
     width: 100%;
     max-width: 720px;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
 }
 
-.inputWrapper > :last-child {
+.composerStackLane > :last-child {
     position: relative;
     z-index: 1;
-}
-
-.inputWrapper > :first-child[aria-hidden="true"] {
-    max-width: 720px;
 }
 
 .contentAreaEmpty {

@@ -441,22 +441,24 @@ export function ProjectCopilot({
 
                 {/* Input area */}
                 <div className={styles.composerHost}>
-                    <ComposerActiveProgressBar activeProgress={activeProgress} stackPosition="top" />
-                    <ComposerQueuedFollowUpBar
-                        queuedFollowUp={queuedFollowUp}
-                        stackPosition={queuedStackPosition}
-                        onEdit={handleEditQueuedFollowUp}
-                        onRemove={clearQueuedFollowUp}
-                    />
-                    <CopilotInput
-                        page={page}
-                        section={section}
-                        studyId={studyId}
-                        inputPlaceholder={inputPlaceholder}
-                        prefillCommand={activePrefillCommand}
-                        onPrefillConsumed={handlePrefillConsumed}
-                        attachedStack={composerAttachedStack}
-                    />
+                    <div className={styles.composerStackLane} data-composer-stack-lane="true">
+                        <ComposerActiveProgressBar activeProgress={activeProgress} stackPosition="top" />
+                        <ComposerQueuedFollowUpBar
+                            queuedFollowUp={queuedFollowUp}
+                            stackPosition={queuedStackPosition}
+                            onEdit={handleEditQueuedFollowUp}
+                            onRemove={clearQueuedFollowUp}
+                        />
+                        <CopilotInput
+                            page={page}
+                            section={section}
+                            studyId={studyId}
+                            inputPlaceholder={inputPlaceholder}
+                            prefillCommand={activePrefillCommand}
+                            onPrefillConsumed={handlePrefillConsumed}
+                            attachedStack={composerAttachedStack}
+                        />
+                    </div>
                 </div>
             </div>
             <AutonomySettings />

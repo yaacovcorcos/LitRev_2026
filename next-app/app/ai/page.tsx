@@ -2541,7 +2541,7 @@ export default function AIView() {
             />
 
             <div className={styles.chatInputContainer}>
-              <div className={styles.chatInputStatus}>
+              <div className={styles.composerStackLane} data-composer-stack-lane="true">
                 <ComposerActiveProgressBar activeProgress={activeProgress} stackPosition="top" />
                 <ComposerQueuedFollowUpBar
                   queuedFollowUp={queuedFollowUp}
@@ -2549,31 +2549,31 @@ export default function AIView() {
                   onEdit={handleEditQueuedFollowUp}
                   onRemove={handleRemoveQueuedFollowUp}
                 />
+                <CopilotInputCoreClient
+                  page="ai"
+                  inputPlaceholder="Ask anything about your research..."
+                  prefillCommand={prefillCommand}
+                  onPrefillConsumed={handlePrefillConsumed}
+                  isLoading={isTyping}
+                  sendMessage={handleSend}
+                  cancelStream={cancelStream}
+                  hasQueuedFollowUp={queuedFollowUp !== null}
+                  attachedStack={composerAttachedStack}
+                  onQueueFollowUp={handleQueueFollowUp}
+                  pendingChoices={pendingChoices}
+                  clearChoices={() => { setPendingChoices([]); setPendingUserInput(null); }}
+                  selectedModel={selectedModel}
+                  onModelChange={setSelectedModel}
+                  modelStorageKey="litrev_ai_model"
+                  showAutonomyPreset={false}
+                  showAttachments={false}
+                  showVoice
+                  onCompress={handleCompressHistory}
+                  canCompress={activeTimeline.length >= 20}
+                  isCompressing={isCompressing}
+                  onReady={markComposerReady}
+                />
               </div>
-              <CopilotInputCoreClient
-                page="ai"
-                inputPlaceholder="Ask anything about your research..."
-                prefillCommand={prefillCommand}
-                onPrefillConsumed={handlePrefillConsumed}
-                isLoading={isTyping}
-                sendMessage={handleSend}
-                cancelStream={cancelStream}
-                hasQueuedFollowUp={queuedFollowUp !== null}
-                attachedStack={composerAttachedStack}
-                onQueueFollowUp={handleQueueFollowUp}
-                pendingChoices={pendingChoices}
-                clearChoices={() => { setPendingChoices([]); setPendingUserInput(null); }}
-                selectedModel={selectedModel}
-                onModelChange={setSelectedModel}
-                modelStorageKey="litrev_ai_model"
-                showAutonomyPreset={false}
-                showAttachments={false}
-                showVoice
-                onCompress={handleCompressHistory}
-                canCompress={activeTimeline.length >= 20}
-                isCompressing={isCompressing}
-                onReady={markComposerReady}
-              />
               <p className={styles.disclaimer}>AI can make mistakes. Please verify important information.</p>
             </div>
           </div>
