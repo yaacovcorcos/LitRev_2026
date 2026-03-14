@@ -699,9 +699,6 @@ export function ProjectDataProvider({
                     applyIncomingProtocolPatch(detail.protocolPatch);
                     continue;
                 }
-                if (liveSyncEnabled && detail.source === "protocol_edit") {
-                    continue;
-                }
             }
 
             const fetcher = domainFetcher(domain);

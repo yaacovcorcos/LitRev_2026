@@ -1,5 +1,6 @@
 "use client";
 
+import type { CacheInvalidationReason } from "@/lib/project-data-policy";
 import { buildProtocolArtifactPatch, type ProtocolArtifactPatch } from "@/lib/protocol-live-sync";
 import type { MemoryProposalPayload } from "@/types/artifacts";
 
@@ -8,6 +9,7 @@ export type ProjectDataDomain = "ledger" | "notes" | "memory" | "protocol" | "dr
 export type ProjectDataChangedDetail = {
     projectId: string;
     domains: ProjectDataDomain[];
+    reason: CacheInvalidationReason;
     source?: string;
     protocolPatch?: ProtocolArtifactPatch;
 };

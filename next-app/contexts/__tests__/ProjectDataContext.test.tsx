@@ -18,6 +18,7 @@ const mockGetProjectMemories = vi.fn();
 let projectDataChangedListener: ((detail: {
     projectId: string;
     domains: string[];
+    reason: string;
     source?: string;
     protocolPatch?: unknown;
 }) => void) | null = null;
@@ -201,6 +202,7 @@ describe("ProjectDataContext", () => {
             projectDataChangedListener?.({
                 projectId: PROJECT_ID,
                 domains: ["protocol"],
+                reason: "artifact_accept",
                 source: "artifact_review",
                 protocolPatch: {
                     type: "protocol_suggestion",

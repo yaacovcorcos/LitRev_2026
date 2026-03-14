@@ -1354,6 +1354,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                 dispatchProjectDataChanged({
                     projectId,
                     domains,
+                    reason: "artifact_accept",
                     source: "artifact_review",
                     protocolPatch: protocolPatch ?? undefined,
                 });
