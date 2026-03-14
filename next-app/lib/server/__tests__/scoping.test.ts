@@ -36,6 +36,12 @@ const SAMPLE_REPORT = {
         },
     ],
     nextStep: "Choose a question and move to protocol definition.",
+    workflow: {
+        entryIntent: "explore" as const,
+        phase: "handoff" as const,
+        handoffOffered: false,
+        recommendedDefaultQuestionIndex: 1,
+    },
 };
 
 describe("scoping helpers", () => {
@@ -79,6 +85,31 @@ describe("scoping helpers", () => {
     it("supports single-option yes confirmation", () => {
         const oneOption = { ...SAMPLE_REPORT, recommendedQuestions: [SAMPLE_REPORT.recommendedQuestions[0]] };
         const selection = detectScopingHandoffSelection("yes", oneOption);
+        expect(selection?.index).toBe(1);
+    });
+
+    it("maps broad assent to the recommended default", () => {
+        const selection = detectScopingHandoffSelection("continue with what you have", SAMPLE_REPORT);
+        expect(selection).toEqual({
+            index: 1,
+            question: SAMPLE_REPORT.recommendedQuestions[0].question,
+        });
+    });
+
+    it("detects theme-overlap handoff selection", () => {
+        const selection = detectScopingHandoffSelection("Go with the pain perception mechanisms one", SAMPLE_REPORT);
+        expect(selection?.index).toBe(2);
+    });
+
+    it("falls back to the default after a handoff was already offered", () => {
+        const previouslyOffered = {
+            ...SAMPLE_REPORT,
+            workflow: {
+                ...SAMPLE_REPORT.workflow,
+                handoffOffered: true,
+            },
+        };
+        const selection = detectScopingHandoffSelection("not sure", previouslyOffered);
         expect(selection?.index).toBe(1);
     });
 

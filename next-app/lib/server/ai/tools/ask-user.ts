@@ -40,7 +40,7 @@ export const askUserTool: AITool = {
             "Use this when: (1) there are multiple valid approaches and the wrong guess would waste work, " +
             "(2) you need a user preference or decision (e.g., which studies to include, PICO choices), " +
             "(3) requirements are ambiguous and you need clarification. " +
-            "Do NOT use this for rhetorical questions or when you can reasonably proceed without input.",
+            "Do NOT use this for rhetorical questions, routine narrowing in scoping, or when you can reasonably proceed with a broad evidence-first pass.",
         parameters: {
             type: "object",
             properties: {

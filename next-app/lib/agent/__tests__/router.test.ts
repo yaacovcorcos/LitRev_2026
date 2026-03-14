@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { routeToAgent, AGENT_MODE_CONFIG } from "../router";
+import { routeToAgent, AGENT_MODE_CONFIG, detectScopingEntryIntent } from "../router";
 
 describe("routeToAgent", () => {
     const originalScopingFlag = process.env.NEXT_PUBLIC_ENABLE_SCOPING_MODE;
@@ -46,6 +46,10 @@ describe("routeToAgent", () => {
     it("routes search intent to scoping when protocol is missing", () => {
         expect(routeToAgent("Search PubMed for cardiac MRI studies", "overview", { hasProtocol: false })).toBe("scoping");
         expect(routeToAgent("Find studies about diabetes", "overview", { hasProtocol: false })).toBe("scoping");
+    });
+
+    it("routes no-protocol deliverable requests into scoping for draft bootstrap", () => {
+        expect(routeToAgent("Help me write a literature review on omega-3 supplementation", "overview", { hasProtocol: false })).toBe("scoping");
     });
 
     it("falls back to search when scoping mode feature flag is disabled", () => {
@@ -139,5 +143,31 @@ describe("AGENT_MODE_CONFIG", () => {
             expect(config.memoryScope).toBeDefined();
             expect(config.description).toBeDefined();
         }
+    });
+});
+
+describe("detectScopingEntryIntent", () => {
+    it("returns draft_bootstrap for no-protocol deliverable framing", () => {
+        expect(
+            detectScopingEntryIntent("Help me write a literature review on omega-3 supplementation", {
+                hasProtocol: false,
+            })
+        ).toBe("draft_bootstrap");
+    });
+
+    it("returns explore for generic literature discovery", () => {
+        expect(
+            detectScopingEntryIntent("What's out there in the literature on omega-3 and cognition?", {
+                hasProtocol: false,
+            })
+        ).toBe("explore");
+    });
+
+    it("returns explore when protocol already exists", () => {
+        expect(
+            detectScopingEntryIntent("Help me write a literature review on omega-3 supplementation", {
+                hasProtocol: true,
+            })
+        ).toBe("explore");
     });
 });

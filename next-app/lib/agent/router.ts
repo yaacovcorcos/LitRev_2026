@@ -21,6 +21,8 @@ export interface AgentModeConfig {
     description: string;
 }
 
+export type ScopingEntryIntent = "explore" | "draft_bootstrap";
+
 export const GENERAL_PROJECT_CORE_TOOLS: string[] = [
     "read_protocol",
     "read_ledger",
@@ -95,6 +97,26 @@ export function getEffectiveAllowedTools(mode: AgentMode): string[] {
     return getContextualAllowedTools(mode, "project");
 }
 
+const DELIVERABLE_BOOTSTRAP_RE =
+    /\b(?:write|draft|outline|literature review|review article|help me write)\b/;
+const SEARCH_SCOPING_RE =
+    /search|find stud|pubmed|semantic scholar|openalex|look for|literature|recommend/;
+
+export function detectScopingEntryIntent(
+    message: string,
+    projectState?: RouterProjectState
+): ScopingEntryIntent {
+    const msg = message.toLowerCase();
+    const hasProtocol = projectState?.hasProtocol ?? true;
+    if (hasProtocol) return "explore";
+
+    if (DELIVERABLE_BOOTSTRAP_RE.test(msg) && /\b(?:on|about|for|review)\b/.test(msg)) {
+        return "draft_bootstrap";
+    }
+
+    return "explore";
+}
+
 /**
  * Rule-based routing. Page takes priority for "protocol" only;
  * everything else is message-driven, checked in priority order.
@@ -107,6 +129,7 @@ export function routeToAgent(message: string, currentPage: RouterPage, projectSt
     const msg = message.toLowerCase();
     const hasProtocol = projectState?.hasProtocol ?? true;
     const scopingEnabled = isScopingModeEnabled();
+    const scopingEntryIntent = detectScopingEntryIntent(message, projectState);
     if (/pico|criteria|inclusion|exclusion|eligib/.test(msg)) return "protocol";
     // Explicit ledger-delete intents route to screening mode (delete_study tool surface),
     // rather than relying on general-mode's all-tools fallback.
@@ -114,10 +137,13 @@ export function routeToAgent(message: string, currentPage: RouterPage, projectSt
     if (/landscape|scoping|what.*out there|what.*been (?:done|studied)|research question|exploratory|feasib|is there enough/.test(msg)) {
         return scopingEnabled ? "scoping" : "search";
     }
-    if (!hasProtocol && /search|find stud|pubmed|semantic scholar|openalex|look for|literature|recommend/.test(msg)) {
+    if (!hasProtocol && scopingEntryIntent === "draft_bootstrap") {
         return scopingEnabled ? "scoping" : "search";
     }
-    if (/search|find stud|pubmed|semantic scholar|openalex|look for|literature|recommend/.test(msg)) return "search";
+    if (!hasProtocol && SEARCH_SCOPING_RE.test(msg)) {
+        return scopingEnabled ? "scoping" : "search";
+    }
+    if (SEARCH_SCOPING_RE.test(msg)) return "search";
     if (/screen|triage|evaluat|review against|match criteria/.test(msg)) return "screening";
     if (/write|draft|compose|methods|results|discussion|introduction/.test(msg)) return "drafting";
     if (/check|verify|cite|unsupported|claim|conflict/.test(msg)) return "qa";

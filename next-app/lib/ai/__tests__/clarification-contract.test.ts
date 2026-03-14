@@ -7,7 +7,9 @@ describe("clarification contract prompt guards", () => {
     const source = readFileSync(resolve(process.cwd(), "lib/ai/prompts/copilot-prompts.ts"), "utf8");
 
     expect(source).toContain("use the ask_user tool to ask a structured question");
-    expect(source).toContain("need a user preference or decision before continuing");
+    expect(source).toContain("materially different outcomes that would mislead the work or force an irreversible branch");
+    expect(source).toContain("you need an explicit user decision before taking the next blocking branch");
+    expect(source).toContain("cannot be resolved by a broad evidence-first pass");
     expect(source).toContain("Do not use freeform prose or suggestion chips as a substitute for required clarification.");
     expect(source).not.toContain("For lightweight end-of-response suggestions, you may still use the <choices> block.");
   });
