@@ -328,7 +328,85 @@ Rules:
 | `/project/[id]/draft` | route mount | local draft state paints first, then `ProjectDataContext.draft` via `warmDomain("draft")` | substantial draft `localStorage` durability | no shell eager boot; route-local warmup only | large local payloads and editor state can grow without central retention policy |
 | `/project/[id]/notes` | route mount | notes index from `ProjectDataContext` plus full note fetch in page | editor/save timers in memory; no full durable notes cache | index-first seed, then full fetch; no shell eager boot | mixed index/full-note loading path complicates freshness and loading UX |
 | `/project/[id]/memory` | route mount | optional `ProjectDataContext.memory` seed -> `ProjectMemoryContext` + lazy tab fetches | route-local tab state only | no shell eager boot; health/prisma/preferences tabs lazy-load on demand | memory state is split across provider preload, route context, and tab-local fetches |
-| `/ai` | route mount | route-local conversation/timeline state + server actions + stream API | history collapse + model prefs in `localStorage`; timeline cache in memory | dynamic imports; idle-deferred workspace context and conversation list; 5-entry LRU timeline cache | strongest local optimization, but still the heaviest long-session client state |
+| `/ai` | route mount | route-local conversation/timeline state + server actions + stream API | history collapse + model prefs in `localStorage`; timeline cache in memory | dynamic imports; idle-deferred workspace context and conversation list; `5`-entry LRU timeline cache | strongest local optimization, but still the heaviest long-session client state |
+
+### Freshness Classes (`SPD-008b`)
+- `must_be_fresh`
+  - Governs reuse of server-backed read data.
+  - A fresh server load is required at the next evaluation point after invalidation.
+  - This does not override an active local in-memory editing buffer while the editor owns the resource.
+- `stale_while_revalidate`
+  - Seeded or cached data may render immediately inside a bounded stale window.
+  - Background refresh may run according to the resource policy.
+- `local_first_with_sync`
+  - Local durable state is authoritative for immediate UX.
+  - Remote sync is asynchronous and conflict-aware.
+  - No time-based stale invalidation applies while unsynced local edits exist.
+- `session_only`
+  - State is valid only for the current route/shell session unless an explicit in-memory reuse rule is documented for that resource.
+  - It must not be treated as durable truth.
+
+### `route_entry` Semantics (`SPD-008b`)
+- `route_entry` means a new route or session evaluation point, not an unconditional refetch.
+- For `must_be_fresh`
+  - `route_entry` requires a fresh load.
+- For `stale_while_revalidate`
+  - `route_entry` allows seeded render first, then background refresh only if the seed is expired or policy says to revalidate.
+- For `local_first_with_sync`
+  - `route_entry` restores local durable state first, then applies normal sync/conflict rules.
+- For `session_only`
+  - `route_entry` resets session-owned state unless the resource already has an explicit in-memory reuse rule, such as `/ai`'s timeline LRU.
+
+### Invalidation Reasons (`SPD-008b`)
+Approved canonical reasons:
+- `auth_change`
+- `server_mutation`
+- `artifact_accept`
+- `manual_refresh`
+- `scope_change`
+- `seed_expired`
+- `conflict_resolution`
+- `route_entry`
+- `maintenance_action`
+
+Precedence rules:
+- Always use the most specific canonical reason available.
+- `artifact_accept` is required for artifact-accept flows.
+- `server_mutation` is the generic fallback only when no narrower canonical reason applies.
+- `source?: string` remains optional provenance/debug metadata only. Runtime logic must key off `reason`, not `source`.
+
+### Freshness and Invalidation Contract (`SPD-008b`)
+- The table below is the canonical policy contract for the app.
+- `SPD-008b` does not make every row operational in code.
+- `SPD-008b` only enforces:
+  - the home seeded freshness contract
+  - canonical invalidation reasons
+  - explicit-empty-seed handling where current seeded behavior already exists
+- All other rows are decision-frozen here and become implementation authority for later slices, mainly `SPD-008f`.
+
+| Resource | Class | Source of truth | Stale window | Invalidates on | Preload |
+|---|---|---|---:|---|---|
+| `homeProjects` | `stale_while_revalidate` | server project index | `15000ms` | `auth_change`, `server_mutation`, `manual_refresh`, `seed_expired`, `route_entry` | `never` |
+| `projectOverviewStats` | `must_be_fresh` | route-entry overview action | none | `route_entry`, `manual_refresh` | `explicit_navigation` |
+| `protocolDocument` | `local_first_with_sync` | local durable protocol snapshot + server canonical record | none | `server_mutation`, `artifact_accept`, `conflict_resolution`, `manual_refresh`, `route_entry` | `hover_intent` from ledger only |
+| `ledgerStudies` | `must_be_fresh` | server study list | none | `server_mutation`, `artifact_accept`, `manual_refresh`, `route_entry` | `hover_intent` |
+| `draftManuscript` | `local_first_with_sync` | local durable draft snapshot + server canonical record | none | `server_mutation`, `artifact_accept`, `manual_refresh`, `route_entry` | `explicit_navigation` |
+| `notesIndex` | `stale_while_revalidate` | server notes index | `30000ms` | `server_mutation`, `artifact_accept`, `manual_refresh`, `seed_expired`, `route_entry` | `explicit_navigation` |
+| `noteDetail` | `must_be_fresh` | selected note body on open, then local in-memory edit state while selected | none | `server_mutation`, `manual_refresh`, `route_entry`, note switch | `explicit_navigation` |
+| `projectMemoryList` | `stale_while_revalidate` | server active project memories | `30000ms` | `server_mutation`, `artifact_accept`, `manual_refresh`, `seed_expired`, `route_entry` | `explicit_navigation` |
+| `memoryDiagnosticsTabs` | `session_only` | route-local tab fetches | none | `maintenance_action`, `manual_refresh`, `route_entry` | `never` |
+| `aiConversationList` | `stale_while_revalidate` | server conversation list | `30000ms` | `server_mutation`, `manual_refresh`, `scope_change`, `seed_expired`, `route_entry` | `idle` after route ready |
+| `aiConversationTimeline` | `session_only` | DB-backed timeline with in-memory LRU reuse | none | `server_mutation`, `manual_refresh`, `scope_change`, LRU eviction, `route_entry` when not cached | `explicit_navigation` |
+| `projectCopilotConversationState` | `session_only` | DB-backed conversation + in-shell runtime state | none | `server_mutation`, `manual_refresh`, `scope_change`, project switch | `never` |
+| `popupTranscript` | `session_only` | popup-local runtime state | none | popup close, context change, `manual_refresh` | `never` |
+
+### Important Defaults
+- `ledgerStudies` does not invalidate on protocol text edits alone. Ledger route rendering may depend on current protocol state, but the ledger data cache itself invalidates only on ledger mutations or explicit refresh.
+- `must_be_fresh` governs server-backed read reuse, not active local editing buffers.
+- `protocolDocument` and `draftManuscript` never use time-based TTL invalidation while unsynced local edits exist.
+- `notesIndex` and `projectMemoryList` may render seeded empty state if that seed is explicit; `[]` is valid seed data and must not mean "not loaded".
+- `memoryDiagnosticsTabs`, `aiConversationTimeline`, `projectCopilotConversationState`, and `popupTranscript` remain session-scoped in this phase.
+- The legacy `litrev:ledger-changed` bridge remains only for backward compatibility until ledger consolidation in `SPD-008f`.
 
 ### Required Deliverables
 - A route-by-route cache matrix covering:
@@ -362,7 +440,8 @@ Rules:
    - Output is documentation-first; no architectural changes yet.
 2. `SPD-008b` Freshness and invalidation contract.
    - Define what data must be fresh vs allowed to be stale.
-   - Reduce duplicate invalidation paths where a single domain currently has multiple client caches.
+   - Normalize invalidation reasons and freeze the canonical policy for all major resources.
+   - Code-level enforcement in this phase is intentionally narrow: home freshness, canonical invalidation reasons, and explicit-empty-seed handling for already-seeded surfaces.
 3. `SPD-008c` Preload and warmup policy.
    - Convert current ad hoc warmup behavior into an explicit allowlist with route-specific rules.
    - Every preload rule must name the expected follow-on navigation win and the metric that justifies it.
@@ -421,7 +500,7 @@ Rules:
     - server-side `Map` caches are process-local only and must not be treated as global truth
   - Current checklist:
     - [x] `SPD-008a` Canonical inventory and compact current-state cache matrix are now captured in this file.
-    - [ ] `SPD-008b` Freshness and invalidation contract.
+    - [ ] `SPD-008b` Freshness and invalidation contract is now defined in this file; code-level alignment remains pending until the narrow follow-up slices land.
     - [ ] `SPD-008c` Preload and warmup policy.
     - [ ] `SPD-008d` Client memory-retention policy.
     - [ ] `SPD-008e` Instrumentation and acceptance gates.
@@ -441,6 +520,6 @@ Rules:
 - [x] `SPD-002a` Project entry boot is now route-aware, and root conversation entry now bootstraps its project snapshot lazily from `useProjectState` instead of eager provider `protocol -> studies` boot; authoritative CI shows the change is safe, but `SPD-002` remains open because the root-entry `LCP` target was not met.
 - [x] `SPD-001` is complete: the vitals pipeline, real baseline artifacts, calibration notes, enforce-mode gate, and first weekly review are all live and documented.
 - [x] `SPD-001h` Temporary draft-route `TTFB` waivers were removed after the regression gate adopted minimum meaningful absolute delta floors and recent authoritative CI artifacts passed without waiver hits.
-- [x] `SPD-001g` The first weekly performance review is documented in `docs/reports/performance/weekly-review-2026-03-06.md`, covering the first real 7-day calendar window after perf-gate activation and calling out pre-activation no-run days explicitly.
+- [x] `SPD-001g` The first weekly performance review is documented in `docs/reports/performance/weekly-review-2026-03-06.md`, covering the first real `7`-day calendar window after perf-gate activation and calling out pre-activation no-run days explicitly.
 - [x] `SPD-007` Budget gate now runs in `enforce` mode, consumes `output/performance/baseline/waivers.json`, and currently has no active waivers.
 - [x] `SPD-001f` The `/project/[id]` desktop `CLS` alert was resolved through calibration, not a route fix: it did not reproduce in three authoritative CI cycles, so the baseline was refreshed to a CI-native artifact instead of waiving `CLS`.
