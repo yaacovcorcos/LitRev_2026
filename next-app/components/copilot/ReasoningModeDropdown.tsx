@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactElement } from "react";
+import { useEffect, useState, type ReactElement } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import type { ReasoningMode } from "@/types/ai";
 import type { ReasoningSupportTier } from "@/lib/ai/config";
@@ -32,7 +32,18 @@ export function ReasoningModeDropdown({
   sideOffset = 6,
   reasoningSupport = "explicit",
 }: ReasoningModeDropdownProps) {
+  const [hasMounted, setHasMounted] = useState(false);
   const showBestEffortNote = reasoningSupport === "best_effort";
+
+  useEffect(() => {
+    setHasMounted(true);
+  }, []);
+
+  // Match the server tree on the first client render so Radix-generated ids
+  // do not drift during hydration in headers that SSR this trigger.
+  if (!hasMounted) {
+    return children;
+  }
 
   return (
     <DropdownMenu.Root>
