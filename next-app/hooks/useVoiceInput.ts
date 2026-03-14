@@ -3,6 +3,11 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 
 export type VoiceInputState = "idle" | "requesting_permission" | "recording" | "transcribing";
+export type VoiceTranscriptionSettlement =
+    | { status: "success"; text: string | null }
+    | { status: "too_short" }
+    | { status: "error"; message: string }
+    | { status: "aborted" };
 
 type AudioRuntime = {
     audioContext: AudioContext;
@@ -12,7 +17,10 @@ type AudioRuntime = {
 
 const ELAPSED_UPDATE_MS = 250;
 
-export function useVoiceInput(onTranscription: (text: string) => void) {
+export function useVoiceInput(
+    onTranscription: (text: string) => void,
+    onTranscriptionSettled?: (result: VoiceTranscriptionSettlement) => void,
+) {
     const [state, setState] = useState<VoiceInputState>("idle");
     const [error, setError] = useState<string | null>(null);
     const [elapsedMs, setElapsedMs] = useState(0);
@@ -107,6 +115,7 @@ export function useVoiceInput(onTranscription: (text: string) => void) {
 
         if (blob.size < 1000) {
             setError("Recording was too short. Try speaking a little longer.");
+            onTranscriptionSettled?.({ status: "too_short" });
             setState("idle");
             resetElapsedTracking();
             return;
@@ -133,22 +142,33 @@ export function useVoiceInput(onTranscription: (text: string) => void) {
             }
 
             const { text } = await response.json();
-            if (text && text.trim()) {
-                onTranscription(text.trim());
+            const trimmedText = typeof text === "string" ? text.trim() : "";
+            if (trimmedText) {
+                onTranscription(trimmedText);
             }
+            onTranscriptionSettled?.({ status: "success", text: trimmedText || null });
         } catch (err) {
             if (err instanceof DOMException && err.name === "AbortError") {
+                onTranscriptionSettled?.({ status: "aborted" });
                 return;
             }
             const msg = err instanceof Error ? err.message : "Transcription failed";
             setError(msg);
+            onTranscriptionSettled?.({ status: "error", message: msg });
             console.error("Transcription error:", err);
         } finally {
             transcriptionAbortRef.current = null;
             setState("idle");
             resetElapsedTracking();
         }
-    }, [freezeElapsedTracking, onTranscription, resetElapsedTracking, stopAudioRuntime, stopMediaTracks]);
+    }, [
+        freezeElapsedTracking,
+        onTranscription,
+        onTranscriptionSettled,
+        resetElapsedTracking,
+        stopAudioRuntime,
+        stopMediaTracks,
+    ]);
 
     const startRecording = useCallback(async () => {
         setError(null);

@@ -158,7 +158,9 @@ describe("useVoiceInput", () => {
                 }),
         );
 
-        const { result } = renderHook(() => useVoiceInput(vi.fn()));
+        const onTranscription = vi.fn();
+        const onTranscriptionSettled = vi.fn();
+        const { result } = renderHook(() => useVoiceInput(onTranscription, onTranscriptionSettled));
 
         await act(async () => {
             result.current.toggleRecording();
@@ -195,11 +197,17 @@ describe("useVoiceInput", () => {
 
         expect(result.current.state).toBe("idle");
         expect(result.current.elapsedMs).toBe(0);
+        expect(onTranscription).toHaveBeenCalledWith("done");
+        expect(onTranscriptionSettled).toHaveBeenCalledWith({ status: "success", text: "done" });
+        expect(onTranscription.mock.invocationCallOrder[0]).toBeLessThan(
+            onTranscriptionSettled.mock.invocationCallOrder[0],
+        );
     });
 
     it("shows a short-recording error and skips transcription for tiny blobs", async () => {
         recordingBlobSize = 10;
-        const { result } = renderHook(() => useVoiceInput(vi.fn()));
+        const onTranscriptionSettled = vi.fn();
+        const { result } = renderHook(() => useVoiceInput(vi.fn(), onTranscriptionSettled));
 
         await act(async () => {
             result.current.toggleRecording();
@@ -215,6 +223,41 @@ describe("useVoiceInput", () => {
         expect(fetchMock).not.toHaveBeenCalled();
         expect(result.current.state).toBe("idle");
         expect(result.current.error).toMatch(/too short/i);
+        expect(onTranscriptionSettled).toHaveBeenCalledWith({ status: "too_short" });
+    });
+
+    it("reports aborted transcription through the settlement callback", async () => {
+        let abortSignal: AbortSignal | null = null;
+        fetchMock.mockImplementation(async (_url, init) => {
+            abortSignal = init?.signal ?? null;
+            return new Promise((_resolve, reject) => {
+                abortSignal?.addEventListener("abort", () => {
+                    reject(new DOMException("aborted", "AbortError"));
+                });
+            });
+        });
+
+        const onTranscriptionSettled = vi.fn();
+        const { result } = renderHook(() => useVoiceInput(vi.fn(), onTranscriptionSettled));
+
+        await act(async () => {
+            result.current.toggleRecording();
+            await Promise.resolve();
+        });
+
+        await act(async () => {
+            result.current.stopRecording();
+            await Promise.resolve();
+        });
+
+        await act(async () => {
+            result.current.stopRecording();
+            await Promise.resolve();
+            await Promise.resolve();
+        });
+
+        expect(onTranscriptionSettled).toHaveBeenCalledWith({ status: "aborted" });
+        expect(result.current.state).toBe("idle");
     });
 
     it("releases media tracks and audio runtime on unmount", async () => {
