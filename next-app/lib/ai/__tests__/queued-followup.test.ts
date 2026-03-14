@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { createQueuedFollowUp, isQueuedFollowUpDispatchReady } from "../queued-followup";
+import {
+    bindQueuedFollowUpConversationId,
+    createQueuedFollowUp,
+    isQueuedFollowUpDispatchReady,
+} from "../queued-followup";
 
 describe("queued follow-up helpers", () => {
     it("trims queued follow-up text and preserves send context", () => {
@@ -72,8 +76,35 @@ describe("queued follow-up helpers", () => {
             hasPendingChoices: false,
             hasPendingUserInput: false,
             sendLocked: false,
+            currentConversationId: null,
+        })).toBe(false);
+
+        expect(isQueuedFollowUpDispatchReady({
+            queuedFollowUp: queued,
+            isLoading: false,
+            hasPendingChoices: false,
+            hasPendingUserInput: false,
+            sendLocked: false,
             currentConversationId: "conv-2",
         })).toBe(false);
     });
-});
 
+    it("binds an unscoped queued follow-up to the first resolved conversation id", () => {
+        const queued = createQueuedFollowUp({
+            text: "Review the latest screening changes",
+            conversationId: null,
+            page: "overview",
+            source: "draft",
+        });
+
+        expect(bindQueuedFollowUpConversationId(queued, null)).toEqual(queued);
+
+        const bound = bindQueuedFollowUpConversationId(queued, "conv-1");
+        expect(bound).toEqual({
+            ...queued,
+            conversationId: "conv-1",
+        });
+
+        expect(bindQueuedFollowUpConversationId(bound, "conv-2")).toEqual(bound);
+    });
+});

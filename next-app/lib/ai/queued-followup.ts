@@ -20,6 +20,19 @@ export function createQueuedFollowUp(input: CreateQueuedFollowUpInput): QueuedFo
     };
 }
 
+export function bindQueuedFollowUpConversationId(
+    queuedFollowUp: QueuedFollowUp | null,
+    conversationId: string | null,
+): QueuedFollowUp | null {
+    if (!queuedFollowUp) return null;
+    if (!conversationId) return queuedFollowUp;
+    if (queuedFollowUp.conversationId !== null) return queuedFollowUp;
+    return {
+        ...queuedFollowUp,
+        conversationId,
+    };
+}
+
 export type QueuedFollowUpDispatchState = {
     queuedFollowUp: QueuedFollowUp | null;
     isLoading: boolean;
@@ -35,7 +48,7 @@ export function isQueuedFollowUpDispatchReady(state: QueuedFollowUpDispatchState
     if (state.hasPendingChoices) return false;
     if (state.hasPendingUserInput) return false;
     if (state.sendLocked) return false;
+    if (state.currentConversationId === null) return false;
     if (state.queuedFollowUp.conversationId !== state.currentConversationId) return false;
     return true;
 }
-

@@ -67,10 +67,9 @@ export function CopilotInput({ page, section, studyId, inputPlaceholder, prefill
             cancelStream={cancelStream}
             hasQueuedFollowUp={queuedFollowUp !== null}
             onQueueFollowUp={(payload) => {
-                if (!currentConversationId) return;
                 queueQueuedFollowUp(createQueuedFollowUp({
                     ...payload,
-                    conversationId: currentConversationId,
+                    conversationId: currentConversationId ?? null,
                     source: "draft",
                 }));
             }}
