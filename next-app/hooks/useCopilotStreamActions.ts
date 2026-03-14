@@ -1028,11 +1028,17 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
             studyId?: string,
             retryModelExpectation?: RetryModelExpectation,
             contextTargets?: ContextCaptureTarget[],
-            runtimeOverrides?: { replaceRunId?: string | null },
+            runtimeOverrides?: {
+                replaceRunId?: string | null;
+                continueFromRunId?: string | null;
+                suppressUserMessageAppend?: boolean;
+            },
         ) => {
             const trimmed = text.trim();
             const attachment = pendingAttachment;
             if (!trimmed && !attachment) return;
+            const continueFromRunId = runtimeOverrides?.continueFromRunId ?? null;
+            const suppressUserMessageAppend = runtimeOverrides?.suppressUserMessageAppend === true;
             const replaceRunId = runtimeOverrides?.replaceRunId
                 ?? (isLoadingRef.current ? currentRunId : null);
             if (isLoadingRef.current) cancelStream();
@@ -1111,10 +1117,12 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                 attachments: attachmentsMeta,
             };
 
-            updateState((prev) => ({
-                ...prev,
-                messages: [...prev.messages, userMessage],
-            }));
+            if (!suppressUserMessageAppend) {
+                updateState((prev) => ({
+                    ...prev,
+                    messages: [...prev.messages, userMessage],
+                }));
+            }
             if (convId) {
                 convo.markConversationActivity(convId);
             }
@@ -1154,6 +1162,8 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                         agentMode: agentMode || "general",
                         page,
                         section,
+                        continueFromRunId: continueFromRunId ?? undefined,
+                        persistUserMessage: suppressUserMessageAppend ? false : undefined,
                         persistedUserMessageContent: displayText,
                         userMessageAttachments: attachmentsMeta,
                         contextTargets,

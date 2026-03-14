@@ -7,6 +7,7 @@
 
 import { useProjectCopilot } from "@/contexts/ProjectCopilotContext";
 import { useProjectState } from "@/hooks/useProjectState";
+import { createQueuedFollowUp } from "@/lib/ai/queued-followup";
 import type { CopilotPage } from "@/types/ai";
 import { CopilotInputCoreClient } from "./CopilotInputCoreClient";
 
@@ -17,9 +18,18 @@ export type CopilotInputProps = {
     inputPlaceholder: string;
     prefillCommand?: { text: string; id: string } | null;
     onPrefillConsumed?: () => void;
+    attachedStack?: "none" | "attached";
 };
 
-export function CopilotInput({ page, section, studyId, inputPlaceholder, prefillCommand, onPrefillConsumed }: CopilotInputProps) {
+export function CopilotInput({
+    page,
+    section,
+    studyId,
+    inputPlaceholder,
+    prefillCommand,
+    onPrefillConsumed,
+    attachedStack = "none",
+}: CopilotInputProps) {
     const {
         isLoading,
         sendMessage,
@@ -47,6 +57,9 @@ export function CopilotInput({ page, section, studyId, inputPlaceholder, prefill
         isSummarizing,
         selectedModel,
         setSelectedModel,
+        currentConversationId,
+        queuedFollowUp,
+        queueQueuedFollowUp,
     } = useProjectCopilot();
     const projectState = useProjectState(projectId);
 
@@ -61,6 +74,15 @@ export function CopilotInput({ page, section, studyId, inputPlaceholder, prefill
             isLoading={isLoading}
             sendMessage={sendMessage}
             cancelStream={cancelStream}
+            hasQueuedFollowUp={queuedFollowUp !== null}
+            attachedStack={attachedStack}
+            onQueueFollowUp={(payload) => {
+                queueQueuedFollowUp(createQueuedFollowUp({
+                    ...payload,
+                    conversationId: currentConversationId ?? null,
+                    source: "draft",
+                }));
+            }}
             pendingAttachment={pendingAttachment}
             isAttaching={isAttaching}
             attachFile={attachFile}

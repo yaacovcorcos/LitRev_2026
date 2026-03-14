@@ -21,7 +21,7 @@ Routing authority stays in `AGENTS.md`; this file only maps already-matched doma
 | Backend and infrastructure decisions | `docs/plans/plan-backend.md` | Server action/service/DB contract changes |
 | Guided setup behavior | `docs/plans/plan-guided-setup.md` | Onboarding/setup activation flow changes |
 | Prompting/extraction logic | `docs/plans/plan-prompts.md` | Prompt text/schema/LLM extraction changes |
-| UI/UX architecture and roadmap | `docs/plans/plan-ux-ui.md` | Component and interaction model changes |
+| UI/UX architecture and roadmap | `docs/plans/plan-ux-ui.md`, `docs/architecture/agentic-ui-glossary.md` | Component and interaction model changes, or any request to normalize product/code vocabulary for chat timeline, transparency, artifacts, or composer terms |
 | Responsive/mobile foundation and chat UX execution | `docs/plans/mobile-plan.md`, `docs/plans/mobile-layout-contract.md`, `docs/runbooks/responsive-foundation-certification.md`, `docs/plans/plan-chat-unification-v2.md` | Any responsive tier, phone/compact layout contract, mobile chat layout, drawer/composer, popup behavior, or responsive certification change |
 | Chat unification rollout operations | `docs/plans/plan-chat-unification-v2.md`, `docs/runbooks/chat-unification-burn-in.md` | U1.6 canary setup, burn-in validation, and U3 unlock decisions |
 | GitHub branch/PR/review automation | `docs/runbooks/github-flow.md` | Any edits to `.github/workflows/**`, branch protections, CODEOWNERS, or agent git policy |

@@ -9,7 +9,8 @@ import { Prisma } from "@prisma/client";
 import type { ArtifactType, ArtifactStatus, CriteriaCardPayload, ProtocolSuggestionPayload, MemoryProposalPayload, MemoryForgetProposalPayload, StudyProposalPayload, StudyUpdatePayload, DraftDiffPayload, ScreeningBatchPayload, EvidenceTablePayload } from "@/types/artifacts";
 import type { StudyType, StudySource, StudyDetails } from "@/types/ledger";
 import { ARTIFACT_PAYLOAD_SCHEMAS } from "@/types/artifacts";
-import { emitEvent } from "./events";
+import { emitEventWithinTransaction } from "./events";
+import { createArtifactCheckpointInTransaction } from "./run-checkpoints";
 import { onStudyAccepted, onStudyExcluded, onDraftAccepted, onArtifactEdited } from "@/lib/server/memory/decision-extractor";
 import { syncProtocolToMemory } from "@/lib/server/memory/protocol-sync";
 import { ensureProtocol } from "@/lib/server/protocols";
@@ -19,6 +20,7 @@ import { setUserMemory, createProjectMemory, getProjectMemories, getUserMemories
 import { normalizedMemoryKey, normalizedMemoryValue } from "@/lib/server/memory/conflict-policy";
 import { createNote, updateNote, textToTipTapDoc, listNotes } from "@/lib/server/notes";
 import { upsertStudy, updateStudy } from "@/lib/server/ledger";
+import { markRunDurabilityDegraded, noteObservedRunActivity } from "./run";
 
 // ── Apply function registry ──────────────────────────────────────────────────
 
@@ -41,6 +43,10 @@ const snapshotReaders = new Map<ArtifactType, SnapshotReader>();
 type RestoreFunction = (ctx: { projectId: string; payload: unknown; snapshot: unknown }) => Promise<void>;
 
 const restoreFunctions = new Map<ArtifactType, RestoreFunction>();
+
+function formatError(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
+}
 
 /**
  * Register an apply function for an artifact type.
@@ -80,19 +86,46 @@ export async function createArtifact(input: CreateArtifactInput) {
         }
     }
 
-    return prisma.artifact.create({
-        data: {
+    const { artifact, eventCreatedAt } = await prisma.$transaction(async (tx) => {
+        const artifact = await tx.artifact.create({
+            data: {
+                runId: input.runId,
+                projectId: input.projectId || null,
+                conversationId: input.conversationId ?? null,
+                userId: input.userId ?? null,
+                type: input.type,
+                status: "proposed",
+                title: input.title,
+                payload: input.payload as object,
+                sourceEventId: input.sourceEventId ?? null,
+            },
+        });
+
+        const event = await emitEventWithinTransaction(
+            tx,
+            input.runId,
+            "artifact_proposed",
+            {
+                artifactId: artifact.id,
+                artifactType: artifact.type,
+                artifactStatus: artifact.status,
+                artifactTitle: artifact.title,
+            },
+            { artifactId: artifact.id },
+        );
+
+        await createArtifactCheckpointInTransaction(tx, {
             runId: input.runId,
-            projectId: input.projectId || null,
-            conversationId: input.conversationId ?? null,
-            userId: input.userId ?? null,
-            type: input.type,
-            status: "proposed",
-            title: input.title,
-            payload: input.payload as object,
-            sourceEventId: input.sourceEventId ?? null,
-        },
+            conversationId: artifact.conversationId,
+            eventSequence: event.sequence,
+            artifact,
+        });
+
+        return { artifact, eventCreatedAt: event.createdAt };
     });
+
+    noteObservedRunActivity(input.runId, eventCreatedAt);
+    return artifact;
 }
 
 /**
@@ -175,14 +208,60 @@ export async function applyArtifact(
     const applyFn = applyFunctions.get(artifact.type as ArtifactType);
     if (!applyFn) {
         console.warn(`No apply function registered for artifact type: ${artifact.type}`);
-        // Still mark as applied — the artifact was accepted
-        return prisma.artifact.update({
-            where: { id: artifactId },
-            data: {
-                appliedAt: new Date(),
-                ...(statusOverride ? { status: statusOverride } : {}),
-            },
-        });
+        try {
+            const { applied, eventCreatedAt } = await prisma.$transaction(async (tx) => {
+                const applied = await tx.artifact.update({
+                    where: { id: artifactId },
+                    data: {
+                        appliedAt: new Date(),
+                        ...(statusOverride ? { status: statusOverride } : {}),
+                    },
+                });
+
+                const event = await emitEventWithinTransaction(
+                    tx,
+                    artifact.runId,
+                    "artifact_reviewed",
+                    {
+                        artifactId: artifact.id,
+                        status: "applied",
+                        type: artifact.type,
+                    },
+                    { artifactId: artifact.id },
+                );
+
+                await createArtifactCheckpointInTransaction(tx, {
+                    runId: artifact.runId,
+                    conversationId: artifact.conversationId,
+                    eventSequence: event.sequence,
+                    artifact: {
+                        id: applied.id,
+                        type: applied.type,
+                        status: applied.status,
+                        title: applied.title,
+                        payload: applied.payload,
+                        version: applied.version,
+                    },
+                });
+
+                return { applied, eventCreatedAt: event.createdAt };
+            });
+
+            noteObservedRunActivity(artifact.runId, eventCreatedAt);
+            return applied;
+        } catch (error) {
+            await markRunDurabilityDegraded(
+                artifact.runId,
+                "artifact_review_checkpoint_persistence_failed",
+            ).catch((markError) => {
+                console.error("[artifacts] Failed to persist degraded durability state", {
+                    artifactId,
+                    runId: artifact.runId,
+                    error: formatError(markError),
+                });
+            });
+            throw error;
+        }
     }
 
     // Run apply function
@@ -216,25 +295,66 @@ export async function applyArtifact(
     });
 
     // Mark applied
-    const applied = await prisma.artifact.update({
-        where: { id: artifactId },
-        data: {
-            appliedAt: new Date(),
-            applyId: artifact.id, // self-referencing idempotency key
-            ...(statusOverride ? { status: statusOverride } : {}),
-        },
-    });
+    try {
+        const { applied, eventCreatedAt } = await prisma.$transaction(async (tx) => {
+            const applied = await tx.artifact.update({
+                where: { id: artifactId },
+                data: {
+                    appliedAt: new Date(),
+                    applyId: artifact.id, // self-referencing idempotency key
+                    ...(statusOverride ? { status: statusOverride } : {}),
+                },
+            });
 
-    // Emit event
-    if (artifact.runId) {
-        await emitEvent(artifact.runId, "artifact_reviewed", {
-            artifactId: artifact.id,
-            status: "applied",
-            type: artifact.type,
-        }, { artifactId: artifact.id });
+            const event = await emitEventWithinTransaction(
+                tx,
+                artifact.runId,
+                "artifact_reviewed",
+                {
+                    artifactId: artifact.id,
+                    status: "applied",
+                    type: artifact.type,
+                },
+                { artifactId: artifact.id },
+            );
+
+            await createArtifactCheckpointInTransaction(tx, {
+                runId: artifact.runId,
+                conversationId: artifact.conversationId,
+                eventSequence: event.sequence,
+                artifact: {
+                    id: applied.id,
+                    type: applied.type,
+                    status: applied.status,
+                    title: applied.title,
+                    payload: applied.payload,
+                    version: applied.version,
+                },
+            });
+
+            return { applied, eventCreatedAt: event.createdAt };
+        });
+
+        noteObservedRunActivity(artifact.runId, eventCreatedAt);
+        return applied;
+    } catch (error) {
+        await markRunDurabilityDegraded(
+            artifact.runId,
+            "artifact_review_checkpoint_persistence_failed",
+        ).catch((markError) => {
+            console.error("[artifacts] Failed to persist degraded durability state", {
+                artifactId,
+                runId: artifact.runId,
+                error: formatError(markError),
+            });
+        });
+        console.error("[artifacts] Failed to persist artifact review checkpoint boundary", {
+            artifactId,
+            runId: artifact.runId,
+            error: formatError(error),
+        });
+        throw error;
     }
-
-    return applied;
 }
 
 /**

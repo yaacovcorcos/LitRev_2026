@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_SECTION_ORDER } from "@/types/draft";
+import { UNSECTIONED_DRAFT_ID } from "@/types/draft";
 import type { JSONContent } from "@tiptap/core";
 import {
   buildCompatContentBySection,
@@ -10,11 +10,11 @@ import {
 } from "@/lib/manuscript/schema";
 
 describe("manuscript schema helpers", () => {
-  it("creates default manuscript sections from the canonical order", () => {
+  it("creates a blank default manuscript with whole-draft content only", () => {
     const manuscript = createDefaultManuscriptDocument();
 
-    expect(manuscript.schemaVersion).toBe(1);
-    expect(manuscript.sections.map((section) => section.sectionId)).toEqual(DEFAULT_SECTION_ORDER);
+    expect(manuscript.schemaVersion).toBe(2);
+    expect(manuscript.sections.map((section) => section.sectionId)).toEqual([UNSECTIONED_DRAFT_ID]);
     expect(manuscript.doc.content?.every((node) => node.type === "manuscriptSection")).toBe(true);
   });
 
@@ -28,6 +28,10 @@ describe("manuscript schema helpers", () => {
         },
       },
       contentBySection: {
+        [UNSECTIONED_DRAFT_ID]: {
+          type: "doc",
+          content: [{ type: "paragraph" }],
+        },
         abstract: {
           type: "doc",
           content: [

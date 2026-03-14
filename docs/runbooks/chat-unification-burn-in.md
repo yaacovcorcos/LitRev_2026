@@ -115,6 +115,11 @@ Track trend lines daily:
    - recovery-required persistence failures surface truthfully and do not masquerade as clean replay parity
    - no-forward-progress detection converges to a bounded next step instead of indefinite reconnecting
    - degraded continuation is explicit and truthful when full durable recovery is unavailable
+   - audited durable-continuation cases (`tool_result`, artifact state) offer `Continue` only when the server can prove the next step from persisted truth alone
+   - checkpoint-backed continuation prefers a valid earlier safe boundary over later same-run replay noise when Slice 4 durable continuation alone would refuse to continue
+   - invalidated checkpoints fall back cleanly to durable continuation or retry semantics instead of advertising fake checkpoint continuation
+   - checkpoint continuation does not duplicate the already-completed tool step or artifact boundary it was seeded from
+   - unsupported or invalidated continuation sources fall back cleanly to retry semantics instead of offering fake continuation
    - no contradictory same-run recovery/error states are visible on the same surface
    - reconnect behavior stays bounded rather than spinning indefinitely
    - terminal reconciliation does not duplicate the final assistant/error state
@@ -146,6 +151,8 @@ Pass criteria:
 8. Manual abnormal-end recovery spot check passes on `/ai` and project copilot with no dead-end `ACTIVE_RUN_EXISTS` path after a reconnectable disconnect.
 9. Recovery-required persistence failure behavior is truthful under the burn-in spot checks and does not invent full replay parity.
 10. No-forward-progress detection and degraded continuation behavior both converge to one bounded user-visible next step with no contradictory same-run states.
+11. Audited durable-continuation cases succeed without duplicating the already-completed durable step, and unsupported cases never advertise `Continue`.
+12. Checkpoint-backed continuation prefers a valid earlier safe boundary when later same-run noise exists, and invalidated checkpoints fall back cleanly without duplicating the completed source step.
 
 ## Metric Integrity Rules
 

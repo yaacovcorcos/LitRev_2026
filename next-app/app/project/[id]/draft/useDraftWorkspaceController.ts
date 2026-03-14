@@ -23,54 +23,40 @@ import {
   type DraftState,
 } from "@/lib/draftStorage";
 import { useProjectData } from "@/hooks/useProjectData";
-import { buildCompatContentBySection } from "@/lib/manuscript/schema";
-import {
-  extractManuscriptOutline,
-  insertManuscriptSection,
-  moveTopLevelBlock,
-  removeManuscriptSection,
-  reorderManuscriptSection,
-} from "@/lib/manuscript/workspace";
 import { useProjects } from "@/contexts/ProjectsContext";
 import { useLedger } from "@/contexts/LedgerContext";
 import { useProjectShell } from "@/contexts/ProjectShellContext";
 import { usePopupChat } from "@/contexts/PopupChatContext";
-import { useContextCaptureActions } from "@/hooks/useContextCaptureActions";
-import { buildDraftSelectionTarget } from "@/lib/context-capture/targets";
-import { getContextCaptureAction } from "@/lib/context-capture/actions";
-import { COARSE_POINTER_MEDIA_QUERY, MOBILE_VIEWPORT_MEDIA_QUERY } from "@/lib/mobile/breakpoints";
-import { isMobileDraftV2Enabled } from "@/lib/mobile/feature-flags";
-import { isContextToolbarV1Enabled } from "@/lib/context-capture/feature-flags";
+import { useProjectCopilotSafe } from "@/contexts/ProjectCopilotContext";
+import { COMPACT_MEDIA_QUERY, PHONE_MEDIA_QUERY } from "@/lib/mobile/breakpoints";
 import { useDraftExport } from "./useDraftExport";
-import { applyManuscriptDocToDraftState, getDraftCitationIssues, synchronizeDraftState } from "./draft-workspace-state";
+import { getDraftCitationIssues, synchronizeDraftState } from "./draft-workspace-state";
 import {
   BASE_SECTION_MAP,
   EMPTY_IDS,
   FONT_FAMILY_OPTIONS,
+  WHOLE_DRAFT_META,
   createCustomSectionId,
   customSectionPlaceholder,
   docHasContent,
   formatToVars,
-  isBaseSectionKey,
   studyLabel,
   type SectionMeta,
 } from "./draft-helpers";
-import {
-  buildDraftOutlineViewModel,
-  deriveDraftSelectionState,
-  getBlockFocusPosition,
-  getHeadingFocusPosition,
-  getSectionFocusPosition,
-  type DraftEditorMap,
-  type DraftOutlineViewModel,
-  type DraftSectionStatus,
-  type DraftSelectionState,
-} from "./workspace-view-model";
-import { OPTIONAL_SECTION_KEYS, type DraftSectionId } from "@/types/draft";
-import type { ManuscriptDocument } from "@/types/manuscript";
+import { extractManuscriptOutline } from "@/lib/manuscript/workspace";
+import { DRAFT_SECTIONS, type DraftMode, type DraftSectionId, UNSECTIONED_DRAFT_ID } from "@/types/draft";
+import type { DraftSidebarView } from "./DraftSidebar";
+import type { DraftSidebarSection } from "./StructureRail";
 
 type ControllerParams = {
   projectId: string;
+};
+
+type PendingSectionRequest = {
+  id: DraftSectionId;
+  label: string;
+  placeholder?: string;
+  isCustom: boolean;
 };
 
 function createCitationUid(sectionId: DraftSectionId): string {
@@ -78,66 +64,117 @@ function createCitationUid(sectionId: DraftSectionId): string {
   return `cit-${sectionId}-${Date.now().toString(36)}-${rand}`;
 }
 
-function withManuscriptDocument(state: DraftState, manuscript: ManuscriptDocument): DraftState {
-  return {
-    ...state,
-    sectionOrder: manuscript.sections.map((section) => section.sectionId),
-    manuscript,
-    contentBySection: buildCompatContentBySection(manuscript),
-  };
+function currentTargetIdFromActiveSection(activeSection: DraftSectionId | null): DraftSectionId {
+  return activeSection ?? UNSECTIONED_DRAFT_ID;
+}
+
+function findBlockFocusPosition(editor: Editor, blockId: string | undefined) {
+  if (!blockId) return null;
+  let focusPos: number | null = null;
+  editor.state.doc.descendants((node, pos) => {
+    const nodeBlockId = typeof node.attrs?.blockId === "string" ? node.attrs.blockId : null;
+    if (nodeBlockId === blockId) {
+      focusPos = pos + 1;
+      return false;
+    }
+    return true;
+  });
+  return focusPos;
+}
+
+function moveSectionOrder(order: DraftSectionId[], sectionId: DraftSectionId, direction: "up" | "down") {
+  if (sectionId === "references") return order;
+  const index = order.indexOf(sectionId);
+  if (index < 0) return order;
+  const targetIndex = direction === "up" ? index - 1 : index + 1;
+  if (targetIndex < 0 || targetIndex >= order.length || order[targetIndex] === "references") {
+    return order;
+  }
+  const next = [...order];
+  const [section] = next.splice(index, 1);
+  next.splice(targetIndex, 0, section);
+  return next;
+}
+
+function reorderSectionOrder(
+  order: DraftSectionId[],
+  draggingKey: DraftSectionId,
+  targetKey: DraftSectionId,
+  position: "before" | "after",
+) {
+  if (draggingKey === "references" || targetKey === "references") return order;
+  const next = order.filter((sectionId) => sectionId !== draggingKey);
+  const targetIndex = next.indexOf(targetKey);
+  if (targetIndex < 0) return order;
+  const insertIndex = position === "after" ? targetIndex + 1 : targetIndex;
+  next.splice(insertIndex, 0, draggingKey);
+  return next;
+}
+
+function insertSectionAfterActive(order: DraftSectionId[], activeSection: DraftSectionId | null, nextSectionId: DraftSectionId) {
+  const withoutReferences = order.filter((sectionId) => sectionId !== "references");
+  const references = order.includes("references") ? ["references"] : [];
+  if (activeSection && withoutReferences.includes(activeSection)) {
+    const insertIndex = withoutReferences.indexOf(activeSection) + 1;
+    return [...withoutReferences.slice(0, insertIndex), nextSectionId, ...withoutReferences.slice(insertIndex), ...references];
+  }
+  return [...withoutReferences, nextSectionId, ...references];
+}
+
+function normalizeModeForSections(mode: DraftMode, sectionOrder: DraftSectionId[]) {
+  const hasEditableSection = sectionOrder.some((sectionId) => sectionId !== "references");
+  if (mode === "section" && !hasEditableSection) {
+    return "full" as const;
+  }
+  return mode;
 }
 
 export function useDraftWorkspaceController({ projectId }: ControllerParams) {
-  const mobileDraftV2Enabled = isMobileDraftV2Enabled();
   const router = useRouter();
   const searchParams = useSearchParams();
   const { getProjectById, isLoadingProjects, projectsError } = useProjects();
   const { getStudiesByProject } = useLedger();
   const { isEmbeddedInProjectShell } = useProjectShell();
+  const projectCopilot = useProjectCopilotSafe();
   const { openPopupChat } = usePopupChat();
-  const { captureEnabled, openPopupForTarget, runAction } = useContextCaptureActions();
-  const contextToolbarEnabled = isContextToolbarV1Enabled();
-  const sendToCopilotAction = getContextCaptureAction("send_to_copilot");
-  const rewriteSelectionAction = getContextCaptureAction("rewrite_selection");
-  const checkClaimSupportAction = getContextCaptureAction("check_claim_support");
+  const { draft: cachedDraft, warmDomain } = useProjectData();
 
   const project = getProjectById(projectId);
-  const studies = useMemo(
-    () => (projectId ? getStudiesByProject(projectId) : []),
-    [getStudiesByProject, projectId],
-  );
+  const studies = useMemo(() => (projectId ? getStudiesByProject(projectId) : []), [getStudiesByProject, projectId]);
+  const queryMode = searchParams.get("mode");
   const querySection = searchParams.get("section");
 
   const [draft, setDraft] = useState<DraftState>(createDefaultDraftState);
   const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "error">("saved");
   const [isAddEvidenceOpen, setAddEvidenceOpen] = useState(false);
   const [isFormatOpen, setFormatOpen] = useState(false);
+  const [isAddSectionOpen, setAddSectionOpen] = useState(false);
   const [customSectionName, setCustomSectionName] = useState("");
-  const [selectionState, setSelectionState] = useState<DraftSelectionState>({
-    activeSection: draft.activeSection,
-    activeBlockId: null,
-  });
-  const [editorMap, setEditorMap] = useState<DraftEditorMap | null>(null);
+  const [sidebarView, setSidebarView] = useState<DraftSidebarView>("sections");
+  const [isPhoneWorkspace, setPhoneWorkspace] = useState(false);
   const [isCompactWorkspace, setCompactWorkspace] = useState(false);
-  const [isStructureDrawerOpen, setStructureDrawerOpen] = useState(false);
-  const [isContextDrawerOpen, setContextDrawerOpen] = useState(false);
-  const [collapsedSectionIds, setCollapsedSectionIds] = useState<Set<DraftSectionId>>(new Set());
-  const [draggingSectionId, setDraggingSectionId] = useState<DraftSectionId | null>(null);
-  const [dragOverSectionId, setDragOverSectionId] = useState<DraftSectionId | null>(null);
-  const [dragOverPosition, setDragOverPosition] = useState<"before" | "after" | null>(null);
   const [paragraphDir, setParagraphDir] = useState<"ltr" | "rtl">("ltr");
-  const [canRunDraftContextActions, setCanRunDraftContextActions] = useState(false);
-  const [showDesktopContextToolbar, setShowDesktopContextToolbar] = useState(false);
-  const [editorInstance, setEditorInstance] = useState<Editor | null>(null);
+  const [activeEditor, setActiveEditor] = useState<Editor | null>(null);
+  const [pendingSectionRequest, setPendingSectionRequest] = useState<PendingSectionRequest | null>(null);
+  const [sectionToRemove, setSectionToRemove] = useState<DraftSectionId | null>(null);
+  const [draggingKey, setDraggingKey] = useState<DraftSectionId | null>(null);
+  const [dragOverKey, setDragOverKey] = useState<DraftSectionId | null>(null);
+  const [dragOverPosition, setDragOverPosition] = useState<"before" | "after" | null>(null);
 
-  const formatRef = useRef<HTMLDivElement | null>(null);
-  const editorRef = useRef<Editor | null>(null);
+  const activeEditorRef = useRef<Editor | null>(null);
+  const draftRef = useRef(draft);
+  const editorBySectionRef = useRef<Record<DraftSectionId, Editor | null>>({ [UNSECTIONED_DRAFT_ID]: null } as Record<DraftSectionId, Editor | null>);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastSyncedUrlRef = useRef("");
-  const initialJumpSectionRef = useRef<DraftSectionId | null>(querySection?.trim() ? querySection : null);
-
-  const { draft: cachedDraft, warmDomain } = useProjectData();
   const appliedCachedRef = useRef(false);
+  const sectionTabRefs = useRef<Record<DraftSectionId, HTMLButtonElement | null>>({} as Record<DraftSectionId, HTMLButtonElement | null>);
+  const addSectionRef = useRef<HTMLDivElement | null>(null);
+  const addSectionInputRef = useRef<HTMLInputElement | null>(null);
+  const formatRef = useRef<HTMLDivElement | null>(null);
+  const pendingFocusRef = useRef<{ sectionId: DraftSectionId; blockId?: string } | null>(null);
+
+  useEffect(() => {
+    draftRef.current = draft;
+  }, [draft]);
 
   const normalizeForEditor = useCallback(
     (state: DraftState) => synchronizeDraftState({ state, studies, includeNumberInNodes: true }),
@@ -150,21 +187,22 @@ export function useDraftWorkspaceController({ projectId }: ControllerParams) {
   );
 
   const applyDraftFromQuery = useCallback((loaded: DraftState) => {
-    const order = [...loaded.sectionOrder];
-    const rawQuery = querySection?.trim();
-    const sectionFromQuery =
-      rawQuery && (isBaseSectionKey(rawQuery) || loaded.customSections?.[rawQuery]) ? rawQuery : null;
-    if (sectionFromQuery && !order.includes(sectionFromQuery)) {
-      order.push(sectionFromQuery);
-    }
-    const candidate = sectionFromQuery ?? loaded.activeSection;
-    const activeSection = order.includes(candidate) ? candidate : order[0] ?? loaded.activeSection;
+    const modeCandidate = queryMode === "section" || queryMode === "full" ? queryMode : loaded.mode;
+    const mode = normalizeModeForSections(modeCandidate, loaded.sectionOrder);
+    const requestedSection =
+      typeof querySection === "string" && querySection.trim().length > 0 && loaded.sectionOrder.includes(querySection)
+        ? querySection
+        : null;
+    const activeSection = requestedSection ?? loaded.activeSection;
     return {
       ...loaded,
-      activeSection,
-      sectionOrder: order,
+      mode,
+      activeSection:
+        mode === "section"
+          ? activeSection ?? loaded.sectionOrder.find((sectionId) => sectionId !== "references") ?? loaded.sectionOrder[0] ?? null
+          : activeSection,
     };
-  }, [querySection]);
+  }, [queryMode, querySection]);
 
   const scheduleSave = useCallback(
     (next: DraftState) => {
@@ -174,7 +212,6 @@ export function useDraftWorkspaceController({ projectId }: ControllerParams) {
       setSaveStatus("saving");
       saveTimerRef.current = setTimeout(async () => {
         const persistableState = normalizeForPersistence(next);
-        if (!projectId) return;
         saveDraftState(projectId, persistableState);
         const result = await saveDraftAction(projectId, persistableState);
         if (!result.success) {
@@ -188,24 +225,30 @@ export function useDraftWorkspaceController({ projectId }: ControllerParams) {
     [normalizeForPersistence, projectId],
   );
 
+  const setDraftLocal = useCallback((updater: (prev: DraftState) => DraftState) => {
+    setDraft((prev) => {
+      const next = updater(prev);
+      draftRef.current = next;
+      saveDraftState(projectId, next);
+      return next;
+    });
+  }, [projectId]);
+
   const commitDraft = useCallback((updater: (prev: DraftState) => DraftState) => {
     setDraft((prev) => {
       const next = updater(prev);
       if (next === prev) return prev;
+      draftRef.current = next;
       scheduleSave(next);
       return next;
     });
   }, [scheduleSave]);
 
-  const setDraftLocal = useCallback((updater: (prev: DraftState) => DraftState) => {
-    setDraft((prev) => updater(prev));
-  }, []);
-
   useEffect(() => {
     const local = loadDraftState(projectId);
     const nextDraft = normalizeForEditor(applyDraftFromQuery(local));
     setDraft(nextDraft);
-    setSelectionState((prev) => ({ ...prev, activeSection: nextDraft.activeSection }));
+    draftRef.current = nextDraft;
     appliedCachedRef.current = false;
   }, [applyDraftFromQuery, normalizeForEditor, projectId]);
 
@@ -214,7 +257,7 @@ export function useDraftWorkspaceController({ projectId }: ControllerParams) {
     if (cachedDraft.state === "ready" && cachedDraft.data) {
       const nextDraft = normalizeForEditor(applyDraftFromQuery(cachedDraft.data));
       setDraft(nextDraft);
-      setSelectionState((prev) => ({ ...prev, activeSection: nextDraft.activeSection }));
+      draftRef.current = nextDraft;
       appliedCachedRef.current = true;
     } else if (cachedDraft.state === "idle") {
       warmDomain("draft");
@@ -222,7 +265,11 @@ export function useDraftWorkspaceController({ projectId }: ControllerParams) {
   }, [applyDraftFromQuery, cachedDraft, normalizeForEditor, warmDomain]);
 
   useEffect(() => {
-    setDraft((prev) => normalizeForEditor(prev));
+    setDraft((prev) => {
+      const next = normalizeForEditor(prev);
+      draftRef.current = next;
+      return next;
+    });
   }, [normalizeForEditor]);
 
   useEffect(() => {
@@ -235,40 +282,40 @@ export function useDraftWorkspaceController({ projectId }: ControllerParams) {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const viewportQuery = window.matchMedia(MOBILE_VIEWPORT_MEDIA_QUERY);
-    const pointerQuery = window.matchMedia(COARSE_POINTER_MEDIA_QUERY);
+    const phoneQuery = window.matchMedia(PHONE_MEDIA_QUERY);
+    const compactQuery = window.matchMedia(COMPACT_MEDIA_QUERY);
     const updateWorkspaceMode = () => {
-      setCompactWorkspace(viewportQuery.matches || pointerQuery.matches);
-      setShowDesktopContextToolbar(!viewportQuery.matches && !pointerQuery.matches && contextToolbarEnabled);
+      setPhoneWorkspace(phoneQuery.matches);
+      setCompactWorkspace(phoneQuery.matches || compactQuery.matches);
     };
     updateWorkspaceMode();
-    if (typeof viewportQuery.addEventListener === "function") {
-      viewportQuery.addEventListener("change", updateWorkspaceMode);
-      pointerQuery.addEventListener("change", updateWorkspaceMode);
+    if (typeof phoneQuery.addEventListener === "function") {
+      phoneQuery.addEventListener("change", updateWorkspaceMode);
+      compactQuery.addEventListener("change", updateWorkspaceMode);
       return () => {
-        viewportQuery.removeEventListener("change", updateWorkspaceMode);
-        pointerQuery.removeEventListener("change", updateWorkspaceMode);
+        phoneQuery.removeEventListener("change", updateWorkspaceMode);
+        compactQuery.removeEventListener("change", updateWorkspaceMode);
       };
     }
-    viewportQuery.addListener(updateWorkspaceMode);
-    pointerQuery.addListener(updateWorkspaceMode);
+    phoneQuery.addListener(updateWorkspaceMode);
+    compactQuery.addListener(updateWorkspaceMode);
     return () => {
-      viewportQuery.removeListener(updateWorkspaceMode);
-      pointerQuery.removeListener(updateWorkspaceMode);
+      phoneQuery.removeListener(updateWorkspaceMode);
+      compactQuery.removeListener(updateWorkspaceMode);
     };
-  }, [contextToolbarEnabled]);
+  }, []);
 
   useEffect(() => {
-    if (!isFormatOpen) return;
+    if (!isAddSectionOpen) return;
     const onClick = (event: MouseEvent) => {
-      if (!formatRef.current) return;
-      if (event.target instanceof Node && !formatRef.current.contains(event.target)) {
-        setFormatOpen(false);
+      if (!addSectionRef.current) return;
+      if (event.target instanceof Node && !addSectionRef.current.contains(event.target)) {
+        setAddSectionOpen(false);
       }
     };
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        setFormatOpen(false);
+        setAddSectionOpen(false);
       }
     };
     document.addEventListener("mousedown", onClick);
@@ -277,20 +324,22 @@ export function useDraftWorkspaceController({ projectId }: ControllerParams) {
       document.removeEventListener("mousedown", onClick);
       document.removeEventListener("keydown", onKeyDown);
     };
-  }, [isFormatOpen]);
+  }, [isAddSectionOpen]);
 
   useEffect(() => {
-    if (!projectId) return;
-    const params = new URLSearchParams();
-    params.set("section", draft.activeSection);
-    const nextUrl = `/project/${projectId}/draft?${params.toString()}`;
-    if (lastSyncedUrlRef.current === nextUrl) return;
-    lastSyncedUrlRef.current = nextUrl;
-    router.replace(nextUrl, { scroll: false });
-  }, [draft.activeSection, projectId, router]);
+    if (draft.panels.ledgerCollapsed || !isCompactWorkspace) return;
+    setDraftLocal((prev) => ({
+      ...prev,
+      panels: {
+        ...prev.panels,
+        ledgerCollapsed: false,
+      },
+    }));
+  }, [draft.panels.ledgerCollapsed, isCompactWorkspace, setDraftLocal]);
 
   const sectionMetaById = useMemo(() => {
     const map = new Map<DraftSectionId, SectionMeta>(BASE_SECTION_MAP);
+    map.set(UNSECTIONED_DRAFT_ID, WHOLE_DRAFT_META);
     for (const [id, meta] of Object.entries(draft.customSections)) {
       map.set(id, {
         id,
@@ -303,593 +352,572 @@ export function useDraftWorkspaceController({ projectId }: ControllerParams) {
   }, [draft.customSections]);
 
   const orderedSections = useMemo(
-    () =>
-      draft.sectionOrder
-        .map((id) => sectionMetaById.get(id))
-        .filter((section): section is SectionMeta => Boolean(section)),
+    () => draft.sectionOrder.map((id) => sectionMetaById.get(id)).filter((section): section is SectionMeta => Boolean(section)),
     [draft.sectionOrder, sectionMetaById],
   );
 
-  const availableSections = useMemo(
-    () =>
-      OPTIONAL_SECTION_KEYS
-        .filter((key) => !draft.sectionOrder.includes(key))
-        .map((key) => sectionMetaById.get(key))
-        .filter((section): section is SectionMeta => Boolean(section)),
-    [draft.sectionOrder, sectionMetaById],
-  );
-
-  const outline = useMemo(() => extractManuscriptOutline(draft.manuscript), [draft.manuscript]);
-  const citationIssues = useMemo(() => getDraftCitationIssues(draft, studies), [draft, studies]);
-  const outlineView = useMemo<DraftOutlineViewModel[]>(
-    () => buildDraftOutlineViewModel({ draft, outline, citationIssues }),
-    [citationIssues, draft, outline],
-  );
-
-  const activeSectionMeta = useMemo(
-    () => sectionMetaById.get(draft.activeSection) ?? null,
-    [draft.activeSection, sectionMetaById],
-  );
-  const activeSectionLabel = activeSectionMeta?.label ?? "Draft";
-  const isReferencesSection = draft.activeSection === "references";
-
+  const activeNamedSection = draft.activeSection ? sectionMetaById.get(draft.activeSection) ?? null : null;
+  const currentTargetId = currentTargetIdFromActiveSection(draft.activeSection);
+  const currentTargetMeta = sectionMetaById.get(currentTargetId) ?? WHOLE_DRAFT_META;
+  const currentTargetLabel = currentTargetMeta.label;
+  const hasEditableSections = draft.sectionOrder.some((sectionId) => sectionId !== "references");
+  const hasWholeDraftContent = docHasContent(draft.contentBySection[UNSECTIONED_DRAFT_ID]);
+  const shouldRenderWholeDraft = hasWholeDraftContent || orderedSections.length === 0 || draft.activeSection === null;
+  const isReferencesTarget = currentTargetId === "references";
+  const activeFormat = draft.formattingBySection[currentTargetId] ?? DEFAULT_SECTION_FORMAT;
+  const activeFontFamily = FONT_FAMILY_OPTIONS.some((option) => option.value === activeFormat.fontFamily)
+    ? activeFormat.fontFamily
+    : DEFAULT_SECTION_FORMAT.fontFamily;
   const formatVarsById = useMemo(() => {
-    const map: Record<DraftSectionId, Record<string, string>> = {};
+    const map: Record<DraftSectionId, React.CSSProperties> = {} as Record<DraftSectionId, React.CSSProperties>;
     for (const [id, format] of Object.entries(draft.formattingBySection)) {
-      map[id] = formatToVars(format) as Record<string, string>;
+      map[id] = formatToVars(format);
     }
     return map;
   }, [draft.formattingBySection]);
 
-  const activeFormat = draft.formattingBySection[draft.activeSection] ?? DEFAULT_SECTION_FORMAT;
-  const activeFontFamily = FONT_FAMILY_OPTIONS.some((option) => option.value === activeFormat.fontFamily)
-    ? activeFormat.fontFamily
-    : DEFAULT_SECTION_FORMAT.fontFamily;
+  const outlineEntries = useMemo(() => extractManuscriptOutline(draft.manuscript), [draft.manuscript]);
+  const sidebarSections = useMemo<DraftSidebarSection[]>(
+    () =>
+      outlineEntries.map((section) => ({
+        id: section.sectionId,
+        label: section.label,
+        isWholeDraft: section.sectionId === UNSECTIONED_DRAFT_ID,
+        isGenerated: section.sectionId === "references",
+        isRemovable: section.sectionId !== UNSECTIONED_DRAFT_ID && section.sectionId !== "references",
+        headings: section.headings.map((heading) => ({
+          id: heading.id,
+          label: heading.label,
+          level: heading.level,
+          blockId: heading.blockId,
+        })),
+      })),
+    [outlineEntries],
+  );
 
-  const usedEvidenceIds = draft.ledgerBySection[draft.activeSection] ?? EMPTY_IDS;
+  const availableSections = useMemo(
+    () =>
+      DRAFT_SECTIONS
+        .filter((section) => !draft.sectionOrder.includes(section.key))
+        .map((section) => ({
+          id: section.key,
+          label: section.label,
+          placeholder: section.placeholder,
+        })),
+    [draft.sectionOrder],
+  );
+
+  const usedEvidenceIds = draft.ledgerBySection[currentTargetId] ?? EMPTY_IDS;
   const usedEvidence = useMemo(
     () => studies.filter((study) => usedEvidenceIds.includes(study.id)),
     [studies, usedEvidenceIds],
   );
+  const citationIssues = useMemo(() => getDraftCitationIssues(draft, studies), [draft, studies]);
+  const hasDraftContent = useMemo(() => {
+    if (shouldRenderWholeDraft && docHasContent(draft.contentBySection[UNSECTIONED_DRAFT_ID])) {
+      return true;
+    }
+    return orderedSections.some((section) => docHasContent(draft.contentBySection[section.id]));
+  }, [draft.contentBySection, orderedSections, shouldRenderWholeDraft]);
 
-  const hasDraftContent = useMemo(
-    () => orderedSections.some((section) => docHasContent(draft.contentBySection[section.id])),
-    [draft.contentBySection, orderedSections],
-  );
+  const syncEditorSignals = useCallback((editor: Editor | null) => {
+    if (!editor) return;
+    setParagraphDir(editor.getAttributes("paragraph")?.dir === "rtl" ? "rtl" : "ltr");
+    activeEditorRef.current = editor;
+    setActiveEditor(editor);
+  }, []);
 
-  const copilotEmptyState = useMemo(() => ({
-    icon: "tips_and_updates",
-    title: "Draft faster",
-    description: "Ask for an outline, rewrite, or evidence-backed phrasing.",
-    suggestions: [
-      { label: "Outline", prompt: `Outline the ${activeSectionLabel} section` },
-      { label: "Rewrite", prompt: `Rewrite this paragraph for the ${activeSectionLabel} section:` },
-    ],
-  }), [activeSectionLabel]);
+  const scheduleFocus = useCallback((sectionId: DraftSectionId, blockId?: string) => {
+    pendingFocusRef.current = { sectionId, blockId };
+    window.setTimeout(() => {
+      const pending = pendingFocusRef.current;
+      if (!pending) return;
+      const editor = editorBySectionRef.current[pending.sectionId];
+      if (!editor) return;
+      pendingFocusRef.current = null;
+      const focusPos = findBlockFocusPosition(editor, pending.blockId);
+      if (focusPos) {
+        editor.chain().focus(focusPos).run();
+      } else {
+        editor.chain().focus("end").run();
+      }
+      editor.view.dom.scrollIntoView({ block: "nearest" });
+      syncEditorSignals(editor);
+    }, 60);
+  }, [syncEditorSignals]);
 
-  const getDraftSnapshot = useCallback(() => draft, [draft]);
+  const handleSectionFocus = useCallback((sectionId: DraftSectionId, editor: Editor) => {
+    syncEditorSignals(editor);
+    const nextActiveSection = sectionId === UNSECTIONED_DRAFT_ID ? null : sectionId;
+    setDraft((prev) => (prev.activeSection === nextActiveSection ? prev : { ...prev, activeSection: nextActiveSection }));
+  }, [syncEditorSignals]);
 
-  const {
-    isExportModalOpen,
-    setExportModalOpen,
-    exportHistory,
-    latestExport,
-    exportMode,
-    setExportMode,
-    blockingCitationIssuesCount,
-    citationIssues: exportCitationIssues,
-    handleExportDocx,
-    handleDeleteExport,
-  } = useDraftExport({
-    projectId,
-    projectName: project?.name,
-    draft,
-    getDraftSnapshot,
-    orderedSections,
-    studies,
-    flushContentCommit: () => undefined,
-  });
+  const handleSectionSelectionChange = useCallback((_sectionId: DraftSectionId, editor: Editor) => {
+    syncEditorSignals(editor);
+  }, [syncEditorSignals]);
 
-  const insertCopilotText = useCallback((text: string) => {
-    const editor = editorRef.current;
-    if (!editor || isReferencesSection) return;
-    editor.chain().focus().insertContent(text).run();
-  }, [isReferencesSection]);
+  const registerEditor = useCallback((sectionId: DraftSectionId, editor: Editor | null) => {
+    editorBySectionRef.current[sectionId] = editor;
+    if (!editor && activeEditorRef.current === editor) {
+      activeEditorRef.current = null;
+      setActiveEditor(null);
+    }
+  }, []);
 
-  const applyDocumentMutation = useCallback((updater: (prev: DraftState) => DraftState) => {
-    commitDraft((prev) => {
-      const next = updater(prev);
-      return normalizeForEditor(next);
-    });
+  const updateSectionContent = useCallback((sectionId: DraftSectionId, json: JSONContent) => {
+    commitDraft((prev) => normalizeForEditor({
+      ...prev,
+      contentBySection: {
+        ...prev.contentBySection,
+        [sectionId]: json,
+      },
+    }));
   }, [commitDraft, normalizeForEditor]);
 
-  const updateActiveSectionFromSelection = useCallback((nextSelection: DraftSelectionState) => {
-    setSelectionState(nextSelection);
+  const selectSection = useCallback((sectionId: DraftSectionId) => {
+    setDraftLocal((prev) => ({
+      ...prev,
+      activeSection: sectionId === UNSECTIONED_DRAFT_ID ? null : sectionId,
+    }));
+    scheduleFocus(sectionId);
+  }, [scheduleFocus, setDraftLocal]);
+
+  const selectSectionHeading = useCallback((sectionId: DraftSectionId, blockId?: string) => {
+    if (sectionId === UNSECTIONED_DRAFT_ID) {
+      setDraftLocal((prev) => ({ ...prev, mode: "full", activeSection: null }));
+      scheduleFocus(UNSECTIONED_DRAFT_ID, blockId);
+      return;
+    }
+    setDraftLocal((prev) => ({
+      ...prev,
+      activeSection: sectionId,
+    }));
+    scheduleFocus(sectionId, blockId);
+  }, [scheduleFocus, setDraftLocal]);
+
+  const handleToggleMode = useCallback((nextMode: DraftMode) => {
     setDraftLocal((prev) => {
-      if (prev.activeSection === nextSelection.activeSection) return prev;
+      if (nextMode === "section") {
+        const firstEditable = prev.sectionOrder.find((sectionId) => sectionId !== "references") ?? prev.sectionOrder[0] ?? null;
+        if (!firstEditable) return prev;
+        return {
+          ...prev,
+          mode: "section",
+          activeSection: prev.activeSection ?? firstEditable,
+        };
+      }
       return {
         ...prev,
-        activeSection: nextSelection.activeSection,
+        mode: "full",
       };
     });
   }, [setDraftLocal]);
 
-  const handleEditorReady = useCallback((editor: Editor | null) => {
-    editorRef.current = editor;
-    setEditorInstance(editor);
-  }, []);
-
-  const handleEditorMapChange = useCallback((nextMap: DraftEditorMap) => {
-    setEditorMap(nextMap);
-  }, []);
-
-  const handleSelectionUpdate = useCallback((selectionFrom: number, nextMap: DraftEditorMap) => {
-    const nextSelection = deriveDraftSelectionState({
-      editorMap: nextMap,
-      selectionFrom,
-      fallbackSection: draft.activeSection,
-    });
-    updateActiveSectionFromSelection(nextSelection);
-  }, [draft.activeSection, updateActiveSectionFromSelection]);
-
-  const handleManuscriptChange = useCallback((manuscriptDoc: JSONContent) => {
-    applyDocumentMutation((prev) => applyManuscriptDocToDraftState(prev, manuscriptDoc));
-  }, [applyDocumentMutation]);
-
-  useEffect(() => {
-    if (!editorRef.current || !editorMap || !initialJumpSectionRef.current) return;
-    const targetSection = initialJumpSectionRef.current;
-    const focusPosition = getSectionFocusPosition(editorMap, targetSection);
-    if (focusPosition == null) return;
-    editorRef.current.chain().focus(focusPosition).run();
-    initialJumpSectionRef.current = null;
-  }, [editorMap]);
-
-  const focusSection = useCallback((sectionId: DraftSectionId) => {
-    if (!editorRef.current || !editorMap) return;
-    const focusPosition = getSectionFocusPosition(editorMap, sectionId);
-    if (focusPosition == null) return;
-    editorRef.current.chain().focus(focusPosition).run();
-    setStructureDrawerOpen(false);
-    setContextDrawerOpen(false);
-  }, [editorMap]);
-
-  const focusHeading = useCallback((sectionId: DraftSectionId, headingId: string) => {
-    if (!editorRef.current || !editorMap) return;
-    const focusPosition = getHeadingFocusPosition(editorMap, sectionId, headingId);
-    if (focusPosition == null) return;
-    editorRef.current.chain().focus(focusPosition).run();
-    setStructureDrawerOpen(false);
-  }, [editorMap]);
-
-  const focusBlock = useCallback((blockId: string) => {
-    if (!editorRef.current || !editorMap) return;
-    const focusPosition = getBlockFocusPosition(editorMap, blockId);
-    if (focusPosition == null) return;
-    editorRef.current.chain().focus(focusPosition).run();
-  }, [editorMap]);
-
-  const addOptionalSection = useCallback((sectionId: DraftSectionId) => {
-    const meta = sectionMetaById.get(sectionId);
-    if (!meta) return;
-    applyDocumentMutation((prev) => {
-      const nextDocument = insertManuscriptSection({
-        document: prev.manuscript,
-        section: {
-          sectionId,
-          sectionNodeId: `sec:${sectionId}`,
-          kind: "base",
-          label: meta.label,
-          ...(meta.placeholder ? { placeholder: meta.placeholder } : {}),
-        },
-        afterSectionId: prev.activeSection,
-        content: emptyDoc(),
-      });
-      return withManuscriptDocument({
-        ...prev,
-        ledgerBySection: {
-          ...prev.ledgerBySection,
-          [sectionId]: [],
-        },
-        copilotBySection: {
-          ...prev.copilotBySection,
-          [sectionId]: [],
-        },
-        formattingBySection: {
-          ...prev.formattingBySection,
-          [sectionId]: { ...DEFAULT_SECTION_FORMAT },
-        },
-        activeSection: sectionId,
-      }, nextDocument);
-    });
-  }, [applyDocumentMutation, sectionMetaById]);
-
-  const addCustomSection = useCallback(() => {
-    const label = customSectionName.trim();
-    if (!label) return;
-    const sectionId = createCustomSectionId(label);
-    applyDocumentMutation((prev) => {
-      const nextDocument = insertManuscriptSection({
-        document: prev.manuscript,
-        section: {
-          sectionId,
-          sectionNodeId: `sec:${sectionId}`,
-          kind: "custom",
-          label,
-          placeholder: customSectionPlaceholder(label),
-        },
-        afterSectionId: prev.activeSection,
-        content: emptyDoc(),
-      });
-      return withManuscriptDocument({
-        ...prev,
-        customSections: {
-          ...prev.customSections,
-          [sectionId]: {
-            label,
-            placeholder: customSectionPlaceholder(label),
-          },
-        },
-        ledgerBySection: {
-          ...prev.ledgerBySection,
-          [sectionId]: [],
-        },
-        copilotBySection: {
-          ...prev.copilotBySection,
-          [sectionId]: [],
-        },
-        formattingBySection: {
-          ...prev.formattingBySection,
-          [sectionId]: { ...DEFAULT_SECTION_FORMAT },
-        },
-        activeSection: sectionId,
-      }, nextDocument);
-    });
+  const closeAddSection = useCallback(() => {
+    setAddSectionOpen(false);
     setCustomSectionName("");
-  }, [applyDocumentMutation, customSectionName]);
+  }, []);
 
-  const removeSection = useCallback((sectionId: DraftSectionId) => {
-    if (sectionId === "references") return;
-    if (!window.confirm(`Remove ${sectionMetaById.get(sectionId)?.label ?? "this section"}?`)) return;
-    applyDocumentMutation((prev) => {
-      const removedIndex = prev.sectionOrder.indexOf(sectionId);
-      const nextDocument = removeManuscriptSection(prev.manuscript, sectionId);
-      const nextCustomSections = { ...prev.customSections };
-      delete nextCustomSections[sectionId];
-      const nextFormattingBySection = { ...prev.formattingBySection };
-      delete nextFormattingBySection[sectionId];
-      const nextLedgerBySection = { ...prev.ledgerBySection };
-      delete nextLedgerBySection[sectionId];
-      const nextCopilotBySection = { ...prev.copilotBySection };
-      delete nextCopilotBySection[sectionId];
-      const nextSectionOrder = nextDocument.sections.map((section) => section.sectionId);
-      const fallbackSection = nextSectionOrder[Math.max(0, removedIndex - 1)] ?? nextSectionOrder[0] ?? "abstract";
-      return withManuscriptDocument({
+  const applyPendingSection = useCallback((request: PendingSectionRequest, moveWholeDraftContent: boolean) => {
+    commitDraft((prev) => {
+      if (prev.sectionOrder.includes(request.id)) return prev;
+      const nextSectionOrder = insertSectionAfterActive(prev.sectionOrder, prev.activeSection, request.id);
+      const nextContentBySection = {
+        ...prev.contentBySection,
+        [request.id]: moveWholeDraftContent
+          ? prev.contentBySection[UNSECTIONED_DRAFT_ID] ?? emptyDoc()
+          : prev.contentBySection[request.id] ?? emptyDoc(),
+        [UNSECTIONED_DRAFT_ID]: moveWholeDraftContent ? emptyDoc() : prev.contentBySection[UNSECTIONED_DRAFT_ID] ?? emptyDoc(),
+      };
+      return normalizeForEditor({
         ...prev,
-        customSections: nextCustomSections,
-        formattingBySection: nextFormattingBySection,
-        ledgerBySection: nextLedgerBySection,
-        copilotBySection: nextCopilotBySection,
-        activeSection: prev.activeSection === sectionId ? fallbackSection : prev.activeSection,
-      }, nextDocument);
-    });
-  }, [applyDocumentMutation, sectionMetaById]);
-
-  const reorderSection = useCallback((sectionId: DraftSectionId, targetSectionId: DraftSectionId, position: "before" | "after") => {
-    applyDocumentMutation((prev) => {
-      const nextDocument = reorderManuscriptSection({
-        document: prev.manuscript,
-        sectionId,
-        targetSectionId,
-        position,
+        sectionOrder: nextSectionOrder,
+        activeSection: request.id,
+        customSections: request.isCustom
+          ? {
+              ...prev.customSections,
+              [request.id]: request.placeholder ? { label: request.label, placeholder: request.placeholder } : { label: request.label },
+            }
+          : prev.customSections,
+        contentBySection: nextContentBySection,
+        ledgerBySection: {
+          ...prev.ledgerBySection,
+          [request.id]: prev.ledgerBySection[request.id] ?? [],
+        },
+        copilotBySection: {
+          ...prev.copilotBySection,
+          [request.id]: prev.copilotBySection[request.id] ?? [],
+        },
+        formattingBySection: {
+          ...prev.formattingBySection,
+          [request.id]: prev.formattingBySection[request.id] ?? { ...DEFAULT_SECTION_FORMAT },
+        },
       });
-      return withManuscriptDocument({
-        ...prev,
-      }, nextDocument);
     });
-  }, [applyDocumentMutation]);
+    setPendingSectionRequest(null);
+    closeAddSection();
+    scheduleFocus(request.id);
+  }, [closeAddSection, commitDraft, normalizeForEditor, scheduleFocus]);
 
-  const moveSelectedBlock = useCallback((direction: "up" | "down") => {
-    if (!selectionState.activeBlockId) return;
-    applyDocumentMutation((prev) => {
-      const nextDocument = moveTopLevelBlock(prev.manuscript, {
-        sectionId: prev.activeSection,
-        blockId: selectionState.activeBlockId!,
-        direction,
-      });
-      return withManuscriptDocument({
-        ...prev,
-      }, nextDocument);
-    });
-  }, [applyDocumentMutation, selectionState.activeBlockId]);
-
-  const handleSelectSectionKeyDown = useCallback((event: ReactKeyboardEvent<HTMLButtonElement>, index: number) => {
-    const lastIndex = outlineView.length - 1;
-    let nextIndex = index;
-    if (event.key === "ArrowDown") {
-      nextIndex = index === lastIndex ? 0 : index + 1;
-    } else if (event.key === "ArrowUp") {
-      nextIndex = index === 0 ? lastIndex : index - 1;
-    } else if (event.key === "Home") {
-      nextIndex = 0;
-    } else if (event.key === "End") {
-      nextIndex = lastIndex;
-    } else {
+  const queueAddSection = useCallback((request: PendingSectionRequest) => {
+    const hasExistingEditableSections = draftRef.current.sectionOrder.some((sectionId) => sectionId !== "references");
+    if (!hasExistingEditableSections && docHasContent(draftRef.current.contentBySection[UNSECTIONED_DRAFT_ID])) {
+      setPendingSectionRequest(request);
+      closeAddSection();
       return;
     }
-    event.preventDefault();
-    focusSection(outlineView[nextIndex]?.sectionId ?? draft.activeSection);
-  }, [draft.activeSection, focusSection, outlineView]);
+    applyPendingSection(request, false);
+  }, [applyPendingSection, closeAddSection]);
 
-  const handleSectionDragStart = useCallback((event: ReactDragEvent<HTMLButtonElement>, sectionId: DraftSectionId) => {
-    if (sectionId === "references") return;
-    setDraggingSectionId(sectionId);
-    setDragOverSectionId(null);
+  const handleAddSection = useCallback((sectionId: DraftSectionId) => {
+    const preset = DRAFT_SECTIONS.find((section) => section.key === sectionId);
+    if (!preset) return;
+    queueAddSection({
+      id: preset.key,
+      label: preset.label,
+      placeholder: preset.placeholder,
+      isCustom: false,
+    });
+  }, [queueAddSection]);
+
+  const handleAddCustomSection = useCallback(() => {
+    const name = customSectionName.trim();
+    if (!name) return;
+    const normalizedLabel = name.toLowerCase();
+    const existingLabels = new Set(
+      draftRef.current.sectionOrder
+        .map((sectionId) => sectionMetaById.get(sectionId)?.label.toLowerCase())
+        .filter((label): label is string => Boolean(label)),
+    );
+    if (existingLabels.has(normalizedLabel)) {
+      return;
+    }
+    queueAddSection({
+      id: createCustomSectionId(name),
+      label: name,
+      placeholder: customSectionPlaceholder(name),
+      isCustom: true,
+    });
+    setCustomSectionName("");
+  }, [customSectionName, queueAddSection, sectionMetaById]);
+
+  const confirmPendingMove = useCallback(() => {
+    if (!pendingSectionRequest) return;
+    applyPendingSection(pendingSectionRequest, true);
+  }, [applyPendingSection, pendingSectionRequest]);
+
+  const confirmPendingKeep = useCallback(() => {
+    if (!pendingSectionRequest) return;
+    applyPendingSection(pendingSectionRequest, false);
+  }, [applyPendingSection, pendingSectionRequest]);
+
+  const cancelPendingSectionRequest = useCallback(() => {
+    setPendingSectionRequest(null);
+  }, []);
+
+  const confirmRemoveSection = useCallback(() => {
+    if (!sectionToRemove) return;
+    commitDraft((prev) => {
+      if (sectionToRemove === "references") return prev;
+      const nextOrder = prev.sectionOrder.filter((sectionId) => sectionId !== sectionToRemove);
+      const nextCustomSections = { ...prev.customSections };
+      delete nextCustomSections[sectionToRemove];
+      const nextFormatting = { ...prev.formattingBySection };
+      delete nextFormatting[sectionToRemove];
+      const nextContent = { ...prev.contentBySection };
+      delete nextContent[sectionToRemove];
+      const nextLedger = { ...prev.ledgerBySection };
+      delete nextLedger[sectionToRemove];
+      const nextCopilot = { ...prev.copilotBySection };
+      delete nextCopilot[sectionToRemove];
+      const nextMode = normalizeModeForSections(prev.mode, nextOrder);
+      const nextActiveSection =
+        prev.activeSection === sectionToRemove
+          ? nextOrder.find((sectionId) => sectionId !== "references") ?? nextOrder[0] ?? null
+          : prev.activeSection;
+      return normalizeForEditor({
+        ...prev,
+        mode: nextMode,
+        activeSection: nextMode === "section" ? nextActiveSection : nextActiveSection,
+        sectionOrder: nextOrder,
+        customSections: nextCustomSections,
+        formattingBySection: nextFormatting,
+        contentBySection: nextContent,
+        ledgerBySection: nextLedger,
+        copilotBySection: nextCopilot,
+      });
+    });
+    setSectionToRemove(null);
+  }, [commitDraft, normalizeForEditor, sectionToRemove]);
+
+  const handleMoveSection = useCallback((sectionId: DraftSectionId, direction: "up" | "down") => {
+    commitDraft((prev) => normalizeForEditor({
+      ...prev,
+      sectionOrder: moveSectionOrder(prev.sectionOrder, sectionId, direction),
+    }));
+  }, [commitDraft, normalizeForEditor]);
+
+  const handleDragStart = useCallback((event: ReactDragEvent<HTMLButtonElement>, key: DraftSectionId) => {
+    if (key === "references") return;
+    setDraggingKey(key);
+    setDragOverKey(null);
     setDragOverPosition(null);
     event.dataTransfer.effectAllowed = "move";
-    event.dataTransfer.setData("text/plain", sectionId);
+    event.dataTransfer.setData("text/plain", key);
   }, []);
 
-  const handleSectionDragOver = useCallback((event: ReactDragEvent<HTMLButtonElement>, sectionId: DraftSectionId) => {
-    if (!draggingSectionId || draggingSectionId === sectionId || sectionId === "references") return;
+  const handleDragOver = useCallback((event: ReactDragEvent<HTMLButtonElement>, key: DraftSectionId) => {
+    if (!draggingKey || draggingKey === key || key === "references") return;
     event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
     const rect = event.currentTarget.getBoundingClientRect();
-    const position = event.clientY - rect.top > rect.height / 2 ? "after" : "before";
-    setDragOverSectionId(sectionId);
+    const position = event.clientX - rect.left > rect.width / 2 ? "after" : "before";
+    setDragOverKey(key);
     setDragOverPosition(position);
-  }, [draggingSectionId]);
+  }, [draggingKey]);
 
-  const handleSectionDrop = useCallback((event: ReactDragEvent<HTMLButtonElement>, targetSectionId: DraftSectionId) => {
+  const handleDrop = useCallback((event: ReactDragEvent<HTMLButtonElement>, key: DraftSectionId) => {
     event.preventDefault();
-    if (!draggingSectionId || draggingSectionId === targetSectionId) return;
-    reorderSection(draggingSectionId, targetSectionId, dragOverPosition ?? "before");
-    setDraggingSectionId(null);
-    setDragOverSectionId(null);
+    if (!draggingKey || draggingKey === key || !dragOverPosition) return;
+    commitDraft((prev) => normalizeForEditor({
+      ...prev,
+      sectionOrder: reorderSectionOrder(prev.sectionOrder, draggingKey, key, dragOverPosition),
+    }));
+    setDraggingKey(null);
+    setDragOverKey(null);
     setDragOverPosition(null);
-  }, [dragOverPosition, draggingSectionId, reorderSection]);
+  }, [commitDraft, dragOverPosition, draggingKey, normalizeForEditor]);
 
-  const handleSectionDragEnd = useCallback(() => {
-    setDraggingSectionId(null);
-    setDragOverSectionId(null);
+  const handleDragEnd = useCallback(() => {
+    setDraggingKey(null);
+    setDragOverKey(null);
     setDragOverPosition(null);
   }, []);
 
-  const toggleSectionCollapsed = useCallback((sectionId: DraftSectionId) => {
-    setCollapsedSectionIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(sectionId)) {
-        next.delete(sectionId);
-      } else {
-        next.add(sectionId);
-      }
-      return next;
-    });
-  }, []);
+  const handleSelectSectionKeyDown = useCallback((event: ReactKeyboardEvent<HTMLButtonElement>, index: number) => {
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+    event.preventDefault();
+    const direction = event.key === "ArrowRight" ? 1 : -1;
+    const tabs = orderedSections.map((section) => sectionTabRefs.current[section.id]).filter((tab): tab is HTMLButtonElement => Boolean(tab));
+    const next = tabs[index + direction];
+    next?.focus();
+  }, [orderedSections]);
 
   const updateSectionFormat = useCallback((sectionId: DraftSectionId, updates: Partial<DraftSectionFormat>) => {
-    commitDraft((prev) => {
-      const current = prev.formattingBySection[sectionId] ?? DEFAULT_SECTION_FORMAT;
-      return {
-        ...prev,
-        formattingBySection: {
-          ...prev.formattingBySection,
-          [sectionId]: {
-            ...current,
-            ...updates,
-          },
+    commitDraft((prev) => ({
+      ...prev,
+      formattingBySection: {
+        ...prev.formattingBySection,
+        [sectionId]: {
+          ...(prev.formattingBySection[sectionId] ?? DEFAULT_SECTION_FORMAT),
+          ...updates,
         },
-      };
-    });
+      },
+    }));
   }, [commitDraft]);
 
+  const toggleSidebar = useCallback(() => {
+    setDraftLocal((prev) => ({
+      ...prev,
+      panels: {
+        ...prev.panels,
+        ledgerCollapsed: !prev.panels.ledgerCollapsed,
+      },
+    }));
+  }, [setDraftLocal]);
+
+  const setSidebarOpen = useCallback((open: boolean) => {
+    setDraftLocal((prev) => ({
+      ...prev,
+      panels: {
+        ...prev.panels,
+        ledgerCollapsed: !open,
+      },
+    }));
+  }, [setDraftLocal]);
+
+  const handleSidebarViewChange = useCallback((view: DraftSidebarView) => {
+    setSidebarView(view);
+    if (draftRef.current.panels.ledgerCollapsed) {
+      setSidebarOpen(true);
+    }
+  }, [setSidebarOpen]);
+
   const insertCitation = useCallback((studyId: string) => {
-    const editor = editorRef.current;
-    if (!editor || draft.activeSection === "references") return;
-    editor
-      .chain()
-      .focus()
-      .insertContent({
-        type: "citation",
-        attrs: { studyId, uid: createCitationUid(draft.activeSection) },
-      })
-      .insertContent(" ")
-      .run();
-  }, [draft.activeSection]);
+    const editor = activeEditorRef.current;
+    const sectionId = currentTargetIdFromActiveSection(draftRef.current.activeSection);
+    if (!editor || sectionId === "references") return;
+    editor.chain().focus().insertContent({
+      type: "citation",
+      attrs: { studyId, uid: createCitationUid(sectionId) },
+    }).run();
+  }, []);
 
   const handleAddEvidence = useCallback((studyId: string) => {
+    const targetId = currentTargetIdFromActiveSection(draftRef.current.activeSection);
     commitDraft((prev) => {
-      const existing = prev.ledgerBySection[prev.activeSection] ?? [];
+      const existing = prev.ledgerBySection[targetId] ?? [];
       if (existing.includes(studyId)) return prev;
       return {
         ...prev,
         ledgerBySection: {
           ...prev.ledgerBySection,
-          [prev.activeSection]: [studyId, ...existing],
+          [targetId]: [studyId, ...existing],
         },
       };
     });
   }, [commitDraft]);
 
   const handleRemoveEvidence = useCallback((studyId: string) => {
+    const targetId = currentTargetIdFromActiveSection(draftRef.current.activeSection);
     commitDraft((prev) => {
-      const existing = prev.ledgerBySection[prev.activeSection] ?? [];
-      if (!existing.includes(studyId)) return prev;
+      const existing = prev.ledgerBySection[targetId] ?? [];
       return {
         ...prev,
         ledgerBySection: {
           ...prev.ledgerBySection,
-          [prev.activeSection]: existing.filter((id) => id !== studyId),
+          [targetId]: existing.filter((id) => id !== studyId),
         },
       };
     });
   }, [commitDraft]);
 
-  const buildCurrentDraftSelectionTarget = useCallback(() => {
-    const editor = editorRef.current;
-    if (!editor || isReferencesSection) return null;
-    const fullText = editor.getText().trim();
-    if (!fullText) return null;
-    const selectedText = !editor.state.selection.empty
-      ? editor.state.doc.textBetween(editor.state.selection.from, editor.state.selection.to).trim()
-      : fullText.slice(0, 500);
-    return buildDraftSelectionTarget({
-      projectId,
-      section: activeSectionLabel,
-      selectedText,
-      surroundingText: fullText.slice(0, 1_200),
-      citedStudyIds: draft.ledgerBySection[draft.activeSection] ?? undefined,
-      sourceSurface: "draft",
-    });
-  }, [activeSectionLabel, draft.activeSection, draft.ledgerBySection, isReferencesSection, projectId]);
-
   const handleAskAi = useCallback(() => {
-    const editor = editorRef.current;
-    if (!editor || isReferencesSection) return;
+    const editor = activeEditorRef.current;
+    if (!editor || isReferencesTarget) return;
     const selectedText = !editor.state.selection.empty
       ? editor.state.doc.textBetween(editor.state.selection.from, editor.state.selection.to)
       : editor.getText().slice(0, 500);
-    if (captureEnabled) {
-      const target = buildCurrentDraftSelectionTarget();
-      if (target) {
-        openPopupForTarget(target);
-      }
-      return;
-    }
     openPopupChat({
       type: "draft_selection",
       projectId,
-      section: activeSectionLabel,
+      section: currentTargetLabel,
       selectedText,
     });
-  }, [activeSectionLabel, buildCurrentDraftSelectionTarget, captureEnabled, isReferencesSection, openPopupChat, openPopupForTarget, projectId]);
+  }, [currentTargetLabel, isReferencesTarget, openPopupChat, projectId]);
 
-  const handleDraftContextAction = useCallback((
-    actionId: "send_to_copilot" | "rewrite_selection" | "check_claim_support",
-    prompt: string,
-  ) => {
-    const target = buildCurrentDraftSelectionTarget();
-    if (!target) return;
-    runAction({
-      actionId,
-      targets: [target],
-      prompt,
-      page: "draft",
-      section: activeSectionLabel,
-    });
-  }, [activeSectionLabel, buildCurrentDraftSelectionTarget, runAction]);
-
-  const syncFormattingFromEditor = useCallback(() => {
-    const editor = editorRef.current;
-    if (!editor) return;
-    setParagraphDir(editor.getAttributes("paragraph")?.dir === "rtl" ? "rtl" : "ltr");
-    setCanRunDraftContextActions(Boolean(editor.getText().trim()));
+  const insertCopilotText = useCallback((text: string) => {
+    activeEditorRef.current?.chain().focus().insertContent(text).run();
   }, []);
 
-  const statusLabelByKey: Record<DraftSectionStatus, string> = {
-    empty: "Empty",
-    drafting: "Drafting",
-    issues: "Issues",
-    generated: "Generated",
-  };
+  useEffect(() => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (draft.mode === "full") {
+      params.delete("mode");
+    } else {
+      params.set("mode", draft.mode);
+    }
+    if (draft.activeSection) {
+      params.set("section", draft.activeSection);
+    } else {
+      params.delete("section");
+    }
+    const next = params.toString();
+    const nextHref = next ? `/project/${projectId}/draft?${next}` : `/project/${projectId}/draft`;
+    router.replace(nextHref, { scroll: false });
+  }, [draft.activeSection, draft.mode, projectId, router, searchParams]);
 
-  const activeBlockEntry = useMemo(() => {
-    if (!editorMap || !selectionState.activeBlockId) return null;
-    return editorMap.blocks[selectionState.activeBlockId] ?? null;
-  }, [editorMap, selectionState.activeBlockId]);
+  const exportState = useDraftExport({
+    projectId,
+    projectName: project?.name,
+    draft,
+    getDraftSnapshot: () => draftRef.current,
+    orderedSections,
+    sectionMetaById,
+    studies,
+  });
 
-  const showResultsGuide = draft.activeSection === "results" && !docHasContent(draft.contentBySection.results);
+  const copilotEmptyState = useMemo(() => ({
+    icon: "tips_and_updates",
+    title: "Draft faster",
+    description: "Ask for an outline, rewrite, or evidence-backed phrasing.",
+    suggestions: [
+      { label: "Outline", prompt: `Outline the ${currentTargetLabel} section` },
+      { label: "Rewrite", prompt: `Rewrite this paragraph for the ${currentTargetLabel} section:` },
+    ],
+  }), [currentTargetLabel]);
+
+  const showResultsGuide = currentTargetId === "results" && !docHasContent(draft.contentBySection.results);
 
   return {
-    activeBlockEntry,
-    activeFontFamily,
-    activeFormat,
-    activeSectionLabel,
-    activeSectionMeta,
-    availableSections,
-    blockingCitationIssuesCount,
-    canRunDraftContextActions,
-    captureEnabled,
-    checkClaimSupportAction,
-    citationIssues,
-    copilotEmptyState,
-    collapsedSectionIds,
-    contextToolbarEnabled,
-    customSectionName,
-    draft,
-    editor: editorInstance,
-    draggingSectionId,
-    dragOverPosition,
-    dragOverSectionId,
-    editorMap,
-    exportCitationIssues,
-    exportHistory,
-    exportMode,
-    formatRef,
-    formatVarsById,
-    handleAddCustomSection: addCustomSection,
-    handleAddEvidence,
-    handleAskAi,
-    handleDeleteExport,
-    handleDraftContextAction,
-    handleEditorMapChange,
-    handleEditorReady,
-    handleExportDocx,
-    handleManuscriptChange,
-    handleRemoveEvidence,
-    handleSectionDragEnd,
-    handleSectionDragOver,
-    handleSectionDragStart,
-    handleSectionDrop,
-    handleSelectSectionKeyDown,
-    handleSelectionUpdate,
-    hasDraftContent,
-    initialJumpSectionRef,
-    insertCitation,
-    insertCopilotText,
-    isAddEvidenceOpen,
-    isCompactWorkspace,
-    isContextDrawerOpen,
-    isEmbeddedInProjectShell,
-    isExportModalOpen,
-    isFormatOpen,
-    isLoadingProjects,
-    isMobileDraftV2Enabled: mobileDraftV2Enabled,
-    isReferencesSection,
-    isStructureDrawerOpen,
-    latestExport,
-    openPopupForTarget,
-    orderedSections,
-    outlineView,
-    paragraphDir,
     project,
+    isLoadingProjects,
     projectsError,
+    isEmbeddedInProjectShell,
+    projectCopilot,
+    draft,
     saveStatus,
-    selectionState,
-    sendToCopilotAction,
+    isAddEvidenceOpen,
     setAddEvidenceOpen,
-    setContextDrawerOpen,
-    setCustomSectionName,
-    setExportModalOpen,
-    setExportMode,
+    isFormatOpen,
     setFormatOpen,
-    setStructureDrawerOpen,
-    showDesktopContextToolbar,
-    showResultsGuide,
-    statusLabelByKey,
-    studies,
-    studyLabel,
-    syncFormattingFromEditor,
-    toggleSectionCollapsed,
+    isAddSectionOpen,
+    setAddSectionOpen,
+    customSectionName,
+    setCustomSectionName,
+    sectionTabRefs,
+    addSectionRef,
+    addSectionInputRef,
+    formatRef,
+    orderedSections,
+    availableSections,
+    hasEditableSections,
+    activeSectionLabel: activeNamedSection?.label ?? currentTargetLabel,
+    currentTargetId,
+    currentTargetLabel,
+    isReferencesTarget,
+    activeEditor,
+    paragraphDir,
+    formatVarsById,
+    activeFormat,
+    activeFontFamily,
+    shouldRenderWholeDraft,
+    wholeDraftMeta: WHOLE_DRAFT_META,
+    sidebarSections,
+    sidebarView,
+    setSidebarView: handleSidebarViewChange,
+    isSidebarCollapsed: draft.panels.ledgerCollapsed,
+    toggleSidebar,
+    isPhoneWorkspace,
+    isCompactWorkspace,
+    draggingKey,
+    dragOverKey,
+    dragOverPosition,
+    handleDragStart,
+    handleDragOver,
+    handleDrop,
+    handleDragEnd,
+    handleSelectSectionKeyDown,
+    handleToggleMode,
+    handleAddSection,
+    handleAddCustomSection,
+    selectSection,
+    selectSectionHeading,
+    handleMoveSection,
+    requestRemoveSection: setSectionToRemove,
+    sectionToRemove,
+    confirmRemoveSection,
+    cancelRemoveSection: () => setSectionToRemove(null),
+    pendingSectionRequest,
+    confirmPendingMove,
+    confirmPendingKeep,
+    cancelPendingSectionRequest,
     updateSectionFormat,
+    registerEditor,
+    handleSectionFocus,
+    handleSectionSelectionChange,
+    updateSectionContent,
     usedEvidence,
     usedEvidenceIds,
-    focusBlock,
-    focusHeading,
-    focusSection,
-    addOptionalSection,
-    removeSection,
-    moveSelectedBlock,
-    rewriteSelectionAction,
-    sectionMetaById,
+    studies,
+    handleAddEvidence,
+    handleRemoveEvidence,
+    insertCitation,
+    studyLabel,
+    handleAskAi,
+    insertCopilotText,
+    copilotEmptyState,
+    showResultsGuide,
+    ...exportState,
   };
 }

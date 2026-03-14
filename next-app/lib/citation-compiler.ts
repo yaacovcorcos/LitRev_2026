@@ -1,5 +1,5 @@
 import type { JSONContent } from "@tiptap/core";
-import type { DraftSectionId } from "@/types/draft";
+import { UNSECTIONED_DRAFT_ID, type DraftSectionId } from "@/types/draft";
 import type { Study } from "@/types/ledger";
 
 export type CitationIssueType = "missing_study_id" | "missing_study" | "excluded_study" | "missing_metadata";
@@ -222,7 +222,18 @@ export function compileDraftCitations(params: {
     const normalizedContentBySection: Record<DraftSectionId, JSONContent> = { ...contentBySection };
     const nodeCounterRef = { value: 0 };
 
-    const effectiveOrder = sectionOrder.length > 0 ? sectionOrder : Object.keys(contentBySection);
+    const namedSectionOrder = sectionOrder.filter((sectionId) => sectionId !== UNSECTIONED_DRAFT_ID && sectionId !== "references");
+    const extraSectionIds = Object.keys(contentBySection).filter(
+        (sectionId) =>
+            sectionId !== UNSECTIONED_DRAFT_ID
+            && sectionId !== "references"
+            && !namedSectionOrder.includes(sectionId),
+    );
+    const effectiveOrder = [
+        ...(UNSECTIONED_DRAFT_ID in contentBySection ? [UNSECTIONED_DRAFT_ID] : []),
+        ...(namedSectionOrder.length > 0 ? namedSectionOrder : extraSectionIds),
+        ...extraSectionIds.filter((sectionId) => namedSectionOrder.length > 0 && !namedSectionOrder.includes(sectionId)),
+    ];
 
     for (const sectionId of effectiveOrder) {
         if (sectionId === "references") continue;

@@ -11,12 +11,16 @@ import type { AgentMode } from "@/types/agent";
 import { normalizeStreamChunk, toWireChunk, type RuntimeStreamEvent } from "@/lib/server/chat-runtime/events";
 import { ChatRuntime } from "@/lib/server/chat-runtime/runtime";
 import { RuntimeThreadContext } from "@/lib/server/chat-runtime/thread";
-import { persistRecoveryAuthoritativeRuntimeEvent } from "@/lib/server/chat-runtime/persist-recovery-events";
 import { StreamCoalescer } from "@/lib/server/ai/stream-coalescer";
 import { runWithActorContext } from "@/lib/server/actor";
 import { requireApiSession } from "@/lib/server/auth/session";
 import { assertProjectAccess } from "@/lib/server/access";
-import { buildStreamErrorChunk, extractAIErrorEnvelope } from "@/lib/ai/error-envelope";
+import {
+    AIErrorWithEnvelope,
+    buildStreamErrorChunk,
+    createContinuationUnavailableErrorEnvelope,
+    extractAIErrorEnvelope,
+} from "@/lib/ai/error-envelope";
 import type { PopupChatContext } from "@/types/popup-chat";
 import { buildPopupSystemPrompt } from "@/lib/server/ai/popup-context";
 import { createPopupToolGuard, getAllowedPopupToolNames } from "@/lib/server/ai/popup-tool-contract";
@@ -32,6 +36,14 @@ import {
 } from "@/lib/server/ai/chat-unification-runtime-metrics";
 import type { ContextCaptureTarget } from "@/types/context-capture";
 import { buildContextCapturePromptBlock } from "@/lib/server/ai/context-capture";
+import {
+    buildDurableContinuationContext,
+    resolveDurableContinuationSource,
+} from "@/lib/server/agent/durable-continuation";
+import {
+    buildCheckpointContinuationContext,
+    resolveLatestValidRunCheckpoint,
+} from "@/lib/server/agent/run-checkpoints";
 
 // Force Node runtime for Prisma compatibility
 export const runtime = "nodejs";
@@ -62,12 +74,23 @@ export async function POST(request: NextRequest) {
         const authResult = await requireApiSession(request);
         if (!authResult.ok) return authResult.response;
 
+        type StreamRouteOptions = ChatOptions & {
+            projectId?: string;
+            studyId?: string;
+            agentMode?: AgentMode;
+            page?: string;
+            section?: string;
+            planId?: string;
+            popupMode?: boolean;
+            continuationContext?: string;
+        };
+
         const body = await request.json();
         const { messages, userMessage, context, options, planId, selectedSteps } = body as {
             messages?: AIMessage[];
             userMessage?: string;
             context?: ConversationContext;
-            options?: ChatOptions & { projectId?: string; studyId?: string; agentMode?: AgentMode; page?: string; section?: string; planId?: string; popupMode?: boolean };
+            options?: StreamRouteOptions;
             planId?: string;
             selectedSteps?: number[];
             popupContext?: PopupChatContext;
@@ -76,6 +99,20 @@ export async function POST(request: NextRequest) {
         if (options?.replaceRunId !== undefined && typeof options.replaceRunId !== "string") {
             return new Response(
                 JSON.stringify({ error: "replaceRunId must be a string when provided" }),
+                { status: 400, headers: { "Content-Type": "application/json" } },
+            );
+        }
+
+        if (options?.continueFromRunId !== undefined && typeof options.continueFromRunId !== "string") {
+            return new Response(
+                JSON.stringify({ error: "continueFromRunId must be a string when provided" }),
+                { status: 400, headers: { "Content-Type": "application/json" } },
+            );
+        }
+
+        if (options?.continueFromRunId && !options.conversationId) {
+            return new Response(
+                JSON.stringify({ error: "continueFromRunId requires conversationId" }),
                 { status: 400, headers: { "Content-Type": "application/json" } },
             );
         }
@@ -130,7 +167,7 @@ export async function POST(request: NextRequest) {
             : "";
 
         const service = getAIService();
-        const scopedOptions = {
+        const scopedOptions: StreamRouteOptions = {
             ...options,
             additionalContext: [options?.additionalContext, contextCapturePrompt].filter(Boolean).join("\n\n") || undefined,
             userId: authResult.context.userId,
@@ -155,9 +192,13 @@ export async function POST(request: NextRequest) {
                         },
                     });
                     const mergedPlanId = planId ?? options?.planId;
-                    const surface = deriveChatUnificationSurface(scopedOptions);
-                    const streamPhase = deriveChatUnificationStreamPhase({
-                        options: scopedOptions,
+                    let runtimeOptions: StreamRouteOptions = {
+                        ...scopedOptions,
+                        replaceRunId: scopedOptions.replaceRunId ?? scopedOptions.continueFromRunId,
+                    };
+                    let surface = deriveChatUnificationSurface(runtimeOptions);
+                    let streamPhase = deriveChatUnificationStreamPhase({
+                        options: runtimeOptions,
                         isPlanExecution: Boolean(mergedPlanId),
                     });
                     let lastRunEnd: RuntimeStreamEvent | null = null;
@@ -171,9 +212,9 @@ export async function POST(request: NextRequest) {
                                 surface,
                                 runId: lastRunEnd.runId ?? null,
                                 conversationId: lastRunEnd.conversationId ?? null,
-                                projectId: scopedOptions.projectId ?? null,
+                                projectId: runtimeOptions.projectId ?? null,
                                 payload: buildRunEndObservedPayload({
-                                    requestKey: scopedOptions.telemetryRequestKey ?? null,
+                                    requestKey: runtimeOptions.telemetryRequestKey ?? null,
                                     runStatus: lastRunEnd.runStatus ?? null,
                                     streamPhase,
                                     actualModel: lastRunEnd.actualModel ?? null,
@@ -190,11 +231,6 @@ export async function POST(request: NextRequest) {
                         await next();
                         if (event.type === "run_end") runtimeThread.bindRun(undefined);
                     });
-                    for (const eventType of ["artifact", "checkpoint", "error", "user_input_required"] as const) {
-                        runtimeRouter.on(eventType, async ({ event, thread: runtimeThread }) => {
-                            await persistRecoveryAuthoritativeRuntimeEvent({ event, thread: runtimeThread });
-                        });
-                    }
                     for (const eventType of STREAM_EVENT_TYPES) {
                         runtimeRouter.on(eventType, async ({ event, thread: runtimeThread }) => {
                             await runtimeThread.emit(event);
@@ -202,10 +238,44 @@ export async function POST(request: NextRequest) {
                     }
 
                     try {
+                        const continuationContext = scopedOptions.continueFromRunId
+                            ? await (async () => {
+                                const checkpointSource = await resolveLatestValidRunCheckpoint({
+                                    runId: scopedOptions.continueFromRunId!,
+                                    conversationId: scopedOptions.conversationId ?? null,
+                                });
+                                if (checkpointSource) {
+                                    return buildCheckpointContinuationContext(checkpointSource);
+                                }
+
+                                const source = await resolveDurableContinuationSource({
+                                    runId: scopedOptions.continueFromRunId!,
+                                    conversationId: scopedOptions.conversationId ?? null,
+                                });
+                                if (!source) {
+                                    throw new AIErrorWithEnvelope(
+                                        createContinuationUnavailableErrorEnvelope({
+                                            runId: scopedOptions.continueFromRunId!,
+                                        }),
+                                    );
+                                }
+                                return buildDurableContinuationContext(source);
+                            })()
+                            : undefined;
+                        runtimeOptions = {
+                            ...runtimeOptions,
+                            continuationContext,
+                        };
+                        surface = deriveChatUnificationSurface(runtimeOptions);
+                        streamPhase = deriveChatUnificationStreamPhase({
+                            options: runtimeOptions,
+                            isPlanExecution: Boolean(mergedPlanId),
+                        });
+
                         // If using conversation memory — use artifact-aware streaming
                         if ((userMessage || planId) && context) {
                             for await (const chunk of service.streamChatWithArtifacts(
-                                userMessage || "", context, { ...scopedOptions, planId: mergedPlanId, selectedSteps, signal: request.signal }
+                                userMessage || "", context, { ...runtimeOptions, planId: mergedPlanId, selectedSteps, signal: request.signal }
                             )) {
                                 const normalized = normalizeStreamChunk(chunk);
                                 if (!normalized) continue;
@@ -217,15 +287,15 @@ export async function POST(request: NextRequest) {
                         }
                         // Direct message streaming
                         else if (messages && messages.length > 0) {
-                            if (isPopupRequest && popupContext && scopedOptions.projectId && popupContext.projectId === scopedOptions.projectId) {
+                            if (isPopupRequest && popupContext && runtimeOptions.projectId && popupContext.projectId === runtimeOptions.projectId) {
                                 const latestUserMessage = [...messages].reverse().find((msg) => msg.role === "user")?.content ?? "";
                                 const popupSystemPrompt = await buildPopupSystemPrompt({
                                     popupContext,
                                     userId: authResult.context.userId,
                                     workspaceId: authResult.context.workspaceId,
                                     userQuery: latestUserMessage,
-                                    page: scopedOptions.page,
-                                    section: scopedOptions.section,
+                                    page: runtimeOptions.page,
+                                    section: runtimeOptions.section,
                                 });
                                 const popupMessages: AIMessage[] = [
                                     {
@@ -243,7 +313,7 @@ export async function POST(request: NextRequest) {
                                         .filter((tool) => allowedToolNames.has(tool.name));
                                     const popupService = new AIService({
                                         toolMiddlewares: [
-                                            createPopupToolGuard({ popupContext, projectId: scopedOptions.projectId }),
+                                            createPopupToolGuard({ popupContext, projectId: runtimeOptions.projectId }),
                                             createToolPrerequisiteMiddleware(),
                                             createIdempotencyMiddleware(),
                                         ],
@@ -252,7 +322,7 @@ export async function POST(request: NextRequest) {
                                     for await (const chunk of popupService.streamChatWithTools(
                                         popupMessages,
                                         {
-                                            ...scopedOptions,
+                                            ...runtimeOptions,
                                             tools: popupToolDefinitions,
                                             signal: request.signal,
                                         },
@@ -265,7 +335,7 @@ export async function POST(request: NextRequest) {
                                         await coalescer.push(normalized);
                                     }
                                 } else {
-                                    for await (const chunk of service.streamChat(popupMessages, { ...scopedOptions, signal: request.signal })) {
+                                    for await (const chunk of service.streamChat(popupMessages, { ...runtimeOptions, signal: request.signal })) {
                                         const normalized = normalizeStreamChunk(chunk);
                                         if (!normalized) continue;
                                         if (normalized.type === "run_end") {
@@ -275,7 +345,7 @@ export async function POST(request: NextRequest) {
                                     }
                                 }
                             } else {
-                                for await (const chunk of service.streamChat(messages, { ...scopedOptions, signal: request.signal })) {
+                                for await (const chunk of service.streamChat(messages, { ...runtimeOptions, signal: request.signal })) {
                                     const normalized = normalizeStreamChunk(chunk);
                                     if (!normalized) continue;
                                     if (normalized.type === "run_end") {

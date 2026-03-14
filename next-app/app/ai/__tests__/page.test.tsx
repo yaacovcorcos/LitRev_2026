@@ -7,6 +7,7 @@ import AIView from "../page";
 const {
   mockListConversations,
   mockCreateConversation,
+  mockGetConversation,
   mockGetGlobalWorkspaceContextAction,
   mockUseProjects,
   mockPush,
@@ -16,6 +17,7 @@ const {
 } = vi.hoisted(() => ({
   mockListConversations: vi.fn(),
   mockCreateConversation: vi.fn(),
+  mockGetConversation: vi.fn(),
   mockGetGlobalWorkspaceContextAction: vi.fn(),
   mockUseProjects: vi.fn(),
   mockPush: vi.fn(),
@@ -48,6 +50,7 @@ vi.mock("next/dynamic", () => ({
       }>;
       suppressedProgressId?: string | null;
       onReconnectRun?: (item: { type: string; id: string; errorMeta?: { activeRunId?: string; runId?: string } }) => void;
+      onContinueFromDurableStateRun?: (item: { type: string; id: string; errorMeta?: { activeRunId?: string; runId?: string } }) => void;
       onStopAndRetryRun?: (item: { type: string; id: string; errorMeta?: { activeRunId?: string; runId?: string } }) => void;
       onRetryLastMessage?: () => void;
     }) {
@@ -84,6 +87,9 @@ vi.mock("next/dynamic", () => ({
           <div>
             <div data-testid="timeline-suppressed-progress">{props.suppressedProgressId ?? ""}</div>
             {props.items.map((item) => {
+              if (item.type === "user_message") {
+                return <div key={item.id}>{item.content}</div>;
+              }
               if (item.type === "assistant_message") {
                 return <div key={item.id}>{item.content}</div>;
               }
@@ -108,6 +114,12 @@ vi.mock("next/dynamic", () => ({
                     {item.errorMeta?.recoveryRecommendation === "stop_and_retry" ? (
                       <button type="button" onClick={() => props.onStopAndRetryRun?.(item)}>
                         Stop & Retry
+                      </button>
+                    ) : null}
+                    {item.errorMeta?.recoveryRecommendation === "continue_from_durable_state"
+                      || item.errorMeta?.recoveryRecommendation === "continue_from_checkpoint" ? (
+                      <button type="button" onClick={() => props.onContinueFromDurableStateRun?.(item)}>
+                        Continue
                       </button>
                     ) : null}
                     {item.errorMeta?.recoveryRecommendation === "retry" ? (
@@ -136,17 +148,27 @@ vi.mock("@/components/copilot/CopilotInputCoreClient", () => ({
   CopilotInputCoreClient: ({
     onReady,
     sendMessage,
+    onQueueFollowUp,
+    hasQueuedFollowUp,
+    attachedStack,
   }: {
     onReady?: () => void;
     sendMessage?: (text: string, page: "ai") => void | Promise<void>;
+    onQueueFollowUp?: (payload: { text: string; page: "ai" }) => void | Promise<void>;
+    hasQueuedFollowUp?: boolean;
+    attachedStack?: "none" | "attached";
   }) => (
-    <div>
+    <div data-testid="ai-composer" data-attached-stack={attachedStack ?? "none"}>
       <button type="button" onClick={() => onReady?.()}>
         composer ready
       </button>
       <button type="button" onClick={() => void sendMessage?.("Recover this run", "ai")}>
         send message
       </button>
+      <button type="button" onClick={() => void onQueueFollowUp?.({ text: "Queue this next", page: "ai" })}>
+        queue next
+      </button>
+      <div data-testid="ai-has-queued">{hasQueuedFollowUp ? "yes" : "no"}</div>
     </div>
   ),
 }));
@@ -158,7 +180,7 @@ vi.mock("@/contexts/ProjectsContext", () => ({
 vi.mock("@/app/actions/conversations", () => ({
   listConversations: (...args: unknown[]) => mockListConversations(...args),
   createConversation: (...args: unknown[]) => mockCreateConversation(...args),
-  getConversation: vi.fn(),
+  getConversation: (...args: unknown[]) => mockGetConversation(...args),
   archiveConversation: vi.fn(),
   branchConversation: vi.fn(),
   updateConversationTitle: vi.fn(),
@@ -244,6 +266,14 @@ describe("/ai page deferred hydration", () => {
     mockCreateConversation.mockResolvedValue({
       success: true,
       data: { id: "conv-new" },
+    });
+    mockGetConversation.mockResolvedValue({
+      success: true,
+      data: {
+        id: "conv-1",
+        title: "First chat",
+        messages: [],
+      },
     });
     mockFetch.mockResolvedValue({
       ok: true,
@@ -405,6 +435,8 @@ describe("/ai page deferred hydration", () => {
 
     const status = screen.getByRole("status");
     const sendButton = screen.getByRole("button", { name: "send message" });
+    expect(status.getAttribute("data-stack-position")).toBe("top");
+    expect(screen.getByTestId("ai-composer").getAttribute("data-attached-stack")).toBe("attached");
     expect(screen.getByText("Reviewing PubMed results")).toBeTruthy();
     expect(screen.getByText("2 of 3")).toBeTruthy();
     expect(screen.getByRole("progressbar")).toBeTruthy();
@@ -584,6 +616,159 @@ describe("/ai page deferred hydration", () => {
     expect(screen.queryAllByText("The active run stopped making durable progress. Choose how to continue.")).toHaveLength(1);
   });
 
+  it("continues from the existing durable state without appending a duplicate user message", async () => {
+    mockProcessAIStream
+      .mockImplementationOnce(async ({ onChunk }: {
+        onChunk: (chunk: unknown) => void | Promise<void>;
+      }) => {
+        await onChunk({ type: "run_start", runId: "run-4", conversationId: "conv-new" });
+        return {
+          runStatus: null,
+          stopReason: null,
+          terminalReason: "failed_network",
+          errorMessage: null,
+          errorMeta: null,
+          actualModel: null,
+          actualModelSource: "unknown",
+        };
+      })
+      .mockImplementationOnce(async () => ({
+        runStatus: null,
+        stopReason: null,
+        terminalReason: "completed",
+        errorMessage: null,
+        errorMeta: null,
+        actualModel: null,
+        actualModelSource: "unknown",
+      }));
+    mockPollRunRecovery.mockResolvedValueOnce({
+      outcome: "needs_user_action",
+      response: {
+        conversationId: "conv-new",
+        runId: "run-4",
+        runStatus: "running",
+        isActive: true,
+        lastActivityAt: "2026-03-14T10:25:00.000Z",
+        lastDurableProgressAt: "2026-03-14T10:20:00.000Z",
+        finalizationState: "failed",
+        lastSequence: 2,
+        replayableEvents: [],
+        terminalEvent: null,
+        recoveryRecommendation: "continue_from_durable_state",
+        abnormalEndClassification: "finalization_failed",
+      },
+      lastAppliedSequence: 2,
+    });
+
+    render(<AIView />);
+
+    fireEvent.click(screen.getByRole("button", { name: "send message" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Continue" })).toBeTruthy();
+    });
+
+    expect(screen.getAllByText("Recover this run")).toHaveLength(1);
+
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 0));
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+    });
+
+    const secondRequest = mockFetch.mock.calls[1]?.[1] as { body?: string };
+    const parsedBody = JSON.parse(secondRequest.body ?? "{}");
+    expect(parsedBody.options).toMatchObject({
+      continueFromRunId: "run-4",
+      replaceRunId: "run-4",
+      persistUserMessage: false,
+      persistedUserMessageContent: "Recover this run",
+    });
+    expect(screen.getAllByText("Recover this run")).toHaveLength(1);
+  });
+
+  it("continues from the latest checkpoint without appending a duplicate user message", async () => {
+    mockProcessAIStream
+      .mockImplementationOnce(async ({ onChunk }: {
+        onChunk: (chunk: unknown) => void | Promise<void>;
+      }) => {
+        await onChunk({ type: "run_start", runId: "run-5", conversationId: "conv-new" });
+        return {
+          runStatus: null,
+          stopReason: null,
+          terminalReason: "failed_network",
+          errorMessage: null,
+          errorMeta: null,
+          actualModel: null,
+          actualModelSource: "unknown",
+        };
+      })
+      .mockImplementationOnce(async () => ({
+        runStatus: null,
+        stopReason: null,
+        terminalReason: "completed",
+        errorMessage: null,
+        errorMeta: null,
+        actualModel: null,
+        actualModelSource: "unknown",
+      }));
+    mockPollRunRecovery.mockResolvedValueOnce({
+      outcome: "needs_user_action",
+      response: {
+        conversationId: "conv-new",
+        runId: "run-5",
+        runStatus: "running",
+        isActive: true,
+        lastActivityAt: "2026-03-14T10:25:00.000Z",
+        lastDurableProgressAt: "2026-03-14T10:20:00.000Z",
+        finalizationState: "failed",
+        lastSequence: 2,
+        replayableEvents: [],
+        terminalEvent: null,
+        recoveryRecommendation: "continue_from_checkpoint",
+        abnormalEndClassification: "finalization_failed",
+      },
+      lastAppliedSequence: 2,
+    });
+
+    render(<AIView />);
+
+    fireEvent.click(screen.getByRole("button", { name: "send message" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Continue" })).toBeTruthy();
+    });
+
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 0));
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+    });
+
+    const secondRequest = mockFetch.mock.calls[1]?.[1] as { body?: string };
+    const parsedBody = JSON.parse(secondRequest.body ?? "{}");
+    expect(parsedBody.options).toMatchObject({
+      continueFromRunId: "run-5",
+      replaceRunId: "run-5",
+      persistUserMessage: false,
+      persistedUserMessageContent: "Recover this run",
+    });
+  });
+
   it("elevates live progress above the composer and suppresses the matching inline timeline row", async () => {
     mockProcessAIStream.mockImplementation(async ({ onChunk }: {
       onChunk: (chunk: unknown) => void | Promise<void>;
@@ -592,7 +777,7 @@ describe("/ai page deferred hydration", () => {
       return {
         runStatus: null,
         stopReason: null,
-        terminalReason: "completed",
+        terminalReason: "failed_network",
         errorMessage: null,
         errorMeta: null,
         actualModel: null,
@@ -607,11 +792,92 @@ describe("/ai page deferred hydration", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Searching PubMed")).toBeTruthy();
+      expect(screen.getByRole("status")).toBeTruthy();
     });
 
+    expect(screen.getByText("Searching PubMed")).toBeTruthy();
     expect(screen.getByTestId("timeline-suppressed-progress").textContent).toMatch(/^progress-/);
     const timelineText = screen.getByTestId("timeline-suppressed-progress").parentElement?.textContent ?? "";
     expect(timelineText).not.toContain("Searching PubMedSearching PubMed");
+  });
+
+  it("renders a queued follow-up cap between live progress and the composer", async () => {
+    mockProcessAIStream.mockImplementationOnce(async ({ onChunk }: {
+      onChunk: (chunk: unknown) => void | Promise<void>;
+    }) => {
+      await onChunk({
+        type: "progress",
+        progressMessage: "Reading protocol...",
+        progressCurrent: 1,
+        progressTotal: 2,
+      });
+      return {
+        runStatus: null,
+        stopReason: null,
+        terminalReason: "failed_network",
+        errorMessage: null,
+        errorMeta: null,
+        actualModel: null,
+        actualModelSource: "unknown",
+      };
+    });
+
+    render(<AIView />);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "composer ready" }));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "send message" }));
+      await Promise.resolve();
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "queue next" }));
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("ai-has-queued").textContent).toBe("yes");
+      expect(screen.getByText("Reading protocol...")).toBeTruthy();
+      expect(screen.getByText("Queued next message")).toBeTruthy();
+      expect(screen.getByText("Queue this next")).toBeTruthy();
+    });
+
+    const progress = screen.getByText("Reading protocol...").closest("[data-stack-position]");
+    const queued = screen.getByText("Queued next message").closest("[data-stack-position]");
+    const composerState = screen.getByTestId("ai-composer");
+
+    expect(progress?.getAttribute("data-stack-position")).toBe("top");
+    expect(queued?.getAttribute("data-stack-position")).toBe("middle");
+    expect(composerState.getAttribute("data-attached-stack")).toBe("attached");
+    expect(progress).toBeTruthy();
+    expect(queued).toBeTruthy();
+    expect(progress!.compareDocumentPosition(queued!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(queued!.compareDocumentPosition(composerState) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("allows queueing before the first conversation id exists", async () => {
+    render(<AIView />);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "queue next" }));
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("ai-has-queued").textContent).toBe("yes");
+      expect(screen.getByText("Queued next message")).toBeTruthy();
+      expect(screen.getByText("Queue this next")).toBeTruthy();
+    });
+
+    expect(screen.getByText("Queued next message").closest("[data-stack-position]")?.getAttribute("data-stack-position")).toBe("top");
+    expect(screen.getByTestId("ai-composer").getAttribute("data-attached-stack")).toBe("attached");
+  });
+
+  it("keeps the composer standalone when no attached caps are present", () => {
+    render(<AIView />);
+
+    expect(screen.getByTestId("ai-composer").getAttribute("data-attached-stack")).toBe("none");
+    expect(screen.queryByText("Queued next message")).toBeNull();
   });
 });

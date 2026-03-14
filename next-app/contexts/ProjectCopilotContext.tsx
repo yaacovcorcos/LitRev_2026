@@ -40,6 +40,10 @@ import {
 } from "@/lib/ai/config";
 import { recordChatUnificationMetric } from "@/lib/ai/chat-unification-telemetry";
 import {
+    bindQueuedFollowUpConversationId,
+    isQueuedFollowUpDispatchReady,
+} from "@/lib/ai/queued-followup";
+import {
     clearContextCaptureHistory,
     loadContextCaptureHistory,
     pushContextCaptureHistory,
@@ -53,6 +57,7 @@ import type {
 } from "@/types/copilot-context";
 import type { ContextCaptureHistoryEntry, ContextCaptureTarget } from "@/types/context-capture";
 import type { RetryModelExpectation } from "@/types/chat-unification";
+import type { QueuedFollowUp } from "@/types/queued-followup";
 
 const MODEL_STORAGE_KEY = "litrev_copilot_model";
 const DEFAULT_MODEL: SelectableModelId = DEFAULT_SELECTABLE_MODEL_ID;
@@ -86,6 +91,7 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
     const [attachedContextTargets, setAttachedContextTargetsState] = useState<ContextCaptureTarget[]>([]);
     const [recentContextHistory, setRecentContextHistory] = useState<ContextCaptureHistoryEntry[]>([]);
     const [prefillCommand, setPrefillCommand] = useState<PrefillCommand | null>(null);
+    const [queuedFollowUp, setQueuedFollowUp] = useState<QueuedFollowUp | null>(null);
 
     // Agent run state (Phase 2)
     const [currentRunId, setCurrentRunId] = useState<string | null>(null);
@@ -98,6 +104,8 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
 
     // Structured ask_user question pending user response
     const [pendingUserInput, setPendingUserInput] = useState<UserInputRequest | null>(null);
+    const queuedFollowUpDispatchRef = useRef<string | null>(null);
+    const previousConversationIdRef = useRef<string | null>(null);
 
     // Autonomy configuration state (Phase 7)
     const [autonomyPreset, setAutonomyPreset] = useState<AutonomyPreset>("assisted");
@@ -117,6 +125,7 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             }));
             setAttachedContextTargetsState([]);
             setPrefillCommand(null);
+            setQueuedFollowUp(null);
             if (isContextHistoryV1Enabled()) {
                 setRecentContextHistory(loadContextCaptureHistory(projectId));
             } else {
@@ -412,6 +421,15 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
         setPrefillCommand(null);
     }, []);
 
+    const queueQueuedFollowUp = useCallback((nextQueuedFollowUp: QueuedFollowUp) => {
+        setQueuedFollowUp(nextQueuedFollowUp);
+    }, []);
+
+    const clearQueuedFollowUp = useCallback(() => {
+        queuedFollowUpDispatchRef.current = null;
+        setQueuedFollowUp(null);
+    }, []);
+
     const clearMessages = useCallback(() => {
         updateState((prev) => ({
             ...prev,
@@ -422,6 +440,27 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
     }, [updateState, convo]);
 
     const clearChoices = useCallback(() => setPendingChoices([]), []);
+
+    useEffect(() => {
+        if (!convo.currentConversationId) return;
+        setQueuedFollowUp((current) => bindQueuedFollowUpConversationId(current, convo.currentConversationId));
+    }, [convo.currentConversationId]);
+
+    useEffect(() => {
+        const previousConversationId = previousConversationIdRef.current;
+        if (previousConversationId === null) {
+            previousConversationIdRef.current = convo.currentConversationId;
+            return;
+        }
+
+        if (previousConversationId !== convo.currentConversationId) {
+            clearQueuedFollowUp();
+            previousConversationIdRef.current = convo.currentConversationId;
+            return;
+        }
+
+        previousConversationIdRef.current = convo.currentConversationId;
+    }, [clearQueuedFollowUp, convo.currentConversationId]);
 
     const answerUserInput = useCallback((callId: string, answer: string, page?: CopilotPage, section?: string) => {
         setPendingUserInput(null);
@@ -482,7 +521,11 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             studyId?: string,
             retryModelExpectation?: RetryModelExpectation,
             contextTargets?: ContextCaptureTarget[],
-            runtimeOverrides?: { replaceRunId?: string | null },
+            runtimeOverrides?: {
+                replaceRunId?: string | null;
+                continueFromRunId?: string | null;
+                suppressUserMessageAppend?: boolean;
+            },
         ) => {
             if (contextTargets?.length) {
                 recordContextHistory(contextTargets);
@@ -501,6 +544,46 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
         },
         [recordContextHistory, stream],
     );
+
+    useEffect(() => {
+        const ready = isQueuedFollowUpDispatchReady({
+            queuedFollowUp,
+            isLoading,
+            hasPendingChoices: pendingChoices.length > 0,
+            hasPendingUserInput: pendingUserInput !== null,
+            sendLocked: false,
+            currentConversationId: convo.currentConversationId,
+        });
+
+        if (!ready || !queuedFollowUp) {
+            if (!queuedFollowUp) {
+                queuedFollowUpDispatchRef.current = null;
+            }
+            return;
+        }
+
+        if (queuedFollowUpDispatchRef.current === queuedFollowUp.id) {
+            return;
+        }
+
+        queuedFollowUpDispatchRef.current = queuedFollowUp.id;
+        setQueuedFollowUp(null);
+        void sendMessageWithContext(
+            queuedFollowUp.text,
+            queuedFollowUp.page,
+            queuedFollowUp.section,
+            queuedFollowUp.model,
+            queuedFollowUp.agentMode,
+            queuedFollowUp.studyId,
+        );
+    }, [
+        convo.currentConversationId,
+        isLoading,
+        pendingChoices.length,
+        pendingUserInput,
+        queuedFollowUp,
+        sendMessageWithContext,
+    ]);
 
     const value = useMemo(
         () => ({
@@ -552,6 +635,9 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             prefillCommand,
             queuePrefillCommand,
             consumePrefillCommand,
+            queuedFollowUp,
+            queueQueuedFollowUp,
+            clearQueuedFollowUp,
             // Agent run state (Phase 2)
             currentRunId,
             artifacts,
@@ -614,6 +700,9 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             prefillCommand,
             queuePrefillCommand,
             consumePrefillCommand,
+            queuedFollowUp,
+            queueQueuedFollowUp,
+            clearQueuedFollowUp,
             currentRunId,
             artifacts,
             shouldOfferSummary,

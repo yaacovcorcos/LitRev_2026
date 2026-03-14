@@ -50,12 +50,18 @@ vi.mock("../copilot/CopilotInput", () => ({
   CopilotInput: ({
     prefillCommand,
     onPrefillConsumed,
+    hasQueuedFollowUp,
+    attachedStack,
   }: {
     prefillCommand?: { text: string; id: string } | null;
     onPrefillConsumed?: () => void;
+    hasQueuedFollowUp?: boolean;
+    attachedStack?: "none" | "attached";
   }) => (
     <div>
       <div data-testid="copilot-prefill">{prefillCommand?.text ?? ""}</div>
+      <div data-testid="copilot-has-queued">{hasQueuedFollowUp ? "yes" : "no"}</div>
+      <div data-testid="copilot-attached-stack">{attachedStack ?? "none"}</div>
       <button type="button" data-testid="consume-prefill" onClick={() => onPrefillConsumed?.()}>
         Consume
       </button>
@@ -68,8 +74,10 @@ vi.mock("../copilot/AutonomySettings", () => ({
 }));
 
 describe("ProjectCopilot suggestion wiring", () => {
+  let baseContextValue: Record<string, unknown>;
+
   beforeEach(() => {
-    mockUseProjectCopilot.mockReturnValue({
+    baseContextValue = {
       messages: [
         {
           id: "progress-1",
@@ -99,7 +107,10 @@ describe("ProjectCopilot suggestion wiring", () => {
       setShowAutonomySettings: vi.fn(),
       prefillCommand: null,
       consumePrefillCommand: vi.fn(),
-    });
+      queuedFollowUp: null,
+      clearQueuedFollowUp: vi.fn(),
+    };
+    mockUseProjectCopilot.mockReturnValue(baseContextValue);
     mockTimelineRenderer.mockReset();
   });
 
@@ -144,11 +155,80 @@ describe("ProjectCopilot suggestion wiring", () => {
 
     const status = screen.getByRole("status");
     const input = screen.getByTestId("copilot-prefill");
+    expect(status.getAttribute("data-stack-position")).toBe("top");
+    expect(screen.getByTestId("copilot-attached-stack").textContent).toBe("attached");
     expect(screen.getByText("Reviewing PubMed results")).toBeTruthy();
     expect(screen.getByText("2 of 3")).toBeTruthy();
     expect(screen.getByRole("progressbar")).toBeTruthy();
     expect(status.compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     const props = mockTimelineRenderer.mock.calls[0]?.[0] as { suppressedProgressId?: string | null };
     expect(props.suppressedProgressId).toBe("progress-1");
+  });
+
+  it("renders a queued follow-up cap between live progress and the composer", () => {
+    mockUseProjectCopilot.mockReturnValue({
+      ...baseContextValue,
+      queuedFollowUp: {
+        id: "queue-1",
+        text: "Review the strongest recovery option once this finishes.",
+        createdAt: Date.now(),
+        conversationId: "conv-1",
+        page: "overview",
+        source: "draft",
+      },
+      clearQueuedFollowUp: vi.fn(),
+    });
+
+    render(
+      <ProjectCopilot
+        page="overview"
+        contextDisplay="Overview"
+        emptyState={{
+          icon: "smart_toy",
+          title: "AI Copilot",
+          description: "Help text",
+          suggestions: [{ label: "Summarize", prompt: "Summarize my project progress" }],
+        }}
+        inputPlaceholder="Ask..."
+      />,
+    );
+
+    const progress = screen.getByText("Reviewing PubMed results").closest("[data-stack-position]");
+    const queued = screen.getByText("Queued next message").closest("[data-stack-position]");
+    const input = screen.getByTestId("copilot-prefill");
+
+    expect(screen.getByText("Review the strongest recovery option once this finishes.")).toBeTruthy();
+    expect(progress?.getAttribute("data-stack-position")).toBe("top");
+    expect(queued?.getAttribute("data-stack-position")).toBe("middle");
+    expect(screen.getByTestId("copilot-attached-stack").textContent).toBe("attached");
+    expect(progress).toBeTruthy();
+    expect(queued).toBeTruthy();
+    expect(progress!.compareDocumentPosition(queued!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(queued!.compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("keeps the composer standalone when no attached caps are present", () => {
+    mockUseProjectCopilot.mockReturnValue({
+      ...baseContextValue,
+      messages: [],
+    });
+
+    render(
+      <ProjectCopilot
+        page="overview"
+        contextDisplay="Overview"
+        emptyState={{
+          icon: "smart_toy",
+          title: "AI Copilot",
+          description: "Help text",
+          suggestions: [{ label: "Summarize", prompt: "Summarize my project progress" }],
+        }}
+        inputPlaceholder="Ask..."
+      />,
+    );
+
+    expect(screen.getByTestId("copilot-attached-stack").textContent).toBe("none");
+    expect(screen.queryByText("Queued next message")).toBeNull();
+    expect(screen.queryByRole("status")).toBeNull();
   });
 });

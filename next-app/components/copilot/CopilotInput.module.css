@@ -23,6 +23,10 @@
     container-name: inputBox;
 }
 
+.inputBox[data-attached-stack="attached"] {
+    border-radius: 8px 8px 24px 24px;
+}
+
 .inputBox::before {
     content: '';
     position: absolute;
@@ -33,6 +37,10 @@
     background: linear-gradient(to bottom, transparent, rgba(var(--rgb-ui-surface), 0.08));
     pointer-events: none;
     border-radius: 24px 24px 0 0;
+}
+
+.inputBox[data-attached-stack="attached"]::before {
+    display: none;
 }
 
 .inputBox::after {
@@ -199,6 +207,53 @@
     gap: 8px;
     flex-shrink: 0;
     margin-left: 12px;
+}
+
+.recordingControlHint {
+    position: absolute;
+    bottom: 50px;
+    transform: translateX(-50%);
+    z-index: var(--z-tooltip);
+    pointer-events: none;
+    padding: 8px 14px;
+    border-radius: 18px;
+    border: 1px solid rgba(var(--rgb-ui-contrast), 0.08);
+    background: rgba(var(--rgb-ui-surface), 0.96);
+    box-shadow:
+        0 8px 24px rgba(var(--rgb-ui-scrim), 0.12),
+        0 2px 8px rgba(var(--rgb-ui-scrim), 0.08);
+    color: var(--text-primary);
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1;
+    white-space: nowrap;
+}
+
+.queueNextBtn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 6px 10px;
+    border: 1px solid rgba(var(--rgb-ui-contrast), 0.08);
+    border-radius: 999px;
+    background: rgba(var(--rgb-ui-surface), 0.58);
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.queueNextBtn:hover {
+    background: rgba(var(--rgb-ui-contrast), 0.06);
+    border-color: rgba(var(--rgb-ui-contrast), 0.12);
+    color: var(--text-primary);
+}
+
+.queueNextBtn:focus-visible {
+    outline: none;
+    box-shadow: var(--shadow-focus-ring);
 }
 
 .inputBarRecording {

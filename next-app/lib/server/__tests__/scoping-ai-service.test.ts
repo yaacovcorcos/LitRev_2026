@@ -4,7 +4,7 @@ import {
     finalizeScopingResponse,
     getContextualToolDefinitions,
     getLazyContextPointerCapabilities,
-    shouldUseScopingBatchPlan,
+    shouldShowScopingSearchPackPreview,
 } from "../ai/ai-service";
 
 describe("scoping ai-service helpers", () => {
@@ -40,8 +40,8 @@ describe("scoping ai-service helpers", () => {
         expect(names).toContain("recommend_studies");
     });
 
-    it("returns true for low-autonomy scoping requests to trigger search-pack approval", () => {
-        const shouldBatch = shouldUseScopingBatchPlan({
+    it("returns true for low-autonomy scoping requests to show a non-blocking search-pack preview", () => {
+        const shouldBatch = shouldShowScopingSearchPackPreview({
             agentMode: "scoping",
             userMessage: "What's out there on sepsis biomarker literature?",
             autonomyConfig: { preset: "manual", toolOverrides: {} },
@@ -50,7 +50,7 @@ describe("scoping ai-service helpers", () => {
     });
 
     it("returns false for non-low-autonomy scoping requests", () => {
-        const shouldBatch = shouldUseScopingBatchPlan({
+        const shouldBatch = shouldShowScopingSearchPackPreview({
             agentMode: "scoping",
             userMessage: "What's out there on sepsis biomarker literature?",
             autonomyConfig: { preset: "assisted", toolOverrides: {} },
@@ -59,10 +59,20 @@ describe("scoping ai-service helpers", () => {
     });
 
     it("returns false for simple confirmations, avoiding extra planning loops", () => {
-        const shouldBatch = shouldUseScopingBatchPlan({
+        const shouldBatch = shouldShowScopingSearchPackPreview({
             agentMode: "scoping",
             userMessage: "yes",
             autonomyConfig: { preset: "manual", toolOverrides: {} },
+        });
+        expect(shouldBatch).toBe(false);
+    });
+
+    it("returns false for draft bootstrap requests even in low autonomy", () => {
+        const shouldBatch = shouldShowScopingSearchPackPreview({
+            agentMode: "scoping",
+            userMessage: "Help me write a literature review on omega-3 and cognition",
+            autonomyConfig: { preset: "manual", toolOverrides: {} },
+            entryIntent: "draft_bootstrap",
         });
         expect(shouldBatch).toBe(false);
     });
@@ -105,10 +115,22 @@ describe("scoping ai-service helpers", () => {
             fullContent: `Landscape summary\\n<scoping_report>${reportJson}</scoping_report>`,
             userMessage: "What's out there?",
             hasHandoffSelection: false,
+            workflowSnapshot: {
+                entryIntent: "explore",
+                phase: "handoff",
+                handoffOffered: false,
+                recommendedDefaultQuestionIndex: 1,
+            },
         });
 
         expect(result.report).not.toBeNull();
         expect(result.report?.topic).toContain("Mindfulness");
+        expect(result.report?.workflow).toEqual({
+            entryIntent: "explore",
+            phase: "handoff",
+            handoffOffered: false,
+            recommendedDefaultQuestionIndex: 1,
+        });
         expect(result.content).toContain("<!-- SCOPING_REPORT:");
     });
 

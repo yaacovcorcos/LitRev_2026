@@ -37,7 +37,7 @@ import {
     markRunFinalizationState,
     type RunHeartbeatController,
 } from "@/lib/server/agent/run";
-import { emitEvent } from "@/lib/server/agent/events";
+import { recordRunEvent } from "@/lib/server/agent/run-event-recorder";
 import { createArtifact } from "@/lib/server/agent/artifacts";
 import { getAutonomyConfig } from "@/lib/server/agent/autonomy";
 import { buildExecutablePlanPayload } from "@/lib/server/agent/plan-payloads";
@@ -62,15 +62,17 @@ import {
     buildStudyContext,
 } from "@/lib/ai/prompts/copilot-prompts";
 import { normalizeAgentMode } from "@/lib/agent/feature-flags";
+import { detectScopingEntryIntent } from "@/lib/agent/router";
 import { LoopState, type StopReason } from "@/lib/agent/loop-controller";
 import { startRunTrace, startLLMGeneration, startContextSpan, flushTracing } from "./tracing";
 import { withChoicesExtraction } from "./choices-extractor";
 import { sanitizeGeneratedConversationTitle, buildFallbackConversationTitle } from "./title-generator";
-import { detectScopingHandoffSelection, extractLatestScopingReport } from "./scoping";
+import { detectScopingHandoffSelection, extractLatestScopingReport, extractScopingReportFromText } from "./scoping";
 import { prisma } from "@/lib/server/prisma";
 import { isProtocolPopulated, type ProtocolData } from "@/types/protocol";
 import type { ScopingReportPayload } from "@/types/artifacts";
 import { ensureConversationRunAvailability } from "@/lib/server/chat-runtime/conversation-run-lock";
+import { persistRecoveryAuthoritativeRuntimeEvent } from "@/lib/server/chat-runtime/persist-recovery-events";
 import { classifyAIError, toAIErrorEnvelope } from "./error-classification";
 import { retryAsync, sleep } from "@/lib/server/utils/retry";
 import { resolveReasoningMode } from "@/lib/ai/reasoning-visibility";
@@ -88,11 +90,21 @@ import {
     buildScopingHandoffToolCall,
     getLazyContextPointerCapabilities,
     getContextualToolDefinitions,
-    shouldUseScopingBatchPlan,
+    shouldShowScopingSearchPackPreview,
     buildScopingSearchPackPlan,
     finalizeScopingResponse,
 } from "./tool-helpers";
 import { executeToolWithAutonomy } from "./tool-autonomy";
+import {
+    applySuccessfulScopingToolResult,
+    buildScopingWorkflowInstruction,
+    createInitialScopingWorkflowState,
+    deriveScopingIterationToolDefs,
+    deriveScopingWorkflowSnapshot,
+    evaluateScopingSearchExecution,
+    evaluateScopingUserInputRequest,
+    type ScopingWorkflowState,
+} from "./scoping-workflow";
 
 const MAX_STREAM_RETRY_ATTEMPTS = 3;
 const MAX_OVERFLOW_RECOVERY_ATTEMPTS = 3;
@@ -876,12 +888,12 @@ class AIService {
             agentMode?: AgentMode;
             page?: string;
             section?: string;
-            /** When false, caller is responsible for persisting the user message (prevents double-writes). */
-            persistUserMessage?: boolean;
-            /** UI-persisted message content to drop from trailing history before appending augmented content. */
-            persistedUserMessageContent?: string;
-            /** ID of the UI-persisted user message for robust deduplication. */
-            persistedUserMessageId?: string;
+            /**
+             * Server-derived durable continuation seed. This is never trusted as
+             * executable instruction text; it is authoritative runtime state for
+             * resuming from an already-completed durable boundary.
+             */
+            continuationContext?: string;
         }
     ): AsyncIterable<AIStreamChunk & { conversationId?: string }> {
         let projectId = options?.projectId;
@@ -986,10 +998,8 @@ class AIService {
         const latestScopingReport = agentMode === "scoping"
             ? extractLatestScopingReport(conversation.messages)
             : null;
-        const handoffSelection = agentMode === "scoping"
-            ? detectScopingHandoffSelection(userMessage, latestScopingReport)
-            : null;
-        const effectiveHandoffSelection = handoffSelection && projectId ? handoffSelection : null;
+        let effectiveHandoffSelection: { question: string; index: number } | null = null;
+        let scopingWorkflow: ScopingWorkflowState | null = null;
         let scopingSearchCallsThisRun = 0;
         let protocolHandoffExecuted = false;
         let scopingReportPayload: ScopingReportPayload | null = null;
@@ -1031,6 +1041,43 @@ class AIService {
             traceEnded = true;
             await flushTracing();
         };
+        const persistRecoveryCheckpoint = async (checkpointLabel: string) => {
+            if (!run?.id) return;
+            await persistRecoveryAuthoritativeRuntimeEvent({
+                runId: run.id,
+                event: {
+                    type: "checkpoint",
+                    checkpointLabel,
+                    conversationId: conversation.id,
+                },
+                failureMode: "degrade",
+            });
+        };
+        const persistRecoveryUserInputRequest = async (userInputRequest: NonNullable<ToolResult["userInputRequest"]>) => {
+            if (!run?.id) return;
+            await persistRecoveryAuthoritativeRuntimeEvent({
+                runId: run.id,
+                event: {
+                    type: "user_input_required",
+                    userInputRequest,
+                    conversationId: conversation.id,
+                },
+                failureMode: "strict",
+            });
+        };
+        const persistRecoveryErrorChunk = async (chunk: AIStreamChunk) => {
+            if (!run?.id || chunk.type !== "error") return;
+            await persistRecoveryAuthoritativeRuntimeEvent({
+                runId: run.id,
+                event: {
+                    type: "error",
+                    error: chunk.error ?? "Unknown error",
+                    errorMeta: chunk.errorMeta,
+                    conversationId: conversation.id,
+                },
+                failureMode: "degrade",
+            });
+        };
 
         try {
             // Start an agent run inside the guarded lifecycle so early stream
@@ -1067,7 +1114,14 @@ class AIService {
 
             // Emit user message event (skip for plan execution — no user message to record)
             if (!executionMode) {
-                await emitEvent(activeRun.id, "message", { content: userMessage }, { messageRole: "user" });
+                await recordRunEvent({
+                    runId: activeRun.id,
+                    type: "message",
+                    payload: { content: userMessage },
+                    extras: { messageRole: "user" },
+                    durabilityClass: "observability_only",
+                    logContext: "user_message",
+                });
             }
 
             // Establish critical runtime authority, then load optional context.
@@ -1164,6 +1218,23 @@ class AIService {
             retrievedMemoriesForRun = retrievedMemories;
             const memoriesContext = formatMemoriesForContext(retrievedMemories);
             const ledgerCounts = getLedgerCounts(studyLedger);
+            const scopingEntryIntent = agentMode === "scoping"
+                ? detectScopingEntryIntent(userMessage, {
+                    hasProtocol: protocolRow?.data
+                        ? isProtocolPopulated(protocolRow.data as unknown as ProtocolData)
+                        : false,
+                })
+                : "explore";
+            const handoffSelection = agentMode === "scoping"
+                ? detectScopingHandoffSelection(userMessage, latestScopingReport)
+                : null;
+            effectiveHandoffSelection = handoffSelection && projectId ? handoffSelection : null;
+            scopingWorkflow = agentMode === "scoping"
+                ? createInitialScopingWorkflowState({
+                    entryIntent: scopingEntryIntent,
+                    report: latestScopingReport,
+                })
+                : null;
             const ctxOutput = {
                 hasMemories: !!memoriesContext,
                 hasProtocol: protocolRow?.data
@@ -1191,6 +1262,7 @@ class AIService {
                 ...contextMeta,
             });
             if (degradedCheckpointLabel) {
+                await persistRecoveryCheckpoint(degradedCheckpointLabel);
                 yield {
                     type: "checkpoint",
                     checkpointLabel: degradedCheckpointLabel,
@@ -1267,6 +1339,7 @@ class AIService {
                 studyContext,
                 memoryContext: memoriesContext || undefined,
                 autonomyContext,
+                continuationContext: options?.continuationContext,
                 additionalContext: options?.additionalContext,
                 additionalContextMaxChars,
             })
@@ -1366,10 +1439,11 @@ class AIService {
                 });
             }
 
-            if (!executionMode && shouldUseScopingBatchPlan({
+            if (!executionMode && scopingWorkflow && shouldShowScopingSearchPackPreview({
                 agentMode,
                 userMessage,
                 autonomyConfig,
+                entryIntent: scopingWorkflow.entryIntent,
             })) {
                 const planPayload = buildExecutablePlanPayload(buildScopingSearchPackPlan({
                     includeRecommendations: modeToolNames.includes("recommend_studies"),
@@ -1399,18 +1473,6 @@ class AIService {
                     artifactVersion: 1,
                     conversationId: conversation.id,
                 };
-
-                await finalizeRunOnce("completed");
-                const runModelMeta = resolveRunActualModelMeta(options?.model, null, false);
-                yield {
-                    type: "run_end",
-                    runId: activeRun.id,
-                    runStatus: "completed",
-                    conversationId: conversation.id,
-                    actualModel: runModelMeta.actualModel ?? undefined,
-                    actualModelSource: runModelMeta.actualModelSource,
-                };
-                return;
             }
 
             // Check for multi-step workflow (plan-before-act)
@@ -1535,11 +1597,9 @@ class AIService {
             }
 
             // Run the tool execution loop with autonomy
-            const toolDefs = executionMode ? executionToolDefs : modeToolDefs;
-            const chatOptions: ChatOptions = {
+            const baseChatOptions: ChatOptions = {
                 ...options,
                 projectId: projectId ?? undefined,
-                ...(toolDefs.length > 0 ? { tools: toolDefs } : {}),
             };
 
             const currentMessages = [...historyMessages];
@@ -1548,6 +1608,7 @@ class AIService {
             let observedRunModel: string | null = null;
             let invokedModel = false;
             const loop = new LoopState();
+            const scopingWorkflowMessageId = "scoping-workflow";
 
             while (true) {
                 const check = loop.shouldContinue(options?.signal);
@@ -1565,9 +1626,35 @@ class AIService {
                     currentMessages.length = 0;
                     currentMessages.push(...compacted.messages);
                     if (compacted.removed > 0) {
+                        await persistRecoveryCheckpoint(`Compacted ${compacted.removed} messages`);
                         yield { type: "checkpoint", checkpointLabel: `Compacted ${compacted.removed} messages`, conversationId: conversation.id };
                     }
                 }
+
+                if (agentMode === "scoping" && scopingWorkflow) {
+                    const existingWorkflowMessageIndex = currentMessages.findIndex((message) => message.id === scopingWorkflowMessageId);
+                    if (existingWorkflowMessageIndex >= 0) {
+                        currentMessages.splice(existingWorkflowMessageIndex, 1);
+                    }
+                    currentMessages.push({
+                        id: scopingWorkflowMessageId,
+                        role: "system",
+                        content: buildScopingWorkflowInstruction(scopingWorkflow),
+                        createdAt: new Date().toISOString(),
+                    });
+                }
+
+                const iterationToolDefs = executionMode
+                    ? executionToolDefs
+                    : (
+                        agentMode === "scoping" && scopingWorkflow
+                            ? deriveScopingIterationToolDefs(modeToolDefs, scopingWorkflow)
+                            : modeToolDefs
+                    );
+                const iterationChatOptions: ChatOptions = {
+                    ...baseChatOptions,
+                    ...(iterationToolDefs.length > 0 ? { tools: iterationToolDefs } : {}),
+                };
 
                 let collectedToolCalls: ToolCall[] = [];
                 let contentSoFar = "";
@@ -1585,13 +1672,13 @@ class AIService {
                     let terminalClassifiedError: ReturnType<typeof classifyAIError> | null = null;
 
                     const genSpan = startLLMGeneration(trace, `llm-call-${loop.iterations}-attempt-${retryCount + 1}`, {
-                        model: chatOptions.model,
+                        model: iterationChatOptions.model,
                         inputMessageCount: currentMessages.length,
-                        toolCount: toolDefs.length,
+                        toolCount: iterationToolDefs.length,
                     });
 
                     invokedModel = true;
-                    const rawStream = this.streamChat(currentMessages, chatOptions);
+                    const rawStream = this.streamChat(currentMessages, iterationChatOptions);
                     try {
                         for await (const chunk of withChoicesExtraction(rawStream)) {
                             if (chunk.type === "tool_call" && chunk.toolCall) {
@@ -1673,6 +1760,7 @@ class AIService {
                         const compactedMessages = compactMessagesForOverflowRetry(currentMessages, budget);
                         currentMessages.length = 0;
                         currentMessages.push(...compactedMessages);
+                        await persistRecoveryCheckpoint(`Recovered context overflow (attempt ${overflowRecoveryCount})`);
                         yield {
                             type: "checkpoint",
                             checkpointLabel: `Recovered context overflow (attempt ${overflowRecoveryCount})`,
@@ -1709,13 +1797,22 @@ class AIService {
                                 role: "assistant",
                                 content: fallbackContent,
                             });
-                            await emitEvent(activeRun.id, "message", { content: fallbackContent }, { messageRole: "assistant" });
+                            await recordRunEvent({
+                                runId: activeRun.id,
+                                type: "message",
+                                payload: { content: fallbackContent },
+                                extras: { messageRole: "assistant" },
+                                failureMode: "degrade",
+                                degradationReason: "assistant_message_persistence_failed",
+                                logContext: "assistant_message_fallback",
+                            });
                             yield { type: "content", content: fallbackContent, conversationId: conversation.id };
                         }
                         loop.markStopped("error");
+                        await persistRecoveryErrorChunk(terminalErrorChunk);
                         yield terminalErrorChunk;
                         await finalizeRunOnce("failed");
-                        const runModelMeta = resolveRunActualModelMeta(chatOptions.model, observedRunModel, invokedModel);
+                        const runModelMeta = resolveRunActualModelMeta(iterationChatOptions.model, observedRunModel, invokedModel);
                         yield {
                             type: "run_end",
                             runId: activeRun.id,
@@ -1783,6 +1880,20 @@ class AIService {
 
                 // Execute all tool calls with autonomy
                 for (const tc of collectedToolCalls) {
+                    if (agentMode === "scoping" && scopingWorkflow) {
+                        const searchDecision = evaluateScopingSearchExecution(scopingWorkflow, tc.name);
+                        if (!searchDecision.allow) {
+                            scopingWorkflow = searchDecision.nextState;
+                            currentMessages.push(
+                                buildSyntheticScopingToolMessage(tc, searchDecision.toolResult)
+                            );
+                            currentMessages.push(
+                                buildScopingCorrectionSystemMessage(searchDecision.correctiveMessage)
+                            );
+                            continue;
+                        }
+                    }
+
                     if (
                         tc.name === "search_pubmed" ||
                         tc.name === "search_semantic_scholar" ||
@@ -1853,19 +1964,44 @@ class AIService {
                         if (!classifiedToolError.retryable) {
                             runFacts.hadDeterministicNonRetryableFailure = true;
                         }
-                    } else {
+                    } else if (tc.name !== "ask_user") {
                         runFacts.hadSuccessfulToolOrArtifact = true;
+                        if (agentMode === "scoping" && scopingWorkflow) {
+                            scopingWorkflow = applySuccessfulScopingToolResult(scopingWorkflow, tc.name, toolResult);
+                        }
                     }
-
-                    yield { type: "tool_result", toolName: tc.name, toolResult, conversationId: conversation.id };
 
                     // ask_user sentinel: emit user_input_required and stop the loop
                     if (toolResult.requiresUserInput && toolResult.userInputRequest) {
+                        if (agentMode === "scoping" && scopingWorkflow) {
+                            const clarificationDecision = evaluateScopingUserInputRequest({
+                                state: scopingWorkflow,
+                                userInputRequest: toolResult.userInputRequest,
+                            });
+                            scopingWorkflow = clarificationDecision.nextState;
+                            if (!clarificationDecision.allowPause) {
+                                currentMessages.push(
+                                    buildSyntheticScopingToolMessage(tc, {
+                                        ...clarificationDecision.toolResult,
+                                        callId: tc.id,
+                                    })
+                                );
+                                currentMessages.push(
+                                    buildScopingCorrectionSystemMessage(clarificationDecision.correctiveMessage)
+                                );
+                                continue;
+                            }
+                        }
+
+                        yield { type: "tool_result", toolName: tc.name, toolResult, conversationId: conversation.id };
                         runFacts.pausedForUserInput = true;
+                        await persistRecoveryUserInputRequest(toolResult.userInputRequest);
                         yield { type: "user_input_required", userInputRequest: toolResult.userInputRequest, conversationId: conversation.id };
                         loop.markStopped("paused_for_input");
                         break;
                     }
+
+                    yield { type: "tool_result", toolName: tc.name, toolResult, conversationId: conversation.id };
 
                     // Emit navigate event when tool result includes a navigation URL
                     const navigateUrl = (toolResult.result as Record<string, unknown> | null)?.navigate;
@@ -1935,11 +2071,19 @@ class AIService {
                 yield { type: "content", content: fullContent, conversationId: conversation.id };
             }
 
+            const scopingReportForSnapshot =
+                agentMode === "scoping"
+                    ? extractScopingReportFromText(fullContent)
+                    : null;
             const finalizedScoping = finalizeScopingResponse({
                 agentMode,
                 fullContent,
                 userMessage,
                 hasHandoffSelection: !!effectiveHandoffSelection,
+                workflowSnapshot:
+                    agentMode === "scoping" && scopingWorkflow
+                        ? deriveScopingWorkflowSnapshot(scopingWorkflow, scopingReportForSnapshot)
+                        : undefined,
             });
             fullContent = finalizedScoping.content;
             scopingReportPayload = finalizedScoping.report;
@@ -1951,7 +2095,15 @@ class AIService {
                     role: "assistant",
                     content: fullContent,
                 });
-                await emitEvent(activeRun.id, "message", { content: fullContent }, { messageRole: "assistant" });
+                await recordRunEvent({
+                    runId: activeRun.id,
+                    type: "message",
+                    payload: { content: fullContent },
+                    extras: { messageRole: "assistant" },
+                    failureMode: "degrade",
+                    degradationReason: "assistant_message_persistence_failed",
+                    logContext: "assistant_message_final",
+                });
                 await markMemoriesUsedInAnswer(retrievedMemoriesForRun, fullContent).catch(() => {});
 
                 if (!executionMode) {
@@ -1978,7 +2130,15 @@ class AIService {
                     role: "assistant",
                     content: fullContent,
                 });
-                await emitEvent(activeRun.id, "message", { content: fullContent }, { messageRole: "assistant" });
+                await recordRunEvent({
+                    runId: activeRun.id,
+                    type: "message",
+                    payload: { content: fullContent },
+                    extras: { messageRole: "assistant" },
+                    failureMode: "degrade",
+                    degradationReason: "assistant_message_persistence_failed",
+                    logContext: "assistant_message_failure_fallback",
+                });
                 yield { type: "content", content: fullContent, conversationId: conversation.id };
             }
 
@@ -2046,7 +2206,7 @@ class AIService {
             const runStatus = finalOutcome.runStatus;
 
             await finalizeRunOnce(runStatus, totalTokensIn, totalTokensOut);
-            const runModelMeta = resolveRunActualModelMeta(chatOptions.model, observedRunModel, invokedModel);
+            const runModelMeta = resolveRunActualModelMeta(baseChatOptions.model, observedRunModel, invokedModel);
             yield {
                 type: "run_end",
                 runId: activeRun.id,
@@ -2075,7 +2235,15 @@ class AIService {
                         content: fullContent,
                     });
                     if (activeRunId) {
-                        await emitEvent(activeRunId, "message", { content: fullContent }, { messageRole: "assistant" });
+                        await recordRunEvent({
+                            runId: activeRunId,
+                            type: "message",
+                            payload: { content: fullContent },
+                            extras: { messageRole: "assistant" },
+                            failureMode: "degrade",
+                            degradationReason: "assistant_message_persistence_failed",
+                            logContext: "assistant_message_plan_failure",
+                        });
                     }
                 }
 
@@ -2146,13 +2314,21 @@ class AIService {
                 });
                 const activeRunId = run?.id;
                 if (activeRunId) {
-                    await emitEvent(activeRunId, "message", { content: fallbackContent }, { messageRole: "assistant" });
+                    await recordRunEvent({
+                        runId: activeRunId,
+                        type: "message",
+                        payload: { content: fallbackContent },
+                        extras: { messageRole: "assistant" },
+                        failureMode: "degrade",
+                        degradationReason: "assistant_message_persistence_failed",
+                        logContext: "assistant_message_catch_fallback",
+                    });
                 }
                 yield { type: "content", content: fallbackContent, conversationId: conversation.id };
             }
 
             await finalizeRunOnce("failed");
-            yield buildStreamErrorChunk(
+            const terminalErrorChunk = buildStreamErrorChunk(
                 toAIErrorEnvelope(error, {
                     kind: "runtime",
                     source: "runtime",
@@ -2160,6 +2336,8 @@ class AIService {
                 }),
                 { conversationId: conversation.id },
             );
+            await persistRecoveryErrorChunk(terminalErrorChunk);
+            yield terminalErrorChunk;
             const runModelMeta = resolveRunActualModelMeta(options?.model, null, false);
             if (run) {
                 yield {
@@ -2372,9 +2550,35 @@ export {
     getLazyContextPointerCapabilities,
     getContextualToolDefinitions,
     shouldUseScopingBatchPlan,
+    shouldShowScopingSearchPackPreview,
     buildScopingSearchPackPlan,
     finalizeScopingResponse,
 } from "./tool-helpers";
+
+function buildSyntheticScopingToolMessage(toolCall: ToolCall, toolResult: ToolResult): AIMessage {
+    return {
+        id: `tool-result-${toolCall.id}-synthetic`,
+        role: "tool",
+        content: compactToolResult(
+            toolCall.name,
+            buildModelVisibleToolResultForTool(toolCall.name, {
+                ...toolResult,
+                callId: toolCall.id,
+            })
+        ),
+        toolResultId: toolCall.id,
+        createdAt: new Date().toISOString(),
+    };
+}
+
+function buildScopingCorrectionSystemMessage(content: string): AIMessage {
+    return {
+        id: `scoping-correction-${Date.now()}`,
+        role: "system",
+        content: `Scoping runtime policy: ${content}`,
+        createdAt: new Date().toISOString(),
+    };
+}
 
 function computeRetryDelayMs(retryCount: number, retryAfterMs?: number): number {
     const exponentialDelay = RETRY_MIN_DELAY_MS * 2 ** Math.max(0, retryCount - 1);

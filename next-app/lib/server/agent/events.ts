@@ -5,6 +5,7 @@
 
 import "server-only";
 import { prisma } from "@/lib/server/prisma";
+import type { Prisma } from "@prisma/client";
 import type { RunEventType } from "@/types/agent";
 import { noteObservedRunActivity } from "@/lib/server/agent/run";
 import { isDurableProgressRunEventType } from "@/lib/server/agent/run-event-authority";
@@ -21,6 +22,8 @@ export interface EmitEventExtras {
 
 const MAX_SEQUENCE_RETRY_ATTEMPTS = 5;
 
+type RunEventTransactionClient = Prisma.TransactionClient;
+
 function isRunSequenceConflict(error: unknown): boolean {
     if (!error || typeof error !== "object") return false;
     const candidate = error as { code?: unknown; meta?: { target?: unknown } };
@@ -29,6 +32,53 @@ function isRunSequenceConflict(error: unknown): boolean {
     if (!Array.isArray(target)) return false;
     const cols = target.map((value) => String(value));
     return cols.includes("runId") && cols.includes("sequence");
+}
+
+/**
+ * Creates a new event in a run inside an existing transaction.
+ * Sequence is assigned as max(sequence) + 1 within the run's current event stream.
+ */
+export async function emitEventWithinTransaction(
+    tx: RunEventTransactionClient,
+    runId: string,
+    type: RunEventType,
+    payload: unknown,
+    extras?: EmitEventExtras,
+) {
+    const lastEvent = await tx.runEvent.findFirst({
+        where: { runId },
+        orderBy: { sequence: "desc" },
+        select: { sequence: true },
+    });
+    const sequence = (lastEvent?.sequence ?? -1) + 1;
+
+    const event = await tx.runEvent.create({
+        data: {
+            runId,
+            sequence,
+            type,
+            payload: payload as object,
+            toolName: extras?.toolName ?? null,
+            artifactId: extras?.artifactId ?? null,
+            messageRole: extras?.messageRole ?? null,
+            tokensIn: extras?.tokensIn ?? null,
+            tokensOut: extras?.tokensOut ?? null,
+            errorCode: extras?.errorCode ?? null,
+            durationMs: extras?.durationMs ?? null,
+        },
+    });
+
+    await tx.agentRun.updateMany({
+        where: { id: runId, status: "running" },
+        data: {
+            lastActivityAt: event.createdAt,
+            ...(isDurableProgressRunEventType(type)
+                ? { lastDurableProgressAt: event.createdAt }
+                : {}),
+        },
+    });
+
+    return event;
 }
 
 /**
@@ -43,42 +93,13 @@ export async function emitEvent(
 ) {
     for (let attempt = 0; attempt < MAX_SEQUENCE_RETRY_ATTEMPTS; attempt++) {
         try {
-            const created = await prisma.$transaction(async (tx) => {
-                const lastEvent = await tx.runEvent.findFirst({
-                    where: { runId },
-                    orderBy: { sequence: "desc" },
-                    select: { sequence: true },
-                });
-                const sequence = (lastEvent?.sequence ?? -1) + 1;
-
-                const event = await tx.runEvent.create({
-                    data: {
-                        runId,
-                        sequence,
-                        type,
-                        payload: payload as object,
-                        toolName: extras?.toolName ?? null,
-                        artifactId: extras?.artifactId ?? null,
-                        messageRole: extras?.messageRole ?? null,
-                        tokensIn: extras?.tokensIn ?? null,
-                        tokensOut: extras?.tokensOut ?? null,
-                        errorCode: extras?.errorCode ?? null,
-                        durationMs: extras?.durationMs ?? null,
-                    },
-                });
-
-                await tx.agentRun.updateMany({
-                    where: { id: runId, status: "running" },
-                    data: {
-                        lastActivityAt: event.createdAt,
-                        ...(isDurableProgressRunEventType(type)
-                            ? { lastDurableProgressAt: event.createdAt }
-                            : {}),
-                    },
-                });
-
-                return event;
-            });
+            const created = await prisma.$transaction(async (tx) => emitEventWithinTransaction(
+                tx,
+                runId,
+                type,
+                payload,
+                extras,
+            ));
             noteObservedRunActivity(runId, created.createdAt);
             return created;
         } catch (error) {

@@ -1,4 +1,9 @@
-import type { AIErrorEnvelope, AIStreamChunk, RunRecoveryResponse } from "@/types/ai";
+import type {
+    AIErrorEnvelope,
+    AIStreamChunk,
+    RunRecoveryRecommendation,
+    RunRecoveryResponse,
+} from "@/types/ai";
 
 export const RUN_RECOVERY_RECONNECT_SUMMARY = "Connection lost. Reconnecting to the active run…";
 export const RUN_RECOVERY_INTERRUPTED_TOOL_SUMMARY = "Connection lost while waiting for the run to finish.";
@@ -7,6 +12,8 @@ export const RUN_RECOVERY_FAILED_MESSAGE = "Connection lost and recovery failed.
 export const RUN_RECOVERY_STALLED_PROGRESS_MESSAGE = "The active run stopped making durable progress. Choose how to continue.";
 export const RUN_RECOVERY_FINALIZATION_FAILED_MESSAGE = "The run could not finalize cleanly. Choose how to continue.";
 export const RUN_RECOVERY_ACTIVE_RUN_HELD_MESSAGE = "The active run is still holding this conversation. Choose how to continue.";
+export const RUN_RECOVERY_CONTINUE_FROM_CHECKPOINT_MESSAGE = "Saved progress is available. Continue from the latest checkpoint.";
+export const RUN_RECOVERY_CONTINUE_FROM_DURABLE_STATE_MESSAGE = "Saved work is available. Continue from the latest durable state.";
 
 export async function fetchRunRecovery(params: {
     conversationId: string;
@@ -36,7 +43,7 @@ export function createRecoveryErrorEnvelope(params: {
     runId?: string | null;
     activeRunId?: string | null;
     lastActivityAt?: string | null;
-    recoveryRecommendation: "reconnect" | "retry" | "stop_and_retry" | "terminal";
+    recoveryRecommendation: RunRecoveryRecommendation;
     retryable: boolean;
     kind?: AIErrorEnvelope["kind"];
     source?: AIErrorEnvelope["source"];
@@ -64,6 +71,12 @@ export function getRunRecoveryMessage(params: {
     }
 
     if (params.outcome === "needs_user_action") {
+        if (params.response?.recoveryRecommendation === "continue_from_checkpoint") {
+            return RUN_RECOVERY_CONTINUE_FROM_CHECKPOINT_MESSAGE;
+        }
+        if (params.response?.recoveryRecommendation === "continue_from_durable_state") {
+            return RUN_RECOVERY_CONTINUE_FROM_DURABLE_STATE_MESSAGE;
+        }
         const abnormalEndClassification =
             params.response?.abnormalEndClassification ?? params.abnormalEndClassification ?? null;
         if (abnormalEndClassification === "no_forward_durable_progress") {
@@ -128,6 +141,14 @@ export async function pollRunRecovery(params: {
         }
 
         if (response.recoveryRecommendation === "stop_and_retry") {
+            return { outcome: "needs_user_action", response, lastAppliedSequence };
+        }
+
+        if (response.recoveryRecommendation === "continue_from_durable_state") {
+            return { outcome: "needs_user_action", response, lastAppliedSequence };
+        }
+
+        if (response.recoveryRecommendation === "continue_from_checkpoint") {
             return { outcome: "needs_user_action", response, lastAppliedSequence };
         }
 

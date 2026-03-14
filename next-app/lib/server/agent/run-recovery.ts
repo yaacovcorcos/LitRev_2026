@@ -3,6 +3,8 @@ import "server-only";
 import { prisma } from "@/lib/server/prisma";
 import { DEFAULT_CONVERSATION_RUN_STALE_MS } from "@/lib/server/chat-runtime/conversation-run-lock";
 import { assessRunConvergence } from "@/lib/server/agent/run-convergence";
+import { resolveDurableContinuationSource } from "@/lib/server/agent/durable-continuation";
+import { resolveLatestValidRunCheckpoint } from "@/lib/server/agent/run-checkpoints";
 import {
     RECOVERY_AUTHORITATIVE_RUN_EVENT_TYPES,
     type RecoveryAuthoritativeRunEventType,
@@ -18,6 +20,7 @@ import type {
 } from "@/types/ai";
 import type {
     RunAbnormalEndClassification,
+    RunDurabilityState,
     RunFinalizationState,
     RunStatus,
 } from "@/types/agent";
@@ -31,6 +34,8 @@ type RecoveryRunRecord = {
     costTokensOut: number;
     lastActivityAt: Date;
     lastDurableProgressAt: Date;
+    durabilityState: RunDurabilityState;
+    durabilityDegradedReason: string | null;
     finalizationState: RunFinalizationState;
     abnormalEndClassification: RunAbnormalEndClassification | null;
 };
@@ -222,6 +227,8 @@ export async function buildRunRecoveryResponse(params: {
             costTokensOut: true,
             lastActivityAt: true,
             lastDurableProgressAt: true,
+            durabilityState: true,
+            durabilityDegradedReason: true,
             finalizationState: true,
             abnormalEndClassification: true,
         },
@@ -235,6 +242,8 @@ export async function buildRunRecoveryResponse(params: {
             isActive: false,
             lastActivityAt: null,
             lastDurableProgressAt: null,
+            durabilityState: null,
+            durabilityDegradedReason: null,
             finalizationState: null,
             lastSequence: null,
             replayableEvents: [],
@@ -288,6 +297,23 @@ export async function buildRunRecoveryResponse(params: {
         .map((event) => toReplayableChunk(run, event, artifactsById))
         .filter((event): event is RunRecoveryReplayableChunk => event !== null);
     const convergence = assessRunConvergence(run, now, staleMs);
+    const checkpointContinuationSource = convergence.recoveryRecommendation === "reconnect"
+        ? null
+        : await resolveLatestValidRunCheckpoint({
+            runId: run.id,
+            conversationId: params.conversationId,
+        });
+    const durableContinuationSource = (checkpointContinuationSource || convergence.recoveryRecommendation === "reconnect")
+        ? null
+        : await resolveDurableContinuationSource({
+            runId: run.id,
+            conversationId: params.conversationId,
+        });
+    const recoveryRecommendation = checkpointContinuationSource
+        ? "continue_from_checkpoint"
+        : durableContinuationSource
+            ? "continue_from_durable_state"
+            : convergence.recoveryRecommendation;
 
     return {
         conversationId: params.conversationId,
@@ -296,13 +322,15 @@ export async function buildRunRecoveryResponse(params: {
         isActive: run.status === "running",
         lastActivityAt: run.lastActivityAt.toISOString(),
         lastDurableProgressAt: run.lastDurableProgressAt.toISOString(),
+        durabilityState: run.durabilityState,
+        durabilityDegradedReason: run.durabilityDegradedReason,
         finalizationState: run.finalizationState,
         lastSequence: lastEvent?.sequence ?? null,
         replayableEvents,
         terminalEvent: run.status === "running"
             ? null
             : { chunk: buildSyntheticTerminalReconciliationChunk(run) },
-        recoveryRecommendation: convergence.recoveryRecommendation,
+        recoveryRecommendation,
         abnormalEndClassification: convergence.abnormalEndClassification,
     };
 }

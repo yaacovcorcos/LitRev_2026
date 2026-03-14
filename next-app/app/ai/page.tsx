@@ -3,6 +3,7 @@
 import { AppShell } from "@/components/AppShell";
 import { CopilotInputCoreClient } from "@/components/copilot/CopilotInputCoreClient";
 import { ComposerActiveProgressBar } from "@/components/copilot/ComposerActiveProgressBar";
+import { ComposerQueuedFollowUpBar } from "@/components/copilot/ComposerQueuedFollowUpBar";
 import { useProjects } from "@/contexts/ProjectsContext";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
@@ -68,6 +69,11 @@ import {
 } from "@/lib/ai/reasoning-visibility";
 import { resolveReasoningRequest } from "@/lib/ai/reasoning-request";
 import {
+  bindQueuedFollowUpConversationId,
+  createQueuedFollowUp,
+  isQueuedFollowUpDispatchReady,
+} from "@/lib/ai/queued-followup";
+import {
   DEFAULT_SELECTABLE_MODEL_ID,
   USER_SELECTABLE_MODELS,
   getReasoningSupportTier,
@@ -75,6 +81,7 @@ import {
   type SelectableModelId,
 } from "@/lib/ai/config";
 import { useRouter } from "next/navigation";
+import type { QueuedFollowUp } from "@/types/queued-followup";
 import styles from "./ai-view.module.css";
 
 const AiTimelineRenderer = dynamic(() =>
@@ -283,8 +290,9 @@ export default function AIView() {
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [pendingChoices, setPendingChoices] = useState<ChoiceOption[]>([]);
-  const [, setPendingUserInput] = useState<UserInputRequest | null>(null);
+  const [pendingUserInput, setPendingUserInput] = useState<UserInputRequest | null>(null);
   const [prefillCommand, setPrefillCommand] = useState<{ text: string; id: string } | null>(null);
+  const [queuedFollowUp, setQueuedFollowUp] = useState<QueuedFollowUp | null>(null);
   const [reasoningMode, setReasoningMode] = useState<ReasoningMode>(() => getReasoningModePreference());
   const [selectedModel, setSelectedModelState] = useState<SelectableModelId>(DEFAULT_SELECTABLE_MODEL_ID);
 
@@ -300,6 +308,8 @@ export default function AIView() {
   const currentRunIdRef = useRef<string | null>(null);
   const sendLockRef = useRef(false);
   const activeConversationIdRef = useRef<string | null>(null);
+  const queuedFollowUpDispatchRef = useRef<string | null>(null);
+  const queuedFollowUpScopeRef = useRef<string | null>(null);
   const routePerfStartRef = useRef<number | null>(null);
   const measuredComposerConversationRef = useRef<string | null>(null);
   const measuredTimelineConversationRef = useRef<string | null>(null);
@@ -369,6 +379,39 @@ export default function AIView() {
   useEffect(() => {
     activeConversationIdRef.current = activeConversationId;
   }, [activeConversationId]);
+
+  useEffect(() => {
+    if (!activeConversationId) return;
+    setQueuedFollowUp((current) => bindQueuedFollowUpConversationId(current, activeConversationId));
+  }, [activeConversationId]);
+
+  useEffect(() => {
+    const nextScopeKey = `${selectedProjectId ?? "__global__"}:${activeConversationId ?? "__new__"}`;
+    const previousScopeKey = queuedFollowUpScopeRef.current;
+    if (previousScopeKey === null) {
+      queuedFollowUpScopeRef.current = nextScopeKey;
+      return;
+    }
+
+    if (previousScopeKey !== nextScopeKey) {
+      const [previousProjectScope, previousConversationScope] = previousScopeKey.split(":", 2);
+      const [nextProjectScope, nextConversationScope] = nextScopeKey.split(":", 2);
+      const canBindLateQueuedFollowUp = queuedFollowUp?.conversationId === null
+        && previousProjectScope === nextProjectScope
+        && previousConversationScope === "__new__"
+        && nextConversationScope !== "__new__";
+      if (canBindLateQueuedFollowUp) {
+        queuedFollowUpScopeRef.current = nextScopeKey;
+        return;
+      }
+      queuedFollowUpDispatchRef.current = null;
+      setQueuedFollowUp(null);
+      queuedFollowUpScopeRef.current = nextScopeKey;
+      return;
+    }
+
+    queuedFollowUpScopeRef.current = nextScopeKey;
+  }, [activeConversationId, selectedProjectId]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -645,6 +688,10 @@ export default function AIView() {
     () => selectActiveProgress(normalizeTimelineProgressItems(activeTimeline)),
     [activeTimeline],
   );
+  const hasAttachedProgress = Boolean(activeProgress);
+  const hasAttachedQueue = Boolean(queuedFollowUp);
+  const composerAttachedStack = hasAttachedProgress || hasAttachedQueue ? "attached" : "none";
+  const queuedStackPosition = hasAttachedQueue ? (hasAttachedProgress ? "middle" : "top") : undefined;
 
   const sortConversationsByUpdatedAt = useCallback((items: ChatConversation[]) => {
     return [...items].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
@@ -1211,10 +1258,22 @@ export default function AIView() {
     _studyId?: string,
     retryModelExpectation?: RetryModelExpectation,
     _contextTargets?: unknown,
-    replaceRunIdOverride?: string,
+    runtimeOverrides?: string | {
+      replaceRunId?: string | null;
+      continueFromRunId?: string | null;
+      suppressUserMessageAppend?: boolean;
+    },
   ) => {
     const msgText = rawText.trim();
     if (!msgText || sendLockRef.current) return;
+    const replaceRunIdOverride = typeof runtimeOverrides === "string"
+      ? runtimeOverrides
+      : runtimeOverrides?.replaceRunId;
+    const continueFromRunId = typeof runtimeOverrides === "string"
+      ? null
+      : (runtimeOverrides?.continueFromRunId ?? null);
+    const suppressUserMessageAppend = typeof runtimeOverrides === "object"
+      && runtimeOverrides?.suppressUserMessageAppend === true;
     const sendStartedAtMs = Date.now();
     let sendSucceeded = false;
     emitMobileActionTap("ai_send_message", 44);
@@ -1249,15 +1308,17 @@ export default function AIView() {
     const nowIso = new Date().toISOString();
     const userId = `m-${Date.now()}`;
 
-    updateConversationTimeline(convId, (prev) => [
-      ...prev,
-      {
-        type: "user_message",
-        id: userId,
-        content: msgText,
-        createdAt: nowIso,
-      },
-    ]);
+    if (!suppressUserMessageAppend) {
+      updateConversationTimeline(convId, (prev) => [
+        ...prev,
+        {
+          type: "user_message",
+          id: userId,
+          content: msgText,
+          createdAt: nowIso,
+        },
+      ]);
+    }
 
     setConversations((prev) =>
       sortConversationsByUpdatedAt(
@@ -1435,6 +1496,9 @@ export default function AIView() {
           options: {
             conversationId: convId,
             replaceRunId: replaceRunId ?? undefined,
+            continueFromRunId: continueFromRunId ?? undefined,
+            persistUserMessage: suppressUserMessageAppend ? false : undefined,
+            persistedUserMessageContent: msgText,
             projectId: selectedProjectId ?? undefined,
             model: effectiveModel,
             reasoningMode: reasoningRequest.reasoningMode,
@@ -2080,8 +2144,78 @@ export default function AIView() {
     updateConversationTimeline,
   ]);
 
+  useEffect(() => {
+    const ready = isQueuedFollowUpDispatchReady({
+      queuedFollowUp,
+      isLoading: isTyping,
+      hasPendingChoices: pendingChoices.length > 0,
+      hasPendingUserInput: pendingUserInput !== null,
+      sendLocked: sendLockRef.current,
+      currentConversationId: activeConversationId,
+    });
+
+    if (!ready || !queuedFollowUp) {
+      if (!queuedFollowUp) {
+        queuedFollowUpDispatchRef.current = null;
+      }
+      return;
+    }
+
+    if (queuedFollowUpDispatchRef.current === queuedFollowUp.id) {
+      return;
+    }
+
+    queuedFollowUpDispatchRef.current = queuedFollowUp.id;
+    setQueuedFollowUp(null);
+    void handleSend(
+      queuedFollowUp.text,
+      queuedFollowUp.page,
+      queuedFollowUp.section,
+      queuedFollowUp.model,
+      queuedFollowUp.agentMode,
+      queuedFollowUp.studyId,
+    );
+  }, [
+    activeConversationId,
+    handleSend,
+    isTyping,
+    pendingChoices.length,
+    pendingUserInput,
+    queuedFollowUp,
+  ]);
+
   const handleSuggestionClick = useCallback((prompt: string) => {
     setPrefillCommand({ text: prompt, id: crypto.randomUUID() });
+  }, []);
+
+  const handleQueueFollowUp = useCallback((payload: {
+    text: string;
+    page: CopilotPage;
+    section?: string;
+    studyId?: string;
+    model?: SelectableModelId | null;
+    agentMode?: AgentMode;
+  }) => {
+    setQueuedFollowUp(
+      createQueuedFollowUp({
+        ...payload,
+        model: payload.model ?? undefined,
+        conversationId: activeConversationId ?? null,
+        source: "draft",
+      })
+    );
+  }, [activeConversationId]);
+
+  const handleEditQueuedFollowUp = useCallback(() => {
+    if (!queuedFollowUp) return;
+    setQueuedFollowUp(null);
+    queuedFollowUpDispatchRef.current = null;
+    setPrefillCommand({ text: queuedFollowUp.text, id: crypto.randomUUID() });
+  }, [queuedFollowUp]);
+
+  const handleRemoveQueuedFollowUp = useCallback(() => {
+    setQueuedFollowUp(null);
+    queuedFollowUpDispatchRef.current = null;
   }, []);
 
   const handleActionPrompt = useCallback((prompt: string, mode?: AgentMode) => {
@@ -2089,7 +2223,6 @@ export default function AIView() {
   }, [handleSend]);
 
   const handleRetryLastMessage = useCallback((replaceRunId?: string | null) => {
-    if (isTyping) return;
     const convId = activeConversationId;
     if (!convId) return;
 
@@ -2140,6 +2273,7 @@ export default function AIView() {
         source: "retry_action",
       },
     });
+    sendLockRef.current = false;
     void handleSend(
       retryText,
       "ai",
@@ -2155,13 +2289,14 @@ export default function AIView() {
       undefined,
       replaceRunId ?? undefined,
     );
-  }, [isTyping, activeConversationId, timelineByConversation, handleSend, selectedModel, selectedProjectId]);
+  }, [activeConversationId, timelineByConversation, handleSend, selectedModel, selectedProjectId]);
 
   const handleReconnectRun = useCallback((item: Extract<TimelineItem, { type: "error" }>) => {
     const convId = activeConversationId;
     const runId = item.errorMeta?.runId ?? item.errorMeta?.activeRunId ?? null;
-    if (isTyping || !convId || !runId) return;
+    if (!convId || !runId) return;
 
+    sendLockRef.current = false;
     setIsTyping(true);
     streamGenRef.current += 1;
     const myGen = streamGenRef.current;
@@ -2230,6 +2365,35 @@ export default function AIView() {
   const handleStopAndRetryRun = useCallback((item: Extract<TimelineItem, { type: "error" }>) => {
     handleRetryLastMessage(item.errorMeta?.runId ?? item.errorMeta?.activeRunId ?? null);
   }, [handleRetryLastMessage]);
+
+  const handleContinueFromDurableStateRun = useCallback((item: Extract<TimelineItem, { type: "error" }>) => {
+    const convId = activeConversationId;
+    const runId = item.errorMeta?.runId ?? item.errorMeta?.activeRunId ?? null;
+    if (!convId || !runId) return;
+
+    const items = timelineByConversation[convId] ?? [];
+    const lastUserMessage = [...items]
+      .reverse()
+      .find((entry) => entry.type === "user_message" && entry.content.trim().length > 0);
+    if (!lastUserMessage || lastUserMessage.type !== "user_message") return;
+
+    sendLockRef.current = false;
+    void handleSend(
+      lastUserMessage.content,
+      "ai",
+      undefined,
+      selectedModel,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      {
+        replaceRunId: runId,
+        continueFromRunId: runId,
+        suppressUserMessageAppend: true,
+      },
+    );
+  }, [activeConversationId, handleSend, selectedModel, timelineByConversation]);
 
   const handlePrefillConsumed = useCallback(() => {
     setPrefillCommand(null);
@@ -2366,6 +2530,7 @@ export default function AIView() {
               onActionPrompt={handleActionPrompt}
               onRetryLastMessage={handleRetryLastMessage}
               onReconnectRun={handleReconnectRun}
+              onContinueFromDurableStateRun={handleContinueFromDurableStateRun}
               onStopAndRetryRun={handleStopAndRetryRun}
               onBranchFromMessage={handleBranchFromMessage}
               onReviewArtifact={handleReviewArtifact}
@@ -2377,7 +2542,13 @@ export default function AIView() {
 
             <div className={styles.chatInputContainer}>
               <div className={styles.chatInputStatus}>
-                <ComposerActiveProgressBar activeProgress={activeProgress} />
+                <ComposerActiveProgressBar activeProgress={activeProgress} stackPosition="top" />
+                <ComposerQueuedFollowUpBar
+                  queuedFollowUp={queuedFollowUp}
+                  stackPosition={queuedStackPosition}
+                  onEdit={handleEditQueuedFollowUp}
+                  onRemove={handleRemoveQueuedFollowUp}
+                />
               </div>
               <CopilotInputCoreClient
                 page="ai"
@@ -2387,6 +2558,9 @@ export default function AIView() {
                 isLoading={isTyping}
                 sendMessage={handleSend}
                 cancelStream={cancelStream}
+                hasQueuedFollowUp={queuedFollowUp !== null}
+                attachedStack={composerAttachedStack}
+                onQueueFollowUp={handleQueueFollowUp}
                 pendingChoices={pendingChoices}
                 clearChoices={() => { setPendingChoices([]); setPendingUserInput(null); }}
                 selectedModel={selectedModel}

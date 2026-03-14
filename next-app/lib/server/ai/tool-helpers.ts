@@ -8,7 +8,12 @@
 import type { AgentMode } from "@/types/agent";
 import type { ToolCall, ToolDefinition } from "@/types/ai";
 import type { ArtifactType } from "@/types/artifacts";
-import type { PlanPayload, ScopingReportPayload } from "@/types/artifacts";
+import type {
+    PlanPayload,
+    ScopingEntryIntent,
+    ScopingReportPayload,
+    ScopingWorkflowSnapshot,
+} from "@/types/artifacts";
 import { getEffectiveAllowedTools } from "@/lib/agent/router";
 import { hashToolCall } from "@/lib/agent/loop-controller";
 import { getToolDefinitions, getTool, resolveAutonomyLevel } from "./tools";
@@ -274,13 +279,15 @@ export function buildScopingHandoffToolCall(question: string): ToolCall {
     };
 }
 
-export function shouldUseScopingBatchPlan(params: {
+export function shouldShowScopingSearchPackPreview(params: {
     agentMode: AgentMode;
     userMessage: string;
     autonomyConfig: { preset: string; toolOverrides: unknown };
+    entryIntent?: ScopingEntryIntent;
 }): boolean {
-    const { agentMode, userMessage, autonomyConfig } = params;
+    const { agentMode, userMessage, autonomyConfig, entryIntent } = params;
     if (agentMode !== "scoping") return false;
+    if (entryIntent === "draft_bootstrap") return false;
 
     const trimmed = userMessage.trim();
     if (!trimmed) return false;
@@ -310,6 +317,19 @@ export function shouldUseScopingBatchPlan(params: {
     );
 
     return pubmedLevel <= 1 || semanticLevel <= 1 || openAlexLevel <= 1;
+}
+
+/**
+ * Deprecated alias retained for backward compatibility with older tests.
+ * Blocking search-pack approval is no longer the scoping runtime policy.
+ */
+export function shouldUseScopingBatchPlan(params: {
+    agentMode: AgentMode;
+    userMessage: string;
+    autonomyConfig: { preset: string; toolOverrides: unknown };
+    entryIntent?: ScopingEntryIntent;
+}): boolean {
+    return shouldShowScopingSearchPackPreview(params);
 }
 
 export function buildScopingSearchPackPlan(params: { includeRecommendations: boolean }): PlanPayload {
@@ -358,14 +378,16 @@ export function finalizeScopingResponse(params: {
     fullContent: string;
     userMessage: string;
     hasHandoffSelection: boolean;
+    workflowSnapshot?: ScopingWorkflowSnapshot;
 }): { content: string; report: ScopingReportPayload | null } {
-    const { agentMode, fullContent, userMessage, hasHandoffSelection } = params;
+    const { agentMode, fullContent, userMessage, hasHandoffSelection, workflowSnapshot } = params;
     if (agentMode !== "scoping" || !fullContent.trim() || hasHandoffSelection) {
         return { content: fullContent, report: null };
     }
 
     const extractedReport = extractScopingReportFromText(fullContent);
     const report = extractedReport ?? buildFallbackScopingReport(userMessage);
-    const content = appendScopingReportComment(stripScopingReportMarkup(fullContent), report);
-    return { content, report };
+    const finalReport = workflowSnapshot ? { ...report, workflow: workflowSnapshot } : report;
+    const content = appendScopingReportComment(stripScopingReportMarkup(fullContent), finalReport);
+    return { content, report: finalReport };
 }

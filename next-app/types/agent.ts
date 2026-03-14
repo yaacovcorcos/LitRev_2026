@@ -39,6 +39,18 @@ export type RunFinalizationState =
     | "completed"
     | "failed";
 
+export type RunDurabilityState =
+    | "durable"
+    | "degraded";
+
+export type RunCheckpointKind =
+    | "tool_result_ready"
+    | "artifact_ready";
+
+export type RunCheckpointStatus =
+    | "ready"
+    | "invalidated";
+
 export type RunAbnormalEndClassification =
     | "client_abort"
     | "network_disconnect"
@@ -82,6 +94,8 @@ export interface AgentRunData {
     startedAt: string;
     lastActivityAt: string;
     lastDurableProgressAt: string;
+    durabilityState: RunDurabilityState;
+    durabilityDegradedReason: string | null;
     finalizationState: RunFinalizationState;
     abnormalEndClassification: RunAbnormalEndClassification | null;
     completedAt: string | null;
@@ -107,6 +121,22 @@ export interface RunEventData {
     errorCode: string | null;
     durationMs: number | null;
     createdAt: string;
+}
+
+export interface RunCheckpointData {
+    id: string;
+    runId: string;
+    conversationId: string;
+    kind: RunCheckpointKind;
+    status: RunCheckpointStatus;
+    nextStep: string;
+    seedVersion: number;
+    seed: unknown;
+    sourceEventSequence: number;
+    sourceArtifactId: string | null;
+    invalidatedReason: string | null;
+    createdAt: string;
+    updatedAt: string;
 }
 
 // ── Autonomy Levels ──────────────────────────────────────────────────────────

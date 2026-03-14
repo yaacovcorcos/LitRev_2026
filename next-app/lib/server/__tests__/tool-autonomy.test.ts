@@ -7,8 +7,14 @@ const mocks = vi.hoisted(() => {
   };
   return {
     emitEvent: vi.fn(),
+    emitEventWithinTransaction: vi.fn(),
     createArtifact: vi.fn(),
     applyArtifact: vi.fn(),
+    transaction: vi.fn(),
+    createToolResultCheckpointInTransaction: vi.fn(),
+    isCheckpointEligibleToolResult: vi.fn(),
+    noteObservedRunActivity: vi.fn(),
+    markRunDurabilityDegraded: vi.fn(),
     isToolAllowedInScope: vi.fn(),
     getTool: vi.fn(),
     resolveAutonomyLevel: vi.fn(),
@@ -22,6 +28,23 @@ const mocks = vi.hoisted(() => {
 
 vi.mock("@/lib/server/agent/events", () => ({
   emitEvent: mocks.emitEvent,
+  emitEventWithinTransaction: mocks.emitEventWithinTransaction,
+}));
+
+vi.mock("@/lib/server/prisma", () => ({
+  prisma: {
+    $transaction: mocks.transaction,
+  },
+}));
+
+vi.mock("@/lib/server/agent/run-checkpoints", () => ({
+  createToolResultCheckpointInTransaction: mocks.createToolResultCheckpointInTransaction,
+  isCheckpointEligibleToolResult: mocks.isCheckpointEligibleToolResult,
+}));
+
+vi.mock("@/lib/server/agent/run", () => ({
+  noteObservedRunActivity: mocks.noteObservedRunActivity,
+  markRunDurabilityDegraded: mocks.markRunDurabilityDegraded,
 }));
 
 vi.mock("@/lib/server/agent/artifacts", () => ({
@@ -35,9 +58,13 @@ vi.mock("@/lib/server/ai/tools", () => ({
   resolveAutonomyLevel: mocks.resolveAutonomyLevel,
 }));
 
-vi.mock("@/lib/agent/router", () => ({
-  getEffectiveAllowedTools: mocks.getEffectiveAllowedTools,
-}));
+vi.mock("@/lib/agent/router", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@/lib/agent/router")>();
+  return {
+    ...original,
+    getEffectiveAllowedTools: mocks.getEffectiveAllowedTools,
+  };
+});
 
 vi.mock("@/lib/server/agent/autonomy", () => ({
   getAutonomyConfig: mocks.getAutonomyConfig,
@@ -55,8 +82,17 @@ describe("tool-autonomy", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.emitEvent.mockResolvedValue(undefined);
+    mocks.emitEventWithinTransaction.mockResolvedValue({
+      sequence: 1,
+      createdAt: new Date("2026-03-14T12:00:00.000Z"),
+    });
     mocks.createArtifact.mockResolvedValue(undefined);
     mocks.applyArtifact.mockResolvedValue(undefined);
+    mocks.transaction.mockImplementation(async (callback: (tx: unknown) => Promise<unknown>) => callback({}));
+    mocks.createToolResultCheckpointInTransaction.mockResolvedValue(undefined);
+    mocks.isCheckpointEligibleToolResult.mockReturnValue(true);
+    mocks.noteObservedRunActivity.mockReturnValue(undefined);
+    mocks.markRunDurabilityDegraded.mockResolvedValue(1);
     mocks.isToolAllowedInScope.mockReturnValue(true);
     mocks.getEffectiveAllowedTools.mockReturnValue([]);
     mocks.getAutonomyConfig.mockResolvedValue({ preset: "assisted", toolOverrides: {} });

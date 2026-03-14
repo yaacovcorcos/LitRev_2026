@@ -1,5 +1,5 @@
 import type { JSONContent } from "@tiptap/core";
-import { DEFAULT_SECTION_ORDER, DRAFT_SECTIONS, type DraftSectionId } from "@/types/draft";
+import { DRAFT_SECTIONS, type DraftSectionId, UNSECTIONED_DRAFT_ID } from "@/types/draft";
 import {
   BLOCK_ID_ATTR,
   MANUSCRIPT_SCHEMA_VERSION,
@@ -18,6 +18,10 @@ type CreateManuscriptParams = {
   customSections: Record<DraftSectionId, CustomSectionMeta>;
   contentBySection: Record<DraftSectionId, JSONContent>;
 };
+
+const REFERENCES_SECTION_ID = "references";
+const WHOLE_DRAFT_LABEL = "Whole draft";
+const WHOLE_DRAFT_PLACEHOLDER = "Start writing...";
 
 const SECTION_LABEL_BY_ID = new Map<DraftSectionId, string>(DRAFT_SECTIONS.map((section) => [section.key, section.label]));
 const SECTION_PLACEHOLDER_BY_ID = new Map<DraftSectionId, string | undefined>(
@@ -43,11 +47,32 @@ function asDoc(content: JSONContent | undefined): JSONContent {
   return content;
 }
 
+function docHasContent(content: JSONContent | undefined): boolean {
+  const doc = asDoc(content);
+  const stack = Array.isArray(doc.content) ? [...doc.content] : [];
+  while (stack.length) {
+    const node = stack.pop();
+    if (!node || !isObject(node)) continue;
+    if (node.type === "text" && typeof node.text === "string" && node.text.trim().length > 0) {
+      return true;
+    }
+    if (node.type === "citation" || node.type === "hardBreak") {
+      return true;
+    }
+    if (Array.isArray(node.content)) {
+      stack.push(...node.content);
+    }
+  }
+  return false;
+}
+
 function sectionKind(sectionId: DraftSectionId, customSections: Record<DraftSectionId, CustomSectionMeta>): ManuscriptSectionKind {
+  if (sectionId === UNSECTIONED_DRAFT_ID) return "freeform";
   return sectionId in customSections ? "custom" : "base";
 }
 
 function sectionLabel(sectionId: DraftSectionId, customSections: Record<DraftSectionId, CustomSectionMeta>): string {
+  if (sectionId === UNSECTIONED_DRAFT_ID) return WHOLE_DRAFT_LABEL;
   return customSections[sectionId]?.label ?? SECTION_LABEL_BY_ID.get(sectionId) ?? sectionId;
 }
 
@@ -55,22 +80,36 @@ function sectionPlaceholder(
   sectionId: DraftSectionId,
   customSections: Record<DraftSectionId, CustomSectionMeta>,
 ): string | undefined {
+  if (sectionId === UNSECTIONED_DRAFT_ID) return WHOLE_DRAFT_PLACEHOLDER;
   return customSections[sectionId]?.placeholder ?? SECTION_PLACEHOLDER_BY_ID.get(sectionId);
 }
 
+function shouldIncludeUnsectioned(contentBySection: Record<DraftSectionId, JSONContent>, sectionOrder: DraftSectionId[]): boolean {
+  return docHasContent(contentBySection[UNSECTIONED_DRAFT_ID]) || sectionOrder.length === 0;
+}
+
+function normalizeNamedSectionOrder(sectionOrder: DraftSectionId[], contentBySection: Record<DraftSectionId, JSONContent>): DraftSectionId[] {
+  const named = sectionOrder.filter((sectionId) => sectionId !== UNSECTIONED_DRAFT_ID);
+  if (docHasContent(contentBySection[REFERENCES_SECTION_ID]) && !named.includes(REFERENCES_SECTION_ID)) {
+    return [...named, REFERENCES_SECTION_ID];
+  }
+  return named;
+}
+
 export function createSectionNodeId(sectionId: DraftSectionId): string {
+  if (sectionId === UNSECTIONED_DRAFT_ID) {
+    return "sec:whole-draft";
+  }
   return `sec:${sectionId}`;
 }
 
 export function createDefaultManuscriptDocument(): ManuscriptDocument {
-  const contentBySection = Object.fromEntries(
-    DEFAULT_SECTION_ORDER.map((sectionId) => [sectionId, emptyDoc()]),
-  ) as Record<DraftSectionId, JSONContent>;
-
   return createManuscriptDocument({
-    sectionOrder: [...DEFAULT_SECTION_ORDER],
+    sectionOrder: [],
     customSections: {},
-    contentBySection,
+    contentBySection: {
+      [UNSECTIONED_DRAFT_ID]: emptyDoc(),
+    },
   });
 }
 
@@ -133,9 +172,22 @@ function createSectionNode(
 }
 
 export function createManuscriptDocument(params: CreateManuscriptParams): ManuscriptDocument {
-  const { sectionOrder, customSections, contentBySection } = params;
+  const { customSections, contentBySection } = params;
+  const sectionOrder = normalizeNamedSectionOrder(params.sectionOrder, contentBySection);
   const sections: ManuscriptSectionMeta[] = [];
   const sectionNodes: JSONContent[] = [];
+
+  if (shouldIncludeUnsectioned(contentBySection, sectionOrder)) {
+    const unsectionedMeta: ManuscriptSectionMeta = {
+      sectionId: UNSECTIONED_DRAFT_ID,
+      sectionNodeId: createSectionNodeId(UNSECTIONED_DRAFT_ID),
+      kind: "freeform",
+      label: WHOLE_DRAFT_LABEL,
+      placeholder: WHOLE_DRAFT_PLACEHOLDER,
+    };
+    sections.push(unsectionedMeta);
+    sectionNodes.push(createSectionNode(UNSECTIONED_DRAFT_ID, customSections, contentBySection[UNSECTIONED_DRAFT_ID]));
+  }
 
   for (const sectionId of sectionOrder) {
     const attrs: ManuscriptSectionMeta = {
@@ -163,7 +215,9 @@ export function createManuscriptDocument(params: CreateManuscriptParams): Manusc
 }
 
 export function buildCompatContentBySection(document: ManuscriptDocument): Record<DraftSectionId, JSONContent> {
-  const compat: Record<DraftSectionId, JSONContent> = {};
+  const compat: Record<DraftSectionId, JSONContent> = {
+    [UNSECTIONED_DRAFT_ID]: emptyDoc(),
+  };
   const content = Array.isArray(document.doc.content) ? document.doc.content : [];
 
   for (const sectionMeta of document.sections) {
@@ -186,8 +240,9 @@ export function buildCompatContentBySection(document: ManuscriptDocument): Recor
 
 export function coerceManuscriptDocument(value: unknown): ManuscriptDocument | null {
   if (!isObject(value)) return null;
-  if (value.schemaVersion !== MANUSCRIPT_SCHEMA_VERSION) return null;
-  if (!isObject(value.doc) || value.doc.type !== "doc" || !Array.isArray(value.sections)) return null;
+  if ((value.schemaVersion !== 1 && value.schemaVersion !== MANUSCRIPT_SCHEMA_VERSION) || !isObject(value.doc) || value.doc.type !== "doc" || !Array.isArray(value.sections)) {
+    return null;
+  }
 
   const sections: ManuscriptSectionMeta[] = [];
   for (const section of value.sections) {
@@ -195,7 +250,7 @@ export function coerceManuscriptDocument(value: unknown): ManuscriptDocument | n
       !isObject(section) ||
       typeof section.sectionId !== "string" ||
       typeof section.sectionNodeId !== "string" ||
-      (section.kind !== "base" && section.kind !== "custom") ||
+      (section.kind !== "base" && section.kind !== "custom" && section.kind !== "freeform") ||
       typeof section.label !== "string"
     ) {
       return null;

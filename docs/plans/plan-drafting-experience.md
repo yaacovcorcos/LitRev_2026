@@ -405,37 +405,53 @@ These are implementation tracks for one target state, not separate product versi
 - Blast radius: high; touches persistence, editor orchestration, and export assumptions.
 
 ### `DRX-002` Draft canvas shell and structural navigation
-- Replace section-first layout with continuous document canvas plus structure rail.
-- Add block selection, drag/reorder, fold/unfold, section completion states, and jump navigation.
+- Establish the single canonical manuscript editor, structure mapping, and section-aware document model underneath the route.
+- Add stable section and block identity, manuscript outline extraction, and section-level transforms.
 - Preserve project-shell embedding and mobile-safe layout contracts.
 - Blast radius: high UI change concentrated in the draft route.
-- Implementation note (March 13, 2026): the draft route now runs on a single manuscript editor with a structure rail, a context rail, section-aware mobile drawers, references locked in-flow, and block-level selection/reorder controls while preserving `DraftState v2` compatibility and project-shell embedding.
+- Historical note (March 13, 2026): the first route implementation exposed the manuscript model directly as the primary UX. That foundation stays useful, but the shell direction was too manuscript-first for actual drafting and was later corrected.
 
-### `DRX-003` Comments, suggestions, and checkpoints
+### `DRX-002R` Draft visual reset with one left utility drawer
+- Correct the first `DRX-002` shell implementation so the manuscript becomes visually primary again.
+- Replace the permanent draft-owned structure and context rails with one host-owned left utility drawer.
+- Reserve the right side exclusively for the existing project copilot shell; draft does not add a second right-side panel.
+- Historical note (March 14, 2026): this reset improved clutter but still removed the section-first drafting workflow users needed. It is retained as an intermediate correction, not the final drafting direction.
+
+### `DRX-003` Blank-start, section-first drafting reset
+- Restore the older usable drafting interaction model on top of the canonical manuscript model.
+- Blank new drafts start with no seeded sections and open in `Full Draft`.
+- Restore top section tabs, real `Section` / `Full Draft`, and a persistent collapsible left sidebar with `Sections` and `Evidence`.
+- Keep right-side ownership exclusively in the existing project copilot shell.
+- Treat `Whole draft` freeform content as a first-class editing target in `Full Draft`, while keeping named sections as the primary tabbed workflow.
+- Preserve manuscript normalization, citation compilation, export entrypoint, and project-shell embedding.
+- Blast radius: high UI correction concentrated in the draft route plus draft-state normalization.
+- Implementation note (March 14, 2026): the route now uses blank-start drafting, restored top tabs, section/full projections over one normalized manuscript, a persistent left sidebar, and no draft-owned right panel.
+
+### `DRX-004` Comments, suggestions, and checkpoints
 - Introduce review entities, anchor model, review rail, suggestion mode, and compare/restore UI.
 - Generalize history from backend-only `DraftVersion` to first-class draft UX.
 - Blast radius: high across UI, server, and DB.
 
-### `DRX-004` Citation and evidence authoring system
+### `DRX-005` Citation and evidence authoring system
 - Replace detection-only citation warnings with repairable diagnostics.
 - Add citation palette, source preview, evidence coverage views, claim support linking, and reference integrity checks.
 - Blast radius: medium/high; reuses ledger and citation compiler heavily.
 
-### `DRX-005` AI proposal lane inside drafting
+### `DRX-006` AI proposal lane inside drafting
 - Move AI assistance from generic side actions toward inline draft operations and proposal review.
 - Reuse artifacts for propose/apply/undo and make draft-page review first-class.
 - Blast radius: medium/high; touches artifact UX, context capture, and draft interactions.
 
-### `DRX-006` Compiler-grade export and submission packaging
+### `DRX-007` Compiler-grade export and submission packaging
 - Replace placeholder DOCX flow with real compiler output and truthful export history.
 - Add export validation, journal/profile rules, and accurate generated-file lifecycle.
 - Blast radius: high; touches backend, file storage, and user trust.
 
-### `DRX-007` Mobile, accessibility, and performance hardening
+### `DRX-008` Mobile, accessibility, and performance hardening
 - Validate drawer strategy, touch targets, keyboard/focus behavior, a11y announcements, large-document rendering, and local retention limits.
 - Blast radius: medium; must run across draft, shell, and shared primitives.
 
-### `DRX-008` Observability, triage, and supportability
+### `DRX-009` Observability, triage, and supportability
 - Add logging/telemetry for save conflicts, export failures, restore events, suggestion accept/reject flows, and unresolved diagnostics.
 - Define fast repro paths and first triage boundaries for export, comments, and history regressions.
 - Blast radius: medium; cross-cuts UI and backend.
@@ -485,7 +501,9 @@ These are implementation tracks for one target state, not separate product versi
   - export file existence and metadata truthfulness, version/checkpoint semantics
 
 ### Acceptance signals
-- Draft can be edited as one continuous manuscript without losing section navigation or evidence grounding.
+- Draft opens blank by default, without seeded manuscript sections.
+- Draft can be edited in either `Section` or `Full Draft` mode without forking the underlying normalized manuscript.
+- The left sidebar stays usable while drafting and provides `Sections` and `Evidence` without a draft-owned right panel.
 - Citation and claim-support issues are actionable, not merely displayed.
 - AI changes are always reviewable and reversible.
 - Export produces real files with accurate history metadata.
@@ -538,13 +556,16 @@ These are implementation tracks for one target state, not separate product versi
 - Journal-specific export rules are profile-driven and additive; the manuscript model itself should stay journal-agnostic.
 
 ## Recently Completed
+- `DRX-003` restored blank-start, section-first drafting on top of the canonical manuscript model, bringing back top tabs, real `Section` / `Full Draft`, and the persistent left sidebar while keeping the right side copilot-only.
+- `DRX-002R` shipped the one-left-drawer manuscript shell and removed the draft-owned right panel from the route; it remains documented as an intermediate correction that `DRX-003` superseded.
 - [x] `DRX-001` Defined the canonical manuscript schema, stable block identity, and `DraftState v2` migration contract. Draft save/load now normalize legacy payloads into a canonical manuscript document plus `contentBySection` compatibility projection, and direct draft writers use the same normalizer.
 
 ## Active Tasks
-- [x] `DRX-002` Rebuild the draft route around a continuous canvas and structure rail.
-- [ ] `DRX-003` Add first-class comments, suggestion mode, checkpoints, and compare/restore.
-- [ ] `DRX-004` Add citation palette, evidence coverage, claim support diagnostics, and repair flows.
-- [ ] `DRX-005` Move AI drafting actions into inline proposal/review flows.
-- [ ] `DRX-006` Build the real compiler/export pipeline and truthful export history.
-- [ ] `DRX-007` Certify mobile, accessibility, and large-document performance for the draft surface.
-- [ ] `DRX-008` Add telemetry, logging, and supportable failure states for drafting operations.
+- [x] `DRX-002` Establish the canonical manuscript document and structural editing foundation.
+- [x] `DRX-003` Restore the draft route to blank-start, section-first drafting with a persistent left sidebar.
+- [ ] `DRX-004` Add first-class comments, suggestion mode, checkpoints, and compare/restore.
+- [ ] `DRX-005` Add citation palette, evidence coverage, claim support diagnostics, and repair flows.
+- [ ] `DRX-006` Move AI drafting actions into inline proposal/review flows.
+- [ ] `DRX-007` Build the real compiler/export pipeline and truthful export history.
+- [ ] `DRX-008` Certify mobile, accessibility, and large-document performance for the draft surface.
+- [ ] `DRX-009` Add telemetry, logging, and supportable failure states for drafting operations.

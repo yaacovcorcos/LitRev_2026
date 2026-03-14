@@ -3,18 +3,19 @@
 import { Suspense } from "react";
 import { useParams } from "next/navigation";
 import dynamic from "next/dynamic";
-import { BaseBackButton } from "@/components/BaseBackButton";
+import * as Dialog from "@radix-ui/react-dialog";
 import { ProjectPageLayout } from "@/components/project/ProjectPageLayout";
-import { DemoGuideCard } from "@/components/project/DemoGuideCard";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { EmptyState, EmptyStateSkeleton } from "@/components/ui/EmptyState";
 import { AddEvidenceModal } from "./AddEvidenceModal";
-import { DraftContextRail } from "./DraftContextRail";
-import { EditorToolbar } from "./DraftEditors";
-import { DraftFormattingPanel, DraftWorkspaceHeader as WorkspaceHeader } from "./DraftToolbar";
-import { ManuscriptCanvas } from "./ManuscriptCanvas";
-import { StructureRail } from "./StructureRail";
+import { EvidencePane } from "./DraftContextRail";
+import { EditorToolbar, FullSectionEditor } from "./DraftEditors";
+import { DraftFormattingPanel, DraftTopBar } from "./DraftToolbar";
+import { DraftSidebar } from "./DraftSidebar";
+import { SectionsPane } from "./StructureRail";
 import { useDraftWorkspaceController } from "./useDraftWorkspaceController";
 import styles from "./draft-studio.module.css";
+import { UNSECTIONED_DRAFT_ID } from "@/types/draft";
 
 const ExportModal = dynamic(() => import("@/components/ExportModal").then((module) => module.ExportModal), {
   ssr: false,
@@ -24,12 +25,7 @@ function DraftContent() {
   const { id } = useParams<{ id: string }>();
   const controller = useDraftWorkspaceController({ projectId: id });
 
-  const draftMainClassName = `${styles.appMainOverride} ${controller.isMobileDraftV2Enabled ? styles.appMainOverrideMobileV2 : ""}`;
-  const draftPageClassName = `${styles.page} ${controller.isMobileDraftV2Enabled ? styles.pageMobileV2 : ""}`;
-  const showDraftContextToolbar = controller.captureEnabled
-    && controller.contextToolbarEnabled
-    && controller.showDesktopContextToolbar
-    && !controller.isReferencesSection;
+  const draftMainClassName = styles.appMainOverride;
 
   if (controller.isLoadingProjects) {
     return (
@@ -70,36 +66,21 @@ function DraftContent() {
     );
   }
 
-  const structureRail = (
-    <StructureRail
-      outline={controller.outlineView}
-      activeSection={controller.draft.activeSection}
-      collapsedSectionIds={controller.collapsedSectionIds}
-      availableSections={controller.availableSections}
-      customSectionName={controller.customSectionName}
-      draggingSectionId={controller.draggingSectionId}
-      dragOverSectionId={controller.dragOverSectionId}
-      dragOverPosition={controller.dragOverPosition}
-      statusLabelByKey={controller.statusLabelByKey}
-      onCustomSectionNameChange={controller.setCustomSectionName}
-      onAddCustomSection={controller.handleAddCustomSection}
-      onAddOptionalSection={controller.addOptionalSection}
-      onNavigateSection={controller.focusSection}
-      onNavigateHeading={controller.focusHeading}
-      onToggleSectionCollapsed={controller.toggleSectionCollapsed}
-      onRemoveSection={controller.removeSection}
-      onSectionKeyDown={controller.handleSelectSectionKeyDown}
-      onDragStart={controller.handleSectionDragStart}
-      onDragOver={controller.handleSectionDragOver}
-      onDrop={controller.handleSectionDrop}
-      onDragEnd={controller.handleSectionDragEnd}
+  const sectionsPane = (
+    <SectionsPane
+      sections={controller.sidebarSections}
+      activeTargetId={controller.currentTargetId}
+      onSelectSection={controller.selectSection}
+      onSelectHeading={controller.selectSectionHeading}
+      onMoveSection={controller.handleMoveSection}
+      onRemoveSection={controller.requestRemoveSection}
     />
   );
 
-  const contextRail = (
-    <DraftContextRail
-      activeSectionLabel={controller.activeSectionLabel}
-      isReferencesSection={controller.isReferencesSection}
+  const evidencePane = (
+    <EvidencePane
+      activeSectionLabel={controller.currentTargetLabel}
+      isReferencesSection={controller.isReferencesTarget}
       usedEvidence={controller.usedEvidence}
       onAddEvidence={() => controller.setAddEvidenceOpen(true)}
       onInsertCitation={controller.insertCitation}
@@ -108,172 +89,185 @@ function DraftContent() {
     />
   );
 
+  const renderDraftRegion = (sectionId: string, label: string, placeholder?: string, editable = true, isWholeDraft = false) => (
+    <section
+      key={sectionId}
+      className={`${styles.manuscriptRegion} ${isWholeDraft ? styles.manuscriptWholeDraftRegion : ""}`}
+      data-section-id={sectionId}
+    >
+      <div className={styles.manuscriptSectionHeader}>
+        <div className={styles.manuscriptSectionEyebrow}>
+          {isWholeDraft ? "Blank draft" : sectionId === "references" ? "Generated section" : "Manuscript section"}
+        </div>
+        <h2 className={styles.manuscriptSectionTitle}>{label}</h2>
+      </div>
+
+      <FullSectionEditor
+        sectionId={sectionId}
+        content={controller.draft.contentBySection[sectionId]}
+        onFocusSection={controller.handleSectionFocus}
+        onUpdateSection={controller.updateSectionContent}
+        onSelectionChange={controller.handleSectionSelectionChange}
+        registerEditor={controller.registerEditor}
+        placeholderText={placeholder}
+        surfaceClassName={styles.editorSurface}
+        surfaceStyle={controller.formatVarsById[sectionId]}
+        editable={editable}
+      />
+    </section>
+  );
+
   const pageContent = (
     <>
-      <div className={draftPageClassName} data-mobile-draft-v2={controller.isMobileDraftV2Enabled ? "1" : "0"}>
-        <WorkspaceHeader
+      <div className={styles.page}>
+        <DraftTopBar
           projectName={controller.project.name}
+          activeSection={controller.draft.activeSection}
+          mode={controller.draft.mode}
+          canUseSectionMode={controller.hasEditableSections}
+          orderedSections={controller.orderedSections}
+          availableSections={controller.availableSections}
+          draggingKey={controller.draggingKey}
+          dragOverKey={controller.dragOverKey}
+          dragOverPosition={controller.dragOverPosition}
+          sectionTabRefs={controller.sectionTabRefs}
+          addSectionRef={controller.addSectionRef}
+          addSectionInputRef={controller.addSectionInputRef}
+          isAddSectionOpen={controller.isAddSectionOpen}
+          setAddSectionOpen={controller.setAddSectionOpen}
+          customSectionName={controller.customSectionName}
+          setCustomSectionName={controller.setCustomSectionName}
+          onSelectSection={controller.selectSection}
+          onSectionKeyDown={controller.handleSelectSectionKeyDown}
+          onToggleMode={controller.handleToggleMode}
+          onAddSection={controller.handleAddSection}
+          onAddCustomSection={controller.handleAddCustomSection}
+          onDragStart={controller.handleDragStart}
+          onDragOver={controller.handleDragOver}
+          onDrop={controller.handleDrop}
+          onDragEnd={controller.handleDragEnd}
           hasDraftContent={controller.hasDraftContent}
           onExportClick={() => controller.setExportModalOpen(true)}
           saveStatus={controller.saveStatus}
-          showCompactControls={controller.isCompactWorkspace}
-          onToggleStructureRail={() => controller.setStructureDrawerOpen((prev) => !prev)}
-          onToggleContextRail={() => controller.setContextDrawerOpen((prev) => !prev)}
         />
-
-        <DemoGuideCard
-          projectId={controller.project.id}
-          guideId="draft-evidence-chain"
-          text="Citations in this draft should map directly to included studies in the Ledger. Ask the copilot to find evidence for any claim you highlight."
-          className={styles.demoGuide}
-        />
-        {controller.showResultsGuide ? (
-          <DemoGuideCard
-            projectId={controller.project.id}
-            guideId="draft-results-empty"
-            text="This Results section is intentionally empty. Ask the copilot to draft a results summary from your included studies."
-            className={styles.demoGuide}
-          />
-        ) : null}
 
         <div className={styles.workspaceBody}>
-          {!controller.isCompactWorkspace ? structureRail : null}
+          <div className={styles.workspaceHost}>
+            <DraftSidebar
+              collapsed={controller.isSidebarCollapsed}
+              activeView={controller.sidebarView}
+              isOverlay={controller.isCompactWorkspace}
+              onToggleCollapsed={controller.toggleSidebar}
+              onViewChange={controller.setSidebarView}
+              sectionsPane={sectionsPane}
+              evidencePane={evidencePane}
+            />
 
-          <section className={styles.center} aria-label="Draft editor">
-            <div className={styles.centerHeader}>
-              <div className={styles.centerTitle}>
-                {!controller.isEmbeddedInProjectShell ? (
-                  <BaseBackButton
-                    href={`/project/${id}`}
-                    label="Back to project"
-                    className={styles.draftBackBtn}
+            <section className={styles.center} aria-label="Draft editor">
+              <div className={styles.editorChrome}>
+                <div className={styles.editorHeader}>
+                  <div className={styles.editorHeaderMeta}>
+                    <div className={styles.editorHeaderEyebrow}>
+                      {controller.draft.mode === "section" ? "Section focus" : "Drafting"}
+                    </div>
+                    <h1 className={styles.editorHeaderTitle}>
+                      {controller.draft.mode === "section" ? controller.activeSectionLabel : controller.currentTargetLabel}
+                    </h1>
+                  </div>
+                </div>
+
+                <div className={styles.toolbarRow}>
+                  <EditorToolbar editor={controller.activeEditor} dir={controller.paragraphDir} onAskAi={controller.handleAskAi} />
+                  <DraftFormattingPanel
+                    isOpen={controller.isFormatOpen}
+                    setOpen={controller.setFormatOpen}
+                    formatRef={controller.formatRef}
+                    activeSection={controller.currentTargetId}
+                    activeFormat={controller.activeFormat}
+                    activeFontFamily={controller.activeFontFamily}
+                    onUpdateFormat={controller.updateSectionFormat}
                   />
-                ) : null}
-                <span className="material-icons-round">edit</span>
-                {controller.activeSectionLabel}
+                </div>
               </div>
-            </div>
 
-            <div className={styles.toolbarRow}>
-              <EditorToolbar
-                editor={controller.editor}
-                dir={controller.paragraphDir}
-                onAskAi={controller.handleAskAi}
-              />
-
-              {showDraftContextToolbar ? (
-                <div className={styles.contextActionStrip} role="group" aria-label="Draft context actions">
-                  <div className={styles.contextActionMeta}>Draft context</div>
-                  <button
-                    type="button"
-                    className={styles.contextActionPrimary}
-                    onClick={() => controller.handleDraftContextAction(
-                      "send_to_copilot",
-                      controller.sendToCopilotAction.defaultPrompt ?? "Use this context in your answer.",
-                    )}
-                    disabled={!controller.canRunDraftContextActions}
-                    title={controller.canRunDraftContextActions ? "Attach this draft context to the copilot composer." : "Add draft text to enable context actions."}
-                  >
-                    <span className="material-icons-round">{controller.sendToCopilotAction.icon}</span>
-                    {controller.sendToCopilotAction.label}
-                  </button>
-                  <button
-                    type="button"
-                    className={styles.contextActionButton}
-                    onClick={() => controller.handleDraftContextAction(
-                      "rewrite_selection",
-                      controller.rewriteSelectionAction.defaultPrompt ?? "Rewrite this text for clarity while preserving the meaning and staying conservative.",
-                    )}
-                    disabled={!controller.canRunDraftContextActions}
-                  >
-                    <span className="material-icons-round">{controller.rewriteSelectionAction.icon}</span>
-                    {controller.rewriteSelectionAction.label}
-                  </button>
-                  <button
-                    type="button"
-                    className={styles.contextActionButton}
-                    onClick={() => controller.handleDraftContextAction(
-                      "check_claim_support",
-                      controller.checkClaimSupportAction.defaultPrompt ?? "Check whether this claim is supported and point out any missing or weak evidence.",
-                    )}
-                    disabled={!controller.canRunDraftContextActions}
-                  >
-                    <span className="material-icons-round">{controller.checkClaimSupportAction.icon}</span>
-                    {controller.checkClaimSupportAction.label}
-                  </button>
+              {controller.citationIssues.length > 0 ? (
+                <div className={styles.citationIssues} role="status" aria-live="polite">
+                  <div className={styles.citationIssuesTitle}>
+                    <span className="material-icons-round">warning</span>
+                    {controller.citationIssues.length} citation issue{controller.citationIssues.length === 1 ? "" : "s"} detected
+                  </div>
+                  <ul className={styles.citationIssuesList}>
+                    {controller.citationIssues.slice(0, 3).map((issue) => (
+                      <li key={`${issue.uid}-${issue.type}`}>{issue.message}</li>
+                    ))}
+                  </ul>
                 </div>
               ) : null}
 
-              <DraftFormattingPanel
-                isOpen={controller.isFormatOpen}
-                setOpen={controller.setFormatOpen}
-                formatRef={controller.formatRef}
-                activeSection={controller.draft.activeSection}
-                activeFormat={controller.activeFormat}
-                activeFontFamily={controller.activeFontFamily}
-                onUpdateFormat={controller.updateSectionFormat}
-              />
-            </div>
-
-            {controller.citationIssues.length > 0 ? (
-              <div className={styles.citationIssues} role="status" aria-live="polite">
-                <div className={styles.citationIssuesTitle}>
-                  <span className="material-icons-round">warning</span>
-                  {controller.citationIssues.length} citation issue{controller.citationIssues.length === 1 ? "" : "s"} detected
-                </div>
-                <ul className={styles.citationIssuesList}>
-                  {controller.citationIssues.slice(0, 3).map((issue) => (
-                    <li key={`${issue.uid}-${issue.type}`}>{issue.message}</li>
-                  ))}
-                </ul>
+              <div className={styles.draftCanvas}>
+                {controller.draft.mode === "section" && controller.draft.activeSection ? (
+                  renderDraftRegion(
+                    controller.draft.activeSection,
+                    controller.activeSectionLabel,
+                    controller.orderedSections.find((section) => section.id === controller.draft.activeSection)?.placeholder,
+                    controller.draft.activeSection !== "references",
+                  )
+                ) : (
+                  <>
+                    {controller.shouldRenderWholeDraft
+                      ? renderDraftRegion(
+                          UNSECTIONED_DRAFT_ID,
+                          controller.wholeDraftMeta.label,
+                          controller.wholeDraftMeta.placeholder,
+                          true,
+                          true,
+                        )
+                      : null}
+                    {controller.orderedSections.map((section) =>
+                      renderDraftRegion(
+                        section.id,
+                        section.label,
+                        section.placeholder,
+                        section.id !== "references",
+                      ),
+                    )}
+                  </>
+                )}
               </div>
-            ) : null}
-
-            <ManuscriptCanvas
-              manuscriptDoc={controller.draft.manuscript.doc}
-              formatVarsById={controller.formatVarsById}
-              activeBlockId={controller.selectionState.activeBlockId}
-              selectedBlockEntry={controller.activeBlockEntry}
-              onEditorReady={controller.handleEditorReady}
-              onManuscriptChange={controller.handleManuscriptChange}
-              onEditorMapChange={controller.handleEditorMapChange}
-              onSelectionUpdate={controller.handleSelectionUpdate}
-              onEditorSignalsChange={controller.syncFormattingFromEditor}
-              onMoveSelectedBlock={controller.moveSelectedBlock}
-            />
-          </section>
-
-          {!controller.isCompactWorkspace ? contextRail : null}
+            </section>
+          </div>
         </div>
-
-        {controller.isCompactWorkspace && controller.isStructureDrawerOpen ? (
-          <div className={styles.drawerOverlay} role="presentation">
-            <button
-              type="button"
-              className={styles.drawerBackdrop}
-              aria-label="Close structure drawer"
-              onClick={() => controller.setStructureDrawerOpen(false)}
-            />
-            <div className={`${styles.drawerPanel} ${styles.drawerPanelLeft}`}>
-              {structureRail}
-            </div>
-          </div>
-        ) : null}
-
-        {controller.isCompactWorkspace && controller.isContextDrawerOpen ? (
-          <div className={styles.drawerOverlay} role="presentation">
-            <button
-              type="button"
-              className={styles.drawerBackdrop}
-              aria-label="Close context drawer"
-              onClick={() => controller.setContextDrawerOpen(false)}
-            />
-            <div className={`${styles.drawerPanel} ${styles.drawerPanelRight}`}>
-              {contextRail}
-            </div>
-          </div>
-        ) : null}
       </div>
+
+      <Dialog.Root open={Boolean(controller.pendingSectionRequest)} onOpenChange={(open) => { if (!open) controller.cancelPendingSectionRequest(); }}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="modal-overlay" />
+          <Dialog.Content className={`modal-glass ${styles.choiceDialog}`}>
+            <Dialog.Title className={styles.choiceDialogTitle}>Add your first section</Dialog.Title>
+            <Dialog.Description className={styles.choiceDialogDescription}>
+              You already have draft text in Whole draft. Decide how to place it before creating the first named section.
+            </Dialog.Description>
+            <div className={styles.choiceDialogActions}>
+              <button type="button" className={styles.choiceDialogButton} onClick={controller.confirmPendingMove}>
+                Move current text into the new section
+              </button>
+              <button type="button" className={styles.choiceDialogButtonSecondary} onClick={controller.confirmPendingKeep}>
+                Keep it above as Whole draft
+              </button>
+            </div>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
+
+      <ConfirmDialog
+        isOpen={Boolean(controller.sectionToRemove)}
+        title="Remove section?"
+        message="This removes the section and its evidence links from the current draft."
+        confirmLabel="Remove"
+        variant="danger"
+        onConfirm={controller.confirmRemoveSection}
+        onCancel={controller.cancelRemoveSection}
+      />
 
       <AddEvidenceModal
         isOpen={controller.isAddEvidenceOpen}
@@ -290,7 +284,7 @@ function DraftContent() {
         onExport={controller.handleExportDocx}
         exportMode={controller.exportMode}
         onExportModeChange={controller.setExportMode}
-        citationIssuesCount={controller.exportCitationIssues.length}
+        citationIssuesCount={controller.citationIssues.length}
         blockingCitationIssuesCount={controller.blockingCitationIssuesCount}
         latestExport={controller.latestExport}
         exportHistory={controller.exportHistory}
@@ -307,10 +301,10 @@ function DraftContent() {
       contentScrollMode="child"
       copilot={controller.isEmbeddedInProjectShell ? undefined : {
         page: "draft",
-        section: controller.activeSectionLabel,
-        contextDisplay: `${controller.activeSectionLabel} · ${controller.usedEvidence.length} evidence`,
+        section: controller.currentTargetLabel,
+        contextDisplay: `${controller.currentTargetLabel} · ${controller.usedEvidence.length} evidence`,
         emptyState: controller.copilotEmptyState,
-        inputPlaceholder: `Ask about ${controller.activeSectionLabel}…`,
+        inputPlaceholder: `Ask about ${controller.currentTargetLabel}…`,
         onInsert: controller.insertCopilotText,
         panelId: "draft-copilot-panel",
       }}

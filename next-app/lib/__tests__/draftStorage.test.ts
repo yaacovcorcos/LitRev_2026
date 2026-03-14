@@ -10,6 +10,8 @@ describe("loadDraftState citation migration", () => {
   it("migrates legacy citation attrs to canonical studyId/uid shape", () => {
     const projectId = "proj-citation-migration";
     const state = createDefaultDraftState();
+    state.sectionOrder = ["abstract"];
+    state.activeSection = "abstract";
     expect(state.version).toBe(2);
     state.contentBySection.abstract = {
       type: "doc",
@@ -25,7 +27,7 @@ describe("loadDraftState citation migration", () => {
 
     const migrated = loadDraftState(projectId);
     expect(migrated.version).toBe(2);
-    expect(migrated.manuscript.schemaVersion).toBe(1);
+    expect(migrated.manuscript.schemaVersion).toBe(2);
     const node = migrated.contentBySection.abstract.content?.[0]?.content?.[0];
     expect(node?.type).toBe("citation");
     expect(node?.attrs?.studyId).toBe("study-1");

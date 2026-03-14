@@ -7,6 +7,7 @@ import type { ContextCaptureTarget } from "./context-capture";
 import type {
     AgentMode,
     RunAbnormalEndClassification,
+    RunDurabilityState,
     RunFinalizationState,
     RunStatus,
 } from "./agent";
@@ -110,7 +111,13 @@ export type AIErrorEnvelope = {
     recoveryRecommendation?: RunRecoveryRecommendation;
 };
 
-export type RunRecoveryRecommendation = "reconnect" | "retry" | "stop_and_retry" | "terminal";
+export type RunRecoveryRecommendation =
+    | "reconnect"
+    | "continue_from_checkpoint"
+    | "continue_from_durable_state"
+    | "retry"
+    | "stop_and_retry"
+    | "terminal";
 
 export type RunRecoveryReplayableChunk = {
     sequence: number;
@@ -128,6 +135,8 @@ export type RunRecoveryResponse = {
     isActive: boolean;
     lastActivityAt: string | null;
     lastDurableProgressAt?: string | null;
+    durabilityState?: RunDurabilityState | null;
+    durabilityDegradedReason?: string | null;
     finalizationState?: RunFinalizationState | null;
     lastSequence: number | null;
     replayableEvents: RunRecoveryReplayableChunk[];
@@ -228,6 +237,26 @@ export type ChatOptions = {
      * Present only when the send action is triggered from retry.
      */
     telemetryRequestKey?: string;
+    /**
+     * Continue from proven persisted state owned by an earlier run.
+     * The server validates this run before using it as continuation input.
+     */
+    continueFromRunId?: string;
+    /**
+     * When false, the server treats the current request as reusing an already
+     * persisted user turn and avoids double-writing it.
+     */
+    persistUserMessage?: boolean;
+    /**
+     * Canonical content of the already-persisted user turn when the request is
+     * reusing it without persisting a duplicate.
+     */
+    persistedUserMessageContent?: string;
+    /**
+     * Optional persisted message identifier for stronger deduplication when the
+     * caller knows it.
+     */
+    persistedUserMessageId?: string;
     stream?: boolean;
     signal?: AbortSignal;
 };

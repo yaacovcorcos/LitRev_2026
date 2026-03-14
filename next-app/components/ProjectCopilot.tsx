@@ -11,6 +11,7 @@ import { selectActiveProgress, normalizeTimelineProgressItems } from "@/lib/ai/a
 import { TimelineRenderer } from "./copilot/TimelineRenderer";
 import { CopilotInput } from "./copilot/CopilotInput";
 import { ComposerActiveProgressBar } from "./copilot/ComposerActiveProgressBar";
+import { ComposerQueuedFollowUpBar } from "./copilot/ComposerQueuedFollowUpBar";
 import { AutonomySettings } from "./copilot/AutonomySettings";
 import { ReasoningModeDropdown } from "./copilot/ReasoningModeDropdown";
 import { ConversationPicker } from "./ui/ConversationPicker";
@@ -95,6 +96,8 @@ export function ProjectCopilot({
         loadOlderMessages,
         prefillCommand: sharedPrefillCommand,
         consumePrefillCommand,
+        queuedFollowUp,
+        clearQueuedFollowUp,
     } = useProjectCopilot();
 
     // Hide reasoning controls when model doesn't support reasoning
@@ -109,6 +112,12 @@ export function ProjectCopilot({
     }, []);
 
     const activePrefillCommand = sharedPrefillCommand ?? prefillCommand;
+
+    const handleEditQueuedFollowUp = useCallback(() => {
+        if (!queuedFollowUp) return;
+        clearQueuedFollowUp();
+        setPrefillCommand({ text: queuedFollowUp.text, id: crypto.randomUUID() });
+    }, [clearQueuedFollowUp, queuedFollowUp]);
 
     const handlePrefillConsumed = useCallback(() => {
         if (sharedPrefillCommand) {
@@ -210,6 +219,31 @@ export function ProjectCopilot({
         retryLastMessage(item.errorMeta?.runId ?? item.errorMeta?.activeRunId ?? null);
     }, [isLoading, retryLastMessage]);
 
+    const continueFromDurableStateRun = useCallback((item: Extract<TimelineItem, { type: "error" }>) => {
+        if (isLoading) return;
+        const runId = item.errorMeta?.runId ?? item.errorMeta?.activeRunId ?? null;
+        if (!runId) return;
+        const lastUserMessage = [...messages]
+            .reverse()
+            .find((message) => message.sender === "user" && message.text.trim().length > 0);
+        if (!lastUserMessage) return;
+        sendMessage(
+            lastUserMessage.text,
+            lastUserMessage.context?.page ?? page,
+            lastUserMessage.context?.section,
+            selectedModel,
+            undefined,
+            studyId,
+            undefined,
+            undefined,
+            {
+                replaceRunId: runId,
+                continueFromRunId: runId,
+                suppressUserMessageAppend: true,
+            },
+        );
+    }, [isLoading, messages, page, sendMessage, selectedModel, studyId]);
+
     const getConversationGroupLabel = useCallback((conversation: (typeof conversations)[number]) => {
         const date = new Date(conversation.updatedAt);
         const now = new Date();
@@ -224,6 +258,10 @@ export function ProjectCopilot({
         () => selectActiveProgress(normalizeTimelineProgressItems(timelineItems)),
         [timelineItems],
     );
+    const hasAttachedProgress = Boolean(activeProgress);
+    const hasAttachedQueue = Boolean(queuedFollowUp);
+    const composerAttachedStack = hasAttachedProgress || hasAttachedQueue ? "attached" : "none";
+    const queuedStackPosition = hasAttachedQueue ? (hasAttachedProgress ? "middle" : "top") : undefined;
 
     if (isCollapsed) {
         return (
@@ -388,6 +426,7 @@ export function ProjectCopilot({
                     onSaveToNotes={handleSaveToNotes}
                     onRetryLastMessage={retryLastMessage}
                     onReconnectRun={reconnectActiveRun}
+                    onContinueFromDurableStateRun={continueFromDurableStateRun}
                     onStopAndRetryRun={stopAndRetryRun}
                     onResumeRun={resumeFailedPlan}
                     onBranchFromMessage={handleBranchFromMessage}
@@ -402,7 +441,13 @@ export function ProjectCopilot({
 
                 {/* Input area */}
                 <div className={styles.composerHost}>
-                    <ComposerActiveProgressBar activeProgress={activeProgress} />
+                    <ComposerActiveProgressBar activeProgress={activeProgress} stackPosition="top" />
+                    <ComposerQueuedFollowUpBar
+                        queuedFollowUp={queuedFollowUp}
+                        stackPosition={queuedStackPosition}
+                        onEdit={handleEditQueuedFollowUp}
+                        onRemove={clearQueuedFollowUp}
+                    />
                     <CopilotInput
                         page={page}
                         section={section}
@@ -410,6 +455,7 @@ export function ProjectCopilot({
                         inputPlaceholder={inputPlaceholder}
                         prefillCommand={activePrefillCommand}
                         onPrefillConsumed={handlePrefillConsumed}
+                        attachedStack={composerAttachedStack}
                     />
                 </div>
             </div>

@@ -36,7 +36,19 @@ vi.mock("../../copilot/TimelineRenderer", () => ({
 }));
 
 vi.mock("../../copilot/CopilotInput", () => ({
-  CopilotInput: () => <div data-testid="copilot-input" />,
+  CopilotInput: ({
+    hasQueuedFollowUp,
+    attachedStack,
+  }: {
+    hasQueuedFollowUp?: boolean;
+    attachedStack?: "none" | "attached";
+  }) => (
+    <div
+      data-testid="copilot-input"
+      data-has-queued={hasQueuedFollowUp ? "yes" : "no"}
+      data-attached-stack={attachedStack ?? "none"}
+    />
+  ),
 }));
 
 vi.mock("../../copilot/AutonomySettings", () => ({
@@ -48,11 +60,13 @@ vi.mock("../../ui/ConversationPicker", () => ({
 }));
 
 describe("ConversationMainView parity", () => {
+  let baseContextValue: Record<string, unknown>;
+
   beforeEach(() => {
     vi.clearAllMocks();
     const sendMessage = vi.fn();
     const reconnectRun = vi.fn();
-    mockUseProjectCopilot.mockReturnValue({
+    baseContextValue = {
       reconnectRun,
       messages: [
         {
@@ -111,6 +125,8 @@ describe("ConversationMainView parity", () => {
       isConversationLoading: false,
       conversations: [],
       currentConversationId: "conv-1",
+      queuedFollowUp: null,
+      clearQueuedFollowUp: vi.fn(),
       selectConversation: vi.fn(),
       newConversation: vi.fn(),
       branchConversation: vi.fn(),
@@ -125,7 +141,8 @@ describe("ConversationMainView parity", () => {
       hasMore: false,
       isLoadingOlder: false,
       loadOlderMessages: vi.fn(),
-    });
+    };
+    mockUseProjectCopilot.mockReturnValue(baseContextValue);
   });
 
   it("passes structured timeline-capable messages through to the shared renderer unchanged", () => {
@@ -134,6 +151,8 @@ describe("ConversationMainView parity", () => {
     expect(screen.getByTestId("timeline-renderer")).toBeTruthy();
     const status = screen.getByRole("status");
     const input = screen.getByTestId("copilot-input");
+    expect(status.getAttribute("data-stack-position")).toBe("top");
+    expect(input.getAttribute("data-attached-stack")).toBe("attached");
     expect(screen.getByText("Waiting for your answer")).toBeTruthy();
     expect(screen.queryByRole("progressbar")).toBeNull();
     expect(status.compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -148,15 +167,20 @@ describe("ConversationMainView parity", () => {
     expect(checkpoint.checkpoint).toMatchObject({ runId: "run-1", checkpointKind: "recovery" });
   });
 
-  it("targets reconnect and stop-and-retry actions to the clicked run", () => {
+  it("targets reconnect, continue, and stop-and-retry actions to the clicked run", () => {
     render(<ConversationMainView projectId="project-1" />);
 
     const props = mockTimelineRenderer.mock.calls[0]?.[0] as {
       onReconnectRun?: (item: { type: "error"; errorMeta?: { runId?: string | null; activeRunId?: string | null } }) => void;
+      onContinueFromDurableStateRun?: (item: { type: "error"; errorMeta?: { runId?: string | null; activeRunId?: string | null } }) => void;
       onStopAndRetryRun?: (item: { type: "error"; errorMeta?: { runId?: string | null; activeRunId?: string | null } }) => void;
     };
 
     props.onReconnectRun?.({
+      type: "error",
+      errorMeta: { runId: "run-clicked", activeRunId: "run-newer" },
+    });
+    props.onContinueFromDurableStateRun?.({
       type: "error",
       errorMeta: { runId: "run-clicked", activeRunId: "run-newer" },
     });
@@ -184,5 +208,61 @@ describe("ConversationMainView parity", () => {
       undefined,
       { replaceRunId: "run-clicked" },
     );
+    expect(contextValue.sendMessage).toHaveBeenCalledWith(
+      "Recover this search",
+      "overview",
+      undefined,
+      "gpt-5.2",
+      undefined,
+      undefined,
+      expect.objectContaining({
+        source: "retry_action",
+      }),
+      undefined,
+      {
+        replaceRunId: "run-clicked",
+        continueFromRunId: "run-clicked",
+        suppressUserMessageAppend: true,
+      },
+    );
+  });
+
+  it("renders a queued follow-up cap above the composer when one is present", () => {
+    mockUseProjectCopilot.mockReturnValue({
+      ...baseContextValue,
+      messages: [],
+      queuedFollowUp: {
+        id: "queue-1",
+        text: "Please compare the strongest papers next.",
+        createdAt: Date.now(),
+        conversationId: "conv-1",
+        page: "overview",
+        source: "draft",
+      },
+      clearQueuedFollowUp: vi.fn(),
+    });
+
+    render(<ConversationMainView projectId="project-1" />);
+
+    const queued = screen.getByText("Queued next message").closest("[data-stack-position]");
+    const input = screen.getByTestId("copilot-input");
+    expect(screen.getByText("Please compare the strongest papers next.")).toBeTruthy();
+    expect(queued?.getAttribute("data-stack-position")).toBe("top");
+    expect(input.getAttribute("data-attached-stack")).toBe("attached");
+    expect(queued).toBeTruthy();
+    expect(queued!.compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("keeps the composer standalone when no attached caps are present", () => {
+    mockUseProjectCopilot.mockReturnValue({
+      ...baseContextValue,
+      messages: [],
+    });
+
+    render(<ConversationMainView projectId="project-1" />);
+
+    expect(screen.getByTestId("copilot-input").getAttribute("data-attached-stack")).toBe("none");
+    expect(screen.queryByText("Queued next message")).toBeNull();
+    expect(screen.queryByRole("status")).toBeNull();
   });
 });

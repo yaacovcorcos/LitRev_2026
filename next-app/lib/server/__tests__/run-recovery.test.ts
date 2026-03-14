@@ -5,6 +5,8 @@ const mocks = vi.hoisted(() => ({
   runEventFindMany: vi.fn(),
   runEventFindFirst: vi.fn(),
   artifactFindMany: vi.fn(),
+  resolveLatestValidRunCheckpoint: vi.fn(),
+  resolveDurableContinuationSource: vi.fn(),
 }));
 
 vi.mock("@/lib/server/prisma", () => ({
@@ -22,11 +24,21 @@ vi.mock("@/lib/server/prisma", () => ({
   },
 }));
 
+vi.mock("@/lib/server/agent/durable-continuation", () => ({
+  resolveDurableContinuationSource: mocks.resolveDurableContinuationSource,
+}));
+
+vi.mock("@/lib/server/agent/run-checkpoints", () => ({
+  resolveLatestValidRunCheckpoint: mocks.resolveLatestValidRunCheckpoint,
+}));
+
 const { buildRunRecoveryResponse, REPLAY_AUTHORITATIVE_RUN_EVENT_TYPES } = await import("@/lib/server/agent/run-recovery");
 
 describe("run recovery", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.resolveLatestValidRunCheckpoint.mockResolvedValue(null);
+    mocks.resolveDurableContinuationSource.mockResolvedValue(null);
   });
 
   it("returns a safe retry response when the run is missing", async () => {
@@ -57,6 +69,8 @@ describe("run recovery", () => {
       costTokensOut: 34,
       lastActivityAt: new Date("2026-03-11T11:00:00.000Z"),
       lastDurableProgressAt: new Date("2026-03-11T11:00:00.000Z"),
+      durabilityState: "durable",
+      durabilityDegradedReason: null,
       finalizationState: "completed",
       abnormalEndClassification: null,
     });
@@ -300,6 +314,8 @@ describe("run recovery", () => {
       costTokensOut: 0,
       lastActivityAt: new Date("2026-03-11T11:59:30.000Z"),
       lastDurableProgressAt: new Date("2026-03-11T11:59:30.000Z"),
+      durabilityState: "durable",
+      durabilityDegradedReason: null,
       finalizationState: "not_started",
       abnormalEndClassification: null,
     });
@@ -322,6 +338,8 @@ describe("run recovery", () => {
       costTokensOut: 0,
       lastActivityAt: new Date("2026-03-11T11:58:00.000Z"),
       lastDurableProgressAt: new Date("2026-03-11T11:58:00.000Z"),
+      durabilityState: "durable",
+      durabilityDegradedReason: null,
       finalizationState: "not_started",
       abnormalEndClassification: null,
     });
@@ -348,6 +366,8 @@ describe("run recovery", () => {
       costTokensOut: 0,
       lastActivityAt: new Date("2026-03-11T11:59:50.000Z"),
       lastDurableProgressAt: new Date("2026-03-11T11:58:00.000Z"),
+      durabilityState: "durable",
+      durabilityDegradedReason: null,
       finalizationState: "not_started",
       abnormalEndClassification: null,
     });
@@ -362,6 +382,7 @@ describe("run recovery", () => {
     expect(result.recoveryRecommendation).toBe("stop_and_retry");
     expect(result.abnormalEndClassification).toBe("no_forward_durable_progress");
     expect(result.lastDurableProgressAt).toBe("2026-03-11T11:58:00.000Z");
+    expect(result.durabilityState).toBe("durable");
     expect(result.finalizationState).toBe("not_started");
   });
 
@@ -378,6 +399,8 @@ describe("run recovery", () => {
       costTokensOut: 0,
       lastActivityAt: new Date("2026-03-11T11:59:50.000Z"),
       lastDurableProgressAt: new Date("2026-03-11T11:59:45.000Z"),
+      durabilityState: "durable",
+      durabilityDegradedReason: null,
       finalizationState: "failed",
       abnormalEndClassification: "finalization_failed",
     });
@@ -391,6 +414,134 @@ describe("run recovery", () => {
 
     expect(result.recoveryRecommendation).toBe("stop_and_retry");
     expect(result.abnormalEndClassification).toBe("finalization_failed");
+    expect(result.durabilityState).toBe("durable");
     expect(result.finalizationState).toBe("failed");
+  });
+
+  it("surfaces degraded durability as stop-and-retry recovery truth", async () => {
+    mocks.runEventFindMany.mockResolvedValue([]);
+    mocks.runEventFindFirst.mockResolvedValue(null);
+    mocks.artifactFindMany.mockResolvedValue([]);
+    mocks.agentRunFindFirst.mockResolvedValue({
+      id: "run-degraded",
+      conversationId: "conv-1",
+      status: "running",
+      model: null,
+      costTokensIn: 0,
+      costTokensOut: 0,
+      lastActivityAt: new Date("2026-03-11T11:59:55.000Z"),
+      lastDurableProgressAt: new Date("2026-03-11T11:59:50.000Z"),
+      durabilityState: "degraded",
+      durabilityDegradedReason: "tool_result_persistence_failed",
+      finalizationState: "not_started",
+      abnormalEndClassification: "recovery_required_persistence_failed",
+    });
+
+    const result = await buildRunRecoveryResponse({
+      conversationId: "conv-1",
+      runId: "run-degraded",
+      now: new Date("2026-03-11T12:00:00.000Z"),
+      staleMs: 90_000,
+    });
+
+    expect(result.recoveryRecommendation).toBe("stop_and_retry");
+    expect(result.abnormalEndClassification).toBe("recovery_required_persistence_failed");
+    expect(result.durabilityState).toBe("degraded");
+    expect(result.durabilityDegradedReason).toBe("tool_result_persistence_failed");
+  });
+
+  it("upgrades recovery to continue-from-durable-state only when a safe continuation source is proven", async () => {
+    mocks.runEventFindMany.mockResolvedValue([]);
+    mocks.runEventFindFirst.mockResolvedValue(null);
+    mocks.artifactFindMany.mockResolvedValue([]);
+    mocks.agentRunFindFirst.mockResolvedValue({
+      id: "run-continuable",
+      conversationId: "conv-1",
+      status: "running",
+      model: null,
+      costTokensIn: 0,
+      costTokensOut: 0,
+      lastActivityAt: new Date("2026-03-11T11:59:50.000Z"),
+      lastDurableProgressAt: new Date("2026-03-11T11:58:00.000Z"),
+      durabilityState: "durable",
+      durabilityDegradedReason: null,
+      finalizationState: "not_started",
+      abnormalEndClassification: null,
+    });
+    mocks.resolveDurableContinuationSource.mockResolvedValue({
+      kind: "tool_result",
+      sourceRunId: "run-continuable",
+      conversationId: "conv-1",
+      eventSequence: 4,
+      toolCallId: "call-1",
+      toolName: "search_pubmed",
+      toolResult: {
+        callId: "call-1",
+        result: { studies: [{ title: "Study A" }] },
+      },
+    });
+
+    const result = await buildRunRecoveryResponse({
+      conversationId: "conv-1",
+      runId: "run-continuable",
+      now: new Date("2026-03-11T12:00:00.000Z"),
+      staleMs: 90_000,
+    });
+
+    expect(mocks.resolveDurableContinuationSource).toHaveBeenCalledWith({
+      runId: "run-continuable",
+      conversationId: "conv-1",
+    });
+    expect(result.recoveryRecommendation).toBe("continue_from_durable_state");
+    expect(result.abnormalEndClassification).toBe("no_forward_durable_progress");
+  });
+
+  it("prefers continue-from-checkpoint when a valid ready checkpoint exists", async () => {
+    mocks.runEventFindMany.mockResolvedValue([]);
+    mocks.runEventFindFirst.mockResolvedValue(null);
+    mocks.artifactFindMany.mockResolvedValue([]);
+    mocks.agentRunFindFirst.mockResolvedValue({
+      id: "run-checkpointed",
+      conversationId: "conv-1",
+      status: "running",
+      model: null,
+      costTokensIn: 0,
+      costTokensOut: 0,
+      lastActivityAt: new Date("2026-03-11T11:59:50.000Z"),
+      lastDurableProgressAt: new Date("2026-03-11T11:58:00.000Z"),
+      durabilityState: "durable",
+      durabilityDegradedReason: null,
+      finalizationState: "not_started",
+      abnormalEndClassification: null,
+    });
+    mocks.resolveLatestValidRunCheckpoint.mockResolvedValue({
+      checkpointId: "checkpoint-1",
+      kind: "tool_result_ready",
+      conversationId: "conv-1",
+      nextStep: "reason_from_tool_result",
+      sourceRunId: "run-checkpointed",
+      sourceEventSequence: 6,
+      toolCallId: "call-1",
+      toolName: "search_pubmed",
+      toolResult: {
+        callId: "call-1",
+        result: { studies: [{ title: "Study A" }] },
+      },
+    });
+
+    const result = await buildRunRecoveryResponse({
+      conversationId: "conv-1",
+      runId: "run-checkpointed",
+      now: new Date("2026-03-11T12:00:00.000Z"),
+      staleMs: 90_000,
+    });
+
+    expect(mocks.resolveLatestValidRunCheckpoint).toHaveBeenCalledWith({
+      runId: "run-checkpointed",
+      conversationId: "conv-1",
+    });
+    expect(mocks.resolveDurableContinuationSource).not.toHaveBeenCalled();
+    expect(result.recoveryRecommendation).toBe("continue_from_checkpoint");
+    expect(result.abnormalEndClassification).toBe("no_forward_durable_progress");
   });
 });

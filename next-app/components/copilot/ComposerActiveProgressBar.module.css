@@ -31,11 +31,15 @@
     margin: 0 clamp(6px, 1.5vw, 32px);
     padding: 10px 14px 10px;
     border: 1px solid rgba(var(--rgb-ui-contrast), 0.07);
-    border-bottom-color: rgba(var(--rgb-ui-contrast), 0.04);
-    border-radius: 22px 22px 8px 8px;
+    border-bottom: none;
+    border-radius: 22px 22px 0 0;
     background: linear-gradient(to bottom, rgba(var(--rgb-ui-surface), 0.72), rgba(var(--rgb-ui-surface), 0.82));
     color: var(--text-secondary);
-    box-shadow: 0 1px 0 rgba(var(--rgb-ui-contrast), 0.03);
+    box-shadow: none;
+}
+
+.progressCard[data-stack-position="middle"] {
+    border-radius: 0;
 }
 
 .headerRow {

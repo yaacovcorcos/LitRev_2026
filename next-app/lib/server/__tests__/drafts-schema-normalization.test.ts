@@ -12,6 +12,8 @@ const saveDraftInputSchema = z.object({
 describe("draft save schema normalization", () => {
   it("strips non-serializable function attrs before validation", () => {
     const state = createDefaultDraftState();
+    state.sectionOrder = ["abstract"];
+    state.activeSection = "abstract";
     const abstractNode = (state.contentBySection.abstract as { content?: Array<{ attrs?: unknown }> }).content?.[0];
     if (!abstractNode) throw new Error("expected default abstract paragraph node");
 
@@ -23,13 +25,15 @@ describe("draft save schema normalization", () => {
     });
 
     expect(parsed.state.version).toBe(2);
-    expect(parsed.state.manuscript.schemaVersion).toBe(1);
+    expect(parsed.state.manuscript.schemaVersion).toBe(2);
     const parsedNode = (parsed.state.contentBySection.abstract as { content?: Array<{ attrs?: unknown }> }).content?.[0];
     expect(parsedNode?.attrs).toEqual({ blockId: expect.any(String) });
   });
 
   it("preserves valid attrs objects", () => {
     const state = createDefaultDraftState();
+    state.sectionOrder = ["abstract"];
+    state.activeSection = "abstract";
     const abstractNode = (state.contentBySection.abstract as { content?: Array<{ attrs?: unknown }> }).content?.[0];
     if (!abstractNode) throw new Error("expected default abstract paragraph node");
 
@@ -41,7 +45,7 @@ describe("draft save schema normalization", () => {
     });
 
     expect(parsed.state.version).toBe(2);
-    expect(parsed.state.manuscript.schemaVersion).toBe(1);
+    expect(parsed.state.manuscript.schemaVersion).toBe(2);
     const parsedNode = (parsed.state.contentBySection.abstract as { content?: Array<{ attrs?: unknown }> }).content?.[0];
     expect(parsedNode?.attrs).toMatchObject({ dir: "rtl", blockId: expect.any(String) });
   });

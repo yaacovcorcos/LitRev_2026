@@ -6,20 +6,27 @@ const mocks = vi.hoisted(() => ({
     findUnique: vi.fn(),
     findFirst: vi.fn(),
     update: vi.fn(),
+    create: vi.fn(),
+    transaction: vi.fn(),
     studyUpdate: vi.fn(),
     protocolFindUnique: vi.fn(),
     protocolUpdate: vi.fn(),
     emitEvent: vi.fn(),
+    emitEventWithinTransaction: vi.fn(),
+    createArtifactCheckpointInTransaction: vi.fn(),
+    markRunDurabilityDegraded: vi.fn(),
+    noteObservedRunActivity: vi.fn(),
     getDraft: vi.fn(),
     saveDraft: vi.fn(),
 }));
 
 vi.mock("@/lib/server/prisma", () => ({
     prisma: {
+        $transaction: mocks.transaction,
         artifact: {
             findUnique: mocks.findUnique,
             update: mocks.update,
-            create: vi.fn(),
+            create: mocks.create,
         },
         study: {
             findFirst: mocks.findFirst,
@@ -42,6 +49,16 @@ vi.mock("@prisma/client", () => ({
 
 vi.mock("@/lib/server/agent/events", () => ({
     emitEvent: mocks.emitEvent,
+    emitEventWithinTransaction: mocks.emitEventWithinTransaction,
+}));
+
+vi.mock("@/lib/server/agent/run-checkpoints", () => ({
+    createArtifactCheckpointInTransaction: mocks.createArtifactCheckpointInTransaction,
+}));
+
+vi.mock("@/lib/server/agent/run", () => ({
+    markRunDurabilityDegraded: mocks.markRunDurabilityDegraded,
+    noteObservedRunActivity: mocks.noteObservedRunActivity,
 }));
 
 vi.mock("@/lib/server/memory/decision-extractor", () => ({
@@ -63,10 +80,14 @@ vi.mock("@/lib/server/protocols", () => ({
     }),
 }));
 
-vi.mock("@/lib/protocol-fields", () => ({
-    validateFieldValue: vi.fn().mockReturnValue({ valid: true, value: "new value" }),
-    isValidFieldPath: vi.fn().mockReturnValue(true),
-}));
+vi.mock("@/lib/protocol-fields", async (importOriginal) => {
+    const original = await importOriginal<typeof import("@/lib/protocol-fields")>();
+    return {
+        ...original,
+        validateFieldValue: vi.fn().mockReturnValue({ valid: true, value: "new value" }),
+        isValidFieldPath: vi.fn().mockReturnValue(true),
+    };
+});
 
 vi.mock("@/lib/server/actor", () => ({
     requireActorContext: vi.fn().mockReturnValue({ userId: "u1", workspaceId: "w1" }),
@@ -166,6 +187,23 @@ describe("undoArtifact", () => {
     beforeEach(() => {
         vi.clearAllMocks();
         mocks.update.mockResolvedValue({ id: "art-1", status: "rejected" });
+        mocks.create.mockImplementation(async (args: { data: Record<string, unknown> }) => ({
+            id: "art-created",
+            ...args.data,
+        }));
+        mocks.emitEventWithinTransaction.mockResolvedValue({
+            sequence: 1,
+            createdAt: new Date("2026-03-14T12:00:00.000Z"),
+        });
+        mocks.createArtifactCheckpointInTransaction.mockResolvedValue(undefined);
+        mocks.markRunDurabilityDegraded.mockResolvedValue(1);
+        mocks.noteObservedRunActivity.mockReturnValue(undefined);
+        mocks.transaction.mockImplementation(async (callback: (tx: unknown) => Promise<unknown>) => callback({
+            artifact: {
+                update: mocks.update,
+                create: mocks.create,
+            },
+        }));
     });
 
     it("throws when artifact not found", async () => {

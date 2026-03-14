@@ -12,6 +12,7 @@ import { selectActiveProgress, normalizeTimelineProgressItems } from "@/lib/ai/a
 import { TimelineRenderer } from "../copilot/TimelineRenderer";
 import { CopilotInput } from "../copilot/CopilotInput";
 import { ComposerActiveProgressBar } from "../copilot/ComposerActiveProgressBar";
+import { ComposerQueuedFollowUpBar } from "../copilot/ComposerQueuedFollowUpBar";
 import { AutonomySettings } from "../copilot/AutonomySettings";
 import { ConversationPicker } from "../ui/ConversationPicker";
 import { generateChatUnificationRequestKey } from "@/lib/ai/chat-unification-telemetry";
@@ -50,6 +51,8 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
         isConversationLoading,
         conversations,
         currentConversationId,
+        queuedFollowUp,
+        clearQueuedFollowUp,
         selectConversation,
         newConversation,
         branchConversation,
@@ -106,6 +109,12 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
     const handleSuggestionClick = useCallback((prompt: string) => {
         setPrefillCommand({ text: prompt, id: crypto.randomUUID() });
     }, []);
+
+    const handleEditQueuedFollowUp = useCallback(() => {
+        if (!queuedFollowUp) return;
+        clearQueuedFollowUp();
+        setPrefillCommand({ text: queuedFollowUp.text, id: crypto.randomUUID() });
+    }, [clearQueuedFollowUp, queuedFollowUp]);
 
     const handleActionPrompt = useCallback((prompt: string, mode?: AgentMode) => {
         sendMessage(prompt, "overview" as CopilotPage, undefined, undefined, mode);
@@ -183,12 +192,45 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
         retryLastMessage(item.errorMeta?.runId ?? item.errorMeta?.activeRunId ?? null);
     }, [isLoading, retryLastMessage]);
 
+    const continueFromDurableStateRun = useCallback((item: Extract<TimelineItem, { type: "error" }>) => {
+        if (isLoading) return;
+        const runId = item.errorMeta?.runId ?? item.errorMeta?.activeRunId ?? null;
+        if (!runId) return;
+        const lastUserMessage = [...messages]
+            .reverse()
+            .find((message) => message.sender === "user" && message.text.trim().length > 0);
+        if (!lastUserMessage) return;
+        sendMessage(
+            lastUserMessage.text,
+            lastUserMessage.context?.page ?? ("overview" as CopilotPage),
+            lastUserMessage.context?.section,
+            selectedModel,
+            undefined,
+            undefined,
+            {
+                requestKey: generateChatUnificationRequestKey(),
+                expectedModel: selectedModel ?? null,
+                source: "retry_action",
+            },
+            undefined,
+            {
+                replaceRunId: runId,
+                continueFromRunId: runId,
+                suppressUserMessageAppend: true,
+            },
+        );
+    }, [isLoading, messages, sendMessage, selectedModel]);
+
     const hasMessages = messages.length > 0;
     const timelineItems = useMemo(() => messagesToTimeline(messages), [messages]);
     const { activeProgress, suppressedProgressId } = useMemo(
         () => selectActiveProgress(normalizeTimelineProgressItems(timelineItems)),
         [timelineItems],
     );
+    const hasAttachedProgress = Boolean(activeProgress);
+    const hasAttachedQueue = Boolean(queuedFollowUp);
+    const composerAttachedStack = hasAttachedProgress || hasAttachedQueue ? "attached" : "none";
+    const queuedStackPosition = hasAttachedQueue ? (hasAttachedProgress ? "middle" : "top") : undefined;
 
     return (
         <div className={styles.conversationView}>
@@ -274,6 +316,7 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
                         onSaveToNotes={handleSaveToNotes}
                         onRetryLastMessage={retryLastMessage}
                         onReconnectRun={reconnectActiveRun}
+                        onContinueFromDurableStateRun={continueFromDurableStateRun}
                         onStopAndRetryRun={stopAndRetryRun}
                         onResumeRun={resumeFailedPlan}
                         onBranchFromMessage={handleBranchFromMessage}
@@ -285,12 +328,19 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
 
                     {/* Input */}
                     <div className={styles.inputWrapper}>
-                        <ComposerActiveProgressBar activeProgress={activeProgress} />
+                        <ComposerActiveProgressBar activeProgress={activeProgress} stackPosition="top" />
+                        <ComposerQueuedFollowUpBar
+                            queuedFollowUp={queuedFollowUp}
+                            stackPosition={queuedStackPosition}
+                            onEdit={handleEditQueuedFollowUp}
+                            onRemove={clearQueuedFollowUp}
+                        />
                         <CopilotInput
                             page={"overview" as CopilotPage}
                             inputPlaceholder="Ask about your project..."
                             prefillCommand={prefillCommand}
                             onPrefillConsumed={handlePrefillConsumed}
+                            attachedStack={composerAttachedStack}
                         />
                     </div>
                 </div>
