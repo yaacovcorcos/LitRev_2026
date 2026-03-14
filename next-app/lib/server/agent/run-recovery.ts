@@ -22,6 +22,7 @@ import type {
     RunAbnormalEndClassification,
     RunDurabilityState,
     RunFinalizationState,
+    RunPhase,
     RunStatus,
 } from "@/types/agent";
 
@@ -29,6 +30,8 @@ type RecoveryRunRecord = {
     id: string;
     conversationId: string | null;
     status: RunStatus;
+    runPhase: RunPhase;
+    phaseEnteredAt: Date;
     model: string | null;
     costTokensIn: number;
     costTokensOut: number;
@@ -64,16 +67,21 @@ function asObject(value: unknown): Record<string, unknown> | null {
         : null;
 }
 
-function buildSyntheticTerminalReconciliationChunk(run: RecoveryRunRecord): AIStreamChunk {
+function buildSyntheticTerminalReconciliationChunk(
+    run: RecoveryRunRecord,
+    runStatusOverride?: Extract<RunStatus, "completed" | "failed" | "cancelled" | "paused">,
+): AIStreamChunk {
+    const runStatus = runStatusOverride ?? run.status;
     return {
         type: "run_end",
         runId: run.id,
-        runStatus: run.status,
+        runStatus,
         runCostTokensIn: run.costTokensIn,
         runCostTokensOut: run.costTokensOut,
         actualModel: run.model ?? undefined,
         actualModelSource: run.model ? "requested" : "unknown",
         conversationId: run.conversationId ?? undefined,
+        stopReason: runStatus === "paused" ? "paused_for_input" : undefined,
     };
 }
 
@@ -222,6 +230,8 @@ export async function buildRunRecoveryResponse(params: {
             id: true,
             conversationId: true,
             status: true,
+            runPhase: true,
+            phaseEnteredAt: true,
             model: true,
             costTokensIn: true,
             costTokensOut: true,
@@ -240,6 +250,8 @@ export async function buildRunRecoveryResponse(params: {
             runId: params.runId,
             runStatus: "missing",
             isActive: false,
+            runPhase: null,
+            phaseEnteredAt: null,
             lastActivityAt: null,
             lastDurableProgressAt: null,
             durabilityState: null,
@@ -276,6 +288,13 @@ export async function buildRunRecoveryResponse(params: {
             select: { sequence: true },
         }),
     ]);
+    const latestUserInputRequiredEvent = run.runPhase === "ask"
+        ? await prisma.runEvent.findFirst({
+            where: { runId: run.id, type: "user_input_required" },
+            orderBy: { sequence: "desc" },
+            select: { sequence: true },
+        })
+        : null;
 
     const artifactIds = [...new Set(events.map((event) => event.artifactId).filter((value): value is string => Boolean(value)))];
     const artifacts = artifactIds.length === 0
@@ -297,19 +316,36 @@ export async function buildRunRecoveryResponse(params: {
         .map((event) => toReplayableChunk(run, event, artifactsById))
         .filter((event): event is RunRecoveryReplayableChunk => event !== null);
     const convergence = assessRunConvergence(run, now, staleMs);
-    const checkpointContinuationSource = convergence.recoveryRecommendation === "reconnect"
+    const shouldSurfacePausedTerminal =
+        run.status === "running"
+        && run.runPhase === "ask"
+        && latestUserInputRequiredEvent !== null;
+    const effectiveRunStatus: RunRecoveryResponse["runStatus"] =
+        shouldSurfacePausedTerminal ? "paused" : run.status;
+    const terminalEvent = shouldSurfacePausedTerminal
+        ? { chunk: buildSyntheticTerminalReconciliationChunk(run, "paused") }
+        : run.status === "running"
+            ? null
+            : { chunk: buildSyntheticTerminalReconciliationChunk(run) };
+    const shouldResolveContinuation =
+        run.status === "running"
+        && !shouldSurfacePausedTerminal
+        && convergence.recoveryRecommendation !== "reconnect";
+    const checkpointContinuationSource = !shouldResolveContinuation
         ? null
         : await resolveLatestValidRunCheckpoint({
             runId: run.id,
             conversationId: params.conversationId,
         });
-    const durableContinuationSource = (checkpointContinuationSource || convergence.recoveryRecommendation === "reconnect")
+    const durableContinuationSource = (!shouldResolveContinuation || checkpointContinuationSource)
         ? null
         : await resolveDurableContinuationSource({
             runId: run.id,
             conversationId: params.conversationId,
         });
-    const recoveryRecommendation = checkpointContinuationSource
+    const recoveryRecommendation = shouldSurfacePausedTerminal
+        ? "terminal"
+        : checkpointContinuationSource
         ? "continue_from_checkpoint"
         : durableContinuationSource
             ? "continue_from_durable_state"
@@ -318,8 +354,10 @@ export async function buildRunRecoveryResponse(params: {
     return {
         conversationId: params.conversationId,
         runId: run.id,
-        runStatus: run.status,
-        isActive: run.status === "running",
+        runStatus: effectiveRunStatus,
+        isActive: run.status === "running" && !shouldSurfacePausedTerminal,
+        runPhase: run.runPhase,
+        phaseEnteredAt: run.phaseEnteredAt.toISOString(),
         lastActivityAt: run.lastActivityAt.toISOString(),
         lastDurableProgressAt: run.lastDurableProgressAt.toISOString(),
         durabilityState: run.durabilityState,
@@ -327,9 +365,7 @@ export async function buildRunRecoveryResponse(params: {
         finalizationState: run.finalizationState,
         lastSequence: lastEvent?.sequence ?? null,
         replayableEvents,
-        terminalEvent: run.status === "running"
-            ? null
-            : { chunk: buildSyntheticTerminalReconciliationChunk(run) },
+        terminalEvent,
         recoveryRecommendation,
         abnormalEndClassification: convergence.abnormalEndClassification,
     };

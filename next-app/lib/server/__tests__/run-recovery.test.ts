@@ -64,6 +64,8 @@ describe("run recovery", () => {
       id: "run-1",
       conversationId: "conv-1",
       status: "completed",
+      runPhase: "finalize",
+      phaseEnteredAt: new Date("2026-03-11T11:00:00.000Z"),
       model: "gpt-5.2",
       costTokensIn: 12,
       costTokensOut: 34,
@@ -309,6 +311,8 @@ describe("run recovery", () => {
       id: "run-live",
       conversationId: "conv-1",
       status: "running",
+      runPhase: "act",
+      phaseEnteredAt: new Date("2026-03-11T11:59:20.000Z"),
       model: null,
       costTokensIn: 0,
       costTokensOut: 0,
@@ -333,6 +337,8 @@ describe("run recovery", () => {
       id: "run-stale",
       conversationId: "conv-1",
       status: "running",
+      runPhase: "act",
+      phaseEnteredAt: new Date("2026-03-11T11:57:30.000Z"),
       model: null,
       costTokensIn: 0,
       costTokensOut: 0,
@@ -353,6 +359,70 @@ describe("run recovery", () => {
     expect(stale.recoveryRecommendation).toBe("stop_and_retry");
   });
 
+  it("synthesizes a paused terminal recovery path for running ask-phase runs with persisted input state", async () => {
+    mocks.runEventFindMany.mockResolvedValue([
+      {
+        sequence: 4,
+        type: "user_input_required",
+        payload: {
+          callId: "ask-1",
+          question: "Choose a provider",
+          questionType: "single_choice",
+        },
+        toolName: null,
+        artifactId: null,
+        messageRole: null,
+      },
+    ]);
+    mocks.runEventFindFirst
+      .mockResolvedValueOnce({ sequence: 4 })
+      .mockResolvedValueOnce({ sequence: 4 });
+    mocks.artifactFindMany.mockResolvedValue([]);
+    mocks.agentRunFindFirst.mockResolvedValue({
+      id: "run-ask",
+      conversationId: "conv-1",
+      status: "running",
+      runPhase: "ask",
+      phaseEnteredAt: new Date("2026-03-11T11:59:30.000Z"),
+      model: null,
+      costTokensIn: 0,
+      costTokensOut: 0,
+      lastActivityAt: new Date("2026-03-11T11:59:55.000Z"),
+      lastDurableProgressAt: new Date("2026-03-11T11:59:50.000Z"),
+      durabilityState: "durable",
+      durabilityDegradedReason: null,
+      finalizationState: "not_started",
+      abnormalEndClassification: null,
+    });
+
+    const result = await buildRunRecoveryResponse({
+      conversationId: "conv-1",
+      runId: "run-ask",
+      now: new Date("2026-03-11T12:00:00.000Z"),
+      staleMs: 90_000,
+    });
+
+    expect(result.runStatus).toBe("paused");
+    expect(result.isActive).toBe(false);
+    expect(result.recoveryRecommendation).toBe("terminal");
+    expect(result.runPhase).toBe("ask");
+    expect(result.phaseEnteredAt).toBe("2026-03-11T11:59:30.000Z");
+    expect(result.terminalEvent).toEqual({
+      chunk: {
+        type: "run_end",
+        runId: "run-ask",
+        runStatus: "paused",
+        runCostTokensIn: 0,
+        runCostTokensOut: 0,
+        actualModelSource: "unknown",
+        conversationId: "conv-1",
+        stopReason: "paused_for_input",
+      },
+    });
+    expect(mocks.resolveLatestValidRunCheckpoint).not.toHaveBeenCalled();
+    expect(mocks.resolveDurableContinuationSource).not.toHaveBeenCalled();
+  });
+
   it("treats stale durable progress as no-forward-progress even when the heartbeat is fresh", async () => {
     mocks.runEventFindMany.mockResolvedValue([]);
     mocks.runEventFindFirst.mockResolvedValue(null);
@@ -361,6 +431,8 @@ describe("run recovery", () => {
       id: "run-stalled",
       conversationId: "conv-1",
       status: "running",
+      runPhase: "act",
+      phaseEnteredAt: new Date("2026-03-11T11:58:30.000Z"),
       model: null,
       costTokensIn: 0,
       costTokensOut: 0,
@@ -394,6 +466,8 @@ describe("run recovery", () => {
       id: "run-finalize-failed",
       conversationId: "conv-1",
       status: "running",
+      runPhase: "finalize",
+      phaseEnteredAt: new Date("2026-03-11T11:59:30.000Z"),
       model: null,
       costTokensIn: 0,
       costTokensOut: 0,
@@ -426,6 +500,8 @@ describe("run recovery", () => {
       id: "run-degraded",
       conversationId: "conv-1",
       status: "running",
+      runPhase: "verify",
+      phaseEnteredAt: new Date("2026-03-11T11:59:30.000Z"),
       model: null,
       costTokensIn: 0,
       costTokensOut: 0,
@@ -458,6 +534,8 @@ describe("run recovery", () => {
       id: "run-continuable",
       conversationId: "conv-1",
       status: "running",
+      runPhase: "act",
+      phaseEnteredAt: new Date("2026-03-11T11:58:30.000Z"),
       model: null,
       costTokensIn: 0,
       costTokensOut: 0,
@@ -504,6 +582,8 @@ describe("run recovery", () => {
       id: "run-checkpointed",
       conversationId: "conv-1",
       status: "running",
+      runPhase: "act",
+      phaseEnteredAt: new Date("2026-03-11T11:58:30.000Z"),
       model: null,
       costTokensIn: 0,
       costTokensOut: 0,

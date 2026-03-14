@@ -5,6 +5,7 @@ import type {
   RunAbnormalEndClassification,
   RunDurabilityState,
   RunFinalizationState,
+  RunPhase,
 } from "@/types/agent";
 
 export const DEFAULT_CONVERSATION_RUN_STALE_MS = 90_000;
@@ -12,6 +13,8 @@ export const DEFAULT_CONVERSATION_RUN_STALE_MS = 90_000;
 type RunningConversationRun = {
   id: string;
   status: "running";
+  runPhase: RunPhase;
+  phaseEnteredAt: Date;
   startedAt: Date;
   lastActivityAt: Date;
   lastDurableProgressAt: Date;
@@ -23,6 +26,7 @@ type RunningConversationRun = {
 
 export interface ConversationRunLockStore {
   listRunning(conversationId: string): Promise<RunningConversationRun[]>;
+  pauseRunIfAwaitingInput(runId: string, conversationId: string, completedAt: Date): Promise<boolean>;
   cancelRuns(runIds: string[], completedAt: Date): Promise<number>;
   cancelRunIfActive(runId: string, conversationId: string, completedAt: Date): Promise<boolean>;
 }
@@ -34,6 +38,8 @@ const prismaConversationRunLockStore: ConversationRunLockStore = {
       select: {
         id: true,
         status: true,
+        runPhase: true,
+        phaseEnteredAt: true,
         startedAt: true,
         lastActivityAt: true,
         lastDurableProgressAt: true,
@@ -47,11 +53,33 @@ const prismaConversationRunLockStore: ConversationRunLockStore = {
     return rows.map((row) => ({
       ...row,
       status: "running",
+      runPhase: row.runPhase as RunPhase,
       durabilityState: row.durabilityState as RunDurabilityState,
       durabilityDegradedReason: row.durabilityDegradedReason,
       finalizationState: row.finalizationState as RunFinalizationState,
       abnormalEndClassification: row.abnormalEndClassification as RunAbnormalEndClassification | null,
     }));
+  },
+  async pauseRunIfAwaitingInput(runId: string, conversationId: string, completedAt: Date): Promise<boolean> {
+    const result = await prisma.agentRun.updateMany({
+      where: {
+        id: runId,
+        conversationId,
+        status: "running",
+        completedAt: null,
+        runPhase: "ask",
+      },
+      data: {
+        status: "paused",
+        completedAt,
+        lastActivityAt: completedAt,
+        lastDurableProgressAt: completedAt,
+        durabilityState: "durable",
+        durabilityDegradedReason: null,
+        finalizationState: "completed",
+      },
+    });
+    return result.count > 0;
   },
   async cancelRuns(runIds: string[], completedAt: Date): Promise<number> {
     if (runIds.length === 0) return 0;
@@ -118,9 +146,27 @@ export async function ensureConversationRunAvailability(
     cancelledStaleRunCount = await store.cancelRuns(staleRunIds, now);
   }
 
-  if (freshRunIds.length > 0) {
-    const activeRunId = freshRunIds[0]!;
-    const activeRun = running.find((run) => run.id === activeRunId)!;
+  const freshAskPhaseRuns = running.filter(
+    (run) => run.lastActivityAt >= cutoff && run.runPhase === "ask",
+  );
+  let runningAfterPause = running;
+  if (freshAskPhaseRuns.length > 0) {
+    for (const run of freshAskPhaseRuns) {
+      await store.pauseRunIfAwaitingInput(run.id, conversationId, now);
+    }
+
+    runningAfterPause = await store.listRunning(conversationId);
+    const remainingFresh = runningAfterPause.find((run) => run.lastActivityAt >= cutoff);
+    if (!remainingFresh) {
+      return { cancelledStaleRunCount, replacedRunId: null };
+    }
+  }
+
+  const freshRunning = runningAfterPause.filter((run) => run.lastActivityAt >= cutoff);
+
+  if (freshRunning.length > 0) {
+    const activeRunId = freshRunning[0]!.id;
+    const activeRun = freshRunning[0]!;
     const activeAssessment = assessRunConvergence(activeRun, now, staleMs);
     if (!replaceRunId) {
       throw new AIErrorWithEnvelope(
