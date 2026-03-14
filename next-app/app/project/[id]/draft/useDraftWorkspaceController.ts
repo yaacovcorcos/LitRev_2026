@@ -878,6 +878,7 @@ export function useDraftWorkspaceController({ projectId }: ControllerParams) {
     setSidebarView: handleSidebarViewChange,
     isSidebarCollapsed: draft.panels.ledgerCollapsed,
     toggleSidebar,
+    setSidebarOpen,
     isPhoneWorkspace,
     isCompactWorkspace,
     draggingKey,

@@ -425,7 +425,7 @@ These are implementation tracks for one target state, not separate product versi
 - Treat `Whole draft` freeform content as a first-class editing target in `Full Draft`, while keeping named sections as the primary tabbed workflow.
 - Preserve manuscript normalization, citation compilation, export entrypoint, and project-shell embedding.
 - Blast radius: high UI correction concentrated in the draft route plus draft-state normalization.
-- Implementation note (March 14, 2026): the route now uses blank-start drafting, restored top tabs, section/full projections over one normalized manuscript, a persistent left sidebar, and no draft-owned right panel.
+- Implementation note (March 14, 2026): the route now uses blank-start drafting, restored top tabs, section/full projections over one normalized manuscript, a persistent left sidebar, and no draft-owned right panel. On compact/mobile, the sidebar now behaves as a dismissible overlay so the canvas stays usable without changing the desktop persistent-sidebar contract.
 
 ### `DRX-004` Comments, suggestions, and checkpoints
 - Introduce review entities, anchor model, review rail, suggestion mode, and compare/restore UI.

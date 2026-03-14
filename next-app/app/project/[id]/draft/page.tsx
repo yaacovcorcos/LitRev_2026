@@ -70,8 +70,18 @@ function DraftContent() {
     <SectionsPane
       sections={controller.sidebarSections}
       activeTargetId={controller.currentTargetId}
-      onSelectSection={controller.selectSection}
-      onSelectHeading={controller.selectSectionHeading}
+      onSelectSection={(sectionId) => {
+        controller.selectSection(sectionId);
+        if (controller.isCompactWorkspace) {
+          controller.setSidebarOpen(false);
+        }
+      }}
+      onSelectHeading={(sectionId, blockId) => {
+        controller.selectSectionHeading(sectionId, blockId);
+        if (controller.isCompactWorkspace) {
+          controller.setSidebarOpen(false);
+        }
+      }}
       onMoveSection={controller.handleMoveSection}
       onRemoveSection={controller.requestRemoveSection}
     />
@@ -158,6 +168,7 @@ function DraftContent() {
               activeView={controller.sidebarView}
               isOverlay={controller.isCompactWorkspace}
               onToggleCollapsed={controller.toggleSidebar}
+              onDismiss={() => controller.setSidebarOpen(false)}
               onViewChange={controller.setSidebarView}
               sectionsPane={sectionsPane}
               evidencePane={evidencePane}
