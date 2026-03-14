@@ -19,6 +19,7 @@ Use this file for detailed execution thinking about stabilization and continuati
 - The third `FIX-011b` stabilization slice now introduces an explicit event-durability policy, records degraded durability on `AgentRun` when recovery-critical persistence fails after useful work, and moves recovery-critical persistence to the business event boundary instead of relying on the stream route as the first durable owner of that truth.
 - The fourth `FIX-011b` stabilization slice now supports durable continuation only from proven persisted server state: the recovery contract can recommend `continue_from_durable_state` for audited tool-result and artifact-state cases, the next run reuses explicit persisted inputs instead of transcript reconstruction, and ambiguous mid-loop state still falls back to `stop_and_retry` / `retry`.
 - The fifth `FIX-011b` stabilization slice now adds a narrow `RunCheckpoint` store for the exact Slice 4 gaps that still needed explicit continuation seeds: recovery can prefer `continue_from_checkpoint` when a valid `tool_result_ready` or `artifact_ready` boundary survives later same-run noise, while legacy runs and non-checkpoint cases still fall back to Slice 4 durable continuation or retry semantics.
+- The sixth `FIX-011b` / `CAG-001` slice now persists coarse `runPhase` and `phaseEnteredAt` on `AgentRun`, writes phase transitions only at authoritative runtime boundaries, uses ask-phase truth to recover/readmit paused runs without surfacing them as active conflicts, and uses stale finalize-phase truth to bound reconnect behavior instead of treating it as healthy running work.
 - The remaining problem is not first-time recovery architecture. It is broader durable convergence: disconnect classification can still improve, durable user-facing state can still fall through persistence/finalization seams, and continuation beyond the audited proven-state cases still lacks enough persistence authority to be trustworthy.
 - Popup still remains a truthful reduced subset only; it should not claim full recovery/continuation parity until shared-engine convergence is explicitly finished.
 
@@ -36,11 +37,11 @@ Use this file for detailed execution thinking about stabilization and continuati
 - Keep stream-boundary hardening evidence-driven: classify first, harden after the dominant failure classes are proven.
 
 ## Workstream B: Persisted Run-Phase State
-- Strengthen persisted run-phase authority so recovery, UI state, and readmission derive from lifecycle truth rather than `running + lastActivityAt` heuristics alone.
-- V1 phase contract: `runPhase = plan | ask | act | verify | finalize` plus `phaseEnteredAt` on `AgentRun`; `status="paused"` pairs with `runPhase="ask"`, continuation runs begin from `verify`, and degraded/finalization-failure truth stays in the existing durability/finalization fields instead of becoming new phases.
-- V1 transition matrix: `plan -> ask | act | finalize`, `ask -> plan | act | finalize`, `act -> ask | verify | finalize`, `verify -> ask | act | finalize`, and `finalize` has no outgoing transition on the same run.
-- Make finalization-in-progress, recovery-degraded, and no-forward-progress states explicit and durable enough for server-side convergence decisions.
-- Treat phase-state expansion as a LitRev-native contract; do not imply that a full external workflow engine is being adopted.
+- Workstream B V1 is now shipped: recovery, readmission, and continuation consumers can read coarse persisted `runPhase = plan | ask | act | verify | finalize` plus `phaseEnteredAt` from `AgentRun` instead of inferring macro lifecycle only from `running + lastActivityAt`.
+- Shipped V1 contract: `status="paused"` pairs with `runPhase="ask"`, continuation runs begin from `verify`, same-phase writes preserve `phaseEnteredAt`, and degraded/finalization-failure truth remains in the existing durability/finalization fields instead of becoming new phases.
+- Shipped V1 transition matrix: `plan -> ask | act | finalize`, `ask -> plan | act | finalize`, `act -> ask | verify | finalize`, `verify -> ask | act | finalize`, and `finalize` has no outgoing transition on the same run.
+- Shipped V1 consumers: running ask-phase truth now re-surfaces as paused-input recovery/readmission instead of active-run conflict, while stale finalize-phase truth now yields bounded user action instead of indefinite reconnect.
+- Deferred from Workstream B: no sub-phase graph, no planner scratchpad persistence, no workflow-engine adoption, and no new public recovery action family in this slice.
 
 ## Workstream C: Event Durability Policy
 - Separate `recovery_required` runtime truth from `observability_only` diagnostics.

@@ -25,6 +25,7 @@ This plan does not own:
 - `/ai` standard send and plan paths already run through the shared reducer/runtime contract.
 - Project copilot already migrated off bespoke chunk accumulation onto the shared reducer/runtime path, but still carries a few surface adapter differences that matter for truthful progress/presentation.
 - `/ai`, main conversation, and side-panel copilot now also share the queued-follow-up contract on top of that runtime: one explicit text-only next message may be queued while a run is active, rendered as an attached composer cap, and auto-dispatched only after the surface returns to true idle/sendable state.
+- `/ai`, main conversation, and side-panel copilot now also consume phase-backed recovery truth from persisted `AgentRun.runPhase` / `phaseEnteredAt`, so paused-input and stale-finalize cases converge through the shared runtime contract instead of per-surface reconnect heuristics.
 - Popup has canonical Context V2 payload alignment and now derives its supported progress/checkpoint/error/blocking subset through a shared reducer adapter, but it still has not migrated fully onto the shared runtime engine.
 - The CI anti-duplication architecture guard is already enforced and should continue preventing new per-surface chunk parsers.
 - Chat/runtime work above this layer now depends on convergence here rather than inventing new per-surface semantics.
@@ -104,6 +105,7 @@ Rules:
     - finish canary evidence using `docs/runbooks/chat-unification-burn-in.md`
     - complete replay parity confidence for `/ai` vs project adapters
     - prove parity for durable recovery truth, not only reducer-state parity
+    - prove phase-backed paused-input and stale-finalize recovery behavior across the supported main surfaces
     - add burn-in checks for no indefinite reconnect loops, no contradictory same-run states, and truthful degraded continuation behavior
     - finish sign-off on the current metric contract and thresholds
   - Exit criteria:
@@ -177,6 +179,7 @@ Popup remains a truthful reduced subset only: until `U3` lands, popup should be 
 Queued follow-up parity is currently limited to `/ai`, main conversation, and side-panel copilot. Popup support is intentionally deferred until `U3` because the popup shell has not yet converged on the same shared runtime/composer contract.
 
 ## Recently Completed
+- Shared main chat surfaces now consume phase-backed recovery truth from persisted `AgentRun.runPhase` / `phaseEnteredAt`, so paused-input and stale-finalize cases reconcile through the shared runtime contract without adding new popup parity claims.
 - Popup now preserves a truthful reduced shared-trace subset for live progress, grounded checkpoints, blocking clarification, and structured terminal failures through a shared reducer adapter while remaining compact.
 - Shared pure reducer + intents shipped and now back both `/ai` and project copilot.
 - `/ai` send and plan stream paths were migrated onto the shared reducer/runtime path.

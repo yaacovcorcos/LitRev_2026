@@ -111,7 +111,9 @@ Track trend lines daily:
    - known-run disconnect clears stale progress
    - disconnect after tool result converges without losing durable user-facing truth
    - disconnect before a paused question reaches the client restores the durable paused/question state cleanly
+   - running ask-phase recovery re-surfaces as paused input instead of an active-run conflict or dead-end reconnect loop
    - live run offers `Reconnect` or `Stop & Retry` instead of a dead-end conflict
+   - stale finalize-phase runs converge to one bounded next step instead of looking like healthy reconnectable work
    - recovery-required persistence failures surface truthfully and do not masquerade as clean replay parity
    - no-forward-progress detection converges to a bounded next step instead of indefinite reconnecting
    - degraded continuation is explicit and truthful when full durable recovery is unavailable
@@ -153,6 +155,7 @@ Pass criteria:
 10. No-forward-progress detection and degraded continuation behavior both converge to one bounded user-visible next step with no contradictory same-run states.
 11. Audited durable-continuation cases succeed without duplicating the already-completed durable step, and unsupported cases never advertise `Continue`.
 12. Checkpoint-backed continuation prefers a valid earlier safe boundary when later same-run noise exists, and invalidated checkpoints fall back cleanly without duplicating the completed source step.
+13. Phase-backed ask/finalize recovery cases stay truthful: ask-phase reconnects resolve to paused-input handoff, and stale finalize-phase reconnects resolve to bounded user action instead of indefinite reconnect.
 
 ## Metric Integrity Rules
 

@@ -224,6 +224,7 @@ The server/runtime path should eventually emit:
 - optional task-outline updates for complex work
 
 The client should not be inventing semantic meaning from raw tool ids.
+The shipped baseline now already includes persisted macro lifecycle truth in recovery via `runPhase` and `phaseEnteredAt`; richer live-phase UX should consume that server truth first and only add more semantic phrasing where the runtime can support it honestly.
 
 ## Visual Strategy
 The execution trace should feel calm, compact, and continuously informative.
@@ -470,6 +471,7 @@ What not to copy directly:
 
 ## Phase Model
 The runtime should move toward phase-aware reporting instead of generic tool-name progress.
+The server now already persists coarse macro-lifecycle truth on `AgentRun` as `runPhase = plan | ask | act | verify | finalize` plus `phaseEnteredAt`; execution-trace work should treat that as the authoritative lifecycle boundary and layer richer user-facing live-phase vocabulary on top rather than inferring long-lived state only from progress text or stream timing.
 
 Recommended phase families:
 - `searching`

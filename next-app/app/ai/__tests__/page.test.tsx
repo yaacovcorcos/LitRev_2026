@@ -472,6 +472,8 @@ describe("/ai page deferred hydration", () => {
           runId: "run-1",
           runStatus: "completed",
           isActive: false,
+          runPhase: "finalize",
+          phaseEnteredAt: "2026-03-11T11:19:00.000Z",
           lastActivityAt: "2026-03-11T11:20:00.000Z",
           lastSequence: 2,
           replayableEvents: [],
@@ -537,6 +539,8 @@ describe("/ai page deferred hydration", () => {
           runId: "run-2",
           runStatus: "paused",
           isActive: false,
+          runPhase: "ask",
+          phaseEnteredAt: "2026-03-11T11:24:00.000Z",
           lastActivityAt: "2026-03-11T11:25:00.000Z",
           lastSequence: 3,
           replayableEvents: [],
@@ -562,6 +566,7 @@ describe("/ai page deferred hydration", () => {
     expect(screen.queryByText("Connection lost. Reconnecting to the active run…")).toBeNull();
     expect(screen.queryByText("The stream ended unexpectedly. Retry to continue.")).toBeNull();
     expect(screen.queryByText("Connection lost and recovery failed. You can retry safely now.")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Continue" })).toBeNull();
   });
 
   it("replaces a reconnect checkpoint with stronger same-run stop-and-retry truth", async () => {
@@ -591,6 +596,8 @@ describe("/ai page deferred hydration", () => {
         runId: "run-3",
         runStatus: "running",
         isActive: true,
+        runPhase: "act",
+        phaseEnteredAt: "2026-03-13T11:24:00.000Z",
         lastActivityAt: "2026-03-13T11:25:00.000Z",
         lastDurableProgressAt: "2026-03-13T11:20:00.000Z",
         finalizationState: "not_started",
@@ -648,6 +655,8 @@ describe("/ai page deferred hydration", () => {
         runId: "run-4",
         runStatus: "running",
         isActive: true,
+        runPhase: "finalize",
+        phaseEnteredAt: "2026-03-14T10:24:00.000Z",
         lastActivityAt: "2026-03-14T10:25:00.000Z",
         lastDurableProgressAt: "2026-03-14T10:20:00.000Z",
         finalizationState: "failed",
@@ -726,6 +735,8 @@ describe("/ai page deferred hydration", () => {
         runId: "run-5",
         runStatus: "running",
         isActive: true,
+        runPhase: "finalize",
+        phaseEnteredAt: "2026-03-14T10:24:00.000Z",
         lastActivityAt: "2026-03-14T10:25:00.000Z",
         lastDurableProgressAt: "2026-03-14T10:20:00.000Z",
         finalizationState: "failed",
