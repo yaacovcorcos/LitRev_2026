@@ -37,6 +37,8 @@ Use this file for detailed execution thinking about stabilization and continuati
 
 ## Workstream B: Persisted Run-Phase State
 - Strengthen persisted run-phase authority so recovery, UI state, and readmission derive from lifecycle truth rather than `running + lastActivityAt` heuristics alone.
+- V1 phase contract: `runPhase = plan | ask | act | verify | finalize` plus `phaseEnteredAt` on `AgentRun`; `status="paused"` pairs with `runPhase="ask"`, continuation runs begin from `verify`, and degraded/finalization-failure truth stays in the existing durability/finalization fields instead of becoming new phases.
+- V1 transition matrix: `plan -> ask | act | finalize`, `ask -> plan | act | finalize`, `act -> ask | verify | finalize`, `verify -> ask | act | finalize`, and `finalize` has no outgoing transition on the same run.
 - Make finalization-in-progress, recovery-degraded, and no-forward-progress states explicit and durable enough for server-side convergence decisions.
 - Treat phase-state expansion as a LitRev-native contract; do not imply that a full external workflow engine is being adopted.
 

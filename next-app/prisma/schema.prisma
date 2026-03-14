@@ -528,6 +528,8 @@ model AgentRun {
   costTokensIn              Int       @default(0)
   costTokensOut             Int       @default(0)
   startedAt                 DateTime  @default(now())
+  runPhase                  String    @default("plan") // "plan" | "ask" | "act" | "verify" | "finalize"
+  phaseEnteredAt            DateTime  @default(now())
   lastActivityAt            DateTime  @default(now())
   lastDurableProgressAt     DateTime  @default(now())
   durabilityState           String    @default("durable") // "durable" | "degraded"

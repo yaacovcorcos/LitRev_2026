@@ -9,6 +9,7 @@ import type {
     AgentMode,
     RunAbnormalEndClassification,
     RunFinalizationState,
+    RunPhase,
     RunStatus,
     RunTrigger,
 } from "@/types/agent";
@@ -23,6 +24,7 @@ export interface StartRunInput {
     trigger: RunTrigger;
     agentMode: AgentMode;
     model?: string;
+    initialPhase?: RunPhase;
 }
 
 export interface RunLineageNode {
@@ -251,6 +253,8 @@ export async function startRun(input: StartRunInput) {
             status: "running",
             model: input.model ?? undefined,
             startedAt,
+            runPhase: input.initialPhase ?? "plan",
+            phaseEnteredAt: startedAt,
             lastActivityAt: startedAt,
             lastDurableProgressAt: startedAt,
             durabilityState: "durable",
