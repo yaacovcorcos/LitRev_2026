@@ -14,12 +14,11 @@ import {
   migrateLocalStorageToBackend,
   type MigrationStatus,
 } from "@/lib/migrateLocalStorage";
+import { HOME_PROJECT_STALE_MS } from "@/lib/project-data-policy";
 import { usePathname } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { HomeAuthState, HomeBootstrapState, HomeWorkspaceBootstrap } from "@/types/home-bootstrap";
 import type { Project } from "@/types/project";
-
-const HOME_PROJECT_STALE_MS = 15_000;
 const LEGACY_CLAIM_SESSION_KEY = "litrev:legacyClaimBootstrap:v1";
 
 declare global {
