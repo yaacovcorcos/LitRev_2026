@@ -123,6 +123,17 @@ export interface ScopingQuestionRecommendation {
     novelty: "low" | "medium" | "high";
 }
 
+export type ScopingEntryIntent = "explore" | "draft_bootstrap";
+
+export type ScopingWorkflowPhase = "discover" | "synthesize" | "propose" | "handoff";
+
+export interface ScopingWorkflowSnapshot {
+    entryIntent: ScopingEntryIntent;
+    phase: ScopingWorkflowPhase;
+    handoffOffered: boolean;
+    recommendedDefaultQuestionIndex?: number;
+}
+
 export interface ScopingReportPayload {
     topic: string;
     searchesRun: ScopingSearchEntry[];
@@ -138,6 +149,7 @@ export interface ScopingReportPayload {
     };
     recommendedQuestions: ScopingQuestionRecommendation[];
     nextStep: string;
+    workflow?: ScopingWorkflowSnapshot;
 }
 
 export interface CriteriaCardPayload {
@@ -291,6 +303,15 @@ export const ScopingQuestionRecommendationSchema = z.object({
     novelty: ScopingScoreSchema,
 });
 
+export const ScopingEntryIntentSchema = z.enum(["explore", "draft_bootstrap"]);
+export const ScopingWorkflowPhaseSchema = z.enum(["discover", "synthesize", "propose", "handoff"]);
+export const ScopingWorkflowSnapshotSchema = z.object({
+    entryIntent: ScopingEntryIntentSchema,
+    phase: ScopingWorkflowPhaseSchema,
+    handoffOffered: z.boolean(),
+    recommendedDefaultQuestionIndex: z.number().int().positive().optional(),
+});
+
 export const ScopingReportSchema = z.object({
     topic: z.string().min(1),
     searchesRun: z.array(ScopingSearchEntrySchema),
@@ -306,6 +327,7 @@ export const ScopingReportSchema = z.object({
     }),
     recommendedQuestions: z.array(ScopingQuestionRecommendationSchema).max(5),
     nextStep: z.string().min(1),
+    workflow: ScopingWorkflowSnapshotSchema.optional(),
 });
 
 export const CriteriaCardSchema = z.object({

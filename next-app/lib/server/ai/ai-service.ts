@@ -62,11 +62,12 @@ import {
     buildStudyContext,
 } from "@/lib/ai/prompts/copilot-prompts";
 import { normalizeAgentMode } from "@/lib/agent/feature-flags";
+import { detectScopingEntryIntent } from "@/lib/agent/router";
 import { LoopState, type StopReason } from "@/lib/agent/loop-controller";
 import { startRunTrace, startLLMGeneration, startContextSpan, flushTracing } from "./tracing";
 import { withChoicesExtraction } from "./choices-extractor";
 import { sanitizeGeneratedConversationTitle, buildFallbackConversationTitle } from "./title-generator";
-import { detectScopingHandoffSelection, extractLatestScopingReport } from "./scoping";
+import { detectScopingHandoffSelection, extractLatestScopingReport, extractScopingReportFromText } from "./scoping";
 import { prisma } from "@/lib/server/prisma";
 import { isProtocolPopulated, type ProtocolData } from "@/types/protocol";
 import type { ScopingReportPayload } from "@/types/artifacts";
@@ -89,11 +90,21 @@ import {
     buildScopingHandoffToolCall,
     getLazyContextPointerCapabilities,
     getContextualToolDefinitions,
-    shouldUseScopingBatchPlan,
+    shouldShowScopingSearchPackPreview,
     buildScopingSearchPackPlan,
     finalizeScopingResponse,
 } from "./tool-helpers";
 import { executeToolWithAutonomy } from "./tool-autonomy";
+import {
+    applySuccessfulScopingToolResult,
+    buildScopingWorkflowInstruction,
+    createInitialScopingWorkflowState,
+    deriveScopingIterationToolDefs,
+    deriveScopingWorkflowSnapshot,
+    evaluateScopingSearchExecution,
+    evaluateScopingUserInputRequest,
+    type ScopingWorkflowState,
+} from "./scoping-workflow";
 
 const MAX_STREAM_RETRY_ATTEMPTS = 3;
 const MAX_OVERFLOW_RECOVERY_ATTEMPTS = 3;
@@ -987,10 +998,8 @@ class AIService {
         const latestScopingReport = agentMode === "scoping"
             ? extractLatestScopingReport(conversation.messages)
             : null;
-        const handoffSelection = agentMode === "scoping"
-            ? detectScopingHandoffSelection(userMessage, latestScopingReport)
-            : null;
-        const effectiveHandoffSelection = handoffSelection && projectId ? handoffSelection : null;
+        let effectiveHandoffSelection: { question: string; index: number } | null = null;
+        let scopingWorkflow: ScopingWorkflowState | null = null;
         let scopingSearchCallsThisRun = 0;
         let protocolHandoffExecuted = false;
         let scopingReportPayload: ScopingReportPayload | null = null;
@@ -1209,6 +1218,23 @@ class AIService {
             retrievedMemoriesForRun = retrievedMemories;
             const memoriesContext = formatMemoriesForContext(retrievedMemories);
             const ledgerCounts = getLedgerCounts(studyLedger);
+            const scopingEntryIntent = agentMode === "scoping"
+                ? detectScopingEntryIntent(userMessage, {
+                    hasProtocol: protocolRow?.data
+                        ? isProtocolPopulated(protocolRow.data as unknown as ProtocolData)
+                        : false,
+                })
+                : "explore";
+            const handoffSelection = agentMode === "scoping"
+                ? detectScopingHandoffSelection(userMessage, latestScopingReport)
+                : null;
+            effectiveHandoffSelection = handoffSelection && projectId ? handoffSelection : null;
+            scopingWorkflow = agentMode === "scoping"
+                ? createInitialScopingWorkflowState({
+                    entryIntent: scopingEntryIntent,
+                    report: latestScopingReport,
+                })
+                : null;
             const ctxOutput = {
                 hasMemories: !!memoriesContext,
                 hasProtocol: protocolRow?.data
@@ -1413,10 +1439,11 @@ class AIService {
                 });
             }
 
-            if (!executionMode && shouldUseScopingBatchPlan({
+            if (!executionMode && scopingWorkflow && shouldShowScopingSearchPackPreview({
                 agentMode,
                 userMessage,
                 autonomyConfig,
+                entryIntent: scopingWorkflow.entryIntent,
             })) {
                 const planPayload = buildExecutablePlanPayload(buildScopingSearchPackPlan({
                     includeRecommendations: modeToolNames.includes("recommend_studies"),
@@ -1446,18 +1473,6 @@ class AIService {
                     artifactVersion: 1,
                     conversationId: conversation.id,
                 };
-
-                await finalizeRunOnce("completed");
-                const runModelMeta = resolveRunActualModelMeta(options?.model, null, false);
-                yield {
-                    type: "run_end",
-                    runId: activeRun.id,
-                    runStatus: "completed",
-                    conversationId: conversation.id,
-                    actualModel: runModelMeta.actualModel ?? undefined,
-                    actualModelSource: runModelMeta.actualModelSource,
-                };
-                return;
             }
 
             // Check for multi-step workflow (plan-before-act)
@@ -1582,11 +1597,9 @@ class AIService {
             }
 
             // Run the tool execution loop with autonomy
-            const toolDefs = executionMode ? executionToolDefs : modeToolDefs;
-            const chatOptions: ChatOptions = {
+            const baseChatOptions: ChatOptions = {
                 ...options,
                 projectId: projectId ?? undefined,
-                ...(toolDefs.length > 0 ? { tools: toolDefs } : {}),
             };
 
             const currentMessages = [...historyMessages];
@@ -1595,6 +1608,7 @@ class AIService {
             let observedRunModel: string | null = null;
             let invokedModel = false;
             const loop = new LoopState();
+            const scopingWorkflowMessageId = "scoping-workflow";
 
             while (true) {
                 const check = loop.shouldContinue(options?.signal);
@@ -1617,6 +1631,31 @@ class AIService {
                     }
                 }
 
+                if (agentMode === "scoping" && scopingWorkflow) {
+                    const existingWorkflowMessageIndex = currentMessages.findIndex((message) => message.id === scopingWorkflowMessageId);
+                    if (existingWorkflowMessageIndex >= 0) {
+                        currentMessages.splice(existingWorkflowMessageIndex, 1);
+                    }
+                    currentMessages.push({
+                        id: scopingWorkflowMessageId,
+                        role: "system",
+                        content: buildScopingWorkflowInstruction(scopingWorkflow),
+                        createdAt: new Date().toISOString(),
+                    });
+                }
+
+                const iterationToolDefs = executionMode
+                    ? executionToolDefs
+                    : (
+                        agentMode === "scoping" && scopingWorkflow
+                            ? deriveScopingIterationToolDefs(modeToolDefs, scopingWorkflow)
+                            : modeToolDefs
+                    );
+                const iterationChatOptions: ChatOptions = {
+                    ...baseChatOptions,
+                    ...(iterationToolDefs.length > 0 ? { tools: iterationToolDefs } : {}),
+                };
+
                 let collectedToolCalls: ToolCall[] = [];
                 let contentSoFar = "";
                 let retryCount = 0;
@@ -1633,13 +1672,13 @@ class AIService {
                     let terminalClassifiedError: ReturnType<typeof classifyAIError> | null = null;
 
                     const genSpan = startLLMGeneration(trace, `llm-call-${loop.iterations}-attempt-${retryCount + 1}`, {
-                        model: chatOptions.model,
+                        model: iterationChatOptions.model,
                         inputMessageCount: currentMessages.length,
-                        toolCount: toolDefs.length,
+                        toolCount: iterationToolDefs.length,
                     });
 
                     invokedModel = true;
-                    const rawStream = this.streamChat(currentMessages, chatOptions);
+                    const rawStream = this.streamChat(currentMessages, iterationChatOptions);
                     try {
                         for await (const chunk of withChoicesExtraction(rawStream)) {
                             if (chunk.type === "tool_call" && chunk.toolCall) {
@@ -1773,7 +1812,7 @@ class AIService {
                         await persistRecoveryErrorChunk(terminalErrorChunk);
                         yield terminalErrorChunk;
                         await finalizeRunOnce("failed");
-                        const runModelMeta = resolveRunActualModelMeta(chatOptions.model, observedRunModel, invokedModel);
+                        const runModelMeta = resolveRunActualModelMeta(iterationChatOptions.model, observedRunModel, invokedModel);
                         yield {
                             type: "run_end",
                             runId: activeRun.id,
@@ -1841,6 +1880,20 @@ class AIService {
 
                 // Execute all tool calls with autonomy
                 for (const tc of collectedToolCalls) {
+                    if (agentMode === "scoping" && scopingWorkflow) {
+                        const searchDecision = evaluateScopingSearchExecution(scopingWorkflow, tc.name);
+                        if (!searchDecision.allow) {
+                            scopingWorkflow = searchDecision.nextState;
+                            currentMessages.push(
+                                buildSyntheticScopingToolMessage(tc, searchDecision.toolResult)
+                            );
+                            currentMessages.push(
+                                buildScopingCorrectionSystemMessage(searchDecision.correctiveMessage)
+                            );
+                            continue;
+                        }
+                    }
+
                     if (
                         tc.name === "search_pubmed" ||
                         tc.name === "search_semantic_scholar" ||
@@ -1911,20 +1964,44 @@ class AIService {
                         if (!classifiedToolError.retryable) {
                             runFacts.hadDeterministicNonRetryableFailure = true;
                         }
-                    } else {
+                    } else if (tc.name !== "ask_user") {
                         runFacts.hadSuccessfulToolOrArtifact = true;
+                        if (agentMode === "scoping" && scopingWorkflow) {
+                            scopingWorkflow = applySuccessfulScopingToolResult(scopingWorkflow, tc.name, toolResult);
+                        }
                     }
-
-                    yield { type: "tool_result", toolName: tc.name, toolResult, conversationId: conversation.id };
 
                     // ask_user sentinel: emit user_input_required and stop the loop
                     if (toolResult.requiresUserInput && toolResult.userInputRequest) {
+                        if (agentMode === "scoping" && scopingWorkflow) {
+                            const clarificationDecision = evaluateScopingUserInputRequest({
+                                state: scopingWorkflow,
+                                userInputRequest: toolResult.userInputRequest,
+                            });
+                            scopingWorkflow = clarificationDecision.nextState;
+                            if (!clarificationDecision.allowPause) {
+                                currentMessages.push(
+                                    buildSyntheticScopingToolMessage(tc, {
+                                        ...clarificationDecision.toolResult,
+                                        callId: tc.id,
+                                    })
+                                );
+                                currentMessages.push(
+                                    buildScopingCorrectionSystemMessage(clarificationDecision.correctiveMessage)
+                                );
+                                continue;
+                            }
+                        }
+
+                        yield { type: "tool_result", toolName: tc.name, toolResult, conversationId: conversation.id };
                         runFacts.pausedForUserInput = true;
                         await persistRecoveryUserInputRequest(toolResult.userInputRequest);
                         yield { type: "user_input_required", userInputRequest: toolResult.userInputRequest, conversationId: conversation.id };
                         loop.markStopped("paused_for_input");
                         break;
                     }
+
+                    yield { type: "tool_result", toolName: tc.name, toolResult, conversationId: conversation.id };
 
                     // Emit navigate event when tool result includes a navigation URL
                     const navigateUrl = (toolResult.result as Record<string, unknown> | null)?.navigate;
@@ -1994,11 +2071,19 @@ class AIService {
                 yield { type: "content", content: fullContent, conversationId: conversation.id };
             }
 
+            const scopingReportForSnapshot =
+                agentMode === "scoping"
+                    ? extractScopingReportFromText(fullContent)
+                    : null;
             const finalizedScoping = finalizeScopingResponse({
                 agentMode,
                 fullContent,
                 userMessage,
                 hasHandoffSelection: !!effectiveHandoffSelection,
+                workflowSnapshot:
+                    agentMode === "scoping" && scopingWorkflow
+                        ? deriveScopingWorkflowSnapshot(scopingWorkflow, scopingReportForSnapshot)
+                        : undefined,
             });
             fullContent = finalizedScoping.content;
             scopingReportPayload = finalizedScoping.report;
@@ -2121,7 +2206,7 @@ class AIService {
             const runStatus = finalOutcome.runStatus;
 
             await finalizeRunOnce(runStatus, totalTokensIn, totalTokensOut);
-            const runModelMeta = resolveRunActualModelMeta(chatOptions.model, observedRunModel, invokedModel);
+            const runModelMeta = resolveRunActualModelMeta(baseChatOptions.model, observedRunModel, invokedModel);
             yield {
                 type: "run_end",
                 runId: activeRun.id,
@@ -2465,9 +2550,35 @@ export {
     getLazyContextPointerCapabilities,
     getContextualToolDefinitions,
     shouldUseScopingBatchPlan,
+    shouldShowScopingSearchPackPreview,
     buildScopingSearchPackPlan,
     finalizeScopingResponse,
 } from "./tool-helpers";
+
+function buildSyntheticScopingToolMessage(toolCall: ToolCall, toolResult: ToolResult): AIMessage {
+    return {
+        id: `tool-result-${toolCall.id}-synthetic`,
+        role: "tool",
+        content: compactToolResult(
+            toolCall.name,
+            buildModelVisibleToolResultForTool(toolCall.name, {
+                ...toolResult,
+                callId: toolCall.id,
+            })
+        ),
+        toolResultId: toolCall.id,
+        createdAt: new Date().toISOString(),
+    };
+}
+
+function buildScopingCorrectionSystemMessage(content: string): AIMessage {
+    return {
+        id: `scoping-correction-${Date.now()}`,
+        role: "system",
+        content: `Scoping runtime policy: ${content}`,
+        createdAt: new Date().toISOString(),
+    };
+}
 
 function computeRetryDelayMs(retryCount: number, retryAfterMs?: number): number {
     const exponentialDelay = RETRY_MIN_DELAY_MS * 2 ** Math.max(0, retryCount - 1);

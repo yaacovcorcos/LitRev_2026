@@ -5,6 +5,7 @@
 
 - **Copilot Base (`lib/ai/prompts/copilot-prompts.ts`):** Foundation identity for all modes. Enforces markdown and strict verifiable hyperlinking to studies (via DOI/PMID).
 - **Copilot Modes:** 7 variants (Protocol, Scoping, Search, Screening, Drafting, QA, General) that prepend Base + append mode-specific behavior.
+- **Scoping Prompt Contract:** Scoping now teaches a broad-first evidence pass, avoids forcing early population/intervention/outcome commitments before evidence, recommends a default direction after synthesis, and reserves `ask_user` for hard blockers or the rare no-safe-default handoff case.
 - **Structured Mention Contract:** Base prompt requires hidden `MENTIONED_STUDIES` JSON comments whenever a response names specific studies so UI can render actionable study chips; parser fallback remains as a last-resort path when metadata is omitted.
 - **Context Assembly (`lib/server/ai/ai-service.ts` + `lib/ai/prompts/copilot-prompts.ts`):** Prompt assembly follows a stable-to-variable sequence for caching and grounding: Mode Prompt -> Scope -> Project -> Protocol -> Autonomy -> Ledger -> Location -> Study -> Memory -> Additional.
 - **PDF Extraction Pipeline:** 
@@ -30,6 +31,7 @@
 ## Recently Completed
 *Finished work that might still be fragile or require monitoring. Prune oldest first.*
 
+- [x] Narrowed scoping clarification guidance to align with the runtime controller: low-autonomy first-pass search-pack approval is no longer taught, scoping now defaults to broad evidence-first exploration plus a recommended default direction, and the base `ask_user` guidance now treats routine narrowing as non-blocking whenever safe first-pass evidence gathering is still possible.
 - [x] Search/scoping visible-answer prompts now explicitly keep raw query logs and search-iteration mechanics in receipts/checkpoints/process details by default; visible prose should synthesize findings unless the user explicitly asks for the search strategy.
 - [x] Tightened the hidden `MENTIONED_STUDIES` response contract so study-naming answers are expected to emit machine-readable metadata, while keeping graceful parser fallback behavior when the model still omits it.
 - [x] Initial Prompts Map analysis completed (2026-02-07).
