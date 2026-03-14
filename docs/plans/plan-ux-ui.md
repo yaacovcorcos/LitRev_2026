@@ -32,6 +32,7 @@ Domain-specific execution plans remain canonical for their domains:
   - grouping is renderer-only, skips ambiguous/blocking/error cases, and leaves popup out of scope.
 - Shared composer action hierarchy is active across chat surfaces:
   - `CopilotInputCore` now uses a left-edge `+` extension menu for secondary actions, keeps voice in the right-side primary action cluster beside send, and presents a real microphone-driven waveform/timer state while recording.
+  - The shared composer now exposes an explicit `Auto` mode option plus sticky manual mode selection across `/ai`, main conversation, and side-panel copilot; manual mode stays visibly locked even with empty input, while `Auto` continues to resolve a concrete mode from the existing router/page context at send time.
   - Shared composer hover language stays token-based and calm, while recording/transcribing states preserve keyboard stop behavior without moving reasoning controls into the composer.
   - Recording mode now exposes two explicit actions in the shared composer cluster: a secondary `Stop dictation` control and a primary `Transcribe and send` control that queues auto-send locally, reuses the normal send path after transcription settles, and keeps requesting-permission/transcribing states non-sendable.
   - Recording-only hover/focus hints for the stop/send controls are handled locally in the composer instead of introducing a new shared tooltip system.
@@ -104,6 +105,7 @@ Use this mapping for old PRs/comments referencing CLU IDs.
 - [ ] `CUX-A03` Expand async `aria-live` announcements coverage and consistency across remaining async UI states.
 
 ## Recently Completed
+- [x] Shared composer mode control shipped: `/ai`, main conversation, and side-panel copilot now expose an explicit `Auto` mode plus sticky manual mode selection on the shared composer, keep manual lock visibly discoverable even with empty input, and resolve composer-originated sends/queues against the current request text instead of a stale debounced preview.
 - [x] Shared queued follow-up shipped: `/ai`, main conversation, and side-panel copilot now let users queue one text-only next message while a run is active, render it as an attached composer cap beneath live progress, keep project surfaces in sync through shared context, and auto-dispatch only after the current run reaches a truly sendable idle state.
 - [x] Shared live progress bar redesign shipped: the composer-adjacent progress surface is now visually attached to the composer, uses calmer activity/motion treatment, wraps long messages safely, exposes an integrated semantic progress rail when count data exists, and preserves the existing relocation/suppression contract across `/ai`, main conversation, and side-panel copilot.
 - [x] Live `Process details` trace groups now appear from the start of durable process activity, stay open while the run is active or the answer is still streaming, then collapse automatically after the answer completes; grouped checkpoints now wrap correctly and render as quiet narration blocks inside the trace.
@@ -113,14 +115,6 @@ Use this mapping for old PRs/comments referencing CLU IDs.
 - [x] Voice recording action UX shipped: while recording, the shared composer now exposes `Stop dictation` and `Transcribe and send`, shows local hover/focus hints for both controls, keeps requesting-permission/transcribing states non-sendable, and can auto-send through the normal composer path once transcription settles.
 - [x] Homepage/library shell scroll contract repair shipped: `AppShell` is now viewport-bounded for contained shell pages, homepage workspace scroll is owned by the inner `surface-scroll-body`, library no longer depends on `home.module.css`, and a dedicated homepage wheel-scroll smoke guards tall-card regressions.
 - [x] Composer refresh shipped on the shared chat input: secondary actions now live behind a `+` menu, voice moved beside send, hover styling was unified, and live recording shows a real waveform/timer across shared chat surfaces.
-- [x] Voice recorder visualizer redesign shipped: shared chat inputs now use a premium amplitude-history canvas visualizer, keep recorded duration frozen during transcription, and no longer push waveform animation through per-frame React state.
-- [x] Citation hover diagnostics and telemetry hardening: successful hover loads now retain resolver diagnostics in cache, only terminal completion/failure events persist for canary reporting, and repo-owned compatibility smoke/report scripts ship without changing the bibliography-first card UX.
-- [x] Citation hover continuation now allows retryable `PubMed` bibliography-only hovers to backfill count fields after initial render while keeping the card calm and bibliography-first.
-- [x] Citation hover enrichment now preserves PubMed bibliography while adding citation counts from NIH iCite/OCC with Crossref fallback and truthful telemetry provenance.
-- [x] Unified UI plan governance: this file is now the single canonical UI/UX tracker.
-- [x] `CUX-002` Project page shell parity via shared `ProjectPageLayout`.
-- [x] `CUX-003` / `CUX-004` ConversationPicker overhaul and app-native rename/menu behavior.
-- [x] `CUX-005` / `CUX-006` / `CUX-007` streaming gate, prefill reliability, and failure recovery foundation.
 
 ## Cross-Plan Dependencies (Authoritative Elsewhere)
 - Guided setup/onboarding UX execution: `docs/plans/plan-guided-setup.md`.

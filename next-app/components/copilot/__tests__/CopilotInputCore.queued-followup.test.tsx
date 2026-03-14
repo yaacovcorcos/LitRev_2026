@@ -49,13 +49,14 @@ describe("CopilotInputCore queued follow-up", () => {
             />,
         );
 
-        fireEvent.change(screen.getByRole("textbox"), { target: { value: "Please compare the next papers." } });
+        fireEvent.change(screen.getByRole("textbox"), { target: { value: "Search PubMed for the next diabetes papers." } });
         fireEvent.click(screen.getByRole("button", { name: "Queue next" }));
 
         expect(onQueueFollowUp).toHaveBeenCalledWith(
             expect.objectContaining({
-                text: "Please compare the next papers.",
+                text: "Search PubMed for the next diabetes papers.",
                 page: "overview",
+                agentMode: "search",
             }),
         );
         expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe("");
