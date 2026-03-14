@@ -171,4 +171,40 @@ describe("ProjectCopilot queued follow-up behavior", () => {
 
         expect(result.current.queuedFollowUp).toBeNull();
     });
+
+    it("binds an unscoped queued follow-up after the first conversation resolves and dispatches it once idle", async () => {
+        mockCurrentConversationIdRef.current = null;
+        const { result, rerender } = renderHook(() => useProjectCopilot(), { wrapper });
+
+        await act(async () => {
+            result.current.queueQueuedFollowUp(createQueuedFollowUp({
+                text: "Queue before the first conversation exists",
+                conversationId: null,
+                page: "overview",
+                source: "draft",
+            }));
+        });
+
+        expect(result.current.queuedFollowUp?.conversationId).toBeNull();
+        expect(mockSendMessage).not.toHaveBeenCalled();
+
+        mockCurrentConversationIdRef.current = "conv-1";
+        rerender();
+
+        await waitFor(() => {
+            expect(mockSendMessage).toHaveBeenCalledWith(
+                "Queue before the first conversation exists",
+                "overview",
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+            );
+        });
+
+        expect(result.current.queuedFollowUp).toBeNull();
+    });
 });

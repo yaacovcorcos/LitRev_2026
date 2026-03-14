@@ -661,4 +661,19 @@ describe("/ai page deferred hydration", () => {
     expect(progress.compareDocumentPosition(queued) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(queued.compareDocumentPosition(composerState) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
+
+  it("allows queueing before the first conversation id exists", async () => {
+    render(<AIView />);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "queue next" }));
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("ai-has-queued").textContent).toBe("yes");
+      expect(screen.getByText("Queued next message")).toBeTruthy();
+      expect(screen.getByText("Queue this next")).toBeTruthy();
+    });
+  });
 });

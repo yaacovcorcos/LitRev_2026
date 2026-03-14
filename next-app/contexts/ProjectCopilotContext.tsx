@@ -39,7 +39,10 @@ import {
     type ReasoningSupportTier,
 } from "@/lib/ai/config";
 import { recordChatUnificationMetric } from "@/lib/ai/chat-unification-telemetry";
-import { isQueuedFollowUpDispatchReady } from "@/lib/ai/queued-followup";
+import {
+    bindQueuedFollowUpConversationId,
+    isQueuedFollowUpDispatchReady,
+} from "@/lib/ai/queued-followup";
 import {
     clearContextCaptureHistory,
     loadContextCaptureHistory,
@@ -439,6 +442,11 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
     const clearChoices = useCallback(() => setPendingChoices([]), []);
 
     useEffect(() => {
+        if (!convo.currentConversationId) return;
+        setQueuedFollowUp((current) => bindQueuedFollowUpConversationId(current, convo.currentConversationId));
+    }, [convo.currentConversationId]);
+
+    useEffect(() => {
         const previousConversationId = previousConversationIdRef.current;
         if (previousConversationId === null) {
             previousConversationIdRef.current = convo.currentConversationId;
@@ -452,7 +460,7 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
         }
 
         previousConversationIdRef.current = convo.currentConversationId;
-    }, [convo.currentConversationId, clearQueuedFollowUp]);
+    }, [clearQueuedFollowUp, convo.currentConversationId]);
 
     const answerUserInput = useCallback((callId: string, answer: string, page?: CopilotPage, section?: string) => {
         setPendingUserInput(null);

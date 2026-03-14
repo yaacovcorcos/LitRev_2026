@@ -68,7 +68,11 @@ import {
   setReasoningModePreference,
 } from "@/lib/ai/reasoning-visibility";
 import { resolveReasoningRequest } from "@/lib/ai/reasoning-request";
-import { createQueuedFollowUp, isQueuedFollowUpDispatchReady } from "@/lib/ai/queued-followup";
+import {
+  bindQueuedFollowUpConversationId,
+  createQueuedFollowUp,
+  isQueuedFollowUpDispatchReady,
+} from "@/lib/ai/queued-followup";
 import {
   DEFAULT_SELECTABLE_MODEL_ID,
   USER_SELECTABLE_MODELS,
@@ -377,6 +381,11 @@ export default function AIView() {
   }, [activeConversationId]);
 
   useEffect(() => {
+    if (!activeConversationId) return;
+    setQueuedFollowUp((current) => bindQueuedFollowUpConversationId(current, activeConversationId));
+  }, [activeConversationId]);
+
+  useEffect(() => {
     const nextScopeKey = `${selectedProjectId ?? "__global__"}:${activeConversationId ?? "__new__"}`;
     const previousScopeKey = queuedFollowUpScopeRef.current;
     if (previousScopeKey === null) {
@@ -385,6 +394,16 @@ export default function AIView() {
     }
 
     if (previousScopeKey !== nextScopeKey) {
+      const [previousProjectScope, previousConversationScope] = previousScopeKey.split(":", 2);
+      const [nextProjectScope, nextConversationScope] = nextScopeKey.split(":", 2);
+      const canBindLateQueuedFollowUp = queuedFollowUp?.conversationId === null
+        && previousProjectScope === nextProjectScope
+        && previousConversationScope === "__new__"
+        && nextConversationScope !== "__new__";
+      if (canBindLateQueuedFollowUp) {
+        queuedFollowUpScopeRef.current = nextScopeKey;
+        return;
+      }
       queuedFollowUpDispatchRef.current = null;
       setQueuedFollowUp(null);
       queuedFollowUpScopeRef.current = nextScopeKey;
@@ -2156,12 +2175,11 @@ export default function AIView() {
     model?: SelectableModelId | null;
     agentMode?: AgentMode;
   }) => {
-    if (!activeConversationId) return;
     setQueuedFollowUp(
       createQueuedFollowUp({
         ...payload,
         model: payload.model ?? undefined,
-        conversationId: activeConversationId,
+        conversationId: activeConversationId ?? null,
         source: "draft",
       })
     );
