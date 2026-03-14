@@ -192,6 +192,35 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
         retryLastMessage(item.errorMeta?.runId ?? item.errorMeta?.activeRunId ?? null);
     }, [isLoading, retryLastMessage]);
 
+    const continueFromDurableStateRun = useCallback((item: Extract<TimelineItem, { type: "error" }>) => {
+        if (isLoading) return;
+        const runId = item.errorMeta?.runId ?? item.errorMeta?.activeRunId ?? null;
+        if (!runId) return;
+        const lastUserMessage = [...messages]
+            .reverse()
+            .find((message) => message.sender === "user" && message.text.trim().length > 0);
+        if (!lastUserMessage) return;
+        sendMessage(
+            lastUserMessage.text,
+            lastUserMessage.context?.page ?? ("overview" as CopilotPage),
+            lastUserMessage.context?.section,
+            selectedModel,
+            undefined,
+            undefined,
+            {
+                requestKey: generateChatUnificationRequestKey(),
+                expectedModel: selectedModel ?? null,
+                source: "retry_action",
+            },
+            undefined,
+            {
+                replaceRunId: runId,
+                continueFromRunId: runId,
+                suppressUserMessageAppend: true,
+            },
+        );
+    }, [isLoading, messages, sendMessage, selectedModel]);
+
     const hasMessages = messages.length > 0;
     const timelineItems = useMemo(() => messagesToTimeline(messages), [messages]);
     const { activeProgress, suppressedProgressId } = useMemo(
@@ -283,6 +312,7 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
                         onSaveToNotes={handleSaveToNotes}
                         onRetryLastMessage={retryLastMessage}
                         onReconnectRun={reconnectActiveRun}
+                        onContinueFromDurableStateRun={continueFromDurableStateRun}
                         onStopAndRetryRun={stopAndRetryRun}
                         onResumeRun={resumeFailedPlan}
                         onBranchFromMessage={handleBranchFromMessage}

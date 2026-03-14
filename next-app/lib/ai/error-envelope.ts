@@ -1,4 +1,4 @@
-import type { AIErrorEnvelope, AIStreamChunk } from "@/types/ai";
+import type { AIErrorEnvelope, AIStreamChunk, RunRecoveryRecommendation } from "@/types/ai";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
     return !!value && typeof value === "object" && !Array.isArray(value);
@@ -181,7 +181,7 @@ export function createRunConflictErrorEnvelope(params: {
     activeRunId: string;
     replaceRunId?: string;
     lastActivityAt?: string;
-    recoveryRecommendation?: "reconnect" | "retry" | "stop_and_retry" | "terminal";
+    recoveryRecommendation?: RunRecoveryRecommendation;
 }): AIErrorEnvelope {
     if (params.code === "REPLACE_TARGET_MISMATCH") {
         return {
@@ -211,6 +211,21 @@ export function createRunConflictErrorEnvelope(params: {
         lastActivityAt: params.lastActivityAt,
         recoveryRecommendation: params.recoveryRecommendation ?? "reconnect",
         message: `Conversation ${params.conversationId} already has an active run (${params.activeRunId}).`,
+    };
+}
+
+export function createContinuationUnavailableErrorEnvelope(params: {
+    runId: string;
+}): AIErrorEnvelope {
+    return {
+        kind: "runtime",
+        code: "RUN_CONTINUATION_UNAVAILABLE",
+        retryable: true,
+        source: "runtime",
+        runId: params.runId,
+        activeRunId: params.runId,
+        recoveryRecommendation: "retry",
+        message: "Saved work from the earlier run is no longer available to continue safely. Retry to start a fresh run.",
     };
 }
 

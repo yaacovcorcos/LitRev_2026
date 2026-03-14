@@ -216,6 +216,47 @@ describe("TimelineRenderer action affordances", () => {
     expect(screen.queryByRole("button", { name: /^retry$/i })).toBeNull();
   });
 
+  it("routes continue actions to the clicked error card for proven durable state", () => {
+    const onContinueFromDurableStateRun = vi.fn();
+    const items: TimelineItem[] = [
+      {
+        type: "error",
+        id: "err-continue",
+        message: "Saved work is available. Continue from the latest durable state.",
+        retryable: false,
+        errorMeta: {
+          kind: "runtime",
+          code: "RUN_RECOVERY_REQUIRES_USER_ACTION",
+          retryable: false,
+          source: "runtime",
+          message: "Saved work is available. Continue from the latest durable state.",
+          recoveryRecommendation: "continue_from_durable_state",
+          runId: "run-continue",
+          activeRunId: "run-continue",
+        },
+        createdAt: "2026-03-14T00:00:00.000Z",
+      },
+    ];
+
+    render(
+      <TimelineRenderer
+        items={items}
+        isLoading={false}
+        emptyState={{ icon: "chat", title: "Empty", description: "Empty", suggestions: [] }}
+        onSuggestionClick={vi.fn()}
+        onContinueFromDurableStateRun={onContinueFromDurableStateRun}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /continue/i }));
+
+    expect(onContinueFromDurableStateRun).toHaveBeenCalledTimes(1);
+    expect(onContinueFromDurableStateRun).toHaveBeenCalledWith(expect.objectContaining({
+      id: "err-continue",
+      errorMeta: expect.objectContaining({ runId: "run-continue" }),
+    }));
+  });
+
   it("renders resume only for plan execution errors", () => {
     const onResumeRun = vi.fn();
     const items: TimelineItem[] = [

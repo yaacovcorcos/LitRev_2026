@@ -219,6 +219,31 @@ export function ProjectCopilot({
         retryLastMessage(item.errorMeta?.runId ?? item.errorMeta?.activeRunId ?? null);
     }, [isLoading, retryLastMessage]);
 
+    const continueFromDurableStateRun = useCallback((item: Extract<TimelineItem, { type: "error" }>) => {
+        if (isLoading) return;
+        const runId = item.errorMeta?.runId ?? item.errorMeta?.activeRunId ?? null;
+        if (!runId) return;
+        const lastUserMessage = [...messages]
+            .reverse()
+            .find((message) => message.sender === "user" && message.text.trim().length > 0);
+        if (!lastUserMessage) return;
+        sendMessage(
+            lastUserMessage.text,
+            lastUserMessage.context?.page ?? page,
+            lastUserMessage.context?.section,
+            selectedModel,
+            undefined,
+            studyId,
+            undefined,
+            undefined,
+            {
+                replaceRunId: runId,
+                continueFromRunId: runId,
+                suppressUserMessageAppend: true,
+            },
+        );
+    }, [isLoading, messages, page, sendMessage, selectedModel, studyId]);
+
     const getConversationGroupLabel = useCallback((conversation: (typeof conversations)[number]) => {
         const date = new Date(conversation.updatedAt);
         const now = new Date();
@@ -397,6 +422,7 @@ export function ProjectCopilot({
                     onSaveToNotes={handleSaveToNotes}
                     onRetryLastMessage={retryLastMessage}
                     onReconnectRun={reconnectActiveRun}
+                    onContinueFromDurableStateRun={continueFromDurableStateRun}
                     onStopAndRetryRun={stopAndRetryRun}
                     onResumeRun={resumeFailedPlan}
                     onBranchFromMessage={handleBranchFromMessage}

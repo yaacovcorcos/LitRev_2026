@@ -701,6 +701,8 @@ export type TimelineRendererProps = {
     onRetryLastMessage?: () => void;
     /** Optional reconnect callback for recovery-aware active runs. */
     onReconnectRun?: (item: TimelineErrorItem) => void;
+    /** Optional continuation callback for proven durable recovery state. */
+    onContinueFromDurableStateRun?: (item: TimelineErrorItem) => void;
     /** Optional explicit replacement callback for live runs that should be replaced. */
     onStopAndRetryRun?: (item: TimelineErrorItem) => void;
     /** Optional resume callback for recoverable plan-run errors */
@@ -751,6 +753,7 @@ export function TimelineRenderer({
     onSaveToNotes,
     onRetryLastMessage,
     onReconnectRun,
+    onContinueFromDurableStateRun,
     onStopAndRetryRun,
     onResumeRun,
     onBranchFromMessage,
@@ -1392,6 +1395,7 @@ export function TimelineRenderer({
             case "error": {
                 const recommendation = item.errorMeta?.recoveryRecommendation;
                 const showReconnect = recommendation === "reconnect" && onReconnectRun;
+                const showContinue = recommendation === "continue_from_durable_state" && onContinueFromDurableStateRun;
                 const showStopAndRetry = recommendation === "stop_and_retry" && onStopAndRetryRun;
                 const showRetry = (!recommendation && item.retryable && onRetryLastMessage)
                     || ((recommendation === "retry" || recommendation === "terminal") && onRetryLastMessage);
@@ -1408,6 +1412,11 @@ export function TimelineRenderer({
                         {showReconnect ? (
                             <button type="button" className={artifactStyles.errorRetryBtn} onClick={() => onReconnectRun(item)}>
                                 Reconnect
+                            </button>
+                        ) : null}
+                        {showContinue ? (
+                            <button type="button" className={artifactStyles.errorRetryBtn} onClick={() => onContinueFromDurableStateRun(item)}>
+                                Continue
                             </button>
                         ) : null}
                         {showStopAndRetry ? (

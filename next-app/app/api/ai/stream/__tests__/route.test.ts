@@ -6,6 +6,9 @@ const mocks = vi.hoisted(() => ({
   assertProjectAccess: vi.fn(),
   ingestChatUnificationMetric: vi.fn(),
   streamChatWithArtifacts: vi.fn(),
+  streamChat: vi.fn(),
+  resolveDurableContinuationSource: vi.fn(),
+  buildDurableContinuationContext: vi.fn(),
 }));
 
 vi.mock("@/lib/server/auth/session", () => ({
@@ -27,13 +30,18 @@ vi.mock("@/lib/server/actor", () => ({
 vi.mock("@/lib/server/ai", () => ({
   getAIService: () => ({
     streamChatWithArtifacts: mocks.streamChatWithArtifacts,
-    streamChat: vi.fn(),
+    streamChat: mocks.streamChat,
   }),
   AIService: class {
     streamChatWithTools() {
       return mocks.streamChatWithArtifacts();
     }
   },
+}));
+
+vi.mock("@/lib/server/agent/durable-continuation", () => ({
+  resolveDurableContinuationSource: mocks.resolveDurableContinuationSource,
+  buildDurableContinuationContext: mocks.buildDurableContinuationContext,
 }));
 
 const { POST } = await import("../route");
@@ -50,6 +58,8 @@ describe("/api/ai/stream route", () => {
     });
     mocks.assertProjectAccess.mockResolvedValue(undefined);
     mocks.ingestChatUnificationMetric.mockResolvedValue(undefined);
+    mocks.resolveDurableContinuationSource.mockResolvedValue(null);
+    mocks.buildDurableContinuationContext.mockReturnValue("[CONTINUATION_CONTEXT]\nPersisted tool result");
   });
 
   it("streams checkpoint and user-input events without route-side persistence authorship", async () => {
@@ -129,5 +139,93 @@ describe("/api/ai/stream route", () => {
 
     expect(chunks.map((chunk) => chunk.type)).toEqual(["run_start", "error"]);
     expect(chunks[1]?.error).toBe("simulated disconnect after run start");
+  });
+
+  it("resolves a valid continuation source into stream runtime options", async () => {
+    mocks.resolveDurableContinuationSource.mockResolvedValue({
+      kind: "tool_result",
+      sourceRunId: "run-old",
+      conversationId: "conv-1",
+      eventSequence: 5,
+      toolCallId: "call-1",
+      toolName: "search_pubmed",
+      toolResult: {
+        callId: "call-1",
+        result: { studies: [{ title: "Study A" }] },
+      },
+    });
+    mocks.streamChatWithArtifacts.mockImplementation(async function* () {
+      yield { type: "run_start", runId: "run-continued", conversationId: "conv-1" };
+      yield { type: "run_end", runId: "run-continued", conversationId: "conv-1", runStatus: "completed", stopReason: null };
+    });
+
+    const request = new NextRequest("http://localhost/api/ai/stream", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        userMessage: "Continue from the saved work",
+        context: "global",
+        options: {
+          conversationId: "conv-1",
+          continueFromRunId: "run-old",
+          agentMode: "general",
+          page: "ai",
+        },
+      }),
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(200);
+    await response.text();
+    expect(mocks.resolveDurableContinuationSource).toHaveBeenCalledWith({
+      runId: "run-old",
+      conversationId: "conv-1",
+    });
+    expect(mocks.buildDurableContinuationContext).toHaveBeenCalledTimes(1);
+    expect(mocks.streamChatWithArtifacts).toHaveBeenCalledTimes(1);
+    expect(mocks.streamChatWithArtifacts.mock.calls[0]?.[2]).toMatchObject({
+      conversationId: "conv-1",
+      continueFromRunId: "run-old",
+      replaceRunId: "run-old",
+      continuationContext: "[CONTINUATION_CONTEXT]\nPersisted tool result",
+    });
+  });
+
+  it("emits a typed continuation-unavailable error chunk when the source is no longer valid", async () => {
+    mocks.resolveDurableContinuationSource.mockResolvedValue(null);
+
+    const request = new NextRequest("http://localhost/api/ai/stream", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        userMessage: "Continue from the saved work",
+        context: "global",
+        options: {
+          conversationId: "conv-1",
+          continueFromRunId: "run-old",
+          agentMode: "general",
+          page: "ai",
+        },
+      }),
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(200);
+    expect(mocks.streamChatWithArtifacts).not.toHaveBeenCalled();
+
+    const body = await response.text();
+    const chunks = body
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as { type: string; errorCode?: string; errorMeta?: { recoveryRecommendation?: string } });
+
+    expect(chunks).toHaveLength(1);
+    expect(chunks[0]).toMatchObject({
+      type: "error",
+      errorMeta: {
+        code: "RUN_CONTINUATION_UNAVAILABLE",
+        recoveryRecommendation: "retry",
+      },
+    });
   });
 });

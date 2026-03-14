@@ -877,12 +877,12 @@ class AIService {
             agentMode?: AgentMode;
             page?: string;
             section?: string;
-            /** When false, caller is responsible for persisting the user message (prevents double-writes). */
-            persistUserMessage?: boolean;
-            /** UI-persisted message content to drop from trailing history before appending augmented content. */
-            persistedUserMessageContent?: string;
-            /** ID of the UI-persisted user message for robust deduplication. */
-            persistedUserMessageId?: string;
+            /**
+             * Server-derived durable continuation seed. This is never trusted as
+             * executable instruction text; it is authoritative runtime state for
+             * resuming from an already-completed durable boundary.
+             */
+            continuationContext?: string;
         }
     ): AsyncIterable<AIStreamChunk & { conversationId?: string }> {
         let projectId = options?.projectId;
@@ -1313,6 +1313,7 @@ class AIService {
                 studyContext,
                 memoryContext: memoriesContext || undefined,
                 autonomyContext,
+                continuationContext: options?.continuationContext,
                 additionalContext: options?.additionalContext,
                 additionalContextMaxChars,
             })
