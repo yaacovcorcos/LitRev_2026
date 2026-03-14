@@ -64,7 +64,7 @@ describe("CopilotInputCore context capture UI", () => {
             "protocol",
             undefined,
             "gpt-5.2",
-            "general",
+            "protocol",
             undefined,
             undefined,
             expect.arrayContaining([

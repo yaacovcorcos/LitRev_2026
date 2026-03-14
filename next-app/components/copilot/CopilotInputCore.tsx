@@ -14,8 +14,15 @@ import type { CopilotPage, ChoiceOption, UserInputRequest } from "@/types/ai";
 import type { ContextCaptureHistoryEntry, ContextCaptureTarget } from "@/types/context-capture";
 import { USER_SELECTABLE_MODELS, type SelectableModelId } from "@/lib/ai/config";
 import { useVoiceInput, type VoiceTranscriptionSettlement } from "@/hooks/useVoiceInput";
-import { routeToAgent, type RouterPage } from "@/lib/agent/router";
 import { getUserSelectableAgentModes } from "@/lib/agent/feature-flags";
+import {
+    AUTO_COMPOSER_MODE_SELECTION,
+    isManualComposerModeSelection,
+    resolveComposerAutoMode,
+    resolveComposerMode,
+    type ComposerModeSelection,
+} from "@/lib/agent/composer-mode-selection";
+import type { RouterPage } from "@/lib/agent/router";
 import { recordContextCaptureMetric } from "@/lib/context-capture/telemetry";
 import { AGENT_MODE_META, type AgentMode, type AutonomyPreset } from "@/types/agent";
 import type { RetryModelExpectation } from "@/types/chat-unification";
@@ -206,52 +213,55 @@ export function CopilotInputCore({
         section?: string;
         studyId?: string;
         selectedModel: SelectableModelId;
-        effectiveMode: AgentMode;
+        selection: ComposerModeSelection;
+        autoMode: AgentMode;
+        hasProtocol?: boolean;
     }>({
         page,
         section,
         studyId,
         selectedModel,
-        effectiveMode: "general",
+        selection: AUTO_COMPOSER_MODE_SELECTION,
+        autoMode: "general",
+        hasProtocol,
     });
     const queuedVoiceSendRef = useRef(false);
 
-    const [currentMode, setCurrentMode] = useState<AgentMode>("general");
-    const [modeOverride, setModeOverride] = useState<AgentMode | null>(null);
+    const [autoMode, setAutoMode] = useState<AgentMode>("general");
+    const [modeSelection, setModeSelection] = useState<ComposerModeSelection>(AUTO_COMPOSER_MODE_SELECTION);
     const [queuedVoiceSend, setQueuedVoiceSend] = useState(false);
     const [recordingHint, setRecordingHint] = useState<{ label: string; x: number } | null>(null);
 
-    const effectiveMode = modeOverride || currentMode;
+    const effectiveMode = isManualComposerModeSelection(modeSelection) ? modeSelection.mode : autoMode;
     const modeMeta = AGENT_MODE_META[effectiveMode];
+    const resolveCurrentComposerMode = useCallback((message: string) => {
+        const routerPage: RouterPage = page === "ai" ? "overview" : (page as RouterPage);
+        return resolveComposerMode({
+            selection: modeSelection,
+            message,
+            page: routerPage,
+            hasProtocol,
+            previousAutoMode: autoMode,
+        });
+    }, [autoMode, hasProtocol, modeSelection, page]);
 
     const setQueuedVoiceSendState = useCallback((next: boolean) => {
         queuedVoiceSendRef.current = next;
         setQueuedVoiceSend(next);
     }, []);
 
-    const PROTOCOL_SWITCH_INTENT_RE = /\b(?:switch|move|go|start|enter)\b[\w\s]{0,24}\bprotocol\b|\bprotocol mode\b|\bupdate protocol\b/i;
-
     useEffect(() => {
         const timer = setTimeout(() => {
-            const trimmed = input.trim();
-            if (!trimmed) return;
-
             const routerPage: RouterPage = page === "ai" ? "overview" : (page as RouterPage);
-            const nextMode = routeToAgent(trimmed, routerPage, { hasProtocol });
-
-            if (
-                currentMode === "scoping" &&
-                nextMode === "protocol" &&
-                !PROTOCOL_SWITCH_INTENT_RE.test(trimmed)
-            ) {
-                setCurrentMode("scoping");
-                return;
-            }
-
-            setCurrentMode(nextMode);
+            setAutoMode((previousAutoMode) => resolveComposerAutoMode({
+                message: input,
+                page: routerPage,
+                hasProtocol,
+                previousAutoMode,
+            }));
         }, 200);
         return () => clearTimeout(timer);
-    }, [input, page, hasProtocol, currentMode]);
+    }, [input, page, hasProtocol]);
 
     useEffect(() => {
         latestInputRef.current = input;
@@ -271,9 +281,11 @@ export function CopilotInputCore({
             section,
             studyId,
             selectedModel,
-            effectiveMode,
+            selection: modeSelection,
+            autoMode,
+            hasProtocol,
         };
-    }, [effectiveMode, page, section, selectedModel, studyId]);
+    }, [autoMode, hasProtocol, modeSelection, page, section, selectedModel, studyId]);
 
     const dispatchSend = useCallback((rawText: string) => {
         if (sendLockRef.current) return false;
@@ -286,11 +298,21 @@ export function CopilotInputCore({
             section: currentSection,
             studyId: currentStudyId,
             selectedModel: currentSelectedModel,
-            effectiveMode: currentEffectiveMode,
+            selection: currentSelection,
+            autoMode: currentAutoMode,
+            hasProtocol: currentHasProtocol,
         } = latestSendContextRef.current;
         const nextContextTargets = latestAttachedContextTargetsRef.current.length > 0
             ? latestAttachedContextTargetsRef.current
             : undefined;
+        const routerPage: RouterPage = currentPage === "ai" ? "overview" : (currentPage as RouterPage);
+        const currentEffectiveMode = resolveComposerMode({
+            selection: currentSelection,
+            message: text,
+            page: routerPage,
+            hasProtocol: currentHasProtocol,
+            previousAutoMode: currentAutoMode,
+        });
 
         sendLockRef.current = true;
         sendMessage(
@@ -307,7 +329,6 @@ export function CopilotInputCore({
             clearAttachedContextTargets?.();
         }
         setInput("");
-        setModeOverride(null);
         requestAnimationFrame(() => textareaRef.current?.focus());
         return true;
     }, [clearAttachedContextTargets, sendMessage]);
@@ -471,12 +492,11 @@ export function CopilotInputCore({
             section,
             studyId,
             model: selectedModel,
-            agentMode: effectiveMode,
+            agentMode: resolveCurrentComposerMode(text),
         });
         setInput("");
-        setModeOverride(null);
         requestAnimationFrame(() => textareaRef.current?.focus());
-    }, [effectiveMode, input, onQueueFollowUp, page, section, selectedModel, studyId]);
+    }, [input, onQueueFollowUp, page, resolveCurrentComposerMode, section, selectedModel, studyId]);
 
     useEffect(() => {
         if (!isLoading && voiceState !== "recording" && voiceState !== "transcribing") return;
@@ -539,6 +559,7 @@ export function CopilotInputCore({
 
     const selectedModelInfo = USER_SELECTABLE_MODELS.find((m) => m.id === selectedModel);
     const ALL_MODES: AgentMode[] = getUserSelectableAgentModes();
+    const isManualMode = isManualComposerModeSelection(modeSelection);
 
     const modelControl = hasMounted ? (
         <DropdownMenu.Root>
@@ -669,14 +690,14 @@ export function CopilotInputCore({
                     handleSend();
                 }}
             >
-                {input.trim() && (
+                {(input.trim() || isManualMode) && (
                     <div className={styles.modePill}>
                         <span className={`material-icons-round ${styles.modePillIcon}`}>
                             {modeMeta.icon}
                         </span>
                         <span className={styles.modePillLabel}>
                             {modeMeta.label}
-                            {modeOverride && " (manual)"}
+                            {isManualMode ? " (manual)" : " (auto)"}
                         </span>
                         {hasMounted ? (
                             <DropdownMenu.Root>
@@ -691,14 +712,24 @@ export function CopilotInputCore({
                                 </DropdownMenu.Trigger>
                                 <DropdownMenu.Portal>
                                     <DropdownMenu.Content className={styles.modeDropdown} side="bottom" align="start" sideOffset={4}>
+                                        <DropdownMenu.Item
+                                            className={`${styles.modeItem} ${!isManualMode ? styles.modeItemActive : ""}`}
+                                            onSelect={() => setModeSelection(AUTO_COMPOSER_MODE_SELECTION)}
+                                        >
+                                            <span className={`material-icons-round ${styles.modeItemIcon}`}>
+                                                auto_awesome
+                                            </span>
+                                            <span className={styles.modeItemName}>Auto</span>
+                                            <span className={styles.modeItemDesc}>Choose the mode automatically from the current request</span>
+                                        </DropdownMenu.Item>
                                         {ALL_MODES.map((mode) => {
                                             const meta = AGENT_MODE_META[mode];
-                                            const isActive = mode === effectiveMode;
+                                            const isActive = isManualMode && mode === effectiveMode;
                                             return (
                                                 <DropdownMenu.Item
                                                     key={mode}
                                                     className={`${styles.modeItem} ${isActive ? styles.modeItemActive : ""}`}
-                                                    onSelect={() => setModeOverride(mode === currentMode ? null : mode)}
+                                                    onSelect={() => setModeSelection({ kind: "manual", mode })}
                                                 >
                                                     <span className={`material-icons-round ${styles.modeItemIcon}`}>
                                                         {meta.icon}
@@ -852,7 +883,14 @@ export function CopilotInputCore({
                                     if (sendLockRef.current) return;
                                     sendLockRef.current = true;
                                     clearChoices?.();
-                                    sendMessage(choice.value, page, section, selectedModel, effectiveMode, studyId);
+                                    sendMessage(
+                                        choice.value,
+                                        page,
+                                        section,
+                                        selectedModel,
+                                        resolveCurrentComposerMode(choice.value),
+                                        studyId,
+                                    );
                                     setInput("");
                                 }}
                             >
