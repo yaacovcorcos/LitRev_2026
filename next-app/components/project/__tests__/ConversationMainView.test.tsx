@@ -155,15 +155,20 @@ describe("ConversationMainView parity", () => {
     expect(checkpoint.checkpoint).toMatchObject({ runId: "run-1", checkpointKind: "recovery" });
   });
 
-  it("targets reconnect and stop-and-retry actions to the clicked run", () => {
+  it("targets reconnect, continue, and stop-and-retry actions to the clicked run", () => {
     render(<ConversationMainView projectId="project-1" />);
 
     const props = mockTimelineRenderer.mock.calls[0]?.[0] as {
       onReconnectRun?: (item: { type: "error"; errorMeta?: { runId?: string | null; activeRunId?: string | null } }) => void;
+      onContinueFromDurableStateRun?: (item: { type: "error"; errorMeta?: { runId?: string | null; activeRunId?: string | null } }) => void;
       onStopAndRetryRun?: (item: { type: "error"; errorMeta?: { runId?: string | null; activeRunId?: string | null } }) => void;
     };
 
     props.onReconnectRun?.({
+      type: "error",
+      errorMeta: { runId: "run-clicked", activeRunId: "run-newer" },
+    });
+    props.onContinueFromDurableStateRun?.({
       type: "error",
       errorMeta: { runId: "run-clicked", activeRunId: "run-newer" },
     });
@@ -190,6 +195,23 @@ describe("ConversationMainView parity", () => {
       }),
       undefined,
       { replaceRunId: "run-clicked" },
+    );
+    expect(contextValue.sendMessage).toHaveBeenCalledWith(
+      "Recover this search",
+      "overview",
+      undefined,
+      "gpt-5.2",
+      undefined,
+      undefined,
+      expect.objectContaining({
+        source: "retry_action",
+      }),
+      undefined,
+      {
+        replaceRunId: "run-clicked",
+        continueFromRunId: "run-clicked",
+        suppressUserMessageAppend: true,
+      },
     );
   });
 

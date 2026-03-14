@@ -1254,10 +1254,22 @@ export default function AIView() {
     _studyId?: string,
     retryModelExpectation?: RetryModelExpectation,
     _contextTargets?: unknown,
-    replaceRunIdOverride?: string,
+    runtimeOverrides?: string | {
+      replaceRunId?: string | null;
+      continueFromRunId?: string | null;
+      suppressUserMessageAppend?: boolean;
+    },
   ) => {
     const msgText = rawText.trim();
     if (!msgText || sendLockRef.current) return;
+    const replaceRunIdOverride = typeof runtimeOverrides === "string"
+      ? runtimeOverrides
+      : runtimeOverrides?.replaceRunId;
+    const continueFromRunId = typeof runtimeOverrides === "string"
+      ? null
+      : (runtimeOverrides?.continueFromRunId ?? null);
+    const suppressUserMessageAppend = typeof runtimeOverrides === "object"
+      && runtimeOverrides?.suppressUserMessageAppend === true;
     const sendStartedAtMs = Date.now();
     let sendSucceeded = false;
     emitMobileActionTap("ai_send_message", 44);
@@ -1292,15 +1304,17 @@ export default function AIView() {
     const nowIso = new Date().toISOString();
     const userId = `m-${Date.now()}`;
 
-    updateConversationTimeline(convId, (prev) => [
-      ...prev,
-      {
-        type: "user_message",
-        id: userId,
-        content: msgText,
-        createdAt: nowIso,
-      },
-    ]);
+    if (!suppressUserMessageAppend) {
+      updateConversationTimeline(convId, (prev) => [
+        ...prev,
+        {
+          type: "user_message",
+          id: userId,
+          content: msgText,
+          createdAt: nowIso,
+        },
+      ]);
+    }
 
     setConversations((prev) =>
       sortConversationsByUpdatedAt(
@@ -1478,6 +1492,9 @@ export default function AIView() {
           options: {
             conversationId: convId,
             replaceRunId: replaceRunId ?? undefined,
+            continueFromRunId: continueFromRunId ?? undefined,
+            persistUserMessage: suppressUserMessageAppend ? false : undefined,
+            persistedUserMessageContent: msgText,
             projectId: selectedProjectId ?? undefined,
             model: effectiveModel,
             reasoningMode: reasoningRequest.reasoningMode,
@@ -2202,7 +2219,6 @@ export default function AIView() {
   }, [handleSend]);
 
   const handleRetryLastMessage = useCallback((replaceRunId?: string | null) => {
-    if (isTyping) return;
     const convId = activeConversationId;
     if (!convId) return;
 
@@ -2253,6 +2269,7 @@ export default function AIView() {
         source: "retry_action",
       },
     });
+    sendLockRef.current = false;
     void handleSend(
       retryText,
       "ai",
@@ -2268,13 +2285,14 @@ export default function AIView() {
       undefined,
       replaceRunId ?? undefined,
     );
-  }, [isTyping, activeConversationId, timelineByConversation, handleSend, selectedModel, selectedProjectId]);
+  }, [activeConversationId, timelineByConversation, handleSend, selectedModel, selectedProjectId]);
 
   const handleReconnectRun = useCallback((item: Extract<TimelineItem, { type: "error" }>) => {
     const convId = activeConversationId;
     const runId = item.errorMeta?.runId ?? item.errorMeta?.activeRunId ?? null;
-    if (isTyping || !convId || !runId) return;
+    if (!convId || !runId) return;
 
+    sendLockRef.current = false;
     setIsTyping(true);
     streamGenRef.current += 1;
     const myGen = streamGenRef.current;
@@ -2343,6 +2361,35 @@ export default function AIView() {
   const handleStopAndRetryRun = useCallback((item: Extract<TimelineItem, { type: "error" }>) => {
     handleRetryLastMessage(item.errorMeta?.runId ?? item.errorMeta?.activeRunId ?? null);
   }, [handleRetryLastMessage]);
+
+  const handleContinueFromDurableStateRun = useCallback((item: Extract<TimelineItem, { type: "error" }>) => {
+    const convId = activeConversationId;
+    const runId = item.errorMeta?.runId ?? item.errorMeta?.activeRunId ?? null;
+    if (!convId || !runId) return;
+
+    const items = timelineByConversation[convId] ?? [];
+    const lastUserMessage = [...items]
+      .reverse()
+      .find((entry) => entry.type === "user_message" && entry.content.trim().length > 0);
+    if (!lastUserMessage || lastUserMessage.type !== "user_message") return;
+
+    sendLockRef.current = false;
+    void handleSend(
+      lastUserMessage.content,
+      "ai",
+      undefined,
+      selectedModel,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      {
+        replaceRunId: runId,
+        continueFromRunId: runId,
+        suppressUserMessageAppend: true,
+      },
+    );
+  }, [activeConversationId, handleSend, selectedModel, timelineByConversation]);
 
   const handlePrefillConsumed = useCallback(() => {
     setPrefillCommand(null);
@@ -2479,6 +2526,7 @@ export default function AIView() {
               onActionPrompt={handleActionPrompt}
               onRetryLastMessage={handleRetryLastMessage}
               onReconnectRun={handleReconnectRun}
+              onContinueFromDurableStateRun={handleContinueFromDurableStateRun}
               onStopAndRetryRun={handleStopAndRetryRun}
               onBranchFromMessage={handleBranchFromMessage}
               onReviewArtifact={handleReviewArtifact}

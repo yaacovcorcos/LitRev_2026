@@ -521,7 +521,11 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             studyId?: string,
             retryModelExpectation?: RetryModelExpectation,
             contextTargets?: ContextCaptureTarget[],
-            runtimeOverrides?: { replaceRunId?: string | null },
+            runtimeOverrides?: {
+                replaceRunId?: string | null;
+                continueFromRunId?: string | null;
+                suppressUserMessageAppend?: boolean;
+            },
         ) => {
             if (contextTargets?.length) {
                 recordContextHistory(contextTargets);

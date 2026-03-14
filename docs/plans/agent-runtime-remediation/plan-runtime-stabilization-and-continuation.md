@@ -17,7 +17,8 @@ Use this file for detailed execution thinking about stabilization and continuati
 - The first `FIX-011b` stabilization slice now persists `lastDurableProgressAt`, `finalizationState`, and `abnormalEndClassification` on `AgentRun`, so recovery/readmission can separate liveness from durable forward progress instead of treating fresh heartbeats as sufficient evidence that the run is still converging.
 - The second `FIX-011b` stabilization slice now makes reconnect checkpoints run-scoped, applies one shared same-run recovery authority across `/ai`, project copilot, and the main project conversation, and clears weaker same-run reconnect/fallback state as soon as stronger server recovery truth arrives.
 - The third `FIX-011b` stabilization slice now introduces an explicit event-durability policy, records degraded durability on `AgentRun` when recovery-critical persistence fails after useful work, and moves recovery-critical persistence to the business event boundary instead of relying on the stream route as the first durable owner of that truth.
-- The remaining problem is not first-time recovery architecture. It is durable convergence: disconnect classification is still too weak, durable user-facing state can still fall through persistence/finalization seams, and the runtime still lacks a trustworthy continuation contract from durable completed work.
+- The fourth `FIX-011b` stabilization slice now supports durable continuation only from proven persisted server state: the recovery contract can recommend `continue_from_durable_state` for audited tool-result and artifact-state cases, the next run reuses explicit persisted inputs instead of transcript reconstruction, and ambiguous mid-loop state still falls back to `stop_and_retry` / `retry`.
+- The remaining problem is not first-time recovery architecture. It is broader durable convergence: disconnect classification can still improve, durable user-facing state can still fall through persistence/finalization seams, and continuation beyond the audited proven-state cases still lacks enough persistence authority to be trustworthy.
 - Popup still remains a truthful reduced subset only; it should not claim full recovery/continuation parity until shared-engine convergence is explicitly finished.
 
 ## Locked Design Principles
@@ -49,6 +50,16 @@ Use this file for detailed execution thinking about stabilization and continuati
 - Clarify reconnect / continue / stop-and-retry / retry semantics around durable completed work.
 - Treat human input as a first-class paused continuation state.
 - Do not commit the repo to a new checkpoint store or token format until the currently observed continuation gaps are proven against the existing persisted event model.
+
+### Slice 4 audited continuation cases
+
+| Failure case | Durable data available | Next server step required | Safe to continue with current persistence |
+|---|---|---|---|
+| Disconnect after durable `tool_result` with no newer assistant/tool-call/user-input-required state | `RunEvent.tool_result` payload, tool name, call id, source run id | Start a new run using the persisted tool result as authoritative continuation input | Yes |
+| Disconnect after durable artifact proposal/review state with no newer assistant/tool-call/user-input-required state | durable artifact record plus authoritative `artifact_proposed` / `artifact_reviewed` event | Start a new run using the persisted artifact state as authoritative continuation input | Yes |
+| Degraded durability after useful visible success | degraded `AgentRun` markers plus whatever durable events/artifacts survived | Only if one of the audited source validators still resolves to a safe tool-result or artifact-state continuation source | Conditional only |
+| Paused-for-input | persisted `user_input_required` state | Resume via the existing paused-input path | Existing `resume` only; not part of `continue_from_durable_state` |
+| Mid-loop planner/tool state, pending tool calls, delegated work without a durable parent-facing result, partial assistant output only | replayable UI state but no proven continuation authority | Recreate hidden transient loop state | No |
 
 ## Workstream E: Surface Convergence
 - `/ai`, project copilot, and the main project conversation should consume one shared durable recovery/continuation contract instead of reinterpreting run truth per surface.

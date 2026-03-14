@@ -78,7 +78,11 @@ export type ProjectCopilotContextValue = {
         studyId?: string,
         retryModelExpectation?: RetryModelExpectation,
         contextTargets?: ContextCaptureTarget[],
-        runtimeOverrides?: { replaceRunId?: string | null },
+        runtimeOverrides?: {
+            replaceRunId?: string | null;
+            continueFromRunId?: string | null;
+            suppressUserMessageAppend?: boolean;
+        },
     ) => void;
     /** Update global reasoning visibility mode */
     setReasoningMode: (mode: ReasoningMode) => void;
