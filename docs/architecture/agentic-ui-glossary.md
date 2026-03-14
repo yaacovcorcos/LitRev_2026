@@ -13,26 +13,26 @@ Primary code references:
 
 ### `TimelineItem`
 Type union.
-This is the base typed unit of the chat timeline in code.
-In the UI, users do not see "a TimelineItem"; they see one specific kind of row such as progress, a tool receipt, a checkpoint, an artifact, or an error.
+This is the base unit of the chat timeline in code.
+In the UI, users do not see "a TimelineItem"; they see one concrete row such as progress, a tool receipt, a checkpoint, an artifact, or an error.
 
 ### `progress`
 Timeline item type.
 This is the transient live-status item for work that is still happening.
 In the UI, this appears as the composer-adjacent live status bar rather than as durable transcript content.
 It should feel temporary and active.
-Once the underlying step ends, it should shrink, transition, or disappear instead of reading like a saved chat message.
+Once the step ends, it should shrink, transition, or disappear instead of reading like a saved chat message.
 
 ### `tool_activity`
 Timeline item type.
 This is the durable record of a tool execution step.
 In the UI, this appears as a receipt-like row or card for actions such as `ask_user`, `store_memory`, or search tools.
-Unlike `progress`, it remains visible as part of the turn record.
+Unlike `progress`, it stays visible as part of the turn record.
 
 ### `checkpoint`
 Timeline item type.
 This is a short grounded narration step between tool execution and the final answer.
-In the UI, a checkpoint should read like quiet process explanation, not like raw reasoning and not like a loud alert.
+In the UI, a checkpoint should read like a quiet process explanation, not like raw reasoning and not like a loud alert.
 Its job is to help the user follow the workflow without exposing hidden chain-of-thought.
 
 ### `error`
@@ -58,7 +58,7 @@ In the UI, it appears as a compact disclosure block above the final assistant an
 Assistant message field.
 This is the reasoning field attached to assistant output.
 This is separate from checkpoints and separate from tool receipts.
-In the UI, it should remain secondary and tightly controlled; the main transparency layer should still come from receipts, checkpoints, and progress.
+In the UI, it should remain secondary and tightly controlled. The main transparency layer should still come from receipts, checkpoints, and progress.
 
 ## Tool Receipts
 
@@ -79,7 +79,7 @@ In the UI, it appears as a compact grouped search sequence rather than a stack o
 ### `artifact`
 Timeline item type.
 This is a durable generated output that the user can inspect or act on.
-This is different from assistant prose.
+It is different from assistant prose.
 In the UI, artifacts usually appear as larger structured cards.
 
 ### `ArtifactWrapper`
@@ -123,7 +123,7 @@ This is the aggregated streaming state used to track assistant content, progress
 
 ### `SharedStreamIntent`
 Reducer intent type.
-This is the canonical intermediate event layer that turns raw stream chunks into UI-meaningful updates such as assistant upserts, progress updates, tool activity updates, checkpoints, and errors.
+This is the intermediate event layer that turns raw stream chunks into UI-meaningful updates such as assistant upserts, progress updates, tool activity updates, checkpoints, and errors.
 
 ### `PresentedTimelineItem`
 Renderer presentation type.
@@ -139,7 +139,7 @@ This is not just a normal sentence question in the transcript; it is a formal bl
 ### `UserInputRequest`
 Request type.
 This is the typed request payload representing that clarification step.
-It is the code-level object that carries the prompt and answer options for a blocked execution state.
+It is the object that carries the prompt and answer options for a blocked execution state.
 
 ### `UserInputCard`
 Component name.
