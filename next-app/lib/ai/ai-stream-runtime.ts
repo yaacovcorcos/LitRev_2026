@@ -404,6 +404,7 @@ export function createAiStreamRuntime(deps: AiStreamRuntimeDeps): AiStreamRuntim
         dispatchProjectDataChanged({
           projectId: deps.selectedProjectId,
           domains: ["ledger"],
+          reason: "server_mutation",
           source: "ai_stream_tool_result",
         });
         return;

@@ -1824,6 +1824,7 @@ export default function AIView() {
         dispatchProjectDataChanged({
           projectId: result.artifact.projectId,
           domains,
+          reason: "artifact_accept",
           source: "artifact_review",
         });
       }
