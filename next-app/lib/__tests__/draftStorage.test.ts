@@ -1,6 +1,34 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it } from "vitest";
-import { createDefaultDraftState, loadDraftState } from "@/lib/draftStorage";
+import { createDefaultDraftState, loadDraftState, normalizeDraftState } from "@/lib/draftStorage";
+import { UNSECTIONED_DRAFT_ID } from "@/types/draft";
+
+describe("createDefaultDraftState", () => {
+  it("starts blank in full draft with whole-draft content only", () => {
+    const state = createDefaultDraftState();
+
+    expect(state.version).toBe(2);
+    expect(state.mode).toBe("full");
+    expect(state.activeSection).toBeNull();
+    expect(state.sectionOrder).toEqual([]);
+    expect(state.manuscript.sections.map((section) => section.sectionId)).toEqual([UNSECTIONED_DRAFT_ID]);
+    expect(state.contentBySection[UNSECTIONED_DRAFT_ID]).toBeTruthy();
+  });
+});
+
+describe("normalizeDraftState", () => {
+  it("forces section mode back to full when no named sections exist", () => {
+    const normalized = normalizeDraftState({
+      ...createDefaultDraftState(),
+      mode: "section",
+      activeSection: "abstract",
+      sectionOrder: [],
+    });
+
+    expect(normalized.mode).toBe("full");
+    expect(normalized.activeSection).toBeNull();
+  });
+});
 
 describe("loadDraftState citation migration", () => {
   beforeEach(() => {
