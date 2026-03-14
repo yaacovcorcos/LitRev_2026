@@ -164,6 +164,9 @@ describe("ProjectCopilot suggestion wiring", () => {
 
     const status = screen.getByRole("status");
     const input = screen.getByTestId("copilot-prefill");
+    const lane = document.querySelector('[data-composer-stack-lane="true"]');
+    expect(lane?.contains(status)).toBe(true);
+    expect(lane?.contains(input)).toBe(true);
     expect(status.getAttribute("data-stack-position")).toBe("top");
     expect(screen.getByTestId("copilot-attached-stack").textContent).toBe("attached");
     expect(screen.getByText("Reviewing PubMed results")).toBeTruthy();
@@ -275,8 +278,12 @@ describe("ProjectCopilot suggestion wiring", () => {
     const progress = screen.getByText("Reviewing PubMed results").closest("[data-stack-position]");
     const queued = screen.getByText("Queued next message").closest("[data-stack-position]");
     const input = screen.getByTestId("copilot-prefill");
+    const lane = document.querySelector('[data-composer-stack-lane="true"]');
 
     expect(screen.getByText("Review the strongest recovery option once this finishes.")).toBeTruthy();
+    expect(lane?.contains(progress!)).toBe(true);
+    expect(lane?.contains(queued!)).toBe(true);
+    expect(lane?.contains(input)).toBe(true);
     expect(progress?.getAttribute("data-stack-position")).toBe("top");
     expect(queued?.getAttribute("data-stack-position")).toBe("middle");
     expect(screen.getByTestId("copilot-attached-stack").textContent).toBe("attached");
@@ -306,6 +313,8 @@ describe("ProjectCopilot suggestion wiring", () => {
       />,
     );
 
+    const lane = document.querySelector('[data-composer-stack-lane="true"]');
+    expect(lane?.contains(screen.getByTestId("copilot-prefill"))).toBe(true);
     expect(screen.getByTestId("copilot-attached-stack").textContent).toBe("none");
     expect(screen.queryByText("Queued next message")).toBeNull();
     expect(screen.queryByRole("status")).toBeNull();

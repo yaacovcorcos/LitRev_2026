@@ -7,7 +7,8 @@
 /* ---- Input Box ---- */
 
 .inputBox {
-    margin: 0 clamp(6px, 1.5vw, 32px) 14px;
+    width: 100%;
+    margin: 0 0 14px;
     background: linear-gradient(to bottom, rgba(var(--rgb-ui-surface), 0.44), rgba(var(--rgb-ui-surface), 0.82));
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
@@ -19,6 +20,7 @@
     transition: border-color 0.2s ease, box-shadow 0.2s ease;
     position: relative;
     flex-shrink: 0;
+    box-sizing: border-box;
     container-type: inline-size;
     container-name: inputBox;
 }
