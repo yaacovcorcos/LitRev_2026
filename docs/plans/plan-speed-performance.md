@@ -500,7 +500,7 @@ Precedence rules:
     - server-side `Map` caches are process-local only and must not be treated as global truth
   - Current checklist:
     - [x] `SPD-008a` Canonical inventory and compact current-state cache matrix are now captured in this file.
-    - [ ] `SPD-008b` Freshness and invalidation contract is now defined in this file; code-level alignment remains pending until the narrow follow-up slices land.
+    - [x] `SPD-008b` Freshness and invalidation contract is now defined in this file, with narrow code-level alignment landed for home freshness, canonical invalidation reasons, and explicit-empty-seed handling on already-seeded surfaces.
     - [ ] `SPD-008c` Preload and warmup policy.
     - [ ] `SPD-008d` Client memory-retention policy.
     - [ ] `SPD-008e` Instrumentation and acceptance gates.

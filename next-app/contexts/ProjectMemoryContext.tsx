@@ -66,8 +66,9 @@ type ProjectMemoryProviderProps = {
 };
 
 export function ProjectMemoryProvider({ projectId, children, initialData }: ProjectMemoryProviderProps) {
-  const [memories, setMemories] = useState<ProjectMemory[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const hasSeed = initialData !== undefined;
+  const [memories, setMemories] = useState<ProjectMemory[]>(() => initialData ?? []);
+  const [isLoading, setIsLoading] = useState(() => !hasSeed);
   const [error, setError] = useState<string | null>(null);
 
   // Filters
@@ -92,13 +93,13 @@ export function ProjectMemoryProvider({ projectId, children, initialData }: Proj
   }, [projectId]);
 
   useEffect(() => {
-    if (initialData && initialData.length > 0) {
-      setMemories(initialData);
+    if (hasSeed) {
+      setMemories(initialData ?? []);
       setIsLoading(false);
       return;
     }
     loadMemories();
-  }, [loadMemories, initialData]);
+  }, [hasSeed, initialData, loadMemories]);
 
   useEffect(() => {
     return addProjectDataChangedListener((detail) => {
