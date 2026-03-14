@@ -36,8 +36,18 @@ vi.mock("../../copilot/TimelineRenderer", () => ({
 }));
 
 vi.mock("../../copilot/CopilotInput", () => ({
-  CopilotInput: ({ hasQueuedFollowUp }: { hasQueuedFollowUp?: boolean }) => (
-    <div data-testid="copilot-input" data-has-queued={hasQueuedFollowUp ? "yes" : "no"} />
+  CopilotInput: ({
+    hasQueuedFollowUp,
+    attachedStack,
+  }: {
+    hasQueuedFollowUp?: boolean;
+    attachedStack?: "none" | "attached";
+  }) => (
+    <div
+      data-testid="copilot-input"
+      data-has-queued={hasQueuedFollowUp ? "yes" : "no"}
+      data-attached-stack={attachedStack ?? "none"}
+    />
   ),
 }));
 
@@ -141,6 +151,8 @@ describe("ConversationMainView parity", () => {
     expect(screen.getByTestId("timeline-renderer")).toBeTruthy();
     const status = screen.getByRole("status");
     const input = screen.getByTestId("copilot-input");
+    expect(status.getAttribute("data-stack-position")).toBe("top");
+    expect(input.getAttribute("data-attached-stack")).toBe("attached");
     expect(screen.getByText("Waiting for your answer")).toBeTruthy();
     expect(screen.queryByRole("progressbar")).toBeNull();
     expect(status.compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -218,6 +230,7 @@ describe("ConversationMainView parity", () => {
   it("renders a queued follow-up cap above the composer when one is present", () => {
     mockUseProjectCopilot.mockReturnValue({
       ...baseContextValue,
+      messages: [],
       queuedFollowUp: {
         id: "queue-1",
         text: "Please compare the strongest papers next.",
@@ -231,9 +244,25 @@ describe("ConversationMainView parity", () => {
 
     render(<ConversationMainView projectId="project-1" />);
 
-    const queued = screen.getByText("Queued next message");
+    const queued = screen.getByText("Queued next message").closest("[data-stack-position]");
     const input = screen.getByTestId("copilot-input");
     expect(screen.getByText("Please compare the strongest papers next.")).toBeTruthy();
-    expect(queued.compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(queued?.getAttribute("data-stack-position")).toBe("top");
+    expect(input.getAttribute("data-attached-stack")).toBe("attached");
+    expect(queued).toBeTruthy();
+    expect(queued!.compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("keeps the composer standalone when no attached caps are present", () => {
+    mockUseProjectCopilot.mockReturnValue({
+      ...baseContextValue,
+      messages: [],
+    });
+
+    render(<ConversationMainView projectId="project-1" />);
+
+    expect(screen.getByTestId("copilot-input").getAttribute("data-attached-stack")).toBe("none");
+    expect(screen.queryByText("Queued next message")).toBeNull();
+    expect(screen.queryByRole("status")).toBeNull();
   });
 });
