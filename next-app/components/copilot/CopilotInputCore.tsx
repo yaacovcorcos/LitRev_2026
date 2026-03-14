@@ -9,10 +9,11 @@
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
+import type { FocusEvent as ReactFocusEvent, MouseEvent as ReactMouseEvent } from "react";
 import type { CopilotPage, ChoiceOption, UserInputRequest } from "@/types/ai";
 import type { ContextCaptureHistoryEntry, ContextCaptureTarget } from "@/types/context-capture";
 import { USER_SELECTABLE_MODELS, type SelectableModelId } from "@/lib/ai/config";
-import { useVoiceInput } from "@/hooks/useVoiceInput";
+import { useVoiceInput, type VoiceTranscriptionSettlement } from "@/hooks/useVoiceInput";
 import { routeToAgent, type RouterPage } from "@/lib/agent/router";
 import { getUserSelectableAgentModes } from "@/lib/agent/feature-flags";
 import { recordContextCaptureMetric } from "@/lib/context-capture/telemetry";
@@ -162,6 +163,7 @@ export function CopilotInputCore({
     showUserInputOverlay = false,
     onReady,
 }: CopilotInputCoreProps) {
+    const inputBoxRef = useRef<HTMLFormElement | null>(null);
     const [hasMounted, setHasMounted] = useState(false);
     const [input, setInput] = useState("");
     const [uncontrolledSelectedModel, setUncontrolledSelectedModel] = useState<SelectableModelId>("gpt-5.2");
@@ -194,12 +196,36 @@ export function CopilotInputCore({
 
     const textareaRef = useRef<HTMLTextAreaElement | null>(null);
     const sendLockRef = useRef(false);
+    const latestInputRef = useRef("");
+    const latestPendingAttachmentRef = useRef<InputAttachment | null>(pendingAttachment);
+    const latestAttachedContextTargetsRef = useRef<ContextCaptureTarget[]>(attachedContextTargets);
+    const latestSendContextRef = useRef<{
+        page: CopilotPage;
+        section?: string;
+        studyId?: string;
+        selectedModel: SelectableModelId;
+        effectiveMode: AgentMode;
+    }>({
+        page,
+        section,
+        studyId,
+        selectedModel,
+        effectiveMode: "general",
+    });
+    const queuedVoiceSendRef = useRef(false);
 
     const [currentMode, setCurrentMode] = useState<AgentMode>("general");
     const [modeOverride, setModeOverride] = useState<AgentMode | null>(null);
+    const [queuedVoiceSend, setQueuedVoiceSend] = useState(false);
+    const [recordingHint, setRecordingHint] = useState<{ label: string; x: number } | null>(null);
 
     const effectiveMode = modeOverride || currentMode;
     const modeMeta = AGENT_MODE_META[effectiveMode];
+
+    const setQueuedVoiceSendState = useCallback((next: boolean) => {
+        queuedVoiceSendRef.current = next;
+        setQueuedVoiceSend(next);
+    }, []);
 
     const PROTOCOL_SWITCH_INTENT_RE = /\b(?:switch|move|go|start|enter)\b[\w\s]{0,24}\bprotocol\b|\bprotocol mode\b|\bupdate protocol\b/i;
 
@@ -225,12 +251,101 @@ export function CopilotInputCore({
         return () => clearTimeout(timer);
     }, [input, page, hasProtocol, currentMode]);
 
+    useEffect(() => {
+        latestInputRef.current = input;
+    }, [input]);
+
+    useEffect(() => {
+        latestPendingAttachmentRef.current = pendingAttachment;
+    }, [pendingAttachment]);
+
+    useEffect(() => {
+        latestAttachedContextTargetsRef.current = attachedContextTargets;
+    }, [attachedContextTargets]);
+
+    useEffect(() => {
+        latestSendContextRef.current = {
+            page,
+            section,
+            studyId,
+            selectedModel,
+            effectiveMode,
+        };
+    }, [effectiveMode, page, section, selectedModel, studyId]);
+
+    const dispatchSend = useCallback((rawText: string) => {
+        if (sendLockRef.current) return false;
+        const text = rawText.trim();
+        const activeAttachment = latestPendingAttachmentRef.current;
+        if (!text && !activeAttachment) return false;
+
+        const {
+            page: currentPage,
+            section: currentSection,
+            studyId: currentStudyId,
+            selectedModel: currentSelectedModel,
+            effectiveMode: currentEffectiveMode,
+        } = latestSendContextRef.current;
+        const nextContextTargets = latestAttachedContextTargetsRef.current.length > 0
+            ? latestAttachedContextTargetsRef.current
+            : undefined;
+
+        sendLockRef.current = true;
+        sendMessage(
+            text,
+            currentPage,
+            currentSection,
+            currentSelectedModel,
+            currentEffectiveMode,
+            currentStudyId,
+            undefined,
+            nextContextTargets,
+        );
+        if (nextContextTargets?.length) {
+            clearAttachedContextTargets?.();
+        }
+        setInput("");
+        setModeOverride(null);
+        requestAnimationFrame(() => textareaRef.current?.focus());
+        return true;
+    }, [clearAttachedContextTargets, sendMessage]);
+
     const handleTranscription = useCallback((text: string) => {
-        setInput((prev) => {
-            const separator = prev.trim() ? " " : "";
-            return prev + separator + text;
-        });
-    }, []);
+        const currentInput = latestInputRef.current;
+        const separator = currentInput.trim() ? " " : "";
+        const nextText = currentInput + separator + text;
+
+        if (queuedVoiceSendRef.current) {
+            const didSend = dispatchSend(nextText);
+            setQueuedVoiceSendState(false);
+            if (!didSend) {
+                setInput(nextText);
+            }
+            return;
+        }
+
+        setInput(nextText);
+    }, [dispatchSend, setQueuedVoiceSendState]);
+
+    const handleTranscriptionSettled = useCallback((result: VoiceTranscriptionSettlement) => {
+        if (!queuedVoiceSendRef.current) return;
+
+        if (result.status === "success") {
+            if (result.text) {
+                return;
+            }
+
+            const didSend = dispatchSend(latestInputRef.current);
+            setQueuedVoiceSendState(false);
+            if (!didSend) {
+                requestAnimationFrame(() => textareaRef.current?.focus());
+            }
+            return;
+        }
+
+        setQueuedVoiceSendState(false);
+    }, [dispatchSend, setQueuedVoiceSendState]);
+
     const {
         state: voiceState,
         error: voiceError,
@@ -239,7 +354,7 @@ export function CopilotInputCore({
         toggleRecording,
         stopRecording,
         clearError: clearVoiceError,
-    } = useVoiceInput(handleTranscription);
+    } = useVoiceInput(handleTranscription, handleTranscriptionSettled);
 
     useEffect(() => {
         if (isModelControlled) return;
@@ -306,7 +421,9 @@ export function CopilotInputCore({
 
     const hasSecondaryActions = canShowAttachments || !!onCompress;
     const isVoiceBusy = voiceState !== "idle";
-    const canSubmit = !isVoiceBusy && (!!input.trim() || !!pendingAttachment);
+    const canSubmit = voiceState === "recording"
+        ? !queuedVoiceSend
+        : voiceState === "idle" && (!!input.trim() || !!pendingAttachment);
     const showVoiceStatusPresentation = showVoice && isVoiceBusy;
     const canQueueNext = isLoading
         && !!input.trim()
@@ -316,32 +433,25 @@ export function CopilotInputCore({
         && !!onQueueFollowUp;
 
     const handleSend = useCallback(() => {
-        if (sendLockRef.current) return;
-        const text = input.trim();
-        if (!text && !pendingAttachment) return;
-        if (voiceState === "recording" || voiceState === "transcribing") return;
-        sendLockRef.current = true;
-        const nextContextTargets = attachedContextTargets.length > 0 ? attachedContextTargets : undefined;
-        sendMessage(text, page, section, selectedModel, effectiveMode, studyId, undefined, nextContextTargets);
-        if (nextContextTargets?.length) {
-            clearAttachedContextTargets?.();
+        if (voiceState === "recording") {
+            if (queuedVoiceSendRef.current) return;
+            setQueuedVoiceSendState(true);
+            stopRecording();
+            return;
         }
-        setInput("");
-        setModeOverride(null);
-        requestAnimationFrame(() => textareaRef.current?.focus());
+        if (voiceState === "requesting_permission" || voiceState === "transcribing") return;
+        void dispatchSend(latestInputRef.current);
     }, [
-        input,
-        page,
-        section,
-        studyId,
-        sendMessage,
-        selectedModel,
-        pendingAttachment,
-        effectiveMode,
-        attachedContextTargets,
-        clearAttachedContextTargets,
+        dispatchSend,
+        setQueuedVoiceSendState,
+        stopRecording,
         voiceState,
     ]);
+
+    const handleStopDictation = useCallback(() => {
+        setQueuedVoiceSendState(false);
+        stopRecording();
+    }, [setQueuedVoiceSendState, stopRecording]);
 
     const handleStop = useCallback(() => {
         if (voiceState === "recording" || voiceState === "transcribing") {
@@ -377,6 +487,53 @@ export function CopilotInputCore({
         window.addEventListener("keydown", onWindowKeyDown);
         return () => window.removeEventListener("keydown", onWindowKeyDown);
     }, [handleStop, isLoading, voiceState]);
+
+    const showRecordingHint = useCallback((target: HTMLElement, label: string) => {
+        const container = inputBoxRef.current;
+        if (!container) return;
+        const containerRect = container.getBoundingClientRect();
+        const targetRect = target.getBoundingClientRect();
+        setRecordingHint({
+            label,
+            x: targetRect.left - containerRect.left + targetRect.width / 2,
+        });
+    }, []);
+
+    const hideRecordingHint = useCallback(() => {
+        setRecordingHint(null);
+    }, []);
+
+    useEffect(() => {
+        if (voiceState !== "recording") {
+            setRecordingHint(null);
+        }
+    }, [voiceState]);
+
+    const stopRecordingHintHandlers = voiceState === "recording" && !queuedVoiceSend
+        ? {
+            onMouseEnter: (event: ReactMouseEvent<HTMLButtonElement>) => {
+                showRecordingHint(event.currentTarget, "Stop dictation");
+            },
+            onMouseLeave: hideRecordingHint,
+            onFocus: (event: ReactFocusEvent<HTMLButtonElement>) => {
+                showRecordingHint(event.currentTarget, "Stop dictation");
+            },
+            onBlur: hideRecordingHint,
+        }
+        : {};
+
+    const sendRecordingHintHandlers = voiceState === "recording" && !queuedVoiceSend
+        ? {
+            onMouseEnter: (event: ReactMouseEvent<HTMLButtonElement>) => {
+                showRecordingHint(event.currentTarget, "Transcribe and send");
+            },
+            onMouseLeave: hideRecordingHint,
+            onFocus: (event: ReactFocusEvent<HTMLButtonElement>) => {
+                showRecordingHint(event.currentTarget, "Transcribe and send");
+            },
+            onBlur: hideRecordingHint,
+        }
+        : {};
 
     const selectedModelInfo = USER_SELECTABLE_MODELS.find((m) => m.id === selectedModel);
     const ALL_MODES: AgentMode[] = getUserSelectableAgentModes();
@@ -467,32 +624,26 @@ export function CopilotInputCore({
                         : voiceState === "requesting_permission"
                         ? "Waiting for microphone permission"
                         : voiceState === "transcribing"
-                        ? "Transcribing..."
+                        ? queuedVoiceSend
+                            ? "Transcribing and sending"
+                            : "Transcribing..."
                         : ""}
             </span>
             <button
                 type="button"
                 className={`${styles.actionBtn} ${styles.voiceActionBtn} ${voiceState === "recording" ? styles.voiceActionBtnRecording : ""}`}
-                onClick={toggleRecording}
-                disabled={voiceState === "requesting_permission" || voiceState === "transcribing"}
+                onClick={voiceState === "recording" ? handleStopDictation : toggleRecording}
+                disabled={voiceState === "requesting_permission" || voiceState === "transcribing" || queuedVoiceSend}
                 aria-label={
                     voiceState === "recording"
-                        ? "Stop recording"
+                        ? "Stop dictation"
                         : voiceState === "requesting_permission"
                         ? "Waiting for microphone permission"
                         : voiceState === "transcribing"
                         ? "Transcribing..."
                         : "Voice input"
                 }
-                title={
-                    voiceState === "recording"
-                        ? "Stop recording"
-                        : voiceState === "requesting_permission"
-                        ? "Waiting for microphone permission"
-                        : voiceState === "transcribing"
-                        ? "Transcribing..."
-                        : "Voice input"
-                }
+                {...stopRecordingHintHandlers}
             >
                 <span className="material-icons-round">
                     {voiceState === "recording"
@@ -508,6 +659,7 @@ export function CopilotInputCore({
     return (
         <>
             <form
+                ref={inputBoxRef}
                 className={styles.inputBox}
                 onSubmit={(e) => {
                     e.preventDefault();
@@ -786,7 +938,7 @@ export function CopilotInputCore({
                                             <span className={styles.transcribingDot} />
                                             <span className={styles.transcribingDot} />
                                         </span>
-                                        <span>Transcribing audio</span>
+                                        <span>{queuedVoiceSend ? "Transcribing and sending" : "Transcribing audio"}</span>
                                         <span className={styles.recordingTimer}>{formatElapsedVoiceTime(elapsedMs)}</span>
                                     </div>
                                 )}
@@ -816,10 +968,12 @@ export function CopilotInputCore({
                             </button>
                         ) : (
                             <button
-                                type="submit"
+                                type={voiceState === "idle" ? "submit" : "button"}
                                 className={`${styles.sendBtn} ${canSubmit ? styles.sendBtnActive : ""}`}
-                                aria-label="Send"
+                                aria-label={voiceState === "recording" ? "Transcribe and send" : "Send"}
                                 disabled={!canSubmit}
+                                onClick={voiceState === "idle" ? undefined : handleSend}
+                                {...sendRecordingHintHandlers}
                             >
                                 <span className="material-icons-round">arrow_upward</span>
                             </button>
@@ -835,6 +989,15 @@ export function CopilotInputCore({
                         </button>
                     </div>
                 )}
+                {recordingHint && voiceState === "recording" ? (
+                    <div
+                        className={styles.recordingControlHint}
+                        style={{ left: `${recordingHint.x}px` }}
+                        role="tooltip"
+                    >
+                        {recordingHint.label}
+                    </div>
+                ) : null}
             </form>
         </>
     );
