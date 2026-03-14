@@ -1395,7 +1395,10 @@ export function TimelineRenderer({
             case "error": {
                 const recommendation = item.errorMeta?.recoveryRecommendation;
                 const showReconnect = recommendation === "reconnect" && onReconnectRun;
-                const showContinue = recommendation === "continue_from_durable_state" && onContinueFromDurableStateRun;
+                const showContinue = (
+                    recommendation === "continue_from_durable_state"
+                    || recommendation === "continue_from_checkpoint"
+                ) && onContinueFromDurableStateRun;
                 const showStopAndRetry = recommendation === "stop_and_retry" && onStopAndRetryRun;
                 const showRetry = (!recommendation && item.retryable && onRetryLastMessage)
                     || ((recommendation === "retry" || recommendation === "terminal") && onRetryLastMessage);

@@ -18,6 +18,7 @@ Use this file for detailed execution thinking about stabilization and continuati
 - The second `FIX-011b` stabilization slice now makes reconnect checkpoints run-scoped, applies one shared same-run recovery authority across `/ai`, project copilot, and the main project conversation, and clears weaker same-run reconnect/fallback state as soon as stronger server recovery truth arrives.
 - The third `FIX-011b` stabilization slice now introduces an explicit event-durability policy, records degraded durability on `AgentRun` when recovery-critical persistence fails after useful work, and moves recovery-critical persistence to the business event boundary instead of relying on the stream route as the first durable owner of that truth.
 - The fourth `FIX-011b` stabilization slice now supports durable continuation only from proven persisted server state: the recovery contract can recommend `continue_from_durable_state` for audited tool-result and artifact-state cases, the next run reuses explicit persisted inputs instead of transcript reconstruction, and ambiguous mid-loop state still falls back to `stop_and_retry` / `retry`.
+- The fifth `FIX-011b` stabilization slice now adds a narrow `RunCheckpoint` store for the exact Slice 4 gaps that still needed explicit continuation seeds: recovery can prefer `continue_from_checkpoint` when a valid `tool_result_ready` or `artifact_ready` boundary survives later same-run noise, while legacy runs and non-checkpoint cases still fall back to Slice 4 durable continuation or retry semantics.
 - The remaining problem is not first-time recovery architecture. It is broader durable convergence: disconnect classification can still improve, durable user-facing state can still fall through persistence/finalization seams, and continuation beyond the audited proven-state cases still lacks enough persistence authority to be trustworthy.
 - Popup still remains a truthful reduced subset only; it should not claim full recovery/continuation parity until shared-engine convergence is explicitly finished.
 
@@ -60,6 +61,24 @@ Use this file for detailed execution thinking about stabilization and continuati
 | Degraded durability after useful visible success | degraded `AgentRun` markers plus whatever durable events/artifacts survived | Only if one of the audited source validators still resolves to a safe tool-result or artifact-state continuation source | Conditional only |
 | Paused-for-input | persisted `user_input_required` state | Resume via the existing paused-input path | Existing `resume` only; not part of `continue_from_durable_state` |
 | Mid-loop planner/tool state, pending tool calls, delegated work without a durable parent-facing result, partial assistant output only | replayable UI state but no proven continuation authority | Recreate hidden transient loop state | No |
+
+### Slice 5 checkpoint-backed continuation gaps
+
+Only the following Slice 4 gaps are promoted into V1 checkpoint-backed continuation:
+
+| Gap promoted from Slice 4 | Why Slice 4 durable continuation was insufficient | V1 checkpoint answer |
+|---|---|---|
+| Earlier safe `tool_result` boundary is followed by later same-run assistant/tool-call noise | Slice 4 intentionally refuses continuation once later same-run state makes the latest replayable event stream ambiguous, even if the earlier `tool_result` is still a valid seed | Persist `tool_result_ready` as an explicit reusable seed and let recovery resolve the latest valid checkpoint instead of inferring from replay order |
+| Earlier safe artifact proposal/review boundary is followed by later same-run noise or post-boundary failure | Slice 4 can restore the durable artifact state for visibility, but it cannot always prefer that earlier boundary for execution continuation once later same-run events make the stream ambiguous | Persist `artifact_ready` as an explicit reusable seed and validate it directly against the authoritative artifact row |
+| One run crosses multiple safe durable boundaries | Slice 4 has no explicit seed-selection authority beyond scanning persisted outputs, so it cannot distinguish "latest reusable boundary" from "latest replayable durable event" in noisy runs | Resolve the latest valid ready checkpoint by source event sequence and continue from that explicit seed |
+
+Everything else remains deferred:
+- mid-loop transient planner/tool state
+- pending tool calls
+- delegated work without a durable parent-facing result
+- plan execution continuation
+- partial assistant output only
+- anything that requires transcript reconstruction or hidden scratchpad state
 
 ## Workstream E: Surface Convergence
 - `/ai`, project copilot, and the main project conversation should consume one shared durable recovery/continuation contract instead of reinterpreting run truth per surface.
