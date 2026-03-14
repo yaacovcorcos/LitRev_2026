@@ -3,6 +3,7 @@ import { render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import DraftPage from "../page";
+import { UNSECTIONED_DRAFT_ID } from "@/types/draft";
 
 const { mockUseDraftWorkspaceController } = vi.hoisted(() => ({
   mockUseDraftWorkspaceController: vi.fn(),
@@ -26,8 +27,8 @@ vi.mock("@/components/project/ProjectPageLayout", () => ({
   ),
 }));
 
-vi.mock("@/components/project/DemoGuideCard", () => ({
-  DemoGuideCard: ({ text }: { text: string }) => <div>{text}</div>,
+vi.mock("@/components/ConfirmDialog", () => ({
+  ConfirmDialog: ({ isOpen }: { isOpen: boolean }) => <div data-testid="confirm-dialog" data-open={isOpen ? "1" : "0"} />,
 }));
 
 vi.mock("@/components/ui/EmptyState", () => ({
@@ -48,30 +49,38 @@ vi.mock("../DraftContextRail", () => ({
 }));
 
 vi.mock("../StructureRail", () => ({
-  OutlinePane: () => <div data-testid="outline-pane" />,
+  SectionsPane: () => <div data-testid="sections-pane" />,
 }));
 
-vi.mock("../DraftUtilityDock", () => ({
-  DraftUtilityDock: () => <div data-testid="utility-dock" />,
-}));
-
-vi.mock("../DraftUtilityDrawer", () => ({
-  DraftUtilityDrawer: ({ children }: { children: ReactNode }) => <div data-testid="utility-drawer">{children}</div>,
-}));
-
-vi.mock("../ManuscriptCanvas", () => ({
-  ManuscriptCanvas: () => <div data-testid="manuscript-canvas" />,
+vi.mock("../DraftSidebar", () => ({
+  DraftSidebar: ({
+    sectionsPane,
+    evidencePane,
+    collapsed,
+  }: {
+    sectionsPane: ReactNode;
+    evidencePane: ReactNode;
+    collapsed: boolean;
+  }) => (
+    <div data-testid="draft-sidebar" data-collapsed={collapsed ? "1" : "0"}>
+      {sectionsPane}
+      {evidencePane}
+    </div>
+  ),
 }));
 
 vi.mock("../DraftEditors", () => ({
   EditorToolbar: () => <div data-testid="editor-toolbar" />,
+  FullSectionEditor: ({ sectionId, editable }: { sectionId: string; editable?: boolean }) => (
+    <div data-testid="section-editor" data-section-id={sectionId} data-editable={editable === false ? "0" : "1"} />
+  ),
 }));
 
 vi.mock("../DraftToolbar", () => ({
-  DraftWorkspaceHeader: ({ projectName }: { projectName: string }) => (
-    <div>
+  DraftTopBar: ({ projectName, mode }: { projectName: string; mode: "section" | "full" }) => (
+    <div data-testid="draft-top-bar">
       <div>{projectName}</div>
-      <div>Draft</div>
+      <div>{mode === "section" ? "Section" : "Full Draft"}</div>
     </div>
   ),
   DraftFormattingPanel: () => <div data-testid="formatting-panel" />,
@@ -86,96 +95,106 @@ function createController(overrides: Partial<ReturnType<typeof mockUseDraftWorks
     isLoadingProjects: false,
     projectsError: null,
     project: { id: "proj-1", name: "Alpha Draft" },
-    isMobileDraftV2Enabled: false,
-    captureEnabled: false,
-    contextToolbarEnabled: false,
-    showDesktopContextToolbar: false,
-    isReferencesSection: false,
     isEmbeddedInProjectShell: false,
-    hasDraftContent: true,
-    saveStatus: "saved" as const,
-    isCompactWorkspace: false,
-    isPhoneWorkspace: false,
-    utilityPaneMode: "closed" as const,
-    isUtilityPaneOpen: false,
-    toggleUtilityPane: vi.fn(),
-    closeUtilityPane: vi.fn(),
-    showResultsGuide: false,
-    outlineView: [],
+    projectCopilot: null,
     draft: {
-      activeSection: "abstract",
-      manuscript: { doc: { type: "doc", content: [] } },
+      mode: "full" as const,
+      activeSection: null,
+      contentBySection: {
+        [UNSECTIONED_DRAFT_ID]: { type: "doc", content: [] },
+        abstract: { type: "doc", content: [] },
+      },
     },
-    collapsedSectionIds: new Set<string>(),
+    saveStatus: "saved" as const,
+    orderedSections: [],
     availableSections: [],
-    customSectionName: "",
-    draggingSectionId: null,
-    dragOverSectionId: null,
-    dragOverPosition: null,
-    statusLabelByKey: { empty: "Empty", drafting: "Drafting", issues: "Issues", generated: "Generated" },
-    setCustomSectionName: vi.fn(),
-    handleAddCustomSection: vi.fn(),
-    addOptionalSection: vi.fn(),
-    focusSection: vi.fn(),
-    focusHeading: vi.fn(),
-    toggleSectionCollapsed: vi.fn(),
-    removeSection: vi.fn(),
-    handleSelectSectionKeyDown: vi.fn(),
-    handleSectionDragStart: vi.fn(),
-    handleSectionDragOver: vi.fn(),
-    handleSectionDrop: vi.fn(),
-    handleSectionDragEnd: vi.fn(),
-    activeSectionLabel: "Abstract",
-    usedEvidence: [],
-    setAddEvidenceOpen: vi.fn(),
-    insertCitation: vi.fn(),
-    handleRemoveEvidence: vi.fn(),
-    studyLabel: vi.fn((study: { title: string }) => study.title),
-    editor: null,
+    hasEditableSections: false,
+    activeSectionLabel: "Draft",
+    currentTargetId: UNSECTIONED_DRAFT_ID,
+    currentTargetLabel: "Whole draft",
+    isReferencesTarget: false,
+    activeEditor: null,
     paragraphDir: "ltr" as const,
-    handleAskAi: vi.fn(),
-    sendToCopilotAction: { icon: "send", label: "Send", defaultPrompt: "Use this" },
-    rewriteSelectionAction: { icon: "edit", label: "Rewrite", defaultPrompt: "Rewrite this" },
-    checkClaimSupportAction: { icon: "fact_check", label: "Check", defaultPrompt: "Check this" },
-    canRunDraftContextActions: false,
-    handleDraftContextAction: vi.fn(),
-    isFormatOpen: false,
-    setFormatOpen: vi.fn(),
-    formatRef: { current: null },
+    formatVarsById: {
+      [UNSECTIONED_DRAFT_ID]: {},
+    },
     activeFormat: { fontSize: 16, lineHeight: 1.8, paragraphSpacing: 12, fontFamily: "Georgia" },
     activeFontFamily: "Georgia",
+    shouldRenderWholeDraft: true,
+    wholeDraftMeta: { id: UNSECTIONED_DRAFT_ID, label: "Whole draft", placeholder: "Start writing..." },
+    sidebarSections: [],
+    sidebarView: "sections" as const,
+    setSidebarView: vi.fn(),
+    isSidebarCollapsed: false,
+    toggleSidebar: vi.fn(),
+    isPhoneWorkspace: false,
+    isCompactWorkspace: false,
+    draggingKey: null,
+    dragOverKey: null,
+    dragOverPosition: null,
+    handleDragStart: vi.fn(),
+    handleDragOver: vi.fn(),
+    handleDrop: vi.fn(),
+    handleDragEnd: vi.fn(),
+    handleSelectSectionKeyDown: vi.fn(),
+    handleToggleMode: vi.fn(),
+    handleAddSection: vi.fn(),
+    handleAddCustomSection: vi.fn(),
+    selectSection: vi.fn(),
+    selectSectionHeading: vi.fn(),
+    handleMoveSection: vi.fn(),
+    requestRemoveSection: vi.fn(),
+    sectionToRemove: null,
+    confirmRemoveSection: vi.fn(),
+    cancelRemoveSection: vi.fn(),
+    pendingSectionRequest: null,
+    confirmPendingMove: vi.fn(),
+    confirmPendingKeep: vi.fn(),
+    cancelPendingSectionRequest: vi.fn(),
+    isAddSectionOpen: false,
+    setAddSectionOpen: vi.fn(),
+    customSectionName: "",
+    setCustomSectionName: vi.fn(),
+    sectionTabRefs: { current: {} },
+    addSectionRef: { current: null },
+    addSectionInputRef: { current: null },
+    formatRef: { current: null },
+    isFormatOpen: false,
+    setFormatOpen: vi.fn(),
     updateSectionFormat: vi.fn(),
-    citationIssues: [],
-    formatVarsById: {},
-    selectionState: { activeBlockId: null },
-    activeBlockEntry: null,
-    handleEditorReady: vi.fn(),
-    handleManuscriptChange: vi.fn(),
-    handleEditorMapChange: vi.fn(),
-    handleSelectionUpdate: vi.fn(),
-    syncFormattingFromEditor: vi.fn(),
-    moveSelectedBlock: vi.fn(),
-    isAddEvidenceOpen: false,
-    studies: [],
+    registerEditor: vi.fn(),
+    handleSectionFocus: vi.fn(),
+    handleSectionSelectionChange: vi.fn(),
+    updateSectionContent: vi.fn(),
+    usedEvidence: [],
     usedEvidenceIds: [],
+    studies: [],
+    isAddEvidenceOpen: false,
+    setAddEvidenceOpen: vi.fn(),
     handleAddEvidence: vi.fn(),
-    isExportModalOpen: false,
-    setExportModalOpen: vi.fn(),
-    handleExportDocx: vi.fn(),
-    exportMode: "warn" as const,
-    setExportMode: vi.fn(),
-    exportCitationIssues: [],
-    blockingCitationIssuesCount: 0,
-    latestExport: null,
-    exportHistory: [],
-    handleDeleteExport: vi.fn(),
+    handleRemoveEvidence: vi.fn(),
+    insertCitation: vi.fn(),
+    studyLabel: vi.fn((study: { title: string }) => study.title),
+    handleAskAi: vi.fn(),
+    insertCopilotText: vi.fn(),
     copilotEmptyState: {
       icon: "tips_and_updates",
       title: "Draft faster",
       description: "Ask for an outline.",
       suggestions: [],
     },
-    insertCopilotText: vi.fn(),
+    showResultsGuide: false,
+    citationIssues: [],
+    hasDraftContent: false,
+    isExportModalOpen: false,
+    setExportModalOpen: vi.fn(),
+    handleExportDocx: vi.fn(),
+    exportMode: "warn" as const,
+    setExportMode: vi.fn(),
+    blockingCitationIssuesCount: 0,
+    latestExport: null,
+    exportHistory: [],
+    handleDeleteExport: vi.fn(),
     ...overrides,
   };
 }
@@ -186,30 +205,41 @@ describe("Draft page", () => {
     mockUseDraftWorkspaceController.mockReturnValue(createController());
   });
 
-  it("renders the continuous manuscript workspace shell", () => {
+  it("renders the restored section-first shell with a persistent sidebar", () => {
     render(<DraftPage />);
 
-    expect(screen.getByText("Alpha Draft")).toBeTruthy();
-    expect(screen.getByTestId("utility-dock")).toBeTruthy();
-    expect(screen.getByTestId("manuscript-canvas")).toBeTruthy();
-    expect(screen.queryByTestId("utility-drawer")).toBeNull();
-    expect(screen.queryByText("Full Draft")).toBeNull();
-    expect(screen.queryByText("Section")).toBeNull();
+    expect(screen.getByTestId("draft-top-bar")).toBeTruthy();
+    expect(screen.getByTestId("draft-sidebar")).toBeTruthy();
+    expect(screen.getByTestId("editor-toolbar")).toBeTruthy();
+    expect(screen.getByTestId("section-editor").getAttribute("data-section-id")).toBe(UNSECTIONED_DRAFT_ID);
+    expect(screen.getByTestId("project-page-layout").getAttribute("data-has-copilot")).toBe("1");
   });
 
-  it("opens the shared utility drawer and suppresses standalone copilot when embedded", () => {
+  it("renders section mode with a read-only references section editor", () => {
     mockUseDraftWorkspaceController.mockReturnValue(
       createController({
-        utilityPaneMode: "outline",
-        isUtilityPaneOpen: true,
-        isEmbeddedInProjectShell: true,
+        draft: {
+          mode: "section",
+          activeSection: "references",
+          contentBySection: {
+            [UNSECTIONED_DRAFT_ID]: { type: "doc", content: [] },
+            references: { type: "doc", content: [] },
+          },
+        },
+        orderedSections: [{ id: "references", label: "References" }],
+        hasEditableSections: true,
+        activeSectionLabel: "References",
+        currentTargetId: "references",
+        currentTargetLabel: "References",
+        isReferencesTarget: true,
+        shouldRenderWholeDraft: false,
       }),
     );
 
     render(<DraftPage />);
 
-    expect(screen.getByTestId("utility-drawer")).toBeTruthy();
-    expect(screen.getByTestId("outline-pane")).toBeTruthy();
-    expect(screen.getByTestId("project-page-layout").getAttribute("data-has-copilot")).toBe("0");
+    expect(screen.getByText("Section")).toBeTruthy();
+    expect(screen.getByTestId("section-editor").getAttribute("data-section-id")).toBe("references");
+    expect(screen.getByTestId("section-editor").getAttribute("data-editable")).toBe("0");
   });
 });

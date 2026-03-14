@@ -58,13 +58,13 @@ export const draftPanelsStateSchema = z.object({
 export const manuscriptSectionMetaSchema = z.object({
   sectionId: z.string(),
   sectionNodeId: z.string(),
-  kind: z.enum(["base", "custom"]),
+  kind: z.enum(["base", "custom", "freeform"]),
   label: z.string(),
   placeholder: z.string().optional(),
 });
 
 export const manuscriptDocumentSchema = z.object({
-  schemaVersion: z.literal(1),
+  schemaVersion: z.literal(2),
   doc: jsonContentSchema,
   sections: z.array(manuscriptSectionMetaSchema),
 });
@@ -72,7 +72,7 @@ export const manuscriptDocumentSchema = z.object({
 export const draftStateV1Schema = z.object({
   version: z.literal(1),
   mode: z.enum(["section", "full"]),
-  activeSection: z.string(),
+  activeSection: z.string().nullable(),
   sectionOrder: z.array(z.string()),
   customSections: z.record(
     z.string(),
