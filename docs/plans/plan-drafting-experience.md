@@ -20,9 +20,13 @@ No PRD change is required now because the target architecture still supports sec
 Current route contract:
 - blank draft by default
 - no seeded sections
+- fresh blank drafts open to one obvious writable surface in `Full Draft`
 - `Full Draft` and `Section` are route-level projections over one normalized draft/manuscript state
 - top tabs show named sections only
 - `Whole draft` is a first-class freeform area, but not a top tab
+- `Section` mode is disabled until the first named section exists, then becomes the primary focused drafting path
+- before any named section exists, evidence targets `Whole draft`; after sections exist, evidence targets the active section
+- `Full Draft` only renders written sections plus `Whole draft` when it has content; otherwise it shows the start-drafting empty state
 - left Evidence Ledger is the only draft-owned support surface
 - right side remains owned by the existing project copilot shell
 

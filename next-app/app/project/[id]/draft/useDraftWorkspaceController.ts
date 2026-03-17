@@ -352,12 +352,17 @@ export function useDraftWorkspaceController({ projectId }: ControllerParams) {
     () => draft.sectionOrder.map((id) => sectionMetaById.get(id)).filter((section): section is SectionMeta => Boolean(section)),
     [draft.sectionOrder, sectionMetaById],
   );
+  const fullDraftSections = useMemo(
+    () => orderedSections.filter((section) => docHasContent(draft.contentBySection[section.id])),
+    [draft.contentBySection, orderedSections],
+  );
 
   const activeNamedSection = draft.activeSection ? sectionMetaById.get(draft.activeSection) ?? null : null;
   const currentTargetId = currentTargetIdFromActiveSection(draft.activeSection);
   const currentTargetMeta = sectionMetaById.get(currentTargetId) ?? WHOLE_DRAFT_META;
   const currentTargetLabel = currentTargetMeta.label;
   const hasEditableSections = draft.sectionOrder.some((sectionId) => sectionId !== "references");
+  const firstEditableSectionId = draft.sectionOrder.find((sectionId) => sectionId !== "references") ?? draft.sectionOrder[0] ?? null;
   const hasWholeDraftContent = docHasContent(draft.contentBySection[UNSECTIONED_DRAFT_ID]);
   const shouldRenderWholeDraft = hasWholeDraftContent || orderedSections.length === 0 || draft.activeSection === null;
   const isReferencesTarget = currentTargetId === "references";
@@ -456,6 +461,16 @@ export function useDraftWorkspaceController({ projectId }: ControllerParams) {
   const selectSection = useCallback((sectionId: DraftSectionId) => {
     setDraftLocal((prev) => ({
       ...prev,
+      activeSection: sectionId === UNSECTIONED_DRAFT_ID ? null : sectionId,
+    }));
+    scheduleFocus(sectionId);
+  }, [scheduleFocus, setDraftLocal]);
+
+  const openSectionInSectionMode = useCallback((sectionId: DraftSectionId | null) => {
+    if (!sectionId) return;
+    setDraftLocal((prev) => ({
+      ...prev,
+      mode: "section",
       activeSection: sectionId === UNSECTIONED_DRAFT_ID ? null : sectionId,
     }));
     scheduleFocus(sectionId);
@@ -819,8 +834,10 @@ export function useDraftWorkspaceController({ projectId }: ControllerParams) {
     addSectionInputRef,
     formatRef,
     orderedSections,
+    fullDraftSections,
     availableSections,
     hasEditableSections,
+    firstEditableSectionId,
     activeSectionLabel: activeNamedSection?.label ?? currentTargetLabel,
     currentTargetId,
     currentTargetLabel,
@@ -849,6 +866,7 @@ export function useDraftWorkspaceController({ projectId }: ControllerParams) {
     handleAddSection,
     handleAddCustomSection,
     selectSection,
+    openSectionInSectionMode,
     handleMoveSection,
     requestRemoveSection: setSectionToRemove,
     sectionToRemove,

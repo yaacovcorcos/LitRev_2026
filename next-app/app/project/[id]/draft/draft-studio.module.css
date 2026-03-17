@@ -595,8 +595,10 @@
     flex: 1;
     min-height: 0;
     display: grid;
-    grid-template-columns: var(--ledger-width) 1px 1fr 1px var(--copilot-width);
+    position: relative;
+    grid-template-columns: var(--ledger-width, 320px) minmax(0, 1fr);
     overflow: hidden;
+    padding-bottom: 0;
 }
 
 .demoGuide {
@@ -1431,7 +1433,7 @@
 }
 
 .manuscriptEditorSurface .proseMirror {
-    min-height: 0;
+    min-height: 120px;
 }
 
 .fullSection {
