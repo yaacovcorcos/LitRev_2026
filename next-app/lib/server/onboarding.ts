@@ -6,6 +6,7 @@ import type { ScopeInput } from "@/lib/server/scope";
 import { requireScope } from "@/lib/server/scope";
 import type { Prisma } from "@prisma/client";
 import type { OnboardingDerivedProfile } from "@/lib/server/onboarding-ai";
+import type { OnboardingStepId, OnboardingStepStatus } from "@/lib/schemas/onboarding";
 
 const GUIDED_SETUP_USER_KEY = "guided_setup_new_projects";
 const DEFAULT_GUIDED_SETUP = true;
@@ -17,9 +18,6 @@ export type ProjectOnboardingState = {
   stepStatuses: Record<OnboardingStepId, OnboardingStepStatus>;
   derivedProfile: OnboardingDerivedProfile | null;
 };
-
-export type OnboardingStepId = "topicQuestion" | "pico" | "criteria" | "strategy" | "workflow" | "launch";
-export type OnboardingStepStatus = "pending" | "completed" | "skipped";
 
 function parseGuidedSetupValue(value: string | null | undefined): boolean {
   if (!value) return DEFAULT_GUIDED_SETUP;

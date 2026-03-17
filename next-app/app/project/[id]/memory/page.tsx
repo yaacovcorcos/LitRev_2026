@@ -31,12 +31,9 @@ import {
   runMemoryMaintenanceAction,
 } from "@/app/actions/memory";
 import type { PRISMAStats } from "@/lib/server/memory/prisma-stats";
+import { MEMORY_TABS, type MemoryTabId } from "@/lib/durable-route-state";
 import { DemoGuideCard } from "@/components/project/DemoGuideCard";
 import styles from "./memory.module.css";
-
-// ── Types for tab data ───────────────────────────────────────────────────────
-
-type TabId = "project" | "study" | "preferences" | "prisma" | "health";
 
 interface UserPref {
   id: string;
@@ -114,16 +111,6 @@ function getProvenance(tags: string[]): { label: string; icon: string } {
 // ── SINGLE USER ID (matches existing pattern) ───────────────────────────────
 
 
-// ── Tabs definition ──────────────────────────────────────────────────────────
-
-const TABS: { id: TabId; label: string; icon: string }[] = [
-  { id: "project", label: "Project Memory", icon: "psychology" },
-  { id: "study", label: "Study Memory", icon: "science" },
-  { id: "preferences", label: "Preferences", icon: "tune" },
-  { id: "prisma", label: "PRISMA Stats", icon: "analytics" },
-  { id: "health", label: "Memory Health", icon: "monitor_heart" },
-];
-
 // ── Main content ─────────────────────────────────────────────────────────────
 
 function MemoryPageContent() {
@@ -148,7 +135,7 @@ function MemoryPageContent() {
   } = useProjectMemory();
 
   // Tab state
-  const [activeTab, setActiveTab] = useState<TabId>("project");
+  const [activeTab, setActiveTab] = useState<MemoryTabId>("project");
 
   // Lazy-loaded tab data
   const [studyMemories, setStudyMemories] = useState<StudyMemoryItem[] | null>(null);
@@ -412,7 +399,7 @@ function MemoryPageContent() {
 
         {/* Tab Bar */}
         <div className={styles.tabBar}>
-          {TABS.map((tab) => (
+          {MEMORY_TABS.map((tab) => (
             <button
               key={tab.id}
               className={`${styles.tab} ${activeTab === tab.id ? styles.tabActive : ""}`}
