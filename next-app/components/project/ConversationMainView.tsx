@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useProjectCopilot } from "@/contexts/ProjectCopilotContext";
 import type { CopilotPage } from "@/types/ai";
 import type { AgentMode } from "@/types/agent";
@@ -17,6 +18,7 @@ import { AutonomySettings } from "../copilot/AutonomySettings";
 import { ConversationPicker } from "../ui/ConversationPicker";
 import { generateChatUnificationRequestKey } from "@/lib/ai/chat-unification-telemetry";
 import { messagesToTimeline } from "../copilot/StreamReducer";
+import { buildProjectConversationPath } from "@/lib/durable-route-state";
 import styles from "./ConversationMainView.module.css";
 
 export type ConversationMainViewProps = {
@@ -45,6 +47,7 @@ const AI_PAGE_INSPIRED_SUGGESTIONS = [
 ] as const;
 
 export function ConversationMainView({ projectId }: ConversationMainViewProps) {
+    const router = useRouter();
     const {
         messages,
         isLoading,
@@ -128,15 +131,39 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
         await createNoteAction(projectId, content, "conversation", currentConversationId ?? undefined, messageId);
     }, [projectId, currentConversationId]);
 
+    const navigateToConversation = useCallback((conversationId: string) => {
+        router.push(buildProjectConversationPath(projectId, conversationId));
+    }, [projectId, router]);
+
+    const handleSelectConversation = useCallback(async (conversationId: string) => {
+        const selected = await selectConversation(conversationId);
+        if (!selected) {
+            router.push(`/project/${projectId}`);
+            return;
+        }
+        navigateToConversation(conversationId);
+    }, [navigateToConversation, projectId, router, selectConversation]);
+
+    const handleDeleteConversation = useCallback(async (conversationId: string) => {
+        const deleted = await deleteConversation(conversationId);
+        if (!deleted) return;
+        if (conversationId === currentConversationId) {
+            router.push(`/project/${projectId}`);
+        }
+    }, [currentConversationId, deleteConversation, projectId, router]);
+
     const handleBranchFromMessage = useCallback(async (messageId: string, createdAt: string) => {
         if (!currentConversationId || isBranching || isLoading) return;
         setIsBranching(true);
         try {
-            await branchConversation(currentConversationId, messageId, createdAt);
+            const nextConversationId = await branchConversation(currentConversationId, messageId, createdAt);
+            if (nextConversationId) {
+                navigateToConversation(nextConversationId);
+            }
         } finally {
             setIsBranching(false);
         }
-    }, [currentConversationId, isBranching, isLoading, branchConversation]);
+    }, [branchConversation, currentConversationId, isBranching, isLoading, navigateToConversation]);
 
     const retryLastMessage = useCallback((replaceRunId?: string | null) => {
         if (isLoading) return;
@@ -247,9 +274,14 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
                             conversations={conversations}
                             searchPlaceholder="Search sessions..."
                             renderMeta={(conversation) => `${conversation.messageCount} msgs`}
-                            onSelect={selectConversation}
-                            onDelete={deleteConversation}
-                            onDuplicate={(id) => branchConversation(id)}
+                            onSelect={handleSelectConversation}
+                            onDelete={handleDeleteConversation}
+                            onDuplicate={async (id) => {
+                                const nextConversationId = await branchConversation(id);
+                                if (nextConversationId) {
+                                    navigateToConversation(nextConversationId);
+                                }
+                            }}
                             onRename={renameConversation}
                         />
                     </div>
@@ -260,7 +292,10 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
                             className={styles.newBtn}
                             onClick={async () => {
                                 setShowDropdown(false);
-                                await newConversation("overview" as CopilotPage);
+                                const nextConversationId = await newConversation("overview" as CopilotPage);
+                                if (nextConversationId) {
+                                    navigateToConversation(nextConversationId);
+                                }
                             }}
                             aria-label="New conversation"
                             title="New conversation"
@@ -277,7 +312,10 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
                                 if (!currentConversationId || isBranching) return;
                                 setIsBranching(true);
                                 try {
-                                    await branchConversation(currentConversationId);
+                                    const nextConversationId = await branchConversation(currentConversationId);
+                                    if (nextConversationId) {
+                                        navigateToConversation(nextConversationId);
+                                    }
                                 } finally {
                                     setIsBranching(false);
                                 }

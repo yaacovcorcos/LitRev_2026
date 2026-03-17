@@ -69,10 +69,15 @@ const ProjectCopilotContext = createContext<ProjectCopilotContextValue | undefin
 
 type ProjectCopilotProviderProps = {
     projectId: string;
+    routeConversationId?: string | null;
     children: ReactNode;
 };
 
-export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotProviderProps) {
+export function ProjectCopilotProvider({
+    projectId,
+    routeConversationId = null,
+    children,
+}: ProjectCopilotProviderProps) {
     const router = useRouter();
     const [state, setState] = useState<ProjectCopilotState>(createDefaultProjectCopilotState());
     const stateRef = useRef<ProjectCopilotState>(createDefaultProjectCopilotState());
@@ -283,6 +288,7 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
     // Conversation management (extracted hook)
     const convo = useCopilotConversations({
         projectId,
+        routeConversationId,
         updateState,
         setState,
         stateRef,
