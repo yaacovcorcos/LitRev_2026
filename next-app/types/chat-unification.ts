@@ -9,7 +9,8 @@ export type ChatUnificationMetricType =
   | "retry_model_continuity"
   | "ask_user_context_mismatch"
   | "stuck_running_tools_after_run_end"
-  | "run_end_observed";
+  | "run_end_observed"
+  | "answer_stream_delivery";
 
 export type ChatUnificationActualModelSource = "provider" | "requested" | "unknown";
 
@@ -61,6 +62,17 @@ export type RunEndObservedPayload = {
   streamPhase: ChatUnificationStreamPhase;
   actualModel: string | null;
   actualModelSource: ChatUnificationActualModelSource;
+  firstProviderContentMs?: number | null;
+};
+
+export type AnswerStreamDeliveryPayload = {
+  requestKey: string;
+  streamPhase: ChatUnificationStreamPhase;
+  firstVisibleContentMs: number | null;
+  visibleChunkCount: number;
+  visibleChunkChars: number;
+  maxVisibleChunkChars: number | null;
+  meanVisibleChunkGapMs: number | null;
 };
 
 export type ChatUnificationMetricPayloadByType = {
@@ -68,6 +80,7 @@ export type ChatUnificationMetricPayloadByType = {
   ask_user_context_mismatch: AskUserContextMismatchPayload;
   stuck_running_tools_after_run_end: StuckRunningToolsPayload;
   run_end_observed: RunEndObservedPayload;
+  answer_stream_delivery: AnswerStreamDeliveryPayload;
 };
 
 export type ChatUnificationMetricPayload =

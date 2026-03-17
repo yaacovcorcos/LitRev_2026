@@ -27,6 +27,7 @@ export function buildRunEndObservedPayload(params: {
   streamPhase: ChatUnificationStreamPhase;
   actualModel: string | null;
   actualModelSource: "provider" | "requested" | "unknown";
+  firstProviderContentMs?: number | null;
 }): RunEndObservedPayload {
   return {
     requestKey: params.requestKey ?? null,
@@ -34,5 +35,6 @@ export function buildRunEndObservedPayload(params: {
     streamPhase: params.streamPhase,
     actualModel: params.actualModel,
     actualModelSource: params.actualModelSource,
+    firstProviderContentMs: params.firstProviderContentMs ?? null,
   };
 }

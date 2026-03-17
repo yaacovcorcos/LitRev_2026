@@ -4,6 +4,7 @@ import type { AIStreamChunk, ChoiceOption, CopilotPage, UserInputRequest } from 
 import {
   createInitialSharedStreamState,
   reduceSharedStreamChunk,
+  reserveSharedAssistantTurn,
   type SharedStreamIntent,
   type SharedStreamState,
 } from "@/lib/ai/shared-stream-reducer";
@@ -96,6 +97,7 @@ function upsertAssistantMessage(
         sender: "ai",
         text: payload.text,
         reasoning: payload.reasoning,
+        deliveryState: undefined,
         createdAt: new Date().toISOString(),
         context: { page: deps.page, section: deps.section },
       };
@@ -109,9 +111,50 @@ function upsertAssistantMessage(
       ...existing,
       text: payload.text,
       reasoning: payload.reasoning ?? existing.reasoning,
+      deliveryState: undefined,
     };
     return next;
   });
+}
+
+function reserveAssistantMessage(deps: StreamChunkDeps) {
+  deps.updateMessages((messages) => {
+    const idx = messages.findIndex((msg) => msg.id === deps.aiMessageId);
+    if (idx < 0) {
+      const message: CopilotMessage = {
+        id: deps.aiMessageId,
+        sender: "ai",
+        text: "",
+        createdAt: new Date().toISOString(),
+        context: { page: deps.page, section: deps.section },
+        deliveryState: "reserved",
+      };
+      return [...messages, message];
+    }
+
+    const next = [...messages];
+    const existing = next[idx];
+    if (!existing) return messages;
+    next[idx] = {
+      ...existing,
+      deliveryState: "reserved",
+    };
+    return next;
+  });
+}
+
+function stripReservedAssistantMessage(
+  messages: CopilotMessage[],
+  assistantMessageId: string,
+): CopilotMessage[] {
+  return messages.filter((message) => !(
+    message.id === assistantMessageId
+    && message.sender === "ai"
+    && message.deliveryState === "reserved"
+    && !message.text
+    && !message.reasoning?.text
+    && !message.streamError
+  ));
 }
 
 function upsertProgressMessage(
@@ -267,8 +310,9 @@ function appendStreamErrorMessage(
 ) {
   const errorState = buildClientErrorState(payload.errorMeta ?? payload.message);
   deps.updateMessages((messages) => {
+    const visibleMessages = stripReservedAssistantMessage(messages, deps.aiMessageId);
     const normalizedMessages = isDeterministicCapabilityFailure(errorState.errorMeta)
-      ? messages.filter((message) => (
+      ? visibleMessages.filter((message) => (
         !(message.sender === "ai"
           && !message.streamError
           && matchesCanonicalFailureFallback({
@@ -276,7 +320,7 @@ function appendStreamErrorMessage(
             streamError: errorState.errorMeta,
           }))
       ))
-      : messages;
+      : visibleMessages;
 
     return [
       ...normalizedMessages,
@@ -342,6 +386,10 @@ function applyIntent(
   intent: SharedStreamIntent,
 ) {
   switch (intent.type) {
+    case "assistant_reserve": {
+      reserveAssistantMessage(deps);
+      return;
+    }
     case "assistant_upsert": {
       upsertAssistantMessage(deps, intent);
       return;
@@ -431,4 +479,16 @@ export function handleProjectCopilotStreamChunk(
     applyIntent(deps, reduced.state, intent);
   }
   return reduced.state;
+}
+
+export function reserveProjectCopilotAssistantTurn(
+  state: StreamMutableState,
+  deps: StreamChunkDeps,
+): StreamMutableState {
+  const reserved = reserveSharedAssistantTurn(state);
+  for (const intent of reserved.intents) {
+    deps.onIntent?.(intent);
+    applyIntent(deps, reserved.state, intent);
+  }
+  return reserved.state;
 }

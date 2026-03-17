@@ -13,6 +13,7 @@ describe("project copilot stream event handlers", () => {
   function baseState(): StreamMutableState {
     return {
       aiMessageCreated: false,
+      hasVisibleContent: false,
       fullContent: "",
       reasoningContent: "",
       reasoningState: "done",

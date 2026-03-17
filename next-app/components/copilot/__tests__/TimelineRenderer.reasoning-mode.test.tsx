@@ -75,7 +75,7 @@ describe("TimelineRenderer reasoning visibility modes", () => {
     expect(screen.getByRole("button", { name: /Show less/i })).not.toBeNull();
   });
 
-  it("auto-expands while reasoning is streaming in full mode", () => {
+  it("keeps live reasoning collapsed by default in full mode", () => {
     render(
       <TimelineRenderer
         items={buildAssistantItem("Streaming reasoning body", "streaming")}
@@ -86,11 +86,12 @@ describe("TimelineRenderer reasoning visibility modes", () => {
       />
     );
 
-    expect(screen.getByRole("button", { name: /Thinking/i })).not.toBeNull();
-    expect(screen.getByText(/Streaming reasoning body/)).not.toBeNull();
+    const toggle = screen.getByRole("button", { name: /Thinking/i });
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByText(/Streaming reasoning body/)).toBeNull();
   });
 
-  it("auto-expands while reasoning is streaming in summary mode", () => {
+  it("keeps live reasoning collapsed by default in summary mode", () => {
     render(
       <TimelineRenderer
         items={buildAssistantItem("Streaming summary reasoning", "streaming")}
@@ -101,8 +102,9 @@ describe("TimelineRenderer reasoning visibility modes", () => {
       />
     );
 
-    expect(screen.getByRole("button", { name: /Thinking/i })).not.toBeNull();
-    expect(screen.getByText(/Streaming summary reasoning/)).not.toBeNull();
+    const toggle = screen.getByRole("button", { name: /Thinking/i });
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByText(/Streaming summary reasoning/)).toBeNull();
     expect(screen.getByText(/Live/i)).not.toBeNull();
   });
 });

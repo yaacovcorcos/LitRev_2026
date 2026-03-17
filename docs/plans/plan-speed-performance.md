@@ -85,9 +85,11 @@ Define the canonical implementation plan for app speed, responsiveness, and stab
   - dynamic imports for header/history/timeline-adjacent UI
   - idle-deferred workspace context and conversation-list loading
   - an explicit LRU timeline cache capped to the five most recently accessed conversations
+  - feature-flagged progressive answer streaming cadence controls in `next-app/lib/feature-flags.ts`, with the shared runtime reserving the assistant row immediately and the server coalescer using lower-latency batches for answer `content` than for `reasoning_delta`
 - Explicit route-ready instrumentation is currently uneven across the app:
   - route-ready telemetry exists for `/`, auth entry, `/project/[id]`, and `/project/[id]/protocol`
   - `/ai` also has route-local `composer-ready` and `timeline-ready` markers
+  - `/ai` now also records first-provider-content timing plus first-visible-assistant-content and visible chunk cadence metrics so streaming UX changes can be tuned without guessing
   - `ledger`, `draft`, `notes`, and `memory` still rely mainly on Web Vitals plus surface-local loading signals
 - Server-side in-memory caches exist, but they are process-local and opportunistic rather than canonical:
   - citation metadata TTL cache + in-flight dedupe
@@ -132,6 +134,8 @@ Route prefetch policy:
   - total boot latency
   - route transition time
   - first visible assistant token latency
+  - first provider content latency
+  - visible assistant chunk count / max chunk size / average inter-chunk gap
 
 ### Mandatory CI Matrix
 - Routes:

@@ -37,6 +37,7 @@ import {
     failRunningProjectToolActivityMessages,
     handleProjectCopilotStreamChunk,
     interruptRunningProjectToolActivityMessages,
+    reserveProjectCopilotAssistantTurn,
 } from "@/contexts/project-copilot-stream-events";
 import type { ArtifactActionContract } from "@/lib/artifacts/action-contract";
 import { resolveReasoningRequest } from "@/lib/ai/reasoning-request";
@@ -65,6 +66,7 @@ import {
     ABNORMAL_END_TOOL_FAILURE_SUMMARY,
     shouldFailRunningToolsOnAbnormalEnd,
 } from "@/lib/ai/ai-stream-runtime";
+import { isProgressiveAnswerStreamingEnabled } from "@/lib/feature-flags";
 import {
     createRecoveryErrorEnvelope,
     getRunRecoveryMessage,
@@ -120,6 +122,18 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
     } = deps;
 
     const userCancelRequestedRef = useRef(false);
+    const progressiveAnswerStreamingEnabled = isProgressiveAnswerStreamingEnabled();
+
+    const stripReservedAssistantMessages = useCallback((messages: CopilotMessage[], assistantMessageId: string) => (
+        messages.filter((message) => !(
+            message.id === assistantMessageId
+            && message.sender === "ai"
+            && message.deliveryState === "reserved"
+            && !message.text
+            && !message.reasoning?.text
+            && !message.streamError
+        ))
+    ), []);
 
     const cancelStream = useCallback(() => {
         userCancelRequestedRef.current = true;
@@ -160,6 +174,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
             aiMessageId: latestAssistant?.id ?? `m-${Date.now() + 1}`,
             state: createInitialProjectStreamState({
                 aiMessageCreated: Boolean(latestAssistant),
+                hasVisibleContent: Boolean(latestAssistant?.text),
                 fullContent: latestAssistant?.text ?? "",
                 reasoningContent: latestAssistant?.reasoning?.text ?? "",
                 reasoningState: latestAssistant?.reasoning?.state ?? "done",
@@ -423,6 +438,14 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
         let actualModelSource: "provider" | "requested" | "unknown" = "unknown";
         let unresolvedCountBeforeClear: number | null = null;
         let unresolvedCountAfterClear: number | null = null;
+        let hasVisibleContent = false;
+        let firstVisibleContentMs: number | null = null;
+        let visibleChunkCount = 0;
+        let visibleChunkChars = 0;
+        let maxVisibleChunkChars: number | null = null;
+        let visibleChunkGapTotalMs = 0;
+        let visibleChunkGapCount = 0;
+        let lastVisibleChunkAtMs: number | null = null;
         let terminalReason: StreamTerminalReason | null = null;
         let emittedTerminalError = false;
         let aborted = false;
@@ -430,6 +453,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
             ? crypto.randomUUID()
             : `project-stream-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
         let terminalEventEmitted = false;
+        const streamStartedAtMs = Date.now();
 
         recordReliabilityMetric({
             type: "reliability.v1.stream.started",
@@ -552,12 +576,38 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                 });
             };
 
-            const applyChunk = (data: import("@/types/ai").AIStreamChunk) => {
-                const runningToolCallIdsBeforeChunk = runningToolCallIds;
-                const nextState = handleProjectCopilotStreamChunk(
-                    data,
+            const projectStreamDeps = {
+                aiMessageId,
+                page,
+                section,
+                projectId,
+                myGen,
+                getCurrentGen: () => streamGenRef.current,
+                setCurrentRunId,
+                syncConversationId: (conversationId: string) => {
+                    if (convo.currentConversationIdRef.current !== conversationId) {
+                        convo.setCurrentConversationId(conversationId);
+                    }
+                },
+                upsertConversationTitle,
+                upsertArtifact,
+                updateMessages,
+                emitLedgerChanged: () => {
+                    window.dispatchEvent(
+                        new CustomEvent("litrev:ledger-changed", { detail: { projectId } })
+                    );
+                },
+                setPendingChoices,
+                setPendingUserInput,
+                onPlanStepUpdate,
+                onNavigate,
+            };
+
+            if (progressiveAnswerStreamingEnabled) {
+                const reservedState = reserveProjectCopilotAssistantTurn(
                     {
                         aiMessageCreated,
+                        hasVisibleContent,
                         fullContent,
                         reasoningContent,
                         reasoningState,
@@ -571,34 +621,49 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                         completedPubmedSearchCount,
                         lastPubmedSearchSize,
                     },
+                    projectStreamDeps,
+                );
+                aiMessageCreated = reservedState.aiMessageCreated;
+                hasVisibleContent = reservedState.hasVisibleContent;
+                fullContent = reservedState.fullContent;
+                reasoningContent = reservedState.reasoningContent;
+                reasoningState = reservedState.reasoningState;
+                reasoningTruncated = reservedState.reasoningTruncated;
+                activeReasoningId = reservedState.activeReasoningId;
+                runningToolCallIds = reservedState.runningToolCallIds;
+                lastToolCallId = reservedState.lastToolCallId;
+                syntheticToolCounter = reservedState.syntheticToolCounter;
+                localRunId = reservedState.localRunId;
+                effectiveConvId = reservedState.effectiveConvId;
+                completedPubmedSearchCount = reservedState.completedPubmedSearchCount;
+                lastPubmedSearchSize = reservedState.lastPubmedSearchSize;
+            }
+
+            const applyChunk = (data: import("@/types/ai").AIStreamChunk) => {
+                const runningToolCallIdsBeforeChunk = runningToolCallIds;
+                const nextState = handleProjectCopilotStreamChunk(
+                    data,
                     {
-                        aiMessageId,
-                        page,
-                        section,
-                        projectId,
-                        myGen,
-                        getCurrentGen: () => streamGenRef.current,
-                        setCurrentRunId,
-                        syncConversationId: (conversationId) => {
-                            if (convo.currentConversationIdRef.current !== conversationId) {
-                                convo.setCurrentConversationId(conversationId);
-                            }
-                        },
-                        upsertConversationTitle,
-                        upsertArtifact,
-                        updateMessages,
-                        emitLedgerChanged: () => {
-                            window.dispatchEvent(
-                                new CustomEvent("litrev:ledger-changed", { detail: { projectId } })
-                            );
-                        },
-                        setPendingChoices,
-                        setPendingUserInput,
-                        onPlanStepUpdate,
-                        onNavigate,
-                    }
+                        aiMessageCreated,
+                        hasVisibleContent,
+                        fullContent,
+                        reasoningContent,
+                        reasoningState,
+                        reasoningTruncated,
+                        activeReasoningId,
+                        runningToolCallIds,
+                        lastToolCallId,
+                        syntheticToolCounter,
+                        localRunId,
+                        effectiveConvId,
+                        completedPubmedSearchCount,
+                        lastPubmedSearchSize,
+                    },
+                    projectStreamDeps
                 );
                 aiMessageCreated = nextState.aiMessageCreated;
+                const previousContentLength = fullContent.length;
+                hasVisibleContent = nextState.hasVisibleContent;
                 fullContent = nextState.fullContent;
                 reasoningContent = nextState.reasoningContent;
                 reasoningState = nextState.reasoningState;
@@ -611,6 +676,22 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                 effectiveConvId = nextState.effectiveConvId;
                 completedPubmedSearchCount = nextState.completedPubmedSearchCount;
                 lastPubmedSearchSize = nextState.lastPubmedSearchSize;
+                const deltaChars = Math.max(0, nextState.fullContent.length - previousContentLength);
+                if (deltaChars > 0) {
+                    const nowMs = Date.now();
+                    if (firstVisibleContentMs === null) {
+                        firstVisibleContentMs = Math.max(0, nowMs - streamStartedAtMs);
+                    } else if (lastVisibleChunkAtMs !== null) {
+                        visibleChunkGapTotalMs += Math.max(0, nowMs - lastVisibleChunkAtMs);
+                        visibleChunkGapCount += 1;
+                    }
+                    visibleChunkCount += 1;
+                    visibleChunkChars += deltaChars;
+                    maxVisibleChunkChars = maxVisibleChunkChars === null
+                        ? deltaChars
+                        : Math.max(maxVisibleChunkChars, deltaChars);
+                    lastVisibleChunkAtMs = nowMs;
+                }
 
                 if (data.type === "tool_call") {
                     setStreamPhase("tool_running");
@@ -888,12 +969,13 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
             setPendingUserInput(null);
             const errorState = buildClientErrorState(error);
             updateState((prev) => {
+                const visibleMessages = stripReservedAssistantMessages(prev.messages, aiMessageId);
                 const errorMeta = {
                     ...errorState.errorMeta,
                     runId: localRunId ?? errorState.errorMeta.runId,
                 };
                 const reconciled = reconcileRunScopedRenderedErrors({
-                    items: prev.messages.filter((message) => message.sender === "ai"),
+                    items: visibleMessages.filter((message) => message.sender === "ai"),
                     nextMessage: errorState.message,
                     nextMeta: errorMeta,
                     getMessage: (message) => message.text,
@@ -903,7 +985,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                 const shouldSuppressFallback = shouldSuppressClientFallback({
                     errorMeta: errorMeta,
                     hasAssistantContent: hasCanonicalFailureFallbackText({
-                        items: prev.messages.filter((message) => message.sender === "ai" && !message.streamError),
+                        items: visibleMessages.filter((message) => message.sender === "ai" && !message.streamError),
                         streamError: errorMeta,
                         getText: (message) => message.text,
                     }),
@@ -914,7 +996,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                     emittedTerminalError = true;
                     return {
                         ...prev,
-                        messages: prev.messages.filter((message) =>
+                        messages: visibleMessages.filter((message) =>
                             message.sender !== "ai" || reconciled.items.some((retained) => retained.id === message.id)
                         ),
                     };
@@ -933,7 +1015,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                 return {
                     ...prev,
                     messages: [
-                        ...prev.messages.filter((message) =>
+                        ...visibleMessages.filter((message) =>
                             message.sender !== "ai" || reconciled.items.some((retained) => retained.id === message.id)
                         ),
                         nextMessage,
@@ -953,6 +1035,24 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                 conversationId: effectiveConvId,
             };
         } finally {
+            recordChatUnificationMetric({
+                type: "answer_stream_delivery",
+                surface: "project",
+                runId: localRunId || null,
+                conversationId: effectiveConvId,
+                projectId,
+                payload: {
+                    requestKey,
+                    streamPhase: "project_stream",
+                    firstVisibleContentMs,
+                    visibleChunkCount,
+                    visibleChunkChars,
+                    maxVisibleChunkChars,
+                    meanVisibleChunkGapMs: visibleChunkGapCount > 0
+                        ? visibleChunkGapTotalMs / visibleChunkGapCount
+                        : null,
+                },
+            });
             if (streamGenRef.current === myGen) {
                 setIsLoading(false);
                 setStreamPhase("idle");
@@ -977,12 +1077,13 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
             if (!aborted && terminalReason && shouldFailRunningToolsOnAbnormalEnd(terminalReason) && !emittedTerminalError) {
                 const errorState = buildUnexpectedTerminalErrorState(terminalReason);
                 updateState((prev) => {
+                    const visibleMessages = stripReservedAssistantMessages(prev.messages, aiMessageId);
                     const nextStreamError: AIErrorEnvelope = {
                         ...errorState.errorMeta,
                         runId: localRunId ?? undefined,
                     };
                     const reconciled = reconcileRunScopedRenderedErrors({
-                        items: prev.messages.filter((message) => message.sender === "ai"),
+                        items: visibleMessages.filter((message) => message.sender === "ai"),
                         nextMessage: errorState.message,
                         nextMeta: nextStreamError,
                         getMessage: (message) => message.text,
@@ -993,7 +1094,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                         emittedTerminalError = true;
                         return {
                             ...prev,
-                            messages: prev.messages.filter((message) => message.sender !== "ai" || retainedMessageIds.has(message.id)),
+                            messages: visibleMessages.filter((message) => message.sender !== "ai" || retainedMessageIds.has(message.id)),
                         };
                     }
                     emittedTerminalError = true;
@@ -1008,7 +1109,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                     return {
                         ...prev,
                         messages: [
-                            ...prev.messages.filter((message) => message.sender !== "ai" || retainedMessageIds.has(message.id)),
+                            ...visibleMessages.filter((message) => message.sender !== "ai" || retainedMessageIds.has(message.id)),
                             nextMessage,
                         ],
                     };

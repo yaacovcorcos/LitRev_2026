@@ -16,6 +16,7 @@ export type CopilotMessage = {
   id: string;
   sender: CopilotSender;
   text: string;
+  deliveryState?: "reserved";
   progress?: {
     message: string;
     current?: number;
@@ -147,6 +148,7 @@ export function loadProjectCopilotState(projectId: string): ProjectCopilotState 
             sender,
             text,
             createdAt,
+            deliveryState: msg.deliveryState === "reserved" ? "reserved" : undefined,
             context: msg.context,
             progress: msg.progress,
             reasoning: msg.reasoning,
