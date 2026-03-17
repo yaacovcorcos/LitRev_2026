@@ -15,7 +15,7 @@ This plan changes how LitRev delivers drafting, not what LitRev is for.
 - export to shareable manuscript formats
 - section-based drafting and revision
 
-No PRD change is required now because the target architecture still supports section-based drafting. The difference is that sections become structured views over one manuscript system rather than isolated mini-editors.
+No PRD change is required now because the target architecture still supports section-based drafting. The current route is intentionally anchored to the old section-first drafting page, while the normalized manuscript model remains an internal foundation beneath it.
 
 Current route contract:
 - fresh drafts restore the older seeded section-first scaffold
@@ -23,9 +23,9 @@ Current route contract:
 - `Section` mode is the primary drafting surface on open
 - `Full Draft` and `Section` are route-level projections over one normalized draft/manuscript state
 - top tabs show named sections only
-- `Whole draft` remains available in the normalized model for compatibility, but it is not the primary route surface
-- evidence targets the active section during normal drafting; `Whole draft` targeting is compatibility-only when no named section is active
-- `Full Draft` only renders written sections, plus `Whole draft` only when it already has content; otherwise it shows the start-drafting empty state
+- the center section editor is the primary visible writing surface
+- evidence targets the active named section during normal drafting
+- `Full Draft` only renders written sections; otherwise it shows the start-drafting empty state
 - left Evidence Ledger is the only draft-owned support surface
 - right side remains owned by the existing project copilot shell
 
@@ -204,7 +204,7 @@ These are one system's views, not separate products.
 
 ### 3. Manuscript canvas
 - The current route is section-first, with explicit `Section` and `Full Draft` modes over one normalized manuscript state.
-- `Full Draft` shows `Whole draft` content plus named sections in order.
+- `Full Draft` shows written named sections in order.
 - `Section` mode isolates one named section at a time for focused drafting.
 - Every block has a stable ID and semantic type.
 - The canvas supports:
@@ -544,9 +544,9 @@ These are implementation tracks for one target state, not separate product versi
   - export file existence and metadata truthfulness, version/checkpoint semantics
 
 ### Acceptance signals
-- Draft opens blank by default, without seeded manuscript sections.
+- Draft opens with the seeded section scaffold and `Section` mode active.
 - Draft can be edited in either `Section` or `Full Draft` mode without forking the underlying normalized manuscript.
-- The left sidebar stays usable while drafting and provides `Sections` and `Evidence` without a draft-owned right panel.
+- The left Evidence Ledger stays usable while drafting and can collapse/reopen without a draft-owned right panel.
 - Citation and claim-support issues are actionable, not merely displayed.
 - AI changes are always reviewable and reversible.
 - Export produces real files with accurate history metadata.

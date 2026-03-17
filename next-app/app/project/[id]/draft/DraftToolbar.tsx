@@ -16,9 +16,8 @@ import styles from "./draft-studio.module.css";
 
 export type DraftTopBarProps = {
   projectName: string;
-  activeSection: DraftSectionId | null;
+  activeSection: DraftSectionId;
   mode: DraftMode;
-  canUseSectionMode: boolean;
   orderedSections: SectionMeta[];
   availableSections: SectionMeta[];
   // Drag state
@@ -54,7 +53,6 @@ export type DraftTopBarProps = {
 export function DraftTopBar({
   activeSection,
   mode,
-  canUseSectionMode,
   orderedSections,
   availableSections,
   draggingKey,
@@ -93,52 +91,49 @@ export function DraftTopBar({
       <div className={styles.topCenter}>
         <div className={styles.sectionTabsWrap}>
           <div className={styles.sectionTabs} role="tablist" aria-label="Draft sections" aria-orientation="horizontal">
-            {orderedSections.length > 0 ? (
-              orderedSections.map((section, index) => {
-                const isDragging = draggingKey === section.id;
-                const isDragOver = dragOverKey === section.id && draggingKey && draggingKey !== section.id;
-                const dropClass =
-                  isDragOver && dragOverPosition === "after"
-                    ? styles.sectionTabDropAfter
-                    : isDragOver && dragOverPosition === "before"
-                      ? styles.sectionTabDropBefore
-                      : "";
-                const canRemove = orderedSections.length > 1 && section.id !== "references";
-                return (
-                  <button
-                    key={section.id}
-                    type="button"
-                    role="tab"
-                    draggable={section.id !== "references"}
-                    aria-grabbed={isDragging}
-                    aria-selected={activeSection === section.id}
-                    aria-controls={mode === "section" ? "draft-section-panel" : undefined}
-                    id={`draft-tab-${section.id}`}
-                    className={`${styles.sectionTab} ${activeSection === section.id ? styles.sectionTabActive : ""} ${isDragging ? styles.sectionTabDragging : ""} ${dropClass}`}
-                    onClick={() => onSelectSection(section.id)}
-                    onDoubleClick={(event) => {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      if (canRemove) onRemoveSection(section.id);
-                    }}
-                    onKeyDown={(event) => onSectionKeyDown(event, index)}
-                    onDragStart={(event) => onDragStart(event, section.id)}
-                    onDragOver={(event) => onDragOver(event, section.id)}
-                    onDrop={(event) => onDrop(event, section.id)}
-                    onDragEnd={onDragEnd}
-                    tabIndex={activeSection === section.id ? 0 : -1}
-                    title={canRemove ? "Double-click to remove" : undefined}
-                    ref={(el) => {
-                      sectionTabRefs.current[section.id] = el;
-                    }}
-                  >
-                    {section.label}
-                  </button>
-                );
-              })
-            ) : (
-              <div className={styles.emptyTabsState}>No sections yet</div>
-            )}
+            {orderedSections.map((section, index) => {
+              const isDragging = draggingKey === section.id;
+              const isDragOver = dragOverKey === section.id && draggingKey && draggingKey !== section.id;
+              const dropClass =
+                isDragOver && dragOverPosition === "after"
+                  ? styles.sectionTabDropAfter
+                  : isDragOver && dragOverPosition === "before"
+                    ? styles.sectionTabDropBefore
+                    : "";
+              const canRemove = orderedSections.length > 1;
+              return (
+                <button
+                  key={section.id}
+                  type="button"
+                  role="tab"
+                  draggable
+                  aria-grabbed={isDragging}
+                  aria-selected={activeSection === section.id}
+                  aria-controls={mode === "section" ? "draft-section-panel" : undefined}
+                  id={`draft-tab-${section.id}`}
+                  className={`${styles.sectionTab} ${activeSection === section.id ? styles.sectionTabActive : ""} ${isDragging ? styles.sectionTabDragging : ""
+                    } ${dropClass}`}
+                  onClick={() => onSelectSection(section.id)}
+                  onDoubleClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (canRemove) onRemoveSection(section.id);
+                  }}
+                  onKeyDown={(event) => onSectionKeyDown(event, index)}
+                  onDragStart={(event) => onDragStart(event, section.id)}
+                  onDragOver={(event) => onDragOver(event, section.id)}
+                  onDrop={(event) => onDrop(event, section.id)}
+                  onDragEnd={onDragEnd}
+                  tabIndex={activeSection === section.id ? 0 : -1}
+                  title={canRemove ? "Double-click to remove" : ""}
+                  ref={(el) => {
+                    sectionTabRefs.current[section.id] = el;
+                  }}
+                >
+                  {section.label}
+                </button>
+              );
+            })}
           </div>
           <div className={styles.addSection} ref={addSectionRef}>
             <button
@@ -206,7 +201,6 @@ export function DraftTopBar({
             className={`${styles.modeOption} ${mode === "section" ? styles.modeActive : ""}`}
             onClick={() => onToggleMode("section")}
             aria-pressed={mode === "section"}
-            disabled={!canUseSectionMode}
           >
             Section
           </button>
