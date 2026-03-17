@@ -196,4 +196,57 @@ describe("tool-autonomy", () => {
       }),
     );
   });
+
+  it("auto-applies direct-safe study updates at fixed level 3", async () => {
+    mocks.getTool.mockReturnValue({
+      definition: { name: "update_study_direct", description: "d", parameters: {} },
+      autonomy: { defaultLevel: 3, allowedRange: [3, 3], hardCap: 3 },
+    });
+    mocks.getToolAutonomyLevel.mockReturnValue(3);
+    mocks.createArtifact.mockResolvedValue({
+      id: "artifact-study-update",
+      type: "study_update",
+      title: "Study metadata update",
+      payload: { changes: [{ field: "details.abstract" }] },
+      version: 1,
+    });
+
+    const result = await executeToolWithAutonomyCore({
+      service: {
+        executeToolWithMiddleware: vi.fn().mockResolvedValue({
+          callId: "tc1",
+          result: {
+            studyId: "study-1",
+            patch: { details: { abstract: "Updated" } },
+            changes: [{ field: "details.abstract" }],
+          },
+        }),
+      } as never,
+      toolCall: {
+        id: "tc1",
+        name: "update_study_direct",
+        arguments: { abstract: "Updated", rationale: "User asked" },
+      },
+      runId: "run-1",
+      projectId: "project-1",
+      conversationId: "conversation-1",
+      userId: "user-1",
+      agentMode: "screening",
+      studyId: "study-1",
+      levelOneBehavior: "suggest",
+    });
+
+    expect(mocks.createArtifact).toHaveBeenCalledWith(expect.objectContaining({
+      type: "study_update",
+      title: "Study metadata update",
+    }));
+    expect(mocks.applyArtifact).toHaveBeenCalledWith("artifact-study-update", "auto_applied");
+    expect(result.artifactStatus).toBe("auto_applied");
+    expect(result.artifacts).toEqual([
+      expect.objectContaining({
+        artifactId: "artifact-study-update",
+        artifactStatus: "auto_applied",
+      }),
+    ]);
+  });
 });

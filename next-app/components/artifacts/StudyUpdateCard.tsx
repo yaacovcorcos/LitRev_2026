@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
+import type { ArtifactStatus } from "@/types/artifacts";
 import type { StudyFieldChange, StudyUpdatePayload } from "@/types/artifacts";
 import styles from "@/styles/artifacts.module.css";
 
@@ -23,12 +24,13 @@ function renderOperationLabel(operation: StudyFieldChange["operation"]): string 
 
 export type StudyUpdateCardProps = {
     payload: StudyUpdatePayload;
+    status?: ArtifactStatus;
     onAccept: () => void;
     onReject: () => void;
     canAct?: boolean;
 };
 
-export function StudyUpdateCard({ payload, onAccept, onReject, canAct = true }: StudyUpdateCardProps) {
+export function StudyUpdateCard({ payload, status = "proposed", onAccept, onReject, canAct = true }: StudyUpdateCardProps) {
     const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
 
     const toggleRow = useCallback((key: string) => {
@@ -88,14 +90,18 @@ export function StudyUpdateCard({ payload, onAccept, onReject, canAct = true }: 
                 </table>
             </div>
 
-            <div className={styles.cardActions}>
-                <button type="button" className={styles.actionBtnGhost} onClick={onReject} disabled={!canAct}>
-                    Reject
-                </button>
-                <button type="button" className={styles.actionBtn} onClick={onAccept} disabled={!canAct}>
-                    Apply changes
-                </button>
-            </div>
+            {status === "proposed" ? (
+                <div className={styles.cardActions}>
+                    <button type="button" className={styles.actionBtnGhost} onClick={onReject} disabled={!canAct}>
+                        Reject
+                    </button>
+                    <button type="button" className={styles.actionBtn} onClick={onAccept} disabled={!canAct}>
+                        Apply changes
+                    </button>
+                </div>
+            ) : status === "auto_applied" ? (
+                <div className={styles.applyMeta}>Changes already applied.</div>
+            ) : null}
         </>
     );
 }

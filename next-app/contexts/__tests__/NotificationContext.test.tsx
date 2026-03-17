@@ -14,6 +14,14 @@ function TestConsumer() {
       <button onClick={() => notify("success", "Saved!")}>
         Notify Success
       </button>
+      <button
+        onClick={() =>
+          notify("success", "Saved with undo", {
+            action: { label: "Undo", onClick: vi.fn() },
+          })}
+      >
+        Notify Action
+      </button>
       <button onClick={() => notify("error", "Failed!")}>
         Notify Error
       </button>
@@ -21,6 +29,7 @@ function TestConsumer() {
       {notifications.map((n) => (
         <div key={n.id} data-testid={`notification-${n.type}`}>
           <span>{n.message}</span>
+          <span>{n.action?.label ?? ""}</span>
           <button onClick={() => dismiss(n.id)}>Dismiss</button>
         </div>
       ))}
@@ -60,6 +69,21 @@ describe("NotificationContext", () => {
     expect(screen.getByTestId("count").textContent).toBe("1");
     expect(screen.getByTestId("notification-success")).toBeTruthy();
     expect(screen.getByText("Saved!")).toBeTruthy();
+  });
+
+  it("stores optional notification actions", () => {
+    render(
+      <NotificationProvider>
+        <TestConsumer />
+      </NotificationProvider>,
+    );
+
+    act(() => {
+      screen.getByText("Notify Action").click();
+    });
+
+    expect(screen.getByText("Saved with undo")).toBeTruthy();
+    expect(screen.getByText("Undo")).toBeTruthy();
   });
 
   it("auto-dismisses success notifications after 4 seconds", () => {

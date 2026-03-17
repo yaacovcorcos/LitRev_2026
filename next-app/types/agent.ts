@@ -183,6 +183,7 @@ export const HARD_CAPS: Record<string, AutonomyLevel> = {
     update_protocol: 2,
     update_criteria: 2,
     update_study: 2,
+    update_study_direct: 3,
     bulk_screening: 2,
     update_note: 2,
     exclude_study: 2,

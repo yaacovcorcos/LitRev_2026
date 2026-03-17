@@ -27,6 +27,8 @@ import { recommendStudiesTool } from "./recommend-studies";
 import { readStudyContentTool } from "./read-study-content";
 import { storeMemoryTool } from "./store-memory";
 import { updateStudyTool } from "./update-study";
+import { updateStudyDirectTool } from "./update-study-direct";
+import { previewStudyPdfUpdateTool } from "./preview-study-pdf-update";
 import { forgetMemoryTool } from "./forget-memory";
 import { inspectMemoryTool } from "./inspect-memory";
 import { listProjectsTool } from "./list-projects";
@@ -132,6 +134,8 @@ export const AVAILABLE_TOOLS: AITool[] = [
     forgetMemoryTool,
     inspectMemoryTool,
     updateStudyTool,
+    updateStudyDirectTool,
+    previewStudyPdfUpdateTool,
     listProjectsTool,
     openProjectTool,
     createProjectTool,

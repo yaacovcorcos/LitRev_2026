@@ -61,7 +61,7 @@ export const AGENT_MODE_CONFIG: Record<AgentMode, AgentModeConfig> = {
     protocol: { systemPromptKey: "protocol", allowedTools: ["update_protocol", "update_criteria", "update_study", "search_pubmed", "search_semantic_scholar", "search_openalex", "store_memory", "forget_memory", "inspect_memory", "ask_user"], memoryScope: "project", description: "Defining PICO and criteria" },
     scoping: { systemPromptKey: "scoping", allowedTools: ["search_pubmed", "search_semantic_scholar", "search_openalex", "recommend_studies", "store_memory", "forget_memory", "inspect_memory", "list_projects", "open_project", "ask_user"], memoryScope: "project", description: "Exploring the literature landscape" },
     search: { systemPromptKey: "search", allowedTools: ["search_pubmed", "search_semantic_scholar", "search_openalex", "add_to_ledger", "recommend_studies", "read_protocol", "update_study", "store_memory", "forget_memory", "inspect_memory", "ask_user"], memoryScope: "project", description: "Finding studies" },
-    screening: { systemPromptKey: "screening", allowedTools: ["bulk_screening", "exclude_study", "delete_study", "extract_pdf", "read_study_content", "update_study", "store_memory", "forget_memory", "inspect_memory", "ask_user"], memoryScope: "study", description: "Evaluating studies" },
+    screening: { systemPromptKey: "screening", allowedTools: ["bulk_screening", "exclude_study", "delete_study", "extract_pdf", "preview_study_pdf_update", "read_study_content", "update_study", "update_study_direct", "store_memory", "forget_memory", "inspect_memory", "ask_user"], memoryScope: "study", description: "Evaluating studies" },
     drafting: { systemPromptKey: "drafting", allowedTools: ["update_note", "read_study_content", "read_protocol", "read_ledger", "update_study", "store_memory", "forget_memory", "inspect_memory", "ask_user"], memoryScope: "project", description: "Writing sections" },
     qa: { systemPromptKey: "qa", allowedTools: ["search_pubmed", "search_semantic_scholar", "search_openalex", "read_study_content", "read_protocol", "read_ledger", "update_study", "store_memory", "forget_memory", "inspect_memory", "ask_user"], memoryScope: "project", description: "Checking citations" },
     general: { systemPromptKey: "general", allowedTools: GENERAL_PROJECT_CORE_TOOLS, memoryScope: "project", description: "General conversation" },
@@ -101,6 +101,12 @@ const DELIVERABLE_BOOTSTRAP_RE =
     /\b(?:write|draft|outline|literature review|review article|help me write)\b/;
 const SEARCH_SCOPING_RE =
     /search|find stud|pubmed|semantic scholar|openalex|look for|literature|recommend/;
+const STUDY_EDIT_VERB_RE =
+    /\b(?:edit|update|change|fix|add|insert|fill|set|clear|replace|append)\b/;
+const STUDY_EDIT_TARGET_RE =
+    /\b(?:this study|study page|this page|study details|metadata|abstract|summary|ai summary|doi|pmid|journal|keyword|keywords|source url|paper details)\b/;
+const STUDY_NON_MUTATION_RE =
+    /\b(?:what|which|why|how|compare|does|is|are|show|explain|summari[sz]e|read|tell me)\b/;
 
 export function detectScopingEntryIntent(
     message: string,
@@ -127,9 +133,16 @@ export function routeToAgent(message: string, currentPage: RouterPage, projectSt
 
     // 2. Message-driven rules (priority order)
     const msg = message.toLowerCase();
+    const isStudyEditIntent = currentPage === "study"
+        && STUDY_EDIT_VERB_RE.test(msg)
+        && STUDY_EDIT_TARGET_RE.test(msg);
+    const isStudyQuestionOnly = currentPage === "study"
+        && !STUDY_EDIT_VERB_RE.test(msg)
+        && STUDY_NON_MUTATION_RE.test(msg);
     const hasProtocol = projectState?.hasProtocol ?? true;
     const scopingEnabled = isScopingModeEnabled();
     const scopingEntryIntent = detectScopingEntryIntent(message, projectState);
+    if (isStudyEditIntent && !isStudyQuestionOnly) return "screening";
     if (/pico|criteria|inclusion|exclusion|eligib/.test(msg)) return "protocol";
     // Explicit ledger-delete intents route to screening mode (delete_study tool surface),
     // rather than relying on general-mode's all-tools fallback.

@@ -26,6 +26,9 @@ const MULTI_STEP_PATTERNS = [
 const SEARCH_STEP_RE = /\b(?:search|find|look\s+(?:up|for)|pubmed|openalex|open alex)\b/i;
 const OPENALEX_RE = /\b(?:openalex|open alex)\b/i;
 const EXTRACT_PDF_ACTION_RE = /(?:\b(?:extract|parse|analy[sz]e)\b[\s\S]{0,40}\bpdf\b|\bpdf\b[\s\S]{0,40}\b(?:extract|parse|analy[sz]e)\b)/i;
+const STUDY_MUTATION_RE = /\b(?:edit|update|change|fix|add|insert|fill|set|clear|replace|append)\b/i;
+const STUDY_FIELD_TARGET_RE = /\b(?:study|abstract|doi|pmid|journal|keyword|keywords|quality|summary|metadata|source url|title|authors|year)\b/i;
+const SAFE_STUDY_TARGET_RE = /\b(?:abstract|summary|ai summary|doi|pmid|journal|keyword|keywords|source url)\b/i;
 const ADD_TO_LEDGER_RE = /(?:\b(?:add|include|keep)\b[\s\S]{0,40}\b(?:study|studies|paper|papers|ledger|result|results)\b|\bsave\b[\s\S]{0,40}\b(?:study|studies|paper|papers)\b|\b(?:save|add|include|keep)\b[\s\S]{0,40}\bledger\b)/i;
 const DRAFT_ACTION_RE = /\b(?:write|draft|rewrite|revise|append|save|compose|insert)\b/i;
 const DRAFT_TARGET_RE = /\b(?:draft|section|paragraph|summary|abstract)\b/i;
@@ -33,6 +36,14 @@ const DRAFT_SECTION_RE = /\b(?:introduction|methods|results|discussion|conclusio
 
 function wantsPdfExtraction(message: string): boolean {
     return EXTRACT_PDF_ACTION_RE.test(message);
+}
+
+function wantsStudyMutation(message: string): boolean {
+    return STUDY_MUTATION_RE.test(message) && STUDY_FIELD_TARGET_RE.test(message);
+}
+
+function wantsDirectSafeStudyMutation(message: string): boolean {
+    return wantsStudyMutation(message) && SAFE_STUDY_TARGET_RE.test(message);
 }
 
 function wantsAddToLedger(message: string): boolean {
@@ -70,6 +81,8 @@ export function detectMultiStepWorkflow(
         update_protocol: ["pico", "population", "intervention", "comparison", "outcome", "protocol"],
         update_criteria: ["criteria", "inclusion", "exclusion", "eligibility"],
         update_study: ["edit study", "update study", "change abstract", "update doi", "update pmid", "fix metadata"],
+        update_study_direct: ["insert abstract", "add summary", "update abstract", "update summary", "fix doi", "fix pmid"],
+        preview_study_pdf_update: ["fill from pdf", "insert from pdf", "pull from pdf", "use the pdf"],
     };
 
     let toolMatches = 0;
@@ -141,7 +154,14 @@ function generateHeuristicPlan(message: string, _context: PlanContext): PlanPayl
     }
 
     // Extract step
-    if (wantsPdfExtraction(lower)) {
+    if (wantsPdfExtraction(lower) && wantsStudyMutation(lower)) {
+        steps.push({
+            label: "Preview study updates from PDF",
+            toolName: "preview_study_pdf_update",
+            description: "Extract candidate study fields from PDF without applying them yet",
+            status: "pending",
+        });
+    } else if (wantsPdfExtraction(lower)) {
         steps.push({
             label: "Extract data from PDF",
             toolName: "extract_pdf",
@@ -211,7 +231,14 @@ function generateHeuristicPlan(message: string, _context: PlanContext): PlanPayl
     }
 
     // Study metadata edit step
-    if (/\b(?:edit|update|change|fix)\b/.test(lower) && /\b(?:study|abstract|doi|pmid|journal|keyword|quality|summary|metadata)\b/.test(lower)) {
+    if (wantsDirectSafeStudyMutation(lower)) {
+        steps.push({
+            label: "Apply direct-safe study edits",
+            toolName: "update_study_direct",
+            description: "Apply safe study metadata edits immediately with undo support",
+            status: "pending",
+        });
+    } else if (wantsStudyMutation(lower)) {
         steps.push({
             label: "Update study metadata",
             toolName: "update_study",

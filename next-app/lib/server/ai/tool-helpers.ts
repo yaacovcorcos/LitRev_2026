@@ -46,6 +46,7 @@ export function mapToolToArtifactType(toolName: string): ArtifactType | null {
         update_note: "draft_diff",
         exclude_study: "study_proposal",
         update_study: "study_update",
+        update_study_direct: "study_update",
     };
     return mapping[toolName] ?? null;
 }
@@ -66,6 +67,7 @@ export function mapToolToArtifactTitle(toolName: string, args: Record<string, un
         case "exclude_study":
             return `Exclude: ${args.reason ?? "study"}`;
         case "update_study":
+        case "update_study_direct":
             return "Study metadata update";
         default:
             return toolName;
@@ -84,6 +86,8 @@ export function mapToolToProgressMessage(toolName: string): string {
         update_protocol: "Preparing protocol proposal...",
         update_note: "Preparing draft proposal...",
         update_study: "Preparing study update...",
+        update_study_direct: "Applying study update...",
+        preview_study_pdf_update: "Previewing PDF study updates...",
         retrieve_memory: "Retrieving memories...",
         create_note: "Creating note...",
         read_study_content: "Reading study PDF...",
@@ -256,9 +260,13 @@ export function getContextualToolDefinitions(params: {
     agentMode: AgentMode;
     scope: "project" | "global";
     studyLedger: (LedgerCounts | StudyLedgerSnapshot) | null;
+    studyId?: string | null;
 }): ToolDefinition[] {
-    const { agentMode, scope, studyLedger } = params;
-    const defs = getToolDefinitions(agentMode, scope);
+    const { agentMode, scope, studyLedger, studyId } = params;
+    let defs = getToolDefinitions(agentMode, scope);
+    if (!studyId) {
+        defs = defs.filter((def) => def.name !== "update_study_direct" && def.name !== "preview_study_pdf_update");
+    }
     if (agentMode !== "scoping") return defs;
     if (!isStudyLedgerSnapshot(studyLedger)) return defs;
     if (studyLedger.hasRecommendationSeeds) return defs;

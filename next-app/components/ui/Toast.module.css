@@ -100,6 +100,28 @@
   line-height: 1.4;
 }
 
+.action {
+  all: unset;
+  cursor: pointer;
+  flex-shrink: 0;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm, 4px);
+  background: rgba(var(--rgb-ui-contrast), 0.08);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 600;
+  transition: background 150ms, box-shadow 150ms;
+}
+
+.action:hover {
+  background: rgba(var(--rgb-ui-contrast), 0.12);
+}
+
+.action:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus-ring);
+}
+
 .dismiss {
   all: unset;
   cursor: pointer;

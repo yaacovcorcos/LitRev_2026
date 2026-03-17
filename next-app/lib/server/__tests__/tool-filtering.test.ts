@@ -7,6 +7,7 @@ import {
     getContextualAllowedTools,
 } from "@/lib/agent/router";
 import { AVAILABLE_TOOLS, getToolDefinitions } from "@/lib/server/ai/tools/base";
+import { getContextualToolDefinitions } from "@/lib/server/ai/tool-helpers";
 
 const ALL_TOOL_NAMES = AVAILABLE_TOOLS.map((t) => t.definition.name).sort();
 const DELEGATION_TOOL_SET = new Set<string>(DELEGATION_TOOL_NAMES);
@@ -127,7 +128,7 @@ describe("getToolDefinitions", () => {
         withDelegationFlag(false);
         const defs = getToolDefinitions("screening");
         const names = defs.map((d) => d.name).sort();
-        expect(names).toEqual(["ask_user", "bulk_screening", "delete_study", "exclude_study", "extract_pdf", "forget_memory", "inspect_memory", "read_study_content", "store_memory", "update_study"]);
+        expect(names).toEqual(["ask_user", "bulk_screening", "delete_study", "exclude_study", "extract_pdf", "forget_memory", "inspect_memory", "preview_study_pdf_update", "read_study_content", "store_memory", "update_study", "update_study_direct"]);
     });
 
     it("filters tools for drafting mode", () => {
@@ -184,5 +185,31 @@ describe("getContextualAllowedTools", () => {
         ].sort());
         expect(globalWithoutDelegation).toEqual([...GENERAL_GLOBAL_TOOLS].sort());
         expect(globalWithDelegation).toEqual([...GENERAL_GLOBAL_TOOLS].sort());
+    });
+});
+
+describe("getContextualToolDefinitions", () => {
+    it("hides study-context-only tools when no studyId is available", () => {
+        const defs = getContextualToolDefinitions({
+            agentMode: "screening",
+            scope: "project",
+            studyLedger: null,
+            studyId: null,
+        });
+        const names = defs.map((d) => d.name);
+        expect(names).not.toContain("update_study_direct");
+        expect(names).not.toContain("preview_study_pdf_update");
+    });
+
+    it("keeps study-context-only tools when a studyId is available", () => {
+        const defs = getContextualToolDefinitions({
+            agentMode: "screening",
+            scope: "project",
+            studyLedger: null,
+            studyId: "study-1",
+        });
+        const names = defs.map((d) => d.name);
+        expect(names).toContain("update_study_direct");
+        expect(names).toContain("preview_study_pdf_update");
     });
 });

@@ -439,4 +439,54 @@ describe("TimelineRenderer action affordances", () => {
 
     expect(screen.getByRole("button", { name: /^run/i })).not.toBeNull();
   });
+
+  it("renders auto-applied study updates without review controls", () => {
+    const items: TimelineItem[] = [
+      {
+        type: "artifact",
+        id: "a-study-auto",
+        artifactId: "artifact-study-auto",
+        artifactType: "study_update",
+        status: "auto_applied",
+        title: "Study metadata update",
+        payload: {
+          studyId: "study-1",
+          studyTitle: "Example study",
+          snapshotAt: "2026-03-17T00:00:00.000Z",
+          idempotencyKey: "idempotency-key",
+          patch: { details: { abstract: "Updated abstract" } },
+          changes: [
+            {
+              field: "details.abstract",
+              label: "Abstract",
+              operation: "set",
+              typedOldValue: "Old abstract",
+              typedNewValue: "Updated abstract",
+              displayOld: "Old abstract",
+              displayNew: "Updated abstract",
+            },
+          ],
+          rationale: "User asked",
+        },
+        version: 1,
+        createdAt: "2026-03-17T00:00:00.000Z",
+      },
+    ];
+
+    render(
+      <TimelineRenderer
+        items={items}
+        isLoading={false}
+        emptyState={{ icon: "chat", title: "Empty", description: "Empty", suggestions: [] }}
+        onSuggestionClick={vi.fn()}
+        onReviewArtifact={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /expand/i }));
+
+    expect(screen.getByText("Changes already applied.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /apply changes/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /reject/i })).toBeNull();
+  });
 });

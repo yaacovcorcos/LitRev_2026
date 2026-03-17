@@ -1,11 +1,14 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ProjectCopilot } from "../ProjectCopilot";
 
-const { mockUseProjectCopilot } = vi.hoisted(() => ({
+const { mockUseProjectCopilot, mockNotify, mockUndoArtifactAction, mockDispatchProjectDataChanged } = vi.hoisted(() => ({
   mockUseProjectCopilot: vi.fn(),
+  mockNotify: vi.fn(),
+  mockUndoArtifactAction: vi.fn(),
+  mockDispatchProjectDataChanged: vi.fn(),
 }));
 
 vi.mock("@/contexts/ProjectCopilotContext", () => ({
@@ -15,6 +18,24 @@ vi.mock("@/contexts/ProjectCopilotContext", () => ({
 vi.mock("@/app/actions/notes", () => ({
   createNoteAction: vi.fn(),
 }));
+
+vi.mock("@/app/actions/agent", () => ({
+  undoArtifactAction: mockUndoArtifactAction,
+}));
+
+vi.mock("@/contexts/NotificationContext", () => ({
+  useNotifications: () => ({
+    notify: mockNotify,
+  }),
+}));
+
+vi.mock("@/lib/project-data-events", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/project-data-events")>("@/lib/project-data-events");
+  return {
+    ...actual,
+    dispatchProjectDataChanged: mockDispatchProjectDataChanged,
+  };
+});
 
 vi.mock("next/navigation", () => ({
   useParams: () => ({ id: "project-1" }),
@@ -106,6 +127,7 @@ describe("ProjectCopilot suggestion wiring", () => {
       newConversation: vi.fn(),
       branchConversation: vi.fn(),
       reconnectRun: vi.fn(),
+      reconcileArtifactStatus: vi.fn(),
       sendMessage: vi.fn(),
       handleReviewArtifact: vi.fn(),
       executePlan: vi.fn(),
@@ -121,6 +143,9 @@ describe("ProjectCopilot suggestion wiring", () => {
     };
     mockUseProjectCopilot.mockReturnValue(baseContextValue);
     mockTimelineRenderer.mockReset();
+    mockNotify.mockReset();
+    mockUndoArtifactAction.mockReset();
+    mockDispatchProjectDataChanged.mockReset();
   });
 
   it("prefills panel input when empty-state suggestion is clicked", async () => {
@@ -318,5 +343,122 @@ describe("ProjectCopilot suggestion wiring", () => {
     expect(screen.getByTestId("copilot-attached-stack").textContent).toBe("none");
     expect(screen.queryByText("Queued next message")).toBeNull();
     expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  it("notifies and supports undo for newly auto-applied study updates on the study page", async () => {
+    const initialContextValue = {
+      ...baseContextValue,
+      messages: [] as unknown[],
+    };
+    mockUseProjectCopilot.mockReturnValue(initialContextValue);
+
+    const { rerender } = render(
+      <ProjectCopilot
+        page="study"
+        studyId="study-1"
+        contextDisplay="Study"
+        emptyState={{
+          icon: "smart_toy",
+          title: "AI Copilot",
+          description: "Help text",
+          suggestions: [{ label: "Summarize", prompt: "Summarize my project progress" }],
+        }}
+        inputPlaceholder="Ask..."
+      />,
+    );
+
+    const reconcileArtifactStatus = vi.fn();
+    mockUndoArtifactAction.mockResolvedValue({
+      success: true,
+      artifact: { id: "artifact-study-1", status: "rejected", reviewNote: "Undone by user" },
+    });
+    mockUseProjectCopilot.mockReturnValue({
+      ...baseContextValue,
+      reconcileArtifactStatus,
+      messages: [
+        {
+          id: "artifact-msg-1",
+          sender: "ai",
+          text: "[study_update] Study metadata update",
+          createdAt: "2026-03-17T10:00:00.000Z",
+          context: { page: "study" },
+          artifact: {
+            id: "artifact-study-1",
+            type: "study_update",
+            status: "auto_applied",
+            title: "Study metadata update",
+            version: 1,
+            payload: {
+              studyId: "study-1",
+              studyTitle: "Example Study",
+              snapshotAt: "2026-03-17T10:00:00.000Z",
+              idempotencyKey: "idempotency-key",
+              patch: { details: { abstract: "Updated abstract", aiSummary: "Updated summary" } },
+              changes: [
+                {
+                  field: "details.abstract",
+                  label: "Abstract",
+                  operation: "set",
+                  typedOldValue: "Old abstract",
+                  typedNewValue: "Updated abstract",
+                  displayOld: "Old abstract",
+                  displayNew: "Updated abstract",
+                },
+                {
+                  field: "details.aiSummary",
+                  label: "AI Summary",
+                  operation: "set",
+                  typedOldValue: "Old summary",
+                  typedNewValue: "Updated summary",
+                  displayOld: "Old summary",
+                  displayNew: "Updated summary",
+                },
+              ],
+              rationale: "User asked",
+            },
+          },
+        },
+      ],
+    });
+
+    rerender(
+      <ProjectCopilot
+        page="study"
+        studyId="study-1"
+        contextDisplay="Study"
+        emptyState={{
+          icon: "smart_toy",
+          title: "AI Copilot",
+          description: "Help text",
+          suggestions: [{ label: "Summarize", prompt: "Summarize my project progress" }],
+        }}
+        inputPlaceholder="Ask..."
+      />,
+    );
+
+    await waitFor(() => {
+      expect(mockNotify).toHaveBeenCalledWith(
+        "success",
+        expect.stringContaining("Updated study:"),
+        expect.objectContaining({
+          action: expect.objectContaining({ label: "Undo" }),
+        }),
+      );
+    });
+
+    const undoAction = mockNotify.mock.calls[0]?.[2]?.action?.onClick as (() => Promise<void>) | undefined;
+    expect(undoAction).toBeTypeOf("function");
+    await undoAction?.();
+
+    expect(mockUndoArtifactAction).toHaveBeenCalledWith("artifact-study-1");
+    expect(reconcileArtifactStatus).toHaveBeenCalledWith(
+      "artifact-study-1",
+      "rejected",
+      "Undone by user",
+    );
+    expect(mockDispatchProjectDataChanged).toHaveBeenCalledWith(expect.objectContaining({
+      projectId: "project-1",
+      domains: ["ledger"],
+    }));
   });
 });

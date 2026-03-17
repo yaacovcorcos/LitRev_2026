@@ -28,6 +28,18 @@ function ToastItem({
         {ICON_MAP[notification.type]}
       </span>
       <span className={styles.message}>{notification.message}</span>
+      {notification.action ? (
+        <button
+          type="button"
+          className={styles.action}
+          onClick={() => {
+            notification.action?.onClick();
+            onDismiss(notification.id);
+          }}
+        >
+          {notification.action.label}
+        </button>
+      ) : null}
       <button
         type="button"
         className={styles.dismiss}

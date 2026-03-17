@@ -22,12 +22,20 @@ export type Notification = {
   id: string;
   type: NotificationType;
   message: string;
+  action?: {
+    label: string;
+    onClick: () => void;
+  };
 };
 
 type NotificationContextValue = {
   notifications: Notification[];
   /** Manually push a notification (most callers should use useAsyncAction instead). */
-  notify: (type: NotificationType, message: string) => void;
+  notify: (
+    type: NotificationType,
+    message: string,
+    options?: { action?: Notification["action"] },
+  ) => void;
   dismiss: (id: string) => void;
 };
 
@@ -67,7 +75,11 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const notify = useCallback(
-    (type: NotificationType, message: string) => {
+    (
+      type: NotificationType,
+      message: string,
+      options?: { action?: Notification["action"] },
+    ) => {
       // Deduplicate rapid-fire identical messages
       const dedupeKey = `${type}:${message}`;
       const now = Date.now();
@@ -76,7 +88,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       recentRef.current.set(dedupeKey, now);
 
       const id = crypto.randomUUID();
-      const notification: Notification = { id, type, message };
+      const notification: Notification = { id, type, message, action: options?.action };
 
       setNotifications((prev) => {
         const next = [...prev, notification];
