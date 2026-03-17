@@ -8,19 +8,12 @@ describe("DraftSidebar", () => {
     const onDismiss = vi.fn();
 
     render(
-      <DraftSidebar
-        collapsed={false}
-        activeView="sections"
-        isOverlay
-        onToggleCollapsed={vi.fn()}
-        onDismiss={onDismiss}
-        onViewChange={vi.fn()}
-        sectionsPane={<div>Sections content</div>}
-        evidencePane={<div>Evidence content</div>}
-      />,
+      <DraftSidebar collapsed={false} isOverlay onToggleCollapsed={vi.fn()} onDismiss={onDismiss}>
+        <div>Evidence content</div>
+      </DraftSidebar>,
     );
 
-    fireEvent.click(screen.getByLabelText("Close draft sidebar overlay"));
+    fireEvent.click(screen.getByLabelText("Close evidence ledger overlay"));
 
     expect(onDismiss).toHaveBeenCalledTimes(1);
   });
@@ -29,16 +22,9 @@ describe("DraftSidebar", () => {
     const onDismiss = vi.fn();
 
     render(
-      <DraftSidebar
-        collapsed={false}
-        activeView="sections"
-        isOverlay
-        onToggleCollapsed={vi.fn()}
-        onDismiss={onDismiss}
-        onViewChange={vi.fn()}
-        sectionsPane={<div>Sections content</div>}
-        evidencePane={<div>Evidence content</div>}
-      />,
+      <DraftSidebar collapsed={false} isOverlay onToggleCollapsed={vi.fn()} onDismiss={onDismiss}>
+        <div>Evidence content</div>
+      </DraftSidebar>,
     );
 
     fireEvent.keyDown(document, { key: "Escape" });
@@ -46,26 +32,18 @@ describe("DraftSidebar", () => {
     expect(onDismiss).toHaveBeenCalledTimes(1);
   });
 
-  it("opens the requested view from the collapsed rail", () => {
-    const onViewChange = vi.fn();
+  it("reopens the evidence ledger from the collapsed rail", () => {
     const onToggleCollapsed = vi.fn();
 
     render(
-      <DraftSidebar
-        collapsed
-        activeView="sections"
-        isOverlay={false}
-        onToggleCollapsed={onToggleCollapsed}
-        onDismiss={vi.fn()}
-        onViewChange={onViewChange}
-        sectionsPane={<div>Sections content</div>}
-        evidencePane={<div>Evidence content</div>}
-      />,
+      <DraftSidebar collapsed isOverlay={false} onToggleCollapsed={onToggleCollapsed} onDismiss={vi.fn()}>
+        <div>Evidence content</div>
+      </DraftSidebar>,
     );
 
-    fireEvent.click(screen.getByLabelText("Show evidence"));
+    fireEvent.click(screen.getByLabelText("Expand evidence ledger"));
 
-    expect(onViewChange).toHaveBeenCalledWith("evidence");
     expect(onToggleCollapsed).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("Evidence")).toBeTruthy();
   });
 });

@@ -48,23 +48,10 @@ vi.mock("../DraftContextRail", () => ({
   EvidencePane: () => <div data-testid="evidence-pane" />,
 }));
 
-vi.mock("../StructureRail", () => ({
-  SectionsPane: () => <div data-testid="sections-pane" />,
-}));
-
 vi.mock("../DraftSidebar", () => ({
-  DraftSidebar: ({
-    sectionsPane,
-    evidencePane,
-    collapsed,
-  }: {
-    sectionsPane: ReactNode;
-    evidencePane: ReactNode;
-    collapsed: boolean;
-  }) => (
+  DraftSidebar: ({ children, collapsed }: { children: ReactNode; collapsed: boolean }) => (
     <div data-testid="draft-sidebar" data-collapsed={collapsed ? "1" : "0"}>
-      {sectionsPane}
-      {evidencePane}
+      {children}
     </div>
   ),
 }));
@@ -122,9 +109,6 @@ function createController(overrides: Partial<ReturnType<typeof mockUseDraftWorks
     activeFontFamily: "Georgia",
     shouldRenderWholeDraft: true,
     wholeDraftMeta: { id: UNSECTIONED_DRAFT_ID, label: "Whole draft", placeholder: "Start writing..." },
-    sidebarSections: [],
-    sidebarView: "sections" as const,
-    setSidebarView: vi.fn(),
     isSidebarCollapsed: false,
     toggleSidebar: vi.fn(),
     isPhoneWorkspace: false,
@@ -141,7 +125,6 @@ function createController(overrides: Partial<ReturnType<typeof mockUseDraftWorks
     handleAddSection: vi.fn(),
     handleAddCustomSection: vi.fn(),
     selectSection: vi.fn(),
-    selectSectionHeading: vi.fn(),
     handleMoveSection: vi.fn(),
     requestRemoveSection: vi.fn(),
     sectionToRemove: null,
@@ -168,6 +151,7 @@ function createController(overrides: Partial<ReturnType<typeof mockUseDraftWorks
     updateSectionContent: vi.fn(),
     usedEvidence: [],
     usedEvidenceIds: [],
+    referencesText: "",
     studies: [],
     isAddEvidenceOpen: false,
     setAddEvidenceOpen: vi.fn(),
@@ -210,6 +194,7 @@ describe("Draft page", () => {
 
     expect(screen.getByTestId("draft-top-bar")).toBeTruthy();
     expect(screen.getByTestId("draft-sidebar")).toBeTruthy();
+    expect(screen.getByTestId("evidence-pane")).toBeTruthy();
     expect(screen.getByTestId("editor-toolbar")).toBeTruthy();
     expect(screen.getByTestId("section-editor").getAttribute("data-section-id")).toBe(UNSECTIONED_DRAFT_ID);
     expect(screen.getByTestId("project-page-layout").getAttribute("data-has-copilot")).toBe("1");
@@ -239,7 +224,8 @@ describe("Draft page", () => {
     render(<DraftPage />);
 
     expect(screen.getByText("Section")).toBeTruthy();
-    expect(screen.getByTestId("section-editor").getAttribute("data-section-id")).toBe("references");
-    expect(screen.getByTestId("section-editor").getAttribute("data-editable")).toBe("0");
+    expect(screen.queryByTestId("section-editor")).toBeNull();
+    expect(screen.getByText("References are auto-generated from inline citations.")).toBeTruthy();
+    expect(screen.getAllByText("References").length).toBeGreaterThan(0);
   });
 });

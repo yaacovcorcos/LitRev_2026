@@ -3,7 +3,7 @@
 ## Purpose
 This is the single canonical plan for LitRev's drafting surface.
 
-It defines the canonical drafting direction for LitRev and the sequence of work around it. The current authoritative route baseline is the restored section-first drafting experience anchored to the March 7, 2026 `ead2ac8` interaction model: top section tabs, real `Section` / `Full Draft`, and a persistent left sidebar for sections and evidence. The canonical manuscript model, citation compiler, and export foundation remain active under that UI, but the rejected continuous-workspace and drawer-first route shells are not the current product truth.
+It defines the canonical drafting direction for LitRev and the sequence of work around it. The current authoritative route baseline is the restored section-first drafting experience anchored to the March 12, 2026 `8998296` interaction model: top section tabs, real `Section` / `Full Draft`, a dedicated left Evidence Ledger, and an obvious center drafting surface. The canonical manuscript model, citation compiler, and export foundation remain active under that UI, but the rejected continuous-workspace, drawer-first, and segmented-sidebar route shells are not the current product truth.
 
 ## Product Contract Boundary
 This plan changes how LitRev delivers drafting, not what LitRev is for.
@@ -23,12 +23,12 @@ Current route contract:
 - `Full Draft` and `Section` are route-level projections over one normalized draft/manuscript state
 - top tabs show named sections only
 - `Whole draft` is a first-class freeform area, but not a top tab
-- left sidebar is the only draft-owned support surface
+- left Evidence Ledger is the only draft-owned support surface
 - right side remains owned by the existing project copilot shell
 
 ## Goal and Scope
 ### Problem statement
-The draft surface must remain immediately usable for actual writing. The recent continuous-workspace and drawer-first experiments moved the route away from the last workable section-first experience and created shell/controller drift. The correction is to restore the usable section-first baseline first, then evolve the manuscript system underneath it without forcing another premature route architecture jump.
+The draft surface must remain immediately usable for actual writing. The recent continuous-workspace, drawer-first, and segmented-sidebar experiments moved the route away from the last workable section-first experience and created shell/controller drift. The correction is to restore the usable section-first baseline first, then evolve the manuscript system underneath it without forcing another premature route architecture jump.
 
 ### Intended outcome
 LitRev drafting becomes a manuscript operating system with:
@@ -75,12 +75,12 @@ LitRev drafting becomes a manuscript operating system with:
 
 ### Current-state evidence (code-verified)
 - `next-app/app/project/[id]/draft/page.tsx`
-  - Route-level Draft Studio, localStorage-first paint, section/full modes, project copilot wiring, blank-start handling, and left-sidebar section/evidence integration.
+  - Route-level Draft Studio, localStorage-first paint, section/full modes, project copilot wiring, blank-start handling, and restored left Evidence Ledger + center drafting layout.
 - `next-app/app/project/[id]/draft/DraftEditors.tsx`
   - Current editor is Tiptap `StarterKit` + `Underline` + custom `Citation` node + paragraph direction.
   - No native comments, suggestion mode, headings UI, tables, figures, equations, links, footnotes, or outline tooling.
 - `next-app/app/project/[id]/draft/useDraftWorkspaceController.ts`
-  - Canonical route orchestration now owns section add/remove/drag behavior, whole-draft targeting, sidebar state, and save/export wiring against the normalized draft state.
+  - Canonical route orchestration now owns section add/remove/drag behavior, whole-draft targeting, ledger collapse state, and save/export wiring against the normalized draft state.
 - `next-app/app/project/[id]/draft/useDraftExport.ts`
   - Current "DOCX export" path is placeholder behavior and not a true document-generation pipeline.
 - `next-app/components/ExportModal.tsx`

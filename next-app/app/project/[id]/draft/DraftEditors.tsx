@@ -1,6 +1,6 @@
 "use client";
 
-import { CSSProperties, useEffect } from "react";
+import { CSSProperties, useEffect, type ReactNode } from "react";
 import { Editor, EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
@@ -334,6 +334,7 @@ type FullSectionEditorProps = {
   surfaceClassName?: string;
   surfaceStyle?: CSSProperties;
   editable?: boolean;
+  prefixContent?: ReactNode;
 };
 
 export function FullSectionEditor({
@@ -347,6 +348,7 @@ export function FullSectionEditor({
   surfaceClassName,
   surfaceStyle,
   editable = true,
+  prefixContent,
 }: FullSectionEditorProps) {
   const editor = useEditor(
     {
@@ -385,6 +387,7 @@ export function FullSectionEditor({
 
   return (
     <div className={surfaceClassName ?? styles.editorSurface} style={surfaceStyle}>
+      {prefixContent}
       <EditorContent editor={editor} />
     </div>
   );

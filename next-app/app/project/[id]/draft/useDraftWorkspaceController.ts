@@ -40,13 +40,11 @@ import {
   customSectionPlaceholder,
   docHasContent,
   formatToVars,
+  jsonToText,
   studyLabel,
   type SectionMeta,
 } from "./draft-helpers";
-import { extractManuscriptOutline } from "@/lib/manuscript/workspace";
 import { DRAFT_SECTIONS, type DraftMode, type DraftSectionId, UNSECTIONED_DRAFT_ID } from "@/types/draft";
-import type { DraftSidebarView } from "./DraftSidebar";
-import type { DraftSidebarSection } from "./StructureRail";
 
 type ControllerParams = {
   projectId: string;
@@ -150,7 +148,6 @@ export function useDraftWorkspaceController({ projectId }: ControllerParams) {
   const [isFormatOpen, setFormatOpen] = useState(false);
   const [isAddSectionOpen, setAddSectionOpen] = useState(false);
   const [customSectionName, setCustomSectionName] = useState("");
-  const [sidebarView, setSidebarView] = useState<DraftSidebarView>("sections");
   const [isPhoneWorkspace, setPhoneWorkspace] = useState(false);
   const [isCompactWorkspace, setCompactWorkspace] = useState(false);
   const [paragraphDir, setParagraphDir] = useState<"ltr" | "rtl">("ltr");
@@ -376,25 +373,6 @@ export function useDraftWorkspaceController({ projectId }: ControllerParams) {
     return map;
   }, [draft.formattingBySection]);
 
-  const outlineEntries = useMemo(() => extractManuscriptOutline(draft.manuscript), [draft.manuscript]);
-  const sidebarSections = useMemo<DraftSidebarSection[]>(
-    () =>
-      outlineEntries.map((section) => ({
-        id: section.sectionId,
-        label: section.label,
-        isWholeDraft: section.sectionId === UNSECTIONED_DRAFT_ID,
-        isGenerated: section.sectionId === "references",
-        isRemovable: section.sectionId !== UNSECTIONED_DRAFT_ID && section.sectionId !== "references",
-        headings: section.headings.map((heading) => ({
-          id: heading.id,
-          label: heading.label,
-          level: heading.level,
-          blockId: heading.blockId,
-        })),
-      })),
-    [outlineEntries],
-  );
-
   const availableSections = useMemo(
     () =>
       DRAFT_SECTIONS
@@ -413,6 +391,7 @@ export function useDraftWorkspaceController({ projectId }: ControllerParams) {
     [studies, usedEvidenceIds],
   );
   const citationIssues = useMemo(() => getDraftCitationIssues(draft, studies), [draft, studies]);
+  const referencesText = useMemo(() => jsonToText(draft.contentBySection.references), [draft.contentBySection.references]);
   const hasDraftContent = useMemo(() => {
     if (shouldRenderWholeDraft && docHasContent(draft.contentBySection[UNSECTIONED_DRAFT_ID])) {
       return true;
@@ -480,19 +459,6 @@ export function useDraftWorkspaceController({ projectId }: ControllerParams) {
       activeSection: sectionId === UNSECTIONED_DRAFT_ID ? null : sectionId,
     }));
     scheduleFocus(sectionId);
-  }, [scheduleFocus, setDraftLocal]);
-
-  const selectSectionHeading = useCallback((sectionId: DraftSectionId, blockId?: string) => {
-    if (sectionId === UNSECTIONED_DRAFT_ID) {
-      setDraftLocal((prev) => ({ ...prev, mode: "full", activeSection: null }));
-      scheduleFocus(UNSECTIONED_DRAFT_ID, blockId);
-      return;
-    }
-    setDraftLocal((prev) => ({
-      ...prev,
-      activeSection: sectionId,
-    }));
-    scheduleFocus(sectionId, blockId);
   }, [scheduleFocus, setDraftLocal]);
 
   const handleToggleMode = useCallback((nextMode: DraftMode) => {
@@ -736,13 +702,6 @@ export function useDraftWorkspaceController({ projectId }: ControllerParams) {
     }));
   }, [setDraftLocal]);
 
-  const handleSidebarViewChange = useCallback((view: DraftSidebarView) => {
-    setSidebarView(view);
-    if (draftRef.current.panels.ledgerCollapsed) {
-      setSidebarOpen(true);
-    }
-  }, [setSidebarOpen]);
-
   const insertCitation = useCallback((studyId: string) => {
     const editor = activeEditorRef.current;
     const sectionId = currentTargetIdFromActiveSection(draftRef.current.activeSection);
@@ -873,9 +832,6 @@ export function useDraftWorkspaceController({ projectId }: ControllerParams) {
     activeFontFamily,
     shouldRenderWholeDraft,
     wholeDraftMeta: WHOLE_DRAFT_META,
-    sidebarSections,
-    sidebarView,
-    setSidebarView: handleSidebarViewChange,
     isSidebarCollapsed: draft.panels.ledgerCollapsed,
     toggleSidebar,
     setSidebarOpen,
@@ -893,7 +849,6 @@ export function useDraftWorkspaceController({ projectId }: ControllerParams) {
     handleAddSection,
     handleAddCustomSection,
     selectSection,
-    selectSectionHeading,
     handleMoveSection,
     requestRemoveSection: setSectionToRemove,
     sectionToRemove,
@@ -910,6 +865,7 @@ export function useDraftWorkspaceController({ projectId }: ControllerParams) {
     updateSectionContent,
     usedEvidence,
     usedEvidenceIds,
+    referencesText,
     studies,
     handleAddEvidence,
     handleRemoveEvidence,
