@@ -15,7 +15,7 @@
     min-height: 0;
     position: relative;
     display: grid;
-    grid-template-columns: var(--ledger-width, 320px) minmax(0, 1fr);
+    grid-template-columns: var(--ledger-width, 320px) 1px minmax(0, 1fr);
     overflow: hidden;
     padding-bottom: 0;
 }
@@ -596,7 +596,7 @@
     min-height: 0;
     display: grid;
     position: relative;
-    grid-template-columns: var(--ledger-width, 320px) minmax(0, 1fr);
+    grid-template-columns: var(--ledger-width, 320px) 1px minmax(0, 1fr);
     overflow: hidden;
     padding-bottom: 0;
 }
@@ -608,6 +608,7 @@
 .resizeHandle {
     cursor: col-resize;
     position: relative;
+    width: 1px;
     z-index: var(--z-resize-handle);
 }
 
