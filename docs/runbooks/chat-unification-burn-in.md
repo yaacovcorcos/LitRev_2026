@@ -35,6 +35,8 @@ Current repo/runtime note:
 - `CANARY_WORKSPACE_IDS` and/or `CANARY_USER_IDS`
 - sign-off owner + backup reviewer
 
+The final strict gate is not sign-offable until the backup reviewer is named in the live report metadata.
+
 ## Environment Matrix
 
 | Environment | Migration command | Notes |
@@ -44,7 +46,14 @@ Current repo/runtime note:
 
 Do not run `migrate dev` against shared databases.
 
-## Phase 0 - DB + Deployment Preflight
+## Phase 0 - Fresh-Window DB + Deployment Preflight
+
+Run this phase only when:
+
+1. opening a fresh canary window, or
+2. restarting after a deployed remediation or another evidence-affecting reset.
+
+Do not rerun the full deployment/migration preflight when the existing window is still valid and the only blocker is lack of scoped samples.
 
 Run from `next-app/`:
 
@@ -69,6 +78,26 @@ Record command outputs in the run report.
 4. Reuse exactly that timestamp for all daily and final commands.
 5. If a live runtime cohort gate is reintroduced later, record it explicitly in the report before using it operationally.
 
+## Phase 1.5 - Baseline Scenario Pack
+
+Before treating Day-0 as sign-offable, create a minimum owner-driven manual baseline inside the scoped cohort:
+
+1. one completed `/ai` run
+2. one completed `project` run
+3. one retry scenario
+4. one ask-user scenario
+5. one abnormal disconnect/recovery scenario
+
+This baseline is part of the canonical burn-in contract. It creates deterministic early evidence; it does not replace the 7-day organic window.
+
+Record each baseline scenario in the live report with:
+
+1. timestamp (UTC)
+2. surface
+3. scenario type
+4. conversation ID and run ID when visible
+5. pass/fail note
+
 ## Phase 2 - Day-0 Data Quality Gate
 
 Run (short-window allowed only for pre-day-7 checks):
@@ -91,6 +120,8 @@ Required Day-0 outcomes:
 1. `run_end_observed` rows present for `ai` and `project`.
 2. Run-end `runId` coverage threshold met per surface (or clear remediation plan documented).
 3. Missing `runId` samples are reviewed and categorized.
+4. Baseline scenario pack is recorded in the live report.
+5. Raw validator JSON is preserved in or alongside the live report.
 
 ## Phase 3 - Daily Progress Checks (Days 1-6)
 
@@ -132,6 +163,11 @@ Track trend lines daily:
    - reconnect behavior stays bounded rather than spinning indefinitely
    - terminal reconciliation does not duplicate the final assistant/error state
 
+Preserve raw validator JSON from each run as evidence:
+
+1. paste it into a report appendix, or
+2. store it in a dated artifact file linked from the live report
+
 ## Phase 4 - Final Strict Gate (Earliest at +7 Days)
 
 Run without short-window override. Paste terminal output into a report file created from `docs/reports/u1-6-burn-in-template.md`.
@@ -144,7 +180,8 @@ cd next-app && npx tsx scripts/validate-chat-unification-burn-in.ts \
   --userIds=<u1,u2> \
   --requireScopedCohort=1 \
   --requireRunEndPerSurface=1 \
-  --minRunIdCoveragePerSurface=0.95
+  --minRunIdCoveragePerSurface=0.95 \
+  --json=1
 ```
 
 Pass criteria:
@@ -162,12 +199,15 @@ Pass criteria:
 11. Audited durable-continuation cases succeed without duplicating the already-completed durable step, and unsupported cases never advertise `Continue`.
 12. Checkpoint-backed continuation prefers a valid earlier safe boundary when later same-run noise exists, and invalidated checkpoints fall back cleanly without duplicating the completed source step.
 13. Phase-backed ask/finalize recovery cases stay truthful: ask-phase reconnects resolve to paused-input handoff, and stale finalize-phase reconnects resolve to bounded user action instead of indefinite reconnect.
+14. Backup reviewer is assigned in the report metadata before sign-off is claimed.
 
-## Metric Integrity Rules
+## Metric Integrity and Window Validity Rules
 
 1. `retry_model_continuity` is authoritative only from server-joined v2 intent/completion pairs inside `metricVersion=3` data.
-2. Any metric schema or metric-version change during the active burn-in window invalidates the window.
-3. If invalidated, restart burn-in with a new production deploy and a new `CANARY_SINCE_UTC`.
+2. Reset the active burn-in window only when a deployed change affects runtime behavior, telemetry meaning, cohort definition, or the pass/fail contract used to interpret the evidence.
+3. A validator or threshold change resets the window only when it materially changes the meaning of pass/fail for the production evidence being reviewed.
+4. Docs-only/report-only maintenance does not reset the window.
+5. If invalidated, restart burn-in with a new production deploy and a new `CANARY_SINCE_UTC`.
 
 ## Failure Handling
 
@@ -189,4 +229,5 @@ If strict gate fails:
 1. Owner signs the final report as pass/fail.
 2. Backup reviewer independently validates thresholds and cohort scope.
 3. `docs/plans/plan-chat-unification-v2.md` implementation status is updated with factual outcome.
-4. Only after sign-off, start `U3` popup migration.
+4. `U3` becomes the next task only within `docs/plans/plan-chat-unification-v2.md`; broader roadmap ordering still follows `docs/plans/plan-agentic.md` unless explicitly changed there.
+5. Only after sign-off, start `U3` popup migration.

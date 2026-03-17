@@ -103,6 +103,7 @@ Rules:
   - Problem: the shared runtime is shipped, but the operational proof that it is stable enough to treat as canonical is still incomplete.
   - Remaining work:
     - finish canary evidence using `docs/runbooks/chat-unification-burn-in.md`
+    - use the runbook baseline-then-organic evidence flow, including the minimum manual baseline scenario pack and preserved raw validator JSON artifacts
     - complete replay parity confidence for `/ai` vs project adapters
     - prove parity for durable recovery truth, not only reducer-state parity
     - prove phase-backed paused-input and stale-finalize recovery behavior across the supported main surfaces
@@ -142,6 +143,7 @@ Rules:
 Current rollout control:
 1. `U1.6` burn-in currently uses a production deployment baseline plus `CANARY_SINCE_UTC` and scoped `workspaceIds` / `userIds` evidence filters.
 2. No active `CHAT_UNIFICATION_V2` runtime flag is currently wired in committed code; do not assume a live cohort-toggle path exists unless this plan and the burn-in runbook are updated first.
+3. `U3` becomes next only within this plan after `U1.6` passes; broader runtime roadmap ordering still follows `docs/plans/plan-agentic.md` unless it is explicitly updated there.
 
 Rules:
 1. Before `U4`, rollback should be treated as a deploy/version rollback unless a documented runtime cohort gate is explicitly reintroduced.
