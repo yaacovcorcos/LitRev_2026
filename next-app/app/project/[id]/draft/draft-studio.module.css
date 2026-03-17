@@ -6,206 +6,6 @@
     overflow: hidden;
 }
 
-/* ------------------------------------------------------------------ */
-/* Restored section-first shell overrides                              */
-/* ------------------------------------------------------------------ */
-
-.body {
-    flex: 1;
-    min-height: 0;
-    position: relative;
-    display: grid;
-    grid-template-columns: var(--ledger-width, 320px) 1px minmax(0, 1fr);
-    overflow: hidden;
-    padding-bottom: 0;
-}
-
-.ledger {
-    width: var(--ledger-width, 320px);
-    max-width: 100%;
-    min-width: 0;
-}
-
-.center {
-    border-left: 1px solid var(--glass-border);
-}
-
-.sidebarOverlay {
-    position: absolute;
-    top: 0;
-    left: 0;
-    bottom: 0;
-    width: min(320px, calc(100% - 24px));
-    z-index: calc(var(--z-overlay) - 1);
-    box-shadow: var(--shadow-xl);
-}
-
-.sidebarScrim {
-    position: absolute;
-    inset: 0;
-    z-index: calc(var(--z-overlay) - 2);
-    border: none;
-    background: rgba(var(--rgb-ui-contrast), 0.18);
-    cursor: pointer;
-}
-
-.sidebarHeaderRow {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    padding: 16px 16px 0;
-}
-
-.sidebarPanel {
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
-    height: calc(100% - 58px);
-}
-
-.emptyTabsState {
-    padding: 7px 14px;
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--text-muted);
-    white-space: nowrap;
-}
-
-.evidencePane {
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
-    height: 100%;
-}
-
-.editorSurfaceInline,
-.editorSurfaceInlineWholeDraft {
-    width: 100%;
-    max-width: none;
-    margin: 0;
-    padding: 0;
-    overflow: visible;
-    background: transparent;
-}
-
-.editorSurfaceInlineWholeDraft {
-    padding-top: 4px;
-}
-
-.manuscriptSectionNode {
-    border-top: 1px solid rgba(var(--rgb-ui-contrast), 0.08);
-    padding-top: 24px;
-}
-
-.manuscriptSectionChrome {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 12px;
-    margin-bottom: 16px;
-}
-
-.manuscriptSectionEyebrow {
-    display: none;
-}
-
-.manuscriptSectionNodeTitle {
-    margin: 0;
-    font-size: 18px;
-    font-weight: 700;
-    color: var(--text-primary);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    font-family: 'Lexend', sans-serif;
-}
-
-.manuscriptSectionContent {
-    min-height: 120px;
-}
-
-.choiceDialog {
-    width: min(480px, calc(100vw - 32px));
-    padding: 24px;
-    border-radius: 20px;
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
-}
-
-.choiceDialogTitle {
-    margin: 0;
-    font-size: 18px;
-    font-weight: 700;
-    color: var(--text-primary);
-}
-
-.choiceDialogDescription {
-    margin: 0;
-    font-size: 14px;
-    line-height: 1.6;
-    color: var(--text-secondary);
-}
-
-.choiceDialogActions {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-}
-
-.choiceDialogButton,
-.choiceDialogButtonSecondary {
-    border-radius: 12px;
-    padding: 12px 14px;
-    font-size: 14px;
-    font-weight: 600;
-    cursor: pointer;
-    border: 1px solid transparent;
-}
-
-.choiceDialogButton {
-    background: var(--accent-primary);
-    color: var(--color-white);
-}
-
-.choiceDialogButton:hover {
-    background: var(--accent-primary-hover);
-}
-
-.choiceDialogButtonSecondary {
-    background: rgba(var(--rgb-ui-contrast), 0.04);
-    color: var(--text-primary);
-    border-color: rgba(var(--rgb-ui-contrast), 0.08);
-}
-
-.choiceDialogButtonSecondary:hover {
-    background: rgba(var(--rgb-ui-contrast), 0.07);
-}
-
-@media (max-width: 959px) {
-    .body {
-        display: flex;
-        flex-direction: column;
-    }
-
-    .ledger {
-        width: 100%;
-        border-right: none;
-        border-bottom: 1px solid var(--glass-border);
-    }
-
-    .center {
-        border-left: none;
-    }
-
-    .sidebarOverlay {
-        position: absolute;
-        width: min(320px, calc(100% - 18px));
-        border-right: 1px solid var(--glass-border);
-        border-bottom: none;
-    }
-}
-
 .appMainOverride {
     padding-top: var(--header-height, 44px) !important;
 }
@@ -595,10 +395,8 @@
     flex: 1;
     min-height: 0;
     display: grid;
-    position: relative;
-    grid-template-columns: var(--ledger-width, 320px) 1px minmax(0, 1fr);
+    grid-template-columns: var(--ledger-width) 1px 1fr 1px var(--copilot-width);
     overflow: hidden;
-    padding-bottom: 0;
 }
 
 .demoGuide {
@@ -608,7 +406,6 @@
 .resizeHandle {
     cursor: col-resize;
     position: relative;
-    width: 1px;
     z-index: var(--z-resize-handle);
 }
 
@@ -1434,7 +1231,7 @@
 }
 
 .manuscriptEditorSurface .proseMirror {
-    min-height: 120px;
+    min-height: 0;
 }
 
 .fullSection {

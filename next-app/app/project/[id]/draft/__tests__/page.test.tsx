@@ -4,30 +4,87 @@ import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import DraftPage from "../page";
 
-const { mockUseDraftWorkspaceController } = vi.hoisted(() => ({
-  mockUseDraftWorkspaceController: vi.fn(),
+const {
+  mockLoadDraftState,
+  mockWarmDomain,
+  mockReplace,
+  mockEditor,
+  mockProject,
+  mockStudies,
+  mockGetProjectById,
+  mockGetStudiesByProject,
+  mockSetCopilotPanelWidth,
+  mockOpenPopupChat,
+  mockOpenPopupForTarget,
+  mockRunAction,
+} = vi.hoisted(() => ({
+  mockLoadDraftState: vi.fn(),
+  mockWarmDomain: vi.fn(),
+  mockReplace: vi.fn(),
+  mockProject: { id: "proj-1", name: "Alpha Draft" },
+  mockStudies: [
+    { id: "study-1", title: "Trial A" },
+    { id: "study-2", title: "Trial B" },
+  ],
+  mockGetProjectById: vi.fn(() => ({ id: "proj-1", name: "Alpha Draft" })),
+  mockGetStudiesByProject: vi.fn(() => [
+    { id: "study-1", title: "Trial A" },
+    { id: "study-2", title: "Trial B" },
+  ]),
+  mockSetCopilotPanelWidth: vi.fn(),
+  mockOpenPopupChat: vi.fn(),
+  mockOpenPopupForTarget: vi.fn(),
+  mockRunAction: vi.fn(),
+  mockEditor: {
+    chain: () => ({
+      focus: () => ({
+        run: vi.fn(),
+        insertContent: () => ({
+          insertContent: () => ({ run: vi.fn() }),
+          run: vi.fn(),
+        }),
+      }),
+    }),
+    commands: {
+      setContent: vi.fn(),
+    },
+    setEditable: vi.fn(),
+    getAttributes: vi.fn(() => ({})),
+    getJSON: () => ({ type: "doc", content: [{ type: "paragraph" }] }),
+    getText: () => "",
+    state: {
+      selection: { empty: true, from: 0, to: 0 },
+      doc: { textBetween: () => "" },
+    },
+    on: vi.fn(),
+    off: vi.fn(),
+  },
 }));
 
-vi.mock("next/navigation", () => ({
-  useParams: () => ({ id: "proj-1" }),
+vi.mock("next/navigation", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("next/navigation")>();
+  return {
+    ...actual,
+    useParams: () => ({ id: "proj-1" }),
+    useRouter: () => ({ replace: mockReplace }),
+    useSearchParams: () => new URLSearchParams(),
+  };
+});
+
+vi.mock("next/dynamic", () => ({
+  default: () => () => <div data-testid="export-modal" />,
+}));
+
+vi.mock("@/components/BaseBackButton", () => ({
+  BaseBackButton: ({ label }: { label: string }) => <button type="button">{label}</button>,
 }));
 
 vi.mock("@/components/project/ProjectPageLayout", () => ({
-  ProjectPageLayout: ({
-    children,
-    copilot,
-  }: {
-    children: ReactNode;
-    copilot?: { section?: string };
-  }) => (
-    <div data-testid="project-page-layout" data-has-copilot={copilot ? "1" : "0"} data-copilot-section={copilot?.section ?? ""}>
-      {children}
-    </div>
-  ),
+  ProjectPageLayout: ({ children }: { children: ReactNode }) => <div data-testid="project-page-layout">{children}</div>,
 }));
 
-vi.mock("@/components/ConfirmDialog", () => ({
-  ConfirmDialog: ({ isOpen }: { isOpen: boolean }) => <div data-testid="confirm-dialog" data-open={isOpen ? "1" : "0"} />,
+vi.mock("@/components/ProjectCopilot", () => ({
+  ProjectCopilot: () => <div data-testid="project-copilot" />,
 }));
 
 vi.mock("@/components/ui/EmptyState", () => ({
@@ -35,145 +92,182 @@ vi.mock("@/components/ui/EmptyState", () => ({
   EmptyStateSkeleton: () => <div>Loading shell</div>,
 }));
 
+vi.mock("@/components/project/DemoGuideCard", () => ({
+  DemoGuideCard: () => null,
+}));
+
+vi.mock("@/contexts/ProjectsContext", () => ({
+  useProjects: () => ({
+    getProjectById: mockGetProjectById,
+    isLoadingProjects: false,
+    projectsError: null,
+  }),
+}));
+
+vi.mock("@/contexts/LedgerContext", () => ({
+  useLedger: () => ({
+    getStudiesByProject: mockGetStudiesByProject,
+  }),
+}));
+
+vi.mock("@/contexts/ProjectCopilotContext", () => ({
+  useProjectCopilot: () => ({
+    isCollapsed: false,
+    panelWidth: 360,
+    setPanelWidth: mockSetCopilotPanelWidth,
+  }),
+}));
+
+vi.mock("@/contexts/ProjectShellContext", () => ({
+  useProjectShell: () => ({
+    isEmbeddedInProjectShell: false,
+  }),
+}));
+
+vi.mock("@/contexts/PopupChatContext", () => ({
+  usePopupChat: () => ({
+    openPopupChat: mockOpenPopupChat,
+  }),
+}));
+
+vi.mock("@/hooks/useContextCaptureActions", () => ({
+  useContextCaptureActions: () => ({
+    captureEnabled: false,
+    openPopupForTarget: mockOpenPopupForTarget,
+    runAction: mockRunAction,
+  }),
+}));
+
+vi.mock("@/lib/context-capture/actions", () => ({
+  getContextCaptureAction: (id: string) => ({
+    id,
+    icon: "bolt",
+    label: id,
+    defaultPrompt: `${id} prompt`,
+  }),
+}));
+
+vi.mock("@/lib/context-capture/targets", () => ({
+  buildDraftSelectionTarget: () => ({ type: "draft-selection" }),
+}));
+
+vi.mock("@/hooks/useProjectData", () => ({
+  useProjectData: () => ({
+    draft: { state: "idle" },
+    warmDomain: mockWarmDomain,
+  }),
+}));
+
+vi.mock("@/app/actions/drafts", () => ({
+  saveDraftAction: vi.fn(async (_projectId: string, state: unknown) => ({ success: true, data: state })),
+}));
+
+vi.mock("@/app/actions/files", () => ({
+  listProjectFilesAction: vi.fn(async () => ({ success: true, data: [] })),
+  createFileAssetAction: vi.fn(async () => ({ success: true, data: { id: "file-1", version: 1, createdAt: new Date().toISOString() } })),
+  deleteFileAssetAction: vi.fn(async () => ({ success: true })),
+}));
+
+vi.mock("@/lib/mobile/feature-flags", () => ({
+  isMobileDraftV2Enabled: () => false,
+}));
+
+vi.mock("@/lib/context-capture/feature-flags", () => ({
+  isContextToolbarV1Enabled: () => false,
+}));
+
 vi.mock("../AddEvidenceModal", () => ({
   AddEvidenceModal: () => <div data-testid="add-evidence-modal" />,
 }));
 
-vi.mock("@/components/ExportModal", () => ({
-  ExportModal: () => <div data-testid="export-modal" />,
-}));
-
-vi.mock("../DraftContextRail", () => ({
-  EvidencePane: () => <div data-testid="evidence-pane" />,
-}));
-
 vi.mock("../DraftEditors", () => ({
+  Citation: {},
+  ParagraphDirection: {},
   EditorToolbar: () => <div data-testid="editor-toolbar" />,
-  FullSectionEditor: ({ sectionId, editable }: { sectionId: string; editable?: boolean }) => (
-    <div data-testid="section-editor" data-section-id={sectionId} data-editable={editable === false ? "0" : "1"} />
+  FullSectionEditor: ({ sectionId }: { sectionId: string }) => (
+    <div data-testid="section-editor" data-section-id={sectionId} />
   ),
 }));
 
-vi.mock("../DraftToolbar", () => ({
-  DraftTopBar: ({ projectName, mode }: { projectName: string; mode: "section" | "full" }) => (
-    <div data-testid="draft-top-bar">
-      <div>{projectName}</div>
-      <div>{mode === "section" ? "Section" : "Full Draft"}</div>
-    </div>
-  ),
-  DraftFormattingPanel: () => <div data-testid="formatting-panel" />,
-}));
-
-vi.mock("../useDraftWorkspaceController", () => ({
-  useDraftWorkspaceController: (...args: unknown[]) => mockUseDraftWorkspaceController(...args),
-}));
-
-function createController(overrides: Partial<ReturnType<typeof mockUseDraftWorkspaceController>> = {}) {
+vi.mock("@tiptap/react", () => {
   return {
-    isLoadingProjects: false,
-    projectsError: null,
-    project: { id: "proj-1", name: "Alpha Draft" },
-    isEmbeddedInProjectShell: false,
-    projectCopilot: null,
-    draft: {
-      mode: "section" as const,
-      activeSection: "abstract",
-      contentBySection: {
-        abstract: { type: "doc", content: [] },
-        references: { type: "doc", content: [] },
-      },
+    Editor: class {},
+    EditorContent: () => <div data-testid="editor-content" />,
+    useEditor: () => mockEditor,
+  };
+});
+
+vi.mock("@/lib/draftStorage", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/draftStorage")>();
+  return {
+    ...actual,
+    loadDraftState: (...args: Parameters<typeof actual.loadDraftState>) => mockLoadDraftState(...args),
+    saveDraftState: vi.fn(),
+  };
+});
+
+function textDoc(text: string) {
+  return {
+    type: "doc",
+    content: [{ type: "paragraph", content: [{ type: "text", text }] }],
+  };
+}
+
+function createDraftState(overrides: Record<string, unknown> = {}) {
+  return {
+    version: 2,
+    mode: "section",
+    activeSection: "abstract",
+    sectionOrder: ["abstract", "introduction", "methods", "results", "discussion", "conclusion", "references"],
+    customSections: {},
+    formattingBySection: {
+      abstract: { fontSize: 16, lineHeight: 1.8, paragraphSpacing: 12, fontFamily: "Georgia" },
+      introduction: { fontSize: 16, lineHeight: 1.8, paragraphSpacing: 12, fontFamily: "Georgia" },
+      methods: { fontSize: 16, lineHeight: 1.8, paragraphSpacing: 12, fontFamily: "Georgia" },
+      results: { fontSize: 16, lineHeight: 1.8, paragraphSpacing: 12, fontFamily: "Georgia" },
+      discussion: { fontSize: 16, lineHeight: 1.8, paragraphSpacing: 12, fontFamily: "Georgia" },
+      conclusion: { fontSize: 16, lineHeight: 1.8, paragraphSpacing: 12, fontFamily: "Georgia" },
+      references: { fontSize: 16, lineHeight: 1.8, paragraphSpacing: 12, fontFamily: "Georgia" },
     },
-    saveStatus: "saved" as const,
-    orderedSections: [{ id: "abstract", label: "Abstract", placeholder: "Add abstract" }],
-    fullDraftSections: [],
-    availableSections: [{ id: "introduction", label: "Introduction", placeholder: "Add introduction" }],
-    hasEditableSections: true,
-    firstEditableSectionId: "abstract",
-    activeSectionLabel: "Abstract",
-    currentTargetId: "abstract",
-    currentTargetLabel: "Abstract",
-    isReferencesTarget: false,
-    activeEditor: null,
-    paragraphDir: "ltr" as const,
-    formatVarsById: {
-      abstract: {},
-      references: {},
+    panels: {
+      ledgerWidth: 320,
+      copilotWidth: 360,
+      ledgerCollapsed: false,
+      copilotCollapsed: false,
     },
-    activeFormat: { fontSize: 16, lineHeight: 1.8, paragraphSpacing: 12, fontFamily: "Georgia" },
-    activeFontFamily: "Georgia",
-    shouldRenderWholeDraft: false,
-    wholeDraftMeta: { id: "__whole_draft__", label: "Whole draft", placeholder: "Start writing..." },
-    isSidebarCollapsed: false,
-    toggleSidebar: vi.fn(),
-    isPhoneWorkspace: false,
-    isCompactWorkspace: false,
-    draggingKey: null,
-    dragOverKey: null,
-    dragOverPosition: null,
-    handleDragStart: vi.fn(),
-    handleDragOver: vi.fn(),
-    handleDrop: vi.fn(),
-    handleDragEnd: vi.fn(),
-    handleSelectSectionKeyDown: vi.fn(),
-    handleToggleMode: vi.fn(),
-    handleAddSection: vi.fn(),
-    handleAddCustomSection: vi.fn(),
-    selectSection: vi.fn(),
-    openSectionInSectionMode: vi.fn(),
-    handleMoveSection: vi.fn(),
-    requestRemoveSection: vi.fn(),
-    sectionToRemove: null,
-    confirmRemoveSection: vi.fn(),
-    cancelRemoveSection: vi.fn(),
-    pendingSectionRequest: null,
-    confirmPendingMove: vi.fn(),
-    confirmPendingKeep: vi.fn(),
-    cancelPendingSectionRequest: vi.fn(),
-    isAddSectionOpen: false,
-    setAddSectionOpen: vi.fn(),
-    customSectionName: "",
-    setCustomSectionName: vi.fn(),
-    sectionTabRefs: { current: {} },
-    addSectionRef: { current: null },
-    addSectionInputRef: { current: null },
-    formatRef: { current: null },
-    isFormatOpen: false,
-    setFormatOpen: vi.fn(),
-    updateSectionFormat: vi.fn(),
-    registerEditor: vi.fn(),
-    handleSectionFocus: vi.fn(),
-    handleSectionSelectionChange: vi.fn(),
-    updateSectionContent: vi.fn(),
-    usedEvidence: [],
-    usedEvidenceIds: [],
-    referencesText: "",
-    studies: [],
-    isAddEvidenceOpen: false,
-    setAddEvidenceOpen: vi.fn(),
-    handleAddEvidence: vi.fn(),
-    handleRemoveEvidence: vi.fn(),
-    insertCitation: vi.fn(),
-    studyLabel: vi.fn((study: { title: string }) => study.title),
-    handleAskAi: vi.fn(),
-    insertCopilotText: vi.fn(),
-    copilotEmptyState: {
-      icon: "tips_and_updates",
-      title: "Draft faster",
-      description: "Ask for an outline.",
-      suggestions: [],
+    contentBySection: {
+      abstract: { type: "doc", content: [{ type: "paragraph" }] },
+      introduction: { type: "doc", content: [{ type: "paragraph" }] },
+      methods: { type: "doc", content: [{ type: "paragraph" }] },
+      results: { type: "doc", content: [{ type: "paragraph" }] },
+      discussion: { type: "doc", content: [{ type: "paragraph" }] },
+      conclusion: { type: "doc", content: [{ type: "paragraph" }] },
+      references: { type: "doc", content: [{ type: "paragraph" }] },
     },
-    showResultsGuide: false,
-    citationIssues: [],
-    hasDraftContent: false,
-    isExportModalOpen: false,
-    setExportModalOpen: vi.fn(),
-    handleExportDocx: vi.fn(),
-    exportMode: "warn" as const,
-    setExportMode: vi.fn(),
-    blockingCitationIssuesCount: 0,
-    latestExport: null,
-    exportHistory: [],
-    handleDeleteExport: vi.fn(),
+    ledgerBySection: {
+      abstract: ["study-1"],
+      introduction: [],
+      methods: [],
+      results: [],
+      discussion: [],
+      conclusion: [],
+      references: [],
+    },
+    copilotBySection: {
+      abstract: [],
+      introduction: [],
+      methods: [],
+      results: [],
+      discussion: [],
+      conclusion: [],
+      references: [],
+    },
+    manuscript: {
+      version: 2,
+      root: { type: "doc", content: [] },
+      sections: [],
+      references: { orderedStudyIds: [] },
+    },
     ...overrides,
   };
 }
@@ -181,122 +275,87 @@ function createController(overrides: Partial<ReturnType<typeof mockUseDraftWorks
 describe("Draft page", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockUseDraftWorkspaceController.mockReturnValue(createController());
+    mockLoadDraftState.mockReturnValue(createDraftState());
   });
 
-  it("renders the restored section-first shell with the evidence ledger and section editor", () => {
+  it("renders the old section-first shell with the inline evidence ledger and section editor", async () => {
     render(<DraftPage />);
 
-    expect(screen.getByTestId("draft-top-bar")).toBeTruthy();
-    expect(screen.getByTestId("evidence-pane")).toBeTruthy();
+    expect(await screen.findByText("Evidence Ledger")).toBeTruthy();
+    expect(screen.getByText("Alpha Draft")).toBeTruthy();
+    expect(screen.getAllByText("Abstract").length).toBeGreaterThan(0);
+    expect(screen.getByText("Trial A")).toBeTruthy();
     expect(screen.getByTestId("editor-toolbar")).toBeTruthy();
-    expect(screen.getByTestId("section-editor").getAttribute("data-section-id")).toBe("abstract");
-    expect(screen.getByTestId("project-page-layout").getAttribute("data-has-copilot")).toBe("1");
+    expect(screen.getByTestId("editor-content")).toBeTruthy();
+    expect(screen.getByTestId("project-copilot")).toBeTruthy();
   });
 
-  it("renders section mode with a read-only references section editor", () => {
-    mockUseDraftWorkspaceController.mockReturnValue(
-      createController({
-        draft: {
-          mode: "section",
-          activeSection: "references",
-          contentBySection: {
-            references: { type: "doc", content: [] },
-          },
+  it("renders the references section as read-only in section mode", async () => {
+    mockLoadDraftState.mockReturnValue(
+      createDraftState({
+        activeSection: "references",
+        ledgerBySection: {
+          abstract: [],
+          introduction: [],
+          methods: [],
+          results: [],
+          discussion: [],
+          conclusion: [],
+          references: [],
         },
-        orderedSections: [{ id: "references", label: "References" }],
-        hasEditableSections: true,
-        activeSectionLabel: "References",
-        currentTargetId: "references",
-        currentTargetLabel: "References",
-        isReferencesTarget: true,
-        shouldRenderWholeDraft: false,
       }),
     );
 
     render(<DraftPage />);
 
-    expect(screen.getByText("Section")).toBeTruthy();
-    expect(screen.queryByTestId("section-editor")).toBeNull();
-    expect(screen.getByText("References are auto-generated from inline citations.")).toBeTruthy();
-    expect(screen.getAllByText("References").length).toBeGreaterThan(0);
+    expect(await screen.findByText("References are auto-generated from inline citations.")).toBeTruthy();
+    expect(screen.queryByTestId("editor-content")).toBeNull();
   });
 
-  it("shows the start-drafting empty state in full draft when sections exist but none have content", () => {
-    const openSectionInSectionMode = vi.fn();
-    mockUseDraftWorkspaceController.mockReturnValue(
-      createController({
-        draft: {
-          mode: "full",
-          activeSection: "abstract",
-          contentBySection: {
-            abstract: { type: "doc", content: [] },
-          },
-        },
-        orderedSections: [{ id: "abstract", label: "Abstract", placeholder: "Add abstract" }],
-        fullDraftSections: [],
-        hasEditableSections: true,
-        shouldRenderWholeDraft: false,
-        firstEditableSectionId: "abstract",
-        openSectionInSectionMode,
+  it("shows the old full-draft empty state when no sections have content", async () => {
+    mockLoadDraftState.mockReturnValue(
+      createDraftState({
+        mode: "full",
       }),
     );
 
     render(<DraftPage />);
 
-    expect(screen.getByText("Nothing written yet")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Start drafting" }));
-    expect(openSectionInSectionMode).toHaveBeenCalledWith("abstract");
+    expect(await screen.findByText("Nothing written yet")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Start drafting" })).toBeTruthy();
   });
 
-  it("disables the start-drafting action when only references exists", () => {
-    mockUseDraftWorkspaceController.mockReturnValue(
-      createController({
-        draft: {
-          mode: "full",
-          activeSection: "references",
-          contentBySection: {
-            references: { type: "doc", content: [] },
-          },
+  it("renders only contentful sections in full draft", async () => {
+    mockLoadDraftState.mockReturnValue(
+      createDraftState({
+        mode: "full",
+        contentBySection: {
+          abstract: textDoc("Abstract content"),
+          introduction: { type: "doc", content: [{ type: "paragraph" }] },
+          methods: { type: "doc", content: [{ type: "paragraph" }] },
+          results: { type: "doc", content: [{ type: "paragraph" }] },
+          discussion: { type: "doc", content: [{ type: "paragraph" }] },
+          conclusion: { type: "doc", content: [{ type: "paragraph" }] },
+          references: { type: "doc", content: [{ type: "paragraph" }] },
         },
-        orderedSections: [{ id: "references", label: "References", placeholder: "Generated from citations." }],
-        fullDraftSections: [],
-        hasEditableSections: false,
-        shouldRenderWholeDraft: false,
-        firstEditableSectionId: null,
       }),
     );
 
     render(<DraftPage />);
 
-    expect((screen.getByRole("button", { name: "Start drafting" }) as HTMLButtonElement).disabled).toBe(true);
+    const editors = await screen.findAllByTestId("section-editor");
+    expect(editors).toHaveLength(1);
+    expect(editors[0]?.getAttribute("data-section-id")).toBe("abstract");
+    expect(screen.getByText(/Full manuscript view/)).toBeTruthy();
   });
 
-  it("renders only contentful sections in full draft", () => {
-    mockUseDraftWorkspaceController.mockReturnValue(
-      createController({
-        draft: {
-          mode: "full",
-          activeSection: "abstract",
-          contentBySection: {
-            abstract: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "alpha" }] }] },
-            methods: { type: "doc", content: [] },
-          },
-        },
-        orderedSections: [
-          { id: "abstract", label: "Abstract", placeholder: "Add abstract" },
-          { id: "methods", label: "Methods", placeholder: "Add methods" },
-        ],
-        fullDraftSections: [{ id: "abstract", label: "Abstract", placeholder: "Add abstract" }],
-        hasEditableSections: true,
-        shouldRenderWholeDraft: false,
-      }),
-    );
-
+  it("reopens the evidence ledger after collapsing it", async () => {
     render(<DraftPage />);
 
-    const sectionEditors = screen.getAllByTestId("section-editor");
-    expect(sectionEditors).toHaveLength(1);
-    expect(sectionEditors[0]?.getAttribute("data-section-id")).toBe("abstract");
+    fireEvent.click(await screen.findByRole("button", { name: "Collapse evidence ledger" }));
+    expect(screen.getByText("Evidence")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Expand evidence ledger" }));
+    expect(await screen.findByText("Evidence Ledger")).toBeTruthy();
   });
 });

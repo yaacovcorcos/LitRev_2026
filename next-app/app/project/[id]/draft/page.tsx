@@ -1,23 +1,95 @@
 "use client";
 
-import { Suspense, type CSSProperties } from "react";
-import { useParams } from "next/navigation";
-import dynamic from "next/dynamic";
-import * as Dialog from "@radix-ui/react-dialog";
+import {
+  CSSProperties,
+  Suspense,
+  type KeyboardEvent as ReactKeyboardEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { BaseBackButton } from "@/components/BaseBackButton";
 import { ProjectPageLayout } from "@/components/project/ProjectPageLayout";
-import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { useProjects } from "@/contexts/ProjectsContext";
+import { useLedger } from "@/contexts/LedgerContext";
+import { ProjectCopilot } from "@/components/ProjectCopilot";
 import { EmptyState, EmptyStateSkeleton } from "@/components/ui/EmptyState";
-import { AddEvidenceModal } from "./AddEvidenceModal";
-import { EvidencePane } from "./DraftContextRail";
-import { EditorToolbar, FullSectionEditor } from "./DraftEditors";
-import { DraftFormattingPanel, DraftTopBar } from "./DraftToolbar";
-import { useDraftWorkspaceController } from "./useDraftWorkspaceController";
+import { useProjectCopilot } from "@/contexts/ProjectCopilotContext";
+import { useProjectShell } from "@/contexts/ProjectShellContext";
+import { DEFAULT_SECTION_ORDER, OPTIONAL_SECTION_KEYS, type DraftMode, DraftSectionId } from "@/types/draft";
+import {
+  DEFAULT_SECTION_FORMAT,
+  DraftState,
+  emptyDoc,
+  loadDraftState,
+  saveDraftState,
+  createDefaultDraftState,
+} from "@/lib/draftStorage";
+import { saveDraftAction } from "@/app/actions/drafts";
+import { useProjectData } from "@/hooks/useProjectData";
+import dynamic from "next/dynamic";
+const ExportModal = dynamic(() => import("@/components/ExportModal").then(m => m.ExportModal), { ssr: false });
+import { DemoGuideCard } from "@/components/project/DemoGuideCard";
 import styles from "./draft-studio.module.css";
-import { UNSECTIONED_DRAFT_ID } from "@/types/draft";
 
-const ExportModal = dynamic(() => import("@/components/ExportModal").then((module) => module.ExportModal), {
-  ssr: false,
-});
+import { Editor, EditorContent, useEditor } from "@tiptap/react";
+import StarterKit from "@tiptap/starter-kit";
+import Placeholder from "@tiptap/extension-placeholder";
+import Underline from "@tiptap/extension-underline";
+import type { JSONContent } from "@tiptap/core";
+import { Citation, ParagraphDirection, EditorToolbar, FullSectionEditor } from "./DraftEditors";
+import type { Study } from "@/types/ledger";
+import { usePopupChat } from "@/contexts/PopupChatContext";
+import { useContextCaptureActions } from "@/hooks/useContextCaptureActions";
+import { getContextCaptureAction } from "@/lib/context-capture/actions";
+import { buildDraftSelectionTarget } from "@/lib/context-capture/targets";
+import { AddEvidenceModal } from "./AddEvidenceModal";
+import { DraftTopBar, DraftFormattingPanel } from "./DraftToolbar";
+import {
+  EMPTY_IDS,
+  studyLabel,
+  isBaseSectionKey,
+  isDraftMode,
+  clamp,
+  docHasContent,
+  jsonToText,
+  formatToVars,
+  FONT_FAMILY_OPTIONS,
+  BASE_SECTION_MAP,
+  type SectionMeta,
+} from "./draft-helpers";
+import { useDraftExport } from "./useDraftExport";
+import { useDraftSections } from "./useDraftSections";
+import { useDraftCopilot } from "./useDraftCopilot";
+import { buildReferencesDoc, compileDraftCitations } from "@/lib/citation-compiler";
+import { COARSE_POINTER_MEDIA_QUERY, MOBILE_VIEWPORT_MEDIA_QUERY } from "@/lib/mobile/breakpoints";
+import { isMobileDraftV2Enabled } from "@/lib/mobile/feature-flags";
+import { isContextToolbarV1Enabled } from "@/lib/context-capture/feature-flags";
+
+function createCitationUid(sectionId: DraftSectionId): string {
+  const rand = Math.random().toString(36).slice(2, 8);
+  return `cit-${sectionId}-${Date.now().toString(36)}-${rand}`;
+}
+
+function withCompiledCitations(state: DraftState, studies: Study[], includeNumberInNodes: boolean): DraftState {
+  const compiled = compileDraftCitations({
+    contentBySection: state.contentBySection,
+    sectionOrder: state.sectionOrder,
+    studies,
+    includeNumberInNodes,
+  });
+  const referencesDoc = buildReferencesDoc(compiled.orderedStudyIds, studies);
+  return {
+    ...state,
+    contentBySection: {
+      ...compiled.normalizedContentBySection,
+      references: referencesDoc,
+    },
+  };
+}
 
 type DraftSectionHeadingProps = {
   id: string;
@@ -36,26 +108,733 @@ function DraftSectionHeading({ id, label }: DraftSectionHeadingProps) {
 
 function DraftContent() {
   const { id } = useParams<{ id: string }>();
-  const controller = useDraftWorkspaceController({ projectId: id });
+  const mobileDraftV2Enabled = isMobileDraftV2Enabled();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const { getProjectById, isLoadingProjects, projectsError } = useProjects();
+  const { getStudiesByProject } = useLedger();
+  const project = getProjectById(id);
+  const studies = useMemo(() => (id ? getStudiesByProject(id) : []), [id, getStudiesByProject]);
+  const { isCollapsed: copilotCollapsed, panelWidth: copilotPanelWidth, setPanelWidth: setCopilotPanelWidth } = useProjectCopilot();
+  const { isEmbeddedInProjectShell } = useProjectShell();
+  const { openPopupChat } = usePopupChat();
+  const { captureEnabled, openPopupForTarget, runAction } = useContextCaptureActions();
+  const contextToolbarEnabled = isContextToolbarV1Enabled();
+  const sendToCopilotAction = getContextCaptureAction("send_to_copilot");
+  const rewriteSelectionAction = getContextCaptureAction("rewrite_selection");
+  const checkClaimSupportAction = getContextCaptureAction("check_claim_support");
 
-  const draftMainClassName = styles.appMainOverride;
+  const queryMode = searchParams.get("mode");
+  const querySection = searchParams.get("section");
 
-  if (controller.isLoadingProjects) {
+  const [draft, setDraft] = useState<DraftState>(createDefaultDraftState);
+  const normalizeForEditor = useCallback(
+    (state: DraftState) => withCompiledCitations(state, studies, true),
+    [studies]
+  );
+  const normalizeForPersistence = useCallback(
+    (state: DraftState) => withCompiledCitations(state, studies, false),
+    [studies]
+  );
+
+  const applyDraftFromQuery = useCallback(
+    (loaded: DraftState) => {
+      const mode = isDraftMode(queryMode) ? queryMode : loaded.mode;
+      const order = loaded.sectionOrder.length > 0 ? [...loaded.sectionOrder] : [...DEFAULT_SECTION_ORDER];
+      const rawQuery = querySection?.trim();
+      const sectionFromQuery =
+        rawQuery && (isBaseSectionKey(rawQuery) || loaded.customSections?.[rawQuery]) ? rawQuery : null;
+      if (sectionFromQuery && !order.includes(sectionFromQuery)) {
+        order.push(sectionFromQuery);
+      }
+      const candidate = sectionFromQuery ?? loaded.activeSection;
+      const activeSection =
+        typeof candidate === "string" && order.includes(candidate) ? candidate : order[0] ?? "abstract";
+      return {
+        ...loaded,
+        mode,
+        activeSection,
+        sectionOrder: order,
+        panels: {
+          ...loaded.panels,
+        },
+      };
+    },
+    [queryMode, querySection]
+  );
+
+  const { draft: cachedDraft, warmDomain } = useProjectData();
+  const appliedCachedRef = useRef(false);
+
+  useEffect(() => {
+    // Always paint from localStorage first (instant)
+    const local = loadDraftState(id);
+    setDraft(normalizeForEditor(applyDraftFromQuery(local)));
+    appliedCachedRef.current = false;
+  }, [id, applyDraftFromQuery, normalizeForEditor]);
+
+  // Apply server data from preload cache when ready
+  useEffect(() => {
+    if (appliedCachedRef.current) return;
+    if (cachedDraft.state === "ready" && cachedDraft.data) {
+      setDraft(normalizeForEditor(applyDraftFromQuery(cachedDraft.data)));
+      appliedCachedRef.current = true;
+    } else if (cachedDraft.state === "idle") {
+      warmDomain("draft");
+    }
+  }, [cachedDraft, applyDraftFromQuery, normalizeForEditor, warmDomain]);
+
+  useEffect(() => {
+    setDraft((prev) => normalizeForEditor(prev));
+  }, [normalizeForEditor]);
+  const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "error">("saved");
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const activeEditorRef = useRef<Editor | null>(null);
+  const [activeEditor, setActiveEditor] = useState<Editor | null>(null);
+  const editorBySectionRef = useRef<Record<DraftSectionId, Editor | null>>({} as Record<DraftSectionId, Editor | null>);
+  const sectionElRef = useRef<Record<DraftSectionId, HTMLElement | null>>({} as Record<DraftSectionId, HTMLElement | null>);
+
+  const pendingContentRef = useRef<Record<DraftSectionId, JSONContent>>(draft.contentBySection);
+  const dirtyContentKeysRef = useRef<Set<DraftSectionId>>(new Set());
+  const contentCommitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastSyncedUrlRef = useRef<string>("");
+
+  const [isAddEvidenceOpen, setAddEvidenceOpen] = useState(false);
+  const [isFormatOpen, setFormatOpen] = useState(false);
+  const formatRef = useRef<HTMLDivElement | null>(null);
+  const [paragraphDir, setParagraphDir] = useState<"ltr" | "rtl">("ltr");
+  const [showDesktopContextToolbar, setShowDesktopContextToolbar] = useState(false);
+  const [canRunDraftContextActions, setCanRunDraftContextActions] = useState(false);
+
+  const sectionMetaById = useMemo(() => {
+    const map = new Map<DraftSectionId, SectionMeta>(BASE_SECTION_MAP);
+    for (const [id, meta] of Object.entries(draft.customSections)) {
+      map.set(id, {
+        id,
+        label: meta.label,
+        placeholder: meta.placeholder,
+        isCustom: true,
+      });
+    }
+    return map;
+  }, [draft.customSections]);
+
+  const orderedSections = useMemo(
+    () =>
+      draft.sectionOrder
+        .map((id) => sectionMetaById.get(id))
+        .filter((section): section is SectionMeta => Boolean(section)),
+    [draft.sectionOrder, sectionMetaById]
+  );
+
+  const routeActiveSection = orderedSections.find((section) => section.id === draft.activeSection)?.id
+    ?? orderedSections[0]?.id
+    ?? DEFAULT_SECTION_ORDER[0];
+
+  const activeSectionRef = useRef<DraftSectionId>(routeActiveSection);
+  useEffect(() => {
+    activeSectionRef.current = routeActiveSection;
+  }, [routeActiveSection]);
+
+  const sectionKeys = useMemo(() => orderedSections.map((section) => section.id), [orderedSections]);
+
+  const fullDraftSections = useMemo(
+    () => orderedSections.filter((section) => docHasContent(draft.contentBySection[section.id])),
+    [draft.contentBySection, orderedSections]
+  );
+  const compiledCitations = useMemo(
+    () =>
+      compileDraftCitations({
+        contentBySection: draft.contentBySection,
+        sectionOrder: draft.sectionOrder,
+        studies,
+        includeNumberInNodes: true,
+      }),
+    [draft.contentBySection, draft.sectionOrder, studies]
+  );
+  const citationIssues = compiledCitations.issues;
+
+  const availableSectionKeys = useMemo(
+    () => OPTIONAL_SECTION_KEYS.filter((key) => !draft.sectionOrder.includes(key)),
+    [draft.sectionOrder]
+  );
+
+  const availableSections = useMemo(
+    () =>
+      availableSectionKeys
+        .map((key) => sectionMetaById.get(key))
+        .filter((section): section is SectionMeta => Boolean(section)),
+    [availableSectionKeys, sectionMetaById]
+  );
+  const activeSectionMeta = useMemo(
+    () => sectionMetaById.get(routeActiveSection) ?? null,
+    [routeActiveSection, sectionMetaById]
+  );
+  const activeSectionLabel = activeSectionMeta?.label ?? "Draft";
+  const isReferencesSection = routeActiveSection === "references";
+  const formatVarsById = useMemo(() => {
+    const map: Record<DraftSectionId, CSSProperties> = {};
+    for (const [id, format] of Object.entries(draft.formattingBySection)) {
+      map[id] = formatToVars(format);
+    }
+    return map;
+  }, [draft.formattingBySection]);
+  const activeFormat = draft.formattingBySection[routeActiveSection] ?? DEFAULT_SECTION_FORMAT;
+  const activeFontFamily = FONT_FAMILY_OPTIONS.some((option) => option.value === activeFormat.fontFamily)
+    ? activeFormat.fontFamily
+    : DEFAULT_SECTION_FORMAT.fontFamily;
+  const activeFormatVars = formatVarsById[routeActiveSection] ?? formatToVars(DEFAULT_SECTION_FORMAT);
+  const ledgerPanelId = "draft-ledger-panel";
+  const copilotPanelId = "draft-copilot-panel";
+  const draftMainClassName = `${styles.appMainOverride} ${mobileDraftV2Enabled ? styles.appMainOverrideMobileV2 : ""}`;
+
+  const copilotEmptyState = useMemo(() => ({
+    icon: "tips_and_updates",
+    title: "Draft faster",
+    description: "Ask for an outline, rewrite, or evidence-backed phrasing.",
+    suggestions: [
+      { label: "Outline", prompt: `Outline the ${activeSectionLabel} section` },
+      { label: "Rewrite", prompt: `Rewrite this paragraph for the ${activeSectionLabel} section:` },
+    ],
+  }), [activeSectionLabel]);
+
+  const scheduleSave = useCallback(
+    (next: DraftState) => {
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+      }
+      setSaveStatus("saving");
+      saveTimerRef.current = setTimeout(async () => {
+        const persistableState = normalizeForPersistence(next);
+        if (id) {
+          saveDraftState(id, persistableState);
+          const result = await saveDraftAction(id, persistableState);
+          if (!result.success) {
+            console.error("Failed to save draft to backend:", result.error);
+            setSaveStatus("error");
+            return;
+          }
+        }
+        setSaveStatus("saved");
+      }, 400);
+    },
+    [id, normalizeForPersistence]
+  );
+
+  const updateDraft = useCallback(
+    (updater: (prev: DraftState) => DraftState) => {
+      setDraft((prev) => {
+        let next = updater(prev);
+        if (next === prev) return prev;
+        if (next.contentBySection !== prev.contentBySection || next.sectionOrder !== prev.sectionOrder) {
+          next = normalizeForEditor(next);
+        }
+        scheduleSave(next);
+        return next;
+      });
+    },
+    [normalizeForEditor, scheduleSave]
+  );
+
+  const flushContentCommit = useCallback(() => {
+    if (contentCommitTimerRef.current) {
+      clearTimeout(contentCommitTimerRef.current);
+      contentCommitTimerRef.current = null;
+    }
+
+    if (dirtyContentKeysRef.current.size === 0) return;
+    const keys = Array.from(dirtyContentKeysRef.current);
+    dirtyContentKeysRef.current.clear();
+
+    updateDraft((prev) => {
+      const nextContent = { ...prev.contentBySection };
+      for (const key of keys) {
+        nextContent[key] = pendingContentRef.current[key];
+      }
+      return {
+        ...prev,
+        contentBySection: nextContent,
+      };
+    });
+  }, [updateDraft]);
+
+  const getDraftSnapshot = useCallback((): DraftState => {
+    if (dirtyContentKeysRef.current.size === 0) return draft;
+    const nextContent = { ...draft.contentBySection };
+    for (const key of dirtyContentKeysRef.current) {
+      nextContent[key] = pendingContentRef.current[key];
+    }
+    return {
+      ...draft,
+      contentBySection: nextContent,
+    };
+  }, [draft]);
+
+  const queueContentUpdate = useCallback(
+    (key: DraftSectionId, json: JSONContent) => {
+      pendingContentRef.current[key] = json;
+      dirtyContentKeysRef.current.add(key);
+      setSaveStatus("saving");
+
+      if (contentCommitTimerRef.current) {
+        clearTimeout(contentCommitTimerRef.current);
+      }
+      contentCommitTimerRef.current = setTimeout(() => {
+        flushContentCommit();
+      }, 250);
+    },
+    [flushContentCommit]
+  );
+
+  useEffect(() => {
+    if (!id) return;
+    const params = new URLSearchParams();
+    params.set("mode", draft.mode);
+    params.set("section", routeActiveSection);
+    const nextUrl = `/project/${id}/draft?${params.toString()}`;
+    if (lastSyncedUrlRef.current === nextUrl) return;
+    lastSyncedUrlRef.current = nextUrl;
+    router.replace(nextUrl, { scroll: false });
+  }, [draft.mode, id, routeActiveSection, router]);
+
+  useEffect(() => {
+    return () => {
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+      }
+      if (contentCommitTimerRef.current) {
+        clearTimeout(contentCommitTimerRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!contextToolbarEnabled || typeof window === "undefined") {
+      setShowDesktopContextToolbar(false);
+      return;
+    }
+    const viewportQuery = window.matchMedia(MOBILE_VIEWPORT_MEDIA_QUERY);
+    const pointerQuery = window.matchMedia(COARSE_POINTER_MEDIA_QUERY);
+    const syncToolbarMode = () => {
+      setShowDesktopContextToolbar(!viewportQuery.matches && !pointerQuery.matches);
+    };
+
+    syncToolbarMode();
+
+    if (typeof viewportQuery.addEventListener === "function") {
+      viewportQuery.addEventListener("change", syncToolbarMode);
+      pointerQuery.addEventListener("change", syncToolbarMode);
+      return () => {
+        viewportQuery.removeEventListener("change", syncToolbarMode);
+        pointerQuery.removeEventListener("change", syncToolbarMode);
+      };
+    }
+
+    viewportQuery.addListener(syncToolbarMode);
+    pointerQuery.addListener(syncToolbarMode);
+    return () => {
+      viewportQuery.removeListener(syncToolbarMode);
+      pointerQuery.removeListener(syncToolbarMode);
+    };
+  }, [contextToolbarEnabled]);
+
+  const registerEditor = useCallback((key: DraftSectionId, editor: Editor | null) => {
+    editorBySectionRef.current[key] = editor;
+  }, []);
+
+  const focusEditorForSection = useCallback((key: DraftSectionId) => {
+    const editor = editorBySectionRef.current[key] ?? activeEditorRef.current;
+    if (!editor) return;
+    editor.chain().focus("end").run();
+  }, []);
+
+  // Section management + drag-and-drop (extracted hook)
+  const {
+    isAddSectionOpen, setAddSectionOpen, addSectionRef, customSectionName, setCustomSectionName,
+    addSectionInputRef, sectionTabRefs, openSectionInSectionMode, handleAddSection,
+    handleAddCustomSection, handleRemoveSection, updateSectionFormat,
+    dragOverKey, dragOverPosition, draggingKey, handleDragStart, handleDragOver, handleDrop, handleDragEnd,
+  } = useDraftSections({
+    updateDraft, activeSectionRef, activeEditorRef, queueContentUpdate, flushContentCommit, focusEditorForSection,
+  });
+
+  // Export state + callbacks (extracted hook)
+  const {
+    isExportModalOpen, setExportModalOpen, exportHistory, latestExport,
+    exportMode, setExportMode, blockingCitationIssuesCount,
+    citationIssues: exportCitationIssues,
+    hasDraftContent, handleExportDocx, handleDeleteExport,
+  } = useDraftExport({
+    projectId: id, projectName: project?.name, draft, getDraftSnapshot, orderedSections, studies, flushContentCommit,
+  });
+
+  // Draft copilot chat (extracted hook)
+  const {
+    insertCopilotText,
+  } = useDraftCopilot({
+    draft, activeSectionLabel, projectName: project?.name, updateDraft, activeEditorRef,
+  });
+
+  const handleSelectSection = (key: DraftSectionId) => {
+    if (draft.mode === "full") {
+      const el = sectionElRef.current[key];
+      if (!el) {
+        openSectionInSectionMode(key);
+        return;
+      }
+
+      updateDraft((prev) => (prev.activeSection === key ? prev : { ...prev, activeSection: key }));
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
+      setTimeout(() => focusEditorForSection(key), 250);
+      return;
+    }
+
+    const sectionEditor = activeEditorRef.current;
+    if (sectionEditor) {
+      const currentKey = activeSectionRef.current;
+      queueContentUpdate(currentKey, sectionEditor.getJSON());
+      flushContentCommit();
+    }
+    updateDraft((prev) => (prev.activeSection === key ? prev : { ...prev, activeSection: key }));
+    setTimeout(() => focusEditorForSection(key), 0);
+  };
+
+  const handleToggleMode = (mode: DraftMode) => {
+    const editor = activeEditorRef.current;
+    if (editor) {
+      queueContentUpdate(activeSectionRef.current, editor.getJSON());
+    }
+    flushContentCommit();
+
+    const nextActiveSection =
+      mode === "full"
+        ? docHasContent(pendingContentRef.current[routeActiveSection])
+          ? routeActiveSection
+          : draft.sectionOrder.find((key) => docHasContent(pendingContentRef.current[key])) ?? routeActiveSection
+        : routeActiveSection;
+
+    updateDraft((prev) => {
+      if (prev.mode === mode && prev.activeSection === nextActiveSection) return prev;
+      return {
+        ...prev,
+        mode,
+        activeSection: nextActiveSection,
+      };
+    });
+    if (mode === "full") {
+      setTimeout(() => {
+        const el = sectionElRef.current[nextActiveSection];
+        el?.scrollIntoView({ behavior: "smooth", block: "start" });
+        focusEditorForSection(nextActiveSection);
+      }, 0);
+    } else {
+      setTimeout(() => focusEditorForSection(nextActiveSection), 0);
+    }
+  };
+
+  const usedEvidenceIds = draft.ledgerBySection[routeActiveSection] ?? EMPTY_IDS;
+  const usedEvidence = useMemo(
+    () => studies.filter((s) => usedEvidenceIds.includes(s.id)),
+    [studies, usedEvidenceIds]
+  );
+
+  const insertCitation = (study: Study) => {
+    const editor = activeEditorRef.current
+      ?? (draft.mode === "section" ? sectionEditor : editorBySectionRef.current[routeActiveSection])
+      ?? null;
+    if (!editor) return;
+    const uid = createCitationUid(routeActiveSection);
+    editor
+      .chain()
+      .focus()
+      .insertContent({ type: "citation", attrs: { studyId: study.id, uid } })
+      .insertContent(" ")
+      .run();
+  };
+
+  const handleAddEvidence = (refId: string) => {
+    const targetSection = activeSectionRef.current;
+    updateDraft((prev) => {
+      const existing = prev.ledgerBySection[targetSection] ?? [];
+      if (existing.includes(refId)) return prev;
+      return {
+        ...prev,
+        ledgerBySection: {
+          ...prev.ledgerBySection,
+          [targetSection]: [refId, ...existing],
+        },
+      };
+    });
+  };
+
+  const handleRemoveEvidence = (refId: string) => {
+    const targetSection = activeSectionRef.current;
+    updateDraft((prev) => {
+      const existing = prev.ledgerBySection[targetSection] ?? [];
+      if (!existing.includes(refId)) return prev;
+      return {
+        ...prev,
+        ledgerBySection: {
+          ...prev.ledgerBySection,
+          [targetSection]: existing.filter((id) => id !== refId),
+        },
+      };
+    });
+  };
+
+  const handleFocusSection = useCallback(
+    (key: DraftSectionId, editor: Editor) => {
+      activeEditorRef.current = editor;
+      setActiveEditor(editor);
+      if (draft.mode === "full") {
+        updateDraft((prev) => (prev.activeSection === key ? prev : { ...prev, activeSection: key }));
+      }
+    },
+    [draft.mode, updateDraft]
+  );
+
+  const handleUpdateSection = useCallback(
+    (key: DraftSectionId, json: JSONContent) => {
+      queueContentUpdate(key, json);
+    },
+    [queueContentUpdate]
+  );
+
+  const handleSectionKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>, index: number) => {
+    const lastIndex = sectionKeys.length - 1;
+    let nextIndex = index;
+
+    if (event.key === "ArrowRight") {
+      nextIndex = index === lastIndex ? 0 : index + 1;
+    } else if (event.key === "ArrowLeft") {
+      nextIndex = index === 0 ? lastIndex : index - 1;
+    } else if (event.key === "Home") {
+      nextIndex = 0;
+    } else if (event.key === "End") {
+      nextIndex = lastIndex;
+    } else {
+      return;
+    }
+
+    event.preventDefault();
+    const nextKey = sectionKeys[nextIndex];
+    handleSelectSection(nextKey);
+    requestAnimationFrame(() => {
+      sectionTabRefs.current[nextKey]?.focus();
+    });
+  };
+
+  useEffect(() => {
+    if (!isFormatOpen) return;
+    const onClick = (event: MouseEvent) => {
+      if (!formatRef.current) return;
+      if (event.target instanceof Node && !formatRef.current.contains(event.target)) {
+        setFormatOpen(false);
+      }
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setFormatOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onClick);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onClick);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [isFormatOpen]);
+
+  const sectionEditor = useEditor(
+    {
+      immediatelyRender: false,
+      extensions: [
+        StarterKit,
+        Underline,
+        Citation,
+        ParagraphDirection,
+        Placeholder.configure({
+          placeholder: "Start writing…",
+        }),
+      ],
+      content: draft.contentBySection[routeActiveSection] ?? emptyDoc(),
+      editorProps: {
+        attributes: {
+          class: styles.proseMirror,
+        },
+      },
+      onFocus: ({ editor }) => {
+        activeEditorRef.current = editor;
+        setActiveEditor(editor);
+      },
+      onUpdate: ({ editor }) => {
+        if (activeSectionRef.current === "references") return;
+        const key = activeSectionRef.current;
+        handleUpdateSection(key, editor.getJSON());
+      },
+    },
+    []
+  );
+
+  const lastLoadedSectionRef = useRef<DraftSectionId | null>(null);
+
+  useEffect(() => {
+    if (!sectionEditor) return;
+    sectionEditor.setEditable(!isReferencesSection);
+  }, [isReferencesSection, sectionEditor]);
+
+  useEffect(() => {
+    if (!sectionEditor) return;
+    if (draft.mode !== "section") {
+      lastLoadedSectionRef.current = null;
+      return;
+    }
+    if (lastLoadedSectionRef.current === routeActiveSection) return;
+    const content = draft.contentBySection[routeActiveSection] ?? emptyDoc();
+    sectionEditor.commands.setContent(content, { emitUpdate: false });
+    activeEditorRef.current = sectionEditor;
+    lastLoadedSectionRef.current = routeActiveSection;
+  }, [draft.contentBySection, draft.mode, routeActiveSection, sectionEditor]);
+
+  const formattingEditor = draft.mode === "section" ? sectionEditor : activeEditor;
+
+  const buildCurrentDraftSelectionTarget = useCallback(() => {
+    if (isReferencesSection) return null;
+    const editor = draft.mode === "section"
+      ? sectionEditor
+      : activeEditorRef.current ?? activeEditor;
+    if (!editor) return null;
+
+    const fullText = editor.getText().trim();
+    if (!fullText) return null;
+
+    const selectedText = !editor.state.selection.empty
+      ? editor.state.doc.textBetween(editor.state.selection.from, editor.state.selection.to).trim()
+      : fullText.slice(0, 500);
+
+    return buildDraftSelectionTarget({
+      projectId: id,
+      section: activeSectionLabel,
+      selectedText,
+      surroundingText: fullText.slice(0, 1_200),
+      citedStudyIds: draft.ledgerBySection[routeActiveSection] ?? undefined,
+      sourceSurface: "draft",
+    });
+  }, [
+    activeEditor,
+    activeSectionLabel,
+    draft.ledgerBySection,
+    draft.mode,
+    id,
+    isReferencesSection,
+    routeActiveSection,
+    sectionEditor,
+  ]);
+
+  const handleDraftContextAction = useCallback((
+    actionId: "send_to_copilot" | "rewrite_selection" | "check_claim_support",
+    prompt: string,
+  ) => {
+    const target = buildCurrentDraftSelectionTarget();
+    if (!target) return;
+    runAction({
+      actionId,
+      targets: [target],
+      prompt,
+      page: "draft",
+      section: activeSectionLabel,
+    });
+  }, [activeSectionLabel, buildCurrentDraftSelectionTarget, runAction]);
+
+  useEffect(() => {
+    if (!formattingEditor) return;
+    const syncEditorState = () => {
+      setParagraphDir(formattingEditor.getAttributes("paragraph")?.dir === "rtl" ? "rtl" : "ltr");
+      setCanRunDraftContextActions(Boolean(formattingEditor.getText().trim()));
+    };
+    syncEditorState();
+    formattingEditor.on("selectionUpdate", syncEditorState);
+    formattingEditor.on("transaction", syncEditorState);
+    return () => {
+      formattingEditor.off("selectionUpdate", syncEditorState);
+      formattingEditor.off("transaction", syncEditorState);
+    };
+  }, [formattingEditor]);
+
+  const layoutVars = useMemo(() => {
+    const rail = 48;
+    const ledger = draft.panels.ledgerCollapsed ? rail : clamp(draft.panels.ledgerWidth, 260, 520);
+    if (isEmbeddedInProjectShell) {
+      return {
+        "--ledger-width": `${ledger}px`,
+        gridTemplateColumns: `${ledger}px 1px 1fr`,
+      } as CSSProperties;
+    }
+    const copilot = copilotCollapsed ? rail : clamp(copilotPanelWidth, 300, 560);
+    return {
+      "--ledger-width": `${ledger}px`,
+      "--copilot-width": `${copilot}px`,
+    } as CSSProperties;
+  }, [draft.panels, copilotCollapsed, copilotPanelWidth, isEmbeddedInProjectShell]);
+
+  const dragStateRef = useRef<
+    | { side: "ledger"; startX: number; startWidth: number }
+    | { side: "copilot"; startX: number; startWidth: number }
+    | null
+  >(null);
+
+  useEffect(() => {
+    const onMove = (event: PointerEvent) => {
+      if (!dragStateRef.current) return;
+      const dx = event.clientX - dragStateRef.current.startX;
+      if (dragStateRef.current.side === "ledger") {
+        const next = clamp(dragStateRef.current.startWidth + dx, 260, 520);
+        updateDraft((prev) => ({
+          ...prev,
+          panels: {
+            ...prev.panels,
+            ledgerWidth: next,
+            ledgerCollapsed: false,
+          },
+        }));
+      } else {
+        const next = clamp(dragStateRef.current.startWidth - dx, 300, 560);
+        setCopilotPanelWidth(next);
+      }
+    };
+
+    const onUp = () => {
+      if (!dragStateRef.current) return;
+      dragStateRef.current = null;
+      document.body.style.userSelect = "";
+      document.body.style.cursor = "";
+    };
+
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+  }, [updateDraft]);
+
+  if (isLoadingProjects) {
     return (
-      <ProjectPageLayout noMainPadding initiallyCollapsed mainClassName={draftMainClassName} contentScrollMode="child">
+      <ProjectPageLayout noMainPadding initiallyCollapsed mainClassName={draftMainClassName}>
         <EmptyStateSkeleton className={styles.notFound} />
       </ProjectPageLayout>
     );
   }
 
-  if (controller.projectsError) {
+  if (projectsError) {
     return (
-      <ProjectPageLayout noMainPadding initiallyCollapsed mainClassName={draftMainClassName} contentScrollMode="child">
+      <ProjectPageLayout noMainPadding initiallyCollapsed mainClassName={draftMainClassName}>
         <EmptyState
           variant="error"
           icon="cloud_off"
           title="Unable to load project"
-          description={controller.projectsError}
+          description={projectsError}
           primaryAction={{ label: "Retry", onClick: () => window.location.reload() }}
           secondaryAction={{ label: "Back to Dashboard", href: "/" }}
           className={styles.notFound}
@@ -64,9 +843,9 @@ function DraftContent() {
     );
   }
 
-  if (!controller.project) {
+  if (!project) {
     return (
-      <ProjectPageLayout noMainPadding initiallyCollapsed mainClassName={draftMainClassName} contentScrollMode="child">
+      <ProjectPageLayout noMainPadding initiallyCollapsed mainClassName={draftMainClassName}>
         <EmptyState
           variant="error"
           icon="folder_off"
@@ -79,318 +858,425 @@ function DraftContent() {
     );
   }
 
-  const renderDraftRegion = (
-    sectionId: string,
-    label: string,
-    placeholder?: string,
-    editable = true,
-    isWholeDraft = false,
-  ) => (
-    <section
-      key={sectionId}
-      className={`${styles.manuscriptSection} ${controller.currentTargetId === sectionId ? styles.manuscriptSectionActive : ""}`}
-      data-section-id={sectionId}
-    >
-      <div className={styles.manuscriptSectionHeader}>
-        <h2 className={styles.manuscriptSectionTitle}>{label}</h2>
-      </div>
-
-      <FullSectionEditor
-        sectionId={sectionId}
-        content={controller.draft.contentBySection[sectionId]}
-        onFocusSection={controller.handleSectionFocus}
-        onUpdateSection={controller.updateSectionContent}
-        onSelectionChange={controller.handleSectionSelectionChange}
-        registerEditor={controller.registerEditor}
-        placeholderText={placeholder}
-        surfaceClassName={styles.manuscriptEditorSurface}
-        surfaceStyle={controller.formatVarsById[sectionId]}
-        editable={editable}
-      />
-    </section>
-  );
+  const showResultsGuide = routeActiveSection === "results" && !docHasContent(draft.contentBySection.results);
+  const draftPageClassName = `${styles.page} ${mobileDraftV2Enabled ? styles.pageMobileV2 : ""}`;
+  const showDraftContextToolbar = captureEnabled
+    && contextToolbarEnabled
+    && showDesktopContextToolbar
+    && !isReferencesSection;
 
   const pageContent = (
     <>
-      <div className={styles.page}>
+      <div className={draftPageClassName} data-mobile-draft-v2={mobileDraftV2Enabled ? "1" : "0"}>
         <DraftTopBar
-          projectName={controller.project.name}
-          activeSection={controller.draft.activeSection}
-          mode={controller.draft.mode}
-          canUseSectionMode={controller.hasEditableSections}
-          orderedSections={controller.orderedSections}
-          availableSections={controller.availableSections}
-          draggingKey={controller.draggingKey}
-          dragOverKey={controller.dragOverKey}
-          dragOverPosition={controller.dragOverPosition}
-          sectionTabRefs={controller.sectionTabRefs}
-          addSectionRef={controller.addSectionRef}
-          addSectionInputRef={controller.addSectionInputRef}
-          isAddSectionOpen={controller.isAddSectionOpen}
-          setAddSectionOpen={controller.setAddSectionOpen}
-          customSectionName={controller.customSectionName}
-          setCustomSectionName={controller.setCustomSectionName}
-          onSelectSection={controller.selectSection}
-          onSectionKeyDown={controller.handleSelectSectionKeyDown}
-          onToggleMode={controller.handleToggleMode}
-          onAddSection={controller.handleAddSection}
-          onAddCustomSection={controller.handleAddCustomSection}
-          onRemoveSection={controller.requestRemoveSection}
-          onDragStart={controller.handleDragStart}
-          onDragOver={controller.handleDragOver}
-          onDrop={controller.handleDrop}
-          onDragEnd={controller.handleDragEnd}
-          hasDraftContent={controller.hasDraftContent}
-          onExportClick={() => controller.setExportModalOpen(true)}
-          saveStatus={controller.saveStatus}
+          projectName={project.name}
+          activeSection={routeActiveSection}
+          mode={draft.mode}
+          orderedSections={orderedSections}
+          availableSections={availableSections}
+          draggingKey={draggingKey}
+          dragOverKey={dragOverKey}
+          dragOverPosition={dragOverPosition}
+          sectionTabRefs={sectionTabRefs}
+          addSectionRef={addSectionRef}
+          addSectionInputRef={addSectionInputRef}
+          isAddSectionOpen={isAddSectionOpen}
+          setAddSectionOpen={setAddSectionOpen}
+          customSectionName={customSectionName}
+          setCustomSectionName={setCustomSectionName}
+          onSelectSection={handleSelectSection}
+          onSectionKeyDown={handleSectionKeyDown}
+          onToggleMode={handleToggleMode}
+          onAddSection={handleAddSection}
+          onAddCustomSection={handleAddCustomSection}
+          onRemoveSection={handleRemoveSection}
+          onDragStart={handleDragStart}
+          onDragOver={handleDragOver}
+          onDrop={handleDrop}
+          onDragEnd={handleDragEnd}
+          hasDraftContent={hasDraftContent}
+          onExportClick={() => setExportModalOpen(true)}
+          saveStatus={saveStatus}
         />
 
-        <div
-          className={styles.body}
-          style={{
-            "--ledger-width": controller.isSidebarCollapsed ? "56px" : "320px",
-          } as CSSProperties}
-        >
-            {controller.isSidebarCollapsed ? (
-              <div className={styles.collapsedRailLeft} aria-label="Evidence ledger (collapsed)">
-                <button
-                  type="button"
-                  className={styles.panelToggle}
-                  aria-label="Expand evidence ledger"
-                  onClick={controller.toggleSidebar}
-                >
-                  <span className="material-icons-round">menu_open</span>
-                </button>
-                <span className={styles.collapsedLabel}>Evidence</span>
-              </div>
-            ) : (
-              <aside className={styles.ledger} aria-label="Evidence ledger">
-              <EvidencePane
-                activeSectionLabel={controller.currentTargetLabel}
-                isReferencesSection={controller.isReferencesTarget}
-                usedEvidence={controller.usedEvidence}
-                onAddEvidence={() => controller.setAddEvidenceOpen(true)}
-                onCollapse={controller.toggleSidebar}
-                onInsertCitation={controller.insertCitation}
-                onRemoveEvidence={controller.handleRemoveEvidence}
-                studyLabel={controller.studyLabel}
-              />
-              </aside>
-            )}
+        <DemoGuideCard
+          projectId={project.id}
+          guideId="draft-evidence-chain"
+          text="Citations in this draft should map directly to included studies in the Ledger. Ask the copilot to find evidence for any claim you highlight."
+          className={styles.demoGuide}
+        />
+        {showResultsGuide ? (
+          <DemoGuideCard
+            projectId={project.id}
+            guideId="draft-results-empty"
+            text="This Results section is intentionally empty. Ask the copilot to draft a results summary from your included studies."
+            className={styles.demoGuide}
+          />
+        ) : null}
 
-            <div
-              className={`${styles.resizeHandle} ${controller.isSidebarCollapsed ? styles.resizeHandleHidden : ""}`}
-              role="separator"
-              aria-label="Evidence ledger divider"
-              aria-hidden={controller.isSidebarCollapsed}
-            />
-
-            <section className={styles.center} aria-label="Draft editor">
-              <div className={styles.centerHeader}>
-                <div className={styles.centerTitle}>
-                  <span className="material-icons-round">edit</span>
-                  {controller.activeSectionLabel}
+        <div className={styles.body} style={layoutVars}>
+          {!draft.panels.ledgerCollapsed ? (
+            <aside className={styles.ledger} aria-label="Evidence ledger" id={ledgerPanelId}>
+              <div className={styles.ledgerHeader}>
+                <div className={styles.ledgerHeaderTop}>
+                  <span className={styles.ledgerTitle}>Evidence Ledger</span>
+                  <div className={styles.panelHeaderActions}>
+                    {!isReferencesSection && (
+                      <button
+                        type="button"
+                        className={styles.iconBtn}
+                        aria-label="Add evidence"
+                        onClick={() => setAddEvidenceOpen(true)}
+                      >
+                        <span className="material-icons-round">add</span>
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className={styles.panelToggle}
+                      aria-label="Collapse evidence ledger"
+                      aria-controls={ledgerPanelId}
+                      aria-expanded={!draft.panels.ledgerCollapsed}
+                      onClick={() =>
+                        updateDraft((prev) => ({
+                          ...prev,
+                          panels: { ...prev.panels, ledgerCollapsed: true },
+                        }))
+                      }
+                    >
+                      <span className="material-icons-round">menu_open</span>
+                    </button>
+                  </div>
+                </div>
+                <div className={styles.ledgerContext}>
+                  <span className={styles.ledgerContextLabel}>for</span>
+                  <span className={styles.ledgerContextSection}>{activeSectionLabel}</span>
                 </div>
               </div>
 
-              <div className={styles.toolbarRow}>
-                <EditorToolbar editor={controller.activeEditor} dir={controller.paragraphDir} onAskAi={controller.handleAskAi} />
-                <DraftFormattingPanel
-                  isOpen={controller.isFormatOpen}
-                  setOpen={controller.setFormatOpen}
-                  formatRef={controller.formatRef}
-                  activeSection={controller.currentTargetId}
-                  activeFormat={controller.activeFormat}
-                  activeFontFamily={controller.activeFontFamily}
-                  onUpdateFormat={controller.updateSectionFormat}
-                />
-              </div>
-
-              {controller.citationIssues.length > 0 ? (
-                <div className={styles.citationIssues} role="status" aria-live="polite">
-                  <div className={styles.citationIssuesTitle}>
-                    <span className="material-icons-round">warning</span>
-                    {controller.citationIssues.length} citation issue{controller.citationIssues.length === 1 ? "" : "s"} detected
+              <div className={styles.panelBody}>
+                {isReferencesSection ? (
+                  <div className={styles.emptyPanel}>
+                    <div className={styles.emptyIcon}>
+                      <span className="material-icons-round">auto_awesome</span>
+                    </div>
+                    <h3>Auto-generated section</h3>
+                    <p>References are generated from citation nodes in manuscript sections.</p>
                   </div>
-                  <ul className={styles.citationIssuesList}>
-                    {controller.citationIssues.slice(0, 3).map((issue) => (
-                      <li key={`${issue.uid}-${issue.type}`}>{issue.message}</li>
+                ) : usedEvidence.length === 0 ? (
+                  <div className={styles.emptyPanel}>
+                    <div className={styles.emptyIcon}>
+                      <span className="material-icons-round">library_add</span>
+                    </div>
+                    <h3>No evidence yet</h3>
+                    <p>Add papers you’ll cite for this section.</p>
+                    <button type="button" className="header-btn header-btn-primary" onClick={() => setAddEvidenceOpen(true)}>
+                      Add evidence
+                    </button>
+                  </div>
+                ) : (
+                  <div className={styles.ledgerList}>
+                    {usedEvidence.map((study) => (
+                      <div key={study.id} className={styles.ledgerItem}>
+                        <div className={styles.ledgerMeta}>
+                          <div className={styles.ledgerLabel}>{studyLabel(study)}</div>
+                          <div className={styles.ledgerTitle}>{study.title}</div>
+                        </div>
+                        <div className={styles.ledgerActions}>
+                          <button type="button" className={styles.smallBtn} onClick={() => insertCitation(study)}>
+                            Cite
+                          </button>
+                          <button type="button" className={styles.smallBtnGhost} onClick={() => handleRemoveEvidence(study.id)}>
+                            Remove
+                          </button>
+                        </div>
+                      </div>
                     ))}
-                  </ul>
+                  </div>
+                )}
+              </div>
+            </aside>
+          ) : (
+            <div className={styles.collapsedRailLeft} aria-label="Evidence ledger (collapsed)">
+              <button
+                type="button"
+                className={styles.panelToggle}
+                aria-label="Expand evidence ledger"
+                aria-controls={ledgerPanelId}
+                aria-expanded={false}
+                onClick={() => updateDraft((prev) => ({ ...prev, panels: { ...prev.panels, ledgerCollapsed: false } }))}
+              >
+                <span className="material-icons-round">menu_open</span>
+              </button>
+              <span className={styles.collapsedLabel}>Evidence</span>
+            </div>
+          )}
+
+          <div
+            className={`${styles.resizeHandle} ${draft.panels.ledgerCollapsed ? styles.resizeHandleHidden : ""}`}
+            role="separator"
+            aria-label="Resize evidence ledger"
+            aria-hidden={draft.panels.ledgerCollapsed}
+            onPointerDown={(e) => {
+              if (draft.panels.ledgerCollapsed) return;
+              dragStateRef.current = {
+                side: "ledger",
+                startX: e.clientX,
+                startWidth: clamp(draft.panels.ledgerWidth, 260, 520),
+              };
+              document.body.style.userSelect = "none";
+              document.body.style.cursor = "col-resize";
+            }}
+          />
+
+          <section className={styles.center} aria-label="Draft editor">
+            <div className={styles.centerHeader}>
+              <div className={styles.centerTitle}>
+                {!isEmbeddedInProjectShell && <BaseBackButton href={`/project/${id}`} label="Back to project" className={styles.draftBackBtn} />}
+                <span className="material-icons-round">edit</span>
+                {activeSectionLabel}
+              </div>
+            </div>
+
+            <div className={styles.toolbarRow}>
+              <EditorToolbar
+                editor={isReferencesSection ? null : (draft.mode === "section" ? sectionEditor : activeEditor)}
+                dir={paragraphDir}
+                onAskAi={() => {
+                  if (isReferencesSection) return;
+                  const ed = draft.mode === "section" ? sectionEditor : activeEditor;
+                  const selectedText = ed && !ed.state.selection.empty
+                    ? ed.state.doc.textBetween(ed.state.selection.from, ed.state.selection.to)
+                    : ed?.getText().slice(0, 500) ?? "";
+                  if (captureEnabled) {
+                    openPopupForTarget(buildDraftSelectionTarget({
+                      projectId: id,
+                      section: activeSectionLabel,
+                      selectedText,
+                      surroundingText: ed?.getText().slice(0, 1_200) ?? "",
+                    }));
+                    return;
+                  }
+                  openPopupChat({
+                    type: "draft_selection",
+                    projectId: id,
+                    section: activeSectionLabel,
+                    selectedText,
+                  });
+                }}
+              />
+              {showDraftContextToolbar ? (
+                <div className={styles.contextActionStrip} role="group" aria-label="Draft context actions">
+                  <div className={styles.contextActionMeta}>Draft context</div>
+                  <button
+                    type="button"
+                    className={styles.contextActionPrimary}
+                    onClick={() => handleDraftContextAction(
+                      "send_to_copilot",
+                      sendToCopilotAction.defaultPrompt ?? "Use this context in your answer.",
+                    )}
+                    disabled={!canRunDraftContextActions}
+                    title={canRunDraftContextActions ? "Attach this draft context to the copilot composer." : "Add draft text to enable context actions."}
+                  >
+                    <span className="material-icons-round">{sendToCopilotAction.icon}</span>
+                    {sendToCopilotAction.label}
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.contextActionButton}
+                    onClick={() => handleDraftContextAction(
+                      "rewrite_selection",
+                      rewriteSelectionAction.defaultPrompt ?? "Rewrite this text for clarity while preserving the meaning and staying conservative.",
+                    )}
+                    disabled={!canRunDraftContextActions}
+                    title={canRunDraftContextActions ? "Prefill the copilot with a rewrite request for this draft context." : "Add draft text to enable context actions."}
+                  >
+                    <span className="material-icons-round">{rewriteSelectionAction.icon}</span>
+                    {rewriteSelectionAction.label}
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.contextActionButton}
+                    onClick={() => handleDraftContextAction(
+                      "check_claim_support",
+                      checkClaimSupportAction.defaultPrompt ?? "Check whether this claim is supported and point out any missing or weak evidence.",
+                    )}
+                    disabled={!canRunDraftContextActions}
+                    title={canRunDraftContextActions ? "Prefill the copilot with a claim-support check for this draft context." : "Add draft text to enable context actions."}
+                  >
+                    <span className="material-icons-round">{checkClaimSupportAction.icon}</span>
+                    {checkClaimSupportAction.label}
+                  </button>
                 </div>
               ) : null}
-
-              {controller.draft.mode === "section" && controller.draft.activeSection ? (
-                <section className={styles.sectionEditorWrapper} role="tabpanel" id="draft-section-panel">
-                  {controller.draft.activeSection === "references" ? (
-                    <>
-                      <div className={styles.editorSurface} style={controller.formatVarsById.references}>
-                        <DraftSectionHeading id="draft-section-panel-heading" label={controller.activeSectionLabel} />
-                        <pre className={styles.referencesReadOnly}>{controller.referencesText}</pre>
-                      </div>
-                      <div className={styles.helperText}>References are auto-generated from inline citations.</div>
-                    </>
-                  ) : (
-                    <>
-                      <FullSectionEditor
-                        sectionId={controller.draft.activeSection}
-                        content={controller.draft.contentBySection[controller.draft.activeSection]}
-                        onFocusSection={controller.handleSectionFocus}
-                        onUpdateSection={controller.updateSectionContent}
-                        onSelectionChange={controller.handleSectionSelectionChange}
-                        registerEditor={controller.registerEditor}
-                        placeholderText={controller.orderedSections.find((section) => section.id === controller.draft.activeSection)?.placeholder}
-                        surfaceClassName={styles.editorSurface}
-                        surfaceStyle={controller.formatVarsById[controller.draft.activeSection]}
-                        prefixContent={<DraftSectionHeading id="draft-section-panel-heading" label={controller.activeSectionLabel} />}
-                      />
-                      <div className={styles.helperText}>
-                        {controller.orderedSections.find((section) => section.id === controller.draft.activeSection)?.placeholder}
-                      </div>
-                    </>
-                  )}
-                </section>
-              ) : controller.orderedSections.length === 0 ? (
-                <section className={styles.sectionEditorWrapper} role="region" aria-label="Whole draft">
-                  <FullSectionEditor
-                    sectionId={UNSECTIONED_DRAFT_ID}
-                    content={controller.draft.contentBySection[UNSECTIONED_DRAFT_ID]}
-                    onFocusSection={controller.handleSectionFocus}
-                    onUpdateSection={controller.updateSectionContent}
-                    onSelectionChange={controller.handleSectionSelectionChange}
-                    registerEditor={controller.registerEditor}
-                    placeholderText={controller.wholeDraftMeta.placeholder}
-                    surfaceClassName={styles.editorSurface}
-                    surfaceStyle={controller.formatVarsById[UNSECTIONED_DRAFT_ID]}
-                    prefixContent={<DraftSectionHeading id="draft-whole-draft-heading" label={controller.wholeDraftMeta.label} />}
-                  />
-                  <div className={styles.helperText}>Whole draft is available for compatibility, but sections are the primary drafting flow.</div>
-                </section>
-              ) : (
-                <div className={styles.fullDraftScroll} role="region" aria-label="Full draft">
-                  <div className={styles.manuscript}>
-                    <header className={styles.manuscriptHeader}>
-                      <h1 className={styles.manuscriptTitle}>{controller.project.name}</h1>
-                      <p className={styles.manuscriptSubtitle}>
-                        {controller.orderedSections.length === 0
-                          ? "Start drafting. Add sections when you want structure."
-                          : "Full manuscript view — sections appear as you write them."}
-                      </p>
-                    </header>
-
-                    {controller.shouldRenderWholeDraft
-                      ? renderDraftRegion(
-                          UNSECTIONED_DRAFT_ID,
-                          controller.wholeDraftMeta.label,
-                          controller.wholeDraftMeta.placeholder,
-                          true,
-                          true,
-                        )
-                      : null}
-
-                    {controller.fullDraftSections.length === 0 && !controller.shouldRenderWholeDraft ? (
-                      <div className={styles.emptyPanel}>
-                        <div className={styles.emptyIcon}>
-                          <span className="material-icons-round">description</span>
-                        </div>
-                        <h3>Nothing written yet</h3>
-                        <p>Start drafting in Section mode — completed sections will show up here in order.</p>
-                        <button
-                          type="button"
-                          className={styles.smallBtn}
-                          onClick={() => controller.openSectionInSectionMode(controller.firstEditableSectionId)}
-                          disabled={!controller.firstEditableSectionId}
-                        >
-                          Start drafting
-                        </button>
-                      </div>
-                    ) : (
-                      controller.fullDraftSections.map((section) =>
-                        renderDraftRegion(
-                          section.id,
-                          section.label,
-                          section.placeholder,
-                          section.id !== "references",
-                        ),
-                      )
-                    )}
-                  </div>
+              <DraftFormattingPanel
+                isOpen={isFormatOpen}
+                setOpen={setFormatOpen}
+                formatRef={formatRef}
+                activeSection={routeActiveSection}
+                activeFormat={activeFormat}
+                activeFontFamily={activeFontFamily}
+                onUpdateFormat={updateSectionFormat}
+              />
+            </div>
+            {citationIssues.length > 0 && (
+              <div className={styles.citationIssues} role="status" aria-live="polite">
+                <div className={styles.citationIssuesTitle}>
+                  <span className="material-icons-round">warning</span>
+                  {citationIssues.length} citation issue{citationIssues.length === 1 ? "" : "s"} detected
                 </div>
-              )}
-            </section>
+                <ul className={styles.citationIssuesList}>
+                  {citationIssues.slice(0, 3).map((issue) => (
+                    <li key={`${issue.uid}-${issue.type}`}>{issue.message}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {draft.mode === "section" ? (
+              <div
+                className={styles.sectionEditorWrapper}
+                role="tabpanel"
+                id="draft-section-panel"
+                aria-labelledby={`draft-tab-${routeActiveSection}`}
+              >
+                {isReferencesSection ? (
+                  <>
+                    <div className={styles.editorSurface} style={activeFormatVars}>
+                      <DraftSectionHeading id={`section-heading-${routeActiveSection}`} label={activeSectionLabel} />
+                      <pre className={styles.referencesReadOnly}>{jsonToText(draft.contentBySection.references)}</pre>
+                    </div>
+                    <div className={styles.helperText}>References are auto-generated from inline citations.</div>
+                  </>
+                ) : (
+                  <>
+                    <div className={styles.editorSurface} style={activeFormatVars}>
+                      <DraftSectionHeading id={`section-heading-${routeActiveSection}`} label={activeSectionLabel} />
+                      <EditorContent editor={sectionEditor} />
+                    </div>
+                    <div className={styles.helperText}>{activeSectionMeta?.placeholder}</div>
+                  </>
+                )}
+              </div>
+            ) : (
+              <div className={styles.fullDraftScroll} role="region" aria-label="Full draft">
+                <article className={styles.manuscript} aria-label="Manuscript draft">
+                  <header className={styles.manuscriptHeader}>
+                    <h1 className={styles.manuscriptTitle}>{project.name}</h1>
+                    <p className={styles.manuscriptSubtitle}>Full manuscript view — sections appear as you write them.</p>
+                  </header>
+
+                  {fullDraftSections.length === 0 ? (
+                    <div className={styles.emptyPanel}>
+                      <div className={styles.emptyIcon}>
+                        <span className="material-icons-round">description</span>
+                      </div>
+                      <h3>Nothing written yet</h3>
+                      <p>Start drafting in Section mode — completed sections will show up here in order.</p>
+                      <button
+                        type="button"
+                        className={styles.smallBtn}
+                        onClick={() => openSectionInSectionMode(draft.sectionOrder[0] ?? "abstract")}
+                      >
+                        Start drafting
+                      </button>
+                    </div>
+                  ) : (
+                    fullDraftSections.map((section) => (
+                      <section
+                        key={section.id}
+                        className={`${styles.manuscriptSection} ${routeActiveSection === section.id ? styles.manuscriptSectionActive : ""
+                          }`}
+                        ref={(el) => {
+                          sectionElRef.current[section.id] = el;
+                        }}
+                        aria-labelledby={`manuscript-${section.id}`}
+                      >
+                        <DraftSectionHeading id={`manuscript-${section.id}`} label={section.label} />
+                        {section.id === "references" ? (
+                          <div className={styles.manuscriptEditorSurface}>
+                            <pre className={styles.referencesReadOnly}>{jsonToText(draft.contentBySection.references)}</pre>
+                          </div>
+                        ) : (
+                          <FullSectionEditor
+                            sectionId={section.id}
+                            content={draft.contentBySection[section.id] ?? emptyDoc()}
+                            placeholderText={section.placeholder}
+                            surfaceClassName={styles.manuscriptEditorSurface}
+                            surfaceStyle={formatVarsById[section.id] ?? formatToVars(DEFAULT_SECTION_FORMAT)}
+                            onFocusSection={handleFocusSection}
+                            onUpdateSection={handleUpdateSection}
+                            registerEditor={registerEditor}
+                          />
+                        )}
+                      </section>
+                    ))
+                  )}
+                </article>
+              </div>
+            )}
+          </section>
+
+          {!isEmbeddedInProjectShell && (
+            <>
+              <div
+                className={`${styles.resizeHandle} ${copilotCollapsed ? styles.resizeHandleHidden : ""}`}
+                role="separator"
+                aria-label="Resize copilot panel"
+                aria-hidden={copilotCollapsed}
+                onPointerDown={(e) => {
+                  if (copilotCollapsed) return;
+                  dragStateRef.current = {
+                    side: "copilot",
+                    startX: e.clientX,
+                    startWidth: clamp(copilotPanelWidth, 300, 560),
+                  };
+                  document.body.style.userSelect = "none";
+                  document.body.style.cursor = "col-resize";
+                }}
+              />
+
+              <ProjectCopilot
+                page="draft"
+                section={activeSectionLabel}
+                contextDisplay={`${activeSectionLabel} · ${usedEvidence.length} evidence`}
+                emptyState={copilotEmptyState}
+                inputPlaceholder={`Ask about ${activeSectionLabel}…`}
+                onInsert={insertCopilotText}
+                panelId={copilotPanelId}
+              />
+            </>
+          )}
         </div>
       </div>
 
-      <Dialog.Root open={Boolean(controller.pendingSectionRequest)} onOpenChange={(open) => { if (!open) controller.cancelPendingSectionRequest(); }}>
-        <Dialog.Portal>
-          <Dialog.Overlay className="modal-overlay" />
-          <Dialog.Content className={`modal-glass ${styles.choiceDialog}`}>
-            <Dialog.Title className={styles.choiceDialogTitle}>Add your first section</Dialog.Title>
-            <Dialog.Description className={styles.choiceDialogDescription}>
-              You already have draft text in Whole draft. Decide how to place it before creating the first named section.
-            </Dialog.Description>
-            <div className={styles.choiceDialogActions}>
-              <button type="button" className={styles.choiceDialogButton} onClick={controller.confirmPendingMove}>
-                Move current text into the new section
-              </button>
-              <button type="button" className={styles.choiceDialogButtonSecondary} onClick={controller.confirmPendingKeep}>
-                Keep it above as Whole draft
-              </button>
-            </div>
-          </Dialog.Content>
-        </Dialog.Portal>
-      </Dialog.Root>
-
-      <ConfirmDialog
-        isOpen={Boolean(controller.sectionToRemove)}
-        title="Remove section?"
-        message="This removes the section and its evidence links from the current draft."
-        confirmLabel="Remove"
-        variant="danger"
-        onConfirm={controller.confirmRemoveSection}
-        onCancel={controller.cancelRemoveSection}
-      />
-
       <AddEvidenceModal
-        isOpen={controller.isAddEvidenceOpen}
-        onClose={() => controller.setAddEvidenceOpen(false)}
-        studies={controller.studies}
-        usedEvidenceIds={controller.usedEvidenceIds}
-        onAddEvidence={controller.handleAddEvidence}
+        isOpen={isAddEvidenceOpen}
+        onClose={() => setAddEvidenceOpen(false)}
+        studies={studies}
+        usedEvidenceIds={usedEvidenceIds}
+        onAddEvidence={handleAddEvidence}
         projectId={id}
       />
 
+      {/* Export Modal */}
       <ExportModal
-        isOpen={controller.isExportModalOpen}
-        onClose={() => controller.setExportModalOpen(false)}
-        onExport={controller.handleExportDocx}
-        exportMode={controller.exportMode}
-        onExportModeChange={controller.setExportMode}
-        citationIssuesCount={controller.citationIssues.length}
-        blockingCitationIssuesCount={controller.blockingCitationIssuesCount}
-        latestExport={controller.latestExport}
-        exportHistory={controller.exportHistory}
-        onDeleteExport={controller.handleDeleteExport}
+        isOpen={isExportModalOpen}
+        onClose={() => setExportModalOpen(false)}
+        onExport={handleExportDocx}
+        exportMode={exportMode}
+        onExportModeChange={setExportMode}
+        citationIssuesCount={exportCitationIssues.length}
+        blockingCitationIssuesCount={blockingCitationIssuesCount}
+        latestExport={latestExport}
+        exportHistory={exportHistory}
+        onDeleteExport={handleDeleteExport}
       />
     </>
   );
 
   return (
-    <ProjectPageLayout
-      noMainPadding
-      initiallyCollapsed
-      mainClassName={draftMainClassName}
-      contentScrollMode="child"
-      copilot={controller.isEmbeddedInProjectShell ? undefined : {
-        page: "draft",
-        section: controller.currentTargetLabel,
-        contextDisplay: `${controller.currentTargetLabel} · ${controller.usedEvidence.length} evidence`,
-        emptyState: controller.copilotEmptyState,
-        inputPlaceholder: `Ask about ${controller.currentTargetLabel}…`,
-        onInsert: controller.insertCopilotText,
-        panelId: "draft-copilot-panel",
-      }}
-    >
+    <ProjectPageLayout noMainPadding initiallyCollapsed mainClassName={draftMainClassName}>
       {pageContent}
     </ProjectPageLayout>
   );
