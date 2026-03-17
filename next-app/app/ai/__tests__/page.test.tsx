@@ -43,11 +43,18 @@ vi.mock("next/dynamic", () => ({
         type: string;
         id: string;
         content?: string;
+        deliveryState?: "pending";
         message?: string;
         label?: string;
         question?: string;
         errorMeta?: { recoveryRecommendation?: string; activeRunId?: string; runId?: string };
       }>;
+      pendingUserMessage?: {
+        type: "user_message";
+        id: string;
+        content: string;
+        deliveryState?: "pending";
+      } | null;
       suppressedProgressId?: string | null;
       onReconnectRun?: (item: { type: string; id: string; errorMeta?: { activeRunId?: string; runId?: string } }) => void;
       onContinueFromDurableStateRun?: (item: { type: string; id: string; errorMeta?: { activeRunId?: string; runId?: string } }) => void;
@@ -132,6 +139,12 @@ vi.mock("next/dynamic", () => ({
               }
               return null;
             })}
+            {props.pendingUserMessage ? (
+              <div data-testid="pending-user-message">
+                <span>{props.pendingUserMessage.content}</span>
+                <span>{props.pendingUserMessage.deliveryState ?? "sent"}</span>
+              </div>
+            ) : null}
           </div>
         );
       }
@@ -446,6 +459,36 @@ describe("/ai page deferred hydration", () => {
     expect(status.compareDocumentPosition(sendButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.getByTestId("timeline-suppressed-progress").textContent).not.toBe("");
     expect(screen.queryAllByText("Reviewing PubMed results")).toHaveLength(1);
+  });
+
+  it("shows an immediate pending user turn before a new conversation id resolves", async () => {
+    let resolveCreateConversation: ((value: unknown) => void) | null = null;
+    mockCreateConversation.mockImplementationOnce(() => new Promise((resolve) => {
+      resolveCreateConversation = resolve;
+    }));
+
+    render(<AIView />);
+
+    fireEvent.click(screen.getByRole("button", { name: "send message" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("pending-user-message")).toBeTruthy();
+    });
+    expect(screen.getByText("Recover this run")).toBeTruthy();
+    expect(screen.getByText("pending")).toBeTruthy();
+
+    await act(async () => {
+      resolveCreateConversation?.({
+        success: true,
+        data: { id: "conv-new" },
+      });
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("pending-user-message")).toBeNull();
+    });
+    expect(screen.getAllByText("Recover this run").length).toBeGreaterThan(0);
   });
 
   it("does not append a false terminal failure after a recovered completed run", async () => {

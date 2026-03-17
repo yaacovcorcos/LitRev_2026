@@ -259,6 +259,11 @@
     border-color: rgba(var(--rgb-accent-primary), 0.25);
 }
 
+.chatMsgUser .chatBubble[data-delivery-state="pending"] {
+    background: rgba(var(--rgb-accent-primary), 0.08);
+    border-color: rgba(var(--rgb-accent-primary), 0.18);
+}
+
 .chatText {
     margin: 0;
     white-space: pre-wrap;
@@ -268,6 +273,44 @@
     color: var(--text-primary);
     overflow-wrap: break-word;
     word-break: break-word;
+}
+
+.userMessageMeta {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    align-self: flex-end;
+    margin-top: 6px;
+    padding-inline: 2px;
+    color: var(--text-muted);
+    font-size: 11px;
+    letter-spacing: 0.02em;
+}
+
+.userMessageMetaLabel {
+    font-weight: 500;
+}
+
+.userMessageMetaDots {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+}
+
+.userMessageMetaDot {
+    width: 4px;
+    height: 4px;
+    background: currentColor;
+    border-radius: 50%;
+    animation: dotPulse 1.4s ease-in-out infinite;
+}
+
+.userMessageMetaDot:nth-child(2) {
+    animation-delay: 0.2s;
+}
+
+.userMessageMetaDot:nth-child(3) {
+    animation-delay: 0.4s;
 }
 
 .reasoningWrap {
@@ -758,6 +801,13 @@
 
 .loadingDot:nth-child(3) {
     animation-delay: 0.4s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .loadingDot,
+    .userMessageMetaDot {
+        animation: none;
+    }
 }
 
 @keyframes spin {

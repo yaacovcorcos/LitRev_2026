@@ -84,12 +84,23 @@ export function interruptRunningProjectToolActivityMessages(
   ));
 }
 
+function markPendingUserMessagesDelivered(messages: CopilotMessage[]): CopilotMessage[] {
+  let mutated = false;
+  const next = messages.map((message) => {
+    if (message.sender !== "user" || message.deliveryState !== "pending") return message;
+    mutated = true;
+    return { ...message, deliveryState: undefined };
+  });
+  return mutated ? next : messages;
+}
+
 function upsertAssistantMessage(
   deps: StreamChunkDeps,
   payload: Extract<SharedStreamIntent, { type: "assistant_upsert" }>,
 ) {
   deps.updateMessages((messages) => {
-    const idx = messages.findIndex((msg) => msg.id === deps.aiMessageId);
+    const normalizedMessages = markPendingUserMessagesDelivered(messages);
+    const idx = normalizedMessages.findIndex((msg) => msg.id === deps.aiMessageId);
     if (idx < 0) {
       const message: CopilotMessage = {
         id: deps.aiMessageId,
@@ -99,12 +110,12 @@ function upsertAssistantMessage(
         createdAt: new Date().toISOString(),
         context: { page: deps.page, section: deps.section },
       };
-      return [...messages, message];
+      return [...normalizedMessages, message];
     }
 
-    const next = [...messages];
+    const next = [...normalizedMessages];
     const existing = next[idx];
-    if (!existing) return messages;
+    if (!existing) return normalizedMessages;
     next[idx] = {
       ...existing,
       text: payload.text,
@@ -122,7 +133,8 @@ function upsertProgressMessage(
   const now = new Date().toISOString();
 
   deps.updateMessages((messages) => {
-    const scopedMessages = messages.filter((message) => !message.progress || message.id === messageId);
+    const normalizedMessages = markPendingUserMessagesDelivered(messages);
+    const scopedMessages = normalizedMessages.filter((message) => !message.progress || message.id === messageId);
     const idx = scopedMessages.findIndex((message) => message.id === messageId);
     if (idx < 0) {
       const nextMessage: CopilotMessage = {
@@ -165,7 +177,8 @@ function upsertToolActivityMessage(
   const now = new Date().toISOString();
 
   deps.updateMessages((messages) => {
-    const idx = messages.findIndex((message) => message.id === messageId);
+    const normalizedMessages = markPendingUserMessagesDelivered(messages);
+    const idx = normalizedMessages.findIndex((message) => message.id === messageId);
     if (idx < 0) {
       const nextMessage: CopilotMessage = {
         id: messageId,
@@ -188,12 +201,12 @@ function upsertToolActivityMessage(
           completedAt: payload.status === "done" || payload.status === "failed" ? now : undefined,
         },
       };
-      return [...messages, nextMessage];
+      return [...normalizedMessages, nextMessage];
     }
 
-    const next = [...messages];
+    const next = [...normalizedMessages];
     const existing = next[idx];
-    if (!existing?.toolActivity) return messages;
+    if (!existing?.toolActivity) return normalizedMessages;
     next[idx] = {
       ...existing,
       toolActivity: {
@@ -221,8 +234,9 @@ function appendUserInputMessage(
   payload: Extract<SharedStreamIntent, { type: "user_input_append" }>,
 ) {
   deps.updateMessages((messages) => {
+    const normalizedMessages = markPendingUserMessagesDelivered(messages);
     const messageId = `user-input-${payload.request.callId}`;
-    if (messages.some((message) => message.id === messageId)) return messages;
+    if (normalizedMessages.some((message) => message.id === messageId)) return normalizedMessages;
     const nextMessage: CopilotMessage = {
       id: messageId,
       sender: "ai",
@@ -237,7 +251,7 @@ function appendUserInputMessage(
         answered: false,
       },
     };
-    return [...messages, nextMessage];
+    return [...normalizedMessages, nextMessage];
   });
 }
 
@@ -246,6 +260,7 @@ function appendCheckpointMessage(
   payload: Extract<SharedStreamIntent, { type: "checkpoint_append" }>,
 ) {
   deps.updateMessages((messages) => {
+    const normalizedMessages = markPendingUserMessagesDelivered(messages);
     const messageId = `checkpoint-${Date.now()}`;
     const nextMessage: CopilotMessage = {
       id: messageId,
@@ -257,7 +272,7 @@ function appendCheckpointMessage(
         label: payload.label,
       },
     };
-    return [...messages, nextMessage];
+    return [...normalizedMessages, nextMessage];
   });
 }
 
@@ -267,8 +282,9 @@ function appendStreamErrorMessage(
 ) {
   const errorState = buildClientErrorState(payload.errorMeta ?? payload.message);
   deps.updateMessages((messages) => {
+    const pendingNormalizedMessages = markPendingUserMessagesDelivered(messages);
     const normalizedMessages = isDeterministicCapabilityFailure(errorState.errorMeta)
-      ? messages.filter((message) => (
+      ? pendingNormalizedMessages.filter((message) => (
         !(message.sender === "ai"
           && !message.streamError
           && matchesCanonicalFailureFallback({
@@ -276,7 +292,7 @@ function appendStreamErrorMessage(
             streamError: errorState.errorMeta,
           }))
       ))
-      : messages;
+      : pendingNormalizedMessages;
 
     return [
       ...normalizedMessages,
@@ -333,7 +349,7 @@ function emitArtifactMessage(
       version: payload.artifactVersion ?? 1,
     },
   };
-  deps.updateMessages((messages) => [...messages, artifactMessage]);
+  deps.updateMessages((messages) => [...markPendingUserMessagesDelivered(messages), artifactMessage]);
 }
 
 function applyIntent(

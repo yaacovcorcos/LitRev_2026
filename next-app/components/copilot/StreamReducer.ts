@@ -102,6 +102,7 @@ export function messagesToTimeline(messages: CopilotMessage[]): TimelineItem[] {
                 type: "user_message" as const,
                 id: msg.id,
                 content: msg.text,
+                deliveryState: msg.deliveryState,
                 attachments: msg.attachments?.map((att) => (
                     isContextAttachment(att)
                         ? att

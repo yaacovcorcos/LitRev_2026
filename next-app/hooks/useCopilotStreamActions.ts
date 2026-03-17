@@ -75,6 +75,16 @@ import {
 import type { PendingAttachment, ApproveArtifactsBatchResult } from "@/types/copilot-context";
 import type { useCopilotConversations } from "@/hooks/useCopilotConversations";
 
+function markPendingUserMessagesDelivered(messages: CopilotMessage[]): CopilotMessage[] {
+    let mutated = false;
+    const next = messages.map((message) => {
+        if (message.sender !== "user" || message.deliveryState !== "pending") return message;
+        mutated = true;
+        return { ...message, deliveryState: undefined };
+    });
+    return mutated ? next : messages;
+}
+
 /** Dependencies injected by the provider. */
 export type CopilotStreamActionsDeps = {
     projectId: string;
@@ -892,8 +902,9 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                     ...errorState.errorMeta,
                     runId: localRunId ?? errorState.errorMeta.runId,
                 };
+                const deliveredMessages = markPendingUserMessagesDelivered(prev.messages);
                 const reconciled = reconcileRunScopedRenderedErrors({
-                    items: prev.messages.filter((message) => message.sender === "ai"),
+                    items: deliveredMessages.filter((message) => message.sender === "ai"),
                     nextMessage: errorState.message,
                     nextMeta: errorMeta,
                     getMessage: (message) => message.text,
@@ -914,7 +925,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                     emittedTerminalError = true;
                     return {
                         ...prev,
-                        messages: prev.messages.filter((message) =>
+                        messages: deliveredMessages.filter((message) =>
                             message.sender !== "ai" || reconciled.items.some((retained) => retained.id === message.id)
                         ),
                     };
@@ -930,13 +941,13 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                     context: { page, section },
                 };
 
-                return {
-                    ...prev,
-                    messages: [
-                        ...prev.messages.filter((message) =>
-                            message.sender !== "ai" || reconciled.items.some((retained) => retained.id === message.id)
-                        ),
-                        nextMessage,
+                    return {
+                        ...prev,
+                        messages: [
+                            ...deliveredMessages.filter((message) =>
+                                message.sender !== "ai" || reconciled.items.some((retained) => retained.id === message.id)
+                            ),
+                            nextMessage,
                     ],
                 };
             });
@@ -981,8 +992,9 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                         ...errorState.errorMeta,
                         runId: localRunId ?? undefined,
                     };
+                    const deliveredMessages = markPendingUserMessagesDelivered(prev.messages);
                     const reconciled = reconcileRunScopedRenderedErrors({
-                        items: prev.messages.filter((message) => message.sender === "ai"),
+                        items: deliveredMessages.filter((message) => message.sender === "ai"),
                         nextMessage: errorState.message,
                         nextMeta: nextStreamError,
                         getMessage: (message) => message.text,
@@ -993,7 +1005,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                         emittedTerminalError = true;
                         return {
                             ...prev,
-                            messages: prev.messages.filter((message) => message.sender !== "ai" || retainedMessageIds.has(message.id)),
+                            messages: deliveredMessages.filter((message) => message.sender !== "ai" || retainedMessageIds.has(message.id)),
                         };
                     }
                     emittedTerminalError = true;
@@ -1005,13 +1017,13 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                         createdAt: new Date().toISOString(),
                         context: { page, section },
                     };
-                    return {
-                        ...prev,
-                        messages: [
-                            ...prev.messages.filter((message) => message.sender !== "ai" || retainedMessageIds.has(message.id)),
-                            nextMessage,
-                        ],
-                    };
+                        return {
+                            ...prev,
+                            messages: [
+                                ...deliveredMessages.filter((message) => message.sender !== "ai" || retainedMessageIds.has(message.id)),
+                                nextMessage,
+                            ],
+                        };
                 });
             }
         }
@@ -1054,28 +1066,6 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
             // Determine conversation context based on page
             const conversationContext = resolvedStudyId ? "study" : "project";
 
-            // Create conversation if needed
-            let convId = convo.currentConversationId;
-            if (!convId) {
-                try {
-                    const convResult = await createConversation({
-                        projectId,
-                        studyId: resolvedStudyId,
-                        page,
-                        context: conversationContext,
-                    });
-                    if (convResult.success) {
-                        convId = convResult.data.id;
-                        convo.setCurrentConversationId(convResult.data.id);
-                        convo.markConversationActivity(convResult.data.id);
-                    } else {
-                        console.error("Failed to create conversation:", convResult.error);
-                    }
-                } catch (err) {
-                    console.error("Failed to create conversation:", err);
-                }
-            }
-
             // Build attachment metadata and augmented message for AI
             let messageForAI = trimmed;
             let attachmentsMeta: CopilotMessageAttachment[] | undefined;
@@ -1112,6 +1102,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                 id: `m-${Date.now()}`,
                 sender: "user",
                 text: displayText,
+                deliveryState: "pending",
                 createdAt: new Date().toISOString(),
                 context: { page, section },
                 attachments: attachmentsMeta,
@@ -1122,6 +1113,28 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                     ...prev,
                     messages: [...prev.messages, userMessage],
                 }));
+            }
+
+            // Create conversation if needed
+            let convId = convo.currentConversationId;
+            if (!convId) {
+                try {
+                    const convResult = await createConversation({
+                        projectId,
+                        studyId: resolvedStudyId,
+                        page,
+                        context: conversationContext,
+                    });
+                    if (convResult.success) {
+                        convId = convResult.data.id;
+                        convo.setCurrentConversationId(convResult.data.id);
+                        convo.markConversationActivity(convResult.data.id);
+                    } else {
+                        console.error("Failed to create conversation:", convResult.error);
+                    }
+                } catch (err) {
+                    console.error("Failed to create conversation:", err);
+                }
             }
             if (convId) {
                 convo.markConversationActivity(convId);

@@ -16,6 +16,7 @@ export type CopilotMessage = {
   id: string;
   sender: CopilotSender;
   text: string;
+  deliveryState?: "pending";
   progress?: {
     message: string;
     current?: number;
@@ -146,6 +147,7 @@ export function loadProjectCopilotState(projectId: string): ProjectCopilotState 
             id,
             sender,
             text,
+            deliveryState: msg.deliveryState,
             createdAt,
             context: msg.context,
             progress: msg.progress,

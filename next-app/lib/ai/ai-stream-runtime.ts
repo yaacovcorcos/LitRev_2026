@@ -54,6 +54,16 @@ function buildRuntimeItemId(prefix: string, seed: string | number): string {
   return `${prefix}-${seed}`;
 }
 
+function markPendingUserMessagesDelivered(items: TimelineItem[]): TimelineItem[] {
+  let mutated = false;
+  const next = items.map((item) => {
+    if (item.type !== "user_message" || item.deliveryState !== "pending") return item;
+    mutated = true;
+    return { ...item, deliveryState: undefined };
+  });
+  return mutated ? next : items;
+}
+
 export function shouldFailRunningToolsOnAbnormalEnd(
   terminalReason: StreamTerminalReason | null,
 ): boolean {
@@ -88,10 +98,11 @@ export function createAiStreamRuntime(deps: AiStreamRuntimeDeps): AiStreamRuntim
   const upsertAssistant = (intent: Extract<SharedStreamIntent, { type: "assistant_upsert" }>) => {
     const createdAt = now();
     updateCurrentTimeline((items) => {
-      const idx = items.findIndex((item) => item.type === "assistant_message" && item.id === deps.aiMessageId);
+      const normalizedItems = markPendingUserMessagesDelivered(items);
+      const idx = normalizedItems.findIndex((item) => item.type === "assistant_message" && item.id === deps.aiMessageId);
       if (idx < 0) {
         return [
-          ...items,
+          ...normalizedItems,
           {
             type: "assistant_message",
             id: deps.aiMessageId,
@@ -101,9 +112,9 @@ export function createAiStreamRuntime(deps: AiStreamRuntimeDeps): AiStreamRuntim
           },
         ];
       }
-      const next = [...items];
+      const next = [...normalizedItems];
       const existing = next[idx];
-      if (!existing || existing.type !== "assistant_message") return items;
+      if (!existing || existing.type !== "assistant_message") return normalizedItems;
       next[idx] = {
         ...existing,
         content: intent.text,
@@ -116,10 +127,11 @@ export function createAiStreamRuntime(deps: AiStreamRuntimeDeps): AiStreamRuntim
   const upsertProgress = (intent: Extract<SharedStreamIntent, { type: "progress_upsert" }>) => {
     const createdAt = now();
     updateCurrentTimeline((items) => {
+      const normalizedItems = markPendingUserMessagesDelivered(items);
       if (!progressItemId) {
-        progressItemId = buildRuntimeItemId("progress", `${createdAt}-${items.length}`);
+        progressItemId = buildRuntimeItemId("progress", `${createdAt}-${normalizedItems.length}`);
         return [
-          ...items,
+          ...normalizedItems,
           {
             type: "progress",
             id: progressItemId,
@@ -129,10 +141,10 @@ export function createAiStreamRuntime(deps: AiStreamRuntimeDeps): AiStreamRuntim
           },
         ];
       }
-      const idx = items.findIndex((item) => item.type === "progress" && item.id === progressItemId);
+      const idx = normalizedItems.findIndex((item) => item.type === "progress" && item.id === progressItemId);
       if (idx < 0) {
         return [
-          ...items,
+          ...normalizedItems,
           {
             type: "progress",
             id: progressItemId,
@@ -142,9 +154,9 @@ export function createAiStreamRuntime(deps: AiStreamRuntimeDeps): AiStreamRuntim
           },
         ];
       }
-      const next = [...items];
+      const next = [...normalizedItems];
       const existing = next[idx];
-      if (!existing || existing.type !== "progress") return items;
+      if (!existing || existing.type !== "progress") return normalizedItems;
       next[idx] = {
         ...existing,
         message: intent.message,
@@ -158,10 +170,11 @@ export function createAiStreamRuntime(deps: AiStreamRuntimeDeps): AiStreamRuntim
   const upsertToolActivity = (intent: Extract<SharedStreamIntent, { type: "tool_activity_upsert" }>) => {
     const ts = now();
     updateCurrentTimeline((items) => {
-      const idx = items.findIndex((item) => item.type === "tool_activity" && item.callId === intent.callId);
+      const normalizedItems = markPendingUserMessagesDelivered(items);
+      const idx = normalizedItems.findIndex((item) => item.type === "tool_activity" && item.callId === intent.callId);
       if (idx < 0) {
         return [
-          ...items,
+          ...normalizedItems,
           {
             type: "tool_activity",
             id: `tool-${intent.callId}`,
@@ -181,9 +194,9 @@ export function createAiStreamRuntime(deps: AiStreamRuntimeDeps): AiStreamRuntim
           },
         ];
       }
-      const next = [...items];
+      const next = [...normalizedItems];
       const existing = next[idx];
-      if (!existing || existing.type !== "tool_activity") return items;
+      if (!existing || existing.type !== "tool_activity") return normalizedItems;
       next[idx] = {
         ...existing,
         status: intent.status,
@@ -205,12 +218,13 @@ export function createAiStreamRuntime(deps: AiStreamRuntimeDeps): AiStreamRuntim
 
   const appendArtifact = (intent: Extract<SharedStreamIntent, { type: "artifact_emit" }>) => {
     updateCurrentTimeline((items) => {
+      const normalizedItems = markPendingUserMessagesDelivered(items);
       if (intent.artifactId) {
-        const idx = items.findIndex((item) => item.type === "artifact" && item.artifactId === intent.artifactId);
+        const idx = normalizedItems.findIndex((item) => item.type === "artifact" && item.artifactId === intent.artifactId);
         if (idx >= 0) {
-          const next = [...items];
+          const next = [...normalizedItems];
           const existing = next[idx];
-          if (!existing || existing.type !== "artifact") return items;
+          if (!existing || existing.type !== "artifact") return normalizedItems;
           next[idx] = {
             ...existing,
             artifactType: (intent.artifactType ?? existing.artifactType) as ArtifactType,
@@ -224,10 +238,10 @@ export function createAiStreamRuntime(deps: AiStreamRuntimeDeps): AiStreamRuntim
       }
 
       return [
-        ...items,
+        ...normalizedItems,
         {
           type: "artifact",
-          id: buildRuntimeItemId("artifact", intent.artifactId ?? `${now()}-${items.length}`),
+          id: buildRuntimeItemId("artifact", intent.artifactId ?? `${now()}-${normalizedItems.length}`),
           artifactId: intent.artifactId ?? "",
           artifactType: (intent.artifactType ?? "plan") as ArtifactType,
           status: (intent.artifactStatus ?? "proposed") as ArtifactStatus,
@@ -242,14 +256,15 @@ export function createAiStreamRuntime(deps: AiStreamRuntimeDeps): AiStreamRuntim
 
   const appendCheckpoint = (intent: Extract<SharedStreamIntent, { type: "checkpoint_append" }>) => {
     updateCurrentTimeline((items) => {
-      if (items.some((item) => item.type === "checkpoint" && item.label === intent.label)) {
-        return items;
+      const normalizedItems = markPendingUserMessagesDelivered(items);
+      if (normalizedItems.some((item) => item.type === "checkpoint" && item.label === intent.label)) {
+        return normalizedItems;
       }
       return [
-        ...items,
+        ...normalizedItems,
         {
           type: "checkpoint",
-          id: buildRuntimeItemId("checkpoint", `${now()}-${items.length}`),
+          id: buildRuntimeItemId("checkpoint", `${now()}-${normalizedItems.length}`),
           label: intent.label,
           createdAt: now(),
         },
@@ -260,15 +275,16 @@ export function createAiStreamRuntime(deps: AiStreamRuntimeDeps): AiStreamRuntim
   const appendStreamError = (intent: Extract<SharedStreamIntent, { type: "stream_error" }>) => {
     const errorState = buildClientErrorState(intent.errorMeta ?? intent.message);
     updateCurrentTimeline((items) => {
+      const pendingNormalizedItems = markPendingUserMessagesDelivered(items);
       const normalizedItems = isDeterministicCapabilityFailure(errorState.errorMeta)
-        ? items.filter((item) => (
+        ? pendingNormalizedItems.filter((item) => (
           !(item.type === "assistant_message"
             && matchesCanonicalFailureFallback({
               assistantText: item.content,
               streamError: errorState.errorMeta,
             }))
         ))
-        : items;
+        : pendingNormalizedItems;
 
       const reconciled = reconcileRunScopedRenderedErrors({
         items: normalizedItems.filter((item) => item.type === "error"),
@@ -302,11 +318,12 @@ export function createAiStreamRuntime(deps: AiStreamRuntimeDeps): AiStreamRuntim
   const appendUserInputRequest = (intent: Extract<SharedStreamIntent, { type: "user_input_append" }>) => {
     const requestId = `user-input-${intent.request.callId}`;
     updateCurrentTimeline((items) => {
-      if (items.some((item) => item.type === "user_input_request" && item.id === requestId)) {
-        return items;
+      const normalizedItems = markPendingUserMessagesDelivered(items);
+      if (normalizedItems.some((item) => item.type === "user_input_request" && item.id === requestId)) {
+        return normalizedItems;
       }
       return [
-        ...items,
+        ...normalizedItems,
         {
           type: "user_input_request",
           id: requestId,

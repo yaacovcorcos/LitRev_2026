@@ -42,6 +42,7 @@ export interface TimelineUserMessage {
     id: string;
     content: string;
     attachments?: TimelineAttachment[];
+    deliveryState?: "pending";
     createdAt: string;
 }
 

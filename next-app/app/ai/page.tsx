@@ -262,6 +262,16 @@ function mapDbMessagesToTimeline(
   );
 }
 
+function markPendingTimelineUserMessagesDelivered(items: TimelineItem[]): TimelineItem[] {
+  let mutated = false;
+  const next = items.map((item) => {
+    if (item.type !== "user_message" || item.deliveryState !== "pending") return item;
+    mutated = true;
+    return { ...item, deliveryState: undefined };
+  });
+  return mutated ? next : items;
+}
+
 export default function AIView() {
   const router = useRouter();
   const mobileAiV2Enabled = isMobileAiV2Enabled();
@@ -297,6 +307,7 @@ export default function AIView() {
   const [selectedModel, setSelectedModelState] = useState<SelectableModelId>(DEFAULT_SELECTABLE_MODEL_ID);
 
   const [timelineByConversation, setTimelineByConversation] = useState<Record<string, TimelineItem[]>>({});
+  const [pendingOutgoingUserMessage, setPendingOutgoingUserMessage] = useState<Extract<TimelineItem, { type: "user_message" }> | null>(null);
   const [isConversationLoading, setIsConversationLoading] = useState(false);
   // LRU order: tracks up to 5 recently accessed conversation IDs so we evict old timelines
   const timelineLruRef = useRef<string[]>([]);
@@ -660,6 +671,7 @@ export default function AIView() {
     historyLoadPromiseRef.current = null;
     setActiveConversationId(null);
     setTimelineByConversation({});
+    setPendingOutgoingUserMessage(null);
     timelineLruRef.current = [];   // reset LRU so eviction doesn't drift across scopes
     setPendingChoices([]);
     setPendingUserInput(null);
@@ -684,6 +696,13 @@ export default function AIView() {
     [conversations, isHistoryCollapsed]
   );
   const activeTimeline = activeConversationId ? (timelineByConversation[activeConversationId] ?? []) : [];
+  const visiblePendingOutgoingUserMessage = useMemo(() => {
+    if (!pendingOutgoingUserMessage) return null;
+    if (activeTimeline.some((item) => item.type === "user_message" && item.id === pendingOutgoingUserMessage.id)) {
+      return null;
+    }
+    return pendingOutgoingUserMessage;
+  }, [activeTimeline, pendingOutgoingUserMessage]);
   const { activeProgress, suppressedProgressId } = useMemo(
     () => selectActiveProgress(normalizeTimelineProgressItems(activeTimeline)),
     [activeTimeline],
@@ -942,6 +961,7 @@ export default function AIView() {
       setHistoryCollapsed(true);
     }
     setActiveConversationId(id);
+    setPendingOutgoingUserMessage(null);
     setPendingChoices([]);
     setPendingUserInput(null);
     // Only show skeleton if we don't already have this conversation cached
@@ -1241,6 +1261,7 @@ export default function AIView() {
     setConversations((prev) => sortConversationsByUpdatedAt([newConv, ...prev]));
     setActiveConversationId(id);
     updateConversationTimeline(id, () => []);
+    setPendingOutgoingUserMessage(null);
     if (mobileAiV2Enabled && isPhoneViewport) {
       setHistoryCollapsed(true);
     }
@@ -1290,7 +1311,27 @@ export default function AIView() {
       modelId: effectiveModel,
     });
 
-    let convId = await ensureConversation(context);
+    const nowIso = new Date().toISOString();
+    const userId = `m-${Date.now()}`;
+    if (!suppressUserMessageAppend) {
+      setPendingOutgoingUserMessage({
+        type: "user_message",
+        id: userId,
+        content: msgText,
+        deliveryState: "pending",
+        createdAt: nowIso,
+      });
+    }
+
+    let convId: string;
+    try {
+      convId = await ensureConversation(context);
+    } catch (error) {
+      if (!suppressUserMessageAppend) {
+        setPendingOutgoingUserMessage((current) => current?.id === userId ? null : current);
+      }
+      throw error;
+    }
     if (retryModelExpectation) {
       recordChatUnificationMetric({
         type: "retry_model_continuity",
@@ -1305,9 +1346,6 @@ export default function AIView() {
       });
     }
 
-    const nowIso = new Date().toISOString();
-    const userId = `m-${Date.now()}`;
-
     if (!suppressUserMessageAppend) {
       updateConversationTimeline(convId, (prev) => [
         ...prev,
@@ -1315,9 +1353,11 @@ export default function AIView() {
           type: "user_message",
           id: userId,
           content: msgText,
+          deliveryState: "pending",
           createdAt: nowIso,
         },
       ]);
+      setPendingOutgoingUserMessage((current) => current?.id === userId ? null : current);
     }
 
     setConversations((prev) =>
@@ -1568,17 +1608,18 @@ export default function AIView() {
         convId = runtime.getConversationId();
         const errorState = buildClientErrorState(err);
         updateConversationTimeline(convId, (items) => {
+          const deliveredItems = markPendingTimelineUserMessagesDelivered(items);
           const errorMeta = {
             ...errorState.errorMeta,
             runId: runtime.getState().localRunId || currentRunIdRef.current || errorState.errorMeta.runId,
           };
           const hasAssistantContent = hasCanonicalFailureFallbackText({
-            items: items.filter((item) => item.type === "assistant_message"),
+            items: deliveredItems.filter((item) => item.type === "assistant_message"),
             streamError: errorMeta,
             getText: (item) => item.type === "assistant_message" ? item.content : null,
           });
           const reconciled = reconcileRunScopedRenderedErrors({
-            items: items.filter((item) => item.type === "error"),
+            items: deliveredItems.filter((item) => item.type === "error"),
             nextMessage: errorState.message,
             nextMeta: errorMeta,
             getMessage: (item) => item.type === "error" ? item.message : null,
@@ -1587,11 +1628,11 @@ export default function AIView() {
           const hasRenderedError = !reconciled.shouldAppend;
           if (shouldSuppressClientFallback({ errorMeta: errorMeta, hasAssistantContent, hasRenderedError })) {
             emittedTerminalError = true;
-            return items.filter((item) => item.type !== "error" || reconciled.items.some((retained) => retained.id === item.id));
+            return deliveredItems.filter((item) => item.type !== "error" || reconciled.items.some((retained) => retained.id === item.id));
           }
           emittedTerminalError = true;
           return [
-            ...items.filter((item) => item.type !== "error" || reconciled.items.some((retained) => retained.id === item.id)),
+            ...deliveredItems.filter((item) => item.type !== "error" || reconciled.items.some((retained) => retained.id === item.id)),
             {
               type: "error",
               id: `error-${Date.now()}`,
@@ -1658,12 +1699,13 @@ export default function AIView() {
       ) {
         const terminalErrorState = buildUnexpectedTerminalErrorState(terminalReason);
         updateConversationTimeline(convId, (items) => {
+          const deliveredItems = markPendingTimelineUserMessagesDelivered(items);
           const errorMeta = {
             ...terminalErrorState.errorMeta,
             runId: runtime.getState().localRunId || currentRunIdRef.current || undefined,
           };
           const reconciled = reconcileRunScopedRenderedErrors({
-            items: items.filter((item) => item.type === "error"),
+            items: deliveredItems.filter((item) => item.type === "error"),
             nextMessage: terminalErrorState.message,
             nextMeta: errorMeta,
             getMessage: (item) => item.type === "error" ? item.message : null,
@@ -1672,11 +1714,11 @@ export default function AIView() {
           const retainedErrorIds = new Set(reconciled.items.map((item) => item.id));
           if (!reconciled.shouldAppend) {
             emittedTerminalError = true;
-            return items.filter((item) => item.type !== "error" || retainedErrorIds.has(item.id));
+            return deliveredItems.filter((item) => item.type !== "error" || retainedErrorIds.has(item.id));
           }
           emittedTerminalError = true;
           return [
-            ...items.filter((item) => item.type !== "error" || retainedErrorIds.has(item.id)),
+            ...deliveredItems.filter((item) => item.type !== "error" || retainedErrorIds.has(item.id)),
             {
               type: "error",
               id: makeId("terminal-error"),
@@ -2515,6 +2557,7 @@ export default function AIView() {
               isLoading={isTyping}
               isConversationLoading={isConversationLoading}
               conversationId={activeConversationId ?? undefined}
+              pendingUserMessage={visiblePendingOutgoingUserMessage}
               initialVisibleCount={AI_VISIBLE_TIMELINE_INITIAL_COUNT}
               visibleStep={AI_VISIBLE_TIMELINE_STEP}
               onTimelineReady={handleTimelineReady}

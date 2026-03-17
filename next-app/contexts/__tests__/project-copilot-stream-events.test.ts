@@ -74,7 +74,14 @@ describe("project copilot stream event handlers", () => {
   });
 
   it("creates and updates assistant message for content chunks", () => {
-    const messages: CopilotMessage[] = [];
+    const messages: CopilotMessage[] = [{
+      id: "user-1",
+      sender: "user",
+      text: "Recover this run",
+      deliveryState: "pending",
+      createdAt: "2026-03-08T00:00:00.000Z",
+      context: { page: "overview" },
+    }];
     const artifacts = new Map<string, ArtifactData>();
     let pendingChoices: unknown[] = [];
     let runId: string | null = null;
@@ -117,8 +124,9 @@ describe("project copilot stream event handlers", () => {
       deps
     );
 
-    expect(messages).toHaveLength(1);
-    expect(messages[0]?.text).toBe("Hello world");
+    expect(messages).toHaveLength(2);
+    expect(messages[0]?.deliveryState).toBeUndefined();
+    expect(messages[1]?.text).toBe("Hello world");
     expect(nextState.fullContent).toBe("Hello world");
     expect(runId).toBeNull();
     expect(artifacts.size).toBe(0);
@@ -126,7 +134,14 @@ describe("project copilot stream event handlers", () => {
   });
 
   it("stores progress as structured state instead of assistant transcript text and clears it", () => {
-    const messages: CopilotMessage[] = [];
+    const messages: CopilotMessage[] = [{
+      id: "user-1",
+      sender: "user",
+      text: "Find studies",
+      deliveryState: "pending",
+      createdAt: "2026-03-08T00:00:00.000Z",
+      context: { page: "overview" },
+    }];
     const deps = {
       aiMessageId: "m-1",
       page: "overview" as const,
@@ -155,8 +170,9 @@ describe("project copilot stream event handlers", () => {
     );
 
     expect(state.fullContent).toBe("");
-    expect(messages).toHaveLength(1);
-    expect(messages[0]).toMatchObject({
+    expect(messages).toHaveLength(2);
+    expect(messages[0]?.deliveryState).toBeUndefined();
+    expect(messages[1]).toMatchObject({
       id: "progress-1",
       sender: "ai",
       text: "",
@@ -173,8 +189,8 @@ describe("project copilot stream event handlers", () => {
       deps,
     );
 
-    expect(messages).toHaveLength(1);
-    expect(messages[0]?.progress).toMatchObject({
+    expect(messages).toHaveLength(2);
+    expect(messages[1]?.progress).toMatchObject({
       message: "Analyzing search results",
       current: 2,
       total: 3,
@@ -186,13 +202,13 @@ describe("project copilot stream event handlers", () => {
       deps,
     );
 
-    expect(messages).toHaveLength(1);
-    expect(messages[0]).toMatchObject({
+    expect(messages).toHaveLength(2);
+    expect(messages[1]).toMatchObject({
       id: "m-1",
       sender: "ai",
       text: "Found relevant studies.",
     });
-    expect(messages[0]?.progress).toBeUndefined();
+    expect(messages[1]?.progress).toBeUndefined();
     expect(state.fullContent).toBe("Found relevant studies.");
   });
 

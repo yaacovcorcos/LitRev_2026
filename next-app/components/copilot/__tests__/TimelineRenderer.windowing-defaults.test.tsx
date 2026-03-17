@@ -39,4 +39,32 @@ describe("TimelineRenderer shared defaults", () => {
     expect(screen.getByText("Fixture message 119")).toBeTruthy();
     expect(screen.queryByRole("button", { name: /show earlier messages/i })).toBeNull();
   }, 20000);
+
+  it("renders a quiet sending state for pending user turns", async () => {
+    render(
+      <TimelineRenderer
+        variant="page"
+        items={[
+          {
+            type: "user_message",
+            id: "pending-1",
+            content: "Queued question",
+            deliveryState: "pending",
+            createdAt: "2026-01-01T00:00:00.000Z",
+          },
+        ]}
+        isLoading={true}
+        emptyState={{
+          icon: "chat",
+          title: "Empty",
+          description: "Empty",
+          suggestions: [],
+        }}
+        onSuggestionClick={() => {}}
+      />,
+    );
+
+    expect(await screen.findByText("Queued question")).toBeTruthy();
+    expect(screen.getByText("Sending")).toBeTruthy();
+  });
 });

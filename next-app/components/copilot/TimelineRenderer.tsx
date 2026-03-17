@@ -323,10 +323,11 @@ function isContextTimelineAttachment(
 }
 
 const UserMessageRow = memo(function UserMessageRow({ item, onCopy, onBranchFromMessage }: UserMessageRowProps) {
+    const isPending = item.deliveryState === "pending";
     return (
         <div className={`${styles.chatMsg} ${styles.chatMsgUser}`} role="article" aria-label="You">
             <div className={styles.chatStack}>
-                <div className={styles.chatBubble}>
+                <div className={styles.chatBubble} data-delivery-state={item.deliveryState ?? "sent"}>
                     {item.attachments && item.attachments.length > 0 && (
                         <div className={styles.messageAttachments}>
                             {item.attachments.map((att) => (
@@ -363,6 +364,16 @@ const UserMessageRow = memo(function UserMessageRow({ item, onCopy, onBranchFrom
                         </ReactMarkdown>
                     </div>
                 </div>
+                {isPending ? (
+                    <div className={styles.userMessageMeta} aria-live="polite">
+                        <span className={styles.userMessageMetaLabel}>Sending</span>
+                        <span className={styles.userMessageMetaDots} aria-hidden="true">
+                            <span className={styles.userMessageMetaDot} />
+                            <span className={styles.userMessageMetaDot} />
+                            <span className={styles.userMessageMetaDot} />
+                        </span>
+                    </div>
+                ) : null}
                 <div className={styles.chatActions}>
                     <button
                         type="button"
@@ -737,6 +748,8 @@ export type TimelineRendererProps = {
     onTimelineReady?: (details: { visibleItems: number; hiddenItems: number; totalItems: number }) => void;
     /** Render-only suppression for a single progress row elevated above the composer. */
     suppressedProgressId?: string | null;
+    /** Optional pending outgoing turn shown before the authoritative timeline owns it. */
+    pendingUserMessage?: Extract<TimelineItem, { type: "user_message" }> | null;
 };
 
 export function TimelineRenderer({
@@ -771,6 +784,7 @@ export function TimelineRenderer({
     visibleStep = 60,
     onTimelineReady,
     suppressedProgressId = null,
+    pendingUserMessage = null,
 }: TimelineRendererProps) {
     const params = useParams();
     const routeProjectId = params && typeof params === "object" && "id" in params
@@ -806,11 +820,15 @@ export function TimelineRenderer({
         () => items ?? messagesToTimeline(messages),
         [items, messages]
     );
+    const timelineWithPending = useMemo(
+        () => pendingUserMessage ? [...timeline, pendingUserMessage] : timeline,
+        [pendingUserMessage, timeline],
+    );
     const canBatchApprove = !!(onApproveArtifactsBatch || onReviewArtifact);
     const pendingApprovable = useMemo(() => {
         if (!canBatchApprove) return [];
         const latestArtifactById = new Map<string, TimelineArtifact>();
-        for (const item of timeline) {
+        for (const item of timelineWithPending) {
             if (item.type === "artifact") {
                 latestArtifactById.set(item.artifactId, item);
             }
@@ -818,7 +836,7 @@ export function TimelineRenderer({
         return [...latestArtifactById.values()].filter(
             (item) => item.status === "proposed" && BATCH_APPROVABLE_TYPES.has(item.artifactType),
         );
-    }, [canBatchApprove, timeline]);
+    }, [canBatchApprove, timelineWithPending]);
     const showApproveAllBar = approveAllState !== "idle" || pendingApprovable.length >= 2;
     const approveAllResultText = useMemo(() => {
         if (!approveAllSummary) return "Batch finished.";
@@ -848,21 +866,21 @@ export function TimelineRenderer({
 
     const windowSize = initialVisibleCount && initialVisibleCount > 0 ? initialVisibleCount : null;
     const [visibleCount, setVisibleCount] = useState<number>(() => {
-        if (!windowSize) return timeline.length;
-        return Math.min(windowSize, timeline.length);
+        if (!windowSize) return timelineWithPending.length;
+        return Math.min(windowSize, timelineWithPending.length);
     });
 
     useEffect(() => {
         if (!windowSize) {
-            setVisibleCount(timeline.length);
+            setVisibleCount(timelineWithPending.length);
             return;
         }
-        setVisibleCount(Math.min(windowSize, timeline.length));
-    }, [conversationId, timeline.length, windowSize]);
+        setVisibleCount(Math.min(windowSize, timelineWithPending.length));
+    }, [conversationId, timelineWithPending.length, windowSize]);
 
-    const effectiveVisibleCount = windowSize ? Math.min(visibleCount, timeline.length) : timeline.length;
-    const hiddenItemCount = Math.max(0, timeline.length - effectiveVisibleCount);
-    const visibleTimeline = hiddenItemCount > 0 ? timeline.slice(-effectiveVisibleCount) : timeline;
+    const effectiveVisibleCount = windowSize ? Math.min(visibleCount, timelineWithPending.length) : timelineWithPending.length;
+    const hiddenItemCount = Math.max(0, timelineWithPending.length - effectiveVisibleCount);
+    const visibleTimeline = hiddenItemCount > 0 ? timelineWithPending.slice(-effectiveVisibleCount) : timelineWithPending;
     const visibleFirstTimelineId = visibleTimeline[0]?.id ?? null;
     const lastAssistantIndex = visibleTimeline.length > 0 && visibleTimeline[visibleTimeline.length - 1].type === "assistant_message"
         ? visibleTimeline.length - 1
@@ -895,7 +913,7 @@ export function TimelineRenderer({
         setCollapsedTraceByAssistantId({});
     }, [conversationId]);
     // ── Content change — schedule scroll if pinned ──────────────────────────
-    useLayoutEffect(() => { notifyContentChanged(); }, [notifyContentChanged, timeline, visibleFirstTimelineId, effectiveVisibleCount]);
+    useLayoutEffect(() => { notifyContentChanged(); }, [notifyContentChanged, timelineWithPending, visibleFirstTimelineId, effectiveVisibleCount]);
     useEffect(() => {
         return () => {
             if (approveAllDismissTimerRef.current) {
@@ -951,8 +969,8 @@ export function TimelineRenderer({
         if (hiddenItemCount <= 0) return;
         capturePrependAnchor(firstItemRef.current);
         revealPendingRef.current = true;
-        setVisibleCount((current) => Math.min(timeline.length, current + Math.max(visibleStep, 1)));
-    }, [capturePrependAnchor, hiddenItemCount, timeline.length, visibleStep]);
+        setVisibleCount((current) => Math.min(timelineWithPending.length, current + Math.max(visibleStep, 1)));
+    }, [capturePrependAnchor, hiddenItemCount, timelineWithPending.length, visibleStep]);
 
     // Restore viewport after prepend
     useLayoutEffect(() => {
@@ -977,9 +995,9 @@ export function TimelineRenderer({
         onTimelineReady({
             visibleItems: visibleTimeline.length,
             hiddenItems: hiddenItemCount,
-            totalItems: timeline.length,
+            totalItems: timelineWithPending.length,
         });
-    }, [hiddenItemCount, isConversationLoading, onTimelineReady, timeline.length, visibleTimeline.length]);
+    }, [hiddenItemCount, isConversationLoading, onTimelineReady, timelineWithPending.length, visibleTimeline.length]);
 
     const handleCopy = useCallback((text: string) => {
         navigator.clipboard.writeText(text).catch(console.error);
