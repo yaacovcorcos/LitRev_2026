@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ReliabilityMetricEvent } from "@/types/reliability-telemetry";
 
 const originalFetch = globalThis.fetch;
 const originalPublicMode = process.env.NEXT_PUBLIC_E2E_TEST_MODE;
@@ -8,6 +9,21 @@ const originalPublicMode = process.env.NEXT_PUBLIC_E2E_TEST_MODE;
 async function importTelemetryModule() {
   vi.resetModules();
   return await import("@/lib/ai/reliability-telemetry");
+}
+
+function makeMetric(): Omit<
+  ReliabilityMetricEvent,
+  "eventId" | "version" | "timestamp" | "dimensions"
+> {
+  return {
+    type: "reliability.v1.route.ready" as const,
+    surface: "home" as const,
+    payload: {
+      routeTemplate: "/" as const,
+      state: "workspace" as const,
+      layoutMode: null,
+    },
+  };
 }
 
 describe("reliability telemetry shipping", () => {
@@ -30,19 +46,17 @@ describe("reliability telemetry shipping", () => {
   });
 
   it("ships reliability metrics by default when fetch is available", async () => {
-    const { recordReliabilityMetric } = await importTelemetryModule();
+    const {
+      flushReliabilityMetricsForTests,
+      recordReliabilityMetric,
+      setReliabilityMetricShippingOverrideForTests,
+    } = await importTelemetryModule();
 
-    recordReliabilityMetric({
-      type: "reliability.v1.route.ready",
-      surface: "home",
-      payload: {
-        routeTemplate: "/",
-        state: "workspace",
-        layoutMode: null,
-      },
-    });
+    setReliabilityMetricShippingOverrideForTests(true);
 
-    await Promise.resolve();
+    recordReliabilityMetric(makeMetric());
+
+    await flushReliabilityMetricsForTests();
 
     expect(globalThis.fetch).toHaveBeenCalledTimes(1);
     expect(vi.mocked(globalThis.fetch).mock.calls[0]?.[0]).toBe("/api/telemetry/reliability");
@@ -50,20 +64,47 @@ describe("reliability telemetry shipping", () => {
 
   it("does not ship reliability metrics in explicit E2E mode", async () => {
     process.env.NEXT_PUBLIC_E2E_TEST_MODE = "1";
-    const { recordReliabilityMetric } = await importTelemetryModule();
+    const {
+      flushReliabilityMetricsForTests,
+      recordReliabilityMetric,
+      setReliabilityMetricShippingOverrideForTests,
+    } = await importTelemetryModule();
 
-    recordReliabilityMetric({
-      type: "reliability.v1.route.ready",
-      surface: "home",
-      payload: {
-        routeTemplate: "/",
-        state: "workspace",
-        layoutMode: null,
-      },
-    });
+    setReliabilityMetricShippingOverrideForTests(null);
 
-    await Promise.resolve();
+    recordReliabilityMetric(makeMetric());
+
+    await flushReliabilityMetricsForTests();
 
     expect(globalThis.fetch).not.toHaveBeenCalled();
   });
+
+  it.each([401, 403, 429, 500])(
+    "keeps reliability shipping best-effort when the server responds with %s",
+    async (status) => {
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: false,
+        status,
+      } as Response);
+
+      const {
+        clearReliabilityMetrics,
+        flushReliabilityMetricsForTests,
+        getReliabilityMetricEvents,
+        recordReliabilityMetric,
+        setReliabilityMetricShippingOverrideForTests,
+      } = await importTelemetryModule();
+
+      clearReliabilityMetrics();
+      setReliabilityMetricShippingOverrideForTests(true);
+
+      expect(() => {
+        recordReliabilityMetric(makeMetric());
+      }).not.toThrow();
+
+      await expect(flushReliabilityMetricsForTests()).resolves.toBeUndefined();
+      expect(globalThis.fetch).toHaveBeenCalled();
+      expect(getReliabilityMetricEvents()).toHaveLength(1);
+    },
+  );
 });

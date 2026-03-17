@@ -1,14 +1,16 @@
+import { createClientTelemetryStore } from "@/lib/ai/client-telemetry-store";
+import { getViewportClass } from "@/lib/mobile/tiers";
+import { isOperationalTelemetryE2EMode } from "@/lib/telemetry/e2e-mode";
 import {
   RELIABILITY_METRIC_VERSION,
   type ReliabilityDimensions,
   type ReliabilityMetricEvent,
   type ReliabilityMetricInput,
 } from "@/types/reliability-telemetry";
-import { getViewportClass } from "@/lib/mobile/tiers";
-import { isOperationalTelemetryE2EMode } from "@/lib/telemetry/e2e-mode";
 
 const STORAGE_KEY = `litrev:reliability-metrics:v${RELIABILITY_METRIC_VERSION}`;
 const STORAGE_LIMIT = 2000;
+const METRIC_EVENT = "litrev:reliability-metric";
 const TELEMETRY_ENDPOINT = "/api/telemetry/reliability";
 
 function readFlag(name: string): boolean | null {
@@ -42,11 +44,8 @@ export function getReliabilityDimensions(): ReliabilityDimensions {
   };
 }
 
-function shouldShipToServer(): boolean {
-  if (typeof window === "undefined") return false;
-  if (typeof fetch !== "function") return false;
+function canShipReliabilityMetrics(): boolean {
   if (isOperationalTelemetryE2EMode()) return false;
-  if (typeof process !== "undefined" && process.env.NODE_ENV === "test") return false;
   return true;
 }
 
@@ -65,32 +64,23 @@ function toMetricInput(event: ReliabilityMetricEvent): ReliabilityMetricInput {
   };
 }
 
-async function postMetric(event: ReliabilityMetricEvent): Promise<void> {
-  const response = await fetch(TELEMETRY_ENDPOINT, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    credentials: "include",
-    cache: "no-store",
-    keepalive: true,
-    body: JSON.stringify(toMetricInput(event)),
-  });
+const telemetryStore = createClientTelemetryStore<
+  ReliabilityMetricEvent,
+  ReliabilityMetricInput
+>({
+  storageKey: STORAGE_KEY,
+  storageLimit: STORAGE_LIMIT,
+  metricEventName: METRIC_EVENT,
+  telemetryEndpoint: TELEMETRY_ENDPOINT,
+  toMetricInput,
+  canShip: canShipReliabilityMetrics,
+});
 
-  if (!response.ok) {
-    throw new Error(`Reliability telemetry upload failed with status ${response.status}`);
+function generateMetricEventId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
   }
-}
-
-function readEventsFromStorage(): ReliabilityMetricEvent[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter((event) => event && typeof event === "object") as ReliabilityMetricEvent[];
-  } catch {
-    return [];
-  }
+  return `reliability-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 export function recordReliabilityMetric(
@@ -99,34 +89,28 @@ export function recordReliabilityMetric(
   if (typeof window === "undefined") return;
 
   const normalized: ReliabilityMetricEvent = {
-    eventId: typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-      ? crypto.randomUUID()
-      : `reliability-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+    eventId: generateMetricEventId(),
     version: RELIABILITY_METRIC_VERSION,
     timestamp: new Date().toISOString(),
     dimensions: getReliabilityDimensions(),
     ...event,
   };
 
-  if (shouldShipToServer()) {
-    void postMetric(normalized);
-  }
+  telemetryStore.record(normalized);
+}
 
-  try {
-    const existing = readEventsFromStorage();
-    const next = [...existing, normalized];
-    const bounded = next.length > STORAGE_LIMIT ? next.slice(next.length - STORAGE_LIMIT) : next;
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(bounded));
-  } catch {
-    // Best-effort telemetry only.
-  }
+export function getReliabilityMetricEvents(): ReliabilityMetricEvent[] {
+  return telemetryStore.getEvents();
 }
 
 export function clearReliabilityMetrics(): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.removeItem(STORAGE_KEY);
-  } catch {
-    // Best-effort cleanup only.
-  }
+  telemetryStore.clear();
+}
+
+export async function flushReliabilityMetricsForTests(): Promise<void> {
+  await telemetryStore.flushForTests();
+}
+
+export function setReliabilityMetricShippingOverrideForTests(enabled: boolean | null): void {
+  telemetryStore.setShippingOverrideForTests(enabled);
 }
