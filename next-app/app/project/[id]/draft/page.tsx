@@ -12,7 +12,6 @@ import { EvidencePane } from "./DraftContextRail";
 import { EditorToolbar, FullSectionEditor } from "./DraftEditors";
 import { DraftFormattingPanel, DraftTopBar } from "./DraftToolbar";
 import { DraftSidebar } from "./DraftSidebar";
-import { SectionsPane } from "./StructureRail";
 import { useDraftWorkspaceController } from "./useDraftWorkspaceController";
 import styles from "./draft-studio.module.css";
 import { UNSECTIONED_DRAFT_ID } from "@/types/draft";
@@ -20,6 +19,21 @@ import { UNSECTIONED_DRAFT_ID } from "@/types/draft";
 const ExportModal = dynamic(() => import("@/components/ExportModal").then((module) => module.ExportModal), {
   ssr: false,
 });
+
+type DraftSectionHeadingProps = {
+  id: string;
+  label: string;
+};
+
+function DraftSectionHeading({ id, label }: DraftSectionHeadingProps) {
+  return (
+    <header className={styles.manuscriptSectionHeader}>
+      <h2 id={id} className={styles.manuscriptSectionTitle}>
+        {label}
+      </h2>
+    </header>
+  );
+}
 
 function DraftContent() {
   const { id } = useParams<{ id: string }>();
@@ -66,39 +80,6 @@ function DraftContent() {
     );
   }
 
-  const sectionsPane = (
-    <SectionsPane
-      sections={controller.sidebarSections}
-      activeTargetId={controller.currentTargetId}
-      onSelectSection={(sectionId) => {
-        controller.selectSection(sectionId);
-        if (controller.isCompactWorkspace) {
-          controller.setSidebarOpen(false);
-        }
-      }}
-      onSelectHeading={(sectionId, blockId) => {
-        controller.selectSectionHeading(sectionId, blockId);
-        if (controller.isCompactWorkspace) {
-          controller.setSidebarOpen(false);
-        }
-      }}
-      onMoveSection={controller.handleMoveSection}
-      onRemoveSection={controller.requestRemoveSection}
-    />
-  );
-
-  const evidencePane = (
-    <EvidencePane
-      activeSectionLabel={controller.currentTargetLabel}
-      isReferencesSection={controller.isReferencesTarget}
-      usedEvidence={controller.usedEvidence}
-      onAddEvidence={() => controller.setAddEvidenceOpen(true)}
-      onInsertCitation={controller.insertCitation}
-      onRemoveEvidence={controller.handleRemoveEvidence}
-      studyLabel={controller.studyLabel}
-    />
-  );
-
   const renderDraftRegion = (
     sectionId: string,
     label: string,
@@ -123,7 +104,7 @@ function DraftContent() {
         onSelectionChange={controller.handleSectionSelectionChange}
         registerEditor={controller.registerEditor}
         placeholderText={placeholder}
-        surfaceClassName={isWholeDraft ? styles.editorSurfaceInlineWholeDraft : styles.editorSurfaceInline}
+        surfaceClassName={styles.manuscriptEditorSurface}
         surfaceStyle={controller.formatVarsById[sectionId]}
         editable={editable}
       />
@@ -168,25 +149,32 @@ function DraftContent() {
         <div
           className={styles.body}
           style={{
-            "--ledger-width": controller.isCompactWorkspace ? "0px" : controller.isSidebarCollapsed ? "60px" : "320px",
+            "--ledger-width": controller.isSidebarCollapsed ? "60px" : controller.isCompactWorkspace ? "0px" : "320px",
           } as CSSProperties}
         >
             <DraftSidebar
               collapsed={controller.isSidebarCollapsed}
-              activeView={controller.sidebarView}
               isOverlay={controller.isCompactWorkspace}
               onToggleCollapsed={controller.toggleSidebar}
               onDismiss={() => controller.setSidebarOpen(false)}
-              onViewChange={controller.setSidebarView}
-              sectionsPane={sectionsPane}
-              evidencePane={evidencePane}
-            />
+            >
+              <EvidencePane
+                activeSectionLabel={controller.currentTargetLabel}
+                isReferencesSection={controller.isReferencesTarget}
+                usedEvidence={controller.usedEvidence}
+                onAddEvidence={() => controller.setAddEvidenceOpen(true)}
+                onCollapse={controller.toggleSidebar}
+                onInsertCitation={controller.insertCitation}
+                onRemoveEvidence={controller.handleRemoveEvidence}
+                studyLabel={controller.studyLabel}
+              />
+            </DraftSidebar>
 
             <section className={styles.center} aria-label="Draft editor">
               <div className={styles.centerHeader}>
                 <div className={styles.centerTitle}>
                   <span className="material-icons-round">edit</span>
-                  {controller.draft.mode === "section" ? controller.activeSectionLabel : "Draft"}
+                  {controller.activeSectionLabel}
                 </div>
               </div>
 
@@ -219,18 +207,49 @@ function DraftContent() {
 
               {controller.draft.mode === "section" && controller.draft.activeSection ? (
                 <section className={styles.sectionEditorWrapper} role="tabpanel" id="draft-section-panel">
+                  {controller.draft.activeSection === "references" ? (
+                    <>
+                      <div className={styles.editorSurface} style={controller.formatVarsById.references}>
+                        <DraftSectionHeading id="draft-section-panel-heading" label={controller.activeSectionLabel} />
+                        <pre className={styles.referencesReadOnly}>{controller.referencesText}</pre>
+                      </div>
+                      <div className={styles.helperText}>References are auto-generated from inline citations.</div>
+                    </>
+                  ) : (
+                    <>
+                      <FullSectionEditor
+                        sectionId={controller.draft.activeSection}
+                        content={controller.draft.contentBySection[controller.draft.activeSection]}
+                        onFocusSection={controller.handleSectionFocus}
+                        onUpdateSection={controller.updateSectionContent}
+                        onSelectionChange={controller.handleSectionSelectionChange}
+                        registerEditor={controller.registerEditor}
+                        placeholderText={controller.orderedSections.find((section) => section.id === controller.draft.activeSection)?.placeholder}
+                        surfaceClassName={styles.editorSurface}
+                        surfaceStyle={controller.formatVarsById[controller.draft.activeSection]}
+                        prefixContent={<DraftSectionHeading id="draft-section-panel-heading" label={controller.activeSectionLabel} />}
+                      />
+                      <div className={styles.helperText}>
+                        {controller.orderedSections.find((section) => section.id === controller.draft.activeSection)?.placeholder}
+                      </div>
+                    </>
+                  )}
+                </section>
+              ) : controller.orderedSections.length === 0 ? (
+                <section className={styles.sectionEditorWrapper} role="region" aria-label="Whole draft">
                   <FullSectionEditor
-                    sectionId={controller.draft.activeSection}
-                    content={controller.draft.contentBySection[controller.draft.activeSection]}
+                    sectionId={UNSECTIONED_DRAFT_ID}
+                    content={controller.draft.contentBySection[UNSECTIONED_DRAFT_ID]}
                     onFocusSection={controller.handleSectionFocus}
                     onUpdateSection={controller.updateSectionContent}
                     onSelectionChange={controller.handleSectionSelectionChange}
                     registerEditor={controller.registerEditor}
-                    placeholderText={controller.orderedSections.find((section) => section.id === controller.draft.activeSection)?.placeholder}
+                    placeholderText={controller.wholeDraftMeta.placeholder}
                     surfaceClassName={styles.editorSurface}
-                    surfaceStyle={controller.formatVarsById[controller.draft.activeSection]}
-                    editable={controller.draft.activeSection !== "references"}
+                    surfaceStyle={controller.formatVarsById[UNSECTIONED_DRAFT_ID]}
+                    prefixContent={<DraftSectionHeading id="draft-whole-draft-heading" label={controller.wholeDraftMeta.label} />}
                   />
+                  <div className={styles.helperText}>Start writing here. Add sections when you want structure.</div>
                 </section>
               ) : (
                 <div className={styles.fullDraftScroll} role="region" aria-label="Full draft">

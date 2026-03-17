@@ -8,6 +8,7 @@ type DraftContextRailProps = {
   isReferencesSection: boolean;
   usedEvidence: Study[];
   onAddEvidence: () => void;
+  onCollapse: () => void;
   onInsertCitation: (studyId: string) => void;
   onRemoveEvidence: (studyId: string) => void;
   studyLabel: (study: Study) => string;
@@ -18,6 +19,7 @@ export function EvidencePane({
   isReferencesSection,
   usedEvidence,
   onAddEvidence,
+  onCollapse,
   onInsertCitation,
   onRemoveEvidence,
   studyLabel,
@@ -27,16 +29,26 @@ export function EvidencePane({
       <div className={styles.ledgerHeader}>
         <div className={styles.ledgerHeaderTop}>
           <span className={styles.ledgerTitle}>Evidence Ledger</span>
-          {!isReferencesSection ? (
+          <div className={styles.panelHeaderActions}>
+            {!isReferencesSection ? (
+              <button
+                type="button"
+                className={styles.iconBtn}
+                aria-label="Add evidence"
+                onClick={onAddEvidence}
+              >
+                <span className="material-icons-round">add</span>
+              </button>
+            ) : null}
             <button
               type="button"
-              className={styles.iconBtn}
-              aria-label="Add evidence"
-              onClick={onAddEvidence}
+              className={styles.panelToggle}
+              aria-label="Collapse evidence ledger"
+              onClick={onCollapse}
             >
-              <span className="material-icons-round">add</span>
+              <span className="material-icons-round">menu_open</span>
             </button>
-          ) : null}
+          </div>
         </div>
         <div className={styles.ledgerContext}>
           <span className={styles.ledgerContextLabel}>for</span>
