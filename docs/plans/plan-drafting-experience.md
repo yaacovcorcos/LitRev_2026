@@ -26,6 +26,36 @@ Current route contract:
 - left Evidence Ledger is the only draft-owned support surface
 - right side remains owned by the existing project copilot shell
 
+## Deferred Improvements After Route Restore
+These items are intentionally preserved as follow-on improvements after the `8998296` route baseline is stable again. They are not the current draft-shell truth, and they must not be reintroduced opportunistically during restore work.
+
+- Preserve the canonical manuscript document and normalized persistence model as the single source of truth beneath the restored route shell.
+- Keep blank-start drafting support:
+  - no seeded sections
+  - `mode: "full"` by default
+  - `activeSection: null` by default
+- Keep `Whole draft` as a real freeform/root drafting target in the normalized state model, while continuing to keep it off the top tab bar.
+- Keep `UNSECTIONED_DRAFT_ID` support where it is needed for save/load, evidence targeting, formatting, and citation compilation.
+- Keep the citation/reference compiler improvements:
+  - generated references
+  - references remain read-only and last
+  - no return to manually typed bibliography as the primary references model
+- Keep export-path improvements and the canonical export entrypoint, even while the visible draft shell is restored.
+- Revisit compact/mobile hardening later, but only if it does not drift the restored desktop baseline:
+  - overlay dismissal
+  - clear reopen affordances
+  - stable focus handling
+- Revisit controller cleanup later:
+  - keep one normalized draft state
+  - keep `Section` and `Full Draft` as projections over that one state
+  - do not reintroduce shadow documents or fake section-mode rendering
+- Revisit future review/history work later:
+  - comments
+  - suggestions
+  - checkpoints
+  - compare/restore
+- Revisit any broader visual modernization only after the restored drafting surface is stable and trusted again.
+
 ## Goal and Scope
 ### Problem statement
 The draft surface must remain immediately usable for actual writing. The recent continuous-workspace, drawer-first, and segmented-sidebar experiments moved the route away from the last workable section-first experience and created shell/controller drift. The correction is to restore the usable section-first baseline first, then evolve the manuscript system underneath it without forcing another premature route architecture jump.
