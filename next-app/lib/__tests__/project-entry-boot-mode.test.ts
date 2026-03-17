@@ -50,7 +50,7 @@ describe("project entry boot mode", () => {
     });
   });
 
-  it("uses legacy conversation restore only as root-entry migration fallback", () => {
+  it("keeps root project entry deterministic even when legacy restore state exists", () => {
     const now = Date.now();
     markConversationActive(PROJECT_ID, "conv-restore", now);
     vi.setSystemTime(now + 1000);
@@ -62,9 +62,9 @@ describe("project entry boot mode", () => {
         projectEntryRestoreEnabled: true,
       }),
     ).toEqual({
-      focusMode: "conversation",
+      focusMode: "view",
       activeTab: "overview",
-      bootMode: "conversation",
+      bootMode: "overview",
     });
   });
 

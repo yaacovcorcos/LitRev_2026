@@ -9,8 +9,16 @@ const { mockUseProjectCopilot, mockTimelineRenderer } = vi.hoisted(() => ({
   mockTimelineRenderer: vi.fn(),
 }));
 
+const mockRouterPush = vi.fn();
+
 vi.mock("@/contexts/ProjectCopilotContext", () => ({
   useProjectCopilot: mockUseProjectCopilot,
+}));
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({
+    push: mockRouterPush,
+  }),
 }));
 
 vi.mock("@/hooks/useProjectState", () => ({
@@ -64,6 +72,7 @@ describe("ConversationMainView parity", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockRouterPush.mockReset();
     const sendMessage = vi.fn();
     const reconnectRun = vi.fn();
     baseContextValue = {

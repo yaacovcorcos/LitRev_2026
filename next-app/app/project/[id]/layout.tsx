@@ -127,10 +127,11 @@ function ProjectShellInner({
     useEffect(() => {
         setActiveTabState(initialShellState.activeTab);
         setFocusMode(initialShellState.focusMode);
-        if (projectEntryRestoreEnabled && initialShellState.bootMode !== "conversation") {
+        const isRootProjectRoute = pathname === `/project/${projectId}`;
+        if (projectEntryRestoreEnabled && initialShellState.bootMode !== "conversation" && !isRootProjectRoute) {
             setProjectModeBucket(projectId, "workspace");
         }
-    }, [initialShellState, projectEntryRestoreEnabled, projectId]);
+    }, [initialShellState, pathname, projectEntryRestoreEnabled, projectId]);
 
     useEffect(() => {
         if (!routeConversationId) return;
@@ -486,16 +487,6 @@ export default function ProjectLayout({ children }: ProjectLayoutProps) {
     const routeConversationId = routeConversationIdentity?.projectId === projectId
         ? routeConversationIdentity.conversationId
         : null;
-    const shouldUseLegacyConversationRedirect = useMemo(() => {
-        if (!projectEntryRestoreEnabled) return false;
-        if (routeConversationId) return false;
-        if (pathname !== `/project/${projectId}`) return false;
-        const decision = decideConversationRestore(
-            readProjectEntryState(projectId),
-            Date.now(),
-        );
-        return decision.shouldRestore;
-    }, [pathname, projectEntryRestoreEnabled, projectId, routeConversationId]);
     const initialShellState = useMemo(() => deriveProjectShellBootState({
         pathname,
         projectId,
@@ -503,14 +494,19 @@ export default function ProjectLayout({ children }: ProjectLayoutProps) {
     }), [pathname, projectEntryRestoreEnabled, projectId]);
 
     useEffect(() => {
-        if (!shouldUseLegacyConversationRedirect) return;
+        if (!projectEntryRestoreEnabled) return;
+        if (routeConversationId) return;
+        if (pathname !== `/project/${projectId}`) return;
         const decision = decideConversationRestore(
             readProjectEntryState(projectId),
             Date.now(),
         );
-        if (!decision.shouldRestore) return;
+        if (!decision.shouldRestore) {
+            setProjectModeBucket(projectId, "workspace");
+            return;
+        }
         router.replace(buildProjectConversationPath(projectId, decision.conversationId));
-    }, [projectId, router, shouldUseLegacyConversationRedirect]);
+    }, [pathname, projectEntryRestoreEnabled, projectId, routeConversationId, router]);
 
     return (
         <ProjectCopilotProvider

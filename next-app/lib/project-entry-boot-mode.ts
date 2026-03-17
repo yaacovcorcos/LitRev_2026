@@ -2,10 +2,6 @@
 
 import type { FocusMode, ViewTab } from "@/contexts/ProjectShellContext";
 import { parseProjectConversationPath } from "@/lib/durable-route-state";
-import {
-  decideConversationRestore,
-  readProjectEntryState,
-} from "@/lib/project-entry-restore";
 
 export type ProjectBootMode = "conversation" | "overview" | "protocol" | "ledger" | "draft" | "memory" | "notes";
 
@@ -29,7 +25,7 @@ export function deriveProjectShellBootState(args: {
   projectId: string;
   projectEntryRestoreEnabled: boolean;
 }): ProjectShellBootState {
-  const { pathname, projectId, projectEntryRestoreEnabled } = args;
+  const { pathname, projectId } = args;
   const conversationRoute = parseProjectConversationPath(pathname);
   if (conversationRoute?.projectId === projectId) {
     return {
@@ -46,20 +42,6 @@ export function deriveProjectShellBootState(args: {
       activeTab: deepLinkTab,
       bootMode: deepLinkTab,
     };
-  }
-
-  if (projectEntryRestoreEnabled) {
-    const decision = decideConversationRestore(
-      readProjectEntryState(projectId),
-      Date.now(),
-    );
-    if (decision.shouldRestore) {
-      return {
-        focusMode: "conversation",
-        activeTab: "overview",
-        bootMode: "conversation",
-      };
-    }
   }
 
   return {
