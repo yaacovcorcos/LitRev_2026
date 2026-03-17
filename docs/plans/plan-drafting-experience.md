@@ -3,7 +3,7 @@
 ## Purpose
 This is the single canonical plan for LitRev's drafting surface.
 
-It defines one end-state manuscript system for LitRev. Delivery is sequenced only by dependency and blast radius. It is not split into "v1 drafting" and "later drafting." The target stays fixed: LitRev should become a manuscript workspace that is block-native, review-safe, evidence-linked, and export-grade.
+It defines the canonical drafting direction for LitRev and the sequence of work around it. The current authoritative route baseline is the restored section-first drafting experience anchored to the March 7, 2026 `ead2ac8` interaction model: top section tabs, real `Section` / `Full Draft`, and a persistent left sidebar for sections and evidence. The canonical manuscript model, citation compiler, and export foundation remain active under that UI, but the rejected continuous-workspace and drawer-first route shells are not the current product truth.
 
 ## Product Contract Boundary
 This plan changes how LitRev delivers drafting, not what LitRev is for.
@@ -17,13 +17,23 @@ This plan changes how LitRev delivers drafting, not what LitRev is for.
 
 No PRD change is required now because the target architecture still supports section-based drafting. The difference is that sections become structured views over one manuscript system rather than isolated mini-editors.
 
+Current route contract:
+- blank draft by default
+- no seeded sections
+- `Full Draft` and `Section` are route-level projections over one normalized draft/manuscript state
+- top tabs show named sections only
+- `Whole draft` is a first-class freeform area, but not a top tab
+- left sidebar is the only draft-owned support surface
+- right side remains owned by the existing project copilot shell
+
 ## Goal and Scope
 ### Problem statement
-The current draft surface is functional but shallow. It behaves like a section editor with a basic toolbar and evidence sidebar rather than a serious manuscript environment. That leaves LitRev below the bar set by modern block editors, below the trust bar of review-grade document systems, and below the semantic bar required for scientific writing.
+The draft surface must remain immediately usable for actual writing. The recent continuous-workspace and drawer-first experiments moved the route away from the last workable section-first experience and created shell/controller drift. The correction is to restore the usable section-first baseline first, then evolve the manuscript system underneath it without forcing another premature route architecture jump.
 
 ### Intended outcome
 LitRev drafting becomes a manuscript operating system with:
-- one continuous, versioned manuscript document
+- one canonical, versioned manuscript document underneath the route
+- a restored section-first drafting surface on top of that normalized manuscript
 - stable block identities and semantic manuscript objects
 - first-class citations, evidence links, comments, suggestions, and checkpoints
 - inline AI that proposes changes instead of silently rewriting text
@@ -65,13 +75,12 @@ LitRev drafting becomes a manuscript operating system with:
 
 ### Current-state evidence (code-verified)
 - `next-app/app/project/[id]/draft/page.tsx`
-  - Route-level Draft Studio, localStorage-first paint, section/full modes, project copilot wiring, citation issue box, evidence panel integration.
+  - Route-level Draft Studio, localStorage-first paint, section/full modes, project copilot wiring, blank-start handling, and left-sidebar section/evidence integration.
 - `next-app/app/project/[id]/draft/DraftEditors.tsx`
   - Current editor is Tiptap `StarterKit` + `Underline` + custom `Citation` node + paragraph direction.
   - No native comments, suggestion mode, headings UI, tables, figures, equations, links, footnotes, or outline tooling.
-- `next-app/app/project/[id]/draft/useDraftSections.ts`
-  - Section add/remove/drag logic exists.
-  - Removal is destructive without confirmation or immediate undo.
+- `next-app/app/project/[id]/draft/useDraftWorkspaceController.ts`
+  - Canonical route orchestration now owns section add/remove/drag behavior, whole-draft targeting, sidebar state, and save/export wiring against the normalized draft state.
 - `next-app/app/project/[id]/draft/useDraftExport.ts`
   - Current "DOCX export" path is placeholder behavior and not a true document-generation pipeline.
 - `next-app/components/ExportModal.tsx`
@@ -161,8 +170,9 @@ These are one system's views, not separate products.
   - page view, export validation, journal/template checks, bibliography and cross-reference completeness, final packaging
 
 ### 3. Manuscript canvas
-- One continuous document, not separate section pages.
-- Sections still exist, but as document structure nodes in the outline and jump navigation.
+- The current route is section-first, with explicit `Section` and `Full Draft` modes over one normalized manuscript state.
+- `Full Draft` shows `Whole draft` content plus named sections in order.
+- `Section` mode isolates one named section at a time for focused drafting.
 - Every block has a stable ID and semantic type.
 - The canvas supports:
   - paragraph
@@ -418,14 +428,14 @@ These are implementation tracks for one target state, not separate product versi
 - Historical note (March 14, 2026): this reset improved clutter but still removed the section-first drafting workflow users needed. It is retained as an intermediate correction, not the final drafting direction.
 
 ### `DRX-003` Blank-start, section-first drafting reset
-- Restore the older usable drafting interaction model on top of the canonical manuscript model.
+- Restore the older usable drafting interaction model on top of the canonical manuscript model, using `ead2ac8` as the interaction baseline rather than as a literal code restore source.
 - Blank new drafts start with no seeded sections and open in `Full Draft`.
 - Restore top section tabs, real `Section` / `Full Draft`, and a persistent collapsible left sidebar with `Sections` and `Evidence`.
 - Keep right-side ownership exclusively in the existing project copilot shell.
 - Treat `Whole draft` freeform content as a first-class editing target in `Full Draft`, while keeping named sections as the primary tabbed workflow.
 - Preserve manuscript normalization, citation compilation, export entrypoint, and project-shell embedding.
 - Blast radius: high UI correction concentrated in the draft route plus draft-state normalization.
-- Implementation note (March 14, 2026): the route now uses blank-start drafting, restored top tabs, section/full projections over one normalized manuscript, a persistent left sidebar, and no draft-owned right panel. On compact/mobile, the sidebar now behaves as a dismissible overlay so the canvas stays usable without changing the desktop persistent-sidebar contract.
+- Implementation note (March 17, 2026): the route baseline is the restored section-first shell. `Section` and `Full Draft` are route-level projections over one normalized manuscript state, blank drafts open in `Full Draft`, `Whole draft` is a first-class freeform target, and the persistent left sidebar is the only draft-owned support surface. Compact/mobile may use an overlay treatment, but desktop remains anchored to the restored section-first baseline.
 
 ### `DRX-004` Comments, suggestions, and checkpoints
 - Introduce review entities, anchor model, review rail, suggestion mode, and compare/restore UI.

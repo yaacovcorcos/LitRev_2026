@@ -37,79 +37,81 @@ export function SectionsPane({
   onRemoveSection,
 }: SectionsPaneProps) {
   return (
-    <div className={styles.outlinePane} data-testid="sections-pane">
-      <div className={styles.utilityPaneHeader}>
-        <div>
-          <div className={styles.utilityPaneEyebrow}>Navigate</div>
-          <h2 className={styles.utilityPaneTitle}>Sections</h2>
+    <div className={styles.sectionsPane} data-testid="sections-pane">
+      <div className={styles.ledgerHeader}>
+        <div className={styles.ledgerHeaderTop}>
+          <span className={styles.ledgerTitle}>Sections</span>
         </div>
+        <div className={styles.sidebarHelpText}>Navigate the draft and manage section order.</div>
       </div>
 
-      <div className={styles.sectionsList}>
-        {sections.map((section) => {
-          const isActive = activeTargetId === section.id;
-          return (
-            <div key={section.id} className={styles.sectionsListItem}>
-              <div className={styles.sectionsRow}>
-                <button
-                  type="button"
-                  className={`${styles.sectionsButton} ${isActive ? styles.sectionsButtonActive : ""}`}
-                  onClick={() => onSelectSection(section.id)}
-                >
-                  <span className={styles.sectionsButtonLabel}>{section.label}</span>
-                  {section.isGenerated ? <span className={styles.sectionsBadge}>Generated</span> : null}
-                </button>
+      <div className={styles.panelBody}>
+        <div className={styles.sectionsList}>
+          {sections.map((section) => {
+            const isActive = activeTargetId === section.id;
+            return (
+              <div key={section.id} className={styles.sectionsListItem}>
+                <div className={styles.sectionsRow}>
+                  <button
+                    type="button"
+                    className={`${styles.sectionsButton} ${isActive ? styles.sectionsButtonActive : ""}`}
+                    onClick={() => onSelectSection(section.id)}
+                  >
+                    <span className={styles.sectionsButtonLabel}>{section.label}</span>
+                    {section.isGenerated ? <span className={styles.sectionsBadge}>Generated</span> : null}
+                  </button>
 
-                {!section.isWholeDraft && !section.isGenerated ? (
-                  <div className={styles.sectionsActions}>
-                    <button
-                      type="button"
-                      className={styles.structureIconButton}
-                      aria-label={`Move ${section.label} up`}
-                      onClick={() => onMoveSection(section.id, "up")}
-                    >
-                      <span className="material-icons-round">arrow_upward</span>
-                    </button>
-                    <button
-                      type="button"
-                      className={styles.structureIconButton}
-                      aria-label={`Move ${section.label} down`}
-                      onClick={() => onMoveSection(section.id, "down")}
-                    >
-                      <span className="material-icons-round">arrow_downward</span>
-                    </button>
-                    {section.isRemovable ? (
+                  {!section.isWholeDraft && !section.isGenerated ? (
+                    <div className={styles.sectionsActions}>
                       <button
                         type="button"
                         className={styles.structureIconButton}
-                        aria-label={`Remove ${section.label}`}
-                        onClick={() => onRemoveSection(section.id)}
+                        aria-label={`Move ${section.label} up`}
+                        onClick={() => onMoveSection(section.id, "up")}
                       >
-                        <span className="material-icons-round">delete</span>
+                        <span className="material-icons-round">arrow_upward</span>
                       </button>
-                    ) : null}
+                      <button
+                        type="button"
+                        className={styles.structureIconButton}
+                        aria-label={`Move ${section.label} down`}
+                        onClick={() => onMoveSection(section.id, "down")}
+                      >
+                        <span className="material-icons-round">arrow_downward</span>
+                      </button>
+                      {section.isRemovable ? (
+                        <button
+                          type="button"
+                          className={styles.structureIconButton}
+                          aria-label={`Remove ${section.label}`}
+                          onClick={() => onRemoveSection(section.id)}
+                        >
+                          <span className="material-icons-round">delete</span>
+                        </button>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
+
+                {section.headings.length > 0 ? (
+                  <div className={styles.sectionsHeadings}>
+                    {section.headings.map((heading) => (
+                      <button
+                        key={heading.id}
+                        type="button"
+                        className={styles.structureHeadingButton}
+                        onClick={() => onSelectHeading(section.id, heading.blockId)}
+                      >
+                        <span className={styles.structureHeadingLevel}>H{heading.level}</span>
+                        <span className={styles.structureHeadingLabel}>{heading.label}</span>
+                      </button>
+                    ))}
                   </div>
                 ) : null}
               </div>
-
-              {section.headings.length > 0 ? (
-                <div className={styles.sectionsHeadings}>
-                  {section.headings.map((heading) => (
-                    <button
-                      key={heading.id}
-                      type="button"
-                      className={styles.structureHeadingButton}
-                      onClick={() => onSelectHeading(section.id, heading.blockId)}
-                    >
-                      <span className={styles.structureHeadingLevel}>H{heading.level}</span>
-                      <span className={styles.structureHeadingLabel}>{heading.label}</span>
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
     </div>
   );

@@ -26,6 +26,7 @@ function createProps(overrides: Partial<Parameters<typeof DraftTopBar>[0]> = {})
     onToggleMode: vi.fn(),
     onAddSection: vi.fn(),
     onAddCustomSection: vi.fn(),
+    onRemoveSection: vi.fn(),
     onDragStart: vi.fn(),
     onDragOver: vi.fn(),
     onDrop: vi.fn(),
@@ -54,5 +55,20 @@ describe("DraftTopBar", () => {
 
     fireEvent.click(exportButton);
     expect(onExportClick).toHaveBeenCalledTimes(1);
+  });
+
+  it("enables section mode when named sections exist", () => {
+    render(
+      <DraftTopBar
+        {...createProps({
+          canUseSectionMode: true,
+          orderedSections: [{ id: "abstract", label: "Abstract", placeholder: "Add abstract" }],
+          activeSection: "abstract",
+        })}
+      />,
+    );
+
+    expect(screen.getByRole("tab", { name: "Abstract" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Section" }).getAttribute("disabled")).toBeNull();
   });
 });
