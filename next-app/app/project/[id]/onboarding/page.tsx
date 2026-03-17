@@ -17,6 +17,12 @@ import {
 } from "@/app/actions/onboarding";
 import { useProjects } from "@/contexts/ProjectsContext";
 import { EmptyState, EmptyStateSkeleton } from "@/components/ui/EmptyState";
+import {
+  DEFAULT_ONBOARDING_STEP_STATUSES,
+  ONBOARDING_STEPS,
+  type OnboardingStepId,
+  type OnboardingStepStatus,
+} from "@/lib/durable-route-state";
 import { createDefaultProtocolData, type ProtocolData } from "@/types/protocol";
 import { mirrorGuidedSetupCompleted } from "@/lib/demo/onboarding";
 import type {
@@ -30,28 +36,7 @@ import type {
 } from "@/lib/server/onboarding-ai";
 import styles from "./onboarding.module.css";
 
-type StepId = "topicQuestion" | "pico" | "criteria" | "strategy" | "workflow" | "launch";
-type StepStatus = "pending" | "completed" | "skipped";
-
-const STEPS: Array<{ id: StepId; label: string; short: string }> = [
-  { id: "topicQuestion", label: "Topic & Question", short: "Question" },
-  { id: "pico", label: "PICO Builder", short: "PICO" },
-  { id: "criteria", label: "Criteria", short: "Criteria" },
-  { id: "strategy", label: "Strategy Preview", short: "Strategy" },
-  { id: "workflow", label: "Workflow Orientation", short: "Workflow" },
-  { id: "launch", label: "Launch Gate", short: "Launch" },
-];
-
-const DEFAULT_STEP_STATUSES: Record<StepId, StepStatus> = {
-  topicQuestion: "pending",
-  pico: "pending",
-  criteria: "pending",
-  strategy: "pending",
-  workflow: "pending",
-  launch: "pending",
-};
-
-const EXPLAINERS: Record<StepId, { title: string; body: string }> = {
+const EXPLAINERS: Record<OnboardingStepId, { title: string; body: string }> = {
   topicQuestion: {
     title: "Question quality",
     body: "A draft question is enough. Start broad if needed; you will refine after the first evidence pass.",
@@ -99,7 +84,9 @@ export default function ProjectOnboardingPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [isRunningAI, setIsRunningAI] = useState(false);
   const [stepIndex, setStepIndex] = useState(0);
-  const [stepStatuses, setStepStatuses] = useState<Record<StepId, StepStatus>>(DEFAULT_STEP_STATUSES);
+  const [stepStatuses, setStepStatuses] = useState<Record<OnboardingStepId, OnboardingStepStatus>>(
+    DEFAULT_ONBOARDING_STEP_STATUSES,
+  );
   const [protocol, setProtocol] = useState<ProtocolData>(createDefaultProtocolData);
   const [topicText, setTopicText] = useState("");
   const [domainText, setDomainText] = useState("");
@@ -114,8 +101,8 @@ export default function ProjectOnboardingPage() {
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const currentStep = STEPS[stepIndex];
-  const progressPercent = asPercent(stepIndex, STEPS.length);
+  const currentStep = ONBOARDING_STEPS[stepIndex];
+  const progressPercent = asPercent(stepIndex, ONBOARDING_STEPS.length);
 
   useEffect(() => {
     let isActive = true;
@@ -149,7 +136,7 @@ export default function ProjectOnboardingPage() {
 
   const hydratedProtocol = useMemo(() => protocol, [protocol]);
 
-  const updateStepStatus = useCallback((stepId: StepId, status: StepStatus) => {
+  const updateStepStatus = useCallback((stepId: OnboardingStepId, status: OnboardingStepStatus) => {
     setStepStatuses((prev) => ({ ...prev, [stepId]: status }));
   }, []);
 
@@ -273,7 +260,7 @@ export default function ProjectOnboardingPage() {
       updateStepStatus("workflow", "completed");
     }
 
-    setStepIndex(STEPS.length - 1);
+    setStepIndex(ONBOARDING_STEPS.length - 1);
   }, [
     runAI,
     topicText,
@@ -686,7 +673,7 @@ export default function ProjectOnboardingPage() {
             AI-guided setup to get you working quickly. Draft answers are expected and editable later.
           </p>
           <div className={styles.progressMeta}>
-            <span>Step {stepIndex + 1} of {STEPS.length}</span>
+            <span>Step {stepIndex + 1} of {ONBOARDING_STEPS.length}</span>
             <span>{progressPercent}% complete</span>
           </div>
           <div className={styles.progressTrack} aria-hidden="true">
@@ -728,7 +715,7 @@ export default function ProjectOnboardingPage() {
       <div className={styles.layout}>
         <aside className={styles.stepRail} aria-label="Onboarding steps">
           <ol className={styles.stepper}>
-            {STEPS.map((step, index) => (
+            {ONBOARDING_STEPS.map((step, index) => (
               <li key={step.id}>
                 <button
                   type="button"
@@ -771,7 +758,7 @@ export default function ProjectOnboardingPage() {
                 Back
               </button>
 
-              {stepIndex < STEPS.length - 1 ? (
+              {stepIndex < ONBOARDING_STEPS.length - 1 ? (
                 <button
                   type="button"
                   className={`btn btn-primary ${styles.primaryActionBtn}`}
@@ -780,7 +767,7 @@ export default function ProjectOnboardingPage() {
                     updateStepStatus(currentStep.id, "completed");
                     const saved = await persistProgress();
                     if (!saved) return;
-                    setStepIndex((prev) => Math.min(STEPS.length - 1, prev + 1));
+                    setStepIndex((prev) => Math.min(ONBOARDING_STEPS.length - 1, prev + 1));
                   }}
                 >
                   {isSaving ? "Saving..." : "Continue"}
