@@ -322,7 +322,7 @@ Rules:
 | Route | Boot Trigger | Main Data Path | Local Durability / Cache | Current Warmup / Preload | Main Risk |
 |---|---|---|---|---|---|
 | `/` | server homepage bootstrap, then hydrated client shell | fast auth/workspace bootstrap -> hydrated `ProjectsContext` -> `listHomeProjectsAction()` for home refresh | sort/view prefs, last project ID, workspace-entry session flag, route-specific `15s` seeded-home freshness | project links use `prefetch={false}`; legacy-claim bootstrap runs on an idle client path after session restore | local post-hydration enhancements still decorate after first paint, and home-specific seed freshness/invalidation now differs from the older generic projects fetch path |
-| `/project/[id]` | project shell boot mode `overview` or `conversation` | `ProjectsContext` + overview stats action + optional `useProjectState()` bootstrap | project-entry restore state, project copilot provider state | recent activity defers until idle; no sibling-route prefetch | long-lived shell keeps project state resident across route changes |
+| `/project/[id]` | project shell boot mode `overview` or `conversation` | `ProjectsContext` + overview stats action + optional `useProjectState()` bootstrap | project-entry restore state, project copilot provider state | recent activity defers until idle; no sibling-route prefetch | long-lived shell keeps project state resident across route changes, and root-route restore semantics are still coupled to local project-entry state until the durable-navigation program moves main conversation to a dedicated route |
 | `/project/[id]/protocol` | project shell eager-boots `protocol` slice | `ProjectDataContext.protocol` -> `ProtocolContext` | protocol local durability envelope in `localStorage` with sync metadata | active-surface boot only; hover warmup from tab bar may preload this domain | local-first edits plus async remote sync create staleness/conflict complexity |
 | `/project/[id]/ledger` | project shell eager-boots `ledger` slice | `ProjectDataContext.studies` seeds `LedgerContext`; page reads `LedgerContext` | in-memory `LedgerContext` cache only | tab-hover warmup may preload `ledger`; route warms `protocol` when criteria are needed | duplicated ledger state across two client caches |
 | `/project/[id]/draft` | route mount | local draft state paints first, then `ProjectDataContext.draft` via `warmDomain("draft")` | substantial draft `localStorage` durability | no shell eager boot; route-local warmup only | large local payloads and editor state can grow without central retention policy |
@@ -511,6 +511,11 @@ Precedence rules:
 - Draft-surface performance and cache work must remain consistent with `docs/plans/plan-drafting-experience.md`; this plan owns performance policy, not draft architecture.
 - `/ai`, project copilot, and popup performance work must preserve the shared runtime and truthful trace contracts in `docs/plans/plan-chat-unification-v2.md` and `docs/plans/plan-thinking-v2.md`.
 - Performance work must not fork shared chat/runtime behavior as a shortcut for one route.
+- The durable navigation program in `docs/plans/plan-ux-ui.md` owns the route-identity migration that makes `/project/[id]` overview-only and moves exact conversation restore into URL-owned destinations; when those PRs land, keep this plan current wherever project-entry restore or route boot assumptions change.
+- Supporting rule for perf-sensitive route normalization:
+  - explicit URL identity must beat local restore
+  - normalization must only move invalid URL state to safe non-destructive fallbacks
+  - no live run should be rebound to a different conversation or project solely because a normalization pass changed the URL
 
 ## Recently Completed
 - [x] `SPD-008a` Initial loading/cache inventory is now codified directly in this file as the compact current-state matrix, so future cache work can iterate from one canonical baseline instead of ad hoc repo scans.

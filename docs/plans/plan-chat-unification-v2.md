@@ -19,6 +19,7 @@ This plan does not own:
 - agent-runtime orchestration fixes in [plan-agentic.md](./plan-agentic.md)
 - truthful execution-trace design in [plan-thinking-v2.md](./plan-thinking-v2.md)
 - route-specific UI polish in [plan-ux-ui.md](./plan-ux-ui.md)
+- the durable URL/navigation contract for conversation identity, which is owned by [plan-ux-ui.md](./plan-ux-ui.md) and must be reflected here only where route identity constrains shared chat-runtime behavior
 
 ## Current Architecture
 - `/ai` and project copilot already share the normalized stream event model through `shared-stream-reducer.ts` and shared runtime helpers in `lib/ai/`.
@@ -29,6 +30,10 @@ This plan does not own:
 - Popup has canonical Context V2 payload alignment and now derives its supported progress/checkpoint/error/blocking subset through a shared reducer adapter, but it still has not migrated fully onto the shared runtime engine.
 - The CI anti-duplication architecture guard is already enforced and should continue preventing new per-surface chunk parsers.
 - Chat/runtime work above this layer now depends on convergence here rather than inventing new per-surface semantics.
+- Durable route identity is still weaker than the runtime contract on the main chat surfaces:
+  - main project conversation is not yet a first-class route destination
+  - side-panel copilot conversation identity is not yet URL-bound on workspace routes
+  - `/ai` active conversation and attached project scope are still route-local client state rather than URL state
 
 ## Non-Negotiable Constraints
 1. `/ai` remains usable without a project.
@@ -176,6 +181,15 @@ Architecture guardrails:
 - [agent-runtime-remediation/plan-runtime-stabilization-and-continuation.md](./agent-runtime-remediation/plan-runtime-stabilization-and-continuation.md) defines the durable recovery/continuation contract that chat unification must consume rather than reinterpret per surface.
 - [plan-thinking-v2.md](./plan-thinking-v2.md) depends on this plan for shared runtime parity across `/ai` and project copilot before broader truthful execution-trace rollout.
 - [plan-agentic.md](./plan-agentic.md) depends on this plan whenever agent fixes require shared stream/runtime semantics instead of per-surface adapters.
+- [plan-ux-ui.md](./plan-ux-ui.md) owns the durable navigation contract for chat surfaces:
+  - `/project/[id]` becomes overview-only
+  - main project conversation becomes `/project/[id]/conversation/[conversationId]`
+  - side copilot adopts query-param identity on workspace routes
+  - `/ai` adopts URL-owned conversation and project-scope identity
+  - explicit URL must always beat local restore
+- Shared runtime work in this file must preserve that navigation contract:
+  - no live run may be rebound to a different conversation or project solely because a normalization pass changed the URL
+  - popup remains promotion-only and should not gain first-class durable URL identity unless this plan and `plan-ux-ui.md` are updated together
 
 Popup remains a truthful reduced subset only: until `U3` lands, popup should be reviewed against the shared runtime contract's honest reduced subset, not full reconnect/replay chrome or continuation parity.
 
