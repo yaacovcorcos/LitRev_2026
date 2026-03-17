@@ -58,68 +58,71 @@ export function DraftSidebar({
       ) : null}
 
       <aside
-        className={`${styles.sidebar} ${collapsed ? styles.sidebarCollapsed : ""} ${isOverlay ? styles.sidebarOverlay : ""}`}
-        aria-label="Draft sidebar"
+        className={`${collapsed ? styles.collapsedRailLeft : styles.ledger} ${isOverlay ? styles.sidebarOverlay : ""}`}
+        aria-label={collapsed ? "Draft sidebar (collapsed)" : "Draft sidebar"}
         data-overlay={overlayOpen ? "true" : "false"}
       >
-        <div className={styles.sidebarHeader}>
-          <div className={styles.sidebarSegmentControl} role="tablist" aria-label="Draft sidebar views">
-            <button
-              type="button"
-              role="tab"
-              aria-selected={activeView === "sections"}
-              aria-controls={sectionsPanelId}
-              className={activeView === "sections" ? styles.segmentActive : ""}
-              onClick={() => onViewChange("sections")}
-            >
-              Sections
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={activeView === "evidence"}
-              aria-controls={evidencePanelId}
-              className={activeView === "evidence" ? styles.segmentActive : ""}
-              onClick={() => onViewChange("evidence")}
-            >
-              Evidence
-            </button>
-          </div>
-
-          <button
-            type="button"
-            className={styles.sidebarToggleBtn}
-            aria-label={collapsed ? "Open draft sidebar" : "Collapse draft sidebar"}
-            onClick={onToggleCollapsed}
-          >
-            <span className="material-icons-round">{collapsed ? "keyboard_double_arrow_right" : "keyboard_double_arrow_left"}</span>
-          </button>
-        </div>
-
         {!collapsed ? (
-          <div className={styles.sidebarContent}>
+          <>
+            <div className={styles.sidebarHeaderRow}>
+              <div className={styles.sidebarSegmentControl} role="tablist" aria-label="Draft sidebar views">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={activeView === "sections"}
+                  aria-controls={sectionsPanelId}
+                  className={activeView === "sections" ? styles.segmentActive : ""}
+                  onClick={() => onViewChange("sections")}
+                >
+                  Sections
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={activeView === "evidence"}
+                  aria-controls={evidencePanelId}
+                  className={activeView === "evidence" ? styles.segmentActive : ""}
+                  onClick={() => onViewChange("evidence")}
+                >
+                  Evidence
+                </button>
+              </div>
+
+              <button
+                type="button"
+                className={styles.panelToggle}
+                aria-label="Collapse draft sidebar"
+                onClick={onToggleCollapsed}
+              >
+                <span className="material-icons-round">keyboard_double_arrow_left</span>
+              </button>
+            </div>
+
             <div
               id={sectionsPanelId}
               role="tabpanel"
               aria-label="Sections sidebar panel"
               hidden={activeView !== "sections"}
+              className={styles.sidebarPanel}
             >
               {sectionsPane}
             </div>
+
             <div
               id={evidencePanelId}
               role="tabpanel"
               aria-label="Evidence sidebar panel"
               hidden={activeView !== "evidence"}
+              className={styles.sidebarPanel}
             >
               {evidencePane}
             </div>
-          </div>
+          </>
         ) : (
-          <div className={styles.sidebarCollapsedRail}>
+          <div className={styles.collapsedRailButtons}>
             <button
               type="button"
-              className={`${styles.sidebarRailBtn} ${activeView === "sections" ? styles.sidebarRailBtnActive : ""}`}
+              className={`${styles.panelToggle} ${activeView === "sections" ? styles.panelToggleActive : ""}`}
               aria-label="Show sections"
               onClick={() => {
                 onViewChange("sections");
@@ -128,9 +131,10 @@ export function DraftSidebar({
             >
               <span className="material-icons-round">toc</span>
             </button>
+
             <button
               type="button"
-              className={`${styles.sidebarRailBtn} ${activeView === "evidence" ? styles.sidebarRailBtnActive : ""}`}
+              className={`${styles.panelToggle} ${activeView === "evidence" ? styles.panelToggleActive : ""}`}
               aria-label="Show evidence"
               onClick={() => {
                 onViewChange("evidence");

@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense } from "react";
+import { Suspense, type CSSProperties } from "react";
 import { useParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import * as Dialog from "@radix-ui/react-dialog";
@@ -99,16 +99,19 @@ function DraftContent() {
     />
   );
 
-  const renderDraftRegion = (sectionId: string, label: string, placeholder?: string, editable = true, isWholeDraft = false) => (
+  const renderDraftRegion = (
+    sectionId: string,
+    label: string,
+    placeholder?: string,
+    editable = true,
+    isWholeDraft = false,
+  ) => (
     <section
       key={sectionId}
-      className={`${styles.manuscriptRegion} ${isWholeDraft ? styles.manuscriptWholeDraftRegion : ""}`}
+      className={`${styles.manuscriptSection} ${controller.currentTargetId === sectionId ? styles.manuscriptSectionActive : ""}`}
       data-section-id={sectionId}
     >
       <div className={styles.manuscriptSectionHeader}>
-        <div className={styles.manuscriptSectionEyebrow}>
-          {isWholeDraft ? "Blank draft" : sectionId === "references" ? "Generated section" : "Manuscript section"}
-        </div>
         <h2 className={styles.manuscriptSectionTitle}>{label}</h2>
       </div>
 
@@ -120,7 +123,7 @@ function DraftContent() {
         onSelectionChange={controller.handleSectionSelectionChange}
         registerEditor={controller.registerEditor}
         placeholderText={placeholder}
-        surfaceClassName={styles.editorSurface}
+        surfaceClassName={isWholeDraft ? styles.editorSurfaceInlineWholeDraft : styles.editorSurfaceInline}
         surfaceStyle={controller.formatVarsById[sectionId]}
         editable={editable}
       />
@@ -152,6 +155,7 @@ function DraftContent() {
           onToggleMode={controller.handleToggleMode}
           onAddSection={controller.handleAddSection}
           onAddCustomSection={controller.handleAddCustomSection}
+          onRemoveSection={controller.requestRemoveSection}
           onDragStart={controller.handleDragStart}
           onDragOver={controller.handleDragOver}
           onDrop={controller.handleDrop}
@@ -161,8 +165,12 @@ function DraftContent() {
           saveStatus={controller.saveStatus}
         />
 
-        <div className={styles.workspaceBody}>
-          <div className={styles.workspaceHost}>
+        <div
+          className={styles.body}
+          style={{
+            "--ledger-width": controller.isCompactWorkspace ? "0px" : controller.isSidebarCollapsed ? "60px" : "320px",
+          } as CSSProperties}
+        >
             <DraftSidebar
               collapsed={controller.isSidebarCollapsed}
               activeView={controller.sidebarView}
@@ -175,30 +183,24 @@ function DraftContent() {
             />
 
             <section className={styles.center} aria-label="Draft editor">
-              <div className={styles.editorChrome}>
-                <div className={styles.editorHeader}>
-                  <div className={styles.editorHeaderMeta}>
-                    <div className={styles.editorHeaderEyebrow}>
-                      {controller.draft.mode === "section" ? "Section focus" : "Drafting"}
-                    </div>
-                    <h1 className={styles.editorHeaderTitle}>
-                      {controller.draft.mode === "section" ? controller.activeSectionLabel : controller.currentTargetLabel}
-                    </h1>
-                  </div>
+              <div className={styles.centerHeader}>
+                <div className={styles.centerTitle}>
+                  <span className="material-icons-round">edit</span>
+                  {controller.draft.mode === "section" ? controller.activeSectionLabel : "Draft"}
                 </div>
+              </div>
 
-                <div className={styles.toolbarRow}>
-                  <EditorToolbar editor={controller.activeEditor} dir={controller.paragraphDir} onAskAi={controller.handleAskAi} />
-                  <DraftFormattingPanel
-                    isOpen={controller.isFormatOpen}
-                    setOpen={controller.setFormatOpen}
-                    formatRef={controller.formatRef}
-                    activeSection={controller.currentTargetId}
-                    activeFormat={controller.activeFormat}
-                    activeFontFamily={controller.activeFontFamily}
-                    onUpdateFormat={controller.updateSectionFormat}
-                  />
-                </div>
+              <div className={styles.toolbarRow}>
+                <EditorToolbar editor={controller.activeEditor} dir={controller.paragraphDir} onAskAi={controller.handleAskAi} />
+                <DraftFormattingPanel
+                  isOpen={controller.isFormatOpen}
+                  setOpen={controller.setFormatOpen}
+                  formatRef={controller.formatRef}
+                  activeSection={controller.currentTargetId}
+                  activeFormat={controller.activeFormat}
+                  activeFontFamily={controller.activeFontFamily}
+                  onUpdateFormat={controller.updateSectionFormat}
+                />
               </div>
 
               {controller.citationIssues.length > 0 ? (
@@ -215,16 +217,33 @@ function DraftContent() {
                 </div>
               ) : null}
 
-              <div className={styles.draftCanvas}>
-                {controller.draft.mode === "section" && controller.draft.activeSection ? (
-                  renderDraftRegion(
-                    controller.draft.activeSection,
-                    controller.activeSectionLabel,
-                    controller.orderedSections.find((section) => section.id === controller.draft.activeSection)?.placeholder,
-                    controller.draft.activeSection !== "references",
-                  )
-                ) : (
-                  <>
+              {controller.draft.mode === "section" && controller.draft.activeSection ? (
+                <section className={styles.sectionEditorWrapper} role="tabpanel" id="draft-section-panel">
+                  <FullSectionEditor
+                    sectionId={controller.draft.activeSection}
+                    content={controller.draft.contentBySection[controller.draft.activeSection]}
+                    onFocusSection={controller.handleSectionFocus}
+                    onUpdateSection={controller.updateSectionContent}
+                    onSelectionChange={controller.handleSectionSelectionChange}
+                    registerEditor={controller.registerEditor}
+                    placeholderText={controller.orderedSections.find((section) => section.id === controller.draft.activeSection)?.placeholder}
+                    surfaceClassName={styles.editorSurface}
+                    surfaceStyle={controller.formatVarsById[controller.draft.activeSection]}
+                    editable={controller.draft.activeSection !== "references"}
+                  />
+                </section>
+              ) : (
+                <div className={styles.fullDraftScroll} role="region" aria-label="Full draft">
+                  <div className={styles.manuscript}>
+                    <header className={styles.manuscriptHeader}>
+                      <h1 className={styles.manuscriptTitle}>{controller.project.name}</h1>
+                      <p className={styles.manuscriptSubtitle}>
+                        {controller.orderedSections.length === 0
+                          ? "Start drafting. Add sections when you want structure."
+                          : "Full manuscript view — sections stay in the order you build them."}
+                      </p>
+                    </header>
+
                     {controller.shouldRenderWholeDraft
                       ? renderDraftRegion(
                           UNSECTIONED_DRAFT_ID,
@@ -234,6 +253,7 @@ function DraftContent() {
                           true,
                         )
                       : null}
+
                     {controller.orderedSections.map((section) =>
                       renderDraftRegion(
                         section.id,
@@ -242,11 +262,10 @@ function DraftContent() {
                         section.id !== "references",
                       ),
                     )}
-                  </>
-                )}
-              </div>
+                  </div>
+                </div>
+              )}
             </section>
-          </div>
         </div>
       </div>
 

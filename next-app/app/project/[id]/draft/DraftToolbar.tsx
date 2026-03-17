@@ -10,6 +10,10 @@ import {
 } from "./draft-helpers";
 import styles from "./draft-studio.module.css";
 
+/* ------------------------------------------------------------------ */
+/*  Section Tabs + Mode Toggle + Export + Save Badge                   */
+/* ------------------------------------------------------------------ */
+
 export type DraftTopBarProps = {
   projectName: string;
   activeSection: DraftSectionId | null;
@@ -17,32 +21,37 @@ export type DraftTopBarProps = {
   canUseSectionMode: boolean;
   orderedSections: SectionMeta[];
   availableSections: SectionMeta[];
+  // Drag state
   draggingKey: DraftSectionId | null;
   dragOverKey: DraftSectionId | null;
   dragOverPosition: "before" | "after" | null;
+  // Refs
   sectionTabRefs: RefObject<Record<DraftSectionId, HTMLButtonElement | null>>;
   addSectionRef: RefObject<HTMLDivElement | null>;
   addSectionInputRef: RefObject<HTMLInputElement | null>;
+  // Add section state
   isAddSectionOpen: boolean;
   setAddSectionOpen: (open: boolean | ((prev: boolean) => boolean)) => void;
   customSectionName: string;
   setCustomSectionName: (name: string) => void;
+  // Callbacks
   onSelectSection: (key: DraftSectionId) => void;
   onSectionKeyDown: (event: ReactKeyboardEvent<HTMLButtonElement>, index: number) => void;
   onToggleMode: (mode: DraftMode) => void;
   onAddSection: (key: DraftSectionId) => void;
   onAddCustomSection: () => void;
+  onRemoveSection: (key: DraftSectionId) => void;
   onDragStart: (event: DragEvent<HTMLButtonElement>, key: DraftSectionId) => void;
   onDragOver: (event: DragEvent<HTMLButtonElement>, key: DraftSectionId) => void;
   onDrop: (event: DragEvent<HTMLButtonElement>, key: DraftSectionId) => void;
   onDragEnd: () => void;
+  // Export
   hasDraftContent: boolean;
   onExportClick: () => void;
   saveStatus: "saved" | "saving" | "error";
 };
 
 export function DraftTopBar({
-  projectName,
   activeSection,
   mode,
   canUseSectionMode,
@@ -63,6 +72,7 @@ export function DraftTopBar({
   onToggleMode,
   onAddSection,
   onAddCustomSection,
+  onRemoveSection,
   onDragStart,
   onDragOver,
   onDrop,
@@ -70,6 +80,7 @@ export function DraftTopBar({
   hasDraftContent,
   onExportClick,
   saveStatus,
+  projectName,
 }: DraftTopBarProps) {
   return (
     <div className={styles.top}>
@@ -92,6 +103,7 @@ export function DraftTopBar({
                     : isDragOver && dragOverPosition === "before"
                       ? styles.sectionTabDropBefore
                       : "";
+                const canRemove = orderedSections.length > 1 && section.id !== "references";
                 return (
                   <button
                     key={section.id}
@@ -100,14 +112,22 @@ export function DraftTopBar({
                     draggable={section.id !== "references"}
                     aria-grabbed={isDragging}
                     aria-selected={activeSection === section.id}
+                    aria-controls={mode === "section" ? "draft-section-panel" : undefined}
+                    id={`draft-tab-${section.id}`}
                     className={`${styles.sectionTab} ${activeSection === section.id ? styles.sectionTabActive : ""} ${isDragging ? styles.sectionTabDragging : ""} ${dropClass}`}
                     onClick={() => onSelectSection(section.id)}
+                    onDoubleClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      if (canRemove) onRemoveSection(section.id);
+                    }}
                     onKeyDown={(event) => onSectionKeyDown(event, index)}
                     onDragStart={(event) => onDragStart(event, section.id)}
                     onDragOver={(event) => onDragOver(event, section.id)}
                     onDrop={(event) => onDrop(event, section.id)}
                     onDragEnd={onDragEnd}
                     tabIndex={activeSection === section.id ? 0 : -1}
+                    title={canRemove ? "Double-click to remove" : undefined}
                     ref={(el) => {
                       sectionTabRefs.current[section.id] = el;
                     }}
@@ -120,7 +140,6 @@ export function DraftTopBar({
               <div className={styles.emptyTabsState}>No sections yet</div>
             )}
           </div>
-
           <div className={styles.addSection} ref={addSectionRef}>
             <button
               type="button"
@@ -139,12 +158,12 @@ export function DraftTopBar({
                   <input
                     ref={addSectionInputRef}
                     type="text"
-                    placeholder="Custom section name..."
+                    placeholder="New section name..."
                     value={customSectionName}
-                    onChange={(event) => setCustomSectionName(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") {
-                        event.preventDefault();
+                    onChange={(e) => setCustomSectionName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
                         onAddCustomSection();
                       }
                     }}
@@ -159,7 +178,9 @@ export function DraftTopBar({
                     <span className="material-icons-round">add</span>
                   </button>
                 </div>
-                {availableSections.length > 0 ? <div className={styles.sectionMenuDivider} /> : null}
+                {availableSections.length > 0 && (
+                  <div className={styles.sectionMenuDivider} />
+                )}
                 {availableSections.map((section) => (
                   <button
                     key={section.id}
@@ -215,15 +236,17 @@ export function DraftTopBar({
         </button>
 
         <div className={styles.saveBadge} role="status" aria-live="polite" aria-atomic="true">
-          <span className="material-icons-round">
-            {saveStatus === "saving" ? "sync" : saveStatus === "error" ? "error_outline" : "check_circle"}
-          </span>
+          <span className="material-icons-round">{saveStatus === "saving" ? "sync" : saveStatus === "error" ? "error_outline" : "check_circle"}</span>
           {saveStatus === "saving" ? "Saving" : saveStatus === "error" ? "Save failed" : "Saved"}
         </div>
       </div>
     </div>
   );
 }
+
+/* ------------------------------------------------------------------ */
+/*  Formatting Panel                                                   */
+/* ------------------------------------------------------------------ */
 
 export type DraftFormattingPanelProps = {
   isOpen: boolean;
@@ -264,7 +287,9 @@ export function DraftFormattingPanel({
               <select
                 className={styles.formatSelect}
                 value={activeFontFamily}
-                onChange={(event) => onUpdateFormat(activeSection, { fontFamily: event.target.value })}
+                onChange={(event) =>
+                  onUpdateFormat(activeSection, { fontFamily: event.target.value })
+                }
               >
                 {FONT_FAMILY_OPTIONS.map((option) => (
                   <option key={option.value} value={option.value}>
@@ -279,7 +304,9 @@ export function DraftFormattingPanel({
               <select
                 className={styles.formatSelect}
                 value={activeFormat.fontSize}
-                onChange={(event) => onUpdateFormat(activeSection, { fontSize: Number(event.target.value) })}
+                onChange={(event) =>
+                  onUpdateFormat(activeSection, { fontSize: Number(event.target.value) })
+                }
               >
                 {FONT_SIZE_OPTIONS.map((size) => (
                   <option key={size} value={size}>
@@ -294,7 +321,9 @@ export function DraftFormattingPanel({
               <select
                 className={styles.formatSelect}
                 value={activeFormat.lineHeight}
-                onChange={(event) => onUpdateFormat(activeSection, { lineHeight: Number(event.target.value) })}
+                onChange={(event) =>
+                  onUpdateFormat(activeSection, { lineHeight: Number(event.target.value) })
+                }
               >
                 {LINE_HEIGHT_OPTIONS.map((height) => (
                   <option key={height} value={height}>
@@ -309,7 +338,9 @@ export function DraftFormattingPanel({
               <select
                 className={styles.formatSelect}
                 value={activeFormat.paragraphSpacing}
-                onChange={(event) => onUpdateFormat(activeSection, { paragraphSpacing: Number(event.target.value) })}
+                onChange={(event) =>
+                  onUpdateFormat(activeSection, { paragraphSpacing: Number(event.target.value) })
+                }
               >
                 {PARAGRAPH_SPACING_OPTIONS.map((space) => (
                   <option key={space} value={space}>
