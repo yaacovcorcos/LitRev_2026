@@ -24,7 +24,13 @@ import { isMobileScrollLockV2Enabled, isMobileViewportV2Enabled } from "@/lib/mo
 import { ProjectDataProvider } from "@/contexts/ProjectDataContext";
 import { recordReliabilityMetric } from "@/lib/ai/reliability-telemetry";
 import {
+    buildProjectConversationPath,
+    parseProjectConversationPath,
+} from "@/lib/durable-route-state";
+import {
+    decideConversationRestore,
     isProjectEntryRestoreEnabled,
+    readProjectEntryState,
     setProjectModeBucket,
 } from "@/lib/project-entry-restore";
 import {
@@ -39,17 +45,32 @@ const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(ma
 type ProjectShellInnerProps = {
     projectId: string;
     initialShellState: ProjectShellBootState;
+    routeConversationId: string | null;
     children: ReactNode;
 };
 
-function ProjectShellInner({ projectId, initialShellState, children }: ProjectShellInnerProps) {
+function ProjectShellInner({
+    projectId,
+    initialShellState,
+    routeConversationId,
+    children,
+}: ProjectShellInnerProps) {
   const router = useRouter();
   const pathname = usePathname();
   const projectEntryRestoreEnabled = isProjectEntryRestoreEnabled();
   const scrollOwnershipA1Enabled = isScrollOwnershipA1Enabled();
   const mobileViewportV2Enabled = isMobileViewportV2Enabled();
   const mobileScrollLockV2Enabled = isMobileScrollLockV2Enabled();
-    const { isCollapsed, panelWidth, setPanelWidth, toggleCollapsed, setStudyFilter } = useProjectCopilot();
+    const {
+        currentConversationId,
+        isCollapsed,
+        panelWidth,
+        setPanelWidth,
+        toggleCollapsed,
+        setStudyFilter,
+        selectConversation,
+        newConversation,
+    } = useProjectCopilot();
     const { registerCopilotToggle } = useCommandPalette();
     const { getProjectById, deleteProject } = useProjects();
     const project = projectId ? getProjectById(projectId) : undefined;
@@ -110,6 +131,21 @@ function ProjectShellInner({ projectId, initialShellState, children }: ProjectSh
             setProjectModeBucket(projectId, "workspace");
         }
     }, [initialShellState, projectEntryRestoreEnabled, projectId]);
+
+    useEffect(() => {
+        if (!routeConversationId) return;
+        let isActive = true;
+
+        void (async () => {
+            const loaded = await selectConversation(routeConversationId);
+            if (!isActive || loaded) return;
+            router.replace(`/project/${projectId}`);
+        })();
+
+        return () => {
+            isActive = false;
+        };
+    }, [projectId, routeConversationId, router, selectConversation]);
 
     // Keep root scrolling scoped to shell owners (baseline path).
     // A1 disabled => preserve existing behavior/dependencies unchanged.
@@ -275,11 +311,17 @@ function ProjectShellInner({ projectId, initialShellState, children }: ProjectSh
     }, [projectEntryRestoreEnabled, projectId, router]);
 
     const returnToConversation = useCallback(() => {
-        setFocusMode("conversation");
-        if (projectEntryRestoreEnabled) {
-            setProjectModeBucket(projectId, "conversation");
-        }
-    }, [projectEntryRestoreEnabled, projectId]);
+        void (async () => {
+            const targetConversationId =
+                currentConversationId ?? await newConversation("overview" as CopilotPage);
+            if (!targetConversationId) return;
+            setFocusMode("conversation");
+            if (projectEntryRestoreEnabled) {
+                setProjectModeBucket(projectId, "conversation");
+            }
+            router.push(buildProjectConversationPath(projectId, targetConversationId));
+        })();
+    }, [currentConversationId, newConversation, projectEntryRestoreEnabled, projectId, router]);
 
     const handleTabClick = useCallback((tab: ViewTab) => {
         setActiveTab(tab);
@@ -433,20 +475,55 @@ type ProjectLayoutProps = {
 
 export default function ProjectLayout({ children }: ProjectLayoutProps) {
     const params = useParams<{ id: string }>();
+    const router = useRouter();
     const pathname = usePathname();
     const projectId = params?.id ?? "";
     const projectEntryRestoreEnabled = isProjectEntryRestoreEnabled();
+    const routeConversationIdentity = useMemo(
+        () => parseProjectConversationPath(pathname),
+        [pathname],
+    );
+    const routeConversationId = routeConversationIdentity?.projectId === projectId
+        ? routeConversationIdentity.conversationId
+        : null;
+    const shouldUseLegacyConversationRedirect = useMemo(() => {
+        if (!projectEntryRestoreEnabled) return false;
+        if (routeConversationId) return false;
+        if (pathname !== `/project/${projectId}`) return false;
+        const decision = decideConversationRestore(
+            readProjectEntryState(projectId),
+            Date.now(),
+        );
+        return decision.shouldRestore;
+    }, [pathname, projectEntryRestoreEnabled, projectId, routeConversationId]);
     const initialShellState = useMemo(() => deriveProjectShellBootState({
         pathname,
         projectId,
         projectEntryRestoreEnabled,
     }), [pathname, projectEntryRestoreEnabled, projectId]);
 
+    useEffect(() => {
+        if (!shouldUseLegacyConversationRedirect) return;
+        const decision = decideConversationRestore(
+            readProjectEntryState(projectId),
+            Date.now(),
+        );
+        if (!decision.shouldRestore) return;
+        router.replace(buildProjectConversationPath(projectId, decision.conversationId));
+    }, [projectId, router, shouldUseLegacyConversationRedirect]);
+
     return (
-        <ProjectCopilotProvider projectId={projectId}>
+        <ProjectCopilotProvider
+            projectId={projectId}
+            routeConversationId={routeConversationId}
+        >
             <PopupChatProvider>
                 <ProjectDataProvider projectId={projectId} bootMode={initialShellState.bootMode}>
-                    <ProjectShellInner projectId={projectId} initialShellState={initialShellState}>
+                    <ProjectShellInner
+                        projectId={projectId}
+                        initialShellState={initialShellState}
+                        routeConversationId={routeConversationId}
+                    >
                         {children}
                     </ProjectShellInner>
                 </ProjectDataProvider>

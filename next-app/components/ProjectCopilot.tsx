@@ -404,9 +404,15 @@ export function ProjectCopilot({
                             groupBy={getConversationGroupLabel}
                             groupOrder={["Today", "Yesterday", "Older"]}
                             renderMeta={(conversation) => formatRelativeTime(conversation.updatedAt)}
-                            onSelect={selectConversation}
-                            onDelete={deleteConversation}
-                            onDuplicate={(id) => branchConversation(id)}
+                            onSelect={async (conversationId) => {
+                                await selectConversation(conversationId);
+                            }}
+                            onDelete={async (conversationId) => {
+                                await deleteConversation(conversationId);
+                            }}
+                            onDuplicate={async (id) => {
+                                await branchConversation(id);
+                            }}
                             onRename={renameConversation}
                         />
                     </div>

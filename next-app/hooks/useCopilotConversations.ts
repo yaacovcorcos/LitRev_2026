@@ -42,6 +42,7 @@ function isContextAttachment(
 /** Dependencies injected by the provider. */
 export type CopilotConversationsDeps = {
     projectId: string;
+    routeConversationId?: string | null;
     updateState: (updater: (prev: ProjectCopilotState) => ProjectCopilotState) => void;
     setState: React.Dispatch<React.SetStateAction<ProjectCopilotState>>;
     stateRef: React.MutableRefObject<ProjectCopilotState>;
@@ -58,6 +59,7 @@ export type CopilotConversationsDeps = {
 export function useCopilotConversations(deps: CopilotConversationsDeps) {
     const {
         projectId,
+        routeConversationId = null,
         updateState,
         setState,
         stateRef,
@@ -91,7 +93,7 @@ export function useCopilotConversations(deps: CopilotConversationsDeps) {
     // Mirror currentConversationId to ref so setStudyFilter can read without deps
     const currentConversationIdRef = useRef<string | null>(null);
     // Ref for selectConversation (defined later) to avoid forward-reference in setStudyFilter
-    const selectConversationRef = useRef<(id: string) => Promise<void>>(async () => {});
+    const selectConversationRef = useRef<(id: string) => Promise<boolean>>(async () => false);
 
     // Summarize state
     const [isSummarizing, setIsSummarizing] = useState(false);
@@ -245,6 +247,11 @@ export function useCopilotConversations(deps: CopilotConversationsDeps) {
                 if (!isActive) return;
                 setConversations(mapped);
                 if (!currentConversationIdRef.current && mapped.length > 0) {
+                    if (routeConversationId) {
+                        setCurrentConversationId(null);
+                        setState((prev) => ({ ...prev, messages: [] }));
+                        return;
+                    }
                     if (!projectEntryRestoreEnabled) {
                         await selectConversationRef.current(mapped[0].id);
                         return;
@@ -288,13 +295,13 @@ export function useCopilotConversations(deps: CopilotConversationsDeps) {
         };
     // Only run once on mount, not when currentConversationId changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [projectEntryRestoreEnabled, projectId, setState]);
+    }, [projectEntryRestoreEnabled, projectId, routeConversationId, setState]);
 
     const toggleConversationList = useCallback(() => {
         setShowConversationList((prev) => !prev);
     }, []);
 
-    const selectConversation = useCallback(async (conversationId: string) => {
+    const selectConversation = useCallback(async (conversationId: string): Promise<boolean> => {
         // Each call claims a generation slot. State writes after the await are
         // guarded so only the last caller (newest selection) applies results.
         const gen = ++selectGenRef.current;
@@ -309,11 +316,11 @@ export function useCopilotConversations(deps: CopilotConversationsDeps) {
             setCurrentRunId(null);
             setPendingChoices([]);
             setPendingUserInput(null);
-            if (!projectId) return;
+            if (!projectId) return false;
             setIsConversationLoading(true);
             const convoResult = await getConversation(conversationId, { expectedProjectId: projectId });
             // Bail if a newer selectConversation call has already taken over.
-            if (gen !== selectGenRef.current) return;
+            if (gen !== selectGenRef.current) return false;
             const convo = convoResult.success ? convoResult.data : null;
             if (convo) {
                 setCurrentConversationId(convo.id);
@@ -392,6 +399,7 @@ export function useCopilotConversations(deps: CopilotConversationsDeps) {
                     ...prev,
                     messages: copilotMessages,
                 }));
+                return true;
             } else {
                 setCurrentConversationId(null);
                 setHasMore(false);
@@ -400,10 +408,12 @@ export function useCopilotConversations(deps: CopilotConversationsDeps) {
                     ...prev,
                     messages: [],
                 }));
+                return false;
             }
         } catch (err) {
-            if (gen !== selectGenRef.current) return;
+            if (gen !== selectGenRef.current) return false;
             console.error("Failed to select conversation:", err);
+            return false;
         } finally {
             // Only the winning generation clears the loading flag.
             if (gen === selectGenRef.current) {
@@ -501,10 +511,10 @@ export function useCopilotConversations(deps: CopilotConversationsDeps) {
         }
     }, [currentConversationId, isLoadingOlder, hasMore, updateState, artifacts, projectId, stateRef]);
 
-    const newConversation = useCallback(async (page: CopilotPage, studyId?: string) => {
+    const newConversation = useCallback(async (page: CopilotPage, studyId?: string): Promise<string | null> => {
         if (!projectId) {
             console.error("Cannot create conversation: no projectId");
-            return;
+            return null;
         }
         // Starting a new conversation must stop any active stream first.
         streamGenRef.current++;
@@ -525,7 +535,7 @@ export function useCopilotConversations(deps: CopilotConversationsDeps) {
             });
             if (!convResult.success) {
                 console.error("Failed to create conversation:", convResult.error);
-                return;
+                return null;
             }
             const { id } = convResult.data;
             // Set the new conversation and clear messages
@@ -540,8 +550,10 @@ export function useCopilotConversations(deps: CopilotConversationsDeps) {
             }));
             // Refresh conversation list
             await loadConversations();
+            return id;
         } catch (err) {
             console.error("Failed to create conversation:", err);
+            return null;
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [projectEntryRestoreEnabled, projectId, loadConversations]);
@@ -563,12 +575,12 @@ export function useCopilotConversations(deps: CopilotConversationsDeps) {
         }
     }, []);
 
-    const deleteConversationHandler = useCallback(async (conversationId: string) => {
+    const deleteConversationHandler = useCallback(async (conversationId: string): Promise<boolean> => {
         try {
             const result = await archiveConversation(conversationId);
             if (!result.success) {
                 console.error("Failed to delete conversation:", result.error);
-                return;
+                return false;
             }
             setConversations((prev) => prev.filter((c) => c.id !== conversationId));
             if (currentConversationId === conversationId) {
@@ -578,8 +590,10 @@ export function useCopilotConversations(deps: CopilotConversationsDeps) {
                     messages: [],
                 }));
             }
+            return true;
         } catch (err) {
             console.error("Failed to delete conversation:", err);
+            return false;
         }
     }, [currentConversationId, updateState]);
 
@@ -587,8 +601,8 @@ export function useCopilotConversations(deps: CopilotConversationsDeps) {
         conversationId: string,
         upToMessageId?: string,
         upToCreatedAt?: string
-    ) => {
-        if (!projectId) return;
+    ): Promise<string | null> => {
+        if (!projectId) return null;
         try {
             // Branching is a context switch; stop active stream before switching.
             streamGenRef.current++;
@@ -604,12 +618,14 @@ export function useCopilotConversations(deps: CopilotConversationsDeps) {
             const branchResult = await branchConversationAction({ conversationId, upToMessageId, upToCreatedAt });
             if (!branchResult.success) {
                 console.error("Failed to branch conversation:", branchResult.error);
-                return;
+                return null;
             }
             await loadConversations();
             await selectConversation(branchResult.data.id);
+            return branchResult.data.id;
         } catch (err) {
             console.error("Failed to branch conversation:", err);
+            return null;
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [projectId, loadConversations, selectConversation]);

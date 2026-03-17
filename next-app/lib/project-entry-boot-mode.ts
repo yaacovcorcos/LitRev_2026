@@ -1,7 +1,11 @@
 "use client";
 
 import type { FocusMode, ViewTab } from "@/contexts/ProjectShellContext";
-import { readProjectEntryState } from "@/lib/project-entry-restore";
+import { parseProjectConversationPath } from "@/lib/durable-route-state";
+import {
+  decideConversationRestore,
+  readProjectEntryState,
+} from "@/lib/project-entry-restore";
 
 export type ProjectBootMode = "conversation" | "overview" | "protocol" | "ledger" | "draft" | "memory" | "notes";
 
@@ -26,6 +30,14 @@ export function deriveProjectShellBootState(args: {
   projectEntryRestoreEnabled: boolean;
 }): ProjectShellBootState {
   const { pathname, projectId, projectEntryRestoreEnabled } = args;
+  const conversationRoute = parseProjectConversationPath(pathname);
+  if (conversationRoute?.projectId === projectId) {
+    return {
+      focusMode: "conversation",
+      activeTab: "overview",
+      bootMode: "conversation",
+    };
+  }
   const deepLinkTab = tabFromProjectPathname(pathname);
 
   if (deepLinkTab) {
@@ -37,19 +49,22 @@ export function deriveProjectShellBootState(args: {
   }
 
   if (projectEntryRestoreEnabled) {
-    const entryState = readProjectEntryState(projectId);
-    if (entryState?.lastModeBucket === "workspace") {
+    const decision = decideConversationRestore(
+      readProjectEntryState(projectId),
+      Date.now(),
+    );
+    if (decision.shouldRestore) {
       return {
-        focusMode: "view",
+        focusMode: "conversation",
         activeTab: "overview",
-        bootMode: "overview",
+        bootMode: "conversation",
       };
     }
   }
 
   return {
-    focusMode: "conversation",
+    focusMode: "view",
     activeTab: "overview",
-    bootMode: "conversation",
+    bootMode: "overview",
   };
 }

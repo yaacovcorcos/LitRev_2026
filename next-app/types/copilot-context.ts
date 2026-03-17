@@ -103,15 +103,19 @@ export type ProjectCopilotContextValue = {
     /** Toggle conversation sidebar */
     toggleConversationList: () => void;
     /** Select a conversation */
-    selectConversation: (conversationId: string) => Promise<void>;
+    selectConversation: (conversationId: string) => Promise<boolean>;
     /** Create a new conversation */
-    newConversation: (page: CopilotPage, studyId?: string) => Promise<void>;
+    newConversation: (page: CopilotPage, studyId?: string) => Promise<string | null>;
     /** Rename a conversation */
     renameConversation: (conversationId: string, title: string) => Promise<void>;
     /** Delete a conversation */
-    deleteConversation: (conversationId: string) => Promise<void>;
+    deleteConversation: (conversationId: string) => Promise<boolean>;
     /** Branch a conversation into a new forked conversation */
-    branchConversation: (conversationId: string, upToMessageId?: string, upToCreatedAt?: string) => Promise<void>;
+    branchConversation: (
+        conversationId: string,
+        upToMessageId?: string,
+        upToCreatedAt?: string,
+    ) => Promise<string | null>;
     /** Refresh conversation list */
     refreshConversations: () => Promise<void>;
     /** Set study filter for conversation scoping (undefined = show all) */
