@@ -1,347 +1,219 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { TimelineRenderer } from "../TimelineRenderer";
-import type { TimelineItem } from "@/types/timeline";
 import type { ArtifactType, ArtifactStatus } from "@/types/artifacts";
+import type { TimelineItem } from "@/types/timeline";
+import { ComposerPendingApprovalBar } from "../ComposerPendingApprovalBar";
+import { getValidPendingApprovalArtifacts, usePendingApprovalBarState } from "../usePendingApprovalBarState";
 
-vi.mock("next/navigation", () => ({
-  useParams: () => ({ id: "project-1" }),
-}));
-
-vi.mock("@/app/actions/ledger", () => ({
-  addMentionedStudyAction: vi.fn(async () => ({ success: true, data: { created: true, study: { id: "s1" } } })),
-}));
-
-vi.mock("@/lib/agent/feature-flags", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/agent/feature-flags")>("@/lib/agent/feature-flags");
-  return {
-    ...actual,
-    isChatStudyMentionsEnabled: () => false,
-  };
-});
-
-const defaultProps = {
-  isLoading: false,
-  emptyState: { icon: "chat", title: "Empty", description: "Empty", suggestions: [] },
-  onSuggestionClick: vi.fn(),
-};
+type TimelineArtifactItem = Extract<TimelineItem, { type: "artifact" }>;
 
 function makeArtifact(
-  id: string,
+  artifactId: string,
   artifactType: ArtifactType,
   status: ArtifactStatus = "proposed",
-): TimelineItem {
-  const payloadByType: Record<ArtifactType, unknown> = {
-    study_proposal: {
-      title: `Study ${id}`,
-      authors: "Doe et al.",
-      year: 2024,
-      source: "semantic_scholar",
-      recommendation: "keep",
-      confidence: 0.8,
-    },
-    study_update: {
-      studyId: `study-${id}`,
-      studyTitle: `Study ${id}`,
-      snapshotAt: "2026-02-21T00:00:00.000Z",
-      idempotencyKey: `key-${id}`,
-      patch: { top: { title: `Study ${id}` } },
-      changes: [{
-        field: "title",
-        label: "Title",
-        operation: "set",
-        typedOldValue: "Old",
-        typedNewValue: "New",
-        displayOld: "Old",
-        displayNew: "New",
-      }],
-      rationale: "Updated",
-    },
-    draft_diff: {
-      section: "Introduction",
-      content: "Draft content",
-      citations: [],
-      wordCount: 2,
-    },
-    screening_batch: {
-      studies: [],
-      summary: { total: 0, keepCount: 0, excludeCount: 0, maybeCount: 0 },
-    },
-    protocol_suggestion: {
-      field: "population",
-      value: "Adults",
-      rationale: "Focus",
-    },
-    scoping_report: {
-      topic: "Topic",
-      searchesRun: [],
-      landscape: {
-        majorThemes: [],
-        evidenceGaps: [],
-        methodologicalPatterns: [],
-        evidenceDensity: "sparse",
-      },
-      recommendedQuestions: [],
-      nextStep: "Next",
-    },
-    criteria_card: {
-      inclusion: ["Adults"],
-      exclusion: ["Animals"],
-    },
-    evidence_table: {
-      columns: [],
-      rows: [],
-    },
-    plan: {
-      steps: [{ label: "Step 1", status: "pending" }],
-      estimatedActions: 1,
-    },
-    memory_proposal: {
-      memoryType: "project",
-      key: "priority",
-      value: "Stay focused",
-    },
-    memory_forget_proposal: {
-      memoryType: "project",
-      key: "old-priority",
-      mode: "archive",
-      matches: [{ id: "m1", label: "key", value: "old value" }],
-    },
-  };
-
+): TimelineArtifactItem {
   return {
     type: "artifact",
-    id: `msg-${id}`,
-    artifactId: `artifact-${id}`,
+    id: `artifact-${artifactId}`,
+    artifactId,
     artifactType,
     status,
-    title: `Artifact ${id}`,
-    payload: payloadByType[artifactType],
+    title: `Artifact ${artifactId}`,
+    payload: {},
     version: 1,
-    createdAt: "2026-02-21T00:00:00.000Z",
+    createdAt: "2026-03-17T00:00:00.000Z",
   };
 }
 
-describe("TimelineRenderer approve-all bar", () => {
-  it("hides the bar when fewer than 2 approvable artifacts are pending", () => {
-    render(
-      <TimelineRenderer
-        {...defaultProps}
-        items={[makeArtifact("1", "memory_proposal", "proposed")]}
-        onReviewArtifact={vi.fn()}
-      />,
-    );
+describe("pending approval derivation", () => {
+  it("only includes proposed reviewable persisted artifacts", () => {
+    const pending = getValidPendingApprovalArtifacts([
+      makeArtifact("cproposal1", "memory_proposal", "proposed"),
+      makeArtifact("cproposal2", "draft_diff", "proposed"),
+      makeArtifact("cautoapplied", "study_update", "auto_applied"),
+      makeArtifact("caccepted", "memory_forget_proposal", "accepted"),
+      makeArtifact("cplan", "plan", "proposed"),
+      {
+        ...makeArtifact("cart123", "study_update", "proposed"),
+        id: "artifact-art-123",
+        artifactId: "art-123",
+      },
+    ]);
 
-    expect(screen.queryByRole("button", { name: /approve all pending proposals/i })).toBeNull();
+    expect(pending.map((item) => item.artifactId)).toEqual(["cproposal1", "cproposal2"]);
   });
+});
 
-  it("shows the bar with a correct pending count for 2+ approvable artifacts", () => {
-    render(
-      <TimelineRenderer
-        {...defaultProps}
-        items={[
-          makeArtifact("1", "memory_proposal", "proposed"),
-          makeArtifact("2", "draft_diff", "proposed"),
-        ]}
-        onReviewArtifact={vi.fn()}
-      />,
-    );
-
-    expect(screen.getByText("2 pending proposals")).toBeDefined();
-    expect(screen.getByRole("button", { name: /approve all pending proposals/i })).toBeDefined();
-  });
-
-  it("excludes non-approvable or non-proposed artifacts from the pending count", () => {
-    render(
-      <TimelineRenderer
-        {...defaultProps}
-        items={[
-          makeArtifact("1", "plan", "proposed"),
-          makeArtifact("2", "scoping_report", "proposed"),
-          makeArtifact("3", "memory_proposal", "accepted"),
-          makeArtifact("4", "memory_forget_proposal", "proposed"),
-        ]}
-        onReviewArtifact={vi.fn()}
-      />,
-    );
-
-    expect(screen.queryByRole("button", { name: /approve all pending proposals/i })).toBeNull();
-  });
-
-  it("invokes onApproveArtifactsBatch with pending artifact IDs", async () => {
-    const batch = vi.fn(async (artifactIds: string[]) => ({
-      approvedCount: artifactIds.length,
-      failedArtifactIds: [],
-      stopped: false,
+describe("usePendingApprovalBarState", () => {
+  it("hides the bar when fewer than 2 valid proposals remain", () => {
+    const { result } = renderHook(() => usePendingApprovalBarState({
+      timeline: [makeArtifact("cproposal1", "memory_proposal", "proposed")],
+      conversationId: "conv-1",
+      isLoading: false,
+      hasActiveProgress: false,
+      approveArtifactsBatch: vi.fn(),
     }));
 
-    render(
-      <TimelineRenderer
-        {...defaultProps}
-        items={[
-          makeArtifact("1", "memory_proposal", "proposed"),
-          makeArtifact("2", "draft_diff", "proposed"),
-        ]}
-        onReviewArtifact={vi.fn()}
-        onApproveArtifactsBatch={batch}
-      />,
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: /approve all pending proposals/i }));
-
-    await waitFor(() => {
-      expect(batch).toHaveBeenCalledOnce();
-      expect(batch).toHaveBeenCalledWith(
-        ["artifact-1", "artifact-2"],
-        expect.objectContaining({
-          shouldStop: expect.any(Function),
-          onProgress: expect.any(Function),
-          conversationId: undefined,
-        }),
-      );
-    });
+    expect(result.current.showBar).toBe(false);
+    expect(result.current.pendingCount).toBe(1);
   });
 
-  it("keeps the bar visible while approving even when pending count drops", async () => {
-    let resolveBatch: (value: { approvedCount: number; failedArtifactIds: string[]; stopped: boolean }) => void = () => {};
-    const batch = vi.fn(() => new Promise<{ approvedCount: number; failedArtifactIds: string[]; stopped: boolean }>((resolve) => {
-      resolveBatch = resolve;
+  it("hides the idle bar while the host is still loading or showing active progress", () => {
+    const timeline = [
+      makeArtifact("cproposal1", "memory_proposal", "proposed"),
+      makeArtifact("cproposal2", "draft_diff", "proposed"),
+    ];
+
+    const { result, rerender } = renderHook(
+      ({ isLoading, hasActiveProgress }) => usePendingApprovalBarState({
+        timeline,
+        conversationId: "conv-1",
+        isLoading,
+        hasActiveProgress,
+        approveArtifactsBatch: vi.fn(),
+      }),
+      {
+        initialProps: { isLoading: true, hasActiveProgress: false },
+      },
+    );
+
+    expect(result.current.showBar).toBe(false);
+
+    rerender({ isLoading: false, hasActiveProgress: true });
+    expect(result.current.showBar).toBe(false);
+
+    rerender({ isLoading: false, hasActiveProgress: false });
+    expect(result.current.showBar).toBe(true);
+  });
+
+  it("approves the filtered valid artifact set and reports progress", async () => {
+    const batch = vi.fn(async (artifactIds: string[], options?: { onProgress?: (completed: number, total: number) => void }) => {
+      options?.onProgress?.(1, artifactIds.length);
+      options?.onProgress?.(artifactIds.length, artifactIds.length);
+      return {
+        approvedCount: artifactIds.length,
+        failedArtifactIds: [],
+        stopped: false,
+      };
+    });
+
+    const { result } = renderHook(() => usePendingApprovalBarState({
+      timeline: [
+        makeArtifact("cproposal1", "memory_proposal", "proposed"),
+        makeArtifact("cproposal2", "draft_diff", "proposed"),
+        {
+          ...makeArtifact("art-123", "study_update", "proposed"),
+          id: "artifact-art-123",
+        },
+      ],
+      conversationId: "conv-1",
+      isLoading: false,
+      hasActiveProgress: false,
+      approveArtifactsBatch: batch,
     }));
 
-    const proposedItems = [
-      makeArtifact("1", "memory_proposal", "proposed"),
-      makeArtifact("2", "draft_diff", "proposed"),
-    ];
-
-    const acceptedItems = [
-      makeArtifact("1", "memory_proposal", "accepted"),
-      makeArtifact("2", "draft_diff", "accepted"),
-    ];
-
-    const { rerender } = render(
-      <TimelineRenderer
-        {...defaultProps}
-        items={proposedItems}
-        onReviewArtifact={vi.fn()}
-        onApproveArtifactsBatch={batch}
-      />,
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: /approve all pending proposals/i }));
-    expect(screen.getByText(/approving 0\/2/i)).toBeDefined();
-
-    rerender(
-      <TimelineRenderer
-        {...defaultProps}
-        items={acceptedItems}
-        onReviewArtifact={vi.fn()}
-        onApproveArtifactsBatch={batch}
-      />,
-    );
-
-    expect(screen.getByText(/approving 0\/2/i)).toBeDefined();
-
-    resolveBatch({ approvedCount: 2, failedArtifactIds: [], stopped: false });
-
-    await waitFor(() => {
-      expect(screen.getByText("All approved.")).toBeDefined();
+    await act(async () => {
+      await result.current.approveAll();
     });
+
+    expect(batch).toHaveBeenCalledWith(
+      ["cproposal1", "cproposal2"],
+      expect.objectContaining({
+        shouldStop: expect.any(Function),
+        onProgress: expect.any(Function),
+        conversationId: "conv-1",
+      }),
+    );
+    expect(result.current.state).toBe("finished");
+    expect(result.current.resultText).toBe("All approved.");
   });
 
-  it("propagates Stop to the batch callback through shouldStop", async () => {
-    let resolveBatch: (value: { approvedCount: number; failedArtifactIds: string[]; stopped: boolean }) => void = () => {};
+  it("propagates stop through the batch shouldStop callback", async () => {
     let shouldStop: (() => boolean) | undefined;
+    let resolveBatch: ((value: { approvedCount: number; failedArtifactIds: string[]; stopped: boolean }) => void) | null = null;
     const batch = vi.fn((_: string[], options?: { shouldStop?: () => boolean }) => new Promise<{ approvedCount: number; failedArtifactIds: string[]; stopped: boolean }>((resolve) => {
       shouldStop = options?.shouldStop;
       resolveBatch = resolve;
     }));
 
-    render(
-      <TimelineRenderer
-        {...defaultProps}
-        items={[
-          makeArtifact("1", "memory_proposal", "proposed"),
-          makeArtifact("2", "draft_diff", "proposed"),
-        ]}
-        onReviewArtifact={vi.fn()}
-        onApproveArtifactsBatch={batch}
-      />,
-    );
+    const { result } = renderHook(() => usePendingApprovalBarState({
+      timeline: [
+        makeArtifact("cproposal1", "memory_proposal", "proposed"),
+        makeArtifact("cproposal2", "draft_diff", "proposed"),
+      ],
+      conversationId: "conv-1",
+      isLoading: false,
+      hasActiveProgress: false,
+      approveArtifactsBatch: batch,
+    }));
 
-    fireEvent.click(screen.getByRole("button", { name: /approve all pending proposals/i }));
-    const stopButton = await screen.findByRole("button", { name: /stop approving remaining proposals/i });
-    fireEvent.click(stopButton);
+    await act(async () => {
+      void result.current.approveAll();
+    });
+
+    act(() => {
+      result.current.stopApproval();
+    });
 
     expect(shouldStop?.()).toBe(true);
 
-    resolveBatch({ approvedCount: 1, failedArtifactIds: ["artifact-2"], stopped: true });
-    await waitFor(() => {
-      expect(screen.getByText("Stopped. Approved 1/2.")).toBeDefined();
+    await act(async () => {
+      resolveBatch?.({ approvedCount: 1, failedArtifactIds: ["cproposal2"], stopped: true });
     });
+
+    expect(result.current.resultText).toBe("Stopped. Approved 1/2.");
   });
+});
 
-  it("falls back to sequential onReviewArtifact when batch callback is not provided", async () => {
-    const review = vi.fn(async () => {});
-
-    render(
-      <TimelineRenderer
-        {...defaultProps}
-        items={[
-          makeArtifact("1", "memory_proposal", "proposed"),
-          makeArtifact("2", "draft_diff", "proposed"),
-        ]}
-        onReviewArtifact={review}
-      />,
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: /approve all pending proposals/i }));
-
-    await waitFor(() => {
-      expect(review).toHaveBeenCalledTimes(2);
-    });
-    expect(review).toHaveBeenNthCalledWith(1, "artifact-1", "accepted");
-    expect(review).toHaveBeenNthCalledWith(2, "artifact-2", "accepted");
-  });
-
-  it("hides the bar when no review callbacks are provided", () => {
-    render(
-      <TimelineRenderer
-        {...defaultProps}
-        items={[
-          makeArtifact("1", "memory_proposal", "proposed"),
-          makeArtifact("2", "draft_diff", "proposed"),
-        ]}
-      />,
-    );
-
-    expect(screen.queryByRole("button", { name: /approve all pending proposals/i })).toBeNull();
-  });
-
-  it("renders in both panel and page variants", () => {
-    const items = [
-      makeArtifact("1", "memory_proposal", "proposed"),
-      makeArtifact("2", "draft_diff", "proposed"),
-    ];
-
+describe("ComposerPendingApprovalBar", () => {
+  it("renders idle and approving states with the expected controls", async () => {
+    const onApproveAll = vi.fn();
+    const onStop = vi.fn();
     const { rerender } = render(
-      <TimelineRenderer
-        {...defaultProps}
-        items={items}
-        variant="panel"
-        onReviewArtifact={vi.fn()}
+      <ComposerPendingApprovalBar
+        pendingCount={2}
+        state="idle"
+        progress={{ completed: 0, total: 2 }}
+        resultText="All approved."
+        onApproveAll={onApproveAll}
+        onStop={onStop}
       />,
     );
-    expect(screen.getByRole("button", { name: /approve all pending proposals/i })).toBeDefined();
+
+    expect(screen.getByText("2 pending proposals")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /approve all pending proposals/i }));
+    expect(onApproveAll).toHaveBeenCalledTimes(1);
 
     rerender(
-      <TimelineRenderer
-        {...defaultProps}
-        items={items}
-        variant="page"
-        onReviewArtifact={vi.fn()}
+      <ComposerPendingApprovalBar
+        pendingCount={2}
+        state="approving"
+        progress={{ completed: 1, total: 2 }}
+        resultText="All approved."
+        onApproveAll={onApproveAll}
+        onStop={onStop}
+        stackPosition="middle"
       />,
     );
-    expect(screen.getByRole("button", { name: /approve all pending proposals/i })).toBeDefined();
+
+    expect(screen.getByText("Approving 1/2...")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Stop" }));
+    expect(onStop).toHaveBeenCalledTimes(1);
+
+    rerender(
+      <ComposerPendingApprovalBar
+        pendingCount={2}
+        state="finished"
+        progress={{ completed: 2, total: 2 }}
+        resultText="All approved."
+        onApproveAll={onApproveAll}
+        onStop={onStop}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("All approved.")).toBeTruthy();
+    });
   });
 });

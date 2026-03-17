@@ -154,14 +154,20 @@ vi.mock("@/components/copilot/CopilotInputCoreClient", () => ({
     onQueueFollowUp,
     hasQueuedFollowUp,
     attachedStack,
+    interactionLocked,
   }: {
     onReady?: () => void;
     sendMessage?: (text: string, page: "ai") => void | Promise<void>;
     onQueueFollowUp?: (payload: { text: string; page: "ai" }) => void | Promise<void>;
     hasQueuedFollowUp?: boolean;
     attachedStack?: "none" | "attached";
+    interactionLocked?: boolean;
   }) => (
-    <div data-testid="ai-composer" data-attached-stack={attachedStack ?? "none"}>
+    <div
+      data-testid="ai-composer"
+      data-attached-stack={attachedStack ?? "none"}
+      data-interaction-locked={interactionLocked ? "yes" : "no"}
+    >
       <button type="button" onClick={() => onReady?.()}>
         composer ready
       </button>
@@ -902,6 +908,58 @@ describe("/ai page deferred hydration", () => {
     expect(lane?.contains(screen.getByTestId("ai-composer"))).toBe(true);
     expect(screen.getByText("Queued next message").closest("[data-stack-position]")?.getAttribute("data-stack-position")).toBe("top");
     expect(screen.getByTestId("ai-composer").getAttribute("data-attached-stack")).toBe("attached");
+  });
+
+  it("renders the pending approval bar above the composer for settled proposals", async () => {
+    mockGetConversation.mockResolvedValueOnce({
+      success: true,
+      data: {
+        id: "conv-1",
+        title: "First chat",
+        messages: [],
+        artifacts: [
+          {
+            id: "cproposal1",
+            type: "memory_proposal",
+            status: "proposed",
+            title: "Memory 1",
+            payload: {},
+            version: 1,
+            createdAt: "2026-03-17T00:00:00.000Z",
+          },
+          {
+            id: "cproposal2",
+            type: "draft_diff",
+            status: "proposed",
+            title: "Draft 2",
+            payload: { section: "Intro", content: "Body", citations: [], wordCount: 1 },
+            version: 1,
+            createdAt: "2026-03-17T00:00:01.000Z",
+          },
+        ],
+      },
+    });
+
+    render(<AIView />);
+
+    fireEvent.click(screen.getByLabelText("Open chat history"));
+    await waitFor(() => {
+      expect(screen.getByText("First chat")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByText("First chat"));
+
+    await waitFor(() => {
+      expect(screen.getByText("2 pending proposals")).toBeTruthy();
+    });
+
+    const lane = document.querySelector('[data-composer-stack-lane="true"]');
+    const barText = screen.getByText("2 pending proposals");
+    const composer = screen.getByTestId("ai-composer");
+
+    expect(lane?.contains(barText)).toBe(true);
+    expect(lane?.contains(composer)).toBe(true);
+    expect(barText.compareDocumentPosition(composer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(composer.getAttribute("data-attached-stack")).toBe("attached");
   });
 
   it("keeps the composer standalone when no attached caps are present", () => {

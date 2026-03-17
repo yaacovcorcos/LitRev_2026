@@ -1,0 +1,133 @@
+.capHost {
+    width: 100%;
+}
+
+.cap {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: calc(100% - (var(--composer-top-cap-inset, 18px) * 2));
+    margin: 0 auto;
+    padding: 10px 14px 10px;
+    border: 1px solid rgba(var(--rgb-ui-contrast), 0.06);
+    border-bottom: none;
+    border-radius: 22px 22px 0 0;
+    background: linear-gradient(to bottom, rgba(var(--rgb-ui-surface), 0.65), rgba(var(--rgb-ui-surface), 0.78));
+    color: var(--text-secondary);
+    box-sizing: border-box;
+}
+
+.cap[data-stack-position="middle"] {
+    border-radius: 0;
+}
+
+.headerRow {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+}
+
+.labelGroup {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    flex: 1;
+}
+
+.headerIcon,
+.spinnerIcon {
+    font-size: 15px;
+    color: rgba(var(--rgb-accent-primary), 0.78);
+    flex-shrink: 0;
+}
+
+.spinnerIcon {
+    animation: spin 1s linear infinite;
+}
+
+.textGroup {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.label {
+    min-width: 0;
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.meta {
+    color: var(--text-primary);
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 1.35;
+    overflow-wrap: break-word;
+    word-break: break-word;
+}
+
+.primaryAction,
+.secondaryAction {
+    border: none;
+    border-radius: 999px;
+    cursor: pointer;
+    padding: 7px 12px;
+    font-size: 12px;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.primaryAction {
+    background: rgba(var(--rgb-accent-primary), 0.12);
+    color: var(--accent-primary-strong, var(--text-primary));
+}
+
+.primaryAction:hover {
+    background: rgba(var(--rgb-accent-primary), 0.18);
+}
+
+.secondaryAction {
+    background: rgba(var(--rgb-ui-contrast), 0.05);
+    color: var(--text-secondary);
+}
+
+.secondaryAction:hover {
+    background: rgba(var(--rgb-ui-contrast), 0.08);
+    color: var(--text-primary);
+}
+
+.primaryAction:focus-visible,
+.secondaryAction:focus-visible {
+    outline: none;
+    box-shadow: var(--shadow-focus-ring);
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+@media (max-width: 640px) {
+    .headerRow {
+        align-items: flex-start;
+        flex-wrap: wrap;
+    }
+
+    .primaryAction,
+    .secondaryAction {
+        margin-left: 23px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .spinnerIcon {
+        animation-duration: 2.4s;
+    }
+}

@@ -13,7 +13,9 @@ import { selectActiveProgress, normalizeTimelineProgressItems } from "@/lib/ai/a
 import { TimelineRenderer } from "../copilot/TimelineRenderer";
 import { CopilotInput } from "../copilot/CopilotInput";
 import { ComposerActiveProgressBar } from "../copilot/ComposerActiveProgressBar";
+import { ComposerPendingApprovalBar } from "../copilot/ComposerPendingApprovalBar";
 import { ComposerQueuedFollowUpBar } from "../copilot/ComposerQueuedFollowUpBar";
+import { usePendingApprovalBarState } from "../copilot/usePendingApprovalBarState";
 import { AutonomySettings } from "../copilot/AutonomySettings";
 import { ConversationPicker } from "../ui/ConversationPicker";
 import { generateChatUnificationRequestKey } from "@/lib/ai/chat-unification-telemetry";
@@ -254,10 +256,21 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
         () => selectActiveProgress(normalizeTimelineProgressItems(timelineItems)),
         [timelineItems],
     );
+    const pendingApprovalBar = usePendingApprovalBarState({
+        timeline: timelineItems,
+        conversationId: currentConversationId,
+        isLoading,
+        hasActiveProgress: Boolean(activeProgress),
+        approveArtifactsBatch,
+    });
     const hasAttachedProgress = Boolean(activeProgress);
     const hasAttachedQueue = Boolean(queuedFollowUp);
-    const composerAttachedStack = hasAttachedProgress || hasAttachedQueue ? "attached" : "none";
+    const hasAttachedApproval = pendingApprovalBar.showBar;
+    const composerAttachedStack = hasAttachedProgress || hasAttachedQueue || hasAttachedApproval ? "attached" : "none";
     const queuedStackPosition = hasAttachedQueue ? (hasAttachedProgress ? "middle" : "top") : undefined;
+    const approvalStackPosition = hasAttachedApproval
+        ? (hasAttachedProgress || hasAttachedQueue ? "middle" : "top")
+        : undefined;
 
     return (
         <div className={styles.conversationView}>
@@ -348,7 +361,6 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
                         onSuggestionClick={handleSuggestionClick}
                         onActionPrompt={handleActionPrompt}
                         onReviewArtifact={handleReviewArtifact}
-                        onApproveArtifactsBatch={approveArtifactsBatch}
                         onExecutePlan={executePlan}
                         onAnswerUserInput={answerUserInput}
                         onSaveToNotes={handleSaveToNotes}
@@ -374,12 +386,24 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
                                 onEdit={handleEditQueuedFollowUp}
                                 onRemove={clearQueuedFollowUp}
                             />
+                            {pendingApprovalBar.showBar ? (
+                                <ComposerPendingApprovalBar
+                                    pendingCount={pendingApprovalBar.pendingCount}
+                                    state={pendingApprovalBar.state}
+                                    progress={pendingApprovalBar.progress}
+                                    resultText={pendingApprovalBar.resultText}
+                                    onApproveAll={pendingApprovalBar.approveAll}
+                                    onStop={pendingApprovalBar.stopApproval}
+                                    stackPosition={approvalStackPosition}
+                                />
+                            ) : null}
                             <CopilotInput
                                 page={"overview" as CopilotPage}
                                 inputPlaceholder="Ask about your project..."
                                 prefillCommand={prefillCommand}
                                 onPrefillConsumed={handlePrefillConsumed}
                                 attachedStack={composerAttachedStack}
+                                interactionLocked={pendingApprovalBar.interactionLocked}
                             />
                         </div>
                     </div>

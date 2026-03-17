@@ -73,16 +73,19 @@ vi.mock("../copilot/CopilotInput", () => ({
     onPrefillConsumed,
     hasQueuedFollowUp,
     attachedStack,
+    interactionLocked,
   }: {
     prefillCommand?: { text: string; id: string } | null;
     onPrefillConsumed?: () => void;
     hasQueuedFollowUp?: boolean;
     attachedStack?: "none" | "attached";
+    interactionLocked?: boolean;
   }) => (
     <div>
       <div data-testid="copilot-prefill">{prefillCommand?.text ?? ""}</div>
       <div data-testid="copilot-has-queued">{hasQueuedFollowUp ? "yes" : "no"}</div>
       <div data-testid="copilot-attached-stack">{attachedStack ?? "none"}</div>
+      <div data-testid="copilot-interaction-locked">{interactionLocked ? "yes" : "no"}</div>
       <button type="button" data-testid="consume-prefill" onClick={() => onPrefillConsumed?.()}>
         Consume
       </button>
@@ -130,6 +133,7 @@ describe("ProjectCopilot suggestion wiring", () => {
       reconcileArtifactStatus: vi.fn(),
       sendMessage: vi.fn(),
       handleReviewArtifact: vi.fn(),
+      approveArtifactsBatch: vi.fn(),
       executePlan: vi.fn(),
       shouldOfferSummary: false,
       summarizeAndRefresh: vi.fn(),
@@ -200,6 +204,85 @@ describe("ProjectCopilot suggestion wiring", () => {
     expect(status.compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     const props = mockTimelineRenderer.mock.calls[0]?.[0] as { suppressedProgressId?: string | null };
     expect(props.suppressedProgressId).toBe("progress-1");
+  });
+
+  it("renders the pending approval bar above the composer once proposals are settled", async () => {
+    const approveArtifactsBatch = vi.fn(async (artifactIds: string[]) => ({
+      approvedCount: artifactIds.length,
+      failedArtifactIds: [],
+      stopped: false,
+    }));
+
+    mockUseProjectCopilot.mockReturnValue({
+      ...baseContextValue,
+      messages: [
+        {
+          id: "artifact-cproposal1",
+          sender: "ai",
+          text: "[memory_proposal] Memory 1",
+          createdAt: "2026-03-11T00:00:00.000Z",
+          context: { page: "overview" },
+          artifact: {
+            id: "cproposal1",
+            type: "memory_proposal",
+            status: "proposed",
+            title: "Memory 1",
+            payload: {},
+            version: 1,
+          },
+        },
+        {
+          id: "artifact-cproposal2",
+          sender: "ai",
+          text: "[draft_diff] Draft 2",
+          createdAt: "2026-03-11T00:00:01.000Z",
+          context: { page: "overview" },
+          artifact: {
+            id: "cproposal2",
+            type: "draft_diff",
+            status: "proposed",
+            title: "Draft 2",
+            payload: { section: "Intro", content: "Body", citations: [], wordCount: 1 },
+            version: 1,
+          },
+        },
+      ],
+      approveArtifactsBatch,
+    });
+
+    render(
+      <ProjectCopilot
+        page="overview"
+        contextDisplay="Overview"
+        emptyState={{
+          icon: "smart_toy",
+          title: "AI Copilot",
+          description: "Help text",
+          suggestions: [{ label: "Summarize", prompt: "Summarize my project progress" }],
+        }}
+        inputPlaceholder="Ask..."
+      />,
+    );
+
+    const lane = document.querySelector('[data-composer-stack-lane="true"]');
+    const barText = screen.getByText("2 pending proposals");
+    const input = screen.getByTestId("copilot-prefill");
+
+    expect(lane?.contains(barText)).toBe(true);
+    expect(lane?.contains(input)).toBe(true);
+    expect(barText.compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByTestId("copilot-attached-stack").textContent).toBe("attached");
+
+    fireEvent.click(screen.getByRole("button", { name: /approve all pending proposals/i }));
+
+    await waitFor(() => {
+      expect(approveArtifactsBatch).toHaveBeenCalledWith(
+        ["cproposal1", "cproposal2"],
+        expect.objectContaining({
+          conversationId: undefined,
+        }),
+      );
+    });
   });
 
   it("targets reconnect, continue, and stop-and-retry actions to the clicked run", () => {
