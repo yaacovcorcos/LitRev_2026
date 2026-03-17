@@ -4,6 +4,7 @@ import { ingestReliabilityMetric } from "@/lib/server/reliability-metrics";
 export const runtime = "nodejs";
 
 export const POST = createTelemetryPostHandler({
+  authMode: "optional",
   logKey: "reliability",
   ingest: ingestReliabilityMetric,
   toAcceptedBody: (result) => ({

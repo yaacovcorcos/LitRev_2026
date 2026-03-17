@@ -1,5 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
+import { TelemetryProjectAccessDeniedError } from "@/lib/server/telemetry-policy";
 
 const mocks = vi.hoisted(() => ({
     requireApiSession: vi.fn(),
@@ -79,7 +80,7 @@ describe("POST /api/telemetry/citation-preview", () => {
             context: { userId: "user-1", workspaceId: "ws-1", role: "owner" },
         });
         mocks.ingestCitationPreviewMetric.mockRejectedValue(
-            new Error("Project not found or access denied."),
+            new TelemetryProjectAccessDeniedError(),
         );
 
         const response = await POST(makeRequest({ eventId: "value" }) as never);

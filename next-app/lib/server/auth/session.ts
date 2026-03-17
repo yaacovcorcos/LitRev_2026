@@ -24,6 +24,17 @@ export type AuthContext = {
   role: string;
 };
 
+export type TelemetryApiActor =
+  | {
+      kind: "anonymous";
+      clientIp: string | null;
+    }
+  | {
+      kind: "authenticated";
+      clientIp: string | null;
+      context: AuthContext;
+    };
+
 const isTestEnv = process.env.NODE_ENV === "test";
 
 async function ensureDefaultWorkspaceMembership(userId: string, displayName?: string | null) {
@@ -215,6 +226,42 @@ export async function requireApiSession(
 
   return {
     ok: true,
+    context,
+  };
+}
+
+export async function resolveTelemetryApiActor(
+  request: Request,
+): Promise<TelemetryApiActor> {
+  const clientIp = extractClientIp(request.headers);
+
+  if (isTestEnv) {
+    return {
+      kind: "authenticated",
+      clientIp,
+      context: { ...TEST_FALLBACK_CONTEXT },
+    };
+  }
+
+  const session = await getAuth().api.getSession({ headers: request.headers });
+  if (!session) {
+    return {
+      kind: "anonymous",
+      clientIp,
+    };
+  }
+
+  const context = await buildAuthContextFromSession(
+    {
+      id: session.user.id,
+      name: session.user.name,
+    },
+    { runLegacyClaim: false },
+  );
+
+  return {
+    kind: "authenticated",
+    clientIp,
     context,
   };
 }

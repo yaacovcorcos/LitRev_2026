@@ -3,8 +3,8 @@ import "server-only";
 import type { Prisma } from "@prisma/client";
 import { z } from "zod";
 import type { AuthContext } from "@/lib/server/auth/session";
-import { assertProjectAccess } from "@/lib/server/access";
 import { prisma } from "@/lib/server/prisma";
+import { assertTelemetryProjectAccess } from "@/lib/server/telemetry-policy";
 import type { CitationPreviewMetricInput } from "@/types/citation-preview-telemetry";
 
 const METRIC_TYPES = [
@@ -111,10 +111,7 @@ export async function ingestCitationPreviewMetric(
 ): Promise<IngestCitationPreviewMetricResult> {
     const parsed = CitationPreviewMetricInputSchema.parse(input);
     if (parsed.projectId) {
-        await assertProjectAccess(
-            { ownerId: auth.userId, workspaceId: auth.workspaceId },
-            parsed.projectId
-        );
+        await assertTelemetryProjectAccess(auth, parsed.projectId);
     }
 
     if (!shouldPersistMetric(parsed.type)) {

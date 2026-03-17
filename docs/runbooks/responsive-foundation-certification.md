@@ -17,6 +17,8 @@ Primary operational path:
 - existing `reliability.v1.shell.session_started`
 - existing `reliability.v1.shell.session_ended`
 
+For public home/auth surfaces, valid route-ready and route-flow telemetry must ingest successfully without an authenticated session. A `401` or `403` on the normal `/`, `/login`, or `/signup` operational telemetry path is a regression.
+
 Supporting performance path:
 - `performance_web_vital` with viewport dimensions aligned to:
   - `phone`

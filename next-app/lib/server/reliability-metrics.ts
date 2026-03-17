@@ -2,10 +2,15 @@ import "server-only";
 
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
-import type { AuthContext } from "@/lib/server/auth/session";
-import { assertProjectAccess } from "@/lib/server/access";
+import type { TelemetryApiActor } from "@/lib/server/auth/session";
 import { prisma } from "@/lib/server/prisma";
 import { RELIABILITY_VIEWPORT_VALUES } from "@/types/reliability-telemetry";
+import {
+  assertAnonymousReliabilityMetricAllowed,
+  assertAnonymousTelemetryRateLimit,
+  assertTelemetryProjectAccess,
+} from "@/lib/server/telemetry-policy";
+import type { ReliabilityMetricInput } from "@/types/reliability-telemetry";
 
 const RELIABILITY_SURFACES = ["ai", "project", "popup", "shell", "home", "auth", "protocol"] as const;
 const RELIABILITY_TYPES = [
@@ -60,15 +65,15 @@ export type IngestReliabilityMetricResult = {
 };
 
 export async function ingestReliabilityMetric(
-  auth: AuthContext,
+  actor: TelemetryApiActor,
   input: unknown,
 ): Promise<IngestReliabilityMetricResult> {
-  const parsed = ReliabilityMetricInputSchema.parse(input);
-  if (parsed.projectId) {
-    await assertProjectAccess(
-      { ownerId: auth.userId, workspaceId: auth.workspaceId },
-      parsed.projectId,
-    );
+  const parsed = ReliabilityMetricInputSchema.parse(input) as ReliabilityMetricInput;
+  if (actor.kind === "anonymous") {
+    assertAnonymousTelemetryRateLimit(actor.clientIp);
+    assertAnonymousReliabilityMetricAllowed(parsed);
+  } else if (parsed.projectId) {
+    await assertTelemetryProjectAccess(actor.context, parsed.projectId);
   }
 
   try {
@@ -78,8 +83,8 @@ export async function ingestReliabilityMetric(
         version: parsed.version,
         type: parsed.type,
         surface: parsed.surface,
-        userId: auth.userId,
-        workspaceId: auth.workspaceId,
+        userId: actor.kind === "authenticated" ? actor.context.userId : null,
+        workspaceId: actor.kind === "authenticated" ? actor.context.workspaceId : null,
         projectId: parsed.projectId ?? null,
         runId: parsed.runId ?? null,
         conversationId: parsed.conversationId ?? null,

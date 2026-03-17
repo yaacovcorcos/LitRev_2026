@@ -17,6 +17,7 @@
 - **Demo Seed Lifecycle:** Sample-project creation/reset is server-seeded from a single transactional service (`lib/server/demo-project.ts`) that finds the current user's scoped demo by `Project.demoKey`, creates a generated project ID when missing, and repopulates project, protocol, ledger, draft, notes, memory, and scoped seed conversation rows without relying on a global fixed project ID.
 - **Onboarding State Persistence:** Guided-setup defaults now persist in `UserMemory` (`guided_setup_new_projects`) and per-project onboarding state persists in `Project.progress.onboarding` (`enabledOverride`, `completedAt`, `skippedAt`) so create-flow routing is backend-driven and auth-ready.
 - **AI Rate Limiting (Current):** Limit checks and usage writes now support authenticated user/workspace scope (with legacy project fallback), while cache-efficiency counters remain process-local instrumentation in `lib/server/ai/rate-limiter.ts`.
+- **Telemetry Ingest Contract:** Reliability and performance ingest now support dual actors: authenticated scoped telemetry and a narrow anonymous public-safe operational subset for home/auth route readiness. Telemetry actor resolution is side-effect-light and avoids auth-failure counting plus legacy-claim work; anonymous rows persist into `ChatUnificationMetric` with null identity.
 - **Citation Preview Diagnostics:** Citation hover resolution returns server-owned diagnostics alongside `CitationMetadata`, caches successful diagnostics with the result, persists terminal completion/failure telemetry into `ChatUnificationMetric` under the `citation_preview.*` namespace, and ships repo-owned smoke/report/diagnose scripts for provider triage.
 - **Citation Hover Continuation:** Citation hover remains bibliography-first and budget-bounded on the initial request, but retryable `PubMed` bibliography-only successes can now trigger one server-authoritative continuation attempt. Continuation is gated by paired existing server/client flags, server-side continuation requests dedupe by citation key, count-bearing cache state is monotonic under slower no-count retries, and continuation terminal telemetry/reporting track recovery without overstating failed-attempt outcomes.
 
@@ -57,6 +58,7 @@
 ## Recently Completed
 *Finished work that might still be fragile or require monitoring. Prune oldest first.*
 
+- [x] Added Model B operational telemetry ingest: reliability/performance now accept a strict anonymous public-safe subset for home/auth surfaces, keep scoped telemetry authenticated-only, and use side-effect-light actor resolution that avoids auth-failure counting and legacy-claim work.
 - [x] Added manuscript schema foundation for drafting: `DraftState v2` now persists a canonical manuscript document with legacy `contentBySection` compatibility projection, legacy draft payloads normalize on read/write, current editor round-trips preserve `blockId`, and draft seed / ledger citation rewrite paths use the shared normalizer.
 - [x] Hardened shipped citation hover continuation for retryable `PubMed` bibliography-only misses: continuation requests now dedupe on the server by citation key, slower no-count continuations cannot downgrade recovered counts, and continuation reporting counts failed attempts in the recovery denominator.
 - [x] Tuned citation hover count enrichment to a larger bounded budget (`1500ms` overall, `1200ms` per provider) and added a repo-owned single-URL diagnosis script so live PubMed/DOI hover misses can be classified before building continuation.
@@ -67,8 +69,6 @@
 - [x] Hardened demo-seed integrity by typing transaction clients, scoping seeded conversation ownership to the active service scope, and aligning draft seed citations with linked evidence sections.
 - [x] Added backend-guided onboarding persistence: user-level default preference plus per-project onboarding state and completion markers used by create-flow routing.
 - [x] Added transactional demo project seed/reset actions for the on-demand sample onboarding workspace.
-- [x] Phase 0-3: Core infra setup (Supabase, Prisma, basic schema, service layer).
-- [x] Phase 4-5: Projects/Protocol backend wired + LocalStorage migrated to DB.
 - [x] Phase 6-8: Ledger, Draft, and Copilot state persistence moved to DB.
 
 ## Deferred / Parking Lot

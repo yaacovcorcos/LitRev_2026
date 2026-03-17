@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { TelemetryAnonymousNotAllowedError } from "@/lib/server/telemetry-policy";
 
 const mocks = vi.hoisted(() => ({
   chatMetricCreate: vi.fn(),
@@ -20,10 +21,19 @@ vi.mock("@/lib/server/access", () => ({
 const { ingestPerformanceMetric } = await import("@/lib/server/performance-metrics");
 
 const AUTH = {
-  userId: "user-1",
-  workspaceId: "ws-1",
-  role: "owner",
-} as const;
+  kind: "authenticated" as const,
+  clientIp: "203.0.113.10",
+  context: {
+    userId: "user-1",
+    workspaceId: "ws-1",
+    role: "owner",
+  },
+};
+
+const ANONYMOUS = {
+  kind: "anonymous" as const,
+  clientIp: "203.0.113.12",
+};
 
 describe("performance-metrics", () => {
   beforeEach(() => {
@@ -100,6 +110,94 @@ describe("performance-metrics", () => {
     });
 
     expect(result).toEqual({ deduped: true, id: null });
+  });
+
+  it("accepts anonymous home performance metrics with null identity", async () => {
+    mocks.chatMetricCreate.mockResolvedValue({ id: "metric-2" });
+
+    const result = await ingestPerformanceMetric(ANONYMOUS, {
+      eventId: "evt-home",
+      version: 1,
+      name: "FCP",
+      value: 420,
+      metricId: "metric-fcp-1",
+      rating: "good",
+      routeTemplate: "/",
+      surface: "home",
+      projectId: null,
+      clientTimestamp: "2026-03-05T10:00:00.000Z",
+      dimensions: {
+        viewport: "phone",
+        network: "4g",
+        online: true,
+        synthetic: false,
+        appVersion: null,
+        commitSha: null,
+      },
+    });
+
+    expect(result).toEqual({ deduped: false, id: "metric-2" });
+    expect(mocks.assertProjectAccess).not.toHaveBeenCalled();
+    expect(mocks.chatMetricCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          userId: null,
+          workspaceId: null,
+          surface: "home",
+        }),
+      }),
+    );
+  });
+
+  it("rejects anonymous performance metrics with mismatched route semantics", async () => {
+    await expect(
+      ingestPerformanceMetric(ANONYMOUS, {
+        eventId: "evt-route-anon",
+        version: 1,
+        name: "TTFB",
+        value: 250,
+        metricId: "metric-ttfb-2",
+        rating: null,
+        routeTemplate: "/project/[id]",
+        surface: "other",
+        projectId: null,
+        clientTimestamp: "2026-03-05T10:00:00.000Z",
+        dimensions: {
+          viewport: "desktop",
+          network: "4g",
+          online: true,
+          synthetic: false,
+          appVersion: null,
+          commitSha: null,
+        },
+      }),
+    ).rejects.toBeInstanceOf(TelemetryAnonymousNotAllowedError);
+    expect(mocks.chatMetricCreate).not.toHaveBeenCalled();
+  });
+
+  it("rejects anonymous performance metrics with project scope", async () => {
+    await expect(
+      ingestPerformanceMetric(ANONYMOUS, {
+        eventId: "evt-project-anon",
+        version: 1,
+        name: "LCP",
+        value: 250,
+        metricId: "metric-lcp-2",
+        rating: "good",
+        routeTemplate: "/",
+        surface: "home",
+        projectId: "project-1",
+        clientTimestamp: "2026-03-05T10:00:00.000Z",
+        dimensions: {
+          viewport: "desktop",
+          network: "4g",
+          online: true,
+          synthetic: false,
+          appVersion: null,
+          commitSha: null,
+        },
+      }),
+    ).rejects.toBeInstanceOf(TelemetryAnonymousNotAllowedError);
   });
 
   it("rejects payloads with non-allowlisted fields", async () => {
