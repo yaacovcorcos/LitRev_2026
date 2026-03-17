@@ -1,10 +1,10 @@
 # U1.6 Burn-In Report
 
-Status: `canary_started_day0_waiting_for_samples`
-Last reviewed: `2026-03-15`
+Status: `window_reassessment_required`
+Last reviewed: `2026-03-17`
 
 This file is the live status and eventual sign-off record for U1.6.
-The production canary window is now anchored to a real deployment baseline, but Day-0 is not yet sign-offable because the scoped cohort has not produced qualifying post-deploy `ChatUnificationMetric` samples.
+The previously recorded canary window remains useful as historical context, but it is not currently the recommended final sign-off baseline because the recorded deployment SHA is older than repo-root `main` as of `2026-03-17`.
 
 ## Canary Metadata
 
@@ -21,6 +21,7 @@ The production canary window is now anchored to a real deployment baseline, but 
 - Cohort workspace IDs:
   - `workspace-IQj0cBXmKu2sCADMxlGZ4dUNjUnHIsGs`
 - Cohort user IDs: `n/a`
+- Window basis: `existing window under reassessment`
 - Rollout gate:
   - `deployment-level canary`
 - Notes:
@@ -37,8 +38,11 @@ The production canary window is now anchored to a real deployment baseline, but 
   - `npx tsc --noEmit`
   - `npx vitest run`
 - Day-0 validator ran against the scoped production cohort and returned `0` qualifying rows since `CANARY_SINCE_UTC`.
-- `run_end_observed` is currently absent on both `ai` and `project` for the new window, so Day-0 remains open.
+- `run_end_observed` is currently absent on both `ai` and `project` for the recorded window, so Day-0 remains open.
 - `U1.6` remains incomplete and `U3` stays blocked pending a real validator/manual pass.
+- The recorded canary deployment SHA (`402f28f1b0e99d21e8b00e1502c9bb6dcfadc943`) is older than current repo-root `main` (`c1b2c51dd5534dc6cee2a183289e05b3a8f6bb97`).
+- Backup reviewer assignment is still missing, which means no final strict gate can be treated as sign-offable yet.
+- Raw JSON from the 2026-03-15 Day-0 validator attempt was not preserved in this report, so that attempt is informational only under the updated runbook contract.
 
 ## Day-0 Attempt
 
@@ -68,6 +72,26 @@ Observed result summary:
 - outcome:
   - expected Day-0 gate failure due to no post-deploy cohort traffic yet
 
+## Window Validity Decision
+
+- Current recommendation: `open a fresh canary window unless production is intentionally still pinned to the recorded deployment`
+- Reasoning:
+  1. the recorded canary baseline SHA is older than current repo-root `main`
+  2. the existing window has no qualifying scoped samples
+  3. the updated burn-in contract now requires baseline scenario evidence, raw validator JSON preservation, and named backup-reviewer assignment before sign-off
+- If production is intentionally still pinned to the recorded deployment and no deployed evidence-affecting changes have occurred since `CANARY_SINCE_UTC`, this window may be continued only after:
+  1. assigning the backup reviewer
+  2. executing the runbook baseline scenario pack inside the scoped cohort
+  3. rerunning Day-0 with preserved `--json=1` output
+
+## Baseline Scenario Evidence
+
+No baseline scenario pack has been recorded yet under the updated runbook contract.
+
+## Evidence Appendix
+
+- 2026-03-15 Day-0 raw validator JSON: `not preserved; rerun required for sign-off-quality evidence`
+
 ## Canonical Sources
 
 - Runbook: `docs/runbooks/chat-unification-burn-in.md`
@@ -77,13 +101,15 @@ Observed result summary:
 ## Current Decision
 
 - Burn-in started: `yes`
+- Current window sign-offable: `no`
 - Day-0 gate passed: `no`
 - Burn-in pass: `no`
 - `U3` popup migration unlocked: `no`
 
 ## Next Required Step
 
-1. Wait for real post-deploy `ai` and `project` cohort traffic inside this canary window.
-2. Re-run the Day-0 validator with the same `CANARY_SINCE_UTC` and cohort workspace.
-3. Assign a named backup reviewer before final sign-off.
-4. Do not claim `U1.6` pass or retire `FIX-011b` until the validator/manual gate both pass.
+1. Update the burn-in runbook/template-aligned evidence process in active use for this report.
+2. Decide whether production is still intentionally pinned to the recorded deployment; if not, open a fresh canary window.
+3. Assign a named backup reviewer before any future strict-gate result is treated as sign-offable.
+4. Record the baseline scenario pack and preserve raw `--json=1` validator output for all future Day-0/daily/final runs.
+5. Do not claim `U1.6` pass or retire `FIX-011b` until the validator/manual gate both pass under the updated contract.
