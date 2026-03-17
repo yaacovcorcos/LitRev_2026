@@ -58,7 +58,15 @@ export const UNSECTIONED_DRAFT_ID = "__whole_draft__" as const;
 
 export type DraftMode = "section" | "full";
 
-export const DEFAULT_SECTION_ORDER: DraftSectionKey[] = [];
+export const DEFAULT_SECTION_ORDER: DraftSectionKey[] = [
+  "abstract",
+  "introduction",
+  "methods",
+  "results",
+  "discussion",
+  "conclusion",
+  "references",
+];
 
 export const OPTIONAL_SECTION_KEYS: DraftSectionKey[] = [
   "funding",

@@ -1,32 +1,33 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it } from "vitest";
 import { createDefaultDraftState, loadDraftState, normalizeDraftState } from "@/lib/draftStorage";
-import { UNSECTIONED_DRAFT_ID } from "@/types/draft";
+import { DEFAULT_SECTION_ORDER, UNSECTIONED_DRAFT_ID } from "@/types/draft";
 
 describe("createDefaultDraftState", () => {
-  it("starts blank in full draft with whole-draft content only", () => {
+  it("starts with the seeded section-first scaffold", () => {
     const state = createDefaultDraftState();
 
     expect(state.version).toBe(2);
-    expect(state.mode).toBe("full");
-    expect(state.activeSection).toBeNull();
-    expect(state.sectionOrder).toEqual([]);
-    expect(state.manuscript.sections.map((section) => section.sectionId)).toEqual([UNSECTIONED_DRAFT_ID]);
+    expect(state.mode).toBe("section");
+    expect(state.activeSection).toBe("abstract");
+    expect(state.sectionOrder).toEqual(DEFAULT_SECTION_ORDER);
+    expect(state.manuscript.sections.map((section) => section.sectionId)).toEqual(DEFAULT_SECTION_ORDER);
     expect(state.contentBySection[UNSECTIONED_DRAFT_ID]).toBeTruthy();
   });
 });
 
 describe("normalizeDraftState", () => {
-  it("forces section mode back to full when no named sections exist", () => {
+  it("restores the seeded scaffold for empty no-section drafts", () => {
     const normalized = normalizeDraftState({
       ...createDefaultDraftState(),
-      mode: "section",
-      activeSection: "abstract",
+      mode: "full",
+      activeSection: null,
       sectionOrder: [],
     });
 
-    expect(normalized.mode).toBe("full");
-    expect(normalized.activeSection).toBeNull();
+    expect(normalized.mode).toBe("section");
+    expect(normalized.sectionOrder).toEqual(DEFAULT_SECTION_ORDER);
+    expect(normalized.activeSection).toBe("abstract");
   });
 });
 

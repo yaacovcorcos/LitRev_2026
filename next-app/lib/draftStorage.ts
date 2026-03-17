@@ -1,11 +1,17 @@
-import { DRAFT_SECTIONS, DraftMode, DraftSectionId, DraftSectionKey, UNSECTIONED_DRAFT_ID } from "@/types/draft";
+import {
+  DEFAULT_SECTION_ORDER,
+  DRAFT_SECTIONS,
+  DraftMode,
+  DraftSectionId,
+  DraftSectionKey,
+  UNSECTIONED_DRAFT_ID,
+} from "@/types/draft";
 import type { JSONContent } from "@tiptap/core";
 import { compileDraftCitations } from "@/lib/citation-compiler";
 import type { ManuscriptDocument } from "@/types/manuscript";
 import {
   buildCompatContentBySection,
   coerceManuscriptDocument,
-  createDefaultManuscriptDocument,
   createManuscriptDocument,
 } from "@/lib/manuscript/schema";
 
@@ -98,6 +104,35 @@ function buildKnownSectionIds(customSections: Record<DraftSectionId, { label: st
   return [UNSECTIONED_DRAFT_ID, ...BASE_SECTION_IDS, ...Object.keys(customSections)] as DraftSectionId[];
 }
 
+function docHasContent(content: JSONContent | undefined): boolean {
+  if (!content || typeof content !== "object") return false;
+  const stack = Array.isArray(content.content) ? [...content.content] : [];
+  while (stack.length > 0) {
+    const node = stack.pop();
+    if (!node || typeof node !== "object") continue;
+    if (node.type === "text" && typeof node.text === "string" && node.text.trim().length > 0) {
+      return true;
+    }
+    if (node.type === "citation" || node.type === "hardBreak") {
+      return true;
+    }
+    if (Array.isArray(node.content)) {
+      stack.push(...node.content);
+    }
+  }
+  return false;
+}
+
+function shouldRestoreSeededSectionBaseline(
+  sectionOrder: DraftSectionId[],
+  customSections: Record<DraftSectionId, { label: string; placeholder?: string }>,
+  contentBySection: Record<DraftSectionId, JSONContent>,
+): boolean {
+  if (sectionOrder.length > 0) return false;
+  if (Object.keys(customSections).length > 0) return false;
+  return !docHasContent(contentBySection[UNSECTIONED_DRAFT_ID]);
+}
+
 function createPanelsState(): DraftPanelsState {
   return {
     ledgerWidth: 320,
@@ -110,16 +145,23 @@ function createPanelsState(): DraftPanelsState {
 export function createDefaultDraftState(): DraftState {
   const customSections = {};
   const knownSectionIds = buildKnownSectionIds(customSections);
-  const manuscript = createDefaultManuscriptDocument();
+  const sectionOrder = [...DEFAULT_SECTION_ORDER];
+  const contentBySection = buildSectionRecord(knownSectionIds, () => emptyDoc());
+  const manuscript = createManuscriptDocument({
+    sectionOrder,
+    customSections,
+    contentBySection,
+  });
+  const compatContent = buildCompatContentBySection(manuscript);
   return {
     version: 2,
-    mode: "full",
-    activeSection: null,
-    sectionOrder: [],
+    mode: "section",
+    activeSection: sectionOrder[0] ?? null,
+    sectionOrder,
     customSections,
     formattingBySection: buildSectionRecord(knownSectionIds, () => createDefaultFormat()),
     panels: createPanelsState(),
-    contentBySection: buildSectionRecord(knownSectionIds, (key) => buildCompatContentBySection(manuscript)[key] ?? emptyDoc()),
+    contentBySection: buildSectionRecord(knownSectionIds, (key) => compatContent[key] ?? emptyDoc()),
     ledgerBySection: buildSectionRecord(knownSectionIds, () => []),
     copilotBySection: buildSectionRecord(knownSectionIds, () => []),
     manuscript,
@@ -307,13 +349,16 @@ export function normalizeDraftState(input: unknown): DraftState {
     return maybe.map(normalizeCopilotMessage).filter((message): message is CopilotMessage => Boolean(message));
   });
 
+  const didRestoreSeededBaseline = shouldRestoreSeededSectionBaseline(storedOrder, customSections, contentBySection);
+  const seededSectionOrder = didRestoreSeededBaseline ? [...DEFAULT_SECTION_ORDER] : storedOrder;
+
   const compiled = compileDraftCitations({
     contentBySection,
-    sectionOrder: storedOrder,
+    sectionOrder: seededSectionOrder,
     includeNumberInNodes: false,
   });
   const nextManuscript = createManuscriptDocument({
-    sectionOrder: storedOrder,
+    sectionOrder: seededSectionOrder,
     customSections,
     contentBySection: compiled.normalizedContentBySection,
   });
@@ -321,7 +366,7 @@ export function normalizeDraftState(input: unknown): DraftState {
   const nextSectionOrder = nextManuscript.sections
     .map((section) => section.sectionId)
     .filter((sectionId) => sectionId !== UNSECTIONED_DRAFT_ID);
-  const mode = rawMode === "section" && nextSectionOrder.length === 0 ? "full" : rawMode;
+  const mode = nextSectionOrder.length === 0 ? "full" : didRestoreSeededBaseline ? "section" : rawMode;
   const activeSection = mode === "section"
     ? activeSectionCandidate ?? nextSectionOrder[0] ?? null
     : activeSectionCandidate;

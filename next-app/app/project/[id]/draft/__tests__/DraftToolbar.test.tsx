@@ -6,11 +6,11 @@ import { DraftTopBar } from "../DraftToolbar";
 function createProps(overrides: Partial<Parameters<typeof DraftTopBar>[0]> = {}) {
   return {
     projectName: "Demo",
-    activeSection: null,
-    mode: "full" as const,
-    canUseSectionMode: false,
-    orderedSections: [],
-    availableSections: [],
+    activeSection: "abstract",
+    mode: "section" as const,
+    canUseSectionMode: true,
+    orderedSections: [{ id: "abstract", label: "Abstract", placeholder: "Add abstract" }],
+    availableSections: [{ id: "introduction", label: "Introduction", placeholder: "Add introduction" }],
     draggingKey: null,
     dragOverKey: null,
     dragOverPosition: null,
@@ -39,11 +39,11 @@ function createProps(overrides: Partial<Parameters<typeof DraftTopBar>[0]> = {})
 }
 
 describe("DraftTopBar", () => {
-  it("keeps section mode disabled until a named section exists", () => {
+  it("renders seeded section tabs with section mode active", () => {
     render(<DraftTopBar {...createProps()} />);
 
-    expect(screen.getByRole("button", { name: "Section" }).getAttribute("disabled")).not.toBeNull();
-    expect(screen.getByText("No sections yet")).toBeTruthy();
+    expect(screen.getByRole("tab", { name: "Abstract" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Section" }).getAttribute("disabled")).toBeNull();
   });
 
   it("only enables export once the draft has content", () => {
@@ -61,7 +61,6 @@ describe("DraftTopBar", () => {
     render(
       <DraftTopBar
         {...createProps({
-          canUseSectionMode: true,
           orderedSections: [{ id: "abstract", label: "Abstract", placeholder: "Add abstract" }],
           activeSection: "abstract",
         })}

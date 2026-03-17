@@ -18,15 +18,14 @@ This plan changes how LitRev delivers drafting, not what LitRev is for.
 No PRD change is required now because the target architecture still supports section-based drafting. The difference is that sections become structured views over one manuscript system rather than isolated mini-editors.
 
 Current route contract:
-- blank draft by default
-- no seeded sections
-- fresh blank drafts open to one obvious writable surface in `Full Draft`
+- fresh drafts restore the older seeded section-first scaffold
+- named section tabs are visible immediately
+- `Section` mode is the primary drafting surface on open
 - `Full Draft` and `Section` are route-level projections over one normalized draft/manuscript state
 - top tabs show named sections only
-- `Whole draft` is a first-class freeform area, but not a top tab
-- `Section` mode is disabled until the first named section exists, then becomes the primary focused drafting path
-- before any named section exists, evidence targets `Whole draft`; after sections exist, evidence targets the active section
-- `Full Draft` only renders written sections plus `Whole draft` when it has content; otherwise it shows the start-drafting empty state
+- `Whole draft` remains available in the normalized model for compatibility, but it is not the primary route surface
+- evidence targets the active section during normal drafting; `Whole draft` targeting is compatibility-only when no named section is active
+- `Full Draft` only renders written sections, plus `Whole draft` only when it already has content; otherwise it shows the start-drafting empty state
 - left Evidence Ledger is the only draft-owned support surface
 - right side remains owned by the existing project copilot shell
 
@@ -109,7 +108,7 @@ LitRev drafting becomes a manuscript operating system with:
 
 ### Current-state evidence (code-verified)
 - `next-app/app/project/[id]/draft/page.tsx`
-  - Route-level Draft Studio, localStorage-first paint, section/full modes, project copilot wiring, blank-start handling, and restored left Evidence Ledger + center drafting layout.
+  - Route-level Draft Studio, localStorage-first paint, section/full modes, project copilot wiring, seeded section-first route restore, and restored left Evidence Ledger + center drafting layout.
 - `next-app/app/project/[id]/draft/DraftEditors.tsx`
   - Current editor is Tiptap `StarterKit` + `Underline` + custom `Citation` node + paragraph direction.
   - No native comments, suggestion mode, headings UI, tables, figures, equations, links, footnotes, or outline tooling.
@@ -461,15 +460,15 @@ These are implementation tracks for one target state, not separate product versi
 - Reserve the right side exclusively for the existing project copilot shell; draft does not add a second right-side panel.
 - Historical note (March 14, 2026): this reset improved clutter but still removed the section-first drafting workflow users needed. It is retained as an intermediate correction, not the final drafting direction.
 
-### `DRX-003` Blank-start, section-first drafting reset
+### `DRX-003` Seeded section-first drafting restore
 - Restore the older usable drafting interaction model on top of the canonical manuscript model, using `ead2ac8` as the interaction baseline rather than as a literal code restore source.
-- Blank new drafts start with no seeded sections and open in `Full Draft`.
-- Restore top section tabs, real `Section` / `Full Draft`, and a persistent collapsible left sidebar with `Sections` and `Evidence`.
+- Fresh routes restore the older seeded section scaffold and open in `Section` mode.
+- Restore top section tabs, real `Section` / `Full Draft`, and the dedicated left Evidence Ledger.
 - Keep right-side ownership exclusively in the existing project copilot shell.
-- Treat `Whole draft` freeform content as a first-class editing target in `Full Draft`, while keeping named sections as the primary tabbed workflow.
+- Treat `Whole draft` freeform content as a compatibility target in `Full Draft`, while keeping named sections as the primary tabbed workflow.
 - Preserve manuscript normalization, citation compilation, export entrypoint, and project-shell embedding.
 - Blast radius: high UI correction concentrated in the draft route plus draft-state normalization.
-- Implementation note (March 17, 2026): the route baseline is the restored section-first shell. `Section` and `Full Draft` are route-level projections over one normalized manuscript state, blank drafts open in `Full Draft`, `Whole draft` is a first-class freeform target, and the persistent left sidebar is the only draft-owned support surface. Compact/mobile may use an overlay treatment, but desktop remains anchored to the restored section-first baseline.
+- Implementation note (March 17, 2026): the route baseline is the restored section-first shell. `Section` and `Full Draft` are route-level projections over one normalized manuscript state, fresh routes reopen with the seeded section scaffold, `Whole draft` remains available for compatibility, and the left Evidence Ledger is the only draft-owned support surface. Compact/mobile hardening remains a follow-on concern, but desktop stays anchored to the restored section-first baseline.
 
 ### `DRX-004` Comments, suggestions, and checkpoints
 - Introduce review entities, anchor model, review rail, suggestion mode, and compare/restore UI.
@@ -600,13 +599,13 @@ These are implementation tracks for one target state, not separate product versi
 - Journal-specific export rules are profile-driven and additive; the manuscript model itself should stay journal-agnostic.
 
 ## Recently Completed
-- `DRX-003` restored blank-start, section-first drafting on top of the canonical manuscript model, bringing back top tabs, real `Section` / `Full Draft`, and the persistent left sidebar while keeping the right side copilot-only.
+- `DRX-003` restored the seeded section-first drafting baseline on top of the canonical manuscript model, bringing back top tabs, real `Section` / `Full Draft`, and the left Evidence Ledger while keeping the right side copilot-only.
 - `DRX-002R` shipped the one-left-drawer manuscript shell and removed the draft-owned right panel from the route; it remains documented as an intermediate correction that `DRX-003` superseded.
 - [x] `DRX-001` Defined the canonical manuscript schema, stable block identity, and `DraftState v2` migration contract. Draft save/load now normalize legacy payloads into a canonical manuscript document plus `contentBySection` compatibility projection, and direct draft writers use the same normalizer.
 
 ## Active Tasks
 - [x] `DRX-002` Establish the canonical manuscript document and structural editing foundation.
-- [x] `DRX-003` Restore the draft route to blank-start, section-first drafting with a persistent left sidebar.
+- [x] `DRX-003` Restore the draft route to the seeded section-first drafting baseline with a left Evidence Ledger.
 - [ ] `DRX-004` Add first-class comments, suggestion mode, checkpoints, and compare/restore.
 - [ ] `DRX-005` Add citation palette, evidence coverage, claim support diagnostics, and repair flows.
 - [ ] `DRX-006` Move AI drafting actions into inline proposal/review flows.

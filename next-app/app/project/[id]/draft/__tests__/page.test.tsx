@@ -3,7 +3,6 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import DraftPage from "../page";
-import { UNSECTIONED_DRAFT_ID } from "@/types/draft";
 
 const { mockUseDraftWorkspaceController } = vi.hoisted(() => ({
   mockUseDraftWorkspaceController: vi.fn(),
@@ -48,14 +47,6 @@ vi.mock("../DraftContextRail", () => ({
   EvidencePane: () => <div data-testid="evidence-pane" />,
 }));
 
-vi.mock("../DraftSidebar", () => ({
-  DraftSidebar: ({ children, collapsed }: { children: ReactNode; collapsed: boolean }) => (
-    <div data-testid="draft-sidebar" data-collapsed={collapsed ? "1" : "0"}>
-      {children}
-    </div>
-  ),
-}));
-
 vi.mock("../DraftEditors", () => ({
   EditorToolbar: () => <div data-testid="editor-toolbar" />,
   FullSectionEditor: ({ sectionId, editable }: { sectionId: string; editable?: boolean }) => (
@@ -85,32 +76,33 @@ function createController(overrides: Partial<ReturnType<typeof mockUseDraftWorks
     isEmbeddedInProjectShell: false,
     projectCopilot: null,
     draft: {
-      mode: "full" as const,
-      activeSection: null,
+      mode: "section" as const,
+      activeSection: "abstract",
       contentBySection: {
-        [UNSECTIONED_DRAFT_ID]: { type: "doc", content: [] },
         abstract: { type: "doc", content: [] },
+        references: { type: "doc", content: [] },
       },
     },
     saveStatus: "saved" as const,
-    orderedSections: [],
+    orderedSections: [{ id: "abstract", label: "Abstract", placeholder: "Add abstract" }],
     fullDraftSections: [],
-    availableSections: [],
-    hasEditableSections: false,
-    firstEditableSectionId: null,
-    activeSectionLabel: "Draft",
-    currentTargetId: UNSECTIONED_DRAFT_ID,
-    currentTargetLabel: "Whole draft",
+    availableSections: [{ id: "introduction", label: "Introduction", placeholder: "Add introduction" }],
+    hasEditableSections: true,
+    firstEditableSectionId: "abstract",
+    activeSectionLabel: "Abstract",
+    currentTargetId: "abstract",
+    currentTargetLabel: "Abstract",
     isReferencesTarget: false,
     activeEditor: null,
     paragraphDir: "ltr" as const,
     formatVarsById: {
-      [UNSECTIONED_DRAFT_ID]: {},
+      abstract: {},
+      references: {},
     },
     activeFormat: { fontSize: 16, lineHeight: 1.8, paragraphSpacing: 12, fontFamily: "Georgia" },
     activeFontFamily: "Georgia",
-    shouldRenderWholeDraft: true,
-    wholeDraftMeta: { id: UNSECTIONED_DRAFT_ID, label: "Whole draft", placeholder: "Start writing..." },
+    shouldRenderWholeDraft: false,
+    wholeDraftMeta: { id: "__whole_draft__", label: "Whole draft", placeholder: "Start writing..." },
     isSidebarCollapsed: false,
     toggleSidebar: vi.fn(),
     isPhoneWorkspace: false,
@@ -192,14 +184,13 @@ describe("Draft page", () => {
     mockUseDraftWorkspaceController.mockReturnValue(createController());
   });
 
-  it("renders the restored section-first shell with a persistent sidebar", () => {
+  it("renders the restored section-first shell with the evidence ledger and section editor", () => {
     render(<DraftPage />);
 
     expect(screen.getByTestId("draft-top-bar")).toBeTruthy();
-    expect(screen.getByTestId("draft-sidebar")).toBeTruthy();
     expect(screen.getByTestId("evidence-pane")).toBeTruthy();
     expect(screen.getByTestId("editor-toolbar")).toBeTruthy();
-    expect(screen.getByTestId("section-editor").getAttribute("data-section-id")).toBe(UNSECTIONED_DRAFT_ID);
+    expect(screen.getByTestId("section-editor").getAttribute("data-section-id")).toBe("abstract");
     expect(screen.getByTestId("project-page-layout").getAttribute("data-has-copilot")).toBe("1");
   });
 
@@ -210,7 +201,6 @@ describe("Draft page", () => {
           mode: "section",
           activeSection: "references",
           contentBySection: {
-            [UNSECTIONED_DRAFT_ID]: { type: "doc", content: [] },
             references: { type: "doc", content: [] },
           },
         },
@@ -238,9 +228,8 @@ describe("Draft page", () => {
       createController({
         draft: {
           mode: "full",
-          activeSection: null,
+          activeSection: "abstract",
           contentBySection: {
-            [UNSECTIONED_DRAFT_ID]: { type: "doc", content: [] },
             abstract: { type: "doc", content: [] },
           },
         },
@@ -265,9 +254,8 @@ describe("Draft page", () => {
       createController({
         draft: {
           mode: "full",
-          activeSection: null,
+          activeSection: "references",
           contentBySection: {
-            [UNSECTIONED_DRAFT_ID]: { type: "doc", content: [] },
             references: { type: "doc", content: [] },
           },
         },
@@ -289,9 +277,8 @@ describe("Draft page", () => {
       createController({
         draft: {
           mode: "full",
-          activeSection: null,
+          activeSection: "abstract",
           contentBySection: {
-            [UNSECTIONED_DRAFT_ID]: { type: "doc", content: [] },
             abstract: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "alpha" }] }] },
             methods: { type: "doc", content: [] },
           },

@@ -11,7 +11,6 @@ import { AddEvidenceModal } from "./AddEvidenceModal";
 import { EvidencePane } from "./DraftContextRail";
 import { EditorToolbar, FullSectionEditor } from "./DraftEditors";
 import { DraftFormattingPanel, DraftTopBar } from "./DraftToolbar";
-import { DraftSidebar } from "./DraftSidebar";
 import { useDraftWorkspaceController } from "./useDraftWorkspaceController";
 import styles from "./draft-studio.module.css";
 import { UNSECTIONED_DRAFT_ID } from "@/types/draft";
@@ -149,15 +148,23 @@ function DraftContent() {
         <div
           className={styles.body}
           style={{
-            "--ledger-width": controller.isSidebarCollapsed ? "60px" : controller.isCompactWorkspace ? "0px" : "320px",
+            "--ledger-width": controller.isSidebarCollapsed ? "56px" : "320px",
           } as CSSProperties}
         >
-            <DraftSidebar
-              collapsed={controller.isSidebarCollapsed}
-              isOverlay={controller.isCompactWorkspace}
-              onToggleCollapsed={controller.toggleSidebar}
-              onDismiss={() => controller.setSidebarOpen(false)}
-            >
+            {controller.isSidebarCollapsed ? (
+              <div className={styles.collapsedRailLeft} aria-label="Evidence ledger (collapsed)">
+                <button
+                  type="button"
+                  className={styles.panelToggle}
+                  aria-label="Expand evidence ledger"
+                  onClick={controller.toggleSidebar}
+                >
+                  <span className="material-icons-round">menu_open</span>
+                </button>
+                <span className={styles.collapsedLabel}>Evidence</span>
+              </div>
+            ) : (
+              <aside className={styles.ledger} aria-label="Evidence ledger">
               <EvidencePane
                 activeSectionLabel={controller.currentTargetLabel}
                 isReferencesSection={controller.isReferencesTarget}
@@ -168,7 +175,15 @@ function DraftContent() {
                 onRemoveEvidence={controller.handleRemoveEvidence}
                 studyLabel={controller.studyLabel}
               />
-            </DraftSidebar>
+              </aside>
+            )}
+
+            <div
+              className={`${styles.resizeHandle} ${controller.isSidebarCollapsed ? styles.resizeHandleHidden : ""}`}
+              role="separator"
+              aria-label="Evidence ledger divider"
+              aria-hidden={controller.isSidebarCollapsed}
+            />
 
             <section className={styles.center} aria-label="Draft editor">
               <div className={styles.centerHeader}>
@@ -249,7 +264,7 @@ function DraftContent() {
                     surfaceStyle={controller.formatVarsById[UNSECTIONED_DRAFT_ID]}
                     prefixContent={<DraftSectionHeading id="draft-whole-draft-heading" label={controller.wholeDraftMeta.label} />}
                   />
-                  <div className={styles.helperText}>Start writing here. Add sections when you want structure.</div>
+                  <div className={styles.helperText}>Whole draft is available for compatibility, but sections are the primary drafting flow.</div>
                 </section>
               ) : (
                 <div className={styles.fullDraftScroll} role="region" aria-label="Full draft">

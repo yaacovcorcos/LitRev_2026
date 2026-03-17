@@ -364,7 +364,7 @@ export function useDraftWorkspaceController({ projectId }: ControllerParams) {
   const hasEditableSections = draft.sectionOrder.some((sectionId) => sectionId !== "references");
   const firstEditableSectionId = draft.sectionOrder.find((sectionId) => sectionId !== "references") ?? null;
   const hasWholeDraftContent = docHasContent(draft.contentBySection[UNSECTIONED_DRAFT_ID]);
-  const shouldRenderWholeDraft = hasWholeDraftContent || orderedSections.length === 0 || draft.activeSection === null;
+  const shouldRenderWholeDraft = hasWholeDraftContent;
   const isReferencesTarget = currentTargetId === "references";
   const activeFormat = draft.formattingBySection[currentTargetId] ?? DEFAULT_SECTION_FORMAT;
   const activeFontFamily = FONT_FAMILY_OPTIONS.some((option) => option.value === activeFormat.fontFamily)
