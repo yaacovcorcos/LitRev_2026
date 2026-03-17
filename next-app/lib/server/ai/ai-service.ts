@@ -653,6 +653,7 @@ class AIService {
             agentMode,
             scope,
             studyLedger: null,
+            studyId: options?.studyId ?? null,
         });
         if (toolDefs.length === 0) {
             yield* this.streamChat(messages, options);
@@ -1423,6 +1424,7 @@ class AIService {
                 agentMode,
                 scope: toolScope,
                 studyLedger,
+                studyId: studyId ?? null,
             });
             const modeToolNames = modeToolDefs.map((t) => t.name);
             let executionToolDefs = modeToolDefs;

@@ -22,6 +22,11 @@ Domain-specific execution plans remain canonical for their domains:
   - `ResizableSplitter` (+ a11y tests)
   - `ErrorFallback`
   - shared confirmation dialog path for destructive actions.
+- Study-page copilot direct editing is now a first-class UI contract:
+  - explicit mutation/fill intents on the study detail page route into the existing study-capable copilot path instead of generic chat
+  - direct-safe study edits render as `auto_applied` `study_update` artifacts with no approval controls, refresh through the existing study refetch path, and surface a toast with `Undo`
+  - risky or mixed study edits remain review-first through the existing `study_update` approval card flow
+  - PDF-derived copilot study edits now use a preview-first non-mutating acquisition step before direct apply vs proposal selection
 - Shared scoped-context UI is active:
   - `ProjectCopilot` / `CopilotInputCore` now render typed context receipts and recent-context history chips owned by `docs/plans/plan-context-capture.md`.
   - `PopupChat` shows compact context previews, keeps edit intents advisory-only via `Continue in Copilot`, and draft desktop quick actions are gated behind the dedicated context-toolbar flag rather than leaking into mobile flows.
@@ -106,6 +111,7 @@ Use this mapping for old PRs/comments referencing CLU IDs.
 - [ ] `CUX-A03` Expand async `aria-live` announcements coverage and consistency across remaining async UI states.
 
 ## Recently Completed
+- [x] Study-page copilot direct edit V1 shipped: explicit study-detail mutation intents now route into the study-capable execution path, safe field edits can auto-apply with toast + undo and read-only applied cards, risky or mixed study edits remain proposal-based, and the study page continues to refresh through its existing refetch/event path without a new optimistic store.
 - [x] Shared composer mode control shipped: `/ai`, main conversation, and side-panel copilot now expose an explicit `Auto` mode plus sticky manual mode selection on the shared composer, keep manual lock visibly discoverable even with empty input, and resolve composer-originated sends/queues against the current request text instead of a stale debounced preview.
 - [x] Shared queued follow-up shipped: `/ai`, main conversation, and side-panel copilot now let users queue one text-only next message while a run is active, render it as an attached composer cap beneath live progress, keep project surfaces in sync through shared context, and auto-dispatch only after the current run reaches a truly sendable idle state.
 - [x] Shared live progress bar redesign shipped: the composer-adjacent progress surface is now visually attached to the composer, uses calmer activity/motion treatment, wraps long messages safely, exposes an integrated semantic progress rail when count data exists, and preserves the existing relocation/suppression contract across `/ai`, main conversation, and side-panel copilot.

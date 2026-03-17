@@ -441,6 +441,41 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
 
     const clearChoices = useCallback(() => setPendingChoices([]), []);
 
+    const reconcileArtifactStatus = useCallback((
+        artifactId: string,
+        status: ArtifactData["status"],
+        reviewNote?: string | null,
+    ) => {
+        const reviewedAt = new Date().toISOString();
+        setArtifacts((prev) => {
+            const next = new Map(prev);
+            const existing = next.get(artifactId);
+            if (existing) {
+                next.set(artifactId, {
+                    ...existing,
+                    status,
+                    reviewedAt,
+                    reviewNote: reviewNote ?? null,
+                });
+            }
+            return next;
+        });
+        updateState((prev) => ({
+            ...prev,
+            messages: prev.messages.map((message) =>
+                message.artifact?.id === artifactId
+                    ? {
+                        ...message,
+                        artifact: {
+                            ...message.artifact,
+                            status,
+                        },
+                    }
+                    : message
+            ),
+        }));
+    }, [updateState]);
+
     useEffect(() => {
         if (!convo.currentConversationId) return;
         setQueuedFollowUp((current) => bindQueuedFollowUpConversationId(current, convo.currentConversationId));
@@ -645,6 +680,7 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             approveArtifactsBatch: stream.approveArtifactsBatch,
             executePlan: stream.executePlan,
             reconnectRun: stream.reconnectRun,
+            reconcileArtifactStatus,
             // Summarize & fresh
             shouldOfferSummary,
             summarizeAndRefresh: convo.summarizeAndRefresh,
@@ -682,6 +718,7 @@ export function ProjectCopilotProvider({ projectId, children }: ProjectCopilotPr
             setPanelWidth,
             sendMessageWithContext,
             stream,
+            reconcileArtifactStatus,
             setReasoningMode,
             clearMessages,
             convo,

@@ -1,12 +1,14 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState, type WheelEvent as ReactWheelEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type WheelEvent as ReactWheelEvent } from "react";
 import { useParams } from "next/navigation";
 import { useProjectCopilot } from "@/contexts/ProjectCopilotContext";
+import { useNotifications } from "@/contexts/NotificationContext";
 import type { CopilotPage } from "@/types/ai";
 import type { AgentMode } from "@/types/agent";
 import type { TimelineItem } from "@/types/timeline";
 import { createNoteAction } from "@/app/actions/notes";
+import { undoArtifactAction } from "@/app/actions/agent";
 import { selectActiveProgress, normalizeTimelineProgressItems } from "@/lib/ai/active-progress";
 import { TimelineRenderer } from "./copilot/TimelineRenderer";
 import { CopilotInput } from "./copilot/CopilotInput";
@@ -17,8 +19,10 @@ import { ReasoningModeDropdown } from "./copilot/ReasoningModeDropdown";
 import { ConversationPicker } from "./ui/ConversationPicker";
 import { decideCopilotWheelContainment } from "./copilot/scrollContainment";
 import { generateChatUnificationRequestKey } from "@/lib/ai/chat-unification-telemetry";
+import { dispatchProjectDataChanged } from "@/lib/project-data-events";
 import { messagesToTimeline } from "./copilot/StreamReducer";
 import styles from "./ProjectCopilot.module.css";
+import type { StudyUpdatePayload } from "@/types/artifacts";
 
 export type SuggestionConfig = {
     label: string;
@@ -85,6 +89,7 @@ export function ProjectCopilot({
         approveArtifactsBatch,
         executePlan,
         reconnectRun,
+        reconcileArtifactStatus,
         selectedModel,
         // Autonomy settings (Phase 7)
         setShowAutonomySettings,
@@ -99,6 +104,7 @@ export function ProjectCopilot({
         queuedFollowUp,
         clearQueuedFollowUp,
     } = useProjectCopilot();
+    const { notify } = useNotifications();
 
     // Hide reasoning controls when model doesn't support reasoning
     const showReasoningControls = reasoningSupport !== "none";
@@ -106,6 +112,8 @@ export function ProjectCopilot({
     const [showConversationDropdown, setShowConversationDropdown] = useState(false);
     const [isBranching, setIsBranching] = useState(false);
     const [prefillCommand, setPrefillCommand] = useState<{ text: string; id: string } | null>(null);
+    const initializedAutoAppliedStudyUpdatesRef = useRef(false);
+    const seenAutoAppliedStudyUpdatesRef = useRef<Set<string>>(new Set());
 
     const handleSuggestionClick = useCallback((prompt: string) => {
         setPrefillCommand({ text: prompt, id: crypto.randomUUID() });
@@ -126,6 +134,75 @@ export function ProjectCopilot({
         }
         setPrefillCommand(null);
     }, [consumePrefillCommand, sharedPrefillCommand]);
+
+    const isStudyUpdatePayload = (value: unknown): value is StudyUpdatePayload => {
+        if (!value || typeof value !== "object") return false;
+        const candidate = value as Partial<StudyUpdatePayload>;
+        return (
+            typeof candidate.studyId === "string" &&
+            Array.isArray(candidate.changes) &&
+            typeof candidate.rationale === "string"
+        );
+    };
+
+    useEffect(() => {
+        const seen = seenAutoAppliedStudyUpdatesRef.current;
+        if (!initializedAutoAppliedStudyUpdatesRef.current) {
+            for (const message of messages) {
+                const artifact = message.artifact;
+                if (artifact?.type === "study_update" && artifact.status === "auto_applied") {
+                    seen.add(artifact.id);
+                }
+            }
+            initializedAutoAppliedStudyUpdatesRef.current = true;
+            return;
+        }
+
+        if (page !== "study" || !studyId || !projectId) return;
+
+        for (const message of messages) {
+            const artifact = message.artifact;
+            if (!artifact || artifact.type !== "study_update" || artifact.status !== "auto_applied") continue;
+            if (seen.has(artifact.id)) continue;
+
+            const payload = artifact.payload;
+            if (!isStudyUpdatePayload(payload)) {
+                seen.add(artifact.id);
+                continue;
+            }
+            if (payload.studyId !== studyId) {
+                seen.add(artifact.id);
+                continue;
+            }
+
+            seen.add(artifact.id);
+            const changedLabels = payload.changes.map((change) => change.label);
+            const summary = changedLabels.length === 1
+                ? changedLabels[0]
+                : `${changedLabels.slice(0, 2).join(", ")}${changedLabels.length > 2 ? ` +${changedLabels.length - 2} more` : ""}`;
+
+            notify("success", `Updated study: ${summary}`, {
+                action: {
+                    label: "Undo",
+                    onClick: async () => {
+                        const result = await undoArtifactAction(artifact.id);
+                        if (!result.success) {
+                            notify("error", result.error ?? "Failed to undo study update");
+                            return;
+                        }
+                        reconcileArtifactStatus(artifact.id, "rejected", "Undone by user");
+                        dispatchProjectDataChanged({
+                            projectId,
+                            domains: ["ledger"],
+                            reason: "server_mutation",
+                            source: "study_update_undo",
+                        });
+                        notify("info", "Study update undone");
+                    },
+                },
+            });
+        }
+    }, [messages, notify, page, projectId, reconcileArtifactStatus, studyId]);
 
     const handleTimelineContainerElement = useCallback((node: HTMLDivElement | null) => {
         timelineRef.current = node;

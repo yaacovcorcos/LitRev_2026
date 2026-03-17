@@ -26,5 +26,7 @@ export { openAlexSearchTool } from "./openalex-search";
 export { recommendStudiesTool } from "./recommend-studies";
 export { storeMemoryTool } from "./store-memory";
 export { updateStudyTool } from "./update-study";
+export { updateStudyDirectTool } from "./update-study-direct";
+export { previewStudyPdfUpdateTool } from "./preview-study-pdf-update";
 export { forgetMemoryTool } from "./forget-memory";
 export { inspectMemoryTool } from "./inspect-memory";

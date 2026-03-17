@@ -1128,6 +1128,7 @@ export function TimelineRenderer({
                     >
                         <StudyUpdateCard
                             payload={updatePayload}
+                            status={item.status}
                             onAccept={() => handleReview("accepted")}
                             onReject={() => handleReview("rejected")}
                             canAct={canAct}

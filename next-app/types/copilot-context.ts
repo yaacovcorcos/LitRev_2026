@@ -177,6 +177,12 @@ export type ProjectCopilotContextValue = {
     executePlan: (artifactId: string, selectedIndexes: number[]) => void;
     /** Reconnect to a still-active run using the recovery API. */
     reconnectRun: (runId?: string | null) => Promise<void>;
+    /** Reconcile a locally rendered artifact status after an out-of-band server action such as undo. */
+    reconcileArtifactStatus: (
+        artifactId: string,
+        status: ArtifactData["status"],
+        reviewNote?: string | null,
+    ) => void;
 
     // Summarize & fresh
     /** Whether the conversation is long enough to offer summarization */

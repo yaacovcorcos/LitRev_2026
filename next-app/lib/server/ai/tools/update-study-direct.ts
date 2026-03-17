@@ -1,57 +1,44 @@
 import type { AITool, ToolExecutionContext } from "./base";
 import { StudyUpdateSchema } from "@/types/artifacts";
 import {
-    FULL_STUDY_UPDATE_INPUT_SCHEMA,
+    SAFE_DIRECT_STUDY_FIELDS,
+    SAFE_DIRECT_STUDY_UPDATE_INPUT_SCHEMA,
     buildStudyUpdatePayload,
 } from "./study-update-shared";
 
-export const updateStudyTool: AITool = {
+export const updateStudyDirectTool: AITool = {
     definition: {
-        name: "update_study",
+        name: "update_study_direct",
         description:
-            "Propose review-first edits to study metadata fields. Use this for risky fields or mixed safe+risky edits. Returns a study_update artifact proposal and does not auto-apply.",
+            "Directly apply safe study-page edits for abstract, AI summary, DOI, PMID, journal, keywords, or source URL. Use only when the user explicitly asked to edit those safe fields. Never use for title, authors, year, status, quality, triage, relevance, or mixed-field edits.",
         parameters: {
             type: "object",
             properties: {
-                studyId: { type: "string", description: "Optional study ID. Defaults to current study context." },
-                title: { type: "string" },
-                authors: { type: "string" },
-                year: { type: "number" },
-                quality: { type: "string", enum: ["High", "Medium", "Low", "-"] },
-                status: { type: "string", enum: ["pending", "extracted", "active", "excluded"] },
+                studyId: { type: "string", description: "Optional study ID. Defaults to the current study context." },
                 abstract: { type: "string" },
                 doi: { type: "string", description: "DOI value; pass empty string to clear." },
                 pmid: { type: "string", description: "PMID digits; pass empty string to clear." },
                 journal: { type: "string" },
-                studyType: { type: "string", enum: ["RCT", "Cohort", "Case-Control", "Cross-Sectional", "Case-Report", "Meta-Analysis", "Systematic-Review", "Other", ""] },
                 keywords: { type: "array", items: { type: "string" } },
                 keywordsOperation: { type: "string", enum: ["set", "append"] },
                 sourceUrl: { type: "string", description: "Source URL; pass empty string to clear." },
-                triageDecision: { type: "string", enum: ["keep", "exclude", "maybe", ""] },
-                exclusionReason: { type: "string" },
-                triageNote: { type: "string" },
-                qualityRationale: { type: "string" },
                 aiSummary: { type: "string" },
                 rationale: { type: "string" },
             },
             required: ["rationale"],
         },
     },
-
-    inputSchema: FULL_STUDY_UPDATE_INPUT_SCHEMA,
+    inputSchema: SAFE_DIRECT_STUDY_UPDATE_INPUT_SCHEMA,
     outputSchema: StudyUpdateSchema,
-
     autonomy: {
-        defaultLevel: 2,
-        allowedRange: [1, 2],
-        hardCap: 2,
+        defaultLevel: 3,
+        allowedRange: [3, 3],
+        hardCap: 3,
     },
-
     prerequisites: {
         required: ["project_required", "study_required"],
         blockedHint: "stop_with_explanation",
     },
-
     async execute(args: Record<string, unknown>, context?: ToolExecutionContext) {
         const studyId = (args.studyId ?? context?.studyId) as string | undefined;
         const projectId = (context?.projectId ?? args.projectId) as string | undefined;
@@ -68,6 +55,7 @@ export const updateStudyTool: AITool = {
                 args,
                 projectId,
                 studyId,
+                allowedFields: SAFE_DIRECT_STUDY_FIELDS,
             });
 
             return {
@@ -78,7 +66,7 @@ export const updateStudyTool: AITool = {
             return {
                 callId: "",
                 result: null,
-                error: error instanceof Error ? error.message : "Failed to prepare study update",
+                error: error instanceof Error ? error.message : "Failed to prepare direct study update",
             };
         }
     },

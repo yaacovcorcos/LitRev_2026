@@ -81,6 +81,18 @@ describe("routeToAgent", () => {
         expect(routeToAgent("Please remove study 123 from ledger", "overview")).toBe("screening");
     });
 
+    it("routes explicit study-page edit intents to screening on the study page", () => {
+        expect(routeToAgent("Edit this page and add a study summary", "study")).toBe("screening");
+        expect(routeToAgent("Insert the abstract from the PDF into this study", "study")).toBe("screening");
+        expect(routeToAgent("Fix the DOI and PMID for this study", "study")).toBe("screening");
+    });
+
+    it("keeps generic study-page questions out of study-edit routing", () => {
+        expect(routeToAgent("What does this study say?", "study")).toBe("general");
+        expect(routeToAgent("Compare this study to the others", "study")).toBe("general");
+        expect(routeToAgent("Summarize this paper for me", "study")).toBe("general");
+    });
+
     // Drafting keywords
     it("routes to drafting for writing keywords", () => {
         expect(routeToAgent("Write the methods section", "overview")).toBe("drafting");
