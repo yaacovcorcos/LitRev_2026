@@ -362,7 +362,7 @@ export function useDraftWorkspaceController({ projectId }: ControllerParams) {
   const currentTargetMeta = sectionMetaById.get(currentTargetId) ?? WHOLE_DRAFT_META;
   const currentTargetLabel = currentTargetMeta.label;
   const hasEditableSections = draft.sectionOrder.some((sectionId) => sectionId !== "references");
-  const firstEditableSectionId = draft.sectionOrder.find((sectionId) => sectionId !== "references") ?? draft.sectionOrder[0] ?? null;
+  const firstEditableSectionId = draft.sectionOrder.find((sectionId) => sectionId !== "references") ?? null;
   const hasWholeDraftContent = docHasContent(draft.contentBySection[UNSECTIONED_DRAFT_ID]);
   const shouldRenderWholeDraft = hasWholeDraftContent || orderedSections.length === 0 || draft.activeSection === null;
   const isReferencesTarget = currentTargetId === "references";

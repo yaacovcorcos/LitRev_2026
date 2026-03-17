@@ -260,6 +260,30 @@ describe("Draft page", () => {
     expect(openSectionInSectionMode).toHaveBeenCalledWith("abstract");
   });
 
+  it("disables the start-drafting action when only references exists", () => {
+    mockUseDraftWorkspaceController.mockReturnValue(
+      createController({
+        draft: {
+          mode: "full",
+          activeSection: null,
+          contentBySection: {
+            [UNSECTIONED_DRAFT_ID]: { type: "doc", content: [] },
+            references: { type: "doc", content: [] },
+          },
+        },
+        orderedSections: [{ id: "references", label: "References", placeholder: "Generated from citations." }],
+        fullDraftSections: [],
+        hasEditableSections: false,
+        shouldRenderWholeDraft: false,
+        firstEditableSectionId: null,
+      }),
+    );
+
+    render(<DraftPage />);
+
+    expect((screen.getByRole("button", { name: "Start drafting" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
   it("renders only contentful sections in full draft", () => {
     mockUseDraftWorkspaceController.mockReturnValue(
       createController({
