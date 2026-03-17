@@ -52,7 +52,7 @@ export function isProgressiveAnswerStreamingEnabled(): boolean {
   return (
     readFlag(process.env.NEXT_PUBLIC_PROGRESSIVE_ANSWER_STREAMING_A1)
     ?? readFlag(process.env.ENABLE_PROGRESSIVE_ANSWER_STREAMING_A1)
-    ?? false
+    ?? true
   );
 }
 

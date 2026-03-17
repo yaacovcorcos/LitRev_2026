@@ -85,7 +85,7 @@ Define the canonical implementation plan for app speed, responsiveness, and stab
   - dynamic imports for header/history/timeline-adjacent UI
   - idle-deferred workspace context and conversation-list loading
   - an explicit LRU timeline cache capped to the five most recently accessed conversations
-  - feature-flagged progressive answer streaming cadence controls in `next-app/lib/feature-flags.ts`, with the shared runtime reserving the assistant row immediately and the server coalescer using lower-latency batches for answer `content` than for `reasoning_delta`
+  - progressive answer streaming is enabled by default, with cadence controls and an explicit env opt-out in `next-app/lib/feature-flags.ts`; the shared runtime reserves the assistant row immediately and the server coalescer uses lower-latency batches for answer `content` than for `reasoning_delta`
 - Explicit route-ready instrumentation is currently uneven across the app:
   - route-ready telemetry exists for `/`, auth entry, `/project/[id]`, and `/project/[id]/protocol`
   - `/ai` also has route-local `composer-ready` and `timeline-ready` markers
