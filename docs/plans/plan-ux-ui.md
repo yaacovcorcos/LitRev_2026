@@ -50,6 +50,12 @@ Domain-specific execution plans remain canonical for their domains:
 - Shared shell-contained scroll ownership is active for homepage and library workspace surfaces:
   - `AppShell` now provides a viewport-bounded shell parent, `surface-root[data-surface-height="shell"]` acts as the bounded route root, and `surface-scroll-body` remains the sole inner scroll owner.
   - Homepage workspace and library now use separate route-local layout modules on top of that shared contract, and homepage tall-list wheel scrolling is covered by a dedicated smoke test.
+- Durable refresh/return-to-location behavior is still inconsistent across surfaces:
+  - draft already syncs route-meaningful workspace state through URL search params, but several other surfaces still keep exact location in client-only state or local restore helpers
+  - project root conversation entry still depends on `project-entry` restore heuristics and localStorage-backed conversation fallback instead of a URL-addressable conversation identity
+  - `/ai` still keeps active conversation and attached project scope in route-local client state rather than the URL
+  - notes keeps the selected note in client state, memory keeps the active tab in client state, onboarding keeps the current step in client state, and protocol keeps the active section in context state
+  - home resume still stores the last project id rather than the last meaningful in-app location URL
 - Citation hover previews now use source-aware server metadata assembly:
   - PubMed links keep PubMed-owned bibliography while resolving citation counts from NIH iCite/OCC first and Crossref second when a DOI fallback is available.
   - DOI links remain Crossref-backed, and citation preview telemetry records the actual upstream count source (`icite` or `crossref`).
@@ -107,6 +113,66 @@ Use this mapping for old PRs/comments referencing CLU IDs.
 - [ ] `CUX-031` Add study details side panel from ledger links.
 - [ ] `CUX-032` Add import-study duplicate warning UX.
 
+### Durable Navigation and Refresh Restoration
+- [ ] `CUX-038` Establish the URL-first durable navigation contract.
+  - Problem: refresh, back/forward, and shared-link behavior are inconsistent because several surfaces still treat client state or localStorage as the authority for exact location.
+  - Rules to freeze in implementation:
+    - if refresh must return the user to the same place, that state belongs in the URL
+    - primary content selection should use route segments
+    - auxiliary UI state should use query params
+    - local/session storage should keep soft UI preferences only and must never override an explicit URL
+    - server-side resume should be fallback entry behavior only, not the primary refresh contract
+    - popup remains ephemeral by default unless the user explicitly promotes it into a durable conversation flow
+  - Exit criteria:
+    - one cross-surface navigation contract exists for chat and non-chat pages
+    - route identity no longer depends on heuristic local restore for exact refresh behavior
+
+- [ ] `CUX-039` Make chat surfaces refresh-safe with URL-addressable conversation identity.
+  - Scope:
+    - project main conversation should move to a dedicated conversation route such as `/project/[id]/conversation/[conversationId]`
+    - `/project/[id]` should stop meaning both overview and conversation based on local restore state
+    - side-panel copilot should bind durable conversation identity through query params on workspace routes, while keeping width/collapse state local
+    - `/ai` should bind active conversation and optional attached project scope through URL state
+  - Guardrails:
+    - preserve the shared runtime contract owned by `plan-chat-unification-v2.md`
+    - do not let local restore override explicit deep links
+  - Exit criteria:
+    - refresh returns users to the same chat conversation on project and `/ai` surfaces
+    - back/forward navigation is deterministic across main conversation and side copilot flows
+
+- [ ] `CUX-040` Make project workspace surfaces refresh-safe where route state is user-meaningful.
+  - Scope:
+    - notes should make the selected note URL-addressable
+    - memory should move active tab state into query params
+    - protocol should move active section focus into query params
+    - ledger should keep study detail route identity as canonical and only promote durable list state that materially affects user return position, such as core filters or view mode
+  - Rules:
+    - do not overfit transient selection or bulk-action state into the URL unless it is part of the actual user task
+    - route segments win for primary content, query params for tabs/filters/secondary state
+  - Exit criteria:
+    - refresh restores the same meaningful sub-surface for notes, memory, and protocol
+    - ledger list preserves only the durable state that genuinely helps users resume work
+
+- [ ] `CUX-041` Restore onboarding and home resume through durable location, not partial heuristics.
+  - Scope:
+    - onboarding should bind the current step to the URL and reconcile it with persisted server progress
+    - home should resume to the last meaningful in-app URL rather than only the last project id
+  - Rules:
+    - explicit deep links always beat home/server fallback resume
+    - server-stored progress may refine or validate resume, but must not replace explicit route state
+  - Exit criteria:
+    - onboarding refresh returns to the same meaningful step or the correct persisted completion boundary
+    - home resume reopens the correct destination URL across project, chat, and workspace surfaces
+
+- [ ] `CUX-042` Demote heuristic restore helpers to fallback-only behavior after URL adoption.
+  - Scope:
+    - reduce `project-entry` local restore from “exact location authority” to fallback entry memory only
+    - audit last-visited and localStorage restore keys so they no longer fight route state
+    - preserve multi-tab sanity by preferring explicit URL over shared mutable local restore data
+  - Exit criteria:
+    - no major surface still depends on TTL-based local restore to reopen an exact location after refresh
+    - remaining local restore keys behave as convenience fallback only
+
 ### Accessibility
 - [ ] `CUX-A03` Expand async `aria-live` announcements coverage and consistency across remaining async UI states.
 
@@ -127,6 +193,7 @@ Use this mapping for old PRs/comments referencing CLU IDs.
 - Guided setup/onboarding UX execution: `docs/plans/plan-guided-setup.md`.
 - Draft manuscript UX, citation-authoring, review flows, and export-grade drafting architecture: `docs/plans/plan-drafting-experience.md`.
 - Chat runtime unification and rollout gates: `docs/plans/plan-chat-unification-v2.md` (`CUX-D01` dependency).
+- Durable navigation work in this file owns the cross-surface URL/refresh contract; `plan-chat-unification-v2.md` remains the dependency for shared chat runtime semantics rather than route identity ownership.
 - Context capture and scoped AI entrypoints: `docs/plans/plan-context-capture.md` (owns composer context receipts/chips and cross-surface context reuse).
 - Thinking/tool-lane UX deltas: `docs/plans/plan-thinking-v2.md`.
 - Performance budgets and enforcement: `docs/plans/plan-speed-performance.md`.
