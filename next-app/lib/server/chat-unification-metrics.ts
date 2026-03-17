@@ -5,6 +5,7 @@ import { prisma } from "@/lib/server/prisma";
 import type { AuthContext } from "@/lib/server/auth/session";
 import { assertTelemetryProjectAccess } from "@/lib/server/telemetry-policy";
 import type {
+  AnswerStreamDeliveryPayload,
   AskUserContextMismatchPayload,
   ChatUnificationMetricVersion,
   ChatSurface,
@@ -26,6 +27,7 @@ const CHAT_UNIFICATION_METRIC_TYPES = [
   "ask_user_context_mismatch",
   "stuck_running_tools_after_run_end",
   "run_end_observed",
+  "answer_stream_delivery",
 ] as const satisfies readonly ChatUnificationMetricType[];
 
 const CHAT_STREAM_PHASE_VALUES = ["send", "plan", "project_stream"] as const;
@@ -71,6 +73,17 @@ const RunEndObservedPayloadSchema: z.ZodType<RunEndObservedPayload> = z.object({
   streamPhase: z.enum(CHAT_STREAM_PHASE_VALUES),
   actualModel: z.string().nullable().optional().default(null),
   actualModelSource: z.enum(ACTUAL_MODEL_SOURCE_VALUES).optional().default("unknown"),
+  firstProviderContentMs: z.number().finite().min(0).nullable().optional().default(null),
+});
+
+const AnswerStreamDeliveryPayloadSchema: z.ZodType<AnswerStreamDeliveryPayload> = z.object({
+  requestKey: z.string().uuid(),
+  streamPhase: z.enum(CHAT_STREAM_PHASE_VALUES),
+  firstVisibleContentMs: z.number().finite().min(0).nullable(),
+  visibleChunkCount: z.number().int().min(0),
+  visibleChunkChars: z.number().int().min(0),
+  maxVisibleChunkChars: z.number().int().min(0).nullable(),
+  meanVisibleChunkGapMs: z.number().finite().min(0).nullable(),
 });
 
 const ChatUnificationMetricInputSchema = z.object({
@@ -92,7 +105,7 @@ function parsePayload(
   version: ChatUnificationMetricVersion,
   type: ChatUnificationMetricType,
   payload: unknown,
-): RetryModelContinuityPayload | AskUserContextMismatchPayload | StuckRunningToolsPayload | RunEndObservedPayload {
+): RetryModelContinuityPayload | AskUserContextMismatchPayload | StuckRunningToolsPayload | RunEndObservedPayload | AnswerStreamDeliveryPayload {
   switch (type) {
     case "retry_model_continuity": {
       if (version >= 3) {
@@ -106,6 +119,8 @@ function parsePayload(
       return StuckRunningToolsPayloadSchema.parse(payload);
     case "run_end_observed":
       return RunEndObservedPayloadSchema.parse(payload);
+    case "answer_stream_delivery":
+      return AnswerStreamDeliveryPayloadSchema.parse(payload);
     default:
       throw new Error(`Unsupported metric type: ${String(type)}`);
   }

@@ -5,6 +5,7 @@ export type SharedToolStatus = "queued" | "running" | "done" | "failed" | "inter
 
 export type SharedStreamState = {
   aiMessageCreated: boolean;
+  hasVisibleContent: boolean;
   fullContent: string;
   reasoningContent: string;
   reasoningState: "streaming" | "done";
@@ -20,6 +21,7 @@ export type SharedStreamState = {
 };
 
 export type SharedStreamIntent =
+  | { type: "assistant_reserve" }
   | {
       type: "assistant_upsert";
       text: string;
@@ -118,6 +120,7 @@ export function createInitialSharedStreamState(
 ): SharedStreamState {
   return {
     aiMessageCreated: false,
+    hasVisibleContent: false,
     fullContent: "",
     reasoningContent: "",
     reasoningState: "done",
@@ -146,6 +149,21 @@ function assistantIntentFromState(state: SharedStreamState): SharedStreamIntent 
           truncated: state.reasoningTruncated || undefined,
         }
       : undefined,
+  };
+}
+
+export function reserveSharedAssistantTurn(
+  prev: SharedStreamState,
+): { state: SharedStreamState; intents: SharedStreamIntent[] } {
+  if (prev.aiMessageCreated) {
+    return { state: prev, intents: [] };
+  }
+  return {
+    state: {
+      ...prev,
+      aiMessageCreated: true,
+    },
+    intents: [{ type: "assistant_reserve" }],
   };
 }
 
@@ -357,12 +375,15 @@ export function reduceSharedStreamChunk(
       next = {
         ...prev,
         aiMessageCreated: true,
+        hasVisibleContent: prev.hasVisibleContent || nextContent.length > 0,
         fullContent: chunk.contentMode === "replace"
           ? nextContent
           : `${prev.fullContent}${nextContent}`,
       };
-      intents.push({ type: "progress_clear" });
       intents.push(assistantIntentFromState(next));
+      if (!prev.hasVisibleContent && next.hasVisibleContent) {
+        intents.push({ type: "progress_clear" });
+      }
       return { state: next, intents };
     }
 
@@ -561,6 +582,7 @@ export function reduceSharedStreamChunk(
         ...prev,
         runningToolCallIds: [],
         lastToolCallId: null,
+        hasVisibleContent: prev.hasVisibleContent || prev.fullContent.length > 0,
       };
       return { state: next, intents };
     }

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   createInitialSharedStreamState,
   reduceSharedStreamChunk,
+  reserveSharedAssistantTurn,
 } from "@/lib/ai/shared-stream-reducer";
 import type { AIStreamChunk } from "@/types/ai";
 
@@ -218,6 +219,29 @@ describe("shared stream reducer", () => {
       text: "Recovered full answer",
       reasoning: undefined,
     });
+  });
+
+  it("reserves the assistant turn without visible content", () => {
+    const reserved = reserveSharedAssistantTurn(createInitialSharedStreamState());
+
+    expect(reserved.state.aiMessageCreated).toBe(true);
+    expect(reserved.state.hasVisibleContent).toBe(false);
+    expect(reserved.intents).toEqual([{ type: "assistant_reserve" }]);
+  });
+
+  it("clears progress only on the first visible content chunk", () => {
+    let state = createInitialSharedStreamState();
+
+    let reduced = reduceSharedStreamChunk(state, { type: "reasoning_start", reasoningId: "r1" }, meta);
+    state = reduced.state;
+    expect(reduced.intents.some((intent) => intent.type === "progress_clear")).toBe(false);
+
+    reduced = reduceSharedStreamChunk(state, { type: "content", content: "Hello" }, meta);
+    state = reduced.state;
+    expect(reduced.intents.filter((intent) => intent.type === "progress_clear")).toHaveLength(1);
+
+    reduced = reduceSharedStreamChunk(state, { type: "content", content: " world" }, meta);
+    expect(reduced.intents.some((intent) => intent.type === "progress_clear")).toBe(false);
   });
 
   it("does not recreate ephemeral PubMed progress or checkpoints during replay", () => {

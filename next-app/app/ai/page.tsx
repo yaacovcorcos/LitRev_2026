@@ -80,6 +80,7 @@ import {
   type ReasoningSupportTier,
   type SelectableModelId,
 } from "@/lib/ai/config";
+import { isProgressiveAnswerStreamingEnabled } from "@/lib/feature-flags";
 import { useRouter } from "next/navigation";
 import type { QueuedFollowUp } from "@/types/queued-followup";
 import styles from "./ai-view.module.css";
@@ -116,6 +117,10 @@ declare global {
       visibleItems?: number;
       hiddenItems?: number;
       totalItems?: number;
+      firstVisibleAssistantMs?: number;
+      visibleAssistantChunkCount?: number;
+      visibleAssistantChunkChars?: number;
+      maxVisibleAssistantChunkChars?: number;
     };
   }
 }
@@ -135,6 +140,14 @@ const makeId = (prefix: string) =>
     : `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
 const AI_HISTORY_COLLAPSED_KEY = "litrev_ai_history_collapsed";
+const stripReservedAssistantTimelineItems = (items: TimelineItem[], assistantMessageId: string) =>
+  items.filter((item) => !(
+    item.type === "assistant_message"
+    && item.id === assistantMessageId
+    && item.deliveryState === "reserved"
+    && !item.content
+    && !item.reasoning?.text
+  ));
 
 type ChatConversation = {
   id: string;
@@ -265,6 +278,7 @@ function mapDbMessagesToTimeline(
 export default function AIView() {
   const router = useRouter();
   const mobileAiV2Enabled = isMobileAiV2Enabled();
+  const progressiveAnswerStreamingEnabled = isProgressiveAnswerStreamingEnabled();
   const { projects } = useProjects();
   const [isHistoryCollapsed, setHistoryCollapsed] = useState<boolean>(() => {
     if (typeof window === "undefined") return true;
@@ -837,6 +851,7 @@ export default function AIView() {
       aiMessageId: latestAssistant?.id ?? makeId("assistant"),
       initialStreamState: createInitialSharedStreamState({
         aiMessageCreated: Boolean(latestAssistant),
+        hasVisibleContent: Boolean(latestAssistant?.type === "assistant_message" && latestAssistant.content),
         fullContent: latestAssistant?.type === "assistant_message" ? latestAssistant.content : "",
         reasoningContent: latestAssistant?.type === "assistant_message" ? latestAssistant.reasoning?.text ?? "" : "",
         reasoningState: latestAssistant?.type === "assistant_message" ? latestAssistant.reasoning?.state ?? "done" : "done",
@@ -1346,6 +1361,7 @@ export default function AIView() {
     abortControllerRef.current = controller;
 
     const aiMessageId = `m-${Date.now() + 1}`;
+    const streamStartedAtMs = Date.now();
     const requestKey = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
       ? crypto.randomUUID()
       : `ai-send-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -1355,6 +1371,14 @@ export default function AIView() {
     let actualModelSource: "provider" | "requested" | "unknown" = "unknown";
     let unresolvedCountBeforeClear: number | null = null;
     let unresolvedCountAfterClear: number | null = null;
+    let firstVisibleContentMs: number | null = null;
+    let visibleChunkCount = 0;
+    let visibleChunkChars = 0;
+    let maxVisibleChunkChars: number | null = null;
+    let visibleChunkGapTotalMs = 0;
+    let visibleChunkGapCount = 0;
+    let lastVisibleContentLength = 0;
+    let lastVisibleChunkAtMs: number | null = null;
     let aborted = false;
     let emittedTerminalError = false;
     let terminalEventEmitted = false;
@@ -1568,17 +1592,18 @@ export default function AIView() {
         convId = runtime.getConversationId();
         const errorState = buildClientErrorState(err);
         updateConversationTimeline(convId, (items) => {
+          const itemsWithoutReservedAssistant = stripReservedAssistantTimelineItems(items, aiMessageId);
           const errorMeta = {
             ...errorState.errorMeta,
             runId: runtime.getState().localRunId || currentRunIdRef.current || errorState.errorMeta.runId,
           };
           const hasAssistantContent = hasCanonicalFailureFallbackText({
-            items: items.filter((item) => item.type === "assistant_message"),
+            items: itemsWithoutReservedAssistant.filter((item) => item.type === "assistant_message"),
             streamError: errorMeta,
             getText: (item) => item.type === "assistant_message" ? item.content : null,
           });
           const reconciled = reconcileRunScopedRenderedErrors({
-            items: items.filter((item) => item.type === "error"),
+            items: itemsWithoutReservedAssistant.filter((item) => item.type === "error"),
             nextMessage: errorState.message,
             nextMeta: errorMeta,
             getMessage: (item) => item.type === "error" ? item.message : null,
@@ -1587,11 +1612,11 @@ export default function AIView() {
           const hasRenderedError = !reconciled.shouldAppend;
           if (shouldSuppressClientFallback({ errorMeta: errorMeta, hasAssistantContent, hasRenderedError })) {
             emittedTerminalError = true;
-            return items.filter((item) => item.type !== "error" || reconciled.items.some((retained) => retained.id === item.id));
+            return itemsWithoutReservedAssistant.filter((item) => item.type !== "error" || reconciled.items.some((retained) => retained.id === item.id));
           }
           emittedTerminalError = true;
           return [
-            ...items.filter((item) => item.type !== "error" || reconciled.items.some((retained) => retained.id === item.id)),
+            ...itemsWithoutReservedAssistant.filter((item) => item.type !== "error" || reconciled.items.some((retained) => retained.id === item.id)),
             {
               type: "error",
               id: `error-${Date.now()}`,
@@ -1606,6 +1631,24 @@ export default function AIView() {
     } finally {
       runtime.clearProgress();
       convId = runtime.getConversationId();
+      recordChatUnificationMetric({
+        type: "answer_stream_delivery",
+        surface: "ai",
+        runId: runtime.getState().localRunId || null,
+        conversationId: runtime.getConversationId(),
+        projectId: selectedProjectId,
+        payload: {
+          requestKey,
+          streamPhase: "send",
+          firstVisibleContentMs,
+          visibleChunkCount,
+          visibleChunkChars,
+          maxVisibleChunkChars,
+          meanVisibleChunkGapMs: visibleChunkGapCount > 0
+            ? visibleChunkGapTotalMs / visibleChunkGapCount
+            : null,
+        },
+      });
       if (!aborted) {
         const runtimeState = runtime.getState();
         recordChatUnificationMetric({
@@ -1658,12 +1701,13 @@ export default function AIView() {
       ) {
         const terminalErrorState = buildUnexpectedTerminalErrorState(terminalReason);
         updateConversationTimeline(convId, (items) => {
+          const itemsWithoutReservedAssistant = stripReservedAssistantTimelineItems(items, aiMessageId);
           const errorMeta = {
             ...terminalErrorState.errorMeta,
             runId: runtime.getState().localRunId || currentRunIdRef.current || undefined,
           };
           const reconciled = reconcileRunScopedRenderedErrors({
-            items: items.filter((item) => item.type === "error"),
+            items: itemsWithoutReservedAssistant.filter((item) => item.type === "error"),
             nextMessage: terminalErrorState.message,
             nextMeta: errorMeta,
             getMessage: (item) => item.type === "error" ? item.message : null,
@@ -1672,11 +1716,11 @@ export default function AIView() {
           const retainedErrorIds = new Set(reconciled.items.map((item) => item.id));
           if (!reconciled.shouldAppend) {
             emittedTerminalError = true;
-            return items.filter((item) => item.type !== "error" || retainedErrorIds.has(item.id));
+            return itemsWithoutReservedAssistant.filter((item) => item.type !== "error" || retainedErrorIds.has(item.id));
           }
           emittedTerminalError = true;
           return [
-            ...items.filter((item) => item.type !== "error" || retainedErrorIds.has(item.id)),
+            ...itemsWithoutReservedAssistant.filter((item) => item.type !== "error" || retainedErrorIds.has(item.id)),
             {
               type: "error",
               id: makeId("terminal-error"),
@@ -1710,6 +1754,7 @@ export default function AIView() {
     selectedModel,
     reasoningMode,
     handleNavigate,
+    progressiveAnswerStreamingEnabled,
 
     workspaceContextText,
     ensureWorkspaceContextText,
@@ -1923,6 +1968,7 @@ export default function AIView() {
     abortControllerRef.current = controller;
 
     const aiMessageId = `m-${Date.now() + 1}`;
+    const streamStartedAtMs = Date.now();
     const requestKey = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
       ? crypto.randomUUID()
       : `ai-plan-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -1932,6 +1978,14 @@ export default function AIView() {
     let actualModelSource: "provider" | "requested" | "unknown" = "unknown";
     let unresolvedCountBeforeClear: number | null = null;
     let unresolvedCountAfterClear: number | null = null;
+    let firstVisibleContentMs: number | null = null;
+    let visibleChunkCount = 0;
+    let visibleChunkChars = 0;
+    let maxVisibleChunkChars: number | null = null;
+    let visibleChunkGapTotalMs = 0;
+    let visibleChunkGapCount = 0;
+    let lastVisibleContentLength = 0;
+    let lastVisibleChunkAtMs: number | null = null;
     let stopReason: string | null = null;
     let errorMessage: string | null = null;
     let aborted = false;
@@ -1953,10 +2007,33 @@ export default function AIView() {
       upsertConversationTitle,
       setPendingChoices,
       setPendingUserInput,
-      onIntent: handleRunIntent,
+      onIntent: (intent) => {
+        handleRunIntent(intent);
+        if (intent.type !== "assistant_upsert") return;
+        const nextLength = intent.text.length;
+        const deltaChars = Math.max(0, nextLength - lastVisibleContentLength);
+        if (deltaChars <= 0) return;
+        const nowMs = Date.now();
+        if (firstVisibleContentMs === null) {
+          firstVisibleContentMs = Math.max(0, nowMs - streamStartedAtMs);
+        } else if (lastVisibleChunkAtMs !== null) {
+          visibleChunkGapTotalMs += Math.max(0, nowMs - lastVisibleChunkAtMs);
+          visibleChunkGapCount += 1;
+        }
+        visibleChunkCount += 1;
+        visibleChunkChars += deltaChars;
+        maxVisibleChunkChars = maxVisibleChunkChars === null
+          ? deltaChars
+          : Math.max(maxVisibleChunkChars, deltaChars);
+        lastVisibleContentLength = nextLength;
+        lastVisibleChunkAtMs = nowMs;
+      },
       onPlanStepUpdate: updatePlanStepStatus,
       onNavigate: handleNavigate,
     });
+    if (progressiveAnswerStreamingEnabled) {
+      runtime.reserveAssistantTurn();
+    }
 
     recordReliabilityMetric({
       type: "reliability.v1.stream.started",
@@ -2050,6 +2127,24 @@ export default function AIView() {
     } finally {
       runtime.clearProgress();
       convId = runtime.getConversationId();
+      recordChatUnificationMetric({
+        type: "answer_stream_delivery",
+        surface: "ai",
+        runId: runtime.getState().localRunId || null,
+        conversationId: runtime.getConversationId(),
+        projectId: selectedProjectId,
+        payload: {
+          requestKey,
+          streamPhase: "plan",
+          firstVisibleContentMs,
+          visibleChunkCount,
+          visibleChunkChars,
+          maxVisibleChunkChars,
+          meanVisibleChunkGapMs: visibleChunkGapCount > 0
+            ? visibleChunkGapTotalMs / visibleChunkGapCount
+            : null,
+        },
+      });
       if (!aborted) {
         const runtimeState = runtime.getState();
         recordChatUnificationMetric({
@@ -2101,22 +2196,23 @@ export default function AIView() {
       const reason = errorMessage ?? (stopReason ? `Execution stopped: ${stopReason}` : "Execution did not complete.");
       const errorState = buildClientErrorState(`Plan execution failed: ${reason}`);
       updateConversationTimeline(convId, (items) => {
+        const itemsWithoutReservedAssistant = stripReservedAssistantTimelineItems(items, aiMessageId);
         const errorMeta = {
           ...errorState.errorMeta,
           retryable: false,
         };
         const hasRenderedError = hasRenderedErrorMatch({
-          items: items.filter((item) => item.type === "error"),
+          items: itemsWithoutReservedAssistant.filter((item) => item.type === "error"),
           nextMessage: errorState.message,
           nextMeta: errorMeta,
           getMessage: (item) => item.type === "error" ? item.message : null,
           getErrorMeta: (item) => item.type === "error" ? item.errorMeta : null,
         });
         if (hasRenderedError) {
-          return items;
+          return itemsWithoutReservedAssistant;
         }
         return [
-          ...items,
+          ...itemsWithoutReservedAssistant,
           {
             type: "error",
             id: `plan-error-${Date.now()}`,
@@ -2137,6 +2233,7 @@ export default function AIView() {
     selectedModel,
     reasoningMode,
     handleNavigate,
+    progressiveAnswerStreamingEnabled,
     workspaceContextText,
     ensureWorkspaceContextText,
     ensureConversationTimeline,

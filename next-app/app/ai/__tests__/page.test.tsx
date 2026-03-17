@@ -14,6 +14,7 @@ const {
   mockProcessAIStream,
   mockPollRunRecovery,
   mockFetch,
+  mockIsProgressiveAnswerStreamingEnabled,
 } = vi.hoisted(() => ({
   mockListConversations: vi.fn(),
   mockCreateConversation: vi.fn(),
@@ -24,6 +25,7 @@ const {
   mockProcessAIStream: vi.fn(),
   mockPollRunRecovery: vi.fn(),
   mockFetch: vi.fn(),
+  mockIsProgressiveAnswerStreamingEnabled: vi.fn(() => false),
 }));
 
 vi.mock("next/navigation", () => ({
@@ -43,6 +45,7 @@ vi.mock("next/dynamic", () => ({
         type: string;
         id: string;
         content?: string;
+        deliveryState?: string;
         message?: string;
         label?: string;
         question?: string;
@@ -91,7 +94,7 @@ vi.mock("next/dynamic", () => ({
                 return <div key={item.id}>{item.content}</div>;
               }
               if (item.type === "assistant_message") {
-                return <div key={item.id}>{item.content}</div>;
+                return <div key={item.id}>{item.deliveryState === "reserved" ? `reserved:${item.id}` : item.content}</div>;
               }
               if (item.type === "progress" && item.id !== props.suppressedProgressId) {
                 return <div key={item.id}>{item.message}</div>;
@@ -219,6 +222,10 @@ vi.mock("@/lib/ai/run-recovery-client", async () => {
   };
 });
 
+vi.mock("@/lib/feature-flags", () => ({
+  isProgressiveAnswerStreamingEnabled: () => mockIsProgressiveAnswerStreamingEnabled(),
+}));
+
 function installMatchMedia() {
   Object.defineProperty(window, "matchMedia", {
     writable: true,
@@ -295,11 +302,13 @@ describe("/ai page deferred hydration", () => {
       response: null,
       lastAppliedSequence: -1,
     });
+    mockIsProgressiveAnswerStreamingEnabled.mockReturnValue(false);
   });
 
   afterEach(() => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
   });
 
   it("does not load conversations until the history sidebar is opened", async () => {

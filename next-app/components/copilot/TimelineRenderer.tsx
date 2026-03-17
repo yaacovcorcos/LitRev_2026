@@ -441,8 +441,9 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
     const displayContent = stripAssistantMarkupForDisplay(item.content);
     const rawReasoningText = item.reasoning?.text?.trim() ?? "";
     const hasReasoning = rawReasoningText.length > 0;
-    const showReasoningArea = hasReasoning && reasoningMode !== "off";
+    const showReasoningArea = hasReasoning && reasoningMode !== "off" && Boolean(displayContent);
     const isSummaryMode = reasoningMode === "summary";
+    const isReserved = item.deliveryState === "reserved" && !displayContent;
     const summaryPreview = getReasoningSummaryPreview(rawReasoningText);
     const [showFullSummary, setShowFullSummary] = useState(false);
     const reasoningText = isSummaryMode && !showFullSummary
@@ -455,13 +456,7 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
     );
     const hydratedMentionTitles = useMentionedStudyTitles(mentions);
     const [mentionStates, setMentionStates] = useState<Record<string, MentionAddState>>({});
-    const [showReasoning, setShowReasoning] = useState(reasoningMode !== "off" && isReasoningStreaming);
-
-    useEffect(() => {
-        if (reasoningMode !== "off" && isReasoningStreaming) {
-            setShowReasoning(true);
-        }
-    }, [isReasoningStreaming, reasoningMode]);
+    const [showReasoning, setShowReasoning] = useState(false);
 
     const reasoningStateLabel = isReasoningStreaming
         ? "Live"
@@ -556,9 +551,18 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
                                 {displayContent}
                             </ReactMarkdown>
                         ) : (
-                            isReasoningStreaming && (
+                            isReserved ? (
+                                <span className={styles.assistantReservedState} aria-label="Assistant preparing a reply">
+                                    <span className={styles.assistantReservedLabel}>Preparing answer</span>
+                                    <span className={styles.assistantReservedDots} aria-hidden="true">
+                                        <span className={styles.loadingDot} />
+                                        <span className={styles.loadingDot} />
+                                        <span className={styles.loadingDot} />
+                                    </span>
+                                </span>
+                            ) : isReasoningStreaming ? (
                                 <span className={styles.reasoningPlaceholder}>Thinking...</span>
-                            )
+                            ) : null
                         )}
                         {isStreaming && (
                             <span className={styles.streamingCursor} aria-hidden="true">◎</span>

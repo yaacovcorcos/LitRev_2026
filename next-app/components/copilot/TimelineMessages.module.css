@@ -340,6 +340,25 @@
     color: var(--text-muted);
 }
 
+.assistantReservedState {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 24px;
+    color: var(--text-muted);
+    font-size: 13px;
+}
+
+.assistantReservedLabel {
+    font-weight: 500;
+}
+
+.assistantReservedDots {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
 .mentionedStudiesRow {
     margin-top: 8px;
     display: flex;

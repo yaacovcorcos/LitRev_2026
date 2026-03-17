@@ -144,6 +144,7 @@ export function messagesToTimeline(messages: CopilotMessage[]): TimelineItem[] {
             type: "assistant_message" as const,
             id: msg.id,
             content: msg.text,
+            deliveryState: msg.deliveryState,
             reasoning: msg.reasoning,
             createdAt: msg.createdAt,
         };

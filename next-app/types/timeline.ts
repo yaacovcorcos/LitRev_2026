@@ -49,6 +49,7 @@ export interface TimelineAssistantMessage {
     type: "assistant_message";
     id: string;
     content: string;
+    deliveryState?: "reserved";
     reasoning?: {
         text: string;
         state?: "streaming" | "done";

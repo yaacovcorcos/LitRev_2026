@@ -155,4 +155,47 @@ describe("StreamCoalescer", () => {
 
     expect(merged).toBe("```ts\nconst x = 1;\nconsole.log(x);\n```\nAfter fence.");
   });
+
+  it("can use faster content cadence while keeping reasoning buffered", async () => {
+    vi.useFakeTimers();
+    const coalescer = new StreamCoalescer({
+      contentCadence: {
+        firstFlushMinChars: 1,
+        firstFlushIdleMs: 5,
+        minChars: 8,
+        maxChars: 16,
+        idleMs: 5,
+      },
+      reasoningCadence: {
+        minChars: 100,
+        maxChars: 200,
+        idleMs: 1000,
+      },
+      onEmit: (event) => {
+        emitted.push(event);
+      },
+    });
+
+    await coalescer.push({ type: "content", content: "Hello world." });
+    await vi.advanceTimersByTimeAsync(5);
+    expect(emitted.length).toBeGreaterThanOrEqual(1);
+    expect(emitted[0]?.type).toBe("content");
+    const emittedAfterContent = emitted.length;
+
+    await coalescer.push({
+      type: "reasoning_delta",
+      reasoningId: "r1",
+      reasoningText: "still thinking",
+      conversationId: "conv-1",
+    });
+    expect(emitted).toHaveLength(emittedAfterContent);
+
+    await coalescer.flushAll();
+    expect(emitted.at(-1)).toEqual({
+      type: "reasoning_delta",
+      reasoningId: "r1",
+      reasoningText: "still thinking",
+      conversationId: "conv-1",
+    });
+  });
 });

@@ -12,6 +12,7 @@ import {
 import {
   createInitialSharedStreamState,
   reduceSharedStreamChunk,
+  reserveSharedAssistantTurn,
   type SharedStreamIntent,
   type SharedStreamState,
 } from "@/lib/ai/shared-stream-reducer";
@@ -39,6 +40,7 @@ export type AiStreamRuntimeDeps = {
 };
 
 export type AiStreamRuntime = {
+  reserveAssistantTurn: () => void;
   handleChunk: (chunk: AIStreamChunk) => void;
   clearProgress: () => void;
   failRunningTools: (summary: string) => void;
@@ -52,6 +54,16 @@ export const ABNORMAL_END_TOOL_FAILURE_SUMMARY = "Run ended before tool completi
 
 function buildRuntimeItemId(prefix: string, seed: string | number): string {
   return `${prefix}-${seed}`;
+}
+
+function stripReservedAssistantTurn(items: TimelineItem[], assistantMessageId: string): TimelineItem[] {
+  return items.filter((item) => (
+    item.type !== "assistant_message"
+    || item.id !== assistantMessageId
+    || item.deliveryState !== "reserved"
+    || item.content.length > 0
+    || (item.reasoning?.text?.trim().length ?? 0) > 0
+  ));
 }
 
 export function shouldFailRunningToolsOnAbnormalEnd(
@@ -96,6 +108,7 @@ export function createAiStreamRuntime(deps: AiStreamRuntimeDeps): AiStreamRuntim
             type: "assistant_message",
             id: deps.aiMessageId,
             content: intent.text,
+            deliveryState: undefined,
             reasoning: intent.reasoning,
             createdAt,
           },
@@ -107,9 +120,37 @@ export function createAiStreamRuntime(deps: AiStreamRuntimeDeps): AiStreamRuntim
       next[idx] = {
         ...existing,
         content: intent.text,
+        deliveryState: undefined,
         reasoning: intent.reasoning ?? existing.reasoning,
       };
       return next;
+    });
+  };
+
+  const reserveAssistant = () => {
+    updateCurrentTimeline((items) => {
+      const idx = items.findIndex((item) => item.type === "assistant_message" && item.id === deps.aiMessageId);
+      if (idx >= 0) {
+        const next = [...items];
+        const existing = next[idx];
+        if (!existing || existing.type !== "assistant_message") return items;
+        next[idx] = {
+          ...existing,
+          deliveryState: existing.content.length === 0 ? "reserved" : undefined,
+        };
+        return next;
+      }
+
+      return [
+        ...items,
+        {
+          type: "assistant_message",
+          id: deps.aiMessageId,
+          content: "",
+          deliveryState: "reserved",
+          createdAt: now(),
+        },
+      ];
     });
   };
 
@@ -260,15 +301,16 @@ export function createAiStreamRuntime(deps: AiStreamRuntimeDeps): AiStreamRuntim
   const appendStreamError = (intent: Extract<SharedStreamIntent, { type: "stream_error" }>) => {
     const errorState = buildClientErrorState(intent.errorMeta ?? intent.message);
     updateCurrentTimeline((items) => {
+      const itemsWithoutReservedAssistant = stripReservedAssistantTurn(items, deps.aiMessageId);
       const normalizedItems = isDeterministicCapabilityFailure(errorState.errorMeta)
-        ? items.filter((item) => (
+        ? itemsWithoutReservedAssistant.filter((item) => (
           !(item.type === "assistant_message"
             && matchesCanonicalFailureFallback({
               assistantText: item.content,
               streamError: errorState.errorMeta,
             }))
         ))
-        : items;
+        : itemsWithoutReservedAssistant;
 
       const reconciled = reconcileRunScopedRenderedErrors({
         items: normalizedItems.filter((item) => item.type === "error"),
@@ -329,6 +371,10 @@ export function createAiStreamRuntime(deps: AiStreamRuntimeDeps): AiStreamRuntim
     deps.onIntent?.(intent);
 
     switch (intent.type) {
+      case "assistant_reserve": {
+        reserveAssistant();
+        return;
+      }
       case "assistant_upsert": {
         upsertAssistant(intent);
         return;
@@ -446,6 +492,13 @@ export function createAiStreamRuntime(deps: AiStreamRuntimeDeps): AiStreamRuntim
   };
 
   return {
+    reserveAssistantTurn: () => {
+      const reserved = reserveSharedAssistantTurn(streamState);
+      streamState = reserved.state;
+      for (const intent of reserved.intents) {
+        applyIntent(intent);
+      }
+    },
     handleChunk: (chunk: AIStreamChunk) => {
       const runningToolCallsBeforeChunk = streamState.runningToolCallIds.length;
       const reduced = reduceSharedStreamChunk(streamState, chunk, {

@@ -12,6 +12,7 @@ import { normalizeStreamChunk, toWireChunk, type RuntimeStreamEvent } from "@/li
 import { ChatRuntime } from "@/lib/server/chat-runtime/runtime";
 import { RuntimeThreadContext } from "@/lib/server/chat-runtime/thread";
 import { StreamCoalescer } from "@/lib/server/ai/stream-coalescer";
+import { getProgressiveAnswerStreamingConfig } from "@/lib/feature-flags";
 import { runWithActorContext } from "@/lib/server/actor";
 import { requireApiSession } from "@/lib/server/auth/session";
 import { assertProjectAccess } from "@/lib/server/access";
@@ -71,6 +72,7 @@ const STREAM_EVENT_TYPES: RuntimeStreamEvent["type"][] = [
 
 export async function POST(request: NextRequest) {
     try {
+        const progressiveStreaming = getProgressiveAnswerStreamingConfig();
         const authResult = await requireApiSession(request);
         if (!authResult.ok) return authResult.response;
 
@@ -187,6 +189,22 @@ export async function POST(request: NextRequest) {
                         controller.enqueue(encoder.encode(data));
                     });
                     const coalescer = new StreamCoalescer({
+                        contentCadence: progressiveStreaming.enabled
+                            ? {
+                                firstFlushMinChars: progressiveStreaming.contentFirstFlushMinChars,
+                                firstFlushIdleMs: progressiveStreaming.contentFirstFlushIdleMs,
+                                minChars: progressiveStreaming.contentMinChars,
+                                maxChars: progressiveStreaming.contentMaxChars,
+                                idleMs: progressiveStreaming.contentIdleMs,
+                            }
+                            : undefined,
+                        reasoningCadence: progressiveStreaming.enabled
+                            ? {
+                                minChars: progressiveStreaming.reasoningMinChars,
+                                maxChars: progressiveStreaming.reasoningMaxChars,
+                                idleMs: progressiveStreaming.reasoningIdleMs,
+                            }
+                            : undefined,
                         onEmit: async (event) => {
                             await runtimeRouter.dispatch(event, thread);
                         },
@@ -201,6 +219,8 @@ export async function POST(request: NextRequest) {
                         options: runtimeOptions,
                         isPlanExecution: Boolean(mergedPlanId),
                     });
+                    const streamStartedAtMs = Date.now();
+                    let firstProviderContentMs: number | null = null;
                     let lastRunEnd: RuntimeStreamEvent | null = null;
                     const maybeRecordRunEndMetric = async () => {
                         if (!lastRunEnd || lastRunEnd.type !== "run_end") return;
@@ -219,6 +239,7 @@ export async function POST(request: NextRequest) {
                                     streamPhase,
                                     actualModel: lastRunEnd.actualModel ?? null,
                                     actualModelSource: lastRunEnd.actualModelSource ?? "unknown",
+                                    firstProviderContentMs,
                                 }),
                             });
                         } catch (error) {
@@ -279,6 +300,9 @@ export async function POST(request: NextRequest) {
                             )) {
                                 const normalized = normalizeStreamChunk(chunk);
                                 if (!normalized) continue;
+                                if (firstProviderContentMs === null && normalized.type === "content" && normalized.content) {
+                                    firstProviderContentMs = Math.max(0, Date.now() - streamStartedAtMs);
+                                }
                                 if (normalized.type === "run_end") {
                                     lastRunEnd = normalized;
                                 }
@@ -329,6 +353,9 @@ export async function POST(request: NextRequest) {
                                     )) {
                                         const normalized = normalizeStreamChunk(chunk);
                                         if (!normalized) continue;
+                                        if (firstProviderContentMs === null && normalized.type === "content" && normalized.content) {
+                                            firstProviderContentMs = Math.max(0, Date.now() - streamStartedAtMs);
+                                        }
                                         if (normalized.type === "run_end") {
                                             lastRunEnd = normalized;
                                         }
@@ -338,6 +365,9 @@ export async function POST(request: NextRequest) {
                                     for await (const chunk of service.streamChat(popupMessages, { ...runtimeOptions, signal: request.signal })) {
                                         const normalized = normalizeStreamChunk(chunk);
                                         if (!normalized) continue;
+                                        if (firstProviderContentMs === null && normalized.type === "content" && normalized.content) {
+                                            firstProviderContentMs = Math.max(0, Date.now() - streamStartedAtMs);
+                                        }
                                         if (normalized.type === "run_end") {
                                             lastRunEnd = normalized;
                                         }
@@ -348,6 +378,9 @@ export async function POST(request: NextRequest) {
                                 for await (const chunk of service.streamChat(messages, { ...runtimeOptions, signal: request.signal })) {
                                     const normalized = normalizeStreamChunk(chunk);
                                     if (!normalized) continue;
+                                    if (firstProviderContentMs === null && normalized.type === "content" && normalized.content) {
+                                        firstProviderContentMs = Math.max(0, Date.now() - streamStartedAtMs);
+                                    }
                                     if (normalized.type === "run_end") {
                                         lastRunEnd = normalized;
                                     }
@@ -380,9 +413,10 @@ export async function POST(request: NextRequest) {
 
         return new Response(stream, {
             headers: {
-                "Content-Type": "text/plain; charset=utf-8",
-                "Cache-Control": "no-cache",
+                "Content-Type": "application/x-ndjson; charset=utf-8",
+                "Cache-Control": "no-cache, no-transform",
                 "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
             },
         });
     } catch (error) {

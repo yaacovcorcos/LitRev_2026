@@ -36,7 +36,7 @@ describe("chat-unification-runtime-metrics", () => {
       streamPhase: "send",
       actualModel: "gpt-5.2",
       actualModelSource: "provider",
+      firstProviderContentMs: null,
     });
   });
 });
-
