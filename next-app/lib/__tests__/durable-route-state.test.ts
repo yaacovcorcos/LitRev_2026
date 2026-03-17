@@ -22,6 +22,11 @@ import {
   readAiRouteState,
   readCopilotRouteState,
 } from "@/lib/durable-route-state";
+import {
+  DEFAULT_ONBOARDING_STEP_STATUSES as SCHEMA_DEFAULT_ONBOARDING_STEP_STATUSES,
+  ONBOARDING_STEP_IDS as SCHEMA_ONBOARDING_STEP_IDS,
+  ONBOARDING_STEP_STATUS_IDS,
+} from "@/lib/schemas/onboarding";
 
 describe("durable route state helpers", () => {
   it("builds and parses a project conversation route", () => {
@@ -33,9 +38,27 @@ describe("durable route state helpers", () => {
     });
   });
 
+  it("round-trips encoded project conversation route segments", () => {
+    const pathname = buildProjectConversationPath("proj/1", "conv 2");
+    expect(pathname).toBe("/project/proj%2F1/conversation/conv%202");
+    expect(parseProjectConversationPath(pathname)).toEqual({
+      projectId: "proj/1",
+      conversationId: "conv 2",
+    });
+  });
+
   it("returns null for non-conversation project paths", () => {
     expect(parseProjectConversationPath("/project/proj-1")).toBeNull();
     expect(parseProjectConversationPath("/project/proj-1/ledger")).toBeNull();
+  });
+
+  it("rejects malformed encoded conversation route segments", () => {
+    expect(
+      parseProjectConversationPath("/project/proj%ZZ/conversation/conv-1"),
+    ).toBeNull();
+    expect(
+      parseProjectConversationPath("/project/proj-1/conversation/conv%ZZ"),
+    ).toBeNull();
   });
 
   it("normalizes copilot route state from query params", () => {
@@ -80,6 +103,16 @@ describe("durable route state helpers", () => {
     })).toBe("/ai");
   });
 
+  it("treats blank AI route values as absent", () => {
+    const params = new URLSearchParams();
+    params.set(AI_CONVERSATION_QUERY_PARAM, "   ");
+    params.set(AI_PROJECT_QUERY_PARAM, "");
+    expect(readAiRouteState(params)).toEqual({
+      conversationId: null,
+      projectId: null,
+    });
+  });
+
   it("exposes valid protocol section ids", () => {
     expect(PROTOCOL_SECTION_IDS).toContain("research-question");
     expect(isProtocolSectionId("pico-population")).toBe(true);
@@ -103,25 +136,14 @@ describe("durable route state helpers", () => {
   });
 
   it("exposes valid onboarding step ids and default statuses", () => {
-    expect(ONBOARDING_STEP_IDS).toEqual([
-      "topicQuestion",
-      "pico",
-      "criteria",
-      "strategy",
-      "workflow",
-      "launch",
-    ]);
+    expect(ONBOARDING_STEP_IDS).toEqual(SCHEMA_ONBOARDING_STEP_IDS);
     expect(isOnboardingStepId("workflow")).toBe(true);
     expect(isOnboardingStepId("other")).toBe(false);
     expect(normalizeOnboardingStepId("launch")).toBe("launch");
     expect(normalizeOnboardingStepId(" launch ")).toBe("launch");
-    expect(DEFAULT_ONBOARDING_STEP_STATUSES).toEqual({
-      topicQuestion: "pending",
-      pico: "pending",
-      criteria: "pending",
-      strategy: "pending",
-      workflow: "pending",
-      launch: "pending",
-    });
+    expect(ONBOARDING_STEP_STATUS_IDS).toEqual(["pending", "completed", "skipped"]);
+    expect(DEFAULT_ONBOARDING_STEP_STATUSES).toEqual(
+      SCHEMA_DEFAULT_ONBOARDING_STEP_STATUSES,
+    );
   });
 });

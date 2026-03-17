@@ -1,4 +1,10 @@
 import { PROTOCOL_SECTION_LABELS, type ProtocolSection } from "@/types/protocol";
+import {
+  DEFAULT_ONBOARDING_STEP_STATUSES,
+  ONBOARDING_STEP_IDS,
+  type OnboardingStepId,
+  type OnboardingStepStatus,
+} from "@/lib/schemas/onboarding";
 
 export type SearchParamsReader = {
   get(name: string): string | null;
@@ -10,11 +16,11 @@ function normalizeOptionalString(value: string | null | undefined): string | nul
   return trimmed.length > 0 ? trimmed : null;
 }
 
-function safeDecodeURIComponent(value: string): string {
+function safeDecodeURIComponent(value: string): string | null {
   try {
     return decodeURIComponent(value);
   } catch {
-    return value;
+    return null;
   }
 }
 
@@ -170,22 +176,14 @@ export const ONBOARDING_STEPS = [
   { id: "strategy", label: "Strategy Preview", short: "Strategy" },
   { id: "workflow", label: "Workflow Orientation", short: "Workflow" },
   { id: "launch", label: "Launch Gate", short: "Launch" },
-] as const;
+] as const satisfies ReadonlyArray<{
+  id: OnboardingStepId;
+  label: string;
+  short: string;
+}>;
 
-export type OnboardingStepId = (typeof ONBOARDING_STEPS)[number]["id"];
-export type OnboardingStepStatus = "pending" | "completed" | "skipped";
-export const ONBOARDING_STEP_IDS = ONBOARDING_STEPS.map((step) => step.id);
-export const DEFAULT_ONBOARDING_STEP_STATUSES: Record<
-  OnboardingStepId,
-  OnboardingStepStatus
-> = {
-  topicQuestion: "pending",
-  pico: "pending",
-  criteria: "pending",
-  strategy: "pending",
-  workflow: "pending",
-  launch: "pending",
-};
+export type { OnboardingStepId, OnboardingStepStatus };
+export { DEFAULT_ONBOARDING_STEP_STATUSES, ONBOARDING_STEP_IDS };
 
 export function isOnboardingStepId(
   value: string | null | undefined,

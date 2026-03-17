@@ -1,11 +1,35 @@
 import { z } from "zod";
 import { picoDataSchema, eligibilityDataSchema, protocolDataSchema } from "./protocol";
 
-export const onboardingStepIdSchema = z.enum([
-    "topicQuestion", "pico", "criteria", "strategy", "workflow", "launch",
-]);
+export const ONBOARDING_STEP_IDS = [
+    "topicQuestion",
+    "pico",
+    "criteria",
+    "strategy",
+    "workflow",
+    "launch",
+] as const;
 
-export const onboardingStepStatusSchema = z.enum(["pending", "completed", "skipped"]);
+export const ONBOARDING_STEP_STATUS_IDS = ["pending", "completed", "skipped"] as const;
+
+export type OnboardingStepId = (typeof ONBOARDING_STEP_IDS)[number];
+export type OnboardingStepStatus = (typeof ONBOARDING_STEP_STATUS_IDS)[number];
+
+export const DEFAULT_ONBOARDING_STEP_STATUSES: Record<
+    OnboardingStepId,
+    OnboardingStepStatus
+> = {
+    topicQuestion: "pending",
+    pico: "pending",
+    criteria: "pending",
+    strategy: "pending",
+    workflow: "pending",
+    launch: "pending",
+};
+
+export const onboardingStepIdSchema = z.enum(ONBOARDING_STEP_IDS);
+
+export const onboardingStepStatusSchema = z.enum(ONBOARDING_STEP_STATUS_IDS);
 
 export const onboardingDerivedProfileSchema = z.object({
     strictness: z.enum(["low", "moderate", "high"]),
