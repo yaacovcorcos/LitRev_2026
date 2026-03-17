@@ -2,8 +2,7 @@ import "server-only";
 
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
-import type { AuthContext } from "@/lib/server/auth/session";
-import { assertProjectAccess } from "@/lib/server/access";
+import type { TelemetryApiActor } from "@/lib/server/auth/session";
 import { prisma } from "@/lib/server/prisma";
 import {
   PERFORMANCE_METRIC_NAMES,
@@ -15,6 +14,11 @@ import {
   PERFORMANCE_VIEWPORT_VALUES,
   type PerformanceMetricInput,
 } from "@/types/performance-telemetry";
+import {
+  assertAnonymousPerformanceMetricAllowed,
+  assertAnonymousTelemetryRateLimit,
+  assertTelemetryProjectAccess,
+} from "@/lib/server/telemetry-policy";
 
 const MAX_EVENT_ID_LENGTH = 128;
 const MAX_METRIC_ID_LENGTH = 128;
@@ -63,16 +67,16 @@ export type IngestPerformanceMetricResult = {
 };
 
 export async function ingestPerformanceMetric(
-  auth: AuthContext,
+  actor: TelemetryApiActor,
   input: unknown,
 ): Promise<IngestPerformanceMetricResult> {
   const parsed = PerformanceMetricInputSchema.parse(input);
 
-  if (parsed.projectId) {
-    await assertProjectAccess(
-      { ownerId: auth.userId, workspaceId: auth.workspaceId },
-      parsed.projectId,
-    );
+  if (actor.kind === "anonymous") {
+    assertAnonymousTelemetryRateLimit(actor.clientIp);
+    assertAnonymousPerformanceMetricAllowed(parsed);
+  } else if (parsed.projectId) {
+    await assertTelemetryProjectAccess(actor.context, parsed.projectId);
   }
 
   try {
@@ -82,8 +86,8 @@ export async function ingestPerformanceMetric(
         version: parsed.version,
         type: "performance_web_vital",
         surface: parsed.surface,
-        userId: auth.userId,
-        workspaceId: auth.workspaceId,
+        userId: actor.kind === "authenticated" ? actor.context.userId : null,
+        workspaceId: actor.kind === "authenticated" ? actor.context.workspaceId : null,
         projectId: parsed.projectId,
         runId: null,
         conversationId: null,

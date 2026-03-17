@@ -2,8 +2,8 @@ import "server-only";
 
 import { z } from "zod";
 import { prisma } from "@/lib/server/prisma";
-import { assertProjectAccess } from "@/lib/server/access";
 import type { AuthContext } from "@/lib/server/auth/session";
+import { assertTelemetryProjectAccess } from "@/lib/server/telemetry-policy";
 import type {
   AskUserContextMismatchPayload,
   ChatUnificationMetricVersion,
@@ -158,10 +158,7 @@ export async function ingestChatUnificationMetric(
   const payload = parsePayload(metricVersion, parsed.type, parsed.payload);
 
   if (parsed.projectId) {
-    await assertProjectAccess(
-      { ownerId: auth.userId, workspaceId: auth.workspaceId },
-      parsed.projectId,
-    );
+    await assertTelemetryProjectAccess(auth, parsed.projectId);
   }
 
   const runId = await resolveValidatedRunId(parsed.runId ?? null, auth);
