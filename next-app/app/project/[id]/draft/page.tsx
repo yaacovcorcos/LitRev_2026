@@ -259,7 +259,7 @@ function DraftContent() {
                       <p className={styles.manuscriptSubtitle}>
                         {controller.orderedSections.length === 0
                           ? "Start drafting. Add sections when you want structure."
-                          : "Full manuscript view — sections stay in the order you build them."}
+                          : "Full manuscript view — sections appear as you write them."}
                       </p>
                     </header>
 
@@ -273,13 +273,31 @@ function DraftContent() {
                         )
                       : null}
 
-                    {controller.orderedSections.map((section) =>
-                      renderDraftRegion(
-                        section.id,
-                        section.label,
-                        section.placeholder,
-                        section.id !== "references",
-                      ),
+                    {controller.fullDraftSections.length === 0 && !controller.shouldRenderWholeDraft ? (
+                      <div className={styles.emptyPanel}>
+                        <div className={styles.emptyIcon}>
+                          <span className="material-icons-round">description</span>
+                        </div>
+                        <h3>Nothing written yet</h3>
+                        <p>Start drafting in Section mode — completed sections will show up here in order.</p>
+                        <button
+                          type="button"
+                          className={styles.smallBtn}
+                          onClick={() => controller.openSectionInSectionMode(controller.firstEditableSectionId)}
+                          disabled={!controller.firstEditableSectionId}
+                        >
+                          Start drafting
+                        </button>
+                      </div>
+                    ) : (
+                      controller.fullDraftSections.map((section) =>
+                        renderDraftRegion(
+                          section.id,
+                          section.label,
+                          section.placeholder,
+                          section.id !== "references",
+                        ),
+                      )
                     )}
                   </div>
                 </div>

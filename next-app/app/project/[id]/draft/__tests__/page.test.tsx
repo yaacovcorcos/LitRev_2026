@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import DraftPage from "../page";
@@ -94,8 +94,10 @@ function createController(overrides: Partial<ReturnType<typeof mockUseDraftWorks
     },
     saveStatus: "saved" as const,
     orderedSections: [],
+    fullDraftSections: [],
     availableSections: [],
     hasEditableSections: false,
+    firstEditableSectionId: null,
     activeSectionLabel: "Draft",
     currentTargetId: UNSECTIONED_DRAFT_ID,
     currentTargetLabel: "Whole draft",
@@ -125,6 +127,7 @@ function createController(overrides: Partial<ReturnType<typeof mockUseDraftWorks
     handleAddSection: vi.fn(),
     handleAddCustomSection: vi.fn(),
     selectSection: vi.fn(),
+    openSectionInSectionMode: vi.fn(),
     handleMoveSection: vi.fn(),
     requestRemoveSection: vi.fn(),
     sectionToRemove: null,
@@ -227,5 +230,86 @@ describe("Draft page", () => {
     expect(screen.queryByTestId("section-editor")).toBeNull();
     expect(screen.getByText("References are auto-generated from inline citations.")).toBeTruthy();
     expect(screen.getAllByText("References").length).toBeGreaterThan(0);
+  });
+
+  it("shows the start-drafting empty state in full draft when sections exist but none have content", () => {
+    const openSectionInSectionMode = vi.fn();
+    mockUseDraftWorkspaceController.mockReturnValue(
+      createController({
+        draft: {
+          mode: "full",
+          activeSection: null,
+          contentBySection: {
+            [UNSECTIONED_DRAFT_ID]: { type: "doc", content: [] },
+            abstract: { type: "doc", content: [] },
+          },
+        },
+        orderedSections: [{ id: "abstract", label: "Abstract", placeholder: "Add abstract" }],
+        fullDraftSections: [],
+        hasEditableSections: true,
+        shouldRenderWholeDraft: false,
+        firstEditableSectionId: "abstract",
+        openSectionInSectionMode,
+      }),
+    );
+
+    render(<DraftPage />);
+
+    expect(screen.getByText("Nothing written yet")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Start drafting" }));
+    expect(openSectionInSectionMode).toHaveBeenCalledWith("abstract");
+  });
+
+  it("disables the start-drafting action when only references exists", () => {
+    mockUseDraftWorkspaceController.mockReturnValue(
+      createController({
+        draft: {
+          mode: "full",
+          activeSection: null,
+          contentBySection: {
+            [UNSECTIONED_DRAFT_ID]: { type: "doc", content: [] },
+            references: { type: "doc", content: [] },
+          },
+        },
+        orderedSections: [{ id: "references", label: "References", placeholder: "Generated from citations." }],
+        fullDraftSections: [],
+        hasEditableSections: false,
+        shouldRenderWholeDraft: false,
+        firstEditableSectionId: null,
+      }),
+    );
+
+    render(<DraftPage />);
+
+    expect((screen.getByRole("button", { name: "Start drafting" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("renders only contentful sections in full draft", () => {
+    mockUseDraftWorkspaceController.mockReturnValue(
+      createController({
+        draft: {
+          mode: "full",
+          activeSection: null,
+          contentBySection: {
+            [UNSECTIONED_DRAFT_ID]: { type: "doc", content: [] },
+            abstract: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "alpha" }] }] },
+            methods: { type: "doc", content: [] },
+          },
+        },
+        orderedSections: [
+          { id: "abstract", label: "Abstract", placeholder: "Add abstract" },
+          { id: "methods", label: "Methods", placeholder: "Add methods" },
+        ],
+        fullDraftSections: [{ id: "abstract", label: "Abstract", placeholder: "Add abstract" }],
+        hasEditableSections: true,
+        shouldRenderWholeDraft: false,
+      }),
+    );
+
+    render(<DraftPage />);
+
+    const sectionEditors = screen.getAllByTestId("section-editor");
+    expect(sectionEditors).toHaveLength(1);
+    expect(sectionEditors[0]?.getAttribute("data-section-id")).toBe("abstract");
   });
 });
