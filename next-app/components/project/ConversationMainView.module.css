@@ -230,6 +230,7 @@
 }
 
 .composerStackLane {
+    --composer-top-cap-inset: clamp(12px, 2.4vw, 18px);
     width: 100%;
     max-width: 720px;
     display: flex;
