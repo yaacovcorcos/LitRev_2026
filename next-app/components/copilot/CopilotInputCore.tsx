@@ -69,6 +69,7 @@ export type CopilotInputCoreProps = {
     cancelStream: () => void;
     hasQueuedFollowUp?: boolean;
     attachedStack?: "none" | "attached";
+    interactionLocked?: boolean;
     onQueueFollowUp?: (payload: {
         text: string;
         page: CopilotPage;
@@ -140,6 +141,7 @@ export function CopilotInputCore({
     cancelStream,
     hasQueuedFollowUp = false,
     attachedStack = "none",
+    interactionLocked = false,
     onQueueFollowUp,
     pendingAttachment = null,
     isAttaching = false,
@@ -446,9 +448,10 @@ export function CopilotInputCore({
     const isVoiceBusy = voiceState !== "idle";
     const canSubmit = voiceState === "recording"
         ? !queuedVoiceSend
-        : voiceState === "idle" && (!!input.trim() || !!pendingAttachment);
+        : !interactionLocked && voiceState === "idle" && (!!input.trim() || !!pendingAttachment);
     const showVoiceStatusPresentation = showVoice && isVoiceBusy;
-    const canQueueNext = isLoading
+    const canQueueNext = !interactionLocked
+        && isLoading
         && !!input.trim()
         && !pendingAttachment
         && !isVoiceBusy
@@ -456,6 +459,7 @@ export function CopilotInputCore({
         && !!onQueueFollowUp;
 
     const handleSend = useCallback(() => {
+        if (interactionLocked) return;
         if (voiceState === "recording") {
             if (queuedVoiceSendRef.current) return;
             setQueuedVoiceSendState(true);
@@ -466,6 +470,7 @@ export function CopilotInputCore({
         void dispatchSend(latestInputRef.current);
     }, [
         dispatchSend,
+        interactionLocked,
         setQueuedVoiceSendState,
         stopRecording,
         voiceState,
@@ -484,6 +489,7 @@ export function CopilotInputCore({
     }, [cancelStream, voiceState, stopRecording]);
 
     const handleQueueNext = useCallback(() => {
+        if (interactionLocked) return;
         const text = input.trim();
         if (!text || !onQueueFollowUp) return;
         void onQueueFollowUp({
@@ -496,7 +502,7 @@ export function CopilotInputCore({
         });
         setInput("");
         requestAnimationFrame(() => textareaRef.current?.focus());
-    }, [input, onQueueFollowUp, page, resolveCurrentComposerMode, section, selectedModel, studyId]);
+    }, [input, interactionLocked, onQueueFollowUp, page, resolveCurrentComposerMode, section, selectedModel, studyId]);
 
     useEffect(() => {
         if (!isLoading && voiceState !== "recording" && voiceState !== "transcribing") return;
@@ -880,6 +886,7 @@ export function CopilotInputCore({
                                 type="button"
                                 className={styles.choiceChip}
                                 onClick={() => {
+                                    if (interactionLocked) return;
                                     if (sendLockRef.current) return;
                                     sendLockRef.current = true;
                                     clearChoices?.();
@@ -893,6 +900,7 @@ export function CopilotInputCore({
                                     );
                                     setInput("");
                                 }}
+                                disabled={interactionLocked}
                             >
                                 {choice.icon && (
                                     <span className="material-icons-round" style={{ fontSize: 14 }} aria-hidden="true">

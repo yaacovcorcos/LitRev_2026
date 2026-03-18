@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ConversationMainView } from "../ConversationMainView";
@@ -47,14 +47,17 @@ vi.mock("../../copilot/CopilotInput", () => ({
   CopilotInput: ({
     hasQueuedFollowUp,
     attachedStack,
+    interactionLocked,
   }: {
     hasQueuedFollowUp?: boolean;
     attachedStack?: "none" | "attached";
+    interactionLocked?: boolean;
   }) => (
     <div
       data-testid="copilot-input"
       data-has-queued={hasQueuedFollowUp ? "yes" : "no"}
       data-attached-stack={attachedStack ?? "none"}
+      data-interaction-locked={interactionLocked ? "yes" : "no"}
     />
   ),
 }));
@@ -168,8 +171,8 @@ describe("ConversationMainView parity", () => {
     expect(screen.getByText("Waiting for your answer")).toBeTruthy();
     expect(screen.queryByRole("progressbar")).toBeNull();
     expect(status.compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(mockTimelineRenderer).toHaveBeenCalledTimes(1);
-    const props = mockTimelineRenderer.mock.calls[0]?.[0] as { messages: unknown[]; suppressedProgressId?: string | null };
+    expect(mockTimelineRenderer.mock.calls.length).toBeGreaterThanOrEqual(1);
+    const props = mockTimelineRenderer.mock.calls.at(-1)?.[0] as { messages: unknown[]; suppressedProgressId?: string | null };
     expect(props.messages).toHaveLength(5);
     expect(props.messages).toEqual(mockUseProjectCopilot.mock.results[0]?.value.messages);
     expect(props.suppressedProgressId).toBe("progress-1");
@@ -281,5 +284,71 @@ describe("ConversationMainView parity", () => {
     expect(screen.getByTestId("copilot-input").getAttribute("data-attached-stack")).toBe("none");
     expect(screen.queryByText("Queued next message")).toBeNull();
     expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  it("renders the pending approval bar above the composer once proposals are settled", async () => {
+    const approveArtifactsBatch = vi.fn(async (artifactIds: string[]) => ({
+      approvedCount: artifactIds.length,
+      failedArtifactIds: [],
+      stopped: false,
+    }));
+
+    mockUseProjectCopilot.mockReturnValue({
+      ...baseContextValue,
+      messages: [
+        {
+          id: "artifact-cproposal1",
+          sender: "ai",
+          text: "[memory_proposal] Memory 1",
+          createdAt: "2026-03-10T00:00:00.000Z",
+          context: { page: "overview" },
+          artifact: {
+            id: "cproposal1",
+            type: "memory_proposal",
+            status: "proposed",
+            title: "Memory 1",
+            payload: {},
+            version: 1,
+          },
+        },
+        {
+          id: "artifact-cproposal2",
+          sender: "ai",
+          text: "[draft_diff] Draft 2",
+          createdAt: "2026-03-10T00:00:01.000Z",
+          context: { page: "overview" },
+          artifact: {
+            id: "cproposal2",
+            type: "draft_diff",
+            status: "proposed",
+            title: "Draft 2",
+            payload: { section: "Intro", content: "Body", citations: [], wordCount: 1 },
+            version: 1,
+          },
+        },
+      ],
+      approveArtifactsBatch,
+    });
+
+    render(<ConversationMainView projectId="project-1" />);
+
+    const lane = document.querySelector('[data-composer-stack-lane="true"]');
+    const barText = screen.getByText("2 pending proposals");
+    const input = screen.getByTestId("copilot-input");
+
+    expect(lane?.contains(barText)).toBe(true);
+    expect(lane?.contains(input)).toBe(true);
+    expect(barText.compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(input.getAttribute("data-attached-stack")).toBe("attached");
+
+    fireEvent.click(screen.getByRole("button", { name: /approve all pending proposals/i }));
+
+    await screen.findByText("All approved.");
+    expect(approveArtifactsBatch).toHaveBeenCalledWith(
+      ["cproposal1", "cproposal2"],
+      expect.objectContaining({
+        conversationId: "conv-1",
+      }),
+    );
   });
 });

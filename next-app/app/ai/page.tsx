@@ -3,7 +3,9 @@
 import { AppShell } from "@/components/AppShell";
 import { CopilotInputCoreClient } from "@/components/copilot/CopilotInputCoreClient";
 import { ComposerActiveProgressBar } from "@/components/copilot/ComposerActiveProgressBar";
+import { ComposerPendingApprovalBar } from "@/components/copilot/ComposerPendingApprovalBar";
 import { ComposerQueuedFollowUpBar } from "@/components/copilot/ComposerQueuedFollowUpBar";
+import { usePendingApprovalBarState } from "@/components/copilot/usePendingApprovalBarState";
 import { useProjects } from "@/contexts/ProjectsContext";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
@@ -702,10 +704,6 @@ export default function AIView() {
     () => selectActiveProgress(normalizeTimelineProgressItems(activeTimeline)),
     [activeTimeline],
   );
-  const hasAttachedProgress = Boolean(activeProgress);
-  const hasAttachedQueue = Boolean(queuedFollowUp);
-  const composerAttachedStack = hasAttachedProgress || hasAttachedQueue ? "attached" : "none";
-  const queuedStackPosition = hasAttachedQueue ? (hasAttachedProgress ? "middle" : "top") : undefined;
 
   const sortConversationsByUpdatedAt = useCallback((items: ChatConversation[]) => {
     return [...items].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
@@ -2520,6 +2518,22 @@ export default function AIView() {
     });
   }, [activeTimeline, activeConversation]);
 
+  const pendingApprovalBar = usePendingApprovalBarState({
+    timeline: activeTimeline,
+    conversationId: activeConversationId,
+    isLoading: isTyping,
+    hasActiveProgress: Boolean(activeProgress),
+    approveArtifactsBatch: handleApproveArtifactsBatch,
+  });
+  const hasAttachedProgress = Boolean(activeProgress);
+  const hasAttachedQueue = Boolean(queuedFollowUp);
+  const hasAttachedApproval = pendingApprovalBar.showBar;
+  const composerAttachedStack = hasAttachedProgress || hasAttachedQueue || hasAttachedApproval ? "attached" : "none";
+  const queuedStackPosition = hasAttachedQueue ? (hasAttachedProgress ? "middle" : "top") : undefined;
+  const approvalStackPosition = hasAttachedApproval
+    ? (hasAttachedProgress || hasAttachedQueue ? "middle" : "top")
+    : undefined;
+
   return (
     <>
     <AppShell activeNav="ai" noMainPadding initiallyCollapsed>
@@ -2632,7 +2646,6 @@ export default function AIView() {
               onStopAndRetryRun={handleStopAndRetryRun}
               onBranchFromMessage={handleBranchFromMessage}
               onReviewArtifact={handleReviewArtifact}
-              onApproveArtifactsBatch={handleApproveArtifactsBatch}
               onExecutePlan={handleExecutePlan}
               onAnswerUserInput={handleAnswerUserInput}
               suppressedProgressId={suppressedProgressId}
@@ -2647,6 +2660,17 @@ export default function AIView() {
                   onEdit={handleEditQueuedFollowUp}
                   onRemove={handleRemoveQueuedFollowUp}
                 />
+                {pendingApprovalBar.showBar ? (
+                  <ComposerPendingApprovalBar
+                    pendingCount={pendingApprovalBar.pendingCount}
+                    state={pendingApprovalBar.state}
+                    progress={pendingApprovalBar.progress}
+                    resultText={pendingApprovalBar.resultText}
+                    onApproveAll={pendingApprovalBar.approveAll}
+                    onStop={pendingApprovalBar.stopApproval}
+                    stackPosition={approvalStackPosition}
+                  />
+                ) : null}
                 <CopilotInputCoreClient
                   page="ai"
                   inputPlaceholder="Ask anything about your research..."
@@ -2657,6 +2681,7 @@ export default function AIView() {
                   cancelStream={cancelStream}
                   hasQueuedFollowUp={queuedFollowUp !== null}
                   attachedStack={composerAttachedStack}
+                  interactionLocked={pendingApprovalBar.interactionLocked}
                   onQueueFollowUp={handleQueueFollowUp}
                   pendingChoices={pendingChoices}
                   clearChoices={() => { setPendingChoices([]); setPendingUserInput(null); }}

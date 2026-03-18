@@ -13,7 +13,9 @@ import { selectActiveProgress, normalizeTimelineProgressItems } from "@/lib/ai/a
 import { TimelineRenderer } from "./copilot/TimelineRenderer";
 import { CopilotInput } from "./copilot/CopilotInput";
 import { ComposerActiveProgressBar } from "./copilot/ComposerActiveProgressBar";
+import { ComposerPendingApprovalBar } from "./copilot/ComposerPendingApprovalBar";
 import { ComposerQueuedFollowUpBar } from "./copilot/ComposerQueuedFollowUpBar";
+import { usePendingApprovalBarState } from "./copilot/usePendingApprovalBarState";
 import { AutonomySettings } from "./copilot/AutonomySettings";
 import { ReasoningModeDropdown } from "./copilot/ReasoningModeDropdown";
 import { ConversationPicker } from "./ui/ConversationPicker";
@@ -335,10 +337,21 @@ export function ProjectCopilot({
         () => selectActiveProgress(normalizeTimelineProgressItems(timelineItems)),
         [timelineItems],
     );
+    const pendingApprovalBar = usePendingApprovalBarState({
+        timeline: timelineItems,
+        conversationId: currentConversationId,
+        isLoading,
+        hasActiveProgress: Boolean(activeProgress),
+        approveArtifactsBatch,
+    });
     const hasAttachedProgress = Boolean(activeProgress);
     const hasAttachedQueue = Boolean(queuedFollowUp);
-    const composerAttachedStack = hasAttachedProgress || hasAttachedQueue ? "attached" : "none";
+    const hasAttachedApproval = pendingApprovalBar.showBar;
+    const composerAttachedStack = hasAttachedProgress || hasAttachedQueue || hasAttachedApproval ? "attached" : "none";
     const queuedStackPosition = hasAttachedQueue ? (hasAttachedProgress ? "middle" : "top") : undefined;
+    const approvalStackPosition = hasAttachedApproval
+        ? (hasAttachedProgress || hasAttachedQueue ? "middle" : "top")
+        : undefined;
 
     if (isCollapsed) {
         return (
@@ -504,7 +517,6 @@ export function ProjectCopilot({
                     onSuggestionClick={handleSuggestionClick}
                     onActionPrompt={handleActionPrompt}
                     onReviewArtifact={handleReviewArtifact}
-                    onApproveArtifactsBatch={approveArtifactsBatch}
                     onExecutePlan={executePlan}
                     onSaveToNotes={handleSaveToNotes}
                     onRetryLastMessage={retryLastMessage}
@@ -532,6 +544,17 @@ export function ProjectCopilot({
                             onEdit={handleEditQueuedFollowUp}
                             onRemove={clearQueuedFollowUp}
                         />
+                        {pendingApprovalBar.showBar ? (
+                            <ComposerPendingApprovalBar
+                                pendingCount={pendingApprovalBar.pendingCount}
+                                state={pendingApprovalBar.state}
+                                progress={pendingApprovalBar.progress}
+                                resultText={pendingApprovalBar.resultText}
+                                onApproveAll={pendingApprovalBar.approveAll}
+                                onStop={pendingApprovalBar.stopApproval}
+                                stackPosition={approvalStackPosition}
+                            />
+                        ) : null}
                         <CopilotInput
                             page={page}
                             section={section}
@@ -540,6 +563,7 @@ export function ProjectCopilot({
                             prefillCommand={activePrefillCommand}
                             onPrefillConsumed={handlePrefillConsumed}
                             attachedStack={composerAttachedStack}
+                            interactionLocked={pendingApprovalBar.interactionLocked}
                         />
                     </div>
                 </div>

@@ -19,6 +19,7 @@ export type CopilotInputProps = {
     prefillCommand?: { text: string; id: string } | null;
     onPrefillConsumed?: () => void;
     attachedStack?: "none" | "attached";
+    interactionLocked?: boolean;
 };
 
 export function CopilotInput({
@@ -29,6 +30,7 @@ export function CopilotInput({
     prefillCommand,
     onPrefillConsumed,
     attachedStack = "none",
+    interactionLocked = false,
 }: CopilotInputProps) {
     const {
         isLoading,
@@ -76,6 +78,7 @@ export function CopilotInput({
             cancelStream={cancelStream}
             hasQueuedFollowUp={queuedFollowUp !== null}
             attachedStack={attachedStack}
+            interactionLocked={interactionLocked}
             onQueueFollowUp={(payload) => {
                 queueQueuedFollowUp(createQueuedFollowUp({
                     ...payload,
