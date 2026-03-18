@@ -80,6 +80,11 @@ describe("mentioned-studies parsing", () => {
         expect(stripMentionedStudiesMarkup(text)).toBe("Narrative");
     });
 
+    it("strips open mentioned-studies comments from visible text", () => {
+        const text = 'Narrative\n\n<!-- MENTIONED_STUDIES: {"studies":[]}';
+        expect(stripMentionedStudiesMarkup(text)).toBe("Narrative");
+    });
+
     it("strips fenced mentioned-studies blocks from visible text", () => {
         const text = 'Narrative\n\n```mentioned_studies\n{"studies":[]}\n```';
         expect(stripMentionedStudiesMarkup(text)).toBe("Narrative");

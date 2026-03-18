@@ -45,7 +45,8 @@ import { ScopingReportCard } from "../artifacts/ScopingReportCard";
 import { UserInputCard } from "../artifacts/UserInputCard";
 import { StreamingProgress } from "./StreamingProgress";
 import { addMentionedStudyAction } from "@/app/actions/ledger";
-import { extractMentionedStudies, stripMentionedStudiesMarkup, type MentionedStudy } from "@/lib/ai/mentioned-studies";
+import { type MentionedStudy } from "@/lib/ai/mentioned-studies";
+import { normalizeAssistantContent } from "@/lib/ai/normalize-assistant-content";
 import { useMentionedStudyTitles } from "@/lib/ai/use-mentioned-study-titles";
 import { isChatStudyMentionsEnabled } from "@/lib/agent/feature-flags";
 import { getReasoningSummaryPreview } from "@/lib/ai/reasoning-visibility";
@@ -285,25 +286,7 @@ type UserMessageRowProps = {
 };
 
 const USER_MARKDOWN_ELEMENTS = ["p", "strong", "em", "code", "a", "br"] as const;
-const SCOPING_REPORT_COMMENT_RE = /<!--\s*SCOPING_REPORT:\s*[\s\S]*?-->/gi;
-const SCOPING_REPORT_COMMENT_OPEN_RE = /<!--\s*SCOPING_REPORT:\s*[\s\S]*$/i;
-const SCOPING_REPORT_XML_RE = /<scoping_report>\s*[\s\S]*?<\/scoping_report>/gi;
-const SCOPING_REPORT_XML_OPEN_RE = /<scoping_report>[\s\S]*$/i;
 const CHAT_STUDY_MENTIONS_ENABLED = isChatStudyMentionsEnabled();
-
-function stripInternalAssistantMetadata(content: string): string {
-    return content
-        .replace(SCOPING_REPORT_COMMENT_RE, "")
-        .replace(SCOPING_REPORT_XML_RE, "")
-        .replace(SCOPING_REPORT_COMMENT_OPEN_RE, "")
-        .replace(SCOPING_REPORT_XML_OPEN_RE, "")
-        .trimEnd();
-}
-
-function stripAssistantMarkupForDisplay(content: string): string {
-    return stripMentionedStudiesMarkup(stripInternalAssistantMetadata(content))
-        .trimEnd();
-}
 
 function isContextTimelineAttachment(
     attachment: TimelineAttachment,
@@ -427,7 +410,8 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
     onInsert,
     onBranchFromMessage,
 }: AssistantMessageRowProps) {
-    const displayContent = stripAssistantMarkupForDisplay(item.content);
+    const normalizedContent = useMemo(() => normalizeAssistantContent(item.content), [item.content]);
+    const displayContent = normalizedContent.displayContent;
     const rawReasoningText = item.reasoning?.text?.trim() ?? "";
     const hasReasoning = rawReasoningText.length > 0;
     const showReasoningArea = hasReasoning && reasoningMode !== "off" && Boolean(displayContent);
@@ -439,10 +423,7 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
         ? summaryPreview.text
         : rawReasoningText;
     const isReasoningStreaming = item.reasoning?.state === "streaming";
-    const mentions = useMemo(
-        () => (CHAT_STUDY_MENTIONS_ENABLED ? extractMentionedStudies(item.content) : []),
-        [item.content]
-    );
+    const mentions = CHAT_STUDY_MENTIONS_ENABLED ? normalizedContent.mentionedStudies : [];
     const hydratedMentionTitles = useMentionedStudyTitles(mentions);
     const [mentionStates, setMentionStates] = useState<Record<string, MentionAddState>>({});
     const [showReasoning, setShowReasoning] = useState(false);

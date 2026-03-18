@@ -231,6 +231,38 @@ describe("PopupChat failure handling", () => {
         expect(screen.getAllByText("The response timed out. Retry to continue.")).toHaveLength(1);
     });
 
+    it("strips hidden assistant metadata from popup-visible assistant text", async () => {
+        mockProcessAIStream.mockImplementationOnce(async ({ onChunk }) => {
+            await onChunk({
+                type: "content",
+                content: 'Visible narrative\n\n<!-- MENTIONED_STUDIES: {"studies":[{"title":"Study","doi":"10.1000/x"}]} -->',
+            });
+            return {
+                runStatus: "completed",
+                stopReason: "done",
+                errorMessage: null,
+                errorMeta: null,
+                conversationId: "conv-1",
+                actualModel: null,
+                actualModelSource: "unknown",
+                terminalReason: "completed",
+            };
+        });
+
+        render(<PopupChat projectId="project-1" />);
+
+        fireEvent.change(screen.getByPlaceholderText("Ask a question about Eligibility..."), {
+            target: { value: "Show me the studies" },
+        });
+        fireEvent.click(screen.getByRole("button", { name: "Send" }));
+
+        await waitFor(() => {
+            expect(screen.getByText("Visible narrative")).toBeTruthy();
+        });
+
+        expect(screen.queryByText(/MENTIONED_STUDIES/i)).toBeNull();
+    });
+
     it("resets popup-local draft input when the popup context identity changes", () => {
         let currentContext: PopupChatContext = {
             type: "protocol_section" as const,

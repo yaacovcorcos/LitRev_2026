@@ -1,5 +1,6 @@
 "use client";
 
+import { normalizeAssistantContent } from "@/lib/ai/normalize-assistant-content";
 import type { TimelineItem } from "@/types/timeline";
 
 function slugifyFilename(name: string): string {
@@ -21,7 +22,7 @@ function formatMultilineHtml(text: string): string {
   return escapeHtml(text).replace(/\n/g, "<br />");
 }
 
-function buildTimelineMarkdown(items: TimelineItem[], title: string): string {
+export function buildTimelineMarkdown(items: TimelineItem[], title: string): string {
   const lines: string[] = [`# ${title}`, "", `Exported: ${new Date().toISOString()}`, ""];
 
   for (const item of items) {
@@ -33,7 +34,7 @@ function buildTimelineMarkdown(items: TimelineItem[], title: string): string {
     }
     if (item.type === "assistant_message") {
       lines.push("## Assistant");
-      lines.push(item.content);
+      lines.push(normalizeAssistantContent(item.content).displayContent);
       lines.push("");
       continue;
     }
@@ -70,7 +71,7 @@ function buildTimelineMarkdown(items: TimelineItem[], title: string): string {
   return lines.join("\n").trim() + "\n";
 }
 
-function buildTimelinePrintHtml(items: TimelineItem[], title: string): string {
+export function buildTimelinePrintHtml(items: TimelineItem[], title: string): string {
   const blocks: string[] = [];
 
   for (const item of items) {
@@ -82,7 +83,7 @@ function buildTimelinePrintHtml(items: TimelineItem[], title: string): string {
     }
     if (item.type === "assistant_message") {
       blocks.push(
-        `<section class="entry assistant"><h2>Assistant</h2><p>${formatMultilineHtml(item.content)}</p></section>`
+        `<section class="entry assistant"><h2>Assistant</h2><p>${formatMultilineHtml(normalizeAssistantContent(item.content).displayContent)}</p></section>`
       );
       continue;
     }

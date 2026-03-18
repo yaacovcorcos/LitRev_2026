@@ -1,5 +1,6 @@
 import type { TimelineAssistantMessage, TimelineError, TimelineItem, TimelineProgress, TimelineUserInputRequest, TimelineUserMessage } from "@/types/timeline";
 import type { AIErrorEnvelope, AIStreamChunk, CopilotPage } from "@/types/ai";
+import { normalizeAssistantContent } from "@/lib/ai/normalize-assistant-content";
 import { buildClientErrorState, reconcileRunScopedRenderedErrors } from "@/lib/ai/stream-error-ui";
 import {
   createInitialSharedStreamState,
@@ -311,7 +312,10 @@ export function getPopupTranscriptEntries(items: PopupTimelineItem[]): Array<{ r
         break;
       case "assistant_message":
         if (item.content.trim()) {
-          entries.push({ role: "assistant", content: item.content });
+          const displayContent = normalizeAssistantContent(item.content).displayContent;
+          if (displayContent.trim()) {
+            entries.push({ role: "assistant", content: displayContent });
+          }
         }
         break;
       case "checkpoint":
