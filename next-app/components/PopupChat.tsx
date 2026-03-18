@@ -28,6 +28,7 @@ import {
     type PopupTimelineItem,
     type PopupStreamRuntimeState,
 } from "@/lib/ai/popup-stream-runtime";
+import { normalizeAssistantContent } from "@/lib/ai/normalize-assistant-content";
 import { recordReliabilityMetric } from "@/lib/ai/reliability-telemetry";
 import { markdownComponents } from "@/components/markdown/CodeBlock";
 import type { PopupChatContext } from "@/types/popup-chat";
@@ -684,6 +685,7 @@ function PopupChatRuntime({
                                 if (item.type === "assistant_message") {
                                     const nextItem = renderedItems[index + 1];
                                     const adjacentError = isErrorItem(nextItem) ? nextItem : null;
+                                    const displayContent = normalizeAssistantContent(item.content).displayContent;
                                     return (
                                         <div
                                             key={item.id}
@@ -695,7 +697,7 @@ function PopupChatRuntime({
                                             >
                                                 <div className={styles.msgText}>
                                                     <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-                                                        {item.content}
+                                                        {displayContent}
                                                     </ReactMarkdown>
                                                     {isStreaming && index === renderedItems.length - 1 && (
                                                         <span className={styles.streamingCursor} aria-hidden="true">◎</span>

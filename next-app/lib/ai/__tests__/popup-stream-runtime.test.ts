@@ -69,4 +69,19 @@ describe("popup stream runtime", () => {
       { role: "assistant", content: "Which of these results should I inspect first?" },
     ]);
   });
+
+  it("normalizes assistant transcript entries before popup handoff/export flows", () => {
+    const entries = getPopupTranscriptEntries([
+      {
+        type: "assistant_message",
+        id: "assistant-1",
+        createdAt: "2026-03-10T00:00:00.000Z",
+        content: 'Visible narrative\n\n<!-- MENTIONED_STUDIES: {"studies":[{"title":"Study","doi":"10.1000/x"}]} -->',
+      },
+    ]);
+
+    expect(entries).toEqual([
+      { role: "assistant", content: "Visible narrative" },
+    ]);
+  });
 });

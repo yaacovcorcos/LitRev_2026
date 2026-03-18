@@ -4,13 +4,13 @@
  */
 
 import "server-only";
+import { normalizeAssistantContent } from "@/lib/ai/normalize-assistant-content";
 import { prisma } from "@/lib/server/prisma";
 import { getAIService } from "@/lib/server/ai";
 import type { AIMessage } from "@/types/ai";
 import type { MemoryProposalPayload } from "@/types/artifacts";
 import { createProjectMemory, type ProjectMemoryCategory } from "./project-memory";
 import { createArtifact } from "@/lib/server/agent/artifacts";
-import { stripScopingReportMarkup } from "@/lib/server/ai/scoping";
 
 const VALID_CATEGORIES: ProjectMemoryCategory[] = [
     "inclusion", "exclusion", "outcome", "population", "intervention", "comparison",
@@ -62,12 +62,12 @@ Scoping-specific guardrails:
 function isScopingConversation(messages: { role: string; content: string }[]): boolean {
     return messages.some((m) =>
         m.role === "assistant" &&
-        (/SCOPING_REPORT/i.test(m.content) || /<scoping_report>/i.test(m.content)),
+        normalizeAssistantContent(m.content).hiddenBlocks.some((block) => block.type === "scoping_report"),
     );
 }
 
 function sanitizeTranscriptContent(role: string, content: string): string {
-    if (role === "assistant") return stripScopingReportMarkup(content).trim();
+    if (role === "assistant") return normalizeAssistantContent(content).displayContent.trim();
     return content.trim();
 }
 

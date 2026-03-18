@@ -151,9 +151,12 @@ describe("extractMemoriesFromConversation", () => {
         }
     });
 
-    it("strips hidden scoping metadata from assistant transcript before extraction", async () => {
+    it("strips hidden scoping and mentioned-study metadata from assistant transcript before extraction", async () => {
         mockFindMany.mockResolvedValue([
-            { role: "assistant", content: `Landscape summary\n\n<!-- SCOPING_REPORT: {"topic":"x","searchesRun":[],"landscape":{"majorThemes":[],"evidenceGaps":[],"methodologicalPatterns":[],"evidenceDensity":"moderate"},"recommendedQuestions":[],"nextStep":"x"} -->` },
+            {
+                role: "assistant",
+                content: `Landscape summary\n\n<!-- SCOPING_REPORT: {"topic":"x","searchesRun":[],"landscape":{"majorThemes":[],"evidenceGaps":[],"methodologicalPatterns":[],"evidenceDensity":"moderate"},"recommendedQuestions":[],"nextStep":"x"} -->\n<!-- MENTIONED_STUDIES: {"studies":[{"title":"Study","doi":"10.1000/x"}]} -->`,
+            },
             ...makeMessages(5),
         ] as any);
 
@@ -163,6 +166,7 @@ describe("extractMemoriesFromConversation", () => {
         const payload = lastCall?.[0] as Array<{ role: string; content: string }>;
         const transcriptMessage = payload.find((m) => m.role === "user")?.content || "";
         expect(transcriptMessage.includes("SCOPING_REPORT")).toBe(false);
+        expect(transcriptMessage.includes("MENTIONED_STUDIES")).toBe(false);
     });
 
     it("applies scoping policy: keeps explicit decisions but drops transient scoping summaries/facts", async () => {

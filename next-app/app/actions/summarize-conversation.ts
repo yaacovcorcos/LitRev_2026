@@ -2,6 +2,7 @@
 
 import { prisma } from "@/lib/server/prisma";
 import { getAIService } from "@/lib/server/ai";
+import { normalizeAssistantContent } from "@/lib/ai/normalize-assistant-content";
 import type { AIMessage } from "@/types/ai";
 import { withValidatedAction, type ActionResult } from "@/lib/server/action-utils";
 import { withAuth } from "@/lib/server/auth/session";
@@ -57,7 +58,13 @@ export async function summarizeConversationAction(
 
         // 2. Build message transcript for summarization
         const transcript = conversation.messages
-            .map((m) => `[${m.role}]: ${m.content}`)
+            .map((m) =>
+                `[${m.role}]: ${
+                    m.role === "assistant"
+                        ? normalizeAssistantContent(m.content).displayContent
+                        : m.content
+                }`
+            )
             .join("\n\n");
 
         const messages: AIMessage[] = [

@@ -280,6 +280,7 @@ function dedupeStudies(studies: MentionedStudy[]): MentionedStudy[] {
 }
 
 const MENTIONED_STUDIES_COMMENT_RE = /<!--\s*MENTIONED_STUDIES:\s*[\s\S]*?-->/gi;
+const MENTIONED_STUDIES_COMMENT_OPEN_RE = /<!--\s*MENTIONED_STUDIES:\s*(?:(?!-->)[\s\S])*$/i;
 const MENTIONED_STUDIES_XML_RE = /<mentioned_studies>\s*[\s\S]*?<\/mentioned_studies>/gi;
 const MENTIONED_STUDIES_XML_OPEN_RE = /<mentioned_studies>[\s\S]*$/i;
 const MENTIONED_STUDIES_FENCED_RE = /```mentioned_studies[\s\S]*?```/gi;
@@ -288,6 +289,7 @@ const MENTIONED_STUDIES_FENCED_OPEN_RE = /```mentioned_studies[\s\S]*$/i;
 export function stripMentionedStudiesMarkup(text: string): string {
     return text
         .replace(MENTIONED_STUDIES_COMMENT_RE, "")
+        .replace(MENTIONED_STUDIES_COMMENT_OPEN_RE, "")
         .replace(MENTIONED_STUDIES_XML_RE, "")
         .replace(MENTIONED_STUDIES_XML_OPEN_RE, "")
         .replace(MENTIONED_STUDIES_FENCED_RE, "")
