@@ -135,17 +135,20 @@ export function DraftTopBar({
               );
             })}
           </div>
-          <div className={styles.addSection} ref={addSectionRef}>
+
+          <div className={styles.addSectionDivider} aria-hidden="true" />
+
+          <div className={styles.addSectionDocked} ref={addSectionRef}>
             <button
               type="button"
-              className={styles.addSectionButton}
+              className={styles.addSectionButtonIconOnly}
               onClick={() => setAddSectionOpen((prev: boolean) => !prev)}
               aria-haspopup="menu"
               aria-expanded={isAddSectionOpen}
-              aria-label="Add section"
+              aria-label="Add a section"
+              title="Add a section"
             >
               <span className="material-icons-round">add</span>
-              Add
             </button>
             {isAddSectionOpen ? (
               <div className={styles.sectionMenu} role="menu" aria-label="Add section">

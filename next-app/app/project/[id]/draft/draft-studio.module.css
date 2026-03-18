@@ -80,30 +80,35 @@
 }
 
 .sectionTabsWrap {
+    position: relative;
     display: inline-flex;
-    align-items: center;
-    gap: 12px;
+    align-items: stretch;
     min-width: 0;
     max-width: 100%;
+    overflow: hidden;
+    border-radius: 14px;
+    border: 1px solid var(--glass-border);
+    background: rgba(var(--rgb-ui-surface), 0.72);
 }
 
 .sectionTabs {
     display: flex;
+    flex: 1 1 auto;
     align-items: center;
     gap: 2px;
-    min-width: min(540px, 100%);
+    min-width: 0;
+    max-width: 540px;
     padding: 6px;
-    border-radius: 14px;
-    border: 1px solid var(--glass-border);
-    background: rgba(var(--rgb-ui-surface), 0.72);
-    max-width: 100%;
     overflow-x: auto;
     scrollbar-width: none;
+    scroll-behavior: smooth;
 }
 
 .sectionTabs::-webkit-scrollbar {
     display: none;
 }
+
+
 
 .sectionTab {
     position: relative;
@@ -154,41 +159,50 @@
     right: -2px;
 }
 
-.addSection {
-    position: relative;
+.addSectionDivider {
+    width: 1px;
+    background: rgba(var(--rgb-ui-contrast), 0.08);
+    margin: 8px 0;
     flex-shrink: 0;
 }
 
-.addSectionButton {
-    display: inline-flex;
+.addSectionDocked {
+    position: relative;
+    display: flex;
     align-items: center;
-    gap: 6px;
-    height: 46px;
-    padding: 0 16px;
-    border-radius: 14px;
-    border: 1px dashed rgba(var(--rgb-ui-contrast), 0.15);
-    background: rgba(var(--rgb-ui-surface), 0.72);
-    color: var(--text-secondary);
-    font-weight: 700;
-    font-size: 14px;
-    cursor: pointer;
-    transition: background 0.2s ease, color 0.2s ease;
-    white-space: nowrap;
+    justify-content: center;
+    padding: 6px;
+    flex-shrink: 0;
+    z-index: 2;
 }
 
-.addSectionButton:hover {
-    background: rgba(var(--rgb-ui-surface), 0.88);
+.addSectionButtonIconOnly {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 10px;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.addSectionButtonIconOnly:hover {
+    background: rgba(var(--rgb-ui-contrast), 0.05);
     color: var(--text-primary);
 }
 
-.addSectionButton:disabled,
-.addSectionButtonDisabled {
+.addSectionButtonIconOnly:disabled,
+.addSectionButtonIconOnlyDisabled {
     opacity: 0.5;
     cursor: not-allowed;
 }
 
-.addSectionButton .material-icons-round {
-    font-size: 14px;
+.addSectionButtonIconOnly .material-icons-round {
+    font-size: 18px;
 }
 
 .sectionMenu {
@@ -1537,9 +1551,13 @@
         justify-content: space-between;
     }
 
-    .addSectionButton {
-        padding: 6px 10px;
-        font-size: 11px;
+    .addSectionButtonIconOnly {
+        width: 28px;
+        height: 28px;
+    }
+
+    .addSectionButtonIconOnly .material-icons-round {
+        font-size: 16px;
     }
 
     .body {
