@@ -1,31 +1,19 @@
 // @vitest-environment jsdom
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import ProjectDetail from "../page";
+import ProjectDetailClient from "../ProjectDetailClient";
 
 const {
-  mockGetProjectOverviewStatsAction,
   mockUseProjects,
   mockUseProjectShell,
 } = vi.hoisted(() => ({
-  mockGetProjectOverviewStatsAction: vi.fn(),
   mockUseProjects: vi.fn(),
   mockUseProjectShell: vi.fn(),
 }));
 
-let currentProjectId = "proj-1";
-
-vi.mock("next/navigation", () => ({
-  useParams: () => ({ id: currentProjectId }),
-}));
-
 vi.mock("next/link", () => ({
   default: ({ children, href, ...props }: { children: ReactNode; href: string }) => <a href={href} {...props}>{children}</a>,
-}));
-
-vi.mock("@/app/actions/stats", () => ({
-  getProjectOverviewStatsAction: (...args: unknown[]) => mockGetProjectOverviewStatsAction(...args),
 }));
 
 vi.mock("@/contexts/ProjectsContext", () => ({
@@ -34,6 +22,10 @@ vi.mock("@/contexts/ProjectsContext", () => ({
 
 vi.mock("@/contexts/ProjectShellContext", () => ({
   useProjectShell: () => mockUseProjectShell(),
+}));
+
+vi.mock("@/lib/mobile/foundation-reliability", () => ({
+  useFoundationRouteReady: vi.fn(),
 }));
 
 vi.mock("@/components/AppShell", () => ({
@@ -75,7 +67,7 @@ function makeProject(id: string, name: string) {
   };
 }
 
-function createOverviewStats() {
+function createOverviewStats(criteriaCount = 3) {
   return {
     draft: {
       data: {
@@ -90,7 +82,7 @@ function createOverviewStats() {
     },
     protocol: {
       data: {
-        criteriaCount: 3,
+        criteriaCount,
         hasResearchQuestion: true,
         updatedAt: "2026-03-06T00:00:00.000Z",
       },
@@ -108,100 +100,48 @@ function createOverviewStats() {
   };
 }
 
-function createDeferred<T>() {
-  let resolve!: (value: T) => void;
-  let reject!: (reason?: unknown) => void;
-  const promise = new Promise<T>((res, rej) => {
-    resolve = res;
-    reject = rej;
-  });
-  return { promise, resolve, reject };
-}
-
 describe("Project overview page", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    currentProjectId = "proj-1";
     mockUseProjectShell.mockReturnValue({ isEmbeddedInProjectShell: true });
     mockUseProjects.mockReturnValue({
-      getProjectById: (id: string) => (id === currentProjectId ? makeProject(id, id === "proj-1" ? "Alpha" : "Beta") : undefined),
+      getProjectById: (id: string) => (id === "proj-1" ? makeProject(id, "Alpha") : makeProject(id, "Beta")),
+      ensureProjectLoaded: vi.fn(),
       isLoadingProjects: false,
       projectsError: null,
     });
   });
 
-  it("loads overview previews with a single combined action", async () => {
-    mockGetProjectOverviewStatsAction.mockResolvedValue({
-      success: true,
-      data: createOverviewStats(),
-    });
+  it("renders overview previews from bootstrapped props", () => {
+    render(
+      <ProjectDetailClient
+        projectId="proj-1"
+        initialOverviewStats={createOverviewStats()}
+      />,
+    );
 
-    render(<ProjectDetail />);
-
-    await waitFor(() => {
-      expect(mockGetProjectOverviewStatsAction).toHaveBeenCalledWith("proj-1");
-    });
-
-    expect(mockGetProjectOverviewStatsAction).toHaveBeenCalledTimes(1);
     expect(screen.getByText("3 eligibility criteria defined")).toBeTruthy();
     expect(screen.getByText("4 / 10 extracted")).toBeTruthy();
   });
 
-  it("ignores stale overview preview results after switching projects", async () => {
-    const first = createDeferred<{ success: true; data: ReturnType<typeof createOverviewStats> }>();
-    const second = createDeferred<{ success: true; data: ReturnType<typeof createOverviewStats> }>();
+  it("updates previews from new bootstrapped props without stale client state", () => {
+    const view = render(
+      <ProjectDetailClient
+        projectId="proj-1"
+        initialOverviewStats={createOverviewStats(7)}
+      />,
+    );
 
-    mockGetProjectOverviewStatsAction
-      .mockReturnValueOnce(first.promise)
-      .mockReturnValueOnce(second.promise);
+    expect(screen.getByText("7 eligibility criteria defined")).toBeTruthy();
 
-    const view = render(<ProjectDetail />);
+    view.rerender(
+      <ProjectDetailClient
+        projectId="proj-2"
+        initialOverviewStats={createOverviewStats(2)}
+      />,
+    );
 
-    await waitFor(() => {
-      expect(mockGetProjectOverviewStatsAction).toHaveBeenCalledWith("proj-1");
-    });
-
-    currentProjectId = "proj-2";
-    view.rerender(<ProjectDetail />);
-
-    await waitFor(() => {
-      expect(mockGetProjectOverviewStatsAction).toHaveBeenCalledWith("proj-2");
-    });
-
-    first.resolve({
-      success: true,
-      data: {
-        ...createOverviewStats(),
-        protocol: {
-          data: {
-            criteriaCount: 7,
-            hasResearchQuestion: true,
-            updatedAt: "2026-03-06T00:00:00.000Z",
-          },
-          error: null,
-        },
-      },
-    });
-
-    second.resolve({
-      success: true,
-      data: {
-        ...createOverviewStats(),
-        protocol: {
-          data: {
-            criteriaCount: 2,
-            hasResearchQuestion: true,
-            updatedAt: "2026-03-06T00:00:00.000Z",
-          },
-          error: null,
-        },
-      },
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText("2 eligibility criteria defined")).toBeTruthy();
-    });
-
+    expect(screen.getByText("2 eligibility criteria defined")).toBeTruthy();
     expect(screen.queryByText("7 eligibility criteria defined")).toBeNull();
   });
 });

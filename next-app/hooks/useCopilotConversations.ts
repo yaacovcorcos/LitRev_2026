@@ -98,8 +98,7 @@ export function useCopilotConversations(deps: CopilotConversationsDeps) {
     // Summarize state
     const [isSummarizing, setIsSummarizing] = useState(false);
 
-    // Mirror currentConversationId to ref for scope-switch reads
-    useEffect(() => { currentConversationIdRef.current = currentConversationId; }, [currentConversationId]);
+    currentConversationIdRef.current = currentConversationId;
 
     // Project switch guard: clear scope-cached conversation IDs and active conversation state.
     // Prevents restoring/selecting a conversation from a previous project.

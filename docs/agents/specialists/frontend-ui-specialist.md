@@ -23,6 +23,11 @@ Use for UI behavior/styling changes, especially routes under `app/project/[id]/.
 - No visible no-op controls.
 - Suggestion buttons must act (send or prefill flow).
 - Prefer shared primitives in `next-app/components/ui/`.
+- Treat direct `useEffect` / `useLayoutEffect` as a smell in feature UI code.
+- Direct effects remain allowed only for explicit external synchronization with DOM, browser, editor, media-query, scroll, focus, or canvas systems with clear setup/cleanup semantics.
+- Do not introduce direct effects for route-critical data loading, prop/state sync, reset choreography, latest-value sync, or flag-driven orchestration.
+- Prefer server/bootstrap data, reducers, keyed remounts, event handlers, derivation, and shared external-sync hooks in `next-app/hooks/`.
+- Default latest-value policy is React `useEffectEvent`; do not add new generic `useLatestRef` helpers as the normal replacement pattern.
 - Use tokens from `next-app/styles/tokens.css`; avoid hardcoded palette values unless intentionally local.
 - Keep accessibility baseline (labels, keyboard nav, focus visibility).
 - Use semantic interactions: actions use `<button>`, navigation uses `<a>`/`<Link>`, and avoid clickable `div`/`span`.
@@ -36,9 +41,13 @@ Use for UI behavior/styling changes, especially routes under `app/project/[id]/.
 ## Mandatory Workflow
 
 1. Confirm component behavior in both desktop and mobile layouts.
-2. Run a final UI audit for semantic controls, form labeling/validation, motion/focus behavior, destructive-action safeguards, and error-message presentation quality.
-3. Update/add tests for meaningful behavior changes.
-4. Run:
+2. Before adding any new effect, classify it:
+   - external synchronization: allowed
+   - anything else: redesign it
+3. Prefer keyed remounts for identity resets and event handlers for user-triggered actions.
+4. Run a final UI audit for semantic controls, form labeling/validation, motion/focus behavior, destructive-action safeguards, and error-message presentation quality.
+5. Update/add tests for meaningful behavior changes.
+6. Run:
    - `npx tsc --noEmit`
    - `npx vitest run`
 

@@ -1,9 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { useProjectCopilot } from "@/contexts/ProjectCopilotContext";
 import { useParams } from "next/navigation";
-import { getTokenUsageTodayAction } from "@/app/actions/usage";
+import { useProjectTokenUsage } from "@/hooks/useProjectTokenUsage";
 import styles from "./StatusIndicator.module.css";
 
 function formatTokens(n: number): string {
@@ -16,22 +15,7 @@ export function StatusIndicator() {
     const { currentRunId } = useProjectCopilot();
     const params = useParams<{ id: string }>();
     const projectId = params?.id ?? "";
-    const [totalTokens, setTotalTokens] = useState<number | null>(null);
-
-    useEffect(() => {
-        if (!projectId) return;
-
-        let cancelled = false;
-        const fetchUsage = () => {
-            getTokenUsageTodayAction(projectId).then((res) => {
-                if (!cancelled && res.success) setTotalTokens(res.data.totalTokens);
-            }).catch(() => {});
-        };
-
-        fetchUsage();
-        const interval = setInterval(fetchUsage, 60_000);
-        return () => { cancelled = true; clearInterval(interval); };
-    }, [projectId]);
+    const totalTokens = useProjectTokenUsage(projectId);
 
     return (
         <div className={styles.status}>

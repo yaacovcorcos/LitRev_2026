@@ -7,6 +7,8 @@ import { ComposerPendingApprovalBar } from "@/components/copilot/ComposerPending
 import { ComposerQueuedFollowUpBar } from "@/components/copilot/ComposerQueuedFollowUpBar";
 import { usePendingApprovalBarState } from "@/components/copilot/usePendingApprovalBarState";
 import { useProjects } from "@/contexts/ProjectsContext";
+import { useIdleTask } from "@/hooks/useIdleTask";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import type { AgentMode } from "@/types/agent";
@@ -294,7 +296,7 @@ export default function AIView() {
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
-  const [isPhoneViewport, setIsPhoneViewport] = useState(false);
+  const isPhoneViewport = useMediaQuery(PHONE_MEDIA_QUERY);
   const [isComposerReady, setComposerReady] = useState(false);
 
   const [workspaceContextText, setWorkspaceContextText] = useState("");
@@ -341,10 +343,8 @@ export default function AIView() {
   );
 
   const showReasoningControls = reasoningSupport !== "none";
-
-  useEffect(() => {
-    timelineByConversationRef.current = timelineByConversation;
-  }, [timelineByConversation]);
+  timelineByConversationRef.current = timelineByConversation;
+  activeConversationIdRef.current = activeConversationId;
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -359,7 +359,9 @@ export default function AIView() {
   }, []);
 
   useEffect(() => {
-    if (!isTyping) sendLockRef.current = false;
+    if (!isTyping) {
+      sendLockRef.current = false;
+    }
   }, [isTyping]);
 
   useEffect(() => {
@@ -370,31 +372,6 @@ export default function AIView() {
       setSelectedModel(stored as SelectableModelId);
     }
   }, [setSelectedModel]);
-
-  useEffect(() => {
-    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
-    const mobileQuery = window.matchMedia(PHONE_MEDIA_QUERY);
-    const apply = () => setIsPhoneViewport(mobileQuery.matches);
-    apply();
-
-    if (typeof mobileQuery.addEventListener === "function") {
-      mobileQuery.addEventListener("change", apply);
-    } else if (typeof mobileQuery.addListener === "function") {
-      mobileQuery.addListener(apply);
-    }
-
-    return () => {
-      if (typeof mobileQuery.removeEventListener === "function") {
-        mobileQuery.removeEventListener("change", apply);
-      } else if (typeof mobileQuery.removeListener === "function") {
-        mobileQuery.removeListener(apply);
-      }
-    };
-  }, []);
-
-  useEffect(() => {
-    activeConversationIdRef.current = activeConversationId;
-  }, [activeConversationId]);
 
   useEffect(() => {
     if (!activeConversationId) return;
@@ -558,10 +535,7 @@ export default function AIView() {
   }, [selectedProjectId, workspaceContextText]);
 
   const historyScopeKey = selectedProjectId ?? GLOBAL_HISTORY_SCOPE_KEY;
-
-  useEffect(() => {
-    currentHistoryScopeRef.current = historyScopeKey;
-  }, [historyScopeKey]);
+  currentHistoryScopeRef.current = historyScopeKey;
 
   const loadConversationList = useCallback(async (force = false) => {
     if (!force && historyLoadedScopeRef.current === historyScopeKey) return;
@@ -615,54 +589,21 @@ export default function AIView() {
     };
   }, [selectedProjectId]);
 
-  useEffect(() => {
-    if (selectedProjectId || !isComposerReady || workspaceContextText) return;
+  useIdleTask(() => {
+    void ensureWorkspaceContextText();
+  }, {
+    enabled: !selectedProjectId && isComposerReady && !workspaceContextText,
+    timeoutMs: 1500,
+    fallbackDelayMs: 250,
+  });
 
-    let cancelled = false;
-    const run = () => {
-      if (cancelled) return;
-      void ensureWorkspaceContextText();
-    };
-
-    if (typeof window !== "undefined" && typeof window.requestIdleCallback === "function") {
-      const idleId = window.requestIdleCallback(run, { timeout: 1500 });
-      return () => {
-        cancelled = true;
-        window.cancelIdleCallback(idleId);
-      };
-    }
-
-    const timeoutId = window.setTimeout(run, 250);
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timeoutId);
-    };
-  }, [ensureWorkspaceContextText, isComposerReady, selectedProjectId, workspaceContextText]);
-
-  useEffect(() => {
-    if (!isComposerReady) return;
-    if (historyLoadedScopeRef.current === historyScopeKey) return;
-
-    let cancelled = false;
-    const run = () => {
-      if (cancelled) return;
-      void loadConversationList();
-    };
-
-    if (typeof window !== "undefined" && typeof window.requestIdleCallback === "function") {
-      const idleId = window.requestIdleCallback(run, { timeout: 1200 });
-      return () => {
-        cancelled = true;
-        window.cancelIdleCallback(idleId);
-      };
-    }
-
-    const timeoutId = window.setTimeout(run, 150);
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timeoutId);
-    };
-  }, [historyScopeKey, isComposerReady, loadConversationList]);
+  useIdleTask(() => {
+    void loadConversationList();
+  }, {
+    enabled: isComposerReady && historyLoadedScopeRef.current !== historyScopeKey,
+    timeoutMs: 1200,
+    fallbackDelayMs: 150,
+  });
 
   useEffect(() => {
     return () => {

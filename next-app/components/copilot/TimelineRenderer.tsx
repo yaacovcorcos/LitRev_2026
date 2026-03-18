@@ -718,7 +718,16 @@ export type TimelineRendererProps = {
     suppressedProgressId?: string | null;
 };
 
-export function TimelineRenderer({
+export function TimelineRenderer(props: TimelineRendererProps) {
+    return (
+        <TimelineRendererInner
+            key={props.conversationId ?? "__timeline-no-conversation__"}
+            {...props}
+        />
+    );
+}
+
+function TimelineRendererInner({
     messages = [],
     items,
     isLoading,
@@ -803,7 +812,7 @@ export function TimelineRenderer({
             return;
         }
         setVisibleCount(Math.min(windowSize, timeline.length));
-    }, [conversationId, timeline.length, windowSize]);
+    }, [timeline.length, windowSize]);
 
     const effectiveVisibleCount = windowSize ? Math.min(visibleCount, timeline.length) : timeline.length;
     const hiddenItemCount = Math.max(0, timeline.length - effectiveVisibleCount);
@@ -833,12 +842,6 @@ export function TimelineRenderer({
             [sequenceId]: !prev[sequenceId],
         }));
     }, []);
-    useEffect(() => {
-        setExpandedSequenceIds({});
-    }, [conversationId]);
-    useEffect(() => {
-        setCollapsedTraceByAssistantId({});
-    }, [conversationId]);
     // ── Content change — schedule scroll if pinned ──────────────────────────
     useLayoutEffect(() => { notifyContentChanged(); }, [notifyContentChanged, timeline, visibleFirstTimelineId, effectiveVisibleCount]);
     // ── Prepend anchor for "load older messages" ─────────────────────────

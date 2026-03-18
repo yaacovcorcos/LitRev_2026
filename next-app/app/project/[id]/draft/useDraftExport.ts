@@ -2,13 +2,14 @@
  * Custom hook encapsulating all export-related state and callbacks
  * for the Draft Studio page. Extracted from page.tsx (D-3).
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { listProjectFilesAction, createFileAssetAction, deleteFileAssetAction } from "@/app/actions/files";
+import { useCallback, useMemo, useState } from "react";
+import { createFileAssetAction, deleteFileAssetAction } from "@/app/actions/files";
 import type { FileAsset } from "@/types/files";
 import type { DraftState } from "@/lib/draftStorage";
 import { docHasContent, jsonToText, type SectionMeta } from "./draft-helpers";
 import type { Study } from "@/types/ledger";
 import { compileDraftCitations, formatReferenceEntry, hasBlockingCitationIssues } from "@/lib/citation-compiler";
+import { useProjectExportHistory } from "./useProjectExportHistory";
 
 type UseDraftExportDeps = {
   projectId: string;
@@ -33,9 +34,13 @@ export function useDraftExport(deps: UseDraftExportDeps) {
   } = deps;
 
   const [isExportModalOpen, setExportModalOpen] = useState(false);
-  const [exportHistory, setExportHistory] = useState<FileAsset[]>([]);
-  const [latestExport, setLatestExport] = useState<FileAsset | null>(null);
   const [exportMode, setExportMode] = useState<"warn" | "strict">("warn");
+  const {
+    exportHistory,
+    latestExport,
+    prependExport,
+    removeExport,
+  } = useProjectExportHistory(projectId);
 
   const compiledCitations = useMemo(
     () =>
@@ -57,25 +62,6 @@ export function useDraftExport(deps: UseDraftExportDeps) {
   const hasDraftContent = useMemo(() => {
     return orderedSections.some((section) => docHasContent(draft.contentBySection[section.id]));
   }, [draft.contentBySection, orderedSections]);
-
-  // Load export history on mount
-  useEffect(() => {
-    if (!projectId) return;
-    const loadExports = async () => {
-      try {
-        const result = await listProjectFilesAction(projectId);
-        if (!result.success) { console.error("Failed to load exports:", result.error); return; }
-        const exports = result.data
-          .filter((f) => f.kind === "export" && f.format === "docx")
-          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-        setExportHistory(exports);
-        setLatestExport(exports[0] || null);
-      } catch (err) {
-        console.error("Failed to load exports", err);
-      }
-    };
-    loadExports();
-  }, [projectId]);
 
   const handleExportDocx = useCallback(async (): Promise<FileAsset> => {
     if (!projectName || !projectId) throw new Error("Project not found");
@@ -147,8 +133,7 @@ export function useDraftExport(deps: UseDraftExportDeps) {
     if (!createResult.success) throw new Error(createResult.error);
     const newExport = createResult.data;
 
-    setExportHistory((prev) => [newExport, ...prev]);
-    setLatestExport(newExport);
+    prependExport(newExport);
 
     return newExport;
   }, [
@@ -159,6 +144,7 @@ export function useDraftExport(deps: UseDraftExportDeps) {
     exportMode,
     orderedSections,
     latestExport,
+    prependExport,
     studies,
   ]);
 
@@ -166,12 +152,8 @@ export function useDraftExport(deps: UseDraftExportDeps) {
     if (!projectId) return;
     const delResult = await deleteFileAssetAction(projectId, fileId);
     if (!delResult.success) { console.error("Failed to delete export:", delResult.error); return; }
-    setExportHistory((prev) => prev.filter((f) => f.id !== fileId));
-    if (latestExport?.id === fileId) {
-      const remaining = exportHistory.filter((f) => f.id !== fileId);
-      setLatestExport(remaining[0] || null);
-    }
-  }, [projectId, latestExport, exportHistory]);
+    removeExport(fileId);
+  }, [projectId, removeExport]);
 
   const handleExportDraft = useCallback(() => {
     if (!projectName || !projectId) return;

@@ -149,6 +149,10 @@ Rule: feature branches hold work; repo root `main` only mirrors merged work.
 - No visible no-op controls.
 - Suggestion buttons must send immediately or prefill via `prefill` and `onPrefillConsumed`.
 - Prefer shared primitives in `components/ui/`.
+- Direct `useEffect` / `useLayoutEffect` is reserved for explicit external synchronization only.
+- Do not introduce direct effects for route-critical data loading, prop/state mirroring, reset-on-identity-change, latest-value ref mirroring, or flag-driven orchestration.
+- Prefer server/bootstrap data, explicit resource/controller ownership, reducers, keyed remounts, event handlers, derivation, and shared external-sync hooks in `next-app/hooks/`.
+- Default latest-value policy is React `useEffectEvent` inside subscriptions, timers, and external-sync hooks. Render-time ref assignment is allowed only as a low-level escape hatch for imperative infrastructure code and must not be wrapped in an effect.
 - Token-first styling via `styles/tokens.css`; avoid hardcoded palette values unless intentionally local and reviewed.
 - Icon-only buttons require `aria-label`.
 - Preserve keyboard navigation and visible focus behavior.

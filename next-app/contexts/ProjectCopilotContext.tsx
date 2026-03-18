@@ -112,6 +112,9 @@ export function ProjectCopilotProvider({
     const queuedFollowUpDispatchRef = useRef<string | null>(null);
     const previousConversationIdRef = useRef<string | null>(null);
 
+    isLoadingRef.current = isLoading;
+    stateRef.current = state;
+
     // Autonomy configuration state (Phase 7)
     const [autonomyPreset, setAutonomyPreset] = useState<AutonomyPreset>("assisted");
     const [autonomyToolOverrides, setAutonomyToolOverrides] = useState<Record<string, AutonomyLevel>>({});
@@ -193,10 +196,6 @@ export function ProjectCopilotProvider({
             })
             .catch(console.error);
     }, [projectId]);
-
-    // Mirror isLoading to ref so sendMessage can read it without stale closures
-    useEffect(() => { isLoadingRef.current = isLoading; }, [isLoading]);
-    useEffect(() => { stateRef.current = state; }, [state]);
 
     const updateAutonomyPreset = useCallback(async (preset: AutonomyPreset) => {
         setAutonomyPreset(preset);

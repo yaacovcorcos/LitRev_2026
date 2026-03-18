@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import Link from "next/link";
-import { getRecentActivityAction } from "@/app/actions/activity";
+import { useRecentProjectActivity } from "@/hooks/useRecentProjectActivity";
 import type { ProjectActivityItem } from "@/types/activity";
 import styles from "./RecentActivityPanel.module.css";
 
@@ -71,72 +70,10 @@ export function RecentActivityPanel({
     limit = 8,
     deferUntilIdle = false,
 }: RecentActivityPanelProps) {
-    const [items, setItems] = useState<ProjectActivityItem[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
-    const [hasError, setHasError] = useState(false);
-    const [loadEnabled, setLoadEnabled] = useState(() => !deferUntilIdle);
-
-    useEffect(() => {
-        if (!deferUntilIdle) {
-            setLoadEnabled(true);
-            return;
-        }
-
-        let idleId: number | null = null;
-        let timeoutId: number | null = null;
-        const hasWindow = typeof window !== "undefined";
-        const supportsIdleCallback = hasWindow && typeof window.requestIdleCallback === "function";
-        const supportsIdleCancel = hasWindow && typeof window.cancelIdleCallback === "function";
-        const enableLoad = () => setLoadEnabled(true);
-
-        setLoadEnabled(false);
-        setItems([]);
-        setHasError(false);
-        setIsLoading(true);
-
-        if (supportsIdleCallback) {
-            idleId = window.requestIdleCallback(enableLoad, { timeout: 500 });
-        } else if (hasWindow) {
-            timeoutId = window.setTimeout(enableLoad, 250);
-        } else {
-            enableLoad();
-        }
-
-        return () => {
-            if (idleId != null && supportsIdleCancel) {
-                window.cancelIdleCallback(idleId);
-            }
-            if (timeoutId != null) {
-                window.clearTimeout(timeoutId);
-            }
-        };
-    }, [deferUntilIdle, limit, projectId]);
-
-    useEffect(() => {
-        if (!loadEnabled) return;
-
-        let isActive = true;
-        setIsLoading(true);
-        setHasError(false);
-
-        getRecentActivityAction(projectId, limit)
-            .then((result) => {
-                if (!isActive) return;
-                if (result.success) setItems(result.data);
-            })
-            .catch(() => {
-                if (!isActive) return;
-                setHasError(true);
-                setItems([]);
-            })
-            .finally(() => {
-                if (isActive) setIsLoading(false);
-            });
-
-        return () => {
-            isActive = false;
-        };
-    }, [limit, loadEnabled, projectId]);
+    const { items, isLoading, hasError } = useRecentProjectActivity(projectId, {
+        limit,
+        deferUntilIdle,
+    });
 
     if (isLoading) return <LoadingRows />;
 
