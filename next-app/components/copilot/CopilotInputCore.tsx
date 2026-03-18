@@ -27,6 +27,8 @@ import { recordContextCaptureMetric } from "@/lib/context-capture/telemetry";
 import { AGENT_MODE_META, type AgentMode, type AutonomyPreset } from "@/types/agent";
 import type { RetryModelExpectation } from "@/types/chat-unification";
 import { getContextTargetKey } from "@/lib/context-capture/targets";
+import { useHydrated } from "@/hooks/useHydrated";
+import { useWindowEvent } from "@/hooks/useWindowEvent";
 import { UserInputCard } from "../artifacts/UserInputCard";
 import styles from "./CopilotInput.module.css";
 import { VoiceLevelVisualizer } from "./VoiceLevelVisualizer";
@@ -175,17 +177,13 @@ export function CopilotInputCore({
     onReady,
 }: CopilotInputCoreProps) {
     const inputBoxRef = useRef<HTMLFormElement | null>(null);
-    const [hasMounted, setHasMounted] = useState(false);
+    const hasMounted = useHydrated();
     const [input, setInput] = useState("");
     const [uncontrolledSelectedModel, setUncontrolledSelectedModel] = useState<SelectableModelId>("gpt-5.2");
     const [answeredUserInput, setAnsweredUserInput] = useState<{
         request: UserInputRequest;
         answer: string;
     } | null>(null);
-
-    useEffect(() => {
-        setHasMounted(true);
-    }, []);
 
     useEffect(() => {
         if (!hasMounted) return;
@@ -234,6 +232,19 @@ export function CopilotInputCore({
     const [queuedVoiceSend, setQueuedVoiceSend] = useState(false);
     const [recordingHint, setRecordingHint] = useState<{ label: string; x: number } | null>(null);
 
+    latestInputRef.current = input;
+    latestPendingAttachmentRef.current = pendingAttachment;
+    latestAttachedContextTargetsRef.current = attachedContextTargets;
+    latestSendContextRef.current = {
+        page,
+        section,
+        studyId,
+        selectedModel,
+        selection: modeSelection,
+        autoMode,
+        hasProtocol,
+    };
+
     const effectiveMode = isManualComposerModeSelection(modeSelection) ? modeSelection.mode : autoMode;
     const modeMeta = AGENT_MODE_META[effectiveMode];
     const resolveCurrentComposerMode = useCallback((message: string) => {
@@ -264,30 +275,6 @@ export function CopilotInputCore({
         }, 200);
         return () => clearTimeout(timer);
     }, [input, page, hasProtocol]);
-
-    useEffect(() => {
-        latestInputRef.current = input;
-    }, [input]);
-
-    useEffect(() => {
-        latestPendingAttachmentRef.current = pendingAttachment;
-    }, [pendingAttachment]);
-
-    useEffect(() => {
-        latestAttachedContextTargetsRef.current = attachedContextTargets;
-    }, [attachedContextTargets]);
-
-    useEffect(() => {
-        latestSendContextRef.current = {
-            page,
-            section,
-            studyId,
-            selectedModel,
-            selection: modeSelection,
-            autoMode,
-            hasProtocol,
-        };
-    }, [autoMode, hasProtocol, modeSelection, page, section, selectedModel, studyId]);
 
     const dispatchSend = useCallback((rawText: string) => {
         if (sendLockRef.current) return false;
@@ -504,17 +491,14 @@ export function CopilotInputCore({
         requestAnimationFrame(() => textareaRef.current?.focus());
     }, [input, interactionLocked, onQueueFollowUp, page, resolveCurrentComposerMode, section, selectedModel, studyId]);
 
-    useEffect(() => {
-        if (!isLoading && voiceState !== "recording" && voiceState !== "transcribing") return;
-        const onWindowKeyDown = (event: KeyboardEvent) => {
-            if (event.defaultPrevented) return;
-            if (event.key !== "Escape") return;
-            event.preventDefault();
-            handleStop();
-        };
-        window.addEventListener("keydown", onWindowKeyDown);
-        return () => window.removeEventListener("keydown", onWindowKeyDown);
-    }, [handleStop, isLoading, voiceState]);
+    useWindowEvent("keydown", (event) => {
+        if (event.defaultPrevented) return;
+        if (event.key !== "Escape") return;
+        event.preventDefault();
+        handleStop();
+    }, {
+        enabled: isLoading || voiceState === "recording" || voiceState === "transcribing",
+    });
 
     const showRecordingHint = useCallback((target: HTMLElement, label: string) => {
         const container = inputBoxRef.current;

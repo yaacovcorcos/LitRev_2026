@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { useStableChatScroll } from "@/hooks/useStableChatScroll";
 import * as Dialog from "@radix-ui/react-dialog";
 import ReactMarkdown from "react-markdown";
@@ -103,6 +104,19 @@ function contextIcon(ctx: PopupChatContext): string {
     }
 }
 
+function getPopupRuntimeKey(ctx: PopupChatContext): string {
+    switch (ctx.type) {
+        case "study":
+            return `study:${ctx.projectId}:${ctx.studyId}`;
+        case "criterion":
+            return `criterion:${ctx.projectId}:${ctx.criterionType}:${ctx.text}`;
+        case "draft_selection":
+            return `draft_selection:${ctx.projectId}:${ctx.section}:${ctx.selectedText}`;
+        case "protocol_section":
+            return `protocol_section:${ctx.projectId}:${ctx.section}:${ctx.currentContent}`;
+    }
+}
+
 function isAssistantItem(item: PopupTimelineItem | undefined): item is Extract<PopupTimelineItem, { type: "assistant_message" }> {
     return item?.type === "assistant_message";
 }
@@ -120,12 +134,50 @@ export function PopupChat({ projectId }: PopupChatProps) {
     const { isOpen, context, closePopupChat } = usePopupChat();
     const { selectConversation, setCollapsed, refreshConversations } = useProjectCopilot();
 
+    if (!context) return null;
+
+    return (
+        <PopupChatRuntime
+            key={getPopupRuntimeKey(context)}
+            projectId={projectId}
+            isOpen={isOpen}
+            context={context}
+            closePopupChat={closePopupChat}
+            selectConversation={selectConversation}
+            setCollapsed={setCollapsed}
+            refreshConversations={refreshConversations}
+            mobilePopupV2Enabled={mobilePopupV2Enabled}
+        />
+    );
+}
+
+type PopupChatRuntimeProps = PopupChatProps & {
+    isOpen: boolean;
+    context: PopupChatContext;
+    closePopupChat: () => void;
+    selectConversation: (conversationId: string) => Promise<boolean>;
+    setCollapsed: (collapsed: boolean) => void;
+    refreshConversations: () => Promise<void>;
+    mobilePopupV2Enabled: boolean;
+};
+
+function PopupChatRuntime({
+    projectId,
+    isOpen,
+    context,
+    closePopupChat,
+    selectConversation,
+    setCollapsed,
+    refreshConversations,
+    mobilePopupV2Enabled,
+}: PopupChatRuntimeProps) {
+    const isDragEnabled = !useMediaQuery(COARSE_POINTER_MEDIA_QUERY);
+
     const [streamState, setStreamState] = useState<PopupStreamRuntimeState>(() => createInitialPopupStreamRuntimeState());
     const [input, setInput] = useState("");
     const [isStreaming, setIsStreaming] = useState(false);
     const [showTurnHint, setShowTurnHint] = useState(false);
     const [turnHintDismissed, setTurnHintDismissed] = useState(false);
-    const [isDragEnabled, setIsDragEnabled] = useState(true);
     const streamStateRef = useRef<PopupStreamRuntimeState>(createInitialPopupStreamRuntimeState());
 
     const abortRef = useRef<AbortController | null>(null);
@@ -148,28 +200,6 @@ export function PopupChat({ projectId }: PopupChatProps) {
             return next;
         });
     }, []);
-
-    // Reset state when context changes or popup closes
-    useEffect(() => {
-        const resetState = createInitialPopupStreamRuntimeState();
-        streamStateRef.current = resetState;
-        setStreamState(resetState);
-        setInput("");
-        setIsStreaming(false);
-        setShowTurnHint(false);
-        setTurnHintDismissed(false);
-        userStopRequestedRef.current = false;
-        abortRef.current?.abort();
-        abortRef.current = null;
-        // Reset position to default bottom-right
-        posRef.current = null;
-        if (cardRef.current) {
-            cardRef.current.style.left = "";
-            cardRef.current.style.bottom = "";
-            cardRef.current.style.right = "100px";
-            cardRef.current.style.top = "80px";
-        }
-    }, [context]);
 
     // Show turn hint after threshold
     useEffect(() => {
@@ -194,30 +224,6 @@ export function PopupChat({ projectId }: PopupChatProps) {
             setTimeout(() => textareaRef.current?.focus(), 100);
         }
     }, [isOpen]);
-
-    useEffect(() => {
-        if (typeof window === "undefined") return;
-        const pointerQuery = window.matchMedia(COARSE_POINTER_MEDIA_QUERY);
-        const updateDragMode = () => {
-            setIsDragEnabled(!pointerQuery.matches);
-        };
-
-        updateDragMode();
-
-        if (typeof pointerQuery.addEventListener === "function") {
-            pointerQuery.addEventListener("change", updateDragMode);
-        } else if (typeof pointerQuery.addListener === "function") {
-            pointerQuery.addListener(updateDragMode);
-        }
-
-        return () => {
-            if (typeof pointerQuery.removeEventListener === "function") {
-                pointerQuery.removeEventListener("change", updateDragMode);
-            } else if (typeof pointerQuery.removeListener === "function") {
-                pointerQuery.removeListener(updateDragMode);
-            }
-        };
-    }, []);
 
     const handleSend = useCallback(async () => {
         const trimmed = input.trim();
@@ -567,8 +573,6 @@ export function PopupChat({ projectId }: PopupChatProps) {
 
         await createNoteAction(projectId, markdown, "conversation");
     }, [projectId, streamState.items.length]);
-
-    if (!context) return null;
 
     const label = getContextLabel(context);
     const preview = getContextPreview(context);

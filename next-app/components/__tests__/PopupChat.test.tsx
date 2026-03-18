@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AIErrorWithEnvelope } from "@/lib/ai/error-envelope";
+import type { PopupChatContext } from "@/types/popup-chat";
 import { PopupChat } from "../PopupChat";
 
 const { mockUsePopupChat, mockUseProjectCopilot, mockProcessAIStream } = vi.hoisted(() => ({
@@ -228,5 +229,40 @@ describe("PopupChat failure handling", () => {
 
         expect(screen.getByText("Retry recommended")).toBeTruthy();
         expect(screen.getAllByText("The response timed out. Retry to continue.")).toHaveLength(1);
+    });
+
+    it("resets popup-local draft input when the popup context identity changes", () => {
+        let currentContext: PopupChatContext = {
+            type: "protocol_section" as const,
+            projectId: "project-1",
+            section: "Eligibility",
+            currentContent: "Current protocol text",
+        };
+
+        mockUsePopupChat.mockImplementation(() => ({
+            isOpen: true,
+            context: currentContext,
+            closePopupChat: vi.fn(),
+        }));
+
+        const { rerender } = render(<PopupChat projectId="project-1" />);
+
+        const initialInput = screen.getByPlaceholderText("Ask a question about Eligibility...") as HTMLTextAreaElement;
+        fireEvent.change(initialInput, {
+            target: { value: "This should be cleared on context switch" },
+        });
+        expect(initialInput.value).toBe("This should be cleared on context switch");
+
+        currentContext = {
+            type: "draft_selection",
+            projectId: "project-1",
+            section: "Results",
+            selectedText: "Highlighted sentence",
+        };
+
+        rerender(<PopupChat projectId="project-1" />);
+
+        const nextInput = screen.getByPlaceholderText("Ask a question about Results...") as HTMLTextAreaElement;
+        expect(nextInput.value).toBe("");
     });
 });
