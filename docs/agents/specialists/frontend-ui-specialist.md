@@ -18,6 +18,8 @@ Use for UI behavior/styling changes, especially routes under `app/project/[id]/.
 ## Guardrails
 
 - Preserve shell embedding behavior (`isEmbeddedInProjectShell`) for project pages.
+- For draft-route work under `next-app/app/project/[id]/draft/**`, do not implement UI changes without explicit user approval first.
+- For any draft implementation plan with UI changes, clearly flag each UI-changing phase as approval-gated and include a warning that the user must verify the visual/interaction change before approving it.
 - No visible no-op controls.
 - Suggestion buttons must act (send or prefill flow).
 - Prefer shared primitives in `next-app/components/ui/`.

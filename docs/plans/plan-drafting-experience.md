@@ -29,6 +29,12 @@ Current route contract:
 - left Evidence Ledger is the only draft-owned support surface
 - right side remains owned by the existing project copilot shell
 
+### Draft UI Approval Rule
+- Any draft-route UI change requires explicit user approval before implementation.
+- Any draft implementation plan that includes a UI change must clearly mark the UI-changing phase as approval-gated.
+- Any such phase must include an explicit warning that visual or interaction behavior will change and must be manually verified before approval.
+- Do not bundle draft UI changes into broader draft work without calling them out separately first.
+
 ## Deferred Improvements After Route Restore
 These items are intentionally preserved as follow-on improvements after the `8998296` route baseline is stable again. They are not the current draft-shell truth, and they must not be reintroduced opportunistically during restore work.
 
