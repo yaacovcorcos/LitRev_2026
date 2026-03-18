@@ -120,6 +120,86 @@ Default rule: prefer updating the right existing section or idea rather than cre
   - Whether the AI landing page should adapt based on whether projects already exist
   - How this choice affects onboarding, memory, and project creation flows
 
+## Chat and Agent Experience
+
+### Tighten Visible-Answer Quality in Search and Scoping
+- Status: exploring
+- Summary: Search and scoping answers should consistently read like real synthesis for the user, not like robotic execution summaries.
+- Current state:
+  - Prompts and runtime already try to keep raw search mechanics out of the visible answer.
+  - Search traces, checkpoints, and hidden scoping metadata already have separate UI surfaces.
+  - The remaining gap is that final answer quality still depends too much on raw model prose.
+- Why this matters:
+  - The final answer can still feel technical and process-heavy instead of polished and useful.
+  - Users should receive synthesis-first answers by default, without seeing internal search narration unless they ask for it.
+  - The current behavior weakens confidence even when the underlying research flow is good.
+- Direction:
+  - Diagnose where robotic or process-heavy prose still leaks through despite the current prompt contract.
+  - Strengthen enforcement so visible answers follow a clearer synthesis style more reliably.
+  - Separate user-facing answer tone from internal retrieval, checkpoint, and reasoning mechanics more strictly.
+- Open questions:
+  - Whether the remaining issue is mainly prompt adherence, runtime assembly, or display of raw model output
+  - Whether search and scoping need a stronger answer-shaping layer after generation
+  - Whether this should be handled by a stricter answer contract, post-processing, or a dedicated formatter
+
+### Unify Live and Completed PubMed Card Presentation
+- Status: exploring
+- Summary: PubMed search activity should use one stable card presentation across live and completed states instead of shifting between separate live progress elements and completed grouped cards.
+- Current state:
+  - Contiguous PubMed searches are already grouped into a single sequence card.
+  - The grouped PubMed card can already show a running status.
+  - The remaining gap is that live progress still presents differently from the compact completed card.
+- Why this matters:
+  - The current flow still feels fragmented during live execution.
+  - Users should be able to follow one coherent PubMed-check flow without the UI reshaping itself.
+  - Stable presentation would make search behavior feel cleaner and easier to trust.
+- Direction:
+  - Use one stable PubMed card shape across live and completed states.
+  - Keep live progress inside that card with only lightweight running affordances, such as a spinner or active-step indicator.
+  - Avoid separate progress rows for the same PubMed check when the work belongs to one continuous search flow.
+  - Revisit compact-by-default behavior so completed PubMed cards and live PubMed cards look more consistent.
+- Open questions:
+  - What should count as one continuous PubMed search flow versus a separate search card
+  - Whether single-search PubMed runs should also use the grouped presentation
+  - How much live detail should stay visible inside the card without making it noisy
+
+### Support Real Editable Graphs Directly in Chat
+- Status: exploring
+- Summary: The chat experience should support real editable graphs directly inside chat, not just static pictures of graphs.
+- Why this matters:
+  - Users need interactive visual thinking tools inside the conversation, not only text and screenshots.
+  - Editable graphs would make it easier to explore concepts, relationships, workflows, and argument structure collaboratively with the AI.
+  - Static graph images lose structure, editability, and downstream usefulness.
+- Direction:
+  - Research open-source solutions for embedded editable graphs that can live directly inside chat.
+  - Prefer graph systems that preserve structure and can be edited after generation.
+  - Evaluate whether the right primitive is node-edge diagrams, flowcharts, concept maps, or a more general canvas model.
+- Open questions:
+  - Which open-source libraries or editors best fit the current stack and UX
+  - Whether graphs should be rendered inline in the message stream, as embedded artifacts, or both
+  - How graph state should be stored, versioned, and edited over time
+  - How much control the AI should have over graph edits versus user-only editing
+
+### Expand the Existing Queued Follow-Up into a Real Chat Queue Mode
+- Status: exploring
+- Summary: Chat already supports a single queued next message, but it does not yet provide a full queue mode for managing multiple queued chat actions.
+- Current state:
+  - There is already a one-message queued follow-up capability in chat.
+  - It is only available while a run is active and only supports one queued item at a time.
+  - The current feature is a useful foundation, but not a full queue model.
+- Why this matters:
+  - Heavier chat workflows need clearer sequencing than one immediate message plus one deferred follow-up.
+  - A real queue mode could make agent work feel more deliberate and easier to control.
+  - Queueing becomes more important as chat runs become longer, more tool-heavy, and more agentic.
+- Direction:
+  - Build on the existing queued-follow-up foundation rather than treating queueing as a new feature from scratch.
+  - Explore multi-item queueing, clearer queue visibility, and explicit execution order.
+  - Decide whether execution should be automatic, stepwise, or configurable.
+- Open questions:
+  - Whether queue mode should be a dedicated mode or a natural extension of the existing `Queue next` behavior
+  - How the UI should show queued, running, completed, and blocked items
+  - How queue mode should interact with tool calls, memory updates, and pending user-input requests
+
 ## Memory and Protocol
 
 ### Fix the Boundary Between Memory Updates and Protocol Updates
