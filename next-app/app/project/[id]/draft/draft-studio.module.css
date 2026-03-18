@@ -22,12 +22,12 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 16px;
+    gap: 18px;
     padding: 0 28px;
-    height: 64px;
+    height: 72px;
     border-bottom: 1px solid var(--glass-border);
-    background: rgba(var(--rgb-ui-surface), 0.6);
-    backdrop-filter: blur(20px);
+    background: rgba(var(--rgb-ui-surface), 0.68);
+    backdrop-filter: blur(18px);
 }
 
 .topLeft {
@@ -63,10 +63,9 @@
 }
 
 .projectName {
-    font-weight: 600;
+    font-weight: 700;
     color: var(--text-primary);
-    font-size: 14px;
-    opacity: 0.9;
+    font-size: 15px;
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -83,7 +82,8 @@
 .sectionTabsWrap {
     display: inline-flex;
     align-items: center;
-    gap: 10px;
+    gap: 12px;
+    min-width: 0;
     max-width: 100%;
 }
 
@@ -91,15 +91,14 @@
     display: flex;
     align-items: center;
     gap: 2px;
-    padding: 4px;
-    border-radius: 8px;
+    min-width: min(540px, 100%);
+    padding: 6px;
+    border-radius: 14px;
     border: 1px solid var(--glass-border);
-    background: rgba(var(--rgb-ui-surface), 0.5);
+    background: rgba(var(--rgb-ui-surface), 0.72);
     max-width: 100%;
     overflow-x: auto;
     scrollbar-width: none;
-    flex: 1;
-    min-width: 0;
 }
 
 .sectionTabs::-webkit-scrollbar {
@@ -110,25 +109,25 @@
     position: relative;
     border: none;
     background: transparent;
-    color: var(--text-muted);
+    color: var(--text-secondary);
     font-weight: 500;
-    font-size: 13px;
-    padding: 7px 14px;
-    border-radius: 6px;
+    font-size: 14px;
+    padding: 10px 16px;
+    border-radius: 10px;
     cursor: pointer;
     white-space: nowrap;
-    transition: all 0.2s ease;
+    transition: background 160ms ease, color 160ms ease, transform 160ms ease;
 }
 
 .sectionTab:hover {
-    background: rgba(var(--rgb-ui-surface), 0.7);
+    background: rgba(var(--rgb-ui-contrast), 0.05);
     color: var(--text-primary);
 }
 
 .sectionTabActive {
     background: var(--bg-surface);
     color: var(--text-primary);
-    font-weight: 600;
+    font-weight: 700;
     box-shadow: var(--shadow-xs);
 }
 
@@ -140,11 +139,11 @@
 .sectionTabDropAfter::after {
     content: "";
     position: absolute;
-    top: 6px;
-    bottom: 6px;
+    top: 8px;
+    bottom: 8px;
     width: 2px;
-    border-radius: 2px;
-    background: rgba(var(--rgb-accent-primary), 0.8);
+    border-radius: 999px;
+    background: var(--accent-primary);
 }
 
 .sectionTabDropBefore::before {
@@ -161,23 +160,24 @@
 }
 
 .addSectionButton {
-    border: 1px dashed rgba(var(--rgb-ui-contrast), 0.15);
-    background: rgba(var(--rgb-ui-surface), 0.5);
-    color: var(--text-secondary);
-    font-weight: 600;
-    font-size: 11px;
-    padding: 5px 10px;
-    border-radius: 6px;
     display: inline-flex;
     align-items: center;
-    gap: 4px;
+    gap: 6px;
+    height: 46px;
+    padding: 0 16px;
+    border-radius: 14px;
+    border: 1px dashed rgba(var(--rgb-ui-contrast), 0.15);
+    background: rgba(var(--rgb-ui-surface), 0.72);
+    color: var(--text-secondary);
+    font-weight: 700;
+    font-size: 14px;
     cursor: pointer;
     transition: background 0.2s ease, color 0.2s ease;
     white-space: nowrap;
 }
 
 .addSectionButton:hover {
-    background: rgba(var(--rgb-ui-surface), 0.8);
+    background: rgba(var(--rgb-ui-surface), 0.88);
     color: var(--text-primary);
 }
 
@@ -292,32 +292,35 @@
     display: flex;
     align-items: center;
     gap: 12px;
+    min-width: 0;
 }
 
 .modeToggle {
     position: relative;
     display: flex;
-    background: rgba(var(--rgb-ui-contrast), 0.04);
-    padding: 3px;
-    border-radius: 8px;
+    align-items: center;
     gap: 0;
+    padding: 4px;
+    border-radius: 14px;
     border: 1px solid var(--glass-border);
+    background: rgba(var(--rgb-ui-surface), 0.72);
 }
 
 .modeOption {
     position: relative;
-    z-index: var(--z-content);
+    z-index: 1;
     background: transparent;
     border: none;
-    padding: 7px 16px;
-    font-size: 13px;
-    font-weight: 600;
+    min-width: 118px;
+    height: 42px;
+    padding: 0 16px;
+    font-size: 14px;
+    font-weight: 700;
     color: var(--text-secondary);
     cursor: pointer;
     transition: color 0.2s;
-    border-radius: 6px;
+    border-radius: 10px;
     white-space: nowrap;
-    flex: 1;
     text-align: center;
 }
 
@@ -327,14 +330,14 @@
 
 .modeSlider {
     position: absolute;
-    top: 3px;
-    left: 3px;
-    bottom: 3px;
-    width: calc(50% - 3px);
+    top: 4px;
+    left: 4px;
+    width: calc(50% - 4px);
+    height: calc(100% - 8px);
     background: var(--bg-surface);
-    border-radius: 6px;
+    border-radius: 10px;
     box-shadow: var(--shadow-xs);
-    transition: transform 0.2s ease;
+    transition: transform 180ms ease;
     z-index: 1;
 }
 
@@ -345,14 +348,16 @@
 .exportBtn {
     display: inline-flex;
     align-items: center;
-    gap: 5px;
-    padding: 7px 10px;
-    border-radius: 8px;
+    justify-content: center;
+    gap: 6px;
+    height: 44px;
+    padding: 0 14px;
+    border-radius: 12px;
     border: 1px solid var(--glass-border);
-    background: rgba(var(--rgb-ui-surface), 0.6);
+    background: rgba(var(--rgb-ui-surface), 0.72);
     color: var(--text-secondary);
-    font-weight: 600;
-    font-size: 12px;
+    font-weight: 700;
+    font-size: 14px;
     cursor: pointer;
     transition: all 0.2s ease;
     white-space: nowrap;
@@ -364,7 +369,7 @@
 }
 
 .exportBtn .material-icons-round {
-    font-size: 14px;
+    font-size: 16px;
 }
 
 .exportBtn:disabled {
@@ -375,20 +380,22 @@
 .saveBadge {
     display: inline-flex;
     align-items: center;
-    gap: 5px;
-    padding: 7px 10px;
-    border-radius: 8px;
+    justify-content: center;
+    gap: 6px;
+    height: 44px;
+    padding: 0 14px;
+    border-radius: 12px;
     border: 1px solid var(--glass-border);
-    background: rgba(var(--rgb-ui-surface), 0.6);
-    color: var(--text-secondary);
-    font-weight: 600;
-    font-size: 12px;
+    background: rgba(var(--rgb-ui-surface), 0.72);
+    color: var(--text-primary);
+    font-weight: 700;
+    font-size: 14px;
     line-height: 1;
     white-space: nowrap;
 }
 
 .saveBadge .material-icons-round {
-    font-size: 14px;
+    font-size: 16px;
 }
 
 .body {
@@ -780,7 +787,8 @@
 
 .toolbarRow {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
+    justify-content: space-between;
     gap: 12px;
     margin: 0 22px 12px;
     flex-wrap: wrap;
@@ -860,13 +868,14 @@
 }
 
 .toolbar {
-    display: flex;
+    display: inline-flex;
     align-items: center;
-    gap: 6px;
+    gap: 4px;
     padding: 6px;
-    border-radius: 14px;
+    border-radius: 16px;
     border: 1px solid var(--glass-border);
-    background: rgba(var(--rgb-ui-surface), 0.55);
+    background: rgba(var(--rgb-ui-surface), 0.92);
+    box-shadow: var(--shadow-xs);
     width: fit-content;
 }
 
@@ -875,15 +884,19 @@
     border: none;
     color: var(--text-secondary);
     cursor: pointer;
-    padding: 6px;
+    min-width: 38px;
+    height: 38px;
+    padding: 0 10px;
     border-radius: 10px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     transition: background 0.2s ease, color 0.2s ease;
+    font-weight: 700;
 }
 
-.toolbarButton:hover {
+.toolbarButton:hover,
+.toolbarButton[aria-pressed="true"] {
     background: rgba(var(--rgb-ui-contrast), 0.05);
     color: var(--text-primary);
 }
@@ -899,9 +912,9 @@
 
 .toolbarDivider {
     width: 1px;
-    height: 20px;
+    height: 24px;
     background: rgba(var(--rgb-ui-contrast), 0.08);
-    margin: 0 4px;
+    margin: 0 2px;
 }
 
 .formattingControls {
@@ -909,19 +922,20 @@
 }
 
 .formatToggle {
+    height: 50px;
+    padding: 0 16px;
     border: 1px solid var(--glass-border);
-    background: rgba(var(--rgb-ui-surface), 0.55);
+    background: rgba(var(--rgb-ui-surface), 0.92);
     color: var(--text-secondary);
-    font-weight: 600;
-    font-size: 13px;
-    padding: 6px 14px;
-    border-radius: 14px;
+    font-weight: 700;
+    font-size: 14px;
+    border-radius: 12px;
     display: inline-flex;
     align-items: center;
-    gap: 8px;
+    justify-content: center;
+    gap: 6px;
     cursor: pointer;
     transition: background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
-    height: 100%;
 }
 
 .formatToggle:hover {
@@ -937,13 +951,13 @@
 .formatPanel {
     position: absolute;
     right: 0;
-    top: calc(100% + 8px);
-    width: min(300px, 90vw);
-    padding: 10px;
-    border-radius: 12px;
+    top: calc(100% + 10px);
+    width: min(320px, 90vw);
+    padding: 14px;
+    border-radius: 18px;
     border: 1px solid var(--glass-border);
-    background: rgba(var(--rgb-ui-surface), 0.96);
-    box-shadow: var(--shadow-xl);
+    background: rgba(var(--rgb-ui-surface), 0.98);
+    box-shadow: var(--shadow-lg);
     display: flex;
     flex-direction: column;
     gap: 8px;
