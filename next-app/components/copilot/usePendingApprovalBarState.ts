@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ApproveArtifactsBatchResult } from "@/types/copilot-context";
 import type { ArtifactType } from "@/types/artifacts";
 import type { TimelineArtifact, TimelineItem } from "@/types/timeline";
+import { isArtifactReviewable } from "@/lib/artifacts/reviewability";
 
 const BATCH_APPROVABLE_TYPES: ReadonlySet<ArtifactType> = new Set<ArtifactType>([
     "study_proposal",
@@ -75,7 +76,7 @@ export function getValidPendingApprovalArtifacts(timeline: TimelineItem[]): Time
     }
 
     return [...latestArtifactById.values()].filter((item) => {
-        if (item.status !== "proposed") return false;
+        if (!isArtifactReviewable(item.status)) return false;
         if (!isBatchApprovableArtifactType(item.artifactType)) return false;
         return isLikelyPersistedArtifact(item);
     });

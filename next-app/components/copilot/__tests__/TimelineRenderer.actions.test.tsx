@@ -106,6 +106,83 @@ describe("TimelineRenderer action affordances", () => {
     expect(screen.queryByRole("combobox")).toBeNull();
   });
 
+  it("renders settled artifacts as read-only cards without stale approval controls", () => {
+    const items: TimelineItem[] = [
+      {
+        type: "artifact",
+        id: "settled-study",
+        artifactId: "settled-study",
+        artifactType: "study_proposal",
+        status: "accepted",
+        title: "Study",
+        payload: {
+          title: "Example Study",
+          authors: "Doe et al.",
+          year: 2024,
+          source: "semantic_scholar",
+          recommendation: "keep",
+          confidence: 0.82,
+        },
+        version: 1,
+        createdAt: "2026-02-21T00:10:00.000Z",
+      },
+      {
+        type: "artifact",
+        id: "settled-memory",
+        artifactId: "settled-memory",
+        artifactType: "memory_proposal",
+        status: "accepted",
+        title: "Memory",
+        payload: {
+          memoryType: "project",
+          key: "eligibility_core",
+          value: "Prefer trial populations with prespecified subgroup reporting.",
+        },
+        version: 1,
+        createdAt: "2026-02-21T00:11:00.000Z",
+      },
+      {
+        type: "artifact",
+        id: "settled-draft",
+        artifactId: "settled-draft",
+        artifactType: "draft_diff",
+        status: "rejected",
+        title: "Draft",
+        payload: {
+          section: "Introduction",
+          content: "Draft text",
+          citations: [],
+          wordCount: 2,
+        },
+        version: 1,
+        createdAt: "2026-02-21T00:12:00.000Z",
+      },
+    ];
+
+    render(
+      <TimelineRenderer
+        items={items}
+        isLoading={false}
+        emptyState={{ icon: "chat", title: "Empty", description: "Empty", suggestions: [] }}
+        onSuggestionClick={vi.fn()}
+        onReviewArtifact={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: /^keep$/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^exclude/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^remember$/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /dismiss/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /accept & save to draft/i })).toBeNull();
+
+    for (const button of screen.getAllByRole("button", { name: "Expand" })) {
+      fireEvent.click(button);
+    }
+
+    expect(screen.getAllByText("Approved.").length).toBeGreaterThan(0);
+    expect(screen.getByText("Rejected.")).not.toBeNull();
+  });
+
   it("renders retry for generic retryable error cards without offering resume", () => {
     const onRetryLastMessage = vi.fn();
     const items: TimelineItem[] = [
