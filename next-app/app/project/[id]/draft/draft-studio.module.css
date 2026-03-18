@@ -381,21 +381,23 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 6px;
-    height: 44px;
-    padding: 0 14px;
-    border-radius: 12px;
-    border: 1px solid var(--glass-border);
-    background: rgba(var(--rgb-ui-surface), 0.72);
-    color: var(--text-primary);
-    font-weight: 700;
-    font-size: 14px;
+    gap: 5px;
+    height: 30px;
+    padding: 0 13px 0 10px; /* Optical adjustment: slightly less left padding because the icon has built-in spacing */
+    border-radius: 999px;
+    border: 1px solid rgba(var(--rgb-ui-contrast), 0.05);
+    background: rgba(var(--rgb-ui-surface), 0.4);
+    color: var(--text-secondary);
+    font-weight: 600;
+    font-size: 12px;
     line-height: 1;
     white-space: nowrap;
+    user-select: none;
 }
 
 .saveBadge .material-icons-round {
-    font-size: 16px;
+    font-size: 14px;
+    color: var(--text-muted); /* Makes the icon a lighter color than the text */
 }
 
 .body {
