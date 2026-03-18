@@ -3,6 +3,7 @@
 import { useCallback, useState } from "react";
 import type { ArtifactStatus } from "@/types/artifacts";
 import type { StudyFieldChange, StudyUpdatePayload } from "@/types/artifacts";
+import { getArtifactSettledLabel } from "@/lib/artifacts/reviewability";
 import styles from "@/styles/artifacts.module.css";
 
 const PREVIEW_LIMIT = 120;
@@ -32,6 +33,7 @@ export type StudyUpdateCardProps = {
 
 export function StudyUpdateCard({ payload, status = "proposed", onAccept, onReject, canAct = true }: StudyUpdateCardProps) {
     const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
+    const settledLabel = getArtifactSettledLabel(status);
 
     const toggleRow = useCallback((key: string) => {
         setExpandedRows((prev) => ({ ...prev, [key]: !prev[key] }));
@@ -101,6 +103,8 @@ export function StudyUpdateCard({ payload, status = "proposed", onAccept, onReje
                 </div>
             ) : status === "auto_applied" ? (
                 <div className={styles.applyMeta}>Changes already applied.</div>
+            ) : settledLabel ? (
+                <div className={styles.applyMeta}>{settledLabel}</div>
             ) : null}
         </>
     );

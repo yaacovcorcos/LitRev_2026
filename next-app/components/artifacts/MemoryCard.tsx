@@ -1,20 +1,24 @@
 "use client";
 
 import { useState } from "react";
-import type { MemoryProposalPayload } from "@/types/artifacts";
+import type { ArtifactStatus, MemoryProposalPayload } from "@/types/artifacts";
+import { getArtifactSettledLabel, isArtifactReviewable } from "@/lib/artifacts/reviewability";
 import styles from "@/styles/artifacts.module.css";
 
 export type MemoryCardProps = {
     payload: MemoryProposalPayload;
+    status?: ArtifactStatus;
     onAccept: () => void;
     onReject: () => void;
     onEditAndAccept?: (edited: MemoryProposalPayload) => void;
     canAct?: boolean;
 };
 
-export function MemoryCard({ payload, onAccept, onReject, onEditAndAccept, canAct = true }: MemoryCardProps) {
+export function MemoryCard({ payload, status = "proposed", onAccept, onReject, onEditAndAccept, canAct = true }: MemoryCardProps) {
     const [isEditing, setIsEditing] = useState(false);
     const [editValue, setEditValue] = useState(payload.value);
+    const isReviewable = isArtifactReviewable(status);
+    const settledLabel = getArtifactSettledLabel(status);
 
     const memoryTypeLabel = payload.memoryType === "user" ? "User Preference" : "Project Decision";
     const memoryTypeIcon = payload.memoryType === "user" ? "person" : "folder";
@@ -39,7 +43,7 @@ export function MemoryCard({ payload, onAccept, onReject, onEditAndAccept, canAc
                 <div className={styles.memoryKey}>{payload.key}</div>
             )}
 
-            {isEditing ? (
+            {isEditing && isReviewable ? (
                 <textarea
                     className={styles.inlineEdit}
                     value={editValue}
@@ -59,35 +63,39 @@ export function MemoryCard({ payload, onAccept, onReject, onEditAndAccept, canAc
                 <div className={styles.criteriaRationale}>{payload.rationale}</div>
             )}
 
-            <div className={styles.cardActions}>
-                <button type="button" className={styles.excludeBtn} onClick={onReject} disabled={!canAct}>
-                    <span className="material-icons-round" style={{ fontSize: 14, marginRight: 4 }}>close</span>
-                    Dismiss
-                </button>
-                {isEditing ? (
-                    <button type="button" className={styles.keepBtn} onClick={handleSaveEdit}>
-                        <span className="material-icons-round" style={{ fontSize: 14, marginRight: 4 }}>check</span>
-                        Save &amp; Remember
+            {isReviewable ? (
+                <div className={styles.cardActions}>
+                    <button type="button" className={styles.excludeBtn} onClick={onReject} disabled={!canAct}>
+                        <span className="material-icons-round" style={{ fontSize: 14, marginRight: 4 }}>close</span>
+                        Dismiss
                     </button>
-                ) : (
-                    <>
-                        {onEditAndAccept && (
-                            <button
-                                type="button"
-                                className={styles.actionBtnGhost}
-                                onClick={() => setIsEditing(true)}
-                            >
-                                <span className="material-icons-round" style={{ fontSize: 14, marginRight: 4 }}>edit</span>
-                                Edit
-                            </button>
-                        )}
-                        <button type="button" className={styles.keepBtn} onClick={onAccept} disabled={!canAct}>
+                    {isEditing ? (
+                        <button type="button" className={styles.keepBtn} onClick={handleSaveEdit}>
                             <span className="material-icons-round" style={{ fontSize: 14, marginRight: 4 }}>check</span>
-                            Remember
+                            Save &amp; Remember
                         </button>
-                    </>
-                )}
-            </div>
+                    ) : (
+                        <>
+                            {onEditAndAccept && (
+                                <button
+                                    type="button"
+                                    className={styles.actionBtnGhost}
+                                    onClick={() => setIsEditing(true)}
+                                >
+                                    <span className="material-icons-round" style={{ fontSize: 14, marginRight: 4 }}>edit</span>
+                                    Edit
+                                </button>
+                            )}
+                            <button type="button" className={styles.keepBtn} onClick={onAccept} disabled={!canAct}>
+                                <span className="material-icons-round" style={{ fontSize: 14, marginRight: 4 }}>check</span>
+                                Remember
+                            </button>
+                        </>
+                    )}
+                </div>
+            ) : settledLabel ? (
+                <div className={styles.applyMeta}>{settledLabel}</div>
+            ) : null}
         </>
     );
 }

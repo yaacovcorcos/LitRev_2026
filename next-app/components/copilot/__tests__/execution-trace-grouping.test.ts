@@ -57,7 +57,7 @@ describe("buildExecutionTraceEntries", () => {
         id: "artifact-1",
         artifactId: "artifact-1",
         artifactType: "protocol_suggestion",
-        status: "proposed",
+        status: "accepted",
         title: "Protocol update",
         payload: {},
         version: 1,
@@ -76,6 +76,39 @@ describe("buildExecutionTraceEntries", () => {
     expect(entries[0].mode).toBe("anchored");
     expect(entries[0].canCollapse).toBe(false);
     expect(entries[0].defaultCollapsed).toBe(false);
+  });
+
+  it("keeps proposed artifacts inline even when they appear before the final assistant answer", () => {
+    const items: TimelineItem[] = [
+      {
+        type: "artifact",
+        id: "artifact-inline-1",
+        artifactId: "artifact-inline-1",
+        artifactType: "protocol_suggestion",
+        status: "proposed",
+        title: "Protocol update",
+        payload: {},
+        version: 1,
+        createdAt: "2026-03-11T00:00:00.000Z",
+      },
+      {
+        type: "assistant_message",
+        id: "assistant-inline-1",
+        content: "I drafted a protocol refinement for review.",
+        createdAt: "2026-03-11T00:00:01.000Z",
+      },
+    ];
+
+    const entries = buildExecutionTraceEntries(items);
+    expect(entries).toHaveLength(2);
+    expect(entries[0]).toMatchObject({
+      kind: "single",
+      item: expect.objectContaining({ id: "artifact-inline-1", type: "artifact", status: "proposed" }),
+    });
+    expect(entries[1]).toMatchObject({
+      kind: "single",
+      item: expect.objectContaining({ id: "assistant-inline-1", type: "assistant_message" }),
+    });
   });
 
   it("groups the latest durable suffix into a live execution trace before an assistant answer exists", () => {

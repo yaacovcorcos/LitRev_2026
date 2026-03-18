@@ -51,6 +51,7 @@ import { isChatStudyMentionsEnabled } from "@/lib/agent/feature-flags";
 import { getReasoningSummaryPreview } from "@/lib/ai/reasoning-visibility";
 import { getContextTargetKey } from "@/lib/context-capture/targets";
 import { buildExecutionTraceEntries, type ExecutionTraceEntry } from "./execution-trace-grouping";
+import { isArtifactReviewable } from "@/lib/artifacts/reviewability";
 import styles from "./TimelineMessages.module.css";
 import artifactStyles from "@/styles/artifacts.module.css";
 import markdownStyles from "@/styles/markdown.module.css";
@@ -928,6 +929,8 @@ function TimelineRendererInner({
 
         const jumpTo = projectId ? getJumpToProps(item.artifactType, projectId) : {};
         const canAct = !isLoading && !isConversationLoading;
+        const isReviewable = isArtifactReviewable(item.status);
+        const canReview = canAct && isReviewable;
 
         const wrapperProps = {
             artifactId: item.artifactId,
@@ -969,9 +972,10 @@ function TimelineRendererInner({
                     >
                         <StudyCard
                             payload={studyPayload}
+                            status={item.status}
                             onKeep={() => handleReview(isExclusion ? "rejected" : "accepted")}
                             onExclude={(reason) => handleReview(isExclusion ? "accepted" : "rejected", reason)}
-                            canAct={canAct}
+                            canAct={canReview}
                         />
                     </ArtifactWrapper>
                 );
@@ -990,7 +994,7 @@ function TimelineRendererInner({
                             status={item.status}
                             onAccept={() => handleReview("accepted")}
                             onReject={() => handleReview("rejected")}
-                            canAct={canAct}
+                            canAct={canReview}
                         />
                     </ArtifactWrapper>
                 );
@@ -1004,8 +1008,9 @@ function TimelineRendererInner({
                     >
                         <ScreeningBatch
                             payload={item.payload as ScreeningBatchPayload}
+                            status={item.status}
                             onAcceptAll={() => handleReview("accepted")}
-                            canAct={canAct}
+                            canAct={canReview}
                         />
                     </ArtifactWrapper>
                 );
@@ -1019,6 +1024,7 @@ function TimelineRendererInner({
                     >
                         <ProtocolEditCard
                             payload={protocolPayload}
+                            status={item.status}
                             onDiscuss={() => {
                                 const prompt = `Let's discuss the proposed protocol update to "${protocolPayload?.field ?? "this field"}" before applying it.`;
                                 if (onActionPrompt) {
@@ -1037,7 +1043,7 @@ function TimelineRendererInner({
                                     handleReview("accepted");
                                 }
                             }}
-                            canAct={canAct}
+                            canAct={canReview}
                         />
                     </ArtifactWrapper>
                 );
@@ -1075,6 +1081,7 @@ function TimelineRendererInner({
                     >
                         <CriteriaCard
                             payload={item.payload as CriteriaCardPayload}
+                            status={item.status}
                             onDiscuss={() => {
                                 const prompt = "Let's discuss these criteria before saving them to the protocol.";
                                 if (onActionPrompt) {
@@ -1084,7 +1091,7 @@ function TimelineRendererInner({
                                 onSuggestionClick(prompt);
                             }}
                             onSave={() => handleReview("accepted")}
-                            canAct={canAct}
+                            canAct={canReview}
                         />
                     </ArtifactWrapper>
                 );
@@ -1097,8 +1104,9 @@ function TimelineRendererInner({
                     >
                         <DraftBlock
                             payload={item.payload as DraftDiffPayload}
+                            status={item.status}
                             onAccept={() => handleReview("accepted")}
-                            canAct={canAct}
+                            canAct={canReview}
                         />
                     </ArtifactWrapper>
                 );
@@ -1111,10 +1119,11 @@ function TimelineRendererInner({
                     >
                         <MemoryCard
                             payload={item.payload as MemoryProposalPayload}
+                            status={item.status}
                             onAccept={() => handleReview("accepted")}
                             onReject={() => handleReview("rejected")}
                             onEditAndAccept={(edited) => handleReview("accepted", undefined, edited as unknown as Record<string, unknown>)}
-                            canAct={canAct}
+                            canAct={canReview}
                         />
                     </ArtifactWrapper>
                 );
@@ -1127,9 +1136,10 @@ function TimelineRendererInner({
                     >
                         <MemoryForgetCard
                             payload={item.payload as MemoryForgetProposalPayload}
+                            status={item.status}
                             onAccept={() => handleReview("accepted")}
                             onReject={() => handleReview("rejected")}
-                            canAct={canAct}
+                            canAct={canReview}
                         />
                     </ArtifactWrapper>
                 );

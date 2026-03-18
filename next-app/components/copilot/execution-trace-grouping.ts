@@ -6,6 +6,7 @@ import type {
     TimelineProgress,
     TimelineToolActivity,
 } from "@/types/timeline";
+import { isArtifactReviewable } from "@/lib/artifacts/reviewability";
 
 export type DurableExecutionTraceItem =
     | TimelineToolActivity
@@ -28,11 +29,10 @@ export type ExecutionTraceEntry =
     };
 
 function isDurableExecutionTraceItem(item: TimelineItem | undefined): item is DurableExecutionTraceItem {
-    return !!item && (
-        item.type === "tool_activity"
-        || item.type === "checkpoint"
-        || item.type === "artifact"
-    );
+    if (!item) return false;
+    if (item.type === "tool_activity" || item.type === "checkpoint") return true;
+    if (item.type === "artifact") return !isArtifactReviewable(item.status);
+    return false;
 }
 
 function isProgressItem(item: TimelineItem | undefined): item is TimelineProgress {

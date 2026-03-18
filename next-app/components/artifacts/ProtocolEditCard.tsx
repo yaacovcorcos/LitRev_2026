@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import styles from "@/styles/artifacts.module.css";
-import type { ProtocolSuggestionPayload } from "@/types/artifacts";
+import type { ArtifactStatus, ProtocolSuggestionPayload } from "@/types/artifacts";
+import { getArtifactSettledLabel, isArtifactReviewable } from "@/lib/artifacts/reviewability";
 import { getFieldLabel, isArrayField } from "@/lib/protocol-fields";
 
 function formatValue(value: unknown): string {
@@ -15,16 +16,19 @@ function formatValue(value: unknown): string {
 
 export type ProtocolEditCardProps = {
     payload: ProtocolSuggestionPayload;
+    status?: ArtifactStatus;
     /** Accept the artifact. If the user edited the value, `editedValue` is the new value; otherwise undefined. */
     onAccept: (editedValue?: string | string[]) => void;
     onDiscuss?: () => void;
     canAct?: boolean;
 };
 
-export function ProtocolEditCard({ payload, onAccept, onDiscuss, canAct = true }: ProtocolEditCardProps) {
+export function ProtocolEditCard({ payload, status = "proposed", onAccept, onDiscuss, canAct = true }: ProtocolEditCardProps) {
     const { field, value, oldValue, rationale } = payload;
     const label = getFieldLabel(field);
     const arrayField = isArrayField(field);
+    const isReviewable = isArtifactReviewable(status);
+    const settledLabel = getArtifactSettledLabel(status);
 
     const [editing, setEditing] = useState(false);
     const [editValue, setEditValue] = useState(() =>
@@ -138,14 +142,16 @@ export function ProtocolEditCard({ payload, onAccept, onDiscuss, canAct = true }
                             ) : (
                                 <span>{formatValue(displayValue)}</span>
                             )}
-                            <button
-                                type="button"
-                                className={styles.picoEditBtn}
-                                onClick={() => setEditing(true)}
-                                aria-label={`Edit ${label}`}
-                            >
-                                <span className="material-icons-round">edit</span>
-                            </button>
+                            {isReviewable ? (
+                                <button
+                                    type="button"
+                                    className={styles.picoEditBtn}
+                                    onClick={() => setEditing(true)}
+                                    aria-label={`Edit ${label}`}
+                                >
+                                    <span className="material-icons-round">edit</span>
+                                </button>
+                            ) : null}
                         </div>
                     )}
                 </div>
@@ -156,16 +162,20 @@ export function ProtocolEditCard({ payload, onAccept, onDiscuss, canAct = true }
                 )}
             </div>
 
-            <div className={styles.cardActions}>
-                {onDiscuss ? (
-                    <button type="button" className={styles.actionBtnGhost} onClick={onDiscuss} disabled={!canAct}>
-                        Discuss more
+            {isReviewable ? (
+                <div className={styles.cardActions}>
+                    {onDiscuss ? (
+                        <button type="button" className={styles.actionBtnGhost} onClick={onDiscuss} disabled={!canAct}>
+                            Discuss more
+                        </button>
+                    ) : null}
+                    <button type="button" className={styles.actionBtn} onClick={handleAccept} disabled={!canAct}>
+                        {hasEdited ? "Accept Edited & Save" : "Accept & Save to Protocol"}
                     </button>
-                ) : null}
-                <button type="button" className={styles.actionBtn} onClick={handleAccept} disabled={!canAct}>
-                    {hasEdited ? "Accept Edited & Save" : "Accept & Save to Protocol"}
-                </button>
-            </div>
+                </div>
+            ) : settledLabel ? (
+                <div className={styles.applyMeta}>{settledLabel}</div>
+            ) : null}
         </>
     );
 }

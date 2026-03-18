@@ -141,7 +141,7 @@ describe("TimelineRenderer execution trace collapse", () => {
     expect(screen.queryByText("Found 8 of 18 PubMed results.")).toBeNull();
   });
 
-  it("expands and collapses the trace details manually", () => {
+  it("keeps proposed artifacts inline after the assistant answer instead of moving them into process details", () => {
     renderTimeline([
       {
         type: "artifact",
@@ -166,8 +166,41 @@ describe("TimelineRenderer execution trace collapse", () => {
       },
     ]);
 
+    expect(screen.queryByRole("button", { name: "Show process details" })).toBeNull();
+    expect(screen.getByText("Protocol update")).not.toBeNull();
+    expect(screen.getByText("Adults with chest pain")).not.toBeNull();
+    expect(screen.getByRole("button", { name: /accept & save to protocol/i })).not.toBeNull();
+  });
+
+  it("expands and collapses settled trace details manually", () => {
+    renderTimeline([
+      {
+        type: "artifact",
+        id: "artifact-settled-1",
+        artifactId: "artifact-settled-1",
+        artifactType: "protocol_suggestion",
+        status: "accepted",
+        title: "Protocol update",
+        payload: {
+          field: "Population",
+          value: "Adults with chest pain",
+          rationale: "Tighten the inclusion criteria",
+        },
+        version: 1,
+        createdAt: "2026-03-11T00:00:00.000Z",
+      },
+      {
+        type: "assistant_message",
+        id: "assistant-settled-1",
+        content: "I already applied the protocol refinement.",
+        createdAt: "2026-03-11T00:00:01.000Z",
+      },
+    ]);
+
     fireEvent.click(screen.getByRole("button", { name: "Show process details" }));
     expect(screen.getByLabelText("Process details")).not.toBeNull();
+    expect(screen.getByText("Protocol updated: Population")).not.toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Expand" }));
     expect(screen.getByText("Protocol update")).not.toBeNull();
     expect(screen.getByText("Adults with chest pain")).not.toBeNull();
 

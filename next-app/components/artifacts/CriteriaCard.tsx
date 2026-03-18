@@ -1,11 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import type { CriteriaCardPayload } from "@/types/artifacts";
+import type { ArtifactStatus, CriteriaCardPayload } from "@/types/artifacts";
+import { getArtifactSettledLabel, isArtifactReviewable } from "@/lib/artifacts/reviewability";
 import styles from "@/styles/artifacts.module.css";
 
 export type CriteriaCardProps = {
     payload: CriteriaCardPayload;
+    status?: ArtifactStatus;
     onSave: () => void;
     onAdd?: (type: "inclusion" | "exclusion", criterion: string) => void;
     onRemove?: (type: "inclusion" | "exclusion", index: number) => void;
@@ -13,9 +15,11 @@ export type CriteriaCardProps = {
     canAct?: boolean;
 };
 
-export function CriteriaCard({ payload, onSave, onAdd, onRemove, onDiscuss, canAct = true }: CriteriaCardProps) {
+export function CriteriaCard({ payload, status = "proposed", onSave, onAdd, onRemove, onDiscuss, canAct = true }: CriteriaCardProps) {
     const [addingType, setAddingType] = useState<"inclusion" | "exclusion" | null>(null);
     const [addValue, setAddValue] = useState("");
+    const isReviewable = isArtifactReviewable(status);
+    const settledLabel = getArtifactSettledLabel(status);
 
     const commitAdd = () => {
         if (addingType && addValue.trim() && onAdd) {
@@ -25,7 +29,7 @@ export function CriteriaCard({ payload, onSave, onAdd, onRemove, onDiscuss, canA
         setAddValue("");
     };
 
-    const canEdit = !!onAdd && !!onRemove;
+    const canEdit = isReviewable && !!onAdd && !!onRemove;
 
     const renderList = (type: "inclusion" | "exclusion", items: string[], icon: string) => (
         <div className={styles.criteriaSection}>
@@ -86,16 +90,20 @@ export function CriteriaCard({ payload, onSave, onAdd, onRemove, onDiscuss, canA
             {payload.rationale && (
                 <div className={styles.criteriaRationale}>{payload.rationale}</div>
             )}
-            <div className={styles.cardActions}>
-                {onDiscuss ? (
-                    <button type="button" className={styles.actionBtnGhost} onClick={onDiscuss} disabled={!canAct}>
-                        Discuss more
+            {isReviewable ? (
+                <div className={styles.cardActions}>
+                    {onDiscuss ? (
+                        <button type="button" className={styles.actionBtnGhost} onClick={onDiscuss} disabled={!canAct}>
+                            Discuss more
+                        </button>
+                    ) : null}
+                    <button type="button" className={styles.actionBtn} onClick={onSave} disabled={!canAct}>
+                        Save to Protocol
                     </button>
-                ) : null}
-                <button type="button" className={styles.actionBtn} onClick={onSave} disabled={!canAct}>
-                    Save to Protocol
-                </button>
-            </div>
+                </div>
+            ) : settledLabel ? (
+                <div className={styles.applyMeta}>{settledLabel}</div>
+            ) : null}
         </>
     );
 }

@@ -2,22 +2,26 @@
 
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import type { DraftDiffPayload } from "@/types/artifacts";
+import type { ArtifactStatus, DraftDiffPayload } from "@/types/artifacts";
+import { getArtifactSettledLabel, isArtifactReviewable } from "@/lib/artifacts/reviewability";
 import styles from "@/styles/artifacts.module.css";
 import markdownStyles from "@/styles/markdown.module.css";
 
 export type DraftBlockProps = {
     payload: DraftDiffPayload;
+    status?: ArtifactStatus;
     onAccept: () => void;
     onEdit?: () => void;
     onRedo?: () => void;
     canAct?: boolean;
 };
 
-export function DraftBlock({ payload, onAccept, onEdit, onRedo, canAct = true }: DraftBlockProps) {
+export function DraftBlock({ payload, status = "proposed", onAccept, onEdit, onRedo, canAct = true }: DraftBlockProps) {
     const sectionLabel = payload.subsection
         ? `${payload.section} § ${payload.subsection}`
         : payload.section;
+    const isReviewable = isArtifactReviewable(status);
+    const settledLabel = getArtifactSettledLabel(status);
 
     return (
         <>
@@ -35,21 +39,25 @@ export function DraftBlock({ payload, onAccept, onEdit, onRedo, canAct = true }:
             <div className={styles.draftWordCount}>
                 {payload.wordCount} word{payload.wordCount !== 1 ? "s" : ""}
             </div>
-            <div className={styles.cardActions}>
-                {onRedo ? (
-                    <button type="button" className={styles.actionBtnGhost} onClick={onRedo} disabled={!canAct}>
-                        Redo
+            {isReviewable ? (
+                <div className={styles.cardActions}>
+                    {onRedo ? (
+                        <button type="button" className={styles.actionBtnGhost} onClick={onRedo} disabled={!canAct}>
+                            Redo
+                        </button>
+                    ) : null}
+                    {onEdit ? (
+                        <button type="button" className={styles.actionBtnGhost} onClick={onEdit} disabled={!canAct}>
+                            Edit first
+                        </button>
+                    ) : null}
+                    <button type="button" className={styles.actionBtn} onClick={onAccept} disabled={!canAct}>
+                        Accept &amp; save to draft
                     </button>
-                ) : null}
-                {onEdit ? (
-                    <button type="button" className={styles.actionBtnGhost} onClick={onEdit} disabled={!canAct}>
-                        Edit first
-                    </button>
-                ) : null}
-                <button type="button" className={styles.actionBtn} onClick={onAccept} disabled={!canAct}>
-                    Accept &amp; save to draft
-                </button>
-            </div>
+                </div>
+            ) : settledLabel ? (
+                <div className={styles.applyMeta}>{settledLabel}</div>
+            ) : null}
         </>
     );
 }

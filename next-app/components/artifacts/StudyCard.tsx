@@ -2,10 +2,13 @@
 
 import { useRef, useState, useEffect } from "react";
 import type { StudyProposalPayload } from "@/types/artifacts";
+import type { ArtifactStatus } from "@/types/artifacts";
+import { getArtifactSettledLabel, isArtifactReviewable } from "@/lib/artifacts/reviewability";
 import styles from "@/styles/artifacts.module.css";
 
 export type StudyCardProps = {
     payload: StudyProposalPayload;
+    status?: ArtifactStatus;
     onKeep: () => void;
     onExclude: (reason: string) => void;
     onMaybe?: () => void;
@@ -30,10 +33,12 @@ const CRITERIA_LABELS: Record<string, string> = {
     sampleSize: "N",
 };
 
-export function StudyCard({ payload, onKeep, onExclude, onMaybe, canAct = true }: StudyCardProps) {
+export function StudyCard({ payload, status = "proposed", onKeep, onExclude, onMaybe, canAct = true }: StudyCardProps) {
     const [showAbstract, setShowAbstract] = useState(false);
     const [showExcludeMenu, setShowExcludeMenu] = useState(false);
     const excludeMenuRef = useRef<HTMLDivElement | null>(null);
+    const isReviewable = isArtifactReviewable(status);
+    const settledLabel = getArtifactSettledLabel(status);
 
     // Close exclude menu on click outside
     useEffect(() => {
@@ -109,55 +114,59 @@ export function StudyCard({ payload, onKeep, onExclude, onMaybe, canAct = true }
             )}
 
             {/* Actions */}
-            <div className={styles.cardActions}>
-                {payload.abstract && (
-                    <button
-                        type="button"
-                        className={styles.actionBtnGhost}
-                        onClick={() => setShowAbstract(!showAbstract)}
-                    >
-                        {showAbstract ? "Hide abstract" : "See abstract"}
-                    </button>
-                )}
-
-                {onMaybe && (
-                    <button type="button" className={styles.maybeBtn} onClick={onMaybe} disabled={!canAct}>
-                        Maybe
-                    </button>
-                )}
-
-                <div className={styles.excludeDropdown} ref={excludeMenuRef}>
-                    <button
-                        type="button"
-                        className={styles.excludeBtn}
-                        onClick={() => setShowExcludeMenu(!showExcludeMenu)}
-                        disabled={!canAct}
-                    >
-                        Exclude ▾
-                    </button>
-                    {showExcludeMenu && (
-                        <div className={styles.excludeMenu}>
-                            {EXCLUDE_REASONS.map((reason) => (
-                                <button
-                                    key={reason}
-                                    type="button"
-                                    className={styles.excludeMenuItem}
-                                    onClick={() => {
-                                        onExclude(reason);
-                                        setShowExcludeMenu(false);
-                                    }}
-                                >
-                                    {reason}
-                                </button>
-                            ))}
-                        </div>
+            {isReviewable ? (
+                <div className={styles.cardActions}>
+                    {payload.abstract && (
+                        <button
+                            type="button"
+                            className={styles.actionBtnGhost}
+                            onClick={() => setShowAbstract(!showAbstract)}
+                        >
+                            {showAbstract ? "Hide abstract" : "See abstract"}
+                        </button>
                     )}
-                </div>
 
-                <button type="button" className={styles.keepBtn} onClick={onKeep} disabled={!canAct}>
-                    Keep
-                </button>
-            </div>
+                    {onMaybe && (
+                        <button type="button" className={styles.maybeBtn} onClick={onMaybe} disabled={!canAct}>
+                            Maybe
+                        </button>
+                    )}
+
+                    <div className={styles.excludeDropdown} ref={excludeMenuRef}>
+                        <button
+                            type="button"
+                            className={styles.excludeBtn}
+                            onClick={() => setShowExcludeMenu(!showExcludeMenu)}
+                            disabled={!canAct}
+                        >
+                            Exclude ▾
+                        </button>
+                        {showExcludeMenu && (
+                            <div className={styles.excludeMenu}>
+                                {EXCLUDE_REASONS.map((reason) => (
+                                    <button
+                                        key={reason}
+                                        type="button"
+                                        className={styles.excludeMenuItem}
+                                        onClick={() => {
+                                            onExclude(reason);
+                                            setShowExcludeMenu(false);
+                                        }}
+                                    >
+                                        {reason}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
+                    <button type="button" className={styles.keepBtn} onClick={onKeep} disabled={!canAct}>
+                        Keep
+                    </button>
+                </div>
+            ) : settledLabel ? (
+                <div className={styles.applyMeta}>{settledLabel}</div>
+            ) : null}
         </>
     );
 }
