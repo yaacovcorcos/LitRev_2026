@@ -92,6 +92,7 @@ Every fix entry must include:
 - **Ledger Deletion Action:** `delete_study` is implemented and mode-allowed in screening for explicit hard-delete requests from the ledger.
 - **Evidence Table Apply Path:** Accepted `evidence_table` artifacts now persist to an "Evidence Table" note (update existing note if present, create if missing).
 - **Mentioned Studies Flow (P10):** Assistant turns now support deterministic mention extraction (structured contract + DOI/PMID/title-year fallback), inline chat chips, and direct user-initiated add-to-ledger with duplicate-safe idempotent writes and chat provenance metadata.
+- **Assistant-Side UI Metadata Still Uses Mixed Channels:** some assistant-side UI metadata, including cited-study mention payloads, still rides inside `AIMessage.content` and is recovered through consumer-side sanitation/parsing as a compatibility layer. `CAG-026` is the planned architecture correction for moving that state to canonical server-normalized structured message parts.
 - **P10 Rollout Flags:** Mention flow and scoping decision-card behavior are feature-flagged (`NEXT_PUBLIC_CHAT_STUDY_MENTIONS_V1`, `NEXT_PUBLIC_SCOPING_DECISION_CARD_V2`).
 - **Scoping Mode (P10):** Dedicated pre-protocol routing now runs through a server-owned workflow contract (`discover -> synthesize -> propose -> handoff`) with an exploratory-search cap, low-autonomy search-pack preview instead of a blocking first-pass approval pause, natural-language handoff/default carry-forward, and proposal-only protocol mutation.
 - **Reasoning Stream Support (Current):** `reasoning_*` stream events are currently wired end-to-end for Anthropic responses. OpenAI/xAI models can run normally, but their provider adapters do not yet emit normalized reasoning stream parts in the same pipeline.
@@ -216,6 +217,11 @@ Work should proceed in this order unless a production incident forces reprioriti
 - [ ] `CAG-018` Add negative-memory extraction with confidence and importance
 - [ ] `CAG-019` Render a user-visible run board for tasks, blockers, and clarifications
 - [ ] `CAG-020` Add crash-safe long-loop continuation tokens tied to durable state snapshots/continuation tokens, transport/runtime recovery, and no-forward-progress detection
+- [ ] `CAG-026` Replace hidden assistant markup with canonical structured message parts
+  - **Problem:** assistant turns still mix human-readable prose with hidden machine-readable UI metadata inside `AIMessage.content`, which forces client/server consumers to sanitize inconsistently and allows malformed internal markup to leak into visible chat, exports, summaries, and transcript-derived workflows.
+  - **Desired end state:** the server owns one canonical normalization boundary that persists clean visible assistant text separately from typed structured message parts, timeline/popup/export/summary consumers read from that canonical shape instead of reparsing prose, and legacy hidden-markup parsing survives only as a backward-compatibility fallback during migration.
+  - **Supporting plan:** `docs/plans/plan-structured-assistant-message-parts.md`
+  - **Exit criteria:** new assistant turns persist clean visible text plus validated structured parts; main chat surfaces render from typed parts; transcript/export/summary/memory paths stop depending on raw hidden markup; legacy parsing is fallback-only.
 
 ### Phase 4 — Evaluation, Rollout, and Operations
 
