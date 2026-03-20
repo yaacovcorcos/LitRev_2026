@@ -14,6 +14,12 @@ import {
   coerceManuscriptDocument,
   createManuscriptDocument,
 } from "@/lib/manuscript/schema";
+import {
+  draftSectionHasMeaningfulContent,
+  resolveDraftMode,
+  resolveFullDraftActiveSection,
+  resolveSectionModeActiveSection,
+} from "@/lib/draftStateContracts";
 
 const DRAFT_KEY_PREFIX = "litrev_draft_v1";
 
@@ -104,25 +110,6 @@ function buildKnownSectionIds(customSections: Record<DraftSectionId, { label: st
   return [UNSECTIONED_DRAFT_ID, ...BASE_SECTION_IDS, ...Object.keys(customSections)] as DraftSectionId[];
 }
 
-function docHasContent(content: JSONContent | undefined): boolean {
-  if (!content || typeof content !== "object") return false;
-  const stack = Array.isArray(content.content) ? [...content.content] : [];
-  while (stack.length > 0) {
-    const node = stack.pop();
-    if (!node || typeof node !== "object") continue;
-    if (node.type === "text" && typeof node.text === "string" && node.text.trim().length > 0) {
-      return true;
-    }
-    if (node.type === "citation" || node.type === "hardBreak") {
-      return true;
-    }
-    if (Array.isArray(node.content)) {
-      stack.push(...node.content);
-    }
-  }
-  return false;
-}
-
 function shouldRestoreSeededSectionBaseline(
   sectionOrder: DraftSectionId[],
   customSections: Record<DraftSectionId, { label: string; placeholder?: string }>,
@@ -130,7 +117,7 @@ function shouldRestoreSeededSectionBaseline(
 ): boolean {
   if (sectionOrder.length > 0) return false;
   if (Object.keys(customSections).length > 0) return false;
-  return !docHasContent(contentBySection[UNSECTIONED_DRAFT_ID]);
+  return !draftSectionHasMeaningfulContent(contentBySection[UNSECTIONED_DRAFT_ID]);
 }
 
 function createPanelsState(): DraftPanelsState {
@@ -366,10 +353,10 @@ export function normalizeDraftState(input: unknown): DraftState {
   const nextSectionOrder = nextManuscript.sections
     .map((section) => section.sectionId)
     .filter((sectionId) => sectionId !== UNSECTIONED_DRAFT_ID);
-  const mode = nextSectionOrder.length === 0 ? "full" : didRestoreSeededBaseline ? "section" : rawMode;
+  const mode = didRestoreSeededBaseline ? "section" : resolveDraftMode(rawMode, nextSectionOrder);
   const activeSection = mode === "section"
-    ? activeSectionCandidate ?? nextSectionOrder[0] ?? null
-    : activeSectionCandidate;
+    ? resolveSectionModeActiveSection(activeSectionCandidate, nextSectionOrder)
+    : resolveFullDraftActiveSection(activeSectionCandidate, nextSectionOrder);
 
   return {
     version: 2,

@@ -70,4 +70,19 @@ describe("DraftTopBar", () => {
     expect(screen.getByRole("tab", { name: "Abstract" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Section" }).getAttribute("disabled")).toBeNull();
   });
+
+  it("disables section mode when no writable sections exist", () => {
+    render(
+      <DraftTopBar
+        {...createProps({
+          activeSection: null,
+          mode: "full",
+          canUseSectionMode: false,
+          orderedSections: [],
+        })}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Section" }).getAttribute("disabled")).not.toBeNull();
+  });
 });

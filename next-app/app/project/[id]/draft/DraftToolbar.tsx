@@ -16,8 +16,9 @@ import styles from "./draft-studio.module.css";
 
 export type DraftTopBarProps = {
   projectName: string;
-  activeSection: DraftSectionId;
+  activeSection: DraftSectionId | null;
   mode: DraftMode;
+  canUseSectionMode: boolean;
   orderedSections: SectionMeta[];
   availableSections: SectionMeta[];
   // Drag state
@@ -53,6 +54,7 @@ export type DraftTopBarProps = {
 export function DraftTopBar({
   activeSection,
   mode,
+  canUseSectionMode,
   orderedSections,
   availableSections,
   draggingKey,
@@ -204,6 +206,7 @@ export function DraftTopBar({
             className={`${styles.modeOption} ${mode === "section" ? styles.modeActive : ""}`}
             onClick={() => onToggleMode("section")}
             aria-pressed={mode === "section"}
+            disabled={!canUseSectionMode}
           >
             Section
           </button>

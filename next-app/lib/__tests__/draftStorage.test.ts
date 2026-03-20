@@ -29,6 +29,27 @@ describe("normalizeDraftState", () => {
     expect(normalized.sectionOrder).toEqual(DEFAULT_SECTION_ORDER);
     expect(normalized.activeSection).toBe("abstract");
   });
+
+  it("keeps zero-section drafts in full mode when whole-draft content exists", () => {
+    const baseline = createDefaultDraftState();
+    const normalized = normalizeDraftState({
+      ...baseline,
+      mode: "section",
+      activeSection: "abstract",
+      sectionOrder: [],
+      contentBySection: {
+        ...baseline.contentBySection,
+        [UNSECTIONED_DRAFT_ID]: {
+          type: "doc",
+          content: [{ type: "paragraph", content: [{ type: "text", text: "Whole draft content" }] }],
+        },
+      },
+    });
+
+    expect(normalized.mode).toBe("full");
+    expect(normalized.sectionOrder).toEqual([]);
+    expect(normalized.activeSection).toBeNull();
+  });
 });
 
 describe("loadDraftState citation migration", () => {

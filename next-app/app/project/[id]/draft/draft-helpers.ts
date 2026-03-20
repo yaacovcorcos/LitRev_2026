@@ -7,6 +7,7 @@ import { DRAFT_SECTIONS, DraftMode, DraftSectionId, DraftSectionKey, UNSECTIONED
 import { DraftSectionFormat } from "@/lib/draftStorage";
 import type { JSONContent } from "@tiptap/core";
 import type { Study } from "@/types/ledger";
+import { draftSectionHasMeaningfulContent } from "@/lib/draftStateContracts";
 
 export const EMPTY_IDS: string[] = [];
 
@@ -86,26 +87,7 @@ export const createCustomSectionId = (label: string) => {
 export const customSectionPlaceholder = (label: string) => `Draft the ${label} section.`;
 
 export const docHasContent = (doc: JSONContent | null | undefined): boolean => {
-  if (!doc || typeof doc !== "object") return false;
-  const stack: JSONContent[] = [doc];
-  while (stack.length) {
-    const node = stack.pop();
-    if (!node) continue;
-    if (node.type === "text" && typeof node.text === "string" && node.text.trim().length > 0) {
-      return true;
-    }
-    if (node.type === "citation" || node.type === "hardBreak") {
-      return true;
-    }
-    if (Array.isArray(node.content)) {
-      for (const child of node.content) {
-        if (child && typeof child === "object") {
-          stack.push(child);
-        }
-      }
-    }
-  }
-  return false;
+  return draftSectionHasMeaningfulContent(doc);
 };
 
 export const FONT_FAMILY_OPTIONS = [
