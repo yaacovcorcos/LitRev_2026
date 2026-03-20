@@ -221,6 +221,31 @@ Default rule: prefer updating the right existing section or idea rather than cre
 
 ## Ledger and Study Intake
 
+### Evaluate LiteParse as a Narrow PDF Intake Spike, Not a Pipeline Replacement
+- Status: exploring
+- Summary: `run-llama/liteparse` looks potentially useful as a narrow local PDF parsing spike, but it should not replace LitRev's current PDF extraction pipeline by default.
+- Why this matters:
+  - It offers fast local parsing, OCR flexibility, bounding boxes, and page screenshots that could be useful for agent-facing workflows.
+  - It may help with screenshot generation or spatial grounding use cases that our current plain text extraction layer does not cover well.
+  - It is not obviously a full replacement for the metadata- and structure-oriented pipeline we already have.
+- Current state:
+  - LitRev already has a layered PDF pipeline built around file ingestion, `pdf-parse` text extraction, GROBID header extraction, and AI-assisted quick/deep extraction.
+  - LiteParse appears strongest as a local parser for text, bounding boxes, OCR, and screenshots.
+  - LiteParse's own positioning suggests complex layouts, dense tables, charts, handwritten text, and difficult scanned PDFs are where stronger parsing systems are still needed.
+- Direction:
+  - Do not adopt LiteParse as the default production parser just to "improve PDF parsing" in the abstract.
+  - Treat it as a candidate for a narrow offline or worker-side spike.
+  - Prefer evaluating it for screenshots, bounding-box-aware parsing, or agent-visible document grounding rather than as a full extraction system swap.
+- Suggested spike:
+  - Benchmark LiteParse against a representative set of difficult LitRev PDFs.
+  - Compare title/authors/DOI accuracy, abstract extraction quality, multi-column reading order, table handling, scanned PDF behavior, latency, and deployability.
+  - Decide only after that comparison whether it belongs as an optional tool, a fallback parser, or not at all.
+- Open questions:
+  - Whether LiteParse would fit better as a background worker tool than a request-path dependency
+  - Whether screenshots plus bounding boxes are valuable enough for chat/agent workflows to justify integration
+  - Whether Vercel/runtime constraints make it operationally awkward compared with the current server-side stack
+  - Whether the best use is a fallback/parser supplement rather than a replacement
+
 ### Make Ledger Duplicate Detection Identifier-First
 - Status: exploring
 - Summary: When adding a study to the ledger, duplicate detection should rely primarily on stable identifiers like DOI and PMID rather than only the study title or name.
