@@ -99,6 +99,9 @@ describe("shared stream reducer", () => {
     const runningIntent = toolCallReduced.intents.find((intent) => intent.type === "tool_activity_upsert");
     expect(runningIntent && runningIntent.type === "tool_activity_upsert").toBe(true);
     if (!runningIntent || runningIntent.type !== "tool_activity_upsert") return;
+    expect(runningIntent.displayLabel).toBe("Searching PubMed");
+    expect(runningIntent.inputPreview).toContain("retrospective cohort");
+    expect(runningIntent.sourceBadge).toBe("PubMed");
     expect(runningIntent.queryPreview).toContain("retrospective cohort");
     expect(toolCallReduced.intents).toContainEqual({
       type: "progress_upsert",
@@ -130,6 +133,13 @@ describe("shared stream reducer", () => {
     const doneIntent = toolResultReduced.intents.find((intent) => intent.type === "tool_activity_upsert" && intent.status === "done");
     expect(doneIntent && doneIntent.type === "tool_activity_upsert").toBe(true);
     if (!doneIntent || doneIntent.type !== "tool_activity_upsert") return;
+    expect(doneIntent.displayLabel).toBe("Searched PubMed");
+    expect(doneIntent.outcomeSummary).toBe("Found 10 of 42 PubMed results.");
+    expect(doneIntent.sourceBadge).toBe("PubMed");
+    expect(doneIntent.detailItems).toEqual([
+      "10 of 42 results",
+      "PMID 40123456 · PMID 39887711",
+    ]);
     expect(doneIntent.returnedCount).toBe(10);
     expect(doneIntent.totalResults).toBe(42);
     expect(doneIntent.resultIdentifiers).toEqual(["PMID 40123456", "PMID 39887711"]);
@@ -318,6 +328,9 @@ describe("shared stream reducer", () => {
     const runningIntent = toolCallReduced.intents.find((intent) => intent.type === "tool_activity_upsert");
     expect(runningIntent && runningIntent.type === "tool_activity_upsert").toBe(true);
     if (!runningIntent || runningIntent.type !== "tool_activity_upsert") return;
+    expect(runningIntent.displayLabel).toBe("Searching OpenAlex");
+    expect(runningIntent.inputPreview).toBe("triage AI emergency department");
+    expect(runningIntent.sourceBadge).toBe("OpenAlex");
     expect(runningIntent.queryPreview).toBe("triage AI emergency department");
 
     const toolResultReduced = reduceSharedStreamChunk(
@@ -343,6 +356,12 @@ describe("shared stream reducer", () => {
     const doneIntent = toolResultReduced.intents.find((intent) => intent.type === "tool_activity_upsert" && intent.status === "done");
     expect(doneIntent && doneIntent.type === "tool_activity_upsert").toBe(true);
     if (!doneIntent || doneIntent.type !== "tool_activity_upsert") return;
+    expect(doneIntent.displayLabel).toBe("Searched OpenAlex");
+    expect(doneIntent.outcomeSummary).toBe("Found 5 of 18 OpenAlex results.");
+    expect(doneIntent.detailItems).toEqual([
+      "5 of 18 results",
+      "DOI 10.1000/openalex-1 · OpenAlex W456",
+    ]);
     expect(doneIntent.returnedCount).toBe(5);
     expect(doneIntent.totalResults).toBe(18);
     expect(doneIntent.resultIdentifiers).toEqual(["DOI 10.1000/openalex-1", "OpenAlex W456"]);
@@ -388,6 +407,12 @@ describe("shared stream reducer", () => {
     const doneIntent = toolResultReduced.intents.find((intent) => intent.type === "tool_activity_upsert" && intent.status === "done");
     expect(doneIntent && doneIntent.type === "tool_activity_upsert").toBe(true);
     if (!doneIntent || doneIntent.type !== "tool_activity_upsert") return;
+    expect(doneIntent.displayLabel).toBe("Searched Semantic Scholar");
+    expect(doneIntent.outcomeSummary).toBe("Found 3 of 11 Semantic Scholar results.");
+    expect(doneIntent.detailItems).toEqual([
+      "3 of 11 results",
+      "DOI 10.1000/s2-1 · S2 def456",
+    ]);
     expect(doneIntent.returnedCount).toBe(3);
     expect(doneIntent.totalResults).toBe(11);
     expect(doneIntent.resultIdentifiers).toEqual(["DOI 10.1000/s2-1", "S2 def456"]);
@@ -422,6 +447,120 @@ describe("shared stream reducer", () => {
       type: "checkpoint_append",
       label: "Need your answer before continuing: Pick one",
     });
+  });
+
+  it("derives truthful semantic receipts for read and inspection tools", () => {
+    let state = createInitialSharedStreamState();
+
+    const protocolCall = reduceSharedStreamChunk(
+      state,
+      { type: "tool_call", toolCall: { id: "read-protocol-1", name: "read_protocol", arguments: {} } },
+      meta,
+    );
+    state = protocolCall.state;
+    const protocolRunning = protocolCall.intents.find((intent) => intent.type === "tool_activity_upsert");
+    expect(protocolRunning && protocolRunning.type === "tool_activity_upsert").toBe(true);
+    if (!protocolRunning || protocolRunning.type !== "tool_activity_upsert") return;
+    expect(protocolRunning.displayLabel).toBe("Reading protocol");
+    expect(protocolRunning.inputPreview).toBe("Current project protocol");
+    expect(protocolRunning.sourceBadge).toBe("Protocol");
+
+    const protocolResult = reduceSharedStreamChunk(
+      state,
+      {
+        type: "tool_result",
+        toolName: "read_protocol",
+        toolResult: {
+          callId: "read-protocol-1",
+          result: { hasProtocol: false, protocolContext: "[PROTOCOL_CONTEXT]\\nNo protocol defined yet.", protocol: {} },
+        },
+      },
+      meta,
+    );
+    const protocolDone = protocolResult.intents.find((intent) => intent.type === "tool_activity_upsert" && intent.status === "done");
+    expect(protocolDone && protocolDone.type === "tool_activity_upsert").toBe(true);
+    if (!protocolDone || protocolDone.type !== "tool_activity_upsert") return;
+    expect(protocolDone.displayLabel).toBe("Read protocol");
+    expect(protocolDone.outcomeSummary).toBe("No protocol is defined yet.");
+
+    const memoryResult = reduceSharedStreamChunk(
+      createInitialSharedStreamState({ lastToolCallId: "inspect-memory-1", runningToolCallIds: ["inspect-memory-1"] }),
+      {
+        type: "tool_result",
+        toolName: "inspect_memory",
+        toolResult: {
+          callId: "inspect-memory-1",
+          result: {
+            summary: "Found 2 active memories.",
+            memories: [
+              { id: "m1", memoryType: "project", key: "protocol_decision", value: "..." },
+              { id: "m2", memoryType: "study", key: "study_methods", value: "..." },
+            ],
+          },
+        },
+      },
+      meta,
+    );
+    const memoryDone = memoryResult.intents.find((intent) => intent.type === "tool_activity_upsert" && intent.status === "done");
+    expect(memoryDone && memoryDone.type === "tool_activity_upsert").toBe(true);
+    if (!memoryDone || memoryDone.type !== "tool_activity_upsert") return;
+    expect(memoryDone.displayLabel).toBe("Checked memory");
+    expect(memoryDone.outcomeSummary).toBe("Found 2 active memories.");
+    expect(memoryDone.detailItems).toEqual(["protocol_decision", "study_methods"]);
+  });
+
+  it("derives truthful semantic receipts for delegation tools", () => {
+    let state = createInitialSharedStreamState();
+
+    const delegationCall = reduceSharedStreamChunk(
+      state,
+      {
+        type: "tool_call",
+        toolCall: {
+          id: "delegate-search-1",
+          name: "delegate_search",
+          arguments: { task: "Search for omega-3 cognition trials and summarize the strongest studies." },
+        },
+      },
+      meta,
+    );
+    state = delegationCall.state;
+
+    const delegationRunning = delegationCall.intents.find((intent) => intent.type === "tool_activity_upsert");
+    expect(delegationRunning && delegationRunning.type === "tool_activity_upsert").toBe(true);
+    if (!delegationRunning || delegationRunning.type !== "tool_activity_upsert") return;
+    expect(delegationRunning.displayLabel).toBe("Delegating search");
+    expect(delegationRunning.inputPreview).toContain("omega-3 cognition");
+    expect(delegationRunning.sourceBadge).toBe("Search agent");
+
+    const delegationResult = reduceSharedStreamChunk(
+      state,
+      {
+        type: "tool_result",
+        toolName: "delegate_search",
+        toolResult: {
+          callId: "delegate-search-1",
+          result: {
+            success: true,
+            summary: "Queued PubMed and OpenAlex searches and shortlisted 4 candidate studies.",
+            toolCallCount: 3,
+            stopReason: "completed",
+            searchPlanUsed: true,
+          },
+        },
+      },
+      meta,
+    );
+    const delegationDone = delegationResult.intents.find((intent) => intent.type === "tool_activity_upsert" && intent.status === "done");
+    expect(delegationDone && delegationDone.type === "tool_activity_upsert").toBe(true);
+    if (!delegationDone || delegationDone.type !== "tool_activity_upsert") return;
+    expect(delegationDone.displayLabel).toBe("Delegated search");
+    expect(delegationDone.outcomeSummary).toBe("Queued PubMed and OpenAlex searches and shortlisted 4 candidate studies.");
+    expect(delegationDone.detailItems).toEqual([
+      "3 delegated tool calls",
+      "Stop reason: completed",
+      "Structured search plan used",
+    ]);
   });
 
   it("fails dangling running tool when run ends", () => {

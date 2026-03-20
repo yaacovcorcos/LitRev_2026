@@ -26,11 +26,8 @@ The current runtime already has useful primitives, but the visible execution tra
 
 ### Tool cards are real but too lossy
 - Tool activity cards exist and correctly reflect tool lifecycle (`running|done|failed`).
-- The timeline currently drops most successful tool inputs/outputs, so users cannot see:
-  - the search query
-  - the result count
-  - why repeated calls happened
-  - what changed between attempts
+- Search receipts are now materially stronger on the main timeline surfaces, and semantic receipt coverage now also exists for read/inspection and delegation tools.
+- The remaining gap is uneven coverage across uncovered tool families and surfaces, not absence of a semantic receipt contract on the main timelines.
 
 ### Progress is still too uneven outside the PubMed proving ground
 - PubMed now has stronger live progress semantics (`Searching`, `Refining`, `Reviewing`, `Waiting`).
@@ -77,6 +74,11 @@ Raw/provider-native reasoning should remain optional and secondary.
 - Shared reducer semantics now derive PubMed-specific live progress (`Searching`, `Refining`, `Reviewing`) plus selective grounded checkpoints from runtime search facts alone; provider reasoning remains unnecessary for understanding the workflow.
 - Executable search evals now exercise the live chat/runtime orchestration path for direct, delegated, zero-result, and failed search scenarios instead of relying only on catalog-shape validation.
 - The shared search receipt path now extends beyond PubMed: OpenAlex and Semantic Scholar preserve source label, query preview, result counts, and compact identifiers through the reducer, renderer, and project message bridge on the main timeline surfaces.
+- The shared receipt path on the main timeline surfaces now uses additive semantic fields (`displayLabel`, `inputPreview`, `outcomeSummary`, `sourceBadge`, `detailItems`) derived once in the shared reducer/runtime path for:
+  - search tools
+  - read/inspection tools
+  - delegation tools
+  Uncovered tool families still use truthful fallback rendering rather than renderer-invented semantics.
 - Completed answer turns can now collapse a conservative pre-answer durable trace block into a compact reopenable `Process details` summary placed above the final assistant answer. This renderer-only grouping is heuristic, ignores `progress`, skips ambiguous/blocking/error cases, and keeps the underlying timeline facts intact.
 - Popup now preserves a truthful reduced subset of the shared trace contract: live progress, checkpoints, blocking clarification, and structured terminal errors all flow through shared reducer semantics even though popup still hides full receipt/artifact density.
 - `/ai`, the main project conversation, and embedded project copilot now elevate the single live `progress` row into a composer-adjacent status bar while keeping receipts, checkpoints, grouped PubMed sequences, and terminal errors inline; suppression of the matching inline progress row is render-only and uses each surface's local progress id.
@@ -85,7 +87,7 @@ Raw/provider-native reasoning should remain optional and secondary.
 - Model-visible search tool payloads are now shaped as synthesis context with explicit anti-duplication guidance rather than raw search-log fuel, reducing provider-specific leakage of `Objective` / `Queries Run` style process scaffolding into answer prose.
 - The current stabilization program in [plan-agentic.md](./plan-agentic.md) is now about durable convergence of those existing recovery primitives: disconnect classification, durable continuation from completed work, and elimination of stuck/partial recovery states. This plan should stay focused on truthful execution-trace UX and must not imply that ephemeral progress or non-persisted intermediate semantics are replayable.
 - The current stabilization program is about durable convergence and continuation, not decorative execution-trace expansion. New trace work should prefer durable truth and explicit degraded-state honesty over denser presentation.
-- Full provider-independent execution trace coverage is not done yet for read tools, proposal/mutation tools, full popup parity, task-outline UX, or answer-level provenance follow-through. Core search provenance now exists for PubMed/OpenAlex/Semantic Scholar without changing the clean narrative answer style.
+- Full provider-independent execution trace coverage is not done yet for proposal/mutation tools, full popup parity, task-outline UX, or answer-level provenance follow-through. Search, read/inspection, and delegation receipts now use the shared semantic receipt path on the main timeline surfaces without changing the clean narrative answer style, while proposal/mutation flows remain artifact-first.
 
 ## Truth Model
 Every visible process item should fall into one of these categories:

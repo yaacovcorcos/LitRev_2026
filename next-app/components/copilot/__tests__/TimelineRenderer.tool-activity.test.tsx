@@ -32,6 +32,36 @@ function renderTimeline(items: TimelineItem[]) {
 }
 
 describe("TimelineRenderer tool activity cards", () => {
+  it("prefers semantic receipt fields when present", () => {
+    renderTimeline([
+      {
+        type: "tool_activity",
+        id: "tool-semantic-1",
+        callId: "call-semantic-1",
+        toolName: "delegate_search",
+        status: "done",
+        displayLabel: "Delegated search",
+        inputPreview: "Find recent omega-3 cognition trials",
+        outcomeSummary: "Queued PubMed and OpenAlex searches and shortlisted 4 studies.",
+        sourceBadge: "Search agent",
+        detailItems: ["3 delegated tool calls", "Stop reason: completed"],
+        summary: "older fallback summary",
+        startedAt: "2026-03-02T12:00:00.000Z",
+        updatedAt: "2026-03-02T12:00:02.000Z",
+        completedAt: "2026-03-02T12:00:02.000Z",
+        createdAt: "2026-03-02T12:00:00.000Z",
+      },
+    ]);
+
+    expect(screen.getByText("Delegated search")).not.toBeNull();
+    expect(screen.getByText("Search agent")).not.toBeNull();
+    expect(screen.getByText("Find recent omega-3 cognition trials")).not.toBeNull();
+    expect(screen.getByText("3 delegated tool calls")).not.toBeNull();
+    expect(screen.getByText("Stop reason: completed")).not.toBeNull();
+    expect(screen.getByText("Queued PubMed and OpenAlex searches and shortlisted 4 studies.")).not.toBeNull();
+    expect(screen.queryByText("older fallback summary")).toBeNull();
+  });
+
   it("shows completion duration for finished tool runs", () => {
     renderTimeline([
       {

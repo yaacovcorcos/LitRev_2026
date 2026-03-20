@@ -1,5 +1,6 @@
 import { appendReasoningRaw } from "@/lib/ai/reasoning-visibility";
 import type { AIErrorEnvelope, AIStreamChunk, ChoiceOption, CopilotPage, UserInputRequest } from "@/types/ai";
+import { buildToolReceiptPatch, buildToolReceiptSeed } from "@/lib/ai/tool-receipts";
 
 export type SharedToolStatus = "queued" | "running" | "done" | "failed" | "interrupted";
 
@@ -43,6 +44,11 @@ export type SharedStreamIntent =
       callId: string;
       toolName: string;
       status: SharedToolStatus;
+      displayLabel?: string;
+      inputPreview?: string;
+      outcomeSummary?: string;
+      sourceBadge?: string;
+      detailItems?: string[];
       summary?: string;
       queryPreview?: string;
       returnedCount?: number;
@@ -193,142 +199,10 @@ function removeCallId(callIds: string[], callId: string): string[] {
   return callIds.filter((id) => id !== callId);
 }
 
-function buildQueryPreview(value: unknown): string | undefined {
-  if (typeof value !== "string") return undefined;
-  const normalized = value.replace(/\s+/g, " ").trim();
-  if (!normalized) return undefined;
-  const maxLength = 96;
-  if (normalized.length <= maxLength) return normalized;
-  return `${normalized.slice(0, maxLength - 1).trimEnd()}…`;
-}
-
-const SEARCH_TOOL_LABELS = {
-  search_pubmed: "PubMed",
-  search_openalex: "OpenAlex",
-  search_semantic_scholar: "Semantic Scholar",
-} satisfies Record<string, string>;
-
-type SearchToolName = keyof typeof SEARCH_TOOL_LABELS;
-
-function isSearchToolName(toolName: string | undefined): toolName is SearchToolName {
-  return typeof toolName === "string" && toolName in SEARCH_TOOL_LABELS;
-}
-
-function getSearchToolLabel(toolName: string | undefined): string | null {
-  return isSearchToolName(toolName) ? SEARCH_TOOL_LABELS[toolName] : null;
-}
-
-function getSearchToolCallMetadata(
-  chunk: AIStreamChunk,
-): Pick<Extract<SharedStreamIntent, { type: "tool_activity_upsert" }>, "queryPreview"> | undefined {
-  if (!isSearchToolName(chunk.toolCall?.name)) return undefined;
-  return {
-    queryPreview: buildQueryPreview(chunk.toolCall.arguments?.query),
-  };
-}
-
-function formatSearchResultIdentifier(toolName: SearchToolName, value: Record<string, unknown>): string | null {
-  const pmid = typeof value.pmid === "string" ? value.pmid.trim() : "";
-  const doi = typeof value.doi === "string" ? value.doi.trim() : "";
-  const metadata = typeof value.metadata === "object" && value.metadata
-    ? value.metadata as Record<string, unknown>
-    : null;
-
-  if (toolName === "search_pubmed") {
-    if (pmid) return `PMID ${pmid}`;
-    if (doi) return `DOI ${doi}`;
-    return null;
-  }
-
-  if (doi) return `DOI ${doi}`;
-  if (pmid) return `PMID ${pmid}`;
-
-  if (toolName === "search_openalex") {
-    const openAlexId = typeof metadata?.openAlexId === "string"
-      ? metadata.openAlexId
-      : typeof value.sourceUrl === "string"
-        ? value.sourceUrl
-        : "";
-    const shortId = openAlexId.split("/").filter(Boolean).at(-1) ?? "";
-    return shortId ? `OpenAlex ${shortId}` : null;
-  }
-
-  if (toolName === "search_semantic_scholar") {
-    const paperId = typeof metadata?.s2PaperId === "string" ? metadata.s2PaperId.trim() : "";
-    return paperId ? `S2 ${paperId}` : null;
-  }
-
-  return null;
-}
-
-function getSearchResultIdentifiers(toolName: SearchToolName, result: Record<string, unknown>): string[] | undefined {
-  const items = Array.isArray(result.results) ? result.results : [];
-  const identifiers: string[] = [];
-  const seen = new Set<string>();
-
-  for (const item of items) {
-    if (!item || typeof item !== "object") continue;
-    const identifier = formatSearchResultIdentifier(toolName, item as Record<string, unknown>);
-    if (!identifier || seen.has(identifier)) continue;
-    seen.add(identifier);
-    identifiers.push(identifier);
-    if (identifiers.length >= 2) break;
-  }
-
-  return identifiers.length > 0 ? identifiers : undefined;
-}
-
-function getSearchToolResultMetadata(
-  chunk: AIStreamChunk,
-): Pick<Extract<SharedStreamIntent, { type: "tool_activity_upsert" }>, "returnedCount" | "totalResults" | "resultIdentifiers"> | undefined {
-  if (!isSearchToolName(chunk.toolName)) return undefined;
-  const result = chunk.toolResult?.result;
-  if (!result || typeof result !== "object") return undefined;
-  const record = result as Record<string, unknown>;
-  return {
-    returnedCount: typeof record.returnedCount === "number" ? record.returnedCount : undefined,
-    totalResults: typeof record.totalResults === "number" ? record.totalResults : undefined,
-    resultIdentifiers: getSearchResultIdentifiers(chunk.toolName, record),
-  };
-}
-
 function getPubMedSearchSize(metadata?: Pick<Extract<SharedStreamIntent, { type: "tool_activity_upsert" }>, "returnedCount" | "totalResults">): number | null {
   if (typeof metadata?.totalResults === "number") return metadata.totalResults;
   if (typeof metadata?.returnedCount === "number") return metadata.returnedCount;
   return null;
-}
-
-function buildPubMedResultSummary(metadata?: Pick<Extract<SharedStreamIntent, { type: "tool_activity_upsert" }>, "returnedCount" | "totalResults">): string | undefined {
-  if (!metadata) return undefined;
-  if (typeof metadata.returnedCount === "number" && typeof metadata.totalResults === "number") {
-    return `Found ${metadata.returnedCount} of ${metadata.totalResults} PubMed results.`;
-  }
-  if (typeof metadata.returnedCount === "number") {
-    return `Found ${metadata.returnedCount} PubMed results.`;
-  }
-  if (typeof metadata.totalResults === "number") {
-    return `Found ${metadata.totalResults} PubMed results.`;
-  }
-  return undefined;
-}
-
-function buildSearchResultSummary(
-  toolName: string | undefined,
-  metadata?: Pick<Extract<SharedStreamIntent, { type: "tool_activity_upsert" }>, "returnedCount" | "totalResults">,
-): string | undefined {
-  const label = getSearchToolLabel(toolName);
-  if (!label || !metadata) return undefined;
-  if (toolName === "search_pubmed") return buildPubMedResultSummary(metadata);
-  if (typeof metadata.returnedCount === "number" && typeof metadata.totalResults === "number") {
-    return `Found ${metadata.returnedCount} of ${metadata.totalResults} ${label} results.`;
-  }
-  if (typeof metadata.returnedCount === "number") {
-    return `Found ${metadata.returnedCount} ${label} results.`;
-  }
-  if (typeof metadata.totalResults === "number") {
-    return `Found ${metadata.totalResults} ${label} results.`;
-  }
-  return undefined;
 }
 
 function buildPubMedCheckpoint(params: {
@@ -438,7 +312,7 @@ export function reduceSharedStreamChunk(
     case "tool_call": {
       const { callId, syntheticToolCounter } = resolveToolCallId(prev, chunk.toolCall?.id);
       const toolName = chunk.toolCall?.name ?? "tool";
-      const metadata = getSearchToolCallMetadata(chunk);
+      const receiptSeed = buildToolReceiptSeed(chunk);
       const runningToolCallIds = appendUniqueCallId(prev.runningToolCallIds ?? [], callId);
       next = {
         ...prev,
@@ -451,7 +325,7 @@ export function reduceSharedStreamChunk(
         callId,
         toolName,
         status: "running",
-        ...metadata,
+        ...receiptSeed,
       });
       if (!chunk.replay && toolName === "search_pubmed") {
         intents.push({
@@ -467,15 +341,21 @@ export function reduceSharedStreamChunk(
       const fallbackCallId = prev.lastToolCallId ?? runningToolCallIds[runningToolCallIds.length - 1] ?? null;
       const callId = chunk.toolResult?.callId ?? fallbackCallId;
       const isPubMedResult = chunk.toolName === "search_pubmed";
-      const metadata = getSearchToolResultMetadata(chunk);
+      const receiptPatch = buildToolReceiptPatch(chunk);
       if (callId) {
         intents.push({
           type: "tool_activity_upsert",
           callId,
           toolName: chunk.toolName ?? "tool",
           status: chunk.toolResult?.error ? "failed" : "done",
-          summary: chunk.toolResult?.error ?? buildSearchResultSummary(chunk.toolName, metadata),
-          ...metadata,
+          displayLabel: receiptPatch?.displayLabel,
+          outcomeSummary: chunk.toolResult?.error ?? receiptPatch?.outcomeSummary,
+          sourceBadge: receiptPatch?.sourceBadge,
+          detailItems: receiptPatch?.detailItems,
+          summary: chunk.toolResult?.error ?? receiptPatch?.summary,
+          returnedCount: receiptPatch?.returnedCount,
+          totalResults: receiptPatch?.totalResults,
+          resultIdentifiers: receiptPatch?.resultIdentifiers,
           errorMeta: chunk.toolResult?.errorMeta,
         });
       }
@@ -485,7 +365,7 @@ export function reduceSharedStreamChunk(
           message: "Reviewing PubMed results",
         });
         const checkpoint = buildPubMedCheckpoint({
-          metadata,
+          metadata: receiptPatch,
           completedSearchCount: prev.completedPubmedSearchCount,
           previousSearchSize: prev.lastPubmedSearchSize,
         });
@@ -513,7 +393,7 @@ export function reduceSharedStreamChunk(
           ? prev.completedPubmedSearchCount + 1
           : prev.completedPubmedSearchCount,
         lastPubmedSearchSize: isPubMedResult && !chunk.toolResult?.error
-          ? getPubMedSearchSize(metadata)
+          ? getPubMedSearchSize(receiptPatch)
           : prev.lastPubmedSearchSize,
       };
       return { state: next, intents };

@@ -554,6 +554,20 @@
     letter-spacing: 0.04em;
 }
 
+.toolActivityBadge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 6px;
+    border-radius: 999px;
+    border: 1px solid rgba(var(--rgb-ui-contrast), 0.08);
+    background: rgba(var(--rgb-ui-surface), 0.72);
+    color: var(--text-secondary);
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 1.2;
+}
+
 .toolActivitySummary {
     margin: 0;
     font-size: 12px;
@@ -566,6 +580,13 @@
     font-size: 11px;
     line-height: 1.4;
     color: var(--text-muted);
+}
+
+.toolActivityMetaRow {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
 }
 
 .toolSequenceToggle {

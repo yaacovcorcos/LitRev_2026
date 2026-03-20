@@ -143,10 +143,37 @@ function getToolActivityTimingText(item: Extract<TimelineItem, { type: "tool_act
 }
 
 function getToolActivityDisplayName(item: TimelineToolActivityItem): string {
+    if (item.displayLabel?.trim()) return item.displayLabel.trim();
     if (item.toolName === "search_pubmed") return "PubMed";
     if (item.toolName === "search_openalex") return "OpenAlex";
     if (item.toolName === "search_semantic_scholar") return "Semantic Scholar";
     return item.toolName;
+}
+
+function getToolActivityInputPreview(item: TimelineToolActivityItem): string | null {
+    const inputPreview = item.inputPreview?.trim();
+    if (inputPreview) return inputPreview;
+    const queryPreview = item.queryPreview?.trim();
+    return queryPreview || null;
+}
+
+function getToolActivityOutcomeSummary(item: TimelineToolActivityItem): string | null {
+    const outcomeSummary = item.outcomeSummary?.trim();
+    if (outcomeSummary) return outcomeSummary;
+    const summary = item.summary?.trim();
+    return summary || null;
+}
+
+function getToolActivityDetailItems(item: TimelineToolActivityItem): string[] {
+    const detailItems = (item.detailItems ?? []).map((value) => value.trim()).filter(Boolean);
+    if (detailItems.length > 0) return detailItems;
+
+    const fallback: string[] = [];
+    const resultCountText = getSearchResultCountText(item);
+    const identifierText = getSearchIdentifierText(item);
+    if (resultCountText) fallback.push(resultCountText);
+    if (identifierText) fallback.push(identifierText);
+    return fallback;
 }
 
 function isSearchReceipt(item: TimelineToolActivityItem): boolean {
@@ -1198,10 +1225,9 @@ function TimelineRendererInner({
             case "tool_activity": {
                 const meta = TOOL_ACTIVITY_META[item.status];
                 const timingText = getToolActivityTimingText(item);
-                const summary = item.summary?.trim();
-                const queryPreview = item.queryPreview?.trim();
-                const resultCountText = getSearchResultCountText(item);
-                const identifierText = getSearchIdentifierText(item);
+                const inputPreview = getToolActivityInputPreview(item);
+                const outcomeSummary = getToolActivityOutcomeSummary(item);
+                const detailItems = getToolActivityDetailItems(item);
                 return (
                     <div
                         key={item.id}
@@ -1215,13 +1241,19 @@ function TimelineRendererInner({
                                 {meta.icon}
                             </span>
                             <span className={styles.toolActivityTitle}>{getToolActivityDisplayName(item)}</span>
+                            {item.sourceBadge ? <span className={styles.toolActivityBadge}>{item.sourceBadge}</span> : null}
                             <span className={styles.toolActivityState}>{meta.label}</span>
                         </div>
                         <p className={styles.toolActivityMeta}>{timingText}</p>
-                        {queryPreview ? <p className={styles.toolActivitySummary}>{queryPreview}</p> : null}
-                        {resultCountText ? <p className={styles.toolActivityMeta}>{resultCountText}</p> : null}
-                        {identifierText ? <p className={styles.toolActivityMeta}>{identifierText}</p> : null}
-                        {summary ? <p className={styles.toolActivitySummary}>{summary}</p> : null}
+                        {inputPreview ? <p className={styles.toolActivitySummary}>{inputPreview}</p> : null}
+                        {detailItems.length > 0 ? (
+                            <div className={styles.toolActivityMetaRow}>
+                                {detailItems.map((detail) => (
+                                    <span key={detail} className={styles.toolActivityMeta}>{detail}</span>
+                                ))}
+                            </div>
+                        ) : null}
+                        {outcomeSummary ? <p className={styles.toolActivitySummary}>{outcomeSummary}</p> : null}
                     </div>
                 );
             }
@@ -1358,30 +1390,31 @@ function TimelineRendererInner({
                 {expanded ? (
                     <ol className={styles.toolSequenceList}>
                         {entry.items.map((item, itemIndex) => {
-                            const resultCountText = getSearchResultCountText(item);
                             const timingText = getToolActivityTimingText(item);
-                            const identifierText = getSearchIdentifierText(item);
+                            const detailItems = getToolActivityDetailItems(item);
+                            const outcomeSummary = getToolActivityOutcomeSummary(item);
+                            const inputPreview = getToolActivityInputPreview(item);
                             return (
                                 <li key={item.id} className={styles.toolSequenceItem}>
                                     <div className={styles.toolSequenceItemHead}>
                                         <span className={styles.toolSequenceIndex}>{itemIndex + 1}.</span>
-                                        {item.queryPreview ? (
-                                            <span className={styles.toolSequenceQuery}>{item.queryPreview}</span>
+                                        {inputPreview ? (
+                                            <span className={styles.toolSequenceQuery}>{inputPreview}</span>
                                         ) : (
                                             <span className={styles.toolSequenceQueryMuted}>Query unavailable</span>
                                         )}
                                     </div>
                                     <div className={styles.toolSequenceMetaRow}>
-                                        {resultCountText ? (
-                                            <span className={styles.toolActivityMeta}>{resultCountText}</span>
+                                        {item.sourceBadge ? (
+                                            <span className={styles.toolActivityBadge}>{item.sourceBadge}</span>
                                         ) : null}
-                                        {identifierText ? (
-                                            <span className={styles.toolActivityMeta}>{identifierText}</span>
-                                        ) : null}
+                                        {detailItems.map((detail) => (
+                                            <span key={detail} className={styles.toolActivityMeta}>{detail}</span>
+                                        ))}
                                         <span className={styles.toolActivityMeta}>{timingText}</span>
                                     </div>
-                                    {item.summary?.trim() ? (
-                                        <p className={styles.toolActivitySummary}>{item.summary.trim()}</p>
+                                    {outcomeSummary ? (
+                                        <p className={styles.toolActivitySummary}>{outcomeSummary}</p>
                                     ) : null}
                                 </li>
                             );
@@ -1394,7 +1427,6 @@ function TimelineRendererInner({
             </div>
         );
     };
-
     const renderExecutionTraceEntry = (entry: Extract<ExecutionTraceEntry, { kind: "execution_trace" }>) => {
         const presentedTraceItems = buildPresentedTimeline(entry.traceItems);
         const collapsed = entry.mode === "anchored"

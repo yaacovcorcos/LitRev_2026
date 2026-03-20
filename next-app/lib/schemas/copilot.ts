@@ -74,7 +74,12 @@ export const copilotMessageSchema = z.object({
         .object({
             callId: z.string(),
             toolName: z.string(),
-            status: z.enum(["queued", "running", "done", "failed"]),
+            status: z.enum(["queued", "running", "done", "failed", "interrupted"]),
+            displayLabel: z.string().optional(),
+            inputPreview: z.string().optional(),
+            outcomeSummary: z.string().optional(),
+            sourceBadge: z.string().optional(),
+            detailItems: z.array(z.string()).optional(),
             summary: z.string().optional(),
             queryPreview: z.string().optional(),
             returnedCount: z.number().optional(),

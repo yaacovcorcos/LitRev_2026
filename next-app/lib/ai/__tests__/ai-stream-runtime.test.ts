@@ -117,4 +117,64 @@ describe("createAiStreamRuntime", () => {
       retryable: false,
     });
   });
+
+  it("preserves semantic receipt fields when tool activity intents upsert the same call", () => {
+    const timeline = new Map<string, TimelineItem[]>();
+    const getItems = (conversationId: string) => timeline.get(conversationId) ?? [];
+
+    const runtime = createAiStreamRuntime({
+      aiMessageId: "ai-1",
+      page: "overview",
+      section: "protocol",
+      initialConversationId: "conv-1",
+      selectedProjectId: "project-1",
+      myGen: 1,
+      getCurrentGen: () => 1,
+      updateConversationTimeline: (conversationId, updater) => {
+        timeline.set(conversationId, updater(getItems(conversationId)));
+      },
+      ensureConversationTimeline: (conversationId) => {
+        timeline.set(conversationId, getItems(conversationId));
+      },
+      setActiveConversationId: vi.fn(),
+      upsertConversationTitle: vi.fn(),
+      setPendingChoices: vi.fn(),
+      setPendingUserInput: vi.fn(),
+      onNavigate: vi.fn(),
+    });
+
+    runtime.handleChunk({
+      type: "tool_call",
+      toolCall: {
+        id: "call-1",
+        name: "delegate_search",
+        arguments: { task: "Find recent omega-3 cognition trials" },
+      },
+    });
+
+    runtime.handleChunk({
+      type: "tool_result",
+      toolName: "delegate_search",
+      toolResult: {
+        callId: "call-1",
+        result: {
+          success: true,
+          summary: "Queued PubMed and OpenAlex searches and shortlisted 4 studies.",
+          toolCallCount: 3,
+          stopReason: "completed",
+        },
+      },
+    });
+
+    expect(getItems("conv-1")).toContainEqual(expect.objectContaining({
+      type: "tool_activity",
+      callId: "call-1",
+      status: "done",
+      displayLabel: "Delegated search",
+      inputPreview: "Find recent omega-3 cognition trials",
+      outcomeSummary: "Queued PubMed and OpenAlex searches and shortlisted 4 studies.",
+      sourceBadge: "Search agent",
+      detailItems: ["3 delegated tool calls", "Stop reason: completed"],
+    }));
+  });
 });
