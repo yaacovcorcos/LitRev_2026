@@ -28,6 +28,9 @@ Current route contract:
 - `Full Draft` only renders written sections; otherwise it shows the start-drafting empty state
 - left Evidence Ledger is the only draft-owned support surface
 - right side remains owned by the existing project copilot shell
+- compatibility or stale states with zero writable named sections must disable `Section` mode and fall back to `Full Draft` as the only valid projection
+- zero-section evidence targeting resolves to `Whole draft` until a writable named section exists
+- `Full Draft` visibility is driven by one normalized contentful-section predicate, while generated `References` remains read-only and only appears last when it has compiled content
 
 ### Draft UI Approval Rule
 - Any draft-route UI change requires explicit user approval before implementation.

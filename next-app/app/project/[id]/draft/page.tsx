@@ -19,7 +19,7 @@ import { ProjectCopilot } from "@/components/ProjectCopilot";
 import { EmptyState, EmptyStateSkeleton } from "@/components/ui/EmptyState";
 import { useProjectCopilot } from "@/contexts/ProjectCopilotContext";
 import { useProjectShell } from "@/contexts/ProjectShellContext";
-import { DEFAULT_SECTION_ORDER, OPTIONAL_SECTION_KEYS, type DraftMode, DraftSectionId } from "@/types/draft";
+import { OPTIONAL_SECTION_KEYS, UNSECTIONED_DRAFT_ID, type DraftMode, DraftSectionId } from "@/types/draft";
 import {
   DEFAULT_SECTION_FORMAT,
   DraftState,
@@ -68,6 +68,14 @@ import { buildReferencesDoc, compileDraftCitations } from "@/lib/citation-compil
 import { COARSE_POINTER_MEDIA_QUERY, MOBILE_VIEWPORT_MEDIA_QUERY } from "@/lib/mobile/breakpoints";
 import { isMobileDraftV2Enabled } from "@/lib/mobile/feature-flags";
 import { isContextToolbarV1Enabled } from "@/lib/context-capture/feature-flags";
+import {
+  canUseDraftSectionMode,
+  getVisibleFullDraftSectionIds,
+  resolveDraftEvidenceTarget,
+  resolveDraftMode,
+  resolveFullDraftActiveSection,
+  resolveSectionModeActiveSection,
+} from "@/lib/draftStateContracts";
 
 function createCitationUid(sectionId: DraftSectionId): string {
   const rand = Math.random().toString(36).slice(2, 8);
@@ -139,17 +147,20 @@ function DraftContent() {
 
   const applyDraftFromQuery = useCallback(
     (loaded: DraftState) => {
-      const mode = isDraftMode(queryMode) ? queryMode : loaded.mode;
-      const order = loaded.sectionOrder.length > 0 ? [...loaded.sectionOrder] : [...DEFAULT_SECTION_ORDER];
+      const order = [...loaded.sectionOrder];
       const rawQuery = querySection?.trim();
       const sectionFromQuery =
-        rawQuery && (isBaseSectionKey(rawQuery) || loaded.customSections?.[rawQuery]) ? rawQuery : null;
-      if (sectionFromQuery && !order.includes(sectionFromQuery)) {
-        order.push(sectionFromQuery);
-      }
+        rawQuery
+        && (isBaseSectionKey(rawQuery) || loaded.customSections?.[rawQuery])
+        && order.includes(rawQuery)
+          ? rawQuery
+          : null;
+      const modeCandidate = isDraftMode(queryMode) ? queryMode : loaded.mode;
+      const mode = resolveDraftMode(modeCandidate, order);
       const candidate = sectionFromQuery ?? loaded.activeSection;
-      const activeSection =
-        typeof candidate === "string" && order.includes(candidate) ? candidate : order[0] ?? "abstract";
+      const activeSection = mode === "section"
+        ? resolveSectionModeActiveSection(candidate, order)
+        : resolveFullDraftActiveSection(candidate, order);
       return {
         ...loaded,
         mode,
@@ -228,20 +239,31 @@ function DraftContent() {
     [draft.sectionOrder, sectionMetaById]
   );
 
-  const routeActiveSection = orderedSections.find((section) => section.id === draft.activeSection)?.id
-    ?? orderedSections[0]?.id
-    ?? DEFAULT_SECTION_ORDER[0];
+  const canUseSectionMode = useMemo(() => canUseDraftSectionMode(draft.sectionOrder), [draft.sectionOrder]);
+  const resolvedMode = useMemo(() => resolveDraftMode(draft.mode, draft.sectionOrder), [draft.mode, draft.sectionOrder]);
+  const routeActiveSection = useMemo(
+    () => (
+      resolvedMode === "section"
+        ? resolveSectionModeActiveSection(draft.activeSection, draft.sectionOrder)
+        : resolveFullDraftActiveSection(draft.activeSection, draft.sectionOrder)
+    ),
+    [draft.activeSection, draft.sectionOrder, resolvedMode],
+  );
 
-  const activeSectionRef = useRef<DraftSectionId>(routeActiveSection);
+  const activeSectionRef = useRef<DraftSectionId | null>(routeActiveSection);
   useEffect(() => {
     activeSectionRef.current = routeActiveSection;
   }, [routeActiveSection]);
 
   const sectionKeys = useMemo(() => orderedSections.map((section) => section.id), [orderedSections]);
 
+  const visibleFullDraftSectionIds = useMemo(
+    () => getVisibleFullDraftSectionIds(draft.sectionOrder, draft.contentBySection),
+    [draft.contentBySection, draft.sectionOrder],
+  );
   const fullDraftSections = useMemo(
-    () => orderedSections.filter((section) => docHasContent(draft.contentBySection[section.id])),
-    [draft.contentBySection, orderedSections]
+    () => visibleFullDraftSectionIds.map((sectionId) => sectionMetaById.get(sectionId)).filter((section): section is SectionMeta => Boolean(section)),
+    [sectionMetaById, visibleFullDraftSectionIds],
   );
   const compiledCitations = useMemo(
     () =>
@@ -267,12 +289,25 @@ function DraftContent() {
         .filter((section): section is SectionMeta => Boolean(section)),
     [availableSectionKeys, sectionMetaById]
   );
+  const evidenceTargetSectionId = useMemo(
+    () => resolveDraftEvidenceTarget(resolvedMode, routeActiveSection, draft.sectionOrder),
+    [draft.sectionOrder, resolvedMode, routeActiveSection],
+  );
   const activeSectionMeta = useMemo(
-    () => sectionMetaById.get(routeActiveSection) ?? null,
+    () => (routeActiveSection ? sectionMetaById.get(routeActiveSection) ?? null : null),
     [routeActiveSection, sectionMetaById]
   );
-  const activeSectionLabel = activeSectionMeta?.label ?? "Draft";
+  const evidenceTargetMeta = useMemo(
+    () => (
+      evidenceTargetSectionId === UNSECTIONED_DRAFT_ID
+        ? { id: UNSECTIONED_DRAFT_ID, label: "Whole draft" }
+        : sectionMetaById.get(evidenceTargetSectionId) ?? { id: UNSECTIONED_DRAFT_ID, label: "Whole draft" }
+    ),
+    [evidenceTargetSectionId, sectionMetaById],
+  );
+  const activeSectionLabel = activeSectionMeta?.label ?? evidenceTargetMeta.label;
   const isReferencesSection = routeActiveSection === "references";
+  const activeFormatSectionId = routeActiveSection ?? evidenceTargetSectionId;
   const formatVarsById = useMemo(() => {
     const map: Record<DraftSectionId, CSSProperties> = {};
     for (const [id, format] of Object.entries(draft.formattingBySection)) {
@@ -280,11 +315,11 @@ function DraftContent() {
     }
     return map;
   }, [draft.formattingBySection]);
-  const activeFormat = draft.formattingBySection[routeActiveSection] ?? DEFAULT_SECTION_FORMAT;
+  const activeFormat = draft.formattingBySection[activeFormatSectionId] ?? DEFAULT_SECTION_FORMAT;
   const activeFontFamily = FONT_FAMILY_OPTIONS.some((option) => option.value === activeFormat.fontFamily)
     ? activeFormat.fontFamily
     : DEFAULT_SECTION_FORMAT.fontFamily;
-  const activeFormatVars = formatVarsById[routeActiveSection] ?? formatToVars(DEFAULT_SECTION_FORMAT);
+  const activeFormatVars = formatVarsById[activeFormatSectionId] ?? formatToVars(DEFAULT_SECTION_FORMAT);
   const ledgerPanelId = "draft-ledger-panel";
   const copilotPanelId = "draft-copilot-panel";
   const draftMainClassName = `${styles.appMainOverride} ${mobileDraftV2Enabled ? styles.appMainOverrideMobileV2 : ""}`;
@@ -388,15 +423,33 @@ function DraftContent() {
   );
 
   useEffect(() => {
+    setDraft((prev) => {
+      const nextMode = resolveDraftMode(prev.mode, prev.sectionOrder);
+      const nextActiveSection = nextMode === "section"
+        ? resolveSectionModeActiveSection(prev.activeSection, prev.sectionOrder)
+        : resolveFullDraftActiveSection(prev.activeSection, prev.sectionOrder);
+      return prev.mode === nextMode && prev.activeSection === nextActiveSection
+        ? prev
+        : {
+            ...prev,
+            mode: nextMode,
+            activeSection: nextActiveSection,
+          };
+    });
+  }, [draft.sectionOrder]);
+
+  useEffect(() => {
     if (!id) return;
     const params = new URLSearchParams();
-    params.set("mode", draft.mode);
-    params.set("section", routeActiveSection);
+    params.set("mode", resolvedMode);
+    if (routeActiveSection) {
+      params.set("section", routeActiveSection);
+    }
     const nextUrl = `/project/${id}/draft?${params.toString()}`;
     if (lastSyncedUrlRef.current === nextUrl) return;
     lastSyncedUrlRef.current = nextUrl;
     router.replace(nextUrl, { scroll: false });
-  }, [draft.mode, id, routeActiveSection, router]);
+  }, [id, resolvedMode, routeActiveSection, router]);
 
   useEffect(() => {
     return () => {
@@ -477,7 +530,7 @@ function DraftContent() {
   });
 
   const handleSelectSection = (key: DraftSectionId) => {
-    if (draft.mode === "full") {
+    if (resolvedMode === "full") {
       const el = sectionElRef.current[key];
       if (!el) {
         openSectionInSectionMode(key);
@@ -493,26 +546,31 @@ function DraftContent() {
     const sectionEditor = activeEditorRef.current;
     if (sectionEditor) {
       const currentKey = activeSectionRef.current;
-      queueContentUpdate(currentKey, sectionEditor.getJSON());
-      flushContentCommit();
+      if (currentKey) {
+        queueContentUpdate(currentKey, sectionEditor.getJSON());
+        flushContentCommit();
+      }
     }
     updateDraft((prev) => (prev.activeSection === key ? prev : { ...prev, activeSection: key }));
     setTimeout(() => focusEditorForSection(key), 0);
   };
 
   const handleToggleMode = (mode: DraftMode) => {
+    if (mode === "section" && !canUseSectionMode) {
+      return;
+    }
     const editor = activeEditorRef.current;
     if (editor) {
-      queueContentUpdate(activeSectionRef.current, editor.getJSON());
+      const currentKey = activeSectionRef.current;
+      if (currentKey) {
+        queueContentUpdate(currentKey, editor.getJSON());
+      }
     }
     flushContentCommit();
 
-    const nextActiveSection =
-      mode === "full"
-        ? docHasContent(pendingContentRef.current[routeActiveSection])
-          ? routeActiveSection
-          : draft.sectionOrder.find((key) => docHasContent(pendingContentRef.current[key])) ?? routeActiveSection
-        : routeActiveSection;
+    const nextActiveSection = mode === "section"
+      ? resolveSectionModeActiveSection(routeActiveSection, draft.sectionOrder)
+      : resolveFullDraftActiveSection(routeActiveSection, draft.sectionOrder);
 
     updateDraft((prev) => {
       if (prev.mode === mode && prev.activeSection === nextActiveSection) return prev;
@@ -522,18 +580,18 @@ function DraftContent() {
         activeSection: nextActiveSection,
       };
     });
-    if (mode === "full") {
+    if (mode === "full" && nextActiveSection) {
       setTimeout(() => {
         const el = sectionElRef.current[nextActiveSection];
         el?.scrollIntoView({ behavior: "smooth", block: "start" });
         focusEditorForSection(nextActiveSection);
       }, 0);
-    } else {
+    } else if (nextActiveSection) {
       setTimeout(() => focusEditorForSection(nextActiveSection), 0);
     }
   };
 
-  const usedEvidenceIds = draft.ledgerBySection[routeActiveSection] ?? EMPTY_IDS;
+  const usedEvidenceIds = draft.ledgerBySection[evidenceTargetSectionId] ?? EMPTY_IDS;
   const usedEvidence = useMemo(
     () => studies.filter((s) => usedEvidenceIds.includes(s.id)),
     [studies, usedEvidenceIds]
@@ -541,10 +599,10 @@ function DraftContent() {
 
   const insertCitation = (study: Study) => {
     const editor = activeEditorRef.current
-      ?? (draft.mode === "section" ? sectionEditor : editorBySectionRef.current[routeActiveSection])
+      ?? (resolvedMode === "section" ? sectionEditor : (routeActiveSection ? editorBySectionRef.current[routeActiveSection] : null))
       ?? null;
     if (!editor) return;
-    const uid = createCitationUid(routeActiveSection);
+    const uid = createCitationUid(activeFormatSectionId);
     editor
       .chain()
       .focus()
@@ -554,7 +612,7 @@ function DraftContent() {
   };
 
   const handleAddEvidence = (refId: string) => {
-    const targetSection = activeSectionRef.current;
+    const targetSection = resolveDraftEvidenceTarget(resolvedMode, activeSectionRef.current, draft.sectionOrder);
     updateDraft((prev) => {
       const existing = prev.ledgerBySection[targetSection] ?? [];
       if (existing.includes(refId)) return prev;
@@ -569,7 +627,7 @@ function DraftContent() {
   };
 
   const handleRemoveEvidence = (refId: string) => {
-    const targetSection = activeSectionRef.current;
+    const targetSection = resolveDraftEvidenceTarget(resolvedMode, activeSectionRef.current, draft.sectionOrder);
     updateDraft((prev) => {
       const existing = prev.ledgerBySection[targetSection] ?? [];
       if (!existing.includes(refId)) return prev;
@@ -587,11 +645,11 @@ function DraftContent() {
     (key: DraftSectionId, editor: Editor) => {
       activeEditorRef.current = editor;
       setActiveEditor(editor);
-      if (draft.mode === "full") {
+      if (resolvedMode === "full") {
         updateDraft((prev) => (prev.activeSection === key ? prev : { ...prev, activeSection: key }));
       }
     },
-    [draft.mode, updateDraft]
+    [resolvedMode, updateDraft]
   );
 
   const handleUpdateSection = useCallback(
@@ -658,7 +716,7 @@ function DraftContent() {
           placeholder: "Start writing…",
         }),
       ],
-      content: draft.contentBySection[routeActiveSection] ?? emptyDoc(),
+      content: draft.contentBySection[routeActiveSection ?? UNSECTIONED_DRAFT_ID] ?? emptyDoc(),
       editorProps: {
         attributes: {
           class: styles.proseMirror,
@@ -671,7 +729,9 @@ function DraftContent() {
       onUpdate: ({ editor }) => {
         if (activeSectionRef.current === "references") return;
         const key = activeSectionRef.current;
-        handleUpdateSection(key, editor.getJSON());
+        if (key) {
+          handleUpdateSection(key, editor.getJSON());
+        }
       },
     },
     []
@@ -686,22 +746,23 @@ function DraftContent() {
 
   useEffect(() => {
     if (!sectionEditor) return;
-    if (draft.mode !== "section") {
+    if (resolvedMode !== "section") {
       lastLoadedSectionRef.current = null;
       return;
     }
+    if (!routeActiveSection) return;
     if (lastLoadedSectionRef.current === routeActiveSection) return;
     const content = draft.contentBySection[routeActiveSection] ?? emptyDoc();
     sectionEditor.commands.setContent(content, { emitUpdate: false });
     activeEditorRef.current = sectionEditor;
     lastLoadedSectionRef.current = routeActiveSection;
-  }, [draft.contentBySection, draft.mode, routeActiveSection, sectionEditor]);
+  }, [draft.contentBySection, resolvedMode, routeActiveSection, sectionEditor]);
 
-  const formattingEditor = draft.mode === "section" ? sectionEditor : activeEditor;
+  const formattingEditor = resolvedMode === "section" ? sectionEditor : activeEditor;
 
   const buildCurrentDraftSelectionTarget = useCallback(() => {
     if (isReferencesSection) return null;
-    const editor = draft.mode === "section"
+    const editor = resolvedMode === "section"
       ? sectionEditor
       : activeEditorRef.current ?? activeEditor;
     if (!editor) return null;
@@ -718,17 +779,17 @@ function DraftContent() {
       section: activeSectionLabel,
       selectedText,
       surroundingText: fullText.slice(0, 1_200),
-      citedStudyIds: draft.ledgerBySection[routeActiveSection] ?? undefined,
+      citedStudyIds: draft.ledgerBySection[evidenceTargetSectionId] ?? undefined,
       sourceSurface: "draft",
     });
   }, [
     activeEditor,
     activeSectionLabel,
     draft.ledgerBySection,
-    draft.mode,
+    evidenceTargetSectionId,
     id,
     isReferencesSection,
-    routeActiveSection,
+    resolvedMode,
     sectionEditor,
   ]);
 
@@ -871,7 +932,7 @@ function DraftContent() {
         <DraftTopBar
           projectName={project.name}
           activeSection={routeActiveSection}
-          mode={draft.mode}
+          mode={resolvedMode}
           orderedSections={orderedSections}
           availableSections={availableSections}
           draggingKey={draggingKey}
@@ -897,6 +958,7 @@ function DraftContent() {
           hasDraftContent={hasDraftContent}
           onExportClick={() => setExportModalOpen(true)}
           saveStatus={saveStatus}
+          canUseSectionMode={canUseSectionMode}
         />
 
         <DemoGuideCard
@@ -950,7 +1012,7 @@ function DraftContent() {
                 </div>
                 <div className={styles.ledgerContext}>
                   <span className={styles.ledgerContextLabel}>for</span>
-                  <span className={styles.ledgerContextSection}>{activeSectionLabel}</span>
+                  <span className={styles.ledgerContextSection}>{evidenceTargetMeta.label}</span>
                 </div>
               </div>
 
@@ -1040,11 +1102,11 @@ function DraftContent() {
 
             <div className={styles.toolbarRow}>
               <EditorToolbar
-                editor={isReferencesSection ? null : (draft.mode === "section" ? sectionEditor : activeEditor)}
+                editor={isReferencesSection ? null : (resolvedMode === "section" ? sectionEditor : activeEditor)}
                 dir={paragraphDir}
                 onAskAi={() => {
                   if (isReferencesSection) return;
-                  const ed = draft.mode === "section" ? sectionEditor : activeEditor;
+                  const ed = resolvedMode === "section" ? sectionEditor : activeEditor;
                   const selectedText = ed && !ed.state.selection.empty
                     ? ed.state.doc.textBetween(ed.state.selection.from, ed.state.selection.to)
                     : ed?.getText().slice(0, 500) ?? "";
@@ -1113,7 +1175,7 @@ function DraftContent() {
                 isOpen={isFormatOpen}
                 setOpen={setFormatOpen}
                 formatRef={formatRef}
-                activeSection={routeActiveSection}
+                activeSection={activeFormatSectionId}
                 activeFormat={activeFormat}
                 activeFontFamily={activeFontFamily}
                 onUpdateFormat={updateSectionFormat}
@@ -1133,17 +1195,17 @@ function DraftContent() {
               </div>
             )}
 
-            {draft.mode === "section" ? (
+            {resolvedMode === "section" ? (
               <div
                 className={styles.sectionEditorWrapper}
                 role="tabpanel"
                 id="draft-section-panel"
-                aria-labelledby={`draft-tab-${routeActiveSection}`}
+                aria-labelledby={routeActiveSection ? `draft-tab-${routeActiveSection}` : undefined}
               >
                 {isReferencesSection ? (
                   <>
                     <div className={styles.editorSurface} style={activeFormatVars}>
-                      <DraftSectionHeading id={`section-heading-${routeActiveSection}`} label={activeSectionLabel} />
+                      <DraftSectionHeading id={`section-heading-${routeActiveSection ?? "whole-draft"}`} label={activeSectionLabel} />
                       <pre className={styles.referencesReadOnly}>{jsonToText(draft.contentBySection.references)}</pre>
                     </div>
                     <div className={styles.helperText}>References are auto-generated from inline citations.</div>
@@ -1151,7 +1213,7 @@ function DraftContent() {
                 ) : (
                   <>
                     <div className={styles.editorSurface} style={activeFormatVars}>
-                      <DraftSectionHeading id={`section-heading-${routeActiveSection}`} label={activeSectionLabel} />
+                      <DraftSectionHeading id={`section-heading-${routeActiveSection ?? "whole-draft"}`} label={activeSectionLabel} />
                       <EditorContent editor={sectionEditor} />
                     </div>
                     <div className={styles.helperText}>{activeSectionMeta?.placeholder}</div>

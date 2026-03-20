@@ -11,7 +11,7 @@ import type { JSONContent } from "@tiptap/core";
 
 type UseDraftSectionsDeps = {
   updateDraft: (updater: (prev: DraftState) => DraftState) => void;
-  activeSectionRef: React.MutableRefObject<DraftSectionId>;
+  activeSectionRef: React.MutableRefObject<DraftSectionId | null>;
   activeEditorRef: React.MutableRefObject<Editor | null>;
   queueContentUpdate: (key: DraftSectionId, json: JSONContent) => void;
   flushContentCommit: () => void;
@@ -45,8 +45,9 @@ export function useDraftSections(deps: UseDraftSectionsDeps) {
 
   const openSectionInSectionMode = useCallback((key: DraftSectionId) => {
     const editor = activeEditorRef.current;
-    if (editor) {
-      queueContentUpdate(activeSectionRef.current, editor.getJSON());
+    const currentActiveSection = activeSectionRef.current;
+    if (editor && currentActiveSection) {
+      queueContentUpdate(currentActiveSection, editor.getJSON());
     }
     flushContentCommit();
     updateDraft((prev) => {

@@ -2,6 +2,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { UNSECTIONED_DRAFT_ID } from "@/types/draft";
 import DraftPage from "../page";
 
 const {
@@ -221,6 +222,7 @@ function createDraftState(overrides: Record<string, unknown> = {}) {
     sectionOrder: ["abstract", "introduction", "methods", "results", "discussion", "conclusion", "references"],
     customSections: {},
     formattingBySection: {
+      [UNSECTIONED_DRAFT_ID]: { fontSize: 16, lineHeight: 1.8, paragraphSpacing: 12, fontFamily: "Georgia" },
       abstract: { fontSize: 16, lineHeight: 1.8, paragraphSpacing: 12, fontFamily: "Georgia" },
       introduction: { fontSize: 16, lineHeight: 1.8, paragraphSpacing: 12, fontFamily: "Georgia" },
       methods: { fontSize: 16, lineHeight: 1.8, paragraphSpacing: 12, fontFamily: "Georgia" },
@@ -236,6 +238,7 @@ function createDraftState(overrides: Record<string, unknown> = {}) {
       copilotCollapsed: false,
     },
     contentBySection: {
+      [UNSECTIONED_DRAFT_ID]: { type: "doc", content: [{ type: "paragraph" }] },
       abstract: { type: "doc", content: [{ type: "paragraph" }] },
       introduction: { type: "doc", content: [{ type: "paragraph" }] },
       methods: { type: "doc", content: [{ type: "paragraph" }] },
@@ -245,6 +248,7 @@ function createDraftState(overrides: Record<string, unknown> = {}) {
       references: { type: "doc", content: [{ type: "paragraph" }] },
     },
     ledgerBySection: {
+      [UNSECTIONED_DRAFT_ID]: [],
       abstract: ["study-1"],
       introduction: [],
       methods: [],
@@ -254,6 +258,7 @@ function createDraftState(overrides: Record<string, unknown> = {}) {
       references: [],
     },
     copilotBySection: {
+      [UNSECTIONED_DRAFT_ID]: [],
       abstract: [],
       introduction: [],
       methods: [],
@@ -323,6 +328,22 @@ describe("Draft page", () => {
 
     expect(await screen.findByText("Nothing written yet")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Start drafting" })).toBeTruthy();
+  });
+
+  it("forces zero-section drafts into full draft and disables section mode", async () => {
+    mockLoadDraftState.mockReturnValue(
+      createDraftState({
+        mode: "section",
+        activeSection: "abstract",
+        sectionOrder: [],
+      }),
+    );
+
+    render(<DraftPage />);
+
+    expect(await screen.findByText("Nothing written yet")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Section" }).getAttribute("disabled")).not.toBeNull();
+    expect(screen.getAllByText("Whole draft").length).toBeGreaterThan(0);
   });
 
   it("renders only contentful sections in full draft", async () => {
