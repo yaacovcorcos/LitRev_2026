@@ -141,15 +141,15 @@ Every fix entry must include:
 
 - **`FIX-011b` Runtime stabilization, convergence, and durable continuation**
   - **Severity:** P0 trust/reliability
-  - **Symptom:** recovery still relies too much on stream delivery and coarse `running + lastActivityAt` inference; durable user-facing state is not yet guaranteed to survive disconnect/finalization/persistence seams; successful tool/model work can still be undermined by recovery-critical persistence failures; the runtime still lacks trustworthy convergence and continuation from durable completed work; abnormal disconnects are not yet classified durably enough to drive evidence-based hardening.
-  - **Desired end state:** one persisted run lifecycle is authoritative for recovery, retry/replace/continue decisions, UI state, telemetry, and burn-in sign-off; the runtime converges from abnormal ends through that lifecycle; durable user-facing recovery truth survives disconnects without inventing ephemeral progress; and users/agents can continue from durable completed work instead of restarting unnecessarily.
-  - **Supporting plans:** `docs/plans/agent-runtime-remediation/plan-runtime-stabilization-and-continuation.md` for detailed execution thinking, `docs/plans/plan-thinking-v2.md` for durable execution-trace truth, and `docs/plans/plan-chat-unification-v2.md` for cross-surface runtime parity and popup boundary honesty.
+  - **Symptom:** the major convergence primitives are already shipped, but `FIX-011b` is still open because the repo has not yet finished the final delta audit against the shared recovery/convergence path or completed the `U1.6` burn-in/sign-off needed to prove there is no remaining cross-surface runtime gap hiding behind the shipped path.
+  - **Desired end state:** either patch the one narrow remaining shared runtime delta if the audit or burn-in reveals one, or confirm that no additional shared-runtime code delta remains and retire `FIX-011b` through the existing `U1.6` burn-in authority without reopening settled recovery design.
+  - **Supporting plans:** `docs/plans/agent-runtime-remediation/plan-runtime-stabilization-and-continuation.md` for supporting closeout detail, `docs/plans/plan-thinking-v2.md` for durable execution-trace truth, and `docs/plans/plan-chat-unification-v2.md` plus `docs/runbooks/chat-unification-burn-in.md` for the operational `U1.6` sign-off path.
   - **Exit criteria:**
-    - persisted lifecycle truth is authoritative enough to eliminate indefinite reconnect states on main chat surfaces
-    - durable recovery restores authoritative user-facing truth without duplicating or inventing ephemeral progress
-    - same-run recovery/failure state converges to one authoritative outcome
-    - continuation prefers durable completed work over restart where the runtime can prove that safely
-    - feature-freeze burn-in signs off the stabilized runtime before new agent/chat capability work resumes
+    - the delta audit confirms no remaining shared-runtime gap, or any discovered gap is patched in the shared convergence/recovery path
+    - `/ai`, project copilot, and the main conversation show no remaining recovery-action drift under the audited/stressed cases
+    - `U1.6` burn-in evidence is complete and sign-offable through `docs/runbooks/chat-unification-burn-in.md`
+    - popup remains a truthful reduced subset only
+    - `FIX-011b` can be removed from `Active Fixes` without reopening settled recovery architecture
 
 ## Execution Order
 

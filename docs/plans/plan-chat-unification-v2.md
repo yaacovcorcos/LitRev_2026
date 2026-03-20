@@ -113,6 +113,7 @@ Rules:
     - prove parity for durable recovery truth, not only reducer-state parity
     - prove phase-backed paused-input and stale-finalize recovery behavior across the supported main surfaces
     - add burn-in checks for no indefinite reconnect loops, no contradictory same-run states, and truthful degraded continuation behavior
+    - serve as the operational sign-off blocker for retiring `FIX-011b` once the runtime delta audit confirms no additional shared-runtime gap remains
     - finish sign-off on the current metric contract and thresholds
   - Exit criteria:
     - burn-in evidence is complete and sign-offable
