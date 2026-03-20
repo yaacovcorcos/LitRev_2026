@@ -26,6 +26,7 @@ Current repo/runtime note:
 - No active `NEXT_PUBLIC_ENABLE_CHAT_UNIFICATION_V2` / `ENABLE_CHAT_UNIFICATION_V2` runtime gate is wired in committed code today.
 - Until such a gate is explicitly reintroduced and documented, treat U1.6 burn-in as a deployment-level canary.
 - `workspaceIds` / `userIds` remain the evidence scope filters for validation and sign-off, not a live rollout gate.
+- As of the `FIX-011b` closeout delta audit on `2026-03-20`, no additional shared-runtime gap was identified beyond the shipped `run-convergence` / `run-recovery` path and current recovery/surface tests. `U1.6` therefore remains the operational blocker for retiring `FIX-011b` unless burn-in exposes a narrow shared-path drift that still needs a patch.
 
 ## Required Inputs
 

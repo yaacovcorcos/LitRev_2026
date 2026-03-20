@@ -1,10 +1,10 @@
 # U1.6 Burn-In Report
 
 Status: `window_reassessment_required`
-Last reviewed: `2026-03-17`
+Last reviewed: `2026-03-20`
 
 This file is the live status and eventual sign-off record for U1.6.
-The previously recorded canary window remains useful as historical context, but it is not currently the recommended final sign-off baseline because the recorded deployment SHA is older than repo-root `main` as of `2026-03-17`.
+The previously recorded canary window remains useful as historical context, but it is not currently the recommended final sign-off baseline because the recorded deployment SHA is older than repo-root `main` as of `2026-03-20`.
 
 ## Canary Metadata
 
@@ -40,9 +40,10 @@ The previously recorded canary window remains useful as historical context, but 
 - Day-0 validator ran against the scoped production cohort and returned `0` qualifying rows since `CANARY_SINCE_UTC`.
 - `run_end_observed` is currently absent on both `ai` and `project` for the recorded window, so Day-0 remains open.
 - `U1.6` remains incomplete and `U3` stays blocked pending a real validator/manual pass.
-- The recorded canary deployment SHA (`402f28f1b0e99d21e8b00e1502c9bb6dcfadc943`) is older than current repo-root `main` (`c1b2c51dd5534dc6cee2a183289e05b3a8f6bb97`).
+- The recorded canary deployment SHA (`402f28f1b0e99d21e8b00e1502c9bb6dcfadc943`) is older than current repo-root `main` (`b4ceaf713a416ccecfaec4712dd0c273b36c3f3b`).
 - Backup reviewer assignment is still missing, which means no final strict gate can be treated as sign-offable yet.
 - Raw JSON from the 2026-03-15 Day-0 validator attempt was not preserved in this report, so that attempt is informational only under the updated runbook contract.
+- A `FIX-011b` delta audit against the current shared convergence/recovery path did not identify a new shared-runtime code gap, so the remaining blocker is fresh `U1.6` evidence/sign-off unless burn-in reveals a narrow drift that still needs patching.
 
 ## Day-0 Attempt
 
@@ -108,8 +109,7 @@ No baseline scenario pack has been recorded yet under the updated runbook contra
 
 ## Next Required Step
 
-1. Update the burn-in runbook/template-aligned evidence process in active use for this report.
-2. Decide whether production is still intentionally pinned to the recorded deployment; if not, open a fresh canary window.
-3. Assign a named backup reviewer before any future strict-gate result is treated as sign-offable.
-4. Record the baseline scenario pack and preserve raw `--json=1` validator output for all future Day-0/daily/final runs.
-5. Do not claim `U1.6` pass or retire `FIX-011b` until the validator/manual gate both pass under the updated contract.
+1. Decide whether production is still intentionally pinned to the recorded deployment; if not, open a fresh canary window.
+2. Assign a named backup reviewer before any future strict-gate result is treated as sign-offable.
+3. Record the baseline scenario pack and preserve raw `--json=1` validator output for all future Day-0/daily/final runs.
+4. Do not claim `U1.6` pass or retire `FIX-011b` until the validator/manual gate both pass under the updated contract.

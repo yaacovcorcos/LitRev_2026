@@ -20,7 +20,8 @@ Use this file for detailed execution thinking about stabilization and continuati
 - The fourth `FIX-011b` stabilization slice now supports durable continuation only from proven persisted server state: the recovery contract can recommend `continue_from_durable_state` for audited tool-result and artifact-state cases, the next run reuses explicit persisted inputs instead of transcript reconstruction, and ambiguous mid-loop state still falls back to `stop_and_retry` / `retry`.
 - The fifth `FIX-011b` stabilization slice now adds a narrow `RunCheckpoint` store for the exact Slice 4 gaps that still needed explicit continuation seeds: recovery can prefer `continue_from_checkpoint` when a valid `tool_result_ready` or `artifact_ready` boundary survives later same-run noise, while legacy runs and non-checkpoint cases still fall back to Slice 4 durable continuation or retry semantics.
 - The sixth `FIX-011b` / `CAG-001` slice now persists coarse `runPhase` and `phaseEnteredAt` on `AgentRun`, writes phase transitions only at authoritative runtime boundaries, uses ask-phase truth to recover/readmit paused runs without surfacing them as active conflicts, and uses stale finalize-phase truth to bound reconnect behavior instead of treating it as healthy running work.
-- The remaining problem is not first-time recovery architecture. It is broader durable convergence: disconnect classification can still improve, durable user-facing state can still fall through persistence/finalization seams, and continuation beyond the audited proven-state cases still lacks enough persistence authority to be trustworthy.
+- A repo audit against `run-convergence.ts`, `run-recovery.ts`, the current recovery/surface tests, and the canonical runtime plans did not identify a new shared-runtime recovery delta beyond the shipped convergence path.
+- The remaining closeout risk is now operational: `U1.6` still needs sign-off-quality burn-in evidence, and any later issue found during that burn-in should be treated as a narrow shared-path patch rather than a new recovery architecture program.
 - Popup still remains a truthful reduced subset only; it should not claim full recovery/continuation parity until shared-engine convergence is explicitly finished.
 
 ## Locked Design Principles
@@ -30,6 +31,12 @@ Use this file for detailed execution thinking about stabilization and continuati
 - Ephemeral progress is never reconstructed.
 - Continuation should prefer durable completed work over restart.
 - Existing recovery primitives are the baseline; this plan hardens and extends them where the current durable contract is incomplete.
+
+## Closeout Posture
+- Treat `FIX-011b` as a delta-closeout task, not a greenfield runtime program.
+- Assume no schema change; reopen persistence only if a concrete missing persisted fact is discovered during burn-in or a narrow delta audit.
+- Use this file for supporting detail only. [plan-agentic.md](../plan-agentic.md) remains the canonical fix-status owner, and `U1.6` in [plan-chat-unification-v2.md](../plan-chat-unification-v2.md) plus [chat-unification-burn-in.md](../../runbooks/chat-unification-burn-in.md) remains the operational sign-off owner.
+- If a real runtime drift is found, patch only the shared convergence/recovery path and add focused tests for that uncovered case.
 
 ## Workstream A: Abnormal-End Classification
 - Classify disconnects and finalization failures durably enough to stop guessing from generic broken-stream symptoms.
@@ -90,8 +97,8 @@ Everything else remains deferred:
 
 ## Validation and Burn-In
 - Burn-in must cover forced disconnect after tool result, disconnect before paused question delivery, recovery-required persistence failure behavior, no-forward-progress detection, degraded continuation correctness, and elimination of contradictory same-run recovery/error states.
-- Stabilization is not done when unit tests pass; it is done when the runtime converges truthfully under those harnessed failure classes and the burn-in thresholds are met.
-- `chat-unification-burn-in.md` remains the operational source for canary sign-off once the validation gates are updated.
+- Stabilization is not done when unit tests pass; it is done when the runtime converges truthfully under those harnessed failure classes and the existing `U1.6` burn-in thresholds are met.
+- `chat-unification-burn-in.md` remains the only operational canary/sign-off source. This file should not restate or replace that contract.
 
 ## Optional Reference Patterns
 The systems below are optional architectural references only.
