@@ -36,6 +36,7 @@ Domain-specific execution plans remain canonical for their domains:
   - checkpoints wrap inside the chat column and use a quieter wrapped narration style inside grouped `Process details` blocks instead of the standalone divider treatment.
   - reviewable `proposed` artifacts stay inline until the user resolves them, while settled artifacts can compact into process history and keep the existing composer-adjacent batch-approval contract.
   - grouping is renderer-only, skips ambiguous/blocking/error cases, and leaves popup out of scope.
+  - shared `tool_activity` cards on the main timeline surfaces now prefer additive semantic receipt fields (`displayLabel`, `inputPreview`, `outcomeSummary`, `sourceBadge`, `detailItems`) derived once in the shared reducer/runtime path for search, read/inspection, and delegation tools, while uncovered tool families stay on truthful fallback rendering and popup remains an intentionally reduced trace subset.
 - Shared composer action hierarchy is active across chat surfaces:
   - `CopilotInputCore` now uses a left-edge `+` extension menu for secondary actions, keeps voice in the right-side primary action cluster beside send, and presents a real microphone-driven waveform/timer state while recording.
   - The shared composer now exposes an explicit `Auto` mode option plus sticky manual mode selection across `/ai`, main conversation, and side-panel copilot; manual mode stays visibly locked even with empty input, while `Auto` continues to resolve a concrete mode from the existing router/page context at send time.
@@ -110,7 +111,6 @@ Use this mapping for old PRs/comments referencing CLU IDs.
 - [ ] `CUX-017` Verify/lock copilot scrolling isolation behavior across all project surfaces under current shell contracts.
 
 ### Copilot Product UX (UI Layer)
-- [ ] `CUX-027` Add explicit tool receipt blocks per assistant turn.
 - [ ] `CUX-028` Add inline approve/apply/undo artifact controls with safe confirmations.
 - [ ] `CUX-029` Add autonomy contract badge in composer.
 - [ ] `CUX-031` Add study details side panel from ledger links.
@@ -201,6 +201,7 @@ Use this mapping for old PRs/comments referencing CLU IDs.
 - [ ] `CUX-A03` Expand async `aria-live` announcements coverage and consistency across remaining async UI states.
 
 ## Recently Completed
+- [x] Semantic tool receipts now ship on the main timeline surfaces: the shared reducer/runtime path derives additive semantic receipt fields for search, read/inspection, and delegation tools, the renderer prefers those fields with truthful fallback for uncovered tools, and popup remains on the intentionally reduced trace subset instead of claiming parity.
 - [x] Progressive answer streaming is now enabled by default on the shared `/ai`, main conversation, and side-panel runtime contract: send reserves the assistant turn immediately, the same row is later populated by streamed answer content, progress clears once through the shared reducer handoff, live reasoning stays collapsed/non-dominant by default, popup remains on the older path until a separate rollout is approved, and env flags now act as an emergency opt-out instead of the primary rollout switch.
 - [x] Study-page copilot direct edit V1 shipped: explicit study-detail mutation intents now route into the study-capable execution path, safe field edits can auto-apply with toast + undo and read-only applied cards, risky or mixed study edits remain proposal-based, and the study page continues to refresh through its existing refetch/event path without a new optimistic store.
 - [x] Shared pending-approval relocation shipped: `/ai`, main conversation, and side-panel copilot now render the settled `Approve all` affordance as a composer-adjacent cap beneath queued follow-up and above the composer, derive eligibility only from valid persisted proposed artifacts, remove the global timeline-owned batch bar, and keep send/queue actions locked while a batch approval run is in flight.
