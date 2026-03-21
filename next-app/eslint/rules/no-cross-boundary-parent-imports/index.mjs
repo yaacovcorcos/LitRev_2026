@@ -1,5 +1,9 @@
 import { isTestFile, isUiRuntimeFile } from "../../shared.mjs";
 
+function isParentRelativeSource(source) {
+  return typeof source?.value === "string" && source.value.startsWith("../");
+}
+
 export default {
   meta: {
     type: "problem",
@@ -17,7 +21,22 @@ export default {
 
     return {
       ImportDeclaration(node) {
-        if (typeof node.source.value === "string" && node.source.value.startsWith("../")) {
+        if (isParentRelativeSource(node.source)) {
+          context.report({ node: node.source, messageId: "noParentImport" });
+        }
+      },
+      ExportNamedDeclaration(node) {
+        if (node.source && isParentRelativeSource(node.source)) {
+          context.report({ node: node.source, messageId: "noParentImport" });
+        }
+      },
+      ExportAllDeclaration(node) {
+        if (isParentRelativeSource(node.source)) {
+          context.report({ node: node.source, messageId: "noParentImport" });
+        }
+      },
+      ImportExpression(node) {
+        if (isParentRelativeSource(node.source)) {
           context.report({ node: node.source, messageId: "noParentImport" });
         }
       },
