@@ -42,6 +42,7 @@ All run from `next-app/` except deploy.
 |---|---|---|
 | Typecheck | `npx tsc --noEmit` | `next-app/` |
 | Lint | `npm run lint` | `next-app/` |
+| Style lint | `npm run lint:styles` | `next-app/` |
 | Build | `npm run build` | `next-app/` |
 | Test | `npx vitest run` | `next-app/` |
 | Deploy | `vercel --prod` | repo root |
@@ -62,8 +63,8 @@ All run from `next-app/` except deploy.
 |---|---|---|---|
 | Prisma schema/migrations, DB runtime errors (`column does not exist`, `Invalid prisma.* invocation`) | `db-ops-specialist.md` | `docs/runbooks/db-architecture.md` for schema/domain semantics; `docs/runbooks/db-ops.md` for diagnosis/remediation; `docs/plans/db-production-runbook.md` when production migration/remediation posture is involved | `bash scripts/db-ops.sh diagnose`, `npx prisma validate`, `npx prisma migrate status` |
 | Production deploy request / Vercel production release | `release-deploy-specialist.md` | `docs/runbooks/db-ops.md`, `docs/plans/db-production-runbook.md` | `bash scripts/release-gate-prod.sh`, `npx prisma validate`, `npx prisma migrate status`, `npx tsc --noEmit`, `npx vitest run` |
-| UI changes under `next-app/app/project/[id]/...`, `next-app/components/...`, `next-app/styles/...` | `frontend-ui-specialist.md` | `docs/plans/plan-ux-ui.md` (or active UI plan), relevant route files | `npx tsc --noEmit`, `npx vitest run` |
-| Platform admin control-plane changes (`next-app/app/admin/**`, `next-app/app/api/admin/**`, `next-app/lib/server/admin/**`, `next-app/lib/server/auth/platform-admin.ts`) | `frontend-ui-specialist.md` | `docs/runbooks/admin-access.md`, `docs/plans/plan-backend.md` | `npx tsc --noEmit`, `npx vitest run` |
+| UI changes under `next-app/app/project/[id]/...`, `next-app/components/...`, `next-app/styles/...` | `frontend-ui-specialist.md` | `docs/plans/plan-ux-ui.md` (or active UI plan), relevant route files | `npm run lint`; if `next-app/styles/**` is touched also run `npm run lint:styles`; `npx tsc --noEmit`; `npx vitest run` |
+| Platform admin control-plane changes (`next-app/app/admin/**`, `next-app/app/api/admin/**`, `next-app/lib/server/admin/**`, `next-app/lib/server/auth/platform-admin.ts`) | `frontend-ui-specialist.md` | `docs/runbooks/admin-access.md`, `docs/plans/plan-backend.md` | `npm run lint`, `npx tsc --noEmit`, `npx vitest run` |
 | Agent runtime/orchestration files (`next-app/lib/agent/**`, `next-app/lib/server/agent/**`, `next-app/app/actions/agent.ts`, `next-app/lib/server/ai/sub-agent.ts`) | `agent-runtime-specialist.md` | `docs/plans/plan-agentic.md`; read `docs/plans/plan-memory.md` if memory is touched; use `docs/plans/README.md` to identify any additional active runtime plans. Do not use superseded source plans marked inactive in `docs/plans/README.md`. | `npx tsc --noEmit`, `npx vitest run` |
 | Plan/PRD/governance edits (`PRD.md`, `docs/plans/**`) | `planning-governance-specialist.md` | `docs/plans/README.md` and target plan file | If code is unchanged, no code gate required |
 | GitHub workflow/governance edits (`.github/workflows/**`, `.github/CODEOWNERS`, git policy in `AGENTS.md`) | `planning-governance-specialist.md` | `docs/runbooks/github-flow.md` | If code is unchanged, no code gate required |
@@ -157,7 +158,7 @@ Rule: feature branches hold work; repo root `main` only mirrors merged work.
 - Icon-only buttons require `aria-label`.
 - Preserve keyboard navigation and visible focus behavior.
 - Validate desktop and mobile for UI changes.
-- For meaningful UI behavior changes, run `npx tsc --noEmit` and `npx vitest run` and update tests.
+- For meaningful UI behavior changes, run `npm run lint`, `npx tsc --noEmit`, and `npx vitest run`, update tests, and run `npm run lint:styles` when CSS files are touched.
 
 ## Plan Governance (Strict)
 
