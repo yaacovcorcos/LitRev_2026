@@ -50,7 +50,9 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
             setLedgerMap((prev) => ({ ...prev, [projectId]: result.data }));
           }
         })
-        .catch(console.error);
+        .catch((error) => {
+          console.error("Failed to refresh ledger after change event", error);
+        });
       if (!wasLoaded) {
         void refreshPromise.finally(() => {
           loadingProjectsRef.current.delete(projectId);
@@ -184,7 +186,9 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
           setLedgerMap((prev) => ({ ...prev, [projectId]: result.data }));
         }
       })
-      .catch(console.error)
+      .catch((error) => {
+        console.error("Failed to ensure project ledger is loaded", error);
+      })
       .finally(() => {
         loadingProjectsRef.current.delete(projectId);
       });

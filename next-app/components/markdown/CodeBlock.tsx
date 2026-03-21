@@ -65,10 +65,14 @@ function CodeBlock({ language, code }: { language: string | null; code: string }
     const displayLang = detectLanguage(language, code);
     const copyLabel = displayLang === "PubMed Query" ? "Copy query" : "Copy code";
 
-    const handleCopy = useCallback(() => {
-        navigator.clipboard.writeText(code).catch(console.error);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
+    const handleCopy = useCallback(async () => {
+        try {
+            await navigator.clipboard.writeText(code);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+        } catch (error) {
+            console.error("Failed to copy markdown block", error);
+        }
     }, [code]);
 
     return (

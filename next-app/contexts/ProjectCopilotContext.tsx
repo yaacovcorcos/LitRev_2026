@@ -153,10 +153,11 @@ export function ProjectCopilotProvider({
         if (typeof window === "undefined") return;
         const stored = window.localStorage.getItem(MODEL_STORAGE_KEY);
         const isValid = USER_SELECTABLE_MODELS.some((m) => m.id === stored);
-        if (isValid && stored !== selectedModel) {
-            setSelectedModelState(stored as SelectableModelId);
+        if (isValid) {
+            setSelectedModelState((current) => (
+                current === stored ? current : stored as SelectableModelId
+            ));
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     // Compute reasoning support tier from current model
@@ -185,34 +186,49 @@ export function ProjectCopilotProvider({
 
     // Load autonomy config on mount (Phase 7)
     useEffect(() => {
-        getAutonomyConfigAction(projectId)
-            .then((result) => {
+        void (async () => {
+            try {
+                const result = await getAutonomyConfigAction(projectId);
                 if (result.success && result.config) {
                     setAutonomyPreset(result.config.preset as AutonomyPreset);
                     setAutonomyToolOverrides(
                         (result.config.toolOverrides ?? {}) as Record<string, AutonomyLevel>,
                     );
                 }
-            })
-            .catch(console.error);
+            } catch (error) {
+                console.error("Failed to load autonomy config", error);
+            }
+        })();
     }, [projectId]);
 
     const updateAutonomyPreset = useCallback(async (preset: AutonomyPreset) => {
         setAutonomyPreset(preset);
         setAutonomyToolOverrides({});
-        await updateAutonomyAction(preset, undefined, projectId).catch(console.error);
+        try {
+            await updateAutonomyAction(preset, undefined, projectId);
+        } catch (error) {
+            console.error("Failed to update autonomy preset", error);
+        }
     }, [projectId]);
 
     const updateAutonomyOverrides = useCallback(async (overrides: Record<string, AutonomyLevel>) => {
         setAutonomyToolOverrides(overrides);
         setAutonomyPreset("custom");
-        await updateAutonomyAction("custom", overrides, projectId).catch(console.error);
+        try {
+            await updateAutonomyAction("custom", overrides, projectId);
+        } catch (error) {
+            console.error("Failed to update autonomy overrides", error);
+        }
     }, [projectId]);
 
     const resetToPreset = useCallback(async (preset: AutonomyPreset) => {
         setAutonomyPreset(preset);
         setAutonomyToolOverrides({});
-        await updateAutonomyAction(preset, undefined, projectId).catch(console.error);
+        try {
+            await updateAutonomyAction(preset, undefined, projectId);
+        } catch (error) {
+            console.error("Failed to reset autonomy preset", error);
+        }
     }, [projectId]);
 
     // Save panel state with debounce (messages are saved via conversation system)

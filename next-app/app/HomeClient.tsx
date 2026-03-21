@@ -70,7 +70,7 @@ function buildProject(
   };
 }
 
-export default function HomeClient({ bootstrap, shouldOpenFromQuery }: HomeClientProps) {
+export function HomeClient({ bootstrap, shouldOpenFromQuery }: HomeClientProps) {
   const {
     projects,
     authState,

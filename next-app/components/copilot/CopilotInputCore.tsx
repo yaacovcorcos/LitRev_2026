@@ -29,7 +29,7 @@ import type { RetryModelExpectation } from "@/types/chat-unification";
 import { getContextTargetKey } from "@/lib/context-capture/targets";
 import { useHydrated } from "@/hooks/useHydrated";
 import { useWindowEvent } from "@/hooks/useWindowEvent";
-import { UserInputCard } from "../artifacts/UserInputCard";
+import { UserInputCard } from "@/components/artifacts/UserInputCard";
 import styles from "./CopilotInput.module.css";
 import { VoiceLevelVisualizer } from "./VoiceLevelVisualizer";
 
@@ -418,7 +418,6 @@ export function CopilotInputCore({
                 el.selectionStart = el.selectionEnd = el.value.length;
             }
         });
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- trigger on command ID, not text
     }, [prefillCommand?.id]);
 
     useEffect(() => {
