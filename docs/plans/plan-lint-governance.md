@@ -18,6 +18,10 @@ This plan does not own product behavior or `PRD.md`.
   - `npm run lint:governance:phase1`
   - `npm run lint:governance:phase2-hotspots`
   - `npm run lint:governance:phase3-searchability`
+  - `npm run lint:governance:phase4-async`
+  - `npm run lint:governance:phase4-tests`
+  - `npm run lint:governance:phase4-policy`
+  - `npm run check:runtime-test-impact`
   - `npm run lint:governance:audit`
   - `npm run test:eslint-rules`
 - Governance tooling now has a separate targeted validation command:
@@ -26,6 +30,12 @@ This plan does not own product behavior or `PRD.md`.
 - Governance tooling imports now come from direct devDependencies in `next-app/package.json`, not only transitive `eslint-config-next` dependencies.
 - Phase 1 now has explicit config slices for the governed app surface and a scripts-only logging slice, plus a stable `npm run lint:governance:phase1` verifier.
 - Phase 2 now has a dedicated `npm run lint:governance:phase2-hotspots` verifier for the `/ai` + copilot runtime surface, including `hooks/useCopilotStreamActions.ts` and the bundled async-cleanup rules for that same hot-spot slice only.
+- Phase 4 now has stable permanent verifiers for:
+  - async policy: `npm run lint:governance:phase4-async`
+  - runtime test policy: `npm run lint:governance:phase4-tests`
+  - umbrella policy maturity: `npm run lint:governance:phase4-policy`
+  - changed-file runtime test impact: `npm run check:runtime-test-impact`
+- Runtime test-governance now uses one shared authority under `next-app/eslint/` for governed domains and waiver interpretation, with strict one-file waivers only.
 - The remaining non-Phase-3 governance roadmap is now intentionally compressed into two phases:
   - `Phase 4 — Policy Maturity`
   - `Phase 5 — Enforcement Rollout`
@@ -119,7 +129,7 @@ Missing:
 - Nothing material for the original Phase 3B scope
 
 ### Phase 4 — Policy Maturity
-Status: Partially Implemented
+Status: Done
 
 Shipped:
 - Async-discipline rules are implemented:
@@ -130,16 +140,19 @@ Shipped:
   - `litrev/require-tests-for-runtime-files`
   - `litrev/prefer-colocated-tests-in-selected-domains`
   - changed-files runtime test-impact script and CI wiring
-- The current adapted governance set already includes selective Factory-inspired frontend restrictions from earlier phases, but no distinct re-audit/completion pass has been done yet
-- First cleanup waves have already landed in selected UI/runtime files
+- Stable permanent verifiers:
+  - `npm run lint:governance:phase4-async`
+  - `npm run lint:governance:phase4-tests`
+  - `npm run lint:governance:phase4-policy`
+  - `npm run check:runtime-test-impact`
+- Dedicated cleanup pass across the finalized async-governed UI/runtime surface
+- Explicit exception review for dynamic imports and deliberate infrastructure chains
+- Narrowed runtime test-governance domains with one shared authority for lint rules and the changed-file script
+- Strict one-file waiver policy for accepted non-colocated runtime coverage
+- Selective strictness decision matrix for additional Factory-inspired frontend restrictions
 
 Missing:
-- Dedicated cleanup pass across the intended async-governed UI/runtime surfaces
-- Explicit exception review for dynamic imports and deliberate infrastructure chains
-- Narrow-domain tuning so test-expectation warnings reflect deliberate ownership instead of broad structural debt
-- Explicit waiver/ownership policy for accepted non-colocated runtime coverage
-- Re-audit before adopting any additional Factory-inspired frontend restrictions beyond the current adapted set
-- Stable verifier commands and implementation plans for the completed async-policy and test-policy surfaces
+- Nothing material for the finalized Phase 4 scope
 
 ### Phase 5 — Enforcement Rollout
 Status: Partially Implemented
@@ -162,11 +175,11 @@ Missing:
 - Any move to require the full legacy `npm run lint` baseline
 
 ## Active Tasks
-- [ ] `LG-004` Complete unified Phase 4 policy maturity: finish async-discipline cleanup, narrow the test-expectation policy, and re-audit selective Factory-inspired strictness before adding any new frontend restrictions.
 - [ ] `LG-005` Complete unified Phase 5 enforcement rollout: decide required versus informational governance checks, wire the remaining stable verifier commands into CI, and document waiver policy.
 - [ ] `LG-006` Decide the first server/runtime structured-logging rule set so UI noise and observability paths are governed separately.
 
 ## Recently Completed
+- [x] Completed Phase 4 by shipping permanent `phase4-async`, `phase4-tests`, and `phase4-policy` verifiers, aligning runtime test lint rules and changed-file enforcement to one shared authority with strict one-file waivers, and recording the selective Factory-inspired strictness decisions without pulling Phase 5 CI enforcement forward.
 - [x] Completed Phase 3 by hardening import-boundary enforcement for sourced re-exports and string-literal dynamic imports, adding the stable `lint:governance:phase3-searchability` verifier, and cleaning the remaining UI filename/export mismatches without broadening Phase 3 beyond the governed UI surface.
 - [x] Compressed the remaining non-Phase-3 roadmap into unified `Phase 4 — Policy Maturity` and `Phase 5 — Enforcement Rollout` so policy completion stays separate from CI enforcement.
 - [x] Completed Phase 2 by shipping the stable `lint:governance:phase2-hotspots` verifier, removing the remaining hot-spot effect/reset violations in copilot UI/runtime files, and bundling the co-located async cleanup for that same verifier surface without broadening Phase 4 completion.
@@ -184,3 +197,12 @@ Missing:
 - Keep effect-discipline rollout split into mechanical and semantic waves.
 - Do not treat a phase as complete just because its rules exist; the phase is complete only when the intended cleanup/tuning and enforcement posture are also complete.
 - Do not promote the full `npm run lint` baseline to required CI until the broader repo baseline is intentionally cleaned or waived.
+
+## Phase 4 Selective Strictness Decision Matrix
+
+| Candidate rule/policy | Decision | Rationale | Revisit trigger if deferred |
+|---|---|---|---|
+| Raw UI `fetch()` restrictions | Rejected | Current repo evidence does not show one stable ownership pattern that would make a blanket UI `fetch()` ban low-noise. | N/A |
+| Broader `window.location` restrictions beyond navigation mutation | Rejected | The completed Phase 4 async surface only justified `litrev/no-window-location-navigation`; broader location reads/writes would overreach the current evidence. | N/A |
+| UI `console.*` restrictions | Deferred | Logging policy needs a separate server/runtime versus UI observability split before repo-wide UI console governance can be made trustworthy. | Revisit when the structured-logging governance track defines the first dedicated logging rule set. |
+| Blanket restrictions on `style`, `className`, `useMemo`, or raw anchors | Rejected | These candidates do not currently map to a repo-specific architectural failure mode strong enough to justify new governance rules. | N/A |

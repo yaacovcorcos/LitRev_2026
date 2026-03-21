@@ -8,3 +8,7 @@ Phase 4 governed domains:
 - `lib/server/ai/tools/**`
 
 This rule is intentionally narrow and complements the changed-files runtime test-impact guard.
+
+Stable verification commands:
+- `npm run lint:governance:phase4-tests`
+- `npm run check:runtime-test-impact`
