@@ -28,53 +28,51 @@ export function ProtocolEditCard({ payload, status = "proposed", onAccept, onDis
     const label = getFieldLabel(field);
     const arrayField = isArrayField(field);
     const isReviewable = isArtifactReviewable(status);
+    const originalEditValue =
+        arrayField && Array.isArray(value) ? value.join("\n") : String(value ?? "");
 
     const [editing, setEditing] = useState(false);
     const [editValue, setEditValue] = useState(() =>
-        arrayField && Array.isArray(value) ? value.join("\n") : String(value ?? "")
+        originalEditValue
     );
-    // Track whether the user has actually modified the proposed value
-    const [hasEdited, setHasEdited] = useState(false);
 
-    const parseEditValue = (): string | string[] => {
-        const trimmed = editValue.trim();
+    const parseEditValue = (draft: string): string | string[] => {
+        const trimmed = draft.trim();
         if (arrayField) {
             return trimmed.split("\n").map((s) => s.trim()).filter(Boolean);
         }
         return trimmed;
     };
 
+    const normalizeDraft = (draft: string): string => {
+        const parsed = parseEditValue(draft);
+        return Array.isArray(parsed) ? parsed.join("\n") : parsed;
+    };
+
+    const hasMeaningfulEdit = normalizeDraft(editValue) !== normalizeDraft(originalEditValue);
+
     const commitEdit = () => {
-        // For string fields, require non-empty; for array fields, allow clearing all items
-        if (!arrayField && !editValue.trim()) return;
-        setHasEdited(true);
         setEditing(false);
     };
 
     const cancelEdit = () => {
         setEditing(false);
-        setEditValue(
-            arrayField && Array.isArray(value) ? value.join("\n") : String(value ?? "")
-        );
-        // Don't reset hasEdited — if they edited before and cancel, we still consider it edited
-        // unless they reverted to the original value, which we check on accept
+        setEditValue(originalEditValue);
     };
 
     const handleAccept = () => {
-        if (hasEdited) {
-            const editedVal = parseEditValue();
-            // Only pass edited value if it actually differs from the original proposal
-            const originalStr = arrayField && Array.isArray(value) ? value.join("\n") : String(value ?? "");
-            if (editValue.trim() !== originalStr) {
-                onAccept(editedVal);
-                return;
-            }
+        if (!arrayField && editing && !editValue.trim()) {
+            return;
+        }
+        setEditing(false);
+        if (hasMeaningfulEdit) {
+            onAccept(parseEditValue(editValue));
+            return;
         }
         onAccept();
     };
 
-    // Determine the display value — use edited if modified, otherwise original
-    const displayValue = hasEdited ? parseEditValue() : value;
+    const displayValue = hasMeaningfulEdit ? parseEditValue(editValue) : value;
 
     return (
         <>
@@ -168,8 +166,18 @@ export function ProtocolEditCard({ payload, status = "proposed", onAccept, onDis
                             Discuss more
                         </button>
                     ) : null}
-                    <button type="button" className={styles.actionBtn} onClick={handleAccept} disabled={!canAct}>
-                        {hasEdited ? "Accept Edited & Save" : "Accept & Save to Protocol"}
+                    <button
+                        type="button"
+                        className={styles.actionBtn}
+                        onMouseDown={(e) => {
+                            if (editing) {
+                                e.preventDefault();
+                            }
+                        }}
+                        onClick={handleAccept}
+                        disabled={!canAct}
+                    >
+                        {hasMeaningfulEdit ? "Accept Edited & Save" : "Accept & Save to Protocol"}
                     </button>
                 </div>
             ) : null}

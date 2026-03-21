@@ -286,7 +286,7 @@ describe("ConversationMainView parity", () => {
     expect(screen.queryByRole("status")).toBeNull();
   });
 
-  it("renders the pending approval bar above the composer once proposals are settled", async () => {
+  it("renders the pending approval bar above the composer for persisted proposed artifacts", async () => {
     const approveArtifactsBatch = vi.fn(async (artifactIds: string[]) => ({
       approvedCount: artifactIds.length,
       failedArtifactIds: [],

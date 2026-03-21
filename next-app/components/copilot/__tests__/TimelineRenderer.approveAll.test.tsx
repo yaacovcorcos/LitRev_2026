@@ -43,6 +43,20 @@ describe("pending approval derivation", () => {
 
     expect(pending.map((item) => item.artifactId)).toEqual(["cproposal1", "cproposal2"]);
   });
+
+  it("includes persisted protocol and criteria proposals in the shared derivation", () => {
+    const pending = getValidPendingApprovalArtifacts([
+      makeArtifact("protocol-1", "protocol_suggestion", "proposed"),
+      makeArtifact("criteria-1", "criteria_card", "proposed"),
+      {
+        ...makeArtifact("art-987", "protocol_suggestion", "proposed"),
+        id: "artifact-art-987",
+        artifactId: "art-987",
+      },
+    ]);
+
+    expect(pending.map((item) => item.artifactId)).toEqual(["protocol-1", "criteria-1"]);
+  });
 });
 
 describe("usePendingApprovalBarState", () => {
@@ -57,6 +71,19 @@ describe("usePendingApprovalBarState", () => {
 
     expect(result.current.showBar).toBe(false);
     expect(result.current.pendingCount).toBe(1);
+  });
+
+  it("keeps the bar hidden for a single eligible protocol proposal", () => {
+    const { result } = renderHook(() => usePendingApprovalBarState({
+      timeline: [makeArtifact("protocol-1", "protocol_suggestion", "proposed")],
+      conversationId: "conv-1",
+      isLoading: false,
+      hasActiveProgress: false,
+      approveArtifactsBatch: vi.fn(),
+    }));
+
+    expect(result.current.pendingArtifacts.map((item) => item.artifactId)).toEqual(["protocol-1"]);
+    expect(result.current.showBar).toBe(false);
   });
 
   it("hides the idle bar while the host is still loading or showing active progress", () => {
@@ -84,6 +111,22 @@ describe("usePendingApprovalBarState", () => {
     expect(result.current.showBar).toBe(false);
 
     rerender({ isLoading: false, hasActiveProgress: false });
+    expect(result.current.showBar).toBe(true);
+  });
+
+  it("shows the bar for mixed persisted protocol and criteria proposals once the surface is idle", () => {
+    const { result } = renderHook(() => usePendingApprovalBarState({
+      timeline: [
+        makeArtifact("protocol-1", "protocol_suggestion", "proposed"),
+        makeArtifact("criteria-1", "criteria_card", "proposed"),
+      ],
+      conversationId: "conv-1",
+      isLoading: false,
+      hasActiveProgress: false,
+      approveArtifactsBatch: vi.fn(),
+    }));
+
+    expect(result.current.pendingArtifacts.map((item) => item.artifactId)).toEqual(["protocol-1", "criteria-1"]);
     expect(result.current.showBar).toBe(true);
   });
 
