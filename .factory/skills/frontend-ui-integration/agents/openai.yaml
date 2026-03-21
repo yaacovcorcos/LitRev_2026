@@ -1,0 +1,4 @@
+interface:
+  display_name: "Frontend UI Integration"
+  short_description: "Implement or extend LitRev frontend workflows in next-app/ while following the repo UI contract, shared primitives, accessibility rules, and validation gates."
+  default_prompt: "Use $frontend-ui-integration to implement or extend this LitRev frontend workflow in next-app/ while preserving shared primitives, accessibility, responsive behavior, and the required validation gates."

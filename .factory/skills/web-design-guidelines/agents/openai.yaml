@@ -1,0 +1,4 @@
+interface:
+  display_name: "Web Design Guidelines"
+  short_description: "Review LitRev UI work against the Web Interface Guidelines and report actionable findings with file-level evidence."
+  default_prompt: "Use $web-design-guidelines to review this LitRev UI work against the Web Interface Guidelines and report actionable findings with file-level evidence."
