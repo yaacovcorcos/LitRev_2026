@@ -31,6 +31,10 @@ Current route contract:
 - compatibility or stale states with zero writable named sections must disable `Section` mode and fall back to `Full Draft` as the only valid projection
 - zero-section evidence targeting resolves to `Whole draft` until a writable named section exists
 - `Full Draft` visibility is driven by one normalized contentful-section predicate, while generated `References` remains read-only and only appears last when it has compiled content
+- draft durable route state is limited to `mode` and `section` query params
+- explicit draft URL state always beats persisted `mode` and `activeSection`, while storage remains fallback only for content and absent-URL route boot
+- in `Full Draft`, `section` is allowed only as a secondary focus target and does not change the projection identity
+- once explicit draft URL state has been applied in a page session, storage-derived route fields must not reassert route identity later
 
 ### Draft UI Approval Rule
 - Any draft-route UI change requires explicit user approval before implementation.

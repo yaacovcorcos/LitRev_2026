@@ -1,6 +1,7 @@
 import type { JSONContent } from "@tiptap/core";
 import type { DraftMode, DraftSectionId } from "@/types/draft";
 import { UNSECTIONED_DRAFT_ID } from "@/types/draft";
+import type { DraftRouteState } from "@/lib/durable-route-state";
 
 export function draftSectionHasMeaningfulContent(doc: JSONContent | null | undefined): boolean {
   if (!doc || typeof doc !== "object") return false;
@@ -108,4 +109,44 @@ export function resolveDraftEvidenceTarget(
   return isWritableDraftSectionId(activeSection) && sectionOrder.includes(activeSection)
     ? activeSection
     : UNSECTIONED_DRAFT_ID;
+}
+
+export type DraftRouteProjection = {
+  mode: DraftMode;
+  activeSection: DraftSectionId | null;
+};
+
+export function resolveDraftRouteProjection(
+  routeState: DraftRouteState,
+  fallbackMode: DraftMode,
+  fallbackActiveSection: DraftSectionId | null,
+  sectionOrder: DraftSectionId[],
+): DraftRouteProjection {
+  const modeCandidate = routeState.mode ?? fallbackMode;
+  const mode = resolveDraftMode(modeCandidate, sectionOrder);
+  const activeSectionCandidate = routeState.sectionId ?? fallbackActiveSection;
+  const activeSection = mode === "section"
+    ? resolveSectionModeActiveSection(activeSectionCandidate, sectionOrder)
+    : resolveFullDraftActiveSection(activeSectionCandidate, sectionOrder);
+  return {
+    mode,
+    activeSection,
+  };
+}
+
+export function buildCanonicalDraftRouteState(
+  mode: DraftMode,
+  activeSection: DraftSectionId | null,
+  sectionOrder: DraftSectionId[],
+): DraftRouteState {
+  const projection = resolveDraftRouteProjection(
+    { mode, sectionId: activeSection },
+    mode,
+    activeSection,
+    sectionOrder,
+  );
+  return {
+    mode: projection.mode,
+    sectionId: projection.activeSection,
+  };
 }

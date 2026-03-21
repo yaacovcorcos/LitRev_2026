@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useRef, useState, type DragEvent as ReactDragEvent } from "react";
 import { DraftSectionId } from "@/types/draft";
 import { DEFAULT_SECTION_FORMAT, type DraftSectionFormat, DraftState, emptyDoc } from "@/lib/draftStorage";
+import type { DraftRouteState } from "@/lib/durable-route-state";
 import { createCustomSectionId, customSectionPlaceholder } from "./draft-helpers";
 import type { Editor } from "@tiptap/react";
 import type { JSONContent } from "@tiptap/core";
@@ -16,6 +17,7 @@ type UseDraftSectionsDeps = {
   queueContentUpdate: (key: DraftSectionId, json: JSONContent) => void;
   flushContentCommit: () => void;
   focusEditorForSection: (key: DraftSectionId) => void;
+  queueUserRouteNavigation: (routeState: DraftRouteState) => void;
 };
 
 export function useDraftSections(deps: UseDraftSectionsDeps) {
@@ -25,6 +27,7 @@ export function useDraftSections(deps: UseDraftSectionsDeps) {
     activeEditorRef,
     queueContentUpdate,
     flushContentCommit,
+    queueUserRouteNavigation,
   } = deps;
 
   // Section management state
@@ -44,6 +47,7 @@ export function useDraftSections(deps: UseDraftSectionsDeps) {
   const [draggingKey, setDraggingKey] = useState<DraftSectionId | null>(null);
 
   const openSectionInSectionMode = useCallback((key: DraftSectionId) => {
+    queueUserRouteNavigation({ mode: "section", sectionId: key });
     const editor = activeEditorRef.current;
     const currentActiveSection = activeSectionRef.current;
     if (editor && currentActiveSection) {
@@ -64,9 +68,10 @@ export function useDraftSections(deps: UseDraftSectionsDeps) {
       activeEditorRef.current?.chain().focus("end").run();
     }, 60);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [updateDraft, queueContentUpdate, flushContentCommit]);
+  }, [flushContentCommit, queueContentUpdate, queueUserRouteNavigation, updateDraft]);
 
   const handleAddSection = useCallback((key: DraftSectionId) => {
+    queueUserRouteNavigation({ mode: "section", sectionId: key });
     updateDraft((prev) => {
       if (prev.sectionOrder.includes(key)) return prev;
       const next = [...prev.sectionOrder];
@@ -83,12 +88,13 @@ export function useDraftSections(deps: UseDraftSectionsDeps) {
     setTimeout(() => {
       sectionTabRefs.current[key]?.focus();
     }, 0);
-  }, [updateDraft]);
+  }, [queueUserRouteNavigation, updateDraft]);
 
   const handleAddCustomSection = useCallback(() => {
     const name = customSectionName.trim();
     if (!name) return;
     const id = createCustomSectionId(name);
+    queueUserRouteNavigation({ mode: "section", sectionId: id });
     updateDraft((prev) => {
       const next = [...prev.sectionOrder];
       const activeIndex = prev.activeSection ? next.indexOf(prev.activeSection) : -1;
@@ -125,7 +131,7 @@ export function useDraftSections(deps: UseDraftSectionsDeps) {
     setTimeout(() => {
       sectionTabRefs.current[id]?.focus();
     }, 0);
-  }, [customSectionName, updateDraft]);
+  }, [customSectionName, queueUserRouteNavigation, updateDraft]);
 
   const handleRemoveSection = useCallback((key: DraftSectionId) => {
     updateDraft((prev) => {

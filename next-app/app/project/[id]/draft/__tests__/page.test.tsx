@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { UNSECTIONED_DRAFT_ID } from "@/types/draft";
@@ -8,7 +8,9 @@ import DraftPage from "../page";
 const {
   mockLoadDraftState,
   mockWarmDomain,
+  mockPush,
   mockReplace,
+  mockSearchParams,
   mockEditor,
   mockProject,
   mockStudies,
@@ -21,7 +23,9 @@ const {
 } = vi.hoisted(() => ({
   mockLoadDraftState: vi.fn(),
   mockWarmDomain: vi.fn(),
+  mockPush: vi.fn(),
   mockReplace: vi.fn(),
+  mockSearchParams: new URLSearchParams(),
   mockProject: { id: "proj-1", name: "Alpha Draft" },
   mockStudies: [
     { id: "study-1", title: "Trial A" },
@@ -67,8 +71,8 @@ vi.mock("next/navigation", async (importOriginal) => {
   return {
     ...actual,
     useParams: () => ({ id: "proj-1" }),
-    useRouter: () => ({ replace: mockReplace }),
-    useSearchParams: () => new URLSearchParams(),
+    useRouter: () => ({ push: mockPush, replace: mockReplace }),
+    useSearchParams: () => new URLSearchParams(mockSearchParams.toString()),
   };
 });
 
@@ -214,6 +218,16 @@ function textDoc(text: string) {
   };
 }
 
+function setSearchParams(query: string) {
+  mockSearchParams.forEach((_, key) => {
+    mockSearchParams.delete(key);
+  });
+  const next = new URLSearchParams(query);
+  next.forEach((value, key) => {
+    mockSearchParams.set(key, value);
+  });
+}
+
 function createDraftState(overrides: Record<string, unknown> = {}) {
   return {
     version: 2,
@@ -280,6 +294,7 @@ function createDraftState(overrides: Record<string, unknown> = {}) {
 describe("Draft page", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    setSearchParams("");
     mockLoadDraftState.mockReturnValue(createDraftState());
   });
 
@@ -346,6 +361,68 @@ describe("Draft page", () => {
     expect(screen.getAllByText("Whole draft").length).toBeGreaterThan(0);
   });
 
+  it("lets explicit query route state beat persisted mode and section", async () => {
+    setSearchParams("mode=full&section=discussion");
+    mockLoadDraftState.mockReturnValue(
+      createDraftState({
+        mode: "section",
+        activeSection: "abstract",
+        contentBySection: {
+          [UNSECTIONED_DRAFT_ID]: { type: "doc", content: [{ type: "paragraph" }] },
+          abstract: textDoc("Abstract content"),
+          introduction: textDoc("Intro content"),
+          methods: textDoc("Methods content"),
+          results: textDoc("Results content"),
+          discussion: textDoc("Discussion content"),
+          conclusion: { type: "doc", content: [{ type: "paragraph" }] },
+          references: { type: "doc", content: [{ type: "paragraph" }] },
+        },
+      }),
+    );
+
+    render(<DraftPage />);
+
+    expect(await screen.findByText(/Full manuscript view/)).toBeTruthy();
+    const editors = await screen.findAllByTestId("section-editor");
+    expect(editors.some((editor) => editor.getAttribute("data-section-id") === "discussion")).toBe(true);
+  });
+
+  it("normalizes invalid query section state through replace without pushing history", async () => {
+    setSearchParams("mode=section&section=missing-section");
+
+    render(<DraftPage />);
+
+    await screen.findByText("Alpha Draft");
+    expect(mockReplace).toHaveBeenCalledWith("/project/proj-1/draft?mode=section&section=abstract", { scroll: false });
+    expect(mockPush).not.toHaveBeenCalled();
+  });
+
+  it("does not reload persisted content when query params change after mount", async () => {
+    const initialState = createDraftState({
+      contentBySection: {
+        [UNSECTIONED_DRAFT_ID]: { type: "doc", content: [{ type: "paragraph" }] },
+        abstract: textDoc("Abstract content"),
+        introduction: textDoc("Introduction content"),
+        methods: { type: "doc", content: [{ type: "paragraph" }] },
+        results: { type: "doc", content: [{ type: "paragraph" }] },
+        discussion: { type: "doc", content: [{ type: "paragraph" }] },
+        conclusion: { type: "doc", content: [{ type: "paragraph" }] },
+        references: { type: "doc", content: [{ type: "paragraph" }] },
+      },
+    });
+    mockLoadDraftState.mockReturnValue(initialState);
+
+    const view = render(<DraftPage />);
+    await screen.findByText("Alpha Draft");
+    expect(mockLoadDraftState).toHaveBeenCalledTimes(1);
+
+    setSearchParams("mode=full&section=introduction");
+    view.rerender(<DraftPage />);
+
+    expect(await screen.findByText(/Full manuscript view/)).toBeTruthy();
+    expect(mockLoadDraftState).toHaveBeenCalledTimes(1);
+  });
+
   it("renders only contentful sections in full draft", async () => {
     mockLoadDraftState.mockReturnValue(
       createDraftState({
@@ -378,5 +455,19 @@ describe("Draft page", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Expand evidence ledger" }));
     expect(await screen.findByText("Evidence Ledger")).toBeTruthy();
+  });
+
+  it("uses push for user-initiated draft navigation", async () => {
+    render(<DraftPage />);
+    await screen.findByText("Alpha Draft");
+    mockPush.mockClear();
+    mockReplace.mockClear();
+
+    fireEvent.click(screen.getByRole("button", { name: "Full Draft" }));
+
+    await waitFor(() => {
+      expect(mockPush).toHaveBeenCalledWith("/project/proj-1/draft?mode=full&section=abstract", { scroll: false });
+    });
+    expect(mockReplace).not.toHaveBeenCalled();
   });
 });

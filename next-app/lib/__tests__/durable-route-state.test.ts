@@ -6,11 +6,14 @@ import {
   COPILOT_PANEL_QUERY_PARAM,
   COPILOT_QUERY_PARAM,
   DEFAULT_ONBOARDING_STEP_STATUSES,
+  DRAFT_MODE_QUERY_PARAM,
+  DRAFT_SECTION_QUERY_PARAM,
   MEMORY_TAB_IDS,
   ONBOARDING_STEP_IDS,
   PROTOCOL_SECTION_IDS,
   buildAiRouteHref,
   buildCopilotRouteSearchParams,
+  buildDraftRouteSearchParams,
   buildProjectConversationPath,
   isMemoryTabId,
   isOnboardingStepId,
@@ -21,6 +24,7 @@ import {
   parseProjectConversationPath,
   readAiRouteState,
   readCopilotRouteState,
+  readDraftRouteState,
 } from "@/lib/durable-route-state";
 import {
   DEFAULT_ONBOARDING_STEP_STATUSES as SCHEMA_DEFAULT_ONBOARDING_STEP_STATUSES,
@@ -111,6 +115,34 @@ describe("durable route state helpers", () => {
       conversationId: null,
       projectId: null,
     });
+  });
+
+  it("reads and builds draft route state", () => {
+    const params = new URLSearchParams();
+    params.set(DRAFT_MODE_QUERY_PARAM, "full");
+    params.set(DRAFT_SECTION_QUERY_PARAM, "discussion");
+    expect(readDraftRouteState(params)).toEqual({
+      mode: "full",
+      sectionId: "discussion",
+    });
+    expect(buildDraftRouteSearchParams({
+      mode: "full",
+      sectionId: "discussion",
+    }).toString()).toBe("mode=full&section=discussion");
+  });
+
+  it("treats blank or invalid draft route values as absent", () => {
+    const params = new URLSearchParams();
+    params.set(DRAFT_MODE_QUERY_PARAM, "  invalid  ");
+    params.set(DRAFT_SECTION_QUERY_PARAM, "   ");
+    expect(readDraftRouteState(params)).toEqual({
+      mode: null,
+      sectionId: null,
+    });
+    expect(buildDraftRouteSearchParams({
+      mode: null,
+      sectionId: null,
+    }).toString()).toBe("");
   });
 
   it("exposes valid protocol section ids", () => {

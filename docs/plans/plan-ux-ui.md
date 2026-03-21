@@ -169,6 +169,7 @@ Use this mapping for old PRs/comments referencing CLU IDs.
     - notes should make the selected note URL-addressable
     - memory should move active tab state into query params
     - protocol should move active section focus into query params
+    - draft should keep `mode` and `section` as the only durable query params, with user navigation pushing history-worthy changes and canonical repair using replace only
     - ledger should keep study detail route identity as canonical and only promote durable list state that materially affects user return position, such as core filters or view mode
   - Rules:
     - do not overfit transient selection or bulk-action state into the URL unless it is part of the actual user task
