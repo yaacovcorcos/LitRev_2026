@@ -109,7 +109,7 @@ LitRev drafting becomes a manuscript operating system with:
 ### Required retrieval for future implementation
 - UI work under `next-app/app/project/[id]/draft/**`, `next-app/components/**`, `next-app/styles/**`
   - Tier 2: `docs/agents/specialists/frontend-ui-specialist.md`
-  - Tier 3: `docs/plans/plan-ux-ui.md`
+  - Tier 3: `docs/architecture/frontend-quality-bar.md`, `docs/runbooks/frontend-review-loop.md`, `docs/plans/README.md` to identify the active relevant UI plan
 - Backend/export/domain work under `next-app/lib/server/**`, `next-app/app/actions/**`, `next-app/lib/**`
   - Tier 3: `docs/plans/plan-backend.md`
 - Database schema/migration work
@@ -144,7 +144,7 @@ LitRev drafting becomes a manuscript operating system with:
 ### Documentation updated in this planning task
 - Add this file as the canonical drafting-experience plan.
 - Update `docs/plans/README.md` to register this plan.
-- Update `docs/plans/plan-ux-ui.md` to point at this plan as the active draft-domain owner.
+- Update `docs/plans/plan-ux-ui.md` to point at this plan as the active draft-domain owner where the active UI execution tracker needs that dependency.
 
 ### Documentation that future implementation must update
 - `docs/runbooks/db-architecture.md`
@@ -153,6 +153,10 @@ LitRev drafting becomes a manuscript operating system with:
   - When compiler/export, review entities, or draft persistence contracts ship.
 - `docs/plans/plan-context-capture.md`
   - When draft block selections, evidence anchors, or suggestion/comment anchors change context-capture behavior.
+- `docs/architecture/frontend-quality-bar.md`
+  - When draft-specific UI work establishes durable frontend doctrine or anti-pattern guidance that should apply beyond this plan.
+- `docs/runbooks/frontend-review-loop.md`
+  - When draft implementation changes the shared frontend review procedure or thesis/QA workflow expectations.
 - `PRD.md`
   - Only if product scope expands beyond the current contract, for example real-time multi-user collaboration as a required product behavior.
 

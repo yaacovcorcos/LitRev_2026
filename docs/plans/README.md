@@ -12,7 +12,7 @@ This file is the active plan registry and the canonical owner for plan-maintenan
   - Supporting stabilization and continuation detail lives in [**Runtime Stabilization and Continuation**](agent-runtime-remediation/plan-runtime-stabilization-and-continuation.md).
 - [**Memory & Retrieval**](plan-memory.md): Memory extraction, lifecycle, pgvector embeddings, project state sync. (This is the **only** active memory tracker).
 - **UI, UX, components** — Canonical + archive:
-  - [**UI/UX Canonical Plan**](plan-ux-ui.md): Single active tracker for UI/UX execution and remaining backlog.
+  - [**UI/UX Canonical Plan**](plan-ux-ui.md): Single active tracker for UI/UX execution and remaining backlog. Permanent frontend doctrine lives outside the plan layer.
   - [**Draft Experience**](plan-drafting-experience.md): Canonical plan for the manuscript editor, evidence-linked drafting, review workflows, inline AI proposals, and export-grade manuscript compilation.
   - [**Context Capture Plan**](plan-context-capture.md): Canonical plan for scoped AI entrypoints, semantic selection targets, context receipts/history, and cross-surface context reuse.
   - [**Protocol Live Sync**](plan-protocol-live-sync.md): Canonical plan for shared live protocol state, local durability, immediate copilot acceptance patching, and conflict-safe protocol UX.
@@ -31,8 +31,10 @@ This file is the active plan registry and the canonical owner for plan-maintenan
 - [**Diagnosis Report**](../reports/diagnosis-03-02.md): Canonical diagnosis and quality-tracking report; supersedes the removed `QUALITY_REPORT.md`.
 - [**Repo Health**](../reviews/repo-health.md): Living summary for whole-repo review findings, regressions, repeated mistakes, and improvements.
 - [**Architecture Decision Log**](../architecture/decision-log.md): Canonical record of intentional technical tradeoffs that reviewers should preserve unless assumptions change.
+- [**Frontend Quality Bar**](../architecture/frontend-quality-bar.md): Durable frontend doctrine, control hierarchy, and anti-patterns for LitRev UI work.
 - [**Agentic UI Glossary**](../architecture/agentic-ui-glossary.md): Canonical vocabulary bridge for chat timeline items, transparency/process UI, artifacts, composer controls, and clarification flow.
 - [**Repo Review Baseline**](../runbooks/repo-review-baseline.md): Canonical baseline for comparing repeated deep repo reviews against current in-repo findings and shipped review-driven fixes.
+- [**Frontend Review Loop**](../runbooks/frontend-review-loop.md): Repeatable frontend implementation and review procedure, including thesis framing and QA checklists.
 - [**Admin Access Runbook**](../runbooks/admin-access.md): Platform admin bootstrap, guard boundaries, mutation safety, and audit/analytics incident procedures.
 - [**Chat Unification Burn-In Runbook**](../runbooks/chat-unification-burn-in.md): Operational U1.6 canary validation steps and sign-off procedure.
 - [**Reliability A3 Canary Runbook**](../runbooks/reliability-a3-canary.md): staged sample gates, pass/fail thresholds, rollback triggers, and flag interaction matrix.

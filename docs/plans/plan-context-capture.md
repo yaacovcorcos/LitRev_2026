@@ -49,7 +49,8 @@ The intended end state is a shared context-capture system that works across proj
 - Required planning docs read for this task:
   - `docs/plans/README.md`
   - `docs/agents/universal-planning-meta-prompt.md`
-  - `docs/plans/plan-ux-ui.md`
+  - `docs/architecture/frontend-quality-bar.md`
+  - `docs/runbooks/frontend-review-loop.md`
   - `docs/plans/plan-chat-unification-v2.md`
   - `docs/plans/mobile-plan.md`
 
@@ -86,9 +87,11 @@ Reject:
 - This task updates:
   - `docs/plans/plan-context-capture.md` (new canonical plan)
   - `docs/plans/README.md` (index entry)
-  - `docs/plans/plan-ux-ui.md` (remove duplicated ownership of composer context chips and replace with dependency on this plan)
+  - `docs/plans/plan-ux-ui.md` (remove duplicated ownership of composer context chips and keep only active UI-plan dependency on this plan where needed)
 - During implementation, documentation updates must be included in the same PRs as behavior changes:
-  - `docs/plans/plan-ux-ui.md` when context-capture UI slices complete
+  - `docs/plans/plan-ux-ui.md` when active UI execution tracking for context-capture slices changes
+  - `docs/architecture/frontend-quality-bar.md` when context-capture work changes durable frontend doctrine or anti-pattern guidance
+  - `docs/runbooks/frontend-review-loop.md` when context-capture work changes the shared frontend review workflow
   - `docs/plans/mobile-plan.md` if mobile interaction rules change
   - `docs/plans/plan-chat-unification-v2.md` only if context transport/runtime contracts change
 - `PRD.md` remains unchanged unless context capture changes the product contract rather than the implementation.
