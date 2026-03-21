@@ -21,7 +21,7 @@ Use this file for detailed execution thinking about stabilization and continuati
 - The fifth `FIX-011b` stabilization slice now adds a narrow `RunCheckpoint` store for the exact Slice 4 gaps that still needed explicit continuation seeds: recovery can prefer `continue_from_checkpoint` when a valid `tool_result_ready` or `artifact_ready` boundary survives later same-run noise, while legacy runs and non-checkpoint cases still fall back to Slice 4 durable continuation or retry semantics.
 - The sixth `FIX-011b` / `CAG-001` slice now persists coarse `runPhase` and `phaseEnteredAt` on `AgentRun`, writes phase transitions only at authoritative runtime boundaries, uses ask-phase truth to recover/readmit paused runs without surfacing them as active conflicts, and uses stale finalize-phase truth to bound reconnect behavior instead of treating it as healthy running work.
 - A repo audit against `run-convergence.ts`, `run-recovery.ts`, the current recovery/surface tests, and the canonical runtime plans did not identify a new shared-runtime recovery delta beyond the shipped convergence path.
-- The remaining closeout risk is now operational: `U1.6` still needs sign-off-quality burn-in evidence, and any later issue found during that burn-in should be treated as a narrow shared-path patch rather than a new recovery architecture program.
+- The remaining closeout risk is now conditional: once baseline agent stability/trust is restored under `FIX-012`, `U1.6` still needs sign-off-quality burn-in evidence, and any later issue found during that burn-in should be treated as a narrow shared-path patch rather than a new recovery architecture program.
 - Popup still remains a truthful reduced subset only; it should not claim full recovery/continuation parity until shared-engine convergence is explicitly finished.
 
 ## Locked Design Principles
@@ -34,6 +34,7 @@ Use this file for detailed execution thinking about stabilization and continuati
 
 ## Closeout Posture
 - Treat `FIX-011b` as a delta-closeout task, not a greenfield runtime program.
+- If `FIX-012` is still open because ordinary manual agent use is visibly broken, treat this file as blocked by that broader baseline rescue work instead of treating burn-in as the current rescue task.
 - Assume no schema change; reopen persistence only if a concrete missing persisted fact is discovered during burn-in or a narrow delta audit.
 - Use this file for supporting detail only. [plan-agentic.md](../plan-agentic.md) remains the canonical fix-status owner, and `U1.6` in [chatRuntime.md](../chatRuntime.md) plus [chat-runtime-burn-in.md](../../runbooks/chat-runtime-burn-in.md) remains the operational sign-off owner.
 - If a real runtime drift is found, patch only the shared convergence/recovery path and add focused tests for that uncovered case.
