@@ -7,6 +7,10 @@ createRuleTester().run("litrev/no-catch-console-error", rule, {
       code: "promise.catch((error) => { console.error(error); });",
       filename: "/repo/next-app/app/example.ts",
     },
+    {
+      code: "promise.catch((error) => { console.error('setup failed', error); process.exitCode = 1; });",
+      filename: "/repo/next-app/scripts/test-ai-setup.ts",
+    },
   ],
   invalid: [
     {

@@ -348,11 +348,6 @@ export async function applyArtifact(
                 error: formatError(markError),
             });
         });
-        console.error("[artifacts] Failed to persist artifact review checkpoint boundary", {
-            artifactId,
-            runId: artifact.runId,
-            error: formatError(error),
-        });
         throw error;
     }
 }

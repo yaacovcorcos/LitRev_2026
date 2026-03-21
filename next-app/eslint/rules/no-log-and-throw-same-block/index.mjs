@@ -1,5 +1,11 @@
 import { isTestFile } from "../../shared.mjs";
 
+function isFunctionBoundary(node) {
+  return node?.type === "FunctionDeclaration"
+    || node?.type === "FunctionExpression"
+    || node?.type === "ArrowFunctionExpression";
+}
+
 function isConsoleErrorCall(node) {
   return node?.type === "CallExpression"
     && node.callee?.type === "MemberExpression"
@@ -9,12 +15,22 @@ function isConsoleErrorCall(node) {
     && node.callee.property.name === "error";
 }
 
-function nearestBlock(node) {
+function getExecutionOwner(node) {
   let current = node.parent;
-  while (current && current.type !== "BlockStatement" && current.type !== "Program") {
+
+  while (current) {
+    if (current.type === "BlockStatement" || current.type === "Program") {
+      return current;
+    }
+
+    if (isFunctionBoundary(current)) {
+      return current;
+    }
+
     current = current.parent;
   }
-  return current;
+
+  return null;
 }
 
 export default {
@@ -32,7 +48,7 @@ export default {
     if (isTestFile(context.filename)) return {};
 
     const errorCalls = [];
-    const throwBlocks = new Set();
+    const throwOwners = new Set();
 
     return {
       CallExpression(node) {
@@ -41,12 +57,13 @@ export default {
         }
       },
       ThrowStatement(node) {
-        const block = nearestBlock(node);
-        if (block) throwBlocks.add(block);
+        const owner = getExecutionOwner(node);
+        if (owner) throwOwners.add(owner);
       },
       "Program:exit"() {
         for (const call of errorCalls) {
-          if (throwBlocks.has(nearestBlock(call))) {
+          const owner = getExecutionOwner(call);
+          if (owner && throwOwners.has(owner)) {
             context.report({ node: call, messageId: "noLogAndThrow" });
           }
         }
