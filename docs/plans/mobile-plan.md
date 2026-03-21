@@ -335,8 +335,8 @@ Targeted validation matrix:
 8. relevant flag combinations as each new wave is introduced
 
 ## Dependencies
-- `docs/plans/plan-chat-unification-v2.md`
-- `docs/plans/plan-thinking-v2.md`
+- `docs/plans/chatRuntime.md`
+- `docs/plans/transparencyUI.md`
 - `docs/runbooks/reliability-a3-canary.md`
 
 ## Future Sections (To Expand)

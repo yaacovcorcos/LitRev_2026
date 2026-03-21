@@ -40,7 +40,7 @@ The completed slice did not:
 ## Remaining Follow-Through
 
 Remaining work moved back to the canonical plans:
-- [plan-thinking-v2.md](../plan-thinking-v2.md)
+- [transparencyUI.md](../transparencyUI.md)
   - `Phase V2.2` for receipt expansion beyond the core search tools
   - `Phase V2.5` for provenance carry-forward and answer/read alignment follow-through
 - [plan-agentic.md](../plan-agentic.md)

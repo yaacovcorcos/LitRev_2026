@@ -17,7 +17,8 @@ Use supporting plans only for detailed execution on a specific fix or subsystem:
 - `docs/plans/agent-runtime-remediation/*.md` for fix-level implementation detail
 - `docs/plans/plan-memory.md` for memory-internal work
 - `docs/plans/plan-prompts.md` for prompt-library work
-- `docs/plans/plan-chat-unification-v2.md` for shared chat-runtime migration
+- `docs/plans/chatRuntime.md` for shared chat-runtime parity and rollout
+- `docs/plans/transparencyUI.md` for truthful process visibility, optional reasoning, and visible-message contracts
 - `docs/plans/plan-context-capture.md` for scoped context entrypoints and receipts/history reuse
 
 ## Maintenance Contract
@@ -96,7 +97,7 @@ Every fix entry must include:
 - **Known Hidden Assistant Markup Now Uses One Shared Read-Time Compatibility Layer:** timeline rendering, popup rendering/transcript export, conversation summarization, and transcript-derived memory extraction now share one pure assistant-content normalizer for the known `MENTIONED_STUDIES` and `SCOPING_REPORT` payload families, keeping visible prose clean without changing persisted `AIMessage.content` yet.
 - **P10 Rollout Flags:** Mention flow and scoping decision-card behavior are feature-flagged (`NEXT_PUBLIC_CHAT_STUDY_MENTIONS_V1`, `NEXT_PUBLIC_SCOPING_DECISION_CARD_V2`).
 - **Scoping Mode (P10):** Dedicated pre-protocol routing now runs through a server-owned workflow contract (`discover -> synthesize -> propose -> handoff`) with an exploratory-search cap, low-autonomy search-pack preview instead of a blocking first-pass approval pause, natural-language handoff/default carry-forward, and proposal-only protocol mutation.
-- **Reasoning Stream Support (Current):** `reasoning_*` stream events are currently wired end-to-end for Anthropic responses. OpenAI/xAI models can run normally, but their provider adapters do not yet emit normalized reasoning stream parts in the same pipeline.
+- **Reasoning Stream Support (Current):** `reasoning_*` stream events are wired through the shared timeline path on the main chat surfaces, but provider output quality and readability remain inconsistent across models/providers. Structured process trace remains the primary transparency mechanism, and provider reasoning remains additive rather than required for comprehension.
 - **Proposal-State Tool Context:** Proposal-style tool results now surface whether they are `proposed` vs `auto_applied` in the model-visible tool-message context, so assistant replies can distinguish review-only changes from already-applied ones.
 - **Plan Heuristic Guardrails:** Plan-before-act heuristics now require explicit extraction/writing verbs for `extract_pdf` and `update_note`, reducing false execution plans for read-only PDF/section questions.
 - **Delegation Runtime Now Uses The Shared Safety Contract:** delegated child runs now reuse the same autonomy-aware execution/finalization core as direct execution, level-1 delegated actions fail as structured approval-required blocks instead of running, delegated proposal artifacts stay reviewable unless direct policy allows auto-apply, and delegated `ask_user` bubbles through the existing parent `user_input_required` flow.
@@ -143,7 +144,7 @@ Every fix entry must include:
   - **Severity:** P0 trust/reliability
   - **Symptom:** the major convergence primitives are already shipped, but `FIX-011b` is still open because the repo has not yet finished the final delta audit against the shared recovery/convergence path or completed the `U1.6` burn-in/sign-off needed to prove there is no remaining cross-surface runtime gap hiding behind the shipped path.
   - **Desired end state:** either patch the one narrow remaining shared runtime delta if the audit or burn-in reveals one, or confirm that no additional shared-runtime code delta remains and retire `FIX-011b` through the existing `U1.6` burn-in authority without reopening settled recovery design.
-  - **Supporting plans:** `docs/plans/agent-runtime-remediation/plan-runtime-stabilization-and-continuation.md` for supporting closeout detail, `docs/plans/plan-thinking-v2.md` for durable execution-trace truth, and `docs/plans/plan-chat-unification-v2.md` plus `docs/runbooks/chat-unification-burn-in.md` for the operational `U1.6` sign-off path.
+  - **Supporting plans:** `docs/plans/agent-runtime-remediation/plan-runtime-stabilization-and-continuation.md` for supporting closeout detail, `docs/plans/transparencyUI.md` for durable execution-trace truth, and `docs/plans/chatRuntime.md` plus `docs/runbooks/chat-unification-burn-in.md` for the operational `U1.6` sign-off path.
   - **Exit criteria:**
     - the delta audit confirms no remaining shared-runtime gap, or any discovered gap is patched in the shared convergence/recovery path
     - `/ai`, project copilot, and the main conversation show no remaining recovery-action drift under the audited/stressed cases
@@ -191,7 +192,7 @@ Work should proceed in this order unless a production incident forces reprioriti
 - [x] `CAG-002a` Stateless turn-based clarification flow shipped
 - [ ] `CAG-003` Add checkpointed continuation from durable work so reconnect / continue / replace / retry semantics never restart from zero when durable work already exists
 - [ ] `CAG-004` Standardize idempotency envelopes for mutating tools
-- [ ] `CAG-005` Complete provider-native reasoning stream parity for OpenAI/xAI
+- [ ] `CAG-005` Define controlled optional reasoning transparency across providers and surfaces
 
 ### Phase 1 — Search-First Retrieval and Progressive Context
 
@@ -221,7 +222,7 @@ Work should proceed in this order unless a production incident forces reprioriti
 - [ ] `CAG-026` Replace hidden assistant markup with canonical structured message parts
   - **Problem:** assistant turns still mix human-readable prose with hidden machine-readable UI metadata inside `AIMessage.content`, which forces client/server consumers to sanitize inconsistently and allows malformed internal markup to leak into visible chat, exports, summaries, and transcript-derived workflows.
   - **Desired end state:** the server owns one canonical normalization boundary that persists clean visible assistant text separately from typed structured message parts, timeline/popup/export/summary consumers read from that canonical shape instead of reparsing prose, and legacy hidden-markup parsing survives only as a backward-compatibility fallback during migration.
-  - **Supporting plan:** `docs/plans/plan-structured-assistant-message-parts.md`
+  - **Supporting plan:** `docs/plans/transparencyUI.md`
   - **Exit criteria:** new assistant turns persist clean visible text plus validated structured parts; main chat surfaces render from typed parts; transcript/export/summary/memory paths stop depending on raw hidden markup; legacy parsing is fallback-only.
 
 ### Phase 4 — Evaluation, Rollout, and Operations
