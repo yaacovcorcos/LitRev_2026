@@ -6,5 +6,7 @@ export default {
     "app/actions/**/*.ts",
     "app/api/**/*.ts",
   ],
-  rules: {},
+  rules: {
+    "litrev/no-server-runtime-console": "warn",
+  },
 };

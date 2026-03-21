@@ -21,6 +21,7 @@ This plan does not own product behavior or `PRD.md`.
   - `npm run lint:governance:phase4-async`
   - `npm run lint:governance:phase4-tests`
   - `npm run lint:governance:phase4-policy`
+  - `npm run lint:governance:logging`
   - `npm run check:runtime-test-impact`
   - `npm run lint:governance:audit`
   - `npm run test:eslint-rules`
@@ -47,6 +48,10 @@ This plan does not own product behavior or `PRD.md`.
   - runtime test policy: `npm run lint:governance:phase4-tests`
   - umbrella policy maturity: `npm run lint:governance:phase4-policy`
   - changed-file runtime test impact: `npm run check:runtime-test-impact`
+- LG-006 now has a stable dedicated verifier:
+  - server/runtime logging policy: `npm run lint:governance:logging`
+  - this verifier currently governs `lib/server/**`, `app/actions/**`, and `app/api/**` only
+  - it is not part of the required governance inventory until the LG-006 enforcement follow-up lands
 - Runtime test-governance now uses one shared authority under `next-app/eslint/` for governed domains and waiver interpretation, with strict one-file waivers only.
 - The remaining non-Phase-3 governance roadmap is now intentionally compressed into two phases:
   - `Phase 4 — Policy Maturity`

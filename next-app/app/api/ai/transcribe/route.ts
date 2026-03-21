@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { transcribeAudio } from "@/lib/server/ai/transcription";
 import { runWithActorContext } from "@/lib/server/actor";
 import { requireApiSession } from "@/lib/server/auth/session";
+import { logServerError } from "@/lib/server/logging";
 
 export const runtime = "nodejs";
 
@@ -36,7 +37,7 @@ export async function POST(request: NextRequest) {
             return NextResponse.json(result);
         });
     } catch (error) {
-        console.error("Transcription error:", error);
+        logServerError("ai-transcribe-route", "transcription failed", undefined, error);
         const message = error instanceof Error ? error.message : "Transcription failed";
         return NextResponse.json({ error: message }, { status: 500 });
     }

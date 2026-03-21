@@ -23,6 +23,7 @@ import type { TracingSpan } from "./tracing";
 import { mapToolToArtifactType, mapToolToArtifactTitle } from "./tool-helpers";
 import { createAutonomyBlockedErrorEnvelope } from "@/lib/ai/error-envelope";
 import type { AIService, ToolRuntimeContext } from "./ai-service";
+import { logServerError } from "@/lib/server/logging";
 
 export type DelegatedAutonomyBlockedReason = "disabled_by_autonomy" | "approval_required";
 export type AutonomyLevelOneBehavior = "suggest" | "block";
@@ -168,13 +169,13 @@ async function persistToolResultBoundary(params: {
             params.runId,
             "tool_result_checkpoint_persistence_failed",
         ).catch((markError) => {
-            console.error("[tool-autonomy] Failed to persist degraded durability state", {
+            logServerError("tool-autonomy", "failed to persist degraded durability state", {
                 runId: params.runId,
                 toolName: params.toolName,
                 error: formatError(markError),
             });
         });
-        console.error("[tool-autonomy] Failed to persist tool-result checkpoint boundary", {
+        logServerError("tool-autonomy", "failed to persist tool-result checkpoint boundary", {
             runId: params.runId,
             toolName: params.toolName,
             error: formatError(error),

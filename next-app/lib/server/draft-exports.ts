@@ -12,6 +12,7 @@ import { compileDraftExportDocument } from "@/lib/draft-export/compile";
 import { renderMarkdownExport } from "@/lib/draft-export/render-markdown";
 import { renderDocxExport } from "@/lib/draft-export/render-docx";
 import { createDraftCheckpoint } from "@/lib/server/draft-checkpoints";
+import { logServerError } from "@/lib/server/logging";
 
 function slugifyFilename(value: string): string {
   return value
@@ -115,7 +116,10 @@ export async function generateDraftExport(
     try {
       await deleteFileAsset(scopeInput, projectId, file.id);
     } catch (cleanupError) {
-      console.error("[draft export] failed to rollback file asset after checkpoint error", cleanupError);
+      logServerError("draft-export", "failed to rollback file asset after checkpoint error", {
+        projectId,
+        fileAssetId: file.id,
+      }, cleanupError);
     }
     throw error;
   }

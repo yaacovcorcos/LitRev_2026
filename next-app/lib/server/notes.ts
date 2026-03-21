@@ -5,6 +5,7 @@
 
 import "server-only";
 import { prisma } from "@/lib/server/prisma";
+import { logServerWarn } from "@/lib/server/logging";
 import type { Note } from "@prisma/client";
 
 // TipTap JSONContent-compatible type (avoid direct @tiptap/core dep in server code)
@@ -274,7 +275,10 @@ export async function searchNotes(projectId: string, query: string) {
         return notes;
     } catch (error) {
         const reason = error instanceof Error ? error.message : "unknown error";
-        console.warn(`[notes.search] FTS query failed, falling back to ILIKE scan: ${reason}`);
+        logServerWarn("notes.search", "fts query failed, falling back to ilike scan", {
+            reason,
+            projectId,
+        });
         return prisma.note.findMany({
             where: {
                 projectId,

@@ -1,6 +1,7 @@
 import "server-only";
 
 import { prisma } from "@/lib/server/prisma";
+import { logServerInfo } from "@/lib/server/logging";
 
 const LEGACY_USER_ID = "local-user";
 const LEGACY_WORKSPACE_ID = "local-workspace";
@@ -427,7 +428,7 @@ export async function claimLegacySingleUserData(params: {
   });
 
   if (result.claimed) {
-    console.info("[auth-claim] migrated legacy placeholder data", {
+    logServerInfo("auth-claim", "migrated legacy placeholder data", {
       userId,
       workspaceId,
       movedProjects: result.movedProjects,

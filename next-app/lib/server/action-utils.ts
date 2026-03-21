@@ -3,6 +3,7 @@
 // ---------------------------------------------------------------------------
 
 import type { ZodType } from "zod";
+import { logServerError } from "@/lib/server/logging";
 
 export type ActionResult<T = void> =
   | { success: true; data: T }
@@ -34,7 +35,7 @@ export async function withAction<T>(
     const data = await fn();
     return { success: true, data };
   } catch (err) {
-    console.error("[action error]", err);
+    logServerError("action", "server action failed", undefined, err);
     const raw = getErrorMessage(err);
     const code = classifyError(raw);
     const message = code ? SAFE_MESSAGES[code]! : fallbackMessage;

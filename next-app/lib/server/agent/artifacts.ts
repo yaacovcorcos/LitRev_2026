@@ -21,6 +21,7 @@ import { normalizedMemoryKey, normalizedMemoryValue } from "@/lib/server/memory/
 import { createNote, updateNote, textToTipTapDoc, listNotes } from "@/lib/server/notes";
 import { upsertStudy, updateStudy } from "@/lib/server/ledger";
 import { markRunDurabilityDegraded, noteObservedRunActivity } from "./run";
+import { logServerError, logServerWarn } from "@/lib/server/logging";
 
 // ── Apply function registry ──────────────────────────────────────────────────
 
@@ -186,7 +187,10 @@ export async function reviewArtifact(
 
     // Decision memory extraction (fire-and-forget)
     extractDecisionMemory(artifact, status, reviewNote).catch((err) =>
-        console.error("[decision-extractor] Failed:", err)
+        logServerError("decision-extractor", "decision memory extraction failed", {
+            artifactId,
+            status,
+        }, err)
     );
 
     return updated;
@@ -207,7 +211,10 @@ export async function applyArtifact(
 
     const applyFn = applyFunctions.get(artifact.type as ArtifactType);
     if (!applyFn) {
-        console.warn(`No apply function registered for artifact type: ${artifact.type}`);
+        logServerWarn("artifacts", "no apply function registered for artifact type", {
+            artifactType: artifact.type,
+            artifactId,
+        });
         try {
             const { applied, eventCreatedAt } = await prisma.$transaction(async (tx) => {
                 const applied = await tx.artifact.update({
@@ -253,8 +260,8 @@ export async function applyArtifact(
             await markRunDurabilityDegraded(
                 artifact.runId,
                 "artifact_review_checkpoint_persistence_failed",
-            ).catch((markError) => {
-                console.error("[artifacts] Failed to persist degraded durability state", {
+        ).catch((markError) => {
+                logServerError("artifacts", "failed to persist degraded durability state", {
                     artifactId,
                     runId: artifact.runId,
                     error: formatError(markError),
@@ -281,7 +288,10 @@ export async function applyArtifact(
             });
         } catch (err) {
             // Snapshot capture failure should not block the apply
-            console.warn(`[artifacts] Snapshot capture failed for ${artifact.type}:`, err);
+            logServerWarn("artifacts", "snapshot capture failed", {
+                artifactType: artifact.type,
+                artifactId,
+            }, err);
         }
     }
 
@@ -342,7 +352,7 @@ export async function applyArtifact(
             artifact.runId,
             "artifact_review_checkpoint_persistence_failed",
         ).catch((markError) => {
-            console.error("[artifacts] Failed to persist degraded durability state", {
+            logServerError("artifacts", "failed to persist degraded durability state", {
                 artifactId,
                 runId: artifact.runId,
                 error: formatError(markError),
@@ -835,9 +845,11 @@ registerApplyFunction("study_update", async (artifact) => {
     const snapshotMs = new Date(payload.snapshotAt).getTime();
     const currentMs = new Date(currentStudy.updatedAt).getTime();
     if (Number.isFinite(snapshotMs) && currentMs > snapshotMs) {
-        console.warn(
-            `[study_update] Concurrency warning for study ${payload.studyId}: current updatedAt is newer than snapshotAt. Applying accepted patch.`
-        );
+        logServerWarn("study_update", "concurrency warning; applying accepted patch", {
+            studyId: payload.studyId,
+            snapshotAt: payload.snapshotAt,
+            currentUpdatedAt: currentStudy.updatedAt.toISOString(),
+        });
     }
 
     await updateStudy(undefined, artifact.projectId, payload.studyId, {
@@ -925,9 +937,10 @@ registerApplyFunction("screening_batch", async (artifact) => {
                 select: { id: true, details: true },
             });
             if (!existing) {
-                console.warn(
-                    `[screening_batch] Skipping study update: studyId "${study.studyId}" not found in project "${artifact.projectId}".`
-                );
+                logServerWarn("screening_batch", "skipping study update because study was not found", {
+                    studyId: study.studyId,
+                    projectId: artifact.projectId,
+                });
                 continue;
             }
         } else {

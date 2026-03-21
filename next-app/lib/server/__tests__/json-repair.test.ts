@@ -132,8 +132,10 @@ describe("parseToolArgs", () => {
                 source: "provider_tool_call",
             },
         });
-        expect(spy).toHaveBeenCalledWith(expect.stringContaining("[openai]"));
-        expect(spy).toHaveBeenCalledWith(expect.stringContaining("search_pubmed"));
+        expect(spy).toHaveBeenCalledWith("[openai] failed to parse tool args", {
+            toolName: "search_pubmed",
+            reason: "parse failed",
+        });
         spy.mockRestore();
     });
 
@@ -149,7 +151,10 @@ describe("parseToolArgs", () => {
                 source: "provider_tool_call",
             },
         });
-        expect(spy).toHaveBeenCalledWith(expect.stringContaining("[xai]"));
+        expect(spy).toHaveBeenCalledWith("[xai] failed to parse tool args", {
+            toolName: "some_tool",
+            reason: "got array",
+        });
         spy.mockRestore();
     });
 

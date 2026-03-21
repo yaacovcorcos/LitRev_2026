@@ -39,7 +39,9 @@ describe("validatePlan", () => {
         };
         const result = validatePlan(plan);
         expect(result).toBeNull();
-        expect(spy).toHaveBeenCalledWith(expect.stringContaining("nonexistent_tool"));
+        expect(spy).toHaveBeenCalledWith("[planner] plan references disallowed tool", {
+            toolName: "nonexistent_tool",
+        });
         spy.mockRestore();
     });
 
@@ -51,7 +53,9 @@ describe("validatePlan", () => {
         };
         const result = validatePlan(plan);
         expect(result).toBeNull();
-        expect(spy).toHaveBeenCalledWith(expect.stringContaining("Zod validation"));
+        expect(spy).toHaveBeenCalledWith("[planner] plan failed zod validation", {
+            issues: "steps.0.label: Invalid input: expected string, received undefined",
+        });
         spy.mockRestore();
     });
 
@@ -119,7 +123,9 @@ describe("validatePlan", () => {
         };
         const result = validatePlan(plan, ["bulk_screening", "exclude_study", "extract_pdf"]);
         expect(result).toBeNull();
-        expect(spy).toHaveBeenCalledWith(expect.stringContaining("disallowed tool"));
+        expect(spy).toHaveBeenCalledWith("[planner] plan references disallowed tool", {
+            toolName: "search_pubmed",
+        });
         spy.mockRestore();
     });
 

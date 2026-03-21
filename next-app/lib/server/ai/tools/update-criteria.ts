@@ -4,6 +4,7 @@ import { prisma } from "@/lib/server/prisma";
 import { ensureProtocol } from "@/lib/server/protocols";
 import { syncProtocolToMemory } from "@/lib/server/memory/protocol-sync";
 import { findBestFuzzyListMatch } from "@/lib/agent/fuzzy-match";
+import { logServerError } from "@/lib/server/logging";
 
 const inputSchema = z.object({
     action: z.enum(["add", "remove"]),
@@ -114,7 +115,7 @@ export const updateCriteriaTool: AITool = {
 
             // Sync to memory (fire-and-forget)
             syncProtocolToMemory(projectId, data).catch((err) =>
-                console.error("[update_criteria] Memory sync failed:", err)
+                logServerError("update_criteria", "memory sync failed", { projectId }, err)
             );
 
             return {

@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { requireApiSession } from "@/lib/server/auth/session";
+import { logServerError } from "@/lib/server/logging";
 
 export const runtime = "nodejs";
 
@@ -66,7 +67,7 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        console.error("[telemetry/context-capture] ingestion failed", error);
+        logServerError("telemetry/context-capture", "ingestion failed", undefined, error);
         return Response.json(
             {
                 success: false,

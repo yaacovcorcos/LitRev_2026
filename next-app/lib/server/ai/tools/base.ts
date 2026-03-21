@@ -12,6 +12,7 @@ import type { ProtocolData } from "@/types/protocol";
 import { HARD_CAPS } from "@/types/agent";
 import { DELEGATION_TOOL_NAMES, getContextualAllowedTools } from "@/lib/agent/router";
 import { isDelegationEnabled } from "@/lib/agent/feature-flags";
+import { logServerWarn } from "@/lib/server/logging";
 import { pubmedSearchTool } from "./pubmed-search";
 import { addToLedgerTool } from "./add-to-ledger";
 import { excludeStudyTool } from "./exclude-study";
@@ -309,7 +310,9 @@ export async function executeTool(
         if (result.result !== null && result.result !== undefined) {
             const outputValidation = validateToolOutput(tool, result.result);
             if (!outputValidation.success) {
-                console.warn(`[tool:${name}] ${outputValidation.error}`);
+                logServerWarn(`tool:${name}`, "tool output validation failed", {
+                    validationError: outputValidation.error,
+                });
             }
         }
 

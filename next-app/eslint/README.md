@@ -23,6 +23,7 @@ Commands:
 - `npm run lint:governance:phase4-async`
 - `npm run lint:governance:phase4-tests`
 - `npm run lint:governance:phase4-policy`
+- `npm run lint:governance:logging`
 - `npm run check:runtime-test-impact`
 - `npm run governance:ci-required`
 - `npm run governance:ci-informational`
@@ -67,6 +68,14 @@ Contracts:
 - `npm run lint:governance:phase4-policy` is the stable umbrella verifier for the completed Phase 4 policy surface:
   - it runs `npm run lint:governance:phase4-async`
   - it runs `npm run lint:governance:phase4-tests`
+- `npm run lint:governance:logging` is the stable verifier for the in-progress LG-006 server/runtime structured-logging contract only:
+  - `lib/server/**`
+  - `app/actions/**`
+  - `app/api/**`
+  - excluding tests, fixtures, generated files, and `lib/server/logging.ts`
+  - enforcing:
+    - `litrev/no-server-runtime-console`
+  - broad `npm run lint:governance` continues to carry the same rule at warning level through the `litrev/server` slice until LG-006 is rolled into the required governance inventory
 - `npm run check:runtime-test-impact` is the stable changed-file companion to the Phase 4 test-governance contract:
   - it consumes the same governed domains and waiver file as the two lint rules
   - it does not carry parallel domain logic
@@ -95,6 +104,10 @@ Contracts:
   - broader `window.location` restrictions beyond navigation mutation: rejected
   - UI `console.*` restrictions: deferred to the separate logging-governance track
   - blanket restrictions on `style`, `className`, `useMemo`, or raw anchors: rejected for now
+- LG-006 currently governs only server/runtime raw console usage:
+  - direct `console.error|warn|info|log|debug` is disallowed in the LG-006 server/runtime surface
+  - approved usage flows through `@/lib/server/logging`
+  - UI/client `console.*` remains out of scope for now
 - the Phase 2 hot-spot verifier intentionally bundles the current async-cleanup rules for that same surface only; it confirms the completed hot-spot cleanup contract and does not imply broader Phase 4 completion
 - `scripts/**` is intentionally included only for the Phase 1 logging rules (`litrev/no-catch-console-error` and `litrev/no-log-and-throw-same-block`)
 - the governance audit baseline still excludes `scripts/**` by design; audit roots and lint-enforcement scope are not identical

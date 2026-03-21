@@ -5,6 +5,7 @@
 
 import { prisma } from "@/lib/server/prisma";
 import type { Prisma } from "@prisma/client";
+import { logServerError } from "@/lib/server/logging";
 import type {
     AIMessage,
     ConversationContext,
@@ -496,7 +497,9 @@ export async function autoSummarizeIfNeeded(
                 },
             });
         } catch (error) {
-            console.error("[autoSummarize] Failed:", error);
+            logServerError("autoSummarize", "conversation summary update failed", {
+                conversationId,
+            }, error);
         }
     };
 

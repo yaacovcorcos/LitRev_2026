@@ -11,6 +11,7 @@ import { getStudyMemories, searchStudyMemories } from "./study-memory";
 import { searchSemanticMemories } from "./semantic-memory";
 import { runMemoryMaintenanceLoop } from "./maintenance";
 import { recordRunEvent } from "@/lib/server/agent/run-event-recorder";
+import { logServerWarn } from "@/lib/server/logging";
 import type { AgentMode } from "@/types/agent";
 
 export interface MemoryContext {
@@ -645,7 +646,7 @@ export async function retrieveMemories(
             query: context.query || "context-based",
             memories: trimmed,
         }).catch((error) => {
-            console.warn("[memory] retrieval audit logging failed", {
+            logServerWarn("memory", "retrieval audit logging failed", {
                 userId: context.userId,
                 projectId: context.projectId ?? null,
                 conversationId: context.conversationId ?? null,

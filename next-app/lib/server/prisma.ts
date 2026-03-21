@@ -3,6 +3,7 @@ import "server-only";
 import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
+import { logServerWarn } from "@/lib/server/logging";
 
 const DATABASE_URL = process.env.DATABASE_URL || "";
 const isLocalDb = DATABASE_URL.includes("localhost") || DATABASE_URL.includes("127.0.0.1");
@@ -14,7 +15,7 @@ function readPositiveIntegerEnv(name: string): number | undefined {
   if (!raw) return undefined;
   const parsed = Number.parseInt(raw, 10);
   if (Number.isFinite(parsed) && parsed > 0) return parsed;
-  console.warn(`[db] Ignoring invalid ${name} value: ${raw}`);
+  logServerWarn("db", "ignoring invalid environment value", { name, raw });
   return undefined;
 }
 
@@ -29,8 +30,9 @@ const poolConnectionString = (() => {
 
   if (isSupabasePooler && allowInsecureDbTls) {
     if (process.env.NODE_ENV === "production") {
-      console.warn(
-        "[db] ALLOW_INSECURE_DB_TLS=1 is enabled in production. This should be temporary emergency mode only.",
+      logServerWarn(
+        "db",
+        "ALLOW_INSECURE_DB_TLS=1 is enabled in production; this should be temporary emergency mode only",
       );
     }
     return withNoVerifySsl(DATABASE_URL);

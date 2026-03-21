@@ -3,6 +3,7 @@ import type { AITool, ToolExecutionContext } from "./base";
 import { prisma } from "@/lib/server/prisma";
 import { fetchPdfFromStorage, extractTextFromPdf } from "@/lib/server/pdf-extraction";
 import { extractFulltextWithGrobid, type GrobidSectionKey } from "@/lib/server/grobid";
+import { logServerWarn } from "@/lib/server/logging";
 
 const MAX_RETURN_CHARS = 12000; // ~3k tokens — fits in context without overwhelming
 
@@ -133,7 +134,9 @@ export const readStudyContentTool: AITool = {
             // Fetch and parse PDF
             const buffer = await fetchPdfFromStorage(file.storagePath);
             const grobidPromise = extractFulltextWithGrobid(buffer).catch((error) => {
-                console.warn("[read_study_content] GROBID fulltext extraction failed", error);
+                logServerWarn("read_study_content", "grobid fulltext extraction failed", {
+                    studyId,
+                }, error);
                 return null;
             });
 
