@@ -74,16 +74,23 @@ gh pr list --state open --json number,title,headRefName,baseRefName,reviewDecisi
 - Maintain a cleanup manifest before deleting or re-homing worktrees.
 - Do not remove a parent worktree directory while it still contains active nested child worktrees.
 - Keep PR scope narrow and merge frequently into `main`.
+- A task is not complete at PR creation. Monitor the PR until it is mergeable, merge it, then run the full post-merge cleanup sequence immediately.
 - Treat red CI on `main` PRs as release-blocking debt.
 
 ## Cleanup Manifest Contract
 
-Before deleting or re-homing any worktree, record a cleanup manifest entry with:
+Before deleting or re-homing any worktree, record a cleanup manifest entry.
 
+Preferred storage:
+- if a PR exists, add the manifest entry to the PR body or a PR comment
+- if no PR exists, record it in a local scratch note before deletion
+
+Each manifest entry must include:
 - worktree path
 - branch name or detached HEAD SHA
 - status: `active`, `rescue`, `stale`, or `unknown`
 - decision: `keep`, `rehome`, `review`, or `delete`
+- short reason for the decision
 
 ## Standard Flow
 
@@ -110,16 +117,23 @@ Notes:
 - Normal task branches use `YY/<task>`.
 - Emergency branches use `YY/hotfix-<task>`.
 
-After merge:
+PR closeout flow:
 
-1. `git fetch origin --prune`
-2. `git switch main`
-3. `git pull --ff-only origin main`
-4. `git worktree remove .worktrees/<task>`
-5. `git branch -d YY/<task>`
+1. monitor the PR until it is mergeable:
+   - required checks are green
+   - required review/conversation state is satisfied
+   - latest review feedback has been inspected with `gh pr view <number> --json reviews,comments`
+2. merge the PR to `main`
+3. from repo root:
+   - `git fetch origin --prune`
+   - `git switch main`
+   - `git pull --ff-only origin main`
+   - `git worktree remove .worktrees/<task>`
+   - `git branch -d YY/<task>`
+4. confirm repo root `main` is clean and matches `origin/main`
 
 Required cleanup rule:
-- steps 1-5 above are one cleanup sequence; do not leave merged task worktrees behind for later cleanup.
+- steps 1-4 above are one closeout sequence; do not leave merged PRs, merged task worktrees, or merged local branches behind for later cleanup.
 
 Abandoned task:
 

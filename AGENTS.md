@@ -109,6 +109,7 @@ Rule: feature branches hold work; repo root `main` only mirrors merged work.
 - If `gh pr create` appears to hang, suspect an interactive prompt or editor wait before blaming the GitHub API.
 - Before merge decisions, pull latest review feedback with `gh pr view <number> --json reviews,comments`.
 - After validation passes, push by default and open/update a PR targeting `main`.
+- A task is not complete at PR creation; monitor the PR until it is mergeable, merge it, then run the post-merge cleanup sequence from `docs/runbooks/github-flow.md`.
 - For the exact branch-start, push/PR, merge-sync, and worktree-cleanup procedure, follow `docs/runbooks/github-flow.md`.
 
 ## Database Contract (Non-Negotiable)
