@@ -39,6 +39,14 @@ Read when present and relevant:
   - logging/error-surface rules
   - route-specific UI delivery rules
 
+### Frontend Governance Alignment
+- whether `docs/architecture/frontend-quality-bar.md` exists
+- whether `docs/runbooks/frontend-review-loop.md` exists
+- whether `AGENTS.md`, `docs/agents/cold-memory-index.md`, and `docs/agents/specialists/frontend-ui-specialist.md` point to the new frontend docs
+- whether `docs/plans/README.md` resolves active UI-plan context without treating `plan-ux-ui.md` as permanent frontend doctrine
+- whether `frontend-ui-integration` stays execution-only and defers to repo-owned frontend doctrine
+- whether any stale references to the deleted frontend droid remain
+
 ### Searchability and Placement
 - default exports outside framework-required files
 - parent-directory relative imports across boundaries

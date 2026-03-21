@@ -4,6 +4,7 @@
 Single canonical tracker for UI/UX execution across `next-app` surfaces.
 
 This file consolidates the former dual-plan tracking into `plan-ux-ui.md`.
+Permanent frontend doctrine now lives in `docs/architecture/frontend-quality-bar.md`, and the repeatable frontend implementation/review procedure now lives in `docs/runbooks/frontend-review-loop.md`.
 Domain-specific execution plans remain canonical for their domains:
 - Guided setup: `docs/plans/plan-guided-setup.md`
 - Chat runtime unification: `docs/plans/plan-chat-unification-v2.md`

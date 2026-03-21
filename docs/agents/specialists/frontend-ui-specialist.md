@@ -3,6 +3,7 @@
 ## Purpose
 
 `AGENTS.md` owns route selection. This specialist governs frontend execution after the UI/frontend route has been selected.
+This specialist owns repo-specific execution guardrails after routing; the frontend skill owns reusable execution procedure and handoff shape.
 
 Use for frontend-only UX/UI changes in `next-app/` where backend contracts already exist and the task is primarily about user-facing behavior, layout, interaction, accessibility, or visual consistency.
 
@@ -21,7 +22,9 @@ Use for frontend-only UX/UI changes in `next-app/` where backend contracts alrea
 
 ## Required Tier 3 Reads
 
-- `docs/plans/plan-ux-ui.md` (or currently active UI plan)
+- `docs/architecture/frontend-quality-bar.md`
+- `docs/runbooks/frontend-review-loop.md`
+- `docs/plans/README.md` to identify the active relevant UI plan
 - The touched route/component files and nearby tests before editing
 - Any route-level docs directly tied to touched files
 - If `AGENTS.md` routes platform admin UI here, also read `docs/runbooks/admin-access.md` and `docs/plans/plan-backend.md`
@@ -41,6 +44,7 @@ Use for frontend-only UX/UI changes in `next-app/` where backend contracts alrea
 - Preserve existing route/layout conventions unless the task explicitly changes them.
 - No visible no-op controls.
 - Suggestion buttons must act (send or prefill flow).
+- Repo-owned frontend doctrine outranks local skills.
 - Prefer shared primitives in `next-app/components/ui/`.
 - Reuse existing context/hook/controller ownership before introducing new state patterns.
 - Treat direct `useEffect` / `useLayoutEffect` as a smell in feature UI code.
@@ -59,6 +63,7 @@ Use for frontend-only UX/UI changes in `next-app/` where backend contracts alrea
 - Use `Intl.DateTimeFormat` and `Intl.NumberFormat` for user-facing date/number formatting.
 - For content images, include explicit dimensions and lazy-load non-critical images.
 - Error messages must use a calm, minimalist UI pattern: concise copy, clear next step, no noisy styling, and visual hierarchy consistent with existing tokens.
+- Avoid decorative dashboarding on task-heavy workspace surfaces and generic AI-app visual language.
 
 ## Required Behavior
 
@@ -79,13 +84,18 @@ Use for frontend-only UX/UI changes in `next-app/` where backend contracts alrea
 
 1. Confirm `AGENTS.md` routed the task here and identify the exact user flow, touched routes, and reused actions/APIs.
 2. Read the touched route/component implementation and nearby tests before editing.
-3. Before adding any new effect, classify it:
+3. Read `docs/plans/README.md` and identify the active relevant UI plan when plan context is needed.
+4. Write:
+   - a `visual thesis`
+   - a `structure thesis`
+   - an `interaction thesis`
+5. Before adding any new effect, classify it:
    - external synchronization: allowed
    - anything else: redesign it
-4. Prefer keyed remounts for identity resets and event handlers for user-triggered actions.
-5. Run a final UI audit for semantic controls, async-state coverage when applicable, form labeling/validation, motion/focus behavior, destructive-action safeguards, and error-message presentation quality.
-6. Update/add tests for meaningful behavior changes.
-7. Run:
+6. Prefer keyed remounts for identity resets and event handlers for user-triggered actions.
+7. Run a final UI audit for semantic controls, async-state coverage when applicable, form labeling/validation, motion/focus behavior, destructive-action safeguards, and error-message presentation quality.
+8. Update/add tests for meaningful behavior changes.
+9. Run:
    - `npm run lint`
    - `npm run lint:styles` if CSS files were touched
    - `npx tsc --noEmit`
