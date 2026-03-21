@@ -87,7 +87,7 @@ If `prisma migrate deploy` fails with `RunEvent_runId_sequence_key` / `P3018`:
 
 ```bash
 npm run db:repair-run-events
-npx prisma migrate resolve --rolled-back 20260228180000_add_agent_run_lineage
+npx prisma migrate resolve --rolled-back <migration_name>
 npm run db:migrate:safe
 ```
 

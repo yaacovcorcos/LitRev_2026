@@ -33,7 +33,7 @@ Use this mapping to avoid trial-and-error. Match symptoms exactly before applyin
 - Actions:
   1. Confirm PITR and record rollback anchor timestamp.
   2. `npm run db:repair-run-events`
-  3. `npx prisma migrate resolve --rolled-back 20260228180000_add_agent_run_lineage`
+  3. `npx prisma migrate resolve --rolled-back <migration_name>`
   4. `npm run db:migrate:safe`
 
 ## DB Connectivity / DNS / TLS
