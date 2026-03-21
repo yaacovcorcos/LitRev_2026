@@ -1,11 +1,13 @@
 # U1.6 Burn-In Report Template
 
-This template is for a curated U1.6 sign-off report.  
+This template is for a curated U1.6 sign-off report.
+The live sign-off record remains `docs/reports/u1-6-burn-in.md`; do not create a second canonical live report.
 To fill `Final Strict Validation Output`, run:
 
 `cd next-app && npx tsx scripts/validate-chat-unification-burn-in.ts --since=<CANARY_SINCE_UTC> --metricVersion=3 --workspaceIds=<ws1,ws2> --userIds=<u1,u2> --requireScopedCohort=1 --requireRunEndPerSurface=1 --minRunIdCoveragePerSurface=0.95 --json=1`
 
 Then preserve the raw JSON in the appendix section below and summarize the strict-gate result in prose in the decision section.
+For docs-driven execution, a dated snapshot file such as `docs/reports/u1-6-burn-in-YYYY-MM-DD.md` is an acceptable way to preserve raw JSON alongside the canonical live report.
 
 ## Canary Metadata
 
@@ -39,13 +41,13 @@ Then preserve the raw JSON in the appendix section below and summarize the stric
 
 ## Baseline Scenario Evidence
 
-| Timestamp (UTC) | Surface | Scenario | Conversation ID | Run ID | Pass/Fail | Notes |
-|---|---|---|---|---|---|---|
-| `<2026-03-17T12:00:00Z>` | `</ai|project>` | `<completed run|retry|ask-user|disconnect/recovery>` | `<id or n/a>` | `<id or n/a>` | `<pass|fail>` | `<notes>` |
+| Timestamp (UTC) | Surface | Entrypoint | Scenario | Conversation ID | Run ID | Pass/Fail | Notes |
+|---|---|---|---|---|---|---|---|
+| `<2026-03-17T12:00:00Z>` | `<ai|project>` | `<ai page | main project conversation | side-panel project copilot>` | `<completed run|retry|ask-user|disconnect/recovery>` | `<id or n/a>` | `<id or n/a>` | `<pass|fail>` | `<notes>` |
 
 ## Daily Snapshot Log (Days 1-6)
 
-| Date (UTC) | Completed runs total | Completed `/ai` | Completed `project` | Retry continuity | Retry join health | Ask-user mismatch | Stuck-running violations | Raw JSON artifact | Notes |
+| Date (UTC) | Completed runs total | Completed `ai` | Completed `project` | Retry continuity | Retry join health | Ask-user mismatch | Stuck-running violations | Raw JSON artifact | Notes |
 |---|---:|---:|---:|---:|---:|---:|---:|---|---|
 | `<YYYY-MM-DD>` | `<n>` | `<n>` | `<n>` | `<rate + matched denom>` | `<match rate + unmatched counts>` | `<rate + denom>` | `<rate + denom>` | `<appendix section or linked file path>` | `<notes>` |
 

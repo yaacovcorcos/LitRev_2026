@@ -108,12 +108,16 @@ Rules:
   - Problem: the shared runtime is shipped, but the operational proof that it is stable enough to treat as canonical is still incomplete.
   - Remaining work:
     - finish canary evidence using `docs/runbooks/chat-unification-burn-in.md`
+    - advance `docs/reports/u1-6-burn-in.md` in place as the single canonical live report for the active window rather than creating parallel live reports
     - use the runbook baseline-then-organic evidence flow, including the minimum manual baseline scenario pack and preserved raw validator JSON artifacts
+    - preserve raw validator JSON either in the live report appendix or in linked dated snapshot artifacts under `docs/reports/`
     - complete replay parity confidence for `/ai` vs project adapters
     - prove parity for durable recovery truth, not only reducer-state parity
     - prove phase-backed paused-input and stale-finalize recovery behavior across the supported main surfaces
     - add burn-in checks for no indefinite reconnect loops, no contradictory same-run states, and truthful degraded continuation behavior
+    - keep manual `project` evidence precise by naming the exact entrypoint exercised and covering both the main project conversation and side-panel project copilot entrypoints during the active window
     - serve as the operational sign-off blocker for retiring `FIX-011b` once the runtime delta audit confirms no additional shared-runtime gap remains
+    - if a burn-in window fails, merge that failed-window evidence record before opening a remediation PR and then restart on a fresh window after the remediation deploy
     - finish sign-off on the current metric contract and thresholds
   - Exit criteria:
     - burn-in evidence is complete and sign-offable
