@@ -115,6 +115,9 @@ jobs:
       - name: Governance rule tests
         run: cd next-app && npm run test:eslint-rules
 
+      - name: Governance tooling tests
+        run: cd next-app && npm run test:governance-tooling
+
       - name: Governance lint
         run: cd next-app && npm run lint:governance
 

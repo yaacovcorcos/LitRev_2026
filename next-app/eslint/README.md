@@ -19,3 +19,8 @@ Commands:
 - `npm run lint:governance`
 - `npm run lint:governance:audit`
 - `npm run test:eslint-rules`
+- `npm run test:governance-tooling`
+
+Contracts:
+- governance tooling must import only direct devDependencies declared in `next-app/package.json`
+- the governance audit baseline is generated from shared JS file enumeration under the governance lint surface, not shell-specific `find` or `rg` composition
