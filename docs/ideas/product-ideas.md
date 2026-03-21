@@ -202,6 +202,28 @@ Default rule: prefer updating the right existing section or idea rather than cre
 
 ## Open-Source Reuse Candidates
 
+### Explore Institution-Authenticated Browser Access for Full-Text Retrieval
+- Status: exploring
+- Summary: LitRev may eventually support institution-authenticated browser access so the agent can retrieve full-text papers from subscription journal sites using a user's university access.
+- Why this matters:
+  - Many important papers are behind publisher paywalls even when their metadata is easy to find.
+  - Users with university access may already be entitled to retrieve full text, but the current agent stack cannot reliably operate those institution-login flows.
+  - This could make LitRev much more useful for full-text collection, review preparation, and evidence extraction.
+- Why this is hard:
+  - This is not just browser automation; it is session handling, institutional login, SSO, MFA, permissions, consent, and security architecture.
+  - The trust model has to be extremely explicit so the agent is using a scoped session, not casually holding sensitive credentials.
+  - Legal and terms-of-service implications may vary across publishers and institutions.
+- Direction:
+  - Treat this as a high-stakes product capability, not a casual browser feature.
+  - Explore whether a browser-agent stack could support institution-authenticated full-text retrieval through explicit user-connected sessions.
+  - Prefer models where users connect or authorize a session and can revoke it, rather than designs where LitRev broadly manages institutional credentials.
+  - Evaluate this separately from ordinary web search or browsing needs.
+- Open questions:
+  - Whether this is strategic enough for LitRev to justify the security and auth complexity
+  - What the safest session model would be for institutional access
+  - Which browser-agent stack, if any, would be appropriate for this
+  - Whether the first useful version should be narrow full-text retrieval only rather than broad browser agency
+
 ### Evaluate ai-scanner as an AI Security QA Harness, Not a Code-Quality Tool
 - Status: exploring
 - Summary: `0din-ai/ai-scanner` looks potentially useful as an external AI security QA system for LitRev's chat and agent surfaces, but it should not be treated as a general code-quality tool.
