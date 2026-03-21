@@ -6,7 +6,7 @@ Use it before opening `U3` popup migration.
 
 ## Purpose
 
-Provide a deterministic, auditable process for chat-unification canary validation across `/ai` and project copilot.
+Provide a deterministic, auditable process for chat-unification canary validation across the `ai` and `project` surfaces.
 
 ## Preconditions
 
@@ -83,7 +83,7 @@ Record command outputs in the run report.
 
 Before treating Day-0 as sign-offable, create a minimum owner-driven manual baseline inside the scoped cohort:
 
-1. one completed `/ai` run
+1. one completed `ai` run
 2. one completed `project` run
 3. one retry scenario
 4. one ask-user scenario
@@ -95,9 +95,18 @@ Record each baseline scenario in the live report with:
 
 1. timestamp (UTC)
 2. surface
-3. scenario type
-4. conversation ID and run ID when visible
-5. pass/fail note
+3. exact entrypoint exercised
+4. scenario type
+5. conversation ID and run ID when visible
+6. pass/fail note
+
+Project-surface coverage rule:
+
+1. The validator collapses project-side telemetry under the `project` surface.
+2. Manual evidence must therefore name the exact project entrypoint exercised for every `project` row.
+3. By final sign-off, the active window must include at least one documented `project` row for:
+   - the main project conversation entrypoint
+   - the side-panel project copilot entrypoint
 
 ## Phase 2 - Day-0 Data Quality Gate
 
@@ -145,7 +154,7 @@ Track trend lines daily:
 3. Retry join health: matched pairs, unmatched intents/completions, and match-rate.
 4. Ask-user mismatch rate and denominator.
 5. Stuck-running violations.
-6. Manual abnormal-end recovery spot check on `/ai` and project copilot:
+6. Manual abnormal-end recovery spot check on `ai` and `project`:
    - known-run disconnect clears stale progress
    - disconnect after tool result converges without losing durable user-facing truth
    - disconnect before a paused question reaches the client restores the durable paused/question state cleanly
@@ -163,6 +172,8 @@ Track trend lines daily:
    - no contradictory same-run recovery/error states are visible on the same surface
    - reconnect behavior stays bounded rather than spinning indefinitely
    - terminal reconciliation does not duplicate the final assistant/error state
+
+For every `project` manual spot check, record whether the exercised entrypoint was the main project conversation or the side-panel project copilot.
 
 Preserve raw validator JSON from each run as evidence:
 
@@ -194,7 +205,7 @@ Pass criteria:
 5. Burn-in window is v2-clean for `retry_model_continuity` (mixed v1+v2 window is a fail).
 6. Ask-user mismatch: `= 0`, with denominator `>= 30` overall and `>= 10` per surface.
 7. Stuck-running violations: `= 0`.
-8. Manual abnormal-end recovery spot check passes on `/ai` and project copilot with no dead-end `ACTIVE_RUN_EXISTS` path after a reconnectable disconnect.
+8. Manual abnormal-end recovery spot check passes on `ai` and `project`, with the `project` evidence explicitly naming the exercised entrypoint and no dead-end `ACTIVE_RUN_EXISTS` path after a reconnectable disconnect.
 9. Recovery-required persistence failure behavior is truthful under the burn-in spot checks and does not invent full replay parity.
 10. No-forward-progress detection and degraded continuation behavior both converge to one bounded user-visible next step with no contradictory same-run states.
 11. Audited durable-continuation cases succeed without duplicating the already-completed durable step, and unsupported cases never advertise `Continue`.
@@ -216,8 +227,9 @@ If strict gate fails:
 
 1. Keep `U3` blocked.
 2. Export JSON for diagnostics (`--json=1`) and attach to run report.
-3. Open a remediation PR scoped to the failing metric.
-4. Reset/extend canary window only after remediation deployment.
+3. If the active window is being tracked in a docs-only evidence PR, finalize and merge that PR as the failed-window record before opening remediation.
+4. Open a remediation PR scoped to the failing metric.
+5. Reset/extend canary window only after remediation deployment, using a new `CANARY_SINCE_UTC` and a new burn-in evidence branch/PR.
 
 ## Evidence Artifacts
 
