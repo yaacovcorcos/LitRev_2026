@@ -24,6 +24,9 @@ This plan does not own product behavior or `PRD.md`.
 - Governance tooling imports now come from direct devDependencies in `next-app/package.json`, not only transitive `eslint-config-next` dependencies.
 - Phase 1 now has explicit config slices for the governed app surface and a scripts-only logging slice, plus a stable `npm run lint:governance:phase1` verifier.
 - Phase 2 now has a dedicated `npm run lint:governance:phase2-hotspots` verifier for the `/ai` + copilot runtime surface, including `hooks/useCopilotStreamActions.ts` and the bundled async-cleanup rules for that same hot-spot slice only.
+- The remaining non-Phase-3 governance roadmap is now intentionally compressed into two phases:
+  - `Phase 4 — Policy Maturity`
+  - `Phase 5 — Enforcement Rollout`
 - The repo currently contains an implemented first wave of governance cleanup in app/runtime code, including removal of targeted non-framework default exports, `catch(console.error)` sites, hot-spot `react-hooks/exhaustive-deps` suppressions, and selected cross-boundary parent imports.
 
 ## Program Status
@@ -111,43 +114,30 @@ Missing:
 - Rule tuning to reduce naming-noise on legitimate LitRev patterns
 - Deliberate cleanup of current warning sites before any severity change
 
-### Phase 4 — Async Discipline in UI/Runtime
+### Phase 4 — Policy Maturity
 Status: Partially Implemented
 
 Shipped:
-- `litrev/prefer-async-await-in-ui-runtime`
-- `litrev/no-promise-chain-side-effects`
-- `litrev/no-window-location-navigation`
-- First small cleanup wave in selected UI/runtime files
+- Async-discipline rules are implemented:
+  - `litrev/prefer-async-await-in-ui-runtime`
+  - `litrev/no-promise-chain-side-effects`
+  - `litrev/no-window-location-navigation`
+- Test-expectation governance exists:
+  - `litrev/require-tests-for-runtime-files`
+  - `litrev/prefer-colocated-tests-in-selected-domains`
+  - changed-files runtime test-impact script and CI wiring
+- The current adapted governance set already includes selective Factory-inspired frontend restrictions from earlier phases, but no distinct re-audit/completion pass has been done yet
+- First cleanup waves have already landed in selected UI/runtime files
 
 Missing:
-- Dedicated cleanup pass across the intended UI/runtime surfaces
+- Dedicated cleanup pass across the intended async-governed UI/runtime surfaces
 - Explicit exception review for dynamic imports and deliberate infrastructure chains
-- Separate implementation plan before broad enforcement changes
-
-### Phase 5 — Test Expectations via Lint and CI
-Status: Partially Implemented
-
-Shipped:
-- `litrev/require-tests-for-runtime-files`
-- `litrev/prefer-colocated-tests-in-selected-domains`
-- Changed-files runtime test-impact script and CI wiring
-
-Missing:
-- Narrow-domain tuning so the warnings reflect the intended policy instead of broad structural debt
+- Narrow-domain tuning so test-expectation warnings reflect deliberate ownership instead of broad structural debt
 - Explicit waiver/ownership policy for accepted non-colocated runtime coverage
+- Re-audit before adopting any additional Factory-inspired frontend restrictions beyond the current adapted set
+- Stable verifier commands and implementation plans for the completed async-policy and test-policy surfaces
 
-### Phase 6 — Adapted Factory Frontend Strictness
-Status: Not Started
-
-Shipped:
-- None as a distinct reviewed phase
-
-Missing:
-- Re-audit after earlier phases stabilize
-- Any decision to adopt additional Factory-inspired restrictions beyond the currently implemented adapted rules
-
-### Phase 7 — CI and Merge-Gate Rollout
+### Phase 5 — Enforcement Rollout
 Status: Partially Implemented
 
 Shipped:
@@ -155,20 +145,26 @@ Shipped:
 - Governance lint in CI
 - Governance audit artifact in CI
 - Runtime test-impact guard in CI
+- Completed verifier commands already exist for finished earlier phases:
+  - `npm run lint:governance:phase1`
+  - `npm run lint:governance:phase2-hotspots`
 
 Missing:
 - Final decision on which governance checks are required versus informational
+- Stable verifier commands for the remaining completed policy surfaces before enforcement is tightened further
+- Documented waiver/exception policy for governance checks that remain non-blocking
 - Later merge-gate tightening plan once warning debt is intentionally reduced
 - Any move to require the full legacy `npm run lint` baseline
 
 ## Active Tasks
-- [ ] `LG-001` Write separate implementation plans for Phase 3A/3B, Phase 4, and Phase 5 before further rollout or cleanup work.
+- [ ] `LG-001` Write separate implementation plans for Phase 3A/3B and the unified remaining Phase 4/5 work before further rollout or cleanup work.
 - [ ] `LG-003` Finish the remaining import-boundary and filename-searchability review so Phase 3 can be marked complete or intentionally limited.
-- [ ] `LG-004` Decide the first server/runtime structured-logging rule set so UI noise and observability paths are governed separately.
-- [ ] `LG-005` Narrow the test-expectation policy so Phase 5 reflects deliberate ownership and waiver rules rather than broad structural warnings.
-- [ ] `LG-006` Re-audit the repo before adopting any additional Factory-inspired frontend restrictions beyond the current adapted set.
+- [ ] `LG-004` Complete unified Phase 4 policy maturity: finish async-discipline cleanup, narrow the test-expectation policy, and re-audit selective Factory-inspired strictness before adding any new frontend restrictions.
+- [ ] `LG-005` Complete unified Phase 5 enforcement rollout: decide required versus informational governance checks, wire the remaining stable verifier commands into CI, and document waiver policy.
+- [ ] `LG-006` Decide the first server/runtime structured-logging rule set so UI noise and observability paths are governed separately.
 
 ## Recently Completed
+- [x] Compressed the remaining non-Phase-3 roadmap into unified `Phase 4 — Policy Maturity` and `Phase 5 — Enforcement Rollout` so policy completion stays separate from CI enforcement.
 - [x] Completed Phase 2 by shipping the stable `lint:governance:phase2-hotspots` verifier, removing the remaining hot-spot effect/reset violations in copilot UI/runtime files, and bundling the co-located async cleanup for that same verifier surface without broadening Phase 4 completion.
 - [x] Added the stable `lint:governance:phase2-hotspots` verifier and completed the PR 1 runtime/controller cleanup for `/ai`, `ProjectCopilotContext`, `useCopilotConversations`, and `useCopilotStreamActions`, while keeping the remaining component/layout debt explicit for the Phase 2 follow-up slice.
 - [x] Completed Phase 1 by locking exact rule scope, adding a stable `lint:governance:phase1` verifier, extending the logging rules to `scripts/**` only, and fixing the remaining live logging violations.
