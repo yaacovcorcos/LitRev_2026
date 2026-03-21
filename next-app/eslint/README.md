@@ -20,6 +20,7 @@ Commands:
 - `npm run lint:governance:phase1`
 - `npm run lint:governance:phase2-hotspots`
 - `npm run lint:governance:phase3-searchability`
+- `npm run lint:governance:phase4-async`
 - `npm run lint:governance:audit`
 - `npm run test:eslint-rules`
 - `npm run test:governance-tooling`
@@ -41,6 +42,16 @@ Contracts:
   - `contexts/**`
   - `hooks/**`
   - excluding `app/actions/**` and `app/api/**`
+- `npm run lint:governance:phase4-async` is the stable verification command for the completed Phase 4 async-policy surface only:
+  - `app/**`
+  - `components/**`
+  - `contexts/**`
+  - `hooks/**`
+  - excluding `app/actions/**` and `app/api/**`
+  - enforcing:
+    - `litrev/prefer-async-await-in-ui-runtime`
+    - `litrev/no-promise-chain-side-effects`
+    - `litrev/no-window-location-navigation`
 - the Phase 2 hot-spot verifier intentionally bundles the current async-cleanup rules for that same surface only; it confirms the completed hot-spot cleanup contract and does not imply broader Phase 4 completion
 - `scripts/**` is intentionally included only for the Phase 1 logging rules (`litrev/no-catch-console-error` and `litrev/no-log-and-throw-same-block`)
 - the governance audit baseline still excludes `scripts/**` by design; audit roots and lint-enforcement scope are not identical

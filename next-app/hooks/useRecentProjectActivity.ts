@@ -49,9 +49,9 @@ export function useRecentProjectActivity(
     let isActive = true;
     setIsLoading(true);
     setHasError(false);
-
-    getRecentActivityAction(projectId, limit)
-      .then((result) => {
+    const loadRecentActivity = async () => {
+      try {
+        const result = await getRecentActivityAction(projectId, limit);
         if (!isActive) return;
         if (result.success) {
           setItems(result.data);
@@ -59,17 +59,18 @@ export function useRecentProjectActivity(
         }
         setItems([]);
         setHasError(true);
-      })
-      .catch(() => {
+      } catch {
         if (!isActive) return;
         setHasError(true);
         setItems([]);
-      })
-      .finally(() => {
+      } finally {
         if (isActive) {
           setIsLoading(false);
         }
-      });
+      }
+    };
+
+    void loadRecentActivity();
 
     return () => {
       isActive = false;

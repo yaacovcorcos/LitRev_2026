@@ -308,17 +308,19 @@ export default function LedgerPage() {
 
       // Fire Stage 1 extraction in the background (non-blocking)
       if (fileAsset.mimeType === "application/pdf") {
-        extractStudyFromPdfAction(id, study.id, fileAsset.id)
-          .then((result) => {
+        const runBackgroundExtraction = async () => {
+          try {
+            const result = await extractStudyFromPdfAction(id, study.id, fileAsset.id);
             if (result.success && result.study) {
               replaceStudyInCache(id, result.study);
             } else if (result.error) {
               console.error("Background extraction failed:", result.error);
             }
-          })
-          .catch((err) => {
+          } catch (err) {
             console.error("Background extraction error:", err);
-          });
+          }
+        };
+        void runBackgroundExtraction();
       }
     } catch (err) {
       setAlertMsg(err instanceof Error ? err.message : "Import failed");

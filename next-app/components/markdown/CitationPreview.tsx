@@ -231,7 +231,8 @@ export function CitationPreview({ href, type, children, anchorProps }: CitationP
         const requestId = ++continuationRequestIdRef.current;
         const startedAt = performance.now();
 
-        void continueCitationMetadata(href).then((result) => {
+        const continueMetadata = async () => {
+            const result = await continueCitationMetadata(href);
             if (
                 continuationRequestIdRef.current !== requestId
                 || currentHrefRef.current !== href
@@ -267,7 +268,9 @@ export function CitationPreview({ href, type, children, anchorProps }: CitationP
                 hadDoiFallbackCandidate: patched.meta.diagnostics.hadDoiFallbackCandidate,
                 continuationRecoveredCount,
             });
-        });
+        };
+
+        void continueMetadata();
     }, [citationResult, continuationEnabled, fetchState, href, open, trackMetric]);
 
     // ── Desktop: hover intent ────────────────────────────────────────────────

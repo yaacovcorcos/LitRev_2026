@@ -77,7 +77,11 @@ export function useVoiceInput(
         }
         if (!runtime) return;
         runtime.source.disconnect();
-        await runtime.audioContext.close().catch(() => undefined);
+        try {
+            await runtime.audioContext.close();
+        } catch {
+            // Ignore close failures during teardown.
+        }
     }, []);
 
     const stopMediaTracks = useCallback(() => {

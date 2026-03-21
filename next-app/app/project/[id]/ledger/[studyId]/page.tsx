@@ -88,12 +88,19 @@ export default function StudyDetailPage() {
         if (!id || !studyId) return;
         let active = true;
         setIsLoading(true);
-        getStudyByIdRef.current(id, studyId).then((s) => {
-            if (active) {
-                setStudy(s);
-                setIsLoading(false);
+        const loadStudy = async () => {
+            try {
+                const nextStudy = await getStudyByIdRef.current(id, studyId);
+                if (active) {
+                    setStudy(nextStudy);
+                }
+            } finally {
+                if (active) {
+                    setIsLoading(false);
+                }
             }
-        });
+        };
+        void loadStudy();
         return () => { active = false; };
     }, [id, studyId]);
 
@@ -103,9 +110,15 @@ export default function StudyDetailPage() {
         const handler = (e: Event) => {
             const projectId = (e as CustomEvent).detail?.projectId as string | undefined;
             if (!projectId || projectId !== id) return;
-            getStudyByIdRef.current(id, studyId)
-                .then((s) => setStudy(s))
-                .catch((err) => console.error("Failed to refresh study after ledger update", err));
+            const refreshStudy = async () => {
+                try {
+                    const nextStudy = await getStudyByIdRef.current(id, studyId);
+                    setStudy(nextStudy);
+                } catch (err) {
+                    console.error("Failed to refresh study after ledger update", err);
+                }
+            };
+            void refreshStudy();
         };
         window.addEventListener("litrev:ledger-changed", handler);
         return () => window.removeEventListener("litrev:ledger-changed", handler);

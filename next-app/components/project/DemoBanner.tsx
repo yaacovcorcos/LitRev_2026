@@ -69,24 +69,24 @@ export function DemoBanner({ projectId }: DemoBannerProps) {
         confirmLabel="Reset"
         cancelLabel="Cancel"
         onCancel={() => setConfirmReset(false)}
-        onConfirm={() => {
+        onConfirm={async () => {
           setConfirmReset(false);
           setResetError(null);
           setIsResetting(true);
-          resetDemoProjectAction()
-            .then(async (result) => {
-              if (!result.success) {
-                setResetError(result.error);
-                return;
-              }
-              await refresh();
-              router.push(`/project/${result.data.id}`);
-            })
-            .catch((err) => {
-              console.error("Reset sample project failed", err);
-              setResetError("Failed to reset the sample project. Please try again.");
-            })
-            .finally(() => setIsResetting(false));
+          try {
+            const result = await resetDemoProjectAction();
+            if (!result.success) {
+              setResetError(result.error);
+              return;
+            }
+            await refresh();
+            router.push(`/project/${result.data.id}`);
+          } catch (err) {
+            console.error("Reset sample project failed", err);
+            setResetError("Failed to reset the sample project. Please try again.");
+          } finally {
+            setIsResetting(false);
+          }
         }}
       />
 
@@ -98,25 +98,23 @@ export function DemoBanner({ projectId }: DemoBannerProps) {
         cancelLabel="Cancel"
         variant="danger"
         onCancel={() => setConfirmDelete(false)}
-        onConfirm={() => {
+        onConfirm={async () => {
           setConfirmDelete(false);
           setDeleteError(null);
           setIsDeleting(true);
-          deleteProject(projectId)
-            .then((success) => {
-              if (success) {
-                router.push("/");
-                return;
-              }
-              setDeleteError("Failed to delete the sample project. Please try again.");
-            })
-            .catch((err) => {
-              console.error("Delete sample project failed", err);
-              setDeleteError("Failed to delete the sample project. Please try again.");
-            })
-            .finally(() => {
-              setIsDeleting(false);
-            });
+          try {
+            const success = await deleteProject(projectId);
+            if (success) {
+              router.push("/");
+              return;
+            }
+            setDeleteError("Failed to delete the sample project. Please try again.");
+          } catch (err) {
+            console.error("Delete sample project failed", err);
+            setDeleteError("Failed to delete the sample project. Please try again.");
+          } finally {
+            setIsDeleting(false);
+          }
         }}
       />
     </>
