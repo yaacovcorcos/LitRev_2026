@@ -35,6 +35,7 @@ This plan does not own product behavior or `PRD.md`.
   - `npm run lint:governance:phase2-hotspots`
   - `npm run lint:governance:phase3-searchability`
   - `npm run lint:governance:phase4-policy`
+  - `npm run lint:governance:logging`
   - `npm run check:runtime-test-impact`
 - CI now always runs non-blocking governance reporting through `npm run governance:ci-informational` inside `check`:
   - `npm run lint:governance`
@@ -51,7 +52,7 @@ This plan does not own product behavior or `PRD.md`.
 - LG-006 now has a stable dedicated verifier:
   - server/runtime logging policy: `npm run lint:governance:logging`
   - this verifier currently governs `lib/server/**`, `app/actions/**`, and `app/api/**` only
-  - it is not part of the required governance inventory until the LG-006 enforcement follow-up lands
+  - it is now part of the required governance inventory through `npm run governance:ci-required`
 - Runtime test-governance now uses one shared authority under `next-app/eslint/` for governed domains and waiver interpretation, with strict one-file waivers only.
 - The remaining non-Phase-3 governance roadmap is now intentionally compressed into two phases:
   - `Phase 4 — Policy Maturity`
@@ -197,9 +198,10 @@ Missing:
 - Nothing material for the finalized Phase 5 scope
 
 ## Active Tasks
-- [ ] `LG-006` Decide the first server/runtime structured-logging rule set so UI noise and observability paths are governed separately.
+- None currently.
 
 ## Recently Completed
+- [x] Completed LG-006 by introducing the stable `lint:governance:logging` verifier for server/runtime raw-console governance, cleaning the governed `lib/server/**`, `app/actions/**`, and `app/api/**` surface onto `@/lib/server/logging`, and rolling that verifier into the required `governance:ci-required` inventory without broadening the policy to UI/client logging.
 - [x] Completed Phase 5 by making GitHub `check` enforce only the stable completed governance inventory via `governance:ci-required`, keeping broad `lint:governance` plus audit reporting always-run but non-blocking through `governance:ci-informational`, and documenting the final required-versus-informational split without promoting the legacy full-repo lint baseline.
 - [x] Completed Phase 4 by shipping permanent `phase4-async`, `phase4-tests`, and `phase4-policy` verifiers, aligning runtime test lint rules and changed-file enforcement to one shared authority with strict one-file waivers, and recording the selective Factory-inspired strictness decisions without pulling Phase 5 CI enforcement forward.
 - [x] Completed Phase 3 by hardening import-boundary enforcement for sourced re-exports and string-literal dynamic imports, adding the stable `lint:governance:phase3-searchability` verifier, and cleaning the remaining UI filename/export mismatches without broadening Phase 3 beyond the governed UI surface.
