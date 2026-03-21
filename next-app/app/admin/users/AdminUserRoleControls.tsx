@@ -38,7 +38,12 @@ export function AdminUserRoleControls({ targetUserId, isPlatformAdmin, isSelf }:
           }),
         });
 
-        const payload = (await response.json().catch(() => ({}))) as { error?: string };
+        let payload: { error?: string } = {};
+        try {
+          payload = (await response.json()) as { error?: string };
+        } catch {
+          payload = {};
+        }
         if (!response.ok) {
           setError(payload.error ?? "Request failed.");
           return;

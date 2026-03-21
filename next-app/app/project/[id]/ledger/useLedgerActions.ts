@@ -162,11 +162,13 @@ export function useLedgerActions({
 
       setConfirmDialog({
         message: "Delete this study from the evidence ledger?",
-        onConfirm: () => {
+        onConfirm: async () => {
           setConfirmDialog(null);
-          removeStudies(projectId, [studyId]).catch(() => {
+          try {
+            await removeStudies(projectId, [studyId]);
+          } catch {
             setAlertMsg("Failed to delete study. Please try again.");
-          });
+          }
         },
       });
     },
@@ -178,13 +180,15 @@ export function useLedgerActions({
 
     setConfirmDialog({
       message: `Delete ${validSelectedIds.length} selected studies?`,
-      onConfirm: () => {
+      onConfirm: async () => {
         const idsToDelete = [...validSelectedIds];
         setSelectedIds([]);
         setConfirmDialog(null);
-        removeStudies(projectId, idsToDelete).catch(() => {
+        try {
+          await removeStudies(projectId, idsToDelete);
+        } catch {
           setAlertMsg("Failed to delete studies. Please try again.");
-        });
+        }
       },
     });
   }, [

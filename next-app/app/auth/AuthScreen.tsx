@@ -84,15 +84,21 @@ export function AuthScreen({ mode }: AuthScreenProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ callbackUrl }),
       });
-      const payload = (await response.json().catch(() => null)) as
+      let payload: { ok?: boolean; redirectTo?: string; error?: string } | null = null;
+      try {
+        payload = (await response.json()) as { ok?: boolean; redirectTo?: string; error?: string };
+      } catch {
+        payload = null;
+      }
+      const normalizedPayload = payload as
         | { ok?: boolean; redirectTo?: string; error?: string }
         | null;
 
-      if (!response.ok || !payload?.ok || !payload.redirectTo) {
-        throw new Error(payload?.error || "Quick access sign-in failed.");
+      if (!response.ok || !normalizedPayload?.ok || !normalizedPayload.redirectTo) {
+        throw new Error(normalizedPayload?.error || "Quick access sign-in failed.");
       }
 
-      router.replace(payload.redirectTo);
+      router.replace(normalizedPayload.redirectTo);
       router.refresh();
     },
     { errorMessage: "Quick access sign-in failed." },

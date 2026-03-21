@@ -376,13 +376,29 @@ function ProjectShellInner({
     // Fetch study title for the copilot context display
     const [studyTitle, setStudyTitle] = useState<string | null>(null);
     useEffect(() => {
-        if (copilotStudyId && projectId) {
-            getStudyAction(projectId, copilotStudyId)
-                .then((result) => setStudyTitle(result.success && result.data ? result.data.title : null))
-                .catch(() => setStudyTitle(null));
-        } else {
+        if (!copilotStudyId || !projectId) {
             setStudyTitle(null);
+            return;
         }
+
+        let active = true;
+        const loadStudyTitle = async () => {
+            try {
+                const result = await getStudyAction(projectId, copilotStudyId);
+                if (!active) return;
+                setStudyTitle(result.success && result.data ? result.data.title : null);
+            } catch {
+                if (active) {
+                    setStudyTitle(null);
+                }
+            }
+        };
+
+        void loadStudyTitle();
+
+        return () => {
+            active = false;
+        };
     }, [copilotStudyId, projectId]);
 
     const copilotContextDisplay = isStudyDetail

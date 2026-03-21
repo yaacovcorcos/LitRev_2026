@@ -30,17 +30,19 @@ export function useResolvedProject(projectId: string | undefined): UseResolvedPr
 
     let cancelled = false;
     setIsResolvingProject(true);
-
-    void ensureProjectLoaded(projectId)
-      .then((loadedProject) => {
+    const resolveProject = async () => {
+      try {
+        const loadedProject = await ensureProjectLoaded(projectId);
         if (cancelled || !loadedProject) return;
         setResolvedProject(loadedProject);
-      })
-      .finally(() => {
+      } finally {
         if (cancelled) return;
         setHasAttemptedResolve(true);
         setIsResolvingProject(false);
-      });
+      }
+    };
+
+    void resolveProject();
 
     return () => {
       cancelled = true;

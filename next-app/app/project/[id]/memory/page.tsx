@@ -173,50 +173,94 @@ function MemoryPageContent() {
   // Fetch tab data on tab switch
   useEffect(() => {
     if (!id) return;
+    let active = true;
 
-    if (activeTab === "study" && studyMemories === null) {
-      setTabLoading(true);
-      getProjectStudyMemoriesAction(id)
-        .then((result) => setStudyMemories(result.success ? result.data as unknown as StudyMemoryItem[] : []))
-        .catch(() => setStudyMemories([]))
-        .finally(() => setTabLoading(false));
-    }
+    const loadTabData = async () => {
+      if (activeTab === "study" && studyMemories === null) {
+        setTabLoading(true);
+        try {
+          const result = await getProjectStudyMemoriesAction(id);
+          if (!active) return;
+          setStudyMemories(result.success ? result.data as StudyMemoryItem[] : []);
+        } catch {
+          if (active) {
+            setStudyMemories([]);
+          }
+        } finally {
+          if (active) {
+            setTabLoading(false);
+          }
+        }
+        return;
+      }
 
-    if (activeTab === "preferences" && userPreferences === null) {
-      setTabLoading(true);
-      getUserMemoriesAction({ status: "active" })
-        .then((result) => setUserPreferences(result.success ? result.data as unknown as UserPref[] : []))
-        .catch(() => setUserPreferences([]))
-        .finally(() => setTabLoading(false));
-    }
+      if (activeTab === "preferences" && userPreferences === null) {
+        setTabLoading(true);
+        try {
+          const result = await getUserMemoriesAction({ status: "active" });
+          if (!active) return;
+          setUserPreferences(result.success ? result.data as UserPref[] : []);
+        } catch {
+          if (active) {
+            setUserPreferences([]);
+          }
+        } finally {
+          if (active) {
+            setTabLoading(false);
+          }
+        }
+        return;
+      }
 
-    if (activeTab === "prisma" && prismaStats === null) {
-      setTabLoading(true);
-      getPRISMAStatsAction(id)
-        .then((result) => setPrismaStats(result.success ? result.data : null))
-        .catch(() => setPrismaStats(null))
-        .finally(() => setTabLoading(false));
-    }
+      if (activeTab === "prisma" && prismaStats === null) {
+        setTabLoading(true);
+        try {
+          const result = await getPRISMAStatsAction(id);
+          if (!active) return;
+          setPrismaStats(result.success ? result.data : null);
+        } catch {
+          if (active) {
+            setPrismaStats(null);
+          }
+        } finally {
+          if (active) {
+            setTabLoading(false);
+          }
+        }
+        return;
+      }
 
-    if (activeTab === "health" && (retrievalStats === null || qualityMetrics === null || rolloutStatus === null)) {
-      setTabLoading(true);
-      Promise.all([
-        getMemoryRetrievalStatsAction(id),
-        getMemoryQualityMetricsAction(id),
-        getSemanticRolloutStatusAction(),
-      ])
-        .then(([retrieval, quality, rollout]) => {
+      if (activeTab === "health" && (retrievalStats === null || qualityMetrics === null || rolloutStatus === null)) {
+        setTabLoading(true);
+        try {
+          const [retrieval, quality, rollout] = await Promise.all([
+            getMemoryRetrievalStatsAction(id),
+            getMemoryQualityMetricsAction(id),
+            getSemanticRolloutStatusAction(),
+          ]);
+          if (!active) return;
           setRetrievalStats(retrieval.success ? retrieval.data as RetrievalStats : null);
           setQualityMetrics(quality.success ? quality.data as MemoryQualityMetrics : null);
           setRolloutStatus(rollout.success ? rollout.data as SemanticRolloutStatus : null);
-        })
-        .catch(() => {
-          setRetrievalStats(null);
-          setQualityMetrics(null);
-          setRolloutStatus(null);
-        })
-        .finally(() => setTabLoading(false));
-    }
+        } catch {
+          if (active) {
+            setRetrievalStats(null);
+            setQualityMetrics(null);
+            setRolloutStatus(null);
+          }
+        } finally {
+          if (active) {
+            setTabLoading(false);
+          }
+        }
+      }
+    };
+
+    void loadTabData();
+
+    return () => {
+      active = false;
+    };
   }, [activeTab, id, studyMemories, userPreferences, prismaStats, retrievalStats, qualityMetrics, rolloutStatus]);
 
   const handleCreate = async () => {

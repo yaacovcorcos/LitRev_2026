@@ -40,24 +40,25 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
       const projectId = (e as CustomEvent).detail?.projectId as string | undefined;
       if (!projectId) return;
       const wasLoaded = loadedProjectsRef.current.has(projectId);
-      if (!wasLoaded) {
-        loadingProjectsRef.current.add(projectId);
-      }
-      const refreshPromise = listStudiesAction(projectId)
-        .then((result) => {
+      const refreshLedger = async () => {
+        if (!wasLoaded) {
+          loadingProjectsRef.current.add(projectId);
+        }
+        try {
+          const result = await listStudiesAction(projectId);
           if (result.success) {
             loadedProjectsRef.current.add(projectId);
             setLedgerMap((prev) => ({ ...prev, [projectId]: result.data }));
           }
-        })
-        .catch((error) => {
+        } catch (error) {
           console.error("Failed to refresh ledger after change event", error);
-        });
-      if (!wasLoaded) {
-        void refreshPromise.finally(() => {
-          loadingProjectsRef.current.delete(projectId);
-        });
-      }
+        } finally {
+          if (!wasLoaded) {
+            loadingProjectsRef.current.delete(projectId);
+          }
+        }
+      };
+      void refreshLedger();
     };
     window.addEventListener("litrev:ledger-changed", handler);
     return () => window.removeEventListener("litrev:ledger-changed", handler);
@@ -178,20 +179,21 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
   /** Fetch a project's studies if not already loaded. No-op for already-loaded projects. */
   const ensureProjectLoaded = useCallback((projectId: string) => {
     if (loadedProjectsRef.current.has(projectId) || loadingProjectsRef.current.has(projectId)) return;
-    loadingProjectsRef.current.add(projectId);
-    listStudiesAction(projectId)
-      .then((result) => {
+    const loadProject = async () => {
+      loadingProjectsRef.current.add(projectId);
+      try {
+        const result = await listStudiesAction(projectId);
         if (result.success) {
           loadedProjectsRef.current.add(projectId);
           setLedgerMap((prev) => ({ ...prev, [projectId]: result.data }));
         }
-      })
-      .catch((error) => {
+      } catch (error) {
         console.error("Failed to ensure project ledger is loaded", error);
-      })
-      .finally(() => {
+      } finally {
         loadingProjectsRef.current.delete(projectId);
-      });
+      }
+    };
+    void loadProject();
   }, []);
 
   const value = useMemo(

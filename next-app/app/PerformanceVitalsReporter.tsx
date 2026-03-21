@@ -6,7 +6,7 @@ import {
   PERFORMANCE_METRIC_RATINGS,
   PERFORMANCE_METRIC_VERSION,
   type PerformanceMetricInput,
-  type PerformanceNetwork,
+type PerformanceNetwork,
   type PerformanceViewport,
 } from "@/types/performance-telemetry";
 import { resolvePerformanceRouteContext } from "@/lib/performance-route-context";
@@ -14,6 +14,11 @@ import { getViewportClass } from "@/lib/mobile/tiers";
 import { isOperationalTelemetryE2EMode } from "@/lib/telemetry/e2e-mode";
 
 const TELEMETRY_ENDPOINT = "/api/telemetry/performance";
+type NavigatorWithConnection = Navigator & {
+  connection?: {
+    effectiveType?: string;
+  };
+};
 
 function shouldShip(): boolean {
   if (typeof window === "undefined") return false;
@@ -37,8 +42,7 @@ function getNetwork(): { network: PerformanceNetwork; online: boolean | null } {
   }
 
   const online = "onLine" in navigator ? navigator.onLine : null;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const connection = (navigator as any).connection;
+  const connection = (navigator as NavigatorWithConnection).connection;
   const effectiveType = typeof connection?.effectiveType === "string"
     ? connection.effectiveType
     : "unknown";
@@ -87,6 +91,14 @@ async function postMetric(input: PerformanceMetricInput): Promise<void> {
   }
 }
 
+async function shipMetric(input: PerformanceMetricInput): Promise<void> {
+  try {
+    await postMetric(input);
+  } catch (error) {
+    console.warn("[performance-telemetry] failed to ship metric", error);
+  }
+}
+
 export function PerformanceVitalsReporter() {
   useReportWebVitals((metric) => {
     if (!shouldShip()) return;
@@ -123,9 +135,7 @@ export function PerformanceVitalsReporter() {
       },
     };
 
-    void postMetric(payload).catch((error) => {
-      console.warn("[performance-telemetry] failed to ship metric", error);
-    });
+    void shipMetric(payload);
   });
 
   return null;
