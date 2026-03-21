@@ -3,12 +3,13 @@
  * for the Draft Studio page. Extracted from page.tsx (D-3).
  */
 import { useCallback, useMemo, useState } from "react";
-import { createFileAssetAction, deleteFileAssetAction } from "@/app/actions/files";
+import { deleteFileAssetAction } from "@/app/actions/files";
+import { generateDraftExportAction } from "@/app/actions/draft-exports";
 import type { FileAsset } from "@/types/files";
 import type { DraftState } from "@/lib/draftStorage";
-import { docHasContent, jsonToText, type SectionMeta } from "./draft-helpers";
+import { docHasContent, type SectionMeta } from "./draft-helpers";
 import type { Study } from "@/types/ledger";
-import { compileDraftCitations, formatReferenceEntry, hasBlockingCitationIssues } from "@/lib/citation-compiler";
+import { compileDraftCitations } from "@/lib/citation-compiler";
 import { useProjectExportHistory } from "./useProjectExportHistory";
 
 type UseDraftExportDeps = {
@@ -66,72 +67,14 @@ export function useDraftExport(deps: UseDraftExportDeps) {
   const handleExportDocx = useCallback(async (): Promise<FileAsset> => {
     if (!projectName || !projectId) throw new Error("Project not found");
 
-    const exportDraft = getDraftSnapshot();
     flushContentCommit();
-    const compiledForExport = compileDraftCitations({
-      contentBySection: exportDraft.contentBySection,
-      sectionOrder: orderedSections.map((section) => section.id),
-      studies,
-      includeNumberInNodes: true,
-    });
-    const exportCitationIssues = compiledForExport.issues;
-
-    if (exportMode === "strict" && hasBlockingCitationIssues(exportCitationIssues)) {
-      throw new Error("Export blocked in strict mode: fix missing citation targets before exporting.");
-    }
-
-    const lines: string[] = [];
-    lines.push(`# ${projectName}`);
-    lines.push("");
-    lines.push(`*Draft exported on ${new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}*`);
-    lines.push("");
-    if (exportCitationIssues.length > 0 && exportMode === "warn") {
-      lines.push(`> Export warnings: ${exportCitationIssues.length} citation issue${exportCitationIssues.length === 1 ? "" : "s"} detected.`);
-      lines.push("");
-    }
-
-    for (const section of orderedSections) {
-      if (section.id === "references") continue;
-      const content = exportDraft.contentBySection[section.id];
-      if (!docHasContent(content)) continue;
-      lines.push(`## ${section.label}`);
-      lines.push("");
-      const normalized = compiledForExport.normalizedContentBySection[section.id] ?? content;
-      lines.push(jsonToText(normalized));
-      lines.push("");
-    }
-
-    if (compiledForExport.orderedStudyIds.length > 0) {
-      lines.push(`## References`);
-      lines.push("");
-      const byId = new Map(studies.map((study) => [study.id, study]));
-      compiledForExport.orderedStudyIds.forEach((studyId, index) => {
-        const study = byId.get(studyId);
-        lines.push(study ? formatReferenceEntry(study, index + 1) : `${index + 1}. Missing study metadata for ${studyId}.`);
-      });
-      lines.push("");
-    }
-
-    const markdownContent = lines.join("\n");
-    const nextVersion = (latestExport?.version ?? 0) + 1;
-    const filename = `${projectName.replace(/[^a-zA-Z0-9]/g, "-")}-v${nextVersion}.docx`;
-    const storagePath = `/exports/${projectId}/${filename}`;
-
-    await new Promise((r) => setTimeout(r, 1500));
-
-    const createResult = await createFileAssetAction(projectId, {
-      kind: "export",
+    const exportDraft = getDraftSnapshot();
+    const exportResult = await generateDraftExportAction(projectId, exportDraft, {
       format: "docx",
-      filename,
-      mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      size: markdownContent.length * 2,
-      storagePath,
-      publicUrl: storagePath,
-      version: nextVersion,
-      metadata: { sections: orderedSections.length, exportMode, citationIssues: exportCitationIssues.length },
+      mode: exportMode,
     });
-    if (!createResult.success) throw new Error(createResult.error);
-    const newExport = createResult.data;
+    if (!exportResult.success) throw new Error(exportResult.error);
+    const newExport = exportResult.data;
 
     prependExport(newExport);
 
@@ -155,60 +98,26 @@ export function useDraftExport(deps: UseDraftExportDeps) {
     removeExport(fileId);
   }, [projectId, removeExport]);
 
-  const handleExportDraft = useCallback(() => {
+  const handleExportDraft = useCallback(async () => {
     if (!projectName || !projectId) return;
 
-    const exportDraft = getDraftSnapshot();
     flushContentCommit();
-    const compiledForExport = compileDraftCitations({
-      contentBySection: exportDraft.contentBySection,
-      sectionOrder: orderedSections.map((section) => section.id),
-      studies,
-      includeNumberInNodes: true,
+    const exportDraft = getDraftSnapshot();
+    const result = await generateDraftExportAction(projectId, exportDraft, {
+      format: "markdown",
+      mode: exportMode,
     });
-
-    const lines: string[] = [];
-    lines.push(`# ${projectName}`);
-    lines.push("");
-    lines.push(`*Draft exported on ${new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}*`);
-    lines.push("");
-    lines.push("---");
-    lines.push("");
-
-    for (const section of orderedSections) {
-      if (section.id === "references") continue;
-      const content = exportDraft.contentBySection[section.id];
-      if (!docHasContent(content)) continue;
-
-      lines.push(`## ${section.label}`);
-      lines.push("");
-      const normalized = compiledForExport.normalizedContentBySection[section.id] ?? content;
-      lines.push(jsonToText(normalized));
-      lines.push("");
+    if (!result.success) {
+      throw new Error(result.error);
     }
-
-    if (compiledForExport.orderedStudyIds.length > 0) {
-      lines.push(`## References`);
-      lines.push("");
-      const byId = new Map(studies.map((study) => [study.id, study]));
-      compiledForExport.orderedStudyIds.forEach((studyId, index) => {
-        const study = byId.get(studyId);
-        lines.push(study ? formatReferenceEntry(study, index + 1) : `${index + 1}. Missing study metadata for ${studyId}.`);
-      });
-      lines.push("");
-    }
-
-    const content = lines.join("\n");
-    const blob = new Blob([content], { type: "text/markdown" });
-    const url = URL.createObjectURL(blob);
+    if (!result.data.publicUrl || typeof document === "undefined") return;
     const a = document.createElement("a");
-    a.href = url;
-    a.download = `draft-${projectId}-${new Date().toISOString().split("T")[0]}.md`;
+    a.href = result.data.publicUrl;
+    a.download = result.data.filename;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  }, [getDraftSnapshot, projectName, projectId, orderedSections, studies, flushContentCommit]);
+  }, [exportMode, getDraftSnapshot, projectName, projectId, flushContentCommit]);
 
   return {
     isExportModalOpen,

@@ -34,6 +34,17 @@ export type FileAssetInput = {
   metadata?: Record<string, unknown> | null;
 };
 
+export type GeneratedProjectFileInput = {
+  directory: string;
+  kind: string;
+  format?: string;
+  filename: string;
+  mimeType: string;
+  bytes: Uint8Array | Buffer;
+  version?: number;
+  metadata?: Record<string, unknown> | null;
+};
+
 function toFileAsset(record: {
   id: string;
   projectId: string;
@@ -151,7 +162,11 @@ function encodeStoragePath(path: string): string {
     .join("/");
 }
 
-async function uploadToSupabaseStorage(path: string, file: File): Promise<{ storagePath: string; publicUrl: string }> {
+async function uploadBytesToSupabaseStorage(
+  path: string,
+  bytes: Uint8Array | Buffer,
+  mimeType: string
+): Promise<{ storagePath: string; publicUrl: string }> {
   const apiKey = SUPABASE_SERVICE_ROLE_KEY;
   if (!SUPABASE_URL || !apiKey) {
     throw new Error("Missing Supabase configuration (SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY).");
@@ -159,17 +174,17 @@ async function uploadToSupabaseStorage(path: string, file: File): Promise<{ stor
 
   const encodedPath = encodeStoragePath(path);
   const uploadUrl = `${SUPABASE_URL}/storage/v1/object/${STORAGE_BUCKET}/${encodedPath}`;
-  const body = new Uint8Array(await file.arrayBuffer());
+  const body = Uint8Array.from(bytes);
 
   const response = await fetch(uploadUrl, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
       apikey: apiKey,
-      "Content-Type": file.type || "application/octet-stream",
+      "Content-Type": mimeType || "application/octet-stream",
       "x-upsert": "false",
     },
-    body,
+    body: new Blob([body], { type: mimeType || "application/octet-stream" }),
   });
 
   if (!response.ok) {
@@ -182,6 +197,11 @@ async function uploadToSupabaseStorage(path: string, file: File): Promise<{ stor
     storagePath: `${STORAGE_BUCKET}/${path}`,
     publicUrl,
   };
+}
+
+async function uploadToSupabaseStorage(path: string, file: File): Promise<{ storagePath: string; publicUrl: string }> {
+  const body = new Uint8Array(await file.arrayBuffer());
+  return uploadBytesToSupabaseStorage(path, body, file.type || "application/octet-stream");
 }
 
 function splitStoragePath(storagePath: string): { bucket: string; objectPath: string } {
@@ -242,6 +262,40 @@ export async function uploadStudyFile(
       size: file.size,
       storagePath,
       publicUrl,
+    },
+  });
+
+  return toFileAsset(created);
+}
+
+export async function uploadGeneratedProjectFile(
+  scopeInput: ScopeInput,
+  projectId: string,
+  input: GeneratedProjectFileInput
+): Promise<FileAsset> {
+  const scope = await assertProjectAccess(scopeInput, projectId);
+  const safeName = sanitizeFilename(input.filename);
+  const safeDirectory = input.directory.trim().replace(/^\/+|\/+$/g, "") || "generated";
+  const objectPath = `projects/${projectId}/${safeDirectory}/${randomUUID()}-${safeName}`;
+  const { storagePath, publicUrl } = await uploadBytesToSupabaseStorage(
+    objectPath,
+    input.bytes,
+    input.mimeType || "application/octet-stream"
+  );
+
+  const created = await prisma.fileAsset.create({
+    data: {
+      projectId,
+      workspaceId: scope.workspaceId,
+      kind: input.kind,
+      format: input.format ?? undefined,
+      filename: input.filename,
+      mimeType: input.mimeType || "application/octet-stream",
+      size: input.bytes.byteLength,
+      storagePath,
+      publicUrl,
+      version: input.version ?? undefined,
+      metadata: input.metadata as any,
     },
   });
 
