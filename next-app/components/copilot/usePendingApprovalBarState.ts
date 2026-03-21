@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import type { ApproveArtifactsBatchResult } from "@/types/copilot-context";
 import type { ArtifactType } from "@/types/artifacts";
 import type { TimelineArtifact, TimelineItem } from "@/types/timeline";
@@ -114,68 +114,34 @@ export function usePendingApprovalBarState({
     const [progress, setProgress] = useState<{ completed: number; total: number }>({ completed: 0, total: 0 });
     const [summary, setSummary] = useState<PendingApprovalSummary | null>(null);
     const abortRef = useRef(false);
-    const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const sessionRef = useRef(0);
     const prevConversationIdRef = useRef<string | null | undefined>(conversationId);
-
-    const clearDismissTimer = useCallback(() => {
-        if (dismissTimerRef.current) {
-            clearTimeout(dismissTimerRef.current);
-            dismissTimerRef.current = null;
-        }
-    }, []);
-
-    const resetState = useCallback(() => {
-        clearDismissTimer();
-        setState("idle");
-        setProgress({ completed: 0, total: 0 });
-        setSummary(null);
-    }, [clearDismissTimer]);
 
     const eligible = Boolean(approveArtifactsBatch)
         && !isLoading
         && !hasActiveProgress
         && pendingArtifacts.length >= 2;
 
-    useEffect(() => {
-        return () => clearDismissTimer();
-    }, [clearDismissTimer]);
-
-    useEffect(() => {
-        if (prevConversationIdRef.current === conversationId) return;
+    if (prevConversationIdRef.current !== conversationId) {
         abortRef.current = true;
         sessionRef.current += 1;
         prevConversationIdRef.current = conversationId;
-        resetState();
-    }, [conversationId, resetState]);
+    }
 
-    useEffect(() => {
-        if (state !== "finished") return;
-        dismissTimerRef.current = setTimeout(() => {
-            setState("idle");
-            setProgress({ completed: 0, total: 0 });
-            setSummary(null);
-            dismissTimerRef.current = null;
-        }, 1500);
-        return clearDismissTimer;
-    }, [clearDismissTimer, state]);
-
-    useEffect(() => {
-        if (state === "approving") return;
-        if (!isLoading && !hasActiveProgress) return;
-        resetState();
-    }, [hasActiveProgress, isLoading, resetState, state]);
+    const hostBusy = state !== "approving" && (isLoading || hasActiveProgress);
+    const effectiveState = hostBusy ? "idle" : state;
+    const effectiveProgress = hostBusy ? { completed: 0, total: 0 } : progress;
+    const effectiveSummary = hostBusy ? null : summary;
 
     const stopApproval = useCallback(() => {
         abortRef.current = true;
     }, []);
 
     const approveAll = useCallback(async () => {
-        if (!approveArtifactsBatch || state === "approving") return;
+        if (!approveArtifactsBatch || effectiveState === "approving") return;
         const artifactIds = pendingArtifacts.map((item) => item.artifactId);
         if (artifactIds.length < 2) return;
 
-        clearDismissTimer();
         abortRef.current = false;
         setSummary(null);
         setState("approving");
@@ -210,16 +176,16 @@ export function usePendingApprovalBarState({
                 setState("finished");
             }
         }
-    }, [approveArtifactsBatch, clearDismissTimer, conversationId, pendingArtifacts, state]);
+    }, [approveArtifactsBatch, conversationId, effectiveState, pendingArtifacts]);
 
     return {
         pendingArtifacts,
         pendingCount: pendingArtifacts.length,
-        showBar: state !== "idle" || eligible,
-        state,
-        progress,
-        resultText: buildResultText(summary, progress),
-        interactionLocked: state === "approving",
+        showBar: effectiveState !== "idle" || eligible,
+        state: effectiveState,
+        progress: effectiveProgress,
+        resultText: buildResultText(effectiveSummary, effectiveProgress),
+        interactionLocked: effectiveState === "approving",
         approveAll,
         stopApproval,
     };
