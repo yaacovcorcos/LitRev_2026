@@ -12,6 +12,7 @@
 - **Schema:** Multi-tenant setup. Core models include `User`, `Workspace`, `WorkspaceMember`, `Project`, `Protocol`, `Draft`, `DraftVersion`, `Study`, `FileAsset`, `AIConversation`, `AIMessage`, `AIUsage`, `UserMemory`, `ProjectMemory`, `StudyMemory`, `ConversationSummary`, `MemoryRetrieval`, `MemoryEmbedding`, `AgentRun`, `RunEvent`, `Artifact`, `AutonomyConfig`, and `Note`.
 - **Draft Versioning:** `DraftVersion` stores immutable per-section snapshots for auditing/recovery. The `draft_diff` artifact apply flow writes to `DraftVersion` (provenance) + `Draft` (display). Notes table is no longer used for draft backup.
 - **Draft Persistence Contract:** `Draft.state` now normalizes to `DraftState v2`, where a canonical `manuscript` document is stored alongside a derived `contentBySection` compatibility projection. Legacy `v1` payloads migrate on read/write, editor block nodes preserve `blockId` attrs, and direct draft writers (for example demo seed + ledger citation rewrites) normalize through the same contract.
+- **Draft Export Contract:** Draft export now runs server-side from normalized canonical manuscript state, not client-side DOM/route serialization. DOCX and Markdown share one compiled export model, generated files are real `FileAsset` uploads, visible draft export history remains DOCX-only in the current UI, and bibliography rendering uses a CSL-backed formatter while LitRev keeps citation order/numbering authority.
 - **Auth & Identity Boundary:** Better Auth (Prisma adapter, DB sessions) is live with Google + magic link support, server-side `withAuth()`/`requireApiSession()` boundaries, and request-scoped actor context (`AsyncLocalStorage`) that feeds service scope resolution.
 - **Legacy Claim Path:** First authenticated session runs an idempotent transactional claim that reassigns `local-user`/`local-workspace` ownership, backfills denormalized workspace IDs, and removes obsolete placeholder principal rows.
 - **Demo Seed Lifecycle:** Sample-project creation/reset is server-seeded from a single transactional service (`lib/server/demo-project.ts`) that finds the current user's scoped demo by `Project.demoKey`, creates a generated project ID when missing, and repopulates project, protocol, ledger, draft, notes, memory, and scoped seed conversation rows without relying on a global fixed project ID.
@@ -29,10 +30,6 @@
   - Verify critical DB objects/indexes in production before deploy (`AIMessage_conversationId_createdAt_id_idx`, memory pinned indexes, `MemoryEmbedding_embedding_hnsw_idx`).
   - Execute auth cutover smoke checks (login, protected route denial, AI stream auth path, first-login claim visibility).
   - Monitor 24-48h post-cutover for auth failures, AI route error/latency regression, and claim anomalies.
-- [ ] Execute **Phase 13: Inline Numbered Citations & Bibliography** (Design pending):
-  - Schema: citation-to-study mapping, order tracking.
-  - TipTap editor custom node for citations `[1]`.
-  - Ledger sync for automatic renumbering.
 - [ ] Execute **Onboarding V2 Backend Enablement**:
   - Add server-action/service support for AI-assisted guided-setup steps (`suggest`, `refine`, `generate`) with typed result contracts.
   - Persist per-step onboarding status (`todo` / `skipped` / `later` / `completed`) so progress is resumable and queryable.
@@ -58,6 +55,7 @@
 ## Recently Completed
 *Finished work that might still be fragile or require monitoring. Prune oldest first.*
 
+- [x] Replaced the fake client-side draft export path with a server-owned compiler pipeline: normalized manuscript snapshots now compile into shared DOCX/Markdown export models, generated files upload through real `FileAsset` storage, export history stays truthful and DOCX-visible in the current UI, and bibliography formatting runs through a CSL-backed Vancouver formatter while LitRev keeps citation order/numbering authority.
 - [x] Added Model B operational telemetry ingest: reliability/performance now accept a strict anonymous public-safe subset for home/auth surfaces, keep scoped telemetry authenticated-only, and use side-effect-light actor resolution that avoids auth-failure counting and legacy-claim work.
 - [x] Added manuscript schema foundation for drafting: `DraftState v2` now persists a canonical manuscript document with legacy `contentBySection` compatibility projection, legacy draft payloads normalize on read/write, current editor round-trips preserve `blockId`, and draft seed / ledger citation rewrite paths use the shared normalizer.
 - [x] Hardened shipped citation hover continuation for retryable `PubMed` bibliography-only misses: continuation requests now dedupe on the server by citation key, slower no-count continuations cannot downgrade recovered counts, and continuation reporting counts failed attempts in the recovery denominator.

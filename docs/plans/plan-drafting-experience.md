@@ -324,6 +324,12 @@ These are one system's views, not separate products.
   - high-quality PDF
   - Markdown
   - future structured submission formats when required
+- The shipped compiler/export baseline is server-owned:
+  - export compiles from normalized manuscript state, not route mode or editor DOM
+  - DOCX and Markdown share one compiled export model
+  - bibliography rendering uses a CSL-backed Vancouver formatter while LitRev keeps citation order/numbering authority
+  - generated export files are real stored `FileAsset` objects, not placeholder rows
+  - the current draft export-history UI remains DOCX-only even though Markdown exports are also generated and stored
 - Export validation checks:
   - unresolved blocking citation issues
   - broken cross-references
@@ -612,6 +618,7 @@ These are implementation tracks for one target state, not separate product versi
 - Journal-specific export rules are profile-driven and additive; the manuscript model itself should stay journal-agnostic.
 
 ## Recently Completed
+- `DRX-007` replaced the placeholder draft export path with a real server-owned compiler pipeline: DOCX and Markdown now compile from normalized manuscript state, generated exports store real file assets, and visible export history stays truthful and DOCX-only in the current UI.
 - `DRX-003` restored the seeded section-first drafting baseline on top of the canonical manuscript model, bringing back top tabs, real `Section` / `Full Draft`, and the left Evidence Ledger while keeping the right side copilot-only.
 - `DRX-002R` shipped the one-left-drawer manuscript shell and removed the draft-owned right panel from the route; it remains documented as an intermediate correction that `DRX-003` superseded.
 - [x] `DRX-001` Defined the canonical manuscript schema, stable block identity, and `DraftState v2` migration contract. Draft save/load now normalize legacy payloads into a canonical manuscript document plus `contentBySection` compatibility projection, and direct draft writers use the same normalizer.
@@ -622,6 +629,5 @@ These are implementation tracks for one target state, not separate product versi
 - [ ] `DRX-004` Add first-class comments, suggestion mode, checkpoints, and compare/restore.
 - [ ] `DRX-005` Add citation palette, evidence coverage, claim support diagnostics, and repair flows.
 - [ ] `DRX-006` Move AI drafting actions into inline proposal/review flows.
-- [ ] `DRX-007` Build the real compiler/export pipeline and truthful export history.
 - [ ] `DRX-008` Certify mobile, accessibility, and large-document performance for the draft surface.
 - [ ] `DRX-009` Add telemetry, logging, and supportable failure states for drafting operations.

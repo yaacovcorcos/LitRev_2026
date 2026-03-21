@@ -169,8 +169,26 @@ vi.mock("@/app/actions/drafts", () => ({
 
 vi.mock("@/app/actions/files", () => ({
   listProjectFilesAction: vi.fn(async () => ({ success: true, data: [] })),
-  createFileAssetAction: vi.fn(async () => ({ success: true, data: { id: "file-1", version: 1, createdAt: new Date().toISOString() } })),
   deleteFileAssetAction: vi.fn(async () => ({ success: true })),
+}));
+
+vi.mock("@/app/actions/draft-exports", () => ({
+  generateDraftExportAction: vi.fn(async () => ({
+    success: true,
+    data: {
+      id: "file-1",
+      kind: "export",
+      format: "docx",
+      filename: "Alpha-Draft-v1.docx",
+      mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      size: 1024,
+      storagePath: "study-assets/projects/proj-1/exports/docx/file-1.docx",
+      publicUrl: "https://example.com/file-1.docx",
+      version: 1,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    },
+  })),
 }));
 
 vi.mock("@/lib/mobile/feature-flags", () => ({
