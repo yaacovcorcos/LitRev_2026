@@ -128,11 +128,13 @@ LitRev drafting becomes a manuscript operating system with:
 - `next-app/app/project/[id]/draft/useDraftWorkspaceController.ts`
   - Canonical route orchestration now owns section add/remove/drag behavior, whole-draft targeting, ledger collapse state, and save/export wiring against the normalized draft state.
 - `next-app/app/project/[id]/draft/useDraftExport.ts`
-  - Current "DOCX export" path is placeholder behavior and not a true document-generation pipeline.
+  - Export now calls the server-owned compiler pipeline and prepends real stored `FileAsset` results back into the current route history UI.
 - `next-app/components/ExportModal.tsx`
-  - Export UX assumes a real DOCX pipeline exists, but current route-level implementation does not satisfy that promise.
+  - Export UX still presents the same draft-surface controls, but the underlying DOCX flow is now backed by real generation/storage instead of placeholder metadata.
 - `next-app/lib/server/draft-versions.ts`
   - Immutable draft versions already exist, but only per section and without a first-class draft-page history UX.
+- `next-app/lib/server/draft-checkpoints.ts`
+  - Whole-draft immutable checkpoints now exist as a backend-only foundation for compare/restore and export provenance, while the draft page still lacks first-class history UI.
 - `next-app/lib/server/agent/artifacts.ts`
   - Accepted `draft_diff` artifacts already create immutable `DraftVersion` entries, so LitRev already has a usable provenance hook for AI-generated changes.
 - `next-app/lib/citation-compiler.ts`
@@ -370,12 +372,12 @@ Core concepts:
 
 ### Persistence strategy
 - `Draft` remains the current document record for a project.
-- `DraftVersion` evolves from per-section history into document-aware snapshot history.
+- `DraftVersion` remains immutable per-section provenance/history.
+- `DraftCheckpoint` is the dedicated immutable whole-draft snapshot model for compare/restore and export provenance.
 - Add durable review entities:
   - `DraftCommentThread`
   - `DraftComment`
   - `DraftSuggestion`
-  - `DraftCheckpoint` if checkpoint metadata cannot fit cleanly inside generalized `DraftVersion`
 - Reuse `Artifact` for AI-originated proposals rather than introducing a second proposal system.
 
 ### Anchor model
@@ -619,6 +621,7 @@ These are implementation tracks for one target state, not separate product versi
 
 ## Recently Completed
 - `DRX-007` replaced the placeholder draft export path with a real server-owned compiler pipeline: DOCX and Markdown now compile from normalized manuscript state, generated exports store real file assets, and visible export history stays truthful and DOCX-only in the current UI.
+- `DRX-004A` shipped the backend-only checkpoint foundation: immutable whole-draft `DraftCheckpoint` records now capture authoring-state snapshots, export-created checkpoints link back to generated files, restore rebuilds a valid `DraftState v2` without reviving route/UI state, and the draft page UI remains unchanged.
 - `DRX-003` restored the seeded section-first drafting baseline on top of the canonical manuscript model, bringing back top tabs, real `Section` / `Full Draft`, and the left Evidence Ledger while keeping the right side copilot-only.
 - `DRX-002R` shipped the one-left-drawer manuscript shell and removed the draft-owned right panel from the route; it remains documented as an intermediate correction that `DRX-003` superseded.
 - [x] `DRX-001` Defined the canonical manuscript schema, stable block identity, and `DraftState v2` migration contract. Draft save/load now normalize legacy payloads into a canonical manuscript document plus `contentBySection` compatibility projection, and direct draft writers use the same normalizer.

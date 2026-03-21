@@ -37,7 +37,7 @@ For production migration/release procedure, use `docs/plans/db-production-runboo
 | Domain | Tables | Structural role |
 |---|---|---|
 | Auth and admin | `User`, `Session`, `Account`, `Verification`, `AdminAuditLog` | Identity, sessions, provider links, verification flows, admin audit trail |
-| Workspace and project core | `Workspace`, `WorkspaceMember`, `Project`, `Protocol`, `Draft`, `DraftVersion`, `Study`, `Note`, `FileAsset` | Collaboration scope, project state, studies, notes, file metadata |
+| Workspace and project core | `Workspace`, `WorkspaceMember`, `Project`, `Protocol`, `Draft`, `DraftVersion`, `DraftCheckpoint`, `Study`, `Note`, `FileAsset` | Collaboration scope, project state, draft history/checkpoints, studies, notes, file metadata |
 | AI chat and telemetry | `AIConversation`, `AIMessage`, `AIUsage`, `ChatUnificationMetric` | Conversation storage, message timeline, token/cost attribution, chat surface telemetry |
 | Memory and retrieval | `UserMemory`, `ProjectMemory`, `StudyMemory`, `ConversationSummary`, `MemoryRetrieval`, `MemoryEmbedding` | Durable memory, summarization, retrieval audit trail, vector search |
 | Agent runtime | `AgentRun`, `RunEvent`, `RunCheckpoint`, `Artifact`, `AutonomyConfig` | Event-sourced runs, explicit continuation seeds, run lineage, reviewable artifacts, autonomy presets |
@@ -57,6 +57,7 @@ For production migration/release procedure, use `docs/plans/db-production-runboo
 | `Protocol` | Canonical protocol JSON for a project | `projectId -> Project` | `projectId` unique | None | No |
 | `Draft` | Current draft state for a project | `projectId -> Project` | `projectId` unique | None | No |
 | `DraftVersion` | Versioned draft snapshots by section | `projectId -> Project` | Unique on `projectId + section + version`; indexes on `projectId + section`, `projectId + createdAt` | `contentText`, `artifactId`, `conversationId` optional linkage/context | No |
+| `DraftCheckpoint` | Immutable whole-draft authoring-state snapshot for compare/restore and export provenance | `projectId -> Project`, `fileAssetId -> FileAsset`, `artifactId -> Artifact`, `conversationId -> AIConversation` | Indexes on `projectId + createdAt`, `projectId + kind + createdAt`, `workspaceId`, `fileAssetId`, `artifactId`, `conversationId` | `workspaceId` is denormalized optional scope; `label`, `fileAssetId`, `artifactId`, `conversationId` are optional provenance metadata; `snapshot` intentionally excludes transient route/UI state | No |
 | `Study` | Study records under a project | `projectId -> Project` | Indexes on `projectId`, `projectId + deletedAt`, `workspaceId` | `workspaceId` is denormalized optional scope; `details`, `deletedAt` optional | `deletedAt` |
 | `FileAsset` | File metadata and storage pointer | `projectId -> Project`, `studyId -> Study` | Indexes on `projectId`, `workspaceId`, `studyId` | `workspaceId` denormalized optional scope; `studyId`, `format`, `publicUrl`, `metadata` optional | No |
 | `AIConversation` | Chat container for global/project/study contexts | `projectId -> Project` | Indexes on `userId + context`, `userId + projectId`, `workspaceId`, `workspaceId + context`, `projectId`, `studyId`, `context` | `userId`, `workspaceId`, `title`, `page`, `projectId`, `studyId` are optional to support global and scoped chats | No |
@@ -118,6 +119,7 @@ These indexes protect major runtime paths. The operational gate owner and verifi
 - Core app foundation: initial workspace/project/protocol/draft/study/file schema.
 - Memory and embeddings: pgvector support, memory tables, retrieval audit, summaries, and memory lifecycle metadata.
 - Draft history: section-scoped draft versioning.
+- Draft checkpoints: immutable whole-draft authoring-state snapshots with export/file provenance.
 - Project FK hardening: project relations added across AI, memory, and runtime tables.
 - Auth foundation: Better Auth session/account/verification support plus later auth/admin indexes.
 - Agent runtime hardening: run lineage fields, uniqueness guarantees, and runtime-supporting indexes.
