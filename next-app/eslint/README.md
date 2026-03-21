@@ -84,6 +84,9 @@ Contracts:
   - it always runs broad `npm run lint:governance`
   - it always runs `npm run lint:governance:audit`
   - it writes `governance-audit.json` for artifact upload and local inspection
+- GitHub `check` now wires these commands directly:
+  - `governance:ci-required` is the blocking governance gate
+  - `governance:ci-informational` always runs as non-blocking reporting
 - additions to the required governance inventory are phase-owned:
   - do not add broad `lint:governance`, audit reporting, or unrelated checks to `governance:ci-required`
   - update the canonical lint-governance plan and governance docs in the same task when the required inventory changes

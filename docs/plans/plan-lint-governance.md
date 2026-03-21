@@ -26,7 +26,19 @@ This plan does not own product behavior or `PRD.md`.
   - `npm run test:eslint-rules`
 - Governance tooling now has a separate targeted validation command:
   - `npm run test:governance-tooling`
-- CI now runs governance rule tests, governance lint, the governance audit artifact, and the runtime test-impact guard independently before the full-repo lint baseline becomes a required gate.
+- CI now enforces completed governance phases through `npm run governance:ci-required` inside the required `check` status:
+  - `npm run governance:check`
+  - `npm run test:eslint-rules`
+  - `npm run test:governance-tooling`
+  - `npm run lint:governance:phase1`
+  - `npm run lint:governance:phase2-hotspots`
+  - `npm run lint:governance:phase3-searchability`
+  - `npm run lint:governance:phase4-policy`
+  - `npm run check:runtime-test-impact`
+- CI now always runs non-blocking governance reporting through `npm run governance:ci-informational` inside `check`:
+  - `npm run lint:governance`
+  - `npm run lint:governance:audit`
+- The governance audit artifact remains published from the informational path, and broad warning surfaces stay visible without becoming merge blockers.
 - Governance tooling imports now come from direct devDependencies in `next-app/package.json`, not only transitive `eslint-config-next` dependencies.
 - Phase 1 now has explicit config slices for the governed app surface and a scripts-only logging slice, plus a stable `npm run lint:governance:phase1` verifier.
 - Phase 2 now has a dedicated `npm run lint:governance:phase2-hotspots` verifier for the `/ai` + copilot runtime surface, including `hooks/useCopilotStreamActions.ts` and the bundled async-cleanup rules for that same hot-spot slice only.
@@ -155,30 +167,35 @@ Missing:
 - Nothing material for the finalized Phase 4 scope
 
 ### Phase 5 — Enforcement Rollout
-Status: Partially Implemented
+Status: Done
 
 Shipped:
-- Governance rule tests in CI
-- Governance lint in CI
-- Governance audit artifact in CI
-- Runtime test-impact guard in CI
-- Completed verifier commands already exist for finished earlier phases:
+- Permanent local reproduction commands for governance CI behavior:
+  - `npm run governance:ci-required`
+  - `npm run governance:ci-informational`
+- Required `check` status now enforces the completed governance inventory only:
+  - `npm run governance:check`
+  - `npm run test:eslint-rules`
+  - `npm run test:governance-tooling`
   - `npm run lint:governance:phase1`
   - `npm run lint:governance:phase2-hotspots`
   - `npm run lint:governance:phase3-searchability`
+  - `npm run lint:governance:phase4-policy`
+  - `npm run check:runtime-test-impact`
+- Broad governance reporting now runs on every `check` execution but remains non-blocking:
+  - `npm run lint:governance`
+  - `npm run lint:governance:audit`
+- Governance audit artifact upload remains in CI without promoting broad warning debt into the required gate
+- Required-versus-informational governance split is now documented in the lint-governance docs and GitHub flow runbook
 
 Missing:
-- Final decision on which governance checks are required versus informational
-- Stable verifier commands for the remaining completed policy surfaces before enforcement is tightened further
-- Documented waiver/exception policy for governance checks that remain non-blocking
-- Later merge-gate tightening plan once warning debt is intentionally reduced
-- Any move to require the full legacy `npm run lint` baseline
+- Nothing material for the finalized Phase 5 scope
 
 ## Active Tasks
-- [ ] `LG-005` Complete unified Phase 5 enforcement rollout: decide required versus informational governance checks, wire the remaining stable verifier commands into CI, and document waiver policy.
 - [ ] `LG-006` Decide the first server/runtime structured-logging rule set so UI noise and observability paths are governed separately.
 
 ## Recently Completed
+- [x] Completed Phase 5 by making GitHub `check` enforce only the stable completed governance inventory via `governance:ci-required`, keeping broad `lint:governance` plus audit reporting always-run but non-blocking through `governance:ci-informational`, and documenting the final required-versus-informational split without promoting the legacy full-repo lint baseline.
 - [x] Completed Phase 4 by shipping permanent `phase4-async`, `phase4-tests`, and `phase4-policy` verifiers, aligning runtime test lint rules and changed-file enforcement to one shared authority with strict one-file waivers, and recording the selective Factory-inspired strictness decisions without pulling Phase 5 CI enforcement forward.
 - [x] Completed Phase 3 by hardening import-boundary enforcement for sourced re-exports and string-literal dynamic imports, adding the stable `lint:governance:phase3-searchability` verifier, and cleaning the remaining UI filename/export mismatches without broadening Phase 3 beyond the governed UI surface.
 - [x] Compressed the remaining non-Phase-3 roadmap into unified `Phase 4 — Policy Maturity` and `Phase 5 — Enforcement Rollout` so policy completion stays separate from CI enforcement.
