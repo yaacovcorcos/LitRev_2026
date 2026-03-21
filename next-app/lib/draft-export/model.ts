@@ -1,14 +1,18 @@
 import type { JSONContent } from "@tiptap/core";
-import type { CitationIssue } from "@/lib/citation-compiler";
+import type { CitationIssueType } from "@/lib/citation-compiler";
+import type {
+  DraftDiagnosticsReport,
+  DraftReadinessDiagnosticCode,
+} from "@/lib/draft-diagnostics/model";
 import type { DraftSectionId } from "@/types/draft";
 
 export type DraftExportFormat = "docx" | "markdown";
 export type DraftExportMode = "warn" | "strict";
 
 export type CompiledDraftExportWarning = {
-  type: CitationIssue["type"];
+  type: CitationIssueType | DraftReadinessDiagnosticCode;
   severity: "warning" | "error";
-  sectionId: DraftSectionId;
+  sectionId?: DraftSectionId;
   studyId?: string;
   message: string;
 };
@@ -32,6 +36,7 @@ export type CompiledDraftExportDocument = {
   exportedAt: string;
   sections: CompiledDraftExportSection[];
   references: CompiledDraftReferenceEntry[];
+  diagnostics: DraftDiagnosticsReport;
   warnings: CompiledDraftExportWarning[];
   blockingWarningCount: number;
 };

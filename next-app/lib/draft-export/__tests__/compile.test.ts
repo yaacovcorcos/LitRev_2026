@@ -164,4 +164,75 @@ describe("compileDraftExportDocument", () => {
     expect(document.sections[0]?.id).toBe(UNSECTIONED_DRAFT_ID);
     expect(document.sections[0]?.isWholeDraft).toBe(true);
   });
+
+  it("adds advisory readiness warnings without broadening blocking errors", () => {
+    const document = compileDraftExportDocument({
+      projectTitle: "Alpha Draft",
+      draftSnapshot: {
+        version: 2,
+        mode: "section",
+        activeSection: "abstract",
+        sectionOrder: ["abstract", "references"],
+        customSections: {},
+        formattingBySection: {
+          [UNSECTIONED_DRAFT_ID]: { fontSize: 16, lineHeight: 1.8, paragraphSpacing: 12, fontFamily: "Georgia" },
+          abstract: { fontSize: 16, lineHeight: 1.8, paragraphSpacing: 12, fontFamily: "Georgia" },
+          references: { fontSize: 16, lineHeight: 1.8, paragraphSpacing: 12, fontFamily: "Georgia" },
+        },
+        panels: {
+          ledgerWidth: 320,
+          copilotWidth: 360,
+          ledgerCollapsed: false,
+          copilotCollapsed: false,
+        },
+        contentBySection: {
+          [UNSECTIONED_DRAFT_ID]: { type: "doc", content: [{ type: "paragraph" }] },
+          abstract: textDoc("This section has prose but no inline citations."),
+          references: { type: "doc", content: [{ type: "paragraph" }] },
+        },
+        ledgerBySection: {
+          [UNSECTIONED_DRAFT_ID]: [],
+          abstract: ["study-1"],
+          references: [],
+        },
+        copilotBySection: {
+          [UNSECTIONED_DRAFT_ID]: [],
+          abstract: [],
+          references: [],
+        },
+        manuscript: {
+          schemaVersion: 2,
+          doc: {
+            type: "doc",
+            content: [],
+          },
+          sections: [
+            {
+              sectionId: "abstract",
+              sectionNodeId: "sec:abstract",
+              kind: "base",
+              label: "Abstract",
+            },
+            {
+              sectionId: "references",
+              sectionNodeId: "sec:references",
+              kind: "base",
+              label: "References",
+            },
+          ],
+        },
+      },
+      studies,
+    });
+
+    expect(document.warnings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "section_missing_citation_readiness", severity: "warning", sectionId: "abstract" }),
+        expect.objectContaining({ type: "section_ledger_unused_readiness", severity: "warning", sectionId: "abstract" }),
+      ]),
+    );
+    expect(document.blockingWarningCount).toBe(0);
+    expect(document.diagnostics.summary.readinessIssueCount).toBe(2);
+    expect(document.diagnostics.summary.blockingCitationIssueCount).toBe(0);
+  });
 });

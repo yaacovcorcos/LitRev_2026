@@ -500,6 +500,7 @@ These are implementation tracks for one target state, not separate product versi
 - Replace detection-only citation warnings with repairable diagnostics.
 - Add citation palette, source preview, evidence coverage views, claim support linking, and reference integrity checks.
 - Blast radius: medium/high; reuses ledger and citation compiler heavily.
+- Implementation note (March 21, 2026): the backend-first diagnostics slice is now shipped. Draft/export warning derivation compiles from one canonical normalized diagnostics report, citation-derived diagnostics reuse the existing `CitationIssueType` taxonomy, section-level coverage/readiness signals remain advisory warnings only, and strict export blocking is still limited to the current citation-integrity failures. UI repair flows remain future work.
 
 ### `DRX-006` AI proposal lane inside drafting
 - Move AI assistance from generic side actions toward inline draft operations and proposal review.
@@ -620,6 +621,7 @@ These are implementation tracks for one target state, not separate product versi
 - Journal-specific export rules are profile-driven and additive; the manuscript model itself should stay journal-agnostic.
 
 ## Recently Completed
+- `DRX-005A` shipped the backend-first diagnostics contract: draft/export warning derivation now compiles from one canonical normalized diagnostics report, citation-derived issues reuse the existing citation taxonomy, section-level coverage signals are advisory warnings only, and strict export blocking still tracks only current citation-integrity failures.
 - `DRX-007` replaced the placeholder draft export path with a real server-owned compiler pipeline: DOCX and Markdown now compile from normalized manuscript state, generated exports store real file assets, and visible export history stays truthful and DOCX-only in the current UI.
 - `DRX-004A` shipped the backend-only checkpoint foundation: immutable whole-draft `DraftCheckpoint` records now capture authoring-state snapshots, export-created checkpoints link back to generated files, restore rebuilds a valid `DraftState v2` without reviving route/UI state, and the draft page UI remains unchanged.
 - `DRX-003` restored the seeded section-first drafting baseline on top of the canonical manuscript model, bringing back top tabs, real `Section` / `Full Draft`, and the left Evidence Ledger while keeping the right side copilot-only.

@@ -78,7 +78,7 @@ export function renderMarkdownExport(document: CompiledDraftExportDocument): Buf
 
   if (document.warnings.length > 0) {
     lines.push(
-      `> Export warnings: ${document.warnings.length} citation issue${document.warnings.length === 1 ? "" : "s"} detected.`,
+      `> Export diagnostics: ${document.warnings.length} diagnostic${document.warnings.length === 1 ? "" : "s"} detected.`,
     );
     lines.push("");
   }
