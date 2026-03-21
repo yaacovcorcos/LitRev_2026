@@ -71,6 +71,15 @@ const STREAM_EVENT_TYPES: RuntimeStreamEvent["type"][] = [
     "user_input_required",
 ];
 
+export function OPTIONS() {
+    return new Response(null, {
+        status: 204,
+        headers: {
+            Allow: "OPTIONS, POST",
+        },
+    });
+}
+
 export async function POST(request: NextRequest) {
     try {
         const progressiveStreaming = getProgressiveAnswerStreamingConfig();

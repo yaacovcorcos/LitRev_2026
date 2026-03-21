@@ -335,6 +335,7 @@ export default function AIView() {
   const historyRequestTokenRef = useRef(0);
   const historyLoadedScopeRef = useRef<string | null>(null);
   const historyLoadPromiseRef = useRef<Promise<void> | null>(null);
+  const streamRouteWarmupStartedRef = useRef(false);
   const workspaceContextPromiseRef = useRef<Promise<string> | null>(null);
 
   const reasoningSupport: ReasoningSupportTier = useMemo(
@@ -559,6 +560,19 @@ export default function AIView() {
     enabled: isComposerReady && historyLoadedScopeRef.current !== historyScopeKey,
     timeoutMs: 1200,
     fallbackDelayMs: 150,
+  });
+
+  useIdleTask(() => {
+    if (process.env.NODE_ENV === "production") return;
+    if (streamRouteWarmupStartedRef.current) return;
+    streamRouteWarmupStartedRef.current = true;
+    void fetch("/api/ai/stream", { method: "OPTIONS" }).catch(() => {
+      streamRouteWarmupStartedRef.current = false;
+    });
+  }, {
+    enabled: isComposerReady,
+    timeoutMs: 800,
+    fallbackDelayMs: 100,
   });
 
   useEffect(() => {

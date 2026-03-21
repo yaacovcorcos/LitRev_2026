@@ -51,7 +51,7 @@ vi.mock("@/lib/server/agent/run-checkpoints", () => ({
   buildCheckpointContinuationContext: mocks.buildCheckpointContinuationContext,
 }));
 
-const { POST } = await import("../route");
+const { OPTIONS, POST } = await import("../route");
 
 describe("/api/ai/stream route", () => {
   beforeEach(() => {
@@ -69,6 +69,15 @@ describe("/api/ai/stream route", () => {
     mocks.resolveDurableContinuationSource.mockResolvedValue(null);
     mocks.buildCheckpointContinuationContext.mockReturnValue("[CONTINUATION_CONTEXT]\nPersisted checkpoint");
     mocks.buildDurableContinuationContext.mockReturnValue("[CONTINUATION_CONTEXT]\nPersisted tool result");
+  });
+
+  it("answers OPTIONS warmup requests without invoking stream runtime", async () => {
+    const response = OPTIONS();
+
+    expect(response.status).toBe(204);
+    expect(response.headers.get("Allow")).toBe("OPTIONS, POST");
+    expect(mocks.streamChatWithArtifacts).not.toHaveBeenCalled();
+    expect(mocks.streamChat).not.toHaveBeenCalled();
   });
 
   it("streams checkpoint and user-input events without route-side persistence authorship", async () => {
