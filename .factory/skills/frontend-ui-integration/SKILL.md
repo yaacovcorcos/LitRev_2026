@@ -33,6 +33,7 @@ Implement or extend LitRev user-facing workflows in the Next.js app using existi
 - `@/` alias resolves to `next-app/`.
 - Prefer shared primitives in `next-app/components/ui/` before creating one-off controls.
 - Use token-first styling from `next-app/styles/tokens.css`; avoid hardcoded palette values unless intentionally local and reviewed.
+- Treat control density and action placement as deliberate design decisions: default to the smallest viable control, group actions by context, and avoid promoting secondary operations into primary buttons.
 - Respect route-level architecture:
   - `next-app/app/actions/` for server actions.
   - `next-app/lib/server/` for backend service logic.
@@ -58,14 +59,28 @@ Implement or extend LitRev user-facing workflows in the Next.js app using existi
    - Inputs need visible labels or `aria-label`.
    - Use appropriate input types and autocomplete where relevant.
    - Show inline validation errors and focus first invalid field on submit.
-9. Motion and focus quality:
+9. Motion and feedback quality:
    - Honor `prefers-reduced-motion`.
    - Avoid `transition: all`; scope transitions to explicit properties.
+   - Use subtle transitions for interactive state changes; no instant state changes for hover, focus, expand/collapse, or status feedback unless the interaction is intentionally immediate.
+   - Every interactive element needs visible feedback on hover, focus, pressed, disabled, or selected states.
    - Never remove outlines/focus styles without an accessible replacement.
-10. Safety and consistency checks:
+10. Control hierarchy and action placement:
+   - Default to the smallest viable control for the job: icon-only for familiar compact actions, small text buttons for inline secondary actions, standard buttons for primary operations.
+   - Header actions should be grouped together in a dedicated actions container.
+   - Row actions should stay compact and context-local; prefer icon buttons or short text actions, and reveal low-priority actions on hover when appropriate.
+   - Form actions should sit at the bottom of the form, with the primary action visually dominant and the secondary action clearly subordinate.
+   - Inline actions should stay adjacent to the content they affect.
+11. Visual restraint:
+   - Limit each view or section to one clearly primary action unless the workflow genuinely requires more.
+   - Prefer ghost, link-style, or icon treatments for secondary operations.
+   - Button text should stay concise and task-focused; avoid long labels that read like instructions.
+   - Question whether a control needs to exist at all before adding it.
+12. Safety and consistency checks:
    - Destructive actions require confirmation or undo affordance.
    - Use `Intl.DateTimeFormat`/`Intl.NumberFormat` for user-facing date/number formatting.
    - For content images, include explicit dimensions; lazy-load non-critical images.
+   - Keep touch targets usable on mobile even when controls are visually compact.
 
 ## Required artifacts
 
