@@ -51,7 +51,7 @@ The intended end state is a shared context-capture system that works across proj
   - `docs/agents/universal-planning-meta-prompt.md`
   - `docs/architecture/frontend-quality-bar.md`
   - `docs/runbooks/frontend-review-loop.md`
-  - `docs/plans/plan-chat-unification-v2.md`
+  - `docs/plans/chatRuntime.md`
   - `docs/plans/mobile-plan.md`
 
 ### Current-State Evidence
@@ -93,7 +93,7 @@ Reject:
   - `docs/architecture/frontend-quality-bar.md` when context-capture work changes durable frontend doctrine or anti-pattern guidance
   - `docs/runbooks/frontend-review-loop.md` when context-capture work changes the shared frontend review workflow
   - `docs/plans/mobile-plan.md` if mobile interaction rules change
-  - `docs/plans/plan-chat-unification-v2.md` only if context transport/runtime contracts change
+  - `docs/plans/chatRuntime.md` only if context transport/runtime contracts change
 - `PRD.md` remains unchanged unless context capture changes the product contract rather than the implementation.
 
 ## Minimal-Sufficient Strategy

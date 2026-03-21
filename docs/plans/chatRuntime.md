@@ -1,11 +1,11 @@
-# Chat Unification V2 Plan
+# Chat Runtime Plan
 
 ## Purpose
 Track the remaining work to keep `/ai`, project copilot, and popup on one shared chat/runtime contract while preserving surface-specific UX where it is intentional.
 
 This file is not a migration diary. It records:
 - the current shared-runtime truth
-- the remaining unification blockers
+- the remaining runtime-parity blockers
 - the rules that future chat/trace work must preserve
 
 ## Scope
@@ -17,7 +17,7 @@ This plan owns:
 
 This plan does not own:
 - agent-runtime orchestration fixes in [plan-agentic.md](./plan-agentic.md)
-- truthful execution-trace design in [plan-thinking-v2.md](./plan-thinking-v2.md)
+- truthful execution-trace design in [transparencyUI.md](./transparencyUI.md)
 - route-specific UI polish in [plan-ux-ui.md](./plan-ux-ui.md)
 - the durable URL/navigation contract for conversation identity, which is owned by [plan-ux-ui.md](./plan-ux-ui.md) and must be reflected here only where route identity constrains shared chat-runtime behavior
 
@@ -183,8 +183,8 @@ Architecture guardrails:
 
 ## Dependency Notes
 - [plan-agentic.md](./plan-agentic.md) now owns the active runtime stabilization program (`FIX-011b`) for disconnect classification, run convergence, durable continuation, and same-run recovery truth. This plan should treat that stabilization work as an upstream dependency rather than a competing runtime owner.
-- [agent-runtime-remediation/plan-runtime-stabilization-and-continuation.md](./agent-runtime-remediation/plan-runtime-stabilization-and-continuation.md) defines the durable recovery/continuation contract that chat unification must consume rather than reinterpret per surface.
-- [plan-thinking-v2.md](./plan-thinking-v2.md) depends on this plan for shared runtime parity across `/ai` and project copilot before broader truthful execution-trace rollout.
+- [agent-runtime-remediation/plan-runtime-stabilization-and-continuation.md](./agent-runtime-remediation/plan-runtime-stabilization-and-continuation.md) defines the durable recovery/continuation contract that chat runtime work must consume rather than reinterpret per surface.
+- [transparencyUI.md](./transparencyUI.md) depends on this plan for shared runtime parity across `/ai` and project copilot before broader truthful execution-trace rollout.
 - [plan-agentic.md](./plan-agentic.md) depends on this plan whenever agent fixes require shared stream/runtime semantics instead of per-surface adapters.
 - [plan-ux-ui.md](./plan-ux-ui.md) owns the durable navigation contract for chat surfaces:
   - `/project/[id]` becomes overview-only

@@ -107,7 +107,7 @@ When the next valid window opens:
 
 - Runbook: `docs/runbooks/chat-unification-burn-in.md`
 - Report template: `docs/reports/u1-6-burn-in-template.md`
-- Plan: `docs/plans/plan-chat-unification-v2.md`
+- Plan: `docs/plans/chatRuntime.md`
 
 ## Current Decision
 

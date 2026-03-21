@@ -19,8 +19,8 @@ This file is the active plan registry and the canonical owner for plan-maintenan
   - [**Reliability A0 brief**](reliability-a0-brief.md): Deterministic repro + baseline threshold contract for Track A blocker reliability work.
   - [**Mobile plan**](mobile-plan.md): Canonical app-wide responsive foundation tracker, including mobile/chat follow-up waves.
   - [**Mobile layout contract**](mobile-layout-contract.md): Operational contract for shared phone/compact height, safe-area, and scroll-ownership rules.
-  - [**Thinking + Live Process UX V2**](plan-thinking-v2.md): Canonical supporting plan for truthful execution trace across chat surfaces: live phase, semantic tool receipts, grounded checkpoints, and optional reasoning visibility.
-  - [**Chat Unification V2**](plan-chat-unification-v2.md): Canonical supporting plan for shared runtime parity across `/ai`, project copilot, and popup while keeping `/ai` project-optional.
+  - [**Transparency UI**](transparencyUI.md): Canonical supporting plan for truthful process visibility across chat surfaces: live phase, semantic tool receipts, grounded checkpoints, optional reasoning visibility, and visible-message boundaries.
+  - [**Chat Runtime**](chatRuntime.md): Canonical supporting plan for shared runtime parity across `/ai`, project copilot, and popup while keeping `/ai` project-optional.
 - [**Guided Setup V2**](plan-guided-setup.md): Dedicated onboarding activation plan for visual redesign, AI-enhanced step flow, personalization, and setup-mode agent behavior.
 - [**Settings**](plan-settings.md): Canonical tracker for user-configurable behavior defaults and future Settings UI controls.
 - [**Speed and Performance**](plan-speed-performance.md): Canonical tracker for Web Vitals budgets, cache/preload policy, route performance, and smooth interaction delivery.

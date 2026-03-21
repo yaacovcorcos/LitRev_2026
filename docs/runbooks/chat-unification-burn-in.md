@@ -1,6 +1,6 @@
 # Chat Unification Burn-In Runbook
 
-This runbook operationalizes `U1.6` from `docs/plans/plan-chat-unification-v2.md`.
+This runbook operationalizes `U1.6` from `docs/plans/chatRuntime.md`.
 It is the only active U1.6 burn-in operational source.
 Use it before opening `U3` popup migration.
 
@@ -241,6 +241,6 @@ If strict gate fails:
 
 1. Owner signs the final report as pass/fail.
 2. Backup reviewer independently validates thresholds and cohort scope.
-3. `docs/plans/plan-chat-unification-v2.md` implementation status is updated with factual outcome.
-4. `U3` becomes the next task only within `docs/plans/plan-chat-unification-v2.md`; broader roadmap ordering still follows `docs/plans/plan-agentic.md` unless explicitly changed there.
+3. `docs/plans/chatRuntime.md` implementation status is updated with factual outcome.
+4. `U3` becomes the next task only within `docs/plans/chatRuntime.md`; broader roadmap ordering still follows `docs/plans/plan-agentic.md` unless explicitly changed there.
 5. Only after sign-off, start `U3` popup migration.

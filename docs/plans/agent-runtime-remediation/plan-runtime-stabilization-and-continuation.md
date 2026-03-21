@@ -35,7 +35,7 @@ Use this file for detailed execution thinking about stabilization and continuati
 ## Closeout Posture
 - Treat `FIX-011b` as a delta-closeout task, not a greenfield runtime program.
 - Assume no schema change; reopen persistence only if a concrete missing persisted fact is discovered during burn-in or a narrow delta audit.
-- Use this file for supporting detail only. [plan-agentic.md](../plan-agentic.md) remains the canonical fix-status owner, and `U1.6` in [plan-chat-unification-v2.md](../plan-chat-unification-v2.md) plus [chat-unification-burn-in.md](../../runbooks/chat-unification-burn-in.md) remains the operational sign-off owner.
+- Use this file for supporting detail only. [plan-agentic.md](../plan-agentic.md) remains the canonical fix-status owner, and `U1.6` in [chatRuntime.md](../chatRuntime.md) plus [chat-unification-burn-in.md](../../runbooks/chat-unification-burn-in.md) remains the operational sign-off owner.
 - If a real runtime drift is found, patch only the shared convergence/recovery path and add focused tests for that uncovered case.
 
 ## Workstream A: Abnormal-End Classification

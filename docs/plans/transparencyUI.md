@@ -1,4 +1,4 @@
-# Thinking + Live Process UX V2 Plan
+# Transparency UI Plan
 
 ## Purpose
 Define the canonical architecture for a truthful execution trace so users can follow what the agent is doing, what it found, and what happens next without relying on raw chain-of-thought visibility.
@@ -196,6 +196,56 @@ Optional suggestions should remain `<choices>` only.
 6. **Reasoning display is optional and secondary.**
 7. **Cross-surface truth is mandatory:** the same runtime state should not look fundamentally different on `/ai` and project copilot.
 
+## Visible Message Contract
+Visible assistant prose and machine-readable UI state must not share one channel.
+
+### Problem
+- assistant-side UI metadata still appears inside normal assistant prose in some paths
+- malformed hidden markup can leak into visible chat
+- downstream consumers can ingest machine protocol as if it were user-facing narrative
+
+### Target contract
+- server-owned normalization at the assistant-message boundary
+- clean visible assistant text kept separate from typed structured message parts
+- clients render from canonical structured data instead of reparsing prose
+- legacy hidden-markup parsing survives only as a compatibility path for older messages
+
+### Channel rules
+1. Visible assistant prose:
+   - user-facing answer text only
+   - never hidden assistant markup
+   - never continuation/runtime scaffolding
+   - never raw machine metadata
+2. Structured transparency:
+   - live phase
+   - tool receipts
+   - checkpoints
+   - blocking clarification
+   - optional reasoning summary
+3. Hidden machine state:
+   - continuation context
+   - structured message parts
+   - recovery/runtime metadata
+   - provider/debug payloads
+
+### Delivery direction
+- keep one canonical normalization boundary
+- persist clean visible text and typed structured parts separately for new writes
+- prefer structured message parts in renderers and downstream consumers
+- retain only narrow fallback parsing for historic conversations
+
+### Non-goals
+- no big-bang rewrite of historic conversations
+- no second parallel status tracker outside [plan-agentic.md](./plan-agentic.md)
+- no continued reliance on hidden assistant markup as the steady-state architecture
+- no dependence on raw provider reasoning for primary user comprehension
+
+### Acceptance criteria
+- main consumers stop depending on raw hidden markup for normal operation
+- malformed machine payloads no longer leak into visible chat
+- visible answers remain clean even when optional reasoning or continuation data exists
+- old conversations continue to work through compatibility parsing during migration
+
 ## Runtime Architecture Decisions
 
 ### Shared ownership model
@@ -388,50 +438,6 @@ Do not ship these patterns:
 - long reasoning dumps open by default
 - durable receipts that repeat exactly the same label with no semantic differentiation
 
-## External Patterns Worth Borrowing
-These references are not implementation templates, but they show useful design principles.
-
-### Agent Prism
-Reference: [Agent Prism](https://github.com/evilmartians/agent-prism)
-
-Useful ideas:
-- normalized trace model optimized for UI rendering
-- compact tree/list primary view
-- deeper detail only on explicit inspection
-
-What to borrow:
-- durable trace records should be compact by default and rich on demand
-
-What not to copy directly:
-- developer-facing trace density and span terminology are too technical for LitRev’s default user surface
-
-### LangGraph Studio
-Reference: [LangGraph Studio](https://github.com/langchain-ai/langgraph-studio)
-
-Useful ideas:
-- explicit step/thread identity
-- clear interrupt points
-- execution feels inspectable, not magical
-
-What to borrow:
-- steps and waits should be first-class and explicit
-
-What not to copy directly:
-- graph/node visualization is too developer-oriented for the main LitRev chat surface
-
-### OpenCode
-Reference: [OpenCode](https://github.com/sst/opencode)
-
-Useful ideas:
-- delegated work and visible progress should be separated
-- execution units and user-facing checklist/progress are not the same thing
-
-What to borrow:
-- do not confuse agent task execution with user-facing progress narration
-
-What not to copy directly:
-- file-based planning mode is not the right UX model for LitRev chat surfaces
-
 ## Surface Contract
 
 ### `/ai`
@@ -516,7 +522,7 @@ This plan does not aim to:
 
 ## Execution Sequence
 
-### Phase V2.0 - Contract lock and shipped foundation
+### Phase 0 - Contract lock and shipped foundation
 1. Freeze the execution-trace truth model:
    - conditional task outline
    - live phase/progress
@@ -535,7 +541,7 @@ Exit criteria:
 - One canonical transparency model exists.
 - The first provider-independent workflow is shipped and documented.
 
-### Phase V2.1 - Cross-surface parity completion
+### Phase 1 - Cross-surface parity completion
 1. Audit all remaining adapter/storage loss between `/ai`, sidebar copilot, main project conversation, and popup.
 2. Preserve structured semantics end-to-end for:
    - `progress`
@@ -550,7 +556,7 @@ Exit criteria:
 - The same stream has the same semantic meaning on all supported main surfaces.
 - No supported surface silently degrades process state into assistant prose.
 
-### Phase V2.2 - Receipt expansion beyond core search tools
+### Phase 2 - Receipt expansion beyond core search tools
 1. Preserve the shipped PubMed/OpenAlex/Semantic Scholar receipt contract and expand the same factual-receipt approach to the next workflow families.
 2. Prioritize high-value provider-independent workflows:
    - `read_protocol`
@@ -568,7 +574,7 @@ Exit criteria:
 - Read and proposal runs leave intelligible receipts without opening raw payloads.
 - Search workflows remain consistent while additional workflow families stop feeling semantically blank.
 
-### Phase V2.3 - Checkpoint expansion across core workflows
+### Phase 3 - Checkpoint expansion across core workflows
 1. Extend selective grounded checkpoints beyond PubMed.
 2. Add checkpoint builders only where the runtime truly has enough facts:
    - search refinement
@@ -582,7 +588,7 @@ Exit criteria:
 - Users can follow what changed and what happens next across the main workflows.
 - Checkpoints reduce confusion without becoming log spam.
 
-### Phase V2.3a - Durable trace compaction for completed turns
+### Phase 3a - Durable trace compaction for completed turns
 1. Preserve the shipped renderer-only collapse of contiguous pre-answer durable trace blocks (`tool_activity`, `checkpoint`, `artifact`) above final assistant answers.
 2. Keep grouping conservative:
    - ignore `progress`
@@ -594,7 +600,7 @@ Exit criteria:
 - Completed turns stay clean without losing access to durable process details.
 - Ambiguous or actionable turns remain fully inline instead of collapsing unsafely.
 
-### Phase V2.4 - Stronger live phase vocabulary
+### Phase 4 - Stronger live phase vocabulary
 1. Expand the current `progress` vocabulary across the core workflows:
    - searching
    - reviewing results
@@ -611,7 +617,7 @@ Exit criteria:
 - One active process state is always legible.
 - Generic tool-name progress no longer dominates the user-facing experience.
 
-### Phase V2.5 - Search/source provenance follow-through
+### Phase 5 - Search/source provenance follow-through
 1. Preserve the shipped shared search receipt contract as the provenance source of truth.
 2. Extend carry-forward provenance beyond the initial search receipt where grounded:
    - selected/cited source identifiers carried into later read/review steps
@@ -622,7 +628,7 @@ Exit criteria:
 - Users can trace answer claims back to observable retrieval steps without relying on raw transcript narration.
 - Provenance remains a runtime contract, not just narrative transcript text.
 
-### Phase V2.6 - Conditional task outlines for complex work
+### Phase 6 - Conditional task outlines for complex work
 1. Add a compact high-level task-outline layer for genuinely complex multi-step runs only.
 2. Source outlines from explicit runtime/task-state facts, not renderer guesses.
 3. Keep outlines above the detailed trace and prevent repeated refinement loops from becoming fake top-level steps.
@@ -631,7 +637,7 @@ Exit criteria:
 - Complex runs get a clear high-level map.
 - Short runs stay clean and receipt/checkpoint-driven.
 
-### Phase V2.7 - Honest popup parity and unified interruption states
+### Phase 7 - Honest popup parity and unified interruption states
 1. Finish the popup contract honestly:
    - active progress
    - compact receipts where supported
@@ -648,7 +654,7 @@ Exit criteria:
 - Popup is supportable and truthful.
 - Failure, blocker, and recovery semantics are consistent across surfaces.
 
-### Phase V2.8 - Evals, telemetry, and rollout hardening
+### Phase 8 - Evals, telemetry, and rollout hardening
 1. Build fixture/scenario coverage for:
    - search refinement
    - read-after-search
@@ -666,10 +672,11 @@ Exit criteria:
 - Trace regressions are caught by tests and telemetry instead of user reports.
 - Rollout decisions can rely on measurable signals.
 
-### Phase V2.9 - Optional provider reasoning
+### Phase 9 - Optional reasoning summaries and debug visibility
 1. Add provider reasoning summaries only after the provider-independent foundation is strong.
 2. Keep reasoning collapsible, user-controlled, and clearly secondary.
-3. Show reasoning controls only for models/providers that can actually return readable reasoning.
+3. Keep raw provider reasoning behind an explicit advanced/debug mode rather than the default product transparency path.
+4. Show reasoning controls only for models/providers that can actually return readable reasoning.
 
 Exit criteria:
 - Provider reasoning enriches the experience when available.
@@ -688,7 +695,7 @@ Exit criteria:
 ## Plan Alignment
 Track implementation under existing governance items:
 - `CUX-027` (tool receipts / copilot UX)
-- `CUX-D01` (chat architecture unification)
+- `CUX-D01` (chat runtime architecture)
 - `CAG-009` follow-through (runtime provenance carry-forward and answer alignment)
 - `FIX-011` (shared failure handling and popup parity)
 

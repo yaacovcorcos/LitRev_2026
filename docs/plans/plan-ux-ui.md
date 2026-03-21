@@ -7,8 +7,8 @@ This file consolidates the former dual-plan tracking into `plan-ux-ui.md`.
 Permanent frontend doctrine now lives in `docs/architecture/frontend-quality-bar.md`, and the repeatable frontend implementation/review procedure now lives in `docs/runbooks/frontend-review-loop.md`.
 Domain-specific execution plans remain canonical for their domains:
 - Guided setup: `docs/plans/plan-guided-setup.md`
-- Chat runtime unification: `docs/plans/plan-chat-unification-v2.md`
-- Thinking/tool lane UX deltas: `docs/plans/plan-thinking-v2.md`
+- Chat runtime parity: `docs/plans/chatRuntime.md`
+- Transparency/process UI deltas: `docs/plans/transparencyUI.md`
 - Performance budgets and probes: `docs/plans/plan-speed-performance.md`
 - Reliability blockers and thresholds: `docs/plans/reliability-a0-brief.md`
 
@@ -61,7 +61,7 @@ Domain-specific execution plans remain canonical for their domains:
   - `/ai` still keeps active conversation and attached project scope in route-local client state rather than the URL
   - notes keeps the selected note in client state, memory keeps the active tab in client state, onboarding keeps the current step in client state, and protocol keeps the active section in context state
   - home resume still stores the last project id rather than the last meaningful in-app location URL
-  - durable navigation ownership is now intentionally split: this plan owns the user-facing route contract, `plan-chat-unification-v2.md` owns shared chat-runtime constraints, and `plan-speed-performance.md` owns route-boot/cache implications where restore semantics affect load behavior
+  - durable navigation ownership is now intentionally split: this plan owns the user-facing route contract, `chatRuntime.md` owns shared chat-runtime constraints, and `plan-speed-performance.md` owns route-boot/cache implications where restore semantics affect load behavior
 - Citation hover previews now use source-aware server metadata assembly:
   - PubMed links keep PubMed-owned bibliography while resolving citation counts from NIH iCite/OCC first and Crossref second when a DOI fallback is available.
   - DOI links remain Crossref-backed, and citation preview telemetry records the actual upstream count source (`icite` or `crossref`).
@@ -125,7 +125,7 @@ Use this mapping for old PRs/comments referencing CLU IDs.
     - `docs/agents/specialists/frontend-ui-specialist.md`
     - `docs/plans/README.md`
     - `docs/plans/plan-ux-ui.md`
-    - `docs/plans/plan-chat-unification-v2.md`
+    - `docs/plans/chatRuntime.md`
     - `docs/plans/plan-speed-performance.md`
   - Rules to freeze in implementation:
     - if refresh must return the user to the same place, that state belongs in the URL
@@ -148,7 +148,7 @@ Use this mapping for old PRs/comments referencing CLU IDs.
     - side-panel copilot should bind durable conversation identity through query params on workspace routes
     - `/ai` should bind active conversation and optional attached project scope through URL state
   - Guardrails:
-    - preserve the shared runtime contract owned by `plan-chat-unification-v2.md`
+    - preserve the shared runtime contract owned by `chatRuntime.md`
     - do not let local restore override explicit deep links
     - route segment identity always beats side-panel query-param identity
     - invalid URL state may normalize only to safe non-destructive states
@@ -223,11 +223,11 @@ Use this mapping for old PRs/comments referencing CLU IDs.
 ## Cross-Plan Dependencies (Authoritative Elsewhere)
 - Guided setup/onboarding UX execution: `docs/plans/plan-guided-setup.md`.
 - Draft manuscript UX, citation-authoring, review flows, and export-grade drafting architecture: `docs/plans/plan-drafting-experience.md`.
-- Chat runtime unification and rollout gates: `docs/plans/plan-chat-unification-v2.md` (`CUX-D01` dependency).
-- Durable navigation work in this file owns the cross-surface URL/refresh contract; `plan-chat-unification-v2.md` remains the dependency for shared chat runtime semantics rather than route identity ownership.
-- Durable navigation work in this file must be reflected in `plan-chat-unification-v2.md` and `plan-speed-performance.md` whenever conversation identity or project-entry restore assumptions change.
+- Chat runtime parity and rollout gates: `docs/plans/chatRuntime.md` (`CUX-D01` dependency).
+- Durable navigation work in this file owns the cross-surface URL/refresh contract; `chatRuntime.md` remains the dependency for shared chat runtime semantics rather than route identity ownership.
+- Durable navigation work in this file must be reflected in `chatRuntime.md` and `plan-speed-performance.md` whenever conversation identity or project-entry restore assumptions change.
 - Context capture and scoped AI entrypoints: `docs/plans/plan-context-capture.md` (owns composer context receipts/chips and cross-surface context reuse).
-- Thinking/tool-lane UX deltas: `docs/plans/plan-thinking-v2.md`.
+- Transparency/process UI deltas: `docs/plans/transparencyUI.md`.
 - Performance budgets and enforcement: `docs/plans/plan-speed-performance.md`.
 - Reliability blocker baselines and A1 patch targeting: `docs/plans/reliability-a0-brief.md`.
 
