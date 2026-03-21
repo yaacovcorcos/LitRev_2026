@@ -8,6 +8,7 @@ import type { TimelineItem } from "@/types/timeline";
 
 describe("createAiStreamRuntime", () => {
   it("flags only abnormal failure terminal reasons for unfinished-tool cleanup", () => {
+    expect(shouldFailRunningToolsOnAbnormalEnd("failed_interrupted")).toBe(true);
     expect(shouldFailRunningToolsOnAbnormalEnd("failed_network")).toBe(true);
     expect(shouldFailRunningToolsOnAbnormalEnd("failed_server")).toBe(true);
     expect(shouldFailRunningToolsOnAbnormalEnd("timed_out")).toBe(true);

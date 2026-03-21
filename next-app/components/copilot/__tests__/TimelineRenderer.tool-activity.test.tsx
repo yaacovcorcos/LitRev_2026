@@ -58,7 +58,7 @@ describe("TimelineRenderer tool activity cards", () => {
     expect(screen.getByText("Find recent omega-3 cognition trials")).not.toBeNull();
     expect(screen.getByText("3 delegated tool calls")).not.toBeNull();
     expect(screen.getByText("Stop reason: completed")).not.toBeNull();
-    expect(screen.getByText("Queued PubMed and OpenAlex searches and shortlisted 4 studies.")).not.toBeNull();
+    expect(screen.getAllByText("Queued PubMed and OpenAlex searches and shortlisted 4 studies.").length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByText("older fallback summary")).toBeNull();
   });
 
@@ -88,7 +88,7 @@ describe("TimelineRenderer tool activity cards", () => {
     expect(screen.getByText("\"retrospective cohort\" AND disposition decision")).not.toBeNull();
     expect(screen.getByText("5 of 18 results")).not.toBeNull();
     expect(screen.getByText("DOI 10.1000/example · OpenAlex W123")).not.toBeNull();
-    expect(screen.getByText("Found 5 of 18 OpenAlex results.")).not.toBeNull();
+    expect(screen.getAllByText("Found 5 of 18 OpenAlex results.").length).toBeGreaterThanOrEqual(1);
   });
 
   it("shows in-progress timing for running tools", () => {
@@ -129,7 +129,7 @@ describe("TimelineRenderer tool activity cards", () => {
     expect(screen.getByText("extract_pdf")).not.toBeNull();
     expect(screen.getByText("Failed")).not.toBeNull();
     expect(screen.getByText("Failed after 3.0s")).not.toBeNull();
-    expect(screen.getByText("PDF parsing failed.")).not.toBeNull();
+    expect(screen.getAllByText("PDF parsing failed.").length).toBeGreaterThanOrEqual(1);
   });
 
   it("groups adjacent PubMed searches into one compact search sequence card", () => {
@@ -196,7 +196,7 @@ describe("TimelineRenderer tool activity cards", () => {
     expect(screen.getByText("10 of 42 results")).not.toBeNull();
     expect(screen.getByText("6 of 18 results")).not.toBeNull();
     expect(screen.getByText("4 of 9 results")).not.toBeNull();
-    expect(screen.getByText("Found 10 of 42 PubMed results.")).not.toBeNull();
+    expect(screen.getAllByText("Found 10 of 42 PubMed results.").length).toBeGreaterThanOrEqual(1);
   });
 
   it("omits the grouped PubMed annotation when the refinement signal is weak", () => {
@@ -262,7 +262,7 @@ describe("TimelineRenderer tool activity cards", () => {
     expect(screen.getByText("PubMed")).not.toBeNull();
     expect(screen.getByText("10 of 42 results")).not.toBeNull();
     expect(screen.getByText("PMID 40123456 · PMID 39887711")).not.toBeNull();
-    expect(screen.getByText("Found 10 of 42 PubMed results.")).not.toBeNull();
+    expect(screen.getAllByText("Found 10 of 42 PubMed results.").length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByText("search_pubmed")).toBeNull();
   });
 });

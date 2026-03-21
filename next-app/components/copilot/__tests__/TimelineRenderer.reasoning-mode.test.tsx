@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { TimelineRenderer } from "../TimelineRenderer";
 import type { TimelineItem } from "@/types/timeline";
@@ -51,11 +51,10 @@ describe("TimelineRenderer reasoning visibility modes", () => {
     expect(screen.queryByText(/Detailed internal reasoning here/i)).toBeNull();
   });
 
-  it("shows truncated preview and local expand in summary mode", () => {
-    const longReasoning = "R".repeat(700);
+  it("does not render raw reasoning UI in summary mode", () => {
     render(
       <TimelineRenderer
-        items={buildAssistantItem(longReasoning)}
+        items={buildAssistantItem("Raw provider reasoning should stay hidden")}
         reasoningMode="summary"
         isLoading={false}
         emptyState={{ icon: "chat", title: "Empty", description: "Empty", suggestions: [] }}
@@ -63,16 +62,8 @@ describe("TimelineRenderer reasoning visibility modes", () => {
       />
     );
 
-    const toggle = screen.getByRole("button", { name: /Reasoning \(summary\)/i });
-    fireEvent.click(toggle);
-
-    expect(screen.getByRole("button", { name: /Show full/i })).not.toBeNull();
-    expect(
-      screen.getByText((content) => content.startsWith("R") && content.endsWith("..."))
-    ).not.toBeNull();
-
-    fireEvent.click(screen.getByRole("button", { name: /Show full/i }));
-    expect(screen.getByRole("button", { name: /Show less/i })).not.toBeNull();
+    expect(screen.queryByRole("button", { name: /reasoning/i })).toBeNull();
+    expect(screen.queryByText(/Raw provider reasoning should stay hidden/i)).toBeNull();
   });
 
   it("keeps live reasoning collapsed by default in full mode", () => {
@@ -91,7 +82,7 @@ describe("TimelineRenderer reasoning visibility modes", () => {
     expect(screen.queryByText(/Streaming reasoning body/)).toBeNull();
   });
 
-  it("keeps live reasoning collapsed by default in summary mode", () => {
+  it("keeps live reasoning hidden in summary mode", () => {
     render(
       <TimelineRenderer
         items={buildAssistantItem("Streaming summary reasoning", "streaming")}
@@ -102,9 +93,7 @@ describe("TimelineRenderer reasoning visibility modes", () => {
       />
     );
 
-    const toggle = screen.getByRole("button", { name: /Thinking/i });
-    expect(toggle.getAttribute("aria-expanded")).toBe("false");
     expect(screen.queryByText(/Streaming summary reasoning/)).toBeNull();
-    expect(screen.getByText(/Live/i)).not.toBeNull();
+    expect(screen.queryByRole("button", { name: /Thinking/i })).toBeNull();
   });
 });

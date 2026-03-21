@@ -47,18 +47,32 @@ function userMessage(content: string): AIMessage {
 }
 
 describe("AIService reasoning policy", () => {
-  it("requests reasoning for non-off reasoning modes across providers", async () => {
+  it("keeps summary mode provider-independent", async () => {
     const service = new AIService();
     const provider = new MockReasoningProvider();
     service.registerProvider(provider);
     service.setActiveProvider(provider.id);
 
-    for await (const _ of service.streamChat([userMessage("hello")], { reasoningMode: "summary" })) {
-      // consume stream
+    for await (const chunk of service.streamChat([userMessage("hello")], { reasoningMode: "summary" })) {
+      void chunk;
+    }
+
+    expect(provider.lastOptions?.includeReasoning).toBe(false);
+    expect(provider.lastOptions?.reasoningMode).toBe("summary");
+  });
+
+  it("requests provider-native reasoning only in full mode", async () => {
+    const service = new AIService();
+    const provider = new MockReasoningProvider();
+    service.registerProvider(provider);
+    service.setActiveProvider(provider.id);
+
+    for await (const chunk of service.streamChat([userMessage("hello")], { reasoningMode: "full" })) {
+      void chunk;
     }
 
     expect(provider.lastOptions?.includeReasoning).toBe(true);
-    expect(provider.lastOptions?.reasoningMode).toBe("summary");
+    expect(provider.lastOptions?.reasoningMode).toBe("full");
   });
 
   it("disables reasoning when reasoning mode is off", async () => {
@@ -67,8 +81,8 @@ describe("AIService reasoning policy", () => {
     service.registerProvider(provider);
     service.setActiveProvider(provider.id);
 
-    for await (const _ of service.streamChat([userMessage("hello")], { reasoningMode: "off" })) {
-      // consume stream
+    for await (const chunk of service.streamChat([userMessage("hello")], { reasoningMode: "off" })) {
+      void chunk;
     }
 
     expect(provider.lastOptions?.includeReasoning).toBe(false);

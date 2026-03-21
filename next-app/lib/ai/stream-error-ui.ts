@@ -462,7 +462,7 @@ export function clearRunScopedRecoveryState<T>(params: {
 }
 
 export function isRetryableTerminalReason(reason: StreamTerminalReason | null): boolean {
-    return reason === "failed_network" || reason === "timed_out";
+    return reason === "failed_interrupted" || reason === "failed_network" || reason === "timed_out";
 }
 
 export function buildUnexpectedTerminalErrorState(reason: StreamTerminalReason): {
@@ -475,7 +475,9 @@ export function buildUnexpectedTerminalErrorState(reason: StreamTerminalReason):
     }
     const message = reason === "timed_out"
         ? "The response timed out. Retry to continue."
-        : "The stream ended unexpectedly. Retry to continue.";
+        : reason === "failed_interrupted"
+            ? "The run was interrupted before it could finish. Retry to continue."
+            : "The stream ended unexpectedly. Retry to continue.";
     const retryable = isRetryableTerminalReason(reason);
     const base = buildClientErrorState(message);
     return {
@@ -483,7 +485,11 @@ export function buildUnexpectedTerminalErrorState(reason: StreamTerminalReason):
         retryable,
         errorMeta: {
             ...base.errorMeta,
-            code: reason === "timed_out" ? "RUN_STREAM_TIMEOUT" : "RUN_STREAM_UNEXPECTED_END",
+            code: reason === "timed_out"
+                ? "RUN_STREAM_TIMEOUT"
+                : reason === "failed_interrupted"
+                    ? "RUN_STREAM_INTERRUPTED"
+                    : "RUN_STREAM_UNEXPECTED_END",
             retryable,
         },
     };

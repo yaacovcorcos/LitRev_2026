@@ -42,7 +42,7 @@ describe("buildExecutionTraceEntries", () => {
       anchorAssistantMessageId: "assistant-1",
       canCollapse: true,
       defaultCollapsed: true,
-      summaryText: "1 tool step, 1 checkpoint",
+      summaryText: "PubMed returned 10 results.",
     });
     if (entries[0]?.kind !== "execution_trace") throw new Error("expected execution trace");
     expect(entries[0].traceItems).toHaveLength(2);

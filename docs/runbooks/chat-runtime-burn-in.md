@@ -28,6 +28,7 @@ Current repo/runtime note:
 - No active `NEXT_PUBLIC_ENABLE_CHAT_UNIFICATION_V2` / `ENABLE_CHAT_UNIFICATION_V2` runtime gate is wired in committed code today.
 - Until such a gate is explicitly reintroduced and documented, treat U1.6 burn-in as a deployment-level canary.
 - `workspaceIds` / `userIds` remain the evidence scope filters for validation and sign-off, not a live rollout gate.
+- Abrupt stream endings without concrete transport evidence now classify as `failed_interrupted` rather than `failed_network`; burn-in spot checks should preserve that distinction and only treat `failed_network` as a true transport failure.
 - As of the `FIX-011b` closeout delta audit on `2026-03-20`, no additional shared-runtime gap was identified beyond the shipped `run-convergence` / `run-recovery` path and current recovery/surface tests. `U1.6` remains the operational blocker for retiring `FIX-011b` only after baseline agent stability/trust is restored under `FIX-012`; until then, burn-in should not be mistaken for the primary rescue task.
 
 ## Required Inputs

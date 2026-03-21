@@ -69,7 +69,8 @@ function stripReservedAssistantTurn(items: TimelineItem[], assistantMessageId: s
 export function shouldFailRunningToolsOnAbnormalEnd(
   terminalReason: StreamTerminalReason | null,
 ): boolean {
-  return terminalReason === "failed_network"
+  return terminalReason === "failed_interrupted"
+    || terminalReason === "failed_network"
     || terminalReason === "failed_server"
     || terminalReason === "timed_out";
 }

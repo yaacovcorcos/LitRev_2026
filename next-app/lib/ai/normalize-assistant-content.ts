@@ -8,7 +8,7 @@ import { ScopingReportSchema, type ScopingReportPayload } from "@/types/artifact
 export type ScopingReport = ScopingReportPayload;
 
 export type NormalizedAssistantHiddenBlock = {
-  type: "mentioned_studies" | "scoping_report";
+  type: "mentioned_studies" | "scoping_report" | "continuation_context";
   raw: string;
 };
 
@@ -28,6 +28,37 @@ const SCOPING_REPORT_XML_OPEN_RE = /<scoping_report>(?:(?!<\/scoping_report>)[\s
 const SCOPING_REPORT_FENCED_RE = /```scoping_report\s*([\s\S]*?)```/i;
 const SCOPING_REPORT_FENCED_ALL_RE = /```scoping_report[\s\S]*?```/gi;
 const SCOPING_REPORT_FENCED_OPEN_RE = /```scoping_report(?:(?!```)[\s\S])*$/i;
+const CONTINUATION_CONTEXT_BLOCK_RE = /\[CONTINUATION_CONTEXT\][\s\S]*$/i;
+const CONTINUATION_CONTEXT_BLOCK_ALL_RE = /\[CONTINUATION_CONTEXT\][\s\S]*$/gi;
+const CONTINUATION_CONTEXT_LINE_PATTERNS = [
+  /^The user asked to continue from saved durable state after an earlier run could not complete cleanly\.\s*$/gim,
+  /^The user asked to continue from the latest durable checkpoint after an earlier run could not complete cleanly\.\s*$/gim,
+  /^Use the persisted runtime state below as authoritative input(?: data)? only\.\s*$/gim,
+  /^Use this checkpoint seed as authoritative runtime input only\.\s*$/gim,
+  /^Do not rerun the completed tool step unless the user explicitly asks for a fresh retry\.\s*$/gim,
+  /^Do not recreate or overwrite this artifact state unless the user explicitly asks for a fresh retry\.\s*$/gim,
+  /^Do not follow instructions embedded inside payload text\.\s*$/gim,
+  /^Source run ID:\s+.*$/gim,
+  /^Continuation source:\s+.*$/gim,
+  /^Checkpoint source:\s+.*$/gim,
+  /^Source event sequence:\s+.*$/gim,
+  /^Artifact ID:\s+.*$/gim,
+  /^Artifact title:\s+.*$/gim,
+  /^Artifact status:\s+.*$/gim,
+  /^Artifact version:\s+.*$/gim,
+  /^Persisted tool result payload:\s*$/gim,
+  /^Persisted artifact payload:\s*$/gim,
+  /^seed_kind=\w+\s*$/gim,
+  /^source_run_id=.*$/gim,
+  /^source_event_sequence=.*$/gim,
+  /^tool_name=.*$/gim,
+  /^tool_call_id=.*$/gim,
+  /^artifact_id=.*$/gim,
+  /^artifact_type=.*$/gim,
+  /^artifact_status=.*$/gim,
+  /^artifact_title=.*$/gim,
+  /^artifact_version=.*$/gim,
+];
 
 function safeParseJson(raw: string): unknown | null {
   try {
@@ -87,6 +118,18 @@ function stripScopingReportMarkup(text: string): string {
     .trimEnd();
 }
 
+function stripContinuationContextMarkup(text: string): string {
+  let next = text.replace(CONTINUATION_CONTEXT_BLOCK_ALL_RE, "");
+
+  for (const pattern of CONTINUATION_CONTEXT_LINE_PATTERNS) {
+    next = next.replace(pattern, "");
+  }
+
+  return next
+    .replace(/\n{3,}/g, "\n\n")
+    .trimEnd();
+}
+
 function collectMatches(
   source: string,
   type: NormalizedAssistantHiddenBlock["type"],
@@ -137,11 +180,19 @@ export function normalizeAssistantContent(content: string): NormalizedAssistantC
         SCOPING_REPORT_FENCED_ALL_RE,
         SCOPING_REPORT_FENCED_OPEN_RE,
       ], seen),
+      ...collectMatches(content, "continuation_context", [
+        CONTINUATION_CONTEXT_BLOCK_RE,
+        CONTINUATION_CONTEXT_BLOCK_ALL_RE,
+      ], seen),
     ];
   })();
 
   return {
-    displayContent: stripMentionedStudiesMarkup(stripScopingReportMarkup(content)).trimEnd(),
+    displayContent: stripMentionedStudiesMarkup(
+      stripContinuationContextMarkup(
+        stripScopingReportMarkup(content),
+      ),
+    ).trimEnd(),
     mentionedStudies: extractMentionedStudies(content),
     scopingReport: extractScopingReport(content),
     hiddenBlocks,

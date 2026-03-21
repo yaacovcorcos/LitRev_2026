@@ -1,7 +1,7 @@
 import type { ReasoningMode } from "@/types/ai";
 import { getReasoningSupportTier } from "@/lib/ai/config";
 
-export const DEFAULT_REASONING_MODE: ReasoningMode = "full";
+export const DEFAULT_REASONING_MODE: ReasoningMode = "summary";
 export const MAX_REASONING_CHARS = 8000;
 export const REASONING_SUMMARY_PREVIEW_CHARS = 500;
 const REASONING_MODE_STORAGE_KEY = "litrev-reasoning-mode";
@@ -13,13 +13,13 @@ export type ReasoningModeOption = {
 };
 
 export const REASONING_MODE_OPTIONS: ReasoningModeOption[] = [
-  { value: "off", label: "Off", description: "Hide and skip reasoning output" },
-  { value: "summary", label: "Summary", description: "Show a condensed preview" },
-  { value: "full", label: "Full", description: "Show complete reasoning" },
+  { value: "off", label: "Off", description: "Show process trace only" },
+  { value: "summary", label: "Summary", description: "Show process trace plus a compact summary" },
+  { value: "full", label: "Full", description: "Show raw provider reasoning when available" },
 ];
 
 export function shouldRequestReasoning(mode: ReasoningMode): boolean {
-  return mode !== "off";
+  return mode === "full";
 }
 
 /**
@@ -27,8 +27,7 @@ export function shouldRequestReasoning(mode: ReasoningMode): boolean {
  * explicit reasoning controls (for example Anthropic thinking).
  */
 export function getReasoningBudgetTokens(mode: ReasoningMode): number | undefined {
-  if (mode === "off") return undefined;
-  if (mode === "summary") return 512;
+  if (mode !== "full") return undefined;
   return 1024;
 }
 
@@ -37,7 +36,10 @@ export function getReasoningBudgetTokens(mode: ReasoningMode): number | undefine
  * to "off" when the selected model has no reasoning support.
  */
 export function resolveRequestReasoningMode(preferredMode: ReasoningMode, modelId: string): ReasoningMode {
-  return getReasoningSupportTier(modelId) === "none" ? "off" : preferredMode;
+  if (getReasoningSupportTier(modelId) !== "none") {
+    return preferredMode;
+  }
+  return preferredMode === "full" ? "summary" : preferredMode;
 }
 
 export function resolveReasoningMode(input?: ReasoningMode, includeReasoning?: boolean): ReasoningMode {

@@ -79,4 +79,22 @@ describe("normalizeAssistantContent", () => {
     expect(normalized.scopingReport?.topic).toBe("Mindfulness for chronic pain");
     expect(normalized.mentionedStudies[0]?.doi).toBe("10.1000/a");
   });
+
+  it("removes continuation scaffolding from visible content", () => {
+    const content = [
+      "Visible answer.",
+      "",
+      "[CONTINUATION_CONTEXT]",
+      "seed_kind=tool_result",
+      "source_run_id=run-1",
+      "tool_name=search_pubmed",
+      "payload_json:",
+      '{"result":"hidden"}',
+    ].join("\n");
+
+    const normalized = normalizeAssistantContent(content);
+
+    expect(normalized.displayContent).toBe("Visible answer.");
+    expect(normalized.hiddenBlocks.map((block) => block.type)).toContain("continuation_context");
+  });
 });

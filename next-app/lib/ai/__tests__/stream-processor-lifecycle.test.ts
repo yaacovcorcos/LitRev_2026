@@ -60,7 +60,7 @@ describe("processAIStream terminal lifecycle", () => {
     expect(summary.terminalReason).toBe("failed_server");
   });
 
-  it("returns failed_network when stream ends without run_end or error", async () => {
+  it("returns failed_interrupted when stream ends without run_end or error", async () => {
     parseNDJSONStreamMock.mockImplementation(async function* () {
       yield { type: "content", content: "partial" };
     });
@@ -71,7 +71,7 @@ describe("processAIStream terminal lifecycle", () => {
       onChunk: () => {},
     });
 
-    expect(summary.terminalReason).toBe("failed_network");
+    expect(summary.terminalReason).toBe("failed_interrupted");
   });
 
   it("throws a structured envelope error when configured to throw on error chunks", async () => {

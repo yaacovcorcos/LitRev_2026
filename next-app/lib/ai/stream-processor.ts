@@ -86,7 +86,7 @@ export async function processAIStream({
     }
 
     if (lifecycleState.terminalReason === null) {
-        lifecycleState = finalizeLifecycle(lifecycleState, "failed_network").snapshot;
+        lifecycleState = finalizeLifecycle(lifecycleState, "failed_interrupted").snapshot;
     }
 
     return {

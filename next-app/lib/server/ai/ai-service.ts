@@ -449,7 +449,7 @@ class AIService {
         const mode = hasExplicitReasoningPreference
             ? resolveReasoningMode(options?.reasoningMode, options?.includeReasoning)
             : "off";
-        const includeReasoning = mode !== "off";
+        const includeReasoning = mode === "full";
         return {
             ...(options ?? {}),
             reasoningMode: mode,
@@ -899,7 +899,6 @@ class AIService {
     ): AsyncIterable<AIStreamChunk & { conversationId?: string }> {
         let projectId = options?.projectId;
         let studyId = options?.studyId;
-        let conversation;
         let run: Awaited<ReturnType<typeof startRun>> | null = null;
         let runHeartbeat: RunHeartbeatController | null = null;
         let trace: ReturnType<typeof startRunTrace> | null = null;
@@ -968,7 +967,7 @@ class AIService {
                 },
             });
         contextBranchRecords.push(conversationResult.record);
-        conversation = conversationResult.value;
+        const conversation = conversationResult.value;
         // Canonical ownership: conversation's stored scope is source of truth
         projectId = conversation.projectId;
         studyId = conversation.studyId;
@@ -990,7 +989,7 @@ class AIService {
         contextBranchRecords.push(runAvailabilityResult.record);
 
         // Declared outside try so catch block can access them for plan finalization
-        let planData: PreparedPlanExecution | null = preparedPlanExecution;
+        const planData: PreparedPlanExecution | null = preparedPlanExecution;
         let stepQueue: PlanExecutionStepState[] = [];
         let fullContent = "";
         const historicalAssistantCount = conversation.messages.filter((m) => m.role === "assistant").length;

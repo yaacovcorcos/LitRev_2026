@@ -761,7 +761,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                 });
                 emittedTerminalError = true;
                 setCurrentRunId(recommendation === "retry" ? null : (recoveryResult.response?.runId ?? localRunId));
-                terminalReason = recoveryResult.outcome === "timeout" ? "timed_out" : "failed_network";
+                terminalReason = recoveryResult.outcome === "timeout" ? "timed_out" : "failed_interrupted";
                 return false;
             };
 

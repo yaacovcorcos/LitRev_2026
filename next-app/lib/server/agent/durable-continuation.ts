@@ -225,27 +225,28 @@ export async function resolveDurableContinuationSource(params: {
 export function buildDurableContinuationContext(source: DurableContinuationSource): string {
     if (source.kind === "tool_result") {
         return [
-            "[CONTINUATION_CONTEXT]",
-            "The user asked to continue from saved durable state after an earlier run could not complete cleanly.",
-            "Use the persisted runtime state below as authoritative input. Do not rerun this completed tool step unless the user explicitly asks for a fresh retry.",
-            `Source run ID: ${source.sourceRunId}`,
-            `Continuation source: tool result for ${source.toolName} (callId: ${source.toolCallId})`,
-            "Persisted tool result payload:",
+            "seed_kind=tool_result",
+            `source_run_id=${source.sourceRunId}`,
+            `tool_name=${source.toolName}`,
+            `tool_call_id=${source.toolCallId}`,
+            "authoritative_input_only=true",
+            "rerun_policy=fresh_retry_only",
+            "payload_json:",
             serializeForPrompt(source.toolResult),
         ].join("\n");
     }
 
     return [
-        "[CONTINUATION_CONTEXT]",
-        "The user asked to continue from saved durable state after an earlier run could not complete cleanly.",
-        "Use the persisted runtime state below as authoritative input. Do not recreate or overwrite this artifact state unless the user explicitly asks for a fresh retry.",
-        `Source run ID: ${source.sourceRunId}`,
-        `Continuation source: artifact state (${source.artifactType})`,
-        `Artifact ID: ${source.artifactId}`,
-        `Artifact title: ${source.artifactTitle}`,
-        `Artifact status: ${source.artifactStatus}`,
-        `Artifact version: ${source.artifactVersion}`,
-        "Persisted artifact payload:",
+        "seed_kind=artifact_state",
+        `source_run_id=${source.sourceRunId}`,
+        `artifact_id=${source.artifactId}`,
+        `artifact_type=${source.artifactType}`,
+        `artifact_status=${source.artifactStatus}`,
+        `artifact_title=${source.artifactTitle}`,
+        `artifact_version=${source.artifactVersion}`,
+        "authoritative_input_only=true",
+        "rewrite_policy=fresh_retry_only",
+        "payload_json:",
         serializeForPrompt(source.artifactPayload),
     ].join("\n");
 }
