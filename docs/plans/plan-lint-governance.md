@@ -59,28 +59,35 @@ Missing:
 - Nothing material for the original Phase 1 scope
 
 ### Phase 2A — Mechanical Effect Guardrails
-Status: Mostly Done
+Status: Done
 
 Shipped:
 - `litrev/no-new-exhaustive-deps-disable`
 - Removal of the targeted hot-spot `react-hooks/exhaustive-deps` suppressions
 - Replacement of the old warning-only effect import restriction with a real targeted guardrail
+- Stable `npm run lint:governance:phase2-hotspots` verification command for the completed Phase 2 hot-spot surface
 
 Missing:
-- Final confirm that the remaining suppressions outside the hot-spot scope are either allowed or moved into a later cleanup phase
+- Nothing material for the original Phase 2A scope
 
 ### Phase 2B — Semantic Effect Discipline
-Status: Partially Implemented
+Status: Done
 
 Shipped:
 - `litrev/no-improper-direct-effects`
 - `litrev/no-effect-reset-choreography`
-- Initial warning-only rollout in the intended hot-spot surfaces
+- Purposeful cleanup of the intended hot-spot runtime files:
+  - `/ai`
+  - `ProjectCopilotContext`
+  - `useCopilotConversations`
+  - `useCopilotStreamActions`
+  - `CopilotInputCore`
+  - `TimelineRenderer`
+  - `usePendingApprovalBarState`
+- Bundled async-cleanup removal for the same Phase 2 hot-spot verifier surface only
 
 Missing:
-- Purposeful cleanup wave for `/ai`, copilot runtime, timeline state, and project layout to reduce warnings to low noise
-- Per-surface decision on which remaining warnings are true violations versus acceptable current architecture
-- Phase-specific implementation plan before any severity tightening
+- Nothing material for the original Phase 2B hot-spot scope
 
 ### Phase 3A — Import Searchability
 Status: Partially Implemented
@@ -155,14 +162,14 @@ Missing:
 - Any move to require the full legacy `npm run lint` baseline
 
 ## Active Tasks
-- [ ] `LG-001` Write separate implementation plans for Phase 2B, Phase 3A/3B, Phase 4, and Phase 5 before further rollout or cleanup work.
-- [ ] `LG-002` Reduce warning-only governance debt in effect hot spots until Phase 2B is low-noise enough to distinguish real violations from accepted architecture.
+- [ ] `LG-001` Write separate implementation plans for Phase 3A/3B, Phase 4, and Phase 5 before further rollout or cleanup work.
 - [ ] `LG-003` Finish the remaining import-boundary and filename-searchability review so Phase 3 can be marked complete or intentionally limited.
 - [ ] `LG-004` Decide the first server/runtime structured-logging rule set so UI noise and observability paths are governed separately.
 - [ ] `LG-005` Narrow the test-expectation policy so Phase 5 reflects deliberate ownership and waiver rules rather than broad structural warnings.
 - [ ] `LG-006` Re-audit the repo before adopting any additional Factory-inspired frontend restrictions beyond the current adapted set.
 
 ## Recently Completed
+- [x] Completed Phase 2 by shipping the stable `lint:governance:phase2-hotspots` verifier, removing the remaining hot-spot effect/reset violations in copilot UI/runtime files, and bundling the co-located async cleanup for that same verifier surface without broadening Phase 4 completion.
 - [x] Added the stable `lint:governance:phase2-hotspots` verifier and completed the PR 1 runtime/controller cleanup for `/ai`, `ProjectCopilotContext`, `useCopilotConversations`, and `useCopilotStreamActions`, while keeping the remaining component/layout debt explicit for the Phase 2 follow-up slice.
 - [x] Completed Phase 1 by locking exact rule scope, adding a stable `lint:governance:phase1` verifier, extending the logging rules to `scripts/**` only, and fixing the remaining live logging violations.
 - [x] Hardened Phase 0 by declaring direct governance ESLint plugin dependencies, moving the audit baseline onto tested shared JS enumeration, and adding dedicated governance-tooling tests.

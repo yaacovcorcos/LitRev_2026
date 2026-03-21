@@ -244,6 +244,9 @@ export function CopilotInputCore({
         autoMode,
         hasProtocol,
     };
+    if (!isLoading) {
+        sendLockRef.current = false;
+    }
 
     const effectiveMode = isManualComposerModeSelection(modeSelection) ? modeSelection.mode : autoMode;
     const modeMeta = AGENT_MODE_META[effectiveMode];
@@ -390,23 +393,6 @@ export function CopilotInputCore({
     }, [input]);
 
     useEffect(() => {
-        if (!pendingUserInput) return;
-        if (!answeredUserInput) return;
-        if (pendingUserInput.callId !== answeredUserInput.request.callId) {
-            setAnsweredUserInput(null);
-        }
-    }, [pendingUserInput, answeredUserInput]);
-
-    const ANSWER_CONFIRMATION_MS = 1200;
-    useEffect(() => {
-        if (!answeredUserInput) return;
-        const timeout = window.setTimeout(() => {
-            setAnsweredUserInput(null);
-        }, ANSWER_CONFIRMATION_MS);
-        return () => window.clearTimeout(timeout);
-    }, [answeredUserInput]);
-
-    useEffect(() => {
         if (!prefillCommand) return;
         if (sendLockRef.current) return;
         setInput(prefillCommand.text);
@@ -419,10 +405,6 @@ export function CopilotInputCore({
             }
         });
     }, [prefillCommand?.id]);
-
-    useEffect(() => {
-        if (!isLoading) sendLockRef.current = false;
-    }, [isLoading]);
 
     const canShowAutonomy =
         (showAutonomyPreset ?? true) && !!autonomyPreset && !!updateAutonomyPreset && !!setShowAutonomySettings;
@@ -514,11 +496,10 @@ export function CopilotInputCore({
         setRecordingHint(null);
     }, []);
 
-    useEffect(() => {
-        if (voiceState !== "recording") {
-            setRecordingHint(null);
-        }
-    }, [voiceState]);
+    const visibleAnsweredUserInput = pendingUserInput
+        ? (answeredUserInput?.request.callId === pendingUserInput.callId ? answeredUserInput : null)
+        : answeredUserInput;
+    const activeRecordingHint = voiceState === "recording" ? recordingHint : null;
 
     const stopRecordingHintHandlers = voiceState === "recording" && !queuedVoiceSend
         ? {
@@ -831,9 +812,9 @@ export function CopilotInputCore({
                 )}
 
                 {showUserInputOverlay && (() => {
-                    const activeRequest = pendingUserInput ?? answeredUserInput?.request;
+                    const activeRequest = pendingUserInput ?? visibleAnsweredUserInput?.request;
                     if (!activeRequest || isLoading) return null;
-                    const isAnswered = !pendingUserInput && !!answeredUserInput;
+                    const isAnswered = !pendingUserInput && !!visibleAnsweredUserInput;
                     return (
                     <div className={styles.userInputOverlay}>
                         <UserInputCard
@@ -843,12 +824,16 @@ export function CopilotInputCore({
                             header={activeRequest.header}
                             context={activeRequest.context}
                             answered={isAnswered}
-                            answer={isAnswered ? answeredUserInput?.answer : undefined}
+                            answer={isAnswered ? visibleAnsweredUserInput?.answer : undefined}
                             onAnswer={(answer) => {
                                 setAnsweredUserInput({ request: activeRequest, answer });
                                 onAnswerUserInput?.(activeRequest.callId, answer, page, section);
                             }}
                             onDismiss={() => {
+                                if (isAnswered) {
+                                    setAnsweredUserInput(null);
+                                    return;
+                                }
                                 const dismissAnswer = "Dismissed — please proceed without my input.";
                                 setAnsweredUserInput({ request: activeRequest, answer: dismissAnswer });
                                 onAnswerUserInput?.(activeRequest.callId, dismissAnswer, page, section);
@@ -1021,13 +1006,13 @@ export function CopilotInputCore({
                         </button>
                     </div>
                 )}
-                {recordingHint && voiceState === "recording" ? (
+                {activeRecordingHint ? (
                     <div
                         className={styles.recordingControlHint}
-                        style={{ left: `${recordingHint.x}px` }}
+                        style={{ left: `${activeRecordingHint.x}px` }}
                         role="tooltip"
                     >
-                        {recordingHint.label}
+                        {activeRecordingHint.label}
                     </div>
                 ) : null}
             </form>

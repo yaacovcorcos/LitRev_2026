@@ -9,6 +9,8 @@
 
 import { Component, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useStableChatScroll } from "@/hooks/useStableChatScroll";
+import { useStreamStartNotification } from "@/hooks/useStreamStartNotification";
+import { useTimelineWindowing } from "@/hooks/useTimelineWindowing";
 import type { ErrorInfo, ReactNode } from "react";
 import { useParams } from "next/navigation";
 import ReactMarkdown from "react-markdown";
@@ -518,9 +520,9 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
     const isReserved = item.deliveryState === "reserved" && !displayContent;
     const summaryPreview = getReasoningSummaryPreview(rawReasoningText);
     const [showFullSummary, setShowFullSummary] = useState(false);
-    const reasoningText = isSummaryMode && !showFullSummary
-        ? summaryPreview.text
-        : rawReasoningText;
+    const reasoningText = isSummaryMode && showFullSummary
+        ? rawReasoningText
+        : summaryPreview.text;
     const isReasoningStreaming = item.reasoning?.state === "streaming";
     const mentions = CHAT_STUDY_MENTIONS_ENABLED ? normalizedContent.mentionedStudies : [];
     const hydratedMentionTitles = useMentionedStudyTitles(mentions);
@@ -532,12 +534,6 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
         : item.reasoning?.truncated
             ? "Truncated"
             : undefined;
-
-    useEffect(() => {
-        if (reasoningMode !== "summary") {
-            setShowFullSummary(false);
-        }
-    }, [reasoningMode]);
 
     const addMentionedStudy = useCallback(async (study: MentionedStudy) => {
         if (!projectId) return;
@@ -879,31 +875,26 @@ function TimelineRendererInner({
         if (conversationId) notifyConversationChanged(conversationId);
     }, [conversationId, notifyConversationChanged]);
 
-    // ── Stream start — fires once on false→true transition only ─────────────
-    const prevLoadingRef = useRef(false);
-    useLayoutEffect(() => {
-        if (isLoading && !prevLoadingRef.current) notifyStreamStart();
-        prevLoadingRef.current = isLoading;
-    }, [isLoading, notifyStreamStart]);
+    useStreamStartNotification(isLoading, notifyStreamStart);
 
-    const windowSize = initialVisibleCount && initialVisibleCount > 0 ? initialVisibleCount : null;
-    const [visibleCount, setVisibleCount] = useState<number>(() => {
-        if (!windowSize) return timeline.length;
-        return Math.min(windowSize, timeline.length);
+    const firstItemRef = useRef<HTMLDivElement | null>(null);
+    const {
+        effectiveVisibleCount,
+        hiddenItemCount,
+        visibleItems: visibleTimeline,
+        visibleFirstItemId: visibleFirstTimelineId,
+        handleLoadOlder,
+        handleRevealEarlier,
+    } = useTimelineWindowing({
+        items: timeline,
+        initialVisibleCount,
+        visibleStep,
+        onLoadOlder,
+        capturePrependAnchor,
+        restorePrependAnchor,
+        firstItemRef,
+        getItemId: (item) => item?.id ?? null,
     });
-
-    useEffect(() => {
-        if (!windowSize) {
-            setVisibleCount(timeline.length);
-            return;
-        }
-        setVisibleCount(Math.min(windowSize, timeline.length));
-    }, [timeline.length, windowSize]);
-
-    const effectiveVisibleCount = windowSize ? Math.min(visibleCount, timeline.length) : timeline.length;
-    const hiddenItemCount = Math.max(0, timeline.length - effectiveVisibleCount);
-    const visibleTimeline = hiddenItemCount > 0 ? timeline.slice(-effectiveVisibleCount) : timeline;
-    const visibleFirstTimelineId = visibleTimeline[0]?.id ?? null;
     const lastAssistantIndex = visibleTimeline.length > 0 && visibleTimeline[visibleTimeline.length - 1].type === "assistant_message"
         ? visibleTimeline.length - 1
         : -1;
@@ -930,53 +921,6 @@ function TimelineRendererInner({
     }, []);
     // ── Content change — schedule scroll if pinned ──────────────────────────
     useLayoutEffect(() => { notifyContentChanged(); }, [notifyContentChanged, timeline, visibleFirstTimelineId, effectiveVisibleCount]);
-    // ── Prepend anchor for "load older messages" ─────────────────────────
-    const firstItemRef = useRef<HTMLDivElement | null>(null);
-    const pendingPrependRef = useRef<{ firstIdBeforeLoad: string | null } | null>(null);
-    const revealPendingRef = useRef(false);
-    const latestFirstTimelineIdRef = useRef<string | null>(visibleFirstTimelineId);
-    useLayoutEffect(() => {
-        latestFirstTimelineIdRef.current = visibleFirstTimelineId;
-    }, [visibleFirstTimelineId]);
-
-    const handleLoadOlder = useCallback(async () => {
-        if (!onLoadOlder) return;
-        const firstIdBeforeLoad = visibleFirstTimelineId;
-        capturePrependAnchor(firstItemRef.current);
-        pendingPrependRef.current = { firstIdBeforeLoad };
-        await onLoadOlder();
-        // If no prepend occurred, clear pending marker to avoid stale restore later.
-        if (
-            pendingPrependRef.current?.firstIdBeforeLoad === firstIdBeforeLoad
-            && latestFirstTimelineIdRef.current === firstIdBeforeLoad
-        ) {
-            pendingPrependRef.current = null;
-        }
-    }, [onLoadOlder, capturePrependAnchor, visibleFirstTimelineId]);
-
-    const handleRevealEarlier = useCallback(() => {
-        if (hiddenItemCount <= 0) return;
-        capturePrependAnchor(firstItemRef.current);
-        revealPendingRef.current = true;
-        setVisibleCount((current) => Math.min(timeline.length, current + Math.max(visibleStep, 1)));
-    }, [capturePrependAnchor, hiddenItemCount, timeline.length, visibleStep]);
-
-    // Restore viewport after prepend
-    useLayoutEffect(() => {
-        const pending = pendingPrependRef.current;
-        if (!pending) return;
-        // Restore only once a prepend has actually changed the first visible item.
-        if (visibleFirstTimelineId !== pending.firstIdBeforeLoad) {
-            restorePrependAnchor();
-            pendingPrependRef.current = null;
-        }
-    }, [restorePrependAnchor, visibleFirstTimelineId]);
-
-    useLayoutEffect(() => {
-        if (!revealPendingRef.current) return;
-        restorePrependAnchor();
-        revealPendingRef.current = false;
-    }, [restorePrependAnchor, visibleFirstTimelineId]);
 
     useEffect(() => {
         if (!onTimelineReady) return;

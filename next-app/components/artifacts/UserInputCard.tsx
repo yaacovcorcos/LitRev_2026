@@ -133,6 +133,24 @@ export function UserInputCard({
                 {header && (
                     <div className={styles.headerRow}>
                         <span className={styles.headerTag}>{header}</span>
+                        {onDismiss && (
+                            <button
+                                type="button"
+                                onClick={onDismiss}
+                                style={{
+                                    marginLeft: "auto",
+                                    background: "none",
+                                    border: "none",
+                                    cursor: "pointer",
+                                    color: "var(--color-text-secondary)",
+                                    padding: 2,
+                                    display: "flex",
+                                }}
+                                aria-label="Dismiss answered prompt"
+                            >
+                                <span className="material-icons-round" style={{ fontSize: 18 }}>close</span>
+                            </button>
+                        )}
                     </div>
                 )}
                 <div className={styles.question}>{question}</div>
