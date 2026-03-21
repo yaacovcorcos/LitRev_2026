@@ -60,4 +60,7 @@ async function testSetup() {
     console.log("\n✅ All checks passed! AI is ready to use.\n");
 }
 
-testSetup().catch(console.error);
+testSetup().catch((error) => {
+    console.error("❌ AI setup test failed:", error);
+    process.exitCode = 1;
+});

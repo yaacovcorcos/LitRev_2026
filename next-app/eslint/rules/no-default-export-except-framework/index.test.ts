@@ -11,6 +11,14 @@ createRuleTester().run("litrev/no-default-export-except-framework", rule, {
       code: "export default function HomePage() {}",
       filename: "/repo/next-app/app/page.tsx",
     },
+    {
+      code: "export default async function GET() { return Response.json({ ok: true }); }",
+      filename: "/repo/next-app/app/api/ping/route.ts",
+    },
+    {
+      code: "export default import('./query_compiler_fast_bg.wasm')",
+      filename: "/repo/next-app/lib/generated/prisma/wasm-worker-loader.mjs",
+    },
   ],
   invalid: [
     {

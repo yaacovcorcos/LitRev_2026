@@ -11,6 +11,8 @@ describe("eslint-governance.config", () => {
       .map((entry) => entry.name);
 
     expect(configNames).toContain("litrev/base");
+    expect(configNames).toContain("litrev/phase1-app-surface");
+    expect(configNames).toContain("litrev/phase1-scripts-logging");
     expect(configNames).toContain("litrev/ui");
     expect(configNames).toContain("litrev/runtime-hotspots-mechanical");
     expect(configNames).toContain("litrev/runtime-hotspots-semantic");

@@ -15,12 +15,14 @@ This plan does not own product behavior or `PRD.md`.
 - `next-app/scripts/lint-governance-audit.mjs` is the authoritative baseline generator for governance metrics; it now reads from shared JS file enumeration under the governance lint surface so the documented glob policy and actual counts cannot drift.
 - Governance-specific commands are now separate from the legacy lint baseline:
   - `npm run lint:governance`
+  - `npm run lint:governance:phase1`
   - `npm run lint:governance:audit`
   - `npm run test:eslint-rules`
 - Governance tooling now has a separate targeted validation command:
   - `npm run test:governance-tooling`
 - CI now runs governance rule tests, governance lint, the governance audit artifact, and the runtime test-impact guard independently before the full-repo lint baseline becomes a required gate.
 - Governance tooling imports now come from direct devDependencies in `next-app/package.json`, not only transitive `eslint-config-next` dependencies.
+- Phase 1 now has explicit config slices for the governed app surface and a scripts-only logging slice, plus a stable `npm run lint:governance:phase1` verifier.
 - The repo currently contains an implemented first wave of governance cleanup in app/runtime code, including removal of targeted non-framework default exports, `catch(console.error)` sites, hot-spot `react-hooks/exhaustive-deps` suppressions, and selected cross-boundary parent imports.
 
 ## Program Status
@@ -41,18 +43,19 @@ Missing:
 - Nothing material for the original Phase 0 scope
 
 ### Phase 1 — Low-Noise Governance Wins
-Status: Mostly Done
+Status: Done
 
 Shipped:
 - `litrev/no-default-export-except-framework`
 - `litrev/no-catch-console-error`
 - `litrev/no-log-and-throw-same-block`
 - First cleanup wave for targeted non-framework default exports
-- All current `catch(console.error)` app-code instances removed
+- Stable `npm run lint:governance:phase1` verification command
+- `scripts/**` enforcement for the two Phase 1 logging rules only
+- Remaining live Phase 1 violations removed, including `scripts/test-ai-setup.ts` and `lib/server/agent/artifacts.ts`
 
 Missing:
-- Final review of remaining default-export cases to confirm they are all intentional framework exceptions or explicitly accepted debt
-- Narrower follow-up plan for server/runtime logging rules beyond the current first-wave guardrails
+- Nothing material for the original Phase 1 scope
 
 ### Phase 2A — Mechanical Effect Guardrails
 Status: Mostly Done
@@ -159,6 +162,7 @@ Missing:
 - [ ] `LG-006` Re-audit the repo before adopting any additional Factory-inspired frontend restrictions beyond the current adapted set.
 
 ## Recently Completed
+- [x] Completed Phase 1 by locking exact rule scope, adding a stable `lint:governance:phase1` verifier, extending the logging rules to `scripts/**` only, and fixing the remaining live logging violations.
 - [x] Hardened Phase 0 by declaring direct governance ESLint plugin dependencies, moving the audit baseline onto tested shared JS enumeration, and adding dedicated governance-tooling tests.
 - [x] Rewrote this plan into an explicit phase-status tracker so future work can review the program phase by phase against actual shipped state.
 - [x] Established the repo-local lint-governance framework, audit script, dedicated governance commands, and initial layered config wiring.
