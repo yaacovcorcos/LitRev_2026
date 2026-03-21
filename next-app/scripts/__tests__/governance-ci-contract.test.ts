@@ -18,6 +18,7 @@ describe("governance CI command contract", () => {
       "npm run lint:governance:phase2-hotspots",
       "npm run lint:governance:phase3-searchability",
       "npm run lint:governance:phase4-policy",
+      "npm run lint:governance:logging",
       "npm run check:runtime-test-impact",
     ]);
   });

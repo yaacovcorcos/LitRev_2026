@@ -62,6 +62,7 @@ gh pr list --state open --json number,title,headRefName,baseRefName,reviewDecisi
   - `npm run lint:governance:phase2-hotspots`
   - `npm run lint:governance:phase3-searchability`
   - `npm run lint:governance:phase4-policy`
+  - `npm run lint:governance:logging`
   - `npm run check:runtime-test-impact`
 - `governance:ci-informational` always runs broad governance lint and the governance audit on every `check` execution, but it remains non-blocking.
 - Governance audit artifact upload should remain `if: always()`.

@@ -68,14 +68,14 @@ Contracts:
 - `npm run lint:governance:phase4-policy` is the stable umbrella verifier for the completed Phase 4 policy surface:
   - it runs `npm run lint:governance:phase4-async`
   - it runs `npm run lint:governance:phase4-tests`
-- `npm run lint:governance:logging` is the stable verifier for the in-progress LG-006 server/runtime structured-logging contract only:
+- `npm run lint:governance:logging` is the stable verifier for the completed LG-006 server/runtime structured-logging contract only:
   - `lib/server/**`
   - `app/actions/**`
   - `app/api/**`
   - excluding tests, fixtures, generated files, and `lib/server/logging.ts`
   - enforcing:
     - `litrev/no-server-runtime-console`
-  - broad `npm run lint:governance` continues to carry the same rule at warning level through the `litrev/server` slice until LG-006 is rolled into the required governance inventory
+  - broad `npm run lint:governance` also carries the same rule at warning level through the `litrev/server` slice for informational visibility
 - `npm run check:runtime-test-impact` is the stable changed-file companion to the Phase 4 test-governance contract:
   - it consumes the same governed domains and waiver file as the two lint rules
   - it does not carry parallel domain logic
@@ -88,6 +88,7 @@ Contracts:
   - `npm run lint:governance:phase2-hotspots`
   - `npm run lint:governance:phase3-searchability`
   - `npm run lint:governance:phase4-policy`
+  - `npm run lint:governance:logging`
   - `npm run check:runtime-test-impact`
 - `npm run governance:ci-informational` is the permanent local reproduction command for the non-blocking governance reporting portion of GitHub `check`:
   - it always runs broad `npm run lint:governance`
@@ -104,7 +105,7 @@ Contracts:
   - broader `window.location` restrictions beyond navigation mutation: rejected
   - UI `console.*` restrictions: deferred to the separate logging-governance track
   - blanket restrictions on `style`, `className`, `useMemo`, or raw anchors: rejected for now
-- LG-006 currently governs only server/runtime raw console usage:
+- LG-006 now governs only server/runtime raw console usage:
   - direct `console.error|warn|info|log|debug` is disallowed in the LG-006 server/runtime surface
   - approved usage flows through `@/lib/server/logging`
   - UI/client `console.*` remains out of scope for now
