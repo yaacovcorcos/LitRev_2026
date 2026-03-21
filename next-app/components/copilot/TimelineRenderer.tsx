@@ -15,7 +15,7 @@ import type { ErrorInfo, ReactNode } from "react";
 import { useParams } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { markdownComponents } from "@/components/markdown/CodeBlock";
+import { MarkdownComponents } from "@/components/markdown/MarkdownComponents";
 import type { CopilotMessage } from "@/lib/projectCopilotStorage";
 import type { TimelineAttachment, TimelineArtifact, TimelineContextAttachment, TimelineItem } from "@/types/timeline";
 import type { CopilotPage, ReasoningMode } from "@/types/ai";
@@ -54,7 +54,7 @@ import { useMentionedStudyTitles } from "@/lib/ai/use-mentioned-study-titles";
 import { isChatStudyMentionsEnabled } from "@/lib/agent/feature-flags";
 import { getReasoningSummaryPreview } from "@/lib/ai/reasoning-visibility";
 import { getContextTargetKey } from "@/lib/context-capture/targets";
-import { buildExecutionTraceEntries, type ExecutionTraceEntry } from "./execution-trace-grouping";
+import { buildExecutionTraceEntries, type ExecutionTraceEntry } from "./buildExecutionTraceEntries";
 import { isArtifactReviewable } from "@/lib/artifacts/reviewability";
 import { getArtifactInlineActionModel, type ArtifactInlineActionDescriptor } from "@/lib/artifacts/inline-actions";
 import styles from "./TimelineMessages.module.css";
@@ -589,7 +589,7 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
                             </button>
                             {showReasoning && (
                                 <div className={styles.reasoningPanel}>
-                                    <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                                    <ReactMarkdown remarkPlugins={[remarkGfm]} components={MarkdownComponents}>
                                         {reasoningText}
                                     </ReactMarkdown>
                                     {item.reasoning?.truncated && (
@@ -612,7 +612,7 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
                     )}
                     <div className={markdownStyles.markdownContent}>
                         {displayContent ? (
-                            <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                            <ReactMarkdown remarkPlugins={[remarkGfm]} components={MarkdownComponents}>
                                 {displayContent}
                             </ReactMarkdown>
                         ) : (

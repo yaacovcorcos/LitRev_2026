@@ -101,7 +101,7 @@ function CodeBlock({ language, code }: { language: string | null; code: string }
 }
 
 /** Shared ReactMarkdown `components` override — use in both TimelineRenderer and AI page */
-export const markdownComponents: Components = {
+export const MarkdownComponents: Components = {
     pre: ({ children }: { children?: ReactNode }) => {
         // ReactMarkdown renders fenced blocks as <pre><code class="language-xxx">...</code></pre>
         const codeChild = Children.toArray(children).find(

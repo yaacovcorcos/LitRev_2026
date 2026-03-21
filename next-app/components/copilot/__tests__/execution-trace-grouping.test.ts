@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { TimelineItem } from "@/types/timeline";
-import { buildExecutionTraceEntries } from "../execution-trace-grouping";
+import { buildExecutionTraceEntries } from "../buildExecutionTraceEntries";
 
 describe("buildExecutionTraceEntries", () => {
   it("groups contiguous durable trace items before a completed assistant answer and ignores progress for boundary detection", () => {

@@ -4,7 +4,7 @@ import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import type { ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { markdownComponents } from "../CodeBlock";
+import { MarkdownComponents } from "../MarkdownComponents";
 import { fetchCitationMetadata } from "@/app/actions/citation";
 
 vi.mock("@/components/ui/Popover", async () => {
@@ -52,7 +52,7 @@ describe("markdown link rendering", () => {
 
     it("renders DOI label for doi.org links", () => {
         render(
-            <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+            <ReactMarkdown remarkPlugins={[remarkGfm]} components={MarkdownComponents}>
                 {"[Some Study](https://doi.org/10.1000/xyz123)"}
             </ReactMarkdown>
         );
@@ -62,7 +62,7 @@ describe("markdown link rendering", () => {
 
     it("renders PubMed label for pubmed links", () => {
         render(
-            <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+            <ReactMarkdown remarkPlugins={[remarkGfm]} components={MarkdownComponents}>
                 {"[Study](https://pubmed.ncbi.nlm.nih.gov/40010103/)"}
             </ReactMarkdown>
         );
@@ -72,7 +72,7 @@ describe("markdown link rendering", () => {
 
     it("keeps original label for non-citation links", () => {
         render(
-            <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+            <ReactMarkdown remarkPlugins={[remarkGfm]} components={MarkdownComponents}>
                 {"[Open site](https://example.com/path)"}
             </ReactMarkdown>
         );
@@ -82,7 +82,7 @@ describe("markdown link rendering", () => {
 
     it("does not falsely label links that only contain doi.org in query params", () => {
         render(
-            <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+            <ReactMarkdown remarkPlugins={[remarkGfm]} components={MarkdownComponents}>
                 {"[Original](https://evil.example/?next=https://doi.org/10.1000/xyz123)"}
             </ReactMarkdown>
         );
@@ -92,7 +92,7 @@ describe("markdown link rendering", () => {
 
     it("renders unsafe non-citation links as plain text", () => {
         render(
-            <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+            <ReactMarkdown remarkPlugins={[remarkGfm]} components={MarkdownComponents}>
                 {"[Run this](javascript:alert(1))"}
             </ReactMarkdown>
         );
@@ -102,7 +102,7 @@ describe("markdown link rendering", () => {
 
     it("renders citation links with data-citation-type attribute", () => {
         render(
-            <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+            <ReactMarkdown remarkPlugins={[remarkGfm]} components={MarkdownComponents}>
                 {"[Study](https://doi.org/10.1000/xyz123)"}
             </ReactMarkdown>
         );
@@ -112,7 +112,7 @@ describe("markdown link rendering", () => {
 
     it("renders PubMed links with data-citation-type attribute", () => {
         render(
-            <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+            <ReactMarkdown remarkPlugins={[remarkGfm]} components={MarkdownComponents}>
                 {"[Study](https://pubmed.ncbi.nlm.nih.gov/12345678/)"}
             </ReactMarkdown>
         );
@@ -122,7 +122,7 @@ describe("markdown link rendering", () => {
 
     it("recognizes dx.doi.org as DOI links", () => {
         render(
-            <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+            <ReactMarkdown remarkPlugins={[remarkGfm]} components={MarkdownComponents}>
                 {"[Study](https://dx.doi.org/10.1000/xyz123)"}
             </ReactMarkdown>
         );
@@ -134,7 +134,7 @@ describe("markdown link rendering", () => {
     it("fetches citation metadata lazily on hover intent", async () => {
         vi.useFakeTimers();
         render(
-            <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+            <ReactMarkdown remarkPlugins={[remarkGfm]} components={MarkdownComponents}>
                 {"[Study](https://doi.org/10.1000/xyz123)"}
             </ReactMarkdown>
         );

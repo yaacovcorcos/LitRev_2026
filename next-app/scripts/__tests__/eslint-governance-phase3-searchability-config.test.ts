@@ -52,4 +52,18 @@ describe("eslint-governance-phase3-searchability.config", () => {
       "litrev/filename-match-primary-export",
     );
   });
+
+  it("treats filename mismatches as errors in the dedicated Phase 3 verifier", async () => {
+    const [result] = await lintText(
+      "export function PrimaryThing() {}",
+      "components/Thing.tsx",
+    );
+
+    expect(result.messages).toContainEqual(
+      expect.objectContaining({
+        ruleId: "litrev/filename-match-primary-export",
+        severity: 2,
+      }),
+    );
+  });
 });
