@@ -3,7 +3,9 @@ import { describe, expect, it } from "vitest";
 import {
     bindQueuedFollowUpConversationId,
     createQueuedFollowUp,
+    getQueuedFollowUpScopeKey,
     isQueuedFollowUpDispatchReady,
+    reconcileQueuedFollowUpScopeChange,
 } from "../queued-followup";
 
 describe("queued follow-up helpers", () => {
@@ -106,5 +108,33 @@ describe("queued follow-up helpers", () => {
         });
 
         expect(bindQueuedFollowUpConversationId(bound, "conv-2")).toEqual(bound);
+    });
+
+    it("preserves late conversation binding when the scope changes from new to resolved in the same project", () => {
+        const queued = createQueuedFollowUp({
+            text: "Keep me queued until the conversation exists",
+            conversationId: null,
+            page: "overview",
+            source: "draft",
+        });
+
+        const previousScopeKey = getQueuedFollowUpScopeKey("proj-1", null);
+        const nextScopeKey = getQueuedFollowUpScopeKey("proj-1", "conv-1");
+
+        expect(reconcileQueuedFollowUpScopeChange(queued, previousScopeKey, nextScopeKey)).toEqual(queued);
+    });
+
+    it("clears queued follow-up state when the project scope changes", () => {
+        const queued = createQueuedFollowUp({
+            text: "Do not leak across projects",
+            conversationId: "conv-1",
+            page: "overview",
+            source: "draft",
+        });
+
+        const previousScopeKey = getQueuedFollowUpScopeKey("proj-1", "conv-1");
+        const nextScopeKey = getQueuedFollowUpScopeKey("proj-2", "conv-9");
+
+        expect(reconcileQueuedFollowUpScopeChange(queued, previousScopeKey, nextScopeKey)).toBeNull();
     });
 });

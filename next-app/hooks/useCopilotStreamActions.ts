@@ -144,7 +144,6 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
         }
         setIsLoading(false);
         setPendingChoices([]);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     const buildProjectRecoverySeedState = useCallback((params: {
@@ -1116,7 +1115,6 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                 });
             }
         }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [updateState, projectId, convo]);
 
     const sendMessage = useCallback(

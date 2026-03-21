@@ -9,6 +9,7 @@ export default [
       "components/copilot/**/*.tsx",
       "contexts/ProjectCopilotContext.tsx",
       "hooks/useCopilotConversations.ts",
+      "hooks/useCopilotStreamActions.ts",
     ],
     rules: {
       "litrev/no-new-exhaustive-deps-disable": "error",
@@ -24,6 +25,7 @@ export default [
       "components/copilot/**/*.tsx",
       "contexts/ProjectCopilotContext.tsx",
       "hooks/useCopilotConversations.ts",
+      "hooks/useCopilotStreamActions.ts",
     ],
     rules: {
       "litrev/no-improper-direct-effects": "warn",

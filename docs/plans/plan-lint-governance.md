@@ -23,6 +23,7 @@ This plan does not own product behavior or `PRD.md`.
 - CI now runs governance rule tests, governance lint, the governance audit artifact, and the runtime test-impact guard independently before the full-repo lint baseline becomes a required gate.
 - Governance tooling imports now come from direct devDependencies in `next-app/package.json`, not only transitive `eslint-config-next` dependencies.
 - Phase 1 now has explicit config slices for the governed app surface and a scripts-only logging slice, plus a stable `npm run lint:governance:phase1` verifier.
+- Phase 2 now has a dedicated `npm run lint:governance:phase2-hotspots` verifier for the `/ai` + copilot runtime surface, including `hooks/useCopilotStreamActions.ts` and the bundled async-cleanup rules for that same hot-spot slice only.
 - The repo currently contains an implemented first wave of governance cleanup in app/runtime code, including removal of targeted non-framework default exports, `catch(console.error)` sites, hot-spot `react-hooks/exhaustive-deps` suppressions, and selected cross-boundary parent imports.
 
 ## Program Status
@@ -162,6 +163,7 @@ Missing:
 - [ ] `LG-006` Re-audit the repo before adopting any additional Factory-inspired frontend restrictions beyond the current adapted set.
 
 ## Recently Completed
+- [x] Added the stable `lint:governance:phase2-hotspots` verifier and completed the PR 1 runtime/controller cleanup for `/ai`, `ProjectCopilotContext`, `useCopilotConversations`, and `useCopilotStreamActions`, while keeping the remaining component/layout debt explicit for the Phase 2 follow-up slice.
 - [x] Completed Phase 1 by locking exact rule scope, adding a stable `lint:governance:phase1` verifier, extending the logging rules to `scripts/**` only, and fixing the remaining live logging violations.
 - [x] Hardened Phase 0 by declaring direct governance ESLint plugin dependencies, moving the audit baseline onto tested shared JS enumeration, and adding dedicated governance-tooling tests.
 - [x] Rewrote this plan into an explicit phase-status tracker so future work can review the program phase by phase against actual shipped state.

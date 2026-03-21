@@ -18,6 +18,7 @@ Structure:
 Commands:
 - `npm run lint:governance`
 - `npm run lint:governance:phase1`
+- `npm run lint:governance:phase2-hotspots`
 - `npm run lint:governance:audit`
 - `npm run test:eslint-rules`
 - `npm run test:governance-tooling`
@@ -26,5 +27,13 @@ Contracts:
 - governance tooling must import only direct devDependencies declared in `next-app/package.json`
 - the governance audit baseline is generated from shared JS file enumeration under the governance lint surface, not shell-specific `find` or `rg` composition
 - `npm run lint:governance:phase1` is the stable verification command for the completed Phase 1 contract
+- `npm run lint:governance:phase2-hotspots` is the stable verification command for the active Phase 2 hot-spot surface only:
+  - `app/ai/**`
+  - `components/copilot/**`
+  - `contexts/ProjectCopilotContext.tsx`
+  - `hooks/useCopilotConversations.ts`
+  - `hooks/useCopilotStreamActions.ts`
+  - `app/project/[id]/layout.tsx`
+- the Phase 2 hot-spot verifier intentionally bundles the current async-cleanup rules for that same surface only; it does not imply broader Phase 4 completion
 - `scripts/**` is intentionally included only for the Phase 1 logging rules (`litrev/no-catch-console-error` and `litrev/no-log-and-throw-same-block`)
 - the governance audit baseline still excludes `scripts/**` by design; audit roots and lint-enforcement scope are not identical

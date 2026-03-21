@@ -99,6 +99,7 @@ export function isHotspotEffectFile(filename) {
   return relative === "app/ai/page.tsx"
     || relative === "contexts/ProjectCopilotContext.tsx"
     || relative === "hooks/useCopilotConversations.ts"
+    || relative === "hooks/useCopilotStreamActions.ts"
     || relative === "app/project/[id]/layout.tsx"
     || relative.startsWith("components/copilot/")
     || relative.startsWith("app/ai/");

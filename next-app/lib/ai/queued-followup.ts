@@ -33,6 +33,32 @@ export function bindQueuedFollowUpConversationId(
     };
 }
 
+export function getQueuedFollowUpScopeKey(
+    projectScopeId: string | null | undefined,
+    conversationId: string | null | undefined,
+): string {
+    return `${projectScopeId ?? "__global__"}:${conversationId ?? "__new__"}`;
+}
+
+export function reconcileQueuedFollowUpScopeChange(
+    queuedFollowUp: QueuedFollowUp | null,
+    previousScopeKey: string | null,
+    nextScopeKey: string,
+): QueuedFollowUp | null {
+    if (!queuedFollowUp || previousScopeKey === null || previousScopeKey === nextScopeKey) {
+        return queuedFollowUp;
+    }
+
+    const [previousProjectScope, previousConversationScope] = previousScopeKey.split(":", 2);
+    const [nextProjectScope, nextConversationScope] = nextScopeKey.split(":", 2);
+    const canBindLateQueuedFollowUp = queuedFollowUp.conversationId === null
+        && previousProjectScope === nextProjectScope
+        && previousConversationScope === "__new__"
+        && nextConversationScope !== "__new__";
+
+    return canBindLateQueuedFollowUp ? queuedFollowUp : null;
+}
+
 export type QueuedFollowUpDispatchState = {
     queuedFollowUp: QueuedFollowUp | null;
     isLoading: boolean;
