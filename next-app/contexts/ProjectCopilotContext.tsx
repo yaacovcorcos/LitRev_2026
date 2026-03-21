@@ -20,11 +20,12 @@ import {
     uploadChatAttachmentAction,
     extractTextFromExistingFileAction,
 } from "@/app/actions/files";
-import { getAutonomyConfigAction, updateAutonomyAction } from "@/app/actions/agent";
 import { useCopilotConversations } from "@/hooks/useCopilotConversations";
 import { useCopilotStreamActions } from "@/hooks/useCopilotStreamActions";
+import { useProjectAutonomyConfig } from "@/hooks/useProjectAutonomyConfig";
+import { useQueuedFollowUpController } from "@/hooks/useQueuedFollowUpController";
 import type { ArtifactData } from "@/types/artifacts";
-import type { AgentMode, AutonomyPreset, AutonomyLevel } from "@/types/agent";
+import type { AgentMode } from "@/types/agent";
 import type { ChoiceOption, CopilotPage, ReasoningMode, StreamPhase, UserInputRequest } from "@/types/ai";
 import { useRouter } from "next/navigation";
 import {
@@ -40,8 +41,6 @@ import {
 } from "@/lib/ai/config";
 import { recordChatUnificationMetric } from "@/lib/ai/chat-unification-telemetry";
 import {
-    bindQueuedFollowUpConversationId,
-    isQueuedFollowUpDispatchReady,
 } from "@/lib/ai/queued-followup";
 import {
     clearContextCaptureHistory,
@@ -73,14 +72,45 @@ type ProjectCopilotProviderProps = {
     children: ReactNode;
 };
 
+function loadInitialContextHistory(projectId: string): ContextCaptureHistoryEntry[] {
+    if (!isContextHistoryV1Enabled()) {
+        clearContextCaptureHistory(projectId);
+        return [];
+    }
+    return loadContextCaptureHistory(projectId);
+}
+
 export function ProjectCopilotProvider({
     projectId,
     routeConversationId = null,
     children,
 }: ProjectCopilotProviderProps) {
+    return (
+        <ProjectCopilotRuntime
+            key={projectId}
+            projectId={projectId}
+            routeConversationId={routeConversationId}
+        >
+            {children}
+        </ProjectCopilotRuntime>
+    );
+}
+
+function ProjectCopilotRuntime({
+    projectId,
+    routeConversationId = null,
+    children,
+}: ProjectCopilotProviderProps) {
     const router = useRouter();
-    const [state, setState] = useState<ProjectCopilotState>(createDefaultProjectCopilotState());
-    const stateRef = useRef<ProjectCopilotState>(createDefaultProjectCopilotState());
+    const [state, setState] = useState<ProjectCopilotState>(() => {
+        const local = loadProjectCopilotState(projectId);
+        return {
+            ...createDefaultProjectCopilotState(),
+            panel: local.panel,
+            messages: [],
+        };
+    });
+    const stateRef = useRef<ProjectCopilotState>(state);
     const [isLoading, setIsLoading] = useState(false);
     const [streamPhase, setStreamPhase] = useState<StreamPhase>("idle");
     const [reasoningMode, setReasoningModeState] = useState<ReasoningMode>(() => getReasoningModePreference());
@@ -94,7 +124,9 @@ export function ProjectCopilotProvider({
     const [pendingAttachment, setPendingAttachment] = useState<PendingAttachment | null>(null);
     const [isAttaching, setIsAttaching] = useState(false);
     const [attachedContextTargets, setAttachedContextTargetsState] = useState<ContextCaptureTarget[]>([]);
-    const [recentContextHistory, setRecentContextHistory] = useState<ContextCaptureHistoryEntry[]>([]);
+    const [recentContextHistory, setRecentContextHistory] = useState<ContextCaptureHistoryEntry[]>(() => (
+        loadInitialContextHistory(projectId)
+    ));
     const [prefillCommand, setPrefillCommand] = useState<PrefillCommand | null>(null);
     const [queuedFollowUp, setQueuedFollowUp] = useState<QueuedFollowUp | null>(null);
 
@@ -109,39 +141,18 @@ export function ProjectCopilotProvider({
 
     // Structured ask_user question pending user response
     const [pendingUserInput, setPendingUserInput] = useState<UserInputRequest | null>(null);
-    const queuedFollowUpDispatchRef = useRef<string | null>(null);
-    const previousConversationIdRef = useRef<string | null>(null);
 
     isLoadingRef.current = isLoading;
     stateRef.current = state;
-
-    // Autonomy configuration state (Phase 7)
-    const [autonomyPreset, setAutonomyPreset] = useState<AutonomyPreset>("assisted");
-    const [autonomyToolOverrides, setAutonomyToolOverrides] = useState<Record<string, AutonomyLevel>>({});
-    const [showAutonomySettings, setShowAutonomySettings] = useState(false);
-
-    // Load panel state from localStorage on mount (not messages - those come from conversations)
-    useEffect(() => {
-        if (projectId) {
-            // Only load panel state (width, collapsed), not messages
-            const local = loadProjectCopilotState(projectId);
-            setState(prev => ({
-                ...prev,
-                panel: local.panel,
-                // Messages will be loaded from the conversation system
-                messages: [],
-            }));
-            setAttachedContextTargetsState([]);
-            setPrefillCommand(null);
-            setQueuedFollowUp(null);
-            if (isContextHistoryV1Enabled()) {
-                setRecentContextHistory(loadContextCaptureHistory(projectId));
-            } else {
-                setRecentContextHistory([]);
-                clearContextCaptureHistory(projectId);
-            }
-        }
-    }, [projectId]);
+    const {
+        autonomyPreset,
+        autonomyToolOverrides,
+        showAutonomySettings,
+        setShowAutonomySettings,
+        updateAutonomyPreset,
+        updateAutonomyOverrides,
+        resetToPreset,
+    } = useProjectAutonomyConfig(projectId);
 
     const setReasoningMode = useCallback((mode: ReasoningMode) => {
         setReasoningModeState(mode);
@@ -183,53 +194,6 @@ export function ProjectCopilotProvider({
             setReasoningModePreference("off");
         }
     }, []);
-
-    // Load autonomy config on mount (Phase 7)
-    useEffect(() => {
-        void (async () => {
-            try {
-                const result = await getAutonomyConfigAction(projectId);
-                if (result.success && result.config) {
-                    setAutonomyPreset(result.config.preset as AutonomyPreset);
-                    setAutonomyToolOverrides(
-                        (result.config.toolOverrides ?? {}) as Record<string, AutonomyLevel>,
-                    );
-                }
-            } catch (error) {
-                console.error("Failed to load autonomy config", error);
-            }
-        })();
-    }, [projectId]);
-
-    const updateAutonomyPreset = useCallback(async (preset: AutonomyPreset) => {
-        setAutonomyPreset(preset);
-        setAutonomyToolOverrides({});
-        try {
-            await updateAutonomyAction(preset, undefined, projectId);
-        } catch (error) {
-            console.error("Failed to update autonomy preset", error);
-        }
-    }, [projectId]);
-
-    const updateAutonomyOverrides = useCallback(async (overrides: Record<string, AutonomyLevel>) => {
-        setAutonomyToolOverrides(overrides);
-        setAutonomyPreset("custom");
-        try {
-            await updateAutonomyAction("custom", overrides, projectId);
-        } catch (error) {
-            console.error("Failed to update autonomy overrides", error);
-        }
-    }, [projectId]);
-
-    const resetToPreset = useCallback(async (preset: AutonomyPreset) => {
-        setAutonomyPreset(preset);
-        setAutonomyToolOverrides({});
-        try {
-            await updateAutonomyAction(preset, undefined, projectId);
-        } catch (error) {
-            console.error("Failed to reset autonomy preset", error);
-        }
-    }, [projectId]);
 
     // Save panel state with debounce (messages are saved via conversation system)
     const scheduleSave = useCallback(
@@ -447,7 +411,6 @@ export function ProjectCopilotProvider({
     }, []);
 
     const clearQueuedFollowUp = useCallback(() => {
-        queuedFollowUpDispatchRef.current = null;
         setQueuedFollowUp(null);
     }, []);
 
@@ -496,27 +459,6 @@ export function ProjectCopilotProvider({
             ),
         }));
     }, [updateState]);
-
-    useEffect(() => {
-        if (!convo.currentConversationId) return;
-        setQueuedFollowUp((current) => bindQueuedFollowUpConversationId(current, convo.currentConversationId));
-    }, [convo.currentConversationId]);
-
-    useEffect(() => {
-        const previousConversationId = previousConversationIdRef.current;
-        if (previousConversationId === null) {
-            previousConversationIdRef.current = convo.currentConversationId;
-            return;
-        }
-
-        if (previousConversationId !== convo.currentConversationId) {
-            clearQueuedFollowUp();
-            previousConversationIdRef.current = convo.currentConversationId;
-            return;
-        }
-
-        previousConversationIdRef.current = convo.currentConversationId;
-    }, [clearQueuedFollowUp, convo.currentConversationId]);
 
     const answerUserInput = useCallback((callId: string, answer: string, page?: CopilotPage, section?: string) => {
         setPendingUserInput(null);
@@ -601,45 +543,24 @@ export function ProjectCopilotProvider({
         [recordContextHistory, stream],
     );
 
-    useEffect(() => {
-        const ready = isQueuedFollowUpDispatchReady({
-            queuedFollowUp,
-            isLoading,
-            hasPendingChoices: pendingChoices.length > 0,
-            hasPendingUserInput: pendingUserInput !== null,
-            sendLocked: false,
-            currentConversationId: convo.currentConversationId,
-        });
-
-        if (!ready || !queuedFollowUp) {
-            if (!queuedFollowUp) {
-                queuedFollowUpDispatchRef.current = null;
-            }
-            return;
-        }
-
-        if (queuedFollowUpDispatchRef.current === queuedFollowUp.id) {
-            return;
-        }
-
-        queuedFollowUpDispatchRef.current = queuedFollowUp.id;
-        setQueuedFollowUp(null);
-        void sendMessageWithContext(
-            queuedFollowUp.text,
-            queuedFollowUp.page,
-            queuedFollowUp.section,
-            queuedFollowUp.model,
-            queuedFollowUp.agentMode,
-            queuedFollowUp.studyId,
-        );
-    }, [
-        convo.currentConversationId,
-        isLoading,
-        pendingChoices.length,
-        pendingUserInput,
+    useQueuedFollowUpController({
+        projectScopeId: projectId,
+        currentConversationId: convo.currentConversationId,
         queuedFollowUp,
-        sendMessageWithContext,
-    ]);
+        setQueuedFollowUp,
+        isLoading,
+        hasPendingChoices: pendingChoices.length > 0,
+        hasPendingUserInput: pendingUserInput !== null,
+        sendLocked: false,
+        dispatchQueuedFollowUp: (nextQueuedFollowUp) => sendMessageWithContext(
+            nextQueuedFollowUp.text,
+            nextQueuedFollowUp.page,
+            nextQueuedFollowUp.section,
+            nextQueuedFollowUp.model,
+            nextQueuedFollowUp.agentMode,
+            nextQueuedFollowUp.studyId,
+        ),
+    });
 
     const value = useMemo(
         () => ({

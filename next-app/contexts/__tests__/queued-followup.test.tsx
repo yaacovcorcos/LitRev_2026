@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, renderHook, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -93,6 +93,29 @@ function wrapper({ children }: { children: ReactNode }) {
         <ProjectCopilotProvider projectId="test-project">
             {children}
         </ProjectCopilotProvider>
+    );
+}
+
+function QueueProbe() {
+    const projectCopilot = useProjectCopilot();
+
+    return (
+        <div>
+            <button
+                type="button"
+                onClick={() => {
+                    projectCopilot.queueQueuedFollowUp(createQueuedFollowUp({
+                        text: "Persist until the project changes",
+                        conversationId: "conv-2",
+                        page: "overview",
+                        source: "draft",
+                    }));
+                }}
+            >
+                queue scoped follow-up
+            </button>
+            <span data-testid="queued-text">{projectCopilot.queuedFollowUp?.text ?? ""}</span>
+        </div>
     );
 }
 
@@ -206,5 +229,28 @@ describe("ProjectCopilot queued follow-up behavior", () => {
         });
 
         expect(result.current.queuedFollowUp).toBeNull();
+    });
+
+    it("clears project-scoped queued follow-up state when the provider project changes", async () => {
+        const { rerender } = render(
+            <ProjectCopilotProvider projectId="project-a">
+                <QueueProbe />
+            </ProjectCopilotProvider>
+        );
+
+        await act(async () => {
+            fireEvent.click(screen.getByRole("button", { name: "queue scoped follow-up" }));
+        });
+        expect(screen.getByTestId("queued-text").textContent).toBe("Persist until the project changes");
+
+        await act(async () => {
+            rerender(
+                <ProjectCopilotProvider projectId="project-b">
+                    <QueueProbe />
+                </ProjectCopilotProvider>
+            );
+        });
+
+        expect(screen.getByTestId("queued-text").textContent).toBe("");
     });
 });

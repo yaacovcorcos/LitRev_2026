@@ -2,7 +2,7 @@
  * Custom hook encapsulating all conversation management logic
  * extracted from ProjectCopilotContext.tsx for maintainability.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import type {
     CopilotMessage,
     ProjectCopilotState,
@@ -27,11 +27,12 @@ import {
 } from "@/app/actions/conversations";
 import { summarizeConversationAction } from "@/app/actions/summarize-conversation";
 import {
-    decideConversationRestore,
     isProjectEntryRestoreEnabled,
-    markConversationActive,
-    readProjectEntryState,
 } from "@/lib/project-entry-restore";
+import {
+    markProjectConversationActive,
+    useCopilotConversationBootstrap,
+} from "@/hooks/useCopilotConversationBootstrap";
 
 function isContextAttachment(
     attachment: ConversationMessageAttachment,
@@ -100,26 +101,6 @@ export function useCopilotConversations(deps: CopilotConversationsDeps) {
 
     currentConversationIdRef.current = currentConversationId;
 
-    // Project switch guard: clear scope-cached conversation IDs and active conversation state.
-    // Prevents restoring/selecting a conversation from a previous project.
-    useEffect(() => {
-        streamGenRef.current++;
-        if (abortControllerRef.current) {
-            abortControllerRef.current.abort();
-            abortControllerRef.current = null;
-        }
-        setIsLoading(false);
-        setCurrentRunId(null);
-        setPendingChoices([]);
-        setPendingUserInput(null);
-        setConversations([]);
-        setCurrentConversationId(null);
-        currentConversationIdRef.current = null;
-        studyFilterRef.current = undefined;
-        scopeConversationMapRef.current.clear();
-        setState((prev) => ({ ...prev, messages: [] }));
-    }, [projectId]);
-
     // Load conversations list (uses studyFilterRef for scoping)
     const fetchConversations = useCallback(async (): Promise<ConversationListItem[]> => {
         if (!projectId) return [];
@@ -186,13 +167,15 @@ export function useCopilotConversations(deps: CopilotConversationsDeps) {
         // Check if we have a saved conversation for the new scope
         const savedId = scopeConversationMapRef.current.get(newScope);
         if (savedId) {
-            // Restore from DB (source of truth) via ref
-            selectConversationRef.current(savedId).catch(() => {
-                // Conversation may have been deleted — clear stale entry
-                scopeConversationMapRef.current.delete(newScope);
-                setCurrentConversationId(null);
-                setState((prev) => ({ ...prev, messages: [] }));
-            });
+            void (async () => {
+                try {
+                    await selectConversationRef.current(savedId);
+                } catch {
+                    scopeConversationMapRef.current.delete(newScope);
+                    setCurrentConversationId(null);
+                    setState((prev) => ({ ...prev, messages: [] }));
+                }
+            })();
         } else {
             // No saved conversation for this scope — clear
             setCurrentConversationId(null);
@@ -200,97 +183,36 @@ export function useCopilotConversations(deps: CopilotConversationsDeps) {
         }
 
         setIsLoadingConversations(true);
-        void fetchConversations().then((mapped) => {
-            // If scope changed again while loading, ignore stale result.
-            if (studyFilterRef.current !== id) return;
-            setConversations(mapped);
-            // If there is no saved conversation for this scope, pick the newest one.
-            if (!savedId && mapped.length > 0) {
-                const fallbackId = mapped[0].id;
-                scopeConversationMapRef.current.set(newScope, fallbackId);
-                void selectConversationRef.current(fallbackId);
-            }
-        }).catch((err) => {
-            console.error("Failed to load conversations:", err);
-        }).finally(() => {
-            setIsLoadingConversations(false);
-        });
-    }, [fetchConversations, projectId]);
-
-    // Initial load: get conversations and auto-select the most recent one
-    useEffect(() => {
-        let isActive = true;
-
-        const initializeConversations = async () => {
-            if (!projectId) return;
-
-            setIsLoadingConversations(true);
+        void (async () => {
             try {
-                const result = await listConversations({
-                    projectId,
-                    studyId: studyFilterRef.current,
-                });
-                if (!result.success) {
-                    console.error("Failed to load conversations:", result.error);
-                    return;
-                }
-                const mapped = result.data.map((c) => ({
-                    id: c.id,
-                    title: c.title,
-                    messageCount: c.messageCount,
-                    updatedAt: c.updatedAt,
-                }));
-
-                if (!isActive) return;
+                const mapped = await fetchConversations();
+                if (studyFilterRef.current !== id) return;
                 setConversations(mapped);
-                if (!currentConversationIdRef.current && mapped.length > 0) {
-                    if (routeConversationId) {
-                        setCurrentConversationId(null);
-                        setState((prev) => ({ ...prev, messages: [] }));
-                        return;
-                    }
-                    if (!projectEntryRestoreEnabled) {
-                        await selectConversationRef.current(mapped[0].id);
-                        return;
-                    }
-                    const entryState = readProjectEntryState(projectId);
-                    const decision = decideConversationRestore(
-                        entryState,
-                        Date.now(),
-                        new Set(mapped.map((c) => c.id)),
-                    );
-                    if (decision.shouldRestore) {
-                        await selectConversationRef.current(decision.conversationId);
-                        return;
-                    }
-                    // Debug-only reason code to speed support triage.
-                    if (process.env.NODE_ENV !== "production") {
-                        console.debug("[project-entry-restore] conversation init decision", {
-                            projectId,
-                            reason: decision.reason,
-                        });
-                    }
-                    if (decision.reason === "id_invalid" || decision.reason === "no_state") {
-                        await selectConversationRef.current(mapped[0].id);
-                        return;
-                    }
-                    // workspace bucket, ttl expired, or id missing => keep empty "new conversation" state.
-                    setCurrentConversationId(null);
-                    setState((prev) => ({ ...prev, messages: [] }));
+                if (!savedId && mapped.length > 0) {
+                    const fallbackId = mapped[0].id;
+                    scopeConversationMapRef.current.set(newScope, fallbackId);
+                    await selectConversationRef.current(fallbackId);
                 }
             } catch (err) {
                 console.error("Failed to load conversations:", err);
             } finally {
-                if (isActive) setIsLoadingConversations(false);
+                setIsLoadingConversations(false);
             }
-        };
+        })();
+    }, [fetchConversations, projectId]);
 
-        initializeConversations();
-
-        return () => {
-            isActive = false;
-        };
-    }, [projectEntryRestoreEnabled, projectId, routeConversationId, setState]);
+    useCopilotConversationBootstrap({
+        projectId,
+        routeConversationId,
+        projectEntryRestoreEnabled,
+        currentConversationIdRef,
+        studyFilterRef,
+        selectConversationRef,
+        setConversations,
+        setCurrentConversationId,
+        setState,
+        setIsLoadingConversations,
+    });
 
     const toggleConversationList = useCallback(() => {
         setShowConversationList((prev) => !prev);
@@ -321,7 +243,7 @@ export function useCopilotConversations(deps: CopilotConversationsDeps) {
                 setCurrentConversationId(convo.id);
                 setHasMore(convo.hasMore);
                 if (projectEntryRestoreEnabled) {
-                    markConversationActive(projectId, convo.id);
+                    markProjectConversationActive(projectEntryRestoreEnabled, projectId, convo.id);
                 }
                 // Convert conversation messages to CopilotMessages
                 const persistedMessages: CopilotMessage[] = convo.messages
@@ -536,7 +458,7 @@ export function useCopilotConversations(deps: CopilotConversationsDeps) {
             setCurrentConversationId(id);
             setHasMore(false);
             if (projectEntryRestoreEnabled) {
-                markConversationActive(projectId, id);
+                markProjectConversationActive(projectEntryRestoreEnabled, projectId, id);
             }
             setState((prev) => ({
                 ...prev,
@@ -639,8 +561,7 @@ export function useCopilotConversations(deps: CopilotConversationsDeps) {
     }, [currentConversationId, isSummarizing, selectConversation, loadConversations]);
 
     const markConversationActivity = useCallback((conversationId: string) => {
-        if (!projectEntryRestoreEnabled) return;
-        markConversationActive(projectId, conversationId);
+        markProjectConversationActive(projectEntryRestoreEnabled, projectId, conversationId);
     }, [projectEntryRestoreEnabled, projectId]);
 
     return {

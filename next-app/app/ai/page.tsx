@@ -73,10 +73,10 @@ import {
 } from "@/lib/ai/reasoning-visibility";
 import { resolveReasoningRequest } from "@/lib/ai/reasoning-request";
 import {
-  bindQueuedFollowUpConversationId,
   createQueuedFollowUp,
-  isQueuedFollowUpDispatchReady,
 } from "@/lib/ai/queued-followup";
+import { useQueuedFollowUpController } from "@/hooks/useQueuedFollowUpController";
+import { useResetMutableRefWhen } from "@/hooks/useResetMutableRefWhen";
 import {
   DEFAULT_SELECTABLE_MODEL_ID,
   USER_SELECTABLE_MODELS,
@@ -326,9 +326,9 @@ export default function AIView() {
   const currentRunIdRef = useRef<string | null>(null);
   const sendLockRef = useRef(false);
   const activeConversationIdRef = useRef<string | null>(null);
-  const queuedFollowUpDispatchRef = useRef<string | null>(null);
-  const queuedFollowUpScopeRef = useRef<string | null>(null);
-  const routePerfStartRef = useRef<number | null>(null);
+  const routePerfStartRef = useRef<number | null>(
+    typeof performance !== "undefined" ? performance.now() : null
+  );
   const measuredComposerConversationRef = useRef<string | null>(null);
   const measuredTimelineConversationRef = useRef<string | null>(null);
   const currentHistoryScopeRef = useRef<string>(GLOBAL_HISTORY_SCOPE_KEY);
@@ -345,6 +345,7 @@ export default function AIView() {
   const showReasoningControls = reasoningSupport !== "none";
   timelineByConversationRef.current = timelineByConversation;
   activeConversationIdRef.current = activeConversationId;
+  useResetMutableRefWhen(sendLockRef, !isTyping, false);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -359,12 +360,6 @@ export default function AIView() {
   }, []);
 
   useEffect(() => {
-    if (!isTyping) {
-      sendLockRef.current = false;
-    }
-  }, [isTyping]);
-
-  useEffect(() => {
     if (typeof window === "undefined") return;
     const stored = window.localStorage.getItem("litrev_ai_model");
     const valid = USER_SELECTABLE_MODELS.some((m) => m.id === stored);
@@ -374,51 +369,14 @@ export default function AIView() {
   }, [setSelectedModel]);
 
   useEffect(() => {
-    if (!activeConversationId) return;
-    setQueuedFollowUp((current) => bindQueuedFollowUpConversationId(current, activeConversationId));
-  }, [activeConversationId]);
-
-  useEffect(() => {
-    const nextScopeKey = `${selectedProjectId ?? "__global__"}:${activeConversationId ?? "__new__"}`;
-    const previousScopeKey = queuedFollowUpScopeRef.current;
-    if (previousScopeKey === null) {
-      queuedFollowUpScopeRef.current = nextScopeKey;
-      return;
-    }
-
-    if (previousScopeKey !== nextScopeKey) {
-      const [previousProjectScope, previousConversationScope] = previousScopeKey.split(":", 2);
-      const [nextProjectScope, nextConversationScope] = nextScopeKey.split(":", 2);
-      const canBindLateQueuedFollowUp = queuedFollowUp?.conversationId === null
-        && previousProjectScope === nextProjectScope
-        && previousConversationScope === "__new__"
-        && nextConversationScope !== "__new__";
-      if (canBindLateQueuedFollowUp) {
-        queuedFollowUpScopeRef.current = nextScopeKey;
-        return;
-      }
-      queuedFollowUpDispatchRef.current = null;
-      setQueuedFollowUp(null);
-      queuedFollowUpScopeRef.current = nextScopeKey;
-      return;
-    }
-
-    queuedFollowUpScopeRef.current = nextScopeKey;
-  }, [activeConversationId, selectedProjectId]);
-
-  useEffect(() => {
     if (typeof window === "undefined") return;
-    routePerfStartRef.current = performance.now();
-    measuredComposerConversationRef.current = null;
-    measuredTimelineConversationRef.current = null;
-    setComposerReady(false);
     performance.mark(`${AI_ROUTE_MEASURE}:start`);
     window.__litrevAiPerf = {
       activeConversationId: activeConversationId ?? null,
     };
   }, []);
 
-  useEffect(() => {
+  const resetConversationPerfTracking = useCallback((conversationId: string | null) => {
     if (typeof window === "undefined") return;
     measuredComposerConversationRef.current = null;
     measuredTimelineConversationRef.current = null;
@@ -427,9 +385,14 @@ export default function AIView() {
     performance.mark(`${AI_ROUTE_MEASURE}:start`);
     window.__litrevAiPerf = {
       ...(window.__litrevAiPerf ?? {}),
-      activeConversationId: activeConversationId ?? null,
+      activeConversationId: conversationId ?? null,
     };
-  }, [activeConversationId]);
+  }, []);
+
+  const activateConversation = useCallback((conversationId: string | null) => {
+    setActiveConversationId(conversationId);
+    resetConversationPerfTracking(conversationId);
+  }, [resetConversationPerfTracking]);
 
   const markComposerReady = useCallback(() => {
     if (typeof window === "undefined") return;
@@ -516,20 +479,20 @@ export default function AIView() {
     if (selectedProjectId) return "";
     if (workspaceContextText) return workspaceContextText;
     if (!workspaceContextPromiseRef.current) {
-      workspaceContextPromiseRef.current = loadAiAssistantActions()
-        .then(({ getGlobalWorkspaceContextAction }) => getGlobalWorkspaceContextAction())
-        .then((result) => {
+      workspaceContextPromiseRef.current = (async () => {
+        try {
+          const { getGlobalWorkspaceContextAction } = await loadAiAssistantActions();
+          const result = await getGlobalWorkspaceContextAction();
           if (!result.success) return "";
           setWorkspaceContextText(result.data.contextText);
           return result.data.contextText;
-        })
-        .catch((err) => {
+        } catch (err) {
           console.error("Failed to load global workspace context", err);
           return "";
-        })
-        .finally(() => {
+        } finally {
           workspaceContextPromiseRef.current = null;
-        });
+        }
+      })();
     }
     return workspaceContextPromiseRef.current;
   }, [selectedProjectId, workspaceContextText]);
@@ -546,48 +509,41 @@ export default function AIView() {
 
     const loadPromise = (async () => {
       setIsHistoryLoading(true);
-      const { listConversations } = await loadConversationActions();
-      const listResult = await listConversations({
-        projectId: selectedProjectId ?? undefined,
-        page: "ai",
-      });
-      if (!listResult.success) {
-        console.error("Failed to load AI conversations:", listResult.error);
-        return;
-      }
-      const mapped: ChatConversation[] = listResult.data.map((s) => ({
-        id: s.id,
-        title: s.title ?? null,
-        projectId: s.projectId ?? undefined,
-        createdAt: s.createdAt,
-        updatedAt: s.updatedAt,
-      }));
-      if (currentHistoryScopeRef.current !== requestScopeKey) {
-        return;
-      }
-      setConversations(mapped);
-      historyLoadedScopeRef.current = requestScopeKey;
-    })()
-      .catch((err) => {
+      try {
+        const { listConversations } = await loadConversationActions();
+        const listResult = await listConversations({
+          projectId: selectedProjectId ?? undefined,
+          page: "ai",
+        });
+        if (!listResult.success) {
+          console.error("Failed to load AI conversations:", listResult.error);
+          return;
+        }
+        const mapped: ChatConversation[] = listResult.data.map((s) => ({
+          id: s.id,
+          title: s.title ?? null,
+          projectId: s.projectId ?? undefined,
+          createdAt: s.createdAt,
+          updatedAt: s.updatedAt,
+        }));
+        if (currentHistoryScopeRef.current !== requestScopeKey) {
+          return;
+        }
+        setConversations(mapped);
+        historyLoadedScopeRef.current = requestScopeKey;
+      } catch (err) {
         console.error("Failed to load AI conversations", err);
-      })
-      .finally(() => {
+      } finally {
         if (historyRequestTokenRef.current === requestToken) {
           historyLoadPromiseRef.current = null;
           setIsHistoryLoading(false);
         }
-      });
+      }
+    })();
 
     historyLoadPromiseRef.current = loadPromise;
     return loadPromise;
   }, [historyScopeKey, selectedProjectId]);
-
-  useEffect(() => {
-    if (selectedProjectId) {
-      setWorkspaceContextText("");
-      workspaceContextPromiseRef.current = null;
-    };
-  }, [selectedProjectId]);
 
   useIdleTask(() => {
     void ensureWorkspaceContextText();
@@ -612,21 +568,28 @@ export default function AIView() {
   }, []);
 
   useEffect(() => {
+    if (isHistoryCollapsed) return;
+    void loadConversationList();
+  }, [isHistoryCollapsed, loadConversationList]);
+
+  const handleSelectProject = useCallback((nextProjectId: string | null) => {
+    if (selectedProjectId === nextProjectId) return;
+
+    setSelectedProjectId(nextProjectId);
+    setWorkspaceContextText("");
+    workspaceContextPromiseRef.current = null;
     setConversations([]);
     historyLoadedScopeRef.current = null;
     historyLoadPromiseRef.current = null;
     setActiveConversationId(null);
     setTimelineByConversation({});
-    timelineLruRef.current = [];   // reset LRU so eviction doesn't drift across scopes
+    timelineLruRef.current = [];
     setPendingChoices([]);
     setPendingUserInput(null);
     setPrefillCommand(null);
-  }, [selectedProjectId]);
-
-  useEffect(() => {
-    if (isHistoryCollapsed) return;
-    void loadConversationList();
-  }, [isHistoryCollapsed, loadConversationList]);
+    setQueuedFollowUp(null);
+    setIsConversationLoading(false);
+  }, [activateConversation, selectedProjectId]);
 
   const selectedProject = projects.find((p) => p.id === selectedProjectId);
   const selectedScopeLabel = selectedProject
@@ -886,7 +849,7 @@ export default function AIView() {
     };
 
     setConversations((prev) => sortConversationsByUpdatedAt([newConv, ...prev]));
-    setActiveConversationId(id);
+    activateConversation(id);
     updateConversationTimeline(id, () => []);
     return id;
   }, [activeConversationId, selectedProjectId, sortConversationsByUpdatedAt, updateConversationTimeline]);
@@ -895,7 +858,7 @@ export default function AIView() {
     if (mobileAiV2Enabled && isPhoneViewport) {
       setHistoryCollapsed(true);
     }
-    setActiveConversationId(id);
+    activateConversation(id);
     setPendingChoices([]);
     setPendingUserInput(null);
     // Only show skeleton if we don't already have this conversation cached
@@ -961,7 +924,7 @@ export default function AIView() {
         // Load the next conversation's timeline (skeleton + DB fetch) to avoid a blank view
         void handleSelectConversation(nextId);
       } else {
-        setActiveConversationId(null);
+        activateConversation(null);
       }
     }
   }, [activeConversationId, handleSelectConversation]);
@@ -991,7 +954,7 @@ export default function AIView() {
         sortConversationsByUpdatedAt([newConv, ...prev.filter((c) => c.id !== newConv.id)])
       );
       updateConversationTimeline(full.id, () => mappedItems);
-      setActiveConversationId(full.id);
+      activateConversation(full.id);
       setPendingChoices([]);
       setPendingUserInput(null);
       setPrefillCommand(null);
@@ -1031,7 +994,7 @@ export default function AIView() {
         sortConversationsByUpdatedAt([newConv, ...prev.filter((c) => c.id !== newConv.id)])
       );
       updateConversationTimeline(full.id, () => mappedItems);
-      setActiveConversationId(full.id);
+      activateConversation(full.id);
       setPendingChoices([]);
       setPendingUserInput(null);
       setPrefillCommand(null);
@@ -1141,7 +1104,7 @@ export default function AIView() {
       const fullResult = await getConversation(result.data.newConversationId);
       const full = fullResult.success ? fullResult.data : null;
       if (!full) {
-        setActiveConversationId(null);
+        activateConversation(null);
         return;
       }
 
@@ -1160,7 +1123,7 @@ export default function AIView() {
         )
       );
       updateConversationTimeline(full.id, () => mappedItems);
-      setActiveConversationId(full.id);
+      activateConversation(full.id);
       setPendingChoices([]);
       setPendingUserInput(null);
       setPrefillCommand(null);
@@ -1193,7 +1156,7 @@ export default function AIView() {
     };
 
     setConversations((prev) => sortConversationsByUpdatedAt([newConv, ...prev]));
-    setActiveConversationId(id);
+    activateConversation(id);
     updateConversationTimeline(id, () => []);
     if (mobileAiV2Enabled && isPhoneViewport) {
       setHistoryCollapsed(true);
@@ -2224,45 +2187,24 @@ export default function AIView() {
     updateConversationTimeline,
   ]);
 
-  useEffect(() => {
-    const ready = isQueuedFollowUpDispatchReady({
-      queuedFollowUp,
-      isLoading: isTyping,
-      hasPendingChoices: pendingChoices.length > 0,
-      hasPendingUserInput: pendingUserInput !== null,
-      sendLocked: sendLockRef.current,
-      currentConversationId: activeConversationId,
-    });
-
-    if (!ready || !queuedFollowUp) {
-      if (!queuedFollowUp) {
-        queuedFollowUpDispatchRef.current = null;
-      }
-      return;
-    }
-
-    if (queuedFollowUpDispatchRef.current === queuedFollowUp.id) {
-      return;
-    }
-
-    queuedFollowUpDispatchRef.current = queuedFollowUp.id;
-    setQueuedFollowUp(null);
-    void handleSend(
-      queuedFollowUp.text,
-      queuedFollowUp.page,
-      queuedFollowUp.section,
-      queuedFollowUp.model,
-      queuedFollowUp.agentMode,
-      queuedFollowUp.studyId,
-    );
-  }, [
-    activeConversationId,
-    handleSend,
-    isTyping,
-    pendingChoices.length,
-    pendingUserInput,
+  useQueuedFollowUpController({
+    projectScopeId: selectedProjectId,
+    currentConversationId: activeConversationId,
     queuedFollowUp,
-  ]);
+    setQueuedFollowUp,
+    isLoading: isTyping,
+    hasPendingChoices: pendingChoices.length > 0,
+    hasPendingUserInput: pendingUserInput !== null,
+    sendLocked: sendLockRef.current,
+    dispatchQueuedFollowUp: (nextQueuedFollowUp) => handleSend(
+      nextQueuedFollowUp.text,
+      nextQueuedFollowUp.page,
+      nextQueuedFollowUp.section,
+      nextQueuedFollowUp.model,
+      nextQueuedFollowUp.agentMode,
+      nextQueuedFollowUp.studyId,
+    ),
+  });
 
   const handleSuggestionClick = useCallback((prompt: string) => {
     setPrefillCommand({ text: prompt, id: crypto.randomUUID() });
@@ -2289,13 +2231,11 @@ export default function AIView() {
   const handleEditQueuedFollowUp = useCallback(() => {
     if (!queuedFollowUp) return;
     setQueuedFollowUp(null);
-    queuedFollowUpDispatchRef.current = null;
     setPrefillCommand({ text: queuedFollowUp.text, id: crypto.randomUUID() });
   }, [queuedFollowUp]);
 
   const handleRemoveQueuedFollowUp = useCallback(() => {
     setQueuedFollowUp(null);
-    queuedFollowUpDispatchRef.current = null;
   }, []);
 
   const handleActionPrompt = useCallback((prompt: string, mode?: AgentMode) => {
@@ -2398,41 +2338,44 @@ export default function AIView() {
     });
     appendRecoveryCheckpoint(convId, runId, RUN_RECOVERY_RECONNECT_SUMMARY);
 
-    void recoverConversationRun({
-      conversationId: convId,
-      runId,
-      page: "ai",
-    }).then((recoveryResult) => {
-      if (recoveryResult.outcome === "recovered") {
-        return;
-      }
-      const recoveryMessage = getRunRecoveryMessage(recoveryResult);
-      appendRecoveryTimelineError({
-        conversationId: convId,
-        message: recoveryMessage,
-        errorMeta: createRecoveryErrorEnvelope({
-          code: recoveryResult.outcome === "timeout"
-            ? "RUN_RECOVERY_TIMEOUT"
-            : recoveryResult.outcome === "needs_user_action"
-              ? "RUN_RECOVERY_REQUIRES_USER_ACTION"
-              : "RUN_RECOVERY_FAILED",
+    void (async () => {
+      try {
+        const recoveryResult = await recoverConversationRun({
+          conversationId: convId,
+          runId,
+          page: "ai",
+        });
+        if (recoveryResult.outcome === "recovered") {
+          return;
+        }
+        const recoveryMessage = getRunRecoveryMessage(recoveryResult);
+        appendRecoveryTimelineError({
+          conversationId: convId,
           message: recoveryMessage,
-          runId: recoveryResult.response?.runId ?? runId,
-          activeRunId: recoveryResult.response?.runId ?? runId,
-          lastActivityAt: recoveryResult.response?.lastActivityAt ?? undefined,
-          recoveryRecommendation: recoveryResult.response?.recoveryRecommendation
-            ?? (recoveryResult.outcome === "needs_user_action" ? "stop_and_retry" : "retry"),
-          retryable: (recoveryResult.response?.recoveryRecommendation ?? "retry") === "retry",
-        }),
-      });
-      currentRunIdRef.current = recoveryResult.response?.recoveryRecommendation === "retry"
-        ? null
-        : (recoveryResult.response?.runId ?? runId);
-    }).finally(() => {
-      if (streamGenRef.current === myGen) {
-        setIsTyping(false);
+          errorMeta: createRecoveryErrorEnvelope({
+            code: recoveryResult.outcome === "timeout"
+              ? "RUN_RECOVERY_TIMEOUT"
+              : recoveryResult.outcome === "needs_user_action"
+                ? "RUN_RECOVERY_REQUIRES_USER_ACTION"
+                : "RUN_RECOVERY_FAILED",
+            message: recoveryMessage,
+            runId: recoveryResult.response?.runId ?? runId,
+            activeRunId: recoveryResult.response?.runId ?? runId,
+            lastActivityAt: recoveryResult.response?.lastActivityAt ?? undefined,
+            recoveryRecommendation: recoveryResult.response?.recoveryRecommendation
+              ?? (recoveryResult.outcome === "needs_user_action" ? "stop_and_retry" : "retry"),
+            retryable: (recoveryResult.response?.recoveryRecommendation ?? "retry") === "retry",
+          }),
+        });
+        currentRunIdRef.current = recoveryResult.response?.recoveryRecommendation === "retry"
+          ? null
+          : (recoveryResult.response?.runId ?? runId);
+      } finally {
+        if (streamGenRef.current === myGen) {
+          setIsTyping(false);
+        }
       }
-    });
+    })();
   }, [
     activeConversationId,
     appendRecoveryCheckpoint,
@@ -2595,7 +2538,7 @@ export default function AIView() {
             reasoningSupport={reasoningSupport}
             activeTimelineLength={activeTimeline.length}
             onHistoryToggle={handleHistoryToggle}
-            onSelectProject={setSelectedProjectId}
+            onSelectProject={handleSelectProject}
             onReasoningModeChange={updateReasoningMode}
             onExportMarkdown={handleExportMarkdown}
             onExportPdf={handleExportPdf}
