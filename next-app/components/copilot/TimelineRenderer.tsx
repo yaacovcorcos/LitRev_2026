@@ -52,10 +52,14 @@ import { type MentionedStudy } from "@/lib/ai/mentioned-studies";
 import { normalizeAssistantContent } from "@/lib/ai/normalize-assistant-content";
 import { useMentionedStudyTitles } from "@/lib/ai/use-mentioned-study-titles";
 import { isChatStudyMentionsEnabled } from "@/lib/agent/feature-flags";
-import { getReasoningSummaryPreview } from "@/lib/ai/reasoning-visibility";
+import { DEFAULT_REASONING_MODE } from "@/lib/ai/reasoning-visibility";
 import { getContextTargetKey } from "@/lib/context-capture/targets";
-import { buildExecutionTraceEntries, type ExecutionTraceEntry } from "./buildExecutionTraceEntries";
-import { isArtifactReviewable } from "@/lib/artifacts/reviewability";
+import {
+    buildExecutionTraceEntries,
+    buildExecutionTraceSummary,
+    buildLiveExecutionTraceSummary,
+    type ExecutionTraceEntry,
+} from "./buildExecutionTraceEntries";
 import { getArtifactInlineActionModel, type ArtifactInlineActionDescriptor } from "@/lib/artifacts/inline-actions";
 import styles from "./TimelineMessages.module.css";
 import artifactStyles from "@/styles/artifacts.module.css";
@@ -515,14 +519,8 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
     const displayContent = normalizedContent.displayContent;
     const rawReasoningText = item.reasoning?.text?.trim() ?? "";
     const hasReasoning = rawReasoningText.length > 0;
-    const showReasoningArea = hasReasoning && reasoningMode !== "off" && Boolean(displayContent);
-    const isSummaryMode = reasoningMode === "summary";
+    const showReasoningArea = hasReasoning && reasoningMode === "full" && Boolean(displayContent);
     const isReserved = item.deliveryState === "reserved" && !displayContent;
-    const summaryPreview = getReasoningSummaryPreview(rawReasoningText);
-    const [showFullSummary, setShowFullSummary] = useState(false);
-    const reasoningText = isSummaryMode && showFullSummary
-        ? rawReasoningText
-        : summaryPreview.text;
     const isReasoningStreaming = item.reasoning?.state === "streaming";
     const mentions = CHAT_STUDY_MENTIONS_ENABLED ? normalizedContent.mentionedStudies : [];
     const hydratedMentionTitles = useMentionedStudyTitles(mentions);
@@ -579,9 +577,7 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
                                 <span>
                                     {isReasoningStreaming
                                         ? "Thinking"
-                                        : isSummaryMode
-                                            ? "Reasoning (summary)"
-                                            : "Reasoning"}
+                                        : "Reasoning"}
                                 </span>
                                 {reasoningStateLabel ? (
                                     <span className={styles.reasoningState}>{reasoningStateLabel}</span>
@@ -590,21 +586,12 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
                             {showReasoning && (
                                 <div className={styles.reasoningPanel}>
                                     <ReactMarkdown remarkPlugins={[remarkGfm]} components={MarkdownComponents}>
-                                        {reasoningText}
+                                        {rawReasoningText}
                                     </ReactMarkdown>
                                     {item.reasoning?.truncated && (
                                         <div className={styles.reasoningTruncatedNote}>
                                             Thinking output truncated for safety.
                                         </div>
-                                    )}
-                                    {isSummaryMode && summaryPreview.truncated && (
-                                        <button
-                                            type="button"
-                                            className={styles.reasoningExpandBtn}
-                                            onClick={() => setShowFullSummary((prev) => !prev)}
-                                        >
-                                            {showFullSummary ? "Show less" : "Show full"}
-                                        </button>
                                     )}
                                 </div>
                             )}
@@ -825,7 +812,7 @@ function TimelineRendererInner({
     onResumeRun,
     onBranchFromMessage,
     variant = "panel",
-    reasoningMode = "full",
+    reasoningMode = DEFAULT_REASONING_MODE,
     isConversationLoading = false,
     conversationId,
     projectId: projectIdProp,
@@ -1573,6 +1560,12 @@ function TimelineRendererInner({
     };
     const renderExecutionTraceEntry = (entry: Extract<ExecutionTraceEntry, { kind: "execution_trace" }>) => {
         const presentedTraceItems = buildPresentedTimeline(entry.traceItems);
+        const visibleInterstitialProgressItems = entry.interstitialProgressItems.filter(
+            (progressItem) => progressItem.id !== suppressedProgressId,
+        );
+        const summaryText = entry.mode === "live"
+            ? buildLiveExecutionTraceSummary(entry.traceItems, visibleInterstitialProgressItems)
+            : buildExecutionTraceSummary(entry.traceItems);
         const collapsed = entry.mode === "anchored"
             ? collapsedTraceByAssistantId[entry.anchorAssistantMessageId ?? ""] ?? entry.defaultCollapsed
             : false;
@@ -1594,7 +1587,7 @@ function TimelineRendererInner({
                     >
                         <span className={`material-icons-round ${styles.executionTraceSummaryIcon}`}>toc</span>
                         <span className={styles.executionTraceSummaryLabel}>Process details</span>
-                        <span className={styles.executionTraceSummaryMeta}>{entry.summaryText}</span>
+                        <span className={styles.executionTraceSummaryMeta}>{summaryText}</span>
                         <span className={`material-icons-round ${styles.executionTraceSummaryChevron}`}>expand_more</span>
                     </button>
                 ) : (
@@ -1602,7 +1595,7 @@ function TimelineRendererInner({
                         <div className={styles.executionTraceHeader}>
                             <div className={styles.executionTraceHeaderText}>
                                 <span className={styles.executionTraceHeaderLabel}>Process details</span>
-                                <span className={styles.executionTraceHeaderMeta}>{entry.summaryText}</span>
+                                <span className={styles.executionTraceHeaderMeta}>{summaryText}</span>
                             </div>
                             {canToggleCollapse ? (
                                 <button
@@ -1624,10 +1617,7 @@ function TimelineRendererInner({
                         </div>
                     </section>
                 )}
-                {entry.interstitialProgressItems.map((progressItem) => {
-                    if (progressItem.id === suppressedProgressId) {
-                        return null;
-                    }
+                {visibleInterstitialProgressItems.map((progressItem) => {
                     return (
                         <div key={progressItem.id}>
                             <StreamingProgress

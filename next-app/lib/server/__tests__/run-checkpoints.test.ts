@@ -110,7 +110,8 @@ describe("run checkpoints", () => {
         result: { studies: [{ title: "Study A" }] },
       },
     });
-    expect(buildCheckpointContinuationContext(result!)).toContain("latest durable checkpoint");
+    expect(buildCheckpointContinuationContext(result!)).toContain("seed_kind=tool_result_checkpoint");
+    expect(buildCheckpointContinuationContext(result!)).toContain("tool_name=search_pubmed");
   });
 
   it("invalidates artifact checkpoints only on authoritative source drift", async () => {

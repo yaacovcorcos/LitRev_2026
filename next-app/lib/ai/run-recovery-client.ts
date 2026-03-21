@@ -5,10 +5,10 @@ import type {
     RunRecoveryResponse,
 } from "@/types/ai";
 
-export const RUN_RECOVERY_RECONNECT_SUMMARY = "Connection lost. Reconnecting to the active run…";
-export const RUN_RECOVERY_INTERRUPTED_TOOL_SUMMARY = "Connection lost while waiting for the run to finish.";
-export const RUN_RECOVERY_TIMEOUT_MESSAGE = "Connection lost and recovery timed out. Choose how to continue.";
-export const RUN_RECOVERY_FAILED_MESSAGE = "Connection lost and recovery failed. You can retry safely now.";
+export const RUN_RECOVERY_RECONNECT_SUMMARY = "Run interrupted. Reconnecting to the active run…";
+export const RUN_RECOVERY_INTERRUPTED_TOOL_SUMMARY = "Run interrupted while waiting for the run to finish.";
+export const RUN_RECOVERY_TIMEOUT_MESSAGE = "Run interrupted and recovery timed out. Choose how to continue.";
+export const RUN_RECOVERY_FAILED_MESSAGE = "Run interrupted and recovery failed. You can retry safely now.";
 export const RUN_RECOVERY_STALLED_PROGRESS_MESSAGE = "The active run stopped making durable progress. Choose how to continue.";
 export const RUN_RECOVERY_FINALIZATION_FAILED_MESSAGE = "The run could not finalize cleanly. Choose how to continue.";
 export const RUN_RECOVERY_ACTIVE_RUN_HELD_MESSAGE = "The active run is still holding this conversation. Choose how to continue.";

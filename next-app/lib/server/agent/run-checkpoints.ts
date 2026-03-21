@@ -453,29 +453,30 @@ export async function resolveLatestValidRunCheckpoint(params: {
 export function buildCheckpointContinuationContext(source: CheckpointContinuationSource): string {
     if (source.kind === "tool_result_ready") {
         return [
-            "[CONTINUATION_CONTEXT]",
-            "The user asked to continue from the latest durable checkpoint after an earlier run could not complete cleanly.",
-            "Use this checkpoint seed as authoritative runtime input only. Do not rerun the completed tool step unless the user explicitly asks for a fresh retry.",
-            `Source run ID: ${source.sourceRunId}`,
-            `Checkpoint source: tool result for ${source.toolName} (callId: ${source.toolCallId})`,
-            `Source event sequence: ${source.sourceEventSequence}`,
-            "Persisted tool result payload:",
+            "seed_kind=tool_result_checkpoint",
+            `source_run_id=${source.sourceRunId}`,
+            `source_event_sequence=${source.sourceEventSequence}`,
+            `tool_name=${source.toolName}`,
+            `tool_call_id=${source.toolCallId}`,
+            "authoritative_input_only=true",
+            "rerun_policy=fresh_retry_only",
+            "payload_json:",
             serializeForPrompt(source.toolResult),
         ].join("\n");
     }
 
     return [
-        "[CONTINUATION_CONTEXT]",
-        "The user asked to continue from the latest durable checkpoint after an earlier run could not complete cleanly.",
-        "Use this checkpoint seed as authoritative runtime input only. Do not recreate or overwrite this artifact state unless the user explicitly asks for a fresh retry.",
-        `Source run ID: ${source.sourceRunId}`,
-        `Checkpoint source: artifact state (${source.artifactType})`,
-        `Source event sequence: ${source.sourceEventSequence}`,
-        `Artifact ID: ${source.artifactId}`,
-        `Artifact title: ${source.artifactTitle}`,
-        `Artifact status: ${source.artifactStatus}`,
-        `Artifact version: ${source.artifactVersion}`,
-        "Persisted artifact payload:",
+        "seed_kind=artifact_checkpoint",
+        `source_run_id=${source.sourceRunId}`,
+        `source_event_sequence=${source.sourceEventSequence}`,
+        `artifact_id=${source.artifactId}`,
+        `artifact_type=${source.artifactType}`,
+        `artifact_status=${source.artifactStatus}`,
+        `artifact_title=${source.artifactTitle}`,
+        `artifact_version=${source.artifactVersion}`,
+        "authoritative_input_only=true",
+        "rewrite_policy=fresh_retry_only",
+        "payload_json:",
         serializeForPrompt(source.artifactPayload),
     ].join("\n");
 }

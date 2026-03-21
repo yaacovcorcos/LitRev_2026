@@ -93,6 +93,9 @@ Until those failures are corrected, `U1.6` burn-in in [chatRuntime.md](./chatRun
 - Popup now preserves a truthful reduced subset of the shared trace contract: live progress, checkpoints, blocking clarification, and structured terminal errors all flow through shared reducer semantics even though popup still hides full receipt/artifact density.
 - `/ai`, the main project conversation, and embedded project copilot now elevate the single live `progress` row into a composer-adjacent status bar while keeping receipts, checkpoints, grouped PubMed sequences, and terminal errors inline; suppression of the matching inline progress row is render-only and uses each surface's local progress id.
 - `/ai` and project copilot now reconcile known-run abnormal disconnects against persisted run truth: recovery is driven by `AgentRun` + authoritative replayable `RunEvent`s, unfinished live tool activity becomes explicitly interrupted instead of hanging indefinitely, `Reconnect` / `Retry` / `Stop & Retry` come from structured recovery metadata instead of generic retry flags, paused-for-input is treated as a successful terminal handoff rather than a failure, and replay restores only persisted authoritative truth rather than ephemeral live progress.
+- Summary mode is now runtime-led on the main surfaces: the default `summary` mode keeps structured process trace primary, derives compact process summaries from existing shared runtime facts, and no longer renders truncated provider-native reasoning as the normal transparency path.
+- Full/raw reasoning is now explicitly debug-only on the main surfaces: `full` is the only mode that may request provider-native reasoning, and models without reasoning support still retain the same process-trace and summary UX without degradation to a blank transparency lane.
+- Visible-channel hygiene now strips allowlisted continuation/runtime scaffolding at the shared assistant-content boundary, while continuation seeds use machine-oriented labels instead of user-facing narrative prose to reduce prompt echo.
 - Search/scoping answer contracts now explicitly keep raw query strings, result-count mechanics, and search-iteration logs in receipts/checkpoints/process details by default; visible answer prose should synthesize findings unless the user explicitly asks for the search strategy.
 - Model-visible search tool payloads are now shaped as synthesis context with explicit anti-duplication guidance rather than raw search-log fuel, reducing provider-specific leakage of `Objective` / `Queries Run` style process scaffolding into answer prose.
 - The current stabilization program in [plan-agentic.md](./plan-agentic.md) is now about durable convergence of those existing recovery primitives: disconnect classification, durable continuation from completed work, and elimination of stuck/partial recovery states. This plan should stay focused on truthful execution-trace UX and must not imply that ephemeral progress or non-persisted intermediate semantics are replayable.
@@ -141,7 +144,7 @@ This is the safe fallback and must remain fully usable even when provider reason
 
 ### 2. Process + reasoning summary
 - all structured process trace above
-- plus a short curated reasoning summary when the runtime/provider can support one cleanly
+- plus a short curated summary derived from existing runtime facts when the shared trace can support one honestly
 
 This is the target richer product mode.
 

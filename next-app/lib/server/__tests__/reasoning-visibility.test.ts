@@ -28,7 +28,7 @@ describe("reasoning visibility helpers", () => {
     vi.unstubAllGlobals();
   });
 
-  it("uses full mode as default when no preference is stored", () => {
+  it("uses summary mode as default when no preference is stored", () => {
     withMockWindow();
     expect(getReasoningModePreference()).toBe(DEFAULT_REASONING_MODE);
   });
@@ -56,15 +56,19 @@ describe("reasoning visibility helpers", () => {
 
   it("returns conservative reasoning budgets by mode", () => {
     expect(getReasoningBudgetTokens("off")).toBeUndefined();
-    expect(getReasoningBudgetTokens("summary")).toBe(512);
+    expect(getReasoningBudgetTokens("summary")).toBeUndefined();
     expect(getReasoningBudgetTokens("full")).toBe(1024);
   });
 
-  it("clamps request reasoning mode for non-reasoning models without mutating preference", () => {
+  it("preserves summary mode for non-reasoning models without mutating preference", () => {
     withMockWindow();
     setReasoningModePreference("summary");
 
-    expect(resolveRequestReasoningMode("summary", "gpt-5-mini")).toBe("off");
+    expect(resolveRequestReasoningMode("summary", "gpt-5-mini")).toBe("summary");
     expect(getReasoningModePreference()).toBe("summary");
+  });
+
+  it("degrades full mode to summary for non-reasoning models", () => {
+    expect(resolveRequestReasoningMode("full", "gpt-5-mini")).toBe("summary");
   });
 });

@@ -43,7 +43,7 @@ describe("TimelineRenderer progress suppression", () => {
             />,
         );
 
-        expect(screen.getByText("Searching PubMed")).toBeTruthy();
+        expect(screen.getAllByText("Searching PubMed").length).toBeGreaterThanOrEqual(1);
         expect(screen.queryByText("Reviewing PubMed results")).toBeNull();
         expect(screen.getByText("PubMed")).toBeTruthy();
         expect(screen.getByText("PubMed returned 18 results")).toBeTruthy();

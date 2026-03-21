@@ -354,7 +354,7 @@ function PopupChatRuntime({
                 },
             });
             terminalReason = summary.terminalReason;
-            if (userStopRequestedRef.current && terminalReason === "failed_network") {
+            if (userStopRequestedRef.current && (terminalReason === "failed_network" || terminalReason === "failed_interrupted")) {
                 terminalReason = "cancelled_by_user";
             }
             sendSucceeded = isSuccessfulTerminalReason(terminalReason);

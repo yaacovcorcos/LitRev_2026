@@ -228,7 +228,8 @@ describe("formatStreamErrorForUI", () => {
         })).toBe(false);
     });
 
-    it("marks only timed out and failed network terminal reasons as retryable", () => {
+    it("marks interrupted, timed out, and failed network terminal reasons as retryable", () => {
+        expect(isRetryableTerminalReason("failed_interrupted")).toBe(true);
         expect(isRetryableTerminalReason("timed_out")).toBe(true);
         expect(isRetryableTerminalReason("failed_network")).toBe(true);
         expect(isRetryableTerminalReason("failed_server")).toBe(false);
@@ -239,6 +240,15 @@ describe("formatStreamErrorForUI", () => {
             message: "The response timed out. Retry to continue.",
             retryable: true,
             errorMeta: {
+                retryable: true,
+            },
+        });
+
+        expect(buildUnexpectedTerminalErrorState("failed_interrupted")).toMatchObject({
+            message: "The run was interrupted before it could finish. Retry to continue.",
+            retryable: true,
+            errorMeta: {
+                code: "RUN_STREAM_INTERRUPTED",
                 retryable: true,
             },
         });
@@ -306,13 +316,13 @@ describe("formatStreamErrorForUI", () => {
         const reconciled = reconcileRunScopedRenderedErrors({
             items: [{
                 id: "error-timeout",
-                message: "Connection lost and recovery timed out. Choose how to continue.",
+                message: "Run interrupted and recovery timed out. Choose how to continue.",
                 errorMeta: {
                     kind: "runtime",
                     code: "RUN_RECOVERY_TIMEOUT",
                     retryable: true,
                     source: "runtime",
-                    message: "Connection lost and recovery timed out. Choose how to continue.",
+                    message: "Run interrupted and recovery timed out. Choose how to continue.",
                     runId: "run-1",
                     recoveryRecommendation: "retry" as const,
                 },
@@ -419,7 +429,7 @@ describe("formatStreamErrorForUI", () => {
             items: [{
                 id: "checkpoint-run-1",
                 checkpoint: {
-                    label: "Connection lost. Reconnecting to the active run…",
+                    label: "Run interrupted. Reconnecting to the active run…",
                     runId: "run-1",
                     checkpointKind: "recovery" as const,
                 },
@@ -461,7 +471,7 @@ describe("formatStreamErrorForUI", () => {
                 },
             }] satisfies RecoveryStateTestItem[],
             nextCheckpoint: {
-                label: "Connection lost. Reconnecting to the active run…",
+                label: "Run interrupted. Reconnecting to the active run…",
                 runId: "run-1",
                 checkpointKind: "recovery" as const,
             },
@@ -480,7 +490,7 @@ describe("formatStreamErrorForUI", () => {
                 {
                     id: "checkpoint-run-1",
                     checkpoint: {
-                        label: "Connection lost. Reconnecting to the active run…",
+                        label: "Run interrupted. Reconnecting to the active run…",
                         runId: "run-1",
                         checkpointKind: "recovery" as const,
                     },
@@ -499,7 +509,7 @@ describe("formatStreamErrorForUI", () => {
                 {
                     id: "checkpoint-run-2",
                     checkpoint: {
-                        label: "Connection lost. Reconnecting to the active run…",
+                        label: "Run interrupted. Reconnecting to the active run…",
                         runId: "run-2",
                         checkpointKind: "recovery" as const,
                     },
@@ -514,7 +524,7 @@ describe("formatStreamErrorForUI", () => {
             {
                 id: "checkpoint-run-2",
                 checkpoint: {
-                    label: "Connection lost. Reconnecting to the active run…",
+                        label: "Run interrupted. Reconnecting to the active run…",
                     runId: "run-2",
                     checkpointKind: "recovery",
                 },

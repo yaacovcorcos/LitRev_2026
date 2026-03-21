@@ -34,6 +34,7 @@
 ## Recently Completed
 *Finished work that might still be fragile or require monitoring. Prune oldest first.*
 
+- [x] Visible-answer and continuation hygiene now explicitly forbids echoing `[CONTINUATION_CONTEXT]`, `payload_json`, machine-only runtime labels, or raw provider reasoning into the normal visible answer path; continuation seeds were also shifted toward machine-oriented fields so prompt echo is less likely even before renderer sanitation.
 - [x] Narrowed scoping clarification guidance to align with the runtime controller: low-autonomy first-pass search-pack approval is no longer taught, scoping now defaults to broad evidence-first exploration plus a recommended default direction, and the base `ask_user` guidance now treats routine narrowing as non-blocking whenever safe first-pass evidence gathering is still possible.
 - [x] Search/scoping visible-answer prompts now explicitly keep raw query logs and search-iteration mechanics in receipts/checkpoints/process details by default; visible prose should synthesize findings unless the user explicitly asks for the search strategy.
 - [x] Tightened the hidden `MENTIONED_STUDIES` response contract so study-naming answers are expected to emit machine-readable metadata, while keeping graceful parser fallback behavior when the model still omits it.

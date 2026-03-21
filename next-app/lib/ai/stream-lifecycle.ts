@@ -4,6 +4,7 @@ export type StreamTerminalReason =
   | "completed"
   | "paused_for_input"
   | "cancelled_by_user"
+  | "failed_interrupted"
   | "failed_network"
   | "failed_server"
   | "timed_out";
@@ -59,7 +60,7 @@ export function isSuccessfulTerminalReason(reason: StreamTerminalReason | null):
 }
 
 export function isFailureTerminalReason(reason: StreamTerminalReason | null): boolean {
-  return reason === "failed_network" || reason === "failed_server" || reason === "timed_out";
+  return reason === "failed_interrupted" || reason === "failed_network" || reason === "failed_server" || reason === "timed_out";
 }
 
 export function terminalReasonFromErrorChunk(chunk: AIStreamChunk): StreamTerminalReason {

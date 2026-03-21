@@ -99,7 +99,7 @@ describe("TimelineRenderer execution trace collapse", () => {
 
     const summaryButton = screen.getByRole("button", { name: "Show process details" });
     expect(summaryButton.textContent).toContain("Process details");
-    expect(summaryButton.textContent).toContain("1 tool step, 1 checkpoint");
+    expect(summaryButton.textContent).toContain("PubMed returned 10 results.");
     expect(screen.getByText("I found 10 strong studies on this topic.")).not.toBeNull();
     expect(screen.queryByText("Found 10 of 10 PubMed results.")).toBeNull();
 
@@ -138,7 +138,7 @@ describe("TimelineRenderer execution trace collapse", () => {
 
     expect(screen.getByRole("button", { name: "Show process details" })).not.toBeNull();
     expect(screen.getByText("Reviewing PubMed results")).not.toBeNull();
-    expect(screen.queryByText("Found 8 of 18 PubMed results.")).toBeNull();
+    expect(screen.getByText("Found 8 of 18 PubMed results.")).not.toBeNull();
   });
 
   it("keeps proposed artifacts inline after the assistant answer instead of moving them into process details", () => {
@@ -201,7 +201,7 @@ describe("TimelineRenderer execution trace collapse", () => {
     expect(screen.getByLabelText("Process details")).not.toBeNull();
     expect(screen.getByText("Protocol updated: Population")).not.toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Expand" }));
-    expect(screen.getByText("Protocol update")).not.toBeNull();
+    expect(screen.getAllByText("Protocol update").length).toBeGreaterThanOrEqual(2);
     expect(screen.getByText("Adults with chest pain")).not.toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Hide process details" }));

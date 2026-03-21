@@ -47,7 +47,10 @@ function hasRenderableAssistantAnswer(
     return item.content.trim().length > 0;
 }
 
-function buildExecutionTraceSummary(traceItems: DurableExecutionTraceItem[]): string {
+export function buildExecutionTraceSummary(traceItems: DurableExecutionTraceItem[]): string {
+    let lastCheckpoint: TimelineCheckpoint | null = null;
+    let lastToolActivity: TimelineToolActivity | null = null;
+    let lastArtifact: TimelineArtifact | null = null;
     let toolSteps = 0;
     let checkpoints = 0;
     let artifacts = 0;
@@ -55,11 +58,30 @@ function buildExecutionTraceSummary(traceItems: DurableExecutionTraceItem[]): st
     for (const item of traceItems) {
         if (item.type === "tool_activity") {
             toolSteps += 1;
+            lastToolActivity = item;
         } else if (item.type === "checkpoint") {
             checkpoints += 1;
+            lastCheckpoint = item;
         } else if (item.type === "artifact") {
             artifacts += 1;
+            lastArtifact = item;
         }
+    }
+
+    const checkpointLabel = lastCheckpoint?.label?.replace(/\s+/g, " ").trim();
+    if (checkpointLabel) {
+        return checkpointLabel.length <= 96 ? checkpointLabel : `${checkpointLabel.slice(0, 93).trimEnd()}...`;
+    }
+
+    const toolSummary = lastToolActivity?.outcomeSummary?.trim()
+        || lastToolActivity?.summary?.trim()
+        || lastToolActivity?.displayLabel?.trim();
+    if (toolSummary) {
+        return toolSummary.length <= 96 ? toolSummary : `${toolSummary.slice(0, 93).trimEnd()}...`;
+    }
+
+    if (lastArtifact?.title?.trim()) {
+        return lastArtifact.title.trim();
     }
 
     const parts: string[] = [];
@@ -67,6 +89,17 @@ function buildExecutionTraceSummary(traceItems: DurableExecutionTraceItem[]): st
     if (checkpoints > 0) parts.push(`${checkpoints} checkpoint${checkpoints === 1 ? "" : "s"}`);
     if (artifacts > 0) parts.push(`${artifacts} artifact${artifacts === 1 ? "" : "s"}`);
     return parts.join(", ");
+}
+
+export function buildLiveExecutionTraceSummary(
+    traceItems: DurableExecutionTraceItem[],
+    interstitialProgressItems: TimelineProgress[],
+): string {
+    const latestProgress = interstitialProgressItems.at(-1)?.message?.replace(/\s+/g, " ").trim();
+    if (latestProgress) {
+        return latestProgress.length <= 96 ? latestProgress : `${latestProgress.slice(0, 93).trimEnd()}...`;
+    }
+    return buildExecutionTraceSummary(traceItems);
 }
 
 function canCreateLiveExecutionTrace(items: TimelineItem[], liveTraceStart: number): boolean {
@@ -107,19 +140,19 @@ export function buildExecutionTraceEntries(
 
         const traceStartIndex = index - traceRangeItems.length;
         const interstitialProgressItems = traceRangeItems.filter(isProgressItem);
-        groupByStartIndex.set(traceStartIndex, {
-            kind: "execution_trace",
-            mode: "anchored",
+            groupByStartIndex.set(traceStartIndex, {
+                kind: "execution_trace",
+                mode: "anchored",
             id: `trace-${item.id}`,
             anchorAssistantMessageId: item.id,
             traceItems,
             interstitialProgressItems,
-            assistantMessage: item,
-            canCollapse: item.id !== streamingAssistantMessageId,
-            defaultCollapsed: item.id !== streamingAssistantMessageId,
-            summaryText: buildExecutionTraceSummary(traceItems),
-            endIndex: index,
-        });
+                assistantMessage: item,
+                canCollapse: item.id !== streamingAssistantMessageId,
+                defaultCollapsed: item.id !== streamingAssistantMessageId,
+                summaryText: buildExecutionTraceSummary(traceItems),
+                endIndex: index,
+            });
     }
 
     let liveTraceStart = items.length;
@@ -142,7 +175,10 @@ export function buildExecutionTraceEntries(
                     interstitialProgressItems: liveTraceRangeItems.filter(isProgressItem),
                     canCollapse: false,
                     defaultCollapsed: false,
-                    summaryText: buildExecutionTraceSummary(liveTraceItems),
+                    summaryText: buildLiveExecutionTraceSummary(
+                        liveTraceItems,
+                        liveTraceRangeItems.filter(isProgressItem),
+                    ),
                     endIndex: items.length - 1,
                 });
             }

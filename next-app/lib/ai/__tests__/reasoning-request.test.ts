@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { resolveReasoningRequest } from "@/lib/ai/reasoning-request";
 
 describe("resolveReasoningRequest", () => {
-  it("keeps explicit reasoning budgets for explicit-support models", () => {
+  it("keeps summary mode provider-independent for explicit-support models", () => {
     const resolved = resolveReasoningRequest({
       preferredMode: "summary",
       modelId: "claude-haiku-4-5",
@@ -10,8 +10,8 @@ describe("resolveReasoningRequest", () => {
 
     expect(resolved).toEqual({
       reasoningMode: "summary",
-      includeReasoning: true,
-      reasoningBudgetTokens: 512,
+      includeReasoning: false,
+      reasoningBudgetTokens: undefined,
     });
   });
 
@@ -28,14 +28,14 @@ describe("resolveReasoningRequest", () => {
     });
   });
 
-  it("forces reasoning off for no-support models", () => {
+  it("degrades full mode to summary for no-support models", () => {
     const resolved = resolveReasoningRequest({
       preferredMode: "full",
       modelId: "gpt-5-mini",
     });
 
     expect(resolved).toEqual({
-      reasoningMode: "off",
+      reasoningMode: "summary",
       includeReasoning: false,
       reasoningBudgetTokens: undefined,
     });

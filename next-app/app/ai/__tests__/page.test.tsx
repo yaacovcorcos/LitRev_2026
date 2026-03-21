@@ -513,9 +513,9 @@ describe("/ai page deferred hydration", () => {
       expect(screen.getByText("Recovered answer.")).toBeTruthy();
     });
 
-    expect(screen.queryByText("Connection lost. Reconnecting to the active run…")).toBeNull();
+    expect(screen.queryByText("Run interrupted. Reconnecting to the active run…")).toBeNull();
     expect(screen.queryByText("The stream ended unexpectedly. Retry to continue.")).toBeNull();
-    expect(screen.queryByText("Connection lost and recovery failed. You can retry safely now.")).toBeNull();
+    expect(screen.queryByText("Run interrupted and recovery failed. You can retry safely now.")).toBeNull();
   });
 
   it("keeps recovered paused runs in a question state without a red failure", async () => {
@@ -581,9 +581,9 @@ describe("/ai page deferred hydration", () => {
     });
 
     expect(screen.getByText("PubMed returned 18 results. Reviewing the strongest matches now.")).toBeTruthy();
-    expect(screen.queryByText("Connection lost. Reconnecting to the active run…")).toBeNull();
+    expect(screen.queryByText("Run interrupted. Reconnecting to the active run…")).toBeNull();
     expect(screen.queryByText("The stream ended unexpectedly. Retry to continue.")).toBeNull();
-    expect(screen.queryByText("Connection lost and recovery failed. You can retry safely now.")).toBeNull();
+    expect(screen.queryByText("Run interrupted and recovery failed. You can retry safely now.")).toBeNull();
     expect(screen.queryByRole("button", { name: "Continue" })).toBeNull();
   });
 
@@ -636,7 +636,7 @@ describe("/ai page deferred hydration", () => {
       expect(screen.getByText("The active run stopped making durable progress. Choose how to continue.")).toBeTruthy();
     });
 
-    expect(screen.queryByText("Connection lost. Reconnecting to the active run…")).toBeNull();
+    expect(screen.queryByText("Run interrupted. Reconnecting to the active run…")).toBeNull();
     expect(screen.queryByText("The stream ended unexpectedly. Retry to continue.")).toBeNull();
     expect(screen.queryAllByText("The active run stopped making durable progress. Choose how to continue.")).toHaveLength(1);
   });
