@@ -1,6 +1,10 @@
-import { fileExists, findCandidateTestFiles, isConfiguredDomainFile, isTestFile } from "../../shared.mjs";
-
-const DEFAULT_DOMAINS = ["lib/agent/", "lib/server/agent/", "lib/server/ai/"];
+import {
+  REQUIRE_RUNTIME_TEST_DOMAINS,
+  getRuntimeTestImpactWaiver,
+  hasNearbyRuntimeTest,
+  isGovernedRuntimeTestFile,
+  loadRuntimeTestImpactWaivers,
+} from "../../runtime-test-governance.mjs";
 
 export default {
   meta: {
@@ -25,14 +29,15 @@ export default {
     },
   },
   create(context) {
-    const domains = context.options[0]?.domains ?? DEFAULT_DOMAINS;
+    const domains = context.options[0]?.domains ?? REQUIRE_RUNTIME_TEST_DOMAINS;
     const filename = context.filename;
-    if (isTestFile(filename) || !isConfiguredDomainFile(filename, domains)) return {};
+    if (!isGovernedRuntimeTestFile(filename, domains)) return {};
+    const waivers = loadRuntimeTestImpactWaivers();
 
     return {
       Program(node) {
-        const candidates = findCandidateTestFiles(filename);
-        if (!candidates.some(fileExists)) {
+        const waiver = getRuntimeTestImpactWaiver(filename, waivers);
+        if (!hasNearbyRuntimeTest(filename) && !waiver) {
           context.report({
             node,
             messageId: "missingTest",

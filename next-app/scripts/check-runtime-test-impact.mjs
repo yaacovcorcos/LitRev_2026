@@ -1,58 +1,56 @@
 #!/usr/bin/env node
 
-import fs from "node:fs";
 import path from "node:path";
 import { execSync } from "node:child_process";
+import { pathToFileURL } from "node:url";
 
-const WAIVER_PATH = path.join(process.cwd(), "eslint/runtime-test-impact-waivers.json");
-const RUNTIME_PREFIXES = ["lib/agent/", "lib/server/agent/", "lib/server/ai/"];
-const TEST_RE = /(?:^|\/)__tests__\/|\.test\.[jt]sx?$/;
+import { buildRuntimeTestImpactSummary, loadRuntimeTestImpactWaivers } from "../eslint/runtime-test-governance.mjs";
 
-function run(command) {
-  return execSync(command, { cwd: process.cwd(), encoding: "utf8" }).trim();
+function run(command, cwd) {
+  return execSync(command, { cwd, encoding: "utf8" }).trim();
 }
 
-function loadWaivers() {
-  const raw = fs.readFileSync(WAIVER_PATH, "utf8");
-  const parsed = JSON.parse(raw);
-  return Array.isArray(parsed.waivers) ? parsed.waivers : [];
-}
-
-function getChangedFiles() {
-  const base = process.env.GITHUB_BASE_REF ? `origin/${process.env.GITHUB_BASE_REF}` : "origin/main";
-  const mergeBase = run(`git merge-base HEAD ${base}`);
-  const output = run(`git diff --name-only ${mergeBase}..HEAD`);
+export function getChangedFiles({
+  cwd = process.cwd(),
+  env = process.env,
+} = {}) {
+  const base = env.GITHUB_BASE_REF ? `origin/${env.GITHUB_BASE_REF}` : "origin/main";
+  const mergeBase = run(`git merge-base HEAD ${base}`, cwd);
+  const output = run(`git diff --name-only ${mergeBase}..HEAD`, cwd);
   return output ? output.split("\n").filter(Boolean) : [];
 }
 
-function hasTestImpact(runtimeFile, changedFiles) {
-  const fileBase = path.basename(runtimeFile, path.extname(runtimeFile));
-  return changedFiles.some((candidate) => TEST_RE.test(candidate) && candidate.includes(fileBase));
+export function runRuntimeTestImpactCheck(argv = [], {
+  cwd = process.cwd(),
+  env = process.env,
+  stdout = (line) => {
+    process.stdout.write(`${line}\n`);
+  },
+  stderr = (line) => {
+    process.stderr.write(`${line}\n`);
+  },
+  getChangedFilesImpl = getChangedFiles,
+  generatedAt = new Date().toISOString(),
+} = {}) {
+  void argv;
+
+  const waivers = loadRuntimeTestImpactWaivers(cwd);
+  const summary = buildRuntimeTestImpactSummary({
+    changedFiles: getChangedFilesImpl({ cwd, env }),
+    waivers,
+    waiverPath: path.relative(cwd, path.join(cwd, "eslint/runtime-test-impact-waivers.json")),
+    generatedAt,
+  });
+
+  if (summary.failures.length > 0) {
+    stderr(JSON.stringify(summary, null, 2));
+    return 1;
+  }
+
+  stdout(JSON.stringify(summary, null, 2));
+  return 0;
 }
 
-const changedFiles = getChangedFiles();
-const waivers = loadWaivers();
-
-const changedRuntimeFiles = changedFiles.filter((file) => (
-  RUNTIME_PREFIXES.some((prefix) => file.startsWith(prefix))
-  && !TEST_RE.test(file)
-));
-
-const failures = changedRuntimeFiles.filter((file) => {
-  const waived = waivers.some((entry) => entry.file === file);
-  return !waived && !hasTestImpact(file, changedFiles);
-});
-
-const summary = {
-  checkedAt: new Date().toISOString(),
-  changedRuntimeFiles,
-  failures,
-  waiverPath: path.relative(process.cwd(), WAIVER_PATH),
-};
-
-if (failures.length > 0) {
-  console.error(JSON.stringify(summary, null, 2));
-  process.exit(1);
+if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) {
+  process.exit(runRuntimeTestImpactCheck(process.argv.slice(2)));
 }
-
-console.log(JSON.stringify(summary, null, 2));

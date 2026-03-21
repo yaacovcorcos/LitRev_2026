@@ -21,6 +21,8 @@ Commands:
 - `npm run lint:governance:phase2-hotspots`
 - `npm run lint:governance:phase3-searchability`
 - `npm run lint:governance:phase4-async`
+- `npm run lint:governance:phase4-tests`
+- `npm run check:runtime-test-impact`
 - `npm run lint:governance:audit`
 - `npm run test:eslint-rules`
 - `npm run test:governance-tooling`
@@ -52,6 +54,17 @@ Contracts:
     - `litrev/prefer-async-await-in-ui-runtime`
     - `litrev/no-promise-chain-side-effects`
     - `litrev/no-window-location-navigation`
+- `npm run lint:governance:phase4-tests` is the stable verification command for the completed Phase 4 runtime test-governance surface only:
+  - `litrev/require-tests-for-runtime-files`
+    - `lib/agent/**`
+    - `lib/server/agent/**`
+    - `lib/server/ai/tools/**`
+  - `litrev/prefer-colocated-tests-in-selected-domains`
+    - `lib/agent/**`
+- `npm run check:runtime-test-impact` is the stable changed-file companion to the Phase 4 test-governance contract:
+  - it consumes the same governed domains and waiver file as the two lint rules
+  - it does not carry parallel domain logic
+  - it accepts only one-file waivers with concrete test paths
 - the Phase 2 hot-spot verifier intentionally bundles the current async-cleanup rules for that same surface only; it confirms the completed hot-spot cleanup contract and does not imply broader Phase 4 completion
 - `scripts/**` is intentionally included only for the Phase 1 logging rules (`litrev/no-catch-console-error` and `litrev/no-log-and-throw-same-block`)
 - the governance audit baseline still excludes `scripts/**` by design; audit roots and lint-enforcement scope are not identical
