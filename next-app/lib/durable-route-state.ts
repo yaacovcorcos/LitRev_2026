@@ -5,6 +5,7 @@ import {
   type OnboardingStepId,
   type OnboardingStepStatus,
 } from "@/lib/schemas/onboarding";
+import type { DraftMode, DraftSectionId } from "@/types/draft";
 
 export type SearchParamsReader = {
   get(name: string): string | null;
@@ -121,6 +122,43 @@ export function buildAiRouteHref(state: AiRouteState): string {
   const params = buildAiRouteSearchParams(state);
   const query = params.toString();
   return query.length > 0 ? `/ai?${query}` : "/ai";
+}
+
+export const DRAFT_MODE_QUERY_PARAM = "mode" as const;
+export const DRAFT_SECTION_QUERY_PARAM = "section" as const;
+
+export type DraftRouteState = {
+  mode: DraftMode | null;
+  sectionId: DraftSectionId | null;
+};
+
+function normalizeDraftMode(
+  value: string | null | undefined,
+): DraftMode | null {
+  const normalized = normalizeOptionalString(value);
+  return normalized === "section" || normalized === "full" ? normalized : null;
+}
+
+export function readDraftRouteState(
+  searchParams: SearchParamsReader,
+): DraftRouteState {
+  return {
+    mode: normalizeDraftMode(searchParams.get(DRAFT_MODE_QUERY_PARAM)),
+    sectionId: normalizeOptionalString(searchParams.get(DRAFT_SECTION_QUERY_PARAM)),
+  };
+}
+
+export function buildDraftRouteSearchParams(
+  state: DraftRouteState,
+): URLSearchParams {
+  const params = new URLSearchParams();
+  if (state.mode) {
+    params.set(DRAFT_MODE_QUERY_PARAM, state.mode);
+  }
+  if (state.sectionId) {
+    params.set(DRAFT_SECTION_QUERY_PARAM, state.sectionId);
+  }
+  return params;
 }
 
 export const PROTOCOL_SECTION_QUERY_PARAM = "section" as const;

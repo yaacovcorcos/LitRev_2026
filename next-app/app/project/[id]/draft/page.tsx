@@ -51,8 +51,6 @@ import { DraftTopBar, DraftFormattingPanel } from "./DraftToolbar";
 import {
   EMPTY_IDS,
   studyLabel,
-  isBaseSectionKey,
-  isDraftMode,
   clamp,
   docHasContent,
   jsonToText,
@@ -69,11 +67,18 @@ import { COARSE_POINTER_MEDIA_QUERY, MOBILE_VIEWPORT_MEDIA_QUERY } from "@/lib/m
 import { isMobileDraftV2Enabled } from "@/lib/mobile/feature-flags";
 import { isContextToolbarV1Enabled } from "@/lib/context-capture/feature-flags";
 import {
+  buildDraftRouteSearchParams,
+  readDraftRouteState,
+  type DraftRouteState,
+} from "@/lib/durable-route-state";
+import {
+  buildCanonicalDraftRouteState,
   canUseDraftSectionMode,
   getVisibleFullDraftSectionIds,
   resolveDraftEvidenceTarget,
   resolveDraftMode,
   resolveFullDraftActiveSection,
+  resolveDraftRouteProjection,
   resolveSectionModeActiveSection,
 } from "@/lib/draftStateContracts";
 
@@ -131,9 +136,7 @@ function DraftContent() {
   const sendToCopilotAction = getContextCaptureAction("send_to_copilot");
   const rewriteSelectionAction = getContextCaptureAction("rewrite_selection");
   const checkClaimSupportAction = getContextCaptureAction("check_claim_support");
-
-  const queryMode = searchParams.get("mode");
-  const querySection = searchParams.get("section");
+  const draftRouteState = useMemo(() => readDraftRouteState(searchParams), [searchParams]);
 
   const [draft, setDraft] = useState<DraftState>(createDefaultDraftState);
   const normalizeForEditor = useCallback(
@@ -145,33 +148,34 @@ function DraftContent() {
     [studies]
   );
 
-  const applyDraftFromQuery = useCallback(
-    (loaded: DraftState) => {
+  const routeStateRef = useRef<DraftRouteState>(draftRouteState);
+  routeStateRef.current = draftRouteState;
+
+  const applyDraftRouteProjection = useCallback(
+    (
+      loaded: DraftState,
+      routeState: DraftRouteState,
+      fallbackMode: DraftMode = loaded.mode,
+      fallbackActiveSection: DraftSectionId | null = loaded.activeSection,
+    ) => {
       const order = [...loaded.sectionOrder];
-      const rawQuery = querySection?.trim();
-      const sectionFromQuery =
-        rawQuery
-        && (isBaseSectionKey(rawQuery) || loaded.customSections?.[rawQuery])
-        && order.includes(rawQuery)
-          ? rawQuery
-          : null;
-      const modeCandidate = isDraftMode(queryMode) ? queryMode : loaded.mode;
-      const mode = resolveDraftMode(modeCandidate, order);
-      const candidate = sectionFromQuery ?? loaded.activeSection;
-      const activeSection = mode === "section"
-        ? resolveSectionModeActiveSection(candidate, order)
-        : resolveFullDraftActiveSection(candidate, order);
+      const projection = resolveDraftRouteProjection(
+        routeState,
+        fallbackMode,
+        fallbackActiveSection,
+        order,
+      );
       return {
         ...loaded,
-        mode,
-        activeSection,
+        mode: projection.mode,
+        activeSection: projection.activeSection,
         sectionOrder: order,
         panels: {
           ...loaded.panels,
         },
       };
     },
-    [queryMode, querySection]
+    []
   );
 
   const { draft: cachedDraft, warmDomain } = useProjectData();
@@ -180,20 +184,20 @@ function DraftContent() {
   useEffect(() => {
     // Always paint from localStorage first (instant)
     const local = loadDraftState(id);
-    setDraft(normalizeForEditor(applyDraftFromQuery(local)));
+    setDraft(normalizeForEditor(applyDraftRouteProjection(local, routeStateRef.current)));
     appliedCachedRef.current = false;
-  }, [id, applyDraftFromQuery, normalizeForEditor]);
+  }, [id, applyDraftRouteProjection, normalizeForEditor]);
 
   // Apply server data from preload cache when ready
   useEffect(() => {
     if (appliedCachedRef.current) return;
     if (cachedDraft.state === "ready" && cachedDraft.data) {
-      setDraft(normalizeForEditor(applyDraftFromQuery(cachedDraft.data)));
+      setDraft(normalizeForEditor(applyDraftRouteProjection(cachedDraft.data, routeStateRef.current)));
       appliedCachedRef.current = true;
     } else if (cachedDraft.state === "idle") {
       warmDomain("draft");
     }
-  }, [cachedDraft, applyDraftFromQuery, normalizeForEditor, warmDomain]);
+  }, [cachedDraft, applyDraftRouteProjection, normalizeForEditor, warmDomain]);
 
   useEffect(() => {
     setDraft((prev) => normalizeForEditor(prev));
@@ -209,7 +213,8 @@ function DraftContent() {
   const pendingContentRef = useRef<Record<DraftSectionId, JSONContent>>(draft.contentBySection);
   const dirtyContentKeysRef = useRef<Set<DraftSectionId>>(new Set());
   const contentCommitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastSyncedUrlRef = useRef<string>("");
+  const lastSyncedUrlRef = useRef<string | null>(null);
+  const pendingPushedUrlRef = useRef<string | null>(null);
 
   const [isAddEvidenceOpen, setAddEvidenceOpen] = useState(false);
   const [isFormatOpen, setFormatOpen] = useState(false);
@@ -439,17 +444,52 @@ function DraftContent() {
   }, [draft.sectionOrder]);
 
   useEffect(() => {
+    setDraft((prev) => {
+      const projection = resolveDraftRouteProjection(
+        draftRouteState,
+        prev.mode,
+        prev.activeSection,
+        prev.sectionOrder,
+      );
+      return prev.mode === projection.mode && prev.activeSection === projection.activeSection
+        ? prev
+        : {
+            ...prev,
+            mode: projection.mode,
+            activeSection: projection.activeSection,
+          };
+    });
+  }, [draftRouteState.mode, draftRouteState.sectionId]);
+
+  useEffect(() => {
     if (!id) return;
-    const params = new URLSearchParams();
-    params.set("mode", resolvedMode);
-    if (routeActiveSection) {
-      params.set("section", routeActiveSection);
+    const canonicalRouteState = buildCanonicalDraftRouteState(
+      draft.mode,
+      draft.activeSection,
+      draft.sectionOrder,
+    );
+    const params = buildDraftRouteSearchParams(canonicalRouteState);
+    const query = params.toString();
+    const nextUrl = query.length > 0 ? `/project/${id}/draft?${query}` : `/project/${id}/draft`;
+    const currentQuery = searchParams.toString();
+    const currentUrl = currentQuery.length > 0 ? `/project/${id}/draft?${currentQuery}` : `/project/${id}/draft`;
+    if (pendingPushedUrlRef.current) {
+      if (currentUrl === pendingPushedUrlRef.current) {
+        pendingPushedUrlRef.current = null;
+      } else {
+        return;
+      }
     }
-    const nextUrl = `/project/${id}/draft?${params.toString()}`;
-    if (lastSyncedUrlRef.current === nextUrl) return;
+    if (currentUrl === nextUrl) {
+      lastSyncedUrlRef.current = nextUrl;
+      return;
+    }
+    if (lastSyncedUrlRef.current === nextUrl) {
+      return;
+    }
     lastSyncedUrlRef.current = nextUrl;
     router.replace(nextUrl, { scroll: false });
-  }, [id, resolvedMode, routeActiveSection, router]);
+  }, [draft.activeSection, draft.mode, draft.sectionOrder, id, router, searchParams]);
 
   useEffect(() => {
     return () => {
@@ -496,6 +536,16 @@ function DraftContent() {
     editorBySectionRef.current[key] = editor;
   }, []);
 
+  const queueUserRouteNavigation = useCallback((routeState: DraftRouteState) => {
+    if (!id) return;
+    const params = buildDraftRouteSearchParams(routeState);
+    const query = params.toString();
+    const nextUrl = query.length > 0 ? `/project/${id}/draft?${query}` : `/project/${id}/draft`;
+    lastSyncedUrlRef.current = nextUrl;
+    pendingPushedUrlRef.current = nextUrl;
+    router.push(nextUrl, { scroll: false });
+  }, [id, router]);
+
   const focusEditorForSection = useCallback((key: DraftSectionId) => {
     const editor = editorBySectionRef.current[key] ?? activeEditorRef.current;
     if (!editor) return;
@@ -510,6 +560,7 @@ function DraftContent() {
     dragOverKey, dragOverPosition, draggingKey, handleDragStart, handleDragOver, handleDrop, handleDragEnd,
   } = useDraftSections({
     updateDraft, activeSectionRef, activeEditorRef, queueContentUpdate, flushContentCommit, focusEditorForSection,
+    queueUserRouteNavigation,
   });
 
   // Export state + callbacks (extracted hook)
@@ -537,10 +588,18 @@ function DraftContent() {
         return;
       }
 
+      if (routeActiveSection !== key) {
+        queueUserRouteNavigation({ mode: "full", sectionId: key });
+      }
+
       updateDraft((prev) => (prev.activeSection === key ? prev : { ...prev, activeSection: key }));
       el.scrollIntoView({ behavior: "smooth", block: "start" });
       setTimeout(() => focusEditorForSection(key), 250);
       return;
+    }
+
+    if (routeActiveSection !== key) {
+      queueUserRouteNavigation({ mode: "section", sectionId: key });
     }
 
     const sectionEditor = activeEditorRef.current;
@@ -572,8 +631,13 @@ function DraftContent() {
       ? resolveSectionModeActiveSection(routeActiveSection, draft.sectionOrder)
       : resolveFullDraftActiveSection(routeActiveSection, draft.sectionOrder);
 
+    if (mode === resolvedMode && nextActiveSection === routeActiveSection) {
+      return;
+    }
+
+    queueUserRouteNavigation({ mode, sectionId: nextActiveSection });
+
     updateDraft((prev) => {
-      if (prev.mode === mode && prev.activeSection === nextActiveSection) return prev;
       return {
         ...prev,
         mode,
