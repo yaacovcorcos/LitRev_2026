@@ -3,7 +3,7 @@
 import { useState } from "react";
 import styles from "@/styles/artifacts.module.css";
 import type { ArtifactStatus, ProtocolSuggestionPayload } from "@/types/artifacts";
-import { getArtifactSettledLabel, isArtifactReviewable } from "@/lib/artifacts/reviewability";
+import { isArtifactReviewable } from "@/lib/artifacts/reviewability";
 import { getFieldLabel, isArrayField } from "@/lib/protocol-fields";
 
 function formatValue(value: unknown): string {
@@ -28,7 +28,6 @@ export function ProtocolEditCard({ payload, status = "proposed", onAccept, onDis
     const label = getFieldLabel(field);
     const arrayField = isArrayField(field);
     const isReviewable = isArtifactReviewable(status);
-    const settledLabel = getArtifactSettledLabel(status);
 
     const [editing, setEditing] = useState(false);
     const [editValue, setEditValue] = useState(() =>
@@ -173,8 +172,6 @@ export function ProtocolEditCard({ payload, status = "proposed", onAccept, onDis
                         {hasEdited ? "Accept Edited & Save" : "Accept & Save to Protocol"}
                     </button>
                 </div>
-            ) : settledLabel ? (
-                <div className={styles.applyMeta}>{settledLabel}</div>
             ) : null}
         </>
     );

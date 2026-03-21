@@ -8,7 +8,6 @@ import type { CopilotPage } from "@/types/ai";
 import type { AgentMode } from "@/types/agent";
 import type { TimelineItem } from "@/types/timeline";
 import { createNoteAction } from "@/app/actions/notes";
-import { undoArtifactAction } from "@/app/actions/agent";
 import { selectActiveProgress, normalizeTimelineProgressItems } from "@/lib/ai/active-progress";
 import { TimelineRenderer } from "./copilot/TimelineRenderer";
 import { CopilotInput } from "./copilot/CopilotInput";
@@ -21,7 +20,6 @@ import { ReasoningModeDropdown } from "./copilot/ReasoningModeDropdown";
 import { ConversationPicker } from "./ui/ConversationPicker";
 import { decideCopilotWheelContainment } from "./copilot/scrollContainment";
 import { generateChatUnificationRequestKey } from "@/lib/ai/chat-unification-telemetry";
-import { dispatchProjectDataChanged } from "@/lib/project-data-events";
 import { messagesToTimeline } from "./copilot/StreamReducer";
 import styles from "./ProjectCopilot.module.css";
 import type { StudyUpdatePayload } from "@/types/artifacts";
@@ -88,10 +86,10 @@ export function ProjectCopilot({
         renameConversation,
         sendMessage,
         handleReviewArtifact,
+        handleUndoArtifact,
         approveArtifactsBatch,
         executePlan,
         reconnectRun,
-        reconcileArtifactStatus,
         selectedModel,
         // Autonomy settings (Phase 7)
         setShowAutonomySettings,
@@ -183,28 +181,9 @@ export function ProjectCopilot({
                 ? changedLabels[0]
                 : `${changedLabels.slice(0, 2).join(", ")}${changedLabels.length > 2 ? ` +${changedLabels.length - 2} more` : ""}`;
 
-            notify("success", `Updated study: ${summary}`, {
-                action: {
-                    label: "Undo",
-                    onClick: async () => {
-                        const result = await undoArtifactAction(artifact.id);
-                        if (!result.success) {
-                            notify("error", result.error ?? "Failed to undo study update");
-                            return;
-                        }
-                        reconcileArtifactStatus(artifact.id, "rejected", "Undone by user");
-                        dispatchProjectDataChanged({
-                            projectId,
-                            domains: ["ledger"],
-                            reason: "server_mutation",
-                            source: "study_update_undo",
-                        });
-                        notify("info", "Study update undone");
-                    },
-                },
-            });
+            notify("success", `Updated study: ${summary}`);
         }
-    }, [messages, notify, page, projectId, reconcileArtifactStatus, studyId]);
+    }, [messages, notify, page, projectId, studyId]);
 
     const handleTimelineContainerElement = useCallback((node: HTMLDivElement | null) => {
         timelineRef.current = node;
@@ -517,6 +496,7 @@ export function ProjectCopilot({
                     onSuggestionClick={handleSuggestionClick}
                     onActionPrompt={handleActionPrompt}
                     onReviewArtifact={handleReviewArtifact}
+                    onUndoArtifact={handleUndoArtifact}
                     onExecutePlan={executePlan}
                     onSaveToNotes={handleSaveToNotes}
                     onRetryLastMessage={retryLastMessage}

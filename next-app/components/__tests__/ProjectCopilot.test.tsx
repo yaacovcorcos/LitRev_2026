@@ -4,11 +4,9 @@ import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ProjectCopilot } from "../ProjectCopilot";
 
-const { mockUseProjectCopilot, mockNotify, mockUndoArtifactAction, mockDispatchProjectDataChanged } = vi.hoisted(() => ({
+const { mockUseProjectCopilot, mockNotify } = vi.hoisted(() => ({
   mockUseProjectCopilot: vi.fn(),
   mockNotify: vi.fn(),
-  mockUndoArtifactAction: vi.fn(),
-  mockDispatchProjectDataChanged: vi.fn(),
 }));
 
 vi.mock("@/contexts/ProjectCopilotContext", () => ({
@@ -19,23 +17,11 @@ vi.mock("@/app/actions/notes", () => ({
   createNoteAction: vi.fn(),
 }));
 
-vi.mock("@/app/actions/agent", () => ({
-  undoArtifactAction: mockUndoArtifactAction,
-}));
-
 vi.mock("@/contexts/NotificationContext", () => ({
   useNotifications: () => ({
     notify: mockNotify,
   }),
 }));
-
-vi.mock("@/lib/project-data-events", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/project-data-events")>("@/lib/project-data-events");
-  return {
-    ...actual,
-    dispatchProjectDataChanged: mockDispatchProjectDataChanged,
-  };
-});
 
 vi.mock("next/navigation", () => ({
   useParams: () => ({ id: "project-1" }),
@@ -133,6 +119,7 @@ describe("ProjectCopilot suggestion wiring", () => {
       reconcileArtifactStatus: vi.fn(),
       sendMessage: vi.fn(),
       handleReviewArtifact: vi.fn(),
+      handleUndoArtifact: vi.fn(),
       approveArtifactsBatch: vi.fn(),
       executePlan: vi.fn(),
       shouldOfferSummary: false,
@@ -148,8 +135,6 @@ describe("ProjectCopilot suggestion wiring", () => {
     mockUseProjectCopilot.mockReturnValue(baseContextValue);
     mockTimelineRenderer.mockReset();
     mockNotify.mockReset();
-    mockUndoArtifactAction.mockReset();
-    mockDispatchProjectDataChanged.mockReset();
   });
 
   it("prefills panel input when empty-state suggestion is clicked", async () => {
@@ -428,7 +413,7 @@ describe("ProjectCopilot suggestion wiring", () => {
     expect(screen.queryByRole("status")).toBeNull();
   });
 
-  it("notifies and supports undo for newly auto-applied study updates on the study page", async () => {
+  it("notifies for newly auto-applied study updates on the study page without toast-primary undo", async () => {
     const initialContextValue = {
       ...baseContextValue,
       messages: [] as unknown[],
@@ -450,14 +435,8 @@ describe("ProjectCopilot suggestion wiring", () => {
       />,
     );
 
-    const reconcileArtifactStatus = vi.fn();
-    mockUndoArtifactAction.mockResolvedValue({
-      success: true,
-      artifact: { id: "artifact-study-1", status: "rejected", reviewNote: "Undone by user" },
-    });
     mockUseProjectCopilot.mockReturnValue({
       ...baseContextValue,
-      reconcileArtifactStatus,
       messages: [
         {
           id: "artifact-msg-1",
@@ -520,28 +499,8 @@ describe("ProjectCopilot suggestion wiring", () => {
     );
 
     await waitFor(() => {
-      expect(mockNotify).toHaveBeenCalledWith(
-        "success",
-        expect.stringContaining("Updated study:"),
-        expect.objectContaining({
-          action: expect.objectContaining({ label: "Undo" }),
-        }),
-      );
+      expect(mockNotify).toHaveBeenCalledWith("success", expect.stringContaining("Updated study:"));
     });
-
-    const undoAction = mockNotify.mock.calls[0]?.[2]?.action?.onClick as (() => Promise<void>) | undefined;
-    expect(undoAction).toBeTypeOf("function");
-    await undoAction?.();
-
-    expect(mockUndoArtifactAction).toHaveBeenCalledWith("artifact-study-1");
-    expect(reconcileArtifactStatus).toHaveBeenCalledWith(
-      "artifact-study-1",
-      "rejected",
-      "Undone by user",
-    );
-    expect(mockDispatchProjectDataChanged).toHaveBeenCalledWith(expect.objectContaining({
-      projectId: "project-1",
-      domains: ["ledger"],
-    }));
+    expect(mockNotify.mock.calls[0]?.[2]).toBeUndefined();
   });
 });

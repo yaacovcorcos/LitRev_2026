@@ -43,6 +43,7 @@ import { MemoryCard } from "../artifacts/MemoryCard";
 import { MemoryForgetCard } from "../artifacts/MemoryForgetCard";
 import { ScopingReportCard } from "../artifacts/ScopingReportCard";
 import { UserInputCard } from "../artifacts/UserInputCard";
+import { ConfirmDialog } from "../ConfirmDialog";
 import { StreamingProgress } from "./StreamingProgress";
 import { addMentionedStudyAction } from "@/app/actions/ledger";
 import { type MentionedStudy } from "@/lib/ai/mentioned-studies";
@@ -53,6 +54,7 @@ import { getReasoningSummaryPreview } from "@/lib/ai/reasoning-visibility";
 import { getContextTargetKey } from "@/lib/context-capture/targets";
 import { buildExecutionTraceEntries, type ExecutionTraceEntry } from "./execution-trace-grouping";
 import { isArtifactReviewable } from "@/lib/artifacts/reviewability";
+import { getArtifactInlineActionModel, type ArtifactInlineActionDescriptor } from "@/lib/artifacts/inline-actions";
 import styles from "./TimelineMessages.module.css";
 import artifactStyles from "@/styles/artifacts.module.css";
 import markdownStyles from "@/styles/markdown.module.css";
@@ -106,6 +108,16 @@ const TOOL_ACTIVITY_META: Record<"queued" | "running" | "done" | "failed" | "int
 
 type TimelineToolActivityItem = Extract<TimelineItem, { type: "tool_activity" }>;
 type TimelineErrorItem = Extract<TimelineItem, { type: "error" }>;
+
+type ArtifactConfirmationState = {
+    artifactId: string;
+    descriptor: ArtifactInlineActionDescriptor;
+    title: string;
+    message: string;
+    confirmLabel: string;
+    variant: "danger" | "default";
+    onConfirm: () => Promise<void>;
+} | null;
 
 type PresentedTimelineItem =
     | { kind: "single"; item: TimelineItem }
@@ -249,6 +261,66 @@ function derivePubMedSequenceAnnotation(items: TimelineToolActivityItem[]): stri
     }
 
     return null;
+}
+
+function getArtifactConfirmationContent(
+    descriptor: ArtifactInlineActionDescriptor,
+    item: TimelineArtifact,
+): { title: string; message: string; confirmLabel: string; variant: "danger" | "default" } {
+    switch (descriptor.class) {
+        case "undo":
+            return {
+                title: "Undo applied change?",
+                message: `This will revert the applied changes for "${item.title}".`,
+                confirmLabel: "Undo",
+                variant: "danger",
+            };
+        case "review_resolution":
+            switch (descriptor.kind) {
+                case "exclude":
+                    return {
+                        title: "Exclude study?",
+                        message: `This will mark "${item.title}" as excluded.`,
+                        confirmLabel: "Exclude",
+                        variant: "danger",
+                    };
+                case "reject":
+                    return {
+                        title: "Reject proposal?",
+                        message: `This will reject "${item.title}" and remove it from the pending review set.`,
+                        confirmLabel: "Reject",
+                        variant: "danger",
+                    };
+                case "dismiss":
+                    return {
+                        title: "Dismiss proposal?",
+                        message: `This will dismiss "${item.title}" without applying it.`,
+                        confirmLabel: "Dismiss",
+                        variant: "danger",
+                    };
+                case "archive":
+                    return {
+                        title: "Archive memory?",
+                        message: `This will archive the memory changes proposed in "${item.title}".`,
+                        confirmLabel: "Archive",
+                        variant: "danger",
+                    };
+                default:
+                    return {
+                        title: "Confirm action?",
+                        message: `Apply this action to "${item.title}"?`,
+                        confirmLabel: "Confirm",
+                        variant: "default",
+                    };
+            }
+        default:
+            return {
+                title: "Confirm action?",
+                message: `Apply this action to "${item.title}"?`,
+                confirmLabel: "Confirm",
+                variant: "default",
+            };
+    }
 }
 
 function buildPresentedTimeline(items: TimelineItem[]): PresentedTimelineItem[] {
@@ -681,6 +753,8 @@ export type TimelineRendererProps = {
     onActionPrompt?: (prompt: string, mode?: AgentMode) => void;
     /** Callback when user reviews an artifact (accept/reject). editedPayload is set when user edits before accepting. */
     onReviewArtifact?: (artifactId: string, status: "accepted" | "rejected", note?: string, editedPayload?: Record<string, unknown>) => void;
+    /** Callback when user undoes a supported applied artifact. */
+    onUndoArtifact?: (artifactId: string) => void | Promise<void>;
     /** Callback when user clicks Run on a plan artifact with selected step indexes. */
     onExecutePlan?: (artifactId: string, selectedIndexes: number[]) => void;
     /** Callback to save a message to notes */
@@ -745,6 +819,7 @@ function TimelineRendererInner({
     onSuggestionClick,
     onActionPrompt,
     onReviewArtifact,
+    onUndoArtifact,
     onExecutePlan,
     onSaveToNotes,
     onRetryLastMessage,
@@ -776,6 +851,8 @@ function TimelineRendererInner({
     const [savedNoteId, setSavedNoteId] = useState<string | null>(null);
     const [savingNoteId, setSavingNoteId] = useState<string | null>(null);
     const [collapsedTraceByAssistantId, setCollapsedTraceByAssistantId] = useState<Record<string, boolean>>({});
+    const [pendingArtifactMutation, setPendingArtifactMutation] = useState<{ artifactId: string; actionKey: string } | null>(null);
+    const [confirmationState, setConfirmationState] = useState<ArtifactConfirmationState>(null);
 
     // ── Shared scroll hook ──────────────────────────────────────────────────
     const {
@@ -930,15 +1007,86 @@ function TimelineRendererInner({
         }
     }, [onSaveToNotes]);
 
+    const executeArtifactMutation = useCallback(async (
+        artifactId: string,
+        actionKey: string,
+        execute: () => void | Promise<void>,
+    ) => {
+        if (pendingArtifactMutation) return;
+        setPendingArtifactMutation({ artifactId, actionKey });
+        try {
+            await execute();
+        } finally {
+            setPendingArtifactMutation((current) =>
+                current?.artifactId === artifactId && current.actionKey === actionKey ? null : current,
+            );
+        }
+    }, [pendingArtifactMutation]);
+
+    const requestArtifactConfirmation = useCallback((
+        item: TimelineArtifact,
+        descriptor: ArtifactInlineActionDescriptor,
+        onConfirm: () => Promise<void>,
+    ) => {
+        const confirmation = getArtifactConfirmationContent(descriptor, item);
+        setConfirmationState({
+            artifactId: item.artifactId,
+            descriptor,
+            title: confirmation.title,
+            message: confirmation.message,
+            confirmLabel: confirmation.confirmLabel,
+            variant: confirmation.variant,
+            onConfirm,
+        });
+    }, []);
+
     const renderArtifactContent = (item: TimelineArtifact) => {
-        const handleReview = (status: "accepted" | "rejected", note?: string, editedPayload?: Record<string, unknown>) => {
-            onReviewArtifact?.(item.artifactId, status, note, editedPayload);
+        const actionModel = getArtifactInlineActionModel(item.artifactType, item.status);
+        const actionMap = new Map(actionModel.actions.map((action) => [action.key, action] as const));
+        const isMutationBusy = pendingArtifactMutation !== null;
+        const activeMutationForCard = pendingArtifactMutation?.artifactId === item.artifactId ? pendingArtifactMutation : null;
+        const canRunArtifactActions = !isLoading && !isConversationLoading && !isMutationBusy;
+        const getActionDescriptor = (key: string): ArtifactInlineActionDescriptor | null => actionMap.get(key) ?? null;
+
+        const runReview = (
+            descriptor: ArtifactInlineActionDescriptor,
+            status: "accepted" | "rejected",
+            note?: string,
+            editedPayload?: Record<string, unknown>,
+        ) => {
+            if (!onReviewArtifact) return;
+            const execute = () => executeArtifactMutation(item.artifactId, descriptor.key, () =>
+                onReviewArtifact(item.artifactId, status, note, editedPayload),
+            );
+            if (descriptor.requiresConfirmation) {
+                requestArtifactConfirmation(item, descriptor, execute);
+                return;
+            }
+            void execute();
         };
 
+        const runUndo = (descriptor: Extract<ArtifactInlineActionDescriptor, { class: "undo" }>) => {
+            if (!onUndoArtifact) return;
+            const execute = () => executeArtifactMutation(item.artifactId, descriptor.key, () =>
+                onUndoArtifact(item.artifactId),
+            );
+            if (descriptor.requiresConfirmation) {
+                requestArtifactConfirmation(item, descriptor, execute);
+                return;
+            }
+            void execute();
+        };
+
+        const handleReview = (
+            descriptor: ArtifactInlineActionDescriptor,
+            status: "accepted" | "rejected",
+            note?: string,
+            editedPayload?: Record<string, unknown>,
+        ) => runReview(descriptor, status, note, editedPayload);
+
         const jumpTo = projectId ? getJumpToProps(item.artifactType, projectId) : {};
-        const canAct = !isLoading && !isConversationLoading;
-        const isReviewable = isArtifactReviewable(item.status);
-        const canReview = canAct && isReviewable;
+        const isReviewable = actionModel.isReviewable;
+        const canReview = canRunArtifactActions && isReviewable;
 
         const wrapperProps = {
             artifactId: item.artifactId,
@@ -946,14 +1094,21 @@ function TimelineRendererInner({
             status: item.status,
             title: item.title,
             version: item.version,
-            onReview: handleReview,
+            onReview: () => undefined,
             ...jumpTo,
+            settledLabel: actionModel.settled.label,
+            settledAction: actionModel.settled.undoAction && onUndoArtifact ? {
+                label: "Undo",
+                onClick: () => runUndo(actionModel.settled.undoAction!),
+                pending: activeMutationForCard?.actionKey === actionModel.settled.undoAction.key,
+                disabled: isMutationBusy,
+            } : null,
         };
 
         switch (item.artifactType) {
             case "plan": {
                 const planPayload = item.payload as PlanPayload;
-                const canExecutePlan = !!onExecutePlan && canAct && Boolean(planPayload.execution);
+                const canExecutePlan = !!onExecutePlan && canRunArtifactActions && Boolean(planPayload.execution);
                 return (
                     <ArtifactWrapper
                         {...wrapperProps}
@@ -963,7 +1118,10 @@ function TimelineRendererInner({
                             payload={planPayload}
                             status={item.status}
                             onRun={canExecutePlan ? (selectedIndexes) => onExecutePlan(item.artifactId, selectedIndexes) : undefined}
-                            onCancel={() => handleReview("rejected")}
+                            onCancel={() => {
+                                const descriptor = getActionDescriptor("reject");
+                                if (descriptor) handleReview(descriptor, "rejected");
+                            }}
                             canRun={canExecutePlan}
                         />
                     </ArtifactWrapper>
@@ -981,8 +1139,14 @@ function TimelineRendererInner({
                         <StudyCard
                             payload={studyPayload}
                             status={item.status}
-                            onKeep={() => handleReview(isExclusion ? "rejected" : "accepted")}
-                            onExclude={(reason) => handleReview(isExclusion ? "accepted" : "rejected", reason)}
+                            onKeep={() => {
+                                const descriptor = getActionDescriptor("keep");
+                                if (descriptor) handleReview(descriptor, isExclusion ? "rejected" : "accepted");
+                            }}
+                            onExclude={(reason) => {
+                                const descriptor = getActionDescriptor("exclude");
+                                if (descriptor) handleReview(descriptor, isExclusion ? "accepted" : "rejected", reason);
+                            }}
                             canAct={canReview}
                         />
                     </ArtifactWrapper>
@@ -1000,8 +1164,14 @@ function TimelineRendererInner({
                         <StudyUpdateCard
                             payload={updatePayload}
                             status={item.status}
-                            onAccept={() => handleReview("accepted")}
-                            onReject={() => handleReview("rejected")}
+                            onAccept={() => {
+                                const descriptor = getActionDescriptor("apply");
+                                if (descriptor) handleReview(descriptor, "accepted");
+                            }}
+                            onReject={() => {
+                                const descriptor = getActionDescriptor("reject");
+                                if (descriptor) handleReview(descriptor, "rejected");
+                            }}
                             canAct={canReview}
                         />
                     </ArtifactWrapper>
@@ -1017,7 +1187,10 @@ function TimelineRendererInner({
                         <ScreeningBatch
                             payload={item.payload as ScreeningBatchPayload}
                             status={item.status}
-                            onAcceptAll={() => handleReview("accepted")}
+                            onAcceptAll={() => {
+                                const descriptor = getActionDescriptor("apply");
+                                if (descriptor) handleReview(descriptor, "accepted");
+                            }}
                             canAct={canReview}
                         />
                     </ArtifactWrapper>
@@ -1042,13 +1215,15 @@ function TimelineRendererInner({
                                 onSuggestionClick(prompt);
                             }}
                             onAccept={(editedValue) => {
+                                const descriptor = getActionDescriptor("apply");
+                                if (!descriptor) return;
                                 if (editedValue !== undefined) {
-                                    handleReview("accepted", undefined, {
+                                    handleReview(descriptor, "accepted", undefined, {
                                         ...protocolPayload,
                                         value: editedValue,
                                     });
                                 } else {
-                                    handleReview("accepted");
+                                    handleReview(descriptor, "accepted");
                                 }
                             }}
                             canAct={canReview}
@@ -1074,7 +1249,7 @@ function TimelineRendererInner({
                                 }
                                 onSuggestionClick(prompt);
                             }}
-                            canAct={canAct}
+                            canAct={canRunArtifactActions}
                         />
                     </ArtifactWrapper>
                 );
@@ -1098,7 +1273,10 @@ function TimelineRendererInner({
                                 }
                                 onSuggestionClick(prompt);
                             }}
-                            onSave={() => handleReview("accepted")}
+                            onSave={() => {
+                                const descriptor = getActionDescriptor("apply");
+                                if (descriptor) handleReview(descriptor, "accepted");
+                            }}
                             canAct={canReview}
                         />
                     </ArtifactWrapper>
@@ -1113,7 +1291,10 @@ function TimelineRendererInner({
                         <DraftBlock
                             payload={item.payload as DraftDiffPayload}
                             status={item.status}
-                            onAccept={() => handleReview("accepted")}
+                            onAccept={() => {
+                                const descriptor = getActionDescriptor("apply");
+                                if (descriptor) handleReview(descriptor, "accepted");
+                            }}
                             canAct={canReview}
                         />
                     </ArtifactWrapper>
@@ -1128,9 +1309,18 @@ function TimelineRendererInner({
                         <MemoryCard
                             payload={item.payload as MemoryProposalPayload}
                             status={item.status}
-                            onAccept={() => handleReview("accepted")}
-                            onReject={() => handleReview("rejected")}
-                            onEditAndAccept={(edited) => handleReview("accepted", undefined, edited as unknown as Record<string, unknown>)}
+                            onAccept={() => {
+                                const descriptor = getActionDescriptor("remember");
+                                if (descriptor) handleReview(descriptor, "accepted");
+                            }}
+                            onReject={() => {
+                                const descriptor = getActionDescriptor("dismiss");
+                                if (descriptor) handleReview(descriptor, "rejected");
+                            }}
+                            onEditAndAccept={(edited) => {
+                                const descriptor = getActionDescriptor("remember");
+                                if (descriptor) handleReview(descriptor, "accepted", undefined, edited as unknown as Record<string, unknown>);
+                            }}
                             canAct={canReview}
                         />
                     </ArtifactWrapper>
@@ -1145,8 +1335,14 @@ function TimelineRendererInner({
                         <MemoryForgetCard
                             payload={item.payload as MemoryForgetProposalPayload}
                             status={item.status}
-                            onAccept={() => handleReview("accepted")}
-                            onReject={() => handleReview("rejected")}
+                            onAccept={() => {
+                                const descriptor = getActionDescriptor("archive");
+                                if (descriptor) handleReview(descriptor, "accepted");
+                            }}
+                            onReject={() => {
+                                const descriptor = getActionDescriptor("dismiss");
+                                if (descriptor) handleReview(descriptor, "rejected");
+                            }}
                             canAct={canReview}
                         />
                     </ArtifactWrapper>
@@ -1613,6 +1809,7 @@ function TimelineRendererInner({
     }
 
     return (
+        <>
         <div className={`${styles.copilotBody} ${variant === "page" ? styles.pageLayout : ""}`} ref={setContainerRef} onScroll={onScroll}>
             <div className={styles.chatList}>
                 {hasMore && (
@@ -1680,5 +1877,20 @@ function TimelineRendererInner({
                 <span className="material-icons-round">keyboard_arrow_down</span>
             </button>
         </div>
+        <ConfirmDialog
+            isOpen={Boolean(confirmationState)}
+            title={confirmationState?.title ?? "Confirm action"}
+            message={confirmationState?.message ?? ""}
+            confirmLabel={confirmationState?.confirmLabel ?? "Confirm"}
+            variant={confirmationState?.variant ?? "default"}
+            onCancel={() => setConfirmationState(null)}
+            onConfirm={() => {
+                const pendingConfirmation = confirmationState;
+                setConfirmationState(null);
+                if (!pendingConfirmation) return;
+                void pendingConfirmation.onConfirm();
+            }}
+        />
+        </>
     );
 }

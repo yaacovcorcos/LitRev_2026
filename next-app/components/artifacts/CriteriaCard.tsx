@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { ArtifactStatus, CriteriaCardPayload } from "@/types/artifacts";
-import { getArtifactSettledLabel, isArtifactReviewable } from "@/lib/artifacts/reviewability";
+import { isArtifactReviewable } from "@/lib/artifacts/reviewability";
 import styles from "@/styles/artifacts.module.css";
 
 export type CriteriaCardProps = {
@@ -19,7 +19,6 @@ export function CriteriaCard({ payload, status = "proposed", onSave, onAdd, onRe
     const [addingType, setAddingType] = useState<"inclusion" | "exclusion" | null>(null);
     const [addValue, setAddValue] = useState("");
     const isReviewable = isArtifactReviewable(status);
-    const settledLabel = getArtifactSettledLabel(status);
 
     const commitAdd = () => {
         if (addingType && addValue.trim() && onAdd) {
@@ -101,8 +100,6 @@ export function CriteriaCard({ payload, status = "proposed", onSave, onAdd, onRe
                         Save to Protocol
                     </button>
                 </div>
-            ) : settledLabel ? (
-                <div className={styles.applyMeta}>{settledLabel}</div>
             ) : null}
         </>
     );
