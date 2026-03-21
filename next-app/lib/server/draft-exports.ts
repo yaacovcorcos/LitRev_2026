@@ -95,8 +95,10 @@ export async function generateDraftExport(
       exportMode: options.mode,
       sectionCount: compiled.sections.length,
       referenceCount: compiled.references.length,
-      citationIssueCount: compiled.warnings.length,
-      blockingCitationIssueCount: compiled.blockingWarningCount,
+      diagnosticCount: compiled.diagnostics.summary.totalCount,
+      citationIssueCount: compiled.diagnostics.summary.citationIssueCount,
+      readinessWarningCount: compiled.diagnostics.summary.readinessIssueCount,
+      blockingCitationIssueCount: compiled.diagnostics.summary.blockingCitationIssueCount,
       exportedAt: compiled.exportedAt,
     },
   });

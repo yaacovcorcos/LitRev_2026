@@ -160,6 +160,12 @@ describe("generateDraftExport", () => {
         filename: "Alpha-Draft-v1.docx",
         mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         version: 1,
+        metadata: expect.objectContaining({
+          diagnosticCount: 0,
+          citationIssueCount: 0,
+          readinessWarningCount: 0,
+          blockingCitationIssueCount: 0,
+        }),
       }),
     );
     const uploadInput = mockUploadGeneratedProjectFile.mock.calls[0]?.[2];
@@ -173,6 +179,52 @@ describe("generateDraftExport", () => {
         kind: "export",
         fileAssetId: "file-1",
         label: "Export Alpha-Draft-v1.docx",
+      }),
+    );
+  });
+
+  it("allows strict exports when only advisory readiness diagnostics remain", async () => {
+    const result = await generateDraftExport(
+      scope,
+      "proj-1",
+      {
+        ...createDraftSnapshot(),
+        contentBySection: {
+          [UNSECTIONED_DRAFT_ID]: { type: "doc", content: [{ type: "paragraph" }] },
+          abstract: {
+            type: "doc",
+            content: [
+              {
+                type: "paragraph",
+                content: [{ type: "text", text: "Meaningful prose without inline citations." }],
+              },
+            ],
+          },
+          references: { type: "doc", content: [{ type: "paragraph" }] },
+        },
+        ledgerBySection: {
+          [UNSECTIONED_DRAFT_ID]: [],
+          abstract: ["study-1"],
+          references: [],
+        },
+      },
+      {
+        format: "docx",
+        mode: "strict",
+      },
+    );
+
+    expect(result.format).toBe("docx");
+    expect(mockUploadGeneratedProjectFile).toHaveBeenCalledWith(
+      scope,
+      "proj-1",
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          diagnosticCount: 2,
+          citationIssueCount: 0,
+          readinessWarningCount: 2,
+          blockingCitationIssueCount: 0,
+        }),
       }),
     );
   });

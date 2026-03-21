@@ -123,7 +123,7 @@ export async function renderDocxExport(document: CompiledDraftExportDocument): P
       new Paragraph({
         children: [
           new TextRun({
-            text: `Export warnings: ${document.warnings.length} citation issue${document.warnings.length === 1 ? "" : "s"} detected.`,
+            text: `Export diagnostics: ${document.warnings.length} diagnostic${document.warnings.length === 1 ? "" : "s"} detected.`,
             italics: true,
           }),
         ],

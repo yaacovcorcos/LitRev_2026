@@ -1,4 +1,6 @@
-import { compileDraftCitations, type CitationIssue } from "@/lib/citation-compiler";
+import { compileDraftCitations } from "@/lib/citation-compiler";
+import { compileDraftDiagnosticsFromNormalized } from "@/lib/draft-diagnostics/compile";
+import type { DraftDiagnostic } from "@/lib/draft-diagnostics/model";
 import { formatBibliographyEntries } from "@/lib/citation-formatting";
 import { normalizeDraftState, type DraftStateInput } from "@/lib/draftStorage";
 import {
@@ -12,14 +14,13 @@ import type {
   CompiledDraftExportWarning,
 } from "./model";
 
-function toWarning(issue: CitationIssue): CompiledDraftExportWarning {
-  const severity = issue.type === "missing_study" || issue.type === "missing_study_id" ? "error" : "warning";
+function toWarning(diagnostic: DraftDiagnostic): CompiledDraftExportWarning {
   return {
-    type: issue.type,
-    severity,
-    sectionId: issue.sectionId,
-    studyId: issue.studyId,
-    message: issue.message,
+    type: diagnostic.code,
+    severity: diagnostic.severity === "error" ? "error" : "warning",
+    sectionId: diagnostic.sectionId,
+    studyId: diagnostic.studyId,
+    message: diagnostic.message,
   };
 }
 
@@ -36,6 +37,10 @@ export function compileDraftExportDocument(params: {
     sectionOrder: normalizedDraft.sectionOrder,
     studies: params.studies,
     includeNumberInNodes: true,
+  });
+  const diagnostics = compileDraftDiagnosticsFromNormalized({
+    draft: normalizedDraft,
+    compiledCitations,
   });
   const sectionMetaById = new Map(
     normalizedDraft.manuscript.sections.map((section) => [section.sectionId, section]),
@@ -67,14 +72,15 @@ export function compileDraftExportDocument(params: {
     orderedStudyIds: compiledCitations.orderedStudyIds,
     studies: params.studies,
   });
-  const warnings = compiledCitations.issues.map(toWarning);
+  const warnings = diagnostics.diagnostics.map(toWarning);
 
   return {
     projectTitle: params.projectTitle,
     exportedAt,
     sections,
     references,
+    diagnostics,
     warnings,
-    blockingWarningCount: warnings.filter((warning) => warning.severity === "error").length,
+    blockingWarningCount: diagnostics.summary.blockingCitationIssueCount,
   };
 }
