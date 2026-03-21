@@ -7,6 +7,7 @@
 import "server-only";
 import type { PlanPayload, PlanStep } from "@/types/artifacts";
 import { PlanSchema } from "@/types/artifacts";
+import { logServerWarn } from "@/lib/server/logging";
 import { AVAILABLE_TOOLS } from "@/lib/server/ai/tools/base";
 
 // ── Multi-step detection ────────────────────────────────────────────────────
@@ -279,7 +280,7 @@ export function validatePlan(raw: unknown, allowedToolNames?: string[]): PlanPay
     const parsed = PlanSchema.safeParse(raw);
     if (!parsed.success) {
         const issues = parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");
-        console.warn(`[planner] Plan failed Zod validation: ${issues}`);
+        logServerWarn("planner", "plan failed zod validation", { issues });
         return null;
     }
 
@@ -287,7 +288,7 @@ export function validatePlan(raw: unknown, allowedToolNames?: string[]): PlanPay
 
     // 2. Must have at least one step
     if (plan.steps.length === 0) {
-        console.warn("[planner] Plan has zero steps");
+        logServerWarn("planner", "plan has zero steps");
         return null;
     }
 
@@ -300,11 +301,13 @@ export function validatePlan(raw: unknown, allowedToolNames?: string[]): PlanPay
 
     for (const step of plan.steps) {
         if (!step.toolName) {
-            console.warn("[planner] Plan contains non-executable step without toolName");
+            logServerWarn("planner", "plan contains non-executable step without toolName");
             return null;
         }
         if (step.toolName && !validTools.has(step.toolName)) {
-            console.warn(`[planner] Plan references disallowed tool: ${step.toolName}`);
+            logServerWarn("planner", "plan references disallowed tool", {
+                toolName: step.toolName,
+            });
             return null;
         }
     }

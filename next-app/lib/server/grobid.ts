@@ -1,6 +1,7 @@
 import "server-only";
 
 import { XMLParser } from "fast-xml-parser";
+import { logServerWarn } from "@/lib/server/logging";
 
 const DOI_REGEX = /10\.\d{4,9}\/[\w./;()<>:-]+/i;
 
@@ -315,7 +316,10 @@ export async function extractHeaderWithGrobid(pdfBuffer: Buffer): Promise<Grobid
         });
 
         if (!response.ok) {
-            console.warn(`[grobid] Header extraction failed: ${response.status} ${response.statusText}`);
+            logServerWarn("grobid", "header extraction failed", {
+                status: response.status,
+                statusText: response.statusText,
+            });
             return null;
         }
 
@@ -323,9 +327,9 @@ export async function extractHeaderWithGrobid(pdfBuffer: Buffer): Promise<Grobid
         return parseGrobidHeaderXml(teiXml);
     } catch (error) {
         if (error instanceof Error && error.name === "AbortError") {
-            console.warn("[grobid] Header extraction timed out");
+            logServerWarn("grobid", "header extraction timed out");
         } else {
-            console.warn("[grobid] Header extraction request failed", error);
+            logServerWarn("grobid", "header extraction request failed", undefined, error);
         }
         return null;
     } finally {
@@ -353,7 +357,10 @@ export async function extractFulltextWithGrobid(pdfBuffer: Buffer): Promise<Grob
         });
 
         if (!response.ok) {
-            console.warn(`[grobid] Fulltext extraction failed: ${response.status} ${response.statusText}`);
+            logServerWarn("grobid", "fulltext extraction failed", {
+                status: response.status,
+                statusText: response.statusText,
+            });
             return null;
         }
 
@@ -361,9 +368,9 @@ export async function extractFulltextWithGrobid(pdfBuffer: Buffer): Promise<Grob
         return parseGrobidFulltextXml(teiXml);
     } catch (error) {
         if (error instanceof Error && error.name === "AbortError") {
-            console.warn("[grobid] Fulltext extraction timed out");
+            logServerWarn("grobid", "fulltext extraction timed out");
         } else {
-            console.warn("[grobid] Fulltext extraction request failed", error);
+            logServerWarn("grobid", "fulltext extraction request failed", undefined, error);
         }
         return null;
     } finally {

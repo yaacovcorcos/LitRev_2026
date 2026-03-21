@@ -2,6 +2,7 @@ import "server-only";
 
 import { emitEvent, type EmitEventExtras } from "@/lib/server/agent/events";
 import { markRunDurabilityDegraded } from "@/lib/server/agent/run";
+import { logServerError, logServerWarn } from "@/lib/server/logging";
 import type { RunEventType } from "@/types/agent";
 
 export type RunEventDurabilityClass = "recovery_required" | "observability_only";
@@ -61,7 +62,8 @@ export async function recordRunEvent(
         const logContext = params.logContext ?? `run-event:${params.type}`;
 
         if (failureMode === "soft") {
-            console.warn(`[run-event-recorder] soft-failed ${logContext}`, {
+            logServerWarn("run-event-recorder", "soft-failed run event persistence", {
+                logContext,
                 runId: params.runId,
                 type: params.type,
                 durabilityClass,
@@ -74,13 +76,14 @@ export async function recordRunEvent(
             const degradationReason =
                 params.degradationReason ?? `${params.type}_persistence_failed`;
             await markRunDurabilityDegraded(params.runId, degradationReason).catch((markError) => {
-                console.error("[run-event-recorder] failed to persist degraded durability state", {
+                logServerError("run-event-recorder", "failed to persist degraded durability state", {
                     runId: params.runId,
                     type: params.type,
                     error: formatError(markError),
                 });
             });
-            console.error(`[run-event-recorder] degraded run after ${logContext}`, {
+            logServerError("run-event-recorder", "degraded run after persistence failure", {
+                logContext,
                 runId: params.runId,
                 type: params.type,
                 durabilityClass,

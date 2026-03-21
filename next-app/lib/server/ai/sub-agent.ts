@@ -31,6 +31,7 @@ import { recordRunEvent } from "@/lib/server/agent/run-event-recorder";
 import { dropShadowedInvalidToolCalls, getToolCallRepeatKey } from "./tool-helpers";
 import { evaluateToolPrerequisites } from "./tool-prerequisites";
 import { executeToolWithAutonomyCore } from "./tool-autonomy";
+import { logServerError, logServerWarn } from "@/lib/server/logging";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -138,7 +139,11 @@ function mapStopReasonToRunStatus(reason: StopReason | null): Extract<RunStatus,
 
 function logEventEmissionFailure(eventType: string, runId: string, error: unknown): void {
     const reason = error instanceof Error ? error.message : "unknown error";
-    console.warn(`[sub-agent] Failed to emit ${eventType} event for run ${runId}: ${reason}`);
+    logServerWarn("sub-agent", "failed to emit delegated run event", {
+        eventType,
+        runId,
+        reason,
+    });
 }
 
 // ── Execution ────────────────────────────────────────────────────────────────
@@ -201,7 +206,7 @@ export async function executeSubAgent(params: SubAgentParams): Promise<SubAgentR
         childRunId = childRun.id;
         childRunHeartbeat = startRunHeartbeat(childRun.id, {
             onError: (error) => {
-                console.warn("[sub-agent][run-heartbeat] failed", {
+                logServerWarn("sub-agent", "run heartbeat failed", {
                     runId: childRun.id,
                     error: error instanceof Error ? error.message : String(error),
                 });
@@ -292,14 +297,13 @@ export async function executeSubAgent(params: SubAgentParams): Promise<SubAgentR
 
             const sanitizedToolCalls = dropShadowedInvalidToolCalls(collectedToolCalls);
             if (sanitizedToolCalls.dropped.length > 0) {
-                console.warn(
-                    "[sub-agent] Dropped malformed shadowed tool calls:",
-                    sanitizedToolCalls.dropped.map((toolCall) => ({
+                logServerWarn("sub-agent", "dropped malformed shadowed tool calls", {
+                    droppedToolCalls: sanitizedToolCalls.dropped.map((toolCall) => ({
                         id: toolCall.id,
                         name: toolCall.name,
                         reason: toolCall.reason,
                     })),
-                );
+                });
                 collectedToolCalls.length = 0;
                 collectedToolCalls.push(...sanitizedToolCalls.toolCalls);
             }
@@ -485,7 +489,9 @@ export async function executeSubAgent(params: SubAgentParams): Promise<SubAgentR
                     : childRunStatus;
                 await endRun(childRunId, resolvedStatus);
             } catch (error) {
-                console.error("[sub-agent] Failed to finalize child run", error);
+                logServerError("sub-agent", "failed to finalize child run", {
+                    runId: childRunId,
+                }, error);
             }
         }
     }

@@ -6,6 +6,7 @@ import {
     continueCitationMetadataCached,
     resolveCitationMetadataCached,
 } from "@/lib/server/citation-metadata";
+import { logServerError } from "@/lib/server/logging";
 
 /**
  * Server action to fetch citation metadata for a DOI or PubMed URL.
@@ -29,7 +30,7 @@ export async function fetchCitationMetadata(url: string): Promise<CitationResult
             },
         };
     } catch (error) {
-        console.error("[fetchCitationMetadata] failed:", error);
+        logServerError("citation-action", "fetch metadata failed", { url }, error);
         return { success: false, error: "Failed to fetch metadata" };
     }
 }
@@ -56,7 +57,7 @@ export async function continueCitationMetadata(url: string): Promise<CitationRes
             },
         };
     } catch (error) {
-        console.error("[continueCitationMetadata] failed:", error);
+        logServerError("citation-action", "continue metadata failed", { url }, error);
         return { success: false, error: "Failed to continue metadata" };
     }
 }

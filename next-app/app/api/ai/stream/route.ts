@@ -37,6 +37,7 @@ import {
 } from "@/lib/server/ai/chat-unification-runtime-metrics";
 import type { ContextCaptureTarget } from "@/types/context-capture";
 import { buildContextCapturePromptBlock } from "@/lib/server/ai/context-capture";
+import { logServerError } from "@/lib/server/logging";
 import {
     buildDurableContinuationContext,
     resolveDurableContinuationSource,
@@ -243,7 +244,11 @@ export async function POST(request: NextRequest) {
                                 }),
                             });
                         } catch (error) {
-                            console.error("Failed to ingest server run_end_observed metric:", error);
+                            logServerError("ai-stream-route", "failed to ingest run end observed metric", {
+                                surface,
+                                runId: lastRunEnd.runId ?? null,
+                                conversationId: lastRunEnd.conversationId ?? null,
+                            }, error);
                         }
                     };
                     runtimeRouter.use(async ({ event, thread: runtimeThread }, next) => {
@@ -420,7 +425,7 @@ export async function POST(request: NextRequest) {
             },
         });
     } catch (error) {
-        console.error("AI stream error:", error);
+        logServerError("ai-stream-route", "route failed", undefined, error);
         return new Response(
             JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
             { status: 500, headers: { "Content-Type": "application/json" } }

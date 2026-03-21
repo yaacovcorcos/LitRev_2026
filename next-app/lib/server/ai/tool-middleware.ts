@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { ToolResult } from "@/types/ai";
 import type { ToolExecutionContext } from "@/lib/server/ai/tools/base";
+import { logServerError } from "@/lib/server/logging";
 
 export type ToolExecutionRequest = {
   name: string;
@@ -207,7 +208,7 @@ export async function executeWithToolMiddleware(
         result = nextResult;
       }
     } catch (error) {
-      console.error("[tool-middleware] after hook failed", {
+      logServerError("tool-middleware", "after hook failed", {
         middleware: middleware.name ?? "unnamed",
         toolName: resolvedRequest.name,
         error: error instanceof Error ? error.message : String(error),

@@ -14,6 +14,7 @@ import type { Study, StudyDetails } from "@/types/ledger";
 import { createMemoriesFromDeepAnalysis } from "@/lib/server/memory/study-memory";
 import { sanitizeErrorMessage } from "@/lib/server/action-utils";
 import { withAuth } from "@/lib/server/auth/session";
+import { logServerError } from "@/lib/server/logging";
 import { projectIdSchema, studyIdSchema, resourceIdSchema } from "@/lib/schemas/ids";
 
 const extractionInputSchema = z.object({
@@ -152,7 +153,11 @@ export async function extractStudyFromPdfAction(
             };
         });
     } catch (err) {
-        console.error("Extraction action error:", err);
+        logServerError("extraction-action", "study extraction failed", {
+            projectId,
+            studyId,
+            fileAssetId,
+        }, err);
         return {
             success: false,
             error: sanitizeErrorMessage(err, "Unknown error during extraction", { allowRawMessage: true }),
@@ -242,13 +247,20 @@ export async function deepAnalyzeStudyAction(
                 { ...result.details, deepAnalysisComplete: true } as Record<string, unknown>,
                 result.quality
             ).catch((err) => {
-                console.error("Failed to create study memories from deep analysis:", err);
+                logServerError("extraction-action", "deep analysis memory creation failed", {
+                    projectId: v.projectId,
+                    studyId: v.studyId,
+                }, err);
             });
 
             return { success: true, study: updatedStudy };
         });
     } catch (err) {
-        console.error("Deep analysis action error:", err);
+        logServerError("extraction-action", "deep analysis failed", {
+            projectId,
+            studyId,
+            fileAssetId,
+        }, err);
         return {
             success: false,
             error: sanitizeErrorMessage(err, "Unknown error during deep analysis", { allowRawMessage: true }),

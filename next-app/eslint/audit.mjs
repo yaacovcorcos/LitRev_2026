@@ -77,6 +77,10 @@ function getUiFilePaths(filePaths) {
   return filePaths.filter((relativePath) => /^(app|components|contexts|hooks)\//.test(relativePath));
 }
 
+function getServerRuntimeFilePaths(filePaths) {
+  return filePaths.filter((relativePath) => /^(lib\/server|app\/actions|app\/api)\//.test(relativePath));
+}
+
 export function buildGovernanceAudit({ cwd = process.cwd(), generatedAt = new Date().toISOString() } = {}) {
   const allTrackedFiles = listGovernanceTrackedFiles({ cwd });
   const sourceFiles = allTrackedFiles.filter(isSourceFile);
@@ -97,6 +101,14 @@ export function buildGovernanceAudit({ cwd = process.cwd(), generatedAt = new Da
       }),
       catchConsoleError: countMatchingLines(sourceFiles, { cwd, regex: /catch\(console\.error\)/ }),
       rawConsoleCalls: countMatchingLines(sourceFiles, { cwd, regex: /console\.(error|warn|log|info)\(/ }),
+      serverRuntimeRawConsoleCalls: countMatchingLines(getServerRuntimeFilePaths(sourceFiles), {
+        cwd,
+        regex: /console\.(error|warn|log|info)\(/,
+      }),
+      uiClientRawConsoleCalls: countMatchingLines(getUiFilePaths(sourceFiles), {
+        cwd,
+        regex: /console\.(error|warn|log|info)\(/,
+      }),
       parentDirectoryImports: countMatchingLines(getUiFilePaths(sourceFiles), { cwd, regex: /from ['"]\.\.\// }),
       defaultExports: countMatchingLines(sourceFiles, { cwd, regex: /export default/ }),
       sourceFiles: sourceFiles.length,

@@ -5,6 +5,7 @@
 
 import "server-only";
 import { prisma } from "@/lib/server/prisma";
+import { logServerError } from "@/lib/server/logging";
 import type {
     AgentMode,
     RunAbnormalEndClassification,
@@ -312,7 +313,9 @@ export async function endRun(
     // Fire-and-forget: extract memories from completed conversations
     if (status === "completed" && run.conversationId && run.projectId) {
         scheduleMemoryExtraction(run.id, run.conversationId, run.projectId, run.userId ?? undefined)
-            .catch((err) => console.error("[conversation-extractor] Failed:", err));
+            .catch((err) => logServerError("conversation-extractor", "memory extraction failed", {
+                conversationId: run.conversationId,
+            }, err));
     }
 
     return run;

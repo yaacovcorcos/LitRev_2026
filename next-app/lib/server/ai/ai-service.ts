@@ -80,6 +80,7 @@ import { createIdempotencyMiddleware, executeWithToolMiddleware, type ToolExecut
 import { createToolPrerequisiteMiddleware, evaluateToolPrerequisites } from "./tool-prerequisites";
 import { resolveAuthenticatedIdentity } from "@/lib/server/auth/identity";
 import { computeLedgerCounts, computeStudyLedger } from "@/lib/server/ledger-utils";
+import { logServerError, logServerInfo, logServerWarn } from "@/lib/server/logging";
 import {
     dropShadowedInvalidToolCalls,
     getToolCallRepeatKey,
@@ -183,9 +184,9 @@ function logContextBranch(record: ContextBranchRecord, meta: {
         agentMode: meta.agentMode ?? null,
     };
     if (record.success) {
-        console.info("[ai][context-assembly] branch", payload);
+        logServerInfo("ai/context-assembly", "branch", payload);
     } else {
-        console.warn("[ai][context-assembly] branch failed", payload);
+        logServerWarn("ai/context-assembly", "branch failed", payload);
     }
 }
 
@@ -198,7 +199,7 @@ function logContextSummary(params: {
     projectId?: string | null;
     agentMode?: AgentMode;
 }) {
-    console.info("[ai][context-assembly] summary", {
+    logServerInfo("ai/context-assembly", "summary", {
         degraded: params.degraded,
         checkpointLabel: params.checkpointLabel ?? null,
         successfulBranches: params.records.filter((record) => record.success).map((record) => record.branch),
@@ -797,14 +798,13 @@ class AIService {
 
             const sanitizedToolCalls = dropShadowedInvalidToolCalls(collectedToolCalls);
             if (sanitizedToolCalls.dropped.length > 0) {
-                console.warn(
-                    "[ai-service] Dropped malformed shadowed tool calls:",
-                    sanitizedToolCalls.dropped.map((toolCall) => ({
+                logServerWarn("ai-service", "dropped malformed shadowed tool calls", {
+                    droppedToolCalls: sanitizedToolCalls.dropped.map((toolCall) => ({
                         id: toolCall.id,
                         name: toolCall.name,
                         reason: toolCall.reason,
                     })),
-                );
+                });
                 collectedToolCalls = sanitizedToolCalls.toolCalls;
             }
 
@@ -1025,7 +1025,7 @@ class AIService {
             } catch (error) {
                 const activeRunId = run.id;
                 await markRunFinalizationFailed(run.id).catch((markError) => {
-                    console.error("[ai-service] Failed to persist finalization failure", {
+                    logServerError("ai-service", "failed to persist finalization failure", {
                         runId: activeRunId,
                         error: markError,
                     });
@@ -1094,7 +1094,7 @@ class AIService {
             const activeRun = run;
             runHeartbeat = startRunHeartbeat(activeRun.id, {
                 onError: (error) => {
-                    console.warn("[ai][run-heartbeat] failed", {
+                    logServerWarn("ai/run-heartbeat", "failed", {
                         runId: activeRun.id,
                         error: error instanceof Error ? error.message : String(error),
                     });
@@ -1839,14 +1839,13 @@ class AIService {
 
                 const sanitizedToolCalls = dropShadowedInvalidToolCalls(collectedToolCalls);
                 if (sanitizedToolCalls.dropped.length > 0) {
-                    console.warn(
-                        "[ai-service] Dropped malformed shadowed tool calls:",
-                        sanitizedToolCalls.dropped.map((toolCall) => ({
+                    logServerWarn("ai-service", "dropped malformed shadowed tool calls", {
+                        droppedToolCalls: sanitizedToolCalls.dropped.map((toolCall) => ({
                             id: toolCall.id,
                             name: toolCall.name,
                             reason: toolCall.reason,
                         })),
-                    );
+                    });
                     collectedToolCalls = sanitizedToolCalls.toolCalls;
                 }
 
@@ -2252,7 +2251,7 @@ class AIService {
                 await closeTraceOnce({ aborted: true });
                 if (activeRunId) {
                     await markRunAbnormalEndClassification(activeRunId, "client_abort").catch((markError) => {
-                        console.error("[ai-service] Failed to persist client abort classification", {
+                        logServerError("ai-service", "failed to persist client abort classification", {
                             runId: activeRunId,
                             error: markError,
                         });
@@ -2295,7 +2294,7 @@ class AIService {
             if (run?.id) {
                 const activeRunId = run.id;
                 await markRunAbnormalEndClassification(run.id, "unknown").catch((markError) => {
-                    console.error("[ai-service] Failed to persist abnormal end classification", {
+                    logServerError("ai-service", "failed to persist abnormal end classification", {
                         runId: activeRunId,
                         error: markError,
                     });
@@ -2364,7 +2363,7 @@ class AIService {
                 try {
                     await finalizeRunOnce(fallbackStatus);
                 } catch (error) {
-                    console.error("[ai-service] Failed to finalize run in finally", {
+                    logServerError("ai-service", "failed to finalize run in finally", {
                         runId: run.id,
                         error,
                     });
@@ -2377,7 +2376,7 @@ class AIService {
                         finalRunStatus: finalizedRunStatus ?? fallbackStatus,
                     });
                 } catch (error) {
-                    console.error("[ai-service] Failed to close trace in finally", {
+                    logServerError("ai-service", "failed to close trace in finally", {
                         runId: run?.id,
                         error,
                     });

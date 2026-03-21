@@ -10,6 +10,7 @@ import {
   TelemetryAnonymousRateLimitedError,
   TelemetryProjectAccessDeniedError,
 } from "@/lib/server/telemetry-policy";
+import { logServerError } from "@/lib/server/logging";
 
 type AcceptedResponseBody = {
   success: true;
@@ -128,7 +129,7 @@ export function createTelemetryPostHandler<TResult>({
       }
 
       if (!isTelemetryIngestE2EMode()) {
-        console.error(`[telemetry/${logKey}] ingestion failed`, error);
+        logServerError(`telemetry/${logKey}`, "ingestion failed", undefined, error);
       }
 
       return responseJson(500, {

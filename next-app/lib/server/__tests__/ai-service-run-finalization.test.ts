@@ -511,7 +511,7 @@ describe("AIService run finalization", () => {
       chunks.findIndex((chunk) => chunk.type === "content"),
     );
     expect(warnSpy).toHaveBeenCalledWith(
-      "[ai][context-assembly] branch failed",
+      "[ai/context-assembly] branch failed",
       expect.objectContaining({
         branch: "memories",
         critical: false,
@@ -519,7 +519,7 @@ describe("AIService run finalization", () => {
       }),
     );
     expect(infoSpy).toHaveBeenCalledWith(
-      "[ai][context-assembly] summary",
+      "[ai/context-assembly] summary",
       expect.objectContaining({
         degraded: true,
       }),
@@ -551,7 +551,7 @@ describe("AIService run finalization", () => {
       checkpointLabel: "Continuing with reduced context due to a temporary database issue.",
     });
     expect(warnSpy).toHaveBeenCalledWith(
-      "[ai][context-assembly] branch failed",
+      "[ai/context-assembly] branch failed",
       expect.objectContaining({
         branch: "protocol",
         critical: false,

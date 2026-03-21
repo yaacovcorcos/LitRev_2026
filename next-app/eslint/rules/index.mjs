@@ -11,6 +11,7 @@ import noPromiseChainSideEffects from "./no-promise-chain-side-effects/index.mjs
 import noWindowLocationNavigation from "./no-window-location-navigation/index.mjs";
 import requireTestsForRuntimeFiles from "./require-tests-for-runtime-files/index.mjs";
 import preferColocatedTestsInSelectedDomains from "./prefer-colocated-tests-in-selected-domains/index.mjs";
+import noServerRuntimeConsole from "./no-server-runtime-console/index.mjs";
 
 export default {
   "no-default-export-except-framework": noDefaultExportExceptFramework,
@@ -26,4 +27,5 @@ export default {
   "no-window-location-navigation": noWindowLocationNavigation,
   "require-tests-for-runtime-files": requireTestsForRuntimeFiles,
   "prefer-colocated-tests-in-selected-domains": preferColocatedTestsInSelectedDomains,
+  "no-server-runtime-console": noServerRuntimeConsole,
 };

@@ -4,6 +4,7 @@ import crypto from "node:crypto";
 import OpenAI from "openai";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/server/prisma";
+import { logServerError } from "@/lib/server/logging";
 
 const EMBEDDING_MODEL = process.env.MEMORY_EMBEDDING_MODEL || "text-embedding-3-small";
 const EMBEDDING_DIMENSION = 1536;
@@ -538,7 +539,10 @@ export async function searchSemanticMemories(
         return hydrated.filter((memory) => memory.relevance >= options.minRelevance);
     } catch (error) {
         // Semantic retrieval is a ranking enhancement, never a hard dependency.
-        console.error("[memory] semantic retrieval failed; falling back to lexical ranking", error);
+        logServerError("memory", "semantic retrieval failed; falling back to lexical ranking", {
+            projectId: context.projectId ?? null,
+            studyId: context.studyId ?? null,
+        }, error);
         return [];
     }
 }
@@ -618,7 +622,7 @@ export async function validateSemanticRolloutStatus(): Promise<SemanticRolloutSt
             healthy: extensionInstalled && embeddingTablePresent && hnswIndexPresent,
         };
     } catch (error) {
-        console.error("[memory] semantic rollout validation failed", error);
+        logServerError("memory", "semantic rollout validation failed", undefined, error);
         return {
             extensionInstalled: false,
             embeddingTablePresent: false,

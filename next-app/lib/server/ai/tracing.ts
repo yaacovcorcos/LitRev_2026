@@ -6,6 +6,7 @@
  */
 
 import "server-only";
+import { logServerWarn } from "@/lib/server/logging";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -63,7 +64,7 @@ export async function initTracing(): Promise<void> {
         g.__langfuseSDK = sdk;
         g.__langfuseProcessor = processor;
     } catch (err) {
-        console.warn("[tracing] Failed to initialize Langfuse:", err);
+        logServerWarn("tracing", "failed to initialize langfuse", undefined, err);
     }
 }
 
@@ -104,7 +105,6 @@ export function startRunTrace(
 
     try {
         // Use dynamic require to avoid loading @langfuse/tracing when disabled
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
         const { startObservation } = require("@langfuse/tracing");
         const span = startObservation(
             "agent-run",

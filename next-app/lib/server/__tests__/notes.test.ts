@@ -455,7 +455,13 @@ describe("searchNotes", () => {
         const results = await searchNotes(PROJECT_ID, "hello");
 
         expect(results).toEqual([sampleNote]);
-        expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("FTS query failed"));
+        expect(warnSpy).toHaveBeenCalledWith(
+            "[notes.search] fts query failed, falling back to ilike scan",
+            {
+                projectId: PROJECT_ID,
+                reason: "fts unavailable",
+            },
+        );
         expect(mockFindMany).toHaveBeenCalledWith({
             where: {
                 projectId: PROJECT_ID,

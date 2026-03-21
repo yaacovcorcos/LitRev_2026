@@ -8,6 +8,7 @@ import {
     normalizeDoi,
     resolveCitationKey,
 } from "@/lib/citation-key";
+import { logServerError } from "@/lib/server/logging";
 
 export type CitationResolution = {
     metadata: CitationMetadata;
@@ -360,7 +361,7 @@ export async function fetchPubMedMetadata(
             doi,
         };
     } catch (error) {
-        console.error("[citation-metadata] PubMed fetch failed:", error);
+        logServerError("citation-metadata", "pubmed fetch failed", { pmid }, error);
         return null;
     }
 }
@@ -406,7 +407,7 @@ async function fetchICiteCitationCount(
             },
         };
     } catch (error) {
-        console.error("[citation-metadata] iCite fetch failed:", error);
+        logServerError("citation-metadata", "icite fetch failed", { pmid }, error);
         return { status: "provider_error" };
     }
 }
@@ -577,7 +578,7 @@ async function fetchCrossrefMetadataWithStatus(
             },
         };
     } catch (error) {
-        console.error("[citation-metadata] Crossref fetch failed:", error);
+        logServerError("citation-metadata", "crossref fetch failed", { doi }, error);
         return { metadata: null, status: "provider_error" };
     }
 }

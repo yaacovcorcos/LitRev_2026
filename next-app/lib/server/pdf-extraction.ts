@@ -1,6 +1,7 @@
 import "server-only";
 
 import { getAIService } from "./ai/ai-service";
+import { logServerError, logServerWarn } from "@/lib/server/logging";
 import {
     QUICK_EXTRACT_SYSTEM_PROMPT,
     DEEP_ANALYSIS_SYSTEM_PROMPT,
@@ -222,7 +223,7 @@ function parseAIJson(content: string): Record<string, unknown> | null {
     try {
         return JSON.parse(jsonStr);
     } catch {
-        console.error("Failed to parse AI response as JSON:", content);
+        logServerError("pdf-extraction", "failed to parse AI response as JSON", { content });
         return null;
     }
 }
@@ -434,7 +435,9 @@ export async function extractStudyFromPdf(
     try {
         const pdfBuffer = await fetchPdfFromStorage(storagePath);
         const grobidPromise = extractHeaderWithGrobid(pdfBuffer).catch((error) => {
-            console.warn("[pdf-extraction] GROBID header extraction failed", error);
+            logServerWarn("pdf-extraction", "grobid header extraction failed", {
+                storagePath,
+            }, error);
             return null;
         });
 
@@ -489,7 +492,10 @@ export async function extractStudyFromPdf(
                         "AI_FAILED",
                         error instanceof Error ? error.message : "Unknown AI extraction error"
                     );
-                console.warn("[pdf-extraction] AI quick extraction failed", aiFailure.message);
+                logServerWarn("pdf-extraction", "ai quick extraction failed", {
+                    storagePath,
+                    reason: aiFailure.message,
+                });
             }
         }
 

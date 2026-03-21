@@ -1,5 +1,6 @@
 import type { AIErrorEnvelope } from "@/types/ai";
 import { createToolCallParseErrorEnvelope } from "@/lib/ai/error-envelope";
+import { logServerWarn } from "@/lib/server/logging";
 
 /**
  * Self-Healing JSON
@@ -80,7 +81,10 @@ export function parseToolArgs(
         : Array.isArray(parsed)
             ? "got array"
             : `got ${typeof parsed}`;
-    console.warn(`[${provider}] Failed to parse tool args for ${toolName}: ${reason}`);
+    logServerWarn(provider, "failed to parse tool args", {
+        toolName,
+        reason,
+    });
     return {
         success: false,
         errorMeta: createToolCallParseErrorEnvelope({
