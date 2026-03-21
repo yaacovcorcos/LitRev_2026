@@ -200,26 +200,30 @@ Default rule: prefer updating the right existing section or idea rather than cre
   - How the UI should show queued, running, completed, and blocked items
   - How queue mode should interact with tool calls, memory updates, and pending user-input requests
 
-## Memory and Protocol
+## Open-Source Reuse Candidates
 
-### Fix the Boundary Between Memory Updates and Protocol Updates
+### Evaluate ai-scanner as an AI Security QA Harness, Not a Code-Quality Tool
 - Status: exploring
-- Summary: The app needs a clearer rule for when information should update memory versus when it should update the protocol.
+- Summary: `0din-ai/ai-scanner` looks potentially useful as an external AI security QA system for LitRev's chat and agent surfaces, but it should not be treated as a general code-quality tool.
+- Repo:
+  - `https://github.com/0din-ai/ai-scanner`
 - Why this matters:
-  - The current behavior can mix durable preferences and workflow habits with project methodology decisions.
-  - Users should be able to trust where a change will live and what it will affect.
-  - Protocol changes and memory changes have different meanings, scopes, and review expectations.
+  - LitRev has real AI surfaces with chat, tool use, memory, protocol mutation, and search/scoping flows that may benefit from formal adversarial testing.
+  - A scanner like this could help catch jailbreaks, prompt-injection weaknesses, unsafe model behavior, or leakage risks before they ship broadly.
+  - It solves a different problem from product correctness, UI quality, or ordinary code quality.
+- Current understanding:
+  - The project positions itself as an AI model security scanner built on NVIDIA garak.
+  - It supports scanning API targets and browser-based chat UIs.
+  - It appears best suited as a separate red-team or QA harness, not something to embed directly into LitRev product code.
 - Direction:
-  - Clarify the contract for what belongs in memory and what belongs in protocol.
-  - Make the system more consistent about when each store is updated.
-  - Reduce confusion when the app interprets a user statement as a lasting preference versus a project-specific methodological decision.
+  - Consider it for staging or preview-environment AI security QA against LitRev's AI entry points.
+  - Evaluate it specifically for chat safety, tool-calling safety, memory/protocol boundary abuse, and prompt-injection-style behavior.
+  - Do not frame it internally as a path to "perfect quality code."
 - Open questions:
-  - Which kinds of statements should always map to protocol
-  - Which kinds of statements should always map to memory
-  - When the app should ask before writing to one or the other
-  - How conflicts between remembered preferences and protocol state should be surfaced
-
-## Ledger and Study Intake
+  - Whether LitRev needs a dedicated adversarial AI-security testing pass at this stage
+  - Whether `ai-scanner` itself is the right harness or whether using `garak` directly would be simpler
+  - Which LitRev surfaces should be scanned first if adopted
+  - Whether the operational overhead of a separate Rails/Docker scanner stack is justified
 
 ### Evaluate LiteParse as a Narrow PDF Intake Spike, Not a Pipeline Replacement
 - Status: exploring
@@ -245,6 +249,27 @@ Default rule: prefer updating the right existing section or idea rather than cre
   - Whether screenshots plus bounding boxes are valuable enough for chat/agent workflows to justify integration
   - Whether Vercel/runtime constraints make it operationally awkward compared with the current server-side stack
   - Whether the best use is a fallback/parser supplement rather than a replacement
+
+## Memory and Protocol
+
+### Fix the Boundary Between Memory Updates and Protocol Updates
+- Status: exploring
+- Summary: The app needs a clearer rule for when information should update memory versus when it should update the protocol.
+- Why this matters:
+  - The current behavior can mix durable preferences and workflow habits with project methodology decisions.
+  - Users should be able to trust where a change will live and what it will affect.
+  - Protocol changes and memory changes have different meanings, scopes, and review expectations.
+- Direction:
+  - Clarify the contract for what belongs in memory and what belongs in protocol.
+  - Make the system more consistent about when each store is updated.
+  - Reduce confusion when the app interprets a user statement as a lasting preference versus a project-specific methodological decision.
+- Open questions:
+  - Which kinds of statements should always map to protocol
+  - Which kinds of statements should always map to memory
+  - When the app should ask before writing to one or the other
+  - How conflicts between remembered preferences and protocol state should be surfaced
+
+## Ledger and Study Intake
 
 ### Make Ledger Duplicate Detection Identifier-First
 - Status: exploring
