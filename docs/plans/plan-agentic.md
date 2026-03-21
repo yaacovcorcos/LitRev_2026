@@ -98,6 +98,7 @@ Every fix entry must include:
 - **P10 Rollout Flags:** Mention flow and scoping decision-card behavior are feature-flagged (`NEXT_PUBLIC_CHAT_STUDY_MENTIONS_V1`, `NEXT_PUBLIC_SCOPING_DECISION_CARD_V2`).
 - **Scoping Mode (P10):** Dedicated pre-protocol routing now runs through a server-owned workflow contract (`discover -> synthesize -> propose -> handoff`) with an exploratory-search cap, low-autonomy search-pack preview instead of a blocking first-pass approval pause, natural-language handoff/default carry-forward, and proposal-only protocol mutation.
 - **Reasoning Stream Support (Current):** `reasoning_*` stream events are wired through the shared timeline path on the main chat surfaces, but provider output quality and readability remain inconsistent across models/providers. Structured process trace remains the primary transparency mechanism, and provider reasoning remains additive rather than required for comprehension.
+- **Burn-In Is A Validation Gate, Not A Substitute For Baseline Product Quality:** `U1.6` in `docs/plans/chatRuntime.md` plus `docs/runbooks/chat-runtime-burn-in.md` remains the later-stage runtime sign-off path, but it should only be treated as active validation once ordinary manual agent use is clean enough that burn-in is measuring convergence rather than discovering obvious product-breakage.
 - **Proposal-State Tool Context:** Proposal-style tool results now surface whether they are `proposed` vs `auto_applied` in the model-visible tool-message context, so assistant replies can distinguish review-only changes from already-applied ones.
 - **Plan Heuristic Guardrails:** Plan-before-act heuristics now require explicit extraction/writing verbs for `extract_pdf` and `update_note`, reducing false execution plans for read-only PDF/section questions.
 - **Delegation Runtime Now Uses The Shared Safety Contract:** delegated child runs now reuse the same autonomy-aware execution/finalization core as direct execution, level-1 delegated actions fail as structured approval-required blocks instead of running, delegated proposal artifacts stay reviewable unless direct policy allows auto-apply, and delegated `ask_user` bubbles through the existing parent `user_input_required` flow.
@@ -136,16 +137,31 @@ Every fix entry must include:
 - Delegated child work bypassing review boundaries or swallowing clarification requests.
 - Plan execution exceeding the tool surface or mode the user actually approved.
 - Popup implying mutation capability it cannot actually render or complete honestly.
+- Visible assistant output leaking continuation/runtime scaffolding or other machine-only payloads into normal chat.
+- Broken reconnect/recovery states that leave the user with contradictory, dead-end, or obviously misleading next actions.
+- Transparency falling back to noisy provider/process prose because the structured runtime trace is not strong enough to stand on its own.
 
 ## Active Fixes
 *Immediate remediation work for shipped behavior that is broken, misleading, or lower quality than the intended contract.*
 
+- **`FIX-012` Agent baseline stability and transparency reset**
+  - **Severity:** P0 trust/usability
+  - **Symptom:** ordinary agent use still exposes visible internal/runtime scaffolding, noisy or low-value transparency, brittle reconnect/recovery behavior, and poor long-running task reliability. The product is not yet stable enough for `U1.6` burn-in to serve as meaningful sign-off rather than bug discovery.
+  - **Desired end state:** the default agent experience is clean, minimal, and trustworthy: visible output contains only user-facing answer text plus structured process trace; provider reasoning is optional and secondary; interrupted runs converge to one bounded truthful next action; and ordinary `/ai` and `project` use is stable enough that burn-in becomes validation instead of triage.
+  - **Supporting plans:** `docs/plans/transparencyUI.md` for the visible-channel/transparency contract, `docs/plans/chatRuntime.md` for shared runtime/recovery truth, and `docs/plans/plan-prompts.md` for prompt-side visible-answer and reasoning-summary hygiene.
+  - **Exit criteria:**
+    - standard manual agent use no longer leaks continuation/runtime scaffolding or other machine-only payloads into visible chat
+    - the default transparency path is structured process trace first, with raw provider reasoning no longer acting as the default comprehension path
+    - interrupted runs converge to one bounded truthful user-visible next action instead of contradictory reconnect/retry states
+    - baseline manual scenarios on `/ai` and `project` are stable enough that `U1.6` can resume as later-stage validation
+
 - **`FIX-011b` Runtime stabilization, convergence, and durable continuation**
   - **Severity:** P0 trust/reliability
-  - **Symptom:** the major convergence primitives are already shipped, but `FIX-011b` is still open because the repo has not yet finished the final delta audit against the shared recovery/convergence path or completed the `U1.6` burn-in/sign-off needed to prove there is no remaining cross-surface runtime gap hiding behind the shipped path.
-  - **Desired end state:** either patch the one narrow remaining shared runtime delta if the audit or burn-in reveals one, or confirm that no additional shared-runtime code delta remains and retire `FIX-011b` through the existing `U1.6` burn-in authority without reopening settled recovery design.
+  - **Symptom:** the major convergence primitives are already shipped, but `FIX-011b` is still open because the repo has not yet finished the final delta audit against the shared recovery/convergence path or completed the later-stage `U1.6` sign-off needed to prove there is no remaining cross-surface runtime gap. When `FIX-012` remains open, `FIX-011b` should be treated as blocked by baseline product quality rather than mistaken for the primary rescue task.
+  - **Desired end state:** once baseline agent usability/trust is restored under `FIX-012`, either patch the one narrow remaining shared runtime delta if the audit or burn-in reveals one, or confirm that no additional shared-runtime code delta remains and retire `FIX-011b` through the existing `U1.6` burn-in authority without reopening settled recovery design.
   - **Supporting plans:** `docs/plans/agent-runtime-remediation/plan-runtime-stabilization-and-continuation.md` for supporting closeout detail, `docs/plans/transparencyUI.md` for durable execution-trace truth, and `docs/plans/chatRuntime.md` plus `docs/runbooks/chat-runtime-burn-in.md` for the operational `U1.6` sign-off path.
   - **Exit criteria:**
+    - `FIX-012` no longer blocks burn-in by leaving ordinary manual agent use obviously broken
     - the delta audit confirms no remaining shared-runtime gap, or any discovered gap is patched in the shared convergence/recovery path
     - `/ai`, project copilot, and the main conversation show no remaining recovery-action drift under the audited/stressed cases
     - `U1.6` burn-in evidence is complete and sign-offable through `docs/runbooks/chat-runtime-burn-in.md`
@@ -156,9 +172,10 @@ Every fix entry must include:
 
 Work should proceed in this order unless a production incident forces reprioritization:
 
-1. `FIX-011b` runtime stabilization, convergence, and durable continuation
-2. `CAG-003` checkpointed retry/resume from durable state
-3. remaining roadmap phases after those contracts are stable
+1. `FIX-012` agent baseline stability and transparency reset
+2. `FIX-011b` runtime stabilization, convergence, and durable continuation
+3. `CAG-003` checkpointed retry/resume from durable state
+4. remaining roadmap phases after those contracts are stable
 
 ## End-to-End Delivery Program
 
@@ -180,7 +197,7 @@ Work should proceed in this order unless a production incident forces reprioriti
 
 ### Track D — Surface Honesty, Docs, Evals, and Provenance
 
-- `FIX-005a`, `FIX-005b`, `FIX-011`, and the immediate `FIX-011a` reconciliation follow-up are complete, but runtime stabilization remains active under `FIX-011b` because convergence, durable continuation, and disconnect handling are not yet trustworthy enough to treat as finished.
+- `FIX-005a`, `FIX-005b`, `FIX-011`, and the immediate `FIX-011a` reconciliation follow-up are complete, but the current product still needs baseline rescue under `FIX-012` before `FIX-011b` can function as a narrow runtime closeout/sign-off task.
 - Popup honesty should stay aligned with the reduced-parity runtime it actually supports, and future surface work should preserve the recovery/action truth model rather than reintroducing bespoke failure semantics or overclaiming parity while `FIX-011b` is active.
 
 ## Active Roadmap
@@ -192,7 +209,7 @@ Work should proceed in this order unless a production incident forces reprioriti
 - [x] `CAG-002a` Stateless turn-based clarification flow shipped
 - [ ] `CAG-003` Add checkpointed continuation from durable work so reconnect / continue / replace / retry semantics never restart from zero when durable work already exists
 - [ ] `CAG-004` Standardize idempotency envelopes for mutating tools
-- [ ] `CAG-005` Define controlled optional reasoning transparency across providers and surfaces
+- [ ] `CAG-005` Define controlled optional reasoning transparency and safe defaults across providers and surfaces
 
 ### Phase 1 — Search-First Retrieval and Progressive Context
 

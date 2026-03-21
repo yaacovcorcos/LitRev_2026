@@ -66,6 +66,16 @@ That means the primary transparency layer should be grounded in:
 
 Raw/provider-native reasoning should remain optional and secondary.
 
+## Immediate Reset
+This plan now supports `FIX-012` in [plan-agentic.md](./plan-agentic.md): baseline product rescue before later-stage burn-in.
+
+The urgent problem is not a lack of decorative transparency. The urgent problem is that the visible agent experience can still feel broken:
+- internal/runtime scaffolding can surface where user-facing prose should be clean
+- provider/process narration can be noisier than the structured trace
+- recovery can fail in ways that collapse trust before the user even reaches a burn-in-quality scenario
+
+Until those failures are corrected, `U1.6` burn-in in [chatRuntime.md](./chatRuntime.md) should be treated as downstream validation rather than the current rescue task.
+
 ## Current Implementation Status
 - Project copilot now treats live progress as ephemeral process state instead of rendering it as assistant transcript text.
 - PubMed tool receipts now preserve compact factual metadata (`queryPreview`, `returnedCount`, `totalResults`) through the shared trace path.
@@ -116,6 +126,30 @@ Examples:
 
 Rule:
 - provider reasoning is additive, never the only transparency layer
+
+## Transparency Modes
+The product should expose three transparency modes, each with a clear purpose.
+
+### 1. Process only
+- phase
+- receipts
+- checkpoints
+- blocker state
+- next step
+
+This is the safe fallback and must remain fully usable even when provider reasoning is unavailable or disabled.
+
+### 2. Process + reasoning summary
+- all structured process trace above
+- plus a short curated reasoning summary when the runtime/provider can support one cleanly
+
+This is the target richer product mode.
+
+### 3. Debug reasoning
+- raw provider reasoning only for advanced/internal debugging
+- explicitly noisy and non-primary
+
+This must never be the default product transparency path.
 
 ### Recovery Truth Contract
 - replay restores authoritative persisted truth only
@@ -195,6 +229,8 @@ Optional suggestions should remain `<choices>` only.
 5. **Checkpoints are first-class and should exist even when no provider reasoning is available.**
 6. **Reasoning display is optional and secondary.**
 7. **Cross-surface truth is mandatory:** the same runtime state should not look fundamentally different on `/ai` and project copilot.
+8. **Default transparency must remain usable with provider reasoning fully off.**
+9. **Raw provider reasoning is debug-only until summary-quality rendering is explicitly trustworthy.**
 
 ## Visible Message Contract
 Visible assistant prose and machine-readable UI state must not share one channel.
@@ -215,6 +251,8 @@ Visible assistant prose and machine-readable UI state must not share one channel
    - user-facing answer text only
    - never hidden assistant markup
    - never continuation/runtime scaffolding
+   - never system-prompt or tool-protocol scaffolding
+   - never raw provider reasoning by default
    - never raw machine metadata
 2. Structured transparency:
    - live phase
@@ -227,6 +265,11 @@ Visible assistant prose and machine-readable UI state must not share one channel
    - structured message parts
    - recovery/runtime metadata
    - provider/debug payloads
+
+### Hard safety rules
+1. If the provider emits noisy or low-quality reasoning, the UI must degrade to `Process only`, not show junk by default.
+2. If the runtime cannot produce a trustworthy reasoning summary, it must show clean receipts/checkpoints instead of leaking internal prose.
+3. A final answer must never echo continuation, checkpoint-seeding, or other runtime-control scaffolding as if it were user-facing narration.
 
 ### Delivery direction
 - keep one canonical normalization boundary
@@ -522,7 +565,7 @@ This plan does not aim to:
 
 ## Execution Sequence
 
-### Phase 0 - Contract lock and shipped foundation
+### Phase 0 - Baseline rescue and contract lock
 1. Freeze the execution-trace truth model:
    - conditional task outline
    - live phase/progress
@@ -531,7 +574,11 @@ This plan does not aim to:
    - optional provider reasoning
 2. Freeze the product rule that process state must not be rendered as assistant transcript content.
 3. Freeze the product rule that repeated search refinements belong inside search-sequence receipts, not the high-level task outline.
-4. Treat the shipped PubMed work as the proving-ground baseline:
+4. Treat visible-channel cleanup as immediate work, not later polish:
+   - no continuation/runtime scaffolding in visible prose
+   - no raw provider reasoning as the default user experience
+   - no degradation from weak structured trace into generic internal-sounding prose
+5. Treat the shipped PubMed work as the proving-ground baseline:
    - shared PubMed progress semantics
    - factual PubMed receipt summaries
    - selective grounded PubMed checkpoints
@@ -540,6 +587,7 @@ This plan does not aim to:
 Exit criteria:
 - One canonical transparency model exists.
 - The first provider-independent workflow is shipped and documented.
+- The default product experience is clean enough that burn-in is no longer being asked to discover obvious transparency failures.
 
 ### Phase 1 - Cross-surface parity completion
 1. Audit all remaining adapter/storage loss between `/ai`, sidebar copilot, main project conversation, and popup.

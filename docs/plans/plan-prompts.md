@@ -18,6 +18,9 @@
 *Work that is entirely unimplemented or currently broken.*
 
 ### P1 — Copilot Prompt Hardening
+- [ ] Visible-answer and reasoning hygiene: make the prompt contract explicitly forbid continuation/runtime scaffolding, hidden machine protocol, or raw provider reasoning from surfacing in normal visible answer prose.
+- [ ] Visible-answer and reasoning hygiene: define a compact reasoning-summary contract that can enrich structured process trace without depending on raw provider-native reasoning quality.
+- [ ] Visible-answer and reasoning hygiene: define clean degradation rules so prompt behavior falls back to process-led answers when reasoning is unavailable, noisy, or inconsistent.
 - [ ] Search Mode: Strengthen explicit Boolean-query and MeSH suggestion guidance for evidence-retrieval requests.
 - [ ] Onboarding V2: Define step-specific prompt pack for guided setup AI assists (`suggest`, `refine`, `generate`) with strict output schemas and deterministic fallback behavior.
 - [ ] Onboarding V2: Add explainer-mode prompt contract for `Explain this` surfaces (plain-language, concise, and grounded to current project context).
