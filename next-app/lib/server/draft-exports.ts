@@ -3,7 +3,7 @@ import "server-only";
 import { prisma } from "@/lib/server/prisma";
 import { assertProjectAccess } from "@/lib/server/access";
 import { listStudies } from "@/lib/server/ledger";
-import { uploadGeneratedProjectFile } from "@/lib/server/files";
+import { deleteFileAsset, uploadGeneratedProjectFile } from "@/lib/server/files";
 import type { ScopeInput } from "@/lib/server/scope";
 import type { DraftStateInput } from "@/lib/draftStorage";
 import type { FileAsset } from "@/types/files";
@@ -11,6 +11,7 @@ import type { DraftExportFormat, DraftExportMode } from "@/lib/draft-export/mode
 import { compileDraftExportDocument } from "@/lib/draft-export/compile";
 import { renderMarkdownExport } from "@/lib/draft-export/render-markdown";
 import { renderDocxExport } from "@/lib/draft-export/render-docx";
+import { createDraftCheckpoint } from "@/lib/server/draft-checkpoints";
 
 function slugifyFilename(value: string): string {
   return value
@@ -82,7 +83,7 @@ export async function generateDraftExport(
 
   const filename = `${slugifyFilename(project.name)}-v${nextVersion}.${options.format === "docx" ? "docx" : "md"}`;
 
-  return uploadGeneratedProjectFile(scopeInput, projectId, {
+  const file = await uploadGeneratedProjectFile(scopeInput, projectId, {
     directory: `exports/${options.format}`,
     kind: "export",
     format: options.format,
@@ -99,4 +100,23 @@ export async function generateDraftExport(
       exportedAt: compiled.exportedAt,
     },
   });
+
+  try {
+    await createDraftCheckpoint(scopeInput, {
+      projectId,
+      kind: "export",
+      label: `Export ${filename}`,
+      draftState: draftSnapshot,
+      fileAssetId: file.id,
+    });
+  } catch (error) {
+    try {
+      await deleteFileAsset(scopeInput, projectId, file.id);
+    } catch (cleanupError) {
+      console.error("[draft export] failed to rollback file asset after checkpoint error", cleanupError);
+    }
+    throw error;
+  }
+
+  return file;
 }

@@ -5,6 +5,8 @@ import { UNSECTIONED_DRAFT_ID } from "@/types/draft";
 const mockAssertProjectAccess = vi.fn();
 const mockListStudies = vi.fn();
 const mockUploadGeneratedProjectFile = vi.fn();
+const mockDeleteFileAsset = vi.fn();
+const mockCreateDraftCheckpoint = vi.fn();
 const mockFileAssetFindFirst = vi.fn();
 const mockProjectFindFirst = vi.fn();
 
@@ -18,6 +20,11 @@ vi.mock("@/lib/server/ledger", () => ({
 
 vi.mock("@/lib/server/files", () => ({
   uploadGeneratedProjectFile: (...args: unknown[]) => mockUploadGeneratedProjectFile(...args),
+  deleteFileAsset: (...args: unknown[]) => mockDeleteFileAsset(...args),
+}));
+
+vi.mock("@/lib/server/draft-checkpoints", () => ({
+  createDraftCheckpoint: (...args: unknown[]) => mockCreateDraftCheckpoint(...args),
 }));
 
 vi.mock("@/lib/server/prisma", () => ({
@@ -119,6 +126,7 @@ describe("generateDraftExport", () => {
     mockProjectFindFirst.mockResolvedValue({ name: "Alpha Draft" });
     mockFileAssetFindFirst.mockResolvedValue(null);
     mockListStudies.mockResolvedValue(studies);
+    mockCreateDraftCheckpoint.mockResolvedValue({ id: "checkpoint-1" });
     mockUploadGeneratedProjectFile.mockImplementation(async (_scope, _projectId, input) => ({
       id: "file-1",
       projectId: "proj-1",
@@ -158,6 +166,15 @@ describe("generateDraftExport", () => {
     expect(uploadInput.bytes.byteLength).toBeGreaterThan(0);
     expect(Buffer.from(uploadInput.bytes).subarray(0, 2).toString()).toBe("PK");
     expect(result.format).toBe("docx");
+    expect(mockCreateDraftCheckpoint).toHaveBeenCalledWith(
+      scope,
+      expect.objectContaining({
+        projectId: "proj-1",
+        kind: "export",
+        fileAssetId: "file-1",
+        label: "Export Alpha-Draft-v1.docx",
+      }),
+    );
   });
 
   it("blocks strict exports when blocking citation issues remain", async () => {
@@ -189,5 +206,18 @@ describe("generateDraftExport", () => {
     ).rejects.toThrow("Export blocked in strict mode: fix missing citation targets before exporting.");
 
     expect(mockUploadGeneratedProjectFile).not.toHaveBeenCalled();
+  });
+
+  it("rolls back the uploaded export file when export checkpoint creation fails", async () => {
+    mockCreateDraftCheckpoint.mockRejectedValueOnce(new Error("checkpoint failed"));
+
+    await expect(
+      generateDraftExport(scope, "proj-1", createDraftSnapshot(), {
+        format: "docx",
+        mode: "warn",
+      }),
+    ).rejects.toThrow("checkpoint failed");
+
+    expect(mockDeleteFileAsset).toHaveBeenCalledWith(scope, "proj-1", "file-1");
   });
 });
