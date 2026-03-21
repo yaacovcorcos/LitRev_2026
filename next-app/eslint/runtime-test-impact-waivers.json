@@ -1,3 +1,286 @@
 {
-  "waivers": []
+  "waivers": [
+    {
+      "path": "lib/agent/autonomy-presets.ts",
+      "reason": "Accepted central lib/agent coverage remains in place for this file.",
+      "coverage": "central",
+      "testPath": "lib/agent/__tests__/autonomy-presets.test.ts"
+    },
+    {
+      "path": "lib/agent/compaction.ts",
+      "reason": "Accepted central lib/agent coverage remains in place for this file.",
+      "coverage": "central",
+      "testPath": "lib/agent/__tests__/compaction.test.ts"
+    },
+    {
+      "path": "lib/agent/composer-mode-selection.ts",
+      "reason": "Accepted central lib/agent coverage remains in place for this file.",
+      "coverage": "central",
+      "testPath": "lib/agent/__tests__/composer-mode-selection.test.ts"
+    },
+    {
+      "path": "lib/agent/feature-flags.ts",
+      "reason": "Accepted central feature-flag coverage remains in place for this file.",
+      "coverage": "central",
+      "testPath": "lib/__tests__/feature-flags.test.ts"
+    },
+    {
+      "path": "lib/agent/fuzzy-match.ts",
+      "reason": "Accepted central lib/agent coverage remains in place for this file.",
+      "coverage": "central",
+      "testPath": "lib/agent/__tests__/fuzzy-match.test.ts"
+    },
+    {
+      "path": "lib/agent/loop-controller.ts",
+      "reason": "Accepted central lib/agent coverage remains in place for this file.",
+      "coverage": "central",
+      "testPath": "lib/agent/__tests__/loop-controller.test.ts"
+    },
+    {
+      "path": "lib/agent/query-planner.ts",
+      "reason": "Accepted central lib/agent coverage remains in place for this file.",
+      "coverage": "central",
+      "testPath": "lib/agent/__tests__/query-planner.test.ts"
+    },
+    {
+      "path": "lib/agent/router.ts",
+      "reason": "Accepted central lib/agent coverage remains in place for this file.",
+      "coverage": "central",
+      "testPath": "lib/agent/__tests__/router.test.ts"
+    },
+    {
+      "path": "lib/agent/suggestions.ts",
+      "reason": "Accepted central lib/agent coverage remains in place for this file.",
+      "coverage": "central",
+      "testPath": "lib/agent/__tests__/suggestions.test.ts"
+    },
+    {
+      "path": "lib/agent/truncation.ts",
+      "reason": "Accepted central lib/agent coverage remains in place for this file.",
+      "coverage": "central",
+      "testPath": "lib/agent/__tests__/truncation.test.ts"
+    },
+    {
+      "path": "lib/server/agent/artifacts.ts",
+      "reason": "Accepted centralized integration coverage remains in place for this runtime file.",
+      "coverage": "integration",
+      "testPath": "lib/server/__tests__/artifact-undo.test.ts"
+    },
+    {
+      "path": "lib/server/agent/autonomy.ts",
+      "reason": "Accepted centralized integration coverage remains in place for this runtime file.",
+      "coverage": "integration",
+      "testPath": "lib/server/__tests__/tool-autonomy.test.ts"
+    },
+    {
+      "path": "lib/server/agent/events.ts",
+      "reason": "Accepted centralized integration coverage remains in place for this runtime file.",
+      "coverage": "integration",
+      "testPath": "lib/server/__tests__/run-events.test.ts"
+    },
+    {
+      "path": "lib/server/agent/planner.ts",
+      "reason": "Accepted centralized integration coverage remains in place for this runtime file.",
+      "coverage": "integration",
+      "testPath": "lib/server/__tests__/planner-validation.test.ts"
+    },
+    {
+      "path": "lib/server/agent/run-event-authority.ts",
+      "reason": "Accepted centralized integration coverage remains in place for this runtime file.",
+      "coverage": "integration",
+      "testPath": "lib/server/__tests__/run-recovery.test.ts"
+    },
+    {
+      "path": "lib/server/agent/run.ts",
+      "reason": "Accepted centralized integration coverage remains in place for this runtime file.",
+      "coverage": "integration",
+      "testPath": "lib/server/__tests__/run-lifecycle.test.ts"
+    },
+    {
+      "path": "lib/server/ai/tools/add-to-ledger.ts",
+      "reason": "Accepted centralized tool coverage remains in place for this runtime file.",
+      "coverage": "integration",
+      "testPath": "lib/server/__tests__/tool-middleware.test.ts"
+    },
+    {
+      "path": "lib/server/ai/tools/ask-user.ts",
+      "reason": "Accepted centralized tool coverage remains in place for this runtime file.",
+      "coverage": "integration",
+      "testPath": "lib/server/__tests__/ask-user-tool.test.ts"
+    },
+    {
+      "path": "lib/server/ai/tools/base.ts",
+      "reason": "Accepted centralized tool coverage remains in place for this runtime file.",
+      "coverage": "integration",
+      "testPath": "lib/server/__tests__/tool-validation-envelope.test.ts"
+    },
+    {
+      "path": "lib/server/ai/tools/bulk-screening.ts",
+      "reason": "Accepted centralized tool coverage remains in place for this runtime file.",
+      "coverage": "integration",
+      "testPath": "lib/server/__tests__/bulk-screening-tiers.test.ts"
+    },
+    {
+      "path": "lib/server/ai/tools/create-project.ts",
+      "reason": "Accepted centralized tool coverage remains in place for this runtime file.",
+      "coverage": "integration",
+      "testPath": "lib/server/__tests__/create-project-tool.test.ts"
+    },
+    {
+      "path": "lib/server/ai/tools/delegate-protocol.ts",
+      "reason": "Accepted centralized tool coverage remains in place for this runtime file.",
+      "coverage": "integration",
+      "testPath": "lib/server/__tests__/delegation-tools.test.ts"
+    },
+    {
+      "path": "lib/server/ai/tools/delegate-screening.ts",
+      "reason": "Accepted centralized tool coverage remains in place for this runtime file.",
+      "coverage": "integration",
+      "testPath": "lib/server/__tests__/delegation-tools.test.ts"
+    },
+    {
+      "path": "lib/server/ai/tools/delegate-search.ts",
+      "reason": "Accepted centralized tool coverage remains in place for this runtime file.",
+      "coverage": "integration",
+      "testPath": "lib/server/__tests__/delegation-tools.test.ts"
+    },
+    {
+      "path": "lib/server/ai/tools/delete-study.ts",
+      "reason": "Accepted centralized tool coverage remains in place for this runtime file.",
+      "coverage": "integration",
+      "testPath": "lib/server/__tests__/delete-study-tool.test.ts"
+    },
+    {
+      "path": "lib/server/ai/tools/exclude-study.ts",
+      "reason": "Accepted centralized tool coverage remains in place for this runtime file.",
+      "coverage": "integration",
+      "testPath": "lib/server/__tests__/tool-prerequisites.test.ts"
+    },
+    {
+      "path": "lib/server/ai/tools/extract-pdf.ts",
+      "reason": "Accepted centralized tool coverage remains in place for this runtime file.",
+      "coverage": "integration",
+      "testPath": "lib/server/__tests__/tool-prerequisites.test.ts"
+    },
+    {
+      "path": "lib/server/ai/tools/forget-memory.ts",
+      "reason": "Accepted centralized tool coverage remains in place for this runtime file.",
+      "coverage": "integration",
+      "testPath": "lib/server/__tests__/memory-controls-tools.test.ts"
+    },
+    {
+      "path": "lib/server/ai/tools/index.ts",
+      "reason": "Accepted centralized tool-registry coverage remains in place for this runtime file.",
+      "coverage": "integration",
+      "testPath": "lib/server/__tests__/tool-filtering.test.ts"
+    },
+    {
+      "path": "lib/server/ai/tools/inspect-memory.ts",
+      "reason": "Accepted centralized tool coverage remains in place for this runtime file.",
+      "coverage": "integration",
+      "testPath": "lib/server/__tests__/memory-controls-tools.test.ts"
+    },
+    {
+      "path": "lib/server/ai/tools/list-projects.ts",
+      "reason": "Accepted centralized tool coverage remains in place for this runtime file.",
+      "coverage": "integration",
+      "testPath": "lib/server/__tests__/list-projects-tool.test.ts"
+    },
+    {
+      "path": "lib/server/ai/tools/open-project.ts",
+      "reason": "Accepted centralized tool coverage remains in place for this runtime file.",
+      "coverage": "integration",
+      "testPath": "lib/server/__tests__/open-project-tool.test.ts"
+    },
+    {
+      "path": "lib/server/ai/tools/openalex-search.ts",
+      "reason": "Accepted centralized search-runtime coverage remains in place for this runtime file.",
+      "coverage": "integration",
+      "testPath": "lib/server/__tests__/eval-runtime-search-scenarios.test.ts"
+    },
+    {
+      "path": "lib/server/ai/tools/preview-study-pdf-update.ts",
+      "reason": "Accepted centralized tool coverage remains in place for this runtime file.",
+      "coverage": "integration",
+      "testPath": "lib/server/__tests__/study-direct-tools.test.ts"
+    },
+    {
+      "path": "lib/server/ai/tools/pubmed-search.ts",
+      "reason": "Accepted centralized search-runtime coverage remains in place for this runtime file.",
+      "coverage": "integration",
+      "testPath": "lib/server/__tests__/eval-runtime-search-scenarios.test.ts"
+    },
+    {
+      "path": "lib/server/ai/tools/read-ledger.ts",
+      "reason": "Accepted centralized tool coverage remains in place for this runtime file.",
+      "coverage": "integration",
+      "testPath": "lib/server/__tests__/read-ledger-tool.test.ts"
+    },
+    {
+      "path": "lib/server/ai/tools/read-protocol.ts",
+      "reason": "Accepted centralized tool coverage remains in place for this runtime file.",
+      "coverage": "integration",
+      "testPath": "lib/server/__tests__/read-protocol-tool.test.ts"
+    },
+    {
+      "path": "lib/server/ai/tools/read-study-content.ts",
+      "reason": "Accepted centralized tool coverage remains in place for this runtime file.",
+      "coverage": "integration",
+      "testPath": "lib/server/__tests__/tool-filtering.test.ts"
+    },
+    {
+      "path": "lib/server/ai/tools/recommend-studies.ts",
+      "reason": "Accepted centralized recommendation coverage remains in place for this runtime file.",
+      "coverage": "integration",
+      "testPath": "lib/server/__tests__/scoping-ai-service.test.ts"
+    },
+    {
+      "path": "lib/server/ai/tools/semantic-scholar-search.ts",
+      "reason": "Accepted centralized search-runtime coverage remains in place for this runtime file.",
+      "coverage": "integration",
+      "testPath": "lib/server/__tests__/tool-filtering.test.ts"
+    },
+    {
+      "path": "lib/server/ai/tools/store-memory.ts",
+      "reason": "Accepted centralized tool coverage remains in place for this runtime file.",
+      "coverage": "integration",
+      "testPath": "lib/server/__tests__/store-memory.test.ts"
+    },
+    {
+      "path": "lib/server/ai/tools/study-update-shared.ts",
+      "reason": "Accepted centralized study-update coverage remains in place for this runtime file.",
+      "coverage": "integration",
+      "testPath": "lib/server/__tests__/study-direct-tools.test.ts"
+    },
+    {
+      "path": "lib/server/ai/tools/update-criteria.ts",
+      "reason": "Accepted centralized tool coverage remains in place for this runtime file.",
+      "coverage": "integration",
+      "testPath": "lib/server/__tests__/update-criteria-tool.test.ts"
+    },
+    {
+      "path": "lib/server/ai/tools/update-note.ts",
+      "reason": "Accepted centralized drafting-tool coverage remains in place for this runtime file.",
+      "coverage": "integration",
+      "testPath": "lib/server/__tests__/planner-validation.test.ts"
+    },
+    {
+      "path": "lib/server/ai/tools/update-protocol.ts",
+      "reason": "Accepted centralized tool coverage remains in place for this runtime file.",
+      "coverage": "integration",
+      "testPath": "lib/server/__tests__/update-protocol-tool.test.ts"
+    },
+    {
+      "path": "lib/server/ai/tools/update-study-direct.ts",
+      "reason": "Accepted centralized study-update coverage remains in place for this runtime file.",
+      "coverage": "integration",
+      "testPath": "lib/server/__tests__/study-direct-tools.test.ts"
+    },
+    {
+      "path": "lib/server/ai/tools/update-study.ts",
+      "reason": "Accepted centralized study-update coverage remains in place for this runtime file.",
+      "coverage": "integration",
+      "testPath": "lib/server/__tests__/update-study-tool.test.ts"
+    }
+  ]
 }

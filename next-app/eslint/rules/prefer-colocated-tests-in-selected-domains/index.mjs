@@ -1,6 +1,12 @@
-import { fileExists, findCandidateTestFiles, isConfiguredDomainFile, isTestFile, relativeToRoot } from "../../shared.mjs";
-
-const DEFAULT_DOMAINS = ["lib/agent/"];
+import { relativeToRoot } from "../../shared.mjs";
+import {
+  PREFER_COLOCATED_TEST_DOMAINS,
+  getRuntimeTestImpactWaiver,
+  hasCentralRuntimeTest,
+  hasColocatedRuntimeTest,
+  isGovernedColocatedTestPreferenceFile,
+  loadRuntimeTestImpactWaivers,
+} from "../../runtime-test-governance.mjs";
 
 export default {
   meta: {
@@ -25,19 +31,16 @@ export default {
     },
   },
   create(context) {
-    const domains = context.options[0]?.domains ?? DEFAULT_DOMAINS;
+    const domains = context.options[0]?.domains ?? PREFER_COLOCATED_TEST_DOMAINS;
     const filename = context.filename;
-    if (isTestFile(filename) || !isConfiguredDomainFile(filename, domains)) return {};
+    if (!isGovernedColocatedTestPreferenceFile(filename, domains)) return {};
+    const waivers = loadRuntimeTestImpactWaivers();
 
     return {
       Program(node) {
         const relative = relativeToRoot(filename);
-        const candidates = findCandidateTestFiles(filename);
-        const colocatedCandidates = candidates.filter((candidate) => !candidate.includes("/__tests__/"));
-        const centralCandidates = candidates.filter((candidate) => candidate.includes("/__tests__/"));
-        const hasColocated = colocatedCandidates.some(fileExists);
-        const hasCentral = centralCandidates.some(fileExists);
-        if (!hasColocated && hasCentral) {
+        const waiver = getRuntimeTestImpactWaiver(filename, waivers);
+        if (!hasColocatedRuntimeTest(filename) && hasCentralRuntimeTest(filename) && !waiver) {
           context.report({
             node,
             messageId: "preferColocated",
