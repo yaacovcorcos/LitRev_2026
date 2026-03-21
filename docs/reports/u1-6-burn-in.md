@@ -105,7 +105,7 @@ When the next valid window opens:
 
 ## Canonical Sources
 
-- Runbook: `docs/runbooks/chat-unification-burn-in.md`
+- Runbook: `docs/runbooks/chat-runtime-burn-in.md`
 - Report template: `docs/reports/u1-6-burn-in-template.md`
 - Plan: `docs/plans/chatRuntime.md`
 

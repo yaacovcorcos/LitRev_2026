@@ -35,7 +35,7 @@ Use this file for detailed execution thinking about stabilization and continuati
 ## Closeout Posture
 - Treat `FIX-011b` as a delta-closeout task, not a greenfield runtime program.
 - Assume no schema change; reopen persistence only if a concrete missing persisted fact is discovered during burn-in or a narrow delta audit.
-- Use this file for supporting detail only. [plan-agentic.md](../plan-agentic.md) remains the canonical fix-status owner, and `U1.6` in [chatRuntime.md](../chatRuntime.md) plus [chat-unification-burn-in.md](../../runbooks/chat-unification-burn-in.md) remains the operational sign-off owner.
+- Use this file for supporting detail only. [plan-agentic.md](../plan-agentic.md) remains the canonical fix-status owner, and `U1.6` in [chatRuntime.md](../chatRuntime.md) plus [chat-runtime-burn-in.md](../../runbooks/chat-runtime-burn-in.md) remains the operational sign-off owner.
 - If a real runtime drift is found, patch only the shared convergence/recovery path and add focused tests for that uncovered case.
 
 ## Workstream A: Abnormal-End Classification
@@ -98,7 +98,7 @@ Everything else remains deferred:
 ## Validation and Burn-In
 - Burn-in must cover forced disconnect after tool result, disconnect before paused question delivery, recovery-required persistence failure behavior, no-forward-progress detection, degraded continuation correctness, and elimination of contradictory same-run recovery/error states.
 - Stabilization is not done when unit tests pass; it is done when the runtime converges truthfully under those harnessed failure classes and the existing `U1.6` burn-in thresholds are met.
-- `chat-unification-burn-in.md` remains the only operational canary/sign-off source. This file should not restate or replace that contract.
+- `chat-runtime-burn-in.md` remains the only operational canary/sign-off source. This file should not restate or replace that contract.
 
 ## Optional Reference Patterns
 The systems below are optional architectural references only.

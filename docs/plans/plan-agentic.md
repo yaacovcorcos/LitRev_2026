@@ -144,11 +144,11 @@ Every fix entry must include:
   - **Severity:** P0 trust/reliability
   - **Symptom:** the major convergence primitives are already shipped, but `FIX-011b` is still open because the repo has not yet finished the final delta audit against the shared recovery/convergence path or completed the `U1.6` burn-in/sign-off needed to prove there is no remaining cross-surface runtime gap hiding behind the shipped path.
   - **Desired end state:** either patch the one narrow remaining shared runtime delta if the audit or burn-in reveals one, or confirm that no additional shared-runtime code delta remains and retire `FIX-011b` through the existing `U1.6` burn-in authority without reopening settled recovery design.
-  - **Supporting plans:** `docs/plans/agent-runtime-remediation/plan-runtime-stabilization-and-continuation.md` for supporting closeout detail, `docs/plans/transparencyUI.md` for durable execution-trace truth, and `docs/plans/chatRuntime.md` plus `docs/runbooks/chat-unification-burn-in.md` for the operational `U1.6` sign-off path.
+  - **Supporting plans:** `docs/plans/agent-runtime-remediation/plan-runtime-stabilization-and-continuation.md` for supporting closeout detail, `docs/plans/transparencyUI.md` for durable execution-trace truth, and `docs/plans/chatRuntime.md` plus `docs/runbooks/chat-runtime-burn-in.md` for the operational `U1.6` sign-off path.
   - **Exit criteria:**
     - the delta audit confirms no remaining shared-runtime gap, or any discovered gap is patched in the shared convergence/recovery path
     - `/ai`, project copilot, and the main conversation show no remaining recovery-action drift under the audited/stressed cases
-    - `U1.6` burn-in evidence is complete and sign-offable through `docs/runbooks/chat-unification-burn-in.md`
+    - `U1.6` burn-in evidence is complete and sign-offable through `docs/runbooks/chat-runtime-burn-in.md`
     - popup remains a truthful reduced subset only
     - `FIX-011b` can be removed from `Active Fixes` without reopening settled recovery architecture
 
