@@ -910,7 +910,7 @@ describe("/ai page deferred hydration", () => {
     expect(screen.getByTestId("ai-composer").getAttribute("data-attached-stack")).toBe("attached");
   });
 
-  it("renders the pending approval bar above the composer for settled proposals", async () => {
+  it("renders the pending approval bar above the composer for persisted proposed artifacts", async () => {
     mockGetConversation.mockResolvedValueOnce({
       success: true,
       data: {

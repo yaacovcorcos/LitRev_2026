@@ -222,4 +222,118 @@ describe("ProjectDataContext", () => {
         expect(result.current.protocol.saveState).toBe("saved");
         expect(mockGetProtocol.mock.calls.length).toBe(beforeCalls);
     });
+
+    it("queues a pending patch when an accepted protocol update conflicts with dirty local fields", async () => {
+        const { result } = renderHook(() => useProjectData(), { wrapper: createWrapper("protocol") });
+
+        await waitFor(() => {
+            expect(result.current.protocol.state).toBe("ready");
+        });
+
+        act(() => {
+            result.current.updateProtocol(
+                (prev) => ({
+                    ...prev,
+                    researchQuestion: "Local draft value",
+                }),
+                {
+                    dirtyPaths: ["researchQuestion"],
+                }
+            );
+        });
+
+        act(() => {
+            projectDataChangedListener?.({
+                projectId: PROJECT_ID,
+                domains: ["protocol"],
+                reason: "artifact_accept",
+                source: "artifact_review",
+                protocolPatch: {
+                    type: "protocol_suggestion",
+                    fieldPath: "researchQuestion",
+                    fieldLabel: "Research Question",
+                    value: "Incoming copilot patch",
+                    sourceLabel: "Copilot protocol update",
+                    affectedPaths: ["researchQuestion"],
+                },
+            });
+        });
+
+        expect(result.current.protocol.data?.researchQuestion).toBe("Local draft value");
+        expect(result.current.protocol.saveState).toBe("local-only");
+        expect(result.current.protocol.pendingPatch?.patch).toMatchObject({
+            fieldPath: "researchQuestion",
+            value: "Incoming copilot patch",
+        });
+    });
+
+    it("can apply or keep a queued protocol patch without losing the accepted update semantics", async () => {
+        const { result } = renderHook(() => useProjectData(), { wrapper: createWrapper("protocol") });
+
+        await waitFor(() => {
+            expect(result.current.protocol.state).toBe("ready");
+        });
+
+        act(() => {
+            result.current.updateProtocol(
+                (prev) => ({
+                    ...prev,
+                    researchQuestion: "Local draft value",
+                }),
+                {
+                    dirtyPaths: ["researchQuestion"],
+                }
+            );
+        });
+
+        act(() => {
+            projectDataChangedListener?.({
+                projectId: PROJECT_ID,
+                domains: ["protocol"],
+                reason: "artifact_accept",
+                source: "artifact_review",
+                protocolPatch: {
+                    type: "protocol_suggestion",
+                    fieldPath: "researchQuestion",
+                    fieldLabel: "Research Question",
+                    value: "Incoming copilot patch",
+                    sourceLabel: "Copilot protocol update",
+                    affectedPaths: ["researchQuestion"],
+                },
+            });
+        });
+
+        act(() => {
+            result.current.keepLocalProtocolEdits();
+        });
+
+        expect(result.current.protocol.pendingPatch).toBeNull();
+        expect(result.current.protocol.data?.researchQuestion).toBe("Local draft value");
+
+        act(() => {
+            projectDataChangedListener?.({
+                projectId: PROJECT_ID,
+                domains: ["protocol"],
+                reason: "artifact_accept",
+                source: "artifact_review",
+                protocolPatch: {
+                    type: "protocol_suggestion",
+                    fieldPath: "researchQuestion",
+                    fieldLabel: "Research Question",
+                    value: "Incoming copilot patch",
+                    sourceLabel: "Copilot protocol update",
+                    affectedPaths: ["researchQuestion"],
+                },
+            });
+        });
+
+        act(() => {
+            result.current.applyPendingProtocolPatch();
+        });
+
+        await waitFor(() => {
+            expect(result.current.protocol.pendingPatch).toBeNull();
+            expect(result.current.protocol.data?.researchQuestion).toBe("Incoming copilot patch");
+        });
+    });
 });
