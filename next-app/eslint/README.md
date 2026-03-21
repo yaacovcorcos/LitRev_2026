@@ -24,6 +24,8 @@ Commands:
 - `npm run lint:governance:phase4-tests`
 - `npm run lint:governance:phase4-policy`
 - `npm run check:runtime-test-impact`
+- `npm run governance:ci-required`
+- `npm run governance:ci-informational`
 - `npm run lint:governance:audit`
 - `npm run test:eslint-rules`
 - `npm run test:governance-tooling`
@@ -69,6 +71,22 @@ Contracts:
   - it consumes the same governed domains and waiver file as the two lint rules
   - it does not carry parallel domain logic
   - it accepts only one-file waivers with concrete test paths
+- `npm run governance:ci-required` is the permanent local reproduction command for the required governance portion of GitHub `check`:
+  - `npm run governance:check`
+  - `npm run test:eslint-rules`
+  - `npm run test:governance-tooling`
+  - `npm run lint:governance:phase1`
+  - `npm run lint:governance:phase2-hotspots`
+  - `npm run lint:governance:phase3-searchability`
+  - `npm run lint:governance:phase4-policy`
+  - `npm run check:runtime-test-impact`
+- `npm run governance:ci-informational` is the permanent local reproduction command for the non-blocking governance reporting portion of GitHub `check`:
+  - it always runs broad `npm run lint:governance`
+  - it always runs `npm run lint:governance:audit`
+  - it writes `governance-audit.json` for artifact upload and local inspection
+- additions to the required governance inventory are phase-owned:
+  - do not add broad `lint:governance`, audit reporting, or unrelated checks to `governance:ci-required`
+  - update the canonical lint-governance plan and governance docs in the same task when the required inventory changes
 - Phase 4 selective strictness decisions are explicit and durable:
   - raw UI `fetch()` restrictions: rejected for now
   - broader `window.location` restrictions beyond navigation mutation: rejected
