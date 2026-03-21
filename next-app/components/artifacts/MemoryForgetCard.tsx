@@ -1,7 +1,7 @@
 "use client";
 
 import type { ArtifactStatus, MemoryForgetProposalPayload } from "@/types/artifacts";
-import { getArtifactSettledLabel, isArtifactReviewable } from "@/lib/artifacts/reviewability";
+import { isArtifactReviewable } from "@/lib/artifacts/reviewability";
 import styles from "@/styles/artifacts.module.css";
 
 export type MemoryForgetCardProps = {
@@ -16,7 +16,6 @@ export function MemoryForgetCard({ payload, status = "proposed", onAccept, onRej
     const label = payload.memoryType === "user" ? "User Memory" : "Project Memory";
     const icon = payload.memoryType === "user" ? "person_remove" : "folder_delete";
     const isReviewable = isArtifactReviewable(status);
-    const settledLabel = getArtifactSettledLabel(status);
     return (
         <>
             <div className={styles.memoryMeta}>
@@ -53,8 +52,6 @@ export function MemoryForgetCard({ payload, status = "proposed", onAccept, onRej
                         Archive Memory
                     </button>
                 </div>
-            ) : settledLabel ? (
-                <div className={styles.applyMeta}>{settledLabel}</div>
             ) : null}
         </>
     );

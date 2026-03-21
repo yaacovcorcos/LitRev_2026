@@ -17,6 +17,13 @@ export type ArtifactWrapperProps = {
     onReview: (status: "accepted" | "rejected", note?: string) => void;
     children: React.ReactNode;
     summaryText?: string;
+    settledLabel?: string | null;
+    settledAction?: {
+        label: string;
+        onClick: () => void;
+        pending?: boolean;
+        disabled?: boolean;
+    } | null;
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -46,6 +53,8 @@ export function ArtifactWrapper({
     jumpToLabel,
     children,
     summaryText,
+    settledLabel,
+    settledAction,
 }: ArtifactWrapperProps) {
     const isTerminal = status === "accepted" || status === "rejected" || status === "auto_applied" || status === "collapsed";
     const [isCollapsed, setIsCollapsed] = useState(isTerminal);
@@ -58,6 +67,10 @@ export function ArtifactWrapper({
         prevStatusRef.current = status;
 
         if (status === "auto_applied") {
+            if (settledAction) {
+                const timer = setTimeout(() => setIsCollapsed(true), 2000);
+                return () => clearTimeout(timer);
+            }
             setIsCollapsed(true);
             return;
         }
@@ -65,7 +78,7 @@ export function ArtifactWrapper({
             const timer = setTimeout(() => setIsCollapsed(true), 2000);
             return () => clearTimeout(timer);
         }
-    }, [status]);
+    }, [settledAction, status]);
 
     const cardClass = [
         styles.artifactCard,
@@ -147,6 +160,23 @@ export function ArtifactWrapper({
                     </>
                 )}
             </div>
+            {!isCollapsed && (settledLabel || settledAction) ? (
+                <div className={styles.settledActionRow}>
+                    {settledLabel ? (
+                        <span className={styles.settledStatusText}>{settledLabel}</span>
+                    ) : <span />}
+                    {settledAction ? (
+                        <button
+                            type="button"
+                            className={styles.actionBtnGhost}
+                            onClick={settledAction.onClick}
+                            disabled={settledAction.disabled || settledAction.pending}
+                        >
+                            {settledAction.pending ? "Undoing..." : settledAction.label}
+                        </button>
+                    ) : null}
+                </div>
+            ) : null}
         </div>
     );
 }

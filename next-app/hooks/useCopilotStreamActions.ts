@@ -17,7 +17,7 @@ import {
 } from "@/lib/project-data-events";
 import { isProtocolLiveSyncV1Enabled } from "@/lib/protocol-live-sync-feature-flags";
 import { createConversation } from "@/app/actions/conversations";
-import { reviewArtifactAction } from "@/app/actions/agent";
+import { reviewArtifactAction, undoArtifactAction } from "@/app/actions/agent";
 import type { ArtifactData, ArtifactStatus } from "@/types/artifacts";
 import type { AgentMode } from "@/types/agent";
 import type {
@@ -1464,6 +1464,61 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
         return true;
     }, [projectId, updateState, setArtifacts]);
 
+    const undoArtifactActionLocal = useCallback(async (artifactId: string): Promise<boolean> => {
+        const result = await undoArtifactAction(artifactId);
+        if (!result.success || !result.artifact) {
+            console.error("Failed to undo artifact:", result.error);
+            return false;
+        }
+
+        const reviewedAt = new Date().toISOString();
+        setArtifacts((prev) => {
+            const next = new Map(prev);
+            const existing = next.get(artifactId);
+            if (existing) {
+                next.set(artifactId, {
+                    ...existing,
+                    status: result.artifact.status as ArtifactStatus,
+                    reviewedAt,
+                    reviewNote: result.artifact.reviewNote ?? "Undone by user",
+                });
+            }
+            return next;
+        });
+
+        updateState((prev) => ({
+            ...prev,
+            messages: prev.messages.map((msg) =>
+                msg.artifact?.id === artifactId
+                    ? {
+                        ...msg,
+                        artifact: {
+                            ...msg.artifact,
+                            status: result.artifact?.status as ArtifactStatus,
+                        },
+                    }
+                    : msg
+            ),
+        }));
+
+        if (result.artifact.projectId) {
+            const domains = getChangedDomainsForAcceptedArtifact(result.artifact.type, result.artifact.payload);
+            if (domains.length > 0) {
+                const protocolPatch = isProtocolLiveSyncV1Enabled()
+                    ? getProtocolPatchForAcceptedArtifact(result.artifact.type, result.artifact.payload)
+                    : null;
+                dispatchProjectDataChanged({
+                    projectId: result.artifact.projectId,
+                    domains,
+                    reason: "server_mutation",
+                    source: "artifact_undo",
+                    protocolPatch: protocolPatch ?? undefined,
+                });
+            }
+        }
+        return true;
+    }, [setArtifacts, updateState]);
+
     const dispatchArtifactAction = useCallback(async (action: ArtifactActionContract): Promise<void> => {
         if (action.type === "artifact.execute_plan") {
             await executePlanAction(action.artifactId, action.selectedIndexes);
@@ -1476,8 +1531,12 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                 action.note,
                 action.editedPayload,
             );
+            return;
         }
-    }, [executePlanAction, reviewArtifactActionLocal]);
+        if (action.type === "artifact.undo") {
+            await undoArtifactActionLocal(action.artifactId);
+        }
+    }, [executePlanAction, reviewArtifactActionLocal, undoArtifactActionLocal]);
 
     const executePlan = useCallback(async (artifactId: string, selectedIndexes: number[]): Promise<void> => {
         await dispatchArtifactAction({
@@ -1499,6 +1558,13 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
             status,
             note,
             editedPayload,
+        });
+    }, [dispatchArtifactAction]);
+
+    const handleUndoArtifact = useCallback(async (artifactId: string): Promise<void> => {
+        await dispatchArtifactAction({
+            type: "artifact.undo",
+            artifactId,
         });
     }, [dispatchArtifactAction]);
 
@@ -1619,6 +1685,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
         dispatchArtifactAction,
         executePlan,
         handleReviewArtifact,
+        handleUndoArtifact,
         approveArtifactsBatch,
         reconnectRun,
     };

@@ -1,0 +1,41 @@
+import { describe, expect, it } from "vitest";
+import { getArtifactInlineActionModel, supportsArtifactInlineUndo } from "@/lib/artifacts/inline-actions";
+
+describe("artifact inline action policy", () => {
+  it("marks destructive review-resolution actions as requiring confirmation", () => {
+    const studyProposal = getArtifactInlineActionModel("study_proposal", "proposed");
+    const excludeAction = studyProposal.actions.find((action) => action.key === "exclude");
+    expect(excludeAction).toMatchObject({
+      class: "review_resolution",
+      requiresConfirmation: true,
+    });
+
+    const memoryProposal = getArtifactInlineActionModel("memory_proposal", "proposed");
+    const dismissAction = memoryProposal.actions.find((action) => action.key === "dismiss");
+    expect(dismissAction).toMatchObject({
+      class: "review_resolution",
+      requiresConfirmation: true,
+    });
+  });
+
+  it("keeps positive review resolutions unconfirmed and secondary actions non-mutating", () => {
+    const studyUpdate = getArtifactInlineActionModel("study_update", "proposed");
+    expect(studyUpdate.actions.find((action) => action.key === "apply")).toMatchObject({
+      class: "review_resolution",
+      requiresConfirmation: false,
+    });
+
+    const protocol = getArtifactInlineActionModel("protocol_suggestion", "proposed");
+    expect(protocol.actions.find((action) => action.key === "discuss")).toMatchObject({
+      class: "secondary",
+      requiresConfirmation: false,
+    });
+  });
+
+  it("allowlists inline undo only for settled study updates", () => {
+    expect(supportsArtifactInlineUndo("study_update", "accepted")).toBe(true);
+    expect(supportsArtifactInlineUndo("study_update", "auto_applied")).toBe(true);
+    expect(supportsArtifactInlineUndo("memory_proposal", "accepted")).toBe(false);
+    expect(supportsArtifactInlineUndo("study_proposal", "accepted")).toBe(false);
+  });
+});

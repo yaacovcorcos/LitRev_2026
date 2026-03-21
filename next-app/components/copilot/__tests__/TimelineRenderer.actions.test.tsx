@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { TimelineRenderer } from "../TimelineRenderer";
 import type { TimelineItem } from "@/types/timeline";
@@ -174,6 +174,7 @@ describe("TimelineRenderer action affordances", () => {
     expect(screen.queryByRole("button", { name: /^remember$/i })).toBeNull();
     expect(screen.queryByRole("button", { name: /dismiss/i })).toBeNull();
     expect(screen.queryByRole("button", { name: /accept & save to draft/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^undo$/i })).toBeNull();
 
     for (const button of screen.getAllByRole("button", { name: "Expand" })) {
       fireEvent.click(button);
@@ -210,6 +211,162 @@ describe("TimelineRenderer action affordances", () => {
 
     expect(onRetryLastMessage).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("button", { name: /resume/i })).toBeNull();
+  });
+
+  it("confirms destructive study exclusion before dispatching the review action", async () => {
+    const onReviewArtifact = vi.fn();
+    const items: TimelineItem[] = [
+      {
+        type: "artifact",
+        id: "study-proposal-1",
+        artifactId: "study-proposal-1",
+        artifactType: "study_proposal",
+        status: "proposed",
+        title: "Example Study",
+        payload: {
+          title: "Example Study",
+          authors: "Doe et al.",
+          year: 2024,
+          source: "semantic_scholar",
+          recommendation: "keep",
+          confidence: 0.82,
+        },
+        version: 1,
+        createdAt: "2026-02-21T00:00:00.000Z",
+      },
+    ];
+
+    render(
+      <TimelineRenderer
+        items={items}
+        isLoading={false}
+        emptyState={{ icon: "chat", title: "Empty", description: "Empty", suggestions: [] }}
+        onSuggestionClick={vi.fn()}
+        onReviewArtifact={onReviewArtifact}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /^exclude/i }));
+    fireEvent.click(screen.getByRole("button", { name: /wrong population/i }));
+
+    expect(screen.getByText("Exclude study?")).not.toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /^exclude$/i }));
+
+    await waitFor(() => {
+      expect(onReviewArtifact).toHaveBeenCalledWith(
+        "study-proposal-1",
+        "rejected",
+        "Wrong population",
+        undefined,
+      );
+    });
+  });
+
+  it("dispatches positive study updates without a confirmation dialog", async () => {
+    const onReviewArtifact = vi.fn();
+    const items: TimelineItem[] = [
+      {
+        type: "artifact",
+        id: "study-update-1",
+        artifactId: "study-update-1",
+        artifactType: "study_update",
+        status: "proposed",
+        title: "Study update",
+        payload: {
+          studyId: "study-1",
+          studyTitle: "Example Study",
+          snapshotAt: "2026-03-17T10:00:00.000Z",
+          idempotencyKey: "idempotency-key",
+          patch: { details: { abstract: "Updated abstract" } },
+          changes: [
+            {
+              field: "details.abstract",
+              label: "Abstract",
+              operation: "set",
+              typedOldValue: "Old abstract",
+              typedNewValue: "Updated abstract",
+              displayOld: "Old abstract",
+              displayNew: "Updated abstract",
+            },
+          ],
+          rationale: "User asked",
+        },
+        version: 1,
+        createdAt: "2026-03-17T10:00:00.000Z",
+      },
+    ];
+
+    render(
+      <TimelineRenderer
+        items={items}
+        isLoading={false}
+        emptyState={{ icon: "chat", title: "Empty", description: "Empty", suggestions: [] }}
+        onSuggestionClick={vi.fn()}
+        onReviewArtifact={onReviewArtifact}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /apply changes/i }));
+
+    await waitFor(() => {
+      expect(onReviewArtifact).toHaveBeenCalledWith("study-update-1", "accepted", undefined, undefined);
+    });
+    expect(screen.queryByText("Reject proposal?")).toBeNull();
+  });
+
+  it("shows inline undo for accepted study updates and confirms before dispatching", async () => {
+    const onUndoArtifact = vi.fn();
+    const items: TimelineItem[] = [
+      {
+        type: "artifact",
+        id: "study-update-accepted",
+        artifactId: "study-update-accepted",
+        artifactType: "study_update",
+        status: "accepted",
+        title: "Study update",
+        payload: {
+          studyId: "study-1",
+          studyTitle: "Example Study",
+          snapshotAt: "2026-03-17T10:00:00.000Z",
+          idempotencyKey: "idempotency-key",
+          patch: { details: { abstract: "Updated abstract" } },
+          changes: [
+            {
+              field: "details.abstract",
+              label: "Abstract",
+              operation: "set",
+              typedOldValue: "Old abstract",
+              typedNewValue: "Updated abstract",
+              displayOld: "Old abstract",
+              displayNew: "Updated abstract",
+            },
+          ],
+          rationale: "User asked",
+        },
+        version: 1,
+        createdAt: "2026-03-17T10:00:00.000Z",
+      },
+    ];
+
+    render(
+      <TimelineRenderer
+        items={items}
+        isLoading={false}
+        emptyState={{ icon: "chat", title: "Empty", description: "Empty", suggestions: [] }}
+        onSuggestionClick={vi.fn()}
+        onUndoArtifact={onUndoArtifact}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Expand" }));
+    fireEvent.click(screen.getByRole("button", { name: /^undo$/i }));
+
+    expect(screen.getByText("Undo applied change?")).not.toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /^undo$/i }));
+
+    await waitFor(() => {
+      expect(onUndoArtifact).toHaveBeenCalledWith("study-update-accepted");
+    });
   });
 
   it("routes reconnect and stop-and-retry actions to the clicked error card", () => {

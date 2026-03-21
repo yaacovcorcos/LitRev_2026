@@ -3,7 +3,7 @@
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { ArtifactStatus, DraftDiffPayload } from "@/types/artifacts";
-import { getArtifactSettledLabel, isArtifactReviewable } from "@/lib/artifacts/reviewability";
+import { isArtifactReviewable } from "@/lib/artifacts/reviewability";
 import styles from "@/styles/artifacts.module.css";
 import markdownStyles from "@/styles/markdown.module.css";
 
@@ -21,7 +21,6 @@ export function DraftBlock({ payload, status = "proposed", onAccept, onEdit, onR
         ? `${payload.section} § ${payload.subsection}`
         : payload.section;
     const isReviewable = isArtifactReviewable(status);
-    const settledLabel = getArtifactSettledLabel(status);
 
     return (
         <>
@@ -55,8 +54,6 @@ export function DraftBlock({ payload, status = "proposed", onAccept, onEdit, onR
                         Accept &amp; save to draft
                     </button>
                 </div>
-            ) : settledLabel ? (
-                <div className={styles.applyMeta}>{settledLabel}</div>
             ) : null}
         </>
     );

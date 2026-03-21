@@ -1825,6 +1825,49 @@ export default function AIView() {
     await reviewArtifactLocal(artifactId, status, note, editedPayload);
   }, [reviewArtifactLocal]);
 
+  const handleUndoArtifact = useCallback(async (artifactId: string) => {
+    const convId = activeConversationId;
+    if (!convId) return;
+
+    const { undoArtifactAction } = await loadAgentActions();
+    const result = await undoArtifactAction(artifactId);
+    if (!result.success || !result.artifact) {
+      updateConversationTimeline(convId, (items) => ([
+        ...items,
+        {
+          type: "error",
+          id: `artifact-undo-error-${Date.now()}`,
+          message: result.success ? "Artifact undo failed." : (result.error ?? "Artifact undo failed."),
+          retryable: false,
+          createdAt: new Date().toISOString(),
+        },
+      ]));
+      return;
+    }
+
+    updateConversationTimeline(convId, (items) =>
+      items.map((item) => {
+        if (item.type !== "artifact" || item.artifactId !== artifactId) return item;
+        return {
+          ...item,
+          status: result.artifact.status as ArtifactStatus,
+        };
+      })
+    );
+
+    if (result.artifact.projectId) {
+      const domains = getChangedDomainsForAcceptedArtifact(result.artifact.type, result.artifact.payload);
+      if (domains.length > 0) {
+        dispatchProjectDataChanged({
+          projectId: result.artifact.projectId,
+          domains,
+          reason: "server_mutation",
+          source: "artifact_undo",
+        });
+      }
+    }
+  }, [activeConversationId, updateConversationTimeline]);
+
   const handleApproveArtifactsBatch = useCallback(async (
     artifactIds: string[],
     options?: {
@@ -2587,6 +2630,7 @@ export default function AIView() {
               onStopAndRetryRun={handleStopAndRetryRun}
               onBranchFromMessage={handleBranchFromMessage}
               onReviewArtifact={handleReviewArtifact}
+              onUndoArtifact={handleUndoArtifact}
               onExecutePlan={handleExecutePlan}
               onAnswerUserInput={handleAnswerUserInput}
               suppressedProgressId={suppressedProgressId}

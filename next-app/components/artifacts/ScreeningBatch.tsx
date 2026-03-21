@@ -1,7 +1,7 @@
 "use client";
 
 import type { ArtifactStatus, ScreeningBatchPayload } from "@/types/artifacts";
-import { getArtifactSettledLabel, isArtifactReviewable } from "@/lib/artifacts/reviewability";
+import { isArtifactReviewable } from "@/lib/artifacts/reviewability";
 import styles from "@/styles/artifacts.module.css";
 
 export type ScreeningBatchProps = {
@@ -17,7 +17,6 @@ export function ScreeningBatch({ payload, status = "proposed", onAcceptAll, onRe
     const { summary, studies } = payload;
     const isReviewable = isArtifactReviewable(status);
     const canOverride = isReviewable && typeof onOverride === "function";
-    const settledLabel = getArtifactSettledLabel(status);
 
     return (
         <>
@@ -87,8 +86,6 @@ export function ScreeningBatch({ payload, status = "proposed", onAcceptAll, onRe
                         Accept all recommendations
                     </button>
                 </div>
-            ) : settledLabel ? (
-                <div className={styles.applyMeta}>{settledLabel}</div>
             ) : null}
         </>
     );

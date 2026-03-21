@@ -168,6 +168,8 @@ export type ProjectCopilotContextValue = {
     artifacts: Map<string, ArtifactData>;
     /** Review an artifact (accept/reject) */
     handleReviewArtifact: (artifactId: string, status: "accepted" | "rejected", note?: string, editedPayload?: Record<string, unknown>) => Promise<void>;
+    /** Undo an already-applied artifact when supported. */
+    handleUndoArtifact: (artifactId: string) => Promise<void>;
     /** Batch-approve proposed artifacts with progress/cancel hooks for timeline UI */
     approveArtifactsBatch: (
         artifactIds: string[],

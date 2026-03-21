@@ -682,6 +682,7 @@ export function ProjectCopilotProvider({
             currentRunId,
             artifacts,
             handleReviewArtifact: stream.handleReviewArtifact,
+            handleUndoArtifact: stream.handleUndoArtifact,
             approveArtifactsBatch: stream.approveArtifactsBatch,
             executePlan: stream.executePlan,
             reconnectRun: stream.reconnectRun,

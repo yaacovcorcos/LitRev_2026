@@ -542,6 +542,21 @@
     color: var(--text-muted);
 }
 
+.settledActionRow {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 12px;
+    border-top: 1px solid rgba(var(--rgb-ui-contrast), 0.04);
+}
+
+.settledStatusText {
+    min-width: 0;
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
 /* ── Exclude Reason Dropdown ────────────────────────────────── */
 
 .excludeDropdown {

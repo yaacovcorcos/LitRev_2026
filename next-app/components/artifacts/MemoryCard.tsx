@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { ArtifactStatus, MemoryProposalPayload } from "@/types/artifacts";
-import { getArtifactSettledLabel, isArtifactReviewable } from "@/lib/artifacts/reviewability";
+import { isArtifactReviewable } from "@/lib/artifacts/reviewability";
 import styles from "@/styles/artifacts.module.css";
 
 export type MemoryCardProps = {
@@ -18,7 +18,6 @@ export function MemoryCard({ payload, status = "proposed", onAccept, onReject, o
     const [isEditing, setIsEditing] = useState(false);
     const [editValue, setEditValue] = useState(payload.value);
     const isReviewable = isArtifactReviewable(status);
-    const settledLabel = getArtifactSettledLabel(status);
 
     const memoryTypeLabel = payload.memoryType === "user" ? "User Preference" : "Project Decision";
     const memoryTypeIcon = payload.memoryType === "user" ? "person" : "folder";
@@ -93,8 +92,6 @@ export function MemoryCard({ payload, status = "proposed", onAccept, onReject, o
                         </>
                     )}
                 </div>
-            ) : settledLabel ? (
-                <div className={styles.applyMeta}>{settledLabel}</div>
             ) : null}
         </>
     );

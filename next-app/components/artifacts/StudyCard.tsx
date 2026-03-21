@@ -3,7 +3,7 @@
 import { useRef, useState, useEffect } from "react";
 import type { StudyProposalPayload } from "@/types/artifacts";
 import type { ArtifactStatus } from "@/types/artifacts";
-import { getArtifactSettledLabel, isArtifactReviewable } from "@/lib/artifacts/reviewability";
+import { isArtifactReviewable } from "@/lib/artifacts/reviewability";
 import styles from "@/styles/artifacts.module.css";
 
 export type StudyCardProps = {
@@ -38,7 +38,6 @@ export function StudyCard({ payload, status = "proposed", onKeep, onExclude, onM
     const [showExcludeMenu, setShowExcludeMenu] = useState(false);
     const excludeMenuRef = useRef<HTMLDivElement | null>(null);
     const isReviewable = isArtifactReviewable(status);
-    const settledLabel = getArtifactSettledLabel(status);
 
     // Close exclude menu on click outside
     useEffect(() => {
@@ -164,8 +163,6 @@ export function StudyCard({ payload, status = "proposed", onKeep, onExclude, onM
                         Keep
                     </button>
                 </div>
-            ) : settledLabel ? (
-                <div className={styles.applyMeta}>{settledLabel}</div>
             ) : null}
         </>
     );
