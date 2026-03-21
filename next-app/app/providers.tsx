@@ -6,7 +6,7 @@ import { LedgerProvider } from "@/contexts/LedgerContext";
 import { CommandPaletteProvider } from "@/contexts/CommandPaletteContext";
 import { CommandPalette } from "@/components/CommandPalette";
 import { NotificationProvider } from "@/contexts/NotificationContext";
-import { ToastContainer } from "@/components/ui/Toast";
+import { ToastContainer } from "@/components/ui/ToastContainer";
 import { MobileViewportRuntime } from "@/components/mobile/MobileViewportRuntime";
 import { PerformanceVitalsReporter } from "@/app/PerformanceVitalsReporter";
 

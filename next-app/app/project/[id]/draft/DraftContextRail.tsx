@@ -14,7 +14,7 @@ type DraftContextRailProps = {
   studyLabel: (study: Study) => string;
 };
 
-export function EvidencePane({
+export function DraftContextRail({
   activeSectionLabel,
   isReferencesSection,
   usedEvidence,

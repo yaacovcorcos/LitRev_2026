@@ -30,7 +30,7 @@ import {
 } from "@/lib/ai/popup-stream-runtime";
 import { normalizeAssistantContent } from "@/lib/ai/normalize-assistant-content";
 import { recordReliabilityMetric } from "@/lib/ai/reliability-telemetry";
-import { markdownComponents } from "@/components/markdown/CodeBlock";
+import { MarkdownComponents } from "@/components/markdown/MarkdownComponents";
 import type { PopupChatContext } from "@/types/popup-chat";
 import type { CopilotPage } from "@/types/ai";
 import { COARSE_POINTER_MEDIA_QUERY } from "@/lib/mobile/breakpoints";
@@ -696,7 +696,7 @@ function PopupChatRuntime({
                                                 data-popup-error={adjacentError ? "1" : undefined}
                                             >
                                                 <div className={styles.msgText}>
-                                                    <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                                                    <ReactMarkdown remarkPlugins={[remarkGfm]} components={MarkdownComponents}>
                                                         {displayContent}
                                                     </ReactMarkdown>
                                                     {isStreaming && index === renderedItems.length - 1 && (

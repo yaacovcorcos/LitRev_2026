@@ -6,7 +6,10 @@ import reactHooksPlugin from "eslint-plugin-react-hooks";
 import litrevPlugin from "./eslint/plugin.mjs";
 import { createPhase3SearchabilityConfigs } from "./eslint/configs/phase3-searchability.mjs";
 
-const phase3SearchabilityConfigs = createPhase3SearchabilityConfigs().map((config) => ({
+const phase3SearchabilityConfigs = createPhase3SearchabilityConfigs({
+  parentImportLevel: "error",
+  filenameLevel: "error",
+}).map((config) => ({
   ...config,
   plugins: {
     litrev: litrevPlugin,

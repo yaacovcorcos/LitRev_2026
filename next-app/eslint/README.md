@@ -35,7 +35,7 @@ Contracts:
   - `hooks/useCopilotConversations.ts`
   - `hooks/useCopilotStreamActions.ts`
   - `app/project/[id]/layout.tsx`
-- `npm run lint:governance:phase3-searchability` is the stable verifier scaffold for Phase 3 searchability work on the UI surface only:
+- `npm run lint:governance:phase3-searchability` is the stable verification command for the completed Phase 3 searchability contract on the UI surface only:
   - `app/**`
   - `components/**`
   - `contexts/**`

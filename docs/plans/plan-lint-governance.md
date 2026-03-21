@@ -16,6 +16,8 @@ This plan does not own product behavior or `PRD.md`.
 - Governance-specific commands are now separate from the legacy lint baseline:
   - `npm run lint:governance`
   - `npm run lint:governance:phase1`
+  - `npm run lint:governance:phase2-hotspots`
+  - `npm run lint:governance:phase3-searchability`
   - `npm run lint:governance:audit`
   - `npm run test:eslint-rules`
 - Governance tooling now has a separate targeted validation command:
@@ -93,26 +95,28 @@ Missing:
 - Nothing material for the original Phase 2B hot-spot scope
 
 ### Phase 3A — Import Searchability
-Status: Partially Implemented
+Status: Done
 
 Shipped:
 - `litrev/no-cross-boundary-parent-imports`
 - Cleanup of the initial high-signal UI offenders in conversation/copilot/project note surfaces
+- Stable `npm run lint:governance:phase3-searchability` verifier for the governed UI surface
+- Hardening for sourced re-exports and string-literal dynamic imports in governed UI files
 
 Missing:
-- Wider review of the targeted UI surface set to confirm the rule is low-noise enough for stricter enforcement
-- Separate implementation plan for the remaining import-boundary cleanup wave
+- Nothing material for the original Phase 3A scope
 
 ### Phase 3B — Primary Export Searchability
-Status: Partially Implemented
+Status: Done
 
 Shipped:
 - `litrev/filename-match-primary-export`
 - Initial exceptions for framework files and obvious utility buckets
+- Cleanup of the governed UI warning sites so filename/export mismatches no longer remain in the completed Phase 3 surface
+- Promotion of the dedicated Phase 3 verifier so both searchability rules are now actionable there
 
 Missing:
-- Rule tuning to reduce naming-noise on legitimate LitRev patterns
-- Deliberate cleanup of current warning sites before any severity change
+- Nothing material for the original Phase 3B scope
 
 ### Phase 4 — Policy Maturity
 Status: Partially Implemented
@@ -148,6 +152,7 @@ Shipped:
 - Completed verifier commands already exist for finished earlier phases:
   - `npm run lint:governance:phase1`
   - `npm run lint:governance:phase2-hotspots`
+  - `npm run lint:governance:phase3-searchability`
 
 Missing:
 - Final decision on which governance checks are required versus informational
@@ -157,13 +162,12 @@ Missing:
 - Any move to require the full legacy `npm run lint` baseline
 
 ## Active Tasks
-- [ ] `LG-001` Write separate implementation plans for Phase 3A/3B and the unified remaining Phase 4/5 work before further rollout or cleanup work.
-- [ ] `LG-003` Finish the remaining import-boundary and filename-searchability review so Phase 3 can be marked complete or intentionally limited.
 - [ ] `LG-004` Complete unified Phase 4 policy maturity: finish async-discipline cleanup, narrow the test-expectation policy, and re-audit selective Factory-inspired strictness before adding any new frontend restrictions.
 - [ ] `LG-005` Complete unified Phase 5 enforcement rollout: decide required versus informational governance checks, wire the remaining stable verifier commands into CI, and document waiver policy.
 - [ ] `LG-006` Decide the first server/runtime structured-logging rule set so UI noise and observability paths are governed separately.
 
 ## Recently Completed
+- [x] Completed Phase 3 by hardening import-boundary enforcement for sourced re-exports and string-literal dynamic imports, adding the stable `lint:governance:phase3-searchability` verifier, and cleaning the remaining UI filename/export mismatches without broadening Phase 3 beyond the governed UI surface.
 - [x] Compressed the remaining non-Phase-3 roadmap into unified `Phase 4 — Policy Maturity` and `Phase 5 — Enforcement Rollout` so policy completion stays separate from CI enforcement.
 - [x] Completed Phase 2 by shipping the stable `lint:governance:phase2-hotspots` verifier, removing the remaining hot-spot effect/reset violations in copilot UI/runtime files, and bundling the co-located async cleanup for that same verifier surface without broadening Phase 4 completion.
 - [x] Added the stable `lint:governance:phase2-hotspots` verifier and completed the PR 1 runtime/controller cleanup for `/ai`, `ProjectCopilotContext`, `useCopilotConversations`, and `useCopilotStreamActions`, while keeping the remaining component/layout debt explicit for the Phase 2 follow-up slice.
