@@ -2,7 +2,7 @@ import { AppShell } from "@/components/AppShell";
 import Link from "next/link";
 import styles from "./admin.module.css";
 
-export default function AdminForbidden() {
+export function AdminForbidden() {
   return (
     <AppShell activeNav="projects">
       <section className={styles.page}>

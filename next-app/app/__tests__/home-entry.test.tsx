@@ -2,7 +2,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import HomeClient from "../HomeClient";
+import { HomeClient } from "../HomeClient";
 import type { HomeWorkspaceBootstrap } from "@/types/home-bootstrap";
 
 const {

@@ -1,4 +1,4 @@
-import ProjectOnboardingClient from "./ProjectOnboardingClient";
+import { ProjectOnboardingClient } from "./ProjectOnboardingClient";
 import { getProjectOnboardingStateAction } from "@/app/actions/onboarding";
 import { getProtocolAction } from "@/app/actions/protocols";
 import {

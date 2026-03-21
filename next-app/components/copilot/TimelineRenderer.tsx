@@ -13,7 +13,7 @@ import type { ErrorInfo, ReactNode } from "react";
 import { useParams } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { markdownComponents } from "../markdown/CodeBlock";
+import { markdownComponents } from "@/components/markdown/CodeBlock";
 import type { CopilotMessage } from "@/lib/projectCopilotStorage";
 import type { TimelineAttachment, TimelineArtifact, TimelineContextAttachment, TimelineItem } from "@/types/timeline";
 import type { CopilotPage, ReasoningMode } from "@/types/ai";
@@ -31,19 +31,19 @@ import type {
     MemoryForgetProposalPayload,
 } from "@/types/artifacts";
 import { messagesToTimeline } from "./StreamReducer";
-import { ArtifactWrapper } from "../artifacts/ArtifactWrapper";
-import { PlanCard } from "../artifacts/PlanCard";
-import { StudyCard } from "../artifacts/StudyCard";
-import { StudyUpdateCard } from "../artifacts/StudyUpdateCard";
-import { ScreeningBatch } from "../artifacts/ScreeningBatch";
-import { ProtocolEditCard } from "../artifacts/ProtocolEditCard";
-import { CriteriaCard } from "../artifacts/CriteriaCard";
-import { DraftBlock } from "../artifacts/DraftBlock";
-import { MemoryCard } from "../artifacts/MemoryCard";
-import { MemoryForgetCard } from "../artifacts/MemoryForgetCard";
-import { ScopingReportCard } from "../artifacts/ScopingReportCard";
-import { UserInputCard } from "../artifacts/UserInputCard";
-import { ConfirmDialog } from "../ConfirmDialog";
+import { ArtifactWrapper } from "@/components/artifacts/ArtifactWrapper";
+import { PlanCard } from "@/components/artifacts/PlanCard";
+import { StudyCard } from "@/components/artifacts/StudyCard";
+import { StudyUpdateCard } from "@/components/artifacts/StudyUpdateCard";
+import { ScreeningBatch } from "@/components/artifacts/ScreeningBatch";
+import { ProtocolEditCard } from "@/components/artifacts/ProtocolEditCard";
+import { CriteriaCard } from "@/components/artifacts/CriteriaCard";
+import { DraftBlock } from "@/components/artifacts/DraftBlock";
+import { MemoryCard } from "@/components/artifacts/MemoryCard";
+import { MemoryForgetCard } from "@/components/artifacts/MemoryForgetCard";
+import { ScopingReportCard } from "@/components/artifacts/ScopingReportCard";
+import { UserInputCard } from "@/components/artifacts/UserInputCard";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { StreamingProgress } from "./StreamingProgress";
 import { addMentionedStudyAction } from "@/app/actions/ledger";
 import { type MentionedStudy } from "@/lib/ai/mentioned-studies";
@@ -988,8 +988,12 @@ function TimelineRendererInner({
         });
     }, [hiddenItemCount, isConversationLoading, onTimelineReady, timeline.length, visibleTimeline.length]);
 
-    const handleCopy = useCallback((text: string) => {
-        navigator.clipboard.writeText(text).catch(console.error);
+    const handleCopy = useCallback(async (text: string) => {
+        try {
+            await navigator.clipboard.writeText(text);
+        } catch (error) {
+            console.error("Failed to copy timeline item", error);
+        }
     }, []);
 
     const handleSaveToNotes = useCallback(async (content: string, messageId: string) => {

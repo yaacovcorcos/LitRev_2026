@@ -118,7 +118,6 @@ export function useCopilotConversations(deps: CopilotConversationsDeps) {
         studyFilterRef.current = undefined;
         scopeConversationMapRef.current.clear();
         setState((prev) => ({ ...prev, messages: [] }));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [projectId]);
 
     // Load conversations list (uses studyFilterRef for scoping)
@@ -216,8 +215,7 @@ export function useCopilotConversations(deps: CopilotConversationsDeps) {
         }).finally(() => {
             setIsLoadingConversations(false);
         });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [loadConversations, projectId]);
+    }, [fetchConversations, projectId]);
 
     // Initial load: get conversations and auto-select the most recent one
     useEffect(() => {
@@ -292,8 +290,6 @@ export function useCopilotConversations(deps: CopilotConversationsDeps) {
         return () => {
             isActive = false;
         };
-    // Only run once on mount, not when currentConversationId changes
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [projectEntryRestoreEnabled, projectId, routeConversationId, setState]);
 
     const toggleConversationList = useCallback(() => {
@@ -419,7 +415,6 @@ export function useCopilotConversations(deps: CopilotConversationsDeps) {
                 setIsConversationLoading(false);
             }
         }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [projectEntryRestoreEnabled, projectId, updateState]);
 
     // Keep ref in sync so setStudyFilter (declared earlier) can call it
@@ -554,7 +549,6 @@ export function useCopilotConversations(deps: CopilotConversationsDeps) {
             console.error("Failed to create conversation:", err);
             return null;
         }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [projectEntryRestoreEnabled, projectId, loadConversations]);
 
     const renameConversation = useCallback(async (conversationId: string, title: string) => {
@@ -626,7 +620,6 @@ export function useCopilotConversations(deps: CopilotConversationsDeps) {
             console.error("Failed to branch conversation:", err);
             return null;
         }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [projectId, loadConversations, selectConversation]);
 
     const summarizeAndRefresh = useCallback(async () => {

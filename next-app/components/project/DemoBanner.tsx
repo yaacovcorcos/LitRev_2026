@@ -80,7 +80,7 @@ export function DemoBanner({ projectId }: DemoBannerProps) {
                 return;
               }
               await refresh();
-              window.location.assign(`/project/${result.data.id}`);
+              router.push(`/project/${result.data.id}`);
             })
             .catch((err) => {
               console.error("Reset sample project failed", err);

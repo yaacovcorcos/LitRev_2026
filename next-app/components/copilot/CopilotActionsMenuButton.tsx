@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
+import { useCallback, useRef, useState, type ChangeEvent } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 import { listProjectFilesAction } from "@/app/actions/files";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { PHONE_MEDIA_QUERY } from "@/lib/mobile/breakpoints";
 import type { FileAsset } from "@/types/files";
 import styles from "./CopilotInput.module.css";
@@ -38,22 +39,13 @@ export function CopilotActionsMenuButton({
     const canShowCompress = !!onCompress;
     const hasActions = canShowAttachments || canShowCompress;
     const [open, setOpen] = useState(false);
-    const [isPhoneViewport, setIsPhoneViewport] = useState(false);
+    const isPhoneViewport = useMediaQuery(PHONE_MEDIA_QUERY);
     const [projectFiles, setProjectFiles] = useState<FileAsset[]>([]);
     const [loadingProjectFiles, setLoadingProjectFiles] = useState(false);
     const fileInputRef = useRef<HTMLInputElement | null>(null);
     const fileListCacheRef = useRef<{ files: FileAsset[]; fetchedAt: number } | null>(null);
 
-    useEffect(() => {
-        if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
-        const mediaQuery = window.matchMedia(PHONE_MEDIA_QUERY);
-        const update = () => setIsPhoneViewport(mediaQuery.matches);
-        update();
-        mediaQuery.addEventListener?.("change", update);
-        return () => mediaQuery.removeEventListener?.("change", update);
-    }, []);
-
-    const loadProjectFiles = useCallback(() => {
+    const loadProjectFiles = useCallback(async () => {
         if (!canShowAttachments || loadingProjectFiles || !projectId) return;
         const cache = fileListCacheRef.current;
         const isFresh = cache && (Date.now() - cache.fetchedAt) < FILE_LIST_TTL_MS;
@@ -63,18 +55,20 @@ export function CopilotActionsMenuButton({
         }
 
         setLoadingProjectFiles(true);
-        listProjectFilesAction(projectId)
-            .then((result) => {
-                if (!result.success) {
-                    console.error(result.error);
-                    return;
-                }
-                const pdfs = result.data.filter((file) => file.format === "pdf" || file.mimeType.includes("pdf"));
-                fileListCacheRef.current = { files: pdfs, fetchedAt: Date.now() };
-                setProjectFiles(pdfs);
-            })
-            .catch(console.error)
-            .finally(() => setLoadingProjectFiles(false));
+        try {
+            const result = await listProjectFilesAction(projectId);
+            if (!result.success) {
+                console.error(result.error);
+                return;
+            }
+            const pdfs = result.data.filter((file) => file.format === "pdf" || file.mimeType.includes("pdf"));
+            fileListCacheRef.current = { files: pdfs, fetchedAt: Date.now() };
+            setProjectFiles(pdfs);
+        } catch (error) {
+            console.error("Failed to load project files", error);
+        } finally {
+            setLoadingProjectFiles(false);
+        }
     }, [canShowAttachments, loadingProjectFiles, projectId]);
 
     const handleOpenChange = useCallback((nextOpen: boolean) => {
@@ -83,7 +77,7 @@ export function CopilotActionsMenuButton({
             return;
         }
         if (nextOpen && canShowAttachments) {
-            loadProjectFiles();
+            void loadProjectFiles();
         }
         setOpen(nextOpen);
     }, [canShowAttachments, disabled, loadProjectFiles]);

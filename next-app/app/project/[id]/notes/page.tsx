@@ -7,7 +7,7 @@ import StarterKit from "@tiptap/starter-kit";
 import Underline from "@tiptap/extension-underline";
 import Placeholder from "@tiptap/extension-placeholder";
 import type { JSONContent } from "@tiptap/core";
-import { EditorToolbar } from "../draft/DraftEditors";
+import { EditorToolbar } from "@/app/project/[id]/draft/DraftEditors";
 import {
     listNotesAction,
     createNoteFullAction,
@@ -241,6 +241,28 @@ export default function NotesPage() {
         [selectedNoteId],
     );
 
+    const flushPendingNoteUpdates = useCallback(async () => {
+        if (pendingSaveRef.current) {
+            const { noteId: pendingId, content } = pendingSaveRef.current;
+            pendingSaveRef.current = null;
+            try {
+                await updateNoteAction(pendingId, { content: content as NoteContent });
+            } catch (error) {
+                console.error("Failed to flush pending note content", error);
+            }
+        }
+
+        if (pendingTitleRef.current) {
+            const { noteId: pendingId, title } = pendingTitleRef.current;
+            pendingTitleRef.current = null;
+            try {
+                await updateNoteAction(pendingId, { title });
+            } catch (error) {
+                console.error("Failed to flush pending note title", error);
+            }
+        }
+    }, []);
+
     // ── Note selection ───────────────────────────────────────────────────────
 
     const selectNote = useCallback(
@@ -250,21 +272,12 @@ export default function NotesPage() {
                 clearTimeout(saveTimerRef.current);
                 saveTimerRef.current = null;
             }
-            if (pendingSaveRef.current) {
-                const { noteId: pendingId, content } = pendingSaveRef.current;
-                pendingSaveRef.current = null;
-                updateNoteAction(pendingId, { content: content as NoteContent }).catch(console.error);
-            }
             // Flush any pending title save
             if (titleTimerRef.current) {
                 clearTimeout(titleTimerRef.current);
                 titleTimerRef.current = null;
             }
-            if (pendingTitleRef.current) {
-                const { noteId: pendingId, title } = pendingTitleRef.current;
-                pendingTitleRef.current = null;
-                updateNoteAction(pendingId, { title }).catch(console.error);
-            }
+            await flushPendingNoteUpdates();
             setSelectedNoteId(noteId);
             setSaveStatus("idle");
 
@@ -277,7 +290,7 @@ export default function NotesPage() {
                 );
             }
         },
-        [],
+        [flushPendingNoteUpdates],
     );
 
     // ── Create note ──────────────────────────────────────────────────────────

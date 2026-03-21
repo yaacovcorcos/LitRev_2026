@@ -1,4 +1,4 @@
-import ProjectDetailClient from "./ProjectDetailClient";
+import { ProjectDetailClient } from "./ProjectDetailClient";
 import { getProjectOverviewStatsAction, type ProjectOverviewStats } from "@/app/actions/stats";
 
 export default async function ProjectDetailPage({

@@ -39,6 +39,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -100,6 +102,24 @@ jobs:
 
       - name: Governance docs guard
         run: cd next-app && npm run governance:check
+
+      - name: Governance audit baseline
+        run: cd next-app && npm run lint:governance:audit > governance-audit.json
+
+      - name: Upload governance audit baseline
+        uses: actions/upload-artifact@v4
+        with:
+          name: governance-audit
+          path: next-app/governance-audit.json
+
+      - name: Governance rule tests
+        run: cd next-app && npm run test:eslint-rules
+
+      - name: Governance lint
+        run: cd next-app && npm run lint:governance
+
+      - name: Runtime test impact guard
+        run: cd next-app && node scripts/check-runtime-test-impact.mjs
 
       - name: Chat stream architecture guard
         run: cd next-app && node scripts/check-chat-stream-architecture.mjs --mode=${CHAT_STREAM_ARCH_GUARD_MODE:-enforce}

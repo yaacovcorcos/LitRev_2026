@@ -157,7 +157,7 @@ function LedgerPreview({ stats }: { stats: LedgerStats }) {
   );
 }
 
-export default function ProjectDetailClient({
+export function ProjectDetailClient({
   projectId,
   initialOverviewStats,
 }: ProjectDetailClientProps) {

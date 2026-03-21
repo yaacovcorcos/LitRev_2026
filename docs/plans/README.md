@@ -5,6 +5,7 @@ This file is the active plan registry and the canonical owner for plan-maintenan
 
 ## Ownership Scopes
 - [**Architecture & Infrastructure**](plan-backend.md): DB schema changes, Auth, server-side actions, export generation logic.
+- [**Lint Governance**](plan-lint-governance.md): Canonical tracker for repo-local lint architecture, staged governance rules, audit baselines, and CI rollout.
 - [**Agentic Systems & AI Orchestration**](plan-agentic.md): Single canonical plan for agent runtime architecture, active fixes, roadmap phases, and maintenance/update rules.
   - Supporting execution detail for active fixes lives under [**agent-runtime-remediation/**](agent-runtime-remediation/README.md).
   - This file is also the canonical owner for immediate chat/agent runtime stabilization and active correctness fixes.

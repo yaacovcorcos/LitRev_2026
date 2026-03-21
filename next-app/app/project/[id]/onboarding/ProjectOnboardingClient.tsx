@@ -76,7 +76,7 @@ type ProjectOnboardingClientProps = {
   initialDerivedProfile: OnboardingDerivedProfile | null;
 };
 
-export default function ProjectOnboardingClient({
+export function ProjectOnboardingClient({
   projectId,
   initialProtocol,
   initialStepStatuses,

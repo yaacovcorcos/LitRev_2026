@@ -1,4 +1,4 @@
-import HomeClient from "@/app/HomeClient";
+import { HomeClient } from "@/app/HomeClient";
 import { getHomeWorkspaceBootstrap } from "@/lib/server/home-bootstrap";
 
 type SearchParams = Record<string, string | string[] | undefined>;

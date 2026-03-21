@@ -2,7 +2,7 @@
 import { render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import ProjectDetailClient from "../ProjectDetailClient";
+import { ProjectDetailClient } from "../ProjectDetailClient";
 
 const {
   mockUseProjects,
