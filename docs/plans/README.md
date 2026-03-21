@@ -36,7 +36,7 @@ This file is the active plan registry and the canonical owner for plan-maintenan
 - [**Repo Review Baseline**](../runbooks/repo-review-baseline.md): Canonical baseline for comparing repeated deep repo reviews against current in-repo findings and shipped review-driven fixes.
 - [**Frontend Review Loop**](../runbooks/frontend-review-loop.md): Repeatable frontend implementation and review procedure, including thesis framing and QA checklists.
 - [**Admin Access Runbook**](../runbooks/admin-access.md): Platform admin bootstrap, guard boundaries, mutation safety, and audit/analytics incident procedures.
-- [**Chat Unification Burn-In Runbook**](../runbooks/chat-unification-burn-in.md): Operational U1.6 canary validation steps and sign-off procedure.
+- [**Chat Runtime Burn-In Runbook**](../runbooks/chat-runtime-burn-in.md): Operational U1.6 canary validation steps and sign-off procedure.
 - [**Reliability A3 Canary Runbook**](../runbooks/reliability-a3-canary.md): staged sample gates, pass/fail thresholds, rollback triggers, and flag interaction matrix.
 
 Plans not listed here as active defaults should be treated as supporting detail, archive material, or superseded source plans rather than routing defaults.

@@ -1,4 +1,4 @@
-# Chat Unification Burn-In Runbook
+# Chat Runtime Burn-In Runbook
 
 This runbook operationalizes `U1.6` from `docs/plans/chatRuntime.md`.
 It is the only active U1.6 burn-in operational source.
@@ -6,7 +6,7 @@ Use it before opening `U3` popup migration.
 
 ## Purpose
 
-Provide a deterministic, auditable process for chat-unification canary validation across the `ai` and `project` surfaces.
+Provide a deterministic, auditable process for chat-runtime canary validation across the `ai` and `project` surfaces.
 
 ## Preconditions
 

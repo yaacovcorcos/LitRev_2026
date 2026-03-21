@@ -107,7 +107,7 @@ Rules:
 - [ ] `U1.6` Cross-surface replay parity and burn-in sign-off
   - Problem: the shared runtime is shipped, but the operational proof that it is stable enough to treat as canonical is still incomplete.
   - Remaining work:
-    - finish canary evidence using `docs/runbooks/chat-unification-burn-in.md`
+    - finish canary evidence using `docs/runbooks/chat-runtime-burn-in.md`
     - advance `docs/reports/u1-6-burn-in.md` in place as the single canonical live report for the active window rather than creating parallel live reports
     - use the runbook baseline-then-organic evidence flow, including the minimum manual baseline scenario pack and preserved raw validator JSON artifacts
     - preserve raw validator JSON either in the live report appendix or in linked dated snapshot artifacts under `docs/reports/`
