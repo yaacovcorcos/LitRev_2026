@@ -1,0 +1,4 @@
+interface:
+  display_name: "LitRev DB Ops"
+  short_description: "Safely run LitRev database diagnosis, migrations, and production remediation using the repo’s DB runbooks and release gates."
+  default_prompt: "Use $litrev-db-ops to diagnose and fix this LitRev database issue safely, then verify the required migration and release gates."
