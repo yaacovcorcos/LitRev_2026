@@ -33,6 +33,7 @@ import {
     markProjectConversationActive,
     useCopilotConversationBootstrap,
 } from "@/hooks/useCopilotConversationBootstrap";
+import { createInitialSharedStreamState } from "@/lib/ai/shared-stream-reducer";
 
 function isContextAttachment(
     attachment: ConversationMessageAttachment,
@@ -55,6 +56,7 @@ export type CopilotConversationsDeps = {
     setCurrentRunId: React.Dispatch<React.SetStateAction<string | null>>;
     setPendingChoices: React.Dispatch<React.SetStateAction<ChoiceOption[]>>;
     setPendingUserInput: React.Dispatch<React.SetStateAction<UserInputRequest | null>>;
+    setSharedStreamState: React.Dispatch<React.SetStateAction<ReturnType<typeof createInitialSharedStreamState>>>;
 };
 
 export function useCopilotConversations(deps: CopilotConversationsDeps) {
@@ -72,6 +74,7 @@ export function useCopilotConversations(deps: CopilotConversationsDeps) {
         setCurrentRunId,
         setPendingChoices,
         setPendingUserInput,
+        setSharedStreamState,
     } = deps;
     const projectEntryRestoreEnabled = isProjectEntryRestoreEnabled();
 
@@ -145,6 +148,7 @@ export function useCopilotConversations(deps: CopilotConversationsDeps) {
         }
         setIsLoading(false);
         setCurrentRunId(null);
+        setSharedStreamState(createInitialSharedStreamState());
         setPendingChoices([]);
         setPendingUserInput(null);
 
@@ -231,6 +235,7 @@ export function useCopilotConversations(deps: CopilotConversationsDeps) {
             }
             setIsLoading(false);
             setCurrentRunId(null);
+            setSharedStreamState(createInitialSharedStreamState({ effectiveConvId: conversationId }));
             setPendingChoices([]);
             setPendingUserInput(null);
             if (!projectId) return false;
@@ -440,6 +445,7 @@ export function useCopilotConversations(deps: CopilotConversationsDeps) {
         }
         setIsLoading(false);
         setCurrentRunId(null);
+        setSharedStreamState(createInitialSharedStreamState());
         setPendingChoices([]);
         setPendingUserInput(null);
         try {
@@ -527,6 +533,7 @@ export function useCopilotConversations(deps: CopilotConversationsDeps) {
             }
             setIsLoading(false);
             setCurrentRunId(null);
+            setSharedStreamState(createInitialSharedStreamState({ effectiveConvId: conversationId }));
             setPendingChoices([]);
             setPendingUserInput(null);
 

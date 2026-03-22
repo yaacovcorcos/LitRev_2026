@@ -24,9 +24,11 @@ import { useCopilotConversations } from "@/hooks/useCopilotConversations";
 import { useCopilotStreamActions } from "@/hooks/useCopilotStreamActions";
 import { useProjectAutonomyConfig } from "@/hooks/useProjectAutonomyConfig";
 import { useQueuedFollowUpController } from "@/hooks/useQueuedFollowUpController";
+import { createInitialProjectStreamState, type StreamMutableState } from "@/contexts/project-copilot-stream-events";
+import { deriveSharedRuntimeUiState } from "@/lib/ai/shared-runtime-ui-state";
 import type { ArtifactData } from "@/types/artifacts";
 import type { AgentMode } from "@/types/agent";
-import type { ChoiceOption, CopilotPage, ReasoningMode, StreamPhase, UserInputRequest } from "@/types/ai";
+import type { ChoiceOption, CopilotPage, ReasoningMode, UserInputRequest } from "@/types/ai";
 import { useRouter } from "next/navigation";
 import {
     getReasoningModePreference,
@@ -40,8 +42,6 @@ import {
     type ReasoningSupportTier,
 } from "@/lib/ai/config";
 import { recordChatUnificationMetric } from "@/lib/ai/chat-unification-telemetry";
-import {
-} from "@/lib/ai/queued-followup";
 import {
     clearContextCaptureHistory,
     loadContextCaptureHistory,
@@ -112,7 +112,9 @@ function ProjectCopilotRuntime({
     });
     const stateRef = useRef<ProjectCopilotState>(state);
     const [isLoading, setIsLoading] = useState(false);
-    const [streamPhase, setStreamPhase] = useState<StreamPhase>("idle");
+    const [sharedStreamState, setSharedStreamState] = useState<StreamMutableState>(() => (
+        createInitialProjectStreamState({ effectiveConvId: routeConversationId })
+    ));
     const [reasoningMode, setReasoningModeState] = useState<ReasoningMode>(() => getReasoningModePreference());
     const [selectedModel, setSelectedModelState] = useState<SelectableModelId>(DEFAULT_MODEL);
     const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -141,6 +143,12 @@ function ProjectCopilotRuntime({
 
     // Structured ask_user question pending user response
     const [pendingUserInput, setPendingUserInput] = useState<UserInputRequest | null>(null);
+
+    const runtimeUiState = useMemo(() => deriveSharedRuntimeUiState({
+        isStreaming: isLoading,
+        currentRunId,
+        streamState: sharedStreamState,
+    }), [currentRunId, isLoading, sharedStreamState]);
 
     isLoadingRef.current = isLoading;
     stateRef.current = state;
@@ -279,6 +287,7 @@ function ProjectCopilotRuntime({
         setCurrentRunId,
         setPendingChoices,
         setPendingUserInput,
+        setSharedStreamState,
     });
 
     // Stream + artifact actions (extracted hook)
@@ -290,10 +299,10 @@ function ProjectCopilotRuntime({
         abortControllerRef,
         isLoadingRef,
         setIsLoading,
-        setStreamPhase,
         setCurrentRunId,
         setPendingChoices,
         setPendingUserInput,
+        setSharedStreamState,
         currentRunId,
         setArtifacts,
         pendingAttachment,
@@ -548,10 +557,10 @@ function ProjectCopilotRuntime({
         currentConversationId: convo.currentConversationId,
         queuedFollowUp,
         setQueuedFollowUp,
-        isLoading,
+        isLoading: runtimeUiState.isStreaming,
         hasPendingChoices: pendingChoices.length > 0,
         hasPendingUserInput: pendingUserInput !== null,
-        sendLocked: false,
+        sendLocked: runtimeUiState.sendLocked,
         dispatchQueuedFollowUp: (nextQueuedFollowUp) => sendMessageWithContext(
             nextQueuedFollowUp.text,
             nextQueuedFollowUp.page,
@@ -569,8 +578,8 @@ function ProjectCopilotRuntime({
             isCollapsed: state.panel.collapsed,
             panelWidth: state.panel.width,
             isLoading,
-            streamPhase,
-            canAct: !isLoading,
+            streamPhase: runtimeUiState.streamPhase,
+            canAct: !runtimeUiState.isStreaming && !runtimeUiState.sendLocked,
             reasoningMode,
             selectedModel,
             reasoningSupport,
@@ -651,7 +660,7 @@ function ProjectCopilotRuntime({
         [
             state,
             isLoading,
-            streamPhase,
+            runtimeUiState,
             reasoningMode,
             selectedModel,
             reasoningSupport,

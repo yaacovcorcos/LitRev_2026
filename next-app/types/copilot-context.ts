@@ -50,9 +50,9 @@ export type ProjectCopilotContextValue = {
     panelWidth: number;
     /** Whether AI is loading */
     isLoading: boolean;
-    /** Current streaming phase for fine-grained UI control */
+    /** Current shared runtime phase for fine-grained UI control */
     streamPhase: StreamPhase;
-    /** Whether the user can interact with artifact actions (false during streaming) */
+    /** Whether the user can interact with artifact actions (false during streaming or explicit recovery/block states) */
     canAct: boolean;
     /** Reasoning visibility mode (off/summary/full) */
     reasoningMode: ReasoningMode;

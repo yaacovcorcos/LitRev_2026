@@ -654,4 +654,60 @@ describe("shared stream reducer", () => {
     expect(failedToolIds).not.toContain("tc-B");
     expect(runEnd.state.runningToolCallIds).toEqual([]);
   });
+
+  it("tracks pending user input and paused terminal state in shared runtime state", () => {
+    let state = createInitialSharedStreamState();
+
+    const blocked = reduceSharedStreamChunk(
+      state,
+      {
+        type: "user_input_required",
+        userInputRequest: {
+          callId: "ask-1",
+          question: "Continue?",
+          questionType: "yes_no",
+        },
+      },
+      meta,
+    );
+    state = blocked.state;
+
+    expect(state.pendingUserInputRequest?.callId).toBe("ask-1");
+
+    const paused = reduceSharedStreamChunk(
+      state,
+      {
+        type: "run_end",
+        runStatus: "paused",
+        stopReason: "paused_for_input",
+      },
+      meta,
+    );
+
+    expect(paused.state.pendingUserInputRequest?.callId).toBe("ask-1");
+    expect(paused.state.lastRunStatus).toBe("paused");
+    expect(paused.state.lastStopReason).toBe("paused_for_input");
+  });
+
+  it("tracks recovery recommendation from runtime errors", () => {
+    const reduced = reduceSharedStreamChunk(
+      createInitialSharedStreamState(),
+      {
+        type: "error",
+        error: "Run interrupted",
+        errorMeta: {
+          kind: "runtime",
+          code: "RUN_RECOVERY_REQUIRES_USER_ACTION",
+          retryable: false,
+          source: "runtime",
+          message: "Run interrupted",
+          recoveryRecommendation: "continue_from_durable_state",
+        },
+      },
+      meta,
+    );
+
+    expect(reduced.state.latestRecoveryRecommendation).toBe("continue_from_durable_state");
+    expect(reduced.state.lastErrorMeta?.code).toBe("RUN_RECOVERY_REQUIRES_USER_ACTION");
+  });
 });

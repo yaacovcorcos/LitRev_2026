@@ -4,6 +4,7 @@ import { selectActiveProgress, normalizeTimelineProgressItems } from "@/lib/ai/a
 import type { ArtifactData } from "@/types/artifacts";
 import { messagesToTimeline } from "@/components/copilot/StreamReducer";
 import {
+  createInitialProjectStreamState,
   failRunningProjectToolActivityMessages,
   handleProjectCopilotStreamChunk,
   type StreamMutableState,
@@ -11,22 +12,7 @@ import {
 
 describe("project copilot stream event handlers", () => {
   function baseState(): StreamMutableState {
-    return {
-      aiMessageCreated: false,
-      hasVisibleContent: false,
-      fullContent: "",
-      reasoningContent: "",
-      reasoningState: "done",
-      reasoningTruncated: false,
-      activeReasoningId: null,
-      runningToolCallIds: [],
-      lastToolCallId: null,
-      syntheticToolCounter: 0,
-      localRunId: "",
-      effectiveConvId: null,
-      completedPubmedSearchCount: 0,
-      lastPubmedSearchSize: null,
-    };
+    return createInitialProjectStreamState();
   }
 
   it("fails running tool activity messages with the shared abnormal-end summary", () => {
@@ -513,7 +499,7 @@ describe("project copilot stream event handlers", () => {
       setPendingUserInput: vi.fn(),
     };
 
-    let state = handleProjectCopilotStreamChunk(
+    const state = handleProjectCopilotStreamChunk(
       {
         type: "tool_call",
         toolCall: {
@@ -525,7 +511,7 @@ describe("project copilot stream event handlers", () => {
       baseState(),
       deps
     );
-    state = handleProjectCopilotStreamChunk(
+    handleProjectCopilotStreamChunk(
       {
         type: "tool_result",
         toolResult: {

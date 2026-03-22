@@ -1,5 +1,12 @@
 import { appendReasoningRaw } from "@/lib/ai/reasoning-visibility";
-import type { AIErrorEnvelope, AIStreamChunk, ChoiceOption, CopilotPage, UserInputRequest } from "@/types/ai";
+import type {
+  AIErrorEnvelope,
+  AIStreamChunk,
+  ChoiceOption,
+  CopilotPage,
+  RunRecoveryRecommendation,
+  UserInputRequest,
+} from "@/types/ai";
 import { buildToolReceiptPatch, buildToolReceiptSeed } from "@/lib/ai/tool-receipts";
 
 export type SharedToolStatus = "queued" | "running" | "done" | "failed" | "interrupted";
@@ -19,6 +26,11 @@ export type SharedStreamState = {
   effectiveConvId: string | null;
   completedPubmedSearchCount: number;
   lastPubmedSearchSize: number | null;
+  pendingUserInputRequest: UserInputRequest | null;
+  lastRunStatus: string | null;
+  lastStopReason: string | null;
+  lastErrorMeta: AIErrorEnvelope | null;
+  latestRecoveryRecommendation: RunRecoveryRecommendation | null;
 };
 
 export type SharedStreamIntent =
@@ -139,6 +151,11 @@ export function createInitialSharedStreamState(
     effectiveConvId: null,
     completedPubmedSearchCount: 0,
     lastPubmedSearchSize: null,
+    pendingUserInputRequest: null,
+    lastRunStatus: null,
+    lastStopReason: null,
+    lastErrorMeta: null,
+    latestRecoveryRecommendation: null,
     ...overrides,
   };
 }
@@ -434,6 +451,11 @@ export function reduceSharedStreamChunk(
       next = {
         ...prev,
         localRunId: chunk.runId ?? "",
+        pendingUserInputRequest: null,
+        lastRunStatus: null,
+        lastStopReason: null,
+        lastErrorMeta: null,
+        latestRecoveryRecommendation: null,
       };
       intents.push({ type: "run_set", runId: chunk.runId ?? null });
       if (chunk.conversationId && chunk.conversationId !== prev.effectiveConvId) {
@@ -447,6 +469,10 @@ export function reduceSharedStreamChunk(
     }
 
     case "run_end": {
+      const runStatus = chunk.runStatus ?? null;
+      const stopReason = chunk.stopReason ?? null;
+      const keepPendingUserInput =
+        runStatus?.toLowerCase() === "paused" || stopReason?.toLowerCase() === "paused_for_input";
       intents.push({ type: "run_set", runId: null });
       const runningToolCallIds = prev.runningToolCallIds ?? [];
       for (const callId of runningToolCallIds) {
@@ -463,6 +489,11 @@ export function reduceSharedStreamChunk(
         runningToolCallIds: [],
         lastToolCallId: null,
         hasVisibleContent: prev.hasVisibleContent || prev.fullContent.length > 0,
+        pendingUserInputRequest: keepPendingUserInput ? prev.pendingUserInputRequest : null,
+        lastRunStatus: runStatus,
+        lastStopReason: stopReason,
+        lastErrorMeta: keepPendingUserInput ? prev.lastErrorMeta : null,
+        latestRecoveryRecommendation: keepPendingUserInput ? prev.latestRecoveryRecommendation : null,
       };
       return { state: next, intents };
     }
@@ -508,6 +539,12 @@ export function reduceSharedStreamChunk(
 
     case "user_input_required": {
       if (!chunk.userInputRequest) return { state: prev, intents };
+      next = {
+        ...prev,
+        pendingUserInputRequest: chunk.userInputRequest,
+        lastErrorMeta: null,
+        latestRecoveryRecommendation: null,
+      };
       intents.push({
         type: "progress_upsert",
         message: "Waiting for your answer",
@@ -526,16 +563,21 @@ export function reduceSharedStreamChunk(
         page: meta.page,
         section: meta.section,
       });
-      return { state: prev, intents };
+      return { state: next, intents };
     }
 
     case "error": {
+      next = {
+        ...prev,
+        lastErrorMeta: chunk.errorMeta ?? null,
+        latestRecoveryRecommendation: chunk.errorMeta?.recoveryRecommendation ?? null,
+      };
       intents.push({
         type: "stream_error",
         message: chunk.error ?? "Unknown error",
         errorMeta: chunk.errorMeta,
       });
-      return { state: prev, intents };
+      return { state: next, intents };
     }
 
     case "done": {

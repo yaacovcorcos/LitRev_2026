@@ -35,6 +35,7 @@ export type AiStreamRuntimeDeps = {
   onPlanStepUpdate?: (planId: string, stepIndex: number, stepStatus: string) => void;
   onNavigate: (url: string) => void;
   onIntent?: (intent: SharedStreamIntent) => void;
+  onStateChange?: (state: SharedStreamState) => void;
   now?: () => string;
   emitLedgerChanged?: (projectId: string) => void;
 };
@@ -506,6 +507,7 @@ export function createAiStreamRuntime(deps: AiStreamRuntimeDeps): AiStreamRuntim
     reserveAssistantTurn: () => {
       const reserved = reserveSharedAssistantTurn(streamState);
       streamState = reserved.state;
+      deps.onStateChange?.(streamState);
       for (const intent of reserved.intents) {
         applyIntent(intent);
       }
@@ -517,6 +519,7 @@ export function createAiStreamRuntime(deps: AiStreamRuntimeDeps): AiStreamRuntim
         section: deps.section,
       });
       streamState = reduced.state;
+      deps.onStateChange?.(streamState);
       if (chunk.type === "run_end") {
         lastRunEndToolCounts = {
           beforeClear: runningToolCallsBeforeChunk,

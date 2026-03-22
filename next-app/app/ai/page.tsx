@@ -14,7 +14,6 @@ import dynamic from "next/dynamic";
 import type { AgentMode } from "@/types/agent";
 import type {
   AIErrorEnvelope,
-  AIStreamChunk,
   ChoiceOption,
   ConversationContext,
   ConversationContextAttachment,
@@ -32,7 +31,6 @@ import { isNavigationSafe } from "@/lib/ai/navigation-safety";
 import {
   buildUnexpectedTerminalErrorState,
   buildClientErrorState,
-  clearRunScopedRenderedErrors,
   clearRunScopedRecoveryState,
   formatStreamErrorForUI,
   hasCanonicalFailureFallbackText,
@@ -46,6 +44,7 @@ import {
   createAiStreamRuntime,
   shouldFailRunningToolsOnAbnormalEnd,
 } from "@/lib/ai/ai-stream-runtime";
+import { deriveSharedRuntimeUiState } from "@/lib/ai/shared-runtime-ui-state";
 import { createInitialSharedStreamState, type SharedStreamIntent } from "@/lib/ai/shared-stream-reducer";
 import { normalizeTimelineProgressItems, selectActiveProgress } from "@/lib/ai/active-progress";
 import { generateChatUnificationRequestKey, recordChatUnificationMetric } from "@/lib/ai/chat-unification-telemetry";
@@ -301,6 +300,8 @@ export default function AIView() {
 
   const [workspaceContextText, setWorkspaceContextText] = useState("");
   const [isTyping, setIsTyping] = useState(false);
+  const [currentRunId, setCurrentRunIdState] = useState<string | null>(null);
+  const [sharedStreamState, setSharedStreamState] = useState(() => createInitialSharedStreamState());
   const [isCompressing, setIsCompressing] = useState(false);
   const [branchingConversationId, setBranchingConversationId] = useState<string | null>(null);
   const [branchingMessageId, setBranchingMessageId] = useState<string | null>(null);
@@ -343,9 +344,21 @@ export default function AIView() {
   );
 
   const showReasoningControls = reasoningSupport !== "none";
+  const runtimeUiState = useMemo(() => deriveSharedRuntimeUiState({
+    isStreaming: isTyping,
+    currentRunId,
+    streamState: sharedStreamState,
+  }), [currentRunId, isTyping, sharedStreamState]);
   timelineByConversationRef.current = timelineByConversation;
   activeConversationIdRef.current = activeConversationId;
   useResetMutableRefWhen(sendLockRef, !isTyping, false);
+
+  useEffect(() => {
+    if (isTyping) return;
+    setSharedStreamState(createInitialSharedStreamState({
+      effectiveConvId: activeConversationId,
+    }));
+  }, [activeConversationId, isTyping]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -436,11 +449,16 @@ export default function AIView() {
     router.push(url);
   }, [router]);
 
+  const setCurrentRunId = useCallback((runId: string | null) => {
+    currentRunIdRef.current = runId;
+    setCurrentRunIdState(runId);
+  }, []);
+
   const handleRunIntent = useCallback((intent: SharedStreamIntent) => {
     if (intent.type === "run_set") {
-      currentRunIdRef.current = intent.runId;
+      setCurrentRunId(intent.runId);
     }
-  }, []);
+  }, [setCurrentRunId]);
 
   const emitMobileActionTap = useCallback((actionId: string, targetMinPx?: number) => {
     if (!isMobileTelemetryContext()) return;
@@ -672,6 +690,13 @@ export default function AIView() {
     message: string;
     errorMeta: AIErrorEnvelope;
   }) => {
+    setSharedStreamState((prev) => ({
+      ...prev,
+      effectiveConvId: params.conversationId,
+      localRunId: params.errorMeta.activeRunId ?? params.errorMeta.runId ?? prev.localRunId,
+      lastErrorMeta: params.errorMeta,
+      latestRecoveryRecommendation: params.errorMeta.recoveryRecommendation ?? null,
+    }));
     updateConversationTimeline(params.conversationId, (items) => {
       const reconciled = reconcileRunScopedRecoveryState({
         items,
@@ -794,6 +819,7 @@ export default function AIView() {
       setPendingChoices,
       setPendingUserInput,
       onIntent: handleRunIntent,
+      onStateChange: setSharedStreamState,
       onNavigate: handleNavigate,
     });
 
@@ -823,9 +849,13 @@ export default function AIView() {
       abortControllerRef.current = null;
     }
     setIsTyping(false);
+    setCurrentRunId(null);
+    setSharedStreamState(createInitialSharedStreamState({
+      effectiveConvId: activeConversationIdRef.current,
+    }));
     setPendingChoices([]);
     setPendingUserInput(null);
-  }, []);
+  }, [setCurrentRunId]);
 
   const ensureConversation = useCallback(async (context: ConversationContext): Promise<string> => {
     if (activeConversationId) return activeConversationId;
@@ -1253,6 +1283,7 @@ export default function AIView() {
     setPrefillCommand(null);
     const replaceRunId = replaceRunIdOverride ?? (isTyping ? currentRunIdRef.current : null);
     setIsTyping(true);
+    setSharedStreamState(createInitialSharedStreamState({ effectiveConvId: convId }));
     streamGenRef.current++;
     const myGen = streamGenRef.current;
 
@@ -1263,24 +1294,19 @@ export default function AIView() {
     abortControllerRef.current = controller;
 
     const aiMessageId = `m-${Date.now() + 1}`;
-    const streamStartedAtMs = Date.now();
     const requestKey = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
       ? crypto.randomUUID()
       : `ai-send-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     let runStatus: string | null = null;
     let terminalReason: StreamTerminalReason | null = null;
-    let actualModel: string | null = null;
-    let actualModelSource: "provider" | "requested" | "unknown" = "unknown";
     let unresolvedCountBeforeClear: number | null = null;
     let unresolvedCountAfterClear: number | null = null;
-    let firstVisibleContentMs: number | null = null;
-    let visibleChunkCount = 0;
-    let visibleChunkChars = 0;
-    let maxVisibleChunkChars: number | null = null;
-    let visibleChunkGapTotalMs = 0;
-    let visibleChunkGapCount = 0;
-    let lastVisibleContentLength = 0;
-    let lastVisibleChunkAtMs: number | null = null;
+    const firstVisibleContentMs: number | null = null;
+    const visibleChunkCount = 0;
+    const visibleChunkChars = 0;
+    const maxVisibleChunkChars: number | null = null;
+    const visibleChunkGapTotalMs = 0;
+    const visibleChunkGapCount = 0;
     let aborted = false;
     let emittedTerminalError = false;
     let terminalEventEmitted = false;
@@ -1354,6 +1380,7 @@ export default function AIView() {
       setPendingChoices,
       setPendingUserInput,
       onIntent: handleRunIntent,
+      onStateChange: setSharedStreamState,
       onNavigate: handleNavigate,
     });
 
@@ -1368,7 +1395,7 @@ export default function AIView() {
         return false;
       }
 
-      currentRunIdRef.current = activeRunId;
+      setCurrentRunId(activeRunId);
       runtime.clearProgress();
       runtime.interruptRunningTools(RUN_RECOVERY_INTERRUPTED_TOOL_SUMMARY);
       appendRecoveryCheckpoint(activeConversationId, activeRunId, RUN_RECOVERY_RECONNECT_SUMMARY);
@@ -1406,9 +1433,11 @@ export default function AIView() {
         }),
       });
       emittedTerminalError = true;
-      currentRunIdRef.current = recoveryResult.response?.recoveryRecommendation === "retry"
-        ? null
-        : (recoveryResult.response?.runId ?? activeRunId);
+      setCurrentRunId(
+        recoveryResult.response?.recoveryRecommendation === "retry"
+          ? null
+          : (recoveryResult.response?.runId ?? activeRunId),
+      );
       return false;
     };
 
@@ -1465,8 +1494,6 @@ export default function AIView() {
       if (summary.terminalReason === "paused_for_input") {
         sendSucceeded = true;
       }
-      actualModel = summary.actualModel;
-      actualModelSource = summary.actualModelSource;
       const runEndToolCounts = runtime.getLastRunEndToolCounts();
       unresolvedCountBeforeClear = runEndToolCounts?.beforeClear ?? null;
       unresolvedCountAfterClear = runEndToolCounts?.afterClear ?? null;
@@ -1903,6 +1930,7 @@ export default function AIView() {
     setPlanStatus("running");
     const replaceRunId = isTyping ? currentRunIdRef.current : null;
     setIsTyping(true);
+    setSharedStreamState(createInitialSharedStreamState({ effectiveConvId: convId }));
     streamGenRef.current++;
     const myGen = streamGenRef.current;
 
@@ -1919,8 +1947,6 @@ export default function AIView() {
       : `ai-plan-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     let runStatus: string | null = null;
     let terminalReason: StreamTerminalReason | null = null;
-    let actualModel: string | null = null;
-    let actualModelSource: "provider" | "requested" | "unknown" = "unknown";
     let unresolvedCountBeforeClear: number | null = null;
     let unresolvedCountAfterClear: number | null = null;
     let firstVisibleContentMs: number | null = null;
@@ -1973,6 +1999,7 @@ export default function AIView() {
         lastVisibleContentLength = nextLength;
         lastVisibleChunkAtMs = nowMs;
       },
+      onStateChange: setSharedStreamState,
       onPlanStepUpdate: updatePlanStepStatus,
       onNavigate: handleNavigate,
     });
@@ -2051,8 +2078,6 @@ export default function AIView() {
       convId = runtime.getConversationId();
       runStatus = summary.runStatus;
       terminalReason = summary.terminalReason;
-      actualModel = summary.actualModel;
-      actualModelSource = summary.actualModelSource;
       const runEndToolCounts = runtime.getLastRunEndToolCounts();
       unresolvedCountBeforeClear = runEndToolCounts?.beforeClear ?? null;
       unresolvedCountAfterClear = runEndToolCounts?.afterClear ?? null;
@@ -2192,10 +2217,10 @@ export default function AIView() {
     currentConversationId: activeConversationId,
     queuedFollowUp,
     setQueuedFollowUp,
-    isLoading: isTyping,
+    isLoading: runtimeUiState.isStreaming,
     hasPendingChoices: pendingChoices.length > 0,
     hasPendingUserInput: pendingUserInput !== null,
-    sendLocked: sendLockRef.current,
+    sendLocked: sendLockRef.current || runtimeUiState.sendLocked,
     dispatchQueuedFollowUp: (nextQueuedFollowUp) => handleSend(
       nextQueuedFollowUp.text,
       nextQueuedFollowUp.page,
@@ -2320,7 +2345,7 @@ export default function AIView() {
     setIsTyping(true);
     streamGenRef.current += 1;
     const myGen = streamGenRef.current;
-    currentRunIdRef.current = runId;
+    setCurrentRunId(runId);
     updateConversationTimeline(convId, (items) => {
       const updatedAt = new Date().toISOString();
       return items
@@ -2367,9 +2392,11 @@ export default function AIView() {
             retryable: (recoveryResult.response?.recoveryRecommendation ?? "retry") === "retry",
           }),
         });
-        currentRunIdRef.current = recoveryResult.response?.recoveryRecommendation === "retry"
-          ? null
-          : (recoveryResult.response?.runId ?? runId);
+        setCurrentRunId(
+          recoveryResult.response?.recoveryRecommendation === "retry"
+            ? null
+            : (recoveryResult.response?.runId ?? runId),
+        );
       } finally {
         if (streamGenRef.current === myGen) {
           setIsTyping(false);
@@ -2448,7 +2475,7 @@ export default function AIView() {
   const pendingApprovalBar = usePendingApprovalBarState({
     timeline: activeTimeline,
     conversationId: activeConversationId,
-    isLoading: isTyping,
+    isLoading: runtimeUiState.isStreaming,
     hasActiveProgress: Boolean(activeProgress),
     approveArtifactsBatch: handleApproveArtifactsBatch,
   });
@@ -2550,7 +2577,7 @@ export default function AIView() {
               projectId={selectedProjectId ?? undefined}
               items={activeTimeline}
               reasoningMode={reasoningMode}
-              isLoading={isTyping}
+              isLoading={runtimeUiState.isStreaming}
               isConversationLoading={isConversationLoading}
               conversationId={activeConversationId ?? undefined}
               initialVisibleCount={AI_VISIBLE_TIMELINE_INITIAL_COUNT}
@@ -2604,7 +2631,7 @@ export default function AIView() {
                   inputPlaceholder="Ask anything about your research..."
                   prefillCommand={prefillCommand}
                   onPrefillConsumed={handlePrefillConsumed}
-                  isLoading={isTyping}
+                  isLoading={runtimeUiState.isStreaming}
                   sendMessage={handleSend}
                   cancelStream={cancelStream}
                   hasQueuedFollowUp={queuedFollowUp !== null}

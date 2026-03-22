@@ -28,7 +28,6 @@ import type {
     ReasoningMode,
     RunRecoveryResponse,
     RunRecoveryRecommendation,
-    StreamPhase,
     UserInputRequest,
 } from "@/types/ai";
 import type { ContextCaptureTarget } from "@/types/context-capture";
@@ -44,11 +43,9 @@ import { resolveReasoningRequest } from "@/lib/ai/reasoning-request";
 import {
     buildUnexpectedTerminalErrorState,
     buildClientErrorState,
-    clearRunScopedRenderedErrors,
     clearRunScopedRecoveryState,
     formatStreamErrorForUI,
     hasCanonicalFailureFallbackText,
-    hasRenderedErrorMatch,
     reconcileRunScopedRenderedErrors,
     reconcileRunScopedRecoveryState,
     shouldSuppressClientFallback,
@@ -86,7 +83,7 @@ export type CopilotStreamActionsDeps = {
     abortControllerRef: React.MutableRefObject<AbortController | null>;
     isLoadingRef: React.MutableRefObject<boolean>;
     setIsLoading: React.Dispatch<React.SetStateAction<boolean>>;
-    setStreamPhase: React.Dispatch<React.SetStateAction<StreamPhase>>;
+    setSharedStreamState: React.Dispatch<React.SetStateAction<ReturnType<typeof createInitialProjectStreamState>>>;
     setCurrentRunId: React.Dispatch<React.SetStateAction<string | null>>;
     setPendingChoices: React.Dispatch<React.SetStateAction<ChoiceOption[]>>;
     setPendingUserInput: React.Dispatch<React.SetStateAction<UserInputRequest | null>>;
@@ -108,7 +105,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
         abortControllerRef,
         isLoadingRef,
         setIsLoading,
-        setStreamPhase,
+        setSharedStreamState,
         setCurrentRunId,
         setPendingChoices,
         setPendingUserInput,
@@ -143,8 +140,13 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
             abortControllerRef.current = null;
         }
         setIsLoading(false);
+        setSharedStreamState(createInitialProjectStreamState({
+            effectiveConvId: convo.currentConversationIdRef.current,
+        }));
+        setCurrentRunId(null);
         setPendingChoices([]);
-    }, []);
+        setPendingUserInput(null);
+    }, [convo.currentConversationIdRef, setCurrentRunId, setIsLoading, setPendingChoices, setPendingUserInput, setSharedStreamState]);
 
     const buildProjectRecoverySeedState = useCallback((params: {
         messages: CopilotMessage[];
@@ -239,6 +241,12 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
         message: string;
         errorMeta: AIErrorEnvelope;
     }) => {
+        setSharedStreamState((prev) => ({
+            ...prev,
+            localRunId: params.errorMeta.activeRunId ?? params.errorMeta.runId ?? prev.localRunId,
+            lastErrorMeta: params.errorMeta,
+            latestRecoveryRecommendation: params.errorMeta.recoveryRecommendation ?? null,
+        }));
         updateState((prev) => {
             const reconciled = reconcileRunScopedRecoveryState({
                 items: prev.messages,
@@ -275,7 +283,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                 ],
             };
         });
-    }, [updateState]);
+    }, [setSharedStreamState, updateState]);
 
     const runProjectRecovery = useCallback(async (params: {
         conversationId: string;
@@ -413,7 +421,9 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
 
         // Stream lifecycle guards
         setIsLoading(true);
-        setStreamPhase("streaming");
+        setSharedStreamState(createInitialProjectStreamState({
+            effectiveConvId: convId,
+        }));
         streamGenRef.current++;
         const myGen = streamGenRef.current;
 
@@ -430,6 +440,11 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
         let localRunId = "";
         let completedPubmedSearchCount = 0;
         let lastPubmedSearchSize: number | null = null;
+        let pendingUserInputRequest: UserInputRequest | null = null;
+        let lastRunStatus: string | null = null;
+        let lastStopReason: string | null = null;
+        let lastErrorMeta: AIErrorEnvelope | null = null;
+        let latestRecoveryRecommendation: RunRecoveryRecommendation | null = null;
         let runStatus: string | null = null;
         let stopReason: string | null = null;
         let streamErrorMessage: string | null = null;
@@ -598,6 +613,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                 },
                 setPendingChoices,
                 setPendingUserInput,
+                onStateChange: setSharedStreamState,
                 onPlanStepUpdate,
                 onNavigate,
             };
@@ -619,6 +635,11 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                         effectiveConvId,
                         completedPubmedSearchCount,
                         lastPubmedSearchSize,
+                        pendingUserInputRequest,
+                        lastRunStatus,
+                        lastStopReason,
+                        lastErrorMeta,
+                        latestRecoveryRecommendation,
                     },
                     projectStreamDeps,
                 );
@@ -636,6 +657,11 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                 effectiveConvId = reservedState.effectiveConvId;
                 completedPubmedSearchCount = reservedState.completedPubmedSearchCount;
                 lastPubmedSearchSize = reservedState.lastPubmedSearchSize;
+                pendingUserInputRequest = reservedState.pendingUserInputRequest;
+                lastRunStatus = reservedState.lastRunStatus;
+                lastStopReason = reservedState.lastStopReason;
+                lastErrorMeta = reservedState.lastErrorMeta;
+                latestRecoveryRecommendation = reservedState.latestRecoveryRecommendation;
             }
 
             const applyChunk = (data: import("@/types/ai").AIStreamChunk) => {
@@ -657,6 +683,11 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                         effectiveConvId,
                         completedPubmedSearchCount,
                         lastPubmedSearchSize,
+                        pendingUserInputRequest,
+                        lastRunStatus,
+                        lastStopReason,
+                        lastErrorMeta,
+                        latestRecoveryRecommendation,
                     },
                     projectStreamDeps
                 );
@@ -675,6 +706,11 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                 effectiveConvId = nextState.effectiveConvId;
                 completedPubmedSearchCount = nextState.completedPubmedSearchCount;
                 lastPubmedSearchSize = nextState.lastPubmedSearchSize;
+                pendingUserInputRequest = nextState.pendingUserInputRequest;
+                lastRunStatus = nextState.lastRunStatus;
+                lastStopReason = nextState.lastStopReason;
+                lastErrorMeta = nextState.lastErrorMeta;
+                latestRecoveryRecommendation = nextState.latestRecoveryRecommendation;
                 const deltaChars = Math.max(0, nextState.fullContent.length - previousContentLength);
                 if (deltaChars > 0) {
                     const nowMs = Date.now();
@@ -692,17 +728,12 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                     lastVisibleChunkAtMs = nowMs;
                 }
 
-                if (data.type === "tool_call") {
-                    setStreamPhase("tool_running");
-                } else if (data.type === "content" || data.type === "reasoning_start" || data.type === "reasoning_delta") {
-                    setStreamPhase("streaming");
-                } else if (data.type === "run_end") {
+                if (data.type === "run_end") {
                     unresolvedCountBeforeClear = runningToolCallIdsBeforeChunk.length;
                     unresolvedCountAfterClear = nextState.runningToolCallIds.length;
                     runStatus = data.runStatus ?? runStatus;
                     actualModel = data.actualModel ?? actualModel;
                     actualModelSource = data.actualModelSource ?? actualModelSource;
-                    setStreamPhase("completing");
                 }
             };
 
@@ -1054,7 +1085,6 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
             });
             if (streamGenRef.current === myGen) {
                 setIsLoading(false);
-                setStreamPhase("idle");
             }
             if (abortControllerRef.current === controller) {
                 abortControllerRef.current = null;
@@ -1611,7 +1641,10 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
         const recoverySection = contextMessage?.context?.section;
 
         setIsLoading(true);
-        setStreamPhase("streaming");
+        setSharedStreamState(createInitialProjectStreamState({
+            effectiveConvId: conversationId,
+            localRunId: activeRunId,
+        }));
         setCurrentRunId(activeRunId);
         streamGenRef.current += 1;
         const myGen = streamGenRef.current;
@@ -1658,7 +1691,6 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
         } finally {
             if (streamGenRef.current === myGen) {
                 setIsLoading(false);
-                setStreamPhase("idle");
             }
         }
     }, [
@@ -1669,7 +1701,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
         runProjectRecovery,
         setCurrentRunId,
         setIsLoading,
-        setStreamPhase,
+        setSharedStreamState,
         stateRef,
         updateState,
     ]);

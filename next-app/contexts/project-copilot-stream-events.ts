@@ -34,6 +34,7 @@ type StreamChunkDeps = {
   setPendingChoices: (choices: ChoiceOption[]) => void;
   setPendingUserInput: (request: UserInputRequest | null) => void;
   onIntent?: (intent: SharedStreamIntent) => void;
+  onStateChange?: (state: StreamMutableState) => void;
   onPlanStepUpdate?: (planId: string, stepIndex: number, stepStatus: string) => void;
   onNavigate?: (url: string) => void;
 };
@@ -474,6 +475,7 @@ export function handleProjectCopilotStreamChunk(
     page: deps.page,
     section: deps.section,
   });
+  deps.onStateChange?.(reduced.state);
   for (const intent of reduced.intents) {
     deps.onIntent?.(intent);
     applyIntent(deps, reduced.state, intent);
@@ -486,6 +488,7 @@ export function reserveProjectCopilotAssistantTurn(
   deps: StreamChunkDeps,
 ): StreamMutableState {
   const reserved = reserveSharedAssistantTurn(state);
+  deps.onStateChange?.(reserved.state);
   for (const intent of reserved.intents) {
     deps.onIntent?.(intent);
     applyIntent(deps, reserved.state, intent);
