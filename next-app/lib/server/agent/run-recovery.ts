@@ -17,6 +17,7 @@ import type {
     ToolCall,
     ToolResult,
     UserInputRequest,
+    UserInputResolution,
 } from "@/types/ai";
 import type {
     RunAbnormalEndClassification,
@@ -146,6 +147,19 @@ function toReplayableChunk(
                 chunk: {
                     type: "user_input_required",
                     userInputRequest: payload,
+                    replay: true,
+                    conversationId: run.conversationId ?? undefined,
+                },
+            };
+        }
+        case "user_input_resolved": {
+            const payload = asObject(event.payload) as UserInputResolution | null;
+            if (!payload?.callId || !payload.sourceRunId) return null;
+            return {
+                sequence: event.sequence,
+                chunk: {
+                    type: "user_input_resolved",
+                    userInputResolution: payload,
                     replay: true,
                     conversationId: run.conversationId ?? undefined,
                 },
@@ -295,6 +309,13 @@ export async function buildRunRecoveryResponse(params: {
             select: { sequence: true },
         })
         : null;
+    const latestUserInputResolvedEvent = run.runPhase === "ask"
+        ? await prisma.runEvent.findFirst({
+            where: { runId: run.id, type: "user_input_resolved" },
+            orderBy: { sequence: "desc" },
+            select: { sequence: true },
+        })
+        : null;
 
     const artifactIds = [...new Set(events.map((event) => event.artifactId).filter((value): value is string => Boolean(value)))];
     const artifacts = artifactIds.length === 0
@@ -319,7 +340,11 @@ export async function buildRunRecoveryResponse(params: {
     const shouldSurfacePausedTerminal =
         run.status === "running"
         && run.runPhase === "ask"
-        && latestUserInputRequiredEvent !== null;
+        && latestUserInputRequiredEvent !== null
+        && (
+            latestUserInputResolvedEvent === null
+            || latestUserInputResolvedEvent.sequence < latestUserInputRequiredEvent.sequence
+        );
     const effectiveRunStatus: RunRecoveryResponse["runStatus"] =
         shouldSurfacePausedTerminal ? "paused" : run.status;
     const terminalEvent = shouldSurfacePausedTerminal

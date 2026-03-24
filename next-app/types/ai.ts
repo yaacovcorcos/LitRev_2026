@@ -63,14 +63,42 @@ export type UserInputOption = {
     description?: string;
 };
 
+export type UserInputResolutionKind =
+    | "answered"
+    | "accept_recommended"
+    | "cancelled";
+
 export type UserInputRequest = {
     callId: string;
+    sourceRunId?: string;
     question: string;
     questionType: UserInputQuestionType;
     options?: UserInputOption[];
     /** Short category label displayed as a tag/chip (e.g., "Providers", "Scope"). Max ~12 chars. */
     header?: string;
     context?: string;
+    /** Stable loop-control key for repeated clarification detection. */
+    decisionBoundaryKey?: string;
+    /** Recommended default answer the user can accept directly when safe. */
+    recommendedAnswer?: string;
+    /** Short explanation for why the recommended default is safe. */
+    recommendedReason?: string;
+    /** Client-visible resolution state for replayed or stored requests. */
+    resolution?: UserInputResolutionKind;
+    /** Client-visible answered flag for existing timeline/storage bridges. */
+    answered?: boolean;
+    /** Client-visible resolved answer text, when present. */
+    answer?: string;
+};
+
+export type UserInputResolution = {
+    sourceRunId: string;
+    callId: string;
+    resolution: UserInputResolutionKind;
+    answerText?: string;
+    selectedOptions?: string[];
+    answeredAt: string;
+    decisionBoundaryKey?: string;
 };
 
 export type AIErrorKind =
@@ -241,6 +269,11 @@ export type ChatOptions = {
      */
     telemetryRequestKey?: string;
     /**
+     * Internal-only parent run lineage. The server sets this when a request
+     * is a true continuation of a prior blocked or recoverable run.
+     */
+    parentRunId?: string;
+    /**
      * Continue from proven persisted state owned by an earlier run.
      * The server validates this run before using it as continuation input.
      */
@@ -260,6 +293,11 @@ export type ChatOptions = {
      * caller knows it.
      */
     persistedUserMessageId?: string;
+    /**
+     * Structured clarification resolution bound to a prior blocked request.
+     * This is authoritative runtime input, not a plain user turn.
+     */
+    userInputResolution?: UserInputResolution;
     stream?: boolean;
     signal?: AbortSignal;
 };
@@ -288,7 +326,8 @@ export type AIStreamChunk = {
         | "choices"
         | "plan_step_update"
         | "navigate"
-        | "user_input_required";
+        | "user_input_required"
+        | "user_input_resolved";
     content?: string;
     /**
      * Recovery replay may restore authoritative assistant content as a full
@@ -345,6 +384,7 @@ export type AIStreamChunk = {
     navigateProjectId?: string;
     // User input request fields (ask_user tool)
     userInputRequest?: UserInputRequest;
+    userInputResolution?: UserInputResolution;
     // Conversation identity (server-side source of truth)
     conversationId?: string;
     conversationTitle?: string;

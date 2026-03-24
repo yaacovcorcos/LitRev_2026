@@ -25,6 +25,9 @@ const inputSchema = z.object({
     options: z.array(optionSchema).min(2).max(10).optional(),
     header: z.string().max(20).optional(),
     context: z.string().max(300).optional(),
+    recommendedAnswer: z.string().max(300).optional(),
+    recommendedReason: z.string().max(300).optional(),
+    decisionBoundaryKey: z.string().max(120).optional(),
 });
 
 const outputSchema = z.object({
@@ -78,6 +81,18 @@ export const askUserTool: AITool = {
                     type: "string",
                     description: "Optional brief context explaining why you're asking.",
                 },
+                recommendedAnswer: {
+                    type: "string",
+                    description: "Safe recommended default the user can accept directly when one exists.",
+                },
+                recommendedReason: {
+                    type: "string",
+                    description: "Short explanation for why the recommended default is safe.",
+                },
+                decisionBoundaryKey: {
+                    type: "string",
+                    description: "Optional stable key describing the decision boundary, used to suppress repeated blocking clarifications.",
+                },
             },
             required: ["question", "questionType"],
         },
@@ -95,6 +110,9 @@ export const askUserTool: AITool = {
         const rawOptions = args.options as UserInputOption[] | undefined;
         const header = args.header as string | undefined;
         const context = args.context as string | undefined;
+        const recommendedAnswer = args.recommendedAnswer as string | undefined;
+        const recommendedReason = args.recommendedReason as string | undefined;
+        const decisionBoundaryKey = args.decisionBoundaryKey as string | undefined;
 
         // Normalize options and guard against missing options on choice types
         let resolvedQuestionType = questionType;
@@ -125,6 +143,9 @@ export const askUserTool: AITool = {
                 options: resolvedOptions,
                 header,
                 context,
+                recommendedAnswer,
+                recommendedReason,
+                decisionBoundaryKey,
             },
         };
     },

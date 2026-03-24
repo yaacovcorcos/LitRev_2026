@@ -6,7 +6,15 @@
 import type { CopilotMessage, ProjectCopilotState } from "@/lib/projectCopilotStorage";
 import type { ArtifactData } from "@/types/artifacts";
 import type { AgentMode, AutonomyPreset, AutonomyLevel } from "@/types/agent";
-import type { ChoiceOption, CopilotPage, ReasoningMode, StreamPhase, UserInputRequest } from "@/types/ai";
+import type {
+    ChoiceOption,
+    CopilotPage,
+    ReasoningMode,
+    StreamPhase,
+    UserInputRequest,
+    UserInputResolution,
+    UserInputResolutionKind,
+} from "@/types/ai";
 import type { SelectableModelId, ReasoningSupportTier } from "@/lib/ai/config";
 import type { RetryModelExpectation } from "@/types/chat-unification";
 import type { ContextCaptureHistoryEntry, ContextCaptureTarget } from "@/types/context-capture";
@@ -82,6 +90,7 @@ export type ProjectCopilotContextValue = {
             replaceRunId?: string | null;
             continueFromRunId?: string | null;
             suppressUserMessageAppend?: boolean;
+            userInputResolution?: UserInputResolution;
         },
     ) => void;
     /** Update global reasoning visibility mode */
@@ -225,8 +234,14 @@ export type ProjectCopilotContextValue = {
     // Structured ask_user input
     /** Active ask_user question pending user response */
     pendingUserInput: UserInputRequest | null;
-    /** Answer the pending ask_user question (clears it and sends answer as message) */
-    answerUserInput: (callId: string, answer: string, page?: CopilotPage, section?: string) => void;
+    /** Resolve the pending ask_user question using the shared structured clarification path. */
+    answerUserInput: (
+        callId: string,
+        answer: string,
+        page?: CopilotPage,
+        section?: string,
+        resolution?: UserInputResolutionKind,
+    ) => void;
 
     // Message pagination
     /** Whether there are older messages available to load */

@@ -1,5 +1,12 @@
 import { appendReasoningRaw } from "@/lib/ai/reasoning-visibility";
-import type { AIErrorEnvelope, AIStreamChunk, ChoiceOption, CopilotPage, UserInputRequest } from "@/types/ai";
+import type {
+  AIErrorEnvelope,
+  AIStreamChunk,
+  ChoiceOption,
+  CopilotPage,
+  UserInputRequest,
+  UserInputResolution,
+} from "@/types/ai";
 import { buildToolReceiptPatch, buildToolReceiptSeed } from "@/lib/ai/tool-receipts";
 
 export type SharedToolStatus = "queued" | "running" | "done" | "failed" | "interrupted";
@@ -102,10 +109,17 @@ export type SharedStreamIntent =
       request: UserInputRequest;
     }
   | {
+      type: "user_input_clear";
+    }
+  | {
       type: "user_input_append";
       request: UserInputRequest;
       page: CopilotPage;
       section?: string;
+    }
+  | {
+      type: "user_input_resolve";
+      resolution: UserInputResolution;
     }
   | {
       type: "navigate";
@@ -525,6 +539,17 @@ export function reduceSharedStreamChunk(
         request: chunk.userInputRequest,
         page: meta.page,
         section: meta.section,
+      });
+      return { state: prev, intents };
+    }
+
+    case "user_input_resolved": {
+      if (!chunk.userInputResolution) return { state: prev, intents };
+      intents.push({ type: "progress_clear" });
+      intents.push({ type: "user_input_clear" });
+      intents.push({
+        type: "user_input_resolve",
+        resolution: chunk.userInputResolution,
       });
       return { state: prev, intents };
     }

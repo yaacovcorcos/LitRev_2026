@@ -14,7 +14,6 @@ import dynamic from "next/dynamic";
 import type { AgentMode } from "@/types/agent";
 import type {
   AIErrorEnvelope,
-  AIStreamChunk,
   ChoiceOption,
   ConversationContext,
   ConversationContextAttachment,
@@ -22,6 +21,8 @@ import type {
   CopilotPage,
   ReasoningMode,
   UserInputRequest,
+  UserInputResolution,
+  UserInputResolutionKind,
 } from "@/types/ai";
 import type { ArtifactStatus, ArtifactType } from "@/types/artifacts";
 import type { TimelineItem } from "@/types/timeline";
@@ -32,7 +33,6 @@ import { isNavigationSafe } from "@/lib/ai/navigation-safety";
 import {
   buildUnexpectedTerminalErrorState,
   buildClientErrorState,
-  clearRunScopedRenderedErrors,
   clearRunScopedRecoveryState,
   formatStreamErrorForUI,
   hasCanonicalFailureFallbackText,
@@ -1179,6 +1179,7 @@ export default function AIView() {
       replaceRunId?: string | null;
       continueFromRunId?: string | null;
       suppressUserMessageAppend?: boolean;
+      userInputResolution?: UserInputResolution;
     },
   ) => {
     const msgText = rawText.trim();
@@ -1191,6 +1192,9 @@ export default function AIView() {
       : (runtimeOverrides?.continueFromRunId ?? null);
     const suppressUserMessageAppend = typeof runtimeOverrides === "object"
       && runtimeOverrides?.suppressUserMessageAppend === true;
+    const explicitUserInputResolution = typeof runtimeOverrides === "object"
+      ? (runtimeOverrides?.userInputResolution ?? null)
+      : null;
     const sendStartedAtMs = Date.now();
     let sendSucceeded = false;
     emitMobileActionTap("ai_send_message", 44);
@@ -1223,6 +1227,18 @@ export default function AIView() {
     }
 
     const nowIso = new Date().toISOString();
+    const userInputResolution = explicitUserInputResolution ?? (
+      pendingUserInput?.sourceRunId
+        ? {
+            sourceRunId: pendingUserInput.sourceRunId,
+            callId: pendingUserInput.callId,
+            resolution: "cancelled" as const,
+            answerText: msgText,
+            answeredAt: nowIso,
+            decisionBoundaryKey: pendingUserInput.decisionBoundaryKey,
+          }
+        : null
+    );
     const userId = `m-${Date.now()}`;
 
     if (!suppressUserMessageAppend) {
@@ -1263,24 +1279,19 @@ export default function AIView() {
     abortControllerRef.current = controller;
 
     const aiMessageId = `m-${Date.now() + 1}`;
-    const streamStartedAtMs = Date.now();
     const requestKey = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
       ? crypto.randomUUID()
       : `ai-send-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     let runStatus: string | null = null;
     let terminalReason: StreamTerminalReason | null = null;
-    let actualModel: string | null = null;
-    let actualModelSource: "provider" | "requested" | "unknown" = "unknown";
     let unresolvedCountBeforeClear: number | null = null;
     let unresolvedCountAfterClear: number | null = null;
-    let firstVisibleContentMs: number | null = null;
-    let visibleChunkCount = 0;
-    let visibleChunkChars = 0;
-    let maxVisibleChunkChars: number | null = null;
-    let visibleChunkGapTotalMs = 0;
-    let visibleChunkGapCount = 0;
-    let lastVisibleContentLength = 0;
-    let lastVisibleChunkAtMs: number | null = null;
+    const firstVisibleContentMs: number | null = null;
+    const visibleChunkCount = 0;
+    const visibleChunkChars = 0;
+    const maxVisibleChunkChars: number | null = null;
+    const visibleChunkGapTotalMs = 0;
+    const visibleChunkGapCount = 0;
     let aborted = false;
     let emittedTerminalError = false;
     let terminalEventEmitted = false;
@@ -1425,6 +1436,7 @@ export default function AIView() {
             continueFromRunId: continueFromRunId ?? undefined,
             persistUserMessage: suppressUserMessageAppend ? false : undefined,
             persistedUserMessageContent: msgText,
+            userInputResolution: userInputResolution ?? undefined,
             projectId: selectedProjectId ?? undefined,
             model: effectiveModel,
             reasoningMode: reasoningRequest.reasoningMode,
@@ -1465,11 +1477,10 @@ export default function AIView() {
       if (summary.terminalReason === "paused_for_input") {
         sendSucceeded = true;
       }
-      actualModel = summary.actualModel;
-      actualModelSource = summary.actualModelSource;
       const runEndToolCounts = runtime.getLastRunEndToolCounts();
       unresolvedCountBeforeClear = runEndToolCounts?.beforeClear ?? null;
       unresolvedCountAfterClear = runEndToolCounts?.afterClear ?? null;
+      currentRunIdRef.current = runtime.getState().localRunId || currentRunIdRef.current;
       convId = runtime.getConversationId();
       const recovered = await attemptRecoveryFromAbnormalEnd();
       if (!recovered && shouldFailRunningToolsOnAbnormalEnd(terminalReason)) {
@@ -1569,6 +1580,7 @@ export default function AIView() {
         });
       }
       if (streamGenRef.current === myGen) {
+        sendLockRef.current = false;
         setIsTyping(false);
         setConversations((prev) =>
           sortConversationsByUpdatedAt(
@@ -1659,6 +1671,7 @@ export default function AIView() {
     progressiveAnswerStreamingEnabled,
 
     workspaceContextText,
+    pendingUserInput,
     ensureWorkspaceContextText,
     ensureConversation,
     ensureConversationTimeline,
@@ -1667,7 +1680,13 @@ export default function AIView() {
     sortConversationsByUpdatedAt,
   ]);
 
-  const handleAnswerUserInput = useCallback((callId: string, answer: string, page?: CopilotPage, section?: string) => {
+  const handleAnswerUserInput = useCallback((
+    callId: string,
+    answer: string,
+    page?: CopilotPage,
+    section?: string,
+    resolution: UserInputResolutionKind = "answered",
+  ) => {
     const activeItems = activeConversationId
       ? (timelineByConversation[activeConversationId] ?? [])
       : [];
@@ -1699,20 +1718,42 @@ export default function AIView() {
       },
     });
 
-    // Mark the timeline card as answered
-    if (activeConversationId) {
-      updateConversationTimeline(activeConversationId, (items) =>
-        items.map((item) =>
-          item.type === "user_input_request" && item.callId === callId
-            ? { ...item, answered: true, answer }
-            : item
-        ),
-      );
+    const sourceRunId = requestItem?.type === "user_input_request"
+      ? requestItem.sourceRunId
+      : null;
+    if (!sourceRunId) {
+      return;
     }
     setPendingUserInput(null);
-    // Send the answer as a user message so the AI continues
-    void handleSend(answer, resolvedPage, resolvedSection);
-  }, [activeConversationId, timelineByConversation, updateConversationTimeline, handleSend, selectedProjectId]);
+    const hiddenResumePrompt = resolution === "cancelled"
+      ? "Handle the cancelled clarification truthfully."
+      : "Continue using the resolved clarification.";
+    void handleSend(
+      hiddenResumePrompt,
+      resolvedPage,
+      resolvedSection,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      {
+        replaceRunId: sourceRunId,
+        continueFromRunId: sourceRunId,
+        suppressUserMessageAppend: true,
+        userInputResolution: {
+          sourceRunId,
+          callId,
+          resolution,
+          answerText: answer,
+          answeredAt: new Date().toISOString(),
+          decisionBoundaryKey: requestItem?.type === "user_input_request"
+            ? requestItem.decisionBoundaryKey
+            : undefined,
+        },
+      },
+    );
+  }, [activeConversationId, timelineByConversation, handleSend, selectedProjectId]);
 
   const reviewArtifactLocal = useCallback(async (
     artifactId: string,

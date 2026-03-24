@@ -139,9 +139,14 @@ This is not just a normal sentence question in the transcript; it is a formal bl
 ### `UserInputRequest`
 Request type.
 This is the typed request payload representing that clarification step.
-It is the object that carries the prompt and answer options for a blocked execution state.
+It is the object that carries the prompt, answer options, and request metadata for a blocked execution state. On the main surfaces, the canonical blocked-request identity is `sourceRunId + callId`; loop-control metadata such as `decisionBoundaryKey` is related but is not identity.
+
+### `UserInputResolution`
+Resolution type.
+This is the typed resolution payload for a blocked clarification request.
+It records whether the user answered, accepted the recommended default, or cancelled the blocked request, and it is what the shared runtime uses to continue the exact paused run truthfully.
 
 ### `UserInputCard`
 Component name.
 This is the visible UI card used to present a clarification request and collect the user's answer.
-In the UI, this should feel like a deliberate handoff point in the workflow, not like an incidental form element.
+In the UI, this should feel like a deliberate handoff point in the workflow, not like an incidental form element. Answer, recommended-default, and cancel/rewrite are explicit resolution paths, and cancelled clarifications should remain visible as cancelled rather than disappearing from history.

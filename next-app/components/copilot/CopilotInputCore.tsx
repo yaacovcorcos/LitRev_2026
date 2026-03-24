@@ -10,7 +10,12 @@ import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import type { FocusEvent as ReactFocusEvent, MouseEvent as ReactMouseEvent } from "react";
-import type { CopilotPage, ChoiceOption, UserInputRequest } from "@/types/ai";
+import type {
+    CopilotPage,
+    ChoiceOption,
+    UserInputRequest,
+    UserInputResolutionKind,
+} from "@/types/ai";
 import type { ContextCaptureHistoryEntry, ContextCaptureTarget } from "@/types/context-capture";
 import { USER_SELECTABLE_MODELS, type SelectableModelId } from "@/lib/ai/config";
 import { useVoiceInput, type VoiceTranscriptionSettlement } from "@/hooks/useVoiceInput";
@@ -118,7 +123,13 @@ export type CopilotInputCoreProps = {
     /** Active ask_user question to render as overlay above the input */
     pendingUserInput?: UserInputRequest | null;
     /** Callback when user answers the pending ask_user question */
-    onAnswerUserInput?: (callId: string, answer: string, page?: CopilotPage, section?: string) => void;
+    onAnswerUserInput?: (
+        callId: string,
+        answer: string,
+        page?: CopilotPage,
+        section?: string,
+        resolution?: UserInputResolutionKind,
+    ) => void;
     /** Render ask_user inside the input shell (disabled by default to avoid duplicate UI with timeline cards). */
     showUserInputOverlay?: boolean;
     onReady?: () => void;
@@ -823,20 +834,44 @@ export function CopilotInputCore({
                             options={activeRequest.options}
                             header={activeRequest.header}
                             context={activeRequest.context}
-                            answered={isAnswered}
+                            recommendedAnswer={activeRequest.recommendedAnswer}
+                            recommendedReason={activeRequest.recommendedReason}
+                            answered={isAnswered || activeRequest.resolution === "cancelled"}
                             answer={isAnswered ? visibleAnsweredUserInput?.answer : undefined}
+                            resolution={visibleAnsweredUserInput?.request.callId === activeRequest.callId ? activeRequest.resolution : undefined}
                             onAnswer={(answer) => {
                                 setAnsweredUserInput({ request: activeRequest, answer });
-                                onAnswerUserInput?.(activeRequest.callId, answer, page, section);
+                                onAnswerUserInput?.(activeRequest.callId, answer, page, section, "answered");
                             }}
-                            onDismiss={() => {
+                            onAcceptRecommended={activeRequest.recommendedAnswer
+                                ? () => {
+                                    setAnsweredUserInput({
+                                        request: activeRequest,
+                                        answer: activeRequest.recommendedAnswer ?? "",
+                                    });
+                                    onAnswerUserInput?.(
+                                        activeRequest.callId,
+                                        activeRequest.recommendedAnswer ?? "",
+                                        page,
+                                        section,
+                                        "accept_recommended",
+                                    );
+                                }
+                                : undefined}
+                            onCancel={() => {
                                 if (isAnswered) {
                                     setAnsweredUserInput(null);
                                     return;
                                 }
-                                const dismissAnswer = "Dismissed — please proceed without my input.";
-                                setAnsweredUserInput({ request: activeRequest, answer: dismissAnswer });
-                                onAnswerUserInput?.(activeRequest.callId, dismissAnswer, page, section);
+                                const cancelAnswer = "Cancelled by the user.";
+                                setAnsweredUserInput({
+                                    request: {
+                                        ...activeRequest,
+                                        resolution: "cancelled",
+                                    },
+                                    answer: cancelAnswer,
+                                });
+                                onAnswerUserInput?.(activeRequest.callId, cancelAnswer, page, section, "cancelled");
                             }}
                         />
                     </div>

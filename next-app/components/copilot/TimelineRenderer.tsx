@@ -18,7 +18,7 @@ import remarkGfm from "remark-gfm";
 import { MarkdownComponents } from "@/components/markdown/MarkdownComponents";
 import type { CopilotMessage } from "@/lib/projectCopilotStorage";
 import type { TimelineAttachment, TimelineArtifact, TimelineContextAttachment, TimelineItem } from "@/types/timeline";
-import type { CopilotPage, ReasoningMode } from "@/types/ai";
+import type { CopilotPage, ReasoningMode, UserInputResolutionKind } from "@/types/ai";
 import type { AgentMode } from "@/types/agent";
 import type {
     PlanPayload,
@@ -765,7 +765,13 @@ export type TimelineRendererProps = {
     /** Optional explicit project ID override (used in /ai route where useParams has no project id). */
     projectId?: string;
     /** Callback when user answers a structured ask_user question */
-    onAnswerUserInput?: (callId: string, answer: string, page?: CopilotPage, section?: string) => void;
+    onAnswerUserInput?: (
+        callId: string,
+        answer: string,
+        page?: CopilotPage,
+        section?: string,
+        resolution?: UserInputResolutionKind,
+    ) => void;
     /** Whether older messages are available to load */
     hasMore?: boolean;
     /** Whether older messages are currently loading */
@@ -1459,14 +1465,25 @@ function TimelineRendererInner({
                         options={item.options}
                         header={item.header}
                         context={item.context}
-                        answered={item.answered}
+                        recommendedAnswer={item.recommendedAnswer}
+                        recommendedReason={item.recommendedReason}
+                        answered={item.answered || item.resolution === "cancelled"}
                         answer={item.answer}
-                        onAnswer={(answer) => onAnswerUserInput?.(item.callId, answer, item.page, item.section)}
-                        onDismiss={() => onAnswerUserInput?.(
+                        resolution={item.resolution}
+                        onAnswer={(answer) => onAnswerUserInput?.(item.callId, answer, item.page, item.section, "answered")}
+                        onAcceptRecommended={() => onAnswerUserInput?.(
                             item.callId,
-                            "Dismissed — please proceed without my input.",
+                            item.recommendedAnswer ?? "",
                             item.page,
-                            item.section
+                            item.section,
+                            "accept_recommended",
+                        )}
+                        onCancel={() => onAnswerUserInput?.(
+                            item.callId,
+                            "Cancelled by the user.",
+                            item.page,
+                            item.section,
+                            "cancelled",
                         )}
                     />
                 );

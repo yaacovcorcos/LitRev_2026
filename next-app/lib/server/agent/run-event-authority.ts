@@ -7,6 +7,7 @@ export const RECOVERY_AUTHORITATIVE_RUN_EVENT_TYPES = [
     "tool_call",
     "tool_result",
     "user_input_required",
+    "user_input_resolved",
     "artifact_proposed",
     "artifact_reviewed",
     "checkpoint",

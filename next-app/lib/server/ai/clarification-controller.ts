@@ -1,0 +1,421 @@
+import "server-only";
+
+import { prisma } from "@/lib/server/prisma";
+import { recordRunEvent } from "@/lib/server/agent/run-event-recorder";
+import type {
+    ToolResult,
+    UserInputRequest,
+    UserInputResolution,
+} from "@/types/ai";
+
+const GENERAL_CLARIFICATION_MAX_TOTAL = 2;
+const GENERAL_CLARIFICATION_MAX_PRE_PROGRESS = 1;
+const LINEAGE_EVENT_SCAN_LIMIT = 250;
+const CONTINUATION_CONTEXT_MAX_CHARS = 4_000;
+
+type ClarificationLineageRunRecord = {
+    id: string;
+    conversationId: string | null;
+    rootRunId: string | null;
+};
+
+type ClarificationLineageEventRecord = {
+    runId: string;
+    sequence: number;
+    type: string;
+    payload: unknown;
+    toolName: string | null;
+    createdAt: Date;
+};
+
+export type ClarificationControllerState = {
+    totalClarificationCount: number;
+    hasDurableProgressSinceLastResolution: boolean;
+    lastResolvedDecisionBoundaryKey: string | null;
+};
+
+export type ClarificationDecision =
+    | {
+        allowPause: true;
+        nextState: ClarificationControllerState;
+      }
+    | {
+        allowPause: false;
+        nextState: ClarificationControllerState;
+        toolResult: ToolResult;
+        correctiveMessage: string;
+      };
+
+export type PendingUserInputSource = {
+    sourceRunId: string;
+    conversationId: string | null;
+    request: UserInputRequest;
+    requiredSequence: number;
+};
+
+function asObject(value: unknown): Record<string, unknown> | null {
+    return value && typeof value === "object" && !Array.isArray(value)
+        ? value as Record<string, unknown>
+        : null;
+}
+
+function serializeForPrompt(value: unknown): string {
+    const serialized = JSON.stringify(value, null, 2) ?? String(value);
+    if (serialized.length <= CONTINUATION_CONTEXT_MAX_CHARS) {
+        return serialized;
+    }
+    return `${serialized.slice(0, CONTINUATION_CONTEXT_MAX_CHARS)}\n... [truncated]`;
+}
+
+function isDurableToolProgress(event: ClarificationLineageEventRecord): boolean {
+    if (event.type !== "tool_result") return false;
+    const payload = asObject(event.payload) as ToolResult | null;
+    return Boolean(
+        payload?.callId
+        && payload.result != null
+        && !payload.error
+        && !payload.blockedByAutonomy
+        && !payload.requiresUserInput,
+    );
+}
+
+function isDurableArtifactProgress(event: ClarificationLineageEventRecord): boolean {
+    return event.type === "artifact_proposed" || event.type === "artifact_reviewed";
+}
+
+export function resolveDecisionBoundaryKey(params: {
+    decisionBoundaryKey?: string | null;
+    question: string;
+}): string {
+    const explicit = params.decisionBoundaryKey?.trim();
+    if (explicit) return explicit;
+    return params.question
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .slice(0, 120);
+}
+
+export async function hydrateClarificationControllerState(params: {
+    sourceRunId?: string | null;
+}): Promise<ClarificationControllerState> {
+    if (!params.sourceRunId) {
+        return {
+            totalClarificationCount: 0,
+            hasDurableProgressSinceLastResolution: true,
+            lastResolvedDecisionBoundaryKey: null,
+        };
+    }
+
+    const sourceRun = await prisma.agentRun.findUnique({
+        where: { id: params.sourceRunId },
+        select: {
+            id: true,
+            conversationId: true,
+            rootRunId: true,
+        },
+    }) as ClarificationLineageRunRecord | null;
+
+    if (!sourceRun) {
+        return {
+            totalClarificationCount: 0,
+            hasDurableProgressSinceLastResolution: true,
+            lastResolvedDecisionBoundaryKey: null,
+        };
+    }
+
+    const lineageRootRunId = sourceRun.rootRunId ?? sourceRun.id;
+    const lineageRuns = await prisma.agentRun.findMany({
+        where: {
+            OR: [
+                { id: lineageRootRunId },
+                { rootRunId: lineageRootRunId },
+            ],
+        },
+        select: { id: true },
+    });
+
+    const runIds = lineageRuns.map((run) => run.id);
+    if (runIds.length === 0) {
+        return {
+            totalClarificationCount: 0,
+            hasDurableProgressSinceLastResolution: true,
+            lastResolvedDecisionBoundaryKey: null,
+        };
+    }
+
+    const events = await prisma.runEvent.findMany({
+        where: {
+            runId: { in: runIds },
+            type: {
+                in: [
+                    "user_input_required",
+                    "user_input_resolved",
+                    "tool_result",
+                    "artifact_proposed",
+                    "artifact_reviewed",
+                ],
+            },
+        },
+        orderBy: [{ createdAt: "asc" }, { sequence: "asc" }],
+        take: LINEAGE_EVENT_SCAN_LIMIT,
+        select: {
+            runId: true,
+            sequence: true,
+            type: true,
+            payload: true,
+            toolName: true,
+            createdAt: true,
+        },
+    }) as ClarificationLineageEventRecord[];
+
+    let totalClarificationCount = 0;
+    let hasDurableProgressSinceLastResolution = true;
+    let lastResolvedDecisionBoundaryKey: string | null = null;
+    let sawResolvedClarification = false;
+
+    for (const event of events) {
+        if (event.type === "user_input_required") {
+            totalClarificationCount += 1;
+            continue;
+        }
+
+        if (event.type === "user_input_resolved") {
+            const payload = asObject(event.payload) as UserInputResolution | null;
+            sawResolvedClarification = true;
+            hasDurableProgressSinceLastResolution = false;
+            lastResolvedDecisionBoundaryKey = payload?.decisionBoundaryKey
+                ?? null;
+            continue;
+        }
+
+        if (!sawResolvedClarification) continue;
+        if (isDurableToolProgress(event) || isDurableArtifactProgress(event)) {
+            hasDurableProgressSinceLastResolution = true;
+        }
+    }
+
+    return {
+        totalClarificationCount,
+        hasDurableProgressSinceLastResolution,
+        lastResolvedDecisionBoundaryKey,
+    };
+}
+
+export function markClarificationProgress(
+    state: ClarificationControllerState,
+): ClarificationControllerState {
+    if (state.hasDurableProgressSinceLastResolution) return state;
+    return {
+        ...state,
+        hasDurableProgressSinceLastResolution: true,
+    };
+}
+
+function buildSuppressedClarificationToolResult(params: {
+    decisionBoundaryKey: string;
+    reason: "repeat_without_progress" | "preprogress_budget_exhausted" | "budget_exhausted";
+    userInputRequest: UserInputRequest;
+}): ToolResult {
+    return {
+        callId: `ask_user_suppressed_${params.reason}`,
+        result: {
+            status: "clarification_suppressed",
+            source: "clarification_runtime_policy",
+            reason: params.reason,
+            decisionBoundaryKey: params.decisionBoundaryKey,
+            recommendedAnswer: params.userInputRequest.recommendedAnswer ?? null,
+        },
+    };
+}
+
+function buildSuppressedClarificationMessage(params: {
+    reason: "repeat_without_progress" | "preprogress_budget_exhausted" | "budget_exhausted";
+    userInputRequest: UserInputRequest;
+}): string {
+    const recommendedDefault = params.userInputRequest.recommendedAnswer?.trim();
+    const sharedFallback = recommendedDefault
+        ? `Use the recommended default "${recommendedDefault}" if it is safe. If that would still be unsafe, present one bounded terminal decision point, or stop truthfully.`
+        : "Present one bounded terminal decision point, or stop truthfully. Do not make an unsafe guess just to avoid another question.";
+
+    if (params.reason === "repeat_without_progress") {
+        return `Do not ask the same blocking clarification again before making durable progress. Treat the prior clarification state as authoritative. ${sharedFallback}`;
+    }
+
+    if (params.reason === "preprogress_budget_exhausted") {
+        return `Do not ask another blocking clarification before making durable progress. ${sharedFallback}`;
+    }
+
+    return `Do not ask another blocking clarification in this run. ${sharedFallback}`;
+}
+
+export function evaluateClarificationRequest(params: {
+    state: ClarificationControllerState;
+    userInputRequest: UserInputRequest;
+}): ClarificationDecision {
+    const decisionBoundaryKey = resolveDecisionBoundaryKey({
+        decisionBoundaryKey: params.userInputRequest.decisionBoundaryKey ?? null,
+        question: params.userInputRequest.question,
+    });
+    const totalClarificationCount = params.state.totalClarificationCount;
+    const hasDurableProgressSinceLastResolution = params.state.hasDurableProgressSinceLastResolution;
+    const nextState: ClarificationControllerState = {
+        totalClarificationCount: totalClarificationCount + 1,
+        hasDurableProgressSinceLastResolution: false,
+        lastResolvedDecisionBoundaryKey: decisionBoundaryKey,
+    };
+
+    if (totalClarificationCount >= GENERAL_CLARIFICATION_MAX_TOTAL) {
+        return {
+            allowPause: false,
+            nextState: params.state,
+            toolResult: buildSuppressedClarificationToolResult({
+                decisionBoundaryKey,
+                reason: "budget_exhausted",
+                userInputRequest: params.userInputRequest,
+            }),
+            correctiveMessage: buildSuppressedClarificationMessage({
+                reason: "budget_exhausted",
+                userInputRequest: params.userInputRequest,
+            }),
+        };
+    }
+
+    if (!hasDurableProgressSinceLastResolution && totalClarificationCount >= GENERAL_CLARIFICATION_MAX_PRE_PROGRESS) {
+        const reason = params.state.lastResolvedDecisionBoundaryKey === decisionBoundaryKey
+            ? "repeat_without_progress"
+            : "preprogress_budget_exhausted";
+        return {
+            allowPause: false,
+            nextState: params.state,
+            toolResult: buildSuppressedClarificationToolResult({
+                decisionBoundaryKey,
+                reason,
+                userInputRequest: params.userInputRequest,
+            }),
+            correctiveMessage: buildSuppressedClarificationMessage({
+                reason,
+                userInputRequest: params.userInputRequest,
+            }),
+        };
+    }
+
+    return {
+        allowPause: true,
+        nextState,
+    };
+}
+
+export async function resolvePendingUserInputSource(params: {
+    sourceRunId: string;
+    conversationId?: string | null;
+    callId: string;
+}): Promise<PendingUserInputSource> {
+    const run = await prisma.agentRun.findFirst({
+        where: {
+            id: params.sourceRunId,
+            ...(params.conversationId ? { conversationId: params.conversationId } : {}),
+        },
+        select: {
+            id: true,
+            conversationId: true,
+        },
+    }) as Pick<ClarificationLineageRunRecord, "id" | "conversationId"> | null;
+
+    if (!run) {
+        throw new Error("The pending clarification source run could not be found.");
+    }
+
+    const events = await prisma.runEvent.findMany({
+        where: {
+            runId: run.id,
+            type: {
+                in: ["user_input_required", "user_input_resolved"],
+            },
+        },
+        orderBy: [{ sequence: "desc" }],
+        take: 20,
+        select: {
+            runId: true,
+            sequence: true,
+            type: true,
+            payload: true,
+            toolName: true,
+            createdAt: true,
+        },
+    }) as ClarificationLineageEventRecord[];
+
+    const requiredEvent = events.find((event) => {
+        if (event.type !== "user_input_required") return false;
+        const payload = asObject(event.payload) as UserInputRequest | null;
+        return payload?.callId === params.callId;
+    });
+
+    if (!requiredEvent) {
+        throw new Error("The pending clarification request is stale or no longer active.");
+    }
+
+    const resolutionEvent = events.find((event) => {
+        if (event.type !== "user_input_resolved") return false;
+        const payload = asObject(event.payload) as UserInputResolution | null;
+        return payload?.callId === params.callId && event.sequence > requiredEvent.sequence;
+    });
+
+    if (resolutionEvent) {
+        throw new Error("That clarification request has already been resolved.");
+    }
+
+    const request = asObject(requiredEvent.payload) as UserInputRequest | null;
+    if (!request?.callId) {
+        throw new Error("The pending clarification payload is invalid.");
+    }
+
+    return {
+        sourceRunId: run.id,
+        conversationId: run.conversationId ?? null,
+        request: {
+            ...request,
+            sourceRunId: run.id,
+        },
+        requiredSequence: requiredEvent.sequence,
+    };
+}
+
+export async function persistUserInputResolution(params: {
+    resolution: UserInputResolution;
+}): Promise<void> {
+    await recordRunEvent({
+        runId: params.resolution.sourceRunId,
+        type: "user_input_resolved",
+        payload: params.resolution,
+        failureMode: "strict",
+        degradationReason: "user_input_resolved_persistence_failed",
+        logContext: "user_input_resolved",
+    });
+}
+
+export function buildUserInputResolutionContinuationContext(params: {
+    request: UserInputRequest;
+    resolution: UserInputResolution;
+    controllerState: ClarificationControllerState;
+}): string {
+    return [
+        "seed_kind=user_input_resolution",
+        `source_run_id=${params.resolution.sourceRunId}`,
+        `user_input_call_id=${params.resolution.callId}`,
+        `resolution=${params.resolution.resolution}`,
+        `clarification_count=${params.controllerState.totalClarificationCount}`,
+        `has_durable_progress_since_last_resolution=${params.controllerState.hasDurableProgressSinceLastResolution ? "true" : "false"}`,
+        `decision_boundary_key=${params.resolution.decisionBoundaryKey ?? resolveDecisionBoundaryKey({
+            decisionBoundaryKey: params.request.decisionBoundaryKey ?? null,
+            question: params.request.question,
+        })}`,
+        "authoritative_input_only=true",
+        "rerun_policy=fresh_retry_only",
+        "request_json:",
+        serializeForPrompt(params.request),
+        "resolution_json:",
+        serializeForPrompt(params.resolution),
+    ].join("\n");
+}

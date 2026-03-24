@@ -11,6 +11,10 @@ const mocks = vi.hoisted(() => ({
   buildCheckpointContinuationContext: vi.fn(),
   resolveDurableContinuationSource: vi.fn(),
   buildDurableContinuationContext: vi.fn(),
+  resolvePendingUserInputSource: vi.fn(),
+  persistUserInputResolution: vi.fn(),
+  hydrateClarificationControllerState: vi.fn(),
+  buildUserInputResolutionContinuationContext: vi.fn(),
 }));
 
 vi.mock("@/lib/server/auth/session", () => ({
@@ -51,6 +55,16 @@ vi.mock("@/lib/server/agent/run-checkpoints", () => ({
   buildCheckpointContinuationContext: mocks.buildCheckpointContinuationContext,
 }));
 
+vi.mock("@/lib/server/ai/clarification-controller", () => ({
+  resolveDecisionBoundaryKey: ({ decisionBoundaryKey, question }: { decisionBoundaryKey?: string | null; question: string }) => (
+    decisionBoundaryKey ?? question.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-")
+  ),
+  resolvePendingUserInputSource: mocks.resolvePendingUserInputSource,
+  persistUserInputResolution: mocks.persistUserInputResolution,
+  hydrateClarificationControllerState: mocks.hydrateClarificationControllerState,
+  buildUserInputResolutionContinuationContext: mocks.buildUserInputResolutionContinuationContext,
+}));
+
 const { POST } = await import("../route");
 
 describe("/api/ai/stream route", () => {
@@ -69,6 +83,26 @@ describe("/api/ai/stream route", () => {
     mocks.resolveDurableContinuationSource.mockResolvedValue(null);
     mocks.buildCheckpointContinuationContext.mockReturnValue("[CONTINUATION_CONTEXT]\nPersisted checkpoint");
     mocks.buildDurableContinuationContext.mockReturnValue("[CONTINUATION_CONTEXT]\nPersisted tool result");
+    mocks.resolvePendingUserInputSource.mockResolvedValue({
+      sourceRunId: "run-paused",
+      conversationId: "conv-1",
+      requiredSequence: 4,
+      request: {
+        sourceRunId: "run-paused",
+        callId: "ask-1",
+        question: "Which direction should I take?",
+        questionType: "single_choice",
+        recommendedAnswer: "Use the broader evidence-first pass",
+        decisionBoundaryKey: "scoping-direction",
+      },
+    });
+    mocks.persistUserInputResolution.mockResolvedValue(undefined);
+    mocks.hydrateClarificationControllerState.mockResolvedValue({
+      totalClarificationCount: 1,
+      hasDurableProgressSinceLastResolution: false,
+      lastResolvedDecisionBoundaryKey: "scoping-direction",
+    });
+    mocks.buildUserInputResolutionContinuationContext.mockReturnValue("[CONTINUATION_CONTEXT]\nResolved clarification");
   });
 
   it("streams checkpoint and user-input events without route-side persistence authorship", async () => {
@@ -292,6 +326,70 @@ describe("/api/ai/stream route", () => {
         code: "RUN_CONTINUATION_UNAVAILABLE",
         recoveryRecommendation: "retry",
       },
+    });
+  });
+
+  it("persists and streams structured clarification resolution before continuing the blocked run", async () => {
+    mocks.streamChatWithArtifacts.mockImplementation(async function* () {
+      yield { type: "run_start", runId: "run-continued", conversationId: "conv-1" };
+      yield { type: "run_end", runId: "run-continued", conversationId: "conv-1", runStatus: "completed", stopReason: null };
+    });
+
+    const request = new NextRequest("http://localhost/api/ai/stream", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        userMessage: "Continue using the resolved clarification.",
+        context: "global",
+        options: {
+          conversationId: "conv-1",
+          continueFromRunId: "run-paused",
+          agentMode: "general",
+          page: "ai",
+          persistUserMessage: false,
+          userInputResolution: {
+            sourceRunId: "run-paused",
+            callId: "ask-1",
+            resolution: "answered",
+            answerText: "Broaden the search first.",
+            answeredAt: "2026-03-24T10:00:00.000Z",
+          },
+        },
+      }),
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(200);
+    const body = await response.text();
+    const chunks = body
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as { type: string; userInputResolution?: { callId: string; sourceRunId: string } });
+
+    expect(chunks.map((chunk) => chunk.type)).toEqual([
+      "user_input_resolved",
+      "run_start",
+      "run_end",
+    ]);
+    expect(chunks[0]?.userInputResolution).toMatchObject({
+      callId: "ask-1",
+      sourceRunId: "run-paused",
+    });
+    expect(mocks.persistUserInputResolution).toHaveBeenCalledWith({
+      resolution: expect.objectContaining({
+        sourceRunId: "run-paused",
+        callId: "ask-1",
+        resolution: "answered",
+      }),
+    });
+    expect(mocks.resolveLatestValidRunCheckpoint).not.toHaveBeenCalled();
+    expect(mocks.resolveDurableContinuationSource).not.toHaveBeenCalled();
+    expect(mocks.streamChatWithArtifacts.mock.calls[0]?.[2]).toMatchObject({
+      conversationId: "conv-1",
+      continueFromRunId: "run-paused",
+      replaceRunId: "run-paused",
+      parentRunId: "run-paused",
+      continuationContext: "[CONTINUATION_CONTEXT]\nResolved clarification",
     });
   });
 });

@@ -6,6 +6,7 @@
 - **Copilot Base (`lib/ai/prompts/copilot-prompts.ts`):** Foundation identity for all modes. Enforces markdown and strict verifiable hyperlinking to studies (via DOI/PMID).
 - **Copilot Modes:** 7 variants (Protocol, Scoping, Search, Screening, Drafting, QA, General) that prepend Base + append mode-specific behavior.
 - **Scoping Prompt Contract:** Scoping now teaches a broad-first evidence pass, avoids forcing early population/intervention/outcome commitments before evidence, recommends a default direction after synthesis, and reserves `ask_user` for hard blockers or the rare no-safe-default handoff case.
+- **Clarification Prompt Contract:** Base prompt now aligns with the runtime-owned clarification controller: `ask_user` is the only blocking clarification primitive, the assistant should do non-blocked work first, include a safe `recommendedAnswer` / `recommendedReason` when available, treat resolved clarifications as authoritative, and never re-ask the same blocker after runtime suppression.
 - **Structured Mention Contract:** Base prompt requires hidden `MENTIONED_STUDIES` JSON comments whenever a response names specific studies so UI can render actionable study chips; parser fallback remains as a last-resort path when metadata is omitted.
 - **Context Assembly (`lib/server/ai/ai-service.ts` + `lib/ai/prompts/copilot-prompts.ts`):** Prompt assembly follows a stable-to-variable sequence for caching and grounding: Mode Prompt -> Scope -> Project -> Protocol -> Autonomy -> Ledger -> Location -> Study -> Memory -> Additional.
 - **PDF Extraction Pipeline:** 
@@ -35,10 +36,9 @@
 *Finished work that might still be fragile or require monitoring. Prune oldest first.*
 
 - [x] Visible-answer and continuation hygiene now explicitly forbids echoing `[CONTINUATION_CONTEXT]`, `payload_json`, machine-only runtime labels, or raw provider reasoning into the normal visible answer path; continuation seeds were also shifted toward machine-oriented fields so prompt echo is less likely even before renderer sanitation.
-- [x] Narrowed scoping clarification guidance to align with the runtime controller: low-autonomy first-pass search-pack approval is no longer taught, scoping now defaults to broad evidence-first exploration plus a recommended default direction, and the base `ask_user` guidance now treats routine narrowing as non-blocking whenever safe first-pass evidence gathering is still possible.
+- [x] Runtime-aligned clarification guidance now teaches the bounded `ask_user` contract end to end: do non-blocked work first, include a safe recommended default when possible, treat resolved clarifications as authoritative, and never re-ask the same blocker after runtime suppression.
 - [x] Search/scoping visible-answer prompts now explicitly keep raw query logs and search-iteration mechanics in receipts/checkpoints/process details by default; visible prose should synthesize findings unless the user explicitly asks for the search strategy.
 - [x] Tightened the hidden `MENTIONED_STUDIES` response contract so study-naming answers are expected to emit machine-readable metadata, while keeping graceful parser fallback behavior when the model still omits it.
-- [x] Initial Prompts Map analysis completed (2026-02-07).
 - [x] Prompt assembly order stabilized for caching and grounding (Mode/Scope/Project/Protocol/Autonomy before variable context blocks).
 - [x] Base prompt includes explicit tool-awareness guidance for action-oriented requests.
 - [x] Base prompt includes concise-vs-structured response guidance for simple vs analytical requests.

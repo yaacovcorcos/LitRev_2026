@@ -11,20 +11,30 @@ export async function persistRecoveryAuthoritativeRuntimeEvent(params: {
   event: RuntimeStreamEvent;
   failureMode?: RunEventFailureMode;
 }): Promise<void> {
-  switch (params.event.type) {
-    case "user_input_required":
-      await recordRunEvent({
-        runId: params.runId,
-        type: "user_input_required",
+    switch (params.event.type) {
+        case "user_input_required":
+            await recordRunEvent({
+                runId: params.runId,
+                type: "user_input_required",
         payload: params.event.userInputRequest,
         failureMode: params.failureMode ?? "strict",
         degradationReason: "user_input_required_persistence_failed",
-        logContext: "user_input_required",
-      });
-      return;
-    case "checkpoint":
-      await recordRunEvent({
-        runId: params.runId,
+                logContext: "user_input_required",
+            });
+            return;
+        case "user_input_resolved":
+            await recordRunEvent({
+                runId: params.runId,
+                type: "user_input_resolved",
+                payload: params.event.userInputResolution,
+                failureMode: params.failureMode ?? "strict",
+                degradationReason: "user_input_resolved_persistence_failed",
+                logContext: "user_input_resolved",
+            });
+            return;
+        case "checkpoint":
+            await recordRunEvent({
+                runId: params.runId,
         type: "checkpoint",
         payload: {
           checkpointLabel: params.event.checkpointLabel,
