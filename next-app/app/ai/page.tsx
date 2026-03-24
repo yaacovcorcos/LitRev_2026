@@ -1183,7 +1183,6 @@ export default function AIView() {
     },
   ) => {
     const msgText = rawText.trim();
-    if (!msgText || sendLockRef.current) return;
     const replaceRunIdOverride = typeof runtimeOverrides === "string"
       ? runtimeOverrides
       : runtimeOverrides?.replaceRunId;
@@ -1195,6 +1194,7 @@ export default function AIView() {
     const explicitUserInputResolution = typeof runtimeOverrides === "object"
       ? (runtimeOverrides?.userInputResolution ?? null)
       : null;
+    if ((!msgText && !explicitUserInputResolution) || sendLockRef.current) return;
     const sendStartedAtMs = Date.now();
     let sendSucceeded = false;
     emitMobileActionTap("ai_send_message", 44);
@@ -1204,7 +1204,7 @@ export default function AIView() {
     setPendingUserInput(null);
 
     const context: ConversationContext = selectedProjectId ? "project" : "global";
-    const effectiveAgentMode = agentMode ?? routeToAgent(msgText, "overview");
+    const effectiveAgentMode = agentMode ?? (msgText ? routeToAgent(msgText, "overview") : "general");
     const effectiveModel = model ?? selectedModel;
     const reasoningRequest = resolveReasoningRequest({
       preferredMode: reasoningMode,
@@ -1435,7 +1435,7 @@ export default function AIView() {
             replaceRunId: replaceRunId ?? undefined,
             continueFromRunId: continueFromRunId ?? undefined,
             persistUserMessage: suppressUserMessageAppend ? false : undefined,
-            persistedUserMessageContent: msgText,
+            persistedUserMessageContent: suppressUserMessageAppend ? undefined : msgText,
             userInputResolution: userInputResolution ?? undefined,
             projectId: selectedProjectId ?? undefined,
             model: effectiveModel,
@@ -1725,11 +1725,8 @@ export default function AIView() {
       return;
     }
     setPendingUserInput(null);
-    const hiddenResumePrompt = resolution === "cancelled"
-      ? "Handle the cancelled clarification truthfully."
-      : "Continue using the resolved clarification.";
     void handleSend(
-      hiddenResumePrompt,
+      "",
       resolvedPage,
       resolvedSection,
       undefined,
