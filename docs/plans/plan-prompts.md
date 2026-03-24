@@ -1,5 +1,33 @@
 # System Prompts & LLM Extraction Plan
 
+## Authority and Scope
+
+This is the canonical plan for:
+
+- prompt text and prompt-pack behavior
+- prompt-owned output schemas and extraction contracts
+- model-parameter policy where it is prompt-coupled
+- prompt-side hygiene, degradation, and anti-echo rules
+
+Use this file for:
+
+- current prompt/extraction architecture truth
+- open prompt-domain quality debt
+- mode-specific prompt-pack work
+
+Do not use this file for:
+
+- runtime-owned summary semantics
+- shared recovery or terminal-state contracts
+- transparency UI ownership
+- general agent-runtime orchestration status
+
+Those are owned by:
+
+- `docs/plans/plan-agentic.md`
+- `docs/plans/chatRuntime.md`
+- `docs/plans/transparencyUI.md`
+
 ## Current Architecture
 *How this domain works right now, based on actual committed code.*
 
@@ -7,8 +35,10 @@
 - **Copilot Modes:** 7 variants (Protocol, Scoping, Search, Screening, Drafting, QA, General) that prepend Base + append mode-specific behavior.
 - **Scoping Prompt Contract:** Scoping now teaches a broad-first evidence pass, avoids forcing early population/intervention/outcome commitments before evidence, recommends a default direction after synthesis, and reserves `ask_user` for hard blockers or the rare no-safe-default handoff case.
 - **Clarification Prompt Contract:** Base prompt now aligns with the runtime-owned clarification controller: `ask_user` is the only blocking clarification primitive, the assistant should do non-blocked work first, include a safe `recommendedAnswer` / `recommendedReason` when available, treat resolved clarifications as authoritative, and never re-ask the same blocker after runtime suppression.
-- **Structured Mention Contract:** Base prompt requires hidden `MENTIONED_STUDIES` JSON comments whenever a response names specific studies so UI can render actionable study chips; parser fallback remains as a last-resort path when metadata is omitted.
+- **Structured Mention Contract:** Base prompt currently requires hidden `MENTIONED_STUDIES` JSON comments whenever a response names specific studies so UI can render actionable study chips; parser fallback remains as a last-resort path when metadata is omitted. This is a compatibility-era prompt contract and should not spread beyond the current mixed-channel architecture.
 - **Context Assembly (`lib/server/ai/ai-service.ts` + `lib/ai/prompts/copilot-prompts.ts`):** Prompt assembly follows a stable-to-variable sequence for caching and grounding: Mode Prompt -> Scope -> Project -> Protocol -> Autonomy -> Ledger -> Location -> Study -> Memory -> Additional.
+- **Runtime-Led Summary Alignment:** Summary mode semantics are runtime-owned. Prompts must support process-trace-first UX, but they do not define or own summary-mode meaning.
+- **Visible-Answer And Continuation Hygiene:** Prompt rules now explicitly forbid echoing `[CONTINUATION_CONTEXT]`, `payload_json`, machine-only runtime labels, hidden protocol blocks, or raw provider reasoning into normal visible answer prose; continuation seeds have also shifted toward machine-oriented fields.
 - **PDF Extraction Pipeline:** 
   - Quick Extract (grok-4-1-fast, temp 0.2): Regex fallback + strict JSON for DOI/PMID/year/authors.
   - Deep Analysis (grok-4-1-fast, temp 0.3): Structured JSON summary, keywords, quality.
@@ -16,21 +46,23 @@
 - **Memory Extraction (`lib/server/memory/conversation-extractor.ts`):** Background job (grok-4-1-fast, temp 0.1) mining conversations for Decisions, Facts, and Preferences into strict JSON.
 
 ## Active Tasks
-*Work that is entirely unimplemented or currently broken.*
+*Open prompt-domain work and quality debt that is not yet fully resolved.*
 
-### P1 — Copilot Prompt Hardening
-- [ ] Visible-answer and reasoning hygiene: make the prompt contract explicitly forbid continuation/runtime scaffolding, hidden machine protocol, or raw provider reasoning from surfacing in normal visible answer prose.
-- [ ] Visible-answer and reasoning hygiene: define a compact reasoning-summary contract that can enrich structured process trace without depending on raw provider-native reasoning quality.
-- [ ] Visible-answer and reasoning hygiene: define clean degradation rules so prompt behavior falls back to process-led answers when reasoning is unavailable, noisy, or inconsistent.
+### P1 — Prompt Hygiene and Runtime Alignment
+- [ ] Visible-answer and reasoning hygiene: align prompt behavior with the runtime-led summary contract, including clean degradation when runtime summary is absent, weak, or intentionally suppressed, so visible prose stays compatible with process-trace-first UX without depending on raw provider reasoning or surfacing search-log/process scaffolding.
+- [ ] Continuation and recovery hygiene: finish reducing prompt-owned runtime glue in the remaining paths still implicated by current failures, keeping continuation/checkpoint seeds machine-oriented and leaving blocked/recovery truth to typed runtime state wherever the prompt does not need to carry it.
+- [ ] Structured assistant metadata migration: retire the prompt requirement for hidden `MENTIONED_STUDIES` markup once server-owned structured message parts become canonical, keeping compatibility fallback only for the migration window.
+
+### P2 — Mode-Specific Prompt Packs
 - [ ] Search Mode: Strengthen explicit Boolean-query and MeSH suggestion guidance for evidence-retrieval requests.
 - [ ] Onboarding V2: Define step-specific prompt pack for guided setup AI assists (`suggest`, `refine`, `generate`) with strict output schemas and deterministic fallback behavior.
 - [ ] Onboarding V2: Add explainer-mode prompt contract for `Explain this` surfaces (plain-language, concise, and grounded to current project context).
 
-### P2 — Context & Extraction Hardening
+### P3 — Context & Extraction Hardening
 - [ ] Memory Extraction: Raise temp slightly or add examples of implicit vs explicit decisions to fix under-extraction.
 - [ ] Memory Extraction: Add priority/importance signal to extracted facts.
 - [ ] Memory Extraction: Expand 200-char limit for statements and add "negative extraction" (capturing rejected ideas).
-- [ ] Resolve Prompt #6 vs #7 overlap: Both Conversation Summary and Memory Extraction pull "decisions", creating potential duplication.
+- [ ] Resolve conversation-summary vs memory-extraction overlap so “decisions” are not duplicated across two prompt-owned extraction paths without a clear separation of purpose.
 
 ## Recently Completed
 *Finished work that might still be fragile or require monitoring. Prune oldest first.*

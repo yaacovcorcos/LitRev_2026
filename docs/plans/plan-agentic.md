@@ -21,6 +21,8 @@ Use supporting plans only for detailed execution on a specific fix or subsystem:
 - `docs/plans/transparencyUI.md` for truthful process visibility, optional reasoning, and visible-message contracts
 - `docs/plans/plan-context-capture.md` for scoped context entrypoints and receipts/history reuse
 
+`FIX-012` implementation detail lives in `docs/plans/agent-runtime-remediation/plan-fix-012-baseline-stability.md`.
+
 ## Maintenance Contract
 
 This file tracks current truth and remaining work. It must not become a diary.
@@ -107,7 +109,7 @@ Every fix entry must include:
 - **Delegation Runtime Now Uses The Shared Safety Contract:** delegated child runs now reuse the same autonomy-aware execution/finalization core as direct execution, level-1 delegated actions fail as structured approval-required blocks instead of running, delegated proposal artifacts stay reviewable unless direct policy allows auto-apply, and delegated `ask_user` bubbles through the existing parent `user_input_required` flow.
 - **Popup Runtime Is Now Honest About Edit Limits:** popup remains on a non-artifact path, but its tool contract is now explicitly read-only/advisory for edit intents. It no longer exposes invisible protocol-mutation flows and instead routes edit/application work to the main copilot surface.
 - **General Mode And Clarification Now Use Explicit Honest Contracts:** normal agentic paths now assemble tools through contextual mode+scope filtering, `general` no longer widens to all tools, disabled/global delegation tools are hidden before exposure, `ask_user` remains the sole blocking clarification primitive in the global base prompt, and `<choices>` guidance is scoped to artifact/chat surfaces as optional suggestion-only output.
-- **Blocking Clarification Now Uses Request-Bound Shared Runtime Truth On Main Surfaces:** `/ai`, the main project conversation, and side-panel copilot now resolve `ask_user` through the shared continuation path using canonical blocked-request identity (`sourceRunId + callId`) instead of appending a plain follow-up user turn, cancelled clarifications remain visible as cancelled, and one shared runtime controller now bounds repeated blocking clarification by durable progress and safe-default / bounded-stop fallback order.
+- **Blocking Clarification Now Uses Request-Bound Shared Runtime Truth On Main Surfaces:** `/ai`, the main project conversation, and side-panel copilot now resolve `ask_user` through the shared continuation path using canonical blocked-request identity (`sourceRunId + callId`) instead of appending a plain follow-up user turn, cancelled clarifications remain visible as cancelled, runtime-enforced fallback now settles suppression into safe default / bounded terminal decision / truthful stop order, and shared clarification telemetry is emitted from the runtime/resolution path rather than per-surface heuristics.
 - **Model Requests Now Use Per-Model Capability Policy:** one authoritative model capability registry now feeds a shared request-policy normalizer, OpenAI/xAI/Google/Anthropic all reuse it before send, fixed-default OpenAI models omit unsupported `temperature`, and unsupported explicit reasoning budgets fail locally as structured `model_capability` errors instead of raw provider 400s.
 - **Protocol Mutation Uses Shared Field-Aware Normalization:** `update_protocol`, same-turn tool-call sanitization, and repeat detection now reuse the same field/value normalize-classify path so unambiguous wrapper shapes are repaired consistently, whitespace-only field mismatches no longer diverge between validation and execution, and normalization/hashing paths cap nested input depth safely.
 - **Tool Prerequisites Now Gate High-Risk Actions Before Execution:** tool metadata now declares project/study/protocol prerequisites in the shared pre-execution path, screening actions also gate on resolvable non-empty criteria, and blocked actions emit structured `missing_prerequisite` envelopes before a tool runs. Generic PDF file existence is still verified inside PDF tools rather than the shared prerequisite vocabulary.
@@ -132,18 +134,12 @@ Every fix entry must include:
 ## Verified Failure Classes
 *The concrete runtime failures this plan is intended to eliminate.*
 
-- Unsupported per-model request params causing deterministic request failures before the tool loop can usefully start.
-- Protocol mutation attempts failing because `update_protocol` receives the wrong shape for the target field.
-- Repeated failed task cards for the same invalid mutation intent.
-- Wrong-tool execution in `general` mode when study, criteria, PDF, or project context is missing.
-- Retry or resume affordances appearing for failures that cannot succeed without changing the request.
-- Runs ending without a truthful fallback explanation after failed mutation attempts.
-- Delegated child work bypassing review boundaries or swallowing clarification requests.
-- Plan execution exceeding the tool surface or mode the user actually approved.
-- Popup implying mutation capability it cannot actually render or complete honestly.
 - Visible assistant output leaking continuation/runtime scaffolding or other machine-only payloads into normal chat.
-- Broken reconnect/recovery states that leave the user with contradictory, dead-end, or obviously misleading next actions.
-- Transparency falling back to noisy provider/process prose because the structured runtime trace is not strong enough to stand on its own.
+- Transparency still falling back to noisy provider/process prose on some flows because the structured runtime trace and compact summary path are not yet strong enough to stand on their own.
+- Broken reconnect/recovery states that leave the user with contradictory, dead-end, or obviously misleading next actions on the shared main surfaces.
+- Shared runtime convergence gaps where `/ai`, project copilot, and the main project conversation can still disagree about terminal state, recovery eligibility, or replay truth under stressed cases.
+- Blocked or paused-for-input runs that still risk losing durable clarification truth or recovering through stale local heuristics instead of explicit persisted state.
+- Remaining continuation/retry paths that still restart from zero or cannot prove the next valid next step from durable state when audited work already exists.
 
 ## Active Fixes
 *Immediate remediation work for shipped behavior that is broken, misleading, or lower quality than the intended contract.*
@@ -152,13 +148,16 @@ Every fix entry must include:
   - **Severity:** P0 trust/usability
   - **Symptom:** ordinary agent use still exposes visible internal/runtime scaffolding, noisy or low-value transparency, brittle reconnect/recovery behavior, and poor long-running task reliability. The product is not yet stable enough for `U1.6` burn-in to serve as meaningful sign-off rather than bug discovery.
   - **Desired end state:** the default agent experience is clean, minimal, and trustworthy: visible output contains only user-facing answer text plus structured process trace; provider reasoning is optional and secondary; interrupted runs converge to one bounded truthful next action; and ordinary `/ai` and `project` use is stable enough that burn-in becomes validation instead of triage.
-  - **Supporting plans:** `docs/plans/transparencyUI.md` for the visible-channel/transparency contract, `docs/plans/chatRuntime.md` for shared runtime/recovery truth, and `docs/plans/plan-prompts.md` for prompt-side visible-answer and reasoning-summary hygiene.
+  - **Supporting plans:** `docs/plans/agent-runtime-remediation/plan-fix-012-baseline-stability.md` for execution detail, `docs/plans/transparencyUI.md` for the visible-channel/transparency contract, `docs/plans/chatRuntime.md` for shared runtime/recovery truth, and `docs/plans/plan-prompts.md` for prompt-side visible-answer and reasoning-summary hygiene.
+  - **Evidence record:** `docs/reports/fix-012-baseline-stability.md`
   - **Exit criteria:**
     - standard manual agent use no longer leaks continuation/runtime scaffolding or other machine-only payloads into visible chat
     - the default transparency path is structured process trace first, with raw provider reasoning no longer acting as the default comprehension path
     - interrupted runs converge to one bounded truthful user-visible next action instead of contradictory reconnect/retry states
     - blocking clarification resumes the exact paused request, exposes clear answer/default/cancel exits, and cannot re-enter the same blocking loop forever without durable progress
     - baseline manual scenarios on `/ai` and `project` are stable enough that `U1.6` can resume as later-stage validation
+
+`FIX-012` is the active rescue program for baseline product quality. Its implementation direction is now fixed around one shared runtime/event authority, one shared terminal-state contract, typed deferred blocked states, and a facts-first UI that does not depend on provider-native reasoning for comprehension. The first-wave rescue is split between visible-channel purity and runtime operating discipline on the shared main surfaces.
 
 - **`FIX-011b` Runtime stabilization, convergence, and durable continuation**
   - **Severity:** P0 trust/reliability
@@ -192,7 +191,7 @@ Work should proceed in this order unless a production incident forces reprioriti
 
 ### Track B — Action Eligibility and Honest Execution
 
-- Land `FIX-008` before broader orchestration hardening so the runtime stops attempting impossible work with missing context.
+- High-risk action eligibility should stay enforced through shared prerequisite gates and explicit server-side checks rather than prompt-only guidance or optimistic runtime inference.
 - Treat prerequisite gating as a contract layer, not a prompt tweak.
 
 ### Track C — Orchestration Safety and Approval Integrity
@@ -212,9 +211,9 @@ Work should proceed in this order unless a production incident forces reprioriti
 
 - [x] `CAG-002` Baseline `ask_user` tool and typed UI contract shipped
 - [x] `CAG-002a` Stateless turn-based clarification flow shipped
-- [ ] `CAG-003` Add checkpointed continuation from durable work so reconnect / continue / replace / retry semantics never restart from zero when durable work already exists
+- [ ] `CAG-003` Generalize the shipped durable continuation/recovery foundation into a broader checkpointed retry/continue capability so reconnect / continue / replace / retry semantics stop restarting from zero when audited durable work already exists
 - [ ] `CAG-004` Standardize idempotency envelopes for mutating tools
-- [ ] `CAG-005` Define controlled optional reasoning transparency and safe defaults across providers and surfaces
+- [ ] `CAG-005` Complete controlled optional reasoning transparency from the shipped `off` / `summary` / `full` baseline across the remaining provider/surface/debug gaps without regressing to provider-led comprehension
 
 ### Phase 1 — Search-First Retrieval and Progressive Context
 
@@ -230,7 +229,7 @@ Work should proceed in this order unless a production incident forces reprioriti
 
 - [x] `CAG-011` Baseline sub-agent runtime shipped
 - [x] `CAG-012` Baseline delegation meta-tools shipped behind flag
-- [ ] `CAG-013` Make scoped `general` mode the default architecture
+- [ ] `CAG-013` Finish converging the remaining `general`-mode paths onto the already-narrowed scoped architecture so `general` stays a coordination surface rather than a widening escape hatch
 - [ ] `CAG-014` Implement delegation policy matrix by mode/autonomy/risk
 - [ ] `CAG-015` Implement tool-portfolio telemetry and pruning workflow
 
@@ -244,7 +243,7 @@ Work should proceed in this order unless a production incident forces reprioriti
 - [ ] `CAG-026` Replace hidden assistant markup with canonical structured message parts
   - **Problem:** assistant turns still mix human-readable prose with hidden machine-readable UI metadata inside `AIMessage.content`, which forces client/server consumers to sanitize inconsistently and allows malformed internal markup to leak into visible chat, exports, summaries, and transcript-derived workflows.
   - **Desired end state:** the server owns one canonical normalization boundary that persists clean visible assistant text separately from typed structured message parts, timeline/popup/export/summary consumers read from that canonical shape instead of reparsing prose, and legacy hidden-markup parsing survives only as a backward-compatibility fallback during migration.
-  - **Supporting plan:** `docs/plans/transparencyUI.md`
+  - **Supporting plan:** current visible-message and migration contract lives in `docs/plans/transparencyUI.md`; a dedicated execution-detail plan is required before `CAG-026` is activated
   - **Exit criteria:** new assistant turns persist clean visible text plus validated structured parts; main chat surfaces render from typed parts; transcript/export/summary/memory paths stop depending on raw hidden markup; legacy parsing is fallback-only.
 
 ### Phase 4 — Evaluation, Rollout, and Operations
@@ -316,15 +315,6 @@ Recommended collaboration pattern:
 - shared-file ownership must be explicit
 - no stacked cross-wave changes should remain unmerged
 
-## Supporting Detail Plans
-
-Use these only as execution detail for the active fixes above:
-
-- `docs/plans/agent-runtime-remediation/plan-delegation-safety.md`
-- `docs/plans/agent-runtime-remediation/plan-general-scope-and-clarification.md`
-
-These files are supporting documents. Status, priority, and closure rules live here.
-
 ## Recently Completed
 
 - [x] Landed `CAG-026` Phase 0 containment: known hidden `MENTIONED_STUDIES` and `SCOPING_REPORT` assistant markup now strips through one shared read-time normalizer across timeline, popup, export, summary, and transcript-derived memory extraction, while persisted assistant message storage remains unchanged for the later structured-parts migration.
@@ -337,8 +327,6 @@ These files are supporting documents. Status, priority, and closure rules live h
 - [x] Landed the third `FIX-011b` stabilization slice: recovery-critical event persistence now originates at business boundaries instead of the stream route, `AgentRun` records `durabilityState` / `durabilityDegradedReason` when recovery-required persistence fails after useful work, and observability-only runtime events now soft-fail without collapsing an otherwise successful run.
 - [x] Landed the second `FIX-011b` convergence slice: reconnect checkpoints are now run-scoped recovery state instead of anonymous timeline breadcrumbs, stronger same-run server truth clears weaker reconnect/timeout/fallback remnants across `/ai`, project copilot, and the main project conversation, and recovery messaging now reflects stalled durable progress or finalization failure instead of spinning indefinitely on generic reconnect text.
 - [x] Landed the first `FIX-011b` convergence slice: `AgentRun` now persists `lastDurableProgressAt`, `finalizationState`, and `abnormalEndClassification`, recovery/readmission distinguishes heartbeat freshness from durable forward progress, and route-level regression coverage now includes disconnect-before-terminal and finalization-failure harnesses instead of relying only on optimistic active-run inference.
-- [x] Patched the immediate `FIX-011` follow-up regressions: recovered-completed runs now stop before false terminal fallback/error telemetry is emitted, and reconnect / stop-and-retry actions now target the specific timeline error card the user clicked instead of whichever recovery error happened to be newest.
-- [x] Completed `FIX-011` shared failure handling and popup parity: `/ai` and project copilot now recover known-run abnormal disconnects against persisted run truth with structured `Reconnect` / `Retry` / `Stop & Retry` actions, popup keeps a truthful reduced recovery subset without fake `Resume`, and running-run freshness now uses `AgentRun.lastActivityAt` plus safe stale-run cleanup instead of conversation-wide cancellation heuristics.
 
 ## Deferred / Parking Lot
 
