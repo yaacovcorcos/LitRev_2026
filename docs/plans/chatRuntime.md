@@ -28,6 +28,8 @@ This plan does not own:
 - `/ai` and project copilot now share the same default transparency semantics on top of that runtime: `summary` mode stays provider-independent, compact process summaries are derived from existing shared trace facts, and raw provider reasoning is limited to explicit `full` mode on surfaces that support it.
 - `/ai`, main conversation, and side-panel copilot now also share the queued-follow-up contract on top of that runtime: one explicit text-only next message may be queued while a run is active, rendered as an attached composer cap, and auto-dispatched only after the surface returns to true idle/sendable state.
 - `/ai`, main conversation, and side-panel copilot now also consume phase-backed recovery truth from persisted `AgentRun.runPhase` / `phaseEnteredAt`, so paused-input and stale-finalize cases converge through the shared runtime contract instead of per-surface reconnect heuristics.
+- `/ai`, main conversation, and side-panel copilot now also resolve blocking clarification through the shared runtime contract: pending requests carry canonical identity (`sourceRunId + callId`), answer/default/cancel all continue through the existing `continueFromRunId` path instead of plain new user turns, and cancelled clarifications stay visible as cancelled transcript state instead of disappearing.
+- Shared main-surface clarification now also uses one runtime-owned controller for identity, durable-progress accounting, repeat suppression, and safe fallback order. Scoping may apply stricter policy on top, but it no longer owns a separate blocked-state model.
 - Abrupt main-surface stream endings without concrete transport evidence now reconcile as `failed_interrupted` through the shared lifecycle contract instead of defaulting to `failed_network`, so recovery affordances and error copy no longer imply a network failure unless one is actually known.
 - Popup has canonical Context V2 payload alignment and now derives its supported progress/checkpoint/error/blocking subset through a shared reducer adapter, but it still has not migrated fully onto the shared runtime engine.
 - The CI anti-duplication architecture guard is already enforced and should continue preventing new per-surface chunk parsers.
@@ -63,9 +65,11 @@ Shell responsibilities:
 
 ### Ask-User Continuation Invariant
 1. Every `user_input_required` event must preserve `page` and optional `section`.
-2. Answering from timeline or input must continue the same contextual flow.
-3. Dismiss remains an explicit continuation action with deterministic fallback text.
-4. Cross-surface tests must continue validating this invariant.
+2. Every pending clarification must be identified canonically by `sourceRunId + callId`; loop-control metadata such as `decisionBoundaryKey` is not identity.
+3. Answering, accepting a recommended default, or cancelling from a blocked card must continue the same contextual flow through the structured resolution path, not by appending a plain user turn.
+4. Freeform composer sends while blocked must cancel the pending clarification truthfully and start a fresh user turn; recovery/reload must preserve that cancelled state.
+5. Shared runtime policy, not surface heuristics, owns repeat-clarification suppression, durable-progress gating, and safe fallback order.
+6. Cross-surface tests must continue validating this invariant.
 
 ### Context Contract V2
 Canonical fields:
@@ -173,6 +177,7 @@ Contract tests must continue covering:
 4. Retry model continuity.
 5. Ask-user single-render and continuation-context invariants.
 6. Typed tool lifecycle transitions.
+7. Structured blocked-request resolution and cancellation invariants.
 
 Integration tests must continue covering:
 1. `/ai` global roundtrip.

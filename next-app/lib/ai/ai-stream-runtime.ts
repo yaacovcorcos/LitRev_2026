@@ -364,18 +364,40 @@ export function createAiStreamRuntime(deps: AiStreamRuntimeDeps): AiStreamRuntim
           type: "user_input_request",
           id: requestId,
           callId: intent.request.callId,
+          sourceRunId: intent.request.sourceRunId,
           question: intent.request.question,
           questionType: intent.request.questionType,
           options: intent.request.options,
           header: intent.request.header,
           context: intent.request.context,
+          decisionBoundaryKey: intent.request.decisionBoundaryKey,
+          recommendedAnswer: intent.request.recommendedAnswer,
+          recommendedReason: intent.request.recommendedReason,
           page: intent.page,
           section: intent.section,
           answered: false,
+          resolution: intent.request.resolution,
           createdAt: now(),
         },
       ];
     });
+  };
+
+  const resolveUserInputRequest = (intent: Extract<SharedStreamIntent, { type: "user_input_resolve" }>) => {
+    updateCurrentTimeline((items) =>
+      items.map((item) => {
+        if (item.type !== "user_input_request" || item.callId !== intent.resolution.callId) {
+          return item;
+        }
+        const isCancelled = intent.resolution.resolution === "cancelled";
+        return {
+          ...item,
+          answered: !isCancelled,
+          answer: intent.resolution.answerText ?? item.answer,
+          resolution: intent.resolution.resolution,
+        };
+      }),
+    );
   };
 
   const applyIntent = (intent: SharedStreamIntent) => {
@@ -444,8 +466,18 @@ export function createAiStreamRuntime(deps: AiStreamRuntimeDeps): AiStreamRuntim
         }
         return;
       }
+      case "user_input_clear": {
+        if (deps.getCurrentGen() === deps.myGen) {
+          deps.setPendingUserInput(null);
+        }
+        return;
+      }
       case "user_input_append": {
         appendUserInputRequest(intent);
+        return;
+      }
+      case "user_input_resolve": {
+        resolveUserInputRequest(intent);
         return;
       }
       case "navigate": {

@@ -46,10 +46,7 @@ export type CopilotMessage = {
     version: number;
   };
   /** Structured ask_user request emitted by the runtime */
-  userInputRequest?: (UserInputRequest & {
-    answered?: boolean;
-    answer?: string;
-  });
+  userInputRequest?: UserInputRequest;
   /** Structured checkpoint emitted by the runtime */
   checkpoint?: {
     label: string;

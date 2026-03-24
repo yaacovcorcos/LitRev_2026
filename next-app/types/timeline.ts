@@ -5,7 +5,13 @@
  */
 
 import type { ArtifactType, ArtifactStatus } from "./artifacts";
-import type { AIErrorEnvelope, CopilotPage, UserInputQuestionType, UserInputOption } from "./ai";
+import type {
+    AIErrorEnvelope,
+    CopilotPage,
+    UserInputQuestionType,
+    UserInputOption,
+    UserInputResolutionKind,
+} from "./ai";
 import type { ContextCaptureTarget } from "./context-capture";
 
 // ── Attachment (carried on user messages) ────────────────────────────────────
@@ -123,6 +129,7 @@ export interface TimelineUserInputRequest {
     type: "user_input_request";
     id: string;
     callId: string;
+    sourceRunId?: string;
     page?: CopilotPage;
     section?: string;
     question: string;
@@ -130,7 +137,11 @@ export interface TimelineUserInputRequest {
     options?: UserInputOption[];
     header?: string;
     context?: string;
+    decisionBoundaryKey?: string;
+    recommendedAnswer?: string;
+    recommendedReason?: string;
     answered: boolean;
     answer?: string;
+    resolution?: UserInputResolutionKind;
     createdAt: string;
 }

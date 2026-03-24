@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef } from "react";
-import type { UserInputQuestionType, UserInputOption } from "@/types/ai";
+import type { UserInputQuestionType, UserInputOption, UserInputResolutionKind } from "@/types/ai";
 import styles from "./UserInputCard.module.css";
 
 export interface UserInputCardProps {
@@ -10,9 +10,14 @@ export interface UserInputCardProps {
     options?: UserInputOption[];
     header?: string;
     context?: string;
+    recommendedAnswer?: string;
+    recommendedReason?: string;
     answered: boolean;
     answer?: string;
+    resolution?: UserInputResolutionKind;
     onAnswer: (answer: string) => void;
+    onAcceptRecommended?: () => void;
+    onCancel?: () => void;
     onDismiss?: () => void;
 }
 
@@ -24,11 +29,17 @@ export function UserInputCard({
     options,
     header,
     context,
+    recommendedAnswer,
+    recommendedReason,
     answered,
     answer,
+    resolution,
     onAnswer,
+    onAcceptRecommended,
+    onCancel,
     onDismiss,
 }: UserInputCardProps) {
+    const isResolved = answered || resolution === "cancelled";
     // For single_choice / yes_no: which radio is selected (label or OTHER_SENTINEL)
     const [selectedRadio, setSelectedRadio] = useState<string | null>(null);
     // For multi_select: set of selected labels
@@ -86,16 +97,16 @@ export function UserInputCard({
     const cardRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
-        if (answered) return;
+        if (isResolved) return;
 
         const handleKeyDown = (e: KeyboardEvent) => {
             // Don't intercept when typing in a text field
             const tag = (e.target as HTMLElement)?.tagName;
             if (tag === "TEXTAREA" || tag === "INPUT") return;
 
-            if (e.key === "Escape" && onDismiss) {
+            if (e.key === "Escape" && onCancel) {
                 e.preventDefault();
-                onDismiss();
+                onCancel();
                 return;
             }
 
@@ -123,11 +134,12 @@ export function UserInputCard({
 
         document.addEventListener("keydown", handleKeyDown);
         return () => document.removeEventListener("keydown", handleKeyDown);
-    }, [answered, hasChoiceOptions, options, effectiveType, onDismiss, toggleMulti]);
+    }, [isResolved, hasChoiceOptions, options, effectiveType, onCancel, toggleMulti]);
 
     // ── Answered (compact) ───────────────────────────────────────
 
-    if (answered) {
+    if (isResolved) {
+        const isCancelled = resolution === "cancelled";
         return (
             <div className={`${styles.card} ${styles.cardAnswered}`}>
                 {header && (
@@ -155,8 +167,12 @@ export function UserInputCard({
                 )}
                 <div className={styles.question}>{question}</div>
                 <div className={styles.answeredRow}>
-                    <span className={`material-icons-round ${styles.answeredIcon}`}>check_circle</span>
-                    <span className={styles.answeredText}>{answer}</span>
+                    <span className={`material-icons-round ${styles.answeredIcon}`}>
+                        {isCancelled ? "cancel" : "check_circle"}
+                    </span>
+                    <span className={styles.answeredText}>
+                        {isCancelled ? (answer?.trim() || "Cancelled") : answer}
+                    </span>
                 </div>
             </div>
         );
@@ -313,20 +329,47 @@ export function UserInputCard({
             <div className={styles.footer}>
                 {hasChoiceOptions && (
                     <span className={styles.footerHint}>
-                        Press 1-{Math.min(options?.length ?? 0, 9)} to select{onDismiss ? " · Esc to dismiss" : ""}
+                        Press 1-{Math.min(options?.length ?? 0, 9)} to select{onCancel ? " · Esc to cancel" : ""}
                     </span>
                 )}
-                <button
-                    type="button"
-                    className={styles.submitBtn}
-                    onClick={handleSubmit}
-                    disabled={!canSubmit}
-                >
-                    Submit{effectiveType === "multi_select" && selectedMulti.size > 0
-                        ? ` (${selectedMulti.size})`
-                        : ""}
-                </button>
+                <div style={{ display: "flex", gap: 8, marginLeft: "auto", flexWrap: "wrap", justifyContent: "flex-end" }}>
+                    {recommendedAnswer ? (
+                        <button
+                            type="button"
+                            className={styles.submitBtn}
+                            onClick={() => onAcceptRecommended?.()}
+                        >
+                            Use Recommended Default
+                        </button>
+                    ) : null}
+                    {onCancel ? (
+                        <button
+                            type="button"
+                            className={styles.submitBtn}
+                            onClick={onCancel}
+                            style={{ background: "var(--color-surface-secondary)", color: "var(--color-text-primary)" }}
+                        >
+                            Cancel
+                        </button>
+                    ) : null}
+                    <button
+                        type="button"
+                        className={styles.submitBtn}
+                        onClick={handleSubmit}
+                        disabled={!canSubmit}
+                    >
+                        Submit{effectiveType === "multi_select" && selectedMulti.size > 0
+                            ? ` (${selectedMulti.size})`
+                            : ""}
+                    </button>
+                </div>
             </div>
+            {recommendedAnswer ? (
+                <div style={{ padding: "0 14px 14px", color: "var(--color-text-secondary)", fontSize: 13, lineHeight: 1.4 }}>
+                    <strong style={{ color: "var(--color-text-primary)" }}>Recommended:</strong> {recommendedAnswer}
+                    {recommendedReason ? ` — ${recommendedReason}` : ""}
+                </div>
+            ) : null}
         </div>
     );
 }

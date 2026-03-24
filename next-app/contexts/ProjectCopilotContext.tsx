@@ -26,7 +26,15 @@ import { useProjectAutonomyConfig } from "@/hooks/useProjectAutonomyConfig";
 import { useQueuedFollowUpController } from "@/hooks/useQueuedFollowUpController";
 import type { ArtifactData } from "@/types/artifacts";
 import type { AgentMode } from "@/types/agent";
-import type { ChoiceOption, CopilotPage, ReasoningMode, StreamPhase, UserInputRequest } from "@/types/ai";
+import type {
+    ChoiceOption,
+    CopilotPage,
+    ReasoningMode,
+    StreamPhase,
+    UserInputRequest,
+    UserInputResolution,
+    UserInputResolutionKind,
+} from "@/types/ai";
 import { useRouter } from "next/navigation";
 import {
     getReasoningModePreference,
@@ -294,6 +302,7 @@ function ProjectCopilotRuntime({
         setCurrentRunId,
         setPendingChoices,
         setPendingUserInput,
+        pendingUserInput,
         currentRunId,
         setArtifacts,
         pendingAttachment,
@@ -460,7 +469,13 @@ function ProjectCopilotRuntime({
         }));
     }, [updateState]);
 
-    const answerUserInput = useCallback((callId: string, answer: string, page?: CopilotPage, section?: string) => {
+    const answerUserInput = useCallback((
+        callId: string,
+        answer: string,
+        page?: CopilotPage,
+        section?: string,
+        resolution: UserInputResolutionKind = "answered",
+    ) => {
         setPendingUserInput(null);
         const existing = stateRef.current.messages.find(
             (message) => message.userInputRequest?.callId === callId
@@ -490,24 +505,37 @@ function ProjectCopilotRuntime({
                 resolvedSection: resolvedSection ?? null,
             },
         });
-
-        updateState((prev) => ({
-            ...prev,
-            messages: prev.messages.map((message) => {
-                if (!message.userInputRequest || message.userInputRequest.callId !== callId) return message;
-                return {
-                    ...message,
-                    userInputRequest: {
-                        ...message.userInputRequest,
-                        answered: true,
-                        answer,
-                    },
-                };
-            }),
-        }));
-        // Send the answer as the next user message so the AI can continue
-        stream.sendMessage(answer, resolvedPage, resolvedSection);
-    }, [convo, projectId, stream, updateState, stateRef]);
+        const sourceRunId = existing?.userInputRequest?.sourceRunId;
+        if (!sourceRunId) {
+            return;
+        }
+        const hiddenResumePrompt = resolution === "cancelled"
+            ? "Handle the cancelled clarification truthfully."
+            : "Continue using the resolved clarification.";
+        stream.sendMessage(
+            hiddenResumePrompt,
+            resolvedPage,
+            resolvedSection,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            {
+                replaceRunId: sourceRunId,
+                continueFromRunId: sourceRunId,
+                suppressUserMessageAppend: true,
+                userInputResolution: {
+                    sourceRunId,
+                    callId,
+                    resolution,
+                    answerText: answer,
+                    answeredAt: new Date().toISOString(),
+                    decisionBoundaryKey: existing.userInputRequest?.decisionBoundaryKey,
+                },
+            },
+        );
+    }, [convo, projectId, stream, setPendingUserInput, stateRef]);
 
     const sendMessageWithContext = useCallback(
         (
@@ -523,6 +551,7 @@ function ProjectCopilotRuntime({
                 replaceRunId?: string | null;
                 continueFromRunId?: string | null;
                 suppressUserMessageAppend?: boolean;
+                userInputResolution?: UserInputResolution;
             },
         ) => {
             if (contextTargets?.length) {

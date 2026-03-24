@@ -236,6 +236,67 @@ describe("project copilot stream event handlers", () => {
     });
   });
 
+  it("updates a pending ask_user card when a structured resolution is replayed", () => {
+    const messages: CopilotMessage[] = [];
+    const deps = {
+      aiMessageId: "m-1",
+      page: "overview" as const,
+      section: undefined,
+      projectId: "p-1",
+      myGen: 1,
+      getCurrentGen: () => 1,
+      setCurrentRunId: vi.fn(),
+      syncConversationId: vi.fn(),
+      upsertConversationTitle: vi.fn(),
+      upsertArtifact: vi.fn(),
+      updateMessages: (updater: (msgs: CopilotMessage[]) => CopilotMessage[]) => {
+        const next = updater(messages);
+        messages.splice(0, messages.length, ...next);
+      },
+      emitLedgerChanged: vi.fn(),
+      setPendingChoices: vi.fn(),
+      onPlanStepUpdate: vi.fn(),
+      setPendingUserInput: vi.fn(),
+    };
+
+    let state = handleProjectCopilotStreamChunk(
+      {
+        type: "user_input_required",
+        userInputRequest: {
+          sourceRunId: "run-paused",
+          callId: "ask-1",
+          question: "Which direction should I take?",
+          questionType: "single_choice",
+        },
+      },
+      baseState(),
+      deps,
+    );
+
+    state = handleProjectCopilotStreamChunk(
+      {
+        type: "user_input_resolved",
+        userInputResolution: {
+          sourceRunId: "run-paused",
+          callId: "ask-1",
+          resolution: "cancelled",
+          answerText: "Cancelled by the user.",
+          answeredAt: "2026-03-24T10:00:00.000Z",
+        },
+      },
+      state,
+      deps,
+    );
+
+    expect(messages).toHaveLength(2);
+    expect(messages.find((message) => message.userInputRequest?.callId === "ask-1")?.userInputRequest).toMatchObject({
+      callId: "ask-1",
+      resolution: "cancelled",
+      answered: false,
+      answer: "Cancelled by the user.",
+    });
+  });
+
   it("preserves a suppressible local progress id through the project bridge timeline conversion", () => {
     const messages: CopilotMessage[] = [];
     const deps = {

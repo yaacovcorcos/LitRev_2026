@@ -59,10 +59,11 @@ describe("TimelineRenderer ask-user callbacks", () => {
       "Yes",
       "protocol",
       "inclusion",
+      "answered",
     );
   });
 
-  it("sends dismiss fallback answer via timeline card", () => {
+  it("sends the explicit cancelled resolution via timeline card", () => {
     const onAnswerUserInput = vi.fn();
     const items: TimelineItem[] = [
       {
@@ -93,13 +94,14 @@ describe("TimelineRenderer ask-user callbacks", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /dismiss/i }));
+    fireEvent.click(screen.getByRole("button", { name: /cancel/i }));
 
     expect(onAnswerUserInput).toHaveBeenCalledWith(
       "ask-2",
-      "Dismissed — please proceed without my input.",
+      "Cancelled by the user.",
       "draft",
       "discussion",
+      "cancelled",
     );
   });
 });

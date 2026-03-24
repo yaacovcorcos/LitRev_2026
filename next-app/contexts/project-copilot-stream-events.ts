@@ -277,11 +277,33 @@ function appendUserInputMessage(
       },
       userInputRequest: {
         ...payload.request,
+        resolution: payload.request.resolution,
         answered: false,
       },
     };
     return [...messages, nextMessage];
   });
+}
+
+function resolveUserInputMessage(
+  deps: StreamChunkDeps,
+  payload: Extract<SharedStreamIntent, { type: "user_input_resolve" }>,
+) {
+  deps.updateMessages((messages) => messages.map((message) => {
+    if (message.userInputRequest?.callId !== payload.resolution.callId) {
+      return message;
+    }
+    const isCancelled = payload.resolution.resolution === "cancelled";
+    return {
+      ...message,
+      userInputRequest: {
+        ...message.userInputRequest,
+        resolution: payload.resolution.resolution,
+        answered: !isCancelled,
+        answer: payload.resolution.answerText ?? message.userInputRequest.answer,
+      },
+    };
+  }));
 }
 
 function appendCheckpointMessage(
@@ -448,8 +470,18 @@ function applyIntent(
       }
       return;
     }
+    case "user_input_clear": {
+      if (deps.getCurrentGen() === deps.myGen) {
+        deps.setPendingUserInput(null);
+      }
+      return;
+    }
     case "user_input_append": {
       appendUserInputMessage(deps, intent);
+      return;
+    }
+    case "user_input_resolve": {
+      resolveUserInputMessage(deps, intent);
       return;
     }
     case "navigate": {

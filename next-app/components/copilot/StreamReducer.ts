@@ -89,6 +89,7 @@ export function messagesToTimeline(messages: CopilotMessage[]): TimelineItem[] {
                 type: "user_input_request" as const,
                 id: msg.id,
                 callId: msg.userInputRequest.callId,
+                sourceRunId: msg.userInputRequest.sourceRunId,
                 page: msg.context?.page,
                 section: msg.context?.section,
                 question: msg.userInputRequest.question,
@@ -96,8 +97,12 @@ export function messagesToTimeline(messages: CopilotMessage[]): TimelineItem[] {
                 options: msg.userInputRequest.options,
                 header: msg.userInputRequest.header,
                 context: msg.userInputRequest.context,
+                decisionBoundaryKey: msg.userInputRequest.decisionBoundaryKey,
+                recommendedAnswer: msg.userInputRequest.recommendedAnswer,
+                recommendedReason: msg.userInputRequest.recommendedReason,
                 answered: Boolean(msg.userInputRequest.answered),
                 answer: msg.userInputRequest.answer,
+                resolution: msg.userInputRequest.resolution,
                 createdAt: msg.createdAt,
             };
         }

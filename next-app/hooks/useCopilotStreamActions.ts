@@ -30,6 +30,7 @@ import type {
     RunRecoveryRecommendation,
     StreamPhase,
     UserInputRequest,
+    UserInputResolution,
 } from "@/types/ai";
 import type { ContextCaptureTarget } from "@/types/context-capture";
 import {
@@ -90,6 +91,7 @@ export type CopilotStreamActionsDeps = {
     setCurrentRunId: React.Dispatch<React.SetStateAction<string | null>>;
     setPendingChoices: React.Dispatch<React.SetStateAction<ChoiceOption[]>>;
     setPendingUserInput: React.Dispatch<React.SetStateAction<UserInputRequest | null>>;
+    pendingUserInput: UserInputRequest | null;
     currentRunId: string | null;
     setArtifacts: React.Dispatch<React.SetStateAction<Map<string, ArtifactData>>>;
     pendingAttachment: PendingAttachment | null;
@@ -112,6 +114,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
         setCurrentRunId,
         setPendingChoices,
         setPendingUserInput,
+        pendingUserInput,
         currentRunId,
         setArtifacts,
         pendingAttachment,
@@ -1131,6 +1134,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                 replaceRunId?: string | null;
                 continueFromRunId?: string | null;
                 suppressUserMessageAppend?: boolean;
+                userInputResolution?: UserInputResolution;
             },
         ) => {
             const trimmed = text.trim();
@@ -1138,11 +1142,25 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
             if (!trimmed && !attachment) return;
             const continueFromRunId = runtimeOverrides?.continueFromRunId ?? null;
             const suppressUserMessageAppend = runtimeOverrides?.suppressUserMessageAppend === true;
+            const explicitUserInputResolution = runtimeOverrides?.userInputResolution ?? null;
             const replaceRunId = runtimeOverrides?.replaceRunId
                 ?? (isLoadingRef.current ? currentRunId : null);
             if (isLoadingRef.current) cancelStream();
             setPendingChoices([]);
             setPendingUserInput(null);
+            const resolutionTimestamp = new Date().toISOString();
+            const userInputResolution = explicitUserInputResolution ?? (
+                pendingUserInput?.sourceRunId
+                    ? {
+                        sourceRunId: pendingUserInput.sourceRunId,
+                        callId: pendingUserInput.callId,
+                        resolution: "cancelled" as const,
+                        answerText: trimmed,
+                        answeredAt: resolutionTimestamp,
+                        decisionBoundaryKey: pendingUserInput.decisionBoundaryKey,
+                    }
+                    : null
+            );
 
             const resolvedStudyId = studyId ?? (
                 contextTargets?.length === 1 && contextTargets[0]?.kind === "study"
@@ -1264,6 +1282,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                         continueFromRunId: continueFromRunId ?? undefined,
                         persistUserMessage: suppressUserMessageAppend ? false : undefined,
                         persistedUserMessageContent: displayText,
+                        userInputResolution: userInputResolution ?? undefined,
                         userMessageAttachments: attachmentsMeta,
                         contextTargets,
                         telemetryRequestKey: retryModelExpectation?.requestKey,
@@ -1275,7 +1294,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                 replaceRunId,
             });
         },
-        [updateState, projectId, cancelStream, convo, pendingAttachment, reasoningMode, runStream, setPendingChoices, setPendingAttachment, isLoadingRef, currentRunId]
+        [updateState, projectId, cancelStream, convo, pendingAttachment, pendingUserInput, reasoningMode, runStream, setPendingChoices, setPendingAttachment, setPendingUserInput, isLoadingRef, currentRunId]
     );
 
     const executePlanAction = useCallback(async (artifactId: string, selectedIndexes: number[]) => {

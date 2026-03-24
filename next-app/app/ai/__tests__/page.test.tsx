@@ -44,6 +44,7 @@ vi.mock("next/dynamic", () => ({
       items?: Array<{
         type: string;
         id: string;
+        callId?: string;
         content?: string;
         deliveryState?: string;
         message?: string;
@@ -56,6 +57,7 @@ vi.mock("next/dynamic", () => ({
       onContinueFromDurableStateRun?: (item: { type: string; id: string; errorMeta?: { activeRunId?: string; runId?: string } }) => void;
       onStopAndRetryRun?: (item: { type: string; id: string; errorMeta?: { activeRunId?: string; runId?: string } }) => void;
       onRetryLastMessage?: () => void;
+      onAnswerUserInput?: (callId: string, answer: string, page?: "ai") => void;
     }) {
       if (props.projects && props.onSelectProject) {
         return (
@@ -103,7 +105,17 @@ vi.mock("next/dynamic", () => ({
                 return <div key={item.id}>{item.label}</div>;
               }
               if (item.type === "user_input_request") {
-                return <div key={item.id}>{item.question}</div>;
+                return (
+                  <div key={item.id}>
+                    <span>{item.question}</span>
+                    <button
+                      type="button"
+                      onClick={() => item.callId && props.onAnswerUserInput?.(item.callId, "Broaden the search first.", "ai")}
+                    >
+                      answer user input
+                    </button>
+                  </div>
+                );
               }
               if (item.type === "error") {
                 return (
@@ -587,6 +599,79 @@ describe("/ai page deferred hydration", () => {
     expect(screen.queryByRole("button", { name: "Continue" })).toBeNull();
   });
 
+  it("resumes ask_user answers through the structured clarification path instead of a plain user turn", async () => {
+    mockProcessAIStream
+      .mockImplementationOnce(async ({ onChunk }: {
+        onChunk: (chunk: unknown) => void | Promise<void>;
+      }) => {
+        await onChunk({ type: "run_start", runId: "run-ask", conversationId: "conv-new" });
+        await onChunk({
+          type: "user_input_required",
+          userInputRequest: {
+            sourceRunId: "run-ask",
+            callId: "ask-1",
+            question: "Which direction should I take?",
+            questionType: "single_choice",
+            recommendedAnswer: "Broaden the search first.",
+          },
+        });
+        return {
+          runStatus: "paused",
+          stopReason: "paused_for_input",
+          terminalReason: "paused_for_input",
+          errorMessage: null,
+          errorMeta: null,
+          actualModel: null,
+          actualModelSource: "unknown",
+        };
+      })
+      .mockImplementationOnce(async () => ({
+        runStatus: "completed",
+        stopReason: null,
+        terminalReason: "completed",
+        errorMessage: null,
+        errorMeta: null,
+        actualModel: null,
+        actualModelSource: "unknown",
+      }));
+
+    render(<AIView />);
+
+    fireEvent.click(screen.getByRole("button", { name: "send message" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Which direction should I take?")).toBeTruthy();
+    });
+
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 0));
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "answer user input" }));
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+    });
+
+    const secondRequest = mockFetch.mock.calls[1]?.[1] as { body?: string };
+    const parsedBody = JSON.parse(secondRequest.body ?? "{}");
+    expect(parsedBody.userMessage).toBe("Continue using the resolved clarification.");
+    expect(parsedBody.options).toMatchObject({
+      continueFromRunId: "run-ask",
+      replaceRunId: "run-ask",
+      persistUserMessage: false,
+      userInputResolution: {
+        sourceRunId: "run-ask",
+        callId: "ask-1",
+        resolution: "answered",
+        answerText: "Broaden the search first.",
+      },
+    });
+  });
+
   it("replaces a reconnect checkpoint with stronger same-run stop-and-retry truth", async () => {
     mockProcessAIStream.mockImplementation(async ({ onChunk }: {
       onChunk: (chunk: unknown) => void | Promise<void>;
@@ -631,6 +716,10 @@ describe("/ai page deferred hydration", () => {
     render(<AIView />);
 
     fireEvent.click(screen.getByRole("button", { name: "send message" }));
+
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 0));
+    });
 
     await waitFor(() => {
       expect(screen.getByText("The active run stopped making durable progress. Choose how to continue.")).toBeTruthy();
@@ -831,6 +920,15 @@ describe("/ai page deferred hydration", () => {
   });
 
   it("renders a queued follow-up cap between live progress and the composer", async () => {
+    let resolveStream: ((summary: {
+      runStatus: null;
+      stopReason: null;
+      terminalReason: "failed_network";
+      errorMessage: null;
+      errorMeta: null;
+      actualModel: null;
+      actualModelSource: "unknown";
+    }) => void) | null = null;
     mockProcessAIStream.mockImplementationOnce(async ({ onChunk }: {
       onChunk: (chunk: unknown) => void | Promise<void>;
     }) => {
@@ -840,15 +938,9 @@ describe("/ai page deferred hydration", () => {
         progressCurrent: 1,
         progressTotal: 2,
       });
-      return {
-        runStatus: null,
-        stopReason: null,
-        terminalReason: "failed_network",
-        errorMessage: null,
-        errorMeta: null,
-        actualModel: null,
-        actualModelSource: "unknown",
-      };
+      return await new Promise((resolve) => {
+        resolveStream = resolve;
+      });
     });
 
     render(<AIView />);
@@ -887,6 +979,19 @@ describe("/ai page deferred hydration", () => {
     expect(queued).toBeTruthy();
     expect(progress!.compareDocumentPosition(queued!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(queued!.compareDocumentPosition(composerState) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    await act(async () => {
+      resolveStream?.({
+        runStatus: null,
+        stopReason: null,
+        terminalReason: "failed_network",
+        errorMessage: null,
+        errorMeta: null,
+        actualModel: null,
+        actualModelSource: "unknown",
+      });
+      await Promise.resolve();
+    });
   });
 
   it("allows queueing before the first conversation id exists", async () => {

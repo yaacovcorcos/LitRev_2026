@@ -106,6 +106,13 @@ import {
     evaluateScopingUserInputRequest,
     type ScopingWorkflowState,
 } from "./scoping-workflow";
+import {
+    evaluateClarificationRequest,
+    hydrateClarificationControllerState,
+    markClarificationProgress,
+    resolveDecisionBoundaryKey,
+    type ClarificationControllerState,
+} from "./clarification-controller";
 
 const MAX_STREAM_RETRY_ATTEMPTS = 3;
 const MAX_OVERFLOW_RECOVERY_ATTEMPTS = 3;
@@ -1004,6 +1011,10 @@ class AIService {
         let protocolHandoffExecuted = false;
         let scopingReportPayload: ScopingReportPayload | null = null;
         let retrievedMemoriesForRun: RetrievedMemory[] = [];
+        let clarificationControllerState: ClarificationControllerState =
+            await hydrateClarificationControllerState({
+                sourceRunId: options?.parentRunId ?? options?.continueFromRunId ?? null,
+            });
         const runFacts: RunFacts = {
             hadFinalAssistantAnswer: false,
             hadSuccessfulToolOrArtifact: false,
@@ -1086,6 +1097,7 @@ class AIService {
                 projectId: projectId || null,
                 conversationId: conversation.id,
                 userId,
+                parentRunId: options?.parentRunId ?? options?.continueFromRunId,
                 trigger: "user_message",
                 agentMode,
                 model: options?.model,
@@ -1347,7 +1359,8 @@ class AIService {
             + `\n- Process details such as search queries, result counts, and search refinement steps already have their own cards/checkpoints in the UI. In the visible answer, synthesize findings instead of repeating the process log. Only include exact queries or search-strategy details when the user explicitly asks for them.`
             // Scoped to streamChatWithArtifacts only — not in global BASE_PROMPT
             // so PopupChat (which reuses AGENT_MODE_PROMPTS) doesn't emit choices without rendering support
-            + `\n- When suggesting optional next steps that the user can click for convenience, you may end your response with a <choices> block. Do not use <choices> for blocking questions or required decisions. If you need the user's answer before continuing, use ask_user instead.\n  Format:\n  <choices>\n  <choice>Option text here</choice>\n  <choice icon="search">Search PubMed for related studies</choice>\n  </choices>\n  The optional icon attribute uses Material Icons names. The block must be the very last thing in your response.`;
+            + `\n- When suggesting optional next steps that the user can click for convenience, you may end your response with a <choices> block. Do not use <choices> for blocking questions or required decisions. If you need the user's answer before continuing, use ask_user instead.\n  Format:\n  <choices>\n  <choice>Option text here</choice>\n  <choice icon="search">Search PubMed for related studies</choice>\n  </choices>\n  The optional icon attribute uses Material Icons names. The block must be the very last thing in your response.`
+            + `\n- ask_user runtime contract: ask at most one compact blocking clarification before durable progress. Include a recommended default whenever it is safe. Once a clarification is resolved, treat it as authoritative and continue; do not re-ask the same blocking question. If runtime policy prevents another blocking clarification, either use the safe recommended default, present one bounded terminal decision point, or stop truthfully.`;
 
             // Add user message to conversation (skip for plan execution)
             let userMsg: AIMessage | null = null;
@@ -1967,6 +1980,7 @@ class AIService {
                         }
                     } else if (tc.name !== "ask_user") {
                         runFacts.hadSuccessfulToolOrArtifact = true;
+                        clarificationControllerState = markClarificationProgress(clarificationControllerState);
                         if (agentMode === "scoping" && scopingWorkflow) {
                             scopingWorkflow = applySuccessfulScopingToolResult(scopingWorkflow, tc.name, toolResult);
                         }
@@ -1974,10 +1988,19 @@ class AIService {
 
                     // ask_user sentinel: emit user_input_required and stop the loop
                     if (toolResult.requiresUserInput && toolResult.userInputRequest) {
+                        const resolvedUserInputRequest = {
+                            ...toolResult.userInputRequest,
+                            sourceRunId: activeRun.id,
+                            decisionBoundaryKey: toolResult.userInputRequest.decisionBoundaryKey
+                                ?? resolveDecisionBoundaryKey({
+                                    decisionBoundaryKey: toolResult.userInputRequest.decisionBoundaryKey ?? null,
+                                    question: toolResult.userInputRequest.question,
+                                }),
+                        };
                         if (agentMode === "scoping" && scopingWorkflow) {
                             const clarificationDecision = evaluateScopingUserInputRequest({
                                 state: scopingWorkflow,
-                                userInputRequest: toolResult.userInputRequest,
+                                userInputRequest: resolvedUserInputRequest,
                             });
                             scopingWorkflow = clarificationDecision.nextState;
                             if (!clarificationDecision.allowPause) {
@@ -1994,10 +2017,33 @@ class AIService {
                             }
                         }
 
-                        yield { type: "tool_result", toolName: tc.name, toolResult, conversationId: conversation.id };
+                        const clarificationDecision = evaluateClarificationRequest({
+                            state: clarificationControllerState,
+                            userInputRequest: resolvedUserInputRequest,
+                        });
+                        clarificationControllerState = clarificationDecision.nextState;
+                        if (!clarificationDecision.allowPause) {
+                            currentMessages.push(
+                                buildSyntheticScopingToolMessage(tc, {
+                                    ...clarificationDecision.toolResult,
+                                    callId: tc.id,
+                                })
+                            );
+                            currentMessages.push(
+                                buildClarificationCorrectionSystemMessage(clarificationDecision.correctiveMessage)
+                            );
+                            continue;
+                        }
+
+                        const pausedToolResult = {
+                            ...toolResult,
+                            userInputRequest: resolvedUserInputRequest,
+                        };
+
+                        yield { type: "tool_result", toolName: tc.name, toolResult: pausedToolResult, conversationId: conversation.id };
                         runFacts.pausedForUserInput = true;
-                        await persistRecoveryUserInputRequest(toolResult.userInputRequest);
-                        yield { type: "user_input_required", userInputRequest: toolResult.userInputRequest, conversationId: conversation.id };
+                        await persistRecoveryUserInputRequest(resolvedUserInputRequest);
+                        yield { type: "user_input_required", userInputRequest: resolvedUserInputRequest, conversationId: conversation.id };
                         loop.markStopped("paused_for_input");
                         break;
                     }
@@ -2577,6 +2623,15 @@ function buildScopingCorrectionSystemMessage(content: string): AIMessage {
         id: `scoping-correction-${Date.now()}`,
         role: "system",
         content: `Scoping runtime policy: ${content}`,
+        createdAt: new Date().toISOString(),
+    };
+}
+
+function buildClarificationCorrectionSystemMessage(content: string): AIMessage {
+    return {
+        id: `clarification-correction-${Date.now()}`,
+        role: "system",
+        content: `Clarification runtime policy: ${content}`,
         createdAt: new Date().toISOString(),
     };
 }

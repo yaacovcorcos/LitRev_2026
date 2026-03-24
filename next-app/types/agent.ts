@@ -74,6 +74,7 @@ export type RunEventType =
     | "tool_call"
     | "tool_result"
     | "user_input_required"
+    | "user_input_resolved"
     | "artifact_proposed"
     | "artifact_reviewed"
     | "memory_retrieval"

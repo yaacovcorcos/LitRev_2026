@@ -46,6 +46,13 @@ import {
     buildCheckpointContinuationContext,
     resolveLatestValidRunCheckpoint,
 } from "@/lib/server/agent/run-checkpoints";
+import {
+    buildUserInputResolutionContinuationContext,
+    hydrateClarificationControllerState,
+    persistUserInputResolution,
+    resolvePendingUserInputSource,
+    resolveDecisionBoundaryKey,
+} from "@/lib/server/ai/clarification-controller";
 
 // Force Node runtime for Prisma compatibility
 export const runtime = "nodejs";
@@ -69,6 +76,7 @@ const STREAM_EVENT_TYPES: RuntimeStreamEvent["type"][] = [
     "plan_step_update",
     "navigate",
     "user_input_required",
+    "user_input_resolved",
 ];
 
 export async function POST(request: NextRequest) {
@@ -264,8 +272,62 @@ export async function POST(request: NextRequest) {
                     }
 
                     try {
+                        let resolutionContinuationContext: string | undefined;
+                        if (runtimeOptions.userInputResolution) {
+                            const pendingUserInputSource = await resolvePendingUserInputSource({
+                                sourceRunId: runtimeOptions.userInputResolution.sourceRunId,
+                                conversationId: runtimeOptions.conversationId ?? null,
+                                callId: runtimeOptions.userInputResolution.callId,
+                            });
+                            const resolvedUserInput = {
+                                ...runtimeOptions.userInputResolution,
+                                sourceRunId: pendingUserInputSource.sourceRunId,
+                                callId: pendingUserInputSource.request.callId,
+                                decisionBoundaryKey: runtimeOptions.userInputResolution.decisionBoundaryKey
+                                    ?? resolveDecisionBoundaryKey({
+                                        decisionBoundaryKey: pendingUserInputSource.request.decisionBoundaryKey ?? null,
+                                        question: pendingUserInputSource.request.question,
+                                    }),
+                            };
+
+                            if (
+                                runtimeOptions.continueFromRunId
+                                && runtimeOptions.continueFromRunId !== pendingUserInputSource.sourceRunId
+                            ) {
+                                throw new Error("continueFromRunId must match the blocked clarification source run.");
+                            }
+
+                            await persistUserInputResolution({
+                                resolution: resolvedUserInput,
+                            });
+                            await coalescer.push({
+                                type: "user_input_resolved",
+                                userInputResolution: resolvedUserInput,
+                                conversationId: pendingUserInputSource.conversationId ?? runtimeOptions.conversationId,
+                            });
+                            runtimeOptions = {
+                                ...runtimeOptions,
+                                userInputResolution: resolvedUserInput,
+                            };
+
+                            if (runtimeOptions.continueFromRunId) {
+                                const clarificationControllerState = await hydrateClarificationControllerState({
+                                    sourceRunId: pendingUserInputSource.sourceRunId,
+                                });
+                                resolutionContinuationContext = buildUserInputResolutionContinuationContext({
+                                    request: pendingUserInputSource.request,
+                                    resolution: resolvedUserInput,
+                                    controllerState: clarificationControllerState,
+                                });
+                                runtimeOptions = {
+                                    ...runtimeOptions,
+                                    parentRunId: pendingUserInputSource.sourceRunId,
+                                };
+                            }
+                        }
+
                         const continuationContext = scopedOptions.continueFromRunId
-                            ? await (async () => {
+                            ? (resolutionContinuationContext ?? await (async () => {
                                 const checkpointSource = await resolveLatestValidRunCheckpoint({
                                     runId: scopedOptions.continueFromRunId!,
                                     conversationId: scopedOptions.conversationId ?? null,
@@ -286,7 +348,7 @@ export async function POST(request: NextRequest) {
                                     );
                                 }
                                 return buildDurableContinuationContext(source);
-                            })()
+                            })())
                             : undefined;
                         runtimeOptions = {
                             ...runtimeOptions,
