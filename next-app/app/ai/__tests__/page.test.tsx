@@ -658,7 +658,7 @@ describe("/ai page deferred hydration", () => {
 
     const secondRequest = mockFetch.mock.calls[1]?.[1] as { body?: string };
     const parsedBody = JSON.parse(secondRequest.body ?? "{}");
-    expect(parsedBody.userMessage).toBe("Continue using the resolved clarification.");
+    expect(parsedBody.userMessage).toBe("");
     expect(parsedBody.options).toMatchObject({
       continueFromRunId: "run-ask",
       replaceRunId: "run-ask",
@@ -668,6 +668,72 @@ describe("/ai page deferred hydration", () => {
         callId: "ask-1",
         resolution: "answered",
         answerText: "Broaden the search first.",
+      },
+    });
+  });
+
+  it("treats a freeform send while blocked as cancel-and-new-run instead of a hidden clarification resume", async () => {
+    mockProcessAIStream
+      .mockImplementationOnce(async ({ onChunk }: {
+        onChunk: (chunk: unknown) => void | Promise<void>;
+      }) => {
+        await onChunk({ type: "run_start", runId: "run-ask", conversationId: "conv-new" });
+        await onChunk({
+          type: "user_input_required",
+          userInputRequest: {
+            sourceRunId: "run-ask",
+            callId: "ask-1",
+            question: "Which direction should I take?",
+            questionType: "single_choice",
+            options: [{ label: "Broaden the search first." }],
+          },
+        });
+        return {
+          runStatus: "waiting_for_input",
+          stopReason: "paused_for_input",
+          terminalReason: "paused_for_input",
+          errorMessage: null,
+          errorMeta: null,
+          actualModel: null,
+          actualModelSource: "unknown",
+        };
+      })
+      .mockImplementationOnce(async () => ({
+        runStatus: "completed",
+        stopReason: null,
+        terminalReason: "completed",
+        errorMessage: null,
+        errorMeta: null,
+        actualModel: null,
+        actualModelSource: "unknown",
+      }));
+
+    render(<AIView />);
+
+    fireEvent.click(screen.getByRole("button", { name: "send message" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Which direction should I take?")).toBeTruthy();
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "send message" }));
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+    });
+
+    const secondRequest = mockFetch.mock.calls[1]?.[1] as { body?: string };
+    const parsedBody = JSON.parse(secondRequest.body ?? "{}");
+    expect(parsedBody.userMessage).toBe("Recover this run");
+    expect(parsedBody.options).toMatchObject({
+      userInputResolution: {
+        sourceRunId: "run-ask",
+        callId: "ask-1",
+        resolution: "cancelled",
+        answerText: "Recover this run",
       },
     });
   });
@@ -805,7 +871,6 @@ describe("/ai page deferred hydration", () => {
       continueFromRunId: "run-4",
       replaceRunId: "run-4",
       persistUserMessage: false,
-      persistedUserMessageContent: "Recover this run",
     });
     expect(screen.getAllByText("Recover this run")).toHaveLength(1);
   });
@@ -883,7 +948,6 @@ describe("/ai page deferred hydration", () => {
       continueFromRunId: "run-5",
       replaceRunId: "run-5",
       persistUserMessage: false,
-      persistedUserMessageContent: "Recover this run",
     });
   });
 
