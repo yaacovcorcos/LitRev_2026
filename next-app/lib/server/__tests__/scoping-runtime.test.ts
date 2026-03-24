@@ -13,6 +13,8 @@ const mocks = vi.hoisted(() => {
   };
 
   const provider = {
+    id: "openai",
+    name: "OpenAI",
     streamChat: vi.fn(),
     isConfigured: vi.fn(() => true),
   };
@@ -37,6 +39,7 @@ const mocks = vi.hoisted(() => {
     addMessageToConversation: vi.fn(),
     recordRunEvent: vi.fn(),
     persistRecoveryAuthoritativeRuntimeEvent: vi.fn(),
+    ingestChatUnificationMetric: vi.fn(),
   };
 });
 
@@ -68,8 +71,8 @@ vi.mock("@/lib/server/memory", () => ({
 }));
 
 vi.mock("@/lib/ai/config", () => ({
-  AI_CONFIG: { defaultProvider: "mock-provider", defaultModel: "gpt-5.2" },
-  getProviderForModel: vi.fn(() => "mock-provider"),
+  AI_CONFIG: { defaultProvider: "openai", defaultModel: "gpt-5.2" },
+  getProviderForModel: vi.fn(() => "openai"),
   getContextBudget: vi.fn(() => 8000),
 }));
 
@@ -145,9 +148,12 @@ vi.mock("@/lib/agent/loop-controller", () => ({
     totalToolCalls = 0;
     stopReason: string | null = null;
     shouldContinue() {
+      if (this.stopReason) {
+        return { continue: false, stopReason: this.stopReason };
+      }
       if (this.iterations < 3) {
         this.iterations += 1;
-        return { continue: true, stopReason: this.stopReason ?? "natural" };
+        return { continue: true, stopReason: "natural" };
       }
       return { continue: false, stopReason: this.stopReason ?? "natural" };
     }
@@ -180,6 +186,10 @@ vi.mock("@/lib/server/ai/title-generator", () => ({
 vi.mock("@/lib/server/prisma", () => ({
   prisma: {
     protocol: { findFirst: mocks.protocolFindFirst },
+    aIConversation: {
+      findUnique: vi.fn(async () => ({ title: null })),
+      updateMany: vi.fn(async () => ({ count: 1 })),
+    },
     study: { findUnique: vi.fn(async () => null) },
     project: { findUnique: vi.fn(async () => null) },
     artifact: { update: vi.fn(async () => null) },
@@ -196,6 +206,10 @@ vi.mock("@/lib/server/chat-runtime/conversation-run-lock", () => ({
 
 vi.mock("@/lib/server/chat-runtime/persist-recovery-events", () => ({
   persistRecoveryAuthoritativeRuntimeEvent: mocks.persistRecoveryAuthoritativeRuntimeEvent,
+}));
+
+vi.mock("@/lib/server/chat-unification-metrics", () => ({
+  ingestChatUnificationMetric: mocks.ingestChatUnificationMetric,
 }));
 
 vi.mock("@/lib/server/ai/error-classification", () => ({
@@ -292,7 +306,7 @@ describe("AIService scoping runtime", () => {
       messages: [],
       summaryData: null,
     });
-    mocks.resolveAuthenticatedIdentity.mockReturnValue({ userId: "user-1", workspaceId: undefined });
+    mocks.resolveAuthenticatedIdentity.mockReturnValue({ userId: "user-1", workspaceId: "ws-1" });
     mocks.startRun.mockResolvedValue({ id: "run-1" });
     mocks.endRun.mockResolvedValue({ id: "run-1", status: "completed" });
     mocks.markRunFinalizationState.mockResolvedValue(1);
@@ -375,13 +389,159 @@ describe("AIService scoping runtime", () => {
         model: "gpt-5.2",
       }
     ));
-
     expect(chunks.some((chunk) => (chunk as { type?: string }).type === "user_input_required")).toBe(false);
     expect(chunks.some((chunk) => (chunk as { type?: string }).type === "content")).toBe(true);
+    expect(chunks.some((chunk) => (chunk as { type?: string; runStatus?: string }).type === "run_end" && (chunk as { runStatus?: string }).runStatus === "failed")).toBe(true);
+    expect(mocks.markRunAbnormalEndClassification).toHaveBeenCalledWith("run-1", "no_forward_durable_progress");
     expect(mocks.persistRecoveryAuthoritativeRuntimeEvent).not.toHaveBeenCalledWith(
       expect.objectContaining({
         event: expect.objectContaining({ type: "user_input_required" }),
       })
     );
+  });
+
+  it("uses the recommended default instead of pausing when scoping policy blocks another clarification", async () => {
+    mocks.provider.streamChat
+      .mockImplementationOnce(async function* () {
+        yield {
+          type: "tool_call",
+          toolCall: {
+            id: "tc-search",
+            name: "search_pubmed",
+            arguments: { query: "\"omega-3\" cognition young adults" },
+          },
+        };
+        yield {
+          type: "tool_call",
+          toolCall: {
+            id: "tc-ask",
+            name: "ask_user",
+            arguments: {
+              question: "Should I narrow to RCTs only?",
+              questionType: "single_choice",
+              options: [{ label: "Yes" }, { label: "No" }],
+              recommendedAnswer: "No, stay broad first.",
+            },
+          },
+        };
+        yield {
+          type: "done",
+          usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+          actualModel: "gpt-5.2",
+        };
+      })
+      .mockImplementationOnce(async function* (_messages: Array<{ role: string; content: string }>) {
+        yield { type: "content", content: "I stayed broad first and synthesized the strongest direction." };
+        yield {
+          type: "done",
+          usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+          actualModel: "gpt-5.2",
+        };
+      });
+
+    mocks.executeToolWithAutonomy
+      .mockImplementationOnce(async function* () {
+        return {
+          callId: "tc-search",
+          result: {
+            totalResults: 17,
+            returnedCount: 10,
+          },
+        };
+      })
+      .mockImplementationOnce(async function* () {
+        return {
+          callId: "tc-ask",
+          result: { status: "waiting_for_user_input" },
+          requiresUserInput: true,
+          userInputRequest: {
+            callId: "ask-1",
+            question: "Should I narrow to RCTs only?",
+            questionType: "single_choice",
+            options: [{ label: "Yes" }, { label: "No" }],
+            recommendedAnswer: "No, stay broad first.",
+          },
+        };
+      });
+
+    const service = new AIService();
+    const chunks = await collectChunks(service.streamChatWithArtifacts(
+      "What's out there on omega-3 supplementation for cognition in young adults?",
+      "project",
+      {
+        projectId: "project-1",
+        userId: "user-1",
+        agentMode: "scoping",
+        model: "gpt-5.2",
+      }
+    ));
+    expect(chunks.some((chunk) => (chunk as { type?: string }).type === "user_input_required")).toBe(false);
+    expect(chunks.some((chunk) => (chunk as { type?: string }).type === "content")).toBe(true);
+  });
+
+  it("records no_forward_durable_progress when clarification fallback ends in a truthful stop", async () => {
+    mocks.provider.streamChat.mockImplementationOnce(async function* () {
+      yield {
+        type: "tool_call",
+        toolCall: {
+          id: "tc-search",
+          name: "search_pubmed",
+          arguments: { query: "\"omega-3\" cognition young adults" },
+        },
+      };
+      yield {
+        type: "tool_call",
+        toolCall: {
+          id: "tc-ask",
+          name: "ask_user",
+          arguments: {
+            question: "Describe exactly how much uncertainty is acceptable before I proceed.",
+            questionType: "free_text",
+          },
+        },
+      };
+      yield {
+        type: "done",
+        usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+        actualModel: "gpt-5.2",
+      };
+    });
+
+    mocks.executeToolWithAutonomy
+      .mockImplementationOnce(async function* () {
+        return {
+          callId: "tc-search",
+          result: {
+            totalResults: 17,
+            returnedCount: 10,
+          },
+        };
+      })
+      .mockImplementationOnce(async function* () {
+        return {
+          callId: "tc-ask",
+          result: { status: "waiting_for_user_input" },
+          requiresUserInput: true,
+          userInputRequest: {
+            callId: "ask-2",
+            question: "Describe exactly how much uncertainty is acceptable before I proceed.",
+            questionType: "free_text",
+          },
+        };
+      });
+
+    const service = new AIService();
+    const chunks = await collectChunks(service.streamChatWithArtifacts(
+      "What's out there on omega-3 supplementation for cognition in young adults?",
+      "project",
+      {
+        projectId: "project-1",
+        userId: "user-1",
+        agentMode: "scoping",
+        model: "gpt-5.2",
+      }
+    ));
+    expect(chunks.some((chunk) => (chunk as { type?: string }).type === "user_input_required")).toBe(false);
+    expect(chunks.some((chunk) => (chunk as { type?: string }).type === "content")).toBe(true);
   });
 });

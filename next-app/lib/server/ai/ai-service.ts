@@ -4,8 +4,20 @@
  * Now with structured memory integration and tool execution loop
  */
 
-import type { AIErrorEnvelope, AIMessage, AIResponse, ChatOptions, AIStreamChunk, ConversationContext, ToolCall, ToolResult } from "@/types/ai";
+import type {
+    AIErrorEnvelope,
+    AIMessage,
+    AIResponse,
+    ChatOptions,
+    AIStreamChunk,
+    ClarificationFallbackAction,
+    ConversationContext,
+    ToolCall,
+    ToolResult,
+    UserInputRequest,
+} from "@/types/ai";
 import type { AgentMode } from "@/types/agent";
+import type { ChatUnificationMetricType, ClarificationRuntimePayload } from "@/types/chat-unification";
 import {
     AIErrorWithEnvelope,
     buildStreamErrorChunk,
@@ -81,6 +93,8 @@ import { createToolPrerequisiteMiddleware, evaluateToolPrerequisites } from "./t
 import { resolveAuthenticatedIdentity } from "@/lib/server/auth/identity";
 import { computeLedgerCounts, computeStudyLedger } from "@/lib/server/ledger-utils";
 import { logServerError, logServerInfo, logServerWarn } from "@/lib/server/logging";
+import { ingestChatUnificationMetric } from "@/lib/server/chat-unification-metrics";
+import { deriveChatUnificationSurface } from "./chat-unification-runtime-metrics";
 import {
     dropShadowedInvalidToolCalls,
     getToolCallRepeatKey,
@@ -103,7 +117,7 @@ import {
     deriveScopingIterationToolDefs,
     deriveScopingWorkflowSnapshot,
     evaluateScopingSearchExecution,
-    evaluateScopingUserInputRequest,
+    deriveScopingClarificationPolicy,
     type ScopingWorkflowState,
 } from "./scoping-workflow";
 import {
@@ -918,6 +932,11 @@ class AIService {
         });
         const userId = identity.userId;
         const workspaceId = identity.workspaceId;
+        const isStructuredClarificationResume = Boolean(options?.userInputResolution);
+        const runtimeQueryText = (
+            options?.userInputResolution?.answerText?.trim()
+            || userMessage.trim()
+        );
         const executionMode = !!(options?.planId && options?.selectedSteps?.length);
         const contextBranchRecords: ContextBranchRecord[] = [];
         let preparedPlanExecution: PreparedPlanExecution | null = null;
@@ -1015,6 +1034,36 @@ class AIService {
             await hydrateClarificationControllerState({
                 sourceRunId: options?.parentRunId ?? options?.continueFromRunId ?? null,
             });
+        const surface = deriveChatUnificationSurface(options);
+        const emitClarificationRuntimeMetric = async (
+            type: ChatUnificationMetricType,
+            payload: ClarificationRuntimePayload,
+            runId?: string | null,
+        ) => {
+            if (!workspaceId) return;
+            try {
+                await ingestChatUnificationMetric(
+                    { userId, workspaceId, role: "member" },
+                    {
+                        eventId: crypto.randomUUID(),
+                        type,
+                        surface,
+                        runId: runId ?? null,
+                        conversationId: conversation.id,
+                        projectId: projectId ?? null,
+                        payload,
+                    },
+                );
+            } catch (error) {
+                logServerWarn("ai-service", "failed to ingest clarification runtime metric", {
+                    type,
+                    runId: runId ?? null,
+                    conversationId: conversation.id,
+                    projectId: projectId ?? null,
+                    error: error instanceof Error ? error.message : String(error),
+                });
+            }
+        };
         const runFacts: RunFacts = {
             hadFinalAssistantAnswer: false,
             hadSuccessfulToolOrArtifact: false,
@@ -1125,8 +1174,8 @@ class AIService {
             // Yield run_start event after the run is inside the guarded lifecycle.
             yield { type: "run_start", runId: activeRun.id, conversationId: conversation.id };
 
-            // Emit user message event (skip for plan execution — no user message to record)
-            if (!executionMode) {
+            // Emit user message event only for genuine new user turns, not structured clarification resumes.
+            if (!executionMode && options?.persistUserMessage !== false) {
                 await recordRunEvent({
                     runId: activeRun.id,
                     type: "message",
@@ -1167,7 +1216,7 @@ class AIService {
                         projectId,
                         studyId,
                         conversationId: conversation.id,
-                        query: userMessage,
+                        query: runtimeQueryText,
                         agentMode,
                         runId: activeRun.id,
                     }),
@@ -1232,14 +1281,18 @@ class AIService {
             const memoriesContext = formatMemoriesForContext(retrievedMemories);
             const ledgerCounts = getLedgerCounts(studyLedger);
             const scopingEntryIntent = agentMode === "scoping"
-                ? detectScopingEntryIntent(userMessage, {
-                    hasProtocol: protocolRow?.data
-                        ? isProtocolPopulated(protocolRow.data as unknown as ProtocolData)
-                        : false,
-                })
+                ? (
+                    isStructuredClarificationResume
+                        ? (latestScopingReport?.workflow?.entryIntent ?? "explore")
+                        : detectScopingEntryIntent(userMessage, {
+                            hasProtocol: protocolRow?.data
+                                ? isProtocolPopulated(protocolRow.data as unknown as ProtocolData)
+                                : false,
+                        })
+                )
                 : "explore";
             const handoffSelection = agentMode === "scoping"
-                ? detectScopingHandoffSelection(userMessage, latestScopingReport)
+                ? detectScopingHandoffSelection(runtimeQueryText, latestScopingReport)
                 : null;
             effectiveHandoffSelection = handoffSelection && projectId ? handoffSelection : null;
             scopingWorkflow = agentMode === "scoping"
@@ -1374,7 +1427,7 @@ class AIService {
                         content: persistedUserContent,
                         attachments: options?.userMessageAttachments,
                     });
-                } else {
+                } else if (!options?.userInputResolution) {
                     userMsg = {
                         id: `ephemeral-user-${Date.now()}`,
                         role: "user",
@@ -1454,7 +1507,7 @@ class AIService {
                 });
             }
 
-            if (!executionMode && scopingWorkflow && shouldShowScopingSearchPackPreview({
+            if (!executionMode && !isStructuredClarificationResume && scopingWorkflow && shouldShowScopingSearchPackPreview({
                 agentMode,
                 userMessage,
                 autonomyConfig,
@@ -1491,7 +1544,7 @@ class AIService {
             }
 
             // Check for multi-step workflow (plan-before-act)
-            if (!options?.planId) {
+            if (!options?.planId && !isStructuredClarificationResume) {
                 const { detectMultiStepWorkflow, generatePlan } = await import("@/lib/server/agent/planner");
                 if (detectMultiStepWorkflow(userMessage, modeToolNames)) {
                     yield { type: "progress", progressMessage: "Creating a plan...", conversationId: conversation.id };
@@ -1623,6 +1676,11 @@ class AIService {
             let observedRunModel: string | null = null;
             let invokedModel = false;
             const loop = new LoopState();
+            let forcedClarificationStop: {
+                content: string;
+                fallbackAction: ClarificationFallbackAction;
+                reason: string;
+            } | null = null;
             const scopingWorkflowMessageId = "scoping-workflow";
 
             while (true) {
@@ -1997,37 +2055,74 @@ class AIService {
                                     question: toolResult.userInputRequest.question,
                                 }),
                         };
+                        let scopingClarificationPolicyOverride = undefined;
                         if (agentMode === "scoping" && scopingWorkflow) {
-                            const clarificationDecision = evaluateScopingUserInputRequest({
+                            const scopingClarificationPolicy = deriveScopingClarificationPolicy({
                                 state: scopingWorkflow,
                                 userInputRequest: resolvedUserInputRequest,
                             });
-                            scopingWorkflow = clarificationDecision.nextState;
-                            if (!clarificationDecision.allowPause) {
-                                currentMessages.push(
-                                    buildSyntheticScopingToolMessage(tc, {
-                                        ...clarificationDecision.toolResult,
-                                        callId: tc.id,
-                                    })
-                                );
-                                currentMessages.push(
-                                    buildScopingCorrectionSystemMessage(clarificationDecision.correctiveMessage)
-                                );
-                                continue;
-                            }
+                            scopingWorkflow = scopingClarificationPolicy.nextState;
+                            scopingClarificationPolicyOverride = scopingClarificationPolicy.policyOverride;
                         }
 
                         const clarificationDecision = evaluateClarificationRequest({
                             state: clarificationControllerState,
                             userInputRequest: resolvedUserInputRequest,
+                            policyOverride: scopingClarificationPolicyOverride,
                         });
                         clarificationControllerState = clarificationDecision.nextState;
                         if (!clarificationDecision.allowPause) {
+                            const suppressedToolResult = {
+                                ...clarificationDecision.toolResult,
+                                callId: tc.id,
+                            };
+                            yield {
+                                type: "tool_result",
+                                toolName: tc.name,
+                                toolResult: suppressedToolResult,
+                                conversationId: conversation.id,
+                            };
+                            const suppressionMetricType: ChatUnificationMetricType =
+                                clarificationDecision.reason === "repeat_without_progress"
+                                    ? "ask_user_same_boundary_suppressed"
+                                    : "ask_user_budget_exhausted";
+                            await emitClarificationRuntimeMetric(
+                                suppressionMetricType,
+                                {
+                                    resolution: null,
+                                    decisionBoundaryKey: resolvedUserInputRequest.decisionBoundaryKey ?? null,
+                                    fallbackAction: clarificationDecision.fallbackAction,
+                                    reason: clarificationDecision.reason,
+                                },
+                                activeRun.id,
+                            );
+                            if (clarificationDecision.fallbackAction === "use_recommended_default") {
+                                await emitClarificationRuntimeMetric(
+                                    "ask_user_recommended_default_used",
+                                    {
+                                        resolution: null,
+                                        decisionBoundaryKey: resolvedUserInputRequest.decisionBoundaryKey ?? null,
+                                        fallbackAction: clarificationDecision.fallbackAction,
+                                        reason: clarificationDecision.reason,
+                                    },
+                                    activeRun.id,
+                                );
+                            }
+                            if (clarificationDecision.fallbackAction !== "use_recommended_default") {
+                                forcedClarificationStop = {
+                                    content: buildClarificationForcedStopMessage({
+                                        fallbackAction: clarificationDecision.fallbackAction,
+                                        userInputRequest: resolvedUserInputRequest,
+                                    }),
+                                    fallbackAction: clarificationDecision.fallbackAction,
+                                    reason: clarificationDecision.reason,
+                                };
+                                runFacts.hadDeterministicNonRetryableFailure = true;
+                                loop.markStopped("error");
+                                break;
+                            }
                             currentMessages.push(
-                                buildSyntheticScopingToolMessage(tc, {
-                                    ...clarificationDecision.toolResult,
-                                    callId: tc.id,
-                                })
+                                buildSyntheticScopingToolMessage(tc, suppressedToolResult)
                             );
                             currentMessages.push(
                                 buildClarificationCorrectionSystemMessage(clarificationDecision.correctiveMessage)
@@ -2118,26 +2213,39 @@ class AIService {
                 yield { type: "content", content: fullContent, conversationId: conversation.id };
             }
 
-            const scopingReportForSnapshot =
-                agentMode === "scoping"
-                    ? extractScopingReportFromText(fullContent)
-                    : null;
-            const finalizedScoping = finalizeScopingResponse({
-                agentMode,
-                fullContent,
-                userMessage,
-                hasHandoffSelection: !!effectiveHandoffSelection,
-                workflowSnapshot:
-                    agentMode === "scoping" && scopingWorkflow
-                        ? deriveScopingWorkflowSnapshot(scopingWorkflow, scopingReportForSnapshot)
-                        : undefined,
-            });
-            fullContent = finalizedScoping.content;
-            scopingReportPayload = finalizedScoping.report;
+            if (forcedClarificationStop) {
+                fullContent = forcedClarificationStop.content;
+                await markRunAbnormalEndClassification(activeRun.id, "no_forward_durable_progress").catch((markError) => {
+                    logServerWarn("ai-service", "failed to persist clarification stop abnormal-end classification", {
+                        runId: activeRun.id,
+                        error: markError instanceof Error ? markError.message : String(markError),
+                    });
+                });
+            } else {
+                const scopingReportForSnapshot =
+                    agentMode === "scoping"
+                        ? extractScopingReportFromText(fullContent)
+                        : null;
+                const finalizedScoping = finalizeScopingResponse({
+                    agentMode,
+                    fullContent,
+                    userMessage,
+                    hasHandoffSelection: !!effectiveHandoffSelection,
+                    workflowSnapshot:
+                        agentMode === "scoping" && scopingWorkflow
+                            ? deriveScopingWorkflowSnapshot(scopingWorkflow, scopingReportForSnapshot)
+                            : undefined,
+                });
+                fullContent = finalizedScoping.content;
+                scopingReportPayload = finalizedScoping.report;
+            }
 
             // Save final AI text response to conversation
             if (fullContent) {
                 runFacts.hadFinalAssistantAnswer = true;
+                if (forcedClarificationStop) {
+                    yield { type: "content", content: fullContent, conversationId: conversation.id };
+                }
                 await addMessageToConversation(conversation.id, {
                     role: "assistant",
                     content: fullContent,
@@ -2634,6 +2742,27 @@ function buildClarificationCorrectionSystemMessage(content: string): AIMessage {
         content: `Clarification runtime policy: ${content}`,
         createdAt: new Date().toISOString(),
     };
+}
+
+function buildClarificationForcedStopMessage(params: {
+    fallbackAction: Exclude<ClarificationFallbackAction, "use_recommended_default">;
+    userInputRequest: UserInputRequest;
+}): string {
+    const question = params.userInputRequest.question.trim();
+    const options = Array.isArray(params.userInputRequest.options)
+        ? params.userInputRequest.options
+            .map((option) => option.label?.trim())
+            .filter((label): label is string => Boolean(label))
+        : [];
+
+    if (params.fallbackAction === "bounded_terminal_decision") {
+        const boundedChoiceList = options.length > 0
+            ? `\n\nChoose one of these options and retry:\n${options.map((option) => `- ${option}`).join("\n")}`
+            : "";
+        return `I can't continue safely without one final decision on: ${question}.${boundedChoiceList}\n\nI'm stopping here instead of asking another blocking clarification in the same run.`;
+    }
+
+    return `I can't continue safely because I still need a decision on: ${question}.\n\nI'm stopping here instead of asking another blocking clarification in the same run. Please retry with the missing decision directly.`;
 }
 
 function computeRetryDelayMs(retryCount: number, retryAfterMs?: number): number {

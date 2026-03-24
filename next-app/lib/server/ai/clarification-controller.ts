@@ -3,6 +3,7 @@ import "server-only";
 import { prisma } from "@/lib/server/prisma";
 import { recordRunEvent } from "@/lib/server/agent/run-event-recorder";
 import type {
+    ClarificationFallbackAction,
     ToolResult,
     UserInputRequest,
     UserInputResolution,
@@ -44,6 +45,24 @@ export type ClarificationDecision =
         nextState: ClarificationControllerState;
         toolResult: ToolResult;
         correctiveMessage: string;
+        fallbackAction: ClarificationFallbackAction;
+        reason: ClarificationSuppressionReason;
+      };
+
+export type ClarificationSuppressionReason =
+    | "repeat_without_progress"
+    | "preprogress_budget_exhausted"
+    | "budget_exhausted"
+    | "mode_policy_blocked";
+
+export type ClarificationPolicyOverride =
+    | {
+        allowPause: true;
+      }
+    | {
+        allowPause: false;
+        correctiveMessage: string;
+        source?: "clarification_runtime_policy" | "scoping_runtime_policy";
       };
 
 export type PendingUserInputSource = {
@@ -81,6 +100,23 @@ function isDurableToolProgress(event: ClarificationLineageEventRecord): boolean 
 
 function isDurableArtifactProgress(event: ClarificationLineageEventRecord): boolean {
     return event.type === "artifact_proposed" || event.type === "artifact_reviewed";
+}
+
+function canSurfaceBoundedTerminalDecision(userInputRequest: UserInputRequest): boolean {
+    if (Array.isArray(userInputRequest.options) && userInputRequest.options.length > 0) {
+        return true;
+    }
+    return userInputRequest.questionType !== "free_text";
+}
+
+function selectClarificationFallbackAction(userInputRequest: UserInputRequest): ClarificationFallbackAction {
+    if (userInputRequest.recommendedAnswer?.trim()) {
+        return "use_recommended_default";
+    }
+    if (canSurfaceBoundedTerminalDecision(userInputRequest)) {
+        return "bounded_terminal_decision";
+    }
+    return "truthful_stop";
 }
 
 export function resolveDecisionBoundaryKey(params: {
@@ -215,49 +251,129 @@ export function markClarificationProgress(
 
 function buildSuppressedClarificationToolResult(params: {
     decisionBoundaryKey: string;
-    reason: "repeat_without_progress" | "preprogress_budget_exhausted" | "budget_exhausted";
+    reason: ClarificationSuppressionReason;
+    fallbackAction: ClarificationFallbackAction;
     userInputRequest: UserInputRequest;
+    source?: "clarification_runtime_policy" | "scoping_runtime_policy";
 }): ToolResult {
     return {
         callId: `ask_user_suppressed_${params.reason}`,
         result: {
-            status: "clarification_suppressed",
-            source: "clarification_runtime_policy",
+            status: params.fallbackAction === "use_recommended_default"
+                ? "clarification_resolved_by_runtime_default"
+                : params.fallbackAction === "bounded_terminal_decision"
+                    ? "clarification_terminal_decision_required"
+                    : "clarification_truthful_stop_required",
+            source: params.source ?? "clarification_runtime_policy",
             reason: params.reason,
             decisionBoundaryKey: params.decisionBoundaryKey,
+            fallbackAction: params.fallbackAction,
             recommendedAnswer: params.userInputRequest.recommendedAnswer ?? null,
+            question: params.userInputRequest.question,
+            questionType: params.userInputRequest.questionType,
+            options: params.userInputRequest.options ?? null,
+            resolvedAnswer: params.fallbackAction === "use_recommended_default"
+                ? params.userInputRequest.recommendedAnswer?.trim() ?? null
+                : null,
         },
     };
 }
 
 function buildSuppressedClarificationMessage(params: {
-    reason: "repeat_without_progress" | "preprogress_budget_exhausted" | "budget_exhausted";
+    reason: ClarificationSuppressionReason;
+    fallbackAction: ClarificationFallbackAction;
     userInputRequest: UserInputRequest;
 }): string {
     const recommendedDefault = params.userInputRequest.recommendedAnswer?.trim();
-    const sharedFallback = recommendedDefault
-        ? `Use the recommended default "${recommendedDefault}" if it is safe. If that would still be unsafe, present one bounded terminal decision point, or stop truthfully.`
-        : "Present one bounded terminal decision point, or stop truthfully. Do not make an unsafe guess just to avoid another question.";
+    const fallbackInstruction = params.fallbackAction === "use_recommended_default"
+        ? `Treat the recommended default "${recommendedDefault}" as authoritative runtime input and continue without asking again.`
+        : params.fallbackAction === "bounded_terminal_decision"
+            ? "Present exactly one bounded terminal decision point in the visible assistant response and do not call ask_user again in this run."
+            : "Stop truthfully now, explain that the missing decision blocks safe progress, and do not call ask_user again in this run.";
 
     if (params.reason === "repeat_without_progress") {
-        return `Do not ask the same blocking clarification again before making durable progress. Treat the prior clarification state as authoritative. ${sharedFallback}`;
+        return `Do not ask the same blocking clarification again before making durable progress. Treat the prior clarification state as authoritative. ${fallbackInstruction}`;
     }
 
-    if (params.reason === "preprogress_budget_exhausted") {
-        return `Do not ask another blocking clarification before making durable progress. ${sharedFallback}`;
+    if (params.reason === "preprogress_budget_exhausted" || params.reason === "mode_policy_blocked") {
+        return `Do not ask another blocking clarification before making durable progress. ${fallbackInstruction}`;
     }
 
-    return `Do not ask another blocking clarification in this run. ${sharedFallback}`;
+    return `Do not ask another blocking clarification in this run. ${fallbackInstruction}`;
+}
+
+function buildClarificationSuppressionDecision(params: {
+    state: ClarificationControllerState;
+    decisionBoundaryKey: string;
+    reason: ClarificationSuppressionReason;
+    userInputRequest: UserInputRequest;
+    correctiveMessage?: string;
+    source?: "clarification_runtime_policy" | "scoping_runtime_policy";
+}): ClarificationDecision {
+    const fallbackAction = selectClarificationFallbackAction(params.userInputRequest);
+    return {
+        allowPause: false,
+        nextState: params.state,
+        fallbackAction,
+        reason: params.reason,
+        toolResult: buildSuppressedClarificationToolResult({
+            decisionBoundaryKey: params.decisionBoundaryKey,
+            reason: params.reason,
+            fallbackAction,
+            userInputRequest: params.userInputRequest,
+            source: params.source,
+        }),
+        correctiveMessage: params.correctiveMessage ?? buildSuppressedClarificationMessage({
+            reason: params.reason,
+            fallbackAction,
+            userInputRequest: params.userInputRequest,
+        }),
+    };
+}
+
+export function buildClarificationResolutionUserMessage(params: {
+    userMessage?: string | null;
+    request: UserInputRequest;
+    resolution: UserInputResolution;
+}): string {
+    const explicit = params.userMessage?.trim();
+    if (explicit) return explicit;
+
+    if (params.resolution.resolution === "cancelled") {
+        return "Handle the cancelled clarification truthfully.";
+    }
+
+    const resolvedAnswer = params.resolution.answerText?.trim();
+    if (resolvedAnswer) return resolvedAnswer;
+
+    if (params.resolution.resolution === "accept_recommended" && params.request.recommendedAnswer?.trim()) {
+        return params.request.recommendedAnswer.trim();
+    }
+
+    return "Continue using the resolved clarification.";
 }
 
 export function evaluateClarificationRequest(params: {
     state: ClarificationControllerState;
     userInputRequest: UserInputRequest;
+    policyOverride?: ClarificationPolicyOverride;
 }): ClarificationDecision {
     const decisionBoundaryKey = resolveDecisionBoundaryKey({
         decisionBoundaryKey: params.userInputRequest.decisionBoundaryKey ?? null,
         question: params.userInputRequest.question,
     });
+
+    if (params.policyOverride && !params.policyOverride.allowPause) {
+        return buildClarificationSuppressionDecision({
+            state: params.state,
+            decisionBoundaryKey,
+            reason: "mode_policy_blocked",
+            userInputRequest: params.userInputRequest,
+            correctiveMessage: params.policyOverride.correctiveMessage,
+            source: params.policyOverride.source,
+        });
+    }
+
     const totalClarificationCount = params.state.totalClarificationCount;
     const hasDurableProgressSinceLastResolution = params.state.hasDurableProgressSinceLastResolution;
     const nextState: ClarificationControllerState = {
@@ -267,38 +383,24 @@ export function evaluateClarificationRequest(params: {
     };
 
     if (totalClarificationCount >= GENERAL_CLARIFICATION_MAX_TOTAL) {
-        return {
-            allowPause: false,
-            nextState: params.state,
-            toolResult: buildSuppressedClarificationToolResult({
-                decisionBoundaryKey,
-                reason: "budget_exhausted",
-                userInputRequest: params.userInputRequest,
-            }),
-            correctiveMessage: buildSuppressedClarificationMessage({
-                reason: "budget_exhausted",
-                userInputRequest: params.userInputRequest,
-            }),
-        };
+        return buildClarificationSuppressionDecision({
+            state: params.state,
+            decisionBoundaryKey,
+            reason: "budget_exhausted",
+            userInputRequest: params.userInputRequest,
+        });
     }
 
     if (!hasDurableProgressSinceLastResolution && totalClarificationCount >= GENERAL_CLARIFICATION_MAX_PRE_PROGRESS) {
         const reason = params.state.lastResolvedDecisionBoundaryKey === decisionBoundaryKey
             ? "repeat_without_progress"
             : "preprogress_budget_exhausted";
-        return {
-            allowPause: false,
-            nextState: params.state,
-            toolResult: buildSuppressedClarificationToolResult({
-                decisionBoundaryKey,
-                reason,
-                userInputRequest: params.userInputRequest,
-            }),
-            correctiveMessage: buildSuppressedClarificationMessage({
-                reason,
-                userInputRequest: params.userInputRequest,
-            }),
-        };
+        return buildClarificationSuppressionDecision({
+            state: params.state,
+            decisionBoundaryKey,
+            reason,
+            userInputRequest: params.userInputRequest,
+        });
     }
 
     return {
