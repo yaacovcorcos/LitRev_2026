@@ -39,16 +39,21 @@ const { mockTimelineRenderer } = vi.hoisted(() => ({
 }));
 
 vi.mock("../copilot/TimelineRenderer", () => ({
-  TimelineRenderer: (props: { onSuggestionClick: (prompt: string) => void }) => {
+  TimelineRenderer: (props: {
+    onSuggestionClick: (prompt: string) => void;
+    onAnswerUserInput?: (callId: string, answer: string, page?: "overview", section?: string, resolution?: "answered") => void;
+  }) => {
     mockTimelineRenderer(props);
     return (
-    <button
-      type="button"
-      data-testid="panel-suggestion"
-      onClick={() => props.onSuggestionClick("Summarize my project progress")}
-    >
-      Suggest
-    </button>
+      <div>
+        <button
+          type="button"
+          data-testid="panel-suggestion"
+          onClick={() => props.onSuggestionClick("Summarize my project progress")}
+        >
+          Suggest
+        </button>
+      </div>
     );
   },
 }));
@@ -118,6 +123,7 @@ describe("ProjectCopilot suggestion wiring", () => {
       reconnectRun: vi.fn(),
       reconcileArtifactStatus: vi.fn(),
       sendMessage: vi.fn(),
+      answerUserInput: vi.fn(),
       handleReviewArtifact: vi.fn(),
       handleUndoArtifact: vi.fn(),
       approveArtifactsBatch: vi.fn(),
@@ -268,6 +274,55 @@ describe("ProjectCopilot suggestion wiring", () => {
         }),
       );
     });
+  });
+
+  it("keeps side-panel clarification answers provider-owned", async () => {
+    mockUseProjectCopilot.mockReturnValue({
+      ...baseContextValue,
+      messages: [
+        {
+          id: "user-input-1",
+          sender: "ai",
+          text: "",
+          createdAt: "2026-03-11T00:00:00.000Z",
+          context: { page: "overview" },
+          userInputRequest: {
+            callId: "ask-1",
+            question: "Which study should I inspect first?",
+            questionType: "single_choice",
+          },
+        },
+      ],
+    });
+
+    render(
+      <ProjectCopilot
+        page="overview"
+        contextDisplay="Overview"
+        emptyState={{
+          icon: "smart_toy",
+          title: "AI Copilot",
+          description: "Help text",
+          suggestions: [{ label: "Summarize", prompt: "Summarize my project progress" }],
+        }}
+        inputPlaceholder="Ask..."
+      />,
+    );
+
+    const props = mockTimelineRenderer.mock.calls.at(-1)?.[0] as {
+      onAnswerUserInput?: (callId: string, answer: string, page?: "overview", section?: string, resolution?: "answered") => void;
+    };
+    props.onAnswerUserInput?.("ask-1", "Review the meta-analysis first.", "overview");
+
+    const contextValue = mockUseProjectCopilot.mock.results.at(-1)?.value as {
+      answerUserInput: ReturnType<typeof vi.fn>;
+    };
+
+    expect(contextValue.answerUserInput).toHaveBeenCalledWith(
+      "ask-1",
+      "Review the meta-analysis first.",
+      "overview",
+    );
   });
 
   it("targets reconnect, continue, and stop-and-retry actions to the clicked run", () => {

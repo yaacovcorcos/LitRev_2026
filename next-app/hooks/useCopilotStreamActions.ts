@@ -1138,11 +1138,11 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
             },
         ) => {
             const trimmed = text.trim();
+            const explicitUserInputResolution = runtimeOverrides?.userInputResolution ?? null;
             const attachment = pendingAttachment;
-            if (!trimmed && !attachment) return;
+            if (!trimmed && !attachment && !explicitUserInputResolution) return;
             const continueFromRunId = runtimeOverrides?.continueFromRunId ?? null;
             const suppressUserMessageAppend = runtimeOverrides?.suppressUserMessageAppend === true;
-            const explicitUserInputResolution = runtimeOverrides?.userInputResolution ?? null;
             const replaceRunId = runtimeOverrides?.replaceRunId
                 ?? (isLoadingRef.current ? currentRunId : null);
             if (isLoadingRef.current) cancelStream();
@@ -1281,7 +1281,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                         section,
                         continueFromRunId: continueFromRunId ?? undefined,
                         persistUserMessage: suppressUserMessageAppend ? false : undefined,
-                        persistedUserMessageContent: displayText,
+                        persistedUserMessageContent: suppressUserMessageAppend ? undefined : displayText,
                         userInputResolution: userInputResolution ?? undefined,
                         userMessageAttachments: attachmentsMeta,
                         contextTargets,

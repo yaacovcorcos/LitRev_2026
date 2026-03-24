@@ -78,6 +78,7 @@ describe("ConversationMainView parity", () => {
     mockRouterPush.mockReset();
     const sendMessage = vi.fn();
     const reconnectRun = vi.fn();
+    const answerUserInput = vi.fn();
     baseContextValue = {
       reconnectRun,
       messages: [
@@ -148,7 +149,7 @@ describe("ConversationMainView parity", () => {
       handleReviewArtifact: vi.fn(),
       approveArtifactsBatch: vi.fn(),
       executePlan: vi.fn(),
-      answerUserInput: vi.fn(),
+      answerUserInput,
       selectedModel: "gpt-5.2",
       hasMore: false,
       isLoadingOlder: false,
@@ -239,6 +240,26 @@ describe("ConversationMainView parity", () => {
         continueFromRunId: "run-clicked",
         suppressUserMessageAppend: true,
       },
+    );
+  });
+
+  it("routes clarification answers back through the provider-owned answer handler", () => {
+    render(<ConversationMainView projectId="project-1" />);
+
+    const props = mockTimelineRenderer.mock.calls[0]?.[0] as {
+      onAnswerUserInput?: (callId: string, answer: string, page?: "overview", section?: string, resolution?: "answered") => void;
+    };
+
+    props.onAnswerUserInput?.("ask-1", "Start with the strongest RCT", "overview");
+
+    const contextValue = mockUseProjectCopilot.mock.results[0]?.value as {
+      answerUserInput: ReturnType<typeof vi.fn>;
+    };
+
+    expect(contextValue.answerUserInput).toHaveBeenCalledWith(
+      "ask-1",
+      "Start with the strongest RCT",
+      "overview",
     );
   });
 

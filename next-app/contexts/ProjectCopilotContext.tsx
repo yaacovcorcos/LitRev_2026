@@ -509,11 +509,8 @@ function ProjectCopilotRuntime({
         if (!sourceRunId) {
             return;
         }
-        const hiddenResumePrompt = resolution === "cancelled"
-            ? "Handle the cancelled clarification truthfully."
-            : "Continue using the resolved clarification.";
         stream.sendMessage(
-            hiddenResumePrompt,
+            "",
             resolvedPage,
             resolvedSection,
             undefined,
