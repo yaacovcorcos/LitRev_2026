@@ -96,7 +96,7 @@ Until those failures are corrected, `U1.6` burn-in in [chatRuntime.md](./chatRun
 - Summary mode is now runtime-led on the main surfaces: the default `summary` mode keeps structured process trace primary, derives compact process summaries from existing shared runtime facts, and no longer renders truncated provider-native reasoning as the normal transparency path.
 - Full/raw reasoning is now explicitly debug-only on the main surfaces: `full` is the only mode that may request provider-native reasoning, and models without reasoning support still retain the same process-trace and summary UX without degradation to a blank transparency lane.
 - Visible-channel hygiene now strips allowlisted continuation/runtime scaffolding at the shared assistant-content boundary, while continuation seeds use machine-oriented labels instead of user-facing narrative prose to reduce prompt echo.
-- Main-surface blocking clarification now uses request-bound runtime truth rather than plain-turn resume hacks: answer/default/cancel all resolve the exact pending request through the shared continuation path, cancelled clarifications remain visible as cancelled transcript items, and users always get an explicit exit instead of being trapped in repeated question loops.
+- Main-surface blocking clarification now uses request-bound runtime truth rather than plain-turn resume hacks: answer/default/cancel all resolve the exact pending request through the shared continuation path, cancelled clarifications remain visible as cancelled transcript items, freeform rewrite while blocked truthfully cancels the old clarification and starts a new turn, and runtime-owned fallback now settles repeated blocking into recommended-default / bounded-decision / truthful-stop outcomes instead of asking forever.
 - Search/scoping answer contracts now explicitly keep raw query strings, result-count mechanics, and search-iteration logs in receipts/checkpoints/process details by default; visible answer prose should synthesize findings unless the user explicitly asks for the search strategy.
 - Model-visible search tool payloads are now shaped as synthesis context with explicit anti-duplication guidance rather than raw search-log fuel, reducing provider-specific leakage of `Objective` / `Queries Run` style process scaffolding into answer prose.
 - The current stabilization program in [plan-agentic.md](./plan-agentic.md) is now about durable convergence of those existing recovery primitives: disconnect classification, durable continuation from completed work, and elimination of stuck/partial recovery states. This plan should stay focused on truthful execution-trace UX and must not imply that ephemeral progress or non-persisted intermediate semantics are replayable.
@@ -161,6 +161,59 @@ This must never be the default product transparency path.
 - checkpoints shown after recovery must be persisted checkpoints, not reconstructed narration
 - paused-for-input is a successful handoff state, not a failure
 - if continuation is degraded, the trace must say so explicitly rather than pretending full replay parity
+
+## Facts-First UI Contract
+
+This is the UI-side portion of `FIX-012`.
+
+### Primary product rule
+
+The UI explains the agent through runtime facts we own, not through raw provider-native reasoning and not through scraped assistant prose.
+
+The visible hierarchy is:
+
+1. process trace
+2. compact runtime-derived summary
+3. raw provider reasoning only in `full`
+
+### Summary rule
+
+`summary` mode must be a compact derivation of existing shared runtime facts.
+
+Rules:
+
+1. it must not become a second narration stream
+2. it must not depend on provider-native reasoning
+3. if no honest summary can be derived, the UI falls back to process trace only
+
+### Semantic receipt rule
+
+The process trace only works if tool transparency is factual and scannable.
+
+Required receipt shape for important tool families:
+
+1. human-readable title
+2. compact input preview
+3. compact outcome summary
+4. relevant detail items
+5. status
+6. duration
+
+### Visible-channel purity rule
+
+The UI must never treat assistant prose as the source of product truth for:
+
+1. live progress
+2. blocked state
+3. recovery state
+4. raw query logs or search-iteration mechanics by default
+5. hidden machine payloads or continuation scaffolding
+
+### Fallback rule
+
+When the trace is stronger than the summary, prefer trace.
+When the trace is weaker than desired, strengthen the runtime facts or receipts.
+Do not compensate by exposing noisier raw reasoning as the default product layer.
 
 ## Core UX Architecture
 The chat should expose distinct but coordinated layers.

@@ -10,6 +10,7 @@ This file is the active plan registry and the canonical owner for plan-maintenan
   - Supporting execution detail for active fixes lives under [**agent-runtime-remediation/**](agent-runtime-remediation/README.md).
   - This file is also the canonical owner for immediate chat/agent runtime stabilization and active correctness fixes.
   - Supporting stabilization and continuation detail lives in [**Runtime Stabilization and Continuation**](agent-runtime-remediation/plan-runtime-stabilization-and-continuation.md).
+  - Supporting baseline-rescue detail for `FIX-012` lives in [**Baseline Stability and Transparency Reset**](agent-runtime-remediation/plan-fix-012-baseline-stability.md).
 - [**Memory & Retrieval**](plan-memory.md): Memory extraction, lifecycle, pgvector embeddings, project state sync. (This is the **only** active memory tracker).
 - **UI, UX, components** — Canonical + archive:
   - [**UI/UX Canonical Plan**](plan-ux-ui.md): Single active tracker for UI/UX execution and remaining backlog. Permanent frontend doctrine lives outside the plan layer.

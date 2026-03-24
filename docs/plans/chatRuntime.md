@@ -29,7 +29,7 @@ This plan does not own:
 - `/ai`, main conversation, and side-panel copilot now also share the queued-follow-up contract on top of that runtime: one explicit text-only next message may be queued while a run is active, rendered as an attached composer cap, and auto-dispatched only after the surface returns to true idle/sendable state.
 - `/ai`, main conversation, and side-panel copilot now also consume phase-backed recovery truth from persisted `AgentRun.runPhase` / `phaseEnteredAt`, so paused-input and stale-finalize cases converge through the shared runtime contract instead of per-surface reconnect heuristics.
 - `/ai`, main conversation, and side-panel copilot now also resolve blocking clarification through the shared runtime contract: pending requests carry canonical identity (`sourceRunId + callId`), answer/default/cancel all continue through the existing `continueFromRunId` path instead of plain new user turns, and cancelled clarifications stay visible as cancelled transcript state instead of disappearing.
-- Shared main-surface clarification now also uses one runtime-owned controller for identity, durable-progress accounting, repeat suppression, and safe fallback order. Scoping may apply stricter policy on top, but it no longer owns a separate blocked-state model.
+- Shared main-surface clarification now also uses one runtime-owned controller for identity, durable-progress accounting, repeat suppression, safe fallback order, and runtime-authored clarification telemetry. Scoping may apply stricter policy on top, but it no longer owns a separate blocked-state model.
 - Abrupt main-surface stream endings without concrete transport evidence now reconcile as `failed_interrupted` through the shared lifecycle contract instead of defaulting to `failed_network`, so recovery affordances and error copy no longer imply a network failure unless one is actually known.
 - Popup has canonical Context V2 payload alignment and now derives its supported progress/checkpoint/error/blocking subset through a shared reducer adapter, but it still has not migrated fully onto the shared runtime engine.
 - The CI anti-duplication architecture guard is already enforced and should continue preventing new per-surface chunk parsers.
@@ -45,6 +45,67 @@ This plan does not own:
 3. Popup remains compact and intentionally reduced unless/until it can honestly support the same runtime contract.
 4. No new per-surface chunk handlers or reducer forks may be added.
 5. Surface-specific differences should live in rendering and capability gating, not in stream parsing or core runtime state transitions.
+
+## Shared Runtime Rescue Invariants
+These invariants are the chat-runtime portion of `FIX-012`. They belong here because they are shared runtime truth, not UI doctrine.
+
+### One canonical event authority
+The shared runtime path remains the only authority for:
+
+1. lifecycle events
+2. tool lifecycle events
+3. checkpoints
+4. blocked/deferred states
+5. recovery events
+6. terminal reasons
+
+No parallel transparency event family should be introduced.
+
+### One shared live state model
+`/ai` and the project surfaces must derive the same coarse live state vocabulary from the shared runtime path.
+
+Required properties:
+
+1. one run cannot occupy contradictory states at once
+2. blocked states must be explicit runtime state, not inferred from transcript prose
+3. shell-specific differences are rendering-only or capability-gated, never parser-level
+
+The shared live state model should stay explicit enough to represent at least:
+
+1. idle
+2. running
+3. retrying
+4. waiting for input / blocked
+5. terminal failure
+6. terminal success
+
+### One shared terminal-state contract
+Abnormal-end semantics must remain shared across the main surfaces.
+
+Rules:
+
+1. `failed_interrupted` is used for abnormal endings without concrete network/transport evidence
+2. `failed_network` is reserved for actual network/transport evidence
+3. recovery affordances must be derived from durable truth, not shell-local optimism
+
+### Runtime operating discipline is part of shared truth
+The shared runtime path must also own:
+
+1. stale-stream/reconnect discipline, including heartbeat or equivalent freshness signals where needed
+2. duplicate or stale-delta suppression where needed
+3. forced cleanup of running tools on abnormal end
+4. bounded next-action truth after interruption
+5. architecture enforcement against parser/reducer/recovery drift
+
+### One parity rule for the main surfaces
+`/ai`, main project conversation, and side-panel project copilot must share:
+
+1. reducer/runtime semantics
+2. terminal-reason semantics
+3. blocked-state semantics
+4. continue/retry truth
+
+Popup remains a truthful reduced subset until `U3` lands.
 
 ## Shared Runtime Contract
 
@@ -70,6 +131,7 @@ Shell responsibilities:
 4. Freeform composer sends while blocked must cancel the pending clarification truthfully and start a fresh user turn; recovery/reload must preserve that cancelled state.
 5. Shared runtime policy, not surface heuristics, owns repeat-clarification suppression, durable-progress gating, and safe fallback order.
 6. Cross-surface tests must continue validating this invariant.
+7. Clarification telemetry is authored from the shared resolution/runtime path; surface analytics may exist, but they are not clarification truth.
 
 ### Context Contract V2
 Canonical fields:
@@ -173,11 +235,13 @@ Rules:
 Contract tests must continue covering:
 1. Context V2 compatibility.
 2. Shared reducer transition invariants.
-3. Intent emission invariants.
-4. Retry model continuity.
-5. Ask-user single-render and continuation-context invariants.
-6. Typed tool lifecycle transitions.
-7. Structured blocked-request resolution and cancellation invariants.
+3. Shared live-status invariants.
+4. Intent emission invariants.
+5. Retry model continuity.
+6. Ask-user single-render and continuation-context invariants.
+7. Structured blocked-request resolution, cancellation, and fallback invariants.
+8. Typed tool lifecycle transitions.
+9. Abnormal-end cleanup and reconnect-eligibility invariants.
 
 Integration tests must continue covering:
 1. `/ai` global roundtrip.
@@ -189,10 +253,12 @@ Integration tests must continue covering:
 Architecture guardrails:
 1. No new per-surface stream parsers.
 2. No new reducer forks.
-3. Shared runtime changes must preserve the CI architecture check in enforce mode.
+3. No bespoke recovery semantics on one main surface.
+4. Shared runtime changes must preserve the CI architecture check in enforce mode.
 
 ## Dependency Notes
 - [plan-agentic.md](./plan-agentic.md) now owns the active runtime stabilization program (`FIX-011b`) for disconnect classification, run convergence, durable continuation, and same-run recovery truth. This plan should treat that stabilization work as an upstream dependency rather than a competing runtime owner.
+- [agent-runtime-remediation/plan-fix-012-baseline-stability.md](./agent-runtime-remediation/plan-fix-012-baseline-stability.md) owns the execution detail for the baseline rescue; this plan owns only the shared runtime portion of that rescue.
 - `U1.6` should be treated as blocked whenever `plan-agentic.md` still tracks baseline agent breakage under `FIX-012`; burn-in is later-stage validation once ordinary manual use is no longer obviously broken.
 - [agent-runtime-remediation/plan-runtime-stabilization-and-continuation.md](./agent-runtime-remediation/plan-runtime-stabilization-and-continuation.md) defines the durable recovery/continuation contract that chat runtime work must consume rather than reinterpret per surface.
 - [transparencyUI.md](./transparencyUI.md) depends on this plan for shared runtime parity across `/ai` and project copilot before broader truthful execution-trace rollout.
