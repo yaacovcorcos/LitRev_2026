@@ -1,3 +1,6 @@
+import type {
+    ClarificationPolicyOverride,
+} from "@/lib/server/ai/clarification-controller";
 import type { ToolDefinition, ToolResult, UserInputRequest } from "@/types/ai";
 import type {
     ScopingEntryIntent,
@@ -18,8 +21,6 @@ export const SCOPING_EXPLORATORY_CAP = 4;
 export type ScopingWorkflowState = {
     entryIntent: ScopingEntryIntent;
     phase: ScopingWorkflowPhase;
-    clarificationCount: number;
-    handoffAskCount: number;
     searchCount: number;
     hasEvidence: boolean;
     recommendationExpansionUsed: boolean;
@@ -47,8 +48,6 @@ export function createInitialScopingWorkflowState(params: {
     return {
         entryIntent: workflow?.entryIntent ?? params.entryIntent,
         phase: shouldEnterHandoffPhase ? "handoff" : "discover",
-        clarificationCount: 0,
-        handoffAskCount: 0,
         searchCount: 0,
         hasEvidence: (params.report?.searchesRun.length ?? 0) > 0,
         recommendationExpansionUsed: false,
@@ -73,10 +72,6 @@ export function deriveScopingWorkflowSnapshot(
             state.recommendedDefaultQuestionIndex
                 ?? (report?.recommendedQuestions.length ? 1 : undefined),
     };
-}
-
-export function getScopingClarificationBudget(state: ScopingWorkflowState): number {
-    return state.entryIntent === "draft_bootstrap" ? 0 : 1;
 }
 
 export function buildScopingWorkflowInstruction(state: ScopingWorkflowState): string {
@@ -121,7 +116,7 @@ export function deriveScopingIterationToolDefs(
     return modeToolDefs.filter((tool) => {
         if (state.phase === "discover") {
             if (tool.name === "ask_user") {
-                return getScopingClarificationBudget(state) > state.clarificationCount;
+                return state.entryIntent !== "draft_bootstrap" && !state.hasEvidence;
             }
             if (tool.name === SCOPING_RECOMMENDATION_TOOL_NAME) {
                 return state.hasEvidence && !state.recommendationExpansionUsed;
@@ -142,7 +137,6 @@ export function deriveScopingIterationToolDefs(
             if (tool.name === "ask_user") {
                 return state.entryIntent === "explore"
                     && !state.handoffOffered
-                    && state.handoffAskCount < 1
                     && state.recommendedDefaultQuestionIndex === undefined;
             }
             return true;
@@ -223,25 +217,16 @@ export function evaluateScopingSearchExecution(
     return { allow: true };
 }
 
-export function evaluateScopingUserInputRequest(params: {
+export function deriveScopingClarificationPolicy(params: {
     state: ScopingWorkflowState;
     userInputRequest: UserInputRequest;
-}): { allowPause: true; nextState: ScopingWorkflowState } | {
-    allowPause: false;
-    nextState: ScopingWorkflowState;
-    toolResult: ToolResult;
-    correctiveMessage: string;
-} {
+}): { policyOverride: ClarificationPolicyOverride; nextState: ScopingWorkflowState } {
     const { state } = params;
-    const clarificationBudget = getScopingClarificationBudget(state);
 
-    if (state.phase === "discover" && !state.hasEvidence && state.clarificationCount < clarificationBudget) {
+    if (state.phase === "discover" && !state.hasEvidence && state.entryIntent !== "draft_bootstrap") {
         return {
-            allowPause: true,
-            nextState: {
-                ...state,
-                clarificationCount: state.clarificationCount + 1,
-            },
+            policyOverride: { allowPause: true },
+            nextState: state,
         };
     }
 
@@ -249,14 +234,12 @@ export function evaluateScopingUserInputRequest(params: {
         state.phase === "handoff"
         && state.entryIntent === "explore"
         && !state.handoffOffered
-        && state.handoffAskCount < 1
         && state.recommendedDefaultQuestionIndex === undefined
     ) {
         return {
-            allowPause: true,
+            policyOverride: { allowPause: true },
             nextState: {
                 ...state,
-                handoffAskCount: state.handoffAskCount + 1,
                 handoffOffered: true,
             },
         };
@@ -269,14 +252,16 @@ export function evaluateScopingUserInputRequest(params: {
             : "Do not ask another blocking clarification. Synthesize the evidence already gathered, recommend a default direction, and continue without pausing.";
 
     return {
-        allowPause: false,
+        policyOverride: {
+            allowPause: false,
+            correctiveMessage,
+            source: "scoping_runtime_policy",
+        },
         nextState: {
             ...state,
             phase: state.hasEvidence ? "synthesize" : state.phase,
             handoffOffered: state.phase === "handoff" ? true : state.handoffOffered,
         },
-        toolResult: buildSyntheticScopingToolResult("ask_user", "clarification_suppressed"),
-        correctiveMessage,
     };
 }
 

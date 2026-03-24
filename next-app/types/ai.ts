@@ -68,6 +68,11 @@ export type UserInputResolutionKind =
     | "accept_recommended"
     | "cancelled";
 
+export type ClarificationFallbackAction =
+    | "use_recommended_default"
+    | "bounded_terminal_decision"
+    | "truthful_stop";
+
 export type UserInputRequest = {
     callId: string;
     sourceRunId?: string;

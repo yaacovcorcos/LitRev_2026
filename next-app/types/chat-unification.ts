@@ -1,3 +1,5 @@
+import type { ClarificationFallbackAction, UserInputResolutionKind } from "./ai";
+
 export type ChatSurface = "ai" | "project";
 
 export type ChatUnificationStreamPhase = "send" | "plan" | "project_stream";
@@ -10,7 +12,15 @@ export type ChatUnificationMetricType =
   | "ask_user_context_mismatch"
   | "stuck_running_tools_after_run_end"
   | "run_end_observed"
-  | "answer_stream_delivery";
+  | "answer_stream_delivery"
+  | "ask_user_answer_submitted"
+  | "ask_user_answer_resume_started"
+  | "ask_user_answer_resume_failed"
+  | "ask_user_same_boundary_suppressed"
+  | "ask_user_budget_exhausted"
+  | "ask_user_recommended_default_used"
+  | "ask_user_cancelled"
+  | "ask_user_unknown_call_id";
 
 export type ChatUnificationActualModelSource = "provider" | "requested" | "unknown";
 
@@ -75,12 +85,27 @@ export type AnswerStreamDeliveryPayload = {
   meanVisibleChunkGapMs: number | null;
 };
 
+export type ClarificationRuntimePayload = {
+  resolution: UserInputResolutionKind | null;
+  decisionBoundaryKey: string | null;
+  fallbackAction: ClarificationFallbackAction | null;
+  reason: string | null;
+};
+
 export type ChatUnificationMetricPayloadByType = {
   retry_model_continuity: RetryModelContinuityPayload;
   ask_user_context_mismatch: AskUserContextMismatchPayload;
   stuck_running_tools_after_run_end: StuckRunningToolsPayload;
   run_end_observed: RunEndObservedPayload;
   answer_stream_delivery: AnswerStreamDeliveryPayload;
+  ask_user_answer_submitted: ClarificationRuntimePayload;
+  ask_user_answer_resume_started: ClarificationRuntimePayload;
+  ask_user_answer_resume_failed: ClarificationRuntimePayload;
+  ask_user_same_boundary_suppressed: ClarificationRuntimePayload;
+  ask_user_budget_exhausted: ClarificationRuntimePayload;
+  ask_user_recommended_default_used: ClarificationRuntimePayload;
+  ask_user_cancelled: ClarificationRuntimePayload;
+  ask_user_unknown_call_id: ClarificationRuntimePayload;
 };
 
 export type ChatUnificationMetricPayload =

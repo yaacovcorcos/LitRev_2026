@@ -233,4 +233,35 @@ describe("chat-unification-metrics", () => {
       }),
     );
   });
+
+  it("accepts clarification runtime telemetry payloads", async () => {
+    mocks.agentRunFindFirst.mockResolvedValue({ id: "run-ask-user" });
+    mocks.chatMetricCreate.mockResolvedValue({ id: "metric-clarification" });
+
+    const result = await ingestChatUnificationMetric(AUTH, {
+      eventId: "7b1b3d54-60a0-4a2d-9679-8dd70eb0d0d7",
+      type: "ask_user_budget_exhausted",
+      surface: "ai",
+      runId: "run-ask-user",
+      payload: {
+        resolution: null,
+        decisionBoundaryKey: "scoping-direction",
+        fallbackAction: "bounded_terminal_decision",
+        reason: "budget_exhausted",
+      },
+    });
+
+    expect(result).toEqual({ deduped: false, id: "metric-clarification" });
+    expect(mocks.chatMetricCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          type: "ask_user_budget_exhausted",
+          runId: "run-ask-user",
+          payload: expect.objectContaining({
+            fallbackAction: "bounded_terminal_decision",
+          }),
+        }),
+      }),
+    );
+  });
 });

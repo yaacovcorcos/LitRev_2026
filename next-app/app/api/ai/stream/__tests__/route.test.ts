@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   persistUserInputResolution: vi.fn(),
   hydrateClarificationControllerState: vi.fn(),
   buildUserInputResolutionContinuationContext: vi.fn(),
+  buildClarificationResolutionUserMessage: vi.fn(),
 }));
 
 vi.mock("@/lib/server/auth/session", () => ({
@@ -63,6 +64,7 @@ vi.mock("@/lib/server/ai/clarification-controller", () => ({
   persistUserInputResolution: mocks.persistUserInputResolution,
   hydrateClarificationControllerState: mocks.hydrateClarificationControllerState,
   buildUserInputResolutionContinuationContext: mocks.buildUserInputResolutionContinuationContext,
+  buildClarificationResolutionUserMessage: mocks.buildClarificationResolutionUserMessage,
 }));
 
 const { POST } = await import("../route");
@@ -103,6 +105,12 @@ describe("/api/ai/stream route", () => {
       lastResolvedDecisionBoundaryKey: "scoping-direction",
     });
     mocks.buildUserInputResolutionContinuationContext.mockReturnValue("[CONTINUATION_CONTEXT]\nResolved clarification");
+    mocks.buildClarificationResolutionUserMessage.mockImplementation(({ userMessage, resolution, request }) => (
+      userMessage
+      || resolution.answerText
+      || request.recommendedAnswer
+      || "resolved clarification"
+    ));
   });
 
   it("streams checkpoint and user-input events without route-side persistence authorship", async () => {
@@ -339,7 +347,6 @@ describe("/api/ai/stream route", () => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        userMessage: "Continue using the resolved clarification.",
         context: "global",
         options: {
           conversationId: "conv-1",
@@ -389,7 +396,105 @@ describe("/api/ai/stream route", () => {
       continueFromRunId: "run-paused",
       replaceRunId: "run-paused",
       parentRunId: "run-paused",
+      persistUserMessage: false,
+      persistedUserMessageContent: undefined,
       continuationContext: "[CONTINUATION_CONTEXT]\nResolved clarification",
     });
+    expect(mocks.streamChatWithArtifacts.mock.calls[0]?.[0]).toBe("Broaden the search first.");
+    expect(mocks.ingestChatUnificationMetric).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        type: "ask_user_answer_submitted",
+      }),
+    );
+    expect(mocks.ingestChatUnificationMetric).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        type: "ask_user_answer_resume_started",
+      }),
+    );
+  });
+
+  it("emits unknown-call telemetry and an error chunk for stale structured clarification answers", async () => {
+    mocks.resolvePendingUserInputSource.mockRejectedValueOnce(new Error("The pending clarification request is stale or no longer active."));
+
+    const request = new NextRequest("http://localhost/api/ai/stream", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        context: "global",
+        options: {
+          conversationId: "conv-1",
+          continueFromRunId: "run-paused",
+          agentMode: "general",
+          page: "ai",
+          persistUserMessage: false,
+          userInputResolution: {
+            sourceRunId: "run-paused",
+            callId: "ask-missing",
+            resolution: "answered",
+            answerText: "Use the broad search first.",
+            answeredAt: "2026-03-24T10:00:00.000Z",
+          },
+        },
+      }),
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(200);
+    const body = await response.text();
+    const chunks = body
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as { type: string; error?: string });
+
+    expect(chunks).toHaveLength(1);
+    expect(chunks[0]?.type).toBe("error");
+    expect(mocks.ingestChatUnificationMetric).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        type: "ask_user_unknown_call_id",
+      }),
+    );
+  });
+
+  it("fails structured clarification resume when continueFromRunId mismatches the blocked source run", async () => {
+    const request = new NextRequest("http://localhost/api/ai/stream", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        context: "global",
+        options: {
+          conversationId: "conv-1",
+          continueFromRunId: "run-other",
+          agentMode: "general",
+          page: "ai",
+          persistUserMessage: false,
+          userInputResolution: {
+            sourceRunId: "run-paused",
+            callId: "ask-1",
+            resolution: "answered",
+            answerText: "Broaden the search first.",
+            answeredAt: "2026-03-24T10:00:00.000Z",
+          },
+        },
+      }),
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(200);
+    const body = await response.text();
+    const chunks = body
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as { type: string; error?: string });
+
+    expect(chunks[0]?.type).toBe("error");
+    expect(mocks.ingestChatUnificationMetric).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        type: "ask_user_answer_resume_failed",
+      }),
+    );
   });
 });

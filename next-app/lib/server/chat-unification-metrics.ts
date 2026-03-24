@@ -7,6 +7,7 @@ import { assertTelemetryProjectAccess } from "@/lib/server/telemetry-policy";
 import type {
   AnswerStreamDeliveryPayload,
   AskUserContextMismatchPayload,
+  ClarificationRuntimePayload,
   ChatUnificationMetricVersion,
   ChatSurface,
   ChatUnificationMetricType,
@@ -28,6 +29,14 @@ const CHAT_UNIFICATION_METRIC_TYPES = [
   "stuck_running_tools_after_run_end",
   "run_end_observed",
   "answer_stream_delivery",
+  "ask_user_answer_submitted",
+  "ask_user_answer_resume_started",
+  "ask_user_answer_resume_failed",
+  "ask_user_same_boundary_suppressed",
+  "ask_user_budget_exhausted",
+  "ask_user_recommended_default_used",
+  "ask_user_cancelled",
+  "ask_user_unknown_call_id",
 ] as const satisfies readonly ChatUnificationMetricType[];
 
 const CHAT_STREAM_PHASE_VALUES = ["send", "plan", "project_stream"] as const;
@@ -86,6 +95,13 @@ const AnswerStreamDeliveryPayloadSchema: z.ZodType<AnswerStreamDeliveryPayload> 
   meanVisibleChunkGapMs: z.number().finite().min(0).nullable(),
 });
 
+const ClarificationRuntimePayloadSchema: z.ZodType<ClarificationRuntimePayload> = z.object({
+  resolution: z.enum(["answered", "accept_recommended", "cancelled"]).nullable(),
+  decisionBoundaryKey: z.string().nullable(),
+  fallbackAction: z.enum(["use_recommended_default", "bounded_terminal_decision", "truthful_stop"]).nullable(),
+  reason: z.string().nullable(),
+});
+
 const ChatUnificationMetricInputSchema = z.object({
   eventId: z.string().uuid(),
   version: z.number().int().refine(
@@ -105,7 +121,7 @@ function parsePayload(
   version: ChatUnificationMetricVersion,
   type: ChatUnificationMetricType,
   payload: unknown,
-): RetryModelContinuityPayload | AskUserContextMismatchPayload | StuckRunningToolsPayload | RunEndObservedPayload | AnswerStreamDeliveryPayload {
+): RetryModelContinuityPayload | AskUserContextMismatchPayload | StuckRunningToolsPayload | RunEndObservedPayload | AnswerStreamDeliveryPayload | ClarificationRuntimePayload {
   switch (type) {
     case "retry_model_continuity": {
       if (version >= 3) {
@@ -121,6 +137,15 @@ function parsePayload(
       return RunEndObservedPayloadSchema.parse(payload);
     case "answer_stream_delivery":
       return AnswerStreamDeliveryPayloadSchema.parse(payload);
+    case "ask_user_answer_submitted":
+    case "ask_user_answer_resume_started":
+    case "ask_user_answer_resume_failed":
+    case "ask_user_same_boundary_suppressed":
+    case "ask_user_budget_exhausted":
+    case "ask_user_recommended_default_used":
+    case "ask_user_cancelled":
+    case "ask_user_unknown_call_id":
+      return ClarificationRuntimePayloadSchema.parse(payload);
     default:
       throw new Error(`Unsupported metric type: ${String(type)}`);
   }

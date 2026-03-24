@@ -5,8 +5,8 @@ import {
     applySuccessfulScopingToolResult,
     createInitialScopingWorkflowState,
     deriveScopingIterationToolDefs,
+    deriveScopingClarificationPolicy,
     evaluateScopingSearchExecution,
-    evaluateScopingUserInputRequest,
     SCOPING_EXPLORATORY_CAP,
 } from "../ai/scoping-workflow";
 
@@ -28,7 +28,6 @@ describe("scoping workflow", () => {
         expect(state).toMatchObject({
             entryIntent: "explore",
             phase: "discover",
-            clarificationCount: 0,
             searchCount: 0,
             handoffOffered: false,
         });
@@ -135,7 +134,7 @@ describe("scoping workflow", () => {
             phase: "synthesize" as const,
         };
 
-        const decision = evaluateScopingUserInputRequest({
+        const decision = deriveScopingClarificationPolicy({
             state,
             userInputRequest: {
                 callId: "ask-1",
@@ -145,9 +144,8 @@ describe("scoping workflow", () => {
             },
         });
 
-        expect(decision.allowPause).toBe(false);
-        if (!decision.allowPause) {
-            expect(decision.correctiveMessage).toContain("Synthesize");
-        }
+        expect(decision.policyOverride.allowPause).toBe(false);
+        if (decision.policyOverride.allowPause) return;
+        expect(decision.policyOverride.correctiveMessage).toContain("Synthesize");
     });
 });
