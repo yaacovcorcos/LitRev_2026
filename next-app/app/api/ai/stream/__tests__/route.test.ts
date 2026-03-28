@@ -415,6 +415,114 @@ describe("/api/ai/stream route", () => {
     );
   });
 
+  it("treats blocked-card cancel as a terminal structured dismissal", async () => {
+    const request = new NextRequest("http://localhost/api/ai/stream", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        context: "global",
+        options: {
+          conversationId: "conv-1",
+          continueFromRunId: "run-paused",
+          agentMode: "general",
+          page: "ai",
+          persistUserMessage: false,
+          userInputResolution: {
+            sourceRunId: "run-paused",
+            callId: "ask-1",
+            resolution: "cancelled",
+            answerText: "Cancelled by the user.",
+            answeredAt: "2026-03-24T10:00:00.000Z",
+          },
+        },
+      }),
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(200);
+    expect(mocks.streamChatWithArtifacts).not.toHaveBeenCalled();
+    expect(mocks.buildClarificationResolutionUserMessage).not.toHaveBeenCalled();
+
+    const body = await response.text();
+    const chunks = body
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as { type: string; runStatus?: string; stopReason?: string });
+
+    expect(chunks).toEqual([
+      expect.objectContaining({ type: "user_input_resolved" }),
+      expect.objectContaining({ type: "run_end", runStatus: "cancelled", stopReason: "cancelled" }),
+    ]);
+    expect(mocks.ingestChatUnificationMetric).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        type: "ask_user_cancelled",
+      }),
+    );
+    expect(mocks.ingestChatUnificationMetric).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        type: "ask_user_answer_resume_started",
+      }),
+    );
+  });
+
+  it("treats blocked freeform rewrite as cancel-and-new-run instead of a clarification continuation", async () => {
+    mocks.streamChatWithArtifacts.mockImplementation(async function* () {
+      yield { type: "run_start", runId: "run-fresh", conversationId: "conv-1" };
+      yield { type: "run_end", runId: "run-fresh", conversationId: "conv-1", runStatus: "completed", stopReason: null };
+    });
+
+    const request = new NextRequest("http://localhost/api/ai/stream", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        userMessage: "Actually, compare the broader evidence first.",
+        context: "global",
+        options: {
+          conversationId: "conv-1",
+          agentMode: "general",
+          page: "ai",
+          userInputResolution: {
+            sourceRunId: "run-paused",
+            callId: "ask-1",
+            resolution: "cancelled",
+            answerText: "Actually, compare the broader evidence first.",
+            answeredAt: "2026-03-24T10:00:00.000Z",
+          },
+        },
+      }),
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(200);
+    await response.text();
+
+    expect(mocks.buildClarificationResolutionUserMessage).not.toHaveBeenCalled();
+    expect(mocks.buildUserInputResolutionContinuationContext).not.toHaveBeenCalled();
+    expect(mocks.streamChatWithArtifacts).toHaveBeenCalledTimes(1);
+    expect(mocks.streamChatWithArtifacts.mock.calls[0]?.[0]).toBe("Actually, compare the broader evidence first.");
+    expect(mocks.streamChatWithArtifacts.mock.calls[0]?.[2]).toMatchObject({
+      conversationId: "conv-1",
+      continueFromRunId: undefined,
+      replaceRunId: undefined,
+      parentRunId: undefined,
+      userInputResolution: undefined,
+    });
+    expect(mocks.ingestChatUnificationMetric).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        type: "ask_user_cancelled",
+      }),
+    );
+    expect(mocks.ingestChatUnificationMetric).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        type: "ask_user_answer_resume_started",
+      }),
+    );
+  });
+
   it("emits unknown-call telemetry and an error chunk for stale structured clarification answers", async () => {
     mocks.resolvePendingUserInputSource.mockRejectedValueOnce(new Error("The pending clarification request is stale or no longer active."));
 

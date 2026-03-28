@@ -57,7 +57,13 @@ vi.mock("next/dynamic", () => ({
       onContinueFromDurableStateRun?: (item: { type: string; id: string; errorMeta?: { activeRunId?: string; runId?: string } }) => void;
       onStopAndRetryRun?: (item: { type: string; id: string; errorMeta?: { activeRunId?: string; runId?: string } }) => void;
       onRetryLastMessage?: () => void;
-      onAnswerUserInput?: (callId: string, answer: string, page?: "ai") => void;
+      onAnswerUserInput?: (
+        callId: string,
+        answer: string,
+        page?: "ai",
+        section?: string,
+        resolution?: "answered" | "accept_recommended" | "cancelled",
+      ) => void;
     }) {
       if (props.projects && props.onSelectProject) {
         return (
@@ -113,6 +119,12 @@ vi.mock("next/dynamic", () => ({
                       onClick={() => item.callId && props.onAnswerUserInput?.(item.callId, "Broaden the search first.", "ai")}
                     >
                       answer user input
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => item.callId && props.onAnswerUserInput?.(item.callId, "Cancelled by the user.", "ai", undefined, "cancelled")}
+                    >
+                      cancel user input
                     </button>
                   </div>
                 );
@@ -736,6 +748,177 @@ describe("/ai page deferred hydration", () => {
         answerText: "Recover this run",
       },
     });
+  });
+
+  it("treats blocked-card cancel as a terminal dismissal without reconnect or stream-ended fallback copy", async () => {
+    mockProcessAIStream
+      .mockImplementationOnce(async ({ onChunk }: {
+        onChunk: (chunk: unknown) => void | Promise<void>;
+      }) => {
+        await onChunk({ type: "run_start", runId: "run-ask", conversationId: "conv-new" });
+        await onChunk({
+          type: "user_input_required",
+          userInputRequest: {
+            sourceRunId: "run-ask",
+            callId: "ask-1",
+            question: "Which direction should I take?",
+            questionType: "single_choice",
+          },
+        });
+        return {
+          runStatus: "paused",
+          stopReason: "paused_for_input",
+          terminalReason: "paused_for_input",
+          errorMessage: null,
+          errorMeta: null,
+          actualModel: null,
+          actualModelSource: "unknown",
+        };
+      })
+      .mockImplementationOnce(async ({ onChunk }: {
+        onChunk: (chunk: unknown) => void | Promise<void>;
+      }) => {
+        await onChunk({
+          type: "user_input_resolved",
+          userInputResolution: {
+            sourceRunId: "run-ask",
+            callId: "ask-1",
+            resolution: "cancelled",
+            answerText: "Cancelled by the user.",
+            answeredAt: "2026-03-24T10:00:00.000Z",
+          },
+        });
+        await onChunk({
+          type: "run_end",
+          runStatus: "cancelled",
+          stopReason: "cancelled",
+        });
+        return {
+          runStatus: "cancelled",
+          stopReason: "cancelled",
+          terminalReason: "cancelled_by_user",
+          errorMessage: null,
+          errorMeta: null,
+          actualModel: null,
+          actualModelSource: "unknown",
+        };
+      });
+
+    render(<AIView />);
+
+    fireEvent.click(screen.getByRole("button", { name: "send message" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Which direction should I take?")).toBeTruthy();
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "cancel user input" }));
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+    });
+
+    const secondRequest = mockFetch.mock.calls[1]?.[1] as { body?: string };
+    const parsedBody = JSON.parse(secondRequest.body ?? "{}");
+    expect(parsedBody.userMessage).toBe("");
+    expect(parsedBody.options).toMatchObject({
+      continueFromRunId: "run-ask",
+      replaceRunId: "run-ask",
+      persistUserMessage: false,
+      userInputResolution: {
+        sourceRunId: "run-ask",
+        callId: "ask-1",
+        resolution: "cancelled",
+        answerText: "Cancelled by the user.",
+      },
+    });
+    expect(screen.queryByText("Cancelled by the user.")).toBeNull();
+    expect(screen.queryByText("Run interrupted. Reconnecting to the active run…")).toBeNull();
+    expect(screen.queryByText("The stream ended unexpectedly. Retry to continue.")).toBeNull();
+    expect(screen.queryByText("Run interrupted and recovery failed. You can retry safely now.")).toBeNull();
+  });
+
+  it("restores a recent recoverable ai run after history load and replays recovery through the existing runtime path", async () => {
+    vi.useFakeTimers();
+    window.localStorage.setItem("litrev:ai-entry:v1:__global__", JSON.stringify({
+      version: 1,
+      lastConversationId: "conv-1",
+      lastRecoverableRunId: "run-restore",
+      lastRecoverableAtMs: Date.now(),
+    }));
+    mockPollRunRecovery.mockResolvedValue({
+      outcome: "recovered",
+      response: {
+        conversationId: "conv-1",
+        runId: "run-restore",
+        runStatus: "paused",
+        isActive: false,
+        runPhase: "ask",
+        phaseEnteredAt: "2026-03-29T10:00:00.000Z",
+        lastActivityAt: "2026-03-29T10:01:00.000Z",
+        lastSequence: 0,
+        replayableEvents: [],
+        terminalEvent: null,
+        recoveryRecommendation: "terminal",
+        abnormalEndClassification: null,
+      },
+      lastAppliedSequence: -1,
+    });
+
+    render(<AIView />);
+
+    fireEvent.click(screen.getByRole("button", { name: "composer ready" }));
+
+    await act(async () => {
+      vi.runAllTimers();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    vi.useRealTimers();
+
+    await waitFor(() => {
+      expect(mockGetConversation).toHaveBeenCalledWith("conv-1");
+    });
+    await waitFor(() => {
+      expect(mockPollRunRecovery).toHaveBeenCalledWith(
+        expect.objectContaining({
+          conversationId: "conv-1",
+          runId: "run-restore",
+        }),
+      );
+    });
+  });
+
+  it("fails soft and clears stale ai restore state when the stored conversation no longer exists", async () => {
+    vi.useFakeTimers();
+    window.localStorage.setItem("litrev:ai-entry:v1:__global__", JSON.stringify({
+      version: 1,
+      lastConversationId: "missing-conv",
+      lastRecoverableRunId: "run-missing",
+      lastRecoverableAtMs: Date.now(),
+    }));
+
+    render(<AIView />);
+
+    fireEvent.click(screen.getByRole("button", { name: "composer ready" }));
+
+    await act(async () => {
+      vi.runAllTimers();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    vi.useRealTimers();
+
+    await waitFor(() => {
+      expect(mockListConversations).toHaveBeenCalled();
+    });
+
+    expect(mockGetConversation).not.toHaveBeenCalled();
+    expect(mockPollRunRecovery).not.toHaveBeenCalled();
+    expect(window.localStorage.getItem("litrev:ai-entry:v1:__global__")).toBeNull();
   });
 
   it("replaces a reconnect checkpoint with stronger same-run stop-and-retry truth", async () => {
