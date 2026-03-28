@@ -3,12 +3,14 @@ import type { AIStreamChunk, ChoiceOption, CopilotPage, UserInputRequest } from 
 import type { TimelineItem } from "@/types/timeline";
 import { dispatchProjectDataChanged } from "@/lib/project-data-events";
 import type { StreamTerminalReason } from "@/lib/ai/stream-lifecycle";
+import { relocateReservedAssistantAfterTraceSuffix } from "@/lib/ai/assistant-turn-placement";
 import {
   buildClientErrorState,
   reconcileRunScopedRenderedErrors,
   isDeterministicCapabilityFailure,
   matchesCanonicalFailureFallback,
 } from "@/lib/ai/stream-error-ui";
+import { isArtifactReviewable } from "@/lib/artifacts/reviewability";
 import {
   createInitialSharedStreamState,
   reduceSharedStreamChunk,
@@ -64,6 +66,28 @@ function stripReservedAssistantTurn(items: TimelineItem[], assistantMessageId: s
     || item.content.length > 0
     || (item.reasoning?.text?.trim().length ?? 0) > 0
   ));
+}
+
+function isMoveableTimelineTraceOrProgressItem(item: TimelineItem): boolean {
+  if (item.type === "progress" || item.type === "tool_activity" || item.type === "checkpoint") {
+    return true;
+  }
+  if (item.type === "artifact") {
+    return !isArtifactReviewable(item.status);
+  }
+  return false;
+}
+
+function repairReservedAssistantPlacement(items: TimelineItem[], assistantMessageId: string): TimelineItem[] {
+  return relocateReservedAssistantAfterTraceSuffix(items, {
+    assistantId: assistantMessageId,
+    isReservedAssistant: (item, id) => (
+      item.type === "assistant_message"
+      && item.id === id
+      && item.deliveryState === "reserved"
+    ),
+    isMoveableTraceOrProgress: isMoveableTimelineTraceOrProgressItem,
+  });
 }
 
 export function shouldFailRunningToolsOnAbnormalEnd(
@@ -160,7 +184,7 @@ export function createAiStreamRuntime(deps: AiStreamRuntimeDeps): AiStreamRuntim
     updateCurrentTimeline((items) => {
       if (!progressItemId) {
         progressItemId = buildRuntimeItemId("progress", `${createdAt}-${items.length}`);
-        return [
+        return repairReservedAssistantPlacement([
           ...items,
           {
             type: "progress",
@@ -169,11 +193,11 @@ export function createAiStreamRuntime(deps: AiStreamRuntimeDeps): AiStreamRuntim
             current: intent.current,
             total: intent.total,
           },
-        ];
+        ], deps.aiMessageId);
       }
       const idx = items.findIndex((item) => item.type === "progress" && item.id === progressItemId);
       if (idx < 0) {
-        return [
+        return repairReservedAssistantPlacement([
           ...items,
           {
             type: "progress",
@@ -182,7 +206,7 @@ export function createAiStreamRuntime(deps: AiStreamRuntimeDeps): AiStreamRuntim
             current: intent.current,
             total: intent.total,
           },
-        ];
+        ], deps.aiMessageId);
       }
       const next = [...items];
       const existing = next[idx];
@@ -193,7 +217,7 @@ export function createAiStreamRuntime(deps: AiStreamRuntimeDeps): AiStreamRuntim
         current: intent.current,
         total: intent.total,
       };
-      return next;
+      return repairReservedAssistantPlacement(next, deps.aiMessageId);
     });
   };
 
@@ -202,7 +226,7 @@ export function createAiStreamRuntime(deps: AiStreamRuntimeDeps): AiStreamRuntim
     updateCurrentTimeline((items) => {
       const idx = items.findIndex((item) => item.type === "tool_activity" && item.callId === intent.callId);
       if (idx < 0) {
-        return [
+        return repairReservedAssistantPlacement([
           ...items,
           {
             type: "tool_activity",
@@ -226,7 +250,7 @@ export function createAiStreamRuntime(deps: AiStreamRuntimeDeps): AiStreamRuntim
             completedAt: intent.status === "done" || intent.status === "failed" ? ts : undefined,
             createdAt: ts,
           },
-        ];
+        ], deps.aiMessageId);
       }
       const next = [...items];
       const existing = next[idx];
@@ -251,7 +275,7 @@ export function createAiStreamRuntime(deps: AiStreamRuntimeDeps): AiStreamRuntim
             ? ts
             : existing.completedAt,
       };
-      return next;
+      return repairReservedAssistantPlacement(next, deps.aiMessageId);
     });
   };
 
@@ -271,11 +295,11 @@ export function createAiStreamRuntime(deps: AiStreamRuntimeDeps): AiStreamRuntim
             payload: intent.artifactPayload ?? existing.payload,
             version: intent.artifactVersion ?? existing.version,
           };
-          return next;
+          return repairReservedAssistantPlacement(next, deps.aiMessageId);
         }
       }
 
-      return [
+      return repairReservedAssistantPlacement([
         ...items,
         {
           type: "artifact",
@@ -288,7 +312,7 @@ export function createAiStreamRuntime(deps: AiStreamRuntimeDeps): AiStreamRuntim
           version: intent.artifactVersion ?? 1,
           createdAt: now(),
         },
-      ];
+      ], deps.aiMessageId);
     });
   };
 
@@ -297,7 +321,7 @@ export function createAiStreamRuntime(deps: AiStreamRuntimeDeps): AiStreamRuntim
       if (items.some((item) => item.type === "checkpoint" && item.label === intent.label)) {
         return items;
       }
-      return [
+      return repairReservedAssistantPlacement([
         ...items,
         {
           type: "checkpoint",
@@ -305,7 +329,7 @@ export function createAiStreamRuntime(deps: AiStreamRuntimeDeps): AiStreamRuntim
           label: intent.label,
           createdAt: now(),
         },
-      ];
+      ], deps.aiMessageId);
     });
   };
 

@@ -69,6 +69,46 @@ describe("TimelineRenderer execution trace collapse", () => {
     expect(screen.getByText("PubMed returned 10 results and the strongest matches are being reviewed now for relevance and outcome fit.")).not.toBeNull();
   });
 
+  it("renders open process details for a reserved streaming assistant after the trace suffix", () => {
+    renderTimeline([
+      {
+        type: "user_message",
+        id: "user-streaming-1",
+        content: "Find strong PubMed studies.",
+        createdAt: "2026-03-11T00:00:00.000Z",
+      },
+      {
+        type: "tool_activity",
+        id: "tool-streaming-1",
+        callId: "call-streaming-1",
+        toolName: "search_pubmed",
+        status: "running",
+        summary: "Searching PubMed.",
+        startedAt: "2026-03-11T00:00:01.000Z",
+        updatedAt: "2026-03-11T00:00:02.000Z",
+        createdAt: "2026-03-11T00:00:01.000Z",
+      },
+      {
+        type: "checkpoint",
+        id: "checkpoint-streaming-1",
+        label: "PubMed search is underway.",
+        createdAt: "2026-03-11T00:00:03.000Z",
+      },
+      {
+        type: "assistant_message",
+        id: "assistant-streaming-1",
+        content: "",
+        deliveryState: "reserved",
+        createdAt: "2026-03-11T00:00:04.000Z",
+      },
+    ], undefined, true);
+
+    expect(screen.queryByRole("button", { name: "Show process details" })).toBeNull();
+    expect(screen.getByLabelText("Process details")).not.toBeNull();
+    expect(screen.getByText("Searching PubMed.")).not.toBeNull();
+    expect(screen.getAllByText("PubMed search is underway.").length).toBeGreaterThanOrEqual(1);
+  });
+
   it("renders a collapsed process summary above the final assistant answer", () => {
     renderTimeline([
       {
