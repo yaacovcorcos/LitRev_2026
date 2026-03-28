@@ -343,7 +343,6 @@ export default function AIView() {
   const historyLoadPromiseRef = useRef<Promise<void> | null>(null);
   const workspaceContextPromiseRef = useRef<Promise<string> | null>(null);
   const aiEntryRestoreAttemptedScopeRef = useRef<string | null>(null);
-  const isMountedRef = useRef(true);
 
   const reasoningSupport: ReasoningSupportTier = useMemo(
     () => getReasoningSupportTier(selectedModel),
@@ -601,12 +600,6 @@ export default function AIView() {
   useEffect(() => {
     return () => {
       abortControllerRef.current?.abort();
-    };
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      isMountedRef.current = false;
     };
   }, []);
 
@@ -951,8 +944,7 @@ export default function AIView() {
     }
 
     const restoreScopeKey = historyScopeKey;
-    const shouldAbortRestore = () =>
-      !isMountedRef.current || currentHistoryScopeRef.current !== restoreScopeKey;
+    const shouldAbortRestore = () => currentHistoryScopeRef.current !== restoreScopeKey;
 
     void (async () => {
       try {
