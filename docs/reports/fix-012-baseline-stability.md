@@ -15,11 +15,14 @@ This file is evidence, not a parallel plan tracker.
 
 ## Current Status
 
-- `FIX-012` remains open in [plan-agentic.md](../plans/plan-agentic.md) as the active baseline rescue program.
-- This evidence record now captures current shipped baseline truth from code/tests plus the remaining manual evidence gap.
-- `FIX-012d` request-bound clarification, runtime fallback enforcement, and surface parity are now implemented and covered by automated tests.
-- The manual baseline scenario pack has not yet been fully executed and recorded here after the `FIX-012d` finish work.
-- `FIX-012` retirement is therefore **not yet auditable as complete**, even though important baseline behavior is already shipped.
+- `FIX-012` is retired in [plan-agentic.md](../plans/plan-agentic.md).
+- The baseline manual scenario pack was revalidated on 2026-03-28 through combined evidence:
+  - user-run manual validation across the main surfaces
+  - a final local dev spot-check on `/ai`, project main conversation, and project side-panel shell loading
+  - targeted blocked-clarification verification in `/ai`
+- The final closeout pass surfaced one last visible clarification regression: overlong cosmetic `ask_user.header` values could emit a spurious failed tool step before the valid blocking card rendered. That normalization bug was fixed before retirement and is now covered by automated tests.
+- `FIX-012d` request-bound clarification, runtime fallback enforcement, and surface parity remain implemented and covered by automated tests.
+- `FIX-012` retirement is now auditable as complete for the main surfaces. Longer-run burn-in proof remains owned by later-stage `U1.6`, not by `FIX-012`.
 
 ## Known Shipped Baseline
 
@@ -50,16 +53,16 @@ Record current outcomes for:
 
 | Scenario | Surface | Current status | Key finding | Owning `FIX-012` slice | Notes |
 |---|---|---|---|---|---|
-| Normal run | `/ai` | `not yet run` | Canonical post-reset manual evidence not yet recorded | `FIX-012c` | Runtime-led summary is shipped, but ordinary-use manual proof is still missing |
-| Tool-heavy run | `/ai` | `not yet run` | Canonical post-reset manual evidence not yet recorded | `FIX-012a` | Needs bounded recovery and trace-quality confirmation |
-| Long run | `/ai` | `not yet run` | Canonical post-reset manual evidence not yet recorded | `FIX-012f` | Only in scope if context/compaction issues still cause visible instability |
-| Main conversation run | project main conversation | `not yet run` | Canonical post-reset manual evidence not yet recorded | `FIX-012a` | Needs parity confirmation against `/ai` |
-| Side-panel copilot run | project side-panel copilot | `not yet run` | Canonical post-reset manual evidence not yet recorded | `FIX-012a` | Needs parity confirmation against `/ai` |
-| Interrupted run | main surfaces | `not yet run` | Canonical post-reset manual evidence not yet recorded | `FIX-012a` | Shared `failed_interrupted` exists, but baseline pack needs to verify UX truth |
-| Stale reconnect | main surfaces | `not yet run` | Canonical post-reset manual evidence not yet recorded | `FIX-012d` | Needs continue/retry/wait truth verification |
-| Ask-user pause/resume | main surfaces | `automated coverage landed; manual rerun pending` | Request-bound clarification, shared fallback order, and surface parity are implemented; manual recheck still required | `FIX-012d` | See automated evidence for route/runtime/surface coverage below |
-| Retry after failure | main surfaces | `not yet run` | Canonical post-reset manual evidence not yet recorded | `FIX-012a` | Needs bounded next-action verification |
-| Visible leak attempt | main surfaces | `not yet run` | Canonical post-reset manual evidence not yet recorded | `FIX-012b` | Known normalization exists, but scenario proof is still missing |
+| Normal run | `/ai` | `passed` | Default summary-mode answer flow stayed clean and understandable in ordinary use | `FIX-012c` | Revalidated in local dev during closeout on 2026-03-28 after user manual pass |
+| Tool-heavy run | `/ai` | `passed` | Live process trace and completed answer flow stayed bounded without visible machine scaffolding | `FIX-012a` | Manual validation from user plus closeout spot-check |
+| Long run | `/ai` | `passed` | No remaining baseline-blocking long-run instability was observed during manual validation | `FIX-012f` | Later burn-in depth remains `U1.6` scope, not baseline rescue scope |
+| Main conversation run | project main conversation | `passed` | Main conversation behavior remained aligned with `/ai` for baseline trust/usability | `FIX-012a` | User manual validation confirmed parity on the project main surface |
+| Side-panel copilot run | project side-panel copilot | `passed` | Side-panel remained a presentation variant of the shared runtime truth | `FIX-012a` | User manual validation confirmed parity on the side-panel surface |
+| Interrupted run | main surfaces | `passed` | Recovery remained bounded and truthful enough to avoid baseline-closeout blockers | `FIX-012a` | User manual validation did not surface contradictory next actions |
+| Stale reconnect | main surfaces | `passed` | No dead-end reconnect trap remained in the validated baseline scenarios | `FIX-012d` | Manual validation plus shared recovery contract/tests closed the remaining gate |
+| Ask-user pause/resume | main surfaces | `passed` | Request-bound clarification resumed the paused request with explicit answer/default/cancel exits | `FIX-012d` | Final closeout spot-check found one header-normalization leak and fixed it before retirement |
+| Retry after failure | main surfaces | `passed` | Retry/recovery affordances no longer blocked baseline closeout with contradictory UX | `FIX-012a` | Manual validation did not uncover a remaining shared recovery-action drift |
+| Visible leak attempt | main surfaces | `passed` | No visible continuation/runtime scaffolding remained in ordinary-use validation on the main surfaces | `FIX-012b` | Known normalizers plus closeout spot-check kept visible chat clean |
 
 ## Failure Catalog
 
@@ -77,11 +80,11 @@ For each open failure, record:
 
 | Failure ID | Symptom | Surface | Provider/model | Failure class | Owning `FIX-012` slice | Current status | Notes |
 |---|---|---|---|---|---|---|---|
-| `FIX12-LEAK-001` | Ordinary use can still expose continuation/runtime scaffolding or other machine-only payloads in visible chat | main surfaces | varies | visible-channel leak | `FIX-012b` | `open` | This is the top visible-output blocker tracked in [plan-agentic.md](/Users/yaacovcorcos/LitRev_2026/docs/plans/plan-agentic.md) |
-| `FIX12-REC-001` | Interrupted or broken runs can still produce contradictory, dead-end, or misleading next actions | main surfaces | varies | continuation/recovery failure | `FIX-012a` | `open` | Shared recovery truth is shipped in part, but closeout evidence is not complete |
-| `FIX12-ASK-001` | A blocked clarification could re-enter repeated `ask_user` loops, or surface resume through plain user-turn hacks instead of the paused request | main surfaces | varies | continuation/recovery failure | `FIX-012d` | `implemented_pending_manual_validation` | Request-bound resume, runtime fallback, and surface parity are now covered automatically; manual baseline rerun still required before closeout |
-| `FIX12-TRACE-001` | Default transparency can still feel noisy or low-value in ordinary use even without provider reasoning | main surfaces | varies | runtime-summary weakness | `FIX-012c` | `open` | Runtime-led summary is shipped, but qualitative baseline proof is still missing |
-| `FIX12-LONG-001` | Long-running tasks are still not proven stable enough for burn-in-quality confidence | main surfaces | varies | context overload or orchestration drift | `FIX-012f` | `open` | Keep narrow; only baseline-breaking long-run issues belong here |
+| `FIX12-LEAK-001` | Ordinary use can still expose continuation/runtime scaffolding or other machine-only payloads in visible chat | main surfaces | varies | visible-channel leak | `FIX-012b` | `closed` | Manual validation plus final closeout spot-check did not reproduce visible scaffolding on the main surfaces |
+| `FIX12-REC-001` | Interrupted or broken runs can still produce contradictory, dead-end, or misleading next actions | main surfaces | varies | continuation/recovery failure | `FIX-012a` | `closed` | Baseline closeout validation did not surface a remaining bounded-next-action failure on the main surfaces |
+| `FIX12-ASK-001` | A blocked clarification could re-enter repeated `ask_user` loops, or surface resume through plain user-turn hacks instead of the paused request | main surfaces | varies | continuation/recovery failure | `FIX-012d` | `closed` | Request-bound resume, runtime fallback, surface parity, and closeout-time header normalization are now in place and validated |
+| `FIX12-TRACE-001` | Default transparency can still feel noisy or low-value in ordinary use even without provider reasoning | main surfaces | varies | runtime-summary weakness | `FIX-012c` | `closed` | Runtime-led summary stayed understandable in the validated baseline scenarios without relying on provider reasoning |
+| `FIX12-LONG-001` | Long-running tasks are still not proven stable enough for burn-in-quality confidence | main surfaces | varies | context overload or orchestration drift | `FIX-012f` | `closed_for_baseline` | No baseline-blocking long-run instability remains; later burn-in proof belongs to `U1.6` |
 
 ## Automated Evidence
 
@@ -102,7 +105,7 @@ Record the relevant automated coverage or eval evidence for:
 | Durable continuation and recovery truth | `partially covered` | [durable-continuation.test.ts](/Users/yaacovcorcos/LitRev_2026/next-app/lib/server/__tests__/durable-continuation.test.ts), [run-recovery.test.ts](/Users/yaacovcorcos/LitRev_2026/next-app/lib/server/__tests__/run-recovery.test.ts) |
 | Request-bound clarification identity, fallback order, and route telemetry | `covered` | [clarification-controller.test.ts](/Users/yaacovcorcos/LitRev_2026/next-app/lib/server/__tests__/clarification-controller.test.ts), [scoping-workflow.test.ts](/Users/yaacovcorcos/LitRev_2026/next-app/lib/server/__tests__/scoping-workflow.test.ts), [scoping-runtime.test.ts](/Users/yaacovcorcos/LitRev_2026/next-app/lib/server/__tests__/scoping-runtime.test.ts), [route.test.ts](/Users/yaacovcorcos/LitRev_2026/next-app/app/api/ai/stream/__tests__/route.test.ts), [chat-unification-metrics.test.ts](/Users/yaacovcorcos/LitRev_2026/next-app/lib/server/__tests__/chat-unification-metrics.test.ts) |
 | `/ai` + project clarification surface parity | `covered` | [page.test.tsx](/Users/yaacovcorcos/LitRev_2026/next-app/app/ai/__tests__/page.test.tsx), [ConversationMainView.test.tsx](/Users/yaacovcorcos/LitRev_2026/next-app/components/project/__tests__/ConversationMainView.test.tsx), [ProjectCopilot.test.tsx](/Users/yaacovcorcos/LitRev_2026/next-app/components/__tests__/ProjectCopilot.test.tsx), [project-copilot-stream-events.test.ts](/Users/yaacovcorcos/LitRev_2026/next-app/contexts/__tests__/project-copilot-stream-events.test.ts) |
-| Manual baseline scenario pack | `not yet recorded here` | Required before `FIX-012` retirement |
+| Manual baseline scenario pack | `recorded` | User manual validation plus 2026-03-28 local closeout spot-checks on the main surfaces |
 
 ## Popup Non-Blocking Note
 
@@ -114,11 +117,11 @@ Popup remains a reduced honest subset and does not block `FIX-012` retirement. R
 
 ### Current gate status
 
-`FIX-012` retirement gate status: `not yet satisfied`
+`FIX-012` retirement gate status: `satisfied`
 
-Still missing:
+Recorded closeout basis:
 
-- recorded manual results for the baseline scenario pack on `/ai`, project main conversation, and side-panel copilot
-- canonical proof that the known visible leak families no longer surface in ordinary use on the main surfaces
-- canonical proof that ordinary-use recovery always converges to one bounded truthful next action
-- canonical proof that default transparency is consistently understandable in ordinary use without provider reasoning
+- manual baseline validation was completed by the user on the main surfaces
+- final local closeout spot-checks on 2026-03-28 revalidated `/ai` plus project shell loading and blocked clarification behavior
+- visible leak, clarification-loop, and bounded-recovery gates are backed by both the manual closeout pass and the automated evidence listed above
+- the last remaining closeout-time clarification regression was fixed before retirement rather than waived

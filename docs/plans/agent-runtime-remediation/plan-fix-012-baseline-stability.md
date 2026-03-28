@@ -4,6 +4,12 @@
 
 This is the supporting execution plan for `FIX-012` in [plan-agentic.md](../plan-agentic.md).
 
+## Status
+
+`FIX-012` is retired.
+
+Use this document as supporting implementation history and closeout criteria reference only. The retirement authority and post-closeout ordering now live in [plan-agentic.md](../plan-agentic.md), with the final evidence record in [docs/reports/fix-012-baseline-stability.md](../../reports/fix-012-baseline-stability.md).
+
 Use this file for:
 
 - the concrete rescue structure for baseline agent stability
@@ -176,6 +182,17 @@ All recurring failures should map to one of these classes:
 5. `FIX-012d` blocking runtime primitives and checkpointed continuation cleanup only where still needed for bounded next actions
 6. `FIX-012e` only for mutation/receipt gaps that are currently breaking baseline trust
 7. `FIX-012f` only for context/compaction issues that are currently causing visible instability or recovery brittleness
+
+## Closeout Outcome
+
+`FIX-012` retired once the evidence record showed all of the following on the main surfaces:
+
+- ordinary-use visible chat no longer leaked continuation/runtime scaffolding
+- default transparency stayed comprehensible without provider reasoning
+- recovery/continuation converged to bounded truthful next actions in the validated baseline scenarios
+- blocking clarification resumed the paused request, exposed explicit exits, and no longer depended on plain user-turn hacks
+
+Any later long-run or cross-surface sign-off work now belongs to `FIX-011b` and `U1.6`, not to this rescue plan.
 
 ## First-Wave Rescue Tracks
 
