@@ -8,6 +8,7 @@ import {
   type SharedStreamIntent,
   type SharedStreamState,
 } from "@/lib/ai/shared-stream-reducer";
+import { relocateReservedAssistantAfterTraceSuffix } from "@/lib/ai/assistant-turn-placement";
 import { isNavigationSafe } from "@/lib/ai/navigation-safety";
 import {
   buildClientErrorState,
@@ -15,6 +16,7 @@ import {
   matchesCanonicalFailureFallback,
 } from "@/lib/ai/stream-error-ui";
 import { ABNORMAL_END_TOOL_FAILURE_SUMMARY } from "@/lib/ai/ai-stream-runtime";
+import { isArtifactReviewable } from "@/lib/artifacts/reviewability";
 
 export type StreamMutableState = SharedStreamState;
 
@@ -101,7 +103,7 @@ function upsertAssistantMessage(
         createdAt: new Date().toISOString(),
         context: { page: deps.page, section: deps.section },
       };
-      return [...messages, message];
+      return repairReservedAssistantPlacement([...messages, message], deps.aiMessageId);
     }
 
     const next = [...messages];
@@ -113,7 +115,7 @@ function upsertAssistantMessage(
       reasoning: payload.reasoning ?? existing.reasoning,
       deliveryState: undefined,
     };
-    return next;
+    return repairReservedAssistantPlacement(next, deps.aiMessageId);
   });
 }
 
@@ -157,6 +159,31 @@ function stripReservedAssistantMessage(
   ));
 }
 
+function isMoveableProjectTraceOrProgressMessage(message: CopilotMessage): boolean {
+  if (message.progress || message.toolActivity || message.checkpoint) {
+    return true;
+  }
+  if (message.artifact) {
+    return !isArtifactReviewable(message.artifact.status as ArtifactStatus);
+  }
+  return false;
+}
+
+function repairReservedAssistantPlacement(
+  messages: CopilotMessage[],
+  assistantMessageId: string,
+): CopilotMessage[] {
+  return relocateReservedAssistantAfterTraceSuffix(messages, {
+    assistantId: assistantMessageId,
+    isReservedAssistant: (message, id) => (
+      message.id === id
+      && message.sender === "ai"
+      && message.deliveryState === "reserved"
+    ),
+    isMoveableTraceOrProgress: isMoveableProjectTraceOrProgressMessage,
+  });
+}
+
 function upsertProgressMessage(
   deps: StreamChunkDeps,
   payload: Extract<SharedStreamIntent, { type: "progress_upsert" }>,
@@ -180,7 +207,7 @@ function upsertProgressMessage(
           total: payload.total,
         },
       };
-      return [...scopedMessages, nextMessage];
+      return repairReservedAssistantPlacement([...scopedMessages, nextMessage], deps.aiMessageId);
     }
 
     const next = [...scopedMessages];
@@ -192,7 +219,7 @@ function upsertProgressMessage(
         total: payload.total,
       },
     };
-    return next;
+    return repairReservedAssistantPlacement(next, deps.aiMessageId);
   });
 }
 
@@ -231,7 +258,7 @@ function upsertToolActivityMessage(
           completedAt: payload.status === "done" || payload.status === "failed" ? now : undefined,
         },
       };
-      return [...messages, nextMessage];
+      return repairReservedAssistantPlacement([...messages, nextMessage], deps.aiMessageId);
     }
 
     const next = [...messages];
@@ -255,7 +282,7 @@ function upsertToolActivityMessage(
             : existing.toolActivity.completedAt,
       },
     };
-    return next;
+    return repairReservedAssistantPlacement(next, deps.aiMessageId);
   });
 }
 
@@ -322,7 +349,7 @@ function appendCheckpointMessage(
         label: payload.label,
       },
     };
-    return [...messages, nextMessage];
+    return repairReservedAssistantPlacement([...messages, nextMessage], deps.aiMessageId);
   });
 }
 
@@ -399,7 +426,7 @@ function emitArtifactMessage(
       version: payload.artifactVersion ?? 1,
     },
   };
-  deps.updateMessages((messages) => [...messages, artifactMessage]);
+  deps.updateMessages((messages) => repairReservedAssistantPlacement([...messages, artifactMessage], deps.aiMessageId));
 }
 
 function applyIntent(

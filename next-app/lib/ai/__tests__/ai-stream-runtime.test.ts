@@ -7,6 +7,61 @@ import {
 import type { TimelineItem } from "@/types/timeline";
 
 describe("createAiStreamRuntime", () => {
+  it("moves the reserved assistant behind live trace items and reuses that row for the final answer", () => {
+    const timeline = new Map<string, TimelineItem[]>();
+    const getItems = (conversationId: string) => timeline.get(conversationId) ?? [];
+
+    const runtime = createAiStreamRuntime({
+      aiMessageId: "ai-1",
+      page: "overview",
+      section: "protocol",
+      initialConversationId: "conv-1",
+      selectedProjectId: "project-1",
+      myGen: 1,
+      getCurrentGen: () => 1,
+      updateConversationTimeline: (conversationId, updater) => {
+        timeline.set(conversationId, updater(getItems(conversationId)));
+      },
+      ensureConversationTimeline: (conversationId) => {
+        timeline.set(conversationId, getItems(conversationId));
+      },
+      setActiveConversationId: vi.fn(),
+      upsertConversationTitle: vi.fn(),
+      setPendingChoices: vi.fn(),
+      setPendingUserInput: vi.fn(),
+      onNavigate: vi.fn(),
+    });
+
+    runtime.reserveAssistantTurn();
+    runtime.handleChunk({
+      type: "checkpoint",
+      checkpointLabel: "PubMed returned 10 results.",
+    });
+
+    expect(getItems("conv-1").map((item) => item.id)).toEqual([
+      expect.stringMatching(/^checkpoint-/),
+      "ai-1",
+    ]);
+    expect(getItems("conv-1").filter((item) => item.type === "assistant_message")).toHaveLength(1);
+
+    runtime.handleChunk({
+      type: "content",
+      content: "I found several strong studies.",
+    });
+
+    expect(getItems("conv-1").map((item) => item.id)).toEqual([
+      expect.stringMatching(/^checkpoint-/),
+      "ai-1",
+    ]);
+    expect(getItems("conv-1").filter((item) => item.type === "assistant_message")).toHaveLength(1);
+    expect(getItems("conv-1")[1]).toMatchObject({
+      type: "assistant_message",
+      id: "ai-1",
+      content: "I found several strong studies.",
+      deliveryState: undefined,
+    });
+  });
+
   it("flags only abnormal failure terminal reasons for unfinished-tool cleanup", () => {
     expect(shouldFailRunningToolsOnAbnormalEnd("failed_interrupted")).toBe(true);
     expect(shouldFailRunningToolsOnAbnormalEnd("failed_network")).toBe(true);

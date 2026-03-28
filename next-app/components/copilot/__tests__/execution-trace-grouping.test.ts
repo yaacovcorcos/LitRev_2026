@@ -152,6 +152,59 @@ describe("buildExecutionTraceEntries", () => {
     expect(entries[1].traceItems).toHaveLength(2);
   });
 
+  it("keeps a streaming reserved assistant after the trace suffix so the live turn still renders open process details", () => {
+    const items: TimelineItem[] = [
+      {
+        type: "user_message",
+        id: "user-streaming-1",
+        content: "Search PubMed and summarize the best studies.",
+        createdAt: "2026-03-11T00:00:00.000Z",
+      },
+      {
+        type: "tool_activity",
+        id: "tool-streaming-1",
+        callId: "call-streaming-1",
+        toolName: "search_pubmed",
+        status: "running",
+        summary: "Searching PubMed.",
+        startedAt: "2026-03-11T00:00:01.000Z",
+        updatedAt: "2026-03-11T00:00:02.000Z",
+        createdAt: "2026-03-11T00:00:01.000Z",
+      },
+      {
+        type: "checkpoint",
+        id: "checkpoint-streaming-1",
+        label: "PubMed search is underway.",
+        createdAt: "2026-03-11T00:00:03.000Z",
+      },
+      {
+        type: "assistant_message",
+        id: "assistant-streaming-1",
+        content: "",
+        deliveryState: "reserved",
+        createdAt: "2026-03-11T00:00:04.000Z",
+      },
+    ];
+
+    const entries = buildExecutionTraceEntries(items, { streamingAssistantMessageId: "assistant-streaming-1" });
+    expect(entries).toHaveLength(2);
+    expect(entries[0]).toMatchObject({
+      kind: "single",
+      item: expect.objectContaining({ id: "user-streaming-1", type: "user_message" }),
+    });
+    if (entries[1]?.kind !== "execution_trace") throw new Error("expected execution trace");
+    expect(entries[1]).toMatchObject({
+      mode: "anchored",
+      anchorAssistantMessageId: "assistant-streaming-1",
+      canCollapse: false,
+      defaultCollapsed: false,
+    });
+    expect(entries[1].assistantMessage).toMatchObject({
+      id: "assistant-streaming-1",
+      deliveryState: "reserved",
+    });
+  });
+
   it("skips collapse when an answer is immediately followed by a blocking prompt", () => {
     const items: TimelineItem[] = [
       {

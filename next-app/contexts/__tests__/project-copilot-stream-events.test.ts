@@ -6,6 +6,7 @@ import { messagesToTimeline } from "@/components/copilot/StreamReducer";
 import {
   failRunningProjectToolActivityMessages,
   handleProjectCopilotStreamChunk,
+  reserveProjectCopilotAssistantTurn,
   type StreamMutableState,
 } from "@/contexts/project-copilot-stream-events";
 
@@ -197,6 +198,61 @@ describe("project copilot stream event handlers", () => {
     expect(state.fullContent).toBe("Found relevant studies.");
   });
 
+  it("moves the reserved assistant behind live trace messages and reuses that row for the final answer", () => {
+    const messages: CopilotMessage[] = [];
+    const deps = {
+      aiMessageId: "m-1",
+      page: "overview" as const,
+      section: undefined,
+      projectId: "p-1",
+      myGen: 1,
+      getCurrentGen: () => 1,
+      setCurrentRunId: vi.fn(),
+      syncConversationId: vi.fn(),
+      upsertConversationTitle: vi.fn(),
+      upsertArtifact: vi.fn(),
+      updateMessages: (updater: (msgs: CopilotMessage[]) => CopilotMessage[]) => {
+        const next = updater(messages);
+        messages.splice(0, messages.length, ...next);
+      },
+      emitLedgerChanged: vi.fn(),
+      setPendingChoices: vi.fn(),
+      onPlanStepUpdate: vi.fn(),
+      setPendingUserInput: vi.fn(),
+    };
+
+    let state = reserveProjectCopilotAssistantTurn(baseState(), deps);
+    state = handleProjectCopilotStreamChunk(
+      { type: "checkpoint", checkpointLabel: "PubMed returned 18 results." },
+      state,
+      deps,
+    );
+
+    expect(messages.map((message) => message.id)).toEqual([
+      expect.stringMatching(/^checkpoint-/),
+      "m-1",
+    ]);
+    expect(messages.filter((message) => message.id === "m-1")).toHaveLength(1);
+
+    handleProjectCopilotStreamChunk(
+      { type: "content", content: "I found the strongest matches." },
+      state,
+      deps,
+    );
+
+    expect(messages.map((message) => message.id)).toEqual([
+      expect.stringMatching(/^checkpoint-/),
+      "m-1",
+    ]);
+    expect(messages.filter((message) => message.id === "m-1")).toHaveLength(1);
+    expect(messages[1]).toMatchObject({
+      id: "m-1",
+      sender: "ai",
+      text: "I found the strongest matches.",
+      deliveryState: undefined,
+    });
+  });
+
   it("stores checkpoint intents as structured project messages", () => {
     const messages: CopilotMessage[] = [];
     const deps = {
@@ -259,7 +315,7 @@ describe("project copilot stream event handlers", () => {
       setPendingUserInput: vi.fn(),
     };
 
-    let state = handleProjectCopilotStreamChunk(
+    const state = handleProjectCopilotStreamChunk(
       {
         type: "user_input_required",
         userInputRequest: {
@@ -273,7 +329,7 @@ describe("project copilot stream event handlers", () => {
       deps,
     );
 
-    state = handleProjectCopilotStreamChunk(
+    handleProjectCopilotStreamChunk(
       {
         type: "user_input_resolved",
         userInputResolution: {
@@ -574,7 +630,7 @@ describe("project copilot stream event handlers", () => {
       setPendingUserInput: vi.fn(),
     };
 
-    let state = handleProjectCopilotStreamChunk(
+    const state = handleProjectCopilotStreamChunk(
       {
         type: "tool_call",
         toolCall: {
@@ -586,7 +642,7 @@ describe("project copilot stream event handlers", () => {
       baseState(),
       deps
     );
-    state = handleProjectCopilotStreamChunk(
+    handleProjectCopilotStreamChunk(
       {
         type: "tool_result",
         toolResult: {
