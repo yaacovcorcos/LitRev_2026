@@ -239,6 +239,7 @@ export async function POST(request: NextRequest) {
                     let clarificationResumeConversationId: string | null = runtimeOptions.conversationId ?? null;
                     let clarificationResumeStarted = false;
                     let clarificationResumeFailureRecorded = false;
+                    let handledClarificationResolutionWithoutStream = false;
                     const maybeRecordRunEndMetric = async () => {
                         if (!lastRunEnd || lastRunEnd.type !== "run_end") return;
                         if (typeof crypto === "undefined" || typeof crypto.randomUUID !== "function") return;
@@ -382,22 +383,65 @@ export async function POST(request: NextRequest) {
                                 userInputResolution: resolvedUserInput,
                                 conversationId: pendingUserInputSource.conversationId ?? runtimeOptions.conversationId,
                             });
-                            runtimeOptions = {
-                                ...runtimeOptions,
-                                continueFromRunId: runtimeOptions.continueFromRunId ?? pendingUserInputSource.sourceRunId,
-                                replaceRunId: runtimeOptions.replaceRunId ?? pendingUserInputSource.sourceRunId,
-                                persistUserMessage: false,
-                                persistedUserMessageContent: undefined,
-                                persistedUserMessageId: undefined,
-                                userInputResolution: resolvedUserInput,
-                            };
-                            effectiveUserMessage = buildClarificationResolutionUserMessage({
-                                userMessage,
-                                request: pendingUserInputSource.request,
-                                resolution: resolvedUserInput,
-                            });
+                            const explicitUserMessage = userMessage?.trim() ?? "";
+                            const isCancelledResolution = resolvedUserInput.resolution === "cancelled";
+                            const startsFreshRun = isCancelledResolution && explicitUserMessage.length > 0;
+                            const isTerminalDismissal = isCancelledResolution && explicitUserMessage.length === 0;
 
-                            if (runtimeOptions.continueFromRunId) {
+                            if (isTerminalDismissal) {
+                                runtimeOptions = {
+                                    ...runtimeOptions,
+                                    continueFromRunId: undefined,
+                                    replaceRunId: undefined,
+                                    parentRunId: undefined,
+                                    userInputResolution: undefined,
+                                };
+                                resolutionContinuationContext = undefined;
+                                lastRunEnd = {
+                                    type: "run_end",
+                                    runId: pendingUserInputSource.sourceRunId,
+                                    runStatus: "cancelled",
+                                    stopReason: "cancelled",
+                                    conversationId: pendingUserInputSource.conversationId ?? runtimeOptions.conversationId ?? undefined,
+                                };
+                                await coalescer.push(lastRunEnd);
+                                handledClarificationResolutionWithoutStream = true;
+                                await emitClarificationRuntimeMetric(
+                                    "ask_user_cancelled",
+                                    clarificationResumeMetricPayload,
+                                    clarificationResumeRunId,
+                                    clarificationResumeConversationId,
+                                );
+                            } else if (startsFreshRun) {
+                                runtimeOptions = {
+                                    ...runtimeOptions,
+                                    continueFromRunId: undefined,
+                                    replaceRunId: undefined,
+                                    parentRunId: undefined,
+                                    userInputResolution: undefined,
+                                };
+                                effectiveUserMessage = explicitUserMessage;
+                                await emitClarificationRuntimeMetric(
+                                    "ask_user_cancelled",
+                                    clarificationResumeMetricPayload,
+                                    clarificationResumeRunId,
+                                    clarificationResumeConversationId,
+                                );
+                            } else {
+                                runtimeOptions = {
+                                    ...runtimeOptions,
+                                    continueFromRunId: runtimeOptions.continueFromRunId ?? pendingUserInputSource.sourceRunId,
+                                    replaceRunId: runtimeOptions.replaceRunId ?? pendingUserInputSource.sourceRunId,
+                                    persistUserMessage: false,
+                                    persistedUserMessageContent: undefined,
+                                    persistedUserMessageId: undefined,
+                                    userInputResolution: resolvedUserInput,
+                                };
+                                effectiveUserMessage = buildClarificationResolutionUserMessage({
+                                    userMessage,
+                                    request: pendingUserInputSource.request,
+                                    resolution: resolvedUserInput,
+                                });
                                 const clarificationControllerState = await hydrateClarificationControllerState({
                                     sourceRunId: pendingUserInputSource.sourceRunId,
                                 });
@@ -410,69 +454,68 @@ export async function POST(request: NextRequest) {
                                     ...runtimeOptions,
                                     parentRunId: pendingUserInputSource.sourceRunId,
                                 };
-                            }
-                            clarificationResumeStarted = true;
-                            await emitClarificationRuntimeMetric(
-                                "ask_user_answer_resume_started",
-                                clarificationResumeMetricPayload,
-                                clarificationResumeRunId,
-                                clarificationResumeConversationId,
-                            );
-                            if (resolvedUserInput.resolution === "cancelled") {
+                                clarificationResumeStarted = true;
                                 await emitClarificationRuntimeMetric(
-                                    "ask_user_cancelled",
+                                    "ask_user_answer_resume_started",
                                     clarificationResumeMetricPayload,
                                     clarificationResumeRunId,
                                     clarificationResumeConversationId,
                                 );
-                            }
-                            if (resolvedUserInput.resolution === "accept_recommended") {
-                                await emitClarificationRuntimeMetric(
-                                    "ask_user_recommended_default_used",
-                                    clarificationResumeMetricPayload,
-                                    clarificationResumeRunId,
-                                    clarificationResumeConversationId,
-                                );
+                                if (resolvedUserInput.resolution === "accept_recommended") {
+                                    await emitClarificationRuntimeMetric(
+                                        "ask_user_recommended_default_used",
+                                        clarificationResumeMetricPayload,
+                                        clarificationResumeRunId,
+                                        clarificationResumeConversationId,
+                                    );
+                                }
                             }
                         }
 
-                        const continuationSourceRunId = runtimeOptions.continueFromRunId ?? scopedOptions.continueFromRunId;
-                        const continuationContext = continuationSourceRunId
-                            ? (resolutionContinuationContext ?? await (async () => {
-                                const checkpointSource = await resolveLatestValidRunCheckpoint({
-                                    runId: continuationSourceRunId,
-                                    conversationId: scopedOptions.conversationId ?? null,
-                                });
-                                if (checkpointSource) {
-                                    return buildCheckpointContinuationContext(checkpointSource);
-                                }
+                        if (!handledClarificationResolutionWithoutStream) {
+                            const continuationSourceRunId =
+                                runtimeOptions.continueFromRunId ?? scopedOptions.continueFromRunId;
+                            const continuationContext = continuationSourceRunId
+                                ? (resolutionContinuationContext ?? await (async () => {
+                                    const checkpointSource = await resolveLatestValidRunCheckpoint({
+                                        runId: continuationSourceRunId,
+                                        conversationId: scopedOptions.conversationId ?? null,
+                                    });
+                                    if (checkpointSource) {
+                                        return buildCheckpointContinuationContext(checkpointSource);
+                                    }
 
-                                const source = await resolveDurableContinuationSource({
-                                    runId: continuationSourceRunId,
-                                    conversationId: scopedOptions.conversationId ?? null,
-                                });
-                                if (!source) {
-                                    throw new AIErrorWithEnvelope(
-                                        createContinuationUnavailableErrorEnvelope({
-                                            runId: continuationSourceRunId,
-                                        }),
-                                    );
-                                }
-                                return buildDurableContinuationContext(source);
-                            })())
-                            : undefined;
-                        runtimeOptions = {
-                            ...runtimeOptions,
-                            continuationContext,
-                        };
+                                    const source = await resolveDurableContinuationSource({
+                                        runId: continuationSourceRunId,
+                                        conversationId: scopedOptions.conversationId ?? null,
+                                    });
+                                    if (!source) {
+                                        throw new AIErrorWithEnvelope(
+                                            createContinuationUnavailableErrorEnvelope({
+                                                runId: continuationSourceRunId,
+                                            }),
+                                        );
+                                    }
+                                    return buildDurableContinuationContext(source);
+                                })())
+                                : undefined;
+                            runtimeOptions = {
+                                ...runtimeOptions,
+                                continuationContext,
+                            };
+                        }
                         surface = deriveChatUnificationSurface(runtimeOptions);
                         streamPhase = deriveChatUnificationStreamPhase({
                             options: runtimeOptions,
                             isPlanExecution: Boolean(mergedPlanId),
                         });
 
+                        if (handledClarificationResolutionWithoutStream) {
+                            // Structured blocked-card cancel is terminal: the request is resolved and the
+                            // client receives a synthetic cancelled run_end without starting a new run.
+                        }
                         // If using conversation memory — use artifact-aware streaming
-                        if ((effectiveUserMessage || planId || runtimeOptions.userInputResolution) && context) {
+                        else if ((effectiveUserMessage || planId || runtimeOptions.userInputResolution) && context) {
                             for await (const chunk of service.streamChatWithArtifacts(
                                 effectiveUserMessage || "", context, { ...runtimeOptions, planId: mergedPlanId, selectedSteps, signal: request.signal }
                             )) {

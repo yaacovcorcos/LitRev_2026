@@ -75,6 +75,12 @@ import { resolveReasoningRequest } from "@/lib/ai/reasoning-request";
 import {
   createQueuedFollowUp,
 } from "@/lib/ai/queued-followup";
+import {
+  clearAiEntryRestoreState,
+  decideAiEntryRestore,
+  markAiRecoverableRun,
+  readAiEntryRestoreState,
+} from "@/lib/ai/ai-entry-restore";
 import { useQueuedFollowUpController } from "@/hooks/useQueuedFollowUpController";
 import { useResetMutableRefWhen } from "@/hooks/useResetMutableRefWhen";
 import {
@@ -336,6 +342,7 @@ export default function AIView() {
   const historyLoadedScopeRef = useRef<string | null>(null);
   const historyLoadPromiseRef = useRef<Promise<void> | null>(null);
   const workspaceContextPromiseRef = useRef<Promise<string> | null>(null);
+  const aiEntryRestoreAttemptedScopeRef = useRef<string | null>(null);
 
   const reasoningSupport: ReasoningSupportTier = useMemo(
     () => getReasoningSupportTier(selectedModel),
@@ -436,11 +443,40 @@ export default function AIView() {
     router.push(url);
   }, [router]);
 
+  const markRecoverableAiEntry = useCallback((params: {
+    conversationId: string;
+    runId: string;
+  }) => {
+    markAiRecoverableRun(selectedProjectId, params);
+  }, [selectedProjectId]);
+
+  const clearRecoverableAiEntry = useCallback(() => {
+    clearAiEntryRestoreState(selectedProjectId);
+  }, [selectedProjectId]);
+
   const handleRunIntent = useCallback((intent: SharedStreamIntent) => {
     if (intent.type === "run_set") {
       currentRunIdRef.current = intent.runId;
+      const conversationId = activeConversationIdRef.current;
+      if (intent.runId && conversationId) {
+        markRecoverableAiEntry({
+          conversationId,
+          runId: intent.runId,
+        });
+      }
     }
-  }, []);
+  }, [markRecoverableAiEntry]);
+
+  const setPendingUserInputWithRestore = useCallback((request: UserInputRequest | null) => {
+    setPendingUserInput(request);
+    const conversationId = activeConversationIdRef.current;
+    const sourceRunId = request?.sourceRunId?.trim();
+    if (!request || !conversationId || !sourceRunId) return;
+    markRecoverableAiEntry({
+      conversationId,
+      runId: sourceRunId,
+    });
+  }, [markRecoverableAiEntry]);
 
   const emitMobileActionTap = useCallback((actionId: string, targetMinPx?: number) => {
     if (!isMobileTelemetryContext()) return;
@@ -772,6 +808,10 @@ export default function AIView() {
     page: CopilotPage;
     section?: string;
   }) => {
+    markRecoverableAiEntry({
+      conversationId: params.conversationId,
+      runId: params.runId,
+    });
     const currentItems = timelineByConversationRef.current[params.conversationId] ?? [];
     const { aiMessageId, initialStreamState } = buildAiRecoverySeed(
       currentItems,
@@ -792,7 +832,7 @@ export default function AIView() {
       setActiveConversationId,
       upsertConversationTitle,
       setPendingChoices,
-      setPendingUserInput,
+      setPendingUserInput: setPendingUserInputWithRestore,
       onIntent: handleRunIntent,
       onNavigate: handleNavigate,
     });
@@ -808,10 +848,11 @@ export default function AIView() {
     ensureConversationTimeline,
     handleNavigate,
     handleRunIntent,
+    markRecoverableAiEntry,
     selectedProjectId,
     setActiveConversationId,
     setPendingChoices,
-    setPendingUserInput,
+    setPendingUserInputWithRestore,
     updateConversationTimeline,
     upsertConversationTitle,
   ]);
@@ -882,6 +923,64 @@ export default function AIView() {
       setIsConversationLoading(false);
     }
   }, [isPhoneViewport, mobileAiV2Enabled, timelineByConversation, updateConversationTimeline]);
+
+  useEffect(() => {
+    if (historyLoadedScopeRef.current !== historyScopeKey) return;
+    if (aiEntryRestoreAttemptedScopeRef.current === historyScopeKey) return;
+    aiEntryRestoreAttemptedScopeRef.current = historyScopeKey;
+    if (activeConversationIdRef.current) return;
+
+    const restoreDecision = decideAiEntryRestore(
+      readAiEntryRestoreState(selectedProjectId),
+      Date.now(),
+      new Set(conversations.map((conversation) => conversation.id)),
+    );
+
+    if (!restoreDecision.shouldRestore) {
+      if (restoreDecision.reason === "ttl_expired" || restoreDecision.reason === "conversation_invalid") {
+        clearRecoverableAiEntry();
+      }
+      return;
+    }
+
+    const restoreScopeKey = historyScopeKey;
+    const shouldAbortRestore = () => currentHistoryScopeRef.current !== restoreScopeKey;
+
+    void (async () => {
+      try {
+        if (shouldAbortRestore()) return;
+        await handleSelectConversation(restoreDecision.conversationId);
+        if (shouldAbortRestore()) return;
+        const recoveryResult = await recoverConversationRun({
+          conversationId: restoreDecision.conversationId,
+          runId: restoreDecision.runId,
+          page: "ai",
+        });
+        if (shouldAbortRestore()) return;
+        if (recoveryResult.outcome !== "recovered") {
+          clearRecoverableAiEntry();
+          return;
+        }
+        if (
+          recoveryResult.response?.runStatus === "completed"
+          || recoveryResult.response?.runStatus === "cancelled"
+        ) {
+          clearRecoverableAiEntry();
+        }
+      } catch {
+        if (!shouldAbortRestore()) {
+          clearRecoverableAiEntry();
+        }
+      }
+    })();
+  }, [
+    clearRecoverableAiEntry,
+    conversations,
+    handleSelectConversation,
+    historyScopeKey,
+    recoverConversationRun,
+    selectedProjectId,
+  ]);
 
   const handleDeleteConversation = useCallback(async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -1363,7 +1462,7 @@ export default function AIView() {
       setActiveConversationId,
       upsertConversationTitle,
       setPendingChoices,
-      setPendingUserInput,
+      setPendingUserInput: setPendingUserInputWithRestore,
       onIntent: handleRunIntent,
       onNavigate: handleNavigate,
     });
@@ -1380,6 +1479,10 @@ export default function AIView() {
       }
 
       currentRunIdRef.current = activeRunId;
+      markRecoverableAiEntry({
+        conversationId: activeConversationId,
+        runId: activeRunId,
+      });
       runtime.clearProgress();
       runtime.interruptRunningTools(RUN_RECOVERY_INTERRUPTED_TOOL_SUMMARY);
       appendRecoveryCheckpoint(activeConversationId, activeRunId, RUN_RECOVERY_RECONNECT_SUMMARY);
@@ -1595,6 +1698,9 @@ export default function AIView() {
       if (abortControllerRef.current === controller) {
         abortControllerRef.current = null;
       }
+      if (runStatus === "completed" || runStatus === "cancelled") {
+        clearRecoverableAiEntry();
+      }
       if (
         streamGenRef.current === myGen
         && !aborted
@@ -1668,7 +1774,9 @@ export default function AIView() {
     selectedModel,
     reasoningMode,
     handleNavigate,
+    clearRecoverableAiEntry,
     progressiveAnswerStreamingEnabled,
+    markRecoverableAiEntry,
 
     workspaceContextText,
     pendingUserInput,
@@ -1989,7 +2097,7 @@ export default function AIView() {
       setActiveConversationId,
       upsertConversationTitle,
       setPendingChoices,
-      setPendingUserInput,
+      setPendingUserInput: setPendingUserInputWithRestore,
       onIntent: (intent) => {
         handleRunIntent(intent);
         if (intent.type !== "assistant_upsert") return;
@@ -2160,6 +2268,9 @@ export default function AIView() {
       if (abortControllerRef.current === controller) {
         abortControllerRef.current = null;
       }
+      if (runStatus === "completed" || runStatus === "cancelled") {
+        clearRecoverableAiEntry();
+      }
       if (
         streamGenRef.current === myGen
         && !aborted
@@ -2215,6 +2326,7 @@ export default function AIView() {
     selectedProjectId,
     selectedModel,
     reasoningMode,
+    clearRecoverableAiEntry,
     handleNavigate,
     progressiveAnswerStreamingEnabled,
     workspaceContextText,
@@ -2359,6 +2471,10 @@ export default function AIView() {
     streamGenRef.current += 1;
     const myGen = streamGenRef.current;
     currentRunIdRef.current = runId;
+    markRecoverableAiEntry({
+      conversationId: convId,
+      runId,
+    });
     updateConversationTimeline(convId, (items) => {
       const updatedAt = new Date().toISOString();
       return items
@@ -2419,6 +2535,7 @@ export default function AIView() {
     appendRecoveryCheckpoint,
     appendRecoveryTimelineError,
     isTyping,
+    markRecoverableAiEntry,
     recoverConversationRun,
     updateConversationTimeline,
   ]);

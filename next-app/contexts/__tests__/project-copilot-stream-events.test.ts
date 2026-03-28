@@ -353,6 +353,78 @@ describe("project copilot stream event handlers", () => {
     });
   });
 
+  it("keeps cancelled clarification state visible after a terminal cancelled run_end", () => {
+    const messages: CopilotMessage[] = [];
+    const deps = {
+      aiMessageId: "m-1",
+      page: "overview" as const,
+      section: undefined,
+      projectId: "p-1",
+      myGen: 1,
+      getCurrentGen: () => 1,
+      setCurrentRunId: vi.fn(),
+      syncConversationId: vi.fn(),
+      upsertConversationTitle: vi.fn(),
+      upsertArtifact: vi.fn(),
+      updateMessages: (updater: (msgs: CopilotMessage[]) => CopilotMessage[]) => {
+        const next = updater(messages);
+        messages.splice(0, messages.length, ...next);
+      },
+      emitLedgerChanged: vi.fn(),
+      setPendingChoices: vi.fn(),
+      onPlanStepUpdate: vi.fn(),
+      setPendingUserInput: vi.fn(),
+    };
+
+    let state = handleProjectCopilotStreamChunk(
+      {
+        type: "user_input_required",
+        userInputRequest: {
+          sourceRunId: "run-paused",
+          callId: "ask-1",
+          question: "Which direction should I take?",
+          questionType: "single_choice",
+        },
+      },
+      baseState(),
+      deps,
+    );
+
+    state = handleProjectCopilotStreamChunk(
+      {
+        type: "user_input_resolved",
+        userInputResolution: {
+          sourceRunId: "run-paused",
+          callId: "ask-1",
+          resolution: "cancelled",
+          answerText: "Cancelled by the user.",
+          answeredAt: "2026-03-24T10:00:00.000Z",
+        },
+      },
+      state,
+      deps,
+    );
+
+    handleProjectCopilotStreamChunk(
+      {
+        type: "run_end",
+        runId: "run-paused",
+        runStatus: "cancelled",
+        stopReason: "cancelled",
+      },
+      state,
+      deps,
+    );
+
+    const timeline = messagesToTimeline(messages);
+    expect(timeline.find((item) => item.type === "user_input_request")).toMatchObject({
+      resolution: "cancelled",
+      answered: false,
+      answer: "Cancelled by the user.",
+    });
+    expect(timeline.some((item) => item.type === "error")).toBe(false);
+  });
+
   it("preserves a suppressible local progress id through the project bridge timeline conversion", () => {
     const messages: CopilotMessage[] = [];
     const deps = {

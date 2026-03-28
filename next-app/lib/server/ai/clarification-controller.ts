@@ -339,10 +339,6 @@ export function buildClarificationResolutionUserMessage(params: {
     const explicit = params.userMessage?.trim();
     if (explicit) return explicit;
 
-    if (params.resolution.resolution === "cancelled") {
-        return "Handle the cancelled clarification truthfully.";
-    }
-
     const resolvedAnswer = params.resolution.answerText?.trim();
     if (resolvedAnswer) return resolvedAnswer;
 

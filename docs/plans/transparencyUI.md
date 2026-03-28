@@ -98,7 +98,7 @@ Until those failures are corrected, `U1.6` burn-in in [chatRuntime.md](./chatRun
 - Summary mode is now runtime-led on the main surfaces: the default `summary` mode keeps structured process trace primary, derives compact process summaries from existing shared runtime facts, and no longer renders truncated provider-native reasoning as the normal transparency path.
 - Full/raw reasoning is now explicitly debug-only on the main surfaces: `full` is the only mode that may request provider-native reasoning, and models without reasoning support still retain the same process-trace and summary UX without degradation to a blank transparency lane.
 - Visible-channel hygiene now strips allowlisted continuation/runtime scaffolding at the shared assistant-content boundary, while continuation seeds use machine-oriented labels instead of user-facing narrative prose to reduce prompt echo.
-- Main-surface blocking clarification now uses request-bound runtime truth rather than plain-turn resume hacks: answer/default/cancel all resolve the exact pending request through the shared continuation path, cancelled clarifications remain visible as cancelled transcript items, freeform rewrite while blocked truthfully cancels the old clarification and starts a new turn, and runtime-owned fallback now settles repeated blocking into recommended-default / bounded-decision / truthful-stop outcomes instead of asking forever.
+- Main-surface blocking clarification now uses request-bound runtime truth rather than plain-turn resume hacks: answer/default continue the exact pending request through the shared continuation path, blocked-card cancel resolves that request into a visible terminal cancelled state, freeform rewrite while blocked truthfully cancels the old clarification and starts a new turn, and runtime-owned fallback now settles repeated blocking into recommended-default / bounded-decision / truthful-stop outcomes instead of asking forever.
 - Search/scoping answer contracts now explicitly keep raw query strings, result-count mechanics, and search-iteration logs in receipts/checkpoints/process details by default; visible answer prose should synthesize findings unless the user explicitly asks for the search strategy.
 - Model-visible search tool payloads are now shaped as synthesis context with explicit anti-duplication guidance rather than raw search-log fuel, reducing provider-specific leakage of `Objective` / `Queries Run` style process scaffolding into answer prose.
 - The current stabilization program in [plan-agentic.md](./plan-agentic.md) is now about durable convergence of those existing recovery primitives: disconnect classification, durable continuation from completed work, and elimination of stuck/partial recovery states. This plan should stay focused on truthful execution-trace UX and must not imply that ephemeral progress or non-persisted intermediate semantics are replayable.
@@ -284,7 +284,8 @@ Visible contract:
 - blocked clarification is a durable handoff point, not just a sentence in transcript prose
 - the card must expose answer, recommended-default, and cancel/rewrite exits when applicable
 - answered and cancelled clarifications should remain visible as resolved transcript state
-- resolving a clarification must continue the same paused request rather than pretending it was an ordinary new user turn
+- answer/default should continue the same paused request rather than pretending it was an ordinary new user turn
+- blocked-card cancel should end in-place as a visible cancelled state with no reconnect/error fallback and no fresh user turn
 
 ## Locked Product Decisions
 1. **Primary transparency is structured execution trace, not raw chain-of-thought.**
