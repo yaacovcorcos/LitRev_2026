@@ -2,7 +2,7 @@
  * Custom hook encapsulating all conversation management logic
  * extracted from ProjectCopilotContext.tsx for maintainability.
  */
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useRef, useState, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
 import type {
     CopilotMessage,
     ProjectCopilotState,
@@ -57,6 +57,15 @@ export type CopilotConversationsDeps = {
     setPendingUserInput: React.Dispatch<React.SetStateAction<UserInputRequest | null>>;
 };
 
+export function syncConversationSelection(
+    currentConversationIdRef: MutableRefObject<string | null>,
+    setCurrentConversationId: Dispatch<SetStateAction<string | null>>,
+    nextConversationId: string | null,
+) {
+    currentConversationIdRef.current = nextConversationId;
+    setCurrentConversationId(nextConversationId);
+}
+
 export function useCopilotConversations(deps: CopilotConversationsDeps) {
     const {
         projectId,
@@ -77,7 +86,7 @@ export function useCopilotConversations(deps: CopilotConversationsDeps) {
 
     // Conversation management state
     const [conversations, setConversations] = useState<ConversationListItem[]>([]);
-    const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
+    const [currentConversationId, setCurrentConversationIdState] = useState<string | null>(null);
     const [isLoadingConversations, setIsLoadingConversations] = useState(false);
     const [showConversationList, setShowConversationList] = useState(false);
     const [isConversationLoading, setIsConversationLoading] = useState(false);
@@ -100,6 +109,10 @@ export function useCopilotConversations(deps: CopilotConversationsDeps) {
     const [isSummarizing, setIsSummarizing] = useState(false);
 
     currentConversationIdRef.current = currentConversationId;
+
+    const setCurrentConversationId = useCallback((nextConversationId: string | null) => {
+        syncConversationSelection(currentConversationIdRef, setCurrentConversationIdState, nextConversationId);
+    }, []);
 
     // Load conversations list (uses studyFilterRef for scoping)
     const fetchConversations = useCallback(async (): Promise<ConversationListItem[]> => {
@@ -337,7 +350,7 @@ export function useCopilotConversations(deps: CopilotConversationsDeps) {
                 setIsConversationLoading(false);
             }
         }
-    }, [projectEntryRestoreEnabled, projectId, updateState]);
+    }, [projectEntryRestoreEnabled, projectId, setCurrentConversationId, updateState]);
 
     // Keep ref in sync so setStudyFilter (declared earlier) can call it
     selectConversationRef.current = selectConversation;
@@ -471,7 +484,7 @@ export function useCopilotConversations(deps: CopilotConversationsDeps) {
             console.error("Failed to create conversation:", err);
             return null;
         }
-    }, [projectEntryRestoreEnabled, projectId, loadConversations]);
+    }, [projectEntryRestoreEnabled, projectId, loadConversations, setCurrentConversationId]);
 
     const renameConversation = useCallback(async (conversationId: string, title: string) => {
         try {
@@ -510,7 +523,7 @@ export function useCopilotConversations(deps: CopilotConversationsDeps) {
             console.error("Failed to delete conversation:", err);
             return false;
         }
-    }, [currentConversationId, updateState]);
+    }, [currentConversationId, setCurrentConversationId, updateState]);
 
     const branchConversationHandler = useCallback(async (
         conversationId: string,

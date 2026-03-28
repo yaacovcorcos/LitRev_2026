@@ -20,7 +20,7 @@ type UseCopilotConversationBootstrapOptions = {
     studyFilterRef: MutableRefObject<string | undefined>;
     selectConversationRef: MutableRefObject<(id: string) => Promise<boolean>>;
     setConversations: Dispatch<SetStateAction<ConversationListItem[]>>;
-    setCurrentConversationId: Dispatch<SetStateAction<string | null>>;
+    setCurrentConversationId: (conversationId: string | null) => void;
     setState: Dispatch<SetStateAction<ProjectCopilotState>>;
     setIsLoadingConversations: Dispatch<SetStateAction<boolean>>;
 };
