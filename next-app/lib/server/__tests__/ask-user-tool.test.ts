@@ -179,7 +179,18 @@ describe("askUserTool", () => {
             options: [{ label: "A" }, { label: "B" }],
             header: "This header is definitely too long",
         });
-        expect(result.success).toBe(false);
+        expect(result.success).toBe(true);
+    });
+
+    it("normalizes long header values instead of surfacing a validation failure", async () => {
+        const result = await askUserTool.execute({
+            question: "Which one?",
+            questionType: "single_choice",
+            options: [{ label: "A" }, { label: "B" }],
+            header: "What is the research question, topic, or specific project",
+        });
+
+        expect(result.userInputRequest?.header).toBe("What is the research");
     });
 
     it("validates input schema rejects more than 10 options", () => {

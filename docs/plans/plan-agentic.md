@@ -145,28 +145,13 @@ Every fix entry must include:
 ## Active Fixes
 *Immediate remediation work for shipped behavior that is broken, misleading, or lower quality than the intended contract.*
 
-- **`FIX-012` Agent baseline stability and transparency reset**
-  - **Severity:** P0 trust/usability
-  - **Symptom:** ordinary agent use still exposes visible internal/runtime scaffolding, noisy or low-value transparency, brittle reconnect/recovery behavior, and poor long-running task reliability. The product is not yet stable enough for `U1.6` burn-in to serve as meaningful sign-off rather than bug discovery.
-  - **Desired end state:** the default agent experience is clean, minimal, and trustworthy: visible output contains only user-facing answer text plus structured process trace; provider reasoning is optional and secondary; interrupted runs converge to one bounded truthful next action; and ordinary `/ai` and `project` use is stable enough that burn-in becomes validation instead of triage.
-  - **Supporting plans:** `docs/plans/agent-runtime-remediation/plan-fix-012-baseline-stability.md` for execution detail, `docs/plans/transparencyUI.md` for the visible-channel/transparency contract, `docs/plans/chatRuntime.md` for shared runtime/recovery truth, and `docs/plans/plan-prompts.md` for prompt-side visible-answer and reasoning-summary hygiene.
-  - **Evidence record:** `docs/reports/fix-012-baseline-stability.md`
-  - **Exit criteria:**
-    - standard manual agent use no longer leaks continuation/runtime scaffolding or other machine-only payloads into visible chat
-    - the default transparency path is structured process trace first, with raw provider reasoning no longer acting as the default comprehension path
-    - interrupted runs converge to one bounded truthful user-visible next action instead of contradictory reconnect/retry states
-    - blocking clarification resumes the exact paused request, exposes clear answer/default/cancel exits, and cannot re-enter the same blocking loop forever without durable progress
-    - baseline manual scenarios on `/ai` and `project` are stable enough that `U1.6` can resume as later-stage validation
-
-`FIX-012` is the active rescue program for baseline product quality. Its implementation direction is now fixed around one shared runtime/event authority, one shared terminal-state contract, typed deferred blocked states, and a facts-first UI that does not depend on provider-native reasoning for comprehension. The first-wave rescue is split between visible-channel purity and runtime operating discipline on the shared main surfaces.
-
 - **`FIX-011b` Runtime stabilization, convergence, and durable continuation**
   - **Severity:** P0 trust/reliability
-  - **Symptom:** the major convergence primitives are already shipped, but `FIX-011b` is still open because the repo has not yet finished the final delta audit against the shared recovery/convergence path or completed the later-stage `U1.6` sign-off needed to prove there is no remaining cross-surface runtime gap. When `FIX-012` remains open, `FIX-011b` should be treated as blocked by baseline product quality rather than mistaken for the primary rescue task.
-  - **Desired end state:** once baseline agent usability/trust is restored under `FIX-012`, either patch the one narrow remaining shared runtime delta if the audit or burn-in reveals one, or confirm that no additional shared-runtime code delta remains and retire `FIX-011b` through the existing `U1.6` burn-in authority without reopening settled recovery design.
+  - **Symptom:** the major convergence primitives are already shipped, but `FIX-011b` is still open because the repo has not yet finished the final delta audit against the shared recovery/convergence path or completed the later-stage `U1.6` sign-off needed to prove there is no remaining cross-surface runtime gap.
+  - **Desired end state:** with `FIX-012` retired, either patch the one narrow remaining shared runtime delta if the audit or burn-in reveals one, or confirm that no additional shared-runtime code delta remains and retire `FIX-011b` through the existing `U1.6` burn-in authority without reopening settled recovery design.
   - **Supporting plans:** `docs/plans/agent-runtime-remediation/plan-runtime-stabilization-and-continuation.md` for supporting closeout detail, `docs/plans/transparencyUI.md` for durable execution-trace truth, and `docs/plans/chatRuntime.md` plus `docs/runbooks/chat-runtime-burn-in.md` for the operational `U1.6` sign-off path.
   - **Exit criteria:**
-    - `FIX-012` no longer blocks burn-in by leaving ordinary manual agent use obviously broken
+    - baseline rescue remains retired and burn-in can serve as sign-off instead of bug discovery
     - the delta audit confirms no remaining shared-runtime gap, or any discovered gap is patched in the shared convergence/recovery path
     - `/ai`, project copilot, and the main conversation show no remaining recovery-action drift under the audited/stressed cases
     - `U1.6` burn-in evidence is complete and sign-offable through `docs/runbooks/chat-runtime-burn-in.md`
@@ -177,10 +162,9 @@ Every fix entry must include:
 
 Work should proceed in this order unless a production incident forces reprioritization:
 
-1. `FIX-012` agent baseline stability and transparency reset
-2. `FIX-011b` runtime stabilization, convergence, and durable continuation
-3. `CAG-003` checkpointed retry/resume from durable state
-4. remaining roadmap phases after those contracts are stable
+1. `FIX-011b` runtime stabilization, convergence, and durable continuation
+2. `CAG-003` checkpointed retry/resume from durable state
+3. remaining roadmap phases after those contracts are stable
 
 ## End-to-End Delivery Program
 
@@ -202,7 +186,7 @@ Work should proceed in this order unless a production incident forces reprioriti
 
 ### Track D — Surface Honesty, Docs, Evals, and Provenance
 
-- `FIX-005a`, `FIX-005b`, `FIX-011`, and the immediate `FIX-011a` reconciliation follow-up are complete, but the current product still needs baseline rescue under `FIX-012` before `FIX-011b` can function as a narrow runtime closeout/sign-off task.
+- `FIX-005a`, `FIX-005b`, `FIX-011`, the immediate `FIX-011a` reconciliation follow-up, and the baseline rescue under `FIX-012` are complete. The remaining runtime closeout/sign-off work now belongs to `FIX-011b` and `U1.6`.
 - Popup honesty should stay aligned with the reduced-parity runtime it actually supports, and future surface work should preserve the recovery/action truth model rather than reintroducing bespoke failure semantics or overclaiming parity while `FIX-011b` is active.
 
 ## Active Roadmap
@@ -318,6 +302,7 @@ Recommended collaboration pattern:
 
 ## Recently Completed
 
+- [x] Retired `FIX-012`: the baseline rescue for visible-channel purity, runtime-led transparency, bounded recovery, and request-bound clarification is now closed on `/ai`, project main conversation, and side-panel copilot. The final closeout pass also fixed the last `ask_user` cosmetic-header validation leak before retirement, and later-stage sign-off now moves to `FIX-011b` plus `U1.6`.
 - [x] Landed `CAG-026` Phase 0 containment: known hidden `MENTIONED_STUDIES` and `SCOPING_REPORT` assistant markup now strips through one shared read-time normalizer across timeline, popup, export, summary, and transcript-derived memory extraction, while persisted assistant message storage remains unchanged for the later structured-parts migration.
 - [x] Landed study-page copilot direct edit V1: explicit study-page edit/fill intents now route into a study-capable execution path, safe fields can auto-apply with undoable `study_update` provenance, risky or mixed study edits remain review-first, and PDF-derived study-page edits now use a preview-first non-mutating handoff before direct apply vs proposal fallback.
 - [x] Landed explicit shared-composer mode control: `/ai`, side-panel copilot, and main conversation now expose `Auto` plus sticky manual mode selection on the shared composer, composer-originated sends/queues resolve their concrete mode at send time instead of trusting stale preview state, and non-composer operational sends remain one-shot without mutating the composer selection.

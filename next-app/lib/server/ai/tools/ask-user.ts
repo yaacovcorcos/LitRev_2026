@@ -14,6 +14,29 @@ import { randomUUID } from "node:crypto";
 import type { AITool } from "./base";
 import type { UserInputOption } from "@/types/ai";
 
+const MAX_HEADER_LENGTH = 20;
+
+function normalizeHeader(value: string | undefined): string | undefined {
+    const trimmed = value?.trim();
+    if (!trimmed) return undefined;
+    if (trimmed.length <= MAX_HEADER_LENGTH) return trimmed;
+
+    const punctuationBoundary = trimmed.split(/[:;,.!?]/, 1)[0]?.trim();
+    if (punctuationBoundary && punctuationBoundary.length <= MAX_HEADER_LENGTH) {
+        return punctuationBoundary;
+    }
+
+    const words = trimmed.split(/\s+/);
+    let compact = "";
+    for (const word of words) {
+        const candidate = compact ? `${compact} ${word}` : word;
+        if (candidate.length > MAX_HEADER_LENGTH) break;
+        compact = candidate;
+    }
+
+    return compact || trimmed.slice(0, MAX_HEADER_LENGTH).trimEnd();
+}
+
 const optionSchema = z.object({
     label: z.string().min(1).max(200),
     description: z.string().max(500).optional(),
@@ -23,7 +46,7 @@ const inputSchema = z.object({
     question: z.string().min(1).max(500),
     questionType: z.enum(["single_choice", "yes_no", "free_text", "multi_select"]),
     options: z.array(optionSchema).min(2).max(10).optional(),
-    header: z.string().max(20).optional(),
+    header: z.string().max(200).optional(),
     context: z.string().max(300).optional(),
     recommendedAnswer: z.string().max(300).optional(),
     recommendedReason: z.string().max(300).optional(),
@@ -108,7 +131,7 @@ export const askUserTool: AITool = {
         const question = args.question as string;
         const questionType = args.questionType as "single_choice" | "yes_no" | "free_text" | "multi_select";
         const rawOptions = args.options as UserInputOption[] | undefined;
-        const header = args.header as string | undefined;
+        const header = normalizeHeader(args.header as string | undefined);
         const context = args.context as string | undefined;
         const recommendedAnswer = args.recommendedAnswer as string | undefined;
         const recommendedReason = args.recommendedReason as string | undefined;
