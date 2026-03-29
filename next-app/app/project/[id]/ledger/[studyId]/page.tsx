@@ -266,7 +266,9 @@ export default function StudyDetailPage() {
         const formData = new FormData();
         formData.append("file", file);
         const uploadResult = await uploadStudyFileAction(id, studyId, formData);
-        if (!uploadResult.success) { console.error("Upload failed:", uploadResult.error); return; }
+        if (!uploadResult.success) {
+            throw new Error(uploadResult.error || "Upload failed");
+        }
         await loadFiles();
     }, [id, studyId, loadFiles]);
 

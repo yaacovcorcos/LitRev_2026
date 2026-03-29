@@ -34,6 +34,7 @@ npm aliases: `npm run db:ops -- <subcommand>`, `npm run db:doctor`, `npm run db:
 |-----------------|-------------|---------------|
 | `column does not exist` | `db-ops.sh status` — treat as schema drift, not app bug | `db-ops.sh gate` to apply pending migrations |
 | `Invalid prisma.* invocation` | `db-ops.sh status` — check for unapplied migrations | `db-ops.sh diagnose` to verify connectivity |
+| Local ledger PDF import fails after pulling new code | `npx prisma migrate status` — local ledger import now touches processing-aware schema reads after study/file creation | `npx prisma migrate dev` to bring local DB schema current, then retry the exact import flow |
 | `RunEvent_runId_sequence_key` | `db-ops.sh repair` then `db-ops.sh migrate` | Manual: see "RunEvent Recovery" below |
 | Migration marked "failed" | `db-ops.sh diagnose` to inspect `_prisma_migrations` | See "Failed Migration Recovery" below |
 | `ACTIVE_RUN_EXISTS` after a disconnect | `db-ops.sh diagnose` — confirm `AgentRun.lastActivityAt` migration/index and DB health first | If DB health is clean, inspect app-layer recovery handling rather than cancelling runs manually |
@@ -161,6 +162,7 @@ Expected:
 6. Roll back the app first if errors spike post-deploy; fix DB separately.
 7. Do not treat app-layer degraded-context behavior as a substitute for DB remediation; it reduces blast radius for optional context only.
 8. For ledger PDF processing incidents, inspect and repair `StudyProcessingJob` rows rather than reintroducing request-local locking or mutating `Study.status` to fake transient progress.
+9. For local ledger PDF import failures after pulling recent code, treat unapplied local migrations as the first suspect before debugging storage or upload UI; `StudyProcessingJob` is the currently observed ledger trigger, but the general problem is local schema drift.
 
 ## Deep Procedures
 
