@@ -283,8 +283,7 @@ export default function LedgerPage() {
         formData,
       );
       if (!uploadResult.success) {
-        console.error("Upload failed:", uploadResult.error);
-        return;
+        throw new Error(uploadResult.error || "Upload failed");
       }
       await loadStudyFiles(selectedStudy.id);
     },
