@@ -1,13 +1,16 @@
 import { ProjectOnboardingClient } from "./ProjectOnboardingClient";
 import { getProjectOnboardingStateAction } from "@/app/actions/onboarding";
 import { getProtocolAction } from "@/app/actions/protocols";
+import { EmptyState } from "@/components/ui/EmptyState";
 import {
   DEFAULT_ONBOARDING_STEP_STATUSES,
   type OnboardingStepId,
   type OnboardingStepStatus,
 } from "@/lib/durable-route-state";
+import { GUIDED_SETUP_HOLD_COPY, isGuidedSetupAvailable } from "@/lib/guided-setup-availability";
 import { createDefaultProtocolData } from "@/types/protocol";
 import type { OnboardingDerivedProfile } from "@/lib/server/onboarding-ai";
+import styles from "./onboarding.module.css";
 
 type OnboardingBootstrap = {
   stepStatuses: Record<OnboardingStepId, OnboardingStepStatus>;
@@ -27,6 +30,24 @@ export default async function ProjectOnboardingPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+
+  if (!isGuidedSetupAvailable()) {
+    return (
+      <EmptyState
+        variant="warning"
+        icon="schedule"
+        title={GUIDED_SETUP_HOLD_COPY.routeTitle}
+        description={GUIDED_SETUP_HOLD_COPY.routeDescription}
+        primaryAction={{
+          label: GUIDED_SETUP_HOLD_COPY.workspaceActionLabel,
+          href: id ? `/project/${id}` : "/",
+        }}
+        secondaryAction={{ label: GUIDED_SETUP_HOLD_COPY.dashboardActionLabel, href: "/" }}
+        className={styles.notFound}
+      />
+    );
+  }
+
   let initialProtocol = createDefaultProtocolData();
   let onboardingBootstrap = defaultOnboardingBootstrap();
 
