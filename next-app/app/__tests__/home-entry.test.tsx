@@ -278,9 +278,14 @@ describe("Home entry UX", () => {
 
     render(<HomeClient bootstrap={makeBootstrap()} shouldOpenFromQuery={true} />);
 
-    const guidedButton = screen.getByRole("button", { name: "Guided setup" });
+    const guidedButton = screen.getByRole("button", { name: (name) => name.includes("Guided setup") });
     expect(guidedButton.hasAttribute("disabled")).toBe(true);
+    expect(screen.queryByText("Guided setup is on hold. Coming soon. Create a blank project for now.")).toBeNull();
+
+    fireEvent.mouseEnter(guidedButton.parentElement as HTMLElement);
     expect(screen.getByText("Guided setup is on hold. Coming soon. Create a blank project for now.")).toBeTruthy();
+    fireEvent.mouseLeave(guidedButton.parentElement as HTMLElement);
+    expect(screen.queryByText("Guided setup is on hold. Coming soon. Create a blank project for now.")).toBeNull();
 
     fireEvent.change(screen.getByLabelText("Project name"), { target: { value: "Held setup project" } });
     fireEvent.change(screen.getByLabelText(/Description/), { target: { value: "Review later" } });

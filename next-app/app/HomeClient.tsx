@@ -102,6 +102,7 @@ export function HomeClient({ bootstrap, shouldOpenFromQuery }: HomeClientProps) 
   const [isModalOpen, setModalOpen] = useState(() => shouldOpenFromQuery);
   const [loadingStep, setLoadingStep] = useState(0);
   const [isSlow, setIsSlow] = useState(false);
+  const [isGuidedSetupNoticeVisible, setGuidedSetupNoticeVisible] = useState(false);
   const formRef = useRef<HTMLFormElement | null>(null);
   const guidedSetupAvailable = isGuidedSetupAvailable();
 
@@ -181,10 +182,12 @@ export function HomeClient({ bootstrap, shouldOpenFromQuery }: HomeClientProps) 
 
   const openModal = useCallback(() => {
     setCreateError(null);
+    setGuidedSetupNoticeVisible(false);
     setModalOpen(true);
   }, []);
 
   const closeModal = useCallback(() => {
+    setGuidedSetupNoticeVisible(false);
     setModalOpen(false);
     if (formRef.current) {
       formRef.current.reset();
@@ -615,11 +618,6 @@ export function HomeClient({ bootstrap, shouldOpenFromQuery }: HomeClientProps) 
             <textarea id="projectDesc" name="projectDesc" placeholder="Brief description of the research goal..." />
           </div>
           {createError ? <p className={layoutStyles.createError} role="alert">{createError}</p> : null}
-          {!guidedSetupAvailable ? (
-            <p className={layoutStyles.createNotice} id="guidedSetupHoldNote" role="status">
-              {GUIDED_SETUP_HOLD_COPY.launcherDescription}
-            </p>
-          ) : null}
           <hr className="modal-divider" />
           <div className="modal-actions">
             <button type="button" className="btn btn-outline cancel-btn" onClick={closeModal}>
@@ -640,14 +638,26 @@ export function HomeClient({ bootstrap, shouldOpenFromQuery }: HomeClientProps) 
                 <svg className="btn-guided-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12" /><polyline points="12 5 19 12 12 19" /></svg>
               </button>
             ) : (
-              <button
-                type="button"
-                className="btn btn-outline create-btn"
-                disabled
-                aria-describedby="guidedSetupHoldNote"
+              <div
+                className={layoutStyles.createNoticeTrigger}
+                onMouseEnter={() => setGuidedSetupNoticeVisible(true)}
+                onMouseLeave={() => setGuidedSetupNoticeVisible(false)}
               >
-                Guided setup
-              </button>
+                <button
+                  type="button"
+                  className="btn btn-outline create-btn"
+                  disabled
+                  title={GUIDED_SETUP_HOLD_COPY.launcherDescription}
+                  aria-label={`Guided setup. ${GUIDED_SETUP_HOLD_COPY.launcherDescription}`}
+                >
+                  Guided setup
+                </button>
+                {isGuidedSetupNoticeVisible ? (
+                  <p className={layoutStyles.createNotice} role="status">
+                    {GUIDED_SETUP_HOLD_COPY.launcherDescription}
+                  </p>
+                ) : null}
+              </div>
             )}
           </div>
         </form>
