@@ -28,6 +28,7 @@ import { compileDraftCitations, getCitedSectionIdsByStudyId } from "@/lib/citati
 import { isMobileLedgerV2Enabled } from "@/lib/mobile/feature-flags";
 import { getStudyProcessingStatusView, isStudyProcessingActive } from "@/lib/study-processing-ui";
 import { useStudyProcessingSync } from "@/hooks/useStudyProcessingSync";
+import { normalizeRouteParam } from "@/lib/route-params";
 import styles from "./study.module.css";
 
 // Build lookup for section labels
@@ -51,7 +52,9 @@ const RELEVANCE_COMPONENT_LABELS: Record<keyof NonNullable<StudyRelevance["compo
 const RELEVANCE_COMPONENT_KEYS = Object.keys(RELEVANCE_COMPONENT_LABELS) as Array<keyof NonNullable<StudyRelevance["components"]>>;
 
 export default function StudyDetailPage() {
-    const { id, studyId } = useParams<{ id: string; studyId: string }>();
+    const params = useParams<{ id: string | string[]; studyId: string | string[] }>();
+    const id = normalizeRouteParam(params.id);
+    const studyId = normalizeRouteParam(params.studyId);
     const mobileLedgerV2Enabled = isMobileLedgerV2Enabled();
     const { getProjectById, isLoadingProjects, projectsError } = useProjects();
     const { getStudyById, updateSingleStudy } = useLedger();
@@ -426,7 +429,7 @@ export default function StudyDetailPage() {
         );
     }
 
-    if (!project) {
+    if (!id || !project) {
         return (
             <ProjectPageLayout mainClassName={ledgerStudyMainClassName}>
                 <EmptyState
@@ -449,7 +452,7 @@ export default function StudyDetailPage() {
         );
     }
 
-    if (!study) {
+    if (!studyId || !study) {
         return (
             <ProjectPageLayout mainClassName={ledgerStudyMainClassName}>
                 <EmptyState
@@ -828,7 +831,7 @@ export default function StudyDetailPage() {
                     </div>
     );
 
-    const filesPopup = showFilesPanel && (
+    const filesPopup = showFilesPanel && id && studyId && (
         <>
             <div className={styles.filesPopupBackdrop} onClick={() => setShowFilesPanel(false)} />
             <div className={styles.filesPopup}>

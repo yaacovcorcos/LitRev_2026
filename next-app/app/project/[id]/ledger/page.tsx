@@ -42,6 +42,7 @@ import { useContextCaptureActions } from "@/hooks/useContextCaptureActions";
 import { buildStudySetTarget } from "@/lib/context-capture/targets";
 import { getStudyProcessingStatusView, isStudyProcessingActive } from "@/lib/study-processing-ui";
 import { useStudyProcessingSync } from "@/hooks/useStudyProcessingSync";
+import { normalizeRouteParam } from "@/lib/route-params";
 import {
   useLedgerActions,
   type LedgerConfirmDialogState,
@@ -55,7 +56,8 @@ type CriteriaFilter =
   | "matching-design";
 
 export default function LedgerPage() {
-  const { id } = useParams<{ id: string }>();
+  const params = useParams<{ id: string | string[] }>();
+  const id = normalizeRouteParam(params.id);
   const mobileLedgerV2Enabled = isMobileLedgerV2Enabled();
   const { captureEnabled, runAction, sendToCopilot } = useContextCaptureActions();
   const { getProjectById, isLoadingProjects, projectsError } = useProjects();
@@ -201,9 +203,10 @@ export default function LedgerPage() {
   useStudyProcessingSync({
     projectId: id,
     studyIds: activeProcessingStudyIds,
-    enabled: activeProcessingStudyIds.length > 0,
+    enabled: Boolean(id) && activeProcessingStudyIds.length > 0,
     intervalMs: 5000,
     onStudiesReceived: (updatedStudies) => {
+      if (!id) return;
       for (const updatedStudy of updatedStudies) {
         replaceStudyInCache(id, updatedStudy);
         if (selectedStudy?.id === updatedStudy.id) {
@@ -220,8 +223,12 @@ export default function LedgerPage() {
     [studies, validSelectedIds],
   );
 
-  const canUseStudySetActions = captureEnabled && validSelectedIds.length >= 2 && validSelectedIds.length <= 6;
-  const studySetTarget = canUseStudySetActions
+  const canUseStudySetActions =
+    Boolean(id) &&
+    captureEnabled &&
+    validSelectedIds.length >= 2 &&
+    validSelectedIds.length <= 6;
+  const studySetTarget = id && canUseStudySetActions
     ? buildStudySetTarget({
       projectId: id,
       studies: selectedStudies.map((study) => ({
@@ -360,7 +367,7 @@ export default function LedgerPage() {
   }
 
   // Not found state
-  if (!project) {
+  if (!id || !project) {
     return (
       <ProjectPageLayout mainClassName={ledgerMainClassName}>
         <EmptyState
