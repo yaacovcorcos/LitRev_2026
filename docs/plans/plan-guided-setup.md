@@ -9,7 +9,7 @@ Ship a complete, premium guided setup that helps novice users understand the ful
 - Onboarding completion/skip is persisted in `Project.progress.onboarding` via `markProjectOnboardingCompletedAction`.
 - Guided setup default preference is persisted at user level in `UserMemory` (`guided_setup_new_projects`).
 - There is no strict per-step onboarding status model, no deterministic launch gate checks, and no structured AI assists dedicated to onboarding.
-- Guided setup entry is temporarily held behind a shared availability gate: the home project-creation modal disables the guided launcher with hold copy, and direct `/project/[id]/onboarding` visits show a hold state with a workspace fallback until the flow is resumed.
+- Guided setup entry is temporarily held behind a shared availability gate: the home project-creation modal disables the guided launcher, reveals the hold copy on hover, and direct `/project/[id]/onboarding` visits show a hold state with a workspace fallback until the flow is resumed.
 
 ## Final Product Decisions (Locked)
 - **No central agent-loop mode for onboarding.** Onboarding AI runs as dedicated typed server actions.
