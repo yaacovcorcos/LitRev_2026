@@ -7,6 +7,7 @@ import { usePopupChat } from "@/contexts/PopupChatContext";
 import { useContextCaptureActions } from "@/hooks/useContextCaptureActions";
 import { buildStudyTarget } from "@/lib/context-capture/targets";
 import { type CriteriaMatchResult } from "@/lib/criteriaMatching";
+import { getStudyProcessingStatusView } from "@/lib/study-processing-ui";
 import type { Study, StudyDetails, TriageDecision } from "@/types/ledger";
 import styles from "./ledger.module.css";
 
@@ -43,6 +44,7 @@ export const StudyRow = memo(function StudyRow({
   const { openPopupChat } = usePopupChat();
   const { captureEnabled, openPopupForTarget } = useContextCaptureActions();
   const details: StudyDetails = study.details ?? {};
+  const processingStatus = getStudyProcessingStatusView(study);
 
   const summaryText =
     details.aiSummary || details.abstract || "No summary available.";
@@ -112,12 +114,17 @@ export const StudyRow = memo(function StudyRow({
         <td>
           <span
             className={`${styles.statusPill} ${
-              study.status === "extracted"
-                ? styles.statusExtracted
-                : styles.statusPending
+              processingStatus.tone === "success"
+                ? styles.statusSuccess
+                : processingStatus.tone === "info"
+                  ? styles.statusInfo
+                  : processingStatus.tone === "danger"
+                    ? styles.statusDanger
+                    : styles.statusNeutral
             }`}
+            title={processingStatus.description}
           >
-            {study.status === "extracted" ? "Extracted" : "Pending"}
+            {processingStatus.label}
           </span>
         </td>
         <td>

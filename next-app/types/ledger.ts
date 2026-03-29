@@ -1,4 +1,42 @@
 export type StudyStatus = "pending" | "extracted" | "active" | "excluded";
+export type StudyProcessingPhase = "quick_extract" | "deep_analysis";
+export type StudyProcessingState = "idle" | "queued" | "running" | "succeeded" | "failed";
+export type StudyProcessingPriority = "background" | "foreground";
+export type StudyProcessingRequestSource =
+  | "auto_import"
+  | "manual_extract"
+  | "manual_analyze"
+  | "study_page_focus"
+  | "ai_tool";
+export type StudyProcessingNextAction = "extract" | "analyze" | "retry" | "wait" | "none";
+
+export type StudyProcessingPhaseSnapshot = {
+  jobId?: string;
+  phase: StudyProcessingPhase;
+  state: StudyProcessingState;
+  priority?: StudyProcessingPriority;
+  requestSource?: StudyProcessingRequestSource;
+  attemptCount: number;
+  requestedAt?: string;
+  startedAt?: string;
+  updatedAt?: string;
+  completedAt?: string;
+  lastErrorCode?: string;
+  lastErrorMessage?: string;
+};
+
+export type StudyProcessingSnapshot = {
+  byPhase: {
+    quickExtract: StudyProcessingPhaseSnapshot;
+    deepAnalysis: StudyProcessingPhaseSnapshot;
+  };
+  currentPhase?: StudyProcessingPhase;
+  currentState: StudyProcessingState;
+  nextAction: StudyProcessingNextAction;
+  prerequisitesSatisfied: {
+    deepAnalysis: boolean;
+  };
+};
 
 export type StudyType =
   | "RCT"
@@ -103,4 +141,5 @@ export type Study = {
   status: StudyStatus;
   quality: "High" | "Medium" | "Low" | "-";
   details?: StudyDetails;
+  processing?: StudyProcessingSnapshot;
 };

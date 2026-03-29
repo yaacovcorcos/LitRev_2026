@@ -333,14 +333,24 @@
     font-weight: 600;
 }
 
-.statusExtracted {
+.statusSuccess {
     background: var(--status-ready-bg);
     color: var(--status-ready-text);
 }
 
-.statusPending {
+.statusInfo {
     background: var(--status-harvesting-bg);
     color: var(--status-harvesting-text);
+}
+
+.statusDanger {
+    background: rgba(var(--rgb-legacy-red-bootstrap), 0.12);
+    color: var(--color-danger);
+}
+
+.statusNeutral {
+    background: rgba(var(--rgb-ui-contrast), 0.08);
+    color: var(--text-secondary);
 }
 
 .qualityBadge {

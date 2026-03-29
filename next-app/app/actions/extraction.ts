@@ -3,269 +3,216 @@
 import { z } from "zod";
 import { assertProjectAccess } from "@/lib/server/access";
 import { getFileAssetById } from "@/lib/server/files";
-import { getStudy, updateStudy } from "@/lib/server/ledger";
-import {
-    extractStudyFromPdf,
-    deepAnalyzeStudyFromPdf,
-    type ExtractionResult,
-    type ExtractionErrorCode,
-} from "@/lib/server/pdf-extraction";
-import type { Study, StudyDetails } from "@/types/ledger";
-import { createMemoriesFromDeepAnalysis } from "@/lib/server/memory/study-memory";
 import { sanitizeErrorMessage } from "@/lib/server/action-utils";
 import { withAuth } from "@/lib/server/auth/session";
 import { logServerError } from "@/lib/server/logging";
-import { projectIdSchema, studyIdSchema, resourceIdSchema } from "@/lib/schemas/ids";
+import {
+  enqueueStudyProcessingJob,
+  kickStudyProcessingDispatcher,
+  listStudyProcessingStateItems,
+  prioritizeStudyProcessingJob,
+  type StudyProcessingStateItem,
+  type StudyProcessingTransitionHint,
+} from "@/lib/server/study-processing";
+import type { Study, StudyProcessingPhase, StudyProcessingSnapshot } from "@/types/ledger";
+import { projectIdSchema, resourceIdSchema, studyIdSchema } from "@/lib/schemas/ids";
 
 const extractionInputSchema = z.object({
-    projectId: projectIdSchema,
-    studyId: studyIdSchema,
-    fileAssetId: resourceIdSchema,
+  projectId: projectIdSchema,
+  studyId: studyIdSchema,
+  fileAssetId: resourceIdSchema,
+});
+
+const processingStateListInputSchema = z.object({
+  projectId: projectIdSchema,
+  studyIds: z.array(studyIdSchema),
+});
+
+const processingPriorityInputSchema = z.object({
+  projectId: projectIdSchema,
+  studyId: studyIdSchema,
+  phase: z.enum(["quick_extract", "deep_analysis"]),
 });
 
 export type ExtractionActionResult = {
-    success: boolean;
-    study?: Study;
-    extractionResult?: ExtractionResult;
-    error?: string;
-    errorCode?: ExtractionErrorCode | "ACCESS_DENIED" | "STUDY_NOT_FOUND" | "FILE_NOT_FOUND" | "NOT_PDF";
+  success: boolean;
+  study?: Study;
+  processing?: StudyProcessingSnapshot;
+  transitionHint?: StudyProcessingTransitionHint;
+  error?: string;
+  errorCode?: "ACCESS_DENIED" | "STUDY_NOT_FOUND" | "FILE_NOT_FOUND" | "NOT_PDF" | "VALIDATION";
 };
 
-export type DeepAnalysisActionResult = {
-    success: boolean;
-    study?: Study;
-    error?: string;
-    errorCode?: ExtractionErrorCode | "ACCESS_DENIED" | "STUDY_NOT_FOUND" | "FILE_NOT_FOUND" | "NOT_PDF";
-};
+export type DeepAnalysisActionResult = ExtractionActionResult;
 
-// MVP-only: In-memory lock won't work across serverless instances
-// TODO: Replace with DB-backed locking for production
-const EXTRACTION_LOCKS = new Set<string>();
+async function validatePdfInput(
+  projectId: string,
+  studyId: string,
+  fileAssetId: string,
+) {
+  return withAuth(async ({ userId, workspaceId }) => {
+    const scope = { ownerId: userId, workspaceId };
+    await assertProjectAccess(scope, projectId);
 
-/**
- * Extract study metadata from an attached PDF file
- * Updates the study's details with extracted information
- */
-export async function extractStudyFromPdfAction(
-    projectId: string,
-    studyId: string,
-    fileAssetId: string
-): Promise<ExtractionActionResult> {
-    const lockKey = `${projectId}:${studyId}`;
-
-    // Check if extraction is already in progress
-    if (EXTRACTION_LOCKS.has(lockKey)) {
-        return {
-            success: false,
-            error: "Extraction already in progress for this study",
-            errorCode: "EXTRACTION_IN_PROGRESS",
-        };
+    const file = await getFileAssetById(scope, projectId, fileAssetId);
+    if (!file) {
+      return { ok: false as const, error: "File not found", errorCode: "FILE_NOT_FOUND" as const };
     }
 
-    try {
-        const v = extractionInputSchema.parse({ projectId, studyId, fileAssetId });
-        // Acquire lock
-        EXTRACTION_LOCKS.add(lockKey);
-        return await withAuth(async ({ userId, workspaceId }) => {
-            const scope = { ownerId: userId, workspaceId };
-
-            // Verify project access
-            await assertProjectAccess(scope, v.projectId);
-
-            // Get the file asset
-            const file = await getFileAssetById(scope, v.projectId, v.fileAssetId);
-            if (!file) {
-                return {
-                    success: false,
-                    error: "File not found",
-                    errorCode: "FILE_NOT_FOUND",
-                };
-            }
-
-            // Validate it's a PDF
-            if (file.mimeType !== "application/pdf" && file.format !== "pdf") {
-                return {
-                    success: false,
-                    error: "File is not a PDF",
-                    errorCode: "NOT_PDF",
-                };
-            }
-
-            // Get existing study
-            const existingStudy = await getStudy(scope, v.projectId, v.studyId);
-            if (!existingStudy) {
-                return {
-                    success: false,
-                    error: "Study not found",
-                    errorCode: "STUDY_NOT_FOUND",
-                };
-            }
-
-            // Perform extraction
-            const extractionResult = await extractStudyFromPdf(file.storagePath, v.projectId);
-
-            if (!extractionResult.success) {
-                return {
-                    success: false,
-                    extractionResult,
-                    error: extractionResult.error || "Extraction failed",
-                    errorCode: extractionResult.errorCode,
-                };
-            }
-
-            // Prepare updates - always prefer AI-extracted data over filename defaults
-            const updates: {
-                title?: string;
-                authors?: string;
-                year?: number;
-                status?: Study["status"];
-                details?: Partial<StudyDetails>;
-            } = {
-                status: "extracted",
-                details: {
-                    ...extractionResult.details,
-                    source: "pdf-import",
-                },
-            };
-
-            if (extractionResult.title) {
-                updates.title = extractionResult.title;
-            }
-            if (extractionResult.authors) {
-                updates.authors = extractionResult.authors;
-            }
-            if (extractionResult.year) {
-                updates.year = extractionResult.year;
-            }
-
-            // Update the study (updateStudy merges details automatically)
-            const updatedStudy = await updateStudy(
-                scope,
-                v.projectId,
-                v.studyId,
-                updates
-            );
-
-            return {
-                success: true,
-                study: updatedStudy,
-                extractionResult,
-            };
-        });
-    } catch (err) {
-        logServerError("extraction-action", "study extraction failed", {
-            projectId,
-            studyId,
-            fileAssetId,
-        }, err);
-        return {
-            success: false,
-            error: sanitizeErrorMessage(err, "Unknown error during extraction", { allowRawMessage: true }),
-        };
-    } finally {
-        // Always release lock
-        EXTRACTION_LOCKS.delete(lockKey);
+    if (file.studyId !== studyId) {
+      return { ok: false as const, error: "File not found", errorCode: "FILE_NOT_FOUND" as const };
     }
+
+    if (file.mimeType !== "application/pdf" && file.format !== "pdf") {
+      return { ok: false as const, error: "File is not a PDF", errorCode: "NOT_PDF" as const };
+    }
+
+    return { ok: true as const, scope };
+  });
 }
 
-/**
- * Stage 2: Deep analysis of an already-extracted study PDF.
- * Populates aiSummary, studyType, keywords, quality, qualityRationale.
- */
+export async function extractStudyFromPdfAction(
+  projectId: string,
+  studyId: string,
+  fileAssetId: string,
+): Promise<ExtractionActionResult> {
+  try {
+    const v = extractionInputSchema.parse({ projectId, studyId, fileAssetId });
+    const validation = await validatePdfInput(v.projectId, v.studyId, v.fileAssetId);
+    if (!validation.ok) {
+      return {
+        success: false,
+        error: validation.error,
+        errorCode: validation.errorCode,
+      };
+    }
+
+    const result = await enqueueStudyProcessingJob(validation.scope, {
+      projectId: v.projectId,
+      studyId: v.studyId,
+      fileAssetId: v.fileAssetId,
+      phase: "quick_extract",
+      priority: "foreground",
+      requestSource: "manual_extract",
+    });
+    void kickStudyProcessingDispatcher();
+    return {
+      success: true,
+      study: result.study,
+      processing: result.processing,
+      transitionHint: result.transitionHint,
+    };
+  } catch (err) {
+    logServerError("extraction-action", "study extraction enqueue failed", {
+      projectId,
+      studyId,
+      fileAssetId,
+    }, err);
+    return {
+      success: false,
+      error: sanitizeErrorMessage(err, "Unable to queue PDF extraction.", { allowRawMessage: true }),
+    };
+  }
+}
+
 export async function deepAnalyzeStudyAction(
-    projectId: string,
-    studyId: string,
-    fileAssetId: string
+  projectId: string,
+  studyId: string,
+  fileAssetId: string,
 ): Promise<DeepAnalysisActionResult> {
-    const lockKey = `deep:${projectId}:${studyId}`;
-
-    if (EXTRACTION_LOCKS.has(lockKey)) {
-        return {
-            success: false,
-            error: "Deep analysis already in progress for this study",
-            errorCode: "EXTRACTION_IN_PROGRESS",
-        };
+  try {
+    const v = extractionInputSchema.parse({ projectId, studyId, fileAssetId });
+    const validation = await validatePdfInput(v.projectId, v.studyId, v.fileAssetId);
+    if (!validation.ok) {
+      return {
+        success: false,
+        error: validation.error,
+        errorCode: validation.errorCode,
+      };
     }
 
-    try {
-        const v = extractionInputSchema.parse({ projectId, studyId, fileAssetId });
-        EXTRACTION_LOCKS.add(lockKey);
-        return await withAuth(async ({ userId, workspaceId }) => {
-            const scope = { ownerId: userId, workspaceId };
-            await assertProjectAccess(scope, v.projectId);
+    const result = await enqueueStudyProcessingJob(validation.scope, {
+      projectId: v.projectId,
+      studyId: v.studyId,
+      fileAssetId: v.fileAssetId,
+      phase: "deep_analysis",
+      priority: "foreground",
+      requestSource: "manual_analyze",
+    });
+    void kickStudyProcessingDispatcher();
+    return {
+      success: true,
+      study: result.study,
+      processing: result.processing,
+      transitionHint: result.transitionHint,
+    };
+  } catch (err) {
+    logServerError("extraction-action", "deep analysis enqueue failed", {
+      projectId,
+      studyId,
+      fileAssetId,
+    }, err);
+    return {
+      success: false,
+      error: sanitizeErrorMessage(err, "Unable to queue deep analysis.", { allowRawMessage: true }),
+    };
+  }
+}
 
-            const file = await getFileAssetById(scope, v.projectId, v.fileAssetId);
-            if (!file) {
-                return { success: false, error: "File not found", errorCode: "FILE_NOT_FOUND" };
-            }
-
-            if (file.mimeType !== "application/pdf" && file.format !== "pdf") {
-                return { success: false, error: "File is not a PDF", errorCode: "NOT_PDF" };
-            }
-
-            const existingStudy = await getStudy(scope, v.projectId, v.studyId);
-            if (!existingStudy) {
-                return { success: false, error: "Study not found", errorCode: "STUDY_NOT_FOUND" };
-            }
-
-            const result = await deepAnalyzeStudyFromPdf(
-                file.storagePath,
-                {
-                    title: existingStudy.title,
-                    authors: existingStudy.authors,
-                    details: existingStudy.details,
-                },
-                v.projectId
-            );
-
-            if (!result.success) {
-                return {
-                    success: false,
-                    error: result.error || "Deep analysis failed",
-                    errorCode: result.errorCode,
-                };
-            }
-
-            // Build updates from deep analysis result
-            const updates: { quality?: Study["quality"]; details?: Partial<StudyDetails> } = {
-                details: {
-                    ...result.details,
-                    deepAnalysisComplete: true,
-                },
-            };
-
-            if (result.quality) {
-                updates.quality = result.quality;
-            }
-
-            const updatedStudy = await updateStudy(scope, v.projectId, v.studyId, updates);
-
-            // Create StudyMemory records from deep analysis
-            await createMemoriesFromDeepAnalysis(
-                v.studyId,
-                v.projectId,
-                { ...result.details, deepAnalysisComplete: true } as Record<string, unknown>,
-                result.quality
-            ).catch((err) => {
-                logServerError("extraction-action", "deep analysis memory creation failed", {
-                    projectId: v.projectId,
-                    studyId: v.studyId,
-                }, err);
-            });
-
-            return { success: true, study: updatedStudy };
-        });
-    } catch (err) {
-        logServerError("extraction-action", "deep analysis failed", {
-            projectId,
-            studyId,
-            fileAssetId,
-        }, err);
-        return {
-            success: false,
-            error: sanitizeErrorMessage(err, "Unknown error during deep analysis", { allowRawMessage: true }),
-        };
-    } finally {
-        EXTRACTION_LOCKS.delete(lockKey);
+export async function listStudyProcessingStatesAction(
+  projectId: string,
+  studyIds: string[],
+): Promise<{ success: true; data: StudyProcessingStateItem[] } | { success: false; error: string; errorCode?: string }> {
+  try {
+    const v = processingStateListInputSchema.parse({ projectId, studyIds });
+    const data = await withAuth(({ userId, workspaceId }) =>
+      listStudyProcessingStateItems({ ownerId: userId, workspaceId }, v.projectId, v.studyIds),
+    );
+    if (data.some((item) => item.processing.currentState === "queued" || item.processing.currentState === "running")) {
+      void kickStudyProcessingDispatcher();
     }
+    return { success: true, data };
+  } catch (err) {
+    logServerError("extraction-action", "list processing states failed", {
+      projectId,
+      studyIds,
+    }, err);
+    return {
+      success: false,
+      error: sanitizeErrorMessage(err, "Unable to load processing state."),
+    };
+  }
+}
+
+export async function prioritizeStudyProcessingAction(
+  projectId: string,
+  studyId: string,
+  phase: StudyProcessingPhase,
+): Promise<ExtractionActionResult> {
+  try {
+    const v = processingPriorityInputSchema.parse({ projectId, studyId, phase });
+    const result = await withAuth(({ userId, workspaceId }) =>
+      prioritizeStudyProcessingJob(
+        { ownerId: userId, workspaceId },
+        { projectId: v.projectId, studyId: v.studyId, phase: v.phase },
+      ),
+    );
+    void kickStudyProcessingDispatcher();
+    return {
+      success: true,
+      study: result.study,
+      processing: result.processing,
+      transitionHint: result.transitionHint,
+    };
+  } catch (err) {
+    logServerError("extraction-action", "prioritize processing failed", {
+      projectId,
+      studyId,
+      phase,
+    }, err);
+    return {
+      success: false,
+      error: sanitizeErrorMessage(err, "Unable to prioritize study processing."),
+    };
+  }
 }

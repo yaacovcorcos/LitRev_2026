@@ -1,10 +1,13 @@
 import "server-only";
 
 import { createHash } from "crypto";
+import type { JSONContent } from "@tiptap/core";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/server/prisma";
 import { assertProjectAccess } from "@/lib/server/access";
 import { mergeDetails } from "@/lib/utils/merge";
 import { normalizeStudy, type StudyInput } from "@/lib/utils/normalize";
+import { attachProcessingToStudies } from "@/lib/server/study-processing";
 import {
   buildStudyDuplicateClusters,
   type StudyDuplicateCluster,
@@ -13,6 +16,7 @@ import {
 import { rewriteCitationStudyIdsInContentBySection } from "@/lib/citation-compiler";
 import { normalizeDraftState } from "@/lib/draftStorage";
 import type { ScopeInput } from "@/lib/server/scope";
+import type { DraftSectionId } from "@/types/draft";
 import type { Study, StudyDetails } from "@/types/ledger";
 
 export type { StudyInput };
@@ -74,6 +78,10 @@ function toStudy(record: {
     quality: record.quality as Study["quality"],
     details: (record.details as Study["details"]) ?? undefined,
   };
+}
+
+function toInputJsonValue(value: unknown): Prisma.InputJsonValue {
+  return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 }
 
 function normalizeDoi(value: string | undefined): string | undefined {
@@ -282,7 +290,7 @@ async function rewriteDraftCitationsForMergedStudies(
   if (!contentBySection || typeof contentBySection !== "object") return;
 
   const rewritten = rewriteCitationStudyIdsInContentBySection(
-    contentBySection as any,
+    contentBySection as Record<DraftSectionId, JSONContent>,
     replacements,
   );
   if (rewritten.changedCount === 0) return;
@@ -293,7 +301,7 @@ async function rewriteDraftCitationsForMergedStudies(
       state: normalizeDraftState({
         ...normalizedState,
         contentBySection: rewritten.contentBySection,
-      }) as any,
+      }) as Prisma.InputJsonValue,
     },
   });
 }
@@ -307,7 +315,7 @@ export async function listStudies(
     where: { projectId, deletedAt: null },
     orderBy: { createdAt: "asc" },
   });
-  return studies.map(toStudy);
+  return attachProcessingToStudies(studies.map(toStudy));
 }
 
 export async function listStudiesPaginated(
@@ -347,7 +355,7 @@ export async function listStudiesPaginated(
   const page = hasMore ? rows.slice(0, limit) : rows;
 
   return {
-    items: page.map(toStudy),
+    items: await attachProcessingToStudies(page.map(toStudy)),
     nextCursor: hasMore ? page[page.length - 1]?.id ?? null : null,
   };
 }
@@ -371,11 +379,11 @@ export async function upsertStudy(
           year: normalized.year,
           status: normalized.status,
           quality: normalized.quality,
-          details: normalized.details as any,
+          details: toInputJsonValue(normalized.details),
           deletedAt: null,
         },
       });
-      return toStudy(updated);
+      return (await attachProcessingToStudies([toStudy(updated)]))[0];
     }
   }
   const created = await prisma.study.create({
@@ -388,10 +396,10 @@ export async function upsertStudy(
       year: normalized.year,
       status: normalized.status,
       quality: normalized.quality,
-      details: normalized.details as any,
+      details: toInputJsonValue(normalized.details),
     },
   });
-  return toStudy(created);
+  return (await attachProcessingToStudies([toStudy(created)]))[0];
 }
 
 export async function replaceStudies(
@@ -415,7 +423,7 @@ export async function replaceStudies(
     throw new Error("replaceStudies requires an id for every incoming study.");
   }
 
-  return prisma.$transaction(async (tx: any) => {
+  const savedStudies = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
     if (normalized.length === 0) {
       await tx.study.updateMany({
         where: { projectId, deletedAt: null },
@@ -458,7 +466,7 @@ export async function replaceStudies(
             year: study.year,
             status: study.status,
             quality: study.quality,
-            details: study.details as any,
+            details: toInputJsonValue(study.details),
             deletedAt: null,
           },
         });
@@ -475,7 +483,7 @@ export async function replaceStudies(
           year: study.year,
           status: study.status,
           quality: study.quality,
-          details: study.details as any,
+          details: toInputJsonValue(study.details),
         },
       });
     }
@@ -485,6 +493,7 @@ export async function replaceStudies(
     });
     return saved.map(toStudy);
   });
+  return attachProcessingToStudies(savedStudies);
 }
 
 export async function deleteStudy(
@@ -526,7 +535,8 @@ export async function getStudy(
   const study = await prisma.study.findFirst({
     where: { id: canonicalStudyId, projectId, deletedAt: null },
   });
-  return study ? toStudy(study) : null;
+  if (!study) return null;
+  return (await attachProcessingToStudies([toStudy(study)]))[0];
 }
 
 /**
@@ -567,10 +577,10 @@ export async function updateStudy(
 
   const updated = await prisma.study.update({
     where: { id: canonicalStudyId },
-    data: data as any,
+    data: data as Prisma.StudyUpdateInput,
   });
 
-  return toStudy(updated);
+  return (await attachProcessingToStudies([toStudy(updated)]))[0];
 }
 
 export async function resolveCanonicalStudyId(
@@ -627,7 +637,7 @@ export async function mergeStudyDuplicateCluster(
 ): Promise<DedupeMergeClusterResult> {
   await assertProjectAccess(scopeInput, projectId);
 
-  return prisma.$transaction(async (tx: any) => {
+  return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
     const activeRows = await tx.study.findMany({
       where: {
         projectId,
@@ -728,7 +738,7 @@ export async function mergeStudyDuplicateCluster(
 
     await tx.study.update({
       where: { id: canonicalStudyId },
-      data: { details: mergedCanonicalDetails as any },
+      data: { details: toInputJsonValue(mergedCanonicalDetails) },
     });
 
     for (const row of duplicateRows) {
@@ -737,13 +747,13 @@ export async function mergeStudyDuplicateCluster(
         where: { id: row.id },
         data: {
           deletedAt: now,
-          details: {
+          details: toInputJsonValue({
             ...details,
             mergedIntoStudyId: canonicalStudyId,
             mergeReason: "dedupe_v2_cluster",
             mergeConfidence: cluster.confidence,
             mergedAt: nowIso,
-          } as any,
+          }),
         },
       });
     }

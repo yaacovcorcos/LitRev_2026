@@ -18,6 +18,9 @@ type StudyFilesPanelProps = {
   onExtract?: (fileId: string) => Promise<void>;
   /** Optional: ID of file currently being extracted */
   extractingFileId?: string;
+  processingLabel?: string;
+  processingDescription?: string;
+  disableExtract?: boolean;
 };
 
 function formatFileSize(bytes: number): string {
@@ -44,6 +47,9 @@ export function StudyFilesPanel({
   onClose,
   onExtract,
   extractingFileId,
+  processingLabel,
+  processingDescription,
+  disableExtract,
 }: StudyFilesPanelProps) {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -161,6 +167,16 @@ export function StudyFilesPanel({
         </div>
       )}
 
+      {processingLabel && processingDescription && (
+        <div className={styles.infoBanner}>
+          <span className="material-icons-round">schedule</span>
+          <div className={styles.infoBannerText}>
+            <strong>{processingLabel}</strong>
+            <span>{processingDescription}</span>
+          </div>
+        </div>
+      )}
+
       <div className={styles.fileList}>
         {sortedFiles.length === 0 ? (
           <div className={styles.emptyState}>
@@ -188,12 +204,12 @@ export function StudyFilesPanel({
                     type="button"
                     className={`${styles.actionBtn} ${styles.extractBtn}`}
                     onClick={() => onExtract(file.id)}
-                    disabled={!!extractingFileId}
-                    aria-label={extractingFileId === file.id ? "Extracting file" : "Extract study data from PDF"}
-                    title={extractingFileId === file.id ? "Extracting..." : "Extract study data from PDF"}
+                    disabled={Boolean(extractingFileId) || Boolean(disableExtract)}
+                    aria-label={extractingFileId === file.id ? "Extracting file" : disableExtract ? "Processing already running" : "Extract study data from PDF"}
+                    title={extractingFileId === file.id ? "Extracting..." : disableExtract ? "Processing already running" : "Extract study data from PDF"}
                   >
                     <span className={`material-icons-round ${extractingFileId === file.id ? styles.spinIcon : ""}`}>
-                      {extractingFileId === file.id ? "sync" : "auto_awesome"}
+                      {extractingFileId === file.id || disableExtract ? "sync" : "auto_awesome"}
                     </span>
                   </button>
                 )}

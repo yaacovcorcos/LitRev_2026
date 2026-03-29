@@ -24,7 +24,6 @@ import {
   uploadStudyFileAction,
   importStudyWithPdfAction,
 } from "@/app/actions/files";
-import { extractStudyFromPdfAction } from "@/app/actions/extraction";
 import { useProjectData } from "@/hooks/useProjectData";
 import {
   evaluateCriteria,
@@ -41,6 +40,8 @@ import { LedgerStatsBar } from "./LedgerStatsBar";
 import { isMobileLedgerV2Enabled } from "@/lib/mobile/feature-flags";
 import { useContextCaptureActions } from "@/hooks/useContextCaptureActions";
 import { buildStudySetTarget } from "@/lib/context-capture/targets";
+import { getStudyProcessingStatusView, isStudyProcessingActive } from "@/lib/study-processing-ui";
+import { useStudyProcessingSync } from "@/hooks/useStudyProcessingSync";
 import {
   useLedgerActions,
   type LedgerConfirmDialogState,
@@ -192,6 +193,26 @@ export default function LedgerPage() {
     });
   }, [studies, criteriaFilter, studyCriteriaMap, hasProtocolCriteria]);
 
+  const activeProcessingStudyIds = useMemo(
+    () => studies.filter(isStudyProcessingActive).map((study) => study.id),
+    [studies],
+  );
+
+  useStudyProcessingSync({
+    projectId: id,
+    studyIds: activeProcessingStudyIds,
+    enabled: activeProcessingStudyIds.length > 0,
+    intervalMs: 5000,
+    onStudiesReceived: (updatedStudies) => {
+      for (const updatedStudy of updatedStudies) {
+        replaceStudyInCache(id, updatedStudy);
+        if (selectedStudy?.id === updatedStudy.id) {
+          setSelectedStudy(updatedStudy);
+        }
+      }
+    },
+  });
+
   const selectedStudies = useMemo(
     () => validSelectedIds
       .map((studyId) => studies.find((study) => study.id === studyId))
@@ -303,25 +324,8 @@ export default function LedgerPage() {
       formData.append("file", file);
       const importResult = await importStudyWithPdfAction(id, formData);
       if (!importResult.success) throw new Error(importResult.error);
-      const { study, fileAsset } = importResult.data;
+      const { study } = importResult.data;
       addStudy(id, study);
-
-      // Fire Stage 1 extraction in the background (non-blocking)
-      if (fileAsset.mimeType === "application/pdf") {
-        const runBackgroundExtraction = async () => {
-          try {
-            const result = await extractStudyFromPdfAction(id, study.id, fileAsset.id);
-            if (result.success && result.study) {
-              replaceStudyInCache(id, result.study);
-            } else if (result.error) {
-              console.error("Background extraction failed:", result.error);
-            }
-          } catch (err) {
-            console.error("Background extraction error:", err);
-          }
-        };
-        void runBackgroundExtraction();
-      }
     } catch (err) {
       setAlertMsg(err instanceof Error ? err.message : "Import failed");
     } finally {
@@ -698,6 +702,8 @@ export default function LedgerPage() {
           onUpload={handleUploadFile}
           onDelete={handleDeleteFile}
           onClose={handleCloseStudyFiles}
+          processingLabel={isStudyProcessingActive(selectedStudy) ? getStudyProcessingStatusView(selectedStudy).label : undefined}
+          processingDescription={isStudyProcessingActive(selectedStudy) ? getStudyProcessingStatusView(selectedStudy).description : undefined}
         />
       </div>
     </>

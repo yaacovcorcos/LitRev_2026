@@ -145,6 +145,7 @@ model Project {
   files                  FileAsset[]
   projectMemories        ProjectMemory[]
   studyMemories          StudyMemory[]
+  studyProcessingJobs    StudyProcessingJob[]
   artifacts              Artifact[]
   notes                  Note[]
   draftVersions          DraftVersion[]
@@ -241,9 +242,10 @@ model Study {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  project  Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  files    FileAsset[]
-  memories StudyMemory[]
+  project        Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  files          FileAsset[]
+  memories       StudyMemory[]
+  processingJobs StudyProcessingJob[]
 
   @@index([projectId])
   @@index([projectId, deletedAt])
@@ -268,12 +270,43 @@ model FileAsset {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  project          Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  study            Study?            @relation(fields: [studyId], references: [id], onDelete: Cascade)
-  draftCheckpoints DraftCheckpoint[] @relation("DraftCheckpointFileAsset")
+  project          Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  study            Study?               @relation(fields: [studyId], references: [id], onDelete: Cascade)
+  draftCheckpoints DraftCheckpoint[]    @relation("DraftCheckpointFileAsset")
+  processingJobs   StudyProcessingJob[]
 
   @@index([projectId])
   @@index([workspaceId])
+  @@index([studyId])
+}
+
+model StudyProcessingJob {
+  id               String   @id @default(cuid())
+  studyId          String
+  projectId        String
+  workspaceId      String?
+  fileAssetId      String?
+  phase            String
+  state            String
+  priority         String
+  requestSource    String
+  attemptCount     Int      @default(0)
+  requestedAt      DateTime @default(now())
+  startedAt        DateTime?
+  leaseExpiresAt   DateTime?
+  completedAt      DateTime?
+  lastErrorCode    String?
+  lastErrorMessage String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  project   Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  study     Study     @relation(fields: [studyId], references: [id], onDelete: Cascade)
+  fileAsset FileAsset? @relation(fields: [fileAssetId], references: [id], onDelete: SetNull)
+
+  @@unique([studyId, phase])
+  @@index([projectId, state, priority, requestedAt])
+  @@index([leaseExpiresAt])
   @@index([studyId])
 }
 

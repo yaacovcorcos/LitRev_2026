@@ -5,6 +5,8 @@ import type { FileAsset } from "@/types/files";
 import type { Study } from "@/types/ledger";
 import type { FileAssetInput } from "@/lib/server/files";
 import { createFileAsset, deleteFileAsset, listProjectFiles, listStudyFiles, uploadStudyFile, importStudyWithPdf, uploadChatAttachment, extractTextFromExistingFile } from "@/lib/server/files";
+import { getStudy } from "@/lib/server/ledger";
+import { enqueueStudyProcessingJob, kickStudyProcessingDispatcher } from "@/lib/server/study-processing";
 import { withValidatedAction, type ActionResult } from "@/lib/server/action-utils";
 import { withAuth } from "@/lib/server/auth/session";
 import { projectIdSchema, studyIdSchema, resourceIdSchema } from "@/lib/schemas/ids";
@@ -83,12 +85,29 @@ export async function importStudyWithPdfAction(
   formData: FormData
 ): Promise<ActionResult<{ study: Study; fileAsset: FileAsset }>> {
   return withValidatedAction(projectIdSchema, projectId,
-    (id) => withAuth(({ userId, workspaceId }) => {
+    (id) => withAuth(async ({ userId, workspaceId }) => {
       const file = formData.get("file");
       if (!(file instanceof File)) {
         throw new Error("File is required.");
       }
-      return importStudyWithPdf({ ownerId: userId, workspaceId }, id, file);
+      const scope = { ownerId: userId, workspaceId };
+      const imported = await importStudyWithPdf(scope, id, file);
+      if (imported.fileAsset.mimeType === "application/pdf") {
+        await enqueueStudyProcessingJob(scope, {
+          projectId: id,
+          studyId: imported.study.id,
+          fileAssetId: imported.fileAsset.id,
+          phase: "quick_extract",
+          priority: "background",
+          requestSource: "auto_import",
+        });
+        void kickStudyProcessingDispatcher();
+      }
+      const enrichedStudy = await getStudy(scope, id, imported.study.id);
+      return {
+        study: enrichedStudy ?? imported.study,
+        fileAsset: imported.fileAsset,
+      };
     }),
   );
 }

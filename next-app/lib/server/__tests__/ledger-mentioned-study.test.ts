@@ -12,6 +12,9 @@ vi.mock("@/lib/server/prisma", () => ({
             create: vi.fn(),
             update: vi.fn(),
         },
+        studyProcessingJob: {
+            findMany: vi.fn(),
+        },
     },
 }));
 
@@ -19,6 +22,7 @@ const { prisma } = await import("@/lib/server/prisma");
 const mockFindMany = vi.mocked(prisma.study.findMany);
 const mockFindFirst = vi.mocked(prisma.study.findFirst);
 const mockCreate = vi.mocked(prisma.study.create);
+const mockJobFindMany = vi.mocked(prisma.studyProcessingJob.findMany);
 
 const { addMentionedStudy } = await import("@/lib/server/ledger");
 
@@ -40,6 +44,7 @@ describe("addMentionedStudy", () => {
         vi.clearAllMocks();
         mockFindMany.mockResolvedValue([] as never);
         mockFindFirst.mockResolvedValue(null as never);
+        mockJobFindMany.mockResolvedValue([] as never);
         mockCreate.mockResolvedValue(
             makeStudyRow({
                 id: "study_new",
@@ -96,6 +101,13 @@ describe("addMentionedStudy", () => {
     it("enforces idempotency via duplicate matching on subsequent add", async () => {
         mockFindMany
             .mockResolvedValueOnce([] as never)
+            .mockResolvedValueOnce([
+                makeStudyRow({
+                    id: "study_new",
+                    title: "Turner et al. 2016",
+                    details: { doi: "10.1097/j.pain.0000000000000635", addedVia: "chat_mention" },
+                }),
+            ] as never)
             .mockResolvedValueOnce([
                 makeStudyRow({
                     id: "study_new",

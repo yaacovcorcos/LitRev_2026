@@ -4,6 +4,7 @@ import { prisma } from "@/lib/server/prisma";
 import { extractStudyFromPdf, deepAnalyzeStudyFromPdf } from "@/lib/server/pdf-extraction";
 import { createMemoriesFromDeepAnalysis } from "@/lib/server/memory/study-memory";
 import { logServerError } from "@/lib/server/logging";
+import { mergeDetails } from "@/lib/utils/merge";
 
 const inputSchema = z.object({
     studyId: z.string().optional(),
@@ -77,6 +78,28 @@ export const extractPdfTool: AITool = {
 
             const details = (study.details as Record<string, unknown>) ?? {};
 
+            const activePhase = deep ? "deep_analysis" : "quick_extract";
+            const activeJob = await prisma.studyProcessingJob.findUnique({
+                where: {
+                    studyId_phase: {
+                        studyId,
+                        phase: activePhase,
+                    },
+                },
+                select: {
+                    state: true,
+                },
+            });
+            if (activeJob && (activeJob.state === "queued" || activeJob.state === "running")) {
+                return {
+                    callId: "",
+                    result: null,
+                    error: deep
+                        ? "Deep analysis is already running for this study."
+                        : "Extraction is already running for this study.",
+                };
+            }
+
             // Idempotency: skip if already extracted (unless deep is requested and not done)
             if (details.source === "pdf-import" && !deep) {
                 return {
@@ -127,11 +150,14 @@ export const extractPdfTool: AITool = {
                 }
 
                 // Merge deep analysis results into study
-                const mergedDetails = { ...details, ...result.details };
+                const mergedDetails = mergeDetails(details, {
+                    ...result.details,
+                    deepAnalysisComplete: true,
+                });
                 await prisma.study.update({
                     where: { id: studyId },
                     data: {
-                        ...(result.quality ? { quality: result.quality.toLowerCase() } : {}),
+                        ...(result.quality ? { quality: result.quality } : {}),
                         details: mergedDetails as object,
                     },
                 });
@@ -168,13 +194,17 @@ export const extractPdfTool: AITool = {
                 }
 
                 // Update study with extracted data
-                const mergedDetails = { ...details, ...result.details };
+                const mergedDetails = mergeDetails(details, {
+                    ...result.details,
+                    source: "pdf-import",
+                });
                 await prisma.study.update({
                     where: { id: studyId },
                     data: {
                         ...(result.title ? { title: result.title } : {}),
                         ...(result.authors ? { authors: result.authors } : {}),
                         ...(result.year ? { year: result.year } : {}),
+                        status: "extracted",
                         details: mergedDetails as object,
                     },
                 });

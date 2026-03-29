@@ -14,6 +14,11 @@ Domain-specific execution plans remain canonical for their domains:
 
 ## Current Architecture (Code-Verified)
 - Project route pages use `ProjectPageLayout` for shell embedding/standalone parity (`next-app/components/project/ProjectPageLayout.tsx`) and are wired from notes/memory/protocol/ledger/draft/study-detail pages.
+- Ledger PDF processing is now a visible durable workflow contract:
+  - PDF import enqueues `StudyProcessingJob` quick-extract work immediately instead of relying on a request-local in-memory extraction lock.
+  - Ledger list rows derive one shared processing label from `Study.processing` (`PDF uploaded`, `Queued`, `Extracting`, `Ready for analysis`, `Analyzing`, `Needs retry`, `Done`).
+  - Study detail renders a dedicated PDF processing card with truthful wait/retry actions, keeps `View PDF` available during active work, and upgrades only existing background jobs when the user focuses that study.
+  - Files-panel extract affordances now surface explanatory wait state copy when processing is already active instead of showing raw extraction-in-progress errors.
 - Streaming action safety and suggestion prefill hardening are active:
   - `useStreamingGate()` is exported from `ProjectCopilotContext`.
   - Artifact cards consume `canAct` while streaming.
@@ -203,6 +208,7 @@ Use this mapping for old PRs/comments referencing CLU IDs.
 - [ ] `CUX-A03` Expand async `aria-live` announcements coverage and consistency across remaining async UI states.
 
 ## Recently Completed
+- [x] Ledger PDF processing lifecycle shipped: ledger import/extract/analyze now persist durable `StudyProcessingJob` rows, list/detail/files UI share one truthful processing-state contract, active work survives reloads and tab switches, and page-focus priority only upgrades existing background jobs instead of creating duplicate work.
 - [x] Inline artifact action contract shipped on the main timeline surfaces: one shared artifact action policy now drives inline review controls, destructive review resolutions and `Undo` use selective confirmation through the shared confirm dialog, `TimelineRenderer` enforces a single artifact mutation lane, `ArtifactWrapper` owns shared settled affordances, and inline undo is initially allowlisted for `study_update` while popup remains unchanged.
 - [x] Semantic tool receipts now ship on the main timeline surfaces: the shared reducer/runtime path derives additive semantic receipt fields for search, read/inspection, and delegation tools, the renderer prefers those fields with truthful fallback for uncovered tools, and popup remains on the intentionally reduced trace subset instead of claiming parity.
 - [x] Progressive answer streaming is now enabled by default on the shared `/ai`, main conversation, and side-panel runtime contract: send reserves the assistant turn immediately, the same row is later populated by streamed answer content, progress clears once through the shared reducer handoff, live reasoning stays collapsed/non-dominant by default, popup remains on the older path until a separate rollout is approved, and env flags now act as an emergency opt-out instead of the primary rollout switch.
