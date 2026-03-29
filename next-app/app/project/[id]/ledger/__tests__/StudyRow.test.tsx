@@ -157,4 +157,48 @@ describe("StudyRow", () => {
     );
     expect(onToggleSelect).toHaveBeenCalledWith("study-1");
   });
+
+  it("renders queued processing state from the durable snapshot", () => {
+    render(
+      <table>
+        <tbody>
+          <StudyRow
+            study={makeStudy({
+              processing: {
+                byPhase: {
+                  quickExtract: {
+                    phase: "quick_extract",
+                    state: "queued",
+                    attemptCount: 0,
+                  },
+                  deepAnalysis: {
+                    phase: "deep_analysis",
+                    state: "idle",
+                    attemptCount: 0,
+                  },
+                },
+                currentPhase: "quick_extract",
+                currentState: "queued",
+                nextAction: "wait",
+                prerequisitesSatisfied: { deepAnalysis: false },
+              },
+            })}
+            projectId="project-1"
+            isExpanded={false}
+            isSelected={false}
+            isSelectMode={false}
+            hasProtocolCriteria={false}
+            criteriaMatch={undefined}
+            onToggleExpand={vi.fn()}
+            onToggleSelect={vi.fn()}
+            onOpenFiles={vi.fn()}
+            onDeleteStudy={vi.fn()}
+            onTriage={vi.fn()}
+          />
+        </tbody>
+      </table>,
+    );
+
+    expect(screen.getByText("Queued")).toBeDefined();
+  });
 });

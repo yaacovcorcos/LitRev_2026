@@ -37,7 +37,7 @@ For production migration/release procedure, use `docs/plans/db-production-runboo
 | Domain | Tables | Structural role |
 |---|---|---|
 | Auth and admin | `User`, `Session`, `Account`, `Verification`, `AdminAuditLog` | Identity, sessions, provider links, verification flows, admin audit trail |
-| Workspace and project core | `Workspace`, `WorkspaceMember`, `Project`, `Protocol`, `Draft`, `DraftVersion`, `DraftCheckpoint`, `Study`, `Note`, `FileAsset` | Collaboration scope, project state, draft history/checkpoints, studies, notes, file metadata |
+| Workspace and project core | `Workspace`, `WorkspaceMember`, `Project`, `Protocol`, `Draft`, `DraftVersion`, `DraftCheckpoint`, `Study`, `StudyProcessingJob`, `Note`, `FileAsset` | Collaboration scope, project state, draft history/checkpoints, studies, durable study-PDF processing state, notes, file metadata |
 | AI chat and telemetry | `AIConversation`, `AIMessage`, `AIUsage`, `ChatUnificationMetric` | Conversation storage, message timeline, token/cost attribution, chat surface telemetry |
 | Memory and retrieval | `UserMemory`, `ProjectMemory`, `StudyMemory`, `ConversationSummary`, `MemoryRetrieval`, `MemoryEmbedding` | Durable memory, summarization, retrieval audit trail, vector search |
 | Agent runtime | `AgentRun`, `RunEvent`, `RunCheckpoint`, `Artifact`, `AutonomyConfig` | Event-sourced runs, explicit continuation seeds, run lineage, reviewable artifacts, autonomy presets |
@@ -59,6 +59,7 @@ For production migration/release procedure, use `docs/plans/db-production-runboo
 | `DraftVersion` | Versioned draft snapshots by section | `projectId -> Project` | Unique on `projectId + section + version`; indexes on `projectId + section`, `projectId + createdAt` | `contentText`, `artifactId`, `conversationId` optional linkage/context | No |
 | `DraftCheckpoint` | Immutable whole-draft authoring-state snapshot for compare/restore and export provenance | `projectId -> Project`, `fileAssetId -> FileAsset`, `artifactId -> Artifact`, `conversationId -> AIConversation` | Indexes on `projectId + createdAt`, `projectId + kind + createdAt`, `workspaceId`, `fileAssetId`, `artifactId`, `conversationId` | `workspaceId` is denormalized optional scope; `label`, `fileAssetId`, `artifactId`, `conversationId` are optional provenance metadata; `snapshot` intentionally excludes transient route/UI state | No |
 | `Study` | Study records under a project | `projectId -> Project` | Indexes on `projectId`, `projectId + deletedAt`, `workspaceId` | `workspaceId` is denormalized optional scope; `details`, `deletedAt` optional | `deletedAt` |
+| `StudyProcessingJob` | Durable transient workflow state for ledger study PDF quick extraction and deep analysis | `studyId -> Study`, `projectId -> Project`, `fileAssetId -> FileAsset` | Unique on `studyId + phase`; indexes on `projectId + state + priority + requestedAt`, `leaseExpiresAt`, `studyId` | `workspaceId` is denormalized optional scope; `fileAssetId`, `startedAt`, `leaseExpiresAt`, `completedAt`, `lastErrorCode`, `lastErrorMessage` are optional because jobs move through queued/running/terminal states on one mutable row per phase | No |
 | `FileAsset` | File metadata and storage pointer | `projectId -> Project`, `studyId -> Study` | Indexes on `projectId`, `workspaceId`, `studyId` | `workspaceId` denormalized optional scope; `studyId`, `format`, `publicUrl`, `metadata` optional | No |
 | `AIConversation` | Chat container for global/project/study contexts | `projectId -> Project` | Indexes on `userId + context`, `userId + projectId`, `workspaceId`, `workspaceId + context`, `projectId`, `studyId`, `context` | `userId`, `workspaceId`, `title`, `page`, `projectId`, `studyId` are optional to support global and scoped chats | No |
 | `AIMessage` | Ordered messages within a conversation | `conversationId -> AIConversation` | Indexes on `conversationId`, `conversationId + createdAt + id` | `toolCalls`, `toolResultId`, `attachments` optional for tool/attachment flows | No |
@@ -81,6 +82,9 @@ For production migration/release procedure, use `docs/plans/db-production-runboo
 
 - `Project` is the main application hub. Most DB-domain features eventually attach to project scope.
 - `FileAsset` stores metadata and storage paths only. Blob storage lives in Supabase Storage.
+- `StudyProcessingJob` is owned by ledger study PDF processing only. It is not a generic background-job framework.
+- Each `(studyId, phase)` uses one mutable row with the lifecycle `queued -> running -> succeeded|failed`.
+- Page-focus priority upgrades may mutate an existing queued/running background job, but they must never create a new job row by themselves.
 - `RunEvent` must remain unique on `(runId, sequence)`. Sequence repair is an operational concern documented in `docs/runbooks/db-ops.md`.
 - `RunCheckpoint` is continuation authority only. It must not replace `RunEvent` as the audit or replay log, and it must never become a sink for transient runtime facts.
 - `AgentRun.lastActivityAt` is the authoritative liveness field for `running` runs. Admission/recovery logic should not fall back to `startedAt` freshness once the field exists.
@@ -120,6 +124,7 @@ These indexes protect major runtime paths. The operational gate owner and verifi
 - Memory and embeddings: pgvector support, memory tables, retrieval audit, summaries, and memory lifecycle metadata.
 - Draft history: section-scoped draft versioning.
 - Draft checkpoints: immutable whole-draft authoring-state snapshots with export/file provenance.
+- Study PDF processing: durable per-study per-phase queue/lease state via `StudyProcessingJob`.
 - Project FK hardening: project relations added across AI, memory, and runtime tables.
 - Auth foundation: Better Auth session/account/verification support plus later auth/admin indexes.
 - Agent runtime hardening: run lineage fields, uniqueness guarantees, and runtime-supporting indexes.

@@ -13,15 +13,21 @@ import { CitationBlock } from "@/components/CitationBlock";
 import { StudyQuickInfo } from "@/components/StudyQuickInfo";
 import { StudyFilesPanel } from "@/components/StudyFilesPanel";
 import { listStudyFilesAction, deleteFileAssetAction, uploadStudyFileAction } from "@/app/actions/files";
-import { extractStudyFromPdfAction, deepAnalyzeStudyAction } from "@/app/actions/extraction";
+import {
+    deepAnalyzeStudyAction,
+    extractStudyFromPdfAction,
+    prioritizeStudyProcessingAction,
+} from "@/app/actions/extraction";
 import { getDraftAction } from "@/app/actions/drafts";
 import { DRAFT_SECTIONS, DraftSectionId } from "@/types/draft";
 import { loadDraftState, DraftState } from "@/lib/draftStorage";
-import type { Study, StudyDetails, StudyRelevance } from "@/types/ledger";
+import type { Study, StudyDetails, StudyProcessingPhase, StudyRelevance } from "@/types/ledger";
 import type { FileAsset } from "@/types/files";
 import { AlertDialog } from "@/components/ConfirmDialog";
 import { compileDraftCitations, getCitedSectionIdsByStudyId } from "@/lib/citation-compiler";
 import { isMobileLedgerV2Enabled } from "@/lib/mobile/feature-flags";
+import { getStudyProcessingStatusView, isStudyProcessingActive } from "@/lib/study-processing-ui";
+import { useStudyProcessingSync } from "@/hooks/useStudyProcessingSync";
 import styles from "./study.module.css";
 
 // Build lookup for section labels
@@ -62,13 +68,7 @@ export default function StudyDetailPage() {
     const [studyFiles, setStudyFiles] = useState<FileAsset[]>([]);
     const [showFilesPanel, setShowFilesPanel] = useState(false);
 
-    // Extraction state
-    const [extractingFileId, setExtractingFileId] = useState<string | null>(null);
-    const [extractError, setExtractError] = useState<string | null>(null);
-
-    // Deep analysis state
-    const [isDeepAnalyzing, setIsDeepAnalyzing] = useState(false);
-    const [deepAnalysisError, setDeepAnalysisError] = useState<string | null>(null);
+    const [submittingPhase, setSubmittingPhase] = useState<StudyProcessingPhase | null>(null);
 
     // Draft backlinks state
     const [draftBacklinks, setDraftBacklinks] = useState<DraftBacklink[]>([]);
@@ -187,41 +187,77 @@ export default function StudyDetailPage() {
         return () => { active = false; };
     }, [id, studyId]);
 
+    useStudyProcessingSync({
+        projectId: id,
+        studyIds: study ? [study.id] : [],
+        enabled: Boolean(study && isStudyProcessingActive(study)),
+        intervalMs: 2000,
+        onStudiesReceived: (updatedStudies) => {
+            const updatedStudy = updatedStudies[0];
+            if (updatedStudy) {
+                setStudy(updatedStudy);
+            }
+        },
+    });
+
+    const prioritizedJobKeyRef = useRef<string | null>(null);
+
+    useEffect(() => {
+        if (!id || !study?.processing?.currentPhase || !isStudyProcessingActive(study)) return;
+        const phase = study.processing.currentPhase;
+        const phaseSnapshot =
+            phase === "deep_analysis"
+                ? study.processing.byPhase.deepAnalysis
+                : study.processing.byPhase.quickExtract;
+        if (phaseSnapshot.priority !== "background") return;
+
+        const requestKey = `${study.id}:${phase}:${phaseSnapshot.state}:${phaseSnapshot.priority}`;
+        if (prioritizedJobKeyRef.current === requestKey) return;
+        prioritizedJobKeyRef.current = requestKey;
+
+        const prioritize = async () => {
+            const result = await prioritizeStudyProcessingAction(id, study.id, phase);
+            if (result.success && result.study) {
+                setStudy(result.study);
+            }
+        };
+
+        void prioritize();
+    }, [id, study]);
+
     // Handle PDF extraction
     const handleExtract = useCallback(async (fileId: string) => {
         if (!id || !studyId) return;
-        setExtractingFileId(fileId);
-        setExtractError(null);
+        setSubmittingPhase("quick_extract");
         try {
             const result = await extractStudyFromPdfAction(id, studyId, fileId);
             if (result.success && result.study) {
                 setStudy(result.study);
             } else {
-                setExtractError(result.error || "Extraction failed");
+                setAlertMsg(result.error || "Unable to queue extraction.");
             }
         } catch (err) {
-            setExtractError(err instanceof Error ? err.message : "Unknown error");
+            setAlertMsg(err instanceof Error ? err.message : "Unknown error");
         } finally {
-            setExtractingFileId(null);
+            setSubmittingPhase(null);
         }
     }, [id, studyId]);
 
     // Handle deep analysis (Stage 2)
     const handleDeepAnalysis = useCallback(async (fileId: string) => {
         if (!id || !studyId) return;
-        setIsDeepAnalyzing(true);
-        setDeepAnalysisError(null);
+        setSubmittingPhase("deep_analysis");
         try {
             const result = await deepAnalyzeStudyAction(id, studyId, fileId);
             if (result.success && result.study) {
                 setStudy(result.study);
             } else {
-                setDeepAnalysisError(result.error || "Deep analysis failed");
+                setAlertMsg(result.error || "Unable to queue deep analysis.");
             }
         } catch (err) {
-            setDeepAnalysisError(err instanceof Error ? err.message : "Unknown error");
+            setAlertMsg(err instanceof Error ? err.message : "Unknown error");
         } finally {
-            setIsDeepAnalyzing(false);
+            setSubmittingPhase(null);
         }
     }, [id, studyId]);
 
@@ -362,6 +398,7 @@ export default function StudyDetailPage() {
         });
     };
     const pdfFile = useMemo(() => studyFiles.find((f) => f.mimeType === "application/pdf"), [studyFiles]);
+    const processingStatus = study ? getStudyProcessingStatusView(study) : null;
 
     if (isLoadingProjects) {
         return (
@@ -497,120 +534,74 @@ export default function StudyDetailPage() {
                                 </span>
                             </div>
 
-                            {/* Extraction Progress Banner (Stage 1) */}
-                            {extractingFileId && (
-                                <div className={styles.extractionBanner}>
-                                    <div className={styles.extractionBannerContent}>
-                                        <span className={`material-icons-round ${styles.extractionBannerIcon}`}>auto_awesome</span>
+                            {pdfFile && processingStatus && (
+                                <section className={styles.processingCard}>
+                                    <div className={styles.processingCardHeader}>
                                         <div>
-                                            <strong>Extracting study data from PDF...</strong>
-                                            <p>Reading title, abstract, authors, and more</p>
+                                            <span className={styles.processingEyebrow}>PDF Processing</span>
+                                            <h2 className={styles.processingTitle}>{processingStatus.label}</h2>
                                         </div>
+                                        {submittingPhase ? (
+                                            <span className={styles.processingPulse}>Saving…</span>
+                                        ) : null}
                                     </div>
-                                    <div className={styles.extractionProgress}>
-                                        <div className={styles.extractionProgressFill} />
+                                    <p className={styles.processingDescription}>{processingStatus.description}</p>
+                                    {processingStatus.isActive ? (
+                                        <p className={styles.processingWaitCopy}>
+                                            This PDF is being processed on the server. You can wait here or leave this page.
+                                        </p>
+                                    ) : null}
+                                    <div className={styles.processingActions}>
+                                        {pdfFile.publicUrl ? (
+                                            <a
+                                                href={pdfFile.publicUrl}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className={styles.processingActionSecondary}
+                                            >
+                                                <span className="material-icons-round">open_in_new</span>
+                                                View PDF
+                                            </a>
+                                        ) : null}
+                                        {!processingStatus.isActive &&
+                                        processingStatus.currentPhaseSnapshot.phase === "quick_extract" &&
+                                        (study.processing?.nextAction === "extract" || processingStatus.canRetry) ? (
+                                            <button
+                                                className={styles.processingActionPrimary}
+                                                onClick={() => handleExtract(pdfFile.id)}
+                                                disabled={submittingPhase !== null}
+                                            >
+                                                <span className="material-icons-round">
+                                                    {processingStatus.canRetry ? "refresh" : "auto_awesome"}
+                                                </span>
+                                                {processingStatus.canRetry ? "Retry extraction" : "Extract"}
+                                            </button>
+                                        ) : null}
+                                        {!processingStatus.isActive &&
+                                        study.processing?.nextAction === "analyze" ? (
+                                            <button
+                                                className={styles.processingActionPrimary}
+                                                onClick={() => handleDeepAnalysis(pdfFile.id)}
+                                                disabled={submittingPhase !== null}
+                                            >
+                                                <span className="material-icons-round">psychology</span>
+                                                Analyze
+                                            </button>
+                                        ) : null}
+                                        {!processingStatus.isActive &&
+                                        processingStatus.currentPhaseSnapshot.phase === "deep_analysis" &&
+                                        processingStatus.canRetry ? (
+                                            <button
+                                                className={styles.processingActionPrimary}
+                                                onClick={() => handleDeepAnalysis(pdfFile.id)}
+                                                disabled={submittingPhase !== null}
+                                            >
+                                                <span className="material-icons-round">refresh</span>
+                                                Retry analysis
+                                            </button>
+                                        ) : null}
                                     </div>
-                                </div>
-                            )}
-
-                            {/* Deep Analysis Progress Banner (Stage 2) */}
-                            {isDeepAnalyzing && (
-                                <div className={styles.extractionBanner}>
-                                    <div className={styles.extractionBannerContent}>
-                                        <span className={`material-icons-round ${styles.extractionBannerIcon}`}>psychology</span>
-                                        <div>
-                                            <strong>Running deep analysis...</strong>
-                                            <p>Generating AI summary, study type, keywords, and quality assessment</p>
-                                        </div>
-                                    </div>
-                                    <div className={styles.extractionProgress}>
-                                        <div className={styles.extractionProgressFill} />
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Extraction Error Banner */}
-                            {extractError && !extractingFileId && (
-                                <div className={styles.extractionError}>
-                                    <span className="material-icons-round">error_outline</span>
-                                    <span>{extractError}</span>
-                                    <button className={styles.extractionErrorDismiss} onClick={() => setExtractError(null)}>
-                                        <span className="material-icons-round">close</span>
-                                    </button>
-                                </div>
-                            )}
-
-                            {/* Deep Analysis Error Banner */}
-                            {deepAnalysisError && !isDeepAnalyzing && (
-                                <div className={styles.extractionError}>
-                                    <span className="material-icons-round">error_outline</span>
-                                    <span>{deepAnalysisError}</span>
-                                    <button className={styles.extractionErrorDismiss} onClick={() => setDeepAnalysisError(null)}>
-                                        <span className="material-icons-round">close</span>
-                                    </button>
-                                </div>
-                            )}
-
-                            {/* Stage 1: Quick Extract prompt (only if pending and not auto-extracted) */}
-                            {!extractingFileId && pdfFile && study.status === "pending" && (
-                                <div className={styles.analyzePrompt}>
-                                    <span className="material-icons-round">auto_awesome</span>
-                                    <div className={styles.analyzePromptText}>
-                                        <strong>PDF ready for extraction</strong>
-                                        <p>Extract title, authors, abstract, and reference info</p>
-                                    </div>
-                                    {pdfFile.publicUrl && (
-                                        <a
-                                            href={pdfFile.publicUrl}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className={styles.analyzePromptBtn}
-                                            style={{ background: "var(--bg-tertiary)", color: "var(--text-primary)" }}
-                                        >
-                                            <span className="material-icons-round">open_in_new</span>
-                                            View PDF
-                                        </a>
-                                    )}
-                                    <button
-                                        className={styles.analyzePromptBtn}
-                                        onClick={() => handleExtract(pdfFile.id)}
-                                    >
-                                        <span className="material-icons-round">psychology</span>
-                                        Extract
-                                    </button>
-                                </div>
-                            )}
-
-                            {/* Stage 2: Deep Analysis prompt (extracted but not deeply analyzed) */}
-                            {!isDeepAnalyzing && !extractingFileId && pdfFile && study.status === "extracted" && !d.deepAnalysisComplete && (
-                                <div className={styles.analyzePrompt}>
-                                    <span className="material-icons-round">psychology</span>
-                                    <div className={styles.analyzePromptText}>
-                                        <strong>Run Deep Analysis</strong>
-                                        <p>Generate AI summary, study type, keywords, and quality assessment</p>
-                                    </div>
-                                    <button
-                                        className={styles.analyzePromptBtn}
-                                        onClick={() => handleDeepAnalysis(pdfFile.id)}
-                                    >
-                                        <span className="material-icons-round">auto_awesome</span>
-                                        Analyze
-                                    </button>
-                                </div>
-                            )}
-
-                            {/* View PDF link (when study is already extracted) */}
-                            {pdfFile?.publicUrl && study.status !== "pending" && !extractingFileId && (
-                                <a
-                                    href={pdfFile.publicUrl}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className={styles.pdfLink}
-                                >
-                                    <span className="material-icons-round">picture_as_pdf</span>
-                                    <span>{pdfFile.filename}</span>
-                                    <span className="material-icons-round" style={{ fontSize: 16, marginLeft: "auto" }}>open_in_new</span>
-                                </a>
+                                </section>
                             )}
 
                             {/* Quick Info */}
@@ -848,7 +839,10 @@ export default function StudyDetailPage() {
                     onDelete={handleDeleteFile}
                     onClose={() => setShowFilesPanel(false)}
                     onExtract={handleExtract}
-                    extractingFileId={extractingFileId ?? undefined}
+                    extractingFileId={submittingPhase === "quick_extract" ? pdfFile?.id : undefined}
+                    processingLabel={processingStatus?.isActive ? processingStatus.label : undefined}
+                    processingDescription={processingStatus?.isActive ? processingStatus.description : undefined}
+                    disableExtract={processingStatus?.isActive}
                 />
             </div>
         </>

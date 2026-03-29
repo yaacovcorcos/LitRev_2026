@@ -5,6 +5,7 @@ const mockFindFirst = vi.fn();
 const mockCreate = vi.fn();
 const mockUpdate = vi.fn();
 const mockUpdateMany = vi.fn();
+const mockJobFindMany = vi.fn();
 
 vi.mock("@/lib/server/access", () => ({
   assertProjectAccess: vi.fn(async () => ({ workspaceId: "ws-1" })),
@@ -18,6 +19,9 @@ vi.mock("@/lib/server/prisma", () => ({
       create: (...args: unknown[]) => mockCreate(...args),
       update: (...args: unknown[]) => mockUpdate(...args),
       updateMany: (...args: unknown[]) => mockUpdateMany(...args),
+    },
+    studyProcessingJob: {
+      findMany: (...args: unknown[]) => mockJobFindMany(...args),
     },
   },
 }));
@@ -50,6 +54,7 @@ const studyRow = {
 describe("ledger soft delete + pagination", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockJobFindMany.mockResolvedValue([]);
   });
 
   it("listStudies excludes soft-deleted rows", async () => {

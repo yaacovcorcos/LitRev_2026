@@ -37,6 +37,7 @@ npm aliases: `npm run db:ops -- <subcommand>`, `npm run db:doctor`, `npm run db:
 | `RunEvent_runId_sequence_key` | `db-ops.sh repair` then `db-ops.sh migrate` | Manual: see "RunEvent Recovery" below |
 | Migration marked "failed" | `db-ops.sh diagnose` to inspect `_prisma_migrations` | See "Failed Migration Recovery" below |
 | `ACTIVE_RUN_EXISTS` after a disconnect | `db-ops.sh diagnose` — confirm `AgentRun.lastActivityAt` migration/index and DB health first | If DB health is clean, inspect app-layer recovery handling rather than cancelling runs manually |
+| Ledger study stays forever `Queued` / `Extracting` | `db-ops.sh diagnose` — confirm migrations are current and the app can reach DB normally first | Then inspect `StudyProcessingJob` rows for expired leases or repeated `failed` states before blaming the UI |
 | Connection refused / timeout | `db-ops.sh diagnose` — checks both pooled and direct URLs | Check Supabase status, DNS, firewall. Main chat can now degrade optional context for some DB timeouts, but DB health still needs explicit diagnosis. |
 | Pooler works but direct fails | Inspect TLS/SSL settings in connection URL | Verify `sslmode=require` on DIRECT_URL |
 | Direct works but pooler fails | PgBouncer config or connection limit issue | Check Supabase dashboard for connection saturation |
@@ -159,6 +160,7 @@ Expected:
 5. Prefer forward-fix migrations over rollback for DB issues.
 6. Roll back the app first if errors spike post-deploy; fix DB separately.
 7. Do not treat app-layer degraded-context behavior as a substitute for DB remediation; it reduces blast radius for optional context only.
+8. For ledger PDF processing incidents, inspect and repair `StudyProcessingJob` rows rather than reintroducing request-local locking or mutating `Study.status` to fake transient progress.
 
 ## Deep Procedures
 

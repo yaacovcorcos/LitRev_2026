@@ -7,6 +7,8 @@ const mockTxStudy = {
   create: vi.fn(),
   findMany: vi.fn(),
 };
+const mockStudyFindMany = vi.fn();
+const mockJobFindMany = vi.fn();
 const mockTransaction = vi.fn(async (handler: (tx: { study: typeof mockTxStudy }) => Promise<unknown>) =>
   handler({ study: mockTxStudy }),
 );
@@ -17,6 +19,12 @@ vi.mock("@/lib/server/access", () => ({
 
 vi.mock("@/lib/server/prisma", () => ({
   prisma: {
+    study: {
+      findMany: (...args: unknown[]) => mockStudyFindMany(...args),
+    },
+    studyProcessingJob: {
+      findMany: (...args: unknown[]) => mockJobFindMany(...args),
+    },
     $transaction: (handler: (tx: { study: typeof mockTxStudy }) => Promise<unknown>) =>
       mockTransaction(handler),
   },
@@ -44,6 +52,7 @@ const studyRow = {
 describe("replaceStudies contract guard", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockJobFindMany.mockResolvedValue([]);
   });
 
   it("rejects empty payload unless clear_all is explicitly requested", async () => {
@@ -72,6 +81,7 @@ describe("replaceStudies contract guard", () => {
   it("allows explicit clear_all and soft-deletes active studies", async () => {
     mockTxStudy.updateMany.mockResolvedValue({ count: 2 });
     mockTxStudy.findMany.mockResolvedValue([]);
+    mockStudyFindMany.mockResolvedValue([]);
 
     const result = await replaceStudies(SCOPE, PROJECT_ID, [], { emptyBehavior: "clear_all" });
 
@@ -88,6 +98,7 @@ describe("replaceStudies contract guard", () => {
     mockTxStudy.findFirst.mockResolvedValue({ id: "study-1" });
     mockTxStudy.update.mockResolvedValue(studyRow);
     mockTxStudy.findMany.mockResolvedValue([studyRow]);
+    mockStudyFindMany.mockResolvedValue([studyRow]);
 
     const result = await replaceStudies(SCOPE, PROJECT_ID, [
       {

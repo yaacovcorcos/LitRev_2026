@@ -148,6 +148,34 @@
   font-size: 18px;
 }
 
+.infoBanner {
+  display: flex;
+  gap: 10px;
+  margin: 0 20px 16px;
+  padding: 12px 16px;
+  background: rgba(var(--rgb-accent-primary), 0.08);
+  border: 1px solid rgba(var(--rgb-accent-primary), 0.16);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.infoBanner .material-icons-round {
+  font-size: 18px;
+  color: var(--accent-primary);
+}
+
+.infoBannerText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.infoBannerText strong {
+  color: var(--text-primary);
+  font-size: 13px;
+}
+
 .fileList {
   flex: 1;
   overflow-y: auto;
