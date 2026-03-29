@@ -45,11 +45,9 @@ import { resolveReasoningRequest } from "@/lib/ai/reasoning-request";
 import {
     buildUnexpectedTerminalErrorState,
     buildClientErrorState,
-    clearRunScopedRenderedErrors,
     clearRunScopedRecoveryState,
     formatStreamErrorForUI,
     hasCanonicalFailureFallbackText,
-    hasRenderedErrorMatch,
     reconcileRunScopedRenderedErrors,
     reconcileRunScopedRecoveryState,
     shouldSuppressClientFallback,
@@ -275,6 +273,63 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                         createdAt: new Date().toISOString(),
                         context: { page: params.page, section: params.section },
                     },
+                ],
+            };
+        });
+    }, [updateState]);
+
+    const appendProjectArtifactActionError = useCallback((params: {
+        message: string;
+        errorCode?: string;
+    }) => {
+        const errorState = buildClientErrorState({
+            errorMeta: {
+                kind: "artifact_review",
+                code: params.errorCode ?? "ARTIFACT_REVIEW_FAILED",
+                retryable: false,
+                source: "artifact_review",
+                message: params.message,
+            },
+        });
+
+        updateState((prev) => {
+            const context = [...prev.messages]
+                .reverse()
+                .find((message) => message.context?.page)?.context;
+            const reconciled = reconcileRunScopedRenderedErrors({
+                items: prev.messages.filter((message) => message.sender === "ai"),
+                nextMessage: errorState.message,
+                nextMeta: errorState.errorMeta,
+                getMessage: (message) => message.text,
+                getErrorMeta: (message) => message.streamError,
+            });
+            const retainedMessageIds = new Set(reconciled.items.map((message) => message.id));
+
+            if (!reconciled.shouldAppend) {
+                return {
+                    ...prev,
+                    messages: prev.messages.filter((message) =>
+                        message.sender !== "ai" || retainedMessageIds.has(message.id)
+                    ),
+                };
+            }
+
+            const nextMessage: CopilotMessage = {
+                id: `artifact-action-error-${Date.now()}`,
+                sender: "ai",
+                text: errorState.message,
+                streamError: errorState.errorMeta,
+                createdAt: new Date().toISOString(),
+                ...(context ? { context } : {}),
+            };
+
+            return {
+                ...prev,
+                messages: [
+                    ...prev.messages.filter((message) =>
+                        message.sender !== "ai" || retainedMessageIds.has(message.id)
+                    ),
+                    nextMessage,
                 ],
             };
         });
@@ -1423,6 +1478,10 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
         const result = await reviewArtifactAction(artifactId, status, note, editedPayload);
         if (!result.success || !result.artifact) {
             console.error("Failed to review artifact:", result.errorCode ?? result.error);
+            appendProjectArtifactActionError({
+                message: result.error ?? "Artifact review failed.",
+                errorCode: result.errorCode,
+            });
             return false;
         }
 
@@ -1485,12 +1544,16 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
             }
         }
         return true;
-    }, [projectId, updateState, setArtifacts]);
+    }, [appendProjectArtifactActionError, projectId, updateState, setArtifacts]);
 
     const undoArtifactActionLocal = useCallback(async (artifactId: string): Promise<boolean> => {
         const result = await undoArtifactAction(artifactId);
         if (!result.success || !result.artifact) {
             console.error("Failed to undo artifact:", result.error);
+            appendProjectArtifactActionError({
+                message: result.error ?? "Artifact undo failed.",
+                errorCode: result.errorCode,
+            });
             return false;
         }
 
@@ -1540,7 +1603,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
             }
         }
         return true;
-    }, [setArtifacts, updateState]);
+    }, [appendProjectArtifactActionError, setArtifacts, updateState]);
 
     const dispatchArtifactAction = useCallback(async (action: ArtifactActionContract): Promise<void> => {
         if (action.type === "artifact.execute_plan") {

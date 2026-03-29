@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { ArtifactError } from "@/lib/server/agent/artifact-errors";
 
 const mocks = vi.hoisted(() => {
   const span = {
@@ -248,5 +249,53 @@ describe("tool-autonomy", () => {
         artifactStatus: "auto_applied",
       }),
     ]);
+  });
+
+  it("propagates typed auto-apply failures from the shared artifact apply core", async () => {
+    mocks.getTool.mockReturnValue({
+      definition: { name: "update_study_direct", description: "d", parameters: {} },
+      autonomy: { defaultLevel: 3, allowedRange: [3, 3], hardCap: 3 },
+    });
+    mocks.getToolAutonomyLevel.mockReturnValue(3);
+    mocks.createArtifact.mockResolvedValue({
+      id: "artifact-study-update",
+      type: "study_update",
+      title: "Study metadata update",
+      payload: { changes: [{ field: "details.abstract" }] },
+      version: 1,
+    });
+    mocks.applyArtifact.mockRejectedValue(
+      new ArtifactError("ARTIFACT_APPLY_FAILED", "database connection dropped"),
+    );
+
+    await expect(executeToolWithAutonomyCore({
+      service: {
+        executeToolWithMiddleware: vi.fn().mockResolvedValue({
+          callId: "tc1",
+          result: {
+            studyId: "study-1",
+            patch: { details: { abstract: "Updated" } },
+            changes: [{ field: "details.abstract" }],
+          },
+        }),
+      } as never,
+      toolCall: {
+        id: "tc1",
+        name: "update_study_direct",
+        arguments: { abstract: "Updated", rationale: "User asked" },
+      },
+      runId: "run-1",
+      projectId: "project-1",
+      conversationId: "conversation-1",
+      userId: "user-1",
+      agentMode: "screening",
+      studyId: "study-1",
+      levelOneBehavior: "suggest",
+    })).rejects.toMatchObject({
+      errorCode: "ARTIFACT_APPLY_FAILED",
+    });
+
+    expect(mocks.createArtifact).toHaveBeenCalledTimes(1);
+    expect(mocks.applyArtifact).toHaveBeenCalledWith("artifact-study-update", "auto_applied");
   });
 });

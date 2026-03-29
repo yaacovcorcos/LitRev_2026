@@ -98,4 +98,18 @@ describe("reviewArtifactAction", () => {
       errorCode: "ARTIFACT_CONTEXT_MISSING",
     });
   });
+
+  it("returns typed safe apply failures without leaking raw runtime messages", async () => {
+    mocks.reviewArtifact.mockRejectedValue(
+      new ArtifactError("ARTIFACT_APPLY_FAILED", "database connection dropped"),
+    );
+
+    const result = await reviewArtifactAction("artifact-1", "accepted");
+
+    expect(result).toEqual({
+      success: false,
+      error: "The proposed change could not be applied.",
+      errorCode: "ARTIFACT_APPLY_FAILED",
+    });
+  });
 });

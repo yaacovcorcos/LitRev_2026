@@ -123,6 +123,11 @@ function formatError(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
 }
 
+function toArtifactApplyError(error: unknown): ArtifactError {
+    if (error instanceof ArtifactError) return error;
+    return new ArtifactError("ARTIFACT_APPLY_FAILED", formatError(error));
+}
+
 /**
  * Register an apply function for an artifact type.
  * Called during module initialization by each domain service.
@@ -275,7 +280,7 @@ async function markDurabilityAndRethrow(
             error: formatError(markError),
         });
     });
-    throw error;
+    throw toArtifactApplyError(error);
 }
 
 async function executePostCommitTasks(
@@ -322,24 +327,30 @@ async function runArtifactApplyTransaction(params: {
             payload: effectivePayload,
         };
 
-        const snapshotReader = snapshotReaders.get(artifact.type as ArtifactType);
-        const snapshot = (snapshotReader
-            ? await snapshotReader(ctx, effectiveArtifact)
-            : artifact.snapshot) as ArtifactExecutionArtifact["snapshot"];
+        let snapshot: ArtifactExecutionArtifact["snapshot"];
+        let applyResult: Awaited<ReturnType<ApplyFunction>> | undefined;
+        try {
+            const snapshotReader = snapshotReaders.get(artifact.type as ArtifactType);
+            snapshot = (snapshotReader
+                ? await snapshotReader(ctx, effectiveArtifact)
+                : artifact.snapshot) as ArtifactExecutionArtifact["snapshot"];
 
-        const applyFn = applyFunctions.get(artifact.type as ArtifactType);
-        const applyResult = applyFn
-            ? await applyFn(ctx, {
-                ...effectiveArtifact,
-                snapshot: snapshot as ArtifactExecutionArtifact["snapshot"],
-            })
-            : undefined;
+            const applyFn = applyFunctions.get(artifact.type as ArtifactType);
+            applyResult = applyFn
+                ? await applyFn(ctx, {
+                    ...effectiveArtifact,
+                    snapshot: snapshot as ArtifactExecutionArtifact["snapshot"],
+                })
+                : undefined;
 
-        if (!applyFn) {
-            logServerWarn("artifacts", "no apply function registered for artifact type", {
-                artifactType: artifact.type,
-                artifactId,
-            });
+            if (!applyFn) {
+                logServerWarn("artifacts", "no apply function registered for artifact type", {
+                    artifactType: artifact.type,
+                    artifactId,
+                });
+            }
+        } catch (error) {
+            throw toArtifactApplyError(error);
         }
 
         try {
@@ -395,7 +406,7 @@ async function runArtifactApplyTransaction(params: {
                 postCommitTasks: applyResult?.postCommitTasks ?? [],
             };
         } catch (error) {
-            throw new ArtifactDurabilityPersistenceError(error);
+            throw new ArtifactDurabilityPersistenceError(toArtifactApplyError(error));
         }
     });
 }
