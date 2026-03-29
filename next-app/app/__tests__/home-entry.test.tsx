@@ -6,12 +6,14 @@ import { HomeClient } from "../HomeClient";
 import type { HomeWorkspaceBootstrap } from "@/types/home-bootstrap";
 
 const {
+  mockPush,
   mockReplace,
   mockRefreshRouter,
   mockUseProjects,
   mockUseSession,
   mockProjectGrid,
 } = vi.hoisted(() => ({
+  mockPush: vi.fn(),
   mockReplace: vi.fn(),
   mockRefreshRouter: vi.fn(),
   mockUseProjects: vi.fn(),
@@ -28,7 +30,7 @@ vi.mock("next/link", async () => {
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
-    push: vi.fn(),
+    push: mockPush,
     replace: mockReplace,
     refresh: mockRefreshRouter,
   }),
@@ -246,5 +248,48 @@ describe("Home entry UX", () => {
 
     expect(screen.queryByText("Start a new review")).toBeNull();
     expect(screen.getByTestId("app-shell")).toBeTruthy();
+  });
+
+  it("holds guided setup in the create modal while keeping blank creation available", async () => {
+    const addProject = vi.fn(async (project: { name: string; description?: string }) => ({
+      ...project,
+      id: "proj-new",
+      status: "ready",
+      statusText: "Status: Review Ready",
+      modified: "2026-03-29T00:00:00.000Z",
+      created: "2026-03-29T00:00:00.000Z",
+      papers: 0,
+    }));
+
+    mockUseProjects.mockReturnValue({
+      projects: [],
+      authState: "authenticated",
+      homeBootstrapState: "loaded_empty",
+      usedSeededBootstrap: true,
+      addProject,
+      isInitialized: true,
+      isLoadingProjects: false,
+      projectsError: null,
+      refresh: vi.fn(async () => {}),
+      migrationStatus: "done",
+      migrationError: null,
+      retryMigration: vi.fn(async () => {}),
+    });
+
+    render(<HomeClient bootstrap={makeBootstrap()} shouldOpenFromQuery={true} />);
+
+    const guidedButton = screen.getByRole("button", { name: "Guided setup" });
+    expect(guidedButton.hasAttribute("disabled")).toBe(true);
+    expect(screen.getByText("Guided setup is on hold. Coming soon. Create a blank project for now.")).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText("Project name"), { target: { value: "Held setup project" } });
+    fireEvent.change(screen.getByLabelText(/Description/), { target: { value: "Review later" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create blank" }));
+
+    await waitFor(() => {
+      expect(addProject).toHaveBeenCalled();
+      expect(mockPush).toHaveBeenCalledWith("/project/proj-new");
+    });
+    expect(mockPush).not.toHaveBeenCalledWith("/project/proj-new/onboarding");
   });
 });

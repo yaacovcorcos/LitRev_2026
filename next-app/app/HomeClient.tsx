@@ -17,6 +17,7 @@ import {
   recordFoundationRouteFlowCompleted,
   useFoundationRouteReady,
 } from "@/lib/mobile/foundation-reliability";
+import { GUIDED_SETUP_HOLD_COPY, isGuidedSetupAvailable } from "@/lib/guided-setup-availability";
 import { loadSortPreference, loadViewPreference, saveSortPreference, saveViewPreference } from "@/lib/storage";
 import type { HomeWorkspaceBootstrap } from "@/types/home-bootstrap";
 import type { Project } from "@/types/project";
@@ -102,6 +103,7 @@ export function HomeClient({ bootstrap, shouldOpenFromQuery }: HomeClientProps) 
   const [loadingStep, setLoadingStep] = useState(0);
   const [isSlow, setIsSlow] = useState(false);
   const formRef = useRef<HTMLFormElement | null>(null);
+  const guidedSetupAvailable = isGuidedSetupAvailable();
 
   useEffect(() => {
     setIsHydrated(true);
@@ -202,7 +204,7 @@ export function HomeClient({ bootstrap, shouldOpenFromQuery }: HomeClientProps) 
       surface: "home",
       flow: "create_project",
     });
-    if (guided) {
+    if (guided && guidedSetupAvailable) {
       router.push(`/project/${created.id}/onboarding`);
       return;
     }
@@ -613,19 +615,40 @@ export function HomeClient({ bootstrap, shouldOpenFromQuery }: HomeClientProps) 
             <textarea id="projectDesc" name="projectDesc" placeholder="Brief description of the research goal..." />
           </div>
           {createError ? <p className={layoutStyles.createError} role="alert">{createError}</p> : null}
+          {!guidedSetupAvailable ? (
+            <p className={layoutStyles.createNotice} id="guidedSetupHoldNote" role="status">
+              {GUIDED_SETUP_HOLD_COPY.launcherDescription}
+            </p>
+          ) : null}
           <hr className="modal-divider" />
           <div className="modal-actions">
             <button type="button" className="btn btn-outline cancel-btn" onClick={closeModal}>
               Cancel
             </button>
             <div className="spacer" />
-            <button type="submit" name="intent" value="blank" className="btn btn-outline create-btn">
+            <button
+              type="submit"
+              name="intent"
+              value="blank"
+              className={`btn ${guidedSetupAvailable ? "btn-outline" : "btn-primary"} create-btn`}
+            >
               Create blank
             </button>
-            <button type="submit" name="intent" value="guided" className="btn btn-primary create-btn">
-              Guided setup
-              <svg className="btn-guided-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12" /><polyline points="12 5 19 12 12 19" /></svg>
-            </button>
+            {guidedSetupAvailable ? (
+              <button type="submit" name="intent" value="guided" className="btn btn-primary create-btn">
+                Guided setup
+                <svg className="btn-guided-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12" /><polyline points="12 5 19 12 12 19" /></svg>
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="btn btn-outline create-btn"
+                disabled
+                aria-describedby="guidedSetupHoldNote"
+              >
+                Guided setup
+              </button>
+            )}
           </div>
         </form>
       </Modal>
