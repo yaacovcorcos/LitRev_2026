@@ -4,6 +4,13 @@ import { prisma } from "@/lib/server/prisma";
 import { assertProjectAccess } from "@/lib/server/access";
 import { createDefaultProtocolData, type ProtocolData } from "@/types/protocol";
 import type { ScopeInput } from "@/lib/server/scope";
+import type { Prisma } from "@prisma/client";
+
+type ProtocolDbClient = typeof prisma | Prisma.TransactionClient;
+
+function toInputJsonValue(value: unknown): Prisma.InputJsonValue {
+  return value as Prisma.InputJsonValue;
+}
 
 export async function getProtocol(
   scopeInput: ScopeInput,
@@ -22,8 +29,8 @@ export async function saveProtocol(
   await assertProjectAccess(scopeInput, projectId);
   const saved = await prisma.protocol.upsert({
     where: { projectId },
-    create: { projectId, data: data as any },
-    update: { data: data as any },
+    create: { projectId, data: toInputJsonValue(data) },
+    update: { data: toInputJsonValue(data) },
   });
   return saved.data as unknown as ProtocolData;
 }
@@ -35,13 +42,33 @@ export async function saveProtocol(
  * between findUnique and write.
  */
 export async function ensureProtocol(projectId: string): Promise<ProtocolData> {
-  const row = await prisma.protocol.findUnique({ where: { projectId } });
+  return ensureProtocolWithDb(prisma, projectId);
+}
+
+export async function ensureProtocolWithDb(
+  db: ProtocolDbClient,
+  projectId: string,
+): Promise<ProtocolData> {
+  const row = await db.protocol.findUnique({ where: { projectId } });
   if (row) return row.data as unknown as ProtocolData;
   const defaults = createDefaultProtocolData();
-  const created = await prisma.protocol.upsert({
+  const created = await db.protocol.upsert({
     where: { projectId },
-    create: { projectId, data: defaults as any },
+    create: { projectId, data: toInputJsonValue(defaults) },
     update: {},
   });
   return created.data as unknown as ProtocolData;
+}
+
+export async function saveProtocolTrusted(
+  db: ProtocolDbClient,
+  projectId: string,
+  data: ProtocolData,
+): Promise<ProtocolData> {
+  const saved = await db.protocol.upsert({
+    where: { projectId },
+    create: { projectId, data: toInputJsonValue(data) },
+    update: { data: toInputJsonValue(data) },
+  });
+  return saved.data as unknown as ProtocolData;
 }

@@ -9,6 +9,11 @@ export type ActionResult<T = void> =
   | { success: true; data: T }
   | { success: false; error: string; errorCode?: string };
 
+export type SafeErrorDetails = {
+  error: string;
+  errorCode?: string;
+};
+
 type SanitizeErrorOptions = {
   allowRawMessage?: boolean;
 };
@@ -19,6 +24,12 @@ const SAFE_MESSAGES: Record<string, string> = {
   ACCESS_DENIED: "You don't have permission to perform this action.",
   VALIDATION: "Invalid input. Please check your data and try again.",
   CONFLICT: "This operation conflicts with existing data.",
+  ARTIFACT_NOT_FOUND: "The requested artifact was not found.",
+  ARTIFACT_ACCESS_DENIED: "You don't have permission to modify this artifact.",
+  ARTIFACT_INVALID_STATE: "This artifact can no longer be reviewed.",
+  ARTIFACT_INVALID_PAYLOAD: "The artifact data is invalid. Please refresh and try again.",
+  ARTIFACT_APPLY_FAILED: "The proposed change could not be applied.",
+  ARTIFACT_CONTEXT_MISSING: "The artifact could not be applied because required context is missing.",
 };
 
 /**
@@ -36,10 +47,10 @@ export async function withAction<T>(
     return { success: true, data };
   } catch (err) {
     logServerError("action", "server action failed", undefined, err);
-    const raw = getErrorMessage(err);
-    const code = classifyError(raw);
-    const message = code ? SAFE_MESSAGES[code]! : fallbackMessage;
-    return { success: false, error: message, errorCode: code };
+    return {
+      success: false,
+      ...getSafeErrorDetails(err, fallbackMessage),
+    };
   }
 }
 
@@ -71,14 +82,37 @@ export function sanitizeErrorMessage(
   fallbackMessage: string,
   options: SanitizeErrorOptions = {},
 ): string {
+  return getSafeErrorDetails(error, fallbackMessage, options).error;
+}
+
+export function getSafeErrorDetails(
+  error: unknown,
+  fallbackMessage: string,
+  options: SanitizeErrorOptions = {},
+): SafeErrorDetails {
   const raw = getErrorMessage(error).trim();
-  if (!raw) return fallbackMessage;
+  if (!raw) return { error: fallbackMessage };
+
+  const explicitCode = getExplicitErrorCode(error);
+  if (explicitCode) {
+    return {
+      error: SAFE_MESSAGES[explicitCode] ?? fallbackMessage,
+      errorCode: explicitCode,
+    };
+  }
 
   const code = classifyError(raw);
-  if (code) return SAFE_MESSAGES[code] ?? fallbackMessage;
-  if (hasSensitiveErrorDetails(raw)) return fallbackMessage;
+  if (code) {
+    return {
+      error: SAFE_MESSAGES[code] ?? fallbackMessage,
+      errorCode: code,
+    };
+  }
+  if (hasSensitiveErrorDetails(raw)) {
+    return { error: fallbackMessage };
+  }
 
-  return options.allowRawMessage ? raw : fallbackMessage;
+  return { error: options.allowRawMessage ? raw : fallbackMessage };
 }
 
 /**
@@ -102,6 +136,15 @@ function getErrorMessage(error: unknown): string {
   if (typeof error === "string") return error;
   if (error instanceof Error) return error.message;
   return "";
+}
+
+function getExplicitErrorCode(error: unknown): string | undefined {
+  if (!error || typeof error !== "object") return undefined;
+
+  const candidate = error as { errorCode?: unknown };
+  return typeof candidate.errorCode === "string" && candidate.errorCode.trim().length > 0
+    ? candidate.errorCode
+    : undefined;
 }
 
 function hasSensitiveErrorDetails(message: string): boolean {

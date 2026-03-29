@@ -2,7 +2,6 @@ import "server-only";
 
 import { createHash } from "crypto";
 import type { JSONContent } from "@tiptap/core";
-import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/server/prisma";
 import { assertProjectAccess } from "@/lib/server/access";
 import { mergeDetails } from "@/lib/utils/merge";
@@ -18,6 +17,7 @@ import { normalizeDraftState } from "@/lib/draftStorage";
 import type { ScopeInput } from "@/lib/server/scope";
 import type { DraftSectionId } from "@/types/draft";
 import type { Study, StudyDetails } from "@/types/ledger";
+import type { Prisma } from "@prisma/client";
 
 export type { StudyInput };
 
@@ -59,6 +59,8 @@ export type DedupeMergeRunResult = {
 export type { PaginationOptions, PaginatedResult } from "@/lib/server/pagination";
 import { sanitizePaginationLimit } from "@/lib/server/pagination";
 import type { PaginationOptions, PaginatedResult } from "@/lib/server/pagination";
+
+type LedgerDbClient = typeof prisma | Prisma.TransactionClient;
 
 function toStudy(record: {
   id: string;
@@ -366,14 +368,23 @@ export async function upsertStudy(
   study: StudyInput
 ): Promise<Study> {
   const scope = await assertProjectAccess(scopeInput, projectId);
+  return upsertStudyTrusted(prisma, projectId, scope.workspaceId, study);
+}
+
+export async function upsertStudyTrusted(
+  db: LedgerDbClient,
+  projectId: string,
+  workspaceId: string,
+  study: StudyInput,
+): Promise<Study> {
   const normalized = normalizeStudy(study);
   if (normalized.id) {
-    const existing = await prisma.study.findFirst({ where: { id: normalized.id, projectId } });
+    const existing = await db.study.findFirst({ where: { id: normalized.id, projectId } });
     if (existing) {
-      const updated = await prisma.study.update({
+      const updated = await db.study.update({
         where: { id: normalized.id },
         data: {
-          workspaceId: scope.workspaceId,
+          workspaceId,
           title: normalized.title,
           authors: normalized.authors,
           year: normalized.year,
@@ -386,11 +397,11 @@ export async function upsertStudy(
       return (await attachProcessingToStudies([toStudy(updated)]))[0];
     }
   }
-  const created = await prisma.study.create({
+  const created = await db.study.create({
     data: {
       id: normalized.id ?? undefined,
       projectId,
-      workspaceId: scope.workspaceId,
+      workspaceId,
       title: normalized.title,
       authors: normalized.authors,
       year: normalized.year,
@@ -549,12 +560,45 @@ export async function updateStudy(
   updates: Partial<StudyInput>
 ): Promise<Study> {
   const scope = await assertProjectAccess(scopeInput, projectId);
-  const canonicalStudyId = await resolveCanonicalStudyId(scopeInput, projectId, studyId);
+  return updateStudyTrusted(prisma, projectId, scope.workspaceId, studyId, updates);
+}
+
+export async function resolveCanonicalStudyIdTrusted(
+  db: LedgerDbClient,
+  projectId: string,
+  studyId: string,
+): Promise<string | null> {
+  let currentId = studyId;
+  const visited = new Set<string>();
+  while (currentId && !visited.has(currentId)) {
+    visited.add(currentId);
+    const row = await db.study.findFirst({
+      where: { id: currentId, projectId },
+      select: { id: true, deletedAt: true, details: true },
+    });
+    if (!row) return null;
+    if (!row.deletedAt) return row.id;
+    const mergedInto = getMergedIntoStudyId(row.details);
+    if (!mergedInto) return null;
+    currentId = mergedInto;
+  }
+
+  return null;
+}
+
+export async function updateStudyTrusted(
+  db: LedgerDbClient,
+  projectId: string,
+  workspaceId: string,
+  studyId: string,
+  updates: Partial<StudyInput>
+): Promise<Study> {
+  const canonicalStudyId = await resolveCanonicalStudyIdTrusted(db, projectId, studyId);
   if (!canonicalStudyId) {
     throw new Error("Study not found or access denied.");
   }
 
-  const existing = await prisma.study.findFirst({
+  const existing = await db.study.findFirst({
     where: { id: canonicalStudyId, projectId, deletedAt: null },
   });
   if (!existing) {
@@ -567,7 +611,7 @@ export async function updateStudy(
   const mergedDetails = mergeDetails(existingDetails, incomingDetails);
 
   const data: Record<string, unknown> = {};
-  data.workspaceId = scope.workspaceId;
+  data.workspaceId = workspaceId;
   if (typeof updates.title !== "undefined") data.title = updates.title.trim() || existing.title;
   if (typeof updates.authors !== "undefined") data.authors = updates.authors.trim() || existing.authors;
   if (typeof updates.year !== "undefined") data.year = updates.year;
@@ -575,7 +619,7 @@ export async function updateStudy(
   if (typeof updates.quality !== "undefined") data.quality = updates.quality;
   if (typeof updates.details !== "undefined") data.details = mergedDetails;
 
-  const updated = await prisma.study.update({
+  const updated = await db.study.update({
     where: { id: canonicalStudyId },
     data: data as Prisma.StudyUpdateInput,
   });
@@ -589,23 +633,7 @@ export async function resolveCanonicalStudyId(
   studyId: string,
 ): Promise<string | null> {
   await assertProjectAccess(scopeInput, projectId);
-
-  let currentId = studyId;
-  const visited = new Set<string>();
-  while (currentId && !visited.has(currentId)) {
-    visited.add(currentId);
-    const row = await prisma.study.findFirst({
-      where: { id: currentId, projectId },
-      select: { id: true, deletedAt: true, details: true },
-    });
-    if (!row) return null;
-    if (!row.deletedAt) return row.id;
-    const mergedInto = getMergedIntoStudyId(row.details);
-    if (!mergedInto) return null;
-    currentId = mergedInto;
-  }
-
-  return null;
+  return resolveCanonicalStudyIdTrusted(prisma, projectId, studyId);
 }
 
 export async function listStudyDuplicateClusters(
@@ -676,7 +704,7 @@ export async function mergeStudyDuplicateCluster(
     }
 
     const fileRows = await tx.fileAsset.findMany({
-      where: { projectId, studyId: { in: activeRows.map((row: { id: string }) => row.id) } },
+      where: { projectId, studyId: { in: activeRows.map((row) => row.id) } },
       select: { studyId: true },
     });
     const fileCountByStudyId = new Map<string, number>();
@@ -686,7 +714,7 @@ export async function mergeStudyDuplicateCluster(
     }
 
     const canonicalStudyId = pickCanonicalStudyId(activeRows, fileCountByStudyId);
-    const duplicateRows = activeRows.filter((row: { id: string }) => row.id !== canonicalStudyId);
+    const duplicateRows = activeRows.filter((row) => row.id !== canonicalStudyId);
     if (duplicateRows.length === 0) {
       return {
         cluster,
@@ -697,8 +725,8 @@ export async function mergeStudyDuplicateCluster(
       };
     }
 
-    const duplicateStudyIds = duplicateRows.map((row: { id: string }) => row.id);
-    const replacements = Object.fromEntries(duplicateStudyIds.map((id: string) => [id, canonicalStudyId]));
+    const duplicateStudyIds = duplicateRows.map((row) => row.id);
+    const replacements = Object.fromEntries(duplicateStudyIds.map((id) => [id, canonicalStudyId]));
     const now = new Date();
     const nowIso = now.toISOString();
 
@@ -729,10 +757,10 @@ export async function mergeStudyDuplicateCluster(
 
     await rewriteDraftCitationsForMergedStudies(tx, projectId, replacements);
 
-    const canonicalRow = activeRows.find((row: { id: string }) => row.id === canonicalStudyId)!;
+    const canonicalRow = activeRows.find((row) => row.id === canonicalStudyId)!;
     const mergedCanonicalDetails = mergeStudyDetailsForCanonical(
       canonicalRow.details,
-      duplicateRows.map((row: { id: string; details: unknown }) => ({ id: row.id, details: row.details })),
+      duplicateRows.map((row) => ({ id: row.id, details: row.details })),
       cluster.confidence,
     );
 

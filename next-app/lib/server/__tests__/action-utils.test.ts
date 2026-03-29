@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { withAction, classifyError, sanitizeErrorMessage } from "@/lib/server/action-utils";
+import { withAction, classifyError, sanitizeErrorMessage, getSafeErrorDetails } from "@/lib/server/action-utils";
+import { ArtifactError } from "@/lib/server/agent/artifact-errors";
 
 describe("classifyError", () => {
   it("returns NOT_FOUND for 'not found' messages", () => {
@@ -58,6 +59,17 @@ describe("withAction", () => {
       success: false,
       error: "The requested resource was not found.",
       errorCode: "NOT_FOUND",
+    });
+  });
+
+  it("uses explicit typed error codes before substring classification", async () => {
+    const result = await withAction(async () => {
+      throw new ArtifactError("ARTIFACT_CONTEXT_MISSING", "Service scope requires ownerId and workspaceId.");
+    });
+    expect(result).toEqual({
+      success: false,
+      error: "The artifact could not be applied because required context is missing.",
+      errorCode: "ARTIFACT_CONTEXT_MISSING",
     });
   });
 
@@ -180,5 +192,19 @@ describe("sanitizeErrorMessage", () => {
       "Something went wrong. Please try again.",
     );
     expect(result).toBe("Something went wrong. Please try again.");
+  });
+});
+
+describe("getSafeErrorDetails", () => {
+  it("keeps typed artifact errors out of the legacy substring classifier", () => {
+    const result = getSafeErrorDetails(
+      new ArtifactError("ARTIFACT_CONTEXT_MISSING", "Field is required"),
+      "Fallback",
+      { allowRawMessage: true },
+    );
+    expect(result).toEqual({
+      error: "The artifact could not be applied because required context is missing.",
+      errorCode: "ARTIFACT_CONTEXT_MISSING",
+    });
   });
 });

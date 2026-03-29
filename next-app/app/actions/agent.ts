@@ -12,13 +12,14 @@ import { reviewArtifact, undoArtifact, getArtifact } from "@/lib/server/agent/ar
 import { getRunTimeline } from "@/lib/server/agent/events";
 import { getRunLineage } from "@/lib/server/agent/run";
 import { getAutonomyConfig, updateAutonomyConfig } from "@/lib/server/agent/autonomy";
-import { sanitizeErrorMessage } from "@/lib/server/action-utils";
+import { getSafeErrorDetails, sanitizeErrorMessage } from "@/lib/server/action-utils";
 import { withAuth } from "@/lib/server/auth/session";
 import { prisma } from "@/lib/server/prisma";
 import { cuidSchema, projectIdSchema } from "@/lib/schemas/ids";
 import { artifactReviewStatusSchema, autonomyPresetSchema, toolOverridesSchema } from "@/lib/schemas/agent";
 import type { ArtifactStatus } from "@/types/artifacts";
 import type { AutonomyPreset, AutonomyLevel } from "@/types/agent";
+import { ArtifactError } from "@/lib/server/agent/artifact-errors";
 
 async function assertArtifactAccess(artifactId: string, userId: string, workspaceId: string): Promise<void> {
     const artifact = await prisma.artifact.findFirst({
@@ -32,7 +33,7 @@ async function assertArtifactAccess(artifactId: string, userId: string, workspac
         select: { id: true },
     });
     if (!artifact) {
-        throw new Error("Artifact not found or access denied");
+        throw new ArtifactError("ARTIFACT_ACCESS_DENIED", "Artifact not found or access denied");
     }
 }
 
@@ -73,7 +74,13 @@ export async function reviewArtifactAction(
         const v = reviewArtifactInput.parse({ artifactId, status, reviewNote, editedPayload });
         const result = await withAuth(async ({ userId, workspaceId }) => {
             await assertArtifactAccess(v.artifactId, userId, workspaceId);
-            return reviewArtifact(v.artifactId, v.status as Extract<ArtifactStatus, "accepted" | "rejected" | "edited">, v.reviewNote, v.editedPayload);
+            return reviewArtifact(
+                v.artifactId,
+                v.status as Extract<ArtifactStatus, "accepted" | "rejected" | "edited">,
+                v.reviewNote,
+                v.editedPayload,
+                { actorUserId: userId },
+            );
         });
 
         if (status === "accepted" && result.type === "study_update") {
@@ -86,9 +93,11 @@ export async function reviewArtifactAction(
 
         return { success: true, artifact: result };
     } catch (error) {
+        const safeError = getSafeErrorDetails(error, "Failed to review artifact", { allowRawMessage: true });
         return {
             success: false,
-            error: sanitizeErrorMessage(error, "Failed to review artifact", { allowRawMessage: true }),
+            error: safeError.error,
+            errorCode: safeError.errorCode,
         };
     }
 }
@@ -105,9 +114,11 @@ export async function undoArtifactAction(artifactId: string) {
         });
         return { success: true, artifact: result };
     } catch (error) {
+        const safeError = getSafeErrorDetails(error, "Failed to undo artifact", { allowRawMessage: true });
         return {
             success: false,
-            error: sanitizeErrorMessage(error, "Failed to undo artifact", { allowRawMessage: true }),
+            error: safeError.error,
+            errorCode: safeError.errorCode,
         };
     }
 }
@@ -122,12 +133,20 @@ export async function getArtifactAction(artifactId: string) {
             await assertArtifactAccess(id, userId, workspaceId);
             return getArtifact(id);
         });
-        if (!artifact) return { success: false, error: "Artifact not found" };
+        if (!artifact) {
+            return {
+                success: false as const,
+                error: "The requested artifact was not found.",
+                errorCode: "ARTIFACT_NOT_FOUND",
+            };
+        }
         return { success: true, artifact };
     } catch (error) {
+        const safeError = getSafeErrorDetails(error, "Failed to get artifact", { allowRawMessage: true });
         return {
             success: false,
-            error: sanitizeErrorMessage(error, "Failed to get artifact", { allowRawMessage: true }),
+            error: safeError.error,
+            errorCode: safeError.errorCode,
         };
     }
 }

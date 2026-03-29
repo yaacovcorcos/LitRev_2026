@@ -6,7 +6,10 @@
 import "server-only";
 import { prisma } from "@/lib/server/prisma";
 import { logServerWarn } from "@/lib/server/logging";
+import type { Prisma } from "@prisma/client";
 import type { Note } from "@prisma/client";
+
+type NotesDbClient = typeof prisma | Prisma.TransactionClient;
 
 // TipTap JSONContent-compatible type (avoid direct @tiptap/core dep in server code)
 export interface NoteContent {
@@ -90,10 +93,17 @@ function autoTitle(content: NoteContent): string {
 // ── CRUD ─────────────────────────────────────────────────────────────────────
 
 export async function createNote(input: CreateNoteInput) {
+    return createNoteTrusted(prisma, input);
+}
+
+export async function createNoteTrusted(
+    db: NotesDbClient,
+    input: CreateNoteInput,
+) {
     const title = input.title?.trim() || autoTitle(input.content);
     const contentText = extractTextFromContent(input.content) || null;
 
-    return prisma.note.create({
+    return db.note.create({
         data: {
             projectId: input.projectId,
             userId: input.userId ?? null,
@@ -133,9 +143,17 @@ function buildListNotesWhere(projectId: string, options?: ListNotesOptions): Rec
 }
 
 export async function listNotes(projectId: string, options?: ListNotesOptions) {
+    return listNotesTrusted(prisma, projectId, options);
+}
+
+export async function listNotesTrusted(
+    db: NotesDbClient,
+    projectId: string,
+    options?: ListNotesOptions,
+) {
     const where = buildListNotesWhere(projectId, options);
 
-    return prisma.note.findMany({
+    return db.note.findMany({
         where,
         orderBy: { updatedAt: "desc" },
     });
@@ -192,6 +210,14 @@ export async function listNotesPaginated(
 }
 
 export async function updateNote(id: string, input: UpdateNoteInput) {
+    return updateNoteTrusted(prisma, id, input);
+}
+
+export async function updateNoteTrusted(
+    db: NotesDbClient,
+    id: string,
+    input: UpdateNoteInput,
+) {
     const data: Record<string, unknown> = {};
 
     if (input.title !== undefined) data.title = input.title;
@@ -203,7 +229,7 @@ export async function updateNote(id: string, input: UpdateNoteInput) {
     if (input.linkedStudyId !== undefined) data.linkedStudyId = input.linkedStudyId;
     if (input.linkedSection !== undefined) data.linkedSection = input.linkedSection;
 
-    const existing = await prisma.note.findFirst({
+    const existing = await db.note.findFirst({
         where: { id, deletedAt: null },
         select: { id: true },
     });
@@ -211,7 +237,7 @@ export async function updateNote(id: string, input: UpdateNoteInput) {
         throw new Error("Note not found");
     }
 
-    return prisma.note.update({ where: { id }, data });
+    return db.note.update({ where: { id }, data });
 }
 
 export async function deleteNote(id: string) {

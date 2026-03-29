@@ -4,6 +4,9 @@
  */
 
 import { prisma } from "@/lib/server/prisma";
+import type { Prisma } from "@prisma/client";
+
+type ProjectMemoryDbClient = typeof prisma | Prisma.TransactionClient;
 
 export type ProjectMemoryType = "decision" | "definition" | "criterion" | "goal";
 export type ProjectMemoryCategory = "inclusion" | "exclusion" | "outcome" | "population" | "intervention" | "comparison";
@@ -34,7 +37,14 @@ export interface UpdateProjectMemoryInput {
  * Create a project memory
  */
 export async function createProjectMemory(input: CreateProjectMemoryInput) {
-    return prisma.projectMemory.create({
+    return createProjectMemoryWithDb(prisma, input);
+}
+
+export async function createProjectMemoryWithDb(
+    db: ProjectMemoryDbClient,
+    input: CreateProjectMemoryInput,
+) {
+    return db.projectMemory.create({
         data: input,
     });
 }
@@ -59,9 +69,10 @@ export async function getProjectMemories(
         status?: ProjectMemoryStatus;
         importance?: ProjectMemoryImportance;
         tags?: string[];
-    }
+    },
+    db: ProjectMemoryDbClient = prisma,
 ) {
-    return prisma.projectMemory.findMany({
+    return db.projectMemory.findMany({
         where: {
             projectId,
             type: options?.type,
@@ -84,9 +95,10 @@ export async function getProjectMemories(
  */
 export async function updateProjectMemory(
     id: string,
-    input: UpdateProjectMemoryInput
+    input: UpdateProjectMemoryInput,
+    db: ProjectMemoryDbClient = prisma,
 ) {
-    const existing = await prisma.projectMemory.findUnique({
+    const existing = await db.projectMemory.findUnique({
         where: { id },
     });
 
@@ -97,13 +109,13 @@ export async function updateProjectMemory(
     // If statement changed and status is active, create new version
     if (input.statement && input.statement !== existing.statement && existing.status === "active") {
         // Mark old version as revised
-        await prisma.projectMemory.update({
+        await db.projectMemory.update({
             where: { id },
             data: { status: "revised" },
         });
 
         // Create new version
-        return prisma.projectMemory.create({
+        return db.projectMemory.create({
             data: {
                 projectId: existing.projectId,
                 type: existing.type,
@@ -120,7 +132,7 @@ export async function updateProjectMemory(
     }
 
     // Otherwise just update in place
-    return prisma.projectMemory.update({
+    return db.projectMemory.update({
         where: { id },
         data: {
             ...input,
@@ -135,7 +147,14 @@ export async function updateProjectMemory(
  * Archive a project memory
  */
 export async function archiveProjectMemory(id: string) {
-    return prisma.projectMemory.update({
+    return archiveProjectMemoryWithDb(prisma, id);
+}
+
+export async function archiveProjectMemoryWithDb(
+    db: ProjectMemoryDbClient,
+    id: string,
+) {
+    return db.projectMemory.update({
         where: { id },
         data: {
             status: "archived",

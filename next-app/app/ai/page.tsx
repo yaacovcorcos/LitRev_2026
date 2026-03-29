@@ -1869,26 +1869,11 @@ export default function AIView() {
     const convId = activeConversationId;
     if (!convId) return false;
 
-    // Optimistic update
-    updateConversationTimeline(convId, (items) =>
-      items.map((item) => {
-        if (item.type !== "artifact" || item.artifactId !== artifactId) return item;
-        return {
-          ...item,
-          status: status as ArtifactStatus,
-          payload: status === "accepted" && editedPayload ? editedPayload : item.payload,
-        };
-      })
-    );
-
     const { reviewArtifactAction } = await loadAgentActions();
     const result = await reviewArtifactAction(artifactId, status, note, editedPayload);
     if (!result.success || !result.artifact) {
       updateConversationTimeline(convId, (items) => ([
-        ...items.map((item) => {
-          if (item.type !== "artifact" || item.artifactId !== artifactId) return item;
-          return { ...item, status: "proposed" as ArtifactStatus };
-        }),
+        ...items,
         {
           type: "error",
           id: `artifact-review-error-${Date.now()}`,
@@ -1906,7 +1891,7 @@ export default function AIView() {
         return {
           ...item,
           status: result.artifact.status as ArtifactStatus,
-          payload: (result.artifact.payload ?? item.payload) as unknown,
+          payload: (result.artifact.payload ?? item.payload) as typeof item.payload,
         };
       })
     );

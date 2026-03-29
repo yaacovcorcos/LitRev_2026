@@ -1419,49 +1419,55 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
         note?: string,
         editedPayload?: Record<string, unknown>,
     ): Promise<boolean> => {
-        // Optimistic update — artifacts map
+        // Call server action (passes editedPayload for edit-then-accept flow)
+        const result = await reviewArtifactAction(artifactId, status, note, editedPayload);
+        if (!result.success || !result.artifact) {
+            console.error("Failed to review artifact:", result.errorCode ?? result.error);
+            return false;
+        }
+
+        const reviewedAt = result.artifact.reviewedAt instanceof Date
+            ? result.artifact.reviewedAt.toISOString()
+            : typeof result.artifact.reviewedAt === "string"
+                ? result.artifact.reviewedAt
+                : null;
+        const appliedAt = result.artifact.appliedAt instanceof Date
+            ? result.artifact.appliedAt.toISOString()
+            : typeof result.artifact.appliedAt === "string"
+                ? result.artifact.appliedAt
+                : null;
+
         setArtifacts((prev) => {
             const next = new Map(prev);
             const existing = next.get(artifactId);
             if (existing) {
-                next.set(artifactId, { ...existing, status, reviewedAt: new Date().toISOString(), reviewNote: note ?? null });
+                next.set(artifactId, {
+                    ...existing,
+                    status: result.artifact.status as ArtifactStatus,
+                    reviewedAt: reviewedAt ?? existing.reviewedAt,
+                    reviewNote: result.artifact.reviewNote ?? null,
+                    payload: result.artifact.payload ?? existing.payload,
+                    appliedAt: appliedAt ?? existing.appliedAt,
+                });
             }
             return next;
         });
 
-        // Optimistic update — message-level artifact status (drives TimelineRenderer)
         updateState((prev) => ({
             ...prev,
-            messages: prev.messages.map((msg) =>
-                msg.artifact?.id === artifactId
-                    ? { ...msg, artifact: { ...msg.artifact, status } }
-                    : msg
-            ),
+            messages: prev.messages.map((msg) => {
+                if (msg.artifact?.id !== artifactId) return msg;
+                const currentArtifact = msg.artifact;
+                return {
+                    ...msg,
+                    artifact: {
+                        ...currentArtifact,
+                        status: result.artifact.status as ArtifactStatus,
+                        payload: (result.artifact.payload ?? currentArtifact.payload) as typeof currentArtifact.payload,
+                    },
+                };
+            }),
         }));
-
-        // Call server action (passes editedPayload for edit-then-accept flow)
-        const result = await reviewArtifactAction(artifactId, status, note, editedPayload);
-        if (!result.success) {
-            console.error("Failed to review artifact:", result.error);
-            // Revert optimistic update on failure
-            setArtifacts((prev) => {
-                const next = new Map(prev);
-                const existing = next.get(artifactId);
-                if (existing) {
-                    next.set(artifactId, { ...existing, status: "proposed", reviewedAt: null, reviewNote: null });
-                }
-                return next;
-            });
-            updateState((prev) => ({
-                ...prev,
-                messages: prev.messages.map((msg) =>
-                    msg.artifact?.id === artifactId
-                        ? { ...msg, artifact: { ...msg.artifact, status: "proposed" } }
-                        : msg
-                ),
-            }));
-            return false;
-        }
 
         if (status === "accepted" && result.artifact) {
             const domains = getChangedDomainsForAcceptedArtifact(result.artifact.type, result.artifact.payload);
