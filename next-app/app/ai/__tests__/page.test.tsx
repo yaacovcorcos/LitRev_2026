@@ -15,6 +15,7 @@ const {
   mockPollRunRecovery,
   mockFetch,
   mockIsProgressiveAnswerStreamingEnabled,
+  mockReviewArtifactAction,
 } = vi.hoisted(() => ({
   mockListConversations: vi.fn(),
   mockCreateConversation: vi.fn(),
@@ -26,6 +27,7 @@ const {
   mockPollRunRecovery: vi.fn(),
   mockFetch: vi.fn(),
   mockIsProgressiveAnswerStreamingEnabled: vi.fn(() => false),
+  mockReviewArtifactAction: vi.fn(),
 }));
 
 vi.mock("next/navigation", () => ({
@@ -44,6 +46,8 @@ vi.mock("next/dynamic", () => ({
       items?: Array<{
         type: string;
         id: string;
+        artifactId?: string;
+        status?: string;
         callId?: string;
         content?: string;
         deliveryState?: string;
@@ -57,6 +61,12 @@ vi.mock("next/dynamic", () => ({
       onContinueFromDurableStateRun?: (item: { type: string; id: string; errorMeta?: { activeRunId?: string; runId?: string } }) => void;
       onStopAndRetryRun?: (item: { type: string; id: string; errorMeta?: { activeRunId?: string; runId?: string } }) => void;
       onRetryLastMessage?: () => void;
+      onReviewArtifact?: (
+        artifactId: string,
+        status: "accepted" | "rejected",
+        note?: string,
+        editedPayload?: Record<string, unknown>,
+      ) => void | Promise<void>;
       onAnswerUserInput?: (
         callId: string,
         answer: string,
@@ -109,6 +119,18 @@ vi.mock("next/dynamic", () => ({
               }
               if (item.type === "checkpoint") {
                 return <div key={item.id}>{item.label}</div>;
+              }
+              if (item.type === "artifact") {
+                return (
+                  <div key={item.id}>
+                    <span>{`artifact:${item.status}`}</span>
+                    {item.artifactId ? (
+                      <button type="button" onClick={() => void props.onReviewArtifact?.(item.artifactId!, "accepted")}>
+                        review artifact
+                      </button>
+                    ) : null}
+                  </div>
+                );
               }
               if (item.type === "user_input_request") {
                 return (
@@ -224,7 +246,7 @@ vi.mock("@/app/actions/ai-assistant", () => ({
 }));
 
 vi.mock("@/app/actions/agent", () => ({
-  reviewArtifactAction: vi.fn(),
+  reviewArtifactAction: (...args: unknown[]) => mockReviewArtifactAction(...args),
 }));
 
 vi.mock("@/app/actions/summarize-conversation", () => ({
@@ -1312,6 +1334,69 @@ describe("/ai page deferred hydration", () => {
     expect(lane?.contains(composer)).toBe(true);
     expect(barText.compareDocumentPosition(composer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(composer.getAttribute("data-attached-stack")).toBe("attached");
+  });
+
+  it("keeps artifact status proposed until review succeeds", async () => {
+    let resolveReview: ((value: unknown) => void) | null = null;
+    mockGetConversation.mockResolvedValueOnce({
+      success: true,
+      data: {
+        id: "conv-1",
+        title: "First chat",
+        messages: [],
+        artifacts: [
+          {
+            id: "artifact-1",
+            type: "draft_diff",
+            status: "proposed",
+            title: "Draft proposal",
+            payload: { section: "Intro", content: "Body", citations: [], wordCount: 1 },
+            version: 1,
+            createdAt: "2026-03-17T00:00:00.000Z",
+          },
+        ],
+      },
+    });
+    mockReviewArtifactAction.mockImplementation(() => new Promise((resolve) => {
+      resolveReview = resolve;
+    }));
+
+    render(<AIView />);
+
+    fireEvent.click(screen.getByLabelText("Open chat history"));
+    await waitFor(() => {
+      expect(screen.getByText("First chat")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByText("First chat"));
+
+    await waitFor(() => {
+      expect(screen.getByText("artifact:proposed")).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "review artifact" }));
+
+    expect(screen.getByText("artifact:proposed")).toBeTruthy();
+    await waitFor(() => {
+      expect(mockReviewArtifactAction).toHaveBeenCalledWith("artifact-1", "accepted", undefined, undefined);
+    });
+
+    await act(async () => {
+      resolveReview?.({
+        success: true,
+        artifact: {
+          id: "artifact-1",
+          type: "draft_diff",
+          status: "accepted",
+          projectId: "proj-1",
+          payload: { section: "Intro", content: "Accepted", citations: [], wordCount: 1 },
+        },
+      });
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("artifact:accepted")).toBeTruthy();
+    });
   });
 
   it("keeps the composer standalone when no attached caps are present", () => {

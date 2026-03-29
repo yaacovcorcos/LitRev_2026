@@ -45,11 +45,9 @@ import { resolveReasoningRequest } from "@/lib/ai/reasoning-request";
 import {
     buildUnexpectedTerminalErrorState,
     buildClientErrorState,
-    clearRunScopedRenderedErrors,
     clearRunScopedRecoveryState,
     formatStreamErrorForUI,
     hasCanonicalFailureFallbackText,
-    hasRenderedErrorMatch,
     reconcileRunScopedRenderedErrors,
     reconcileRunScopedRecoveryState,
     shouldSuppressClientFallback,
@@ -275,6 +273,63 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                         createdAt: new Date().toISOString(),
                         context: { page: params.page, section: params.section },
                     },
+                ],
+            };
+        });
+    }, [updateState]);
+
+    const appendProjectArtifactActionError = useCallback((params: {
+        message: string;
+        errorCode?: string;
+    }) => {
+        const errorState = buildClientErrorState({
+            errorMeta: {
+                kind: "artifact_review",
+                code: params.errorCode ?? "ARTIFACT_REVIEW_FAILED",
+                retryable: false,
+                source: "artifact_review",
+                message: params.message,
+            },
+        });
+
+        updateState((prev) => {
+            const context = [...prev.messages]
+                .reverse()
+                .find((message) => message.context?.page)?.context;
+            const reconciled = reconcileRunScopedRenderedErrors({
+                items: prev.messages.filter((message) => message.sender === "ai"),
+                nextMessage: errorState.message,
+                nextMeta: errorState.errorMeta,
+                getMessage: (message) => message.text,
+                getErrorMeta: (message) => message.streamError,
+            });
+            const retainedMessageIds = new Set(reconciled.items.map((message) => message.id));
+
+            if (!reconciled.shouldAppend) {
+                return {
+                    ...prev,
+                    messages: prev.messages.filter((message) =>
+                        message.sender !== "ai" || retainedMessageIds.has(message.id)
+                    ),
+                };
+            }
+
+            const nextMessage: CopilotMessage = {
+                id: `artifact-action-error-${Date.now()}`,
+                sender: "ai",
+                text: errorState.message,
+                streamError: errorState.errorMeta,
+                createdAt: new Date().toISOString(),
+                ...(context ? { context } : {}),
+            };
+
+            return {
+                ...prev,
+                messages: [
+                    ...prev.messages.filter((message) =>
+                        message.sender !== "ai" || retainedMessageIds.has(message.id)
+                    ),
+                    nextMessage,
                 ],
             };
         });
@@ -1419,49 +1474,59 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
         note?: string,
         editedPayload?: Record<string, unknown>,
     ): Promise<boolean> => {
-        // Optimistic update — artifacts map
+        // Call server action (passes editedPayload for edit-then-accept flow)
+        const result = await reviewArtifactAction(artifactId, status, note, editedPayload);
+        if (!result.success || !result.artifact) {
+            console.error("Failed to review artifact:", result.errorCode ?? result.error);
+            appendProjectArtifactActionError({
+                message: result.error ?? "Artifact review failed.",
+                errorCode: result.errorCode,
+            });
+            return false;
+        }
+
+        const reviewedAt = result.artifact.reviewedAt instanceof Date
+            ? result.artifact.reviewedAt.toISOString()
+            : typeof result.artifact.reviewedAt === "string"
+                ? result.artifact.reviewedAt
+                : null;
+        const appliedAt = result.artifact.appliedAt instanceof Date
+            ? result.artifact.appliedAt.toISOString()
+            : typeof result.artifact.appliedAt === "string"
+                ? result.artifact.appliedAt
+                : null;
+
         setArtifacts((prev) => {
             const next = new Map(prev);
             const existing = next.get(artifactId);
             if (existing) {
-                next.set(artifactId, { ...existing, status, reviewedAt: new Date().toISOString(), reviewNote: note ?? null });
+                next.set(artifactId, {
+                    ...existing,
+                    status: result.artifact.status as ArtifactStatus,
+                    reviewedAt: reviewedAt ?? existing.reviewedAt,
+                    reviewNote: result.artifact.reviewNote ?? null,
+                    payload: result.artifact.payload ?? existing.payload,
+                    appliedAt: appliedAt ?? existing.appliedAt,
+                });
             }
             return next;
         });
 
-        // Optimistic update — message-level artifact status (drives TimelineRenderer)
         updateState((prev) => ({
             ...prev,
-            messages: prev.messages.map((msg) =>
-                msg.artifact?.id === artifactId
-                    ? { ...msg, artifact: { ...msg.artifact, status } }
-                    : msg
-            ),
+            messages: prev.messages.map((msg) => {
+                if (msg.artifact?.id !== artifactId) return msg;
+                const currentArtifact = msg.artifact;
+                return {
+                    ...msg,
+                    artifact: {
+                        ...currentArtifact,
+                        status: result.artifact.status as ArtifactStatus,
+                        payload: (result.artifact.payload ?? currentArtifact.payload) as typeof currentArtifact.payload,
+                    },
+                };
+            }),
         }));
-
-        // Call server action (passes editedPayload for edit-then-accept flow)
-        const result = await reviewArtifactAction(artifactId, status, note, editedPayload);
-        if (!result.success) {
-            console.error("Failed to review artifact:", result.error);
-            // Revert optimistic update on failure
-            setArtifacts((prev) => {
-                const next = new Map(prev);
-                const existing = next.get(artifactId);
-                if (existing) {
-                    next.set(artifactId, { ...existing, status: "proposed", reviewedAt: null, reviewNote: null });
-                }
-                return next;
-            });
-            updateState((prev) => ({
-                ...prev,
-                messages: prev.messages.map((msg) =>
-                    msg.artifact?.id === artifactId
-                        ? { ...msg, artifact: { ...msg.artifact, status: "proposed" } }
-                        : msg
-                ),
-            }));
-            return false;
-        }
 
         if (status === "accepted" && result.artifact) {
             const domains = getChangedDomainsForAcceptedArtifact(result.artifact.type, result.artifact.payload);
@@ -1479,12 +1544,16 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
             }
         }
         return true;
-    }, [projectId, updateState, setArtifacts]);
+    }, [appendProjectArtifactActionError, projectId, updateState, setArtifacts]);
 
     const undoArtifactActionLocal = useCallback(async (artifactId: string): Promise<boolean> => {
         const result = await undoArtifactAction(artifactId);
         if (!result.success || !result.artifact) {
             console.error("Failed to undo artifact:", result.error);
+            appendProjectArtifactActionError({
+                message: result.error ?? "Artifact undo failed.",
+                errorCode: result.errorCode,
+            });
             return false;
         }
 
@@ -1534,7 +1603,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
             }
         }
         return true;
-    }, [setArtifacts, updateState]);
+    }, [appendProjectArtifactActionError, setArtifacts, updateState]);
 
     const dispatchArtifactAction = useCallback(async (action: ArtifactActionContract): Promise<void> => {
         if (action.type === "artifact.execute_plan") {

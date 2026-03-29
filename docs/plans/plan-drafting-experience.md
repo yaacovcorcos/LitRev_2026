@@ -136,7 +136,7 @@ LitRev drafting becomes a manuscript operating system with:
 - `next-app/lib/server/draft-checkpoints.ts`
   - Whole-draft immutable checkpoints now exist as a backend-only foundation for compare/restore and export provenance, while the draft page still lacks first-class history UI.
 - `next-app/lib/server/agent/artifacts.ts`
-  - Accepted `draft_diff` artifacts already create immutable `DraftVersion` entries, so LitRev already has a usable provenance hook for AI-generated changes.
+  - Confirmed accepted `draft_diff` artifacts already create immutable `DraftVersion` entries through the canonical apply path, while failed apply leaves the proposal pending review instead of persisting a false accepted state.
 - `next-app/lib/citation-compiler.ts`
   - Citation normalization and reference generation already exist and should be reused, not replaced.
 
@@ -276,7 +276,7 @@ These are one system's views, not separate products.
 - Suggestion mode records proposed edits as explicit changes:
   - manual suggestion
   - AI suggestion
-  - accepted
+  - accepted and applied
   - rejected
   - restored from checkpoint
 - Users can accept/reject:
@@ -290,7 +290,7 @@ These are one system's views, not separate products.
 - Users can create named checkpoints before major rewrites or AI operations.
 - LitRev keeps immutable snapshots for:
   - manual checkpoints
-  - accepted AI draft operations
+  - confirmed accepted-and-applied AI draft operations
   - export checkpoints
 - History supports:
   - compare current draft to checkpoint
@@ -310,7 +310,7 @@ These are one system's views, not separate products.
   - generate methods/result/discussion scaffolds from ledger evidence
   - create comparison table or evidence summary block
 - AI never silently commits text.
-- AI returns proposals with provenance and explicit accept/reject controls.
+- AI returns proposals with provenance and explicit accept/reject controls; manual accept settles only after the apply path succeeds.
 - Existing artifact infrastructure remains the proposal pathway for AI-originated changes.
 
 ### 9. Scientific authoring features
@@ -451,7 +451,7 @@ The draft route should no longer own the full editor domain in one file. Route-l
 ### Reliability
 - Local-first draft state remains required.
 - Recovery from crashes and failed sync must be explicit and testable.
-- Restore/undo must work for destructive actions and accepted AI edits.
+- Restore/undo must work for destructive actions and confirmed accepted AI edits.
 
 ### Operability
 - Export jobs need honest progress and failure reporting.

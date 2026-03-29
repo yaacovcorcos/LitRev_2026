@@ -4,6 +4,16 @@ import { describe, expect, it, vi } from "vitest";
 import { TimelineRenderer } from "../TimelineRenderer";
 import type { TimelineItem } from "@/types/timeline";
 
+function createDeferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
 vi.mock("next/navigation", () => ({
   useParams: () => ({ id: "project-1" }),
 }));
@@ -722,5 +732,59 @@ describe("TimelineRenderer action affordances", () => {
     expect(screen.getByText("Changes already applied.")).toBeTruthy();
     expect(screen.queryByRole("button", { name: /apply changes/i })).toBeNull();
     expect(screen.queryByRole("button", { name: /reject/i })).toBeNull();
+  });
+
+  it("blocks duplicate artifact review actions while one review is pending", async () => {
+    const deferred = createDeferred<void>();
+    const onReviewArtifact = vi.fn(() => deferred.promise);
+    const items: TimelineItem[] = [
+      {
+        type: "artifact",
+        id: "study-proposal-pending",
+        artifactId: "study-proposal-pending",
+        artifactType: "study_proposal",
+        status: "proposed",
+        title: "Example Study",
+        payload: {
+          title: "Example Study",
+          authors: "Doe et al.",
+          year: 2024,
+          source: "semantic_scholar",
+          recommendation: "keep",
+          confidence: 0.91,
+        },
+        version: 1,
+        createdAt: "2026-03-21T00:00:00.000Z",
+      },
+    ];
+
+    render(
+      <TimelineRenderer
+        items={items}
+        isLoading={false}
+        emptyState={{ icon: "chat", title: "Empty", description: "Empty", suggestions: [] }}
+        onSuggestionClick={vi.fn()}
+        onReviewArtifact={onReviewArtifact}
+      />,
+    );
+
+    const keepButton = screen.getByRole("button", { name: /^keep$/i });
+    const excludeButton = screen.getByRole("button", { name: /^exclude/i });
+
+    fireEvent.click(keepButton);
+
+    await waitFor(() => {
+      expect(onReviewArtifact).toHaveBeenCalledTimes(1);
+      expect((keepButton as HTMLButtonElement).disabled).toBe(true);
+      expect((excludeButton as HTMLButtonElement).disabled).toBe(true);
+    });
+
+    fireEvent.click(excludeButton);
+    expect(onReviewArtifact).toHaveBeenCalledTimes(1);
+
+    deferred.resolve();
+    await waitFor(() => {
+      expect((keepButton as HTMLButtonElement).disabled).toBe(false);
+    });
   });
 });

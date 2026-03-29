@@ -8,45 +8,124 @@ import { prisma } from "@/lib/server/prisma";
 import { Prisma } from "@prisma/client";
 import type { ArtifactType, ArtifactStatus, CriteriaCardPayload, ProtocolSuggestionPayload, MemoryProposalPayload, MemoryForgetProposalPayload, StudyProposalPayload, StudyUpdatePayload, DraftDiffPayload, ScreeningBatchPayload, EvidenceTablePayload } from "@/types/artifacts";
 import type { StudyType, StudySource, StudyDetails } from "@/types/ledger";
+import type { ProtocolData } from "@/types/protocol";
 import { ARTIFACT_PAYLOAD_SCHEMAS } from "@/types/artifacts";
 import { emitEventWithinTransaction } from "./events";
 import { createArtifactCheckpointInTransaction } from "./run-checkpoints";
 import { onStudyAccepted, onStudyExcluded, onDraftAccepted, onArtifactEdited } from "@/lib/server/memory/decision-extractor";
 import { syncProtocolToMemory } from "@/lib/server/memory/protocol-sync";
-import { ensureProtocol } from "@/lib/server/protocols";
+import { ensureProtocolWithDb, saveProtocolTrusted } from "@/lib/server/protocols";
 import { validateFieldValue, isValidFieldPath } from "@/lib/protocol-fields";
-import { requireActorContext } from "@/lib/server/actor";
-import { setUserMemory, createProjectMemory, getProjectMemories, getUserMemories } from "@/lib/server/memory";
+import {
+    setUserMemoryWithDb,
+    createProjectMemoryWithDb,
+    getProjectMemories,
+    getUserMemories,
+} from "@/lib/server/memory";
 import { normalizedMemoryKey, normalizedMemoryValue } from "@/lib/server/memory/conflict-policy";
-import { createNote, updateNote, textToTipTapDoc, listNotes } from "@/lib/server/notes";
-import { upsertStudy, updateStudy } from "@/lib/server/ledger";
+import { createNoteTrusted, updateNoteTrusted, textToTipTapDoc, listNotesTrusted } from "@/lib/server/notes";
+import { upsertStudyTrusted, updateStudyTrusted } from "@/lib/server/ledger";
 import { markRunDurabilityDegraded, noteObservedRunActivity } from "./run";
 import { logServerError, logServerWarn } from "@/lib/server/logging";
+import { ArtifactError } from "./artifact-errors";
+import { createDraftVersionTrusted } from "@/lib/server/draft-versions";
+import { getDraftTrusted, saveDraftTrusted } from "@/lib/server/drafts";
 
 // ── Apply function registry ──────────────────────────────────────────────────
 
+type ArtifactDbClient = typeof prisma | Prisma.TransactionClient;
+
+const artifactExecutionSelect = {
+    id: true,
+    runId: true,
+    projectId: true,
+    conversationId: true,
+    userId: true,
+    type: true,
+    status: true,
+    title: true,
+    payload: true,
+    snapshot: true,
+    version: true,
+    sourceEventId: true,
+    applyId: true,
+    appliedAt: true,
+    appliedByUserId: true,
+    reviewedAt: true,
+    reviewNote: true,
+    createdAt: true,
+    project: {
+        select: {
+            ownerId: true,
+            workspaceId: true,
+        },
+    },
+} satisfies Prisma.ArtifactSelect;
+
+type ArtifactExecutionArtifact = Prisma.ArtifactGetPayload<{ select: typeof artifactExecutionSelect }>;
+
+type ArtifactExecutionSource = "manual_review" | "auto_apply" | "undo";
+
+type ArtifactExecutionContext = {
+    db: Prisma.TransactionClient;
+    projectId: string;
+    ownerId: string;
+    workspaceId: string;
+    artifactUserId: string | null;
+    effectiveActorUserId: string | null;
+    executionSource: ArtifactExecutionSource;
+};
+
+type ArtifactPostCommitTask = {
+    kind: "sync_protocol_to_memory";
+    projectId: string;
+    protocolData: ProtocolData;
+};
+
 type ApplyFunction = (
-    artifact: { id: string; projectId: string; payload: unknown; snapshot: unknown; conversationId?: string | null; userId?: string | null },
-) => Promise<void>;
+    ctx: ArtifactExecutionContext,
+    artifact: ArtifactExecutionArtifact,
+) => Promise<{ postCommitTasks?: ArtifactPostCommitTask[] } | void>;
 
 const applyFunctions = new Map<ArtifactType, ApplyFunction>();
 
 // ── Snapshot reader registry (Wave 3A) ──────────────────────────────────────
 // Each reader captures "before" state so undoArtifact can restore it.
 
-type SnapshotReader = (projectId: string, payload: unknown) => Promise<unknown | null>;
+type SnapshotReader = (
+    ctx: ArtifactExecutionContext,
+    artifact: ArtifactExecutionArtifact,
+) => Promise<unknown | null>;
 
 const snapshotReaders = new Map<ArtifactType, SnapshotReader>();
 
 // ── Restore function registry (Wave 3B) ─────────────────────────────────────
 // Each restore function uses the captured snapshot to revert the domain state.
 
-type RestoreFunction = (ctx: { projectId: string; payload: unknown; snapshot: unknown }) => Promise<void>;
+type RestoreFunction = (
+    ctx: ArtifactExecutionContext,
+    artifact: ArtifactExecutionArtifact,
+) => Promise<void>;
 
 const restoreFunctions = new Map<ArtifactType, RestoreFunction>();
 
+class ArtifactDurabilityPersistenceError extends Error {
+    readonly causeError: unknown;
+
+    constructor(causeError: unknown) {
+        super("artifact durability persistence failed");
+        this.name = "ArtifactDurabilityPersistenceError";
+        this.causeError = causeError;
+    }
+}
+
 function formatError(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
+}
+
+function toArtifactApplyError(error: unknown): ArtifactError {
+    if (error instanceof ArtifactError) return error;
+    return new ArtifactError("ARTIFACT_APPLY_FAILED", formatError(error));
 }
 
 /**
@@ -83,7 +162,7 @@ export async function createArtifact(input: CreateArtifactInput) {
             const issues = validation.error.issues
                 .map((i) => `${i.path.join(".")}: ${i.message}`)
                 .join("; ");
-            throw new Error(`Invalid artifact payload for ${input.type}: ${issues}`);
+            throw new ArtifactError("ARTIFACT_INVALID_PAYLOAD", `Invalid artifact payload for ${input.type}: ${issues}`);
         }
     }
 
@@ -134,186 +213,165 @@ export async function createArtifact(input: CreateArtifactInput) {
  * If `editedPayload` is provided, the artifact's payload is updated before applying.
  * This supports the edit-then-accept flow where the user tweaks a proposal before saving.
  */
-export async function reviewArtifact(
-    artifactId: string,
-    status: Extract<ArtifactStatus, "accepted" | "rejected" | "edited">,
-    reviewNote?: string,
-    editedPayload?: Record<string, unknown>,
+function validateArtifactPayload(
+    type: ArtifactType,
+    payload: unknown,
+    label: "artifact payload" | "edited payload",
 ) {
-    const artifact = await prisma.artifact.findUnique({ where: { id: artifactId } });
-    if (!artifact) throw new Error("Artifact not found");
-    // Idempotent: if already in the requested status, return as-is
-    if (artifact.status === status) {
-        return artifact;
-    }
-    if (artifact.status !== "proposed") {
-        throw new Error(`Cannot review artifact with status "${artifact.status}"`);
-    }
+    const schema = ARTIFACT_PAYLOAD_SCHEMAS[type];
+    if (!schema) return;
 
-    // If the user edited the payload, validate and update it atomically with the review
-    if (editedPayload && status === "accepted") {
-        const schema = ARTIFACT_PAYLOAD_SCHEMAS[artifact.type as ArtifactType];
-        if (schema) {
-            const validation = schema.safeParse(editedPayload);
-            if (!validation.success) {
-                const issues = validation.error.issues
-                    .map((i) => `${i.path.join(".")}: ${i.message}`)
-                    .join("; ");
-                throw new Error(`Invalid edited payload for ${artifact.type}: ${issues}`);
-            }
-        }
-        // Update payload in DB before applying
-        await prisma.artifact.update({
-            where: { id: artifactId },
-            data: { payload: editedPayload as object },
-        });
-    }
+    const validation = schema.safeParse(payload);
+    if (validation.success) return;
 
-    const updated = await prisma.artifact.update({
-        where: { id: artifactId },
-        data: {
-            status,
-            reviewedAt: new Date(),
-            reviewNote: reviewNote ?? null,
-        },
-    });
-
-    await trackMemoryProposalReview(artifact, status);
-
-    // If accepted, apply the artifact (reads payload from DB — includes edits if any)
-    if (status === "accepted") {
-        await applyArtifact(artifactId);
-    }
-
-    // Decision memory extraction (fire-and-forget)
-    extractDecisionMemory(artifact, status, reviewNote).catch((err) =>
-        logServerError("decision-extractor", "decision memory extraction failed", {
-            artifactId,
-            status,
-        }, err)
-    );
-
-    return updated;
+    const issues = validation.error.issues
+        .map((i) => `${i.path.join(".")}: ${i.message}`)
+        .join("; ");
+    throw new ArtifactError("ARTIFACT_INVALID_PAYLOAD", `Invalid ${label} for ${type}: ${issues}`);
 }
 
-/**
- * Apply an artifact — run the type-specific apply function
- */
-export async function applyArtifact(
+async function loadArtifactForExecution(
+    db: ArtifactDbClient,
     artifactId: string,
-    statusOverride?: Extract<ArtifactStatus, "accepted" | "auto_applied">
-) {
-    const artifact = await prisma.artifact.findUnique({ where: { id: artifactId } });
-    if (!artifact) throw new Error("Artifact not found");
-
-    // Idempotency check
-    if (artifact.appliedAt) return artifact;
-
-    const applyFn = applyFunctions.get(artifact.type as ArtifactType);
-    if (!applyFn) {
-        logServerWarn("artifacts", "no apply function registered for artifact type", {
-            artifactType: artifact.type,
-            artifactId,
-        });
-        try {
-            const { applied, eventCreatedAt } = await prisma.$transaction(async (tx) => {
-                const applied = await tx.artifact.update({
-                    where: { id: artifactId },
-                    data: {
-                        appliedAt: new Date(),
-                        ...(statusOverride ? { status: statusOverride } : {}),
-                    },
-                });
-
-                const event = await emitEventWithinTransaction(
-                    tx,
-                    artifact.runId,
-                    "artifact_reviewed",
-                    {
-                        artifactId: artifact.id,
-                        status: "applied",
-                        type: artifact.type,
-                    },
-                    { artifactId: artifact.id },
-                );
-
-                await createArtifactCheckpointInTransaction(tx, {
-                    runId: artifact.runId,
-                    conversationId: artifact.conversationId,
-                    eventSequence: event.sequence,
-                    artifact: {
-                        id: applied.id,
-                        type: applied.type,
-                        status: applied.status,
-                        title: applied.title,
-                        payload: applied.payload,
-                        version: applied.version,
-                    },
-                });
-
-                return { applied, eventCreatedAt: event.createdAt };
-            });
-
-            noteObservedRunActivity(artifact.runId, eventCreatedAt);
-            return applied;
-        } catch (error) {
-            await markRunDurabilityDegraded(
-                artifact.runId,
-                "artifact_review_checkpoint_persistence_failed",
-        ).catch((markError) => {
-                logServerError("artifacts", "failed to persist degraded durability state", {
-                    artifactId,
-                    runId: artifact.runId,
-                    error: formatError(markError),
-                });
-            });
-            throw error;
-        }
-    }
-
-    // Run apply function
-    if (!artifact.projectId) {
-        throw new Error("Cannot apply artifact without a project context");
-    }
-
-    // Capture snapshot before applying (enables undo — Wave 3A)
-    const snapshotReader = snapshotReaders.get(artifact.type as ArtifactType);
-    if (snapshotReader) {
-        try {
-            const snapshot = await snapshotReader(artifact.projectId, artifact.payload);
-            // Write snapshot even if null — null means "entity didn't exist before"
-            await prisma.artifact.update({
-                where: { id: artifactId },
-                data: { snapshot: (snapshot ?? Prisma.DbNull) as Prisma.InputJsonValue },
-            });
-        } catch (err) {
-            // Snapshot capture failure should not block the apply
-            logServerWarn("artifacts", "snapshot capture failed", {
-                artifactType: artifact.type,
-                artifactId,
-            }, err);
-        }
-    }
-
-    await applyFn({
-        id: artifact.id,
-        projectId: artifact.projectId,
-        payload: artifact.payload,
-        snapshot: artifact.snapshot,
-        conversationId: artifact.conversationId,
-        userId: artifact.userId,
+): Promise<ArtifactExecutionArtifact> {
+    const artifact = await db.artifact.findUnique({
+        where: { id: artifactId },
+        select: artifactExecutionSelect,
     });
+    if (!artifact) {
+        throw new ArtifactError("ARTIFACT_NOT_FOUND", "Artifact not found");
+    }
+    return artifact;
+}
 
-    // Mark applied
-    try {
-        const { applied, eventCreatedAt } = await prisma.$transaction(async (tx) => {
+function buildExecutionContext(
+    db: Prisma.TransactionClient,
+    artifact: ArtifactExecutionArtifact,
+    executionSource: ArtifactExecutionSource,
+    actorUserId?: string | null,
+): ArtifactExecutionContext {
+    if (!artifact.projectId || !artifact.project) {
+        throw new ArtifactError("ARTIFACT_CONTEXT_MISSING", "Cannot apply artifact without a project context");
+    }
+
+    return {
+        db,
+        projectId: artifact.projectId,
+        ownerId: artifact.project.ownerId,
+        workspaceId: artifact.project.workspaceId,
+        artifactUserId: artifact.userId,
+        effectiveActorUserId: actorUserId ?? artifact.userId ?? null,
+        executionSource,
+    };
+}
+
+async function markDurabilityAndRethrow(
+    runId: string,
+    artifactId: string,
+    error: unknown,
+): Promise<never> {
+    await markRunDurabilityDegraded(
+        runId,
+        "artifact_review_checkpoint_persistence_failed",
+    ).catch((markError) => {
+        logServerError("artifacts", "failed to persist degraded durability state", {
+            artifactId,
+            runId,
+            error: formatError(markError),
+        });
+    });
+    throw toArtifactApplyError(error);
+}
+
+async function executePostCommitTasks(
+    tasks: ArtifactPostCommitTask[] | undefined,
+    artifact: { id: string; runId: string },
+) {
+    if (!tasks || tasks.length === 0) return;
+
+    for (const task of tasks) {
+        try {
+            if (task.kind === "sync_protocol_to_memory") {
+                await syncProtocolToMemory(task.projectId, task.protocolData);
+            }
+        } catch (error) {
+            logServerError("artifacts", "artifact post-commit task failed", {
+                artifactId: artifact.id,
+                runId: artifact.runId,
+                task: task.kind,
+            }, error);
+        }
+    }
+}
+
+async function runArtifactApplyTransaction(params: {
+    artifactId: string;
+    executionSource: ArtifactExecutionSource;
+    statusOverride?: Extract<ArtifactStatus, "accepted" | "auto_applied">;
+    reviewNote?: string;
+    editedPayload?: Record<string, unknown>;
+    actorUserId?: string | null;
+}): Promise<{ artifact: ArtifactExecutionArtifact; eventCreatedAt: Date | null; postCommitTasks: ArtifactPostCommitTask[] }> {
+    const { artifactId, executionSource, statusOverride, reviewNote, editedPayload, actorUserId } = params;
+
+    return prisma.$transaction(async (tx) => {
+        const artifact = await loadArtifactForExecution(tx, artifactId);
+        if (artifact.appliedAt) {
+            return { artifact, eventCreatedAt: null, postCommitTasks: [] };
+        }
+
+        const ctx = buildExecutionContext(tx, artifact, executionSource, actorUserId);
+        const effectivePayload = (editedPayload ?? artifact.payload) as ArtifactExecutionArtifact["payload"];
+        const effectiveArtifact: ArtifactExecutionArtifact = {
+            ...artifact,
+            payload: effectivePayload,
+        };
+
+        let snapshot: ArtifactExecutionArtifact["snapshot"];
+        let applyResult: Awaited<ReturnType<ApplyFunction>> | undefined;
+        try {
+            const snapshotReader = snapshotReaders.get(artifact.type as ArtifactType);
+            snapshot = (snapshotReader
+                ? await snapshotReader(ctx, effectiveArtifact)
+                : artifact.snapshot) as ArtifactExecutionArtifact["snapshot"];
+
+            const applyFn = applyFunctions.get(artifact.type as ArtifactType);
+            applyResult = applyFn
+                ? await applyFn(ctx, {
+                    ...effectiveArtifact,
+                    snapshot: snapshot as ArtifactExecutionArtifact["snapshot"],
+                })
+                : undefined;
+
+            if (!applyFn) {
+                logServerWarn("artifacts", "no apply function registered for artifact type", {
+                    artifactType: artifact.type,
+                    artifactId,
+                });
+            }
+        } catch (error) {
+            throw toArtifactApplyError(error);
+        }
+
+        try {
+            const finalizedAt = new Date();
             const applied = await tx.artifact.update({
                 where: { id: artifactId },
                 data: {
-                    appliedAt: new Date(),
-                    applyId: artifact.id, // self-referencing idempotency key
+                    payload: effectivePayload as object,
+                    snapshot: (snapshot ?? Prisma.DbNull) as Prisma.InputJsonValue,
+                    appliedAt: finalizedAt,
+                    applyId: artifact.id,
                     ...(statusOverride ? { status: statusOverride } : {}),
+                    ...(executionSource === "manual_review"
+                        ? {
+                            reviewedAt: finalizedAt,
+                            reviewNote: reviewNote ?? null,
+                            appliedByUserId: actorUserId ?? null,
+                        }
+                        : {}),
                 },
+                select: artifactExecutionSelect,
             });
 
             const event = await emitEventWithinTransaction(
@@ -342,22 +400,131 @@ export async function applyArtifact(
                 },
             });
 
-            return { applied, eventCreatedAt: event.createdAt };
+            return {
+                artifact: applied,
+                eventCreatedAt: event.createdAt,
+                postCommitTasks: applyResult?.postCommitTasks ?? [],
+            };
+        } catch (error) {
+            throw new ArtifactDurabilityPersistenceError(toArtifactApplyError(error));
+        }
+    });
+}
+
+export async function reviewArtifact(
+    artifactId: string,
+    status: Extract<ArtifactStatus, "accepted" | "rejected" | "edited">,
+    reviewNote?: string,
+    editedPayload?: Record<string, unknown>,
+    options?: { actorUserId?: string | null },
+) {
+    if (status === "accepted") {
+        const artifact = await loadArtifactForExecution(prisma, artifactId);
+        if (artifact.status === status && artifact.appliedAt) {
+            return artifact;
+        }
+        if (artifact.status !== "proposed") {
+            throw new ArtifactError("ARTIFACT_INVALID_STATE", `Cannot review artifact with status "${artifact.status}"`);
+        }
+        if (editedPayload) {
+            validateArtifactPayload(artifact.type as ArtifactType, editedPayload, "edited payload");
+        }
+
+        try {
+            const applied = await runArtifactApplyTransaction({
+                artifactId,
+                executionSource: "manual_review",
+                statusOverride: "accepted",
+                reviewNote,
+                editedPayload,
+                actorUserId: options?.actorUserId ?? null,
+            });
+
+            if (applied.eventCreatedAt) {
+                noteObservedRunActivity(applied.artifact.runId, applied.eventCreatedAt);
+            }
+            await executePostCommitTasks(applied.postCommitTasks, applied.artifact);
+
+            extractDecisionMemory(applied.artifact, status, reviewNote).catch((err) =>
+                logServerError("decision-extractor", "decision memory extraction failed", {
+                    artifactId,
+                    status,
+                }, err)
+            );
+
+            return applied.artifact;
+        } catch (error) {
+            if (error instanceof ArtifactDurabilityPersistenceError) {
+                await markDurabilityAndRethrow(artifact.runId, artifactId, error.causeError);
+            }
+            throw error;
+        }
+    }
+
+    const artifact = await loadArtifactForExecution(prisma, artifactId);
+    if (artifact.status === status) {
+        return artifact;
+    }
+    if (artifact.status !== "proposed") {
+        throw new ArtifactError("ARTIFACT_INVALID_STATE", `Cannot review artifact with status "${artifact.status}"`);
+    }
+
+    const updated = await prisma.$transaction(async (tx) => tx.artifact.update({
+        where: { id: artifactId },
+        data: {
+            status,
+            reviewedAt: new Date(),
+            reviewNote: reviewNote ?? null,
+        },
+        select: artifactExecutionSelect,
+    }));
+
+    trackMemoryProposalReview(updated, status).catch((error) =>
+        logServerError("artifacts", "memory proposal review bookkeeping failed", {
+            artifactId,
+            status,
+        }, error)
+    );
+
+    extractDecisionMemory(updated, status, reviewNote).catch((err) =>
+        logServerError("decision-extractor", "decision memory extraction failed", {
+            artifactId,
+            status,
+        }, err)
+    );
+
+    return updated;
+}
+
+/**
+ * Apply an artifact — run the type-specific apply function
+ */
+export async function applyArtifact(
+    artifactId: string,
+    statusOverride?: Extract<ArtifactStatus, "accepted" | "auto_applied">,
+    options?: { actorUserId?: string | null },
+) {
+    try {
+        const artifact = await loadArtifactForExecution(prisma, artifactId);
+        if (artifact.appliedAt) return artifact;
+
+        const applied = await runArtifactApplyTransaction({
+            artifactId,
+            executionSource: statusOverride === "auto_applied" ? "auto_apply" : "manual_review",
+            statusOverride,
+            actorUserId: options?.actorUserId ?? null,
         });
 
-        noteObservedRunActivity(artifact.runId, eventCreatedAt);
-        return applied;
+        if (applied.eventCreatedAt) {
+            noteObservedRunActivity(artifact.runId, applied.eventCreatedAt);
+        }
+        await executePostCommitTasks(applied.postCommitTasks, applied.artifact);
+        return applied.artifact;
     } catch (error) {
-        await markRunDurabilityDegraded(
-            artifact.runId,
-            "artifact_review_checkpoint_persistence_failed",
-        ).catch((markError) => {
-            logServerError("artifacts", "failed to persist degraded durability state", {
-                artifactId,
-                runId: artifact.runId,
-                error: formatError(markError),
-            });
-        });
+        const artifact = await loadArtifactForExecution(prisma, artifactId).catch(() => null);
+        if (artifact && error instanceof ArtifactDurabilityPersistenceError) {
+            await markDurabilityAndRethrow(artifact.runId, artifactId, error.causeError);
+        }
         throw error;
     }
 }
@@ -367,33 +534,32 @@ export async function applyArtifact(
  * Only allowed within a 5-minute window after apply.
  */
 export async function undoArtifact(artifactId: string) {
-    const artifact = await prisma.artifact.findUnique({ where: { id: artifactId } });
-    if (!artifact) throw new Error("Artifact not found");
-    if (!artifact.appliedAt) throw new Error("Artifact has not been applied");
+    const artifact = await loadArtifactForExecution(prisma, artifactId);
+    if (!artifact.appliedAt) {
+        throw new ArtifactError("ARTIFACT_INVALID_STATE", "Artifact has not been applied");
+    }
 
     // Check 5-minute window
     const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
     if (artifact.appliedAt < fiveMinutesAgo) {
-        throw new Error("Undo window has expired (5 minutes)");
+        throw new ArtifactError("ARTIFACT_INVALID_STATE", "Undo window has expired (5 minutes)");
     }
 
-    // Run type-specific restore if available and snapshot was captured
-    const restoreFn = restoreFunctions.get(artifact.type as ArtifactType);
-    if (restoreFn && artifact.projectId) {
-        // snapshot may be null (meaning "entity didn't exist before apply")
-        await restoreFn({
-            projectId: artifact.projectId,
-            payload: artifact.payload,
-            snapshot: artifact.snapshot,
+    return prisma.$transaction(async (tx) => {
+        const current = await loadArtifactForExecution(tx, artifactId);
+        const restoreFn = restoreFunctions.get(current.type as ArtifactType);
+        if (restoreFn) {
+            const ctx = buildExecutionContext(tx, current, "undo", null);
+            await restoreFn(ctx, current);
+        }
+
+        return tx.artifact.update({
+            where: { id: artifactId },
+            data: {
+                status: "rejected",
+                reviewNote: "Undone by user",
+            },
         });
-    }
-
-    return prisma.artifact.update({
-        where: { id: artifactId },
-        data: {
-            status: "rejected",
-            reviewNote: "Undone by user",
-        },
     });
 }
 
@@ -569,49 +735,58 @@ async function trackMemoryProposalReview(
 }
 
 // criteria_card: update protocol eligibility, then sync to memory
-registerApplyFunction("criteria_card", async (artifact) => {
-    const payload = artifact.payload as CriteriaCardPayload;
-    const data = await ensureProtocol(artifact.projectId);
+registerApplyFunction("criteria_card", async (ctx, artifact) => {
+    const payload = artifact.payload as unknown as CriteriaCardPayload;
+    const data = await ensureProtocolWithDb(ctx.db, ctx.projectId);
     data.eligibility.inclusion = payload.inclusion;
     data.eligibility.exclusion = payload.exclusion;
-    await prisma.protocol.update({
-        where: { projectId: artifact.projectId },
-        data: { data: data as unknown as object },
-    });
-    await syncProtocolToMemory(artifact.projectId, data);
+    await saveProtocolTrusted(ctx.db, ctx.projectId, data);
+    return {
+        postCommitTasks: [{
+            kind: "sync_protocol_to_memory",
+            projectId: ctx.projectId,
+            protocolData: data,
+        }],
+    };
 });
 
 // protocol_suggestion: update protocol field, then sync
-registerApplyFunction("protocol_suggestion", async (artifact) => {
-    const payload = artifact.payload as ProtocolSuggestionPayload;
+registerApplyFunction("protocol_suggestion", async (ctx, artifact) => {
+    const payload = artifact.payload as unknown as ProtocolSuggestionPayload;
 
     // Final gate: validate field path and value type before writing
     if (!isValidFieldPath(payload.field)) {
-        throw new Error(`Invalid protocol field: "${payload.field}"`);
+        throw new ArtifactError("ARTIFACT_INVALID_PAYLOAD", `Invalid protocol field: "${payload.field}"`);
     }
     const fieldCheck = validateFieldValue(payload.field, payload.value);
     if (!fieldCheck.valid) {
-        throw new Error(`Cannot apply protocol_suggestion: ${fieldCheck.error}`);
+        throw new ArtifactError("ARTIFACT_INVALID_PAYLOAD", `Cannot apply protocol_suggestion: ${fieldCheck.error}`);
     }
 
-    const data = await ensureProtocol(artifact.projectId);
+    const data = await ensureProtocolWithDb(ctx.db, ctx.projectId);
     setNestedValue(data as unknown as Record<string, unknown>, payload.field, fieldCheck.value);
-    await prisma.protocol.update({
-        where: { projectId: artifact.projectId },
-        data: { data: data as unknown as object },
-    });
-    await syncProtocolToMemory(artifact.projectId, data);
+    await saveProtocolTrusted(ctx.db, ctx.projectId, data);
+    return {
+        postCommitTasks: [{
+            kind: "sync_protocol_to_memory",
+            projectId: ctx.projectId,
+            protocolData: data,
+        }],
+    };
 });
 
 // memory_proposal: create the actual memory entry
-registerApplyFunction("memory_proposal", async (artifact) => {
-    const payload = artifact.payload as MemoryProposalPayload;
+registerApplyFunction("memory_proposal", async (ctx, artifact) => {
+    const payload = artifact.payload as unknown as MemoryProposalPayload;
     if (payload.memoryType === "user") {
-        const userId = artifact.userId || requireActorContext().userId;
+        const userId = ctx.effectiveActorUserId;
+        if (!userId) {
+            throw new ArtifactError("ARTIFACT_CONTEXT_MISSING", "User memory proposals require an acting user.");
+        }
         const key = normalizedMemoryKey(payload.key || `auto_${Date.now()}`);
         const keyTag = `memory-key:${key}`;
         const incomingValue = normalizedMemoryValue(payload.value);
-        const activeUserMemories = await getUserMemories(userId, { status: "active" });
+        const activeUserMemories = await getUserMemories(userId, { status: "active" }, ctx.db);
         const sameLogicalKey = activeUserMemories.filter((memory) => normalizedMemoryKey(memory.key) === key);
         const hasConflict = sameLogicalKey.some((memory) => normalizedMemoryValue(memory.value) !== incomingValue);
         const variantIds = sameLogicalKey
@@ -619,7 +794,7 @@ registerApplyFunction("memory_proposal", async (artifact) => {
             .map((memory) => memory.id);
 
         if (variantIds.length > 0) {
-            await prisma.userMemory.updateMany({
+            await ctx.db.userMemory.updateMany({
                 where: {
                     id: { in: variantIds },
                     userId,
@@ -632,7 +807,7 @@ registerApplyFunction("memory_proposal", async (artifact) => {
             });
         }
 
-        await setUserMemory({
+        await setUserMemoryWithDb(ctx.db, {
             userId,
             type: "preference",
             key,
@@ -640,7 +815,7 @@ registerApplyFunction("memory_proposal", async (artifact) => {
             rationale: payload.rationale,
             tags: ["ai-proposed", keyTag],
         });
-        await prisma.$executeRaw`
+        await ctx.db.$executeRaw`
             UPDATE "UserMemory"
             SET "acceptedCount" = "acceptedCount" + 1,
                 "contradictionCount" = "contradictionCount" + ${hasConflict ? 1 : 0}
@@ -655,16 +830,16 @@ registerApplyFunction("memory_proposal", async (artifact) => {
 
         // If this proposal is keyed and accepted, supersede conflicting active memories with the same key.
         if (keyTag) {
-            const existing = await getProjectMemories(artifact.projectId, { status: "active", tags: [keyTag] });
+            const existing = await getProjectMemories(ctx.projectId, { status: "active", tags: [keyTag] }, ctx.db);
             const exact = existing.find((m) => normalizedMemoryValue(m.statement) === normalizedValue);
             if (exact) {
-                await prisma.projectMemory.update({
+                await ctx.db.projectMemory.update({
                     where: { id: exact.id },
                     data: {
                         rationale: payload.rationale ?? exact.rationale,
                     },
                 });
-                await prisma.$executeRaw`
+                await ctx.db.$executeRaw`
                     UPDATE "ProjectMemory"
                     SET "acceptedCount" = "acceptedCount" + 1
                     WHERE "id" = ${exact.id}
@@ -677,7 +852,7 @@ registerApplyFunction("memory_proposal", async (artifact) => {
                 .map((m) => m.id);
             conflictCount = conflictingIds.length;
             if (conflictingIds.length > 0) {
-                await prisma.projectMemory.updateMany({
+                await ctx.db.projectMemory.updateMany({
                     where: { id: { in: conflictingIds } },
                     data: {
                         status: "archived",
@@ -685,7 +860,7 @@ registerApplyFunction("memory_proposal", async (artifact) => {
                     },
                 });
                 const idValues = conflictingIds.map((id) => Prisma.sql`${id}`);
-                await prisma.$executeRaw`
+                await ctx.db.$executeRaw`
                     UPDATE "ProjectMemory"
                     SET "contradictionCount" = "contradictionCount" + 1
                     WHERE "id" IN (${Prisma.join(idValues)})
@@ -693,23 +868,23 @@ registerApplyFunction("memory_proposal", async (artifact) => {
             }
         }
 
-        const created = await createProjectMemory({
-            projectId: artifact.projectId,
+        const created = await createProjectMemoryWithDb(ctx.db, {
+            projectId: ctx.projectId,
             type: "decision",
             statement: payload.value,
             rationale: payload.rationale,
             importance: "normal",
             tags: keyTag ? ["ai-proposed", keyTag] : ["ai-proposed"],
         });
-        await prisma.$executeRaw`
+        await ctx.db.$executeRaw`
             UPDATE "ProjectMemory"
             SET "acceptedCount" = "acceptedCount" + 1,
                 "contradictionCount" = "contradictionCount" + ${conflictCount > 0 ? 1 : 0}
             WHERE "id" = ${created.id}
         `;
     } else if (payload.memoryType === "note") {
-        await createNote({
-            projectId: artifact.projectId,
+        await createNoteTrusted(ctx.db, {
+            projectId: ctx.projectId,
             title: payload.key || undefined,
             content: textToTipTapDoc(payload.value),
             source: "conversation",
@@ -720,14 +895,17 @@ registerApplyFunction("memory_proposal", async (artifact) => {
 });
 
 // memory_forget_proposal: archive selected memories (forget semantics = archive, not hard delete)
-registerApplyFunction("memory_forget_proposal", async (artifact) => {
-    const payload = artifact.payload as MemoryForgetProposalPayload;
+registerApplyFunction("memory_forget_proposal", async (ctx, artifact) => {
+    const payload = artifact.payload as unknown as MemoryForgetProposalPayload;
     const matchIds = payload.matches.map((m) => m.id);
     if (matchIds.length === 0) return;
 
     if (payload.memoryType === "user") {
-        const userId = artifact.userId || requireActorContext().userId;
-        await prisma.userMemory.updateMany({
+        const userId = ctx.effectiveActorUserId;
+        if (!userId) {
+            throw new ArtifactError("ARTIFACT_CONTEXT_MISSING", "User memory forget proposals require an acting user.");
+        }
+        await ctx.db.userMemory.updateMany({
             where: {
                 id: { in: matchIds },
                 userId,
@@ -739,7 +917,7 @@ registerApplyFunction("memory_forget_proposal", async (artifact) => {
             },
         });
         const idValues = matchIds.map((id) => Prisma.sql`${id}`);
-        await prisma.$executeRaw`
+        await ctx.db.$executeRaw`
             UPDATE "UserMemory"
             SET "rejectedCount" = "rejectedCount" + 1
             WHERE "id" IN (${Prisma.join(idValues)})
@@ -747,10 +925,10 @@ registerApplyFunction("memory_forget_proposal", async (artifact) => {
         return;
     }
 
-    await prisma.projectMemory.updateMany({
+    await ctx.db.projectMemory.updateMany({
         where: {
             id: { in: matchIds },
-            projectId: artifact.projectId,
+            projectId: ctx.projectId,
             status: "active",
         },
         data: {
@@ -759,7 +937,7 @@ registerApplyFunction("memory_forget_proposal", async (artifact) => {
         },
     });
     const idValues = matchIds.map((id) => Prisma.sql`${id}`);
-    await prisma.$executeRaw`
+    await ctx.db.$executeRaw`
         UPDATE "ProjectMemory"
         SET "rejectedCount" = "rejectedCount" + 1
         WHERE "id" IN (${Prisma.join(idValues)})
@@ -767,8 +945,8 @@ registerApplyFunction("memory_forget_proposal", async (artifact) => {
 });
 
 // study_proposal: upsert the study with triage decision
-registerApplyFunction("study_proposal", async (artifact) => {
-    const payload = artifact.payload as StudyProposalPayload;
+registerApplyFunction("study_proposal", async (ctx, artifact) => {
+    const payload = artifact.payload as unknown as StudyProposalPayload;
     const mappedStatus = payload.recommendation === "exclude"
         ? "excluded"
         : payload.recommendation === "keep"
@@ -799,12 +977,12 @@ registerApplyFunction("study_proposal", async (artifact) => {
     if (typeof payload.sampleSize === "number") detailPatch.sampleSize = payload.sampleSize;
 
     if (payload.studyId) {
-        const existing = await prisma.study.findFirst({
-            where: { id: payload.studyId, projectId: artifact.projectId, deletedAt: null },
+        const existing = await ctx.db.study.findFirst({
+            where: { id: payload.studyId, projectId: ctx.projectId, deletedAt: null },
             select: { id: true },
         });
         if (existing) {
-            await updateStudy(undefined, artifact.projectId, existing.id, {
+            await updateStudyTrusted(ctx.db, ctx.projectId, ctx.workspaceId, existing.id, {
                 status: mappedStatus,
                 details: detailPatch,
             });
@@ -812,7 +990,7 @@ registerApplyFunction("study_proposal", async (artifact) => {
         }
     }
 
-    await upsertStudy(undefined, artifact.projectId, {
+    await upsertStudyTrusted(ctx.db, ctx.projectId, ctx.workspaceId, {
         id: payload.studyId,
         title: payload.title,
         authors: payload.authors,
@@ -824,22 +1002,22 @@ registerApplyFunction("study_proposal", async (artifact) => {
 });
 
 // study_update: apply a typed patch to an existing study
-registerApplyFunction("study_update", async (artifact) => {
-    const payload = artifact.payload as StudyUpdatePayload;
+registerApplyFunction("study_update", async (ctx, artifact) => {
+    const payload = artifact.payload as unknown as StudyUpdatePayload;
 
     // Defensive idempotency check in case of retries/races around accept/apply
-    const existingArtifact = await prisma.artifact.findUnique({
+    const existingArtifact = await ctx.db.artifact.findUnique({
         where: { id: artifact.id },
         select: { appliedAt: true },
     });
     if (existingArtifact?.appliedAt) return;
 
-    const currentStudy = await prisma.study.findFirst({
-        where: { id: payload.studyId, projectId: artifact.projectId, deletedAt: null },
+    const currentStudy = await ctx.db.study.findFirst({
+        where: { id: payload.studyId, projectId: ctx.projectId, deletedAt: null },
         select: { updatedAt: true },
     });
     if (!currentStudy) {
-        throw new Error(`Study not found: ${payload.studyId}`);
+        throw new ArtifactError("ARTIFACT_APPLY_FAILED", `Study not found: ${payload.studyId}`);
     }
 
     const snapshotMs = new Date(payload.snapshotAt).getTime();
@@ -852,21 +1030,20 @@ registerApplyFunction("study_update", async (artifact) => {
         });
     }
 
-    await updateStudy(undefined, artifact.projectId, payload.studyId, {
+    await updateStudyTrusted(ctx.db, ctx.projectId, ctx.workspaceId, payload.studyId, {
         ...(payload.patch.top ?? {}),
         ...(payload.patch.details ? { details: payload.patch.details as Partial<StudyDetails> } : {}),
     });
 });
 
 // draft_diff: write content to the Draft table (displayed by draft page) and DraftVersion (provenance)
-registerApplyFunction("draft_diff", async (artifact) => {
-    const payload = artifact.payload as DraftDiffPayload;
+registerApplyFunction("draft_diff", async (ctx, artifact) => {
+    const payload = artifact.payload as unknown as DraftDiffPayload;
     const tipTapContent = textToTipTapDoc(payload.content);
 
     // 1. Write immutable DraftVersion (replaces the old Note backup)
-    const { createDraftVersion } = await import("@/lib/server/draft-versions");
-    await createDraftVersion(undefined, {
-        projectId: artifact.projectId,
+    await createDraftVersionTrusted(ctx.db, {
+        projectId: ctx.projectId,
         section: payload.section,
         content: tipTapContent as object,
         wordCount: payload.wordCount,
@@ -875,7 +1052,6 @@ registerApplyFunction("draft_diff", async (artifact) => {
     });
 
     // 2. Write to Draft table so the draft page displays it
-    const { getDraft, saveDraft } = await import("@/lib/server/drafts");
     const { createDefaultDraftState } = await import("@/lib/draftStorage");
     const { DRAFT_SECTIONS } = await import("@/types/draft");
 
@@ -884,20 +1060,20 @@ registerApplyFunction("draft_diff", async (artifact) => {
         (s) => s.key === payload.section.toLowerCase() || s.label.toLowerCase() === payload.section.toLowerCase()
     )?.key ?? payload.section.toLowerCase();
 
-    const currentDraft = await getDraft(undefined, artifact.projectId);
+    const currentDraft = await getDraftTrusted(ctx.db, ctx.projectId);
     const draftState = currentDraft ?? createDefaultDraftState();
 
     draftState.contentBySection[sectionKey] = tipTapContent as typeof draftState.contentBySection[string];
 
-    await saveDraft(undefined, artifact.projectId, draftState);
+    await saveDraftTrusted(ctx.db, ctx.projectId, draftState);
 });
 
 // evidence_table: persist the accepted table as a project note for downstream drafting/export
-registerApplyFunction("evidence_table", async (artifact) => {
-    const payload = artifact.payload as EvidenceTablePayload;
+registerApplyFunction("evidence_table", async (ctx, artifact) => {
+    const payload = artifact.payload as unknown as EvidenceTablePayload;
     const content = textToTipTapDoc(buildEvidenceTableMarkdown(payload));
 
-    const existing = await listNotes(artifact.projectId);
+    const existing = await listNotesTrusted(ctx.db, ctx.projectId);
     const evidenceNote = existing.find((note) =>
         note.title?.toLowerCase() === "evidence table"
         || note.linkedSection?.toLowerCase() === "evidence table"
@@ -905,7 +1081,7 @@ registerApplyFunction("evidence_table", async (artifact) => {
     );
 
     if (evidenceNote) {
-        await updateNote(evidenceNote.id, {
+        await updateNoteTrusted(ctx.db, evidenceNote.id, {
             title: "Evidence Table",
             linkedSection: "Evidence Table",
             content,
@@ -914,8 +1090,8 @@ registerApplyFunction("evidence_table", async (artifact) => {
         return;
     }
 
-    await createNote({
-        projectId: artifact.projectId,
+    await createNoteTrusted(ctx.db, {
+        projectId: ctx.projectId,
         title: "Evidence Table",
         linkedSection: "Evidence Table",
         content,
@@ -926,27 +1102,27 @@ registerApplyFunction("evidence_table", async (artifact) => {
 });
 
 // screening_batch: apply each study's triage decision
-registerApplyFunction("screening_batch", async (artifact) => {
-    const payload = artifact.payload as ScreeningBatchPayload;
+registerApplyFunction("screening_batch", async (ctx, artifact) => {
+    const payload = artifact.payload as unknown as ScreeningBatchPayload;
     for (const study of payload.studies) {
         let existing: { id: string; details: unknown } | null = null;
 
         if (study.studyId) {
-            existing = await prisma.study.findFirst({
-                where: { id: study.studyId, projectId: artifact.projectId, deletedAt: null },
+            existing = await ctx.db.study.findFirst({
+                where: { id: study.studyId, projectId: ctx.projectId, deletedAt: null },
                 select: { id: true, details: true },
             });
             if (!existing) {
                 logServerWarn("screening_batch", "skipping study update because study was not found", {
                     studyId: study.studyId,
-                    projectId: artifact.projectId,
+                    projectId: ctx.projectId,
                 });
                 continue;
             }
         } else {
             // Legacy artifact fallback: match by title only when no studyId exists.
-            existing = await prisma.study.findFirst({
-                where: { projectId: artifact.projectId, title: study.title, deletedAt: null },
+            existing = await ctx.db.study.findFirst({
+                where: { projectId: ctx.projectId, title: study.title, deletedAt: null },
                 select: { id: true, details: true },
             });
         }
@@ -955,7 +1131,7 @@ registerApplyFunction("screening_batch", async (artifact) => {
 
         const screenedAtIso = new Date().toISOString();
         const details = (existing.details as Record<string, unknown>) ?? {};
-        await prisma.study.update({
+        await ctx.db.study.update({
             where: { id: existing.id },
             data: {
                 status: study.recommendation === "exclude"
@@ -985,9 +1161,9 @@ registerApplyFunction("screening_batch", async (artifact) => {
 // Capture "before" state so undo can restore it.
 
 // study_update: capture the full study row before patching
-snapshotReaders.set("study_update", async (_projectId, payload) => {
-    const p = payload as StudyUpdatePayload;
-    const study = await prisma.study.findFirst({
+snapshotReaders.set("study_update", async (ctx, artifact) => {
+    const p = artifact.payload as unknown as StudyUpdatePayload;
+    const study = await ctx.db.study.findFirst({
         where: { id: p.studyId, deletedAt: null },
         select: { id: true, title: true, authors: true, year: true, status: true, quality: true, details: true },
     });
@@ -995,20 +1171,20 @@ snapshotReaders.set("study_update", async (_projectId, payload) => {
 });
 
 // study_proposal: capture existing study if one matches (null = new study)
-snapshotReaders.set("study_proposal", async (projectId, payload) => {
-    const p = payload as StudyProposalPayload;
-    const study = await prisma.study.findFirst({
-        where: { projectId, title: p.title, deletedAt: null },
+snapshotReaders.set("study_proposal", async (ctx, artifact) => {
+    const p = artifact.payload as unknown as StudyProposalPayload;
+    const study = await ctx.db.study.findFirst({
+        where: { projectId: ctx.projectId, title: p.title, deletedAt: null },
         select: { id: true, title: true, authors: true, year: true, status: true, quality: true, details: true },
     });
     return study ?? null;
 });
 
 // protocol_suggestion: capture the current field value before overwrite
-snapshotReaders.set("protocol_suggestion", async (projectId, payload) => {
-    const p = payload as ProtocolSuggestionPayload;
-    const protocol = await prisma.protocol.findUnique({
-        where: { projectId },
+snapshotReaders.set("protocol_suggestion", async (ctx, artifact) => {
+    const p = artifact.payload as unknown as ProtocolSuggestionPayload;
+    const protocol = await ctx.db.protocol.findUnique({
+        where: { projectId: ctx.projectId },
         select: { data: true },
     });
     if (!protocol) return null;
@@ -1017,9 +1193,9 @@ snapshotReaders.set("protocol_suggestion", async (projectId, payload) => {
 });
 
 // criteria_card: capture current eligibility before overwrite
-snapshotReaders.set("criteria_card", async (projectId) => {
-    const protocol = await prisma.protocol.findUnique({
-        where: { projectId },
+snapshotReaders.set("criteria_card", async (ctx) => {
+    const protocol = await ctx.db.protocol.findUnique({
+        where: { projectId: ctx.projectId },
         select: { data: true },
     });
     if (!protocol) return null;
@@ -1028,11 +1204,10 @@ snapshotReaders.set("criteria_card", async (projectId) => {
 });
 
 // draft_diff: capture current draft section content before overwrite
-snapshotReaders.set("draft_diff", async (projectId, payload) => {
-    const p = payload as DraftDiffPayload;
-    const { getDraft } = await import("@/lib/server/drafts");
+snapshotReaders.set("draft_diff", async (ctx, artifact) => {
+    const p = artifact.payload as unknown as DraftDiffPayload;
     const { DRAFT_SECTIONS } = await import("@/types/draft");
-    const currentDraft = await getDraft(undefined, projectId);
+    const currentDraft = await getDraftTrusted(ctx.db, ctx.projectId);
     if (!currentDraft) return null;
     const sectionKey = DRAFT_SECTIONS.find(
         (s) => s.key === p.section.toLowerCase() || s.label.toLowerCase() === p.section.toLowerCase()
@@ -1044,10 +1219,10 @@ snapshotReaders.set("draft_diff", async (projectId, payload) => {
 // Revert domain state using the captured snapshot.
 
 // study_update: restore previous study fields
-restoreFunctions.set("study_update", async ({ snapshot }) => {
-    const snap = snapshot as { id: string; title: string; authors: string; year: number; status: string; quality: string; details: unknown } | null;
+restoreFunctions.set("study_update", async (ctx, artifact) => {
+    const snap = artifact.snapshot as { id: string; title: string; authors: string; year: number; status: string; quality: string; details: unknown } | null;
     if (!snap) return;
-    await prisma.study.update({
+    await ctx.db.study.update({
         where: { id: snap.id },
         data: {
             title: snap.title,
@@ -1061,21 +1236,21 @@ restoreFunctions.set("study_update", async ({ snapshot }) => {
 });
 
 // study_proposal: if snapshot null (new study), soft-delete it; else restore previous state
-restoreFunctions.set("study_proposal", async ({ projectId, payload, snapshot }) => {
-    const p = payload as StudyProposalPayload;
-    const study = await prisma.study.findFirst({
-        where: { projectId, title: p.title, deletedAt: null },
+restoreFunctions.set("study_proposal", async (ctx, artifact) => {
+    const p = artifact.payload as unknown as StudyProposalPayload;
+    const study = await ctx.db.study.findFirst({
+        where: { projectId: ctx.projectId, title: p.title, deletedAt: null },
         select: { id: true },
     });
     if (!study) return;
 
-    const snap = snapshot as { id: string; status: string; quality: string; details: unknown } | null;
+    const snap = artifact.snapshot as { id: string; status: string; quality: string; details: unknown } | null;
     if (!snap) {
         // Study was newly created by this artifact — soft-delete it
-        await prisma.study.update({ where: { id: study.id }, data: { deletedAt: new Date() } });
+        await ctx.db.study.update({ where: { id: study.id }, data: { deletedAt: new Date() } });
     } else {
         // Restore previous state
-        await prisma.study.update({
+        await ctx.db.study.update({
             where: { id: study.id },
             data: { status: snap.status, quality: snap.quality, details: (snap.details as object) ?? Prisma.DbNull },
         });
@@ -1083,34 +1258,27 @@ restoreFunctions.set("study_proposal", async ({ projectId, payload, snapshot }) 
 });
 
 // protocol_suggestion: restore previous field value
-restoreFunctions.set("protocol_suggestion", async ({ projectId, snapshot }) => {
-    const snap = snapshot as { field: string; previousValue: unknown } | null;
+restoreFunctions.set("protocol_suggestion", async (ctx, artifact) => {
+    const snap = artifact.snapshot as { field: string; previousValue: unknown } | null;
     if (!snap) return;
-    const data = await ensureProtocol(projectId);
+    const data = await ensureProtocolWithDb(ctx.db, ctx.projectId);
     setNestedValue(data as unknown as Record<string, unknown>, snap.field, snap.previousValue);
-    await prisma.protocol.update({
-        where: { projectId },
-        data: { data: data as unknown as object },
-    });
+    await saveProtocolTrusted(ctx.db, ctx.projectId, data);
 });
 
 // criteria_card: restore previous eligibility
-restoreFunctions.set("criteria_card", async ({ projectId, snapshot }) => {
-    const previousEligibility = snapshot as { inclusion: string[]; exclusion: string[] } | null;
+restoreFunctions.set("criteria_card", async (ctx, artifact) => {
+    const previousEligibility = artifact.snapshot as { inclusion: string[]; exclusion: string[] } | null;
     if (!previousEligibility) return;
-    const data = await ensureProtocol(projectId);
+    const data = await ensureProtocolWithDb(ctx.db, ctx.projectId);
     data.eligibility.inclusion = previousEligibility.inclusion;
     data.eligibility.exclusion = previousEligibility.exclusion;
-    await prisma.protocol.update({
-        where: { projectId },
-        data: { data: data as unknown as object },
-    });
+    await saveProtocolTrusted(ctx.db, ctx.projectId, data);
 });
 
 // draft_diff: restore previous draft section content
-restoreFunctions.set("draft_diff", async ({ projectId, payload, snapshot }) => {
-    const p = payload as DraftDiffPayload;
-    const { getDraft, saveDraft } = await import("@/lib/server/drafts");
+restoreFunctions.set("draft_diff", async (ctx, artifact) => {
+    const p = artifact.payload as unknown as DraftDiffPayload;
     const { createDefaultDraftState } = await import("@/lib/draftStorage");
     const { DRAFT_SECTIONS } = await import("@/types/draft");
 
@@ -1118,15 +1286,15 @@ restoreFunctions.set("draft_diff", async ({ projectId, payload, snapshot }) => {
         (s) => s.key === p.section.toLowerCase() || s.label.toLowerCase() === p.section.toLowerCase()
     )?.key ?? p.section.toLowerCase();
 
-    const currentDraft = await getDraft(undefined, projectId);
+    const currentDraft = await getDraftTrusted(ctx.db, ctx.projectId);
     const draftState = currentDraft ?? createDefaultDraftState();
 
-    if (snapshot) {
-        draftState.contentBySection[sectionKey] = snapshot as typeof draftState.contentBySection[string];
+    if (artifact.snapshot) {
+        draftState.contentBySection[sectionKey] = artifact.snapshot as typeof draftState.contentBySection[string];
     } else {
         // No previous content — remove the section
         delete draftState.contentBySection[sectionKey];
     }
 
-    await saveDraft(undefined, projectId, draftState);
+    await saveDraftTrusted(ctx.db, ctx.projectId, draftState);
 });

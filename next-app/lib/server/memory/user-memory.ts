@@ -4,6 +4,9 @@
  */
 
 import { prisma } from "@/lib/server/prisma";
+import type { Prisma } from "@prisma/client";
+
+type UserMemoryDbClient = typeof prisma | Prisma.TransactionClient;
 
 export type UserMemoryType = "preference" | "style" | "workflow";
 export type UserMemoryStatus = "active" | "archived";
@@ -28,9 +31,16 @@ export interface UpdateUserMemoryInput {
  * Create or update a user memory
  */
 export async function setUserMemory(input: CreateUserMemoryInput) {
+    return setUserMemoryWithDb(prisma, input);
+}
+
+export async function setUserMemoryWithDb(
+    db: UserMemoryDbClient,
+    input: CreateUserMemoryInput,
+) {
     const { userId, key, ...data } = input;
 
-    return prisma.userMemory.upsert({
+    return db.userMemory.upsert({
         where: {
             userId_key: { userId, key },
         },
@@ -66,9 +76,10 @@ export async function getUserMemories(
         type?: UserMemoryType;
         status?: UserMemoryStatus;
         tags?: string[];
-    }
+    },
+    db: UserMemoryDbClient = prisma,
 ) {
-    return prisma.userMemory.findMany({
+    return db.userMemory.findMany({
         where: {
             userId,
             type: options?.type,
@@ -86,9 +97,10 @@ export async function getUserMemories(
  */
 export async function updateUserMemory(
     id: string,
-    input: UpdateUserMemoryInput
+    input: UpdateUserMemoryInput,
+    db: UserMemoryDbClient = prisma,
 ) {
-    return prisma.userMemory.update({
+    return db.userMemory.update({
         where: { id },
         data: {
             ...input,

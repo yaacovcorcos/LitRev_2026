@@ -7,6 +7,7 @@ import "server-only";
 
 import { prisma } from "@/lib/server/prisma";
 import { assertProjectAccess } from "@/lib/server/access";
+import type { Prisma } from "@prisma/client";
 import type { ScopeInput } from "@/lib/server/scope";
 import { extractTextFromContent, type NoteContent } from "@/lib/server/notes";
 
@@ -25,6 +26,7 @@ import { sanitizePaginationLimit } from "@/lib/server/pagination";
 import type { PaginationOptions } from "@/lib/server/pagination";
 
 const MAX_VERSION_RETRIES = 3;
+type DraftVersionDbClient = typeof prisma | Prisma.TransactionClient;
 
 function isUniqueConstraintError(error: unknown): boolean {
   if (!error || typeof error !== "object") return false;
@@ -43,13 +45,19 @@ export async function createDraftVersion(
   input: CreateDraftVersionInput,
 ) {
   await assertProjectAccess(scopeInput, input.projectId);
+  return createDraftVersionTrusted(prisma, input);
+}
 
+export async function createDraftVersionTrusted(
+  db: DraftVersionDbClient,
+  input: CreateDraftVersionInput,
+) {
   const sectionLower = input.section.toLowerCase();
 
   // Extract plain text for searchability
   const contentText = extractTextFromContent(input.content as NoteContent) || null;
   for (let attempt = 0; attempt < MAX_VERSION_RETRIES; attempt += 1) {
-    const latest = await prisma.draftVersion.findFirst({
+    const latest = await db.draftVersion.findFirst({
       where: { projectId: input.projectId, section: sectionLower },
       orderBy: { version: "desc" },
       select: { version: true },
@@ -57,7 +65,7 @@ export async function createDraftVersion(
     const nextVersion = (latest?.version ?? 0) + 1;
 
     try {
-      return await prisma.draftVersion.create({
+      return await db.draftVersion.create({
         data: {
           projectId: input.projectId,
           section: sectionLower,

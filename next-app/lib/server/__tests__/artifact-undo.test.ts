@@ -9,8 +9,12 @@ const mocks = vi.hoisted(() => ({
     create: vi.fn(),
     transaction: vi.fn(),
     studyUpdate: vi.fn(),
+    protocolUpsert: vi.fn(),
     protocolFindUnique: vi.fn(),
-    protocolUpdate: vi.fn(),
+    executeRaw: vi.fn(),
+    userMemoryUpdateMany: vi.fn(),
+    projectMemoryUpdate: vi.fn(),
+    projectMemoryUpdateMany: vi.fn(),
     emitEvent: vi.fn(),
     emitEventWithinTransaction: vi.fn(),
     createArtifactCheckpointInTransaction: vi.fn(),
@@ -34,7 +38,6 @@ vi.mock("@/lib/server/prisma", () => ({
         },
         protocol: {
             findUnique: mocks.protocolFindUnique,
-            update: mocks.protocolUpdate,
         },
     },
 }));
@@ -73,11 +76,12 @@ vi.mock("@/lib/server/memory/protocol-sync", () => ({
 }));
 
 vi.mock("@/lib/server/protocols", () => ({
-    ensureProtocol: vi.fn().mockResolvedValue({
+    ensureProtocolWithDb: vi.fn().mockResolvedValue({
         researchQuestion: "Old RQ",
         pico: { population: "adults", intervention: "", comparison: "", outcome: "" },
         eligibility: { inclusion: ["English"], exclusion: ["animals"] },
     }),
+    saveProtocolTrusted: mocks.protocolUpsert,
 }));
 
 vi.mock("@/lib/protocol-fields", async (importOriginal) => {
@@ -89,13 +93,9 @@ vi.mock("@/lib/protocol-fields", async (importOriginal) => {
     };
 });
 
-vi.mock("@/lib/server/actor", () => ({
-    requireActorContext: vi.fn().mockReturnValue({ userId: "u1", workspaceId: "w1" }),
-}));
-
 vi.mock("@/lib/server/memory", () => ({
-    setUserMemory: vi.fn(),
-    createProjectMemory: vi.fn().mockResolvedValue({ id: "pm-1" }),
+    setUserMemoryWithDb: vi.fn(),
+    createProjectMemoryWithDb: vi.fn().mockResolvedValue({ id: "pm-1" }),
     getProjectMemories: vi.fn().mockResolvedValue([]),
     getUserMemories: vi.fn().mockResolvedValue([]),
 }));
@@ -106,21 +106,21 @@ vi.mock("@/lib/server/memory/conflict-policy", () => ({
 }));
 
 vi.mock("@/lib/server/notes", () => ({
-    createNote: vi.fn(),
-    updateNote: vi.fn(),
+    createNoteTrusted: vi.fn(),
+    updateNoteTrusted: vi.fn(),
     textToTipTapDoc: vi.fn((text: string) => ({ type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text }] }] })),
-    listNotes: vi.fn().mockResolvedValue([]),
+    listNotesTrusted: vi.fn().mockResolvedValue([]),
     extractTextFromContent: vi.fn().mockReturnValue(""),
 }));
 
 vi.mock("@/lib/server/ledger", () => ({
-    upsertStudy: vi.fn(),
-    updateStudy: vi.fn(),
+    upsertStudyTrusted: vi.fn(),
+    updateStudyTrusted: vi.fn(),
 }));
 
 vi.mock("@/lib/server/drafts", () => ({
-    getDraft: mocks.getDraft,
-    saveDraft: mocks.saveDraft,
+    getDraftTrusted: mocks.getDraft,
+    saveDraftTrusted: mocks.saveDraft,
 }));
 
 vi.mock("@/lib/draftStorage", () => ({
@@ -147,13 +147,13 @@ vi.mock("@/types/artifacts", async (importOriginal) => {
 });
 
 vi.mock("@/lib/server/draft-versions", () => ({
-    createDraftVersion: vi.fn(),
+    createDraftVersionTrusted: vi.fn(),
 }));
 
 const { undoArtifact, applyArtifact } = await import("@/lib/server/agent/artifacts");
-const { upsertStudy, updateStudy } = await import("@/lib/server/ledger");
-const mockUpsertStudy = vi.mocked(upsertStudy);
-const mockUpdateStudy = vi.mocked(updateStudy);
+const { upsertStudyTrusted, updateStudyTrusted } = await import("@/lib/server/ledger");
+const mockUpsertStudy = vi.mocked(upsertStudyTrusted);
+const mockUpdateStudy = vi.mocked(updateStudyTrusted);
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -177,7 +177,36 @@ function makeArtifact(overrides: Record<string, unknown> = {}) {
         reviewedAt: null,
         reviewNote: null,
         createdAt: new Date(),
+        project: {
+            ownerId: "u1",
+            workspaceId: "w1",
+        },
         ...overrides,
+    };
+}
+
+function makeTx() {
+    return {
+        artifact: {
+            findUnique: mocks.findUnique,
+            update: mocks.update,
+            create: mocks.create,
+        },
+        study: {
+            findFirst: mocks.findFirst,
+            update: mocks.studyUpdate,
+        },
+        protocol: {
+            findUnique: mocks.protocolFindUnique,
+        },
+        userMemory: {
+            updateMany: mocks.userMemoryUpdateMany,
+        },
+        projectMemory: {
+            update: mocks.projectMemoryUpdate,
+            updateMany: mocks.projectMemoryUpdateMany,
+        },
+        $executeRaw: mocks.executeRaw,
     };
 }
 
@@ -198,12 +227,12 @@ describe("undoArtifact", () => {
         mocks.createArtifactCheckpointInTransaction.mockResolvedValue(undefined);
         mocks.markRunDurabilityDegraded.mockResolvedValue(1);
         mocks.noteObservedRunActivity.mockReturnValue(undefined);
-        mocks.transaction.mockImplementation(async (callback: (tx: unknown) => Promise<unknown>) => callback({
-            artifact: {
-                update: mocks.update,
-                create: mocks.create,
-            },
-        }));
+        mocks.protocolUpsert.mockResolvedValue(undefined);
+        mocks.executeRaw.mockResolvedValue(1);
+        mocks.userMemoryUpdateMany.mockResolvedValue({ count: 0 });
+        mocks.projectMemoryUpdate.mockResolvedValue(undefined);
+        mocks.projectMemoryUpdateMany.mockResolvedValue({ count: 0 });
+        mocks.transaction.mockImplementation(async (callback: (tx: unknown) => Promise<unknown>) => callback(makeTx()));
     });
 
     it("throws when artifact not found", async () => {
@@ -234,10 +263,11 @@ describe("undoArtifact", () => {
         await undoArtifact("art-1");
 
         // Should call prisma.protocol.update to restore
-        expect(mocks.protocolUpdate).toHaveBeenCalledWith({
-            where: { projectId: "proj-1" },
-            data: { data: expect.objectContaining({ researchQuestion: "Old RQ" }) },
-        });
+        expect(mocks.protocolUpsert).toHaveBeenCalledWith(
+            expect.any(Object),
+            "proj-1",
+            expect.objectContaining({ researchQuestion: "Old RQ" }),
+        );
         // Should mark artifact as rejected
         expect(mocks.update).toHaveBeenCalledWith({
             where: { id: "art-1" },
@@ -256,14 +286,13 @@ describe("undoArtifact", () => {
 
         await undoArtifact("art-1");
 
-        expect(mocks.protocolUpdate).toHaveBeenCalledWith({
-            where: { projectId: "proj-1" },
-            data: {
-                data: expect.objectContaining({
-                    eligibility: { inclusion: ["Old inclusion"], exclusion: ["Old exclusion"] },
-                }),
-            },
-        });
+        expect(mocks.protocolUpsert).toHaveBeenCalledWith(
+            expect.any(Object),
+            "proj-1",
+            expect.objectContaining({
+                eligibility: { inclusion: ["Old inclusion"], exclusion: ["Old exclusion"] },
+            }),
+        );
     });
 
     it("restores study_update fields on undo", async () => {
@@ -334,7 +363,7 @@ describe("undoArtifact", () => {
         await undoArtifact("art-1");
 
         expect(mocks.saveDraft).toHaveBeenCalledWith(
-            undefined,
+            expect.any(Object),
             "proj-1",
             expect.objectContaining({
                 contentBySection: expect.objectContaining({
@@ -355,7 +384,7 @@ describe("undoArtifact", () => {
         await undoArtifact("art-1");
 
         // No restore should happen — no study/protocol/draft writes
-        expect(mocks.protocolUpdate).not.toHaveBeenCalled();
+        expect(mocks.protocolUpsert).not.toHaveBeenCalled();
         expect(mocks.findFirst).not.toHaveBeenCalled();
         expect(mocks.saveDraft).not.toHaveBeenCalled();
         // But artifact should still be marked as rejected
@@ -371,6 +400,12 @@ describe("applyArtifact — snapshot capture", () => {
         vi.clearAllMocks();
         mocks.update.mockResolvedValue({ id: "art-1", status: "accepted", appliedAt: new Date() });
         mocks.emitEvent.mockResolvedValue({ id: "evt-1" });
+        mocks.protocolUpsert.mockResolvedValue(undefined);
+        mocks.executeRaw.mockResolvedValue(1);
+        mocks.userMemoryUpdateMany.mockResolvedValue({ count: 0 });
+        mocks.projectMemoryUpdate.mockResolvedValue(undefined);
+        mocks.projectMemoryUpdateMany.mockResolvedValue({ count: 0 });
+        mocks.transaction.mockImplementation(async (callback: (tx: unknown) => Promise<unknown>) => callback(makeTx()));
         mockUpsertStudy.mockResolvedValue({
             id: "study-upserted",
             title: "x",
@@ -523,8 +558,9 @@ describe("applyArtifact — snapshot capture", () => {
         await applyArtifact("art-1");
 
         expect(mockUpdateStudy).toHaveBeenCalledWith(
-            undefined,
+            expect.any(Object),
             "proj-1",
+            "w1",
             "study-existing",
             expect.objectContaining({
                 status: "excluded",
@@ -543,6 +579,12 @@ describe("applyArtifact — screening_batch identity + status mapping", () => {
         vi.clearAllMocks();
         mocks.update.mockResolvedValue({ id: "art-1", status: "accepted", appliedAt: new Date() });
         mocks.emitEvent.mockResolvedValue({ id: "evt-1" });
+        mocks.protocolUpsert.mockResolvedValue(undefined);
+        mocks.executeRaw.mockResolvedValue(1);
+        mocks.userMemoryUpdateMany.mockResolvedValue({ count: 0 });
+        mocks.projectMemoryUpdate.mockResolvedValue(undefined);
+        mocks.projectMemoryUpdateMany.mockResolvedValue({ count: 0 });
+        mocks.transaction.mockImplementation(async (callback: (tx: unknown) => Promise<unknown>) => callback(makeTx()));
     });
 
     it("applies by studyId and persists screening metadata", async () => {
