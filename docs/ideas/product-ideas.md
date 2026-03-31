@@ -120,6 +120,25 @@ Default rule: prefer updating the right existing section or idea rather than cre
   - Whether the AI landing page should adapt based on whether projects already exist
   - How this choice affects onboarding, memory, and project creation flows
 
+## Project Understanding and Navigation
+
+### Add a Project-Level AI Summary Button
+- Status: exploring
+- Summary: Each project should have a clear button that generates a full AI summary of the project so users can quickly understand its state.
+- Why this matters:
+  - Projects accumulate context across protocol decisions, ledger studies, draft work, memory, and chat activity.
+  - Users need a fast way to re-orient themselves when returning to a project or handing it off.
+  - A synthesized project summary would make the current state much easier to understand without manually opening every surface.
+- Direction:
+  - Add a project-level AI summary action inside each project.
+  - Generate a summary that explains what the project is about, what has been done so far, which studies matter most, and what project-specific memories or important decisions have been kept.
+  - Make the summary easy to refresh as the project evolves.
+- Open questions:
+  - Whether the summary should be ephemeral, saved, or both
+  - Which sources should feed it first: protocol, ledger, memories, draft, timeline, or chat history
+  - Whether the output should be a short overview with expandable deeper sections
+  - Whether the summary should be user-triggered only or also refreshed automatically at key milestones
+
 ## Chat and Agent Experience
 
 ### Tighten Visible-Answer Quality in Search and Scoping
