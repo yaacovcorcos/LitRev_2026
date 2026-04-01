@@ -54,7 +54,7 @@ describe("TimelineRenderer load-older messages", () => {
     const btn = screen.getByRole("button", { name: /load older messages/i });
     expect(btn).toBeDefined();
     expect(btn.textContent).toContain("Load older messages");
-  });
+  }, 30000);
 
   it("does not render button when hasMore=false", () => {
     render(

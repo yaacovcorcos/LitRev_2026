@@ -8,8 +8,6 @@ import { Resend } from "resend";
 import { prisma } from "@/lib/server/prisma";
 import { getBetterAuthSecret } from "@/lib/server/auth/auth-secret";
 
-type AuthInstance = ReturnType<typeof betterAuth>;
-
 const baseURL =
   process.env.BETTER_AUTH_URL ||
   process.env.NEXT_PUBLIC_BETTER_AUTH_URL ||
@@ -35,9 +33,7 @@ const hasGoogleProvider = Boolean(
   process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET,
 );
 
-let authInstance: AuthInstance | null = null;
-
-function createAuth(): AuthInstance {
+function createAuth() {
   return betterAuth({
     baseURL,
     secret: getBetterAuthSecret(),
@@ -80,6 +76,10 @@ function createAuth(): AuthInstance {
     },
   });
 }
+
+type AuthInstance = ReturnType<typeof createAuth>;
+
+let authInstance: AuthInstance | null = null;
 
 export function getAuth(): AuthInstance {
   if (!authInstance) {

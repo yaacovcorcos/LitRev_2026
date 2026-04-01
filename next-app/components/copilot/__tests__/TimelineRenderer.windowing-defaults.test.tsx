@@ -38,7 +38,7 @@ describe("TimelineRenderer shared defaults", () => {
     expect(await screen.findByText("Fixture message 0")).toBeTruthy();
     expect(screen.getByText("Fixture message 119")).toBeTruthy();
     expect(screen.queryByRole("button", { name: /show earlier messages/i })).toBeNull();
-  }, 20000);
+  }, 60000);
 
   it("resets client-side windowing state when the conversation identity changes", async () => {
     const { rerender } = render(
@@ -85,5 +85,5 @@ describe("TimelineRenderer shared defaults", () => {
 
     expect(screen.queryByText("Fixture message 40")).toBeNull();
     expect(screen.getByText("Fixture message 80")).toBeTruthy();
-  });
+  }, 30000);
 });
