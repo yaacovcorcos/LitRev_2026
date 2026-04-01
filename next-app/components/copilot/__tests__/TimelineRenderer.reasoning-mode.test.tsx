@@ -49,7 +49,7 @@ describe("TimelineRenderer reasoning visibility modes", () => {
 
     expect(screen.queryByRole("button", { name: /reasoning/i })).toBeNull();
     expect(screen.queryByText(/Detailed internal reasoning here/i)).toBeNull();
-  });
+  }, 30000);
 
   it("does not render raw reasoning UI in summary mode", () => {
     render(

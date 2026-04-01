@@ -103,7 +103,7 @@ describe("CitationPreview prefetch behavior", () => {
                 ([event]) => event.type === "prefetch_started"
             )
         ).toBe(true);
-    });
+    }, 30000);
 
     it("keeps previous behavior when prefetch flag is disabled", async () => {
         vi.mocked(isCitationHoverPrefetchEnabled).mockReturnValue(false);

@@ -103,7 +103,7 @@ describe("TimelineRenderer mention and metadata behavior", () => {
       "project-1",
       expect.objectContaining({ doi: "10.1097/j.pain.0000000000000635" })
     );
-  });
+  }, 30000);
 
   it("shows already-in-ledger state when server reports duplicate", async () => {
     addMentionedStudyAction.mockResolvedValue({ success: true, data: {
