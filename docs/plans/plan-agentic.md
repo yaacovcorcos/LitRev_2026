@@ -249,6 +249,7 @@ Work should proceed in this order unless a production incident forces reprioriti
 - Required user decisions must use `ask_user`.
 - `<choices>` remains optional-only for lightweight next-step suggestions until it is retired.
 - Pause/resume complexity should not block improvements that can work through stateless history continuation.
+- Future redesign direction for this primitive is documented in [docs/plans/agent-runtime-remediation/ask-user-v2-design-direction.md](./agent-runtime-remediation/ask-user-v2-design-direction.md). Use that file when preparing the implementation plan; do not widen `ask_user` ad hoc.
 
 ### Delegation and Scoped General Mode
 
