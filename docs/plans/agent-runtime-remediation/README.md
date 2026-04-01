@@ -15,3 +15,7 @@ Current active supporting detail:
 
 - [Baseline Stability and Transparency Reset](./plan-fix-012-baseline-stability.md) for `FIX-012`
 - [Runtime Stabilization and Continuation](./plan-runtime-stabilization-and-continuation.md) for the remaining `FIX-011b` closeout path
+
+Reference design direction:
+
+- [Ask User V2 Design Direction](./ask-user-v2-design-direction.md) for the planned clarification/decision-system redesign. This file is design guidance only; canonical status and execution order still belong in [plan-agentic.md](../plan-agentic.md).
