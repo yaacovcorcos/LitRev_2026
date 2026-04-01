@@ -1,50 +1,72 @@
 # U1.6 Burn-In Report
 
-Status: `window_reassessment_required`
-Last reviewed: `2026-03-21`
+Status: `fresh_window_open_day0_pending_manual_evidence`
+Last reviewed: `2026-04-01`
 
 This file is the single canonical live status and eventual sign-off record for U1.6.
-The previously recorded canary window remains useful as historical context, but it is not currently the recommended final sign-off baseline because the recorded deployment SHA is older than repo-root `main` as of `2026-03-21`.
+The previous reassessment window is now superseded by a fresh window on the current production baseline.
 
 ## Canary Metadata
 
 - Environment: `production`
 - Promotion path: `production deployment after merge to main`
-- Deployed `main` commit SHA: `402f28f1b0e99d21e8b00e1502c9bb6dcfadc943`
+- Deployed `main` commit SHA: `bf15985ae28f69c16eb97d5de416dcb80293a9a9`
 - Production deployment id/url:
-  - `dpl_Hv4xkxxm8asXF29eHqWyXVB3V9GP`
-  - `https://litrev2026-m1d5mfud0-yaacovs-projects-a4ee3dc9.vercel.app`
+  - `dpl_AbL89EDxLppdNsCV8SGmbimCgWGz`
+  - `https://litrev2026-pk68bxtad-yaacovs-projects-a4ee3dc9.vercel.app`
   - alias: `https://litrev2026-yaacovs-projects-a4ee3dc9.vercel.app`
+  - alias: `https://litrev2026-git-main-yaacovs-projects-a4ee3dc9.vercel.app`
 - Owner: `yaacovcorcos`
 - Backup reviewer: `pending assignment`
-- `CANARY_SINCE_UTC`: `2026-03-14T23:02:20.000Z`
+- `CANARY_SINCE_UTC`: `2026-03-31T06:26:24.000Z`
 - Cohort workspace IDs:
   - `workspace-IQj0cBXmKu2sCADMxlGZ4dUNjUnHIsGs`
 - Cohort user IDs: `n/a`
-- Window basis: `existing window under reassessment`
+- Window basis: `fresh window on current production baseline`
 - Rollout gate:
   - `deployment-level canary`
 - Notes:
   - current committed runtime does not expose a live `CHAT_UNIFICATION_V2` flag gate
   - workspace scope is the evidence filter for this window, not a runtime allowlist
+  - no production redeploy was required for this reset because the current production deployment already matches repo-root `origin/main`
 
 ## Current Status
 
-- Production DB preflight completed successfully against the real Vercel/Supabase environment:
+- Production deployment baseline was revalidated on `2026-04-01`:
+  - current repo-root `origin/main` SHA: `bf15985ae28f69c16eb97d5de416dcb80293a9a9`
+  - current production deployment SHA: `bf15985ae28f69c16eb97d5de416dcb80293a9a9`
+- Production DB preflight completed successfully against the real Vercel/Supabase environment by sourcing a temporary `vercel env pull` file:
   - `bash scripts/db-ops.sh diagnose`
   - `npx prisma validate`
   - `npx prisma migrate status`
-- Local repo validation on the canary baseline also completed successfully:
+- Local repo validation on the same code baseline completed successfully:
   - `npx tsc --noEmit`
   - `npx vitest run`
-- Day-0 validator ran against the scoped production cohort and returned `0` qualifying rows since `CANARY_SINCE_UTC`.
-- `run_end_observed` is currently absent on both `ai` and `project` for the recorded window, so Day-0 remains open.
-- `U1.6` remains incomplete and `U3` stays blocked pending a real validator/manual pass.
-- The recorded canary deployment SHA (`402f28f1b0e99d21e8b00e1502c9bb6dcfadc943`) is older than current repo-root `main` (`24009039da066ec2c972c1027e55eb075b0f15b6`).
-- Backup reviewer assignment is still missing, which means no final strict gate can be treated as sign-offable yet.
-- Raw JSON from the 2026-03-15 Day-0 validator attempt was not preserved in this report, so that attempt is informational only under the updated runbook contract.
-- A `FIX-011b` delta audit against the current shared convergence/recovery path did not identify a new shared-runtime code gap, so the remaining blocker is fresh `U1.6` evidence/sign-off unless burn-in reveals a narrow drift that still needs patching.
-- The next valid window should keep this file as the only live report, preserve raw validator JSON in or alongside it, and document the exact `project` entrypoint exercised for every manual baseline or spot-check row.
+- Fresh-window Day-0 validator ran against the scoped production cohort and returned `0` qualifying rows since `CANARY_SINCE_UTC`.
+- `run_end_observed` is currently absent on both `ai` and `project` for the new window, so Day-0 remains open.
+- The baseline scenario pack has not been recorded yet under the fresh window.
+- Backup reviewer assignment is still missing, so no future strict gate can be treated as sign-offable until that is fixed.
+- `U1.6` remains incomplete and `U3` stays blocked pending baseline scenario evidence plus a real validator/manual pass.
+- The current `FIX-011b` posture remains unchanged: no new shared-runtime code gap was identified here, so the remaining blocker is still fresh evidence/sign-off unless burn-in reveals a narrow drift that needs a separate remediation branch.
+
+## Phase 0 Preflight
+
+Commands run on `2026-04-01`:
+
+- production env preflight:
+  - `cd next-app && set -a && source /tmp/litrev-u16-prod.env && set +a && bash scripts/db-ops.sh diagnose`
+  - `cd next-app && set -a && source /tmp/litrev-u16-prod.env && set +a && npx prisma validate`
+  - `cd next-app && set -a && source /tmp/litrev-u16-prod.env && set +a && npx prisma migrate status`
+- local repo validation:
+  - `cd next-app && npx tsc --noEmit`
+  - `cd next-app && npx vitest run`
+
+Observed result summary:
+
+- production DB connectivity: `passed`
+- production migration status: `up to date`
+- local typecheck: `passed`
+- local Vitest suite: `passed`
 
 ## Day-0 Attempt
 
@@ -52,7 +74,7 @@ Command run:
 
 ```bash
 cd next-app && npx tsx scripts/validate-chat-unification-burn-in.ts \
-  --since=2026-03-14T23:02:20.000Z \
+  --since=2026-03-31T06:26:24.000Z \
   --metricVersion=3 \
   --workspaceIds=workspace-IQj0cBXmKu2sCADMxlGZ4dUNjUnHIsGs \
   --allowShortWindow=1 \
@@ -72,36 +94,39 @@ Observed result summary:
   - `ai = n/a`
   - `project = n/a`
 - outcome:
-  - expected Day-0 gate failure due to no post-deploy cohort traffic yet
-
-## Window Validity Decision
-
-- Current recommendation: `open a fresh canary window unless production is intentionally still pinned to the recorded deployment`
-- Reasoning:
-  1. the recorded canary baseline SHA is older than current repo-root `main`
-  2. the existing window has no qualifying scoped samples
-  3. the updated burn-in contract now requires baseline scenario evidence, raw validator JSON preservation, and named backup-reviewer assignment before sign-off
-- If production is intentionally still pinned to the recorded deployment and no deployed evidence-affecting changes have occurred since `CANARY_SINCE_UTC`, this window may be continued only after:
-  1. assigning the backup reviewer
-  2. executing the runbook baseline scenario pack inside the scoped cohort
-  3. rerunning Day-0 with preserved `--json=1` output
+  - expected Day-0 short-window failure due to no scoped post-baseline traffic yet
+- raw JSON artifact:
+  - `docs/reports/u1-6-burn-in-2026-04-01.md`
 
 ## Baseline Scenario Evidence
 
-No baseline scenario pack has been recorded yet under the updated runbook contract.
+No baseline scenario pack has been recorded yet for the fresh `2026-03-31` window.
 
-When the next valid window opens:
+To satisfy the current runbook contract, the active window still needs:
 
-1. keep this file as the only canonical live report
-2. record the exact entrypoint exercised for every baseline row
-3. ensure the `project` surface covers both the main project conversation and side-panel project copilot entrypoints at least once during the active window
-4. preserve raw validator JSON in or alongside this report; the default storage convention for this execution is dated snapshot files under `docs/reports/u1-6-burn-in-YYYY-MM-DD.md`
+1. one completed `/ai` run
+2. one completed project main-conversation run
+3. one completed project side-panel copilot run
+4. one retry scenario
+5. one `ask_user` scenario
+6. one abnormal disconnect/recovery scenario
+
+Every future `project` row must name whether the exercised entrypoint was the main project conversation or the side-panel project copilot.
+
+## Window Validity Decision
+
+- Current recommendation: `continue the fresh window on the current production baseline`
+- Reasoning:
+  1. current production already matches repo-root `main`
+  2. the active blocker is missing scoped samples, not a known deployed runtime delta
+  3. the updated burn-in contract still requires baseline scenario evidence, preserved raw validator JSON, and a named backup reviewer before sign-off
 
 ## Evidence Appendix
 
-- 2026-03-15 Day-0 raw validator JSON: `not preserved; rerun required for sign-off-quality evidence`
+- 2026-04-01 Day-0 raw validator JSON:
+  - `docs/reports/u1-6-burn-in-2026-04-01.md`
 - Future raw validator JSON artifacts:
-  - default storage convention for this execution: linked dated snapshot files under `docs/reports/u1-6-burn-in-YYYY-MM-DD.md`
+  - store as linked dated snapshot files under `docs/reports/u1-6-burn-in-YYYY-MM-DD.md`
 
 ## Canonical Sources
 
@@ -119,9 +144,8 @@ When the next valid window opens:
 
 ## Next Required Step
 
-1. Decide whether production is still intentionally pinned to the recorded deployment; if not, open a fresh canary window.
-2. Assign a named backup reviewer before any future strict-gate result is treated as sign-offable.
-3. Record the baseline scenario pack and preserve raw `--json=1` validator output for all future Day-0/daily/final runs.
-4. For every future `project` manual baseline or spot-check row, record whether the exercised entrypoint was the main project conversation or the side-panel project copilot.
-5. If a future strict gate fails, finalize and merge that failed-window evidence PR before opening a separate remediation branch and a new burn-in window.
-6. Do not claim `U1.6` pass or retire `FIX-011b` until the validator/manual gate both pass under the updated contract.
+1. Assign a named backup reviewer before any future strict-gate result is treated as sign-offable.
+2. Record the baseline scenario pack inside the scoped cohort and name the exact project entrypoint for each `project` row.
+3. Preserve raw `--json=1` validator output for all future Day-0, daily, and final runs under the dated snapshot convention.
+4. Rerun the daily validator once scoped traffic exists for the fresh window.
+5. If a future strict gate fails because of a real runtime defect, finalize and merge that failed-window evidence PR before opening a separate remediation branch and a new burn-in window.
