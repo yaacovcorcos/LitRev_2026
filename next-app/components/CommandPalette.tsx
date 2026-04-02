@@ -1,13 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { createPortal } from "react-dom";
 import { Command } from "cmdk";
 import { useRouter, useParams } from "next/navigation";
 import { useCommandPalette } from "@/contexts/CommandPaletteContext";
 import { useProjectShell } from "@/contexts/ProjectShellContext";
 import { useProjectCopilotSafe } from "@/contexts/ProjectCopilotContext";
+import { useBodyScrollLock } from "@/hooks/useBodyScrollLock";
 import { useGlobalShortcuts } from "@/hooks/useGlobalShortcuts";
+import { useHydrated } from "@/hooks/useHydrated";
 import {
     getGroupedCommands,
     type CommandContext,
@@ -32,22 +34,8 @@ export function CommandPalette() {
     const params = useParams<{ id?: string }>();
     const shell = useProjectShell();
     const copilot = useProjectCopilotSafe();
-
-    const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null);
-
-    useEffect(() => {
-        setPortalTarget(document.body);
-    }, []);
-
-    // Lock body scroll when open
-    useEffect(() => {
-        if (!isOpen) return;
-        const prev = document.body.style.overflow;
-        document.body.style.overflow = "hidden";
-        return () => {
-            document.body.style.overflow = prev;
-        };
-    }, [isOpen]);
+    const hydrated = useHydrated();
+    useBodyScrollLock(isOpen && hydrated);
 
     // Build context
     const projectId = params?.id ?? null;
@@ -81,7 +69,7 @@ export function CommandPalette() {
         cmd.execute(helpers, ctx);
     };
 
-    if (!isOpen || !portalTarget) return null;
+    if (!isOpen || !hydrated) return null;
 
     const content = (
         <div className={styles.overlay} onClick={(e) => { if (e.target === e.currentTarget) close(); }}>
@@ -121,5 +109,5 @@ export function CommandPalette() {
         </div>
     );
 
-    return createPortal(content, portalTarget);
+    return createPortal(content, document.body);
 }

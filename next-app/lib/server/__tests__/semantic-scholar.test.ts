@@ -114,6 +114,22 @@ describe("parseS2Paper", () => {
         expect(result.metadata?.yearEstimated).toBeUndefined();
     });
 
+    it("rejects malformed publicationDate values instead of coercing partial numeric years", () => {
+        const malformedAlpha = parseS2Paper({
+            paperId: "bad-date-alpha",
+            title: "Malformed Alpha Date",
+            publicationDate: "20XX-01-01",
+        });
+        const malformedShort = parseS2Paper({
+            paperId: "bad-date-short",
+            title: "Malformed Short Date",
+            publicationDate: "202X",
+        });
+
+        expect(malformedAlpha.year).toBeUndefined();
+        expect(malformedShort.year).toBeUndefined();
+    });
+
     it("preserves an unknown year when no year metadata exists", () => {
         const result = parseS2Paper(NO_YEAR_PAPER);
         expect(result.year).toBeUndefined();
